@@ -298,19 +298,20 @@ automático de la Opción 3), que siguen sin arrancar a propósito.
 
 ## Orden de trabajo (secuencia de 4 relevamientos hacia Repositores)
 
-Ubicaciones (✅ EN PROD) → Pestaña de supervisor reusable (✅ respondido completo, diseño/construcción
-pendiente) → **Motor de Rotación (este, ✅ relevamiento 100% respondido — ejecución real de Opción 1
+Ubicaciones (✅ EN PROD) → Pestaña de supervisor reusable (✅ respondido completo y construida/EN PROD
+desde v1.164.0) → **Motor de Rotación (este, ✅ relevamiento 100% respondido — ejecución real de Opción 1
 ✅, Opción 2 ✅ VERIFICADA end-to-end, Opción 3: E3 ✅ VERIFICADA end-to-end / E2-E4 construidos sin
-verificar en navegador / E5 sin arrancar)** → Repositores (bloqueado hasta cerrar los 2 anteriores).
+verificar en navegador / E5 sin arrancar)** → Repositores (✅ construido y EN PROD desde v1.168.0,
+2026-08-12 — ver `relevamiento_repositores_respuestas.md`).
 
-**Próximo paso real (orden estricto):**
+**(Histórico) Próximo paso en su momento (orden estricto):**
 1. ~~Verificar la Opción 2 en el navegador~~ — ✅ **COMPLETO** (spec 131, encontró y corrigió un bug
    real de inventario).
 2. ~~Arrancar la Opción 3 (kits) por el camino B ya decidido por GO~~ — ✅ **E3 COMPLETO Y VERIFICADO**
    (spec 132, mig 343); **E2/E4 construidos, falta probar en el navegador** (prioridad de la próxima
    sesión si se retoma este módulo).
 3. **E5 (desarmado de kit) y lo que depende de la Pestaña de supervisor** (disparo automático de tarea
-   + reasignación) quedan para después de completar el diseño/construcción real de la Pestaña de
-   supervisor reusable (#2).
-4. Repositores (relevamiento #4) sigue bloqueado hasta completar el #2 y terminar este #3 por completo
-   (E5 incluido).
+   + reasignación) quedaron para después de completar el diseño/construcción real de la Pestaña de
+   supervisor reusable (#2). E5 sigue sin construir (diferido, no bloqueante).
+4. **✅ Repositores (relevamiento #4) — construido y EN PROD desde v1.168.0 (2026-08-12)**, ver
+   `relevamiento_repositores_respuestas.md` y [[wiki/features/repositores]].

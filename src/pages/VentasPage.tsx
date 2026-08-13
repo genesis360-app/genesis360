@@ -31,6 +31,11 @@ import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { PageTabs } from '@/components/PageTabs'
+import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
+import {
+  CAMPOS_FILTRO_VENTAS, parsearPildora as parsearPildoraVenta, evaluarPildorasVenta,
+  type PildoraVenta, type CampoVenta,
+} from '@/lib/ventasFiltro'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
@@ -775,9 +780,29 @@ export default function VentasPage() {
     if (!stillValid) setCajaSeleccionadaId(null)
   }, [sesionesAbiertas, cajaSeleccionadaId])
 
-  // Historial
-  const [searchHistorial, setSearchHistorial] = useState('')
-  const [filterEstado, setFilterEstado] = useState<EstadoVenta | ''>('')
+  // Historial — buscador por píldoras (mismo mecanismo que /picking, /pedidos, /productos e
+  // /inventario). GO, 2026-08-12: "Venta:2" tiene que ser exacto, no traer también la venta #12 o
+  // la #201; el link "Ver venta" de AlertasPage ahora manda `?busqueda=Venta:<numero>` estructurado
+  // en vez de texto suelto. `?busqueda=` sin "Campo:" (deep-links viejos o tipeo manual) sigue
+  // funcionando como texto libre.
+  const [pildorasHist, setPildorasHist] = useState<PildoraVenta[]>(() => {
+    const raw = searchParams.get('busqueda')
+    if (!raw) return []
+    const parsed = parsearPildoraVenta(raw)
+    return parsed ? [parsed] : []
+  })
+  const [entradaHist, setEntradaHist] = useState(() => {
+    const raw = searchParams.get('busqueda')
+    if (!raw) return ''
+    return parsearPildoraVenta(raw) ? '' : raw
+  })
+  const [combinadorHist, setCombinadorHist] = useState<'Y' | 'O'>('Y')
+  // Deep-link desde AlertasPage ("Ver todas" de Reservas sin despachar) — ?tab=historial&estado=reservada
+  // pre-filtra el estado en vez de aterrizar en el historial completo sin filtrar (GO, 2026-08-12).
+  const [filterEstado, setFilterEstado] = useState<EstadoVenta | ''>(() => {
+    const e = searchParams.get('estado')
+    return (e && e in ESTADOS) ? (e as EstadoVenta) : ''
+  })
   const [filterCategoria, setFilterCategoria] = useState<string>('')
   const [ventaDetalle, setVentaDetalle] = useState<any | null>(null)
   const [ventasLimit, setVentasLimit] = useState(50)
@@ -1358,21 +1383,42 @@ export default function VentasPage() {
     enabled: !!ventaDetalle?.id,
   })
 
+  // Lo que se está tipeando filtra en vivo igual que las píldoras ya confirmadas (mismo criterio
+  // que /picking y /pedidos) — si matchea "Campo:valor" se evalúa exacto a ese campo, si no libre.
+  const entradaHistTrim = entradaHist.trim()
+  const pildoraDeEntradaHist: PildoraVenta | null = entradaHistTrim
+    ? (parsearPildoraVenta(entradaHistTrim) ?? { id: '__entrada__', campo: 'libre', operador: 'contiene', valor: entradaHistTrim })
+    : null
+  const pildorasEfectivasHist = pildoraDeEntradaHist ? [...pildorasHist, pildoraDeEntradaHist] : pildorasHist
+  // Solo el PRIMER criterio maneja la búsqueda en el servidor (ver comentario de abajo) — hoy este
+  // buscador nunca tuvo más de un criterio a la vez, así que alcanza. Si el día de mañana hace
+  // falta combinar 2+ en el servidor, hay que armar la query compuesta acá.
+  const primerCriterioHist = pildorasEfectivasHist[0] ?? null
+
   // 🔎 Búsqueda del historial: si hay término, se busca EN EL SERVIDOR (sin la ventana de 50).
   // Bug real que esto arregla (destapado por el spec 42, 2026-07-17): la búsqueda filtraba
   // client-side SOLO sobre las últimas `ventasLimit` (50) ventas → buscar el número de una
   // venta más vieja daba "No hay ventas registradas" aunque existiera. Número → match exacto;
   // texto → ilike sobre el nombre del cliente. El filtro client-side de abajo sigue aplicando.
-  const busquedaHistorial = searchHistorial.trim()
+  // GO 2026-08-12: con el campo (Venta):N explícito, el exacto aplica sin importar la longitud del
+  // número (antes un dígito solo, ej. "2", nunca entraba a esta rama — ver `pedidosFiltro.ts`).
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
-    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit, busquedaHistorial],
+    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit, primerCriterioHist?.campo, primerCriterioHist?.valor],
     queryFn: async () => {
       let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
-      if (busquedaHistorial.length >= 2) {
-        if (/^\d+$/.test(busquedaHistorial)) q = q.eq('numero', Number(busquedaHistorial))
-        else q = q.ilike('cliente_nombre', `%${busquedaHistorial}%`)
-        q = q.limit(100)   // búsqueda global acotada, no la ventana de recientes
+      const valorCriterio = primerCriterioHist?.valor.trim() ?? ''
+      if (primerCriterioHist?.campo === 'numero' && valorCriterio) {
+        if (/^\d+$/.test(valorCriterio)) q = q.eq('numero', Number(valorCriterio))
+        q = q.limit(100)
+      } else if (primerCriterioHist?.campo === 'cliente' && valorCriterio) {
+        q = q.ilike('cliente_nombre', `%${valorCriterio}%`)
+        q = q.limit(100)
+      } else if (valorCriterio.length >= 2) {
+        // Libre (texto suelto, sin "Campo:") — mismo heurístico de siempre.
+        if (/^\d+$/.test(valorCriterio)) q = q.eq('numero', Number(valorCriterio))
+        else q = q.ilike('cliente_nombre', `%${valorCriterio}%`)
+        q = q.limit(100)
       } else {
         q = q.limit(ventasLimit)
       }
@@ -4895,10 +4941,7 @@ export default function VentasPage() {
   })
 
   const filteredVentas = ventas.filter((v: any) => {
-    if (searchHistorial) {
-      const s = searchHistorial.toLowerCase()
-      if (!v.numero?.toString().includes(s) && !(v.cliente_nombre ?? '').toLowerCase().includes(s)) return false
-    }
+    if (!evaluarPildorasVenta({ numero: v.numero ?? null, clienteNombre: v.cliente_nombre ?? null }, pildorasEfectivasHist, combinadorHist)) return false
     if (filterCategoria) {
       const tieneCategoria = (v.venta_items ?? []).some((item: any) => item.productos?.categoria_id === filterCategoria)
       if (!tieneCategoria) return false
@@ -6182,13 +6225,28 @@ export default function VentasPage() {
       {/* ── HISTORIAL ── */}
       {tab === 'historial' && (
         <div className="space-y-4">
-          <div className="flex gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-48">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-              <input type="text" value={searchHistorial} onChange={e => setSearchHistorial(e.target.value)}
-                placeholder="Buscar por N° o cliente..."
-                name="buscar-venta-historial" autoComplete="off"
-                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+          <div className="flex items-start gap-3 flex-wrap">
+            <div className="flex-1 min-w-[220px] max-w-[420px]">
+              <BuscadorPildoras
+                camposFiltro={CAMPOS_FILTRO_VENTAS}
+                pildoras={pildorasHist}
+                entrada={entradaHist}
+                combinador={combinadorHist}
+                placeholder="Buscar cliente... o (Venta):2"
+                onEntradaChange={setEntradaHist}
+                onCommitEntrada={() => {
+                  if (!entradaHistTrim) return
+                  const nueva = parsearPildoraVenta(entradaHistTrim) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: entradaHistTrim }
+                  setPildorasHist(ps => [...ps, nueva])
+                  setEntradaHist('')
+                }}
+                onCampoChange={(id, campo) => setPildorasHist(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo as CampoVenta, CAMPOS_FILTRO_VENTAS) as PildoraVenta : p))}
+                onOperadorChange={(id, operador) => setPildorasHist(ps => ps.map(p => p.id === id ? { ...p, operador } : p))}
+                onValorChange={(id, valor) => setPildorasHist(ps => ps.map(p => p.id === id ? { ...p, valor } : p))}
+                onRemove={id => setPildorasHist(ps => ps.filter(p => p.id !== id))}
+                onRemoveLast={() => setPildorasHist(ps => ps.slice(0, -1))}
+                onCombinadorChange={setCombinadorHist}
+              />
             </div>
             <select value={filterEstado} onChange={e => setFilterEstado(e.target.value as EstadoVenta | '')}
               className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
@@ -6301,7 +6359,7 @@ export default function VentasPage() {
                     </button>
                   ))}
                   {(pedidosVenta as any[]).map(p => (
-                    <button key={p.id} onClick={() => navigate(`/pedidos?busqueda=${p.numero}`)}
+                    <button key={p.id} onClick={() => navigate(`/pedidos?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)}
                       title="Ver pedido" className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1 hover:bg-amber-200 dark:hover:bg-amber-900/50">
                       <Package size={11} /> Pedido #{p.numero_sucursal ?? p.numero} · {PEDIDO_ESTADO_LABELS[p.estado] ?? p.estado}
                     </button>

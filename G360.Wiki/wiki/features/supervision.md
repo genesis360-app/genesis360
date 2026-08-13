@@ -1,9 +1,9 @@
 ---
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
-tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores]
+tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
 sources: [migration 347, migration 348, relevamiento_supervisor_tab_respuestas.md, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Supervisión — Patrón "Pestaña de Supervisor" reusable
@@ -145,6 +145,56 @@ dentro de una función (`get_user_role()` explícito), pero NO para probar RLS e
   operador de `navVisibility.ts` corría ANTES de chequear `requiereSupervisarModulo` — corregido para
   que ese flag bypasee el allowlist de rol (se gobierna 100% por permiso real, no por rol).
 
+## Paginación de Aprobaciones/Reasignar — footer estilo Historial (2026-08-12, EN DEV sin commitear)
+
+Mismo pedido de GO que en [[wiki/features/alertas]] ("agregá el footer 'Mostrando X de Y' que tiene
+Historial"), pero acá SÍ encaja literal: a diferencia de Alertas (11 secciones chicas), la lista de
+Aprobaciones/Reasignar de `useSupervisorAutorizaciones` **es una lista única homogénea** que puede
+crecer sin límite con el uso — mismo caso que Historial.
+
+- `useSupervisorAutorizaciones` ahora maneja `page`/`pageSize` (default 20, `AUT_PAGE_SIZES = [20, 50,
+  75, 100]`) internamente, usa `.range()` + `{ count: 'exact' }` en la query (mismo mecanismo que
+  Historial), y expone `totalCount` además del array de la página actual.
+- Cambiar de tab (Pendientes/Aprobadas/Rechazadas) resetea `page` a 0 automáticamente (`useEffect`
+  sobre `autEstado`) — si no, podías quedar en "página 3 de Pendientes" y saltar a Aprobadas con solo
+  1 página, viendo un estado roto.
+- El footer se renderiza dentro de `SupervisionPanel.tsx` (no en cada módulo que lo consume) — así
+  cualquier módulo futuro que se sume al patrón lo hereda gratis. Se muestra tanto en la sub-pestaña
+  **Aprobaciones** como en **Reasignar** (ambas iteran el mismo array ya paginado).
+- Verificado en navegador real contra "Almacén Jorgito" (24 autorizaciones pendientes reales): footer
+  mostró "Mostrar 20 [20] 50 75 100 · « ← 1/2 (24 en total) → »"; clickear "50" recalculó a "1/1 (24
+  en total)" en vivo. Sin errores de consola.
+
+**Estado real: construido, typecheck+build verdes, verificado en el navegador contra DEV — sin
+commitear todavía** (working tree de `dev` local).
+
+## Fix de bug real + rediseño de `/supervision` (2026-08-12, ronda 2 de feedback, EN DEV sin commitear)
+
+GO revisó en el navegador la paginación de arriba y encontró 2 problemas reales en `/supervision` (la
+página agregada cross-módulo):
+
+- **Bug: el link "Ver y resolver en Inventario" no aterrizaba donde decía.** Armaba la URL
+  `/inventario?tab=autorizaciones`, pero `InventarioPage.tsx` **nunca leía ese query param** — el tab
+  siempre arrancaba en `'inventario'` sin importar qué dijera la URL, así que el link terminaba en el
+  tab equivocado. **Fix**: nuevo `useEffect` en `InventarioPage.tsx` que lee `?tab=` al montar y lo
+  aplica (mismo patrón que ya existía para `?search=`).
+- **Rediseño: desglose por tipo en vez de lista cruda de 5.** `SupervisionPage.tsx` mostraba una lista
+  de 5 solicitudes pendientes al azar sin explicar por qué esas 5 ni qué eran las otras — GO: "no me
+  agrega valor esa info que veo, solo sé que hay más por ver". Se reemplazó por un **desglose por
+  tipo/categoría** (cuántas de "Ajuste de cantidad", "Cambio de estado", "Diferencia de conteo", etc.)
+  reusando los mismos labels que ya usa `resumenDeAutorizacion` en `InventarioPage.tsx`, en vez de
+  listar ítems individuales sin contexto.
+
+Ver también [[wiki/features/alertas]] (sección "Deep-links específicos por sección") — mismo pedido de
+GO de revisar que TODOS los links de la página lleven a donde dicen, aplicado a las 12 secciones de
+AlertasPage.
+
+**Verificación**: typecheck + build verdes. Verificado EN EL NAVEGADOR (Playwright ad-hoc) contra el
+tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
+
+**Estado real: construido, typecheck+build verdes, verificado en el navegador contra DEV — sin
+commitear todavía** (mismo working tree de `dev` local que la paginación de arriba).
+
 ## Pendiente real
 
 Ningún otro módulo usa el patrón todavía — Pedidos/WMS sigue con su propia UI de asignación de tareas
@@ -158,5 +208,6 @@ alcance de D1, que solo pedía retrofitear Inventario).
 `fn_tarea_repositor_asignado_valido_tenant` de la Fase 2 — no como una integración con `autorizaciones`
 en sí (Repositores tiene su propia tabla `tareas_repositor`, no pasa por la Pestaña de Supervisor
 genérica), sino como el mismo diseño aplicado a un módulo nuevo. Detalle completo en
-[[wiki/features/repositores]]. Ambas fases SOLO EN DEV, sin deployar a PROD — decisión de GO pendiente.
+[[wiki/features/repositores]]. **✅ Módulo Repositores completo (Fases 1-4) deployado a PROD el
+2026-08-12 (v1.168.0, PR #328) — ver [[wiki/features/repositores]] para el estado actual.**
 Quedan sin arrancar (ahora 2, no 3): reposición física de stock a góndola (I3) y etiquetas+impresión.

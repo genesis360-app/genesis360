@@ -24,6 +24,10 @@ import { logActividad } from '@/lib/actividadLog'
 import { BRAND } from '@/config/brand'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
+import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
+import {
+  CAMPOS_FILTRO_PEDIDOS, parsearPildora, evaluarPildorasPedido, type PildoraPedido, type CampoPedido,
+} from '@/lib/pedidosFiltro'
 import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { motivoNoLanzarPedido } from '@/lib/pedidoVenta'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
@@ -84,9 +88,31 @@ export default function PedidosPage() {
   const [prodSearch, setProdSearch] = useState('')
   const [items, setItems] = useState<ItemDraft[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [filtroEstado, setFiltroEstado] = useState('')
-  // Deep-link desde Ventas/Envíos ("Ver pedido" en el detalle de una venta) — mismo patrón que EnviosPage.
-  const [busqueda, setBusqueda] = useState(() => searchParams.get('busqueda') ?? '')
+  // Deep-link desde AlertasPage — ?estado= pre-filtra el estado (ej. "en_preparacion" para
+  // "sin avanzar"); mismo patrón que Ventas/Envíos con `busqueda`. GO, 2026-08-12: antes estos
+  // links caían siempre en /pedidos a secas, sin filtrar nada.
+  const [filtroEstado, setFiltroEstado] = useState(() => searchParams.get('estado') ?? '')
+  // Buscador por píldoras (mismo mecanismo que /picking, /productos e /inventario — GO 2026-08-12:
+  // el buscador de texto plano hacía substring sobre N°/referencia/cliente a la vez, así que
+  // buscar el pedido "2" también traía el 82, el 102... `?busqueda=` (deep-link desde Ventas/
+  // Envíos/Alertas, mismo patrón que EnviosPage) puede venir como pildora estructurada
+  // ("Pedido:2", exacta) o como texto suelto (libre, fuzzy).
+  const [pildoras, setPildoras] = useState<PildoraPedido[]>(() => {
+    const raw = searchParams.get('busqueda')
+    if (!raw) return []
+    const parsed = parsearPildora(raw)
+    return parsed ? [parsed] : []
+  })
+  const [entrada, setEntrada] = useState(() => {
+    const raw = searchParams.get('busqueda')
+    if (!raw) return ''
+    return parsearPildora(raw) ? '' : raw
+  })
+  const [combinador, setCombinador] = useState<'Y' | 'O'>('Y')
+  // Deep-link desde AlertasPage: "Pedidos con entrega vencida" (?vencidos=1) replica exactamente
+  // el criterio de la alerta (fecha_entrega_solicitada < hoy, no entregado/cancelado) — no hay un
+  // único `estado` que lo represente, así que es un flag aparte en vez de un valor de filtroEstado.
+  const [soloVencidos, setSoloVencidos] = useState(() => searchParams.get('vencidos') === '1')
 
   // ── Entregar (PED4): genera la venta real + rebaja stock reservado + asienta caja ────
   const [entregaModal, setEntregaModal] = useState<any | null>(null)
@@ -137,13 +163,25 @@ export default function PedidosPage() {
     enabled: !!tenant,
   })
 
-  const q = busqueda.trim().toLowerCase()
+  // Lo que se está tipeando filtra en vivo igual que las píldoras ya confirmadas (mismo criterio
+  // que /picking) — si matchea "Campo:valor" se evalúa exacto a ese campo, si no como libre/fuzzy.
+  const entradaTrim = entrada.trim()
+  const pildoraDeEntrada: PildoraPedido | null = entradaTrim
+    ? (parsearPildora(entradaTrim) ?? { id: '__entrada__', campo: 'libre', operador: 'contiene', valor: entradaTrim })
+    : null
+  const pildorasEfectivas = pildoraDeEntrada ? [...pildoras, pildoraDeEntrada] : pildoras
+
+  const hoyStrPed = new Date().toISOString().split('T')[0]
   const pedidosFiltrados = (pedidos as any[])
     .filter(p => !filtroEstado || p.estado === filtroEstado)
-    .filter(p => !q ||
-      String(p.numero).includes(q) ||
-      (p.referencia ?? '').toLowerCase().includes(q) ||
-      (p.clientes?.nombre ?? p.cliente_nombre ?? '').toLowerCase().includes(q))
+    .filter(p => !soloVencidos || (
+      p.fecha_entrega_solicitada && p.fecha_entrega_solicitada < hoyStrPed
+      && !['entregado', 'cancelado'].includes(p.estado)
+    ))
+    .filter(p => evaluarPildorasPedido(
+      { numero: p.numero, referencia: p.referencia ?? null, clienteNombre: p.clientes?.nombre ?? p.cliente_nombre ?? null },
+      pildorasEfectivas, combinador,
+    ))
 
   // ── K3 (PED8): exportar Excel/PDF/CSV — una fila por línea de pedido, mismo criterio que
   // el resto de los módulos (XLSX.utils.json_to_sheet / jsPDF+autoTable / CSV a mano) ──────
@@ -757,17 +795,40 @@ export default function PedidosPage() {
 
       {tab === 'pedidos' && (
       <>
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[180px] max-w-[280px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar nº, referencia o cliente…" className={`${inputCls} pl-9`} />
+      <div className="flex items-start gap-2 flex-wrap">
+        <div className="flex-1 min-w-[220px] max-w-[420px]">
+          <BuscadorPildoras
+            camposFiltro={CAMPOS_FILTRO_PEDIDOS}
+            pildoras={pildoras}
+            entrada={entrada}
+            combinador={combinador}
+            placeholder="Buscar referencia, cliente... o (Pedido):2"
+            onEntradaChange={setEntrada}
+            onCommitEntrada={() => {
+              if (!entradaTrim) return
+              const nueva = parsearPildora(entradaTrim) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: entradaTrim }
+              setPildoras(ps => [...ps, nueva])
+              setEntrada('')
+            }}
+            onCampoChange={(id, campo) => setPildoras(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo as CampoPedido, CAMPOS_FILTRO_PEDIDOS) as PildoraPedido : p))}
+            onOperadorChange={(id, operador) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, operador } : p))}
+            onValorChange={(id, valor) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, valor } : p))}
+            onRemove={id => setPildoras(ps => ps.filter(p => p.id !== id))}
+            onRemoveLast={() => setPildoras(ps => ps.slice(0, -1))}
+            onCombinadorChange={setCombinador}
+          />
         </div>
         <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
           className={`${inputCls} max-w-[220px]`}>
           <option value="">Todos los estados</option>
           {Object.entries(ESTADO_BADGE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        {soloVencidos && (
+          <button onClick={() => setSoloVencidos(false)}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+            Con entrega vencida <X size={12} />
+          </button>
+        )}
         <ActionMenu label="Exportar" items={[
           { label: 'Exportar Excel', icon: Download, onClick: exportarExcel },
           { label: 'Exportar CSV', icon: Download, onClick: exportarCSV },

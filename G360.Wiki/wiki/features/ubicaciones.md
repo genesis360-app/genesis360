@@ -18,10 +18,11 @@ updated: 2026-08-08
 > El e2e de verificación manual (`130_ubicaciones_arbol_mutante`, escrito el 2026-08-06) encontró y
 > corrigió **4 gaps reales** de breadcrumb que quedaban del cierre del 2026-08-05 — ver sección "🐛 4
 > gaps de breadcrumb encontrados el 2026-08-06" más abajo. Es el **1º de 4 relevamientos** acordados
-> con Fede/GO para desbloquear la **Fase E (módulo Repositores)** del backlog Comercial de Fede, hoy
-> pausada — ver [[wiki/features/precios-tiers-empaque]] → "Fase E". Secuencia completa: **Ubicaciones
-> (esta) → Pestaña de supervisor reusable → Motor de Rotación de productos con descuento →
-> Repositores**.
+> con Fede/GO para desbloquear la **Fase E (módulo Repositores)** del backlog Comercial de Fede —
+> ver [[wiki/features/precios-tiers-empaque]] → "Fase E". Secuencia completa, **✅ las 4 etapas ya
+> completas y EN PROD**: **Ubicaciones (esta) → Pestaña de supervisor reusable → Motor de Rotación de
+> productos con descuento → Repositores (✅ EN PROD desde v1.168.0, 2026-08-12 — ver
+> [[wiki/features/repositores]])**.
 
 ## Origen
 
@@ -273,14 +274,15 @@ existentes**, solo las creadas de acá en adelante.
    directo (0 filas con `codigo`/`tipo_logico` NULL, funciones sin referencia a la columna dropeada).
    Detalle completo: `wiki/database/migraciones.md` (mig 344).
 5. **Relevamiento #2** de la secuencia hacia Repositores (Pestaña de supervisor reusable) — ✅
-   respondido completo el 2026-08-07, diseño/construcción sin arrancar todavía (esperan al #3). **#3
-   (Motor de Rotación de productos con descuento)** — ✅ **COMPLETO y EN PROD desde v1.160.0**
-   (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI (mig 341) y ejecución real de las 3
-   Opciones (migs 342/343) construidas y **las 3 verificadas end-to-end** — Opción 2 (encontró y
-   corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`, spec 131), Opción 3/E3 (spec 132) y
-   Opción 3/E2-E4 nombre+precio de KIT con autorización (spec 133) — ver
-   [[wiki/features/precios-tiers-empaque]].
-   **#4 (Repositores) sigue bloqueado**, ahora esperando arrancar el #2.
+   respondido completo el 2026-08-07, ✅ construida y EN PROD desde v1.164.0 (2026-08-11, ver
+   [[wiki/features/supervision]]). **#3 (Motor de Rotación de productos con descuento)** — ✅
+   **COMPLETO y EN PROD desde v1.160.0** (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI
+   (mig 341) y ejecución real de las 3 Opciones (migs 342/343) construidas y **las 3 verificadas
+   end-to-end** — Opción 2 (encontró y corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`,
+   spec 131), Opción 3/E3 (spec 132) y Opción 3/E2-E4 nombre+precio de KIT con autorización (spec 133)
+   — ver [[wiki/features/precios-tiers-empaque]].
+   **#4 (Repositores) ✅ construido y EN PROD desde v1.168.0 (2026-08-12, mig 352-357)** — ver
+   [[wiki/features/repositores]]. Con esto la secuencia completa de 4 relevamientos queda cerrada.
 6. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO
    todavía no recorrió la UI a mano el árbol completo con los 4 fixes de breadcrumb aplicados.
 

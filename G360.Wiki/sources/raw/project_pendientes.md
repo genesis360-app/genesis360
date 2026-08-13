@@ -6,7 +6,450 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11/12 cont. 7) — 🆕 Repositores Fase 4 (mig 357): etiquetas de precio + impresión CONSTRUIDA Y VERIFICADA EN DEV — MÓDULO REPOSITORES 100% COMPLETO (4/4 fases). GO ya pidió deployar TODO (mig 352-357) a PROD — el deploy queda EN CURSO a continuación, en esta misma sesión
+> ### ✅ ARRANCÁ ACÁ (2026-08-12, cont. 5) — 🏷️ Repositores: Notificaciones (J) + Reportes (K) construidos y verificados EN DEV — módulo 100% completo, ya NO queda ningún punto del relevamiento original sin construir — TODO sigue SIN COMMITEAR (ahora 5 cambios acumulados hoy)
+>
+> Tarea NUEVA e independiente del hilo de Alertas/Supervisión de más abajo (paginación + fix TN +
+> rondas 2/3 de navegación) — mismo día, mismo working tree local de `dev`, sin relación de contenido.
+> El módulo Repositores había quedado 100% completo y en PROD (v1.168.0, mismo día) con 2 puntos del
+> relevamiento original explícitamente diferidos: Notificaciones (J) y Reportes (K) — no deuda
+> técnica, decisión consciente del momento. GO preguntó si quedaba algo pendiente de Repositores, se le
+> confirmó que solo esos 2 puntos, y pidió retomarlos ahora.
+>
+> #### Decisiones de diseño confirmadas con GO antes de construir
+>
+> El relevamiento ya existía (`relevamiento_repositores_respuestas.md`, secciones J y K) — no hizo
+> falta re-relevar, se fue directo a diseño técnico con 3 preguntas de opciones:
+>
+> 1. **Alcance**: los reportes y notificaciones cubren AMBOS tipos de tarea del módulo hoy — cambio de
+>    precio/etiqueta (`tareas_repositor`, el tipo original de J/K) y reposición física a góndola
+>    (`wms_tareas` tipo `reposicion_gondola`, agregada en la Fase 3, posterior al relevamiento
+>    original). Decisión de GO: cubrir ambos, para no subestimar a un repositor que hace más reposición
+>    física que cambios de precio.
+> 2. **Hora de cierre del día (dispara J2)**: CONFIGURABLE POR SUCURSAL, no una hora fija global —
+>    pedido explícito de GO. Hallazgo real: ya existía en el schema — `sucursales.horario_cierre` (mig
+>    124, editable desde `SucursalesPage.tsx` desde antes) — sin migración nueva, default 21:00 si una
+>    sucursal no lo configuró.
+> 3. **Visibilidad del tab "Reportes"**: SOLO para quien supervisa el módulo
+>    (`puedeSupervisarModulo(user, 'repositores')`), mismo criterio que el botón "Reasignar" ya
+>    existente — respeta el objetivo que GO ya había dejado en el relevamiento original ("entender
+>    demoras, no presionar al empleado"): un repositor no ve el ranking de sus compañeros.
+>
+> #### Qué se construyó (SIN ninguna migración SQL — todo sobre tablas/funciones ya existentes)
+>
+> **J — Notificaciones**: Edge Function nueva `supabase/functions/repositores-cierre-dia-sweep/
+> index.ts` (deployada a DEV) + workflow nuevo `.github/workflows/repositores-cierre-dia-sweep.yml`
+> (cron cada 15 minutos vía GitHub Actions — el proyecto no tiene pg_cron habilitado). Por cada
+> sucursal activa de un tenant en modo avanzado: si la hora real de Argentina (`Intl.DateTimeFormat` +
+> zona horaria explícita, no offset fijo) ya superó el `horario_cierre` de esa sucursal (o el default
+> 21:00) y quedan tareas pendientes de cualquiera de los 2 tipos, notifica a todos los que pueden
+> supervisar el módulo (reusa `fn_usuarios_supervisan_modulo`, de Supervisión) — inserta notificación
+> in-app (tabla `notificaciones` existente) y manda email real (dirección resuelta vía la API admin de
+> Supabase Auth, mismo patrón que `billing-manual-sweep`). Dedupe sin columna nueva: revisa si ya
+> existe una notificación de ese tipo para esa sucursal creada hoy antes de mandar otra.
+>
+> **K — Reportes**: componente nuevo `src/components/RepositoresReportes.tsx`, tercer tab "Reportes" en
+> `RepositoresPage.tsx` (junto a "Precios/Etiquetas" y "Reposición física"), visible solo para
+> supervisores. Ventana fija de últimos 30 días (mismo criterio que el tab de KPIs de Supervisión, sin
+> selector de rango). Tabla por repositor: carteles de precio completados + tiempo promedio
+> disparo→completada, reposiciones físicas completadas + su propio promedio, y el total. Export a Excel
+> (mismo patrón que Pedidos/Gastos).
+>
+> **Verificación**: Edge Function invocada 3 veces por curl directo contra DEV (0 notificaciones sin
+> tareas vencidas → notificó bien a los 5 supervisores reales con una tarea de prueba → 0 de nuevo,
+> dedupe del mismo día confirmado; datos de prueba limpiados). Tab Reportes verificado con Playwright
+> real (estado vacío correcto → con 2 tareas de prueba mostró "2 carteles completados, 33 min
+> promedio, 0 reposiciones, total 2"; datos limpiados). Typecheck + build verdes.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.168.0** — sin cambios esta sesión.
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): sin migración nueva (reusa tablas/funciones existentes); Edge
+>   Function `repositores-cierre-dia-sweep` deployada a DEV. Working tree local de `dev` con **5
+>   cambios acumulados hoy sin commitear**: paginación Alertas/Supervisión + fix `tn-webhook` "Sin
+>   cliente" + ronda 2 de navegación + ronda 3 de navegación (hilo de Alertas, ver bloque histórico de
+>   abajo) + esta tarea de Repositores J/K.
+> - El cron de GitHub Actions (`repositores-cierre-dia-sweep.yml`) NO va a empezar a correr hasta que
+>   ese archivo de workflow llegue a `main` (mergeado) — sin riesgo mientras tanto.
+> - **Con esto, el módulo Repositores queda 100% completo — ya no queda ningún punto del relevamiento
+>   original (35 preguntas, A-L) sin construir.**
+>
+> **Próximo paso inmediato**: mismo que el hilo de Alertas de abajo — seguir esperando feedback de GO
+> y decidir con él si commitea/pushea/deploya TODO junto (los 5 cambios de hoy) una vez que dé por
+> cerradas las rondas de prueba en vivo.
+>
+> Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/features/repositores]] (callout
+> corregido + sección nueva "Notificaciones (J) y Reportes (K)"),
+> `sources/raw/relevamiento_repositores_respuestas.md` (J/K marcados "✅ Construido"), `index.md`
+> (línea de repositores + pie).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12, cont. 4) — 🔍🏬 Ronda 3 de feedback en vivo: fix de aislamiento por sucursal en Alertas (Efectivo en caja) + búsqueda EXACTA por píldoras en Pedidos/Ventas (reemplaza el buscador de texto plano) + buscador nuevo en Gastos→OC + scroll/resaltado en el deep-link de Clientes — TODO sigue SIN COMMITEAR — este bloque quedó SUPERADO por el de arriba (2026-08-12, cont. 5): cierre de Repositores J/K (notificaciones+reportes), tarea nueva e independiente
+>
+> Continuación directa del bloque de abajo (2026-08-12, cont. 3 — ronda 2 de deep-links en Alertas/
+> Supervisión) — mismo hilo de feedback en vivo, mismo día. GO siguió probando en el navegador los
+> fixes de la ronda 2 y encontró 2 problemas reales más: un bug de aislamiento por sucursal (nunca
+> visto antes en las otras 11 secciones de Alertas) y que los deep-links "aterrizaban en el lugar
+> correcto" pero, en 3 casos concretos que probó a mano, seguían sin ser lo bastante específicos para
+> encontrar el registro exacto entre varios similares.
+>
+> #### Bug 1 — aislamiento por sucursal roto en "Efectivo en caja sobre el umbral" (única sección de
+> las 12 que nunca había filtrado por sucursal)
+>
+> Con "Sucursal Norte" seleccionada en el header, `/alertas` mostraba la Caja S2 — que pertenece a
+> Sucursal Sur. Causa raíz: `cajasSobreUmbralBovedaDelTenant()` (`src/hooks/useAlertas.ts`) nunca
+> recibía el `sucursalId` actual. **Fix**: parámetro nuevo, opcional y retrocompatible (sin él,
+> "Todas las sucursales" sigue igual), propagado a los DOS call sites — el hook del badge del sidebar
+> (`useAlertas()`) **y** la query propia de `AlertasPage.tsx` (el primer intento solo corrigió el
+> hook del badge y se olvidó de la query de la página — el bug seguía visible hasta corregir ambos).
+> Confirmado con SQL real contra Supabase antes de asumir nada: `caja_sesiones.sucursal_id` de la
+> sesión abierta de "Caja S2" efectivamente pertenece a Sucursal Sur.
+>
+> #### Bug 2 — los deep-links de la ronda 2 no eran suficientemente específicos en 3 casos probados a mano
+>
+> - **Gastos → Órdenes de Compra no tenía NINGÚN buscador por número.** El `?oc=<id>` de la ronda 2
+>   solo expandía la fila, pero entre varias OC en pantalla había que encontrarla a simple vista igual
+>   (GO: "tengo que andar navegando entre todas las OC... no la recuerdo"). Se agregó un buscador de
+>   texto real (`ocBusqueda`, filtra por Nº de OC o nombre de proveedor) a la pestaña OC de
+>   `GastosPage.tsx`, y el deep-link de `AlertasPage.tsx` ahora pasa el **número** de OC (no el id
+>   interno) para pre-completar ese buscador — la lista queda filtrada a 1 sola OC y se auto-expande.
+> - **Pedidos: buscar el pedido Nº 2 también traía el 82, el 102, cualquiera que "contuviera" un 2**
+>   (substring, no exacto — mismo problema confirmado después también en Gastos/OC y en Ventas). GO
+>   pidió explícitamente el MISMO sistema de píldoras que ya tiene Picking. Se construyó
+>   `src/lib/pedidosFiltro.ts` (mismo patrón que Picking/Productos/Inventario, sobre el núcleo
+>   compartido `pildorasFiltro.ts`) y se reemplazó el buscador de texto plano de `PedidosPage.tsx` por
+>   `<BuscadorPildoras>`. El campo "Pedido" hace match EXACTO (es un identificador, no texto libre —
+>   solo cuando se usa el campo explícito, la búsqueda libre sigue siendo substring);
+>   "Referencia"/"Cliente" siguen por substring. El link "Ver pedido"/"Ver en Picking" de Alertas ahora
+>   manda la píldora ya armada (`Pedido:N`), no el número suelto.
+> - **Ventas → Historial tenía el mismo problema** (GO pidió el mismo sistema acá también, y que "Ver
+>   Venta" desde Alertas filtre por la venta exacta con una píldora `Venta:valor`). Se construyó
+>   `src/lib/ventasFiltro.ts` (mismo patrón) y se reemplazó el buscador de texto plano del tab
+>   Historial de `VentasPage.tsx` por `<BuscadorPildoras>`. El link "Ver venta" de Alertas ahora
+>   combina DOS mecanismos: filtra la lista de fondo con la píldora exacta (`?busqueda=Venta:N`) **y**
+>   sigue abriendo el modal de detalle de esa venta encima (`?id=<uuid>`, preexistente) — verificado
+>   con una captura real mostrando ambas cosas funcionando juntas.
+> - **Clientes: "Ver ficha" ya expandía la ficha correcta, pero en una lista de varios clientes no
+>   había ninguna señal de CUÁL era** — GO tenía que scrollear a ciegas. Se agregó scroll automático +
+>   resaltado visual (borde y anillo de color) sobre la tarjeta específica al llegar por ese deep-link,
+>   capturando el id de la URL una sola vez (no se re-dispara si el usuario expande otra ficha a mano).
+>
+> **Archivos nuevos**: `src/lib/pedidosFiltro.ts`, `src/lib/ventasFiltro.ts`,
+> `tests/unit/pedidosFiltro.test.ts`, `tests/unit/ventasFiltro.test.ts`. **Archivos tocados de nuevo**:
+> `src/pages/AlertasPage.tsx`, `src/pages/PedidosPage.tsx`, `src/pages/VentasPage.tsx`,
+> `src/pages/ClientesPage.tsx`, `src/pages/GastosPage.tsx`, `src/hooks/useAlertas.ts`.
+>
+> **Verificación**: tests unitarios nuevos `pedidosFiltro.test.ts` (9/9 verde, foco en que "Pedido:2"
+> NO matchee 82/102) y `ventasFiltro.test.ts` (6/6 verde, mismo foco para ventas). Typecheck + build
+> verdes. Verificado EN EL NAVEGADOR (Playwright ad-hoc) contra datos reales del tenant "Almacén
+> Jorgito" en DEV, con capturas: OC #7 exacta (no trae #17 ni #27), Pedido #2 exacto con la píldora
+> visible, Venta #238 con la lista filtrada Y el modal de detalle abiertos simultáneamente, ficha de
+> "Fede Messina" resaltada tras scroll automático pasando ~10 clientes de prueba. Sin errores de
+> consola nuevos.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta ronda
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.168.0** — sin cambios esta sesión.
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): sin migración nueva (100% frontend); sin cambios de EF esta
+>   ronda. Working tree local de `dev` con **4 cambios acumulados hoy sin commitear**: paginación
+>   Alertas/Supervisión + fix de `tn-webhook` "Sin cliente" + ronda 2 de deep-links + esta ronda 3
+>   (aislamiento por sucursal + exactitud de búsqueda).
+> - **Van 3 rondas de feedback en vivo sobre el mismo hilo** (paginación → navegación específica →
+>   aislamiento por sucursal + exactitud de búsqueda) — GO sigue probando en el navegador; **el tema NO
+>   está cerrado**, puede seguir habiendo más rondas antes de decidir commit/push/deploy.
+>
+> **Próximo paso inmediato**: seguir esperando feedback de GO sobre lo probado hasta ahora, y decidir
+> con él si commitea/pushea/deploya TODO junto (los 4 cambios de hoy) una vez que dé por cerradas las
+> rondas de prueba en vivo.
+>
+> Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/features/alertas]] (nota de
+> aislamiento por sucursal + link de OC por número), [[wiki/features/filtro-pildoras]] (extensión a
+> Pedidos/Ventas), [[wiki/features/pedidos]], [[wiki/features/ventas-pos]],
+> [[wiki/features/clientes-proveedores]] (scroll+resaltado del deep-link), [[wiki/features/gastos]]
+> (buscador nuevo en OC), `index.md` (líneas actualizadas).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12, cont. 3) — 🔗 Ronda 2 de feedback: fix de bug real (`?tab=` ignorado en `/supervision`) + rediseño del agregador cross-módulo + deep-links específicos en las 12 secciones de AlertasPage — TODO sigue SIN COMMITEAR — este bloque quedó SUPERADO por el de arriba (2026-08-12, cont. 4): ronda 3 de feedback (aislamiento por sucursal + exactitud de búsqueda)
+>
+> Continuación directa del bloque de abajo (2026-08-12, cont. 2 — TN "Sin cliente" + revisión
+> Presupuesto→Finalizar) — misma sesión. GO revisó en el navegador la paginación de Alertas/
+> Supervisión construida más temprano hoy (bloque histórico más abajo) y encontró 2 problemas reales
+> de navegación. Es **feedback nuevo sobre trabajo ya hecho hoy**, no una 4ª pregunta nueva.
+>
+> #### Bug 1 — el link "Ver y resolver en Inventario" de `/supervision` no aterrizaba donde decía
+>
+> Armaba `/inventario?tab=autorizaciones`, pero `InventarioPage.tsx` **nunca leía ese query param** —
+> el tab siempre arrancaba en `'inventario'`. **Fix**: nuevo `useEffect` que lee `?tab=` al montar
+> (mismo patrón que ya existía para `?search=`).
+>
+> #### Bug 2 — rediseño de `/supervision`: desglose por tipo en vez de lista cruda de 5
+>
+> GO: "no me agrega valor esa info que veo, solo sé que hay más por ver". `SupervisionPage.tsx` ahora
+> muestra un **desglose por tipo/categoría** ("Ajuste de cantidad", "Cambio de estado", "Diferencia de
+> conteo"...) reusando los labels de `resumenDeAutorizacion` (InventarioPage), en vez de listar 5
+> ítems crudos sin contexto.
+>
+> #### Bug 3 (el más grande) — en AlertasPage, TODOS los links llevaban a la página general SIN FILTRAR
+>
+> GO pidió revisar y corregir TODOS los botones de la página, no solo los ejemplos que dio. La mayoría
+> de las páginas destino ya tenían mecanismos de filtro por query param sin reusar (píldoras
+> `?busqueda=Pedido:123` en Picking/Pedidos, sentinels `__sin__` en Inventario/Productos, toggle
+> `filterAlerta` en Inventario, tab "Cuenta Corriente" en Clientes). Donde no existía nada se
+> agregaron 3 flags booleanos nuevos de bajo riesgo (`?vencidos=1` en Pedidos,
+> `?ocVencidas=1`/`?ocProximas=1` en Gastos). **2 límites aceptados y avisados a GO**: Efectivo en
+> caja sobre umbral sigue a `/caja` genérico (sin mecanismo de deep-link, código sensible de plata,
+> REGLA #0 — decisión consciente de no tocarlo a la ligera); LPNs vencidos "Ver todos" de sección
+> sigue sin filtro específico (no existe toggle "vencidos" a nivel línea en Inventario). Detalle
+> completo (los 10 deep-links agregados/reusados) en [[wiki/features/alertas]].
+>
+> **Archivos de código tocados**: `src/pages/AlertasPage.tsx`, `src/pages/InventarioPage.tsx`,
+> `src/pages/SupervisionPage.tsx`, `src/pages/GastosPage.tsx`, `src/pages/PedidosPage.tsx`,
+> `src/pages/VentasPage.tsx`, `src/pages/ClientesPage.tsx`, `src/pages/ProductosPage.tsx`.
+>
+> **Verificación**: typecheck + build verdes. Verificado EN EL NAVEGADOR (Playwright ad-hoc) contra el
+> tenant real "Almacén Jorgito" en DEV — se navegó a cada uno de los 8 destinos con parámetros reales
+> y se confirmó visualmente que el filtro/tab correcto queda activo (capturas tomadas). Sin errores de
+> consola nuevos.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.168.0** — sin cambios esta sesión.
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): sin migración nueva; sin cambios de EF esta ronda (el fix de
+>   `tn-webhook` ya fue deployado a DEV en la ronda anterior, cont. 2). Working tree local de `dev` con
+>   **3 cambios sin commitear**: paginación Alertas/Supervisión + fix de `tn-webhook` + esta ronda 2 de
+>   navegación (Bugs 1/2/3 de arriba).
+> - **Las 3 preguntas de GO (2026-08-11) siguen las 3 atendidas** (sin cambios respecto al bloque de
+>   abajo) — esta ronda es feedback adicional sobre la 1ª (paginación), no una pregunta nueva.
+>
+> **Próximo paso inmediato**: decidir con GO si commitea/pushea/deploya TODO junto (los 3 cambios de
+> hoy: paginación Alertas/Supervisión, fix de `tn-webhook`, y esta ronda 2 de navegación), y si quiere
+> implementar la mejora de UX de Presupuesto→Finalizar (queda como idea, no como tarea construida).
+>
+> Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/features/alertas]] (nueva
+> sección de deep-links), [[wiki/features/supervision]] (nota del fix de `?tab=` + rediseño del
+> agregador), `index.md` (líneas de alertas y supervisión actualizadas).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12, cont. 2) — 🐛 Bug real corregido: venta de TiendaNube mostraba "Sin cliente" (fix EN DEV, sin commitear) + 🧾 revisión del flujo Presupuesto→Finalizar (análisis, sin cambios de código) — las 3 preguntas de GO del 2026-08-11 quedan las 3 atendidas — este bloque quedó SUPERADO por el de arriba (2026-08-12, cont. 3): ronda 2 de feedback de navegación sobre Alertas/Supervisión
+>
+> Continuación directa del bloque de abajo (2026-08-12, cont. — paginación Alertas/Supervisión) —
+> misma sesión, mismo hilo de las 3 preguntas de GO del 2026-08-11: paginar Alertas/Supervisión como
+> Historial · venta de TiendaNube que muestra "Sin cliente" pese a traer datos del comprador · revisar
+> si tiene sentido que un Presupuesto pueda saltear "Reservar stock" e ir directo a "Finalizar". Este
+> bloque cierra las **2** que quedaban.
+>
+> #### Tema 1 — 🐛 Bug real: venta de TiendaNube mostraba "Sin cliente"
+>
+> **Pregunta de GO (2026-08-11)**: por qué una venta creada desde TiendaNube mostraba "Sin cliente"
+> pese a traer los datos del comprador — sospechaba que el matching contra `clientes` fallaba.
+>
+> **Investigación previa (código real + datos reales de DEV vía Supabase MCP, nada asumido antes de
+> proponer)**: la sospecha de GO era **incorrecta** — el matching/creación de `clientes` en
+> `tn-webhook/index.ts` (busca por email, si no existe lo crea) SIEMPRE funcionó bien; verificado con 2
+> pedidos reales de abril 2026 (payload real en `ventas_externas_logs.payload_raw`) y con TODAS las
+> ventas TN de agosto 2026 (`cliente_id` resuelto en el 100% de los casos).
+>
+> **Causa raíz real**: `VentasPage.tsx` muestra el cliente vía la columna DENORMALIZADA
+> `ventas.cliente_nombre` (`v.cliente_nombre ?? 'Sin cliente'`), no vía join a `clientes` por
+> `cliente_id`. `tn-webhook/index.ts` seteaba `cliente_id` en el INSERT pero nunca `cliente_nombre` —
+> confirmado con SQL real en DEV: 15 ventas TN con `cliente_id` válido y `cliente_nombre IS NULL`.
+> Comparado contra `meli-webhook` (sí setea `cliente_nombre`) y `registrarVenta()` del POS (setea
+> ambos siempre juntos) — la omisión era específica y aislada de `tn-webhook`, no un gap de diseño
+> transversal.
+>
+> **Fix**: `supabase/functions/tn-webhook/index.ts` ahora captura `clienteNombre` en las 3 ramas de
+> resolución de cliente (match existente, insert nuevo, fallback por race condition de email
+> duplicado) y lo incluye en el INSERT de la venta junto con `cliente_id`. De paso se agregó un
+> `console.error` que faltaba en la rama de fallo silencioso de creación de cliente (antes tragaba el
+> error sin loguear nada).
+>
+> **Deploy**: EF deployada a **DEV únicamente** (`tn-webhook` v22, `verify_jwt: false` preservado) —
+> NO a PROD (`tiendanube_credentials` en PROD sigue en 0 filas, no hay pedidos reales de TN todavía).
+>
+> **Backfill de datos**: de las 15 ventas rotas en DEV, se corrigieron 8 (`created_at > 2026-04-30`)
+> vía `UPDATE ventas SET cliente_nombre = clientes.nombre FROM clientes WHERE ...`; las 7 más viejas
+> (abril 2026) NO se tocaron — el trigger `trg_ventas_periodo_cerrado` las bloqueó correctamente
+> (período contable cerrado hasta 2026-04-30, REGLA #0: nunca reescribir ventas de un período cerrado).
+>
+> **Estado: código modificado en el working tree local de `dev`, SIN COMMITEAR.**
+>
+> #### Tema 2 — 🧾 Revisión del flujo Presupuesto→Finalizar (solo análisis, sin cambios de código)
+>
+> **Pregunta de GO (2026-08-11)**: si tenía sentido que un Presupuesto (`estado='pendiente'`)
+> mostrara tanto "Reservar stock" como "Finalizar (rebaja stock)" — pidió revisar el flujo completo
+> pensando en simple/intuitivo/flexible.
+>
+> **Revisión de `VentasPage.tsx`** (solo lectura — es una decisión de producto de GO, no se tocó
+> código): la lógica de stock es segura en ambos caminos, sin riesgo de sobreventa ni de plata mal
+> calculada — ambos botones llaman al mismo `cambiarEstado` (una sola implementación para
+> `nuevoEstado === 'despachada'`), y el guard `PRES-08` ya distingue explícitamente el caso
+> reservada→despachada del presupuesto→despachada directo al calcular stock disponible real. Esto
+> confirma que el guard de "un solo camino de rebaje" (migs 350/351, v1.165.0/v1.166.0) SÍ aplica
+> igual al finalizar directo desde presupuesto, no solo al camino reservada→despachada.
+>
+> **Hallazgo real (UX, no de lógica)**: los 2 botones son visualmente IDÉNTICOS — mismo `bg-accent`
+> lleno, mismo peso visual, ancho completo, apilados uno debajo del otro, sin ningún copy que explique
+> cuándo usar cada uno. Un cajero nuevo no tiene ninguna señal de cuál es la acción "normal". El copy
+> actual habla del efecto sobre el STOCK, cuando la pregunta real del cajero es sobre el CLIENTE ("¿se
+> lo lleva ahora o vuelve después?").
+>
+> **Recomendación dada a GO** (sin implementar, queda a su criterio — es una decisión de producto):
+> mantener ambas salidas (correctas y necesarias para el negocio) pero mejorar la PRESENTACIÓN —
+> diferenciarlas visualmente (una primaria llena, otra secundaria outline) + una línea de ayuda en
+> términos de cliente en vez de stock. Cambio de bajo riesgo si se pide (solo JSX de esos 2 botones,
+> no toca la lógica de `cambiarEstado`).
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.168.0** — sin cambios esta sesión.
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): sin migración nueva; EF `tn-webhook` redeployada a DEV (v22, fix
+>   Tema 1) + backfill de datos de 8 ventas TN aplicado directo en la DB de DEV. Working tree local de
+>   `dev` con **2 cambios sin commitear**: paginación Alertas/Supervisión (bloque de abajo) + fix de
+>   `tn-webhook` (Tema 1).
+> - **Las 3 preguntas de GO (2026-08-11) quedan las 3 atendidas**: paginación Alertas/Supervisión (✅
+>   construida, bloque de abajo), TN "Sin cliente" (✅ bug real corregido, Tema 1), Presupuesto→
+>   Finalizar (✅ revisado, recomendación dada, Tema 2 — decisión de UX queda pendiente de GO, no es una
+>   tarea construida).
+>
+> **Próximo paso inmediato**: decidir con GO si commitea/pushea/deploya todo junto (paginación de
+> Alertas/Supervisión + fix de `tn-webhook`), y si quiere implementar la mejora de UX de Presupuesto→
+> Finalizar (queda como idea, no como tarea construida).
+>
+> Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/integrations/tienda-nube]]
+> (sección "Webhooks de órdenes"), [[wiki/features/ventas-pos]] (sección "Estados de una venta"),
+> `index.md` (líneas de tienda-nube y ventas-pos actualizadas).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12) — 🆕 Paginación/tope de renderizado en Alertas y Supervisión CONSTRUIDA Y VERIFICADA EN DEV — SIN COMMITEAR, sin push, sin deploy — 1ª de las 3 preguntas de GO del 2026-08-11 resuelta, quedan 2 — este bloque quedó SUPERADO por el de arriba (2026-08-12): las 3 preguntas de GO ya están las 3 atendidas (TN "Sin cliente" ✅ bug real corregido, Presupuesto→Finalizar ✅ revisado)
+>
+> Continuación directa de la sesión de abajo (2026-08-12, deploy v1.168.0) — ahí quedaron anotadas 3
+> preguntas de GO para arrancar la sesión siguiente: paginar Alertas/Supervisión como Historial (Mostrando
+> X de Y) · venta de TiendaNube que muestra "Sin cliente" pese a traer datos del comprador · revisar si
+> tiene sentido que un Presupuesto pueda saltear "Reservar stock" e ir directo a "Finalizar". Esta sesión
+> resolvió la **primera**.
+>
+> **Pedido de GO (2026-08-11)**: replicar el footer "Mostrando X de Y" + selector de cantidad de
+> `HistorialPage.tsx` en `/alertas` y la pestaña Supervisión de Inventario — ninguna de las dos tenía
+> límite (listados extensos, sospecha de que también pesaban en el tiempo de carga).
+>
+> **Investigación previa**: `AlertasPage.tsx` NO es una lista única como Historial, sino **11 secciones
+> independientes** (stock mínimo, reservas viejas, sin categoría, clientes con deuda, OC vencidas/
+> próximas, LPNs vencidos, pedidos vencidos/sin avanzar, sin ubicación, sin proveedor, efectivo en caja
+> sobre umbral). Replicar un footer de paginación completo x11 hubiera saturado la pantalla — se le
+> presentó la disyuntiva a GO (footer literal x11 vs. tope+link "ver todo") y eligió el **enfoque
+> adaptado**.
+>
+> **`AlertasPage.tsx`**: nueva constante `ALERTAS_DISPLAY_LIMIT = 15`. 8 secciones simples (sin
+> agregación) usan `.limit(15)` + `{ count: 'exact' }` en la query de Supabase (mismo mecanismo de
+> Historial, un solo round-trip da el total real). 3 secciones que agregan/filtran client-side (stock
+> mínimo por sucursal ISS-080, sin categoría por sucursal, clientes con deuda por saldo agregado) siguen
+> trayendo el **SET COMPLETO** de la DB sin límite — el tope se aplica solo al renderizado (`.slice`) para
+> no falsear conteos de plata/stock (REGLA #0); `generarOCsSugeridas` sigue usando el array completo,
+> nunca el recortado. Cada sección muestra el conteo real en el header + link "Ver todo/todas →" al
+> módulo correspondiente cuando hay más de 15.
+>
+> **Supervisión** (`useSupervisorAutorizaciones.ts` + `SupervisionPanel.tsx`, hoy usado solo por el tab
+> Supervisión de Inventario): a diferencia de Alertas, ESTA sí es una lista única homogénea (como
+> Historial) → se le replicó el patrón literal: `page`/`pageSize` (default 20, `AUT_PAGE_SIZES=[20, 50,
+> 75, 100]`) + `.range()` + `{ count: 'exact' }`, reset de página al cambiar de tab (Pendientes/Aprobadas/
+> Rechazadas), footer "Mostrando X de Y" renderizado dentro de `SupervisionPanel.tsx` (compartido entre
+> las sub-pestañas Aprobaciones y Reasignar) para que cualquier módulo futuro que adopte el patrón lo
+> herede gratis.
+>
+> **Verificación**: typecheck + build verdes. Verificado EN EL NAVEGADOR (Playwright ad-hoc) contra el
+> tenant real "Almacén Jorgito" en DEV: Alertas mostró 654 alertas reales con secciones grandes
+> (Inventario sin proveedor 339, sin ubicación 118, sin categoría 135, stock mínimo 36) correctamente
+> topeadas a 15 + link "Ver todo"; Supervisión mostró 24 autorizaciones pendientes reales con el footer
+> "1/2 (24 en total)" y el selector de cantidad funcionando en vivo (cambiar a 50 recalculó a "1/1"). Sin
+> errores de consola.
+>
+> **Archivos tocados**: `src/pages/AlertasPage.tsx`, `src/hooks/useSupervisorAutorizaciones.ts`,
+> `src/components/SupervisionPanel.tsx`, `src/pages/InventarioPage.tsx` (pasa los nuevos props del hook
+> al `SupervisionPanel`).
+>
+> **Estado: construido y verificado, SIN COMMITEAR** (working tree local de `dev`, sin push, sin deploy —
+> no se commiteó porque no fue pedido explícitamente esta sesión, queda esperando decisión de GO).
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.168.0** — sin cambios esta sesión (nada se
+>   commiteó/pusheó/deployó).
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): sin cambios de DB (no hubo migración, cambio 100% frontend);
+>   working tree local de `dev` con la paginación de Alertas/Supervisión construida y verificada, sin
+>   commit.
+> - **Preguntas de GO (2026-08-11)**: 1/3 resuelta esta sesión (paginar Alertas/Supervisión). Quedan 2
+>   sin arrancar: venta de TiendaNube que muestra "Sin cliente" pese a traer datos del comprador, y
+>   revisar si tiene sentido que un Presupuesto pueda saltear "Reservar stock" e ir directo a "Finalizar".
+>
+> **Próximo paso inmediato**: decidir con GO si se commitea/pushea/deploya esto, y luego seguir con una
+> de las 2 preguntas restantes.
+>
+> Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/features/alertas]] (sección "Tope
+> de renderizado por sección"), [[wiki/features/supervision]] (sección "Paginación de Aprobaciones/
+> Reasignar"), `index.md` (línea de alertas actualizada).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12) — 🚀 v1.168.0 DEPLOYADO A PROD Y VERIFICADO DE FORMA INDEPENDIENTE — módulo Repositores COMPLETO (4/4 fases, migraciones 352-357) ya está en producción real — este bloque quedó SUPERADO por el de arriba (2026-08-12): paginación Alertas/Supervisión construida y verificada en DEV, sin commitear
+>
+> Continuación directa de la sesión de abajo (cont. 7, 2026-08-11/12) — ahí el módulo había quedado
+> 100% construido y verificado EN DEV, con el deploy "en curso". Esta entrada confirma el resultado
+> real del deploy, **re-chequeado a mano** (no se confió solo en el resumen del subagente
+> `deploy-runner`):
+>
+> - `gh pr view 328` → `state: MERGED`, `mergeCommit: 75ad544719467380368cbbcb783c4371d068a791`.
+> - `gh release view v1.168.0` → publicado, `targetCommitish: main`.
+> - `mcp__claude_ai_Supabase__list_migrations` contra el proyecto PROD (`jjffnbrdjchquexdfgwq`) → el
+>   historial de PROD termina en `357_repositores_fase4_etiquetas`, con `352` a `357` aplicadas en
+>   orden justo después de `351_actividad_log_venta_id`.
+> - `curl` real a `https://genesis360.pro/` → siguió el bundle (`assets/index-BmjPNELS.js`) y confirmó
+>   el string `v1.168.0` adentro — el sitio real ya sirve el código nuevo, no es solo un build que
+>   completó en Vercel.
+>
+> **Qué quedó en PROD**: módulo Repositores completo — Fase 1 (núcleo + disparadores automáticos +
+> prioridad, mig 352 + fix de seguridad mig 353), Fase 2 (asignación automática por carga +
+> reasignación manual, mig 354), Fase 3 (reposición física de stock a góndola, mig 355 + fix de dedupe
+> mig 356) y Fase 4 (etiquetas de precio + impresión, mig 357). Detalle técnico completo de las 4 fases
+> en los bloques históricos de abajo (cont. 4 a cont. 7) — este bloque NO repite ese contenido, solo
+> confirma el deploy. `APP_VERSION` v1.168.0, PR #328 (`v1.168.0 — Módulo Repositores completo (4
+> fases)`) mergeado a `main`, tag/release `v1.168.0` publicados.
+>
+> **Nota operativa** (para que quede documentado por transparencia): el subagente `deploy-runner`
+> ejecutó el merge del PR (`gh pr merge`) como parte de su flujo estándar de deploy autorizado — está
+> documentado como parte de su función, y GO había autorizado explícitamente el deploy completo de esta
+> sesión ("pasamos todo a PRD"). Se limpió después un worktree/branch temporal
+> (`worktree-agent-a9fc48a14905f76b9`) que había quedado del subagente, sin contenido único (mismo
+> commit que `dev`, sin cambios sin pushear).
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): **v1.168.0** — módulo Repositores 4/4 fases EN PRODUCCIÓN.
+>   Migraciones 001-357 todas aplicadas. Ya NO es "decisión pendiente de GO" ni "solo en DEV".
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): en paridad con PROD, mismo commit
+>   `75ad544719467380368cbbcb783c4371d068a791` tras el merge (`main`→`dev` implícito por el merge del
+>   PR; branch `dev` local también limpio, `git status` sin pendientes).
+> - **Pendientes de negocio nuevos**: ninguno anotado en esta sesión — el backlog Comercial de Fede
+>   (25/7/2026) queda con sus 6 fases (F/A/B/C/D/E) 100% completas y deployadas. Notificaciones (J) y
+>   reportes (K) del relevamiento original de Repositores quedaron explícitamente fuera del alcance del
+>   módulo (ver [[wiki/features/repositores]]).
+>
+> **Candidatas para arrancar la próxima sesión** (3 preguntas de GO del 2026-08-11, guardadas en
+> memoria con el detalle completo — GO pidió explícitamente esperar a que cerrara Repositores antes de
+> tocarlas, ya está cerrado): paginar Alertas/Supervisión como Historial (Mostrando X de Y) · venta de
+> TiendaNube que muestra "Sin cliente" pese a traer datos del comprador · revisar si tiene sentido que
+> un Presupuesto pueda saltear "Reservar stock" e ir directo a "Finalizar". Ninguna se investigó ni se
+> tocó código todavía — arrancar releyendo la memoria de cada una, no re-derivar desde cero.
+>
+> Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/business/roadmap]] (v1.168.0),
+> `wiki/database/migraciones.md` (352-357 actualizadas a EN PROD), [[wiki/features/repositores]]
+> (callout actualizado a EN PROD), `sources/raw/relevamiento_repositores_respuestas.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11/12 cont. 7) — 🆕 Repositores Fase 4 (mig 357): etiquetas de precio + impresión CONSTRUIDA Y VERIFICADA EN DEV — MÓDULO REPOSITORES 100% COMPLETO (4/4 fases) — este bloque quedó SUPERADO por el de arriba (2026-08-12): v1.168.0 deployado a PROD y verificado de forma independiente
 >
 > Continuación directa de la sesión de abajo (cont. 6, mismo día, sesión que ya había cruzado medianoche
 > a 2026-08-12). Era la última fase que quedaba de Repositores (G/H del relevamiento: etiquetas +

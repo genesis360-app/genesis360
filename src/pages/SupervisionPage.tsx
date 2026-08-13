@@ -13,6 +13,21 @@ const MODULOS: { key: string; label: string; ruta: string }[] = [
   { key: 'inventario', label: 'Inventario', ruta: '/inventario?tab=autorizaciones' },
 ]
 
+// GO (2026-08-12): la lista cruda de 5 solicitudes al azar ("¿por qué esas 5?") no agregaba valor —
+// solo confirmaba que había más sin decir qué. Reemplazado por un desglose por tipo (cuántas de cada
+// categoría), que es la pregunta real que alguien se hace al abrir esta página. Mismos `tipo` que usa
+// `resumenDeAutorizacion` en InventarioPage.tsx — si se agrega un tipo nuevo ahí, sumarlo acá también.
+const TIPO_LABELS: Record<string, string> = {
+  ajuste_cantidad:   'Ajuste de cantidad',
+  ajuste_conteo:     'Diferencia de conteo',
+  bulk_edit:         'Edición masiva',
+  eliminar_serie:    'Eliminar serie',
+  cambio_estado:     'Cambio de estado',
+  kit_precio:        'Precio de KIT',
+  repricing_margen:  'Repricing por margen',
+  eliminar_lpn:      'Eliminar LPN',
+}
+
 export default function SupervisionPage() {
   const { tenant, user } = useAuthStore()
   const modulosPermitidos = MODULOS.filter(m => puedeSupervisarModulo(user, m.key))
@@ -31,10 +46,13 @@ export default function SupervisionPage() {
     enabled: !!tenant && modulosPermitidos.length > 0,
   })
 
-  const porModulo = modulosPermitidos.map(m => ({
-    ...m,
-    items: pendientes.filter((p: any) => p.modulo === m.key),
-  }))
+  const porModulo = modulosPermitidos.map(m => {
+    const items = pendientes.filter((p: any) => p.modulo === m.key)
+    const porTipo: Record<string, number> = {}
+    for (const it of items) porTipo[it.tipo] = (porTipo[it.tipo] ?? 0) + 1
+    const tipos = Object.entries(porTipo).sort((a, b) => b[1] - a[1])
+    return { ...m, items, tipos }
+  })
 
   return (
     <div className="space-y-6">
@@ -65,10 +83,10 @@ export default function SupervisionPage() {
                 <span className="text-xs bg-accent/10 text-accent-text px-2 py-0.5 rounded-full font-medium">{m.items.length} pendiente{m.items.length !== 1 ? 's' : ''}</span>
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                {m.items.slice(0, 5).map((it: any) => (
-                  <div key={it.id} className="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-300 flex items-center justify-between gap-3">
-                    <span className="truncate">{it.notas || it.tipo}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{new Date(it.created_at).toLocaleDateString('es-AR')}</span>
+                {m.tipos.map(([tipo, count]) => (
+                  <div key={tipo} className="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-300 flex items-center justify-between gap-3">
+                    <span className="truncate">{TIPO_LABELS[tipo] ?? tipo}</span>
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-0.5 flex-shrink-0">{count}</span>
                   </div>
                 ))}
               </div>

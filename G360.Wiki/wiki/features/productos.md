@@ -167,7 +167,8 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | Contenido | number + select unidad | Opcional — cuánto contiene 1 unidad de venta (ej. 120 + "ml"). Nuevo (mig 357, módulo Repositores) — ver nota abajo |
 | Descripción | textarea | — |
 
-> [!NOTE] **Campo "Contenido" (mig 357, 🟡 EN DEV, para el módulo Repositores).** `productos.
+> [!NOTE] **Campo "Contenido" (mig 357, ✅ EN PROD desde v1.168.0, 2026-08-12, para el módulo
+> Repositores).** `productos.
 > contenido_cantidad` (numeric) + `productos.contenido_unidad_id` (FK a `unidades_medida_fisicas`) —
 > cuánto contiene FÍSICAMENTE 1 unidad de venta (ej. 120 para un shampoo de 120ml). **Distinto** de
 > "Unidad de medida" en Card 4 (`unidad_medida_base_id`, cómo se vende/cobra el producto) — un
@@ -294,7 +295,7 @@ producto_ubicacion_sucursal(
 
 Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
 
-### Ubicación de exhibición — góndola (mig 335 + 352 · v1.167.0, para el módulo Repositores)
+### Ubicación de exhibición — góndola (mig 335 + 352 · ✅ EN PROD desde v1.168.0, para el módulo Repositores)
 
 Campo nuevo (2026-08-11) **"Ubicación de exhibición (góndola)"**, mismo bloque que "Ubicación
 predeterminada" arriba pero en su propio select, filtrado a ubicaciones con `tipo_logico =

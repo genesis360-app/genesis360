@@ -2,19 +2,22 @@
 title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
-sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts]
-updated: 2026-08-11
+sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts, src/components/RepositoresReportes.tsx, supabase/functions/repositores-cierre-dia-sweep/index.ts, .github/workflows/repositores-cierre-dia-sweep.yml]
+updated: 2026-08-12
 ---
 
 # Módulo Repositores
 
-> ✅ **Módulo 100% COMPLETO — Fase 1 (núcleo + disparadores + prioridad, mig 352 + fix de seguridad
-> mig 353), Fase 2 (asignación automática + reasignación manual, mig 354), Fase 3 (reposición física a
-> góndola, mig 355 + fix de dedupe mig 356) y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA
-> fase) CONSTRUIDAS Y VERIFICADAS EN DEV (2026-08-11/12) — NINGUNA deployada a PROD todavía.** Es un
-> módulo nuevo, no un fix: con las 4 fases cerradas, GO pidió deployar TODO junto (migraciones
-> 352-357) — el deploy a PROD queda en curso a continuación, en la misma sesión que cerró la Fase 4.
-> Confirmar el estado real (`gh pr list`, `git log origin/main`) antes de asumir que sigue en DEV.
+> ✅ **Módulo 100% COMPLETO Y EN PROD (v1.168.0, deploy real 2026-08-12, PR #328) — Fase 1 (núcleo +
+> disparadores + prioridad, mig 352 + fix de seguridad mig 353), Fase 2 (asignación automática +
+> reasignación manual, mig 354), Fase 3 (reposición física a góndola, mig 355 + fix de dedupe mig 356)
+> y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA fase) — las 4 fases fueron construidas y
+> verificadas en DEV el 2026-08-11/12 y deployadas juntas a PROD el 2026-08-12, con autorización
+> explícita de GO ("pasamos todo a PRD").** Deploy verificado de forma independiente: `gh pr view 328`
+> → `MERGED` (`mergeCommit` `75ad544719467380368cbbcb783c4371d068a791`); `gh release view v1.168.0` →
+> publicado sobre `main`; `list_migrations` contra PROD (`jjffnbrdjchquexdfgwq`) confirma el historial
+> hasta `357_repositores_fase4_etiquetas`; bundle real de `https://genesis360.pro/` confirmado con la
+> cadena "v1.168.0".
 >
 > 🔒🛑 **Bug de seguridad real encontrado y corregido en la Fase 1 (mig 353), mientras estuvo SOLO en
 > DEV, nunca llegó a PROD**: `vw_tareas_repositor` había quedado creada sin `security_invoker` — ver
@@ -24,6 +27,17 @@ updated: 2026-08-11
 > Fase 1" y en `relevamiento_repositores_respuestas.md`): no hacía falta un "tercer tramo separado" —
 > el camino de reabastecimiento POR UMBRAL nunca tuvo el filtro de `tipo_logico` que sí tiene el
 > picking automático. Ver "Qué hace la Fase 3" más abajo.
+>
+> 🆕 **Notificaciones (J) y Reportes (K) — construidos y verificados EN DEV el 2026-08-12 (sesión
+> posterior al deploy de v1.168.0), SIN commitear todavía.** Estos 2 puntos del relevamiento original
+> habían quedado explícitamente diferidos al cerrar la Fase 4 (ver la corrección más abajo en "Lo que
+> NO incluye la Fase 1") — GO preguntó si quedaba algo pendiente del módulo, se le confirmó que solo
+> esos 2 puntos, y pidió retomarlos. Sin ninguna migración SQL nueva: Edge Function
+> `repositores-cierre-dia-sweep` (notificación + email al cierre del día si quedan tareas pendientes,
+> cron cada 15 min vía GitHub Actions) + tab "Reportes" nuevo en `RepositoresPage.tsx` (solo visible a
+> quien supervisa el módulo). **Con esto, el módulo Repositores queda 100% completo — ya no queda
+> ningún punto de las 35 preguntas del relevamiento original (A-L) sin construir.** Detalle completo en
+> la sección "Notificaciones (J) y Reportes (K)" más abajo.
 
 Módulo para que la persona que repone mercadería en el local sepa, sin tener que acordarse ni
 recorrer la góndola, **qué cartel de precio hay que cambiar** — cada vez que un precio cambia o un
@@ -44,11 +58,14 @@ que ya usó el backlog de Comercial (F→A→B→C→D):
 - **Fase 3 (✅ construida, mig 355+356)**: reposición física de stock a góndola — resuelve I3 (ver
   abajo), reusando el mecanismo real de movimiento de stock de WMS con un tipo de tarea nuevo
   (`reposicion_gondola`).
-- **Fase 4 (esta, ✅ construida, mig 357, ÚLTIMA fase del módulo)**: etiquetas de precio + impresión
-  (G/H del relevamiento) — PDF en grilla A4 con código de barras, imprimible también en una impresora
-  térmica Zebra si el negocio tiene una (decisión de GO). Con esta fase el módulo Repositores queda
-  **100% construido**. Notificaciones (J) y reportes (K) del relevamiento original quedan fuera del
-  alcance de Repositores — no se retoman como parte de este módulo.
+- **Fase 4 (✅ construida, mig 357, última fase OPERATIVA del módulo)**: etiquetas de precio +
+  impresión (G/H del relevamiento) — PDF en grilla A4 con código de barras, imprimible también en una
+  impresora térmica Zebra si el negocio tiene una (decisión de GO). Con esta fase quedan completas las
+  4 fases operativas del módulo (mig 352-357).
+- **Notificaciones (J) y Reportes (K) (✅ construidas, sesión posterior, 2026-08-12, EN DEV)**: los 2
+  puntos del relevamiento original que habían quedado diferidos al cerrar la Fase 4 — ver sección
+  "Notificaciones (J) y Reportes (K)" más abajo. Con esto, el módulo queda 100% construido, sin ningún
+  punto del relevamiento original sin resolver.
 
 ## Qué hace la Fase 1
 
@@ -143,7 +160,7 @@ sugerencia no bloqueante del reviewer, alineada con el precedente de la mig 272.
 DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
 `information_schema.role_routine_grants` confirma que las 2 funciones ya no tienen grant a
 `authenticated`/`anon` (solo `postgres`/`service_role`). Commiteada y pusheada a `origin/dev` (commit
-`36fc075b`) — **mig 353, igual que la 352, SOLO en DEV**, sin deployar a PROD.
+`36fc075b`) — **mig 353 ✅ EN PROD desde v1.168.0 (deploy real 2026-08-12, PR #328)**.
 
 ## Acceso y rol
 
@@ -175,8 +192,11 @@ DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
   `unidades_medida_fisicas` ya existente) + PDF pensado para servir también en una impresora térmica
   Zebra si el negocio tiene una (decisión de GO, sin impresión automática — un humano dispara la
   impresión).
-- **Notificaciones** (J) y **reportes** (K) del relevamiento original — fuera del alcance final del
-  módulo, no se construyeron como parte de Repositores.
+- **Notificaciones** (J) y **reportes** (K) del relevamiento original — ✅ **construidas el 2026-08-12
+  (sesión posterior a v1.168.0, EN DEV, sin migración SQL nueva)**. Habían quedado explícitamente
+  diferidas al cerrar la Fase 4 (registro histórico: en ese momento se consideraban "fuera del alcance
+  final del módulo"); GO pidió retomarlas después y confirmó no quedaba deuda técnica, sino una
+  decisión consciente del momento — ver sección "Notificaciones (J) y Reportes (K)" más abajo.
 
 ## Qué hace la Fase 2 (mig 354) — asignación automática + reasignación manual
 
@@ -260,9 +280,8 @@ una tarea logueaba `entidad: 'pedido'` en `actividad_log` en vez de un tipo prop
 - Todos los datos de prueba se limpiaron después (tarea, ubicación de exhibición temporal, precio
   revertido, log de prueba borrado) — el tenant quedó como estaba.
 
-Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354, igual que 352 y 353, SOLO en
-DEV** — sin deployar a PROD; sin tag/release de GitHub todavía (pendiente de confirmar con GO si
-corresponde igual, no decidido).
+Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354 ✅ EN PROD desde v1.168.0 (deploy
+real 2026-08-12, PR #328, tag/release `v1.168.0`).**
 
 ## Qué hace la Fase 3 (mig 355+356) — reposición física de stock a góndola
 
@@ -387,7 +406,7 @@ usar UNA VEZ sin guardarlo — se usó inline (nunca escrito a disco) para regen
 persistido.
 
 Commiteado y pusheado a `origin/dev` (commits `45a3c89b` mig 355, `d6f37b08` fix dedupe mig 356 +
-`PedidosPage.tsx`). **Mig 355+356, igual que 352-354, SOLO en DEV** — sin deployar a PROD.
+`PedidosPage.tsx`). **Mig 355+356 ✅ EN PROD desde v1.168.0 (deploy real 2026-08-12, PR #328).**
 
 ## Qué hace la Fase 4 (mig 357) — etiquetas de precio + impresión (última fase del módulo)
 
@@ -493,12 +512,87 @@ despachar el subagente.
   `contenido_unidad_id` del producto revertidos a NULL, `repositor_hora_impresion` del tenant revertido
   a NULL) — el tenant "Almacén Jorgito" quedó exactamente como estaba antes de probar.
 
-Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`). **Mig 357, igual
-que 352-356, SOLO en DEV** — sin deployar a PROD todavía.
+Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`). **Mig 357 ✅ EN
+PROD desde v1.168.0 (deploy real 2026-08-12, PR #328).**
 
 **Con esto, el módulo Repositores queda 100% construido: Fases 1-4 (mig 352-357), TODAS verificadas en
-DEV, ninguna en PROD.** GO ya pidió deployar TODO junto — el deploy a PROD sigue a continuación, en la
-misma sesión que cerró esta fase (documentado en una entrada de log/wiki separada una vez confirmado).
+DEV Y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR #328, tag/release `v1.168.0` publicados).** El
+deploy fue verificado de forma independiente: `gh pr view 328` → `MERGED`; `list_migrations` contra
+PROD confirma 352-357 aplicadas; bundle real de `https://genesis360.pro/` con la cadena "v1.168.0".
+
+## Notificaciones (J) y Reportes (K) — construidas el 2026-08-12 (sesión posterior a v1.168.0)
+
+Con las 4 fases operativas ya en PROD, GO preguntó si quedaba algo pendiente del módulo — se le
+confirmó que solo quedaban estos 2 puntos del relevamiento original (J/K), diferidos a propósito al
+cerrar la Fase 4 (no deuda técnica). GO pidió retomarlos ahora. El relevamiento ya existía
+(`relevamiento_repositores_respuestas.md`, secciones J y K completas desde 30/7/2026) — no hizo falta
+re-relevar, se fue directo a diseño técnico con 3 decisiones de opciones confirmadas por GO:
+
+1. **Alcance — ambos tipos de tarea**: los reportes y notificaciones cubren tanto `tareas_repositor`
+   (cambio de precio/etiqueta, el tipo original de J/K en el relevamiento de 30/7) como `wms_tareas`
+   tipo `'reposicion_gondola'` (reposición física, agregada recién en la Fase 3, posterior al
+   relevamiento original). Decisión de GO: cubrir ambos, para no subestimar a un repositor que hace
+   más reposición física que cambios de precio.
+2. **Hora de "cierre del día" (dispara J2) — configurable POR SUCURSAL**, no una hora fija global,
+   pedido explícito de GO. Hallazgo real al investigar: **ya existía en el schema** —
+   `sucursales.horario_cierre` (mig 124), editable desde `SucursalesPage.tsx` desde antes de este
+   trabajo — sin ninguna migración nueva, default 21:00 si una sucursal no lo configuró.
+3. **Visibilidad del tab "Reportes" — solo supervisores** (`puedeSupervisarModulo(user, 'repositores')`),
+   mismo criterio que el botón "Reasignar" ya existente (Fase 2). Respeta el objetivo que GO ya había
+   dejado explícito en K1 del relevamiento original: "entender demoras, no presionar al empleado" — un
+   repositor no ve el ranking de sus compañeros.
+
+### J — Notificaciones (J1/J2)
+
+**Sin ninguna migración SQL** — Edge Function nueva `supabase/functions/repositores-cierre-dia-sweep/
+index.ts` (deployada a DEV) + workflow nuevo `.github/workflows/repositores-cierre-dia-sweep.yml` (cron
+cada 15 minutos vía GitHub Actions — el proyecto no tiene pg_cron habilitado, ver
+`reference_pg_cron_no_habilitado` en memoria de sesión).
+
+Por cada sucursal activa de un tenant en modo avanzado: si la hora real de Argentina (calculada con
+`Intl.DateTimeFormat` + zona horaria explícita, no un offset fijo) ya superó el `horario_cierre`
+configurado de esa sucursal (o el default 21:00) y quedan tareas pendientes de cualquiera de los 2
+tipos (`tareas_repositor` o `wms_tareas` tipo `reposicion_gondola`), notifica a todos los que pueden
+supervisar el módulo — reusa `fn_usuarios_supervisan_modulo` (función SQL de [[wiki/features/supervision]],
+ya existente) para resolver a quién avisar. Por cada supervisor: inserta una notificación in-app (tabla
+`notificaciones` ya existente) **y** manda un email real, resolviendo la dirección de cada usuario vía
+la API admin de Supabase Auth (nunca hardcodeada — mismo patrón que el sweep `billing-manual-sweep`).
+
+**Dedupe sin columna nueva**: para no mandar el mismo aviso varias veces en la misma tarde con el cron
+corriendo cada 15 min, antes de notificar revisa si ya existe una notificación de ese tipo para esa
+sucursal creada hoy — si existe, no manda otra.
+
+### K — Reportes (K1/K2)
+
+Componente nuevo `src/components/RepositoresReportes.tsx`, integrado como tercer tab "Reportes" dentro
+de `RepositoresPage.tsx` (junto a los 2 tabs existentes "Precios/Etiquetas" y "Reposición física"),
+visible solo para supervisores. Ventana fija de los últimos 30 días (mismo criterio que el tab de KPIs
+del patrón de Supervisión — sin selector de rango de fechas, no se pidió). Tabla por repositor con:
+cantidad de carteles de precio completados + tiempo promedio desde que se disparó la tarea hasta que se
+completó, cantidad de reposiciones físicas completadas + su propio tiempo promedio, y el total. Botón
+para exportar a Excel (mismo patrón ya usado en Pedidos y Gastos).
+
+### Verificación real (2026-08-12, contra DEV)
+
+- La Edge Function se invocó 3 veces por curl directo contra el proyecto DEV: 1ª corrida sin ninguna
+  tarea pendiente en sucursales ya pasadas de horario de cierre (0 notificaciones, correcto); 2ª
+  corrida con una tarea de prueba insertada a mano en una sucursal ya pasada de horario configurado →
+  notificó correctamente a los 5 supervisores reales de ese tenant, con título/mensaje/metadata armados
+  bien; 3ª corrida confirmó que el dedupe del mismo día funciona (0 notificaciones de nuevo). Datos de
+  prueba limpiados después de cada verificación, sin dejar residuo.
+- El tab Reportes se verificó en el navegador (Playwright): con el tenant real sin tareas completadas
+  históricas mostró correctamente el estado vacío; con 2 tareas de prueba insertadas a mano (una
+  completada en 45 minutos, otra en 20) mostró correctamente "2 carteles completados, 33 minutos de
+  promedio, 0 reposiciones, total 2" — datos de prueba limpiados después.
+- Typecheck y build de todo el proyecto verdes.
+
+**Estado: construido y verificado en DEV, SIN commitear todavía** — se suma al resto de cambios sin
+commitear de la sesión de hoy (paginación de Alertas/Supervisión, fix de TiendaNube, rondas de
+navegación específica — hilo aparte, ver [[wiki/features/alertas]]). La Edge Function ya está deployada
+a DEV, pero el cron de GitHub Actions no arranca a correr hasta que el archivo de workflow llegue a la
+rama `main` (mergeado) — mientras tanto no hay ningún riesgo de que dispare nada. **Con este cierre, el
+módulo Repositores queda 100% completo — ya no queda ningún punto del relevamiento original sin
+construir.**
 
 ## Verificación real (2026-08-11, contra DEV) — Fase 1
 
@@ -516,7 +610,8 @@ el tenant quedó exactamente como estaba antes de probar.
 - [[project_backlog_fede_comercial_25_7]] (memoria) — estado completo del backlog de Fede, las 5
   fases, y el detalle de las decisiones A1/A2-B3/H1 que cerró GO.
 - [[wiki/features/supervision]] — el patrón de Pestaña de Supervisor cuyo criterio de reparto por
-  carga/reasignación reusó la Fase 2 de Repositores.
+  carga/reasignación reusó la Fase 2 de Repositores; `fn_usuarios_supervisan_modulo` es la misma
+  función que resuelve a quién notificar en J.
 - [[wiki/features/wms]] — `fn_completar_tarea_reabastecimiento` (mig 297) y el camino de
   reabastecimiento por umbral que la Fase 3 de Repositores reusa; nota agregada ahí sobre el 2do
   llamador (mig 355+356).

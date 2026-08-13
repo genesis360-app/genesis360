@@ -1,17 +1,22 @@
 ---
-title: Filtro de píldoras — buscador combinable "Campo:valor" (Picking, Productos, Inventario)
+title: Filtro de píldoras — buscador combinable "Campo:valor" (Picking, Productos, Inventario, Pedidos, Ventas)
 category: features
-tags: [filtro, busqueda, pildoras, chips, picking, productos, inventario, buscador]
-sources: [src/lib/pildorasFiltro.ts, src/lib/pickingFiltro.ts, src/lib/productosFiltro.ts, src/lib/inventarioFiltro.ts, src/components/BuscadorPildoras.tsx, src/pages/PickingPage.tsx, src/pages/ProductosPage.tsx, src/pages/InventarioPage.tsx, tests/e2e/129_pildoras_filtro_productos_inventario_mutante.spec.ts]
-updated: 2026-08-06
+tags: [filtro, busqueda, pildoras, chips, picking, productos, inventario, pedidos, ventas, buscador]
+sources: [src/lib/pildorasFiltro.ts, src/lib/pickingFiltro.ts, src/lib/productosFiltro.ts, src/lib/inventarioFiltro.ts, src/lib/pedidosFiltro.ts, src/lib/ventasFiltro.ts, src/components/BuscadorPildoras.tsx, src/pages/PickingPage.tsx, src/pages/ProductosPage.tsx, src/pages/InventarioPage.tsx, src/pages/PedidosPage.tsx, src/pages/VentasPage.tsx, tests/e2e/129_pildoras_filtro_productos_inventario_mutante.spec.ts, tests/unit/pedidosFiltro.test.ts, tests/unit/ventasFiltro.test.ts]
+updated: 2026-08-12
 ---
 
 # Filtro de píldoras — buscador combinable "Campo:valor"
 
 > ✅ **Generalización PROD desde v1.158.0 (deploy 2026-08-06).** El mecanismo original (Picking,
-> v1.153.0) ya estaba en PROD desde v1.153.0 y no se tocó. Lo nuevo de esta iniciativa fue
+> v1.153.0) ya estaba en PROD desde v1.153.0 y no se tocó. Lo nuevo de esa iniciativa fue
 > **llevarlo a Productos e Inventario**, código 100% nuevo (`pildorasFiltro.ts`,
 > `productosFiltro.ts`, `inventarioFiltro.ts`) sin tocar `pickingFiltro.ts`.
+>
+> 🆕 **Extendido a Pedidos y Ventas (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin
+> commitear).** Ver sección "Extensión a Pedidos y Ventas" más abajo — a diferencia de "diferido a
+> propósito" que decía la última versión de esta página, GO SÍ pidió aplicarlo acá, por un problema
+> real de búsqueda ambigua encontrado probando los deep-links de Alertas.
 
 ## Qué es
 
@@ -80,30 +85,63 @@ el usuario, consistente con el nuevo modelo de datos del buscador.
 
 ## Tests
 
-- **33 tests unitarios nuevos**: `tests/unit/pildorasFiltro.test.ts` (núcleo genérico),
-  `tests/unit/productosFiltro.test.ts`, `tests/unit/inventarioFiltro.test.ts` (incluye el caso de
-  "misma línea" descripto arriba).
+- **33 tests unitarios nuevos** (generalización 2026-08-06): `tests/unit/pildorasFiltro.test.ts`
+  (núcleo genérico), `tests/unit/productosFiltro.test.ts`, `tests/unit/inventarioFiltro.test.ts`
+  (incluye el caso de "misma línea" descripto arriba).
 - **e2e nuevo**: `tests/e2e/129_pildoras_filtro_productos_inventario_mutante.spec.ts` — siembra su
   propio producto único (patrón mutante, no depende de fixtures compartidos) y prueba: texto libre,
   campo explícito, combinador Y (exige ambos criterios), combinador O (alcanza con uno), en las dos
   páginas (Productos e Inventario). **2/2 verde, corrido dos veces** para confirmar estabilidad.
 - Picking se reverificó sin cambios de comportamiento con el spec **106** (3/3 verde).
+- **+15 tests unitarios de la extensión a Pedidos/Ventas (2026-08-12)**: `tests/unit/pedidosFiltro.test.ts`
+  (9/9) y `tests/unit/ventasFiltro.test.ts` (6/6) — foco específico en que `Pedido:2`/`Venta:2` NO
+  matcheen el 82, el 102, etc.
 
 ## Verde
 
-`tsc --noEmit` (0 errores) · `npm run build` · suite unitaria completa (1525 tests, 96 archivos,
-incluye los 33 nuevos) · e2e 106 y 129 verdes.
+`tsc --noEmit` (0 errores) · `npm run build` · suite unitaria completa (incluye los 33 de la
+generalización + los 15 de Pedidos/Ventas) · e2e 106 y 129 verdes.
+
+## Extensión a Pedidos y Ventas (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)
+
+GO, probando en el navegador los deep-links de Alertas (ver [[wiki/features/alertas]]), encontró que
+buscar el pedido Nº 2 en `/pedidos` también traía el 82, el 102 — cualquier número que "contuviera" un
+2 (buscador de texto plano, `substring`). Mismo problema confirmado después en Ventas → Historial (y
+en Gastos → OC, resuelto ahí con un buscador nuevo en vez de píldoras — ver [[wiki/features/gastos]]).
+Pidió explícitamente el mismo sistema de píldoras que ya tenía Picking.
+
+- **`src/lib/pedidosFiltro.ts`** (campos `numero`/`referencia`/`cliente`) y **`src/lib/ventasFiltro.ts`**
+  (campos `numero`/`cliente`) — mismo patrón que `productosFiltro.ts`/`inventarioFiltro.ts`: construidos
+  sobre el núcleo compartido `pildorasFiltro.ts`, sin tocarlo.
+- **`PedidosPage.tsx`** y el tab Historial de **`VentasPage.tsx`** reemplazan su buscador de texto
+  plano por `<BuscadorPildoras>` (mismo componente genérico, con sus propios `camposFiltro`).
+- **Diferencia clave frente al resto de las páginas migradas**: acá `numero` es un **identificador**,
+  no texto libre — nadie busca "pedidos cuyo número contiene 2". El núcleo genérico interpreta `:`/`=`
+  como "contiene" (mismo criterio que nombre/SKU en Productos); **`pedidosFiltro.ts`/`ventasFiltro.ts`
+  reinterpretan esos dos operadores como igualdad exacta SOLO para el campo `numero`** (los operadores
+  `>`/`<`/`>=`/`<=` siguen siendo comparación numérica real, sin cambios). El núcleo genérico
+  (`pildorasFiltro.ts`) **no cambió** — la excepción vive en el consumidor, no en el core. La búsqueda
+  **libre** (sin campo explícito, ej. tipear "2" a secas) sigue siendo substring en ambos, igual que
+  antes — el match exacto solo aplica cuando el usuario (o un deep-link) usa el campo `Pedido:`/`Venta:`
+  explícitamente.
+- **Deep-links de Alertas actualizados** para aprovechar esto: "Ver pedido"/"Ver en Picking" arma
+  directamente la píldora `Pedido:N`; "Ver venta" combina la píldora `Venta:N` (filtra la lista de
+  fondo) con el `?id=<uuid>` preexistente (abre el modal de detalle) al mismo tiempo.
 
 ## Pendiente
 
-- **Sin commitear ni deployar** — todo en el working tree local de `dev` (2026-08-06).
-- Aplicar el mismo mecanismo a otros buscadores de texto plano del sistema queda **diferido a
-  propósito** — no se tocó ningún otro salvo Productos/Inventario, que fue lo pedido explícitamente
-  por el usuario. Retomar solo si GO lo pide.
+- **Sin commitear ni deployar** — todo en el working tree local de `dev` (generalización del
+  2026-08-06 + extensión del 2026-08-12).
+- Aplicar el mismo mecanismo a otros buscadores de texto plano del sistema (fuera de
+  Picking/Productos/Inventario/Pedidos/Ventas) sigue **diferido a propósito** — retomar solo si GO lo
+  pide.
 
 ## Links relacionados
 
 - [[wiki/features/wms]] — origen del mecanismo (`/picking`, v1.153.0, EN PROD, sin cambios).
 - [[wiki/features/productos]] — `ProductosPage.tsx`, filtro migrado.
 - [[wiki/features/inventario-stock]] — tab Inventario, filtro migrado en sus 2 vistas.
+- [[wiki/features/pedidos]] — `PedidosPage.tsx`, extensión 2026-08-12.
+- [[wiki/features/ventas-pos]] — tab Historial, extensión 2026-08-12.
+- [[wiki/features/alertas]] — origen del pedido de esta ronda (deep-links exactos).
 - [[wiki/development/testing]] — spec e2e 129 y detalle de la deuda de `waitForTimeout`.

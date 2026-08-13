@@ -1,9 +1,9 @@
 ---
 title: Módulo Gastos
 category: features
-tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable]
-sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md]
-updated: 2026-06-18
+tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador]
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx]
+updated: 2026-08-12
 ---
 
 # Módulo Gastos
@@ -197,6 +197,15 @@ comprobante_titulo TEXT
 - Badge contextual:
   - 🔴 Vencida (mora)
   - ⏰ Próxima (≤ 3 días)
+- **🆕 Buscador por número/proveedor (`ocBusqueda`, 2026-08-12, ronda 3 de feedback sobre Alertas, EN
+  DEV sin commitear)**: antes esta pestaña no tenía NINGÚN buscador de texto — GO lo notó probando el
+  deep-link `?oc=<id>` de `/alertas` ("Regularizar"/"Pagar ahora"), que solo expandía la fila puntual
+  pero, entre varias OC en pantalla, no había forma de encontrarla a simple vista. Se agregó un input
+  que filtra por **Nº de OC o nombre de proveedor**; el deep-link de Alertas ahora pasa el **número**
+  de OC (`?oc=<numero>`, antes el id interno) para pre-completarlo, dejando la lista filtrada a 1 sola
+  OC auto-expandida. Es un buscador de texto simple (no el sistema de píldoras de
+  [[wiki/features/filtro-pildoras]] — acá alcanzaba con substring, no había ambigüedad de campos). Ver
+  [[wiki/features/alertas]] → "Ronda 3".
 
 ---
 

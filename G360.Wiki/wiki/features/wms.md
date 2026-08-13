@@ -535,7 +535,7 @@ F4) — ver [[wiki/features/pedidos]] y la nota de vigencia al principio de "Fas
 - **KPIs WMS** (tasa de error picking, tiempo promedio por tarea, utilización de ubicaciones): sin
   implementar, sigue pendiente.
 
-> 🆕 **2026-08-11/12 (mig 355+356, 🟡 EN DEV): `fn_completar_tarea_reabastecimiento` gana un 2do
+> 🆕 **2026-08-11/12 (mig 355+356, ✅ EN PROD desde v1.168.0, 2026-08-12): `fn_completar_tarea_reabastecimiento` gana un 2do
 > llamador — Repositores Fase 3 (reposición física a góndola).** El generador nuevo
 > `fn_generar_tareas_reposicion_gondola` crea tareas `wms_tareas.tipo='reposicion_gondola'` (tipo
 > nuevo, mismo precedente que `'armado'` de la mig 345 — separación conceptual para que la cola de

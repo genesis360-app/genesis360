@@ -3,7 +3,7 @@ title: Integración TiendaNube
 category: integrations
 tags: [tiendanube, tn, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-08
+updated: 2026-08-12
 ---
 
 # Integración TiendaNube
@@ -73,6 +73,27 @@ Token **permanente** — TiendaNube no expira access tokens.
 > [!NOTE] **ISS-073 corregida en el wiki (2026-08-06)**: `project_pendientes.md` tenía una fila
 > vieja diciendo que TN "hoy: solo rebaja stock" — eso era **falso desde hace tiempo**, este webhook
 > ya crea venta + cliente + reserva de stock automáticamente (arriba). Marcada ✅ cerrada.
+
+> [!BUG] **🐛✅ 2026-08-12 — bug real corregido: venta de TiendaNube mostraba "Sin cliente" (fix EN
+> DEV, sin commitear, NO deployado a PROD).** GO había sospechado que el matching contra `clientes`
+> fallaba — investigado a fondo (código real + datos reales de DEV), la sospecha era **incorrecta**: el
+> matching/creación de `clientes` de acá arriba (busca por email, si no existe lo crea) **SIEMPRE
+> funcionó bien**, verificado con pedidos reales de abril y con TODAS las ventas TN de agosto 2026
+> (`cliente_id` resuelto en el 100% de los casos). **Causa raíz real**: `VentasPage.tsx` muestra el
+> cliente vía la columna DENORMALIZADA `ventas.cliente_nombre` (no vía join a `clientes` por
+> `cliente_id`) — este webhook seteaba `cliente_id` en el INSERT de la venta pero nunca
+> `cliente_nombre`, confirmado con SQL real en DEV (15 ventas TN con `cliente_id` válido y
+> `cliente_nombre IS NULL`). Comparado contra `meli-webhook`/`registrarVenta()` del POS (ambos setean
+> los 2 campos siempre juntos) — la omisión era específica y aislada de `tn-webhook`, no un gap de
+> diseño. **Fix**: captura `clienteNombre` en las 3 ramas de resolución de cliente (match existente,
+> insert nuevo, fallback por race condition de email duplicado) y lo incluye en el INSERT de la venta;
+> de paso se agregó un `console.error` que faltaba en la rama de fallo silencioso de creación de
+> cliente. **Deploy**: EF redeployada a **DEV únicamente** (`tn-webhook` v22) — NO a PROD
+> (`tiendanube_credentials` en PROD sigue en 0 filas). **Backfill**: 8/15 ventas TN rotas de DEV
+> corregidas (`created_at > 2026-04-30`); las 7 más viejas (abril 2026) quedaron sin tocar —
+> `trg_ventas_periodo_cerrado` las bloqueó correctamente (período contable cerrado, REGLA #0: nunca
+> reescribir ventas de un período contable cerrado). Código sin commitear en el working tree local de
+> `dev`. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 

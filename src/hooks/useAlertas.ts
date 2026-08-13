@@ -2,19 +2,25 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { cajasSobreUmbralBoveda } from '@/lib/cajaSaldo'
 
 const RESERVAS_DIAS_LIMITE = 3
 
 /** Cajas operativas ABIERTAS (excluye la Caja Fuerte permanente) cuyo efectivo supera el umbral
  *  de bóveda. Compartido por el badge (useAlertas) y AlertasPage para que cuenten lo mismo.
- *  Devuelve [] sin tocar la DB si el umbral no está configurado. */
-export async function cajasSobreUmbralBovedaDelTenant(tenantId: string, umbral: number | null | undefined) {
+ *  Devuelve [] sin tocar la DB si el umbral no está configurado.
+ *  `sucursalId` (opcional) — GO 2026-08-12: con una sucursal específica seleccionada (no "Todas"),
+ *  esta era la ÚNICA fuente de AlertasPage que no filtraba por sucursal — mostraba la Caja S2 de
+ *  Sur estando parado en Norte. Sin sucursalId (= "Todas") se comporta igual que antes. */
+export async function cajasSobreUmbralBovedaDelTenant(tenantId: string, umbral: number | null | undefined, sucursalId?: string | null) {
   if (!(Number(umbral) > 0)) return []
-  const { data: sesiones } = await supabase.from('caja_sesiones')
+  let q = supabase.from('caja_sesiones')
     .select('id, monto_apertura, cajas(nombre)')
     .eq('tenant_id', tenantId).eq('estado', 'abierta')
     .not('es_permanente', 'is', true)
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+  const { data: sesiones } = await q
   if (!sesiones || sesiones.length === 0) return []
   const ids = (sesiones as any[]).map(s => s.id)
   const { data: movs } = await supabase.from('caja_movimientos')
@@ -23,8 +29,8 @@ export async function cajasSobreUmbralBovedaDelTenant(tenantId: string, umbral: 
   return cajasSobreUmbralBoveda(sesionesIn, (movs ?? []) as any[], umbral)
 }
 
-async function contarCajasSobreUmbral(tenantId: string, umbral: number | null | undefined): Promise<number> {
-  return (await cajasSobreUmbralBovedaDelTenant(tenantId, umbral)).length
+async function contarCajasSobreUmbral(tenantId: string, umbral: number | null | undefined, sucursalId?: string | null): Promise<number> {
+  return (await cajasSobreUmbralBovedaDelTenant(tenantId, umbral, sucursalId)).length
 }
 
 export function useAlertas() {
@@ -34,9 +40,10 @@ export function useAlertas() {
   // no se cuenta o el badge mostraría un número "fantasma" que no se corresponde con
   // nada visible en /alertas. Las OC SÍ cuentan en ambos modos (v1.126.0). Ver AlertasPage.tsx.
   const { avanzado: modoAvanzado } = useModoOperacion()
+  const { sucursalId } = useSucursalFilter()
 
   const { data } = useQuery({
-    queryKey: ['alertas', tenant?.id, modoAvanzado],
+    queryKey: ['alertas', tenant?.id, modoAvanzado, sucursalId],
     queryFn: async () => {
       const fechaLimite = new Date()
       fechaLimite.setDate(fechaLimite.getDate() - RESERVAS_DIAS_LIMITE)
@@ -149,7 +156,7 @@ export function useAlertas() {
       }
 
       // H4 — efectivo en caja sobre el umbral de bóveda (ambos modos). Solo si el tenant lo configuró.
-      const countBoveda = await contarCajasSobreUmbral(tenant!.id, (tenant as any)?.boveda_umbral_caja)
+      const countBoveda = await contarCajasSobreUmbral(tenant!.id, (tenant as any)?.boveda_umbral_caja, sucursalId)
 
       return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda + countPedidosVencidos + countPedidosSinAvanzar
     },

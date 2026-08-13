@@ -168,7 +168,40 @@ export default function InventarioPage() {
     if (s) {
       setTab('inventario')
       setPildorasInv([{ id: crypto.randomUUID(), campo: 'libre', operador: 'contiene', valor: s }])
-      setSearchParams({}, { replace: true })
+      setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete('search'); return p }, { replace: true })
+    }
+  }, [])
+
+  // Pre-selecciona el tab desde ?tab= (ej. "Ver y resolver en Inventario" de SupervisionPage apunta
+  // a /inventario?tab=autorizaciones) — sin esto `tab` siempre arrancaba en 'inventario' ignorando
+  // el query param, y el link de Supervisión aterrizaba en el lugar equivocado (bug real, GO 2026-08-12).
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    const tabsValidos: Tab[] = ['inventario', 'agregar', 'quitar', 'traslados', 'kits', 'conteo', 'historial', 'autorizaciones']
+    if (t && (tabsValidos as string[]).includes(t)) {
+      setTab(t as Tab)
+      setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete('tab'); return p }, { replace: true })
+    }
+  }, [])
+
+  // Deep-links desde AlertasPage ("Ver todo" de una sección) hacia los filtros REALES del tab
+  // Inventario — antes esos links caían siempre en /inventario a secas, sin filtrar nada (GO,
+  // 2026-08-12). Reusa los mismos toggles/selects que ya existen en el panel de Filtros, con el
+  // sentinel `__sin__` que ya usa internamente "Sin ubicación"/"Sin proveedor".
+  useEffect(() => {
+    const fa = searchParams.get('filterAlerta')
+    const fu = searchParams.get('filterUbic')
+    const fp = searchParams.get('filterProv')
+    if (fa || fu || fp) {
+      setTab('inventario')
+      if (fa) setFilterAlerta(true)
+      if (fu) setFilterUbic(fu)
+      if (fp) setFilterProv(fp)
+      setSearchParams(prev => {
+        const p = new URLSearchParams(prev)
+        p.delete('filterAlerta'); p.delete('filterUbic'); p.delete('filterProv')
+        return p
+      }, { replace: true })
     }
   }, [])
 
@@ -751,7 +784,8 @@ export default function InventarioPage() {
   const puedeVerAutorizaciones = puedeSupervisarModulo(user, 'inventario')
 
   const {
-    autorizaciones, isLoading: autLoading, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
   } = useSupervisorAutorizaciones(
     'inventario',
     'inventario_lineas(lpn, cantidad, producto_id, productos(nombre, sku, unidad_medida))',
@@ -6133,6 +6167,11 @@ export default function InventarioPage() {
           isLoading={autLoading}
           onReasignar={reasignarAutorizacion}
           resumenDe={resumenDeAutorizacion}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
         >
           {autLoading ? (
             <div className="flex items-center justify-center py-16">

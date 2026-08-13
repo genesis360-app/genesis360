@@ -1,9 +1,9 @@
 ---
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
-tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts]
-updated: 2026-08-11
+tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging, pildoras, buscador]
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
+updated: 2026-08-12
 ---
 
 # Módulo Pedidos
@@ -123,6 +123,15 @@ generar tareas WMS reales — "lanzar" — es la Fase PED3, todavía no existe e
   sumado a `DEPOSITO_ALLOWED` (el rol DEPOSITO tiene una whitelist de rutas permitidas aparte del nav).
 - **Listado** de pedidos del tenant (RLS ya filtra por sucursal), filtro por estado, expandible por
   fila (muestra las líneas + atributos + notas).
+- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)**:
+  el buscador de texto plano se reemplazó por `<BuscadorPildoras>` (mismo componente que ya usa
+  `/picking`) vía `src/lib/pedidosFiltro.ts` (campos `Pedido`/`Referencia`/`Cliente`, sobre el núcleo
+  compartido `pildorasFiltro.ts`). GO encontró que buscar "2" también traía el pedido 82 y el 102
+  (substring). El campo **`Pedido` hace match EXACTO** (es un identificador — `pedidosFiltro.ts`
+  reinterpreta `:`/`=` como igualdad exacta solo para ese campo); `Referencia`/`Cliente` siguen por
+  substring normal. Los deep-links "Ver pedido"/"Ver en Picking" desde `/alertas` ahora arman
+  directamente la píldora `Pedido:N` en vez del número suelto. Detalle completo del mecanismo en
+  [[wiki/features/filtro-pildoras]] → "Extensión a Pedidos y Ventas".
 - **"Nuevo pedido" (modal):**
   - Tipo de pedido (obligatorio, catálogo `tipos_pedido`) — determina si el cliente es obligatorio
     (`tipoSel.cliente_obligatorio`).
@@ -904,6 +913,10 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
   crédito (`clientes.limite_credito`) ahora también lo valida Pedidos (mig 299, ver arriba)
 - [[wiki/features/configuracion]] — tab "Pedidos" (PED7): numeración, cierre automático, tipos de
   pedido, editor E3 de roles por transición
+- [[wiki/features/filtro-pildoras]] — 🆕 2026-08-12: el buscador de `/pedidos` se migró de texto plano
+  a `<BuscadorPildoras>` (`src/lib/pedidosFiltro.ts`), con match exacto en el campo `Pedido`
+- [[wiki/features/alertas]] — origen del pedido de esta ronda (deep-links `Pedido:N` exactos desde
+  las secciones de pedidos vencidos/sin avanzar)
 - [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 350, 351
 - `relevamiento-unidades-medida-empaque-reglas-negocio.html` — relevamiento nuevo (2026-07-23) para
   separar Unidad de Medida física (kg/g/L, conversión universal) de Nivel de Empaque (Caja/Pallet,

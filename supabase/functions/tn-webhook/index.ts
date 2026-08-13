@@ -243,6 +243,7 @@ serve(async (req) => {
 
   // 4. Encontrar o crear cliente
   let clienteId: string | null = null
+  let clienteNombre: string | null = null
   const customer = order.customer
 
   if (customer) {
@@ -253,21 +254,23 @@ serve(async (req) => {
 
     const { data: existingCliente } = await supabase
       .from('clientes')
-      .select('id')
+      .select('id, nombre')
       .eq('tenant_id', tenant_id)
       .or(orFilter)
       .maybeSingle()
 
     if (existingCliente) {
       clienteId = existingCliente.id
+      clienteNombre = existingCliente.nombre
     } else {
       // INSERT — si hay race condition y ya fue creado, el error 23505 lo capturamos
+      const nombreNuevo = customer.name ?? 'Cliente TiendaNube'
       const { data: newCliente, error: insertErr } = await supabase
         .from('clientes')
         .insert({
           tenant_id,
           sucursal_id,
-          nombre:   customer.name ?? 'Cliente TiendaNube',
+          nombre:   nombreNuevo,
           email:    customer.email ?? null,
           telefono: customer.phone ?? null,
         })
@@ -275,12 +278,15 @@ serve(async (req) => {
         .maybeSingle()
       if (newCliente?.id) {
         clienteId = newCliente.id
+        clienteNombre = nombreNuevo
       } else if (insertErr?.code === '23505' && customer.email) {
         // Duplicado por race condition — buscar el existente
         const { data: fallback } = await supabase.from('clientes')
-          .select('id').eq('tenant_id', tenant_id).eq('email', customer.email).maybeSingle()
+          .select('id, nombre').eq('tenant_id', tenant_id).eq('email', customer.email).maybeSingle()
         clienteId = fallback?.id ?? null
+        clienteNombre = fallback?.nombre ?? null
       } else {
+        console.error('Error creando cliente desde pedido TN:', insertErr?.message ?? 'sin newCliente.id')
         clienteId = null
       }
     }
@@ -378,6 +384,7 @@ serve(async (req) => {
       tenant_id,
       sucursal_id,
       cliente_id:             clienteId,
+      cliente_nombre:         clienteNombre,
       estado:                 estadoFinal,
       origen:                 'TiendaNube',
       tracking_id:            String(order.number),

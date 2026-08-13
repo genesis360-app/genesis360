@@ -1,9 +1,9 @@
 ---
 title: Ventas / POS
 category: features
-tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, src/lib/tiers.ts]
-updated: 2026-08-11
+tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, src/lib/tiers.ts, src/lib/ventasFiltro.ts]
+updated: 2026-08-12
 ---
 
 # Ventas / POS
@@ -65,6 +65,24 @@ POS completo integrado con inventario, caja, clientes y facturación AFIP.
 > confirmó que la query vieja bloqueaba el botón y la nueva lo desbloquea; esa venta sigue en ese
 > estado en DEV, dejada como evidencia viva del bug (sin backfill/fix retroactivo de datos). No
 > confundir con la venta #619 (caso de estudio de v1.165.0, arriba) — son ventas reales distintas.
+
+> 🧾 **Revisión del flujo Presupuesto→Finalizar (2026-08-12, solo análisis, sin cambios de código).**
+> GO preguntó si tenía sentido que un Presupuesto (`estado='pendiente'`) mostrara tanto "Reservar
+> stock" como "Finalizar (rebaja stock)" — se revisó `VentasPage.tsx` a fondo pensando en
+> simple/intuitivo/flexible. **Conclusión de lógica**: es segura en ambos caminos, sin riesgo de
+> sobreventa ni de plata mal calculada — ambos botones llaman al mismo `cambiarEstado` (una sola
+> implementación para `nuevoEstado === 'despachada'`), y el guard `PRES-08` ya distingue explícitamente
+> el caso reservada→despachada del presupuesto→despachada directo al calcular el stock disponible real;
+> esto confirma que el guard de "un solo camino de rebaje" (migs 350/351, v1.165.0/v1.166.0, arriba) SÍ
+> aplica igual al finalizar directo desde presupuesto. **Hallazgo real de UX (no de lógica)**: los 2
+> botones son visualmente IDÉNTICOS (mismo `bg-accent` lleno, mismo peso visual, ancho completo,
+> apilados, sin copy que explique cuándo usar cada uno) — un cajero nuevo no tiene ninguna señal de cuál
+> es la acción "normal", y el copy actual habla del efecto sobre el STOCK cuando la pregunta real del
+> cajero es sobre el CLIENTE ("¿se lo lleva ahora o vuelve después?"). **Recomendación dada a GO** (sin
+> implementar, queda a su criterio): mantener ambas salidas (correctas y necesarias) pero diferenciarlas
+> visualmente (primaria llena / secundaria outline) + copy en términos de cliente — cambio de bajo
+> riesgo si se pide, solo JSX de esos 2 botones, no toca `cambiarEstado`. Ver
+> `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 
@@ -447,6 +465,16 @@ Filtros: búsqueda libre, estado, rango de fechas.
 - Paginado: empieza en limit 50, botón "Cargar más" (+50)
 - Filtro por categoría: client-side, lazy (solo cuando `tab === 'historial'`)
 - Apertura por URL: `/ventas?id=XXX` abre el modal de esa venta directamente
+- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)**:
+  el buscador de texto plano se reemplazó por `<BuscadorPildoras>` (mismo componente de `/picking`)
+  vía `src/lib/ventasFiltro.ts` (campos `Venta`/`Cliente`, sobre el núcleo compartido
+  `pildorasFiltro.ts`). GO encontró que buscar "2" también traía la venta 12, la 201 (substring). El
+  campo **`Venta` hace match EXACTO** (identificador — `ventasFiltro.ts` reinterpreta `:`/`=` como
+  igualdad exacta solo para ese campo, mismo criterio que `pedidosFiltro.ts`); `Cliente` sigue por
+  substring normal. El link "Ver venta" desde `/alertas` ahora combina DOS mecanismos a la vez: la
+  píldora `Venta:N` (`?busqueda=`, filtra la lista de fondo) **y** el `?id=<uuid>` preexistente (abre
+  el modal de detalle encima). Detalle completo del mecanismo en [[wiki/features/filtro-pildoras]] →
+  "Extensión a Pedidos y Ventas".
 
 ---
 
@@ -523,6 +551,8 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 - [[wiki/features/devoluciones]]
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/escaneo-barcode]]
+- [[wiki/features/filtro-pildoras]] — 🆕 2026-08-12: buscador de Historial migrado a píldoras
+- [[wiki/features/alertas]] — origen del pedido de esta ronda (deep-link "Ver venta" con `Venta:N` exacto)
 - [[wiki/development/testing]]
 
 ---

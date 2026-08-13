@@ -2,9 +2,9 @@
 name: relevamiento_repositores_respuestas
 description: Respuestas de Fede al relevamiento del módulo Repositores (Fase E del backlog Comercial 25/7) + revisión de Claude + clarificaciones de GO. Reveló que "Fase E" son 4 proyectos con dependencias reales, no una sola fase.
 type: project
-status: ✅ MÓDULO 100% COMPLETO (4/4 fases) — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352+353), Fase 2 (asignación automática + reasignación manual, mig 354), Fase 3 (reposición física a góndola, mig 355+356) y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA fase) CONSTRUIDAS Y VERIFICADAS EN DEV el 2026-08-11/12 — ver [[wiki/features/repositores]]. Con esto, las 35 preguntas de este relevamiento tienen EJECUCIÓN REAL (no solo respuesta escrita), salvo notificaciones (J) y reportes (K) que quedaron fuera del alcance final del módulo. NINGUNA de las migraciones (352-357) deployada a PROD todavía — el deploy queda en curso a continuación, en la misma sesión que cerró la Fase 4. La Fase 3 CORRIGIÓ la resolución anterior de I3 (ver nota abajo, sección I).
+status: ✅ MÓDULO 100% COMPLETO — las 35 preguntas (A-L) tienen EJECUCIÓN REAL. Fases operativas 1-4 (núcleo+disparadores+prioridad mig 352+353, asignación/reasignación mig 354, reposición física a góndola mig 355+356, etiquetas+impresión mig 357) construidas y verificadas en DEV el 2026-08-11/12 y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR #328). J (notificaciones) y K (reportes) — que habían quedado diferidos al cerrar la Fase 4 — se construyeron después, en una sesión posterior el mismo 2026-08-12, EN DEV, sin migración SQL nueva. Ver [[wiki/features/repositores]]. La Fase 3 CORRIGIÓ la resolución anterior de I3 (ver nota abajo, sección I).
 source: relevamiento-repositores-reglas-negocio.html
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Respuestas — Relevamiento Reglas de Negocio · Repositores
@@ -15,10 +15,11 @@ updated: 2026-08-11
 > Repositores todavía, faltan las respuestas de los 3 relevamientos derivados" — texto dejado como
 > registro histórico, **ya superado**.
 >
-> ✅ **Estado actual (2026-08-11/12): módulo 100% COMPLETO, 4/4 fases construidas y verificadas en
-> DEV** (mig 352-357) — ver el `status` del frontmatter arriba y [[wiki/features/repositores]].
-> Ninguna migración deployada a PROD todavía; el deploy queda en curso a continuación de la sesión que
-> cerró la Fase 4.
+> ✅ **Estado actual (2026-08-12): módulo 100% COMPLETO.** Las 4 fases operativas (mig 352-357)
+> construidas, verificadas en DEV y **DEPLOYADAS A PROD (v1.168.0, PR #328)**. J (notificaciones) y K
+> (reportes) — diferidos a propósito al cerrar la Fase 4 — se construyeron después, en una sesión
+> posterior el mismo día, EN DEV, sin migración SQL nueva. Ver el `status` del frontmatter arriba y
+> [[wiki/features/repositores]].
 
 ---
 
@@ -140,15 +141,15 @@ tensiona con mover esos datos a "nivel interno" — detalle completo en `log.md`
 
 | # | Respuesta | Resumen |
 |---|---|---|
-| J1 | Notificación dentro del sistema únicamente por ahora. Cuando exista app móvil descargable, llega al dispositivo | — |
-| J2 | Alerta directa a supervisor/dueño si quedan tareas sin completar al cierre del día, con reporte completo. Formato sugerido: mail automático si ya existe esa infra (si no, notificación interna) | ✅ **Verificado por Claude**: sí existe — `send-email` (Resend) ya se usa para tickets/notificaciones. Confirmar directo, no hace falta re-preguntarle a Fede. |
+| J1 | Notificación dentro del sistema únicamente por ahora. Cuando exista app móvil descargable, llega al dispositivo | ✅ **Construido (2026-08-12)** — notificación in-app en la tabla `notificaciones` ya existente, insertada por la Edge Function `repositores-cierre-dia-sweep` — ver [[wiki/features/repositores]] → "Notificaciones (J) y Reportes (K)". |
+| J2 | Alerta directa a supervisor/dueño si quedan tareas sin completar al cierre del día, con reporte completo. Formato sugerido: mail automático si ya existe esa infra (si no, notificación interna) | ✅ **Construido (2026-08-12)** — Edge Function `repositores-cierre-dia-sweep` (cron cada 15 min vía GitHub Actions) notifica in-app **y** por email real a todos los que pueden supervisar el módulo si, superada la hora de `sucursales.horario_cierre` (configurable por sucursal, mig 124 ya existente), quedan tareas pendientes de cualquiera de los 2 tipos; dedupe sin columna nueva (no repite el mismo aviso el mismo día) — ver [[wiki/features/repositores]] → "Notificaciones (J) y Reportes (K)". |
 
 ## K. Reportes
 
 | # | Respuesta | Resumen |
 |---|---|---|
-| K1 | Ambos reportes importan: cantidad de tareas completadas por repositor, y tiempo promedio disparo→completada. Objetivo: entender demoras, no presionar al empleado | — |
-| K2 | Alcanza con verlo en pantalla, pero tiene que poder descargarse | — |
+| K1 | Ambos reportes importan: cantidad de tareas completadas por repositor, y tiempo promedio disparo→completada. Objetivo: entender demoras, no presionar al empleado | ✅ **Construido (2026-08-12)** — tab "Reportes" nuevo en `RepositoresPage.tsx` (`src/components/RepositoresReportes.tsx`), tabla por repositor con cantidad completada + tiempo promedio disparo→completada, para AMBOS tipos de tarea (cambio de precio y reposición física); visible SOLO a quien supervisa el módulo, respetando el objetivo de no presionar al empleado — ver [[wiki/features/repositores]] → "Notificaciones (J) y Reportes (K)". |
+| K2 | Alcanza con verlo en pantalla, pero tiene que poder descargarse | ✅ **Construido (2026-08-12)** — tabla en pantalla + botón exportar a Excel (mismo patrón que Pedidos/Gastos) — ver [[wiki/features/repositores]] → "Notificaciones (J) y Reportes (K)". |
 
 ## L. Prioridades
 
@@ -316,9 +317,11 @@ PDF de 58.910 bytes, aislamiento del caso sin código de barras — 3.480 bytes 
 barcode, campo "Contenido" y card de Config verificados visualmente). Migración self-reviewed sin
 `migration-reviewer` (perfil de riesgo bajo: solo 4 `ADD COLUMN`, sin RLS/triggers/funciones nuevos).
 
-**Con esto, el módulo Repositores queda 100% construido: Fases 1-4 (mig 352-357), TODAS verificadas
-en DEV, NINGUNA en PROD todavía.** Notificaciones (J) y reportes (K) del relevamiento original quedan
-fuera del alcance final del módulo — no se construyeron como parte de Repositores.
+**Con esto, las 4 fases OPERATIVAS quedan construidas: Fases 1-4 (mig 352-357), TODAS verificadas
+en DEV, NINGUNA en PROD todavía.** Notificaciones (J) y reportes (K) del relevamiento original quedan,
+en este punto de la sesión, diferidos del alcance de esta tanda de construcción (decisión consciente,
+no deuda técnica) — ✅ **corrección: se construyeron después, el mismo 2026-08-12, en una sesión
+posterior — ver "Actualización 2026-08-12 (J/K)" más abajo, el punto final de este relevamiento.**
 
 **Próxima sesión**: confirmar el resultado real del deploy a PROD de Repositores (mig 352-357) — GO ya
 pidió deployar TODO junto, el deploy queda en curso a continuación de esta misma sesión (no
@@ -333,6 +336,32 @@ main`; `list_migrations` contra el proyecto PROD (`jjffnbrdjchquexdfgwq`) confir
 `357_repositores_fase4_etiquetas`, 352-357 aplicadas justo después de `351_actividad_log_venta_id`;
 `curl` real a `https://genesis360.pro/` confirmó la cadena "v1.168.0" en el bundle real servido.
 
-**Con esto, las 4 fases del módulo (mig 352-357) quedan construidas, verificadas Y en PROD.**
-Notificaciones (J) y reportes (K) del relevamiento original siguen fuera del alcance final del módulo
-— no se construyeron como parte de Repositores. No queda ningún punto pendiente de este relevamiento.
+**Con esto, las 4 fases OPERATIVAS del módulo (mig 352-357) quedan construidas, verificadas Y en PROD.**
+Notificaciones (J) y reportes (K) del relevamiento original siguen, en este punto de la sesión, fuera
+del alcance de esta tanda — ✅ **corrección: se construyeron después, el mismo 2026-08-12, en una
+sesión posterior — ver "Actualización 2026-08-12 (J/K)" más abajo, el punto final de este relevamiento.**
+
+## ✅ Actualización 2026-08-12 (J/K) — sesión posterior al deploy de v1.168.0: Notificaciones (J) y Reportes (K) CONSTRUIDAS Y VERIFICADAS EN DEV — ya no queda ningún punto de este relevamiento sin resolver
+
+Con las 4 fases operativas ya en PROD (actualización de arriba), GO preguntó si quedaba algo pendiente
+de Repositores — se le confirmó que solo quedaban estos 2 puntos (J/K), diferidos a propósito al cerrar
+la Fase 4 (no deuda técnica, decisión consciente del momento). GO pidió retomarlos. El relevamiento de
+este mismo documento (secciones J y K arriba) ya tenía las respuestas completas — no hizo falta
+re-relevar, se fue directo a diseño técnico con 3 decisiones de opciones confirmadas por GO: cubrir
+AMBOS tipos de tarea del módulo (cambio de precio Y reposición física, esta última agregada recién en
+la Fase 3, posterior al relevamiento original de J/K); la hora de "cierre del día" que dispara J2 es
+CONFIGURABLE POR SUCURSAL (hallazgo real: ya existía en el schema, `sucursales.horario_cierre`, mig
+124, sin migración nueva); el tab "Reportes" nuevo queda visible SOLO para quien supervisa el módulo,
+mismo criterio que "Reasignar" (Fase 2), respetando el objetivo que K1 ya dejaba explícito ("entender
+demoras, no presionar al empleado").
+
+**Sin ninguna migración SQL nueva** — Edge Function `repositores-cierre-dia-sweep` (J, cron cada 15 min
+vía GitHub Actions) + tab "Reportes" nuevo en `RepositoresPage.tsx` (K, `RepositoresReportes.tsx`,
+últimos 30 días, export a Excel). Detalle técnico completo, verificación real (Edge Function invocada 3
+veces por curl contra DEV; tab Reportes verificado con Playwright real) y estado en
+[[wiki/features/repositores]] → "Notificaciones (J) y Reportes (K)".
+
+**Estado: construido y verificado EN DEV, SIN commitear todavía** — la Edge Function ya está deployada
+a DEV; el cron de GitHub Actions no arranca hasta que el workflow llegue a `main` (mergeado). **Con
+esto, las 35 preguntas de este relevamiento (A-L) quedan TODAS con ejecución real — el módulo
+Repositores queda 100% completo, sin ningún punto pendiente.**

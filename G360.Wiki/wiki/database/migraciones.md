@@ -37,10 +37,18 @@ acciones separadas a propósito). Self-reviewed sin `migration-reviewer` (perfil
 RLS/SECURITY DEFINER/movimiento de stock a diferencia de 352-356). Verificado con Playwright real
 contra DEV (2 tareas de prueba cubriendo ambas ramas de G1, descarga real de PDF de 58.910 bytes,
 aislamiento del caso sin código de barras confirmando `if (codigo)` — 3.480 bytes sin la imagen del
-barcode, campo "Contenido" y card de Config verificados visualmente). **Cierra el módulo Repositores:
-las 4 fases (mig 352-357) construidas, verificadas Y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR
+barcode, campo "Contenido" y card de Config verificados visualmente). **Cierra las 4 fases OPERATIVAS
+de Repositores: mig 352-357 construidas, verificadas Y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR
 #328)** — deploy verificado de forma independiente (`gh pr view 328` MERGED, `list_migrations` de PROD
 confirma 352-357 aplicadas, bundle real con la cadena "v1.168.0"). Ver [[wiki/features/repositores]].
+
+📌 **Nota histórica (sin migración propia, no agrega fila a esta tabla)**: los 2 puntos que quedaban del
+relevamiento original de Repositores — Notificaciones (J) y Reportes (K) — se construyeron en una
+sesión posterior el mismo 2026-08-12, EN DEV, **sin ninguna migración SQL nueva** (Edge Function
+`repositores-cierre-dia-sweep` + tab "Reportes" nuevo, reusando `sucursales.horario_cierre` ya
+existente desde la mig 124 y `fn_usuarios_supervisan_modulo` ya existente de Supervisión). Con esto, el
+módulo Repositores queda 100% completo. Detalle en [[wiki/features/repositores]] → "Notificaciones (J)
+y Reportes (K)".
 
 **356 (`356_fix_dedupe_reposicion_gondola.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
 Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado

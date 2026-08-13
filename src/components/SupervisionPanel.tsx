@@ -4,7 +4,7 @@ import { ClipboardList, UserCog, History, BarChart3 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
-import type { EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { AUT_PAGE_SIZES, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
 
 // Patrón "Pestaña de Supervisor" reusable (relevamiento derivado #2 hacia Repositores, decisiones
 // A3/A4/B1/B2/E1/E2 — 2026-08-09). Sub-secciones: Aprobaciones (contenido específico del módulo,
@@ -23,12 +23,26 @@ interface Props {
   onReasignar: (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => Promise<void>
   resumenDe: (aut: any) => string
   children: ReactNode
+  // Paginación (mismo patrón que HistorialPage.tsx) — opcional para no romper otros consumidores
+  // del componente si algún día lo llaman sin pasarla.
+  totalCount?: number
+  page?: number
+  pageSize?: number
+  setPage?: (p: number | ((prev: number) => number)) => void
+  setPageSize?: (n: number) => void
 }
 
-export function SupervisionPanel({ modulo, autEstado, onEstadoChange, autorizaciones, isLoading, onReasignar, resumenDe, children }: Props) {
+export function SupervisionPanel({
+  modulo, autEstado, onEstadoChange, autorizaciones, isLoading, onReasignar, resumenDe, children,
+  totalCount, page, pageSize, setPage, setPageSize,
+}: Props) {
   const { tenant, user } = useAuthStore()
   const [subTab, setSubTab] = useState<SubTab>('aprobaciones')
   const [reasignando, setReasignando] = useState<string | null>(null)
+  const [editandoCantidad, setEditandoCantidad] = useState(false)
+  const [cantidadInput, setCantidadInput] = useState('')
+  const paginado = totalCount !== undefined && page !== undefined && pageSize !== undefined && !!setPage && !!setPageSize
+  const totalPages = paginado ? Math.max(1, Math.ceil(totalCount! / pageSize!)) : 1
 
   const { data: usuarios = [] } = useQuery({
     queryKey: ['usuarios-supervisa', modulo, tenant?.id],
@@ -87,6 +101,64 @@ export function SupervisionPanel({ modulo, autEstado, onEstadoChange, autorizaci
     { id: 'kpis', label: 'KPIs', icon: BarChart3 },
   ]
 
+  // Footer "Mostrando X de Y" (mismo patrón que HistorialPage.tsx) — compartido entre las
+  // sub-pestañas Aprobaciones y Reasignar, que muestran la MISMA lista paginada.
+  const paginacionFooter = paginado && autorizaciones.length > 0 && (
+    <div className="flex items-center justify-between pt-1 gap-2 flex-wrap">
+      <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <span>Mostrar</span>
+        {editandoCantidad ? (
+          <input autoFocus type="number" min="1" max="500" value={cantidadInput}
+            onChange={e => setCantidadInput(e.target.value)}
+            onBlur={() => {
+              const n = parseInt(cantidadInput)
+              if (n > 0 && n <= 500) { setPageSize!(n); setPage!(0) }
+              setEditandoCantidad(false)
+            }}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            className="w-16 px-2 py-1 border border-accent-text rounded-lg text-center focus:outline-none" />
+        ) : (
+          <span
+            onDoubleClick={() => { setEditandoCantidad(true); setCantidadInput(String(pageSize)) }}
+            className="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:text-accent-text"
+            title="Doble click para ingresar número custom">
+            {pageSize}
+          </span>
+        )}
+        <div className="flex gap-0.5">
+          {AUT_PAGE_SIZES.map(s => (
+            <button key={s} onClick={() => { setPageSize!(s); setPage!(0) }}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${pageSize === s ? 'bg-accent text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={() => setPage!(0)} disabled={page === 0}
+          className="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+          «
+        </button>
+        <button onClick={() => setPage!(p => Math.max(0, p - 1))} disabled={page === 0}
+          className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+          ←
+        </button>
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {page! + 1} / {totalPages}
+          <span className="text-xs ml-1">({totalCount} en total)</span>
+        </span>
+        <button onClick={() => setPage!(p => Math.min(totalPages - 1, p + 1))} disabled={page! >= totalPages - 1}
+          className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+          →
+        </button>
+        <button onClick={() => setPage!(totalPages - 1)} disabled={page! >= totalPages - 1}
+          className="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+          »
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
@@ -111,6 +183,7 @@ export function SupervisionPanel({ modulo, autEstado, onEstadoChange, autorizaci
             ))}
           </div>
           {children}
+          {paginacionFooter}
         </div>
       )}
 
@@ -157,6 +230,7 @@ export function SupervisionPanel({ modulo, autEstado, onEstadoChange, autorizaci
               </div>
             ))
           )}
+          {paginacionFooter}
         </div>
       )}
 

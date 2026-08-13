@@ -2,7 +2,7 @@ import { useRef, useState, useMemo, useEffect } from 'react'
 import { PageTabs } from '@/components/PageTabs'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
+  Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X, Search,
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
   Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
   Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock, FileCheck, BarChart3,
@@ -175,7 +175,7 @@ export default function GastosPage() {
     : ['Factura B', 'Factura C', 'Ticket']
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'cierres'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
@@ -248,6 +248,15 @@ export default function GastosPage() {
   // ── Tab OC — estado ──────────────────────────────────────────────────────
   const [ocFiltroEstadoPago, setOcFiltroEstadoPago] = useState('')
   const [ocFiltroProveedor, setOcFiltroProveedor]   = useState('')
+  // Deep-link desde AlertasPage ("Ver todas" de OC vencidas/por vencer) — replica el criterio
+  // compuesto (estado_pago abierto + fecha_vencimiento_pago) que no entra en un solo select
+  // (GO, 2026-08-12: antes caía en /gastos?tab=oc sin filtrar nada).
+  const [ocFiltroVencidas, setOcFiltroVencidas] = useState(() => searchParams.get('ocVencidas') === '1')
+  const [ocFiltroProximas, setOcFiltroProximas] = useState(() => searchParams.get('ocProximas') === '1')
+  // Buscador por Nº de OC — no existía ningún filtro de texto acá (GO, 2026-08-12: el link
+  // "Regularizar" de una OC puntual desde Alertas expandía la fila pero, entre muchas OC, había
+  // que buscarla a mano igual). `?oc=<numero>` (el Nº visible, no el uuid interno) lo pre-completa.
+  const [ocBusqueda, setOcBusqueda] = useState(() => searchParams.get('oc') ?? '')
   const [ocModalId, setOcModalId]                   = useState<string | null>(null)
   const [ocMediosPago, setOcMediosPago]             = useState<{tipo: string; monto: string}[]>([{tipo: 'Transferencia', monto: ''}])
   const [ocPagoTipo, setOcPagoTipo]                 = useState<'pago' | 'cc'>('pago')
@@ -655,9 +664,21 @@ export default function GastosPage() {
   const ocSeleccionada = ocs.find((o: any) => o.id === ocModalId) ?? null
 
   const ocsFiltradas = useMemo(() => {
+    const hoyStr = new Date().toISOString().split('T')[0]
+    const en3diasStr = new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0]
+    const estadosAbiertos = ['pendiente_pago', 'pago_parcial', 'cuenta_corriente']
+    const qOcRaw = ocBusqueda.trim()
+    const qOc = qOcRaw.toLowerCase()
+    // Un número puro es un identificador (Nº de OC), no texto libre — buscar "7" no debería traer
+    // también la OC #17 y la #27 (GO, 2026-08-12: mismo criterio que se aplicó en Pedidos).
+    const qOcEsNumero = /^\d+$/.test(qOcRaw)
     const filtradas = ocs.filter((o: any) => {
       if (ocFiltroEstadoPago && o.estado_pago !== ocFiltroEstadoPago) return false
       if (ocFiltroProveedor && o.proveedor_id !== ocFiltroProveedor) return false
+      if (ocFiltroVencidas && !(estadosAbiertos.includes(o.estado_pago) && o.fecha_vencimiento_pago && o.fecha_vencimiento_pago < hoyStr)) return false
+      if (ocFiltroProximas && !(estadosAbiertos.includes(o.estado_pago) && o.fecha_vencimiento_pago && o.fecha_vencimiento_pago >= hoyStr && o.fecha_vencimiento_pago <= en3diasStr)) return false
+      if (qOcEsNumero && String(o.numero) !== qOcRaw) return false
+      if (qOc && !qOcEsNumero && !String(o.numero).includes(qOc) && !(o.proveedores?.nombre ?? '').toLowerCase().includes(qOc)) return false
       return true
     })
     // Pagadas siempre al fondo
@@ -666,7 +687,7 @@ export default function GastosPage() {
       const bPagada = b.estado_pago === 'pagada' ? 1 : 0
       return aPagada - bPagada
     })
-  }, [ocs, ocFiltroEstadoPago, ocFiltroProveedor])
+  }, [ocs, ocFiltroEstadoPago, ocFiltroProveedor, ocFiltroVencidas, ocFiltroProximas, ocBusqueda])
 
   const hoy = new Date().toISOString().split('T')[0]
 
@@ -2959,6 +2980,12 @@ export default function GastosPage() {
         <div className="space-y-4">
           {/* Filtros */}
           <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative flex-1 min-w-[160px] max-w-[240px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={ocBusqueda} onChange={e => setOcBusqueda(e.target.value)}
+                placeholder="Buscar por Nº o proveedor…"
+                className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+            </div>
             <select value={ocFiltroEstadoPago} onChange={e => setOcFiltroEstadoPago(e.target.value)}
               className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text">
               <option value="">Todos los estados</option>
@@ -2972,8 +2999,20 @@ export default function GastosPage() {
               <option value="">Todos los proveedores</option>
               {(proveedoresOC as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
-            {(ocFiltroEstadoPago || ocFiltroProveedor) && (
-              <button onClick={() => { setOcFiltroEstadoPago(''); setOcFiltroProveedor('') }}
+            {ocFiltroVencidas && (
+              <button onClick={() => setOcFiltroVencidas(false)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                Vencidas sin pagar <X size={12} />
+              </button>
+            )}
+            {ocFiltroProximas && (
+              <button onClick={() => setOcFiltroProximas(false)}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                Por vencer en 3 días <X size={12} />
+              </button>
+            )}
+            {(ocFiltroEstadoPago || ocFiltroProveedor || ocFiltroVencidas || ocFiltroProximas || ocBusqueda) && (
+              <button onClick={() => { setOcFiltroEstadoPago(''); setOcFiltroProveedor(''); setOcFiltroVencidas(false); setOcFiltroProximas(false); setOcBusqueda('') }}
                 className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <X size={14} /> Limpiar
               </button>
@@ -2987,7 +3026,7 @@ export default function GastosPage() {
           ) : ocsFiltradas.length === 0 ? (
             <div className="flex flex-col items-center py-16 text-gray-400">
               <ShoppingCart size={36} className="mb-3 opacity-30" />
-              <p className="text-sm">No hay órdenes de compra{ocFiltroEstadoPago || ocFiltroProveedor ? ' con esos filtros' : ''}</p>
+              <p className="text-sm">No hay órdenes de compra{(ocFiltroEstadoPago || ocFiltroProveedor || ocBusqueda) ? ' con esos filtros' : ''}</p>
               <p className="text-xs mt-1">Creá OCs desde el módulo Proveedores</p>
             </div>
           ) : (
@@ -3009,7 +3048,9 @@ export default function GastosPage() {
                 const diasParcial = Math.floor((Date.now() - new Date(oc.updated_at ?? oc.created_at).getTime()) / 86400000)
                 const faltanteAnejo = oc.estado === 'recibida_parcial' && diasParcial >= diasAlertaFaltante
 
-                const expanded = ocExpandedId === oc.id
+                // Auto-expandida si el buscador la aisló a ella sola (ej. deep-link ?oc=<numero>
+                // desde Alertas) — evita un click extra para ver el detalle que ya se buscó puntual.
+                const expanded = ocExpandedId === oc.id || (!!ocBusqueda.trim() && ocsFiltradas.length === 1)
                 return (
                   <div key={oc.id} className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border transition-all ${esVencida ? 'border-red-300 dark:border-red-700' : oc.estado_pago === 'pagada' ? 'border-gray-100 dark:border-gray-700 opacity-70' : 'border-gray-100 dark:border-gray-700'}`}>
                     <div className="flex items-center gap-3 px-4 py-3">

@@ -116,7 +116,12 @@ export default function ClientesPage() {
   const confirmar = useConfirm()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes'>('lista')
+  // Deep-link desde AlertasPage ("Ver todos" de Clientes con saldo pendiente) — la pestaña Cuenta
+  // Corriente ya lista exactamente eso, solo faltaba poder aterrizar ahí directo (GO, 2026-08-12).
+  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes'>(() => {
+    const t = searchParams.get('tab')
+    return (t === 'cc' || t === 'reportes') ? t : 'lista'
+  })
   const [search, setSearch] = useState('')
   // C6 — segmentación de clientes para marketing (filtros + export)
   const [segEtiqueta, setSegEtiqueta] = useState('')
@@ -131,6 +136,11 @@ export default function ClientesPage() {
   const [dniError, setDniError] = useState<string | null>(null)
   const [telError, setTelError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'))
+  // GO 2026-08-12: "Ver ficha" desde Alertas (cliente con saldo pendiente) ya expandía la ficha
+  // correcta, pero en una lista de varios clientes no había ninguna señal de POR CUÁL desplazarse
+  // — el usuario tenía que scrollear a ciegas. Guardamos el id de deep-link UNA sola vez (no se
+  // re-dispara si después el usuario expande otra ficha a mano) para poder scrollear + resaltar.
+  const deepLinkClienteId = useRef(searchParams.get('id')).current
   const [innerTab, setInnerTab] = useState<'historial' | 'domicilios' | 'notas' | 'cambios'>('historial')
   const [filtroEtiqueta, setFiltroEtiqueta] = useState('')
   const [nuevaNota, setNuevaNota] = useState('')
@@ -185,6 +195,15 @@ export default function ClientesPage() {
     },
     enabled: !!tenant,
   })
+
+  // Scrollea a la ficha del deep-link una vez que la lista terminó de cargar (antes no había
+  // ninguna forma de saber a cuál de todos los clientes se refería el link, solo se expandía en
+  // silencio — GO, 2026-08-12).
+  useEffect(() => {
+    if (!deepLinkClienteId || isLoading) return
+    const el = document.getElementById(`cliente-card-${deepLinkClienteId}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [deepLinkClienteId, isLoading])
 
   // F1 — catálogo de etiquetas: predefinidas del tenant ∪ las ya usadas en clientes
   const { data: etiquetasCatalogo = [] } = useQuery({
@@ -1388,8 +1407,10 @@ export default function ClientesPage() {
           {clientesFiltrados.map((c: any) => {
             const stats = statsMap[c.id]
             const isExpanded = expandedId === c.id
+            const esDeepLink = deepLinkClienteId === c.id
             return (
-              <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div key={c.id} id={`cliente-card-${c.id}`}
+                className={`bg-white dark:bg-gray-800 rounded-xl border shadow-sm overflow-hidden transition-colors ${esDeepLink ? 'border-accent-text ring-2 ring-accent-text/30' : 'border-gray-100'}`}>
                 <div className="p-4 flex items-center gap-3">
                   {/* Avatar */}
                   <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0 text-accent-text font-bold text-sm">

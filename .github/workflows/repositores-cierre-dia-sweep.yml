@@ -1,0 +1,22 @@
+name: Repositores — aviso de cierre de día (J1/J2)
+
+on:
+  schedule:
+    # Cada 15 minutos — el horario de "cierre" es configurable por sucursal (sucursales.horario_cierre),
+    # así que hace falta chequear seguido para no atrasarse mucho respecto de la hora real configurada.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  repositores-cierre-dia-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call repositores-cierre-dia-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/repositores-cierre-dia-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

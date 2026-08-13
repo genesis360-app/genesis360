@@ -15,6 +15,13 @@ import toast from 'react-hot-toast'
 import type { Alerta } from '@/lib/supabase'
 
 const RESERVAS_DIAS_LIMITE = 3
+// GO (2026-08-11): Alertas no es una lista única (como Historial) sino ~11 secciones
+// independientes — replicar el footer "Mostrando X de Y" en cada una saturaría la pantalla.
+// En su lugar: cada sección topea a este N (ordenada por relevancia) + link "Ver todas" al
+// módulo si hay más. Las secciones que agregan/filtran client-side (stock mínimo, sin
+// categoría, clientes con deuda) igual traen el set completo de la DB — el tope es solo de
+// renderizado ahí, para no falsear conteos de plata/stock (REGLA #0).
+const ALERTAS_DISPLAY_LIMIT = 15
 
 export default function AlertasPage() {
   const { tenant, user } = useAuthStore()
@@ -83,21 +90,24 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
-  const { data: reservasViejas = [], isLoading: loadingReservas } = useQuery({
+  const { data: reservasViejasResult, isLoading: loadingReservas } = useQuery({
     queryKey: ['reservas-viejas', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await applyFilter(supabase
+      const { data, error, count } = await applyFilter(supabase
         .from('ventas')
-        .select('id, numero, cliente_nombre, cliente_telefono, total, created_at')
+        .select('id, numero, cliente_nombre, cliente_telefono, total, created_at', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'reservada')
         .lt('created_at', fechaLimite.toISOString()))
         .order('created_at', { ascending: true })
+        .limit(ALERTAS_DISPLAY_LIMIT)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     enabled: !!tenant,
   })
+  const reservasViejas = reservasViejasResult?.rows ?? []
+  const reservasViejasTotal = reservasViejasResult?.total ?? 0
 
   // ISS-080: `productos` no tiene sucursal_id (catálogo es del tenant). Si hay
   // sucursal activa, mostramos solo los productos sin categoría que tengan
@@ -138,139 +148,160 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
-  // Clientes con saldo pendiente (ventas pendientes/reservadas con deuda)
-  const { data: lineasSinUbicacion = [], isLoading: loadingSinUbic } = useQuery({
+  const { data: lineasSinUbicacionResult, isLoading: loadingSinUbic } = useQuery({
     queryKey: ['lineas-sin-ubicacion', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await applyFilter(supabase
+      const { data, error, count } = await applyFilter(supabase
         .from('inventario_lineas')
-        .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)')
+        .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .is('ubicacion_id', null))
         .gt('cantidad', 0)
         .order('created_at', { ascending: false })
+        .limit(ALERTAS_DISPLAY_LIMIT)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     // En modo básico el stock no usa ubicaciones (ubicacion_id siempre NULL) → la alerta
     // marcaría TODO como "sin ubicación" = ruido. Solo aplica en avanzado (WMS).
     enabled: !!tenant && modoAvanzado,
   })
+  const lineasSinUbicacion = lineasSinUbicacionResult?.rows ?? []
+  const lineasSinUbicacionTotal = lineasSinUbicacionResult?.total ?? 0
 
-  const { data: lineasSinProveedor = [], isLoading: loadingSinProv } = useQuery({
+  const { data: lineasSinProveedorResult, isLoading: loadingSinProv } = useQuery({
     queryKey: ['lineas-sin-proveedor', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await applyFilter(supabase
+      const { data, error, count } = await applyFilter(supabase
         .from('inventario_lineas')
-        .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)')
+        .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .is('proveedor_id', null)
         .gt('cantidad', 0)
         .order('created_at', { ascending: false }))
+        .limit(ALERTAS_DISPLAY_LIMIT)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     // Trazabilidad de proveedor por LPN es de WMS (avanzado); en básico es ruido.
     enabled: !!tenant && modoAvanzado,
   })
+  const lineasSinProveedor = lineasSinProveedorResult?.rows ?? []
+  const lineasSinProveedorTotal = lineasSinProveedorResult?.total ?? 0
 
   const hoyStr = new Date().toISOString().split('T')[0]
   const en3dias = new Date(); en3dias.setDate(en3dias.getDate() + 3)
   const en3diasStr = en3dias.toISOString().split('T')[0]
 
-  const { data: ocsVencidas = [], isLoading: loadingOcsVenc } = useQuery({
+  const { data: ocsVencidasResult, isLoading: loadingOcsVenc } = useQuery({
     queryKey: ['oc-vencidas', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await applyFilter(supabase
+      const { data, count } = await applyFilter(supabase
         .from('ordenes_compra')
-        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)')
+        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)
         .lt('fecha_vencimiento_pago', hoyStr)
         .order('fecha_vencimiento_pago', { ascending: true }))
-      return data ?? []
+        .limit(ALERTAS_DISPLAY_LIMIT)
+      return { rows: data ?? [], total: count ?? 0 }
     },
     // Las OC cuentan en AMBOS modos desde v1.126.0 (el tab de OC ya no es solo avanzado).
     enabled: !!tenant,
   })
+  const ocsVencidas = ocsVencidasResult?.rows ?? []
+  const ocsVencidasTotal = ocsVencidasResult?.total ?? 0
 
-  const { data: ocsProximas = [], isLoading: loadingOcsProx } = useQuery({
+  const { data: ocsProximasResult, isLoading: loadingOcsProx } = useQuery({
     queryKey: ['oc-proximas-vencer', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await applyFilter(supabase
+      const { data, count } = await applyFilter(supabase
         .from('ordenes_compra')
-        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)')
+        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)
         .gte('fecha_vencimiento_pago', hoyStr)
         .lte('fecha_vencimiento_pago', en3diasStr)
         .order('fecha_vencimiento_pago', { ascending: true }))
-      return data ?? []
+        .limit(ALERTAS_DISPLAY_LIMIT)
+      return { rows: data ?? [], total: count ?? 0 }
     },
     // Las OC cuentan en AMBOS modos desde v1.126.0 (el tab de OC ya no es solo avanzado).
     enabled: !!tenant,
   })
+  const ocsProximas = ocsProximasResult?.rows ?? []
+  const ocsProximasTotal = ocsProximasResult?.total ?? 0
 
-  const { data: lpnsVencidos = [], isLoading: loadingVencidos } = useQuery({
+  const { data: lpnsVencidosResult, isLoading: loadingVencidos } = useQuery({
     queryKey: ['lpns-vencidos', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date().toISOString().split('T')[0]
-      const { data, error } = await applyFilter(supabase
+      const { data, error, count } = await applyFilter(supabase
         .from('inventario_lineas')
-        .select('id, lpn, cantidad, fecha_vencimiento, productos(id, nombre, sku)')
+        .select('id, lpn, cantidad, fecha_vencimiento, productos(id, nombre, sku)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .gt('cantidad', 0)
         .not('fecha_vencimiento', 'is', null)
         .lt('fecha_vencimiento', hoy)
         .order('fecha_vencimiento', { ascending: true }))
+        .limit(ALERTAS_DISPLAY_LIMIT)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     // El vencimiento de lote es de WMS (modo avanzado); en básico no se gestiona.
     enabled: !!tenant && modoAvanzado,
   })
+  const lpnsVencidos = lpnsVencidosResult?.rows ?? []
+  const lpnsVencidosTotal = lpnsVencidosResult?.total ?? 0
 
   // K2 (Pedidos): entrega vencida sin completar + lanzado hace +24h sin avanzar (modo avanzado)
-  const { data: pedidosVencidos = [] } = useQuery({
+  const { data: pedidosVencidosResult } = useQuery({
     queryKey: ['pedidos-entrega-vencida', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date().toISOString().split('T')[0]
-      const { data, error } = await applyFilter(supabase
+      const { data, error, count } = await applyFilter(supabase
         .from('pedidos')
-        .select('id, numero, fecha_entrega_solicitada, estado, clientes(nombre)')
+        .select('id, numero, fecha_entrega_solicitada, estado, clientes(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .not('fecha_entrega_solicitada', 'is', null)
         .lt('fecha_entrega_solicitada', hoy)
         .not('estado', 'in', '("entregado","cancelado")')
         .order('fecha_entrega_solicitada', { ascending: true }))
+        .limit(ALERTAS_DISPLAY_LIMIT)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     enabled: !!tenant && modoAvanzado,
   })
+  const pedidosVencidos = pedidosVencidosResult?.rows ?? []
+  const pedidosVencidosTotal = pedidosVencidosResult?.total ?? 0
 
-  const { data: pedidosSinAvanzar = [] } = useQuery({
+  const { data: pedidosSinAvanzarResult } = useQuery({
     queryKey: ['pedidos-sin-avanzar', tenant?.id, sucursalId],
     queryFn: async () => {
       const hace24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
-      const { data, error } = await applyFilter(supabase
+      const { data, error, count } = await applyFilter(supabase
         .from('pedidos')
-        .select('id, numero, lanzado_at, clientes(nombre)')
+        .select('id, numero, lanzado_at, clientes(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'en_preparacion')
         .lt('lanzado_at', hace24h)
         .order('lanzado_at', { ascending: true }))
+        .limit(ALERTAS_DISPLAY_LIMIT)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     enabled: !!tenant && modoAvanzado,
   })
+  const pedidosSinAvanzar = pedidosSinAvanzarResult?.rows ?? []
+  const pedidosSinAvanzarTotal = pedidosSinAvanzarResult?.total ?? 0
 
+  // Clientes con saldo pendiente (ventas pendientes/reservadas con deuda)
   const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
     queryKey: ['clientes-con-deuda', tenant?.id, sucursalId],
     queryFn: async () => {
@@ -298,9 +329,11 @@ export default function AlertasPage() {
   })
 
   // H4 — efectivo en caja sobre el umbral de bóveda (ambos modos; solo si el tenant lo configuró).
+  // GO 2026-08-12: era la única fuente de esta página que no filtraba por sucursal — mostraba la
+  // Caja S2 de Sur estando parado en Norte.
   const { data: cajasSobreUmbral = [] } = useQuery({
-    queryKey: ['cajas-sobre-umbral-boveda', tenant?.id, (tenant as any)?.boveda_umbral_caja],
-    queryFn: () => cajasSobreUmbralBovedaDelTenant(tenant!.id, (tenant as any)?.boveda_umbral_caja),
+    queryKey: ['cajas-sobre-umbral-boveda', tenant?.id, (tenant as any)?.boveda_umbral_caja, sucursalId],
+    queryFn: () => cajasSobreUmbralBovedaDelTenant(tenant!.id, (tenant as any)?.boveda_umbral_caja, sucursalId),
     enabled: !!tenant && Number((tenant as any)?.boveda_umbral_caja) > 0,
   })
   const umbralBoveda = Number((tenant as any)?.boveda_umbral_caja) || 0
@@ -393,9 +426,16 @@ export default function AlertasPage() {
   // Las fuentes de WMS (sin ubicación, sin proveedor, LPN vencidos) solo cuentan en modo
   // avanzado — así el total coincide con el badge del sidebar (useAlertas). Las OC cuentan
   // en AMBOS modos desde v1.126.0 (el tab de OC de Prov./Servicios ya no es solo avanzado).
-  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + cajasSobreUmbral.length
-    + ocsVencidas.length + ocsProximas.length
-    + (modoAvanzado ? lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length : 0)
+  const totalAlertas = alertas.length + reservasViejasTotal + sinCategoria.length + clientesConDeuda.length + cajasSobreUmbral.length
+    + ocsVencidasTotal + ocsProximasTotal
+    + (modoAvanzado ? lineasSinUbicacionTotal + lineasSinProveedorTotal + lpnsVencidosTotal : 0)
+
+  // Estas 3 secciones agregan/filtran client-side (stock por sucursal, categoría por sucursal,
+  // saldo por cliente) — el query trae el set COMPLETO para no falsear el cálculo (REGLA #0),
+  // el tope acá es solo para no renderizar cientos de cards de una.
+  const alertasDisplay = alertas.slice(0, ALERTAS_DISPLAY_LIMIT)
+  const sinCategoriaDisplay = sinCategoria.slice(0, ALERTAS_DISPLAY_LIMIT)
+  const clientesConDeudaDisplay = clientesConDeuda.slice(0, ALERTAS_DISPLAY_LIMIT)
   const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos || loadingOcsVenc || loadingOcsProx
 
   return (
@@ -451,12 +491,17 @@ export default function AlertasPage() {
           )}
 
           {/* OC vencidas (ambos modos desde v1.126.0) */}
-          {ocsVencidas.length > 0 && (
+          {ocsVencidasTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
-                <ShoppingCart size={14} />
-                OC vencidas sin pagar ({ocsVencidas.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                  <ShoppingCart size={14} />
+                  OC vencidas sin pagar ({ocsVencidasTotal})
+                </h2>
+                {ocsVencidasTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/gastos?tab=oc&ocVencidas=1" className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline">Ver todas →</Link>
+                )}
+              </div>
               {(ocsVencidas as any[]).map((oc: any) => {
                 const saldo = (oc.monto_total ?? 0) - (oc.monto_pagado ?? 0)
                 const diasMora = Math.floor((Date.now() - new Date(oc.fecha_vencimiento_pago + 'T00:00:00').getTime()) / 86400000)
@@ -477,7 +522,7 @@ export default function AlertasPage() {
                         </p>
                       </div>
                     </div>
-                    <Link to="/gastos" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <Link to={`/gastos?tab=oc&oc=${oc.numero}`} className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                       Regularizar
                     </Link>
                   </div>
@@ -487,12 +532,17 @@ export default function AlertasPage() {
           )}
 
           {/* OC próximas a vencer (ambos modos desde v1.126.0) */}
-          {ocsProximas.length > 0 && (
+          {ocsProximasTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
-                <ShoppingCart size={14} />
-                OC por vencer en 3 días ({ocsProximas.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                  <ShoppingCart size={14} />
+                  OC por vencer en 3 días ({ocsProximasTotal})
+                </h2>
+                {ocsProximasTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/gastos?tab=oc&ocProximas=1" className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline">Ver todas →</Link>
+                )}
+              </div>
               {(ocsProximas as any[]).map((oc: any) => {
                 const saldo = (oc.monto_total ?? 0) - (oc.monto_pagado ?? 0)
                 const diasRestantes = Math.ceil((new Date(oc.fecha_vencimiento_pago + 'T00:00:00').getTime() - Date.now()) / 86400000)
@@ -513,7 +563,7 @@ export default function AlertasPage() {
                         </p>
                       </div>
                     </div>
-                    <Link to="/gastos" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                    <Link to={`/gastos?tab=oc&oc=${oc.numero}`} className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
                       Pagar ahora
                     </Link>
                   </div>
@@ -523,12 +573,17 @@ export default function AlertasPage() {
           )}
 
           {/* LPNs vencidos (solo avanzado/WMS) */}
-          {modoAvanzado && lpnsVencidos.length > 0 && (
+          {modoAvanzado && lpnsVencidosTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
-                <CalendarX size={14} />
-                LPNs vencidos ({lpnsVencidos.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                  <CalendarX size={14} />
+                  LPNs vencidos ({lpnsVencidosTotal})
+                </h2>
+                {lpnsVencidosTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/inventario" className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline">Ver todos →</Link>
+                )}
+              </div>
               {lpnsVencidos.map((l: any) => (
                 <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-900/40 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -557,12 +612,17 @@ export default function AlertasPage() {
           )}
 
           {/* Pedidos con entrega vencida (K2, solo avanzado) */}
-          {modoAvanzado && pedidosVencidos.length > 0 && (
+          {modoAvanzado && pedidosVencidosTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
-                <CalendarX size={14} />
-                Pedidos con entrega vencida ({pedidosVencidos.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                  <CalendarX size={14} />
+                  Pedidos con entrega vencida ({pedidosVencidosTotal})
+                </h2>
+                {pedidosVencidosTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/pedidos?vencidos=1" className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline">Ver todos →</Link>
+                )}
+              </div>
               {(pedidosVencidos as any[]).map(p => (
                 <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-900/40 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -579,7 +639,7 @@ export default function AlertasPage() {
                       </p>
                     </div>
                   </div>
-                  <Link to="/pedidos" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                  <Link to={`/pedidos?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`} className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                     Ver pedido
                   </Link>
                 </div>
@@ -588,12 +648,17 @@ export default function AlertasPage() {
           )}
 
           {/* Pedidos lanzados sin avanzar +24h (K2, solo avanzado) */}
-          {modoAvanzado && pedidosSinAvanzar.length > 0 && (
+          {modoAvanzado && pedidosSinAvanzarTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
-                <Clock size={14} />
-                Pedidos sin avanzar hace más de 24hs ({pedidosSinAvanzar.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                  <Clock size={14} />
+                  Pedidos sin avanzar hace más de 24hs ({pedidosSinAvanzarTotal})
+                </h2>
+                {pedidosSinAvanzarTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/pedidos?estado=en_preparacion" className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline">Ver todos →</Link>
+                )}
+              </div>
               {(pedidosSinAvanzar as any[]).map(p => (
                 <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-amber-200 dark:border-amber-900/40 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -610,7 +675,7 @@ export default function AlertasPage() {
                       </p>
                     </div>
                   </div>
-                  <Link to="/picking" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                  <Link to={`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`} className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
                     Ver en Picking
                   </Link>
                 </div>
@@ -619,12 +684,17 @@ export default function AlertasPage() {
           )}
 
           {/* Reservas sin despachar */}
-          {reservasViejas.length > 0 && (
+          {reservasViejasTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                <Clock size={14} />
-                Reservas sin despachar (+{RESERVAS_DIAS_LIMITE} días)
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <Clock size={14} />
+                  Reservas sin despachar +{RESERVAS_DIAS_LIMITE} días ({reservasViejasTotal})
+                </h2>
+                {reservasViejasTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/ventas?tab=historial&estado=reservada" className="text-xs font-medium text-accent-text hover:underline">Ver todas →</Link>
+                )}
+              </div>
               {(reservasViejas as any[]).map(v => (
                 <div key={v.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-amber-100 dark:border-amber-900/30 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -647,7 +717,7 @@ export default function AlertasPage() {
                     </div>
                   </div>
                   <Link
-                    to={`/ventas?id=${v.id}`}
+                    to={`/ventas?tab=historial&busqueda=${encodeURIComponent(`Venta:${v.numero}`)}&id=${v.id}`}
                     className="text-xs bg-amber-500 dark:bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 dark:hover:bg-amber-700 transition-all whitespace-nowrap flex-shrink-0"
                   >
                     Ver venta
@@ -663,19 +733,24 @@ export default function AlertasPage() {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
                   <AlertTriangle size={14} />
-                  Stock bajo mínimo
+                  Stock bajo mínimo ({alertas.length})
                 </h2>
-                {puedeGenerarOC && (
-                  <button
-                    onClick={() => generarOCsSugeridas.mutate()}
-                    disabled={generarOCsSugeridas.isPending}
-                    title="Crea órdenes de compra borrador consolidando los productos bajo mínimo por proveedor"
-                    className="flex items-center gap-1.5 text-xs bg-accent text-white px-3 py-1.5 rounded-lg hover:bg-accent/90 disabled:opacity-50">
-                    <ShoppingCart size={13} /> {generarOCsSugeridas.isPending ? 'Generando…' : 'Generar OC sugerida'}
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {alertas.length > ALERTAS_DISPLAY_LIMIT && (
+                    <Link to="/inventario?filterAlerta=1" className="text-xs font-medium text-accent-text hover:underline">Ver todo →</Link>
+                  )}
+                  {puedeGenerarOC && (
+                    <button
+                      onClick={() => generarOCsSugeridas.mutate()}
+                      disabled={generarOCsSugeridas.isPending}
+                      title="Crea órdenes de compra borrador consolidando los productos bajo mínimo por proveedor"
+                      className="flex items-center gap-1.5 text-xs bg-accent text-white px-3 py-1.5 rounded-lg hover:bg-accent/90 disabled:opacity-50">
+                      <ShoppingCart size={13} /> {generarOCsSugeridas.isPending ? 'Generando…' : 'Generar OC sugerida'}
+                    </button>
+                  )}
+                </div>
               </div>
-              {alertas.map(a => (
+              {alertasDisplay.map(a => (
                 <div key={a.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-100 dark:border-red-900/30 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
@@ -706,7 +781,7 @@ export default function AlertasPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Link
-                      to="/inventario"
+                      to={`/inventario?search=${encodeURIComponent((a as any).productos?.sku || (a as any).productos?.nombre || '')}`}
                       className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-accent transition-all"
                     >
                       Ingresar stock
@@ -734,11 +809,16 @@ export default function AlertasPage() {
           {/* Clientes con saldo pendiente */}
           {clientesConDeuda.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                <DollarSign size={14} />
-                Clientes con saldo pendiente ({clientesConDeuda.length})
-              </h2>
-              {clientesConDeuda.map((c) => (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <DollarSign size={14} />
+                  Clientes con saldo pendiente ({clientesConDeuda.length})
+                </h2>
+                {clientesConDeuda.length > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/clientes?tab=cc" className="text-xs font-medium text-yellow-600 dark:text-yellow-400 hover:underline">Ver todos →</Link>
+                )}
+              </div>
+              {clientesConDeudaDisplay.map((c) => (
                 <div key={c.clienteId} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -765,12 +845,17 @@ export default function AlertasPage() {
           )}
 
           {/* Inventario sin ubicación (solo avanzado/WMS) */}
-          {modoAvanzado && lineasSinUbicacion.length > 0 && (
+          {modoAvanzado && lineasSinUbicacionTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                <MapPin size={14} />
-                Inventario sin ubicación ({lineasSinUbicacion.length} LPN{lineasSinUbicacion.length !== 1 ? 's' : ''})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <MapPin size={14} />
+                  Inventario sin ubicación ({lineasSinUbicacionTotal} LPN{lineasSinUbicacionTotal !== 1 ? 's' : ''})
+                </h2>
+                {lineasSinUbicacionTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/inventario?filterUbic=__sin__" className="text-xs font-medium text-purple-600 dark:text-purple-400 hover:underline">Ver todo →</Link>
+                )}
+              </div>
               {lineasSinUbicacion.map((l: any) => (
                 <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-purple-100 dark:border-purple-900/30 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -790,7 +875,7 @@ export default function AlertasPage() {
                     </div>
                   </div>
                   <Link
-                    to="/inventario"
+                    to={l.lpn ? `/inventario?search=${encodeURIComponent(l.lpn)}` : '/inventario?filterUbic=__sin__'}
                     className="text-xs bg-purple-500 dark:bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 transition-all whitespace-nowrap flex-shrink-0"
                   >
                     Ir a inventario
@@ -801,12 +886,17 @@ export default function AlertasPage() {
           )}
 
           {/* Inventario sin proveedor (solo avanzado/WMS) */}
-          {modoAvanzado && lineasSinProveedor.length > 0 && (
+          {modoAvanzado && lineasSinProveedorTotal > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                <Truck size={14} />
-                Inventario sin proveedor ({lineasSinProveedor.length} LPN{lineasSinProveedor.length !== 1 ? 's' : ''})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <Truck size={14} />
+                  Inventario sin proveedor ({lineasSinProveedorTotal} LPN{lineasSinProveedorTotal !== 1 ? 's' : ''})
+                </h2>
+                {lineasSinProveedorTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/inventario?filterProv=__sin__" className="text-xs font-medium text-teal-600 dark:text-teal-400 hover:underline">Ver todo →</Link>
+                )}
+              </div>
               {lineasSinProveedor.map((l: any) => (
                 <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-teal-100 dark:border-teal-900/30 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -826,7 +916,7 @@ export default function AlertasPage() {
                     </div>
                   </div>
                   <Link
-                    to="/inventario"
+                    to={l.lpn ? `/inventario?search=${encodeURIComponent(l.lpn)}` : '/inventario?filterProv=__sin__'}
                     className="text-xs bg-teal-500 dark:bg-teal-600 text-white px-3 py-1.5 rounded-lg hover:bg-teal-600 dark:hover:bg-teal-700 transition-all whitespace-nowrap flex-shrink-0"
                   >
                     Ir a inventario
@@ -839,11 +929,16 @@ export default function AlertasPage() {
           {/* Productos sin categoría */}
           {sinCategoria.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                <Tag size={14} />
-                Productos sin categoría ({sinCategoria.length})
-              </h2>
-              {sinCategoria.map((p: any) => (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <Tag size={14} />
+                  Productos sin categoría ({sinCategoria.length})
+                </h2>
+                {sinCategoria.length > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/productos?filterCat=__sin__" className="text-xs font-medium text-orange-600 dark:text-orange-400 hover:underline">Ver todos →</Link>
+                )}
+              </div>
+              {sinCategoriaDisplay.map((p: any) => (
                 <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-orange-100 dark:border-orange-900/30 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">

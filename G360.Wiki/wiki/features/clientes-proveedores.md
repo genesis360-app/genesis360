@@ -1,9 +1,9 @@
 ---
 title: Clientes y Proveedores
 category: features
-tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra]
-sources: [CLAUDE.md, ROADMAP.md, migration 349]
-updated: 2026-08-11
+tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
+sources: [CLAUDE.md, ROADMAP.md, migration 349, src/pages/ClientesPage.tsx]
+updated: 2026-08-12
 ---
 
 # Clientes y Proveedores
@@ -79,6 +79,14 @@ Badge 🎂 en card. Rojo/rosa si es hoy el cumpleaños.
 ### Apertura por URL
 
 `/clientes?id=XXX` expande la ficha automáticamente (limpia el param después).
+
+**🆕 Scroll automático + resaltado visual (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin
+commitear)**: el deep-link "Ver ficha" de `/alertas` (sección "Clientes con saldo pendiente") ya
+expandía la ficha correcta, pero en una lista con varios clientes GO no tenía ninguna señal visual de
+CUÁL era — tenía que scrollear a ciegas. `ClientesPage.tsx` ahora hace `scrollIntoView` automático
+hacia la tarjeta del cliente del deep-link y la resalta con borde + anillo de color. El id se captura
+una sola vez al montar (`useRef`), así que si después el usuario expande otra ficha a mano el
+resaltado no se vuelve a disparar. Ver [[wiki/features/alertas]].
 
 ---
 

@@ -45,9 +45,10 @@ import { logActividad } from '@/lib/actividadLog'
 import { useConfirm, usePrompt } from '@/hooks/useConfirm'
 import { generarEtiquetasPreciosPDF, type EtiquetaPrecio, type EtiquetasPorHoja } from '@/lib/etiquetasPreciosPDF'
 import { precioPorUnidadGrande, type UnidadFisica } from '@/lib/unidadMedidaFisica'
+import { RepositoresReportes } from '@/components/RepositoresReportes'
 
 type FiltroEstado = 'activas' | 'completada' | 'cancelada'
-type Seccion = 'carteles' | 'reposicion'
+type Seccion = 'carteles' | 'reposicion' | 'reportes'
 
 const MOTIVOS_CANCELACION = ['Ya no aplica', 'Producto retirado de góndola', 'Error de carga', 'Otro']
 
@@ -360,7 +361,9 @@ export default function RepositoresPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             {seccion === 'carteles'
               ? 'Cambios de precio y de estado que necesitan actualizar el cartel en la góndola.'
-              : 'Góndolas que se quedaron sin stock y necesitan reposición desde el depósito.'}
+              : seccion === 'reposicion'
+              ? 'Góndolas que se quedaron sin stock y necesitan reposición desde el depósito.'
+              : 'Cuánto completó cada repositor y cuánto tardó — para entender demoras, no para presionar.'}
           </p>
         </div>
         {seccion === 'reposicion' && (
@@ -373,7 +376,12 @@ export default function RepositoresPage() {
       </div>
 
       <div className="flex gap-2">
-        {([['carteles', 'Precios/Etiquetas'], ['reposicion', 'Reposición física']] as [Seccion, string][]).map(([key, label]) => (
+        {([
+          ['carteles', 'Precios/Etiquetas'], ['reposicion', 'Reposición física'],
+          // K1/K2 del relevamiento — solo quien supervisa el módulo ve el comparativo entre
+          // repositores (GO, 2026-08-12: "para entender demoras, no para presionar al empleado").
+          ...(puedeSupervisar ? [['reportes', 'Reportes']] : []),
+        ] as [Seccion, string][]).map(([key, label]) => (
           <button key={key} onClick={() => { setSeccion(key); setReasignando(null); setSeleccionadas(new Set()) }}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               seccion === key ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
@@ -382,6 +390,7 @@ export default function RepositoresPage() {
         ))}
       </div>
 
+      {seccion !== 'reportes' && (
       <div className="flex gap-2">
         {([['activas', 'Pendientes'], ['completada', 'Completadas'], ['cancelada', 'Canceladas']] as [FiltroEstado, string][]).map(([key, label]) => (
           <button key={key} onClick={() => { setFiltro(key); setSeleccionadas(new Set()) }}
@@ -391,6 +400,7 @@ export default function RepositoresPage() {
           </button>
         ))}
       </div>
+      )}
 
       {seccion === 'carteles' && filtro === 'activas' && horaAvisoAlcanzada && (tareas as any[]).length > 0 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
@@ -415,7 +425,9 @@ export default function RepositoresPage() {
         </div>
       )}
 
-      {cargando ? (
+      {seccion === 'reportes' ? (
+        <RepositoresReportes />
+      ) : cargando ? (
         <div className="text-center py-16 text-gray-400 dark:text-gray-500">Cargando tareas…</div>
       ) : (listaVisible as any[]).length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">

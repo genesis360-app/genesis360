@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -15,23 +16,37 @@ export type EstadoAutorizacion = 'pendiente' | 'aprobada' | 'rechazada'
 
 /** `selectExtra` son los joins específicos del módulo (ej. en Inventario: inventario_lineas(...)) —
  *  el hook siempre agrega el resto de columnas base + solicitante/aprobador/asignado. */
+// Mismo patrón de paginación que HistorialPage.tsx (page/pageSize/range + "Mostrando X de Y") —
+// GO pidió replicarlo acá porque, a diferencia de Alertas (11 secciones chicas independientes),
+// esta SÍ es una lista única homogénea que puede crecer sin límite con el uso.
+export const AUT_PAGE_SIZES = [20, 50, 75, 100]
+
 export function useSupervisorAutorizaciones(modulo: string, selectExtra: string, autEstado: EstadoAutorizacion) {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
-  const queryKey = ['autorizaciones', modulo, tenant?.id, autEstado]
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
+
+  // Cambiar de tab (pendiente/aprobada/rechazada) puede dejar `page` apuntando a una página que
+  // no existe en el nuevo estado (ej. estabas en la página 3 de "pendiente" con 1 sola de
+  // "rechazada") — se resetea a la primera página en cada cambio.
+  useEffect(() => { setPage(0) }, [autEstado])
+
+  const queryKey = ['autorizaciones', modulo, tenant?.id, autEstado, page, pageSize]
 
   const query = useQuery({
     queryKey,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('autorizaciones')
-        .select(`*, ${selectExtra}, solicitante:users!solicitado_por(nombre_display), asignado:users!asignado_a(nombre_display)`)
+        .select(`*, ${selectExtra}, solicitante:users!solicitado_por(nombre_display), asignado:users!asignado_a(nombre_display)`, { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('modulo', modulo)
         .eq('estado', autEstado)
         .order('created_at', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
       if (error) throw error
-      return data ?? []
+      return { rows: data ?? [], total: count ?? 0 }
     },
     enabled: !!tenant,
   })
@@ -60,7 +75,13 @@ export function useSupervisorAutorizaciones(modulo: string, selectExtra: string,
     qc.invalidateQueries({ queryKey: ['autorizaciones', modulo] })
   }
 
-  return { autorizaciones: query.data ?? [], isLoading: query.isLoading, marcarAprobada, rechazar, reasignar }
+  return {
+    autorizaciones: query.data?.rows ?? [],
+    totalCount: query.data?.total ?? 0,
+    page, pageSize, setPage, setPageSize,
+    isLoading: query.isLoading,
+    marcarAprobada, rechazar, reasignar,
+  }
 }
 
 /** F1 del relevamiento de Supervisor: "cualquier módulo puede usar el botón 'Avisar al supervisor'" —

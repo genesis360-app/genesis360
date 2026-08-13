@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
@@ -93,7 +93,10 @@ export default function ProductosPage() {
   const filterPanelRef = useRef<HTMLDivElement>(null)
   const [filterActivo, setFilterActivo] = useState<'activos' | 'inactivos' | 'todos'>('activos')
   const [filterEstructura, setFilterEstructura] = useState<'' | 'con' | 'sin'>('')
-  const [filterCat, setFilterCat] = useState('')
+  // Deep-link desde AlertasPage ("Ver todos" de Productos sin categoría) — ?filterCat=__sin__
+  // reusa el mismo sentinel que ya usa el select de categoría (GO, 2026-08-12).
+  const [searchParams] = useSearchParams()
+  const [filterCat, setFilterCat] = useState(() => searchParams.get('filterCat') ?? '')
   const [filterProv, setFilterProv] = useState('')
   const [filterMarca, setFilterMarca] = useState('')
   // Atributos de inventario combinables (OR: matchea con AL MENOS UNO). Se eligen desde un

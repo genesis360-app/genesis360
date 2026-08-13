@@ -6,7 +6,76 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-12, cont. 5) — 🏷️ Repositores: Notificaciones (J) + Reportes (K) construidos y verificados EN DEV — módulo 100% completo, ya NO queda ningún punto del relevamiento original sin construir — TODO sigue SIN COMMITEAR (ahora 5 cambios acumulados hoy)
+> ### ✅ ARRANCÁ ACÁ (2026-08-13) — 🚀 v1.169.0 DEPLOYADO A PROD Y VERIFICADO — Alertas/Supervisión (paginación + navegación específica) + píldoras en Pedidos/Ventas + fix `tn-webhook` "Sin cliente" + Repositores Notificaciones/Reportes (J/K), TODO junto en un solo PR — este bloque supera los 5 bloques históricos de abajo (2026-08-12, cont. 2 a cont. 5), que documentaban el mismo trabajo como "SIN COMMITEAR"
+>
+> Continuación directa de los 5 bloques históricos de abajo (2026-08-12, cont. 2 a cont. 5) — todo ese
+> trabajo (paginación Alertas/Supervisión, rondas 2/3 de navegación específica + aislamiento por
+> sucursal, fix `tn-webhook` "Sin cliente", y Notificaciones (J) + Reportes (K) de Repositores) había
+> quedado acumulado sin commitear en el mismo working tree local de `dev` durante la sesión del
+> 2026-08-12. Esta sesión lo empaquetó TODO en un solo commit y lo deployó a PROD de punta a punta.
+>
+> **Deploy verificado de forma independiente** (no solo el resumen del subagente):
+> - `git log origin/main` → `f6163ac8` (merge de PR #329), con `a209abaf` como único commit de
+>   contenido (`feat(alertas,repositores): paginación+navegación específica en Alertas/Supervisión,
+>   filtro de píldoras en Pedidos/Ventas, fix TN sin cliente, y Notificaciones+Reportes de Repositores
+>   (J/K)`).
+> - `gh pr view 329` → `state: MERGED`, mergeado a `main`.
+> - `gh release view v1.169.0` → publicado sobre `main`.
+> - `src/config/brand.ts` en `origin/main` → `APP_VERSION = 'v1.169.0'` confirmado.
+> - Edge Functions `tn-webhook` (v21) y `repositores-cierre-dia-sweep` (nueva, v1) deployadas a PROD
+>   (`jjffnbrdjchquexdfgwq`).
+> - Vercel: deployment de producción `dpl_2q1HCdhmrvNcAsVt7YsCBnUkwZYf`, estado READY, commit `f6163ac8`.
+> - Build (`tsc` + `vite build`) y `npm run test:unit` (1563 tests) verdes antes del deploy.
+>
+> **CERO migraciones SQL nuevas** — todo se construyó sobre tablas/columnas/funciones ya existentes (la
+> última migración sigue siendo la 357, la de Repositores Fase 4, ya en PROD desde v1.168.0).
+>
+> **Qué quedó en PROD** (detalle técnico completo en los 5 bloques históricos de abajo, cont. 2 a cont.
+> 5 — este bloque no lo repite, solo confirma el deploy):
+> - **Alertas**: tope de renderizado a 15 por sección + link "ver todo"; Supervisión (Aprobaciones/
+>   Reasignar) paginada con footer "Mostrando X de Y".
+> - TODOS los links de Alertas filtran al ítem exacto (pedido/venta/OC/cliente específico), no solo a
+>   la pestaña general.
+> - Fix de aislamiento por sucursal en "Efectivo en caja sobre el umbral" (única de las 12 secciones de
+>   Alertas que nunca había filtrado por sucursal).
+> - **Gastos → OC**: buscador nuevo por número de OC o proveedor.
+> - **Pedidos y Ventas/Historial**: filtro de píldoras (`src/lib/pedidosFiltro.ts`/`ventasFiltro.ts`,
+>   mismo patrón que Picking), match EXACTO por número de identificador (antes "2" traía 82/102).
+> - **Clientes**: "Ver ficha" hace scroll + resaltado visual al cliente específico.
+> - **Fix `tn-webhook`**: venta de TiendaNube mostraba "Sin cliente" porque nunca seteaba la columna
+>   denormalizada `ventas.cliente_nombre` (el matching de `cliente_id` SIEMPRE funcionó bien — causa
+>   raíz distinta de lo que se sospechaba). PROD tiene 0 filas en `tiendanube_credentials` (nadie
+>   conectó TiendaNube todavía) y 0 ventas rotas — no hizo falta backfill en PROD.
+> - **Repositores — Notificaciones (J)**: Edge Function `repositores-cierre-dia-sweep` (cron cada 15
+>   min vía GitHub Actions, `verify_jwt: false`) avisa a los supervisores del módulo (in-app + email) si
+>   quedan tareas pendientes pasado el `horario_cierre` configurado de la sucursal, con dedupe por día.
+>   El cron recién empieza a evaluarse ahora que el workflow llegó a `main` (sin riesgo: solo notifica
+>   si hay tareas realmente pendientes).
+> - **Repositores — Reportes (K)**: tab nuevo en `RepositoresPage.tsx` con métricas por repositor
+>   (últimos 30 días, tareas completadas + tiempo promedio) gateado a supervisores, con export a Excel.
+>   **Con esto, el módulo Repositores queda 100% completo — ya no queda ningún punto del relevamiento
+>   original (A-L) sin construir.**
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): **v1.169.0** — todo lo de arriba EN PRODUCCIÓN. Migraciones
+>   001-357 (sin cambios, cero migraciones nuevas esta vez).
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): en paridad con PROD, mismo commit `f6163ac8` tras el merge del PR;
+>   branch `dev` local también limpio (`git status` sin pendientes).
+> - **Pendientes de negocio nuevos**: ninguno anotado en esta sesión.
+>
+> **Próximo paso inmediato**: sin tareas nuevas anotadas — esperar el próximo pedido de GO.
+>
+> Ver `log.md` (2026-08-13, entrada al principio del archivo), [[wiki/business/roadmap]] (v1.169.0),
+> `wiki/database/migraciones.md` (nota de "sin migración nueva"), [[wiki/features/alertas]],
+> [[wiki/features/supervision]], [[wiki/features/pedidos]], [[wiki/features/ventas-pos]],
+> [[wiki/features/clientes-proveedores]], [[wiki/features/gastos]], [[wiki/features/filtro-pildoras]],
+> [[wiki/features/repositores]] (todas actualizadas a "EN PROD v1.169.0"),
+> [[wiki/integrations/tienda-nube]], `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12, cont. 5) — 🏷️ Repositores: Notificaciones (J) + Reportes (K) construidos y verificados EN DEV — módulo 100% completo, ya NO queda ningún punto del relevamiento original sin construir — este bloque quedó SUPERADO por el de arriba (2026-08-13): v1.169.0 deployado a PROD (esto + los 4 bloques históricos de abajo, ya no está "sin commitear")
 >
 > Tarea NUEVA e independiente del hilo de Alertas/Supervisión de más abajo (paginación + fix TN +
 > rondas 2/3 de navegación) — mismo día, mismo working tree local de `dev`, sin relación de contenido.

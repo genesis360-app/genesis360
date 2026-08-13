@@ -3,7 +3,7 @@ title: Alertas
 category: features
 tags: [alertas, stock-minimo, lpn-vencidos, reservas, categorias, sucursal, paginacion, deep-links]
 sources: [CLAUDE.md]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Alertas
@@ -155,7 +155,7 @@ Si no hay sucursal seleccionada (vista global con `puede_ver_todas`), se muestra
 
 ---
 
-## Tope de renderizado por sección — `ALERTAS_DISPLAY_LIMIT` (2026-08-12, EN DEV sin commitear)
+## Tope de renderizado por sección — `ALERTAS_DISPLAY_LIMIT` (2026-08-12, ✅ EN PROD desde v1.169.0)
 
 GO pidió (2026-08-11) agregar a Alertas y Supervisión el mismo footer "Mostrando X de Y" de
 `HistorialPage.tsx`, porque secciones con muchos registros no tenían tope (scrollbar diminuto,
@@ -183,12 +183,11 @@ el enfoque adaptado (no el literal):
   `/inventario`; mismo patrón confirmado en sin ubicación (118), stock mínimo (36) y sin categoría
   (135). Secciones bajo el tope (ej. "LPNs vencidos (2)") no muestran el link. Sin errores de consola.
 
-**Estado real: construido, typecheck+build verdes, verificado en el navegador contra DEV — sin
-commitear todavía** (working tree de `dev` local). Ver [[wiki/features/supervision]] para el mismo
-pedido aplicado a la lista de Aprobaciones (esa sí es homogénea, ahí se replicó el footer literal de
-Historial).
+**Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; construido y verificado en
+DEV el 2026-08-12). Ver [[wiki/features/supervision]] para el mismo pedido aplicado a la lista de
+Aprobaciones (esa sí es homogénea, ahí se replicó el footer literal de Historial).
 
-## Deep-links específicos por sección (2026-08-12, ronda 2 de feedback, EN DEV sin commitear)
+## Deep-links específicos por sección (2026-08-12, ronda 2 de feedback, ✅ EN PROD desde v1.169.0)
 
 Al revisar en el navegador la paginación de arriba, GO encontró que **todos** los links de AlertasPage
 (el botón de cada ítem individual y los nuevos "Ver todo/todas →" de sección) llevaban a la página
@@ -233,10 +232,10 @@ se corrigió un bug real donde el tab de Inventario al que apuntaba no leía el 
 tenant real "Almacén Jorgito" en DEV — se navegó a cada uno de los 8 destinos con parámetros reales y
 se confirmó visualmente que el filtro/tab correcto queda activo. Sin errores de consola nuevos.
 
-**Estado real: construido, typecheck+build verdes, verificado en el navegador contra DEV — sin
-commitear todavía** (mismo working tree de `dev` local que el tope de renderizado de arriba).
+**Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que el tope de
+renderizado de arriba).
 
-## Ronda 3 — fix de aislamiento por sucursal + deep-links más exactos (2026-08-12, sin commitear)
+## Ronda 3 — fix de aislamiento por sucursal + deep-links más exactos (2026-08-12, ✅ EN PROD desde v1.169.0)
 
 GO probó en el navegador los deep-links de la ronda anterior y encontró 2 problemas reales más.
 
@@ -273,8 +272,8 @@ a Sucursal Sur.
 exacta (no trae la #17 ni la #27), Pedido #2 exacto con la píldora visible en pantalla, Venta #238 con
 la lista filtrada y el modal de detalle abiertos simultáneamente, ficha de "Fede Messina" resaltada
 tras scroll automático. Tests unitarios nuevos: `pedidosFiltro.test.ts` (9/9) y `ventasFiltro.test.ts`
-(6/6). Typecheck + build verdes. **Sin commitear todavía** — mismo working tree de `dev` local. Ver
-`log.md` (2026-08-12, entrada al principio) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+(6/6). Typecheck + build verdes. **✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329). Ver
+`log.md` (2026-08-13, entrada al principio) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ## Links relacionados
 

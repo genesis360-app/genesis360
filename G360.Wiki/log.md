@@ -6,6 +6,64 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-13] deploy | 🚀 v1.169.0 a PROD — navegación específica en Alertas/Supervisión + píldoras en Pedidos/Ventas + fix `tn-webhook` "Sin cliente" + Repositores Notificaciones/Reportes (J/K)
+
+Deploy a PROD de TODO el trabajo acumulado sin commitear de la sesión anterior (2026-08-12): 5 conjuntos
+de cambios documentados como "EN DEV, sin commitear" en las 3 entradas de abajo, empaquetados en un solo
+commit (`a209abaf`) y un solo PR (#329, mergeado a `main` en `f6163ac8`).
+
+### Qué quedó en PROD
+
+- **Alertas/Supervisión**: cada sección de Alertas topa a 15 items con link "ver todo"; Aprobaciones/
+  Reasignar de Supervisión paginadas con selector de page size. TODOS los links de Alertas filtran al
+  ítem EXACTO (pedido/venta/OC/cliente específico), no solo a la pestaña general. Fix de aislamiento por
+  sucursal en "Efectivo en caja sobre el umbral" (única de las 12 secciones que nunca había filtrado por
+  sucursal — bug real reportado por GO). Gastos → OC ganó buscador por número de OC. Pedidos y Ventas/
+  Historial: filtro de píldoras nuevo (`src/lib/pedidosFiltro.ts`/`ventasFiltro.ts`, mismo patrón que
+  Picking), match EXACTO por número de identificador (antes "2" traía 82/102). Clientes: "Ver ficha"
+  hace scroll + resaltado visual al cliente específico.
+- **Fix `tn-webhook`**: venta creada desde TiendaNube mostraba "Sin cliente" pese a traer los datos del
+  comprador. Causa raíz real (verificada con SQL, no la sospecha original de GO): el matching de
+  `cliente_id` en `tn-webhook/index.ts` SIEMPRE funcionó bien; el bug era que nunca seteaba la columna
+  denormalizada `ventas.cliente_nombre`, que es la que realmente lee `VentasPage.tsx`. Deployado a la
+  Edge Function `tn-webhook` en PROD (v21). PROD tiene 0 filas en `tiendanube_credentials` (nadie conectó
+  TiendaNube todavía) y 0 ventas rotas — no hizo falta backfill en PROD.
+- **Repositores — Notificaciones (J) + Reportes (K)**: módulo Repositores queda 100% completo, ya no
+  queda ningún punto del relevamiento original (A-L) sin construir. Edge Function nueva
+  `repositores-cierre-dia-sweep` (deployada a PROD, `verify_jwt: false`) + workflow
+  `.github/workflows/repositores-cierre-dia-sweep.yml` (cron cada 15 min vía GitHub Actions). Por cada
+  sucursal activa de un tenant en modo avanzado, si ya pasó su `horario_cierre` configurado y quedan
+  tareas pendientes (carteles de precio o reposición física), notifica a los supervisores del módulo
+  (in-app + email), con dedupe por día. Nuevo tab "Reportes" en `RepositoresPage.tsx` (gateado a
+  supervisores): métricas por repositor de los últimos 30 días, con export a Excel. El cron de GitHub
+  Actions recién empieza a evaluarse ahora que el workflow llegó a `main` (sin riesgo: solo notifica si
+  hay tareas realmente pendientes pasado el horario de cierre).
+
+### Deploy verificado de forma independiente
+
+`gh pr view 329` → `MERGED`; `gh release view v1.169.0` → publicado sobre `main`; `src/config/brand.ts`
+en `origin/main` → `APP_VERSION = 'v1.169.0'`; Edge Functions `tn-webhook` (v21) y
+`repositores-cierre-dia-sweep` (nueva, v1) deployadas a PROD (`jjffnbrdjchquexdfgwq`); Vercel deployment
+de producción `dpl_2q1HCdhmrvNcAsVt7YsCBnUkwZYf` en estado READY, commit `f6163ac8`. **CERO migraciones
+SQL nuevas** — todo se construyó sobre tablas/columnas/funciones ya existentes (la última migración
+sigue siendo la 357, ya en PROD desde v1.168.0). Build (`tsc` + `vite build`) y `npm run test:unit` (1563
+tests) verdes antes del deploy.
+
+### Estado
+
+**PROD** (`jjffnbrdjchquexdfgwq`): **v1.169.0**, todo lo de arriba en producción, migraciones 001-357
+(sin cambios). **DEV** (`gcmhzdedrkmmzfzfveig`): en paridad con PROD, mismo commit `f6163ac8`.
+
+Wiki actualizado: `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo, cont. 5 pasa a
+histórico), `wiki/business/roadmap.md` (v1.169.0 nueva), `wiki/database/migraciones.md` (nota de "sin
+migración nueva" actualizada a v1.169.0), [[wiki/features/alertas]], [[wiki/features/supervision]],
+[[wiki/features/pedidos]], [[wiki/features/ventas-pos]], [[wiki/features/clientes-proveedores]],
+[[wiki/features/gastos]], [[wiki/features/filtro-pildoras]], [[wiki/features/repositores]] (todas
+actualizadas de "EN DEV/sin commitear" a "EN PROD v1.169.0"), [[wiki/integrations/tienda-nube]],
+`index.md`.
+
+---
+
 ## [2026-08-12] update | 🏷️ Repositores: notificaciones (J) al cierre del día + reportes (K) construidos y verificados en DEV — módulo 100% completo, ya no queda ningún punto del relevamiento original sin construir
 
 Tarea nueva e independiente de la sesión de hoy — sin relación con el hilo de Alertas/Supervisión

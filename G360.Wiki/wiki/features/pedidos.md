@@ -3,7 +3,7 @@ title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging, pildoras, buscador]
 sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Módulo Pedidos
@@ -123,7 +123,7 @@ generar tareas WMS reales — "lanzar" — es la Fase PED3, todavía no existe e
   sumado a `DEPOSITO_ALLOWED` (el rol DEPOSITO tiene una whitelist de rutas permitidas aparte del nav).
 - **Listado** de pedidos del tenant (RLS ya filtra por sucursal), filtro por estado, expandible por
   fila (muestra las líneas + atributos + notas).
-- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)**:
+- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, ✅ EN PROD desde v1.169.0)**:
   el buscador de texto plano se reemplazó por `<BuscadorPildoras>` (mismo componente que ya usa
   `/picking`) vía `src/lib/pedidosFiltro.ts` (campos `Pedido`/`Referencia`/`Cliente`, sobre el núcleo
   compartido `pildorasFiltro.ts`). GO encontró que buscar "2" también traía el pedido 82 y el 102
@@ -823,7 +823,7 @@ POS:
 
 - **Tier mayorista por volumen** (mig 306) vía `fn_precio_venta_efectivo`, resuelto contra el
   **total pedido** del SKU — entregar en dos tandas no hace perder el precio por volumen.
-  🆕 **Extendido en la mig 330 (EN DEV, sin deploy):** la función ahora replica el mismo algoritmo
+  🆕 **Extendido en la mig 330 (✅ EN PROD desde v1.168.0):** la función ahora replica el mismo algoritmo
   de bloques de `src/lib/tiers.ts` (tier % + enlace a empaque, backlog Fede 25/7) — un Pedido
   factura EXACTO igual que la misma venta cargada por el POS. Ver
   [[wiki/features/precios-tiers-empaque]].

@@ -3,7 +3,7 @@ title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
 sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts, src/components/RepositoresReportes.tsx, supabase/functions/repositores-cierre-dia-sweep/index.ts, .github/workflows/repositores-cierre-dia-sweep.yml]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Módulo Repositores
@@ -28,16 +28,16 @@ updated: 2026-08-12
 > el camino de reabastecimiento POR UMBRAL nunca tuvo el filtro de `tipo_logico` que sí tiene el
 > picking automático. Ver "Qué hace la Fase 3" más abajo.
 >
-> 🆕 **Notificaciones (J) y Reportes (K) — construidos y verificados EN DEV el 2026-08-12 (sesión
-> posterior al deploy de v1.168.0), SIN commitear todavía.** Estos 2 puntos del relevamiento original
-> habían quedado explícitamente diferidos al cerrar la Fase 4 (ver la corrección más abajo en "Lo que
-> NO incluye la Fase 1") — GO preguntó si quedaba algo pendiente del módulo, se le confirmó que solo
-> esos 2 puntos, y pidió retomarlos. Sin ninguna migración SQL nueva: Edge Function
+> 🆕 **Notificaciones (J) y Reportes (K) — ✅ EN PROD desde v1.169.0 (deploy real 2026-08-13, PR #329),
+> construidos y verificados en DEV el 2026-08-12.** Estos 2 puntos del relevamiento original habían
+> quedado explícitamente diferidos al cerrar la Fase 4 (ver la corrección más abajo en "Lo que NO
+> incluye la Fase 1") — GO preguntó si quedaba algo pendiente del módulo, se le confirmó que solo esos 2
+> puntos, y pidió retomarlos. Sin ninguna migración SQL nueva: Edge Function
 > `repositores-cierre-dia-sweep` (notificación + email al cierre del día si quedan tareas pendientes,
-> cron cada 15 min vía GitHub Actions) + tab "Reportes" nuevo en `RepositoresPage.tsx` (solo visible a
-> quien supervisa el módulo). **Con esto, el módulo Repositores queda 100% completo — ya no queda
-> ningún punto de las 35 preguntas del relevamiento original (A-L) sin construir.** Detalle completo en
-> la sección "Notificaciones (J) y Reportes (K)" más abajo.
+> cron cada 15 min vía GitHub Actions, deployada a PROD) + tab "Reportes" nuevo en `RepositoresPage.tsx`
+> (solo visible a quien supervisa el módulo). **Con esto, el módulo Repositores queda 100% completo — ya
+> no queda ningún punto de las 35 preguntas del relevamiento original (A-L) sin construir.** Detalle
+> completo en la sección "Notificaciones (J) y Reportes (K)" más abajo.
 
 Módulo para que la persona que repone mercadería en el local sepa, sin tener que acordarse ni
 recorrer la góndola, **qué cartel de precio hay que cambiar** — cada vez que un precio cambia o un
@@ -62,7 +62,7 @@ que ya usó el backlog de Comercial (F→A→B→C→D):
   impresión (G/H del relevamiento) — PDF en grilla A4 con código de barras, imprimible también en una
   impresora térmica Zebra si el negocio tiene una (decisión de GO). Con esta fase quedan completas las
   4 fases operativas del módulo (mig 352-357).
-- **Notificaciones (J) y Reportes (K) (✅ construidas, sesión posterior, 2026-08-12, EN DEV)**: los 2
+- **Notificaciones (J) y Reportes (K) (✅ construidas, 2026-08-12, EN PROD desde v1.169.0)**: los 2
   puntos del relevamiento original que habían quedado diferidos al cerrar la Fase 4 — ver sección
   "Notificaciones (J) y Reportes (K)" más abajo. Con esto, el módulo queda 100% construido, sin ningún
   punto del relevamiento original sin resolver.
@@ -192,8 +192,8 @@ DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
   `unidades_medida_fisicas` ya existente) + PDF pensado para servir también en una impresora térmica
   Zebra si el negocio tiene una (decisión de GO, sin impresión automática — un humano dispara la
   impresión).
-- **Notificaciones** (J) y **reportes** (K) del relevamiento original — ✅ **construidas el 2026-08-12
-  (sesión posterior a v1.168.0, EN DEV, sin migración SQL nueva)**. Habían quedado explícitamente
+- **Notificaciones** (J) y **reportes** (K) del relevamiento original — ✅ **construidas el 2026-08-12,
+  EN PROD desde v1.169.0 (deploy real 2026-08-13, sin migración SQL nueva)**. Habían quedado explícitamente
   diferidas al cerrar la Fase 4 (registro histórico: en ese momento se consideraban "fuera del alcance
   final del módulo"); GO pidió retomarlas después y confirmó no quedaba deuda técnica, sino una
   decisión consciente del momento — ver sección "Notificaciones (J) y Reportes (K)" más abajo.
@@ -520,7 +520,7 @@ DEV Y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR #328, tag/release `v1.168.0`
 deploy fue verificado de forma independiente: `gh pr view 328` → `MERGED`; `list_migrations` contra
 PROD confirma 352-357 aplicadas; bundle real de `https://genesis360.pro/` con la cadena "v1.168.0".
 
-## Notificaciones (J) y Reportes (K) — construidas el 2026-08-12 (sesión posterior a v1.168.0)
+## Notificaciones (J) y Reportes (K) — construidas el 2026-08-12, EN PROD desde v1.169.0 (2026-08-13)
 
 Con las 4 fases operativas ya en PROD, GO preguntó si quedaba algo pendiente del módulo — se le
 confirmó que solo quedaban estos 2 puntos del relevamiento original (J/K), diferidos a propósito al
@@ -545,9 +545,9 @@ re-relevar, se fue directo a diseño técnico con 3 decisiones de opciones confi
 ### J — Notificaciones (J1/J2)
 
 **Sin ninguna migración SQL** — Edge Function nueva `supabase/functions/repositores-cierre-dia-sweep/
-index.ts` (deployada a DEV) + workflow nuevo `.github/workflows/repositores-cierre-dia-sweep.yml` (cron
-cada 15 minutos vía GitHub Actions — el proyecto no tiene pg_cron habilitado, ver
-`reference_pg_cron_no_habilitado` en memoria de sesión).
+index.ts` (deployada a PROD desde v1.169.0) + workflow nuevo
+`.github/workflows/repositores-cierre-dia-sweep.yml` (cron cada 15 minutos vía GitHub Actions — el
+proyecto no tiene pg_cron habilitado, ver `reference_pg_cron_no_habilitado` en memoria de sesión).
 
 Por cada sucursal activa de un tenant en modo avanzado: si la hora real de Argentina (calculada con
 `Intl.DateTimeFormat` + zona horaria explícita, no un offset fijo) ya superó el `horario_cierre`
@@ -586,13 +586,13 @@ para exportar a Excel (mismo patrón ya usado en Pedidos y Gastos).
   promedio, 0 reposiciones, total 2" — datos de prueba limpiados después.
 - Typecheck y build de todo el proyecto verdes.
 
-**Estado: construido y verificado en DEV, SIN commitear todavía** — se suma al resto de cambios sin
-commitear de la sesión de hoy (paginación de Alertas/Supervisión, fix de TiendaNube, rondas de
-navegación específica — hilo aparte, ver [[wiki/features/alertas]]). La Edge Function ya está deployada
-a DEV, pero el cron de GitHub Actions no arranca a correr hasta que el archivo de workflow llegue a la
-rama `main` (mergeado) — mientras tanto no hay ningún riesgo de que dispare nada. **Con este cierre, el
-módulo Repositores queda 100% completo — ya no queda ningún punto del relevamiento original sin
-construir.**
+**Estado: ✅ EN PROD desde v1.169.0 (deploy real 2026-08-13, PR #329)** — se deployó junto con el resto
+de cambios acumulados de la sesión del 2026-08-12 (paginación de Alertas/Supervisión, fix de
+TiendaNube, rondas de navegación específica — hilo aparte, ver [[wiki/features/alertas]]). El cron de
+GitHub Actions empezó a evaluarse recién a partir de este merge (el archivo de workflow no corría
+mientras solo existía en `dev`) — sin riesgo, solo notifica si hay tareas realmente pendientes pasado el
+horario de cierre. **Con este cierre, el módulo Repositores queda 100% completo — ya no queda ningún
+punto del relevamiento original sin construir.**
 
 ## Verificación real (2026-08-11, contra DEV) — Fase 1
 

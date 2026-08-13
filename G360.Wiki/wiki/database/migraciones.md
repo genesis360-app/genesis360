@@ -3,16 +3,17 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Historial de Migraciones (001-357)
 
-**Total al 2026-08-12:** 357 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-13:** 357 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-357 TODAS aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
-PR #328), verificado con `list_migrations` real contra el proyecto PROD.
+PR #328), verificado con `list_migrations` real contra el proyecto PROD. **v1.169.0 (2026-08-13, PR
+#329) no agregó ninguna migración nueva** — el número final sigue siendo 357.
 
 **357 (`357_repositores_fase4_etiquetas.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
 Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado
@@ -44,11 +45,12 @@ confirma 352-357 aplicadas, bundle real con la cadena "v1.168.0"). Ver [[wiki/fe
 
 📌 **Nota histórica (sin migración propia, no agrega fila a esta tabla)**: los 2 puntos que quedaban del
 relevamiento original de Repositores — Notificaciones (J) y Reportes (K) — se construyeron en una
-sesión posterior el mismo 2026-08-12, EN DEV, **sin ninguna migración SQL nueva** (Edge Function
-`repositores-cierre-dia-sweep` + tab "Reportes" nuevo, reusando `sucursales.horario_cierre` ya
-existente desde la mig 124 y `fn_usuarios_supervisan_modulo` ya existente de Supervisión). Con esto, el
-módulo Repositores queda 100% completo. Detalle en [[wiki/features/repositores]] → "Notificaciones (J)
-y Reportes (K)".
+sesión posterior el mismo 2026-08-12 (EN DEV en ese momento), **sin ninguna migración SQL nueva** (Edge
+Function `repositores-cierre-dia-sweep` + tab "Reportes" nuevo, reusando `sucursales.horario_cierre` ya
+existente desde la mig 124 y `fn_usuarios_supervisan_modulo` ya existente de Supervisión). **✅ EN PROD
+desde v1.169.0 (2026-08-13, PR #329)** — deployado junto con paginación/navegación de Alertas/
+Supervisión y el fix de `tn-webhook`. Con esto, el módulo Repositores queda 100% completo. Detalle en
+[[wiki/features/repositores]] → "Notificaciones (J) y Reportes (K)".
 
 **356 (`356_fix_dedupe_reposicion_gondola.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
 Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado

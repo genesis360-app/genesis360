@@ -10,16 +10,16 @@ updated: 2026-08-13
 
 **Total al 2026-08-13:** 359 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
-sesión). **Migraciones 001-357 TODAS aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
+sesión). **Migraciones 001-359 TODAS aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
-PR #328), verificado con `list_migrations` real contra el proyecto PROD. **v1.169.0 (2026-08-13, PR
-#329) no agregó ninguna migración nueva.** **358 (hard delete de tenant con grace period) y 359 (NC
-electrónica AFIP automática) son NUEVAS (2026-08-13, misma sesión continuada): aplicadas SOLO en DEV —
-código y migraciones SIN COMMITEAR todavía, NO están en PROD.**
+PR #328); **358 (hard delete de tenant con grace period) y 359 (NC electrónica AFIP automática)
+deployadas a PROD el 2026-08-13 (v1.170.0, PR #330)**, verificado con `gh release view v1.170.0` +
+migraciones 358/359 confirmadas aplicadas contra el proyecto PROD. **v1.169.0 (2026-08-13, PR #329) no
+había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin cambios de DB.
 
-**359 (`359_nc_afip_pendientes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
-🛑 NO APLICADA EN PROD (`jjffnbrdjchquexdfgwq`), código SIN COMMITEAR (working tree local de `dev`,
-mismo working tree que la 358 y los 5 diagramas de flujo):** 🧾⚡ NC electrónica AFIP automática al
+**359 (`359_nc_afip_pendientes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), código release `v1.170.0` (PR #330 mergeado
+`0687213b39ce7d942de8763756245016a5556cff`, tag+release `v1.170.0`):** 🧾⚡ NC electrónica AFIP automática al
 confirmar una devolución — retoma la pregunta **A10** del relevamiento de Ventas (GO ya había elegido
 la opción "automática al confirmar", con la cola de reintentos recomendada en la misma respuesta),
 pedido explícito de GO hoy ("dale con la NC nomás") tras confirmar que el motor propio de AFIP
@@ -60,11 +60,12 @@ error genérico → el sweep SÍ llamó a `emitir-factura` de verdad, devolvió 
 "Un emisor Monotributista solo puede emitir comprobantes tipo C", `intentos` pasó a 1 sin escalar; (4)
 agotamiento — `intentos` llevado a 8 a mano → escaló igual que el caso peligroso. Datos de prueba de la
 cola y notificaciones sintéticas limpiados después (solo quedó la NC real de la venta #607). Typecheck
-+ `vite build` + 1563 tests unitarios verdes. **Estado real: construido y verificado — SIN COMMITEAR
-todavía.** Ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
++ `vite build` + 1563 tests unitarios verdes. **Estado real: ✅ EN PROD desde v1.170.0 (2026-08-13, PR
+#330).** Ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
 
-**358 (`358_hard_delete_grace_period.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
-🛑 NO APLICADA EN PROD (`jjffnbrdjchquexdfgwq`), código SIN COMMITEAR (working tree local de `dev`):**
+**358 (`358_hard_delete_grace_period.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y
+PROD (`jjffnbrdjchquexdfgwq`), código release `v1.170.0` (PR #330 mergeado
+`0687213b39ce7d942de8763756245016a5556cff`, tag+release `v1.170.0`):**
 🗑️⏳ Hard delete de tenant con grace period — pedido de GO inmediatamente después del deploy de
 v1.169.0, retoma un pendiente marcado explícitamente el 2026-08-04 ("auditoría de FKs hecha... NO se
 construyó el flujo — queda pendiente de que el usuario lo pida explícito"). Hoy "Eliminar cuenta y
@@ -100,9 +101,8 @@ a NULL, confirmado por SQL; app 100% funcional durante toda la ventana) y con el
 por curl contra un tenant 100% descartable (`__TEST_HARD_DELETE_DESCARTABLE__`) + una fila de prueba en
 `autorizaciones` (tenant y fila desaparecieron, CASCADE + fix del FK funcionando; reinvocado, 0
 evaluados — no reprocesa lo ya purgado; datos de prueba limpiados sin dejar rastro). Typecheck +
-`vite build` + 1563 tests unitarios verdes. **Estado real: construido y verificado — SIN COMMITEAR
-todavía**, próximo paso es que GO decida cuándo commitear/deployar. Ver
-[[wiki/features/cancelacion-arrepentimiento]] → "Hard delete de tenant con grace period".
+`vite build` + 1563 tests unitarios verdes. **Estado real: ✅ EN PROD desde v1.170.0 (2026-08-13, PR
+#330).** Ver [[wiki/features/cancelacion-arrepentimiento]] → "Hard delete de tenant con grace period".
 
 **357 (`357_repositores_fase4_etiquetas.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
 Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado

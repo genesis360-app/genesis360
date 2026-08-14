@@ -70,8 +70,9 @@ NO bloquea la baja (si falla → console.error, la baja ya está hecha).
 
 ## 5. 🆕 Hard delete de tenant con grace period (mig 358, 2026-08-13)
 
-> Estado: **CONSTRUIDO Y VERIFICADO EN DEV — SIN COMMITEAR** (working tree local de `dev`, no
-> deployado a PROD, `APP_VERSION` sin bump). Distinto de la cancelación de arriba: esto es el botón
+> Estado: **✅ 100% EN PROD (mig 358, release v1.170.0, 2026-08-13)** — construido y verificado en DEV,
+> deployado junto con la NC AFIP automática y 10 diagramas de flujo en un solo commit/PR (#330, mergeado
+> a `main`). Distinto de la cancelación de arriba: esto es el botón
 > "Eliminar cuenta y negocio" de **Mi Cuenta → zona de riesgo**, que borra el TENANT completo (no solo
 > la suscripción). Antes hacía un soft delete inmediato (borraba `users` + marcaba
 > `subscription_status='cancelled'`) sin ninguna purga real de los datos — pendiente anotado desde el
@@ -122,5 +123,9 @@ en `autorizaciones`: invocado por curl, el tenant y la fila desaparecieron (CASC
 funcionando); reinvocado, 0 evaluados (no reprocesa lo ya purgado). Typecheck + `vite build` + 1563
 tests unitarios verdes.
 
-**Próximo paso:** decidir con GO cuándo commitear/deployar. Ver `sources/raw/project_pendientes.md`
-("ARRANCÁ ACÁ") y `wiki/database/migraciones.md` (mig 358) para el detalle completo.
+**Deploy verificado de forma independiente (2026-08-13):** `gh pr view 330` → `MERGED`; `gh release
+view v1.170.0` → publicado sobre `main`; migración 358 aplicada en PROD (`jjffnbrdjchquexdfgwq`); Edge
+Function `tenant-hard-delete-sweep` deployada a PROD + workflow `.github/workflows/
+tenant-hard-delete-sweep.yml` (cron diario) recién ahora activo en `main`. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `wiki/database/migraciones.md` (mig 358) para el
+detalle completo.

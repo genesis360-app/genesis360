@@ -216,7 +216,7 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 "NC manual" suelta: una NC siempre reversa un comprobante puntual y queda atada a una `devoluciones`
 (`devolucion_id`). La EF toma los ítems de la devolución (no de la venta).
 
-> [!NOTE] **🆕 Desde mig 359 (2026-08-13, EN DEV, SIN COMMITEAR) la emisión es AUTOMÁTICA por default**
+> [!NOTE] **🆕 Desde mig 359 (2026-08-13, ✅ EN PROD desde v1.170.0) la emisión es AUTOMÁTICA por default**
 > (ver "NC automática al confirmar la devolución (A10)" más abajo) — al confirmar la devolución de una
 > venta facturada, el sistema intenta emitir la NC solo, en segundo plano. **El botón manual "Emitir
 > NC" sigue existiendo como fallback**: para forzar la emisión antes de que corra el sweep de reintento
@@ -232,7 +232,7 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 ---
 
-## NC automática al confirmar la devolución (A10, mig 359 — 2026-08-13, EN DEV, SIN COMMITEAR)
+## NC automática al confirmar la devolución (A10, mig 359 — ✅ EN PROD desde v1.170.0, 2026-08-13)
 
 Resuelve la pregunta **A10** del relevamiento de reglas de negocio de Ventas
 (`sources/raw/relevamiento_ventas_respuestas.md`): GO había elegido hace tiempo la opción **"A" (NC
@@ -322,8 +322,11 @@ Todos los datos de prueba de la cola (`nc_afip_pendientes`) y las notificaciones
 limpiaron después — solo quedó la devolución real de la venta #607 con su NC real, que se dejó a
 propósito. Typecheck + `vite build` + 1563 tests unitarios, todos verdes.
 
-**Estado real: construido y verificado — SIN COMMITEAR todavía** (working tree local de `dev`, se suma
-al hard delete de tenant, mig 358, y a los 5 diagramas de flujo de la misma sesión).
+**Estado real: ✅ EN PROD desde v1.170.0 (2026-08-13)** — deployado junto con el hard delete de tenant
+(mig 358) y los 10 diagramas de flujo, todo en un solo commit/PR (#330, mergeado a `main`). Verificado
+de forma independiente: `gh pr view 330` → `MERGED`; `gh release view v1.170.0` → publicado; migración
+359 aplicada en PROD (`jjffnbrdjchquexdfgwq`); Edge Function `nc-afip-retry-sweep` deployada a PROD +
+workflow `.github/workflows/nc-afip-retry-sweep.yml` (cron cada 15 min) recién ahora activo en `main`.
 
 Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/database/migraciones.md`
 (mig 359), `sources/raw/relevamiento_ventas_respuestas.md` (A10), [[wiki/features/devoluciones]].
@@ -410,7 +413,7 @@ gastos.conciliado_iva BOOLEAN
 | Emisión CAE | EF `emitir-factura` + prompt al despachar | ✅ PROD v1.3.0 |
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
-| NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | 🟡 EN DEV, SIN COMMITEAR |
+| NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | ✅ PROD v1.170.0 |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ PROD v1.60.0 |
 | Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ PROD v1.60.0 |

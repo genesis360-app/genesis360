@@ -6,7 +6,87 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-13, cont. 3) — 🧾⚡ NC electrónica AFIP automática al confirmar una devolución (mig 359): CONSTRUIDO Y VERIFICADO EN DEV, SIN COMMITEAR — este bloque supera al de abajo (2026-08-13, cont. 2: hard delete de tenant con grace period)
+> ### ✅ ARRANCÁ ACÁ (2026-08-13, cont. 4) — 🚀 v1.170.0 DEPLOYADO A PROD Y VERIFICADO — Hard delete de tenant con grace period (mig 358) + NC electrónica AFIP automática (mig 359) + 10 diagramas de flujo de procesos, TODO junto en un solo commit/PR — este bloque supera a los 3 de abajo (cont. 3: NC AFIP automática EN DEV sin commitear; cont. 2: hard delete EN DEV sin commitear; cont. 1: deploy de v1.169.0)
+>
+> Todo el trabajo que había quedado acumulado sin commitear en el mismo working tree local de `dev`
+> (hard delete de tenant, cont. 2 de abajo; NC AFIP automática, cont. 3 de abajo; y los diagramas de
+> flujo de procesos, que terminaron siendo **10 en total** — la Tanda 1 de 5 procesos que menciona el
+> bloque cont. 3 más abajo, más una Tanda 2 de 5 procesos más (Facturación AFIP, RRHH, Envíos, WMS,
+> integraciones ML/TN) construida después en la misma sesión y sin un bloque "ARRANCÁ ACÁ" propio) se
+> empaquetó en un solo commit y se deployó a PROD de punta a punta.
+>
+> #### Deploy verificado de forma independiente
+>
+> - `gh pr view 330` → `state: MERGED`, `mergeCommit: 0687213b39ce7d942de8763756245016a5556cff`,
+>   título "v1.170.0 — Hard delete con grace period + NC electrónica AFIP automática + 10 diagramas de
+>   flujo".
+> - `gh release view v1.170.0` → publicado sobre `main`.
+> - `src/config/brand.ts` → `APP_VERSION = 'v1.170.0'`.
+> - Migraciones **358** (`hard_delete_grace_period`) y **359** (`nc_afip_pendientes`) aplicadas en PROD
+>   (`jjffnbrdjchquexdfgwq`), inmediatamente después de la 357.
+> - Edge Functions nuevas deployadas a PROD: `tenant-hard-delete-sweep` y `nc-afip-retry-sweep`.
+> - Workflows de GitHub Actions recién ahora activos en `main` (no antes): `.github/workflows/
+>   tenant-hard-delete-sweep.yml` (cron diario) y `.github/workflows/nc-afip-retry-sweep.yml` (cron cada
+>   15 min).
+> - Vercel: producción `dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY, commit `0687213b`. DEV
+>   `dpl_EqQ2vH4uHWQQHrVFQbZDmgnHjZxH`, commit `5576092f`, en paridad con PROD.
+> - Build (`tsc` + `vite build`) y `npm run test:unit` (1563 tests) verdes antes del deploy.
+>
+> #### Qué quedó en PROD (detalle técnico completo en los bloques históricos de abajo, cont. 3 y cont. 2 — este bloque no lo repite)
+>
+> - **Hard delete de tenant con grace period de 30 días** (mig 358) — "Eliminar cuenta y negocio" ya no
+>   borra de inmediato: programa `tenants.delete_scheduled_at`; el dueño conserva acceso normal y puede
+>   cancelar la baja él mismo (self-service, banner rojo global en `AppLayout.tsx` + panel condicional en
+>   Mi Cuenta); sweep diario (`tenant-hard-delete-sweep`) purga lo vencido con `DELETE FROM tenants` real
+>   — el CASCADE de las ~140 FK se encarga del resto, incluyendo el fix de un FK real (`autorizaciones`,
+>   único caso con `ON DELETE NO ACTION` en vez de `CASCADE`) que hubiera bloqueado el DELETE. Ver
+>   [[wiki/features/cancelacion-arrepentimiento]] → "Hard delete de tenant con grace period".
+> - **NC electrónica AFIP automática al confirmar una devolución** (mig 359, resuelve la pregunta **A10**
+>   del relevamiento de Ventas) — al confirmar la devolución de una venta facturada, dispara sola en
+>   segundo plano (fire-and-forget, nunca bloquea ni revierte la devolución) el mismo `emitir-factura`
+>   del botón manual. Si falla, encola en `nc_afip_pendientes` — sweep de reintento cada 15 min
+>   (`nc-afip-retry-sweep`) que **nunca reintenta ciegamente** (🛑 REGLA #0): si `emitir-factura` marca el
+>   error con la frase literal "NO reintentar" (AFIP pudo haber autorizado el comprobante sin que el
+>   sistema tenga el CAE — riesgo de NC duplicada), escala directo a revisión de DUEÑO/SUPER_USUARIO/
+>   CONTADOR en vez de insistir solo. Botón manual "Emitir NC" sigue existiendo como fallback. Verificado
+>   con una devolución real en DEV contra AFIP homologación real (CAE real `86330757276751`, NC-C, motor
+>   propio) + los 3 caminos de seguridad del sweep. Ver [[wiki/features/facturacion-afip]] → "NC
+>   automática al confirmar la devolución (A10)".
+> - Confirmado (sin cambio de lógica, solo un comentario de código corregido): el motor propio de AFIP/
+>   ARCA (`WsfePropioProvider`, WSAA+WSFEv1 directo, sin AfipSDK) es el que usan los **8 tenants reales de
+>   PROD** — confirmado con SQL directo contra PROD antes del deploy.
+> - **10 diagramas de flujo de procesos** — formato doble: `.drawio` editable con mouse en draw.io
+>   (pedido explícito de GO) + Mermaid embebido en las páginas de wiki correspondientes. Tanda 1 (5
+>   procesos): Venta completa (POS→Picking→Entrega→Facturación), Compra→Recepción→Stock, Devolución→NC,
+>   Caja, Pedido→Reserva→Despacho. Tanda 2 (5 procesos): Facturación AFIP (dual-provider + guards
+>   fiscales), RRHH (alta→liquidación→baja), Envíos (creación→tracking→entrega), WMS (reabastecimiento
+>   por umbral), integraciones ML/TN (webhook→venta→sync de stock). Viven en `G360.Wiki/diagrams/
+>   *.drawio` + `G360.Wiki/diagrams/README.md` (índice + notas de mantenimiento) + Mermaid embebido en 10
+>   páginas de wiki (`ventas-pos.md`, `clientes-proveedores.md`, `devoluciones.md`, `caja.md`,
+>   `pedidos.md`, `facturacion-afip.md`, `rrhh.md`, `envios.md`, `wms.md`, `tienda-nube.md` con pointer
+>   desde `mercado-libre.md`). **Pendiente real, no bloqueante**: ningún `.drawio` se abrió visualmente
+>   dentro de la app draw.io (sin forma de renderizarlo en este entorno) — solo se validó que el XML es
+>   válido y sin referencias rotas. GO debería darles una pasada visual en draw.io para confirmar que el
+>   layout se ve bien.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): **v1.170.0**, migraciones **001-359** (358 y 359 recién aplicadas
+>   junto con este deploy).
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): **v1.170.0**, en paridad con PROD (commit `0687213b`).
+>
+> **Próximo paso**: ninguna tarea nueva anotada — a la espera de que GO le dé una pasada visual a los 10
+> `.drawio` en draw.io (pendiente no bloqueante de arriba), o pida seguir con venta física en USD/caja en
+> USD (G5, sigue diferida).
+>
+> Ver `log.md` (entrada al principio), `wiki/business/roadmap.md` (v1.170.0),
+> `wiki/database/migraciones.md` (358 y 359 a EN PROD), [[wiki/features/cancelacion-arrepentimiento]],
+> [[wiki/features/facturacion-afip]], [[wiki/features/devoluciones]],
+> `sources/raw/relevamiento_ventas_respuestas.md` (A10 a EN PROD), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-13, cont. 3) — 🧾⚡ NC electrónica AFIP automática al confirmar una devolución (mig 359): CONSTRUIDO Y VERIFICADO EN DEV — ✅ DEPLOYADO A PROD v1.170.0 (ver bloque cont. 4 de arriba) — este bloque queda como registro histórico de la construcción; supera al de abajo (2026-08-13, cont. 2: hard delete de tenant con grace period)
 >
 > Continuación directa de la misma sesión que acaba de dejar el hard delete de tenant (mig 358, bloque
 > de abajo) y los 5 diagramas de flujo de procesos (`G360.Wiki/diagrams/`) sin commitear, mismo working
@@ -88,7 +168,10 @@ type: project
 > **Estado real: construido y verificado — SIN COMMITEAR todavía** (se suma al hard delete de tenant,
 > mig 358, y a los 5 diagramas de flujo, todo en el mismo working tree local de `dev`).
 >
-> #### 📊 Estado DEV/PROD al cierre de esta tarea
+> **✅ Actualización 2026-08-13 (cont. 4): esto ya se commiteó y se deployó a PROD como parte de
+> v1.170.0** — ver el bloque de arriba (cont. 4) para el detalle del deploy.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea (snapshot histórico — ver cont. 4 de arriba para el estado real actual)
 >
 > - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.169.0** — sin cambios esta tarea, nada deployado.
 > - **DEV** (`gcmhzdedrkmmzfzfveig`): mig 359 aplicada; Edge Function `nc-afip-retry-sweep` deployada a
@@ -193,6 +276,9 @@ type: project
 > **Estado real: construido y verificado — SIN COMMITEAR todavía** (working tree de `dev` local, mismo
 > patrón que sesiones anteriores — no se commitea hasta que el usuario lo pida explícitamente).
 >
+> **✅ Actualización 2026-08-13 (cont. 4): esto ya se commiteó y se deployó a PROD como parte de
+> v1.170.0** — ver el bloque de arriba (cont. 4) para el detalle del deploy.
+>
 > #### Aclaración (sin construir nada): la pregunta "L" del relevamiento de Ventas quedó obsoleta
 >
 > GO pensaba que el relevamiento de Ventas (secciones A-L) estaba 100% respondido y preguntó por la
@@ -212,7 +298,7 @@ type: project
 > `relevamiento_ventas_respuestas.md` (sección L) recibió una nota aclarando que quedó obsoleta — no se
 > la marcó "respondida" con una opción (GO no la respondió), se aclaró que ya no aplica.
 >
-> #### 📊 Estado DEV/PROD al cierre de esta tarea
+> #### 📊 Estado DEV/PROD al cierre de esta tarea (snapshot histórico — ver cont. 4 arriba para el estado real actual)
 >
 > - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.169.0** — sin cambios esta tarea, nada deployado.
 > - **DEV** (`gcmhzdedrkmmzfzfveig`): mig 358 aplicada; Edge Function `tenant-hard-delete-sweep`

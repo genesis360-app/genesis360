@@ -133,7 +133,7 @@ No aplica a items serializados — esos siempre reactivan a su línea original (
 - Si origen = `facturada` → `numero_nc = "NC-{venta.numero}-{n}"` (n = count previas + 1) — esto es el **ticket interno NO fiscal** (comprobante de ajuste).
 - Si origen = `despachada` → sin NC
 - **NC electrónica AFIP: ✅ desde v1.71.0** (CAE). **PDF / imprimir / email de la NC fiscal desde v1.72.0** — ESO es lo que se le entrega legalmente al cliente, NO el ticket interno. La **letra de la NC se deriva de la factura original y queda fija** (Factura C→NC-C; antes defaulteaba a NC-B y rebotaba con AFIP 10040). Datos en `devoluciones.nc_*`; PDF vía `facturasPDF.ts` con `clase:'nota_credito'`.
-- **🆕 Emisión AUTOMÁTICA desde mig 359 (2026-08-13, EN DEV, SIN COMMITEAR)**: al confirmar la
+- **🆕 Emisión AUTOMÁTICA desde mig 359 (2026-08-13, ✅ EN PROD desde v1.170.0)**: al confirmar la
   devolución, el sistema intenta emitir la NC solo, en segundo plano (fire-and-forget, nunca bloquea ni
   revierte la devolución ya confirmada). Si falla, encola en `nc_afip_pendientes` y un sweep
   (`nc-afip-retry-sweep`, cada 15 min) reintenta con escalamiento a revisión humana ante cualquier error
@@ -198,7 +198,7 @@ Si cualquier operación falla después del INSERT del header `devoluciones`:
 
 Para ventas facturadas con AFIP, la devolución habilita la NC electrónica. **Tabla `devoluciones` ya extendida (mig 088):** `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo` (`NC-A/B/C`), `nc_punto_venta`. EF `emitir-factura` (esNC, con `CbtesAsoc` a la factura original) → CAE. **PDF/imprimir/email desde v1.72.0.**
 
-**🆕 Disparador (mig 359, 2026-08-13, EN DEV, SIN COMMITEAR):** ya NO hace falta abrir el botón manual
+**🆕 Disparador (mig 359, 2026-08-13, ✅ EN PROD desde v1.170.0):** ya NO hace falta abrir el botón manual
 "Emitir NC" — al confirmar la devolución (`procesarDevolucion`) se dispara automáticamente en segundo
 plano el mismo llamado a `emitir-factura`. Éxito → toast con el CAE; falla → cola `nc_afip_pendientes`
 + sweep `nc-afip-retry-sweep` (cron 15 min) con escalamiento a revisión humana (DUEÑO/SUPER_USUARIO/

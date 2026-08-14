@@ -8,14 +8,51 @@ updated: 2026-08-13
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.169.0 (código/Vercel, CONFIRMADO de forma independiente — PR #329 mergeado a
-`main` (`f6163ac8`), tag+release `v1.169.0` publicados, `src/config/brand.ts` en `origin/main` con
-`APP_VERSION = 'v1.169.0'`, Vercel deployment de producción `dpl_2q1HCdhmrvNcAsVt7YsCBnUkwZYf` en estado
-READY). **Cero migraciones nuevas — la última migración sigue siendo la 357.** Detalle completo en
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.169.0 (`origin/dev`, en paridad con PROD tras el merge del PR #329) — sin
-pendientes de deploy  
+**Versión en PROD:** v1.170.0 (código/Vercel, CONFIRMADO de forma independiente — PR #330 mergeado a
+`main` (`0687213b39ce7d942de8763756245016a5556cff`), tag+release `v1.170.0` publicados,
+`src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
+`dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **2 migraciones nuevas — 358 y 359 (la última
+migración es la 359).** Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de
+verdad, bloque "ARRANCÁ ACÁ")  
+**Versión en DEV:** v1.170.0 (`origin/dev`, en paridad con PROD tras el merge del PR #330, commit
+`5576092f`) — sin pendientes de deploy  
 **Última actualización:** 13 de Agosto, 2026
+
+---
+
+## v1.170.0 — 🗑️⏳🧾⚡ Hard delete de tenant con grace period + NC electrónica AFIP automática + 10 diagramas de flujo — ✅ EN PROD (2026-08-13)
+
+Deploy a PROD de TODO el trabajo construido y verificado en DEV en la misma sesión, empaquetado en un
+solo commit (`0687213b`) y un solo PR (#330, mergeado a `main`). **2 migraciones SQL nuevas: 358 y
+359.**
+
+- **Hard delete de tenant con grace period de 30 días** (mig 358): "Eliminar cuenta y negocio" (Mi
+  Cuenta → zona de riesgo) ya no borra de inmediato — programa `tenants.delete_scheduled_at`; el dueño
+  conserva acceso normal y puede cancelar la baja él mismo (self-service: banner rojo global en
+  `AppLayout.tsx` + panel condicional en Mi Cuenta). Sweep diario (`tenant-hard-delete-sweep`, GitHub
+  Actions) purga lo vencido con `DELETE FROM tenants` real — CASCADE de las ~140 FK a `tenant_id` borra
+  el resto, incluyendo el fix de un FK real (`autorizaciones`, único caso sin `ON DELETE CASCADE`) que
+  hubiera bloqueado el DELETE.
+- **NC electrónica AFIP automática** al confirmar una devolución de una venta facturada (mig 359,
+  relevamiento Ventas A10, "auto al confirmar"): dispara en segundo plano tras confirmar la devolución
+  (nunca bloquea ni puede revertirla). Si falla, encola en `nc_afip_pendientes` — sweep de reintento
+  (`nc-afip-retry-sweep`, cada 15 min) que **nunca reintenta ciegamente** errores que `emitir-factura`
+  marca con la frase "NO reintentar" (posible autorización ambigua en AFIP, riesgo de NC duplicada):
+  escala directo a revisión de DUEÑO/SUPER_USUARIO/CONTADOR. Verificado con una emisión real contra AFIP
+  homologación (CAE real `86330757276751`).
+- Confirmado (sin cambio de lógica): el motor propio de AFIP/ARCA (WSFE directo, sin AfipSDK) es el que
+  usan los 8 tenants reales de PROD.
+- **10 diagramas de flujo de procesos** (`.drawio` editable + Mermaid embebido en el wiki): Venta,
+  Compra→Recepción→Stock, Devolución→NC, Caja, Pedido→Reserva→Despacho, Facturación AFIP, RRHH, Envíos,
+  WMS/Reabastecimiento por umbral, integraciones ML/TN — extraídos del comportamiento real de la app.
+
+**Deploy verificado de forma independiente**: `gh pr view 330` → `MERGED`; `gh release view v1.170.0` →
+publicado sobre `main`; migraciones 358 y 359 aplicadas en PROD; Edge Functions
+`tenant-hard-delete-sweep` y `nc-afip-retry-sweep` (nuevas) deployadas a PROD; Vercel
+`dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` READY. Build + `npm run test:unit` (1563 tests) verdes antes del
+deploy. Detalle completo en [[wiki/features/cancelacion-arrepentimiento]],
+[[wiki/features/facturacion-afip]], [[wiki/features/devoluciones]], `wiki/database/migraciones.md`
+(358-359).
 
 ---
 

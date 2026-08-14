@@ -6,14 +6,103 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-13
 ---
 
-# Historial de Migraciones (001-357)
+# Historial de Migraciones (001-359)
 
-**Total al 2026-08-13:** 357 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-13:** 359 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-357 TODAS aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
 PR #328), verificado con `list_migrations` real contra el proyecto PROD. **v1.169.0 (2026-08-13, PR
-#329) no agregó ninguna migración nueva** — el número final sigue siendo 357.
+#329) no agregó ninguna migración nueva.** **358 (hard delete de tenant con grace period) y 359 (NC
+electrónica AFIP automática) son NUEVAS (2026-08-13, misma sesión continuada): aplicadas SOLO en DEV —
+código y migraciones SIN COMMITEAR todavía, NO están en PROD.**
+
+**359 (`359_nc_afip_pendientes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+🛑 NO APLICADA EN PROD (`jjffnbrdjchquexdfgwq`), código SIN COMMITEAR (working tree local de `dev`,
+mismo working tree que la 358 y los 5 diagramas de flujo):** 🧾⚡ NC electrónica AFIP automática al
+confirmar una devolución — retoma la pregunta **A10** del relevamiento de Ventas (GO ya había elegido
+la opción "automática al confirmar", con la cola de reintentos recomendada en la misma respuesta),
+pedido explícito de GO hoy ("dale con la NC nomás") tras confirmar que el motor propio de AFIP
+(`WsfePropioProvider`) ya está en uso por los 8 tenants reales de PROD. Hoy SOLO existía el flujo
+MANUAL (botón "Emitir NC" en el detalle de la devolución). Tabla nueva `nc_afip_pendientes` (cola de
+reintento): tenant_id/devolucion_id/venta_id/tipo_comprobante/punto_venta/intentos/ultimo_error/
+`requiere_reconciliacion_manual` (boolean)/resuelto_at/notificado_at — índice único parcial `WHERE
+resuelto_at IS NULL` (un solo pendiente ACTIVO por devolución); RLS SELECT+INSERT para miembros del
+tenant, UPDATE/DELETE solo `service_role`. 🛑 **REGLA #0 — diseño de seguridad**: `emitir-factura/
+index.ts` ya marca con la frase literal **"NO reintentar"** dos escenarios donde AFIP pudo haber
+autorizado el comprobante aunque el sistema no tenga el CAE (error de transporte a mitad de la llamada
+al WSFE, o CAE autorizado pero la escritura en `devoluciones.nc_cae` falló después) — reintentar
+ciegamente esos casos podría emitir una **NC DUPLICADA en AFIP**. El diseño NO reintenta todo N veces:
+reintenta solo errores genuinamente seguros (validación de negocio) y **escala a revisión humana de
+inmediato** (sin gastar ni un intento) cualquier error con "NO reintentar", notificando a
+DUEÑO/SUPER_USUARIO/CONTADOR para que concilien contra el "último autorizado" de AFIP antes de tocar la
+devolución de nuevo. `src/pages/VentasPage.tsx` (`procesarDevolucion`): tras insertar `devoluciones` de
+una venta `facturada`, dispara en segundo plano (fire-and-forget, `void (async () => {...})()`, NUNCA
+bloquea ni puede revertir la devolución ya confirmada con su NC interna no-fiscal) un intento automático
+con la MISMA EF `emitir-factura` que usaba el botón manual (misma letra derivada de la factura original,
+mismo punto de venta). Éxito → toast con el CAE; falla → encola en `nc_afip_pendientes` + toast suave
+avisando reintento automático. Edge Function nueva `nc-afip-retry-sweep` (deployada a DEV) +
+`.github/workflows/nc-afip-retry-sweep.yml` (cron cada 15 min, GitHub Actions — el proyecto no tiene
+pg_cron): por cada pendiente activo, si `ultimo_error` contiene "NO reintentar" o ya llegó a 8 intentos
+→ escala (`requiere_reconciliacion_manual=true`, notifica in-app+email UNA vez, sin gastar el intento);
+si no, reintenta `emitir-factura` con `SUPABASE_SERVICE_ROLE_KEY` (camino `esServiceRole` que la EF ya
+contemplaba, sin cambios ahí) — éxito marca `resuelto_at` + notifica "NC emitida automáticamente"; error
+de validación de negocio suma un intento y espera el próximo ciclo; error "NO reintentar" nuevo escala
+igual. **Verificado con AFIP homologación REAL, no mockeado**, los 4 caminos: (1) éxito — venta #607
+real, `estado='facturada'` Factura C, devolución completa vía Playwright ($600 transferencia) → NC
+automática emitida sola contra el WSFE real, `nc_cae='86330757276751'`, `nc_tipo='NC-C'`,
+`nc_punto_venta=1`, `nc_numero_comprobante=24`, `afip_provider_usado='propio'` — 0 filas en la cola,
+funcionó al primer intento (registro dejado intacto en DEV a propósito, tiene CAE real); (2)
+escalamiento — fila insertada a mano con el error real "NO reintentar la emisión a ciegas" → sweep
+escaló sin llamar a `emitir-factura` (`intentos` quedó en 0), 3 notificaciones reales (una por usuario
+DUEÑO/SUPER_USUARIO/CONTADOR), reinvocación → 0 evaluados (no duplica el aviso); (3) reintento seguro —
+error genérico → el sweep SÍ llamó a `emitir-factura` de verdad, devolvió el error de validación real
+"Un emisor Monotributista solo puede emitir comprobantes tipo C", `intentos` pasó a 1 sin escalar; (4)
+agotamiento — `intentos` llevado a 8 a mano → escaló igual que el caso peligroso. Datos de prueba de la
+cola y notificaciones sintéticas limpiados después (solo quedó la NC real de la venta #607). Typecheck
++ `vite build` + 1563 tests unitarios verdes. **Estado real: construido y verificado — SIN COMMITEAR
+todavía.** Ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
+
+**358 (`358_hard_delete_grace_period.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+🛑 NO APLICADA EN PROD (`jjffnbrdjchquexdfgwq`), código SIN COMMITEAR (working tree local de `dev`):**
+🗑️⏳ Hard delete de tenant con grace period — pedido de GO inmediatamente después del deploy de
+v1.169.0, retoma un pendiente marcado explícitamente el 2026-08-04 ("auditoría de FKs hecha... NO se
+construyó el flujo — queda pendiente de que el usuario lo pida explícito"). Hoy "Eliminar cuenta y
+negocio" (`MiCuentaPage.tsx`) hacía un soft delete inmediato (borraba `users` + marcaba
+`tenants.subscription_status='cancelled'`) sin ninguna purga real de los datos del tenant. **3
+decisiones de diseño confirmadas con GO**: reactivación self-service (sin pasar por soporte), sin
+export ZIP automático (ya existen exports por módulo), 30 días de gracia. `ALTER TABLE tenants ADD
+COLUMN delete_scheduled_at timestamptz` (NULL = sin baja programada) + índice parcial
+`idx_tenants_delete_scheduled_at`. 🛑 **Fix de bloqueo real encontrado al auditar TODAS las FK a
+`tenant_id` en las ~140 tablas**: todas tenían `ON DELETE CASCADE` **excepto `autorizaciones`** (tenía
+`NO ACTION` — mismo gap ya detectado en la auditoría del 2026-08-04, cuando la tabla se llamaba
+`autorizaciones_inventario`; el `RENAME TABLE` de la mig 347 no tocó la definición de esa FK) — sin el
+fix, el `DELETE FROM tenants` del sweep habría fallado con cualquier tenant que tuviera una fila en
+`autorizaciones`. `ALTER TABLE autorizaciones DROP/ADD CONSTRAINT ... ON DELETE CASCADE`. Frontend:
+`MiCuentaPage.tsx` (`handleDeleteAccount()` reescrito — ya NO borra `users`, programa la baja a +30
+días, mantiene el guard fail-closed de cancelación MP si había suscripción activa — REGLA #0 — manda
+email, no cierra sesión; "zona de riesgo" con estado condicional programar/cancelar);
+`AppLayout.tsx` (banner global rojo, mismo mecanismo que `showTrialBanner`, solo rol DUEÑO, con días
+restantes y botón "Cancelar eliminación" desde cualquier página); `src/lib/tenantHardDelete.ts` nuevo
+(`cancelarBajaProgramada()` compartida entre el banner y MiCuentaPage). Edge Function nueva
+`tenant-hard-delete-sweep` (deployada a DEV, `verify_jwt: false`) + workflow
+`.github/workflows/tenant-hard-delete-sweep.yml` (cron diario `0 6 * * *` vía GitHub Actions — el
+proyecto no tiene pg_cron habilitado, mismo patrón que `repositores-cierre-dia-sweep`): busca tenants
+con `delete_scheduled_at` vencido y hace el `DELETE FROM tenants` real; el `ON DELETE CASCADE` de las
+FK se encarga de borrar todo lo demás (productos, ventas, inventario, cajas, etc.). **Decisión
+consciente de alcance, documentada explícitamente**: el sweep NO borra las cuentas de Supabase Auth de
+los ex-usuarios del tenant — el riesgo de borrar por error una cuenta STAFF/ADMIN cross-tenant
+(`rol='ADMIN'`, acceso a múltiples tenants) supera el beneficio de limpieza automática; deuda técnica
+menor, no bloqueante. Self-reviewed sin `migration-reviewer` (2 `ALTER TABLE`, sin RLS/triggers/
+funciones nuevos, perfil de riesgo bajo). Verificado con Playwright real contra DEV (programar → banner
+con fecha exacta +30 días confirmada por SQL → cancelar desde el banner → `delete_scheduled_at` vuelve
+a NULL, confirmado por SQL; app 100% funcional durante toda la ventana) y con el sweep real invocado
+por curl contra un tenant 100% descartable (`__TEST_HARD_DELETE_DESCARTABLE__`) + una fila de prueba en
+`autorizaciones` (tenant y fila desaparecieron, CASCADE + fix del FK funcionando; reinvocado, 0
+evaluados — no reprocesa lo ya purgado; datos de prueba limpiados sin dejar rastro). Typecheck +
+`vite build` + 1563 tests unitarios verdes. **Estado real: construido y verificado — SIN COMMITEAR
+todavía**, próximo paso es que GO decida cuándo commitear/deployar. Ver
+[[wiki/features/cancelacion-arrepentimiento]] → "Hard delete de tenant con grace period".
 
 **357 (`357_repositores_fase4_etiquetas.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
 Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado

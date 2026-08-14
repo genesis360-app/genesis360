@@ -3,12 +3,40 @@ title: Devoluciones
 category: features
 tags: [devoluciones, stock, nota-credito, caja, serializado]
 sources: [CLAUDE.md]
-updated: 2026-06-16
+updated: 2026-08-13
 ---
 
 # Devoluciones
 
 Módulo de devoluciones de ventas. Implementado en v0.58.0 (migration 030).
+
+## 🔀 Diagrama de flujo — Devolución → Nota de Crédito
+
+Editable en draw.io: [`G360.Wiki/diagrams/03-devolucion-nc.drawio`](../../diagrams/03-devolucion-nc.drawio).
+
+```mermaid
+flowchart TD
+    A[Venta despachada o facturada] --> B["Modal Devolver:<br/>series/cantidad, motivo<br/>tope = vendido - ya_devuelto"]
+    B --> C{"¿Cliente tiene<br/>deuda CC?"}
+    C -->|Sí| C1["Aplica FIFO a reducir deuda<br/>excedente por medio elegido"]
+    C -->|No| C2["Devuelve por efectivo/medio<br/>o crédito a favor"]
+    C1 --> D{"¿Stock serializado?"}
+    C2 --> D
+    D -->|No| E{"Destino del stock"}
+    D -->|Sí| F["Reactiva series originales<br/>activo=true, reservado=false"]
+    E -->|"Dejar en DEV (default)"| E1["ubicacion=DEV, estado=DEV<br/>excluida de venta"]
+    E -->|Reintegrar a vendible| E2["ubicacion=NULL<br/>estado=disponible_venta<br/>vendible de inmediato"]
+    E1 --> G["Caja: egreso o egreso_informativo<br/>bloquea si supera saldo sesión"]
+    E2 --> G
+    F --> G
+    G --> H{"¿Venta origen?"}
+    H -->|facturada| I["NC interna (no fiscal)<br/>+ NC electrónica AFIP AUTOMÁTICA<br/>fire-and-forget, CbtesAsoc → CAE<br/>(fallback: botón manual / cola de reintento)"]
+    H -->|despachada| J[Sin NC]
+    I --> K{"¿Total devuelto ≥ total venta?"}
+    J --> K
+    K -->|Sí| K1["venta.estado = devuelta"]
+    K -->|No| K2[Venta sigue despachada/facturada]
+```
 
 ---
 
@@ -104,7 +132,14 @@ No aplica a items serializados — esos siempre reactivan a su línea original (
 
 - Si origen = `facturada` → `numero_nc = "NC-{venta.numero}-{n}"` (n = count previas + 1) — esto es el **ticket interno NO fiscal** (comprobante de ajuste).
 - Si origen = `despachada` → sin NC
-- **NC electrónica AFIP: ✅ desde v1.71.0** (Devolver → botón "Emitir NC" en el detalle → CAE; no hay NC manual). **PDF / imprimir / email de la NC fiscal desde v1.72.0** — ESO es lo que se le entrega legalmente al cliente, NO el ticket interno. La **letra de la NC se deriva de la factura original y queda fija** (Factura C→NC-C; antes defaulteaba a NC-B y rebotaba con AFIP 10040). Datos en `devoluciones.nc_*`; PDF vía `facturasPDF.ts` con `clase:'nota_credito'`. Ver [[project_afip_produccion]].
+- **NC electrónica AFIP: ✅ desde v1.71.0** (CAE). **PDF / imprimir / email de la NC fiscal desde v1.72.0** — ESO es lo que se le entrega legalmente al cliente, NO el ticket interno. La **letra de la NC se deriva de la factura original y queda fija** (Factura C→NC-C; antes defaulteaba a NC-B y rebotaba con AFIP 10040). Datos en `devoluciones.nc_*`; PDF vía `facturasPDF.ts` con `clase:'nota_credito'`.
+- **🆕 Emisión AUTOMÁTICA desde mig 359 (2026-08-13, EN DEV, SIN COMMITEAR)**: al confirmar la
+  devolución, el sistema intenta emitir la NC solo, en segundo plano (fire-and-forget, nunca bloquea ni
+  revierte la devolución ya confirmada). Si falla, encola en `nc_afip_pendientes` y un sweep
+  (`nc-afip-retry-sweep`, cada 15 min) reintenta con escalamiento a revisión humana ante cualquier error
+  ambiguo (REGLA #0 — riesgo de NC duplicada en AFIP). El botón manual "Emitir NC" sigue existiendo
+  como fallback (forzar antes del sweep, o resolver un caso escalado). Detalle completo en
+  [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
 
 ### Caja
 
@@ -161,7 +196,16 @@ Si cualquier operación falla después del INSERT del header `devoluciones`:
 
 ## Notas de Crédito electrónicas (✅ implementado)
 
-Para ventas facturadas con AFIP, la devolución habilita la NC electrónica. **Tabla `devoluciones` ya extendida (mig 088):** `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo` (`NC-A/B/C`), `nc_punto_venta`. Flujo: Devolver → "Emitir NC" → EF `emitir-factura` (esNC, con `CbtesAsoc` a la factura original) → CAE. **PDF/imprimir/email desde v1.72.0.** Detalle en [[project_afip_produccion]].
+Para ventas facturadas con AFIP, la devolución habilita la NC electrónica. **Tabla `devoluciones` ya extendida (mig 088):** `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo` (`NC-A/B/C`), `nc_punto_venta`. EF `emitir-factura` (esNC, con `CbtesAsoc` a la factura original) → CAE. **PDF/imprimir/email desde v1.72.0.**
+
+**🆕 Disparador (mig 359, 2026-08-13, EN DEV, SIN COMMITEAR):** ya NO hace falta abrir el botón manual
+"Emitir NC" — al confirmar la devolución (`procesarDevolucion`) se dispara automáticamente en segundo
+plano el mismo llamado a `emitir-factura`. Éxito → toast con el CAE; falla → cola `nc_afip_pendientes`
++ sweep `nc-afip-retry-sweep` (cron 15 min) con escalamiento a revisión humana (DUEÑO/SUPER_USUARIO/
+CONTADOR) ante cualquier error donde AFIP pudo haber autorizado el comprobante sin que quede registrado
+(REGLA #0 — evita NC duplicada). El botón manual sigue disponible como fallback. Detalle completo,
+diseño de seguridad y verificación en [[wiki/features/facturacion-afip]] → "NC automática al confirmar
+la devolución (A10)".
 
 ---
 

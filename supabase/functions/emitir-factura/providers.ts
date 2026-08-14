@@ -4,9 +4,12 @@
 // COMPARTIDA por ambos providers → los dos mandan exactamente los mismos números a AFIP,
 // solo cambia CÓMO llegan. Así REGLA #0 no se bifurca.
 //
-//   • AfipSdkProvider   → circuito ACTUAL (AfipSDK cloud, firma WSAA "en su nube"). En PROD.
 //   • WsfePropioProvider → circuito PROPIO (fase 3): firma CMS local + WSAA LoginCms +
 //     WSFEv1 SOAP directo. TA cacheado en DB (tabla afip_wsaa_ta) vía TaCache inyectado.
+//     Default de `tenants.afip_provider` desde la mig 265 — los 8 tenants reales de PROD
+//     ya están en 'propio' (2026-08-13, verificado con SQL).
+//   • AfipSdkProvider   → circuito de AfipSDK cloud (firma WSAA "en su nube"). Ya NO es el
+//     default ni está en uso activo — queda como rollback manual por flag si el propio falla.
 //
 // El provider se elige por-tenant (tenants.afip_provider), con rollback instantáneo por flag.
 // 🛑 REGLA #0 — SIN fallback automático en la emisión: si el propio falla con error de

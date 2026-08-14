@@ -23,6 +23,30 @@ Visión: el sistema sugiere dónde almacenar cada SKU en base a dimensiones/peso
 > va a reusar — solo cambia **quién genera las tareas**, no el mecanismo de picking en sí. No asumir
 > que Ventas/Envíos siguen siendo el origen de las tareas al leer las secciones de abajo.
 
+## 🔀 Diagrama de flujo — Reabastecimiento por umbral
+
+Editable en draw.io: [`G360.Wiki/diagrams/09-wms-reabastecimiento-umbral.drawio`](../../diagrams/09-wms-reabastecimiento-umbral.drawio).
+
+```mermaid
+flowchart TD
+    A{"¿Qué dispara el\nreabastecimiento?"} -->|"On-demand (default ON)\nencadenado a picking de un pedido"| B["LPN reservado vive\nfuera de zona de picking"]
+    A -->|"Por umbral (default OFF)\nsweep manual 'Procesar ahora'"| C["fn_generar_tareas_reabastecimiento_umbral\ncompara stock en picking vs\nproducto_ubicacion_umbrales"]
+    B --> D{"¿Stock en zona picking\n&lt; mínimo configurado?"}
+    C --> D
+    D -->|Sí| E["Cantidad = máximo − actual\n(clampeada al disponible real del origen)"]
+    D -->|No| Z["No genera tarea"]
+    E --> F["Elegir ubicación destino\n(prioridad: ya tiene stock+lugar →\nya tiene stock lleno → cualquiera con lugar → resto)"]
+    F --> G["wms_tareas tipo=replenishment\nestado=pendiente"]
+    G --> H["Completar: fn_completar_tarea_reabastecimiento"]
+    H --> I["Mueve stock real (mismo mecanismo\nque LpnAccionesModal → Mover)\n+ transfiere cantidad_reservada al destino"]
+    I --> J{"¿Tenía tarea de picking\nencadenada (tarea_precedente_id)?"}
+    J -->|Sí| K["Picking dependiente ahora\npuede completarse"]
+    J -->|No| L["Fin"]
+    G -.cancelar.-> M["fn_cancelar_tarea_wms\nbloquea si ya completada"]
+    M --> N{"¿Picking dependiente\npendiente?"}
+    N -->|Sí| N1["Cancela en cascada"]
+```
+
 ---
 
 ## Estado de fases

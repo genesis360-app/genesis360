@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { BRAND, BTN, DATOS_TRANSFERENCIA } from '@/config/brand'
 import { elegibleArrepentimiento } from '@/lib/arrepentimiento'
+import { cancelarBajaProgramada } from '@/lib/tenantHardDelete'
 import { formatearVencimiento } from '@/lib/facturacionManual'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -316,17 +317,21 @@ export default function MiCuentaPage() {
     }
   }
 
-  // ── Delete account (Dueño) ──────────────────────────────────────────────────
+  // ── Delete account (Dueño) — hard delete con grace period (mig 358) ────────
+  // Ya NO borra `users` de inmediato: programa `tenants.delete_scheduled_at` a +30 días. Un sweep
+  // diario (tenant-hard-delete-sweep) hace el DELETE definitivo cuando se cumple. El dueño sigue
+  // pudiendo loguearse durante la ventana y cancelarlo él mismo (banner en AppLayout.tsx) — por eso
+  // NO se cierra la sesión acá, se lo manda al dashboard para que vea la confirmación de inmediato.
+  const GRACE_DIAS = 30
   const handleDeleteAccount = async () => {
     if (!user || !tenant) return
     if (confirmText !== tenant.nombre) { toast.error(`Escribí exactamente: ${tenant.nombre}`); return }
     setDeleting(true)
     try {
-      // 🛑 REGLA #0: si hay suscripción ACTIVA, cancelar el cobro en MP ANTES de borrar nada.
-      // Si no, el usuario elimina la cuenta y Mercado Pago le SIGUE COBRANDO (el preapproval
+      // 🛑 REGLA #0: si hay suscripción ACTIVA, cancelar el cobro en MP ANTES de programar la baja.
+      // Si no, el usuario programa la eliminación y Mercado Pago le SIGUE COBRANDO (el preapproval
       // queda vivo). El EF cancel-suscripcion deriva el tenant del JWT y es fail-closed: si MP
-      // no confirma la cancelación, tira error y ABORTAMOS la eliminación (mejor no borrar que
-      // dejar un cobro vivo). Debe correr mientras el registro de `users` todavía existe.
+      // no confirma la cancelación, tira error y ABORTAMOS.
       if (tenant.subscription_status === 'active') {
         const { data, error } = await supabase.functions.invoke('cancel-suscripcion', { body: {} })
         if (error || data?.error) {
@@ -334,18 +339,35 @@ export default function MiCuentaPage() {
             'No se pudo cancelar tu suscripción en Mercado Pago. Cancelala primero para no seguir siendo cobrado y volvé a intentar.')
         }
         // El EF ya dejó subscription_status='cancelled'.
-      } else if (tenant.subscription_status !== 'cancelled') {
-        // trial/free/inactive: marcar cancelado (soft delete) mientras el users row aún existe (RLS).
-        await supabase.from('tenants').update({ subscription_status: 'cancelled' }).eq('id', tenant.id)
       }
-      // Recién ahora eliminar el registro en public.users.
-      const { error: userDeleteError } = await supabase.from('users').delete().eq('id', user.id)
-      if (userDeleteError) throw userDeleteError
-      toast.success('Negocio eliminado correctamente')
-      await signOut()
-      navigate('/login')
+      // Nota: para trial/free NO se toca subscription_status acá (a diferencia del soft delete
+      // viejo) — así el dueño conserva acceso normal durante los 30 días para poder cancelar la
+      // baja él mismo; solo se programa la fecha de purga.
+      const fecha = new Date(Date.now() + GRACE_DIAS * 24 * 60 * 60 * 1000)
+      const { error: schedErr } = await supabase.from('tenants')
+        .update({ delete_scheduled_at: fecha.toISOString() }).eq('id', tenant.id)
+      if (schedErr) throw schedErr
+
+      const fechaFmt = format(fecha, "d 'de' MMMM 'de' yyyy", { locale: es })
+      void supabase.functions.invoke('send-email', {
+        body: {
+          type: 'notificacion',
+          to: profileForm.email,
+          data: {
+            titulo: `Programamos la eliminación de "${tenant.nombre}"`,
+            mensaje: `Tu negocio y todos sus datos se van a eliminar definitivamente el ${fechaFmt}. Si cambiás de opinión, iniciá sesión antes de esa fecha y cancelá la baja desde el aviso que vas a ver arriba de la pantalla.`,
+            action_url: '/dashboard',
+          },
+        },
+      })
+
+      await loadUserData(user.id)
+      toast.success(`Eliminación programada para el ${fechaFmt}. Podés cancelarla iniciando sesión antes de esa fecha.`, { duration: 8000 })
+      setShowDanger(false)
+      setConfirmText('')
+      navigate('/dashboard')
     } catch (err: any) {
-      toast.error(err.message ?? 'Error al eliminar cuenta')
+      toast.error(err.message ?? 'Error al programar la eliminación')
     } finally {
       setDeleting(false)
     }
@@ -709,12 +731,42 @@ export default function MiCuentaPage() {
               </div>
             )}
 
-            {/* Dueño: eliminar cuenta completa */}
-            {isOwner && (
+            {/* Dueño: eliminar cuenta completa — con baja ya programada, o formulario para programarla */}
+            {isOwner && tenant?.delete_scheduled_at && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                  Eliminación programada para el {format(new Date(tenant.delete_scheduled_at), "d 'de' MMMM 'de' yyyy", { locale: es })}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+                  "{tenant.nombre}" y todos sus datos se van a eliminar definitivamente en esa fecha. Podés cancelarlo cuando quieras hasta entonces.
+                </p>
+                <button
+                  onClick={async () => {
+                    if (!user || !tenant) return
+                    setDeleting(true)
+                    try {
+                      await cancelarBajaProgramada(tenant.id, profileForm.email, tenant.nombre)
+                      await loadUserData(user.id)
+                      toast.success('Eliminación cancelada — tu cuenta sigue activa')
+                    } catch (err: any) {
+                      toast.error(err.message ?? 'Error al cancelar la eliminación')
+                    } finally {
+                      setDeleting(false)
+                    }
+                  }}
+                  disabled={deleting}
+                  className={`${BTN.primary} ${BTN.sm} disabled:opacity-40`}
+                >
+                  {deleting ? 'Cancelando...' : 'Cancelar eliminación'}
+                </button>
+              </div>
+            )}
+            {isOwner && !tenant?.delete_scheduled_at && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">Eliminar cuenta y negocio</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
-                  Esto elimina permanentemente tu cuenta, todos los datos de "{tenant?.nombre}" y cancela la suscripción. Esta acción es irreversible.
+                  Programa la eliminación definitiva de "{tenant?.nombre}" y todos sus datos en {GRACE_DIAS} días, y cancela la suscripción.
+                  Mientras tanto podés cancelarlo iniciando sesión de nuevo.
                 </p>
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   Escribí el nombre del negocio para confirmar:
@@ -732,7 +784,7 @@ export default function MiCuentaPage() {
                   className={`${BTN.danger} ${BTN.sm} flex items-center gap-1.5 disabled:opacity-40`}
                 >
                   <Trash2 size={13} />
-                  {deleting ? 'Eliminando...' : 'Eliminar cuenta permanentemente'}
+                  {deleting ? 'Programando...' : `Programar eliminación (${GRACE_DIAS} días)`}
                 </button>
               </div>
             )}

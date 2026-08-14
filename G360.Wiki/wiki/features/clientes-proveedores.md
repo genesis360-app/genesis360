@@ -112,6 +112,43 @@ etiquetas TEXT[]   ← v1.3.0
 
 ---
 
+## 🔀 Diagrama de flujo — Compra → Recepción → Stock
+
+Editable en draw.io: [`G360.Wiki/diagrams/02-compra-recepcion-stock.drawio`](../../diagrams/02-compra-recepcion-stock.drawio).
+
+```mermaid
+flowchart TD
+    A["Crear OC<br/>estado=borrador"] --> B{"¿Supera umbral<br/>de aprobación?"}
+    B -->|Sí| C["requiere_aprobacion<br/>solo rol aprobador"] --> D[Aprobar y enviar]
+    B -->|No| D
+    D --> E["estado=enviada<br/>PDF/Email/WhatsApp"]
+    E --> F["Confirmar<br/>estado=confirmada"]
+    F --> F1{"¿Proveedor con CC?"}
+    F1 -->|Sí| F2["proveedor_cc_movimientos<br/>tipo=oc, monto+"]
+    F1 -->|No| G
+    F2 --> G[Recibir mercadería]
+    G --> H["Recepción:<br/>cantidad_esperada vs cantidad_recibida"]
+    H --> I{"¿Excede over_receipt_pct_max?"}
+    I -->|Sí| I1["Requiere SUPERVISOR+"]
+    I -->|No| J
+    I1 --> J{"¿Faltante bajo esperado?"}
+    J -->|Sí| J1["Motivo obligatorio<br/>+ alerta configurable"]
+    J -->|No| K
+    J1 --> K{"¿Cambio de costo &gt; umbral?"}
+    K -->|Sí| K1["Checkbox: actualizar precio_costo"]
+    K -->|No| L
+    K1 --> L[Confirmar recepción]
+    L --> M["Genera inventario_lineas<br/>(stock disponible para vender)"]
+    M --> N["Recalcula estado OC<br/>desde TODAS las recepciones"]
+    N --> N1{"¿Completó lo pedido?"}
+    N1 -->|No| N2[recibida_parcial]
+    N1 -->|Sí| N3[recibida]
+    N2 --> O[Pago de la OC]
+    N3 --> O
+    O --> P["proveedor_cc_movimientos<br/>tipo=pago, monto-"]
+    P --> Q(["¿Devolución a proveedor?<br/>CO4: crédito CC / efectivo / reposición"])
+```
+
 ## Órdenes de Compra (migration 049)
 
 **Lifecycle:** `borrador → enviada → confirmada → cancelada`  

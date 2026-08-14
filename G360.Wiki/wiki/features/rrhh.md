@@ -13,6 +13,37 @@ Módulo completo de recursos humanos. 5 fases base + **RRHH 2.0 (RH1+RH2+RH3+RH6
 **Página:** `src/pages/RrhhPage.tsx`  
 **Acceso:** Roles OWNER y RRHH (via `is_rrhh()` SECURITY DEFINER)
 
+## 🔀 Diagrama de flujo — Alta de empleado → Liquidación → Baja
+
+Editable en draw.io: [`G360.Wiki/diagrams/07-rrhh-alta-liquidacion.drawio`](../../diagrams/07-rrhh-alta-liquidacion.drawio).
+
+```mermaid
+flowchart TD
+    A["Alta empleado\npuesto, tipo_contrato, config_aportes,\nfrecuencia_liquidacion, datos bancarios"] --> B["Ciclo mensual:\nfichado + asistencia + horas extra"]
+    B --> C["Generar nómina del período\ncrea borradores en rrhh_salarios"]
+    C --> D["Ítems automáticos:\nbásico prorrateado + beneficios + aportes"]
+    D --> E["+ SAC (manual, 50% mejor sueldo semestre)"]
+    E --> F["+ Descuento por tardanza automático\n(fichadas vs horario_entrada)"]
+    F --> G["+ Descuento de anticipos pendientes\n(parcial si no alcanza, nunca neto negativo)"]
+    G --> H{"¿Doble validación\nconfigurada?"}
+    H -->|Sí| H1["Requiere aprobación de supervisor\nantes de poder pagar"]
+    H -->|No| I
+    H1 --> I["Pagar liquidación\nRPC pagar_nomina_empleado"]
+    I --> J{"Medio de pago"}
+    J -->|Efectivo| J1["Verifica saldo de caja\n+ egreso en caja_movimientos"]
+    J -->|Transferencia/MP| K
+    J1 --> K["rrhh_salarios.pagado = true"]
+    K --> L{"¿Generar gasto?"}
+    L -->|Sí| L1["Gasto categoría Sueldos\n+ Cargas sociales del período"]
+    L -->|No| M
+    L1 --> M["Recibo de sueldo PDF\n+ comprobante firmado opcional"]
+    M --> N{"¿Empleado se da de baja?"}
+    N -->|No, sigue activo| B
+    N -->|Sí| O["Motivo de egreso:\nrenuncia / despido c-s causa / fin contrato"]
+    O --> P["Liquidación final\nindemnización LCT 245 + SAC prop.\n+ vacaciones no gozadas (editable)"]
+    P --> Q["Genera gasto + persiste\nen rrhh_liquidaciones_finales"]
+```
+
 ---
 
 ## RRHH 2.0 — relevamiento RH1-RH8 (respondido 2026-06-09)

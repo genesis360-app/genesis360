@@ -10,6 +10,38 @@ updated: 2026-08-13
 
 Primera integración de marketplaces en Genesis360. Orden: **TiendaNube → MercadoPago → MELI**.
 
+## 🔀 Diagrama de flujo — Webhook → Venta → Sincronización de stock
+
+Flujo compartido con [[wiki/integrations/mercado-libre]] (mismo mecanismo, distinto canal) — editable
+en draw.io: [`G360.Wiki/diagrams/10-integraciones-ml-tn.drawio`](../../diagrams/10-integraciones-ml-tn.drawio).
+
+```mermaid
+flowchart TD
+    A{"Webhook"} -->|"TiendaNube\norder/created, order/paid"| B["tn-webhook"]
+    A -->|"MercadoLibre\norders_v2"| C["meli-webhook"]
+    B --> D{"¿Ya existe la venta\n(idempotencia por clave)?"}
+    C --> D
+    D -->|"order/created"| D1["Crea venta pendiente"]
+    D -->|"order/paid, ya había pendiente"| D2["pendiente → reservada"]
+    D -->|"order/paid, no existía"| D3["Crea venta reservada directo"]
+    D1 --> E["Resolver cliente<br/>(por email/nickname, crea si no existe)<br/>setea cliente_id Y cliente_nombre"]
+    D2 --> E
+    D3 --> E
+    E --> F["Resolver producto<br/>(mapa TN/MELI, fallback SKU/título)"]
+    F --> G["Reservar stock FIFO<br/>cantidad_reservada += en inventario_lineas"]
+    G --> H{"¿Falta stock y\nproducto es KIT?"}
+    H -->|Sí| H1["fn_iniciar_armado_kit_auto<br/>reserva componentes + wms_tareas tipo=armado<br/>best-effort, nunca bloquea la venta"]
+    H -->|No| I
+    H1 --> I["Envío automático (best-effort):<br/>cliente_domicilios + envios"]
+    I --> J["Job sync_stock encolado<br/>(trigger AFTER INSERT/UPDATE/DELETE)"]
+    J --> K["Worker: disponible = SUM(cantidad − reservada)<br/>filtra por ubicación/estado habilitados"]
+    K --> L{"¿Canal?"}
+    L -->|TN| L1["PUT variants/{id} stock=N<br/>solo si sync_stock=true"]
+    L -->|MELI| L2["Análogo, a nivel variante\n(items OMNI)"]
+    J -.opt-in, si reajuste_margen_auto.-> M["Job sync_precio →\npublica precio_venta × (1+%)"]
+    G -.order cancelled.-> N["Libera cantidad_reservada<br/>+ cancela la venta en G360"]
+```
+
 ---
 
 ## Registro de la app

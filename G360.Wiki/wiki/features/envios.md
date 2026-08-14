@@ -48,6 +48,36 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 **Página transportista:** `src/pages/TransportistePage.tsx` (`/transporte/:token` — pública sin auth)  
 **Acceso:** DUEÑO · SUPERVISOR · CAJERO
 
+## 🔀 Diagrama de flujo — Creación → Tracking → Entrega
+
+Editable en draw.io: [`G360.Wiki/diagrams/08-envios-tracking-entrega.drawio`](../../diagrams/08-envios-tracking-entrega.drawio).
+
+```mermaid
+flowchart TD
+    A{"¿Cómo nace el envío?"} -->|"Automático\n(venta/pedido con envío,\nwebhook TN/MELI)"| B["Crea envios + cliente_domicilios\nbest-effort, nunca bloquea la venta"]
+    A -->|Manual| B2["Modal 'Nuevo envío'\nvinculado a venta o libre"]
+    A -->|"Retiro en local"| B3["Nace directo en\nestado=entregado, canal=Retiro en local"]
+    B --> C{"Tipo de envío"}
+    B2 --> C
+    C -->|"Propio (KM)"| C1["Google Places + Distance Matrix\ncosto = KM × costo_km_envio\nno editable"]
+    C -->|"Tercero (courier)"| C2["Costo desde courier_tarifas\nopcional: cotización real por API\n(Andreani/Correo/OCA)"]
+    C1 --> D["Asignación/pago al courier"]
+    C2 --> D
+    D --> D1{"¿costo_cotizado &gt; 0\ny no pagado?"}
+    D1 -->|Sí| D2["Bloquea avanzar estado\nhasta 'Marcar pagados'\n(RPC, doble firma sobre umbral)"]
+    D1 -->|No| E
+    D2 -.paga.-> E
+    E["pendiente → despachado → en_camino → en_bodega"]
+    E --> F{"¿Confirmar entrega\n(POD)?"}
+    F -->|Sí| G["Modal POD: fecha, receptor,\nfoto(s), notas"]
+    G --> H["estado = entregado\n(automático al confirmar POD)"]
+    F -->|"No — hay problema"| I["estado = devolucion\nCTA → flujo de Devolución del POS"]
+    E -.cancelar desde cualquier estado.-> J["cancelado"]
+    H --> K{"¿canal = TiendaNube?"}
+    K -->|Sí| K1["trg_tn_fulfillment_sync → job →\nPATCH fulfillment-orders a TN\n(DISPATCHED/DELIVERED)"]
+    K -->|"No (MELI diferido)"| L["Sin sync de fulfillment"]
+```
+
 ---
 
 ## 🧾 Retiro en local (`tipo = 'retiro_local'`, v1.147.0, migs 315/316, 🟡 EN DEV)

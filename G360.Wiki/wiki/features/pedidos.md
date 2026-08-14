@@ -30,6 +30,38 @@ diseño: `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` (no repetido
 operación logística desde el vamos, no comercial de mostrador). Gateado por modo Avanzado, mismo
 patrón que "Recepciones"/"Picking".
 
+## 🔀 Diagrama de flujo — Pedido → Reserva → Despacho
+
+Editable en draw.io: [`G360.Wiki/diagrams/05-pedido-reserva-despacho.drawio`](../../diagrams/05-pedido-reserva-despacho.drawio).
+
+```mermaid
+flowchart TD
+    A["Crear pedido<br/>estado=borrador"] --> B["Confirmar<br/>estado=confirmado"]
+    B --> C{"¿Origen del pedido?"}
+    C -->|A: Manual| D1["Lanzar: valida stock<br/>ANTES de reservar<br/>si falta → aborta TODO"]
+    C -->|B: Venta-pedido| D2["Lanzar: NUNCA reserva<br/>resuelve LPN por cascada"]
+    D1 --> D1b["Reserva real FEFO<br/>cantidad_reservada+="]
+    D1b --> E["estado=en_preparacion"]
+    D2 --> E
+    E --> F{"¿Ubicación tipo picking?"}
+    F -->|Sí| G1[Tarea picking directa]
+    F -->|"No, con reabastecimiento on-demand"| G2["Tarea replenishment<br/>+ picking encadenada"]
+    G1 --> H["Operario completa tarea<br/>fn_completar_tarea_picking<br/>(solo bookkeeping)"]
+    G2 --> H2["fn_completar_tarea_reabastecimiento<br/>mueve stock físico bulk→picking"]
+    H2 --> H
+    H --> I{"¿Última tarea<br/>del pedido completada?"}
+    I -->|No| H
+    I -->|Sí| J["estado=listo_para_entrega"]
+    J --> K{"¿Origen del pedido?"}
+    K -->|A: Manual| L1["fn_pedido_generar_venta<br/>ÚNICO punto que rebaja stock real<br/>CC guard, cumplimiento parcial"]
+    K -->|B: Venta-pedido| L2["fn_pedido_entregar_retiro<br/>NO toca plata ni stock"]
+    L1 --> M{"¿Entrega 100% o parcial?"}
+    M -->|100%| M1{"pedido_cierre_automatico"}
+    M -->|Parcial| M2["estado=entregado_parcial"]
+    M1 -->|true| N1["estado=entregado"]
+    M1 -->|false| N2["Queda entregado_parcial<br/>hasta cierre manual"]
+```
+
 ---
 
 ## 🛑 Decisión de arquitectura clave (F4) — pivote real, contradice/actualiza el wiki de WMS anterior

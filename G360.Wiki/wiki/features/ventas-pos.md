@@ -21,6 +21,37 @@ POS completo integrado con inventario, caja, clientes y facturación AFIP.
 > líneas, que recién toca el POS cuando eventualmente genera la venta real (Fase PED3+, sin construir
 > todavía).
 
+## 🔀 Diagrama de flujo — Venta completa
+
+Editable en draw.io: [`G360.Wiki/diagrams/01-venta-completa.drawio`](../../diagrams/01-venta-completa.drawio).
+
+```mermaid
+flowchart TD
+    A[Armar carrito] --> B{Elegir modo de venta}
+    B -->|Presupuesto| C1["estado=pendiente<br/>sin cobro, sin reserva<br/>numeración propia"]
+    B -->|Reservar| C2["estado=reservada<br/>reserva stock (cantidad_reservada+=)<br/>seña obligatoria si config"]
+    B -->|Venta directa| C3["estado=despachada<br/>pago 100% obligatorio<br/>rebaja stock ya mismo"]
+    C2 --> D{"¿Genera Pedido<br/>de preparación?"}
+    C3 --> D
+    D -->|Presupuesto| Z1[No genera pedido]
+    D -->|Mostrador + entrega directa| Z1
+    D -->|Mostrador + reserva| E["Nace Pedido<br/>venta_origen_id, estado=confirmado"]
+    D -->|Con envío propio/tercero| E
+    D -->|Online retiro en local| E
+    E --> F["Picking del pedido<br/>NUNCA rebaja stock<br/>la reserva sigue siendo de la venta"]
+    F --> G["Pedido → listo_para_entrega"]
+    G --> H{"¿Cómo se entrega?"}
+    H -->|Retiro mostrador| I1["fn_pedido_entregar_retiro<br/>NO toca plata ni stock"]
+    H -->|Con envío| I2[Gestión en módulo Envíos]
+    I1 --> J{"¿Facturación<br/>habilitada?"}
+    I2 --> J
+    J -->|Sí| K["Modal Emitir comprobante<br/>EF emitir-factura → CAE<br/>estado=facturada"]
+    J -->|No| L[Queda despachada]
+    K --> M[Venta despachada/facturada]
+    L --> M
+    M -->|Devolver disponible| N(["Ver Devolución → NC"])
+```
+
 ---
 
 ## Estados de una venta

@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-07-19
+updated: 2026-08-13
 ---
 
 # Facturación Electrónica AFIP
@@ -14,6 +14,34 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 > **v1.80.0 (EN DEV, 2026-06-19) — FAC-27:** guard server-side en la EF `emitir-factura` para **Factura B ≥ umbral sin DNI/CUIT** → responde **400** antes de llamar a AFIP (espeja `requiereIdentFacturaB` del POS; consistente con el guard de tipo A/B/C de v1.78.1). EF deployada a **DEV (v13)**; **pendiente PROD** (cambio fiscal). Comportamiento esperado por condición del emisor (RI/Monotributista/Exento) documentado y testeable en `tests/specs/uat-modo-basico.md` **§29 (matriz fiscal)**.
 
 > [!NOTE] Homologación confirmada: CAE `86170057489609` emitido exitosamente (Factura B, CUIT de prueba `20409378472`).
+
+## 🔀 Diagrama de flujo — Emisión de Factura
+
+Editable en draw.io: [`G360.Wiki/diagrams/06-facturacion-afip.drawio`](../../diagrams/06-facturacion-afip.drawio).
+
+```mermaid
+flowchart TD
+    A["Trigger: prompt automático al despachar\no botón manual 'Emitir factura'"] --> B["Auto-sugerido: Monotributista→C\ncliente RI→A · resto→B"]
+    B --> C{"¿Venta ≥ umbral\nFactura B?"}
+    C -->|Sí| C1["DNI/CUIT + nombre obligatorio\nguard server-side FAC-27"]
+    C -->|No| C2["Consumidor Final sin datos"]
+    C1 --> D["EF emitir-factura"]
+    C2 --> D
+    D --> E{"Guard identidad:\n¿usuario del tenant o service_role?"}
+    E -->|No| E1["401/403"]
+    E -->|Sí| F["Calcula neto/IVA por alícuota\n+ DocTipo + CondicionIVAReceptorId"]
+    F --> G{"Guard fiscal:\ntipo vs condicion_iva_emisor"}
+    G -->|"Monotributista/Exento pide A/B"| G1["400 rechazado"]
+    G -->|OK| H{"tenants.afip_provider"}
+    H -->|"propio (default, en uso)"| H1["TRA firmado CMS local → WSAA LoginCms\n→ TA cacheado (~12h) → WSFEv1 SOAP directo"]
+    H -->|afipsdk| H2["@afipsdk/afip.js\nfirma WSAA en la nube de AfipSDK"]
+    H1 --> I["Pide próximo N° a\nFECompUltimoAutorizado (nunca contador local)"]
+    H2 --> I
+    I --> J{"¿AFIP autorizó?"}
+    J -->|Sí| K["Guarda CAE + vencimiento + numero_comprobante\nventa: despachada → facturada"]
+    J -->|"Error de transporte o CAE\nautorizado pero no se pudo guardar"| L["⚠️ 'NO reintentar' — posible\nemisión fantasma en AFIP\nreconciliar a mano"]
+    K --> M["PDF con QR AFIP + email automático\nal cliente"]
+```
 
 ---
 
@@ -184,13 +212,121 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 ## Notas de Crédito (NC) — flujo y gotchas (v1.70.0–v1.71.0)
 
-**El único camino para emitir una NC es: abrir la venta facturada → "Devolver" (total o parcial) → en la devolución, botón "Emitir NC".** No hay "NC manual" suelta: una NC siempre reversa un comprobante puntual y queda atada a una `devoluciones` (`devolucion_id`). La EF toma los ítems de la devolución (no de la venta).
+**Camino de emisión: abrir la venta facturada → "Devolver" (total o parcial) → al confirmar.** No hay
+"NC manual" suelta: una NC siempre reversa un comprobante puntual y queda atada a una `devoluciones`
+(`devolucion_id`). La EF toma los ítems de la devolución (no de la venta).
+
+> [!NOTE] **🆕 Desde mig 359 (2026-08-13, EN DEV, SIN COMMITEAR) la emisión es AUTOMÁTICA por default**
+> (ver "NC automática al confirmar la devolución (A10)" más abajo) — al confirmar la devolución de una
+> venta facturada, el sistema intenta emitir la NC solo, en segundo plano. **El botón manual "Emitir
+> NC" sigue existiendo como fallback**: para forzar la emisión antes de que corra el sweep de reintento
+> (cada 15 min), o para el caso en que el intento automático haya fallado y quedado
+> `requiere_reconciliacion_manual=true` (un DUEÑO/SUPER_USUARIO/CONTADOR revisa el motivo y decide si
+> reintentar a mano tiene sentido, o si primero hay que conciliar contra AFIP).
 
 > [!WARNING] La emisión de NC **nunca había funcionado end-to-end** hasta v1.71.0 (solo se habían probado facturas). Dos bugs encadenados:
 > - **El SELECT de la venta no traía `cae`** → la EF veía `venta.cae` undefined → "La venta no tiene factura emitida. No se puede emitir NC sin CAE original". Fix v1.70.0: `+cae, tipo_comprobante, numero_comprobante`.
 > - **Falta `CbtesAsoc`** → AFIP rechaza con **error 10197** ("Si el comprobante es Débito o Crédito, enviar CbteAsoc o PeriodoAsoc"). Fix v1.71.0: `CbtesAsoc:[{ Tipo (del original), PtoVta (mismo PV), Nro (`numero_comprobante`) }]`. **Asume mismo PV que la NC** (caso single-PV; si el tenant usa otro PV para NC, guardar el PV de la factura original).
 
 **Anular vs Devolver una facturada:** una venta **con CAE** no se puede "Anular" (los botones Anular + Cambiar cliente se **ocultan** si `ventaDetalle.cae`) — la reversión correcta es Devolver → NC. Anularla dejaría la factura viva en AFIP (libros descuadrados).
+
+---
+
+## NC automática al confirmar la devolución (A10, mig 359 — 2026-08-13, EN DEV, SIN COMMITEAR)
+
+Resuelve la pregunta **A10** del relevamiento de reglas de negocio de Ventas
+(`sources/raw/relevamiento_ventas_respuestas.md`): GO había elegido hace tiempo la opción **"A" (NC
+electrónica automática al confirmar la devolución)**, con una recomendación de cola de reintento para
+cuando AFIP esté caído — nunca se había construido, solo existía el flujo manual de arriba. Se retomó
+2026-08-13 tras confirmar que el motor propio de AFIP (`WsfePropioProvider`, ver "Decisión técnica"
+arriba) ya está en uso por los **8 tenants reales de PROD**. **La lógica fiscal central de
+`emitir-factura/index.ts` no se tocó** — el trabajo es 100% orquestación alrededor de la EF existente.
+
+### 🛑 Diseño de seguridad — REGLA #0 (la parte más importante)
+
+`emitir-factura/index.ts` ya marca con la frase LITERAL **"NO reintentar"** dos escenarios donde AFIP
+pudo haber autorizado un comprobante aunque el sistema no tenga registrado el CAE:
+1. Error de transporte a mitad de la llamada al WSFE (no se sabe si AFIP procesó el pedido antes de que
+   se cortara la conexión).
+2. AFIP autorizó el comprobante (CAE real) pero la escritura en `devoluciones.nc_cae` falló después.
+
+Reintentar ciegamente esos dos casos podría emitir una **NC DUPLICADA en AFIP** — plata real regalada
+dos veces a un cliente. Por eso el diseño **NO es "reintentar todo, N veces"**: es reintentar solo lo
+genuinamente seguro (errores de validación de negocio, ej. "esta CUIT solo puede facturar tipo C") y
+**escalar a revisión humana de inmediato** (sin gastar ni un intento) cualquier error que contenga la
+frase "NO reintentar", notificando a DUEÑO/SUPER_USUARIO/CONTADOR para que concilien contra el "último
+autorizado" de AFIP antes de que nadie vuelva a tocar esa devolución.
+
+### Qué se construyó
+
+- **Tabla `nc_afip_pendientes`** (mig 359, cola de reintento): `tenant_id`, `devolucion_id`,
+  `venta_id`, `tipo_comprobante`, `punto_venta`, `intentos`, `ultimo_error`,
+  `requiere_reconciliacion_manual` (boolean — `true` = escaló, dejó de reintentar solo),
+  `resuelto_at`, `notificado_at`. Índice único parcial `WHERE resuelto_at IS NULL`: un solo pendiente
+  ACTIVO por devolución (evita duplicar la cola si el intento automático y un click manual en "Emitir
+  NC" fallan casi al mismo tiempo). RLS: SELECT+INSERT para miembros del tenant, UPDATE/DELETE solo
+  `service_role` (el sweep).
+- **`src/pages/VentasPage.tsx` (`procesarDevolucion`)**: justo después de insertar la fila de
+  `devoluciones` (si la venta era `facturada`), dispara en segundo plano (fire-and-forget,
+  `void (async () => {...})()` — **NUNCA bloquea ni puede revertir la devolución**, que ya quedó
+  confirmada con su NC interna no-fiscal) un intento automático de emisión llamando a la MISMA Edge
+  Function `emitir-factura` que ya usaba el botón manual, con el mismo cálculo de letra de NC (deriva de
+  la letra de la factura original) y punto de venta. Éxito → toast "NC electrónica emitida
+  automáticamente — CAE: ...". Falla → encola una fila en `nc_afip_pendientes` con el error real y
+  muestra un toast más suave avisando que se va a reintentar solo.
+- **`supabase/functions/nc-afip-retry-sweep/`** (Edge Function nueva, deployada a DEV) +
+  **`.github/workflows/nc-afip-retry-sweep.yml`** (cron cada 15 minutos vía GitHub Actions — el
+  proyecto no tiene pg_cron). Por cada fila pendiente (no resuelta, no escalada todavía):
+  - Si el `ultimo_error` ya contiene "NO reintentar" → escala directo (marca
+    `requiere_reconciliacion_manual=true`, notifica UNA vez in-app + email a
+    DUEÑO/SUPER_USUARIO/CONTADOR con el detalle exacto), sin gastar ningún intento nuevo contra AFIP.
+  - Si se agotaron **8 intentos** sin éxito → mismo escalamiento (deja de insistir solo, avisa a un
+    humano).
+  - Si no, reintenta llamando a `emitir-factura` con el `SUPABASE_SERVICE_ROLE_KEY` como
+    Authorization — la Edge Function YA tenía contemplado ese camino ("esServiceRole") para flujos
+    internos como este, sin necesitar ningún cambio ahí. Si el nuevo intento devuelve un error con "NO
+    reintentar" → escala. Si es otro tipo de error (ej. validación de negocio) → suma un intento y
+    sigue esperando el próximo ciclo. Si tiene éxito → marca `resuelto_at`, notifica in-app + email "NC
+    emitida automáticamente" (mismo patrón que el resto de los sweeps del proyecto, ej.
+    `repositores-cierre-dia-sweep`).
+
+### Verificación real contra DEV (AFIP homologación REAL, no mockeada) — los 4 caminos
+
+1. **Éxito real contra AFIP**: venta #607, real y ya existente en DEV, `estado='facturada'`, Factura C
+   real con CAE, sin devoluciones previas. Devolución completa vía la UI real (Playwright), medio
+   "Transferencia" $600. La devolución se confirmó normal, Y el intento automático de NC en segundo
+   plano emitió sola contra el WSFE real de AFIP (homologación, `afip_produccion=false` en este tenant
+   de prueba) — verificado por SQL directo en `devoluciones`: `nc_cae='86330757276751'`,
+   `nc_tipo='NC-C'` (coincide con la letra C de la Monotributista, correcto), `nc_punto_venta=1`,
+   `nc_numero_comprobante=24`, `afip_provider_usado='propio'` (confirma que usó el motor propio, no
+   AfipSDK). Cero filas quedaron en `nc_afip_pendientes` para esta venta — funcionó al primer intento,
+   sin necesitar la cola de reintento. Este registro de prueba se dejó intacto en DEV a propósito
+   (tiene un CAE real emitido en AFIP homologación — borrar un comprobante con CAE real rompería la
+   trazabilidad, aunque sea de prueba).
+2. **Camino de escalamiento por error peligroso**: se insertó a mano en `nc_afip_pendientes` una fila
+   con un `ultimo_error` que contenía la frase literal "NO reintentar la emisión a ciegas" (el mensaje
+   real que tira `providers.ts` en un error de transporte). Se invocó el sweep por curl: escaló
+   inmediatamente (`intentos` quedó en 0 — NUNCA llegó a llamar a `emitir-factura` de nuevo),
+   `requiere_reconciliacion_manual=true`, y se generaron 3 notificaciones reales (una por cada usuario
+   con rol DUEÑO/SUPER_USUARIO/CONTADOR del tenant) con el detalle correcto. Se reinvocó el sweep una
+   segunda vez: 0 evaluados — confirma que no vuelve a notificar en cada corrida (nada de spam).
+3. **Camino de reintento seguro**: se insertó una fila con un error genérico (sin la frase peligrosa).
+   El sweep SÍ llamó de verdad a `emitir-factura` con la auth de service role — la Edge Function corrió
+   su validación real de negocio y devolvió un error legítimo ("Un emisor Monotributista solo puede
+   emitir comprobantes tipo C") — el sweep incrementó `intentos` a 1 sin escalar (correcto: es un error
+   de validación, no ambiguo).
+4. **Camino de agotamiento de reintentos**: se llevó `intentos` a 8 a mano y se reinvocó el sweep —
+   escaló igual que el caso peligroso (deja de insistir solo tras el límite).
+
+Todos los datos de prueba de la cola (`nc_afip_pendientes`) y las notificaciones sintéticas se
+limpiaron después — solo quedó la devolución real de la venta #607 con su NC real, que se dejó a
+propósito. Typecheck + `vite build` + 1563 tests unitarios, todos verdes.
+
+**Estado real: construido y verificado — SIN COMMITEAR todavía** (working tree local de `dev`, se suma
+al hard delete de tenant, mig 358, y a los 5 diagramas de flujo de la misma sesión).
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/database/migraciones.md`
+(mig 359), `sources/raw/relevamiento_ventas_respuestas.md` (A10), [[wiki/features/devoluciones]].
 
 ---
 
@@ -274,6 +410,7 @@ gastos.conciliado_iva BOOLEAN
 | Emisión CAE | EF `emitir-factura` + prompt al despachar | ✅ PROD v1.3.0 |
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
+| NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | 🟡 EN DEV, SIN COMMITEAR |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ PROD v1.60.0 |
 | Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ PROD v1.60.0 |

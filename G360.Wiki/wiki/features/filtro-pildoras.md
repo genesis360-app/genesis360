@@ -3,7 +3,7 @@ title: Filtro de píldoras — buscador combinable "Campo:valor" (Picking, Produ
 category: features
 tags: [filtro, busqueda, pildoras, chips, picking, productos, inventario, pedidos, ventas, buscador]
 sources: [src/lib/pildorasFiltro.ts, src/lib/pickingFiltro.ts, src/lib/productosFiltro.ts, src/lib/inventarioFiltro.ts, src/lib/pedidosFiltro.ts, src/lib/ventasFiltro.ts, src/components/BuscadorPildoras.tsx, src/pages/PickingPage.tsx, src/pages/ProductosPage.tsx, src/pages/InventarioPage.tsx, src/pages/PedidosPage.tsx, src/pages/VentasPage.tsx, tests/e2e/129_pildoras_filtro_productos_inventario_mutante.spec.ts, tests/unit/pedidosFiltro.test.ts, tests/unit/ventasFiltro.test.ts]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Filtro de píldoras — buscador combinable "Campo:valor"
@@ -13,10 +13,10 @@ updated: 2026-08-12
 > **llevarlo a Productos e Inventario**, código 100% nuevo (`pildorasFiltro.ts`,
 > `productosFiltro.ts`, `inventarioFiltro.ts`) sin tocar `pickingFiltro.ts`.
 >
-> 🆕 **Extendido a Pedidos y Ventas (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin
-> commitear).** Ver sección "Extensión a Pedidos y Ventas" más abajo — a diferencia de "diferido a
-> propósito" que decía la última versión de esta página, GO SÍ pidió aplicarlo acá, por un problema
-> real de búsqueda ambigua encontrado probando los deep-links de Alertas.
+> 🆕 **Extendido a Pedidos y Ventas (2026-08-12, ronda 3 de feedback sobre Alertas, ✅ EN PROD desde
+> v1.169.0, deploy real 2026-08-13, PR #329).** Ver sección "Extensión a Pedidos y Ventas" más abajo —
+> a diferencia de "diferido a propósito" que decía la última versión de esta página, GO SÍ pidió
+> aplicarlo acá, por un problema real de búsqueda ambigua encontrado probando los deep-links de Alertas.
 
 ## Qué es
 
@@ -102,7 +102,7 @@ el usuario, consistente con el nuevo modelo de datos del buscador.
 `tsc --noEmit` (0 errores) · `npm run build` · suite unitaria completa (incluye los 33 de la
 generalización + los 15 de Pedidos/Ventas) · e2e 106 y 129 verdes.
 
-## Extensión a Pedidos y Ventas (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)
+## Extensión a Pedidos y Ventas (2026-08-12, ronda 3 de feedback sobre Alertas, ✅ EN PROD desde v1.169.0)
 
 GO, probando en el navegador los deep-links de Alertas (ver [[wiki/features/alertas]]), encontró que
 buscar el pedido Nº 2 en `/pedidos` también traía el 82, el 102 — cualquier número que "contuviera" un

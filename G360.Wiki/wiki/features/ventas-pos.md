@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, src/lib/tiers.ts, src/lib/ventasFiltro.ts]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Ventas / POS
@@ -20,6 +20,37 @@ POS completo integrado con inventario, caja, clientes y facturación AFIP.
 > `registrarVenta()`** ni por el carrito de esta página — es un documento separado, sin precio en sus
 > líneas, que recién toca el POS cuando eventualmente genera la venta real (Fase PED3+, sin construir
 > todavía).
+
+## 🔀 Diagrama de flujo — Venta completa
+
+Editable en draw.io: [`G360.Wiki/diagrams/01-venta-completa.drawio`](../../diagrams/01-venta-completa.drawio).
+
+```mermaid
+flowchart TD
+    A[Armar carrito] --> B{Elegir modo de venta}
+    B -->|Presupuesto| C1["estado=pendiente<br/>sin cobro, sin reserva<br/>numeración propia"]
+    B -->|Reservar| C2["estado=reservada<br/>reserva stock (cantidad_reservada+=)<br/>seña obligatoria si config"]
+    B -->|Venta directa| C3["estado=despachada<br/>pago 100% obligatorio<br/>rebaja stock ya mismo"]
+    C2 --> D{"¿Genera Pedido<br/>de preparación?"}
+    C3 --> D
+    D -->|Presupuesto| Z1[No genera pedido]
+    D -->|Mostrador + entrega directa| Z1
+    D -->|Mostrador + reserva| E["Nace Pedido<br/>venta_origen_id, estado=confirmado"]
+    D -->|Con envío propio/tercero| E
+    D -->|Online retiro en local| E
+    E --> F["Picking del pedido<br/>NUNCA rebaja stock<br/>la reserva sigue siendo de la venta"]
+    F --> G["Pedido → listo_para_entrega"]
+    G --> H{"¿Cómo se entrega?"}
+    H -->|Retiro mostrador| I1["fn_pedido_entregar_retiro<br/>NO toca plata ni stock"]
+    H -->|Con envío| I2[Gestión en módulo Envíos]
+    I1 --> J{"¿Facturación<br/>habilitada?"}
+    I2 --> J
+    J -->|Sí| K["Modal Emitir comprobante<br/>EF emitir-factura → CAE<br/>estado=facturada"]
+    J -->|No| L[Queda despachada]
+    K --> M[Venta despachada/facturada]
+    L --> M
+    M -->|Devolver disponible| N(["Ver Devolución → NC"])
+```
 
 ---
 
@@ -200,8 +231,8 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
   **vende** stock que YA está en un estado con descuento configurado, sea porque un Aging Profile
   lo movió ahí, porque se cargó manual al ingresar, o por cualquier otro motivo — son dos features
   relacionadas pero independientes entre sí.
-- **Distinto de la aprobación de cambio de estado con foto** (🟡 EN DEV, mig 331 — Fase B backlog
-  Fede 25/7, ver [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto"):
+- **Distinto de la aprobación de cambio de estado con foto** (✅ EN PROD desde v1.168.0, mig 331 —
+  Fase B backlog Fede 25/7, ver [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto"):
   `descuento_pct` y `requiere_aprobacion` son dos columnas **independientes** de
   `estados_inventario` — un mismo estado puede tener las dos, una sola o ninguna.
 
@@ -282,7 +313,7 @@ Caja"/"por Pallet"/etc. en vez de siempre la unidad base — usa el precio propi
 
 ---
 
-## 🧾 Pestaña "Pedidos" — entrega en mostrador (v1.147.0, migs 315/316, 🟡 EN DEV)
+## 🧾 Pestaña "Pedidos" — entrega en mostrador (v1.147.0, migs 315/316, ✅ EN PROD)
 
 Pestaña nueva de `/ventas`, al lado de Historial. Lista los **pedidos ya preparados que el cliente
 pasa a retirar por el local**, para que el de mostrador los entregue sin salir de Ventas.
@@ -364,7 +395,7 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
   cantidad **TOTAL del SKU en todo el carrito** (agregación por SKU, no por línea — el precio
   mayorista es por volumen). Si ninguno aplica, precio minorista. Reemplaza la descripción vieja
   ("tier de mayor `cantidad_minima`", por línea) — ver `src/lib/tiers.ts`.
-- **🆕 Extendido (migs 329/330, EN DEV, sin deploy — backlog Fede 25/7, "el caso del pallet"):** un
+- **🆕 Extendido (migs 329/330, ✅ EN PROD desde v1.168.0 — backlog Fede 25/7, "el caso del pallet"):** un
   tier puede ser **$/unidad** (`tipo_valor='precio_fijo'`, default) o **% de descuento sobre el
   precio de LISTA** (`tipo_valor='pct'`), y puede **enlazarse** a una línea del árbol de empaque
   (`presentacion_id`) — en ese caso se evalúa contra **múltiplos completos** de esa presentación
@@ -465,7 +496,7 @@ Filtros: búsqueda libre, estado, rango de fechas.
 - Paginado: empieza en limit 50, botón "Cargar más" (+50)
 - Filtro por categoría: client-side, lazy (solo cuando `tab === 'historial'`)
 - Apertura por URL: `/ventas?id=XXX` abre el modal de esa venta directamente
-- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)**:
+- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, ✅ EN PROD desde v1.169.0)**:
   el buscador de texto plano se reemplazó por `<BuscadorPildoras>` (mismo componente de `/picking`)
   vía `src/lib/ventasFiltro.ts` (campos `Venta`/`Cliente`, sobre el núcleo compartido
   `pildorasFiltro.ts`). GO encontró que buscar "2" también traía la venta 12, la 201 (substring). El
@@ -737,7 +768,7 @@ Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento
 ### VF4 — Reportes y alertas (K1-K3, v1.16.0)
 - **K1** (`ReportesPage`): reportes nuevos **baja-rotacion**, **mas-devoluciones**, **anuladas-devueltas** (devoluciones + ventas canceladas con motivo), **comparativa-canal** (online/presencial vía `useCanalesVenta`), **margen-real** (total − `precio_costo_historico`).
 - **K3**: export **CSV** (`exportarCSV` + `sheet_to_csv`) además de Excel/PDF.
-- **K2** (mig 170): alertas event-driven a DUEÑO/SUPERVISOR/ADMIN (`notificarRolesVentas`): **margen negativo** al cerrar venta despachada; **cliente/producto con >N devoluciones en M días** al `procesarDevolucion`. Umbrales `tenants.alerta_margen_negativo` / `alerta_devoluciones_n` / `alerta_devoluciones_dias`. **🧾 2026-08-06 (🟡 EN DEV, sin commitear): UI real en Config → Alertas** (antes ese tab era un placeholder "próximamente" y estas columnas se guardaban desde el mega-form sin ningún input visible — ver [[wiki/features/configuracion]]).
+- **K2** (mig 170): alertas event-driven a DUEÑO/SUPERVISOR/ADMIN (`notificarRolesVentas`): **margen negativo** al cerrar venta despachada; **cliente/producto con >N devoluciones en M días** al `procesarDevolucion`. Umbrales `tenants.alerta_margen_negativo` / `alerta_devoluciones_n` / `alerta_devoluciones_dias`. **🧾 2026-08-06 (✅ EN PROD): UI real en Config → Alertas** (antes ese tab era un placeholder "próximamente" y estas columnas se guardaban desde el mega-form sin ningún input visible — ver [[wiki/features/configuracion]]).
 
 ### VF5 — Edición post-venta + NC interna (H1, v1.17.0)
 - **H1a — autorización post-cobro**: quitar/editar ítems de una venta cobrada (vía **Devolver**) requiere rol DUEÑO/SUPERVISOR/ADMIN; otros roles (CAJERO) necesitan la **clave maestra** de un autorizado (`pedirClaveMaestra` en `abrirModalDevolucion`). Sin clave configurada, se bloquea.

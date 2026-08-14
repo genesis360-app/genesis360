@@ -3,12 +3,44 @@ title: Integración TiendaNube
 category: integrations
 tags: [tiendanube, tn, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Integración TiendaNube
 
 Primera integración de marketplaces en Genesis360. Orden: **TiendaNube → MercadoPago → MELI**.
+
+## 🔀 Diagrama de flujo — Webhook → Venta → Sincronización de stock
+
+Flujo compartido con [[wiki/integrations/mercado-libre]] (mismo mecanismo, distinto canal) — editable
+en draw.io: [`G360.Wiki/diagrams/10-integraciones-ml-tn.drawio`](../../diagrams/10-integraciones-ml-tn.drawio).
+
+```mermaid
+flowchart TD
+    A{"Webhook"} -->|"TiendaNube\norder/created, order/paid"| B["tn-webhook"]
+    A -->|"MercadoLibre\norders_v2"| C["meli-webhook"]
+    B --> D{"¿Ya existe la venta\n(idempotencia por clave)?"}
+    C --> D
+    D -->|"order/created"| D1["Crea venta pendiente"]
+    D -->|"order/paid, ya había pendiente"| D2["pendiente → reservada"]
+    D -->|"order/paid, no existía"| D3["Crea venta reservada directo"]
+    D1 --> E["Resolver cliente<br/>(por email/nickname, crea si no existe)<br/>setea cliente_id Y cliente_nombre"]
+    D2 --> E
+    D3 --> E
+    E --> F["Resolver producto<br/>(mapa TN/MELI, fallback SKU/título)"]
+    F --> G["Reservar stock FIFO<br/>cantidad_reservada += en inventario_lineas"]
+    G --> H{"¿Falta stock y\nproducto es KIT?"}
+    H -->|Sí| H1["fn_iniciar_armado_kit_auto<br/>reserva componentes + wms_tareas tipo=armado<br/>best-effort, nunca bloquea la venta"]
+    H -->|No| I
+    H1 --> I["Envío automático (best-effort):<br/>cliente_domicilios + envios"]
+    I --> J["Job sync_stock encolado<br/>(trigger AFTER INSERT/UPDATE/DELETE)"]
+    J --> K["Worker: disponible = SUM(cantidad − reservada)<br/>filtra por ubicación/estado habilitados"]
+    K --> L{"¿Canal?"}
+    L -->|TN| L1["PUT variants/{id} stock=N<br/>solo si sync_stock=true"]
+    L -->|MELI| L2["Análogo, a nivel variante\n(items OMNI)"]
+    J -.opt-in, si reajuste_margen_auto.-> M["Job sync_precio →\npublica precio_venta × (1+%)"]
+    G -.order cancelled.-> N["Libera cantidad_reservada<br/>+ cancela la venta en G360"]
+```
 
 ---
 
@@ -74,13 +106,13 @@ Token **permanente** — TiendaNube no expira access tokens.
 > vieja diciendo que TN "hoy: solo rebaja stock" — eso era **falso desde hace tiempo**, este webhook
 > ya crea venta + cliente + reserva de stock automáticamente (arriba). Marcada ✅ cerrada.
 
-> [!BUG] **🐛✅ 2026-08-12 — bug real corregido: venta de TiendaNube mostraba "Sin cliente" (fix EN
-> DEV, sin commitear, NO deployado a PROD).** GO había sospechado que el matching contra `clientes`
-> fallaba — investigado a fondo (código real + datos reales de DEV), la sospecha era **incorrecta**: el
-> matching/creación de `clientes` de acá arriba (busca por email, si no existe lo crea) **SIEMPRE
-> funcionó bien**, verificado con pedidos reales de abril y con TODAS las ventas TN de agosto 2026
-> (`cliente_id` resuelto en el 100% de los casos). **Causa raíz real**: `VentasPage.tsx` muestra el
-> cliente vía la columna DENORMALIZADA `ventas.cliente_nombre` (no vía join a `clientes` por
+> [!BUG] **🐛✅ 2026-08-12 — bug real corregido: venta de TiendaNube mostraba "Sin cliente" — ✅ EN PROD
+> desde v1.169.0 (deploy real 2026-08-13, PR #329).** GO había sospechado que el matching contra
+> `clientes` fallaba — investigado a fondo (código real + datos reales de DEV), la sospecha era
+> **incorrecta**: el matching/creación de `clientes` de acá arriba (busca por email, si no existe lo
+> crea) **SIEMPRE funcionó bien**, verificado con pedidos reales de abril y con TODAS las ventas TN de
+> agosto 2026 (`cliente_id` resuelto en el 100% de los casos). **Causa raíz real**: `VentasPage.tsx`
+> muestra el cliente vía la columna DENORMALIZADA `ventas.cliente_nombre` (no vía join a `clientes` por
 > `cliente_id`) — este webhook seteaba `cliente_id` en el INSERT de la venta pero nunca
 > `cliente_nombre`, confirmado con SQL real en DEV (15 ventas TN con `cliente_id` válido y
 > `cliente_nombre IS NULL`). Comparado contra `meli-webhook`/`registrarVenta()` del POS (ambos setean
@@ -88,12 +120,13 @@ Token **permanente** — TiendaNube no expira access tokens.
 > diseño. **Fix**: captura `clienteNombre` en las 3 ramas de resolución de cliente (match existente,
 > insert nuevo, fallback por race condition de email duplicado) y lo incluye en el INSERT de la venta;
 > de paso se agregó un `console.error` que faltaba en la rama de fallo silencioso de creación de
-> cliente. **Deploy**: EF redeployada a **DEV únicamente** (`tn-webhook` v22) — NO a PROD
-> (`tiendanube_credentials` en PROD sigue en 0 filas). **Backfill**: 8/15 ventas TN rotas de DEV
-> corregidas (`created_at > 2026-04-30`); las 7 más viejas (abril 2026) quedaron sin tocar —
+> cliente. **Deploy**: EF `tn-webhook` deployada a PROD (v21) el 2026-08-13. PROD tiene 0 filas en
+> `tiendanube_credentials` (nadie conectó TiendaNube todavía) y 0 ventas rotas — no hizo falta backfill
+> en PROD. **Backfill de DEV** (previo, 2026-08-12): 8/15 ventas TN rotas corregidas
+> (`created_at > 2026-04-30`); las 7 más viejas (abril 2026) quedaron sin tocar —
 > `trg_ventas_periodo_cerrado` las bloqueó correctamente (período contable cerrado, REGLA #0: nunca
-> reescribir ventas de un período contable cerrado). Código sin commitear en el working tree local de
-> `dev`. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+> reescribir ventas de un período contable cerrado). Ver `sources/raw/project_pendientes.md` ("ARRANCÁ
+> ACÁ").
 
 ---
 

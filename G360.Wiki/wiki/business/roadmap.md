@@ -3,20 +3,54 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-11
+updated: 2026-08-13
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.168.0 (código/Vercel, CONFIRMADO de forma independiente — PR #328 mergeado a
-`main` (`75ad544719467380368cbbcb783c4371d068a791`), tag+release `v1.168.0` publicados,
-`list_migrations` contra el proyecto PROD confirma el historial hasta `357_repositores_fase4_etiquetas`,
-bundle real de `https://genesis360.pro/` verificado con la cadena "v1.168.0"). **Módulo Repositores
-COMPLETO (4/4 fases, migraciones 352-357) EN PRODUCCIÓN.** Detalle completo en
+**Versión en PROD:** v1.169.0 (código/Vercel, CONFIRMADO de forma independiente — PR #329 mergeado a
+`main` (`f6163ac8`), tag+release `v1.169.0` publicados, `src/config/brand.ts` en `origin/main` con
+`APP_VERSION = 'v1.169.0'`, Vercel deployment de producción `dpl_2q1HCdhmrvNcAsVt7YsCBnUkwZYf` en estado
+READY). **Cero migraciones nuevas — la última migración sigue siendo la 357.** Detalle completo en
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.168.0 (`origin/dev`, en paridad con PROD tras el merge del PR #328) — sin
+**Versión en DEV:** v1.169.0 (`origin/dev`, en paridad con PROD tras el merge del PR #329) — sin
 pendientes de deploy  
-**Última actualización:** 12 de Agosto, 2026
+**Última actualización:** 13 de Agosto, 2026
+
+---
+
+## v1.169.0 — 🔍🏷️ Navegación específica en Alertas/Supervisión + píldoras en Pedidos/Ventas + fix `tn-webhook` + Repositores Notificaciones/Reportes (J/K) — ✅ EN PROD (2026-08-13)
+
+Deploy a PROD de 5 conjuntos de cambios construidos y verificados en DEV en la sesión anterior
+(2026-08-12), empaquetados en un solo commit (`a209abaf`) y un solo PR (#329, mergeado a `main` en
+`f6163ac8`). **Cero migraciones SQL nuevas** — todo se construyó sobre tablas/columnas/funciones ya
+existentes.
+
+- **Alertas/Supervisión**: paginación (topa cada sección a 15 + link "ver todo"; Aprobaciones/Reasignar
+  de Supervisión paginadas con selector de page size). TODOS los links de Alertas filtran al ítem EXACTO
+  (pedido/venta/OC/cliente específico), no solo a la pestaña general. Fix de aislamiento por sucursal en
+  "Efectivo en caja sobre el umbral" (única de las 12 secciones que nunca había filtrado por sucursal).
+- **Búsqueda y filtros**: Gastos → OC gana buscador por número de OC o proveedor. Pedidos y Ventas/
+  Historial adoptan el filtro de píldoras (`src/lib/pedidosFiltro.ts`/`ventasFiltro.ts`, mismo patrón
+  que Picking), con match EXACTO por número de identificador. Clientes: "Ver ficha" hace scroll +
+  resaltado visual al cliente específico.
+- **Fix `tn-webhook`**: venta creada desde TiendaNube mostraba "Sin cliente" — nunca seteaba la columna
+  denormalizada `ventas.cliente_nombre` (el matching de `cliente_id` siempre funcionó bien). PROD tiene 0
+  filas en `tiendanube_credentials`, no hizo falta backfill.
+- **Repositores — módulo 100% completo**: Notificaciones (J) — Edge Function
+  `repositores-cierre-dia-sweep` (cron cada 15 min vía GitHub Actions) avisa a los supervisores (in-app +
+  email) si quedan tareas sin completar al cierre del día, horario configurable por sucursal. Reportes
+  (K) — tab nuevo con métricas por repositor (tareas completadas + tiempo promedio, últimos 30 días),
+  export a Excel. Con esto, ya no queda ningún punto del relevamiento original de Repositores (A-L) sin
+  construir.
+
+**Deploy verificado de forma independiente**: `gh pr view 329` → `MERGED`; `gh release view v1.169.0` →
+publicado sobre `main`; Edge Functions `tn-webhook` (v21) y `repositores-cierre-dia-sweep` (nueva, v1)
+deployadas a PROD; Vercel `dpl_2q1HCdhmrvNcAsVt7YsCBnUkwZYf` READY. Build + `npm run test:unit` (1563
+tests) verdes antes del deploy. Detalle completo en [[wiki/features/alertas]],
+[[wiki/features/supervision]], [[wiki/features/pedidos]], [[wiki/features/ventas-pos]],
+[[wiki/features/clientes-proveedores]], [[wiki/features/gastos]], [[wiki/features/filtro-pildoras]],
+[[wiki/features/repositores]], [[wiki/integrations/tienda-nube]].
 
 ---
 

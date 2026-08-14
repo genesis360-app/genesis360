@@ -1,0 +1,21 @@
+name: Tenants — purga de bajas programadas vencidas (hard delete grace period)
+
+on:
+  schedule:
+    # Una vez por día alcanza — la ventana de gracia es de 30 días, no hace falta más frecuencia.
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  tenant-hard-delete-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call tenant-hard-delete-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/tenant-hard-delete-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

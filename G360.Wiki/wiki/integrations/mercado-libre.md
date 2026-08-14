@@ -10,6 +10,10 @@ updated: 2026-08-08
 
 Integración completa con el marketplace más grande de Argentina. Implementada en v0.91.0–v0.99.0 PROD ✅.
 
+> 🔀 **Diagrama de flujo** (webhook → venta → sync de stock, compartido con TiendaNube): ver
+> [[wiki/integrations/tienda-nube]] → "Diagrama de flujo — Webhook → Venta → Sincronización de
+> stock". Editable en draw.io: [`G360.Wiki/diagrams/10-integraciones-ml-tn.drawio`](../../diagrams/10-integraciones-ml-tn.drawio).
+
 ---
 
 ## Registro de la app

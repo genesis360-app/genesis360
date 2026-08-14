@@ -4137,6 +4137,45 @@ export default function VentasPage() {
       if (devError) throw devError
       devId = dev.id
 
+      // A10 — NC electrónica AFIP automática (fire-and-forget: la devolución YA quedó confirmada
+      // con su NC interna arriba, esto NUNCA debe bloquearla ni revertirla). Mismo cálculo de
+      // letra/PV que usa el botón manual "Emitir NC". Si falla, se encola en nc_afip_pendientes
+      // para que el sweep nc-afip-retry-sweep la reintente — nunca se reintenta acá mismo.
+      if (devolucionVenta.estado === 'facturada') {
+        const devIdParaNC = dev.id
+        const ventaParaNC = devolucionVenta
+        void (async () => {
+          try {
+            const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+            const letra = String((ventaParaNC as any)?.tipo_comprobante ?? 'B')
+              .replace(/^Factura\s+/i, '').replace(/^NC-/i, '').trim().toUpperCase()
+            const ncLetra = (['A', 'B', 'C'].includes(letra) ? letra : 'B')
+            const tipoNC = `NC-${ncLetra}`
+            const { data, error } = await supabase.functions.invoke('emitir-factura', {
+              body: {
+                venta_id: ventaParaNC.id, tenant_id: tenant!.id,
+                tipo_comprobante: tipoNC, punto_venta: pvDefault, devolucion_id: devIdParaNC,
+              },
+            })
+            if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'error desconocido')
+            toast.success(`NC electrónica emitida automáticamente — CAE: ${data.cae}`, { duration: 8000 })
+            qc.invalidateQueries({ queryKey: ['devoluciones-venta', ventaParaNC.id] })
+          } catch (e: any) {
+            let msg = String(e?.message ?? '')
+            try { const body = await (e as any).context?.json?.(); if (body?.error) msg = String(body.error) } catch { /* */ }
+            const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+            const letra = String((ventaParaNC as any)?.tipo_comprobante ?? 'B')
+              .replace(/^Factura\s+/i, '').replace(/^NC-/i, '').trim().toUpperCase()
+            const ncLetra = (['A', 'B', 'C'].includes(letra) ? letra : 'B')
+            await supabase.from('nc_afip_pendientes').insert({
+              tenant_id: tenant!.id, devolucion_id: devIdParaNC, venta_id: ventaParaNC.id,
+              tipo_comprobante: `NC-${ncLetra}`, punto_venta: pvDefault, ultimo_error: msg,
+            })
+            toast('La NC electrónica AFIP no se pudo emitir ahora — se va a reintentar automáticamente.', { icon: '⏳', duration: 7000 })
+          }
+        })()
+      }
+
       // VF5/J1 — auditoría: si la venta era facturada, la devolución genera una NC interna (no fiscal)
       logVentaAuditoria(devolucionVenta.id, devolucionVenta.estado === 'facturada' ? 'nc_interna' : 'devolucion', {
         numero_nc, monto: montoTotal, motivo: devMotivo || null,

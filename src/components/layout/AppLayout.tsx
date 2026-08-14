@@ -27,6 +27,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { navItemVisible, navItemLocked } from '@/lib/navVisibility'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout'
+import { cancelarBajaProgramada } from '@/lib/tenantHardDelete'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { NotificacionesButton } from '@/components/NotificacionesButton'
 import { AiAssistant } from '@/components/AiAssistant'
@@ -223,7 +224,7 @@ export function AppLayout() {
     })
   }
 
-  const { user, tenant } = useAuthStore()
+  const { user, tenant, loadUserData } = useAuthStore()
   const confirmar = useConfirm()
   useInactivityTimeout(tenant?.session_timeout_minutes)
   const { count: alertCount } = useAlertas()
@@ -410,6 +411,28 @@ export function AppLayout() {
     ? differenceInDays(new Date(tenant.trial_ends_at), new Date())
     : 0
   const showTrialBanner = tenant?.subscription_status === 'trial' && trialDaysLeft >= 0
+
+  // Baja programada (mig 358, hard delete con grace period) — solo el DUEÑO puede cancelarla,
+  // mismo criterio que quién puede programarla en MiCuentaPage.tsx.
+  const deleteDaysLeft = tenant?.delete_scheduled_at
+    ? differenceInDays(new Date(tenant.delete_scheduled_at), new Date())
+    : null
+  const showDeleteBanner = deleteDaysLeft !== null && user?.rol === 'DUEÑO'
+  const [cancelandoBaja, setCancelandoBaja] = useState(false)
+  const handleCancelarBaja = async () => {
+    if (!tenant || !user) return
+    setCancelandoBaja(true)
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      await cancelarBajaProgramada(tenant.id, authData?.user?.email ?? '', tenant.nombre)
+      await loadUserData(user.id)
+      toast.success('Eliminación cancelada — tu cuenta sigue activa')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al cancelar la eliminación')
+    } finally {
+      setCancelandoBaja(false)
+    }
+  }
 
   // Clase base para botones del header
   const hBtn = 'p-2 rounded-lg text-muted hover:text-primary dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all'
@@ -636,6 +659,28 @@ export function AppLayout() {
             >
               Activar plan <ChevronRight size={14} />
             </NavLink>
+          </div>
+        )}
+
+        {/* Banner baja programada (mig 358) — solo DUEÑO, más severo que el de trial */}
+        {showDeleteBanner && (
+          <div className="bg-red-50 dark:bg-red-900/20 border-b border-red-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
+            <p className="text-red-800 dark:text-red-400 text-sm">
+              <span className="font-semibold">Cuenta programada para eliminarse:</span>{' '}
+              {deleteDaysLeft === 0
+                ? 'hoy'
+                : deleteDaysLeft! < 0
+                  ? 'en proceso de purga'
+                  : `en ${deleteDaysLeft} día${deleteDaysLeft !== 1 ? 's' : ''}`}
+              {' '}— todos los datos de "{tenant?.nombre}" se van a borrar definitivamente.
+            </p>
+            <button
+              onClick={handleCancelarBaja}
+              disabled={cancelandoBaja}
+              className="flex items-center gap-1 text-red-700 dark:text-red-400 text-sm font-medium hover:text-red-900 disabled:opacity-50"
+            >
+              {cancelandoBaja ? 'Cancelando...' : 'Cancelar eliminación'}
+            </button>
           </div>
         )}
 

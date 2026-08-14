@@ -79,6 +79,8 @@ export interface Tenant {
   // que se considera usable (default 0.70) — ninguna posición real se llena al 100%.
   cubicaje_habilitado?: boolean
   cubicaje_factor_aprovechamiento?: number | null
+  // Hard delete con grace period (mig 358): fecha de borrado definitivo programado, NULL = sin baja.
+  delete_scheduled_at?: string | null
   created_at: string
 }
 

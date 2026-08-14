@@ -3,7 +3,7 @@ title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging, pildoras, buscador]
 sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Módulo Pedidos
@@ -29,6 +29,38 @@ diseño: `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` (no repetido
 **Acceso:** DEPOSITO + SUPERVISOR + OWNER/ADMIN — **NO CAJERO** (a diferencia de Ventas, se trata como
 operación logística desde el vamos, no comercial de mostrador). Gateado por modo Avanzado, mismo
 patrón que "Recepciones"/"Picking".
+
+## 🔀 Diagrama de flujo — Pedido → Reserva → Despacho
+
+Editable en draw.io: [`G360.Wiki/diagrams/05-pedido-reserva-despacho.drawio`](../../diagrams/05-pedido-reserva-despacho.drawio).
+
+```mermaid
+flowchart TD
+    A["Crear pedido<br/>estado=borrador"] --> B["Confirmar<br/>estado=confirmado"]
+    B --> C{"¿Origen del pedido?"}
+    C -->|A: Manual| D1["Lanzar: valida stock<br/>ANTES de reservar<br/>si falta → aborta TODO"]
+    C -->|B: Venta-pedido| D2["Lanzar: NUNCA reserva<br/>resuelve LPN por cascada"]
+    D1 --> D1b["Reserva real FEFO<br/>cantidad_reservada+="]
+    D1b --> E["estado=en_preparacion"]
+    D2 --> E
+    E --> F{"¿Ubicación tipo picking?"}
+    F -->|Sí| G1[Tarea picking directa]
+    F -->|"No, con reabastecimiento on-demand"| G2["Tarea replenishment<br/>+ picking encadenada"]
+    G1 --> H["Operario completa tarea<br/>fn_completar_tarea_picking<br/>(solo bookkeeping)"]
+    G2 --> H2["fn_completar_tarea_reabastecimiento<br/>mueve stock físico bulk→picking"]
+    H2 --> H
+    H --> I{"¿Última tarea<br/>del pedido completada?"}
+    I -->|No| H
+    I -->|Sí| J["estado=listo_para_entrega"]
+    J --> K{"¿Origen del pedido?"}
+    K -->|A: Manual| L1["fn_pedido_generar_venta<br/>ÚNICO punto que rebaja stock real<br/>CC guard, cumplimiento parcial"]
+    K -->|B: Venta-pedido| L2["fn_pedido_entregar_retiro<br/>NO toca plata ni stock"]
+    L1 --> M{"¿Entrega 100% o parcial?"}
+    M -->|100%| M1{"pedido_cierre_automatico"}
+    M -->|Parcial| M2["estado=entregado_parcial"]
+    M1 -->|true| N1["estado=entregado"]
+    M1 -->|false| N2["Queda entregado_parcial<br/>hasta cierre manual"]
+```
 
 ---
 
@@ -123,7 +155,7 @@ generar tareas WMS reales — "lanzar" — es la Fase PED3, todavía no existe e
   sumado a `DEPOSITO_ALLOWED` (el rol DEPOSITO tiene una whitelist de rutas permitidas aparte del nav).
 - **Listado** de pedidos del tenant (RLS ya filtra por sucursal), filtro por estado, expandible por
   fila (muestra las líneas + atributos + notas).
-- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, EN DEV sin commitear)**:
+- **🆕 Buscador por píldoras (2026-08-12, ronda 3 de feedback sobre Alertas, ✅ EN PROD desde v1.169.0)**:
   el buscador de texto plano se reemplazó por `<BuscadorPildoras>` (mismo componente que ya usa
   `/picking`) vía `src/lib/pedidosFiltro.ts` (campos `Pedido`/`Referencia`/`Cliente`, sobre el núcleo
   compartido `pildorasFiltro.ts`). GO encontró que buscar "2" también traía el pedido 82 y el 102
@@ -823,7 +855,7 @@ POS:
 
 - **Tier mayorista por volumen** (mig 306) vía `fn_precio_venta_efectivo`, resuelto contra el
   **total pedido** del SKU — entregar en dos tandas no hace perder el precio por volumen.
-  🆕 **Extendido en la mig 330 (EN DEV, sin deploy):** la función ahora replica el mismo algoritmo
+  🆕 **Extendido en la mig 330 (✅ EN PROD desde v1.168.0):** la función ahora replica el mismo algoritmo
   de bloques de `src/lib/tiers.ts` (tier % + enlace a empaque, backlog Fede 25/7) — un Pedido
   factura EXACTO igual que la misma venta cargada por el POS. Ver
   [[wiki/features/precios-tiers-empaque]].

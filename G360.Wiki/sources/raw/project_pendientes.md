@@ -6,7 +6,302 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-12, cont. 5) — 🏷️ Repositores: Notificaciones (J) + Reportes (K) construidos y verificados EN DEV — módulo 100% completo, ya NO queda ningún punto del relevamiento original sin construir — TODO sigue SIN COMMITEAR (ahora 5 cambios acumulados hoy)
+> ### ✅ ARRANCÁ ACÁ (2026-08-13, cont. 3) — 🧾⚡ NC electrónica AFIP automática al confirmar una devolución (mig 359): CONSTRUIDO Y VERIFICADO EN DEV, SIN COMMITEAR — este bloque supera al de abajo (2026-08-13, cont. 2: hard delete de tenant con grace period)
+>
+> Continuación directa de la misma sesión que acaba de dejar el hard delete de tenant (mig 358, bloque
+> de abajo) y los 5 diagramas de flujo de procesos (`G360.Wiki/diagrams/`) sin commitear, mismo working
+> tree local de `dev`. GO pidió retomar explícitamente ("dale con la NC nomás") la pregunta **A10** del
+> relevamiento de reglas de negocio de Ventas — respondida por GO hace tiempo con la opción **"A" (NC
+> electrónica automática al confirmar la devolución)**, pero nunca implementada: hasta hoy solo existía
+> el flujo MANUAL (modal + botón "Emitir NC" en el detalle de una venta facturada). Se retomó después de
+> confirmar que el motor propio de AFIP (`WsfePropioProvider`, sin depender de AfipSDK) ya está en uso
+> por los **8 tenants reales de PROD**.
+>
+> #### 🛑 Diseño de seguridad (REGLA #0) — la parte más importante
+>
+> `emitir-factura/index.ts` (la EF que ya hace el trabajo fiscal real, **sin cambios en su lógica
+> central**) marca con la frase LITERAL **"NO reintentar"** dos escenarios donde AFIP pudo haber
+> autorizado un comprobante aunque el sistema no tenga registrado el CAE: (1) error de transporte a
+> mitad de la llamada al WSFE (no se sabe si AFIP procesó el pedido antes de que se cortara la
+> conexión), y (2) AFIP autorizó el comprobante (CAE real) pero la escritura en `devoluciones.nc_cae`
+> falló después. Reintentar ciegamente esos dos casos podría emitir una **NC DUPLICADA en AFIP** — plata
+> real regalada dos veces a un cliente. Por eso el diseño NO es "reintentar todo, N veces": es reintentar
+> solo lo genuinamente seguro (errores de validación de negocio, ej. "esta CUIT solo puede facturar tipo
+> C") y **escalar a revisión humana de inmediato** (sin gastar ni un intento) cualquier error con la
+> frase "NO reintentar", notificando a DUEÑO/SUPER_USUARIO/CONTADOR para que concilien contra el "último
+> autorizado" de AFIP antes de tocar de nuevo esa devolución.
+>
+> #### Qué se construyó (mig 359, sin tocar la lógica fiscal de `emitir-factura/index.ts`)
+>
+> - Tabla nueva `nc_afip_pendientes` (cola de reintento): tenant_id/devolucion_id/venta_id/
+>   tipo_comprobante/punto_venta/intentos/ultimo_error/`requiere_reconciliacion_manual` (boolean = true
+>   escaló, dejó de reintentar solo)/resuelto_at/notificado_at. Índice único parcial: un solo pendiente
+>   ACTIVO por devolución (evita duplicar la cola si el intento automático y un click manual en "Emitir
+>   NC" fallan casi al mismo tiempo). RLS: SELECT+INSERT para miembros del tenant, UPDATE/DELETE solo
+>   `service_role` (el sweep).
+> - `src/pages/VentasPage.tsx` (`procesarDevolucion`): justo después de insertar la fila de
+>   `devoluciones` (si la venta era `facturada`), dispara en segundo plano (fire-and-forget,
+>   `void (async () => {...})()` — NUNCA bloquea ni puede revertir la devolución, que ya quedó
+>   confirmada con su NC interna no-fiscal) un intento automático de emisión con la MISMA EF
+>   `emitir-factura` que ya usaba el botón manual, mismo cálculo de letra de NC (deriva de la factura
+>   original) y punto de venta. Éxito → toast "NC electrónica emitida automáticamente — CAE: ...".
+>   Falla → encola en `nc_afip_pendientes` con el error real + toast suave avisando que se va a
+>   reintentar solo.
+> - `supabase/functions/nc-afip-retry-sweep/` (EF nueva, deployada a DEV) + `.github/workflows/
+>   nc-afip-retry-sweep.yml` (cron cada 15 min vía GitHub Actions — el proyecto no tiene pg_cron). Por
+>   cada pendiente activo: si `ultimo_error` ya contiene "NO reintentar" → escala directo (marca
+>   `requiere_reconciliacion_manual=true`, notifica UNA vez in-app + email a DUEÑO/SUPER_USUARIO/
+>   CONTADOR, sin gastar ningún intento nuevo). Si se agotaron **8 intentos** sin éxito → mismo
+>   escalamiento. Si no, reintenta llamando a `emitir-factura` con el `SUPABASE_SERVICE_ROLE_KEY` como
+>   Authorization — la EF YA tenía contemplado ese camino ("esServiceRole") para flujos internos como
+>   este, sin necesitar ningún cambio ahí. Nuevo error "NO reintentar" → escala; otro tipo de error (ej.
+>   validación de negocio) → suma un intento y sigue esperando el próximo ciclo; éxito → marca
+>   `resuelto_at`, notifica in-app + email "NC emitida automáticamente" (mismo patrón que
+>   `repositores-cierre-dia-sweep`).
+>
+> #### Verificación real contra DEV (AFIP homologación de verdad, no mockeado) — los 4 caminos
+>
+> 1. **Éxito real contra AFIP**: venta #607 real y ya existente en DEV (`estado='facturada'`, Factura C
+>    con CAE, sin devoluciones previas). Devolución completa vía la UI real (Playwright), medio
+>    "Transferencia" $600. La devolución se confirmó normal Y el intento automático emitió sola contra
+>    el WSFE real (homologación, `afip_produccion=false`) — verificado por SQL directo:
+>    `nc_cae='86330757276751'`, `nc_tipo='NC-C'` (coincide con la letra C de la Monotributista),
+>    `nc_punto_venta=1`, `nc_numero_comprobante=24`, `afip_provider_usado='propio'`. Cero filas en
+>    `nc_afip_pendientes` — funcionó al primer intento. Este registro se dejó intacto en DEV a propósito
+>    (tiene un CAE real de AFIP homologación; borrarlo rompería la trazabilidad).
+> 2. **Escalamiento por error peligroso**: fila insertada a mano en `nc_afip_pendientes` con
+>    `ultimo_error` conteniendo literalmente "NO reintentar la emisión a ciegas" (mensaje real de
+>    `providers.ts`). El sweep escaló de inmediato (`intentos` quedó en 0 — NUNCA volvió a llamar a
+>    `emitir-factura`), `requiere_reconciliacion_manual=true`, 3 notificaciones reales (una por usuario
+>    DUEÑO/SUPER_USUARIO/CONTADOR del tenant). Reinvocado: 0 evaluados — no vuelve a notificar (sin
+>    spam).
+> 3. **Reintento seguro**: fila con error genérico (sin la frase peligrosa) → el sweep SÍ llamó de
+>    verdad a `emitir-factura` con auth de service role — devolvió un error legítimo de validación de
+>    negocio ("Un emisor Monotributista solo puede emitir comprobantes tipo C") — `intentos` subió a 1
+>    sin escalar (correcto).
+> 4. **Agotamiento**: `intentos` llevado a 8 a mano → reinvocado, escaló igual que el caso peligroso.
+>
+> Todos los datos de prueba de la cola y las notificaciones sintéticas se limpiaron después — solo
+> quedó la devolución real de la venta #607 con su NC real (a propósito). Typecheck + `vite build` +
+> 1563 tests unitarios, todos verdes.
+>
+> **Estado real: construido y verificado — SIN COMMITEAR todavía** (se suma al hard delete de tenant,
+> mig 358, y a los 5 diagramas de flujo, todo en el mismo working tree local de `dev`).
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.169.0** — sin cambios esta tarea, nada deployado.
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): mig 359 aplicada; Edge Function `nc-afip-retry-sweep` deployada a
+>   DEV. Working tree local de `dev` con hard delete (mig 358) + NC automática (mig 359) + 5 diagramas de
+>   flujo, todo **sin commitear**.
+> - El cron de GitHub Actions (`nc-afip-retry-sweep.yml`) NO va a empezar a correr hasta que ese archivo
+>   de workflow llegue a `main` (mergeado) — sin riesgo mientras tanto.
+>
+> **Próximo paso**: no hay ninguna tarea nueva anotada — queda a la espera de que GO decida qué
+> sigue (ej. commitear/deployar lo acumulado, o pedir venta física en USD/caja en USD — G5, sigue
+> diferida).
+>
+> Ver `log.md` (2026-08-13, entrada al principio del archivo), [[wiki/features/facturacion-afip]]
+> (sección nueva "NC automática al confirmar la devolución (A10)"), [[wiki/features/devoluciones]]
+> (notas actualizadas), `wiki/database/migraciones.md` (mig 359),
+> `sources/raw/relevamiento_ventas_respuestas.md` (A10 marcada implementada), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-13, cont. 2) — 🗑️⏳ Hard delete de tenant con grace period (mig 358): CONSTRUIDO Y VERIFICADO EN DEV, SIN COMMITEAR + aclaración: la pregunta "L" del relevamiento de Ventas quedó OBSOLETA (sin construir nada) — este bloque quedó SUPERADO por el de arriba (2026-08-13, cont. 3: NC electrónica AFIP automática, mig 359, EN DEV, sin commitear)
+>
+> Continuación directa de la misma sesión que acaba de deployar v1.169.0 a PROD (bloque de abajo, cont.
+> 1) — mismo día, mismo working tree local de `dev`. Apenas cerrado ese deploy, GO pidió retomar un
+> pendiente que llevaba bastante tiempo anotado en este archivo (marcado explícitamente el 2026-08-04,
+> ver el bloque histórico de esa fecha más abajo: **"4. Hard delete de tenant + gracia — auditoría de
+> FKs hecha... NO se construyó el flujo — queda pendiente de que el usuario lo pida explícito"** — y
+> mencionado desde antes, en el backlog de fines de junio/v1.99.0 era): hoy "Eliminar cuenta y negocio"
+> (`MiCuentaPage.tsx`) hacía un soft delete inmediato — borraba la fila de `users` y marcaba
+> `tenants.subscription_status='cancelled'`, pero los datos del tenant (productos, ventas, inventario,
+> etc.) quedaban en la base para siempre, sin ninguna purga real.
+>
+> #### 3 decisiones de diseño confirmadas con GO (`AskUserQuestion`, aceptó los 3 recomendados)
+>
+> 1. **Reactivación self-service** (no vía soporte): el dueño puede loguearse durante los 30 días de
+>    gracia y cancelar la baja él mismo, sin escribir a nadie.
+> 2. **Sin export ZIP automático** por ahora — ya existen exports por módulo (Excel en
+>    Productos/Ventas/Gastos/etc.) si el dueño necesita algo antes de que se cumpla el plazo.
+> 3. **30 días** de gracia.
+>
+> **Implicancia de diseño clave del punto 1**: para que la reactivación sea self-service, `users` YA NO
+> se borra al programar la baja (a diferencia del soft-delete viejo) — solo se setea
+> `tenants.delete_scheduled_at = NOW() + 30 días`. El dueño conserva acceso normal (no se toca
+> `subscription_status` para tenants trial/free) durante toda la ventana de gracia, así puede seguir
+> usando la app y ve un aviso persistente.
+>
+> #### Bloqueo técnico real encontrado al auditar (antes de construir)
+>
+> Se auditaron TODAS las FK que apuntan a `tenant_id` en las ~140 tablas: todas tenían `ON DELETE
+> CASCADE` **EXCEPTO `autorizaciones`** (tenía `NO ACTION` — mismo gap que ya había detectado la
+> auditoría del 2026-08-04, cuando la tabla todavía se llamaba `autorizaciones_inventario`; el rename de
+> la mig 347 no tocó esa FK) — un `DELETE FROM tenants` de un tenant con alguna fila en `autorizaciones`
+> hubiera fallado por violación de FK, dejando el hard delete roto en producción. Corregido en la misma
+> migración.
+>
+> #### Qué se construyó (mig 358, sin ninguna otra migración)
+>
+> - `tenants.delete_scheduled_at timestamptz` (NULL = sin baja programada) + índice parcial + fix del FK
+>   de `autorizaciones` a CASCADE.
+> - `src/pages/MiCuentaPage.tsx`: `handleDeleteAccount()` reescrito — ya no borra `users`, programa
+>   `delete_scheduled_at` a +30 días, mantiene la cancelación de MP si había suscripción activa (mismo
+>   guard fail-closed que ya existía: si MP no confirma la cancelación, se aborta todo, REGLA #0), manda
+>   un email de aviso con la fecha exacta, y NO cierra la sesión — navega a `/dashboard` para que el
+>   dueño vea la confirmación al toque. La "zona de riesgo" ahora muestra un estado condicional: sin
+>   baja programada → el formulario de siempre (nombre del negocio + botón "Programar eliminación (30
+>   días)"); con baja ya programada → panel "Eliminación programada para el DD de MES de AAAA" con botón
+>   "Cancelar eliminación".
+> - `src/components/layout/AppLayout.tsx`: banner global rojo (mismo mecanismo que el banner amarillo de
+>   trial, `showTrialBanner`), visible SOLO para el rol DUEÑO, con los días restantes y botón "Cancelar
+>   eliminación" directo desde cualquier página de la app.
+> - `src/lib/tenantHardDelete.ts` (nuevo): `cancelarBajaProgramada()` compartida, reusada tanto por el
+>   banner global como por el panel de MiCuentaPage, para no duplicar el update + el email de
+>   confirmación.
+> - `supabase/functions/tenant-hard-delete-sweep/` (Edge Function nueva, deployada a DEV
+>   `gcmhzdedrkmmzfzfveig`, `verify_jwt: false`) + `.github/workflows/tenant-hard-delete-sweep.yml`
+>   (cron diario `0 6 * * *` vía GitHub Actions — el proyecto no tiene pg_cron habilitado, mismo patrón
+>   que los demás sweeps). Hace el `DELETE FROM tenants` real y definitivo de lo que ya venció su
+>   `delete_scheduled_at`; el CASCADE de las FK se encarga de borrar TODO lo demás (productos, ventas,
+>   inventario, cajas, etc.).
+> - **Decisión consciente de alcance, documentada explícitamente**: el sweep NO borra las cuentas de
+>   Supabase Auth de los ex-usuarios del tenant (deja únicamente huérfana la cuenta de auth, sin acceso
+>   a nada) — el riesgo de borrar por error una cuenta STAFF/ADMIN cross-tenant (`rol='ADMIN'` tiene
+>   acceso a múltiples tenants) supera el beneficio de limpieza automática. Queda anotado como deuda
+>   técnica menor, no bloqueante.
+>
+> #### Verificación real contra DEV (no solo lectura de código)
+>
+> - Flujo completo probado con Playwright headless real contra el tenant de prueba "Almacén Jorgito":
+>   programar la baja → toast + banner rojo correctos con la fecha exacta (+30 días, confirmado con SQL
+>   directo) → banner visible navegando a otra página → click en "Cancelar eliminación" desde el banner
+>   → toast de confirmación + `delete_scheduled_at` vuelve a NULL (confirmado con SQL). La app permaneció
+>   100% funcional durante toda la ventana de gracia (sin bloqueos, sin gates nuevos que restrinjan el
+>   uso normal).
+> - **Sweep de purga real probado de punta a punta**: se creó un tenant 100% descartable por SQL directo
+>   (nombre `__TEST_HARD_DELETE_DESCARTABLE__`, jamás relacionado con datos reales) con
+>   `delete_scheduled_at` ya vencido, más una fila de prueba en `autorizaciones` (específicamente para
+>   probar el fix del FK). Se invocó el sweep por curl contra la Edge Function real → el tenant Y la fila
+>   de `autorizaciones` desaparecieron (CASCADE funcionando correctamente, incluyendo el fix). Se
+>   reinvocó el sweep una segunda vez → 0 evaluados (confirma que no reprocesa lo ya purgado). Todo el
+>   tenant de prueba se limpió después, sin dejar rastro.
+> - Typecheck + `vite build` + 1563 tests unitarios, todos verdes.
+>
+> **Estado real: construido y verificado — SIN COMMITEAR todavía** (working tree de `dev` local, mismo
+> patrón que sesiones anteriores — no se commitea hasta que el usuario lo pida explícitamente).
+>
+> #### Aclaración (sin construir nada): la pregunta "L" del relevamiento de Ventas quedó obsoleta
+>
+> GO pensaba que el relevamiento de Ventas (secciones A-L) estaba 100% respondido y preguntó por la
+> sección L ("Top 3 prioridad"). Se investigó `relevamiento_ventas_respuestas.md` y este archivo: la
+> pregunta L pedía originalmente que GO priorizara el ORDEN de construcción de las fases VF1-VF5
+> (dependencia/valor) — pero esas 5 fases YA SE CONSTRUYERON TODAS (en PROD desde 2026-06-01, ver el
+> bloque histórico "Relevamiento Ventas H-K — plan de implementación" más abajo en este archivo), así
+> que la pregunta de orden quedó sin sentido en la práctica (no hay nada que priorizar, ya está todo
+> hecho). Lo único que sigue siendo una feature real y no construida, verificado contra el código actual
+> (`VentasPage.tsx`, `emitirNC()`):
+> - **NC electrónica AFIP automática al confirmar una devolución** (pregunta A10 del relevamiento — GO
+>   ya había elegido la opción "automática al confirmar", con una recomendación de agregar una cola de
+>   reintentos para cuando AFIP esté caído). **✅ Implementada 2026-08-13 (mig 359, cont. 3 de arriba) —
+>   ya no es una tarea pendiente**, ver el bloque de arriba.
+> - Venta física en USD / caja en USD (G5) — sigue diferida, sin cambios.
+>
+> `relevamiento_ventas_respuestas.md` (sección L) recibió una nota aclarando que quedó obsoleta — no se
+> la marcó "respondida" con una opción (GO no la respondió), se aclaró que ya no aplica.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): sigue en **v1.169.0** — sin cambios esta tarea, nada deployado.
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): mig 358 aplicada; Edge Function `tenant-hard-delete-sweep`
+>   deployada a DEV. Working tree local de `dev` con hard delete + banner + panel + sweep + workflow
+>   **sin commitear**.
+> - El cron de GitHub Actions (`tenant-hard-delete-sweep.yml`) NO va a empezar a correr hasta que ese
+>   archivo de workflow llegue a `main` (mergeado) — sin riesgo mientras tanto.
+>
+> **Próximo paso en cola**: superado por el bloque de arriba (cont. 3) — NC electrónica AFIP automática
+> (A10) ya se construyó y verificó el mismo día. Sin tarea nueva anotada; a la espera de que GO decida
+> (commitear/deployar lo acumulado, o pedir venta física en USD/caja USD — G5, sigue diferida).
+>
+> Ver `log.md` (2026-08-13, entrada al principio del archivo),
+> [[wiki/features/cancelacion-arrepentimiento]] (sección nueva "Hard delete de tenant con grace
+> period"), `wiki/database/migraciones.md` (mig 358), `sources/raw/relevamiento_ventas_respuestas.md`
+> (nota en la sección L), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-13, cont. 1) — 🚀 v1.169.0 DEPLOYADO A PROD Y VERIFICADO — Alertas/Supervisión (paginación + navegación específica) + píldoras en Pedidos/Ventas + fix `tn-webhook` "Sin cliente" + Repositores Notificaciones/Reportes (J/K), TODO junto en un solo PR — este bloque quedó SUPERADO por el de arriba (2026-08-13, cont. 2): hard delete de tenant con grace period (mig 358, EN DEV, sin commitear) + aclaración de la pregunta L del relevamiento de Ventas
+>
+> Continuación directa de los 5 bloques históricos de abajo (2026-08-12, cont. 2 a cont. 5) — todo ese
+> trabajo (paginación Alertas/Supervisión, rondas 2/3 de navegación específica + aislamiento por
+> sucursal, fix `tn-webhook` "Sin cliente", y Notificaciones (J) + Reportes (K) de Repositores) había
+> quedado acumulado sin commitear en el mismo working tree local de `dev` durante la sesión del
+> 2026-08-12. Esta sesión lo empaquetó TODO en un solo commit y lo deployó a PROD de punta a punta.
+>
+> **Deploy verificado de forma independiente** (no solo el resumen del subagente):
+> - `git log origin/main` → `f6163ac8` (merge de PR #329), con `a209abaf` como único commit de
+>   contenido (`feat(alertas,repositores): paginación+navegación específica en Alertas/Supervisión,
+>   filtro de píldoras en Pedidos/Ventas, fix TN sin cliente, y Notificaciones+Reportes de Repositores
+>   (J/K)`).
+> - `gh pr view 329` → `state: MERGED`, mergeado a `main`.
+> - `gh release view v1.169.0` → publicado sobre `main`.
+> - `src/config/brand.ts` en `origin/main` → `APP_VERSION = 'v1.169.0'` confirmado.
+> - Edge Functions `tn-webhook` (v21) y `repositores-cierre-dia-sweep` (nueva, v1) deployadas a PROD
+>   (`jjffnbrdjchquexdfgwq`).
+> - Vercel: deployment de producción `dpl_2q1HCdhmrvNcAsVt7YsCBnUkwZYf`, estado READY, commit `f6163ac8`.
+> - Build (`tsc` + `vite build`) y `npm run test:unit` (1563 tests) verdes antes del deploy.
+>
+> **CERO migraciones SQL nuevas** — todo se construyó sobre tablas/columnas/funciones ya existentes (la
+> última migración sigue siendo la 357, la de Repositores Fase 4, ya en PROD desde v1.168.0).
+>
+> **Qué quedó en PROD** (detalle técnico completo en los 5 bloques históricos de abajo, cont. 2 a cont.
+> 5 — este bloque no lo repite, solo confirma el deploy):
+> - **Alertas**: tope de renderizado a 15 por sección + link "ver todo"; Supervisión (Aprobaciones/
+>   Reasignar) paginada con footer "Mostrando X de Y".
+> - TODOS los links de Alertas filtran al ítem exacto (pedido/venta/OC/cliente específico), no solo a
+>   la pestaña general.
+> - Fix de aislamiento por sucursal en "Efectivo en caja sobre el umbral" (única de las 12 secciones de
+>   Alertas que nunca había filtrado por sucursal).
+> - **Gastos → OC**: buscador nuevo por número de OC o proveedor.
+> - **Pedidos y Ventas/Historial**: filtro de píldoras (`src/lib/pedidosFiltro.ts`/`ventasFiltro.ts`,
+>   mismo patrón que Picking), match EXACTO por número de identificador (antes "2" traía 82/102).
+> - **Clientes**: "Ver ficha" hace scroll + resaltado visual al cliente específico.
+> - **Fix `tn-webhook`**: venta de TiendaNube mostraba "Sin cliente" porque nunca seteaba la columna
+>   denormalizada `ventas.cliente_nombre` (el matching de `cliente_id` SIEMPRE funcionó bien — causa
+>   raíz distinta de lo que se sospechaba). PROD tiene 0 filas en `tiendanube_credentials` (nadie
+>   conectó TiendaNube todavía) y 0 ventas rotas — no hizo falta backfill en PROD.
+> - **Repositores — Notificaciones (J)**: Edge Function `repositores-cierre-dia-sweep` (cron cada 15
+>   min vía GitHub Actions, `verify_jwt: false`) avisa a los supervisores del módulo (in-app + email) si
+>   quedan tareas pendientes pasado el `horario_cierre` configurado de la sucursal, con dedupe por día.
+>   El cron recién empieza a evaluarse ahora que el workflow llegó a `main` (sin riesgo: solo notifica
+>   si hay tareas realmente pendientes).
+> - **Repositores — Reportes (K)**: tab nuevo en `RepositoresPage.tsx` con métricas por repositor
+>   (últimos 30 días, tareas completadas + tiempo promedio) gateado a supervisores, con export a Excel.
+>   **Con esto, el módulo Repositores queda 100% completo — ya no queda ningún punto del relevamiento
+>   original (A-L) sin construir.**
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> - **PROD** (`jjffnbrdjchquexdfgwq`): **v1.169.0** — todo lo de arriba EN PRODUCCIÓN. Migraciones
+>   001-357 (sin cambios, cero migraciones nuevas esta vez).
+> - **DEV** (`gcmhzdedrkmmzfzfveig`): en paridad con PROD, mismo commit `f6163ac8` tras el merge del PR;
+>   branch `dev` local también limpio (`git status` sin pendientes).
+> - **Pendientes de negocio nuevos**: ninguno anotado en esta sesión.
+>
+> **Próximo paso inmediato**: sin tareas nuevas anotadas — esperar el próximo pedido de GO.
+>
+> Ver `log.md` (2026-08-13, entrada al principio del archivo), [[wiki/business/roadmap]] (v1.169.0),
+> `wiki/database/migraciones.md` (nota de "sin migración nueva"), [[wiki/features/alertas]],
+> [[wiki/features/supervision]], [[wiki/features/pedidos]], [[wiki/features/ventas-pos]],
+> [[wiki/features/clientes-proveedores]], [[wiki/features/gastos]], [[wiki/features/filtro-pildoras]],
+> [[wiki/features/repositores]] (todas actualizadas a "EN PROD v1.169.0"),
+> [[wiki/integrations/tienda-nube]], `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-12, cont. 5) — 🏷️ Repositores: Notificaciones (J) + Reportes (K) construidos y verificados EN DEV — módulo 100% completo, ya NO queda ningún punto del relevamiento original sin construir — este bloque quedó SUPERADO por el de arriba (2026-08-13): v1.169.0 deployado a PROD (esto + los 4 bloques históricos de abajo, ya no está "sin commitear")
 >
 > Tarea NUEVA e independiente del hilo de Alertas/Supervisión de más abajo (paginación + fix TN +
 > rondas 2/3 de navegación) — mismo día, mismo working tree local de `dev`, sin relación de contenido.
@@ -3153,6 +3448,9 @@ type: project
 > 4. **Hard delete de tenant + gracia** — auditoría de FKs hecha (1 gap real:
 >    `autorizaciones_inventario` sin `CASCADE`, tiene `NO ACTION`). **NO se construyó el flujo** —
 >    es destructivo sobre datos de negocio, queda pendiente de que el usuario lo pida explícito.
+>    **✅ ACTUALIZACIÓN 2026-08-13: GO lo pidió explícito, CONSTRUIDO Y VERIFICADO EN DEV (mig 358),
+>    SIN COMMITEAR — ver el bloque "ARRANCÁ ACÁ" al principio del archivo.** El mismo gap de FK
+>    (`autorizaciones`, renombrada desde entonces por la mig 347) se corrigió en esa migración.
 > 5. **~20 toggles a mano** — ya estaba resuelto desde v1.132.0 (nota vieja, no había nada real).
 > 6. **F4 (DROP columnas fiscales de `tenants`)** — drift = 0 en DEV y PROD (criterio cumplido).
 >    Grep de lectores **NO da 0 todavía**: quedan `ConfigPage.tsx` (= **F3b**, gateado a que GO vea

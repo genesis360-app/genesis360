@@ -16,6 +16,36 @@ La caja es el registro de efectivo físico del negocio. Es obligatoria para regi
 **Shortcuts:** `Shift+I` = ingreso · (egreso solo vía Gastos)  
 **Última actualización:** 2026-06-10 — 🎉 **relevamiento Caja A-M COMPLETO en PROD**. Tanda final v1.50.0 (PROD, mig 203, PR #178): E1 bóveda roles custom · E3 arqueo de bóveda · L3 préstamo a empleado · M3 panel cajero · M4 sonido al cobrar. Ver "Estado del relevamiento" abajo.
 
+## 🔀 Diagrama de flujo — Ciclo de caja (apertura → movimientos → cierre)
+
+Editable en draw.io: [`G360.Wiki/diagrams/04-caja-ciclo.drawio`](../../diagrams/04-caja-ciclo.drawio).
+
+```mermaid
+flowchart TD
+    A["Apertura<br/>monto inicial"] --> A1{"¿Monto ≠ sugerido<br/>de sesión anterior?"}
+    A1 -->|Sí| A2["Warning + confirmación 2 pasos<br/>notifica OWNER/SUPERVISOR + email"]
+    A1 -->|No| B
+    A2 --> B[Sesión abierta]
+    B --> C[Movimientos durante el día]
+    C --> C1["Venta efectivo → ingreso"]
+    C --> C4["Gasto efectivo → egreso"]
+    C --> C6["Devolución efectivo → egreso"]
+    C --> C3["Venta/gasto otro medio → informativo<br/>(no afecta saldo real)"]
+    C1 --> D{"¿Egreso supera<br/>saldo calculado?"}
+    C4 --> D
+    C6 --> D
+    D -->|Sí| D1["CAJ-18: bloquea el movimiento<br/>la caja nunca queda negativa"]
+    D -->|No| E
+    D1 -.-> E["Arqueo parcial (opcional)<br/>saldo_calculado vs saldo_real"]
+    E --> F{"¿Hay al menos<br/>1 arqueo en la sesión?"}
+    F -->|No| F1["D3: botón Cerrar caja<br/>reemplazado por Arqueo requerido"]
+    F -->|Sí| G[Cerrar caja]
+    F1 -.hacer arqueo.-> E
+    G --> H["Conteo real obligatorio<br/>monto_real_cierre"]
+    H --> I["diferencia_cierre = esperado - contado<br/>(no bloquea el cierre)"]
+    I --> K["Ticket PDF se descarga<br/>automáticamente"]
+```
+
 ---
 
 ## Regla fundamental

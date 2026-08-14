@@ -3,7 +3,7 @@ title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
 sources: [migration 347, migration 348, relevamiento_supervisor_tab_respuestas.md, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Supervisión — Patrón "Pestaña de Supervisor" reusable
@@ -145,7 +145,7 @@ dentro de una función (`get_user_role()` explícito), pero NO para probar RLS e
   operador de `navVisibility.ts` corría ANTES de chequear `requiereSupervisarModulo` — corregido para
   que ese flag bypasee el allowlist de rol (se gobierna 100% por permiso real, no por rol).
 
-## Paginación de Aprobaciones/Reasignar — footer estilo Historial (2026-08-12, EN DEV sin commitear)
+## Paginación de Aprobaciones/Reasignar — footer estilo Historial (2026-08-12, ✅ EN PROD desde v1.169.0)
 
 Mismo pedido de GO que en [[wiki/features/alertas]] ("agregá el footer 'Mostrando X de Y' que tiene
 Historial"), pero acá SÍ encaja literal: a diferencia de Alertas (11 secciones chicas), la lista de
@@ -165,10 +165,10 @@ crecer sin límite con el uso — mismo caso que Historial.
   mostró "Mostrar 20 [20] 50 75 100 · « ← 1/2 (24 en total) → »"; clickear "50" recalculó a "1/1 (24
   en total)" en vivo. Sin errores de consola.
 
-**Estado real: construido, typecheck+build verdes, verificado en el navegador contra DEV — sin
-commitear todavía** (working tree de `dev` local).
+**Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; construido y verificado en
+DEV el 2026-08-12).
 
-## Fix de bug real + rediseño de `/supervision` (2026-08-12, ronda 2 de feedback, EN DEV sin commitear)
+## Fix de bug real + rediseño de `/supervision` (2026-08-12, ronda 2 de feedback, ✅ EN PROD desde v1.169.0)
 
 GO revisó en el navegador la paginación de arriba y encontró 2 problemas reales en `/supervision` (la
 página agregada cross-módulo):
@@ -192,8 +192,8 @@ AlertasPage.
 **Verificación**: typecheck + build verdes. Verificado EN EL NAVEGADOR (Playwright ad-hoc) contra el
 tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 
-**Estado real: construido, typecheck+build verdes, verificado en el navegador contra DEV — sin
-commitear todavía** (mismo working tree de `dev` local que la paginación de arriba).
+**Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
+paginación de arriba).
 
 ## Pendiente real
 
@@ -208,6 +208,8 @@ alcance de D1, que solo pedía retrofitear Inventario).
 `fn_tarea_repositor_asignado_valido_tenant` de la Fase 2 — no como una integración con `autorizaciones`
 en sí (Repositores tiene su propia tabla `tareas_repositor`, no pasa por la Pestaña de Supervisor
 genérica), sino como el mismo diseño aplicado a un módulo nuevo. Detalle completo en
-[[wiki/features/repositores]]. **✅ Módulo Repositores completo (Fases 1-4) deployado a PROD el
-2026-08-12 (v1.168.0, PR #328) — ver [[wiki/features/repositores]] para el estado actual.**
-Quedan sin arrancar (ahora 2, no 3): reposición física de stock a góndola (I3) y etiquetas+impresión.
+[[wiki/features/repositores]]. **✅ Módulo Repositores 100% COMPLETO y EN PROD** — las 4 fases
+operativas (núcleo, asignación/reasignación, reposición física, etiquetas+impresión) desde v1.168.0
+(2026-08-12, PR #328) y Notificaciones (J) + Reportes (K) desde v1.169.0 (2026-08-13, PR #329) — ver
+[[wiki/features/repositores]] para el estado actual. Ya no quedan puntos del relevamiento original sin
+construir.

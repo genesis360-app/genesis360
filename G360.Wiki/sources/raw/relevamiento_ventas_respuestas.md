@@ -2,15 +2,22 @@
 name: relevamiento_ventas_respuestas
 description: Respuestas consolidadas del relevamiento de reglas de negocio del módulo Ventas (GO + socio). Origen del backlog de implementación.
 type: project
-status: WIP — A-G respondidas (E-G: 2026-05-31), H-L pendientes
+status: A-K respondidas (H-K relevadas 2026-06-01, ver sección propia más abajo); L (Top 3 prioridad) aclarada OBSOLETA 2026-08-13 — VF1-VF5 ya construidas y en PROD, no queda nada que priorizar; A10 (NC AFIP automática) IMPLEMENTADA 2026-08-13 (mig 359, EN DEV, sin commitear)
 source: relevamiento-ventas-reglas-negocio.html
-updated: 2026-05-31
+updated: 2026-08-13
 ---
 
 # Respuestas — Relevamiento Reglas de Negocio · Ventas
 
-> **Estado:** respondidas secciones **A (Devoluciones)**, **B (Re-apertura/edición)**, **C (Límites)**, **D (CC clientes)**, **E (Reservas)**, **F (Presupuestos)** y **G (Listas de precios)**.
-> Faltan secciones **H (Edición POS)**, **I (Canales)**, **J (Auditoría)**, **K (Reportes)** y **L (Top 3 prioridad)**.
+> **Estado:** respondidas secciones **A (Devoluciones)**, **B (Re-apertura/edición)**, **C (Límites)**,
+> **D (CC clientes)**, **E (Reservas)**, **F (Presupuestos)**, **G (Listas de precios)**, **H (Edición
+> POS)**, **I (Canales)**, **J (Auditoría)** y **K (Reportes)** — ver sección "H-K. Respuestas finales"
+> más abajo (relevadas 2026-06-01) y `project_pendientes.md` → "Relevamiento Ventas H-K — plan de
+> implementación" (fases **VF1-VF5, TODAS ✅ en PROD desde 2026-06-01**).
+> **L (Top 3 prioridad): aclarada OBSOLETA el 2026-08-13** (sin construir nada) — pedía priorizar el
+> ORDEN de construcción de las fases VF1-VF5, pero esas 5 fases ya se construyeron todas; no queda nada
+> que priorizar. GO **no la respondió** con una opción — se aclara que dejó de aplicar, no se la marca
+> "respondida". Ver la nota completa en la sección L más abajo.
 > Las preguntas marcadas como ⚠ requieren confirmación final de GO antes de mover a backlog firme.
 
 ---
@@ -28,7 +35,7 @@ updated: 2026-05-31
 | A7 | **B con DEV default** | ✅ **Implementado v1.10.4 (PROD)** — radio "Dejar en DEV" / "Reintegrar a stock vendible" en modal de devolución, default DEV. Vendible: línea sin ubicación + `estado_id = primer es_disponible_venta` (aparece en alerta "Inventario sin ubicación"). Solo aplica a items no serializados. |
 | A8 | **A** | Series devueltas re-activan en la línea original. Sin cambios. |
 | A9 | **B** | PDF + email automático al cliente al confirmar la devolución (si el cliente tiene email cargado). |
-| A10 | **A** ⚠ | NC electrónica AFIP automática al confirmar devolución de venta facturada. **Ver recomendación abajo** (manejo de error AFIP). |
+| A10 | **A** ✅ IMPLEMENTADA (mig 359, 2026-08-13, EN DEV sin commitear) | NC electrónica AFIP automática al confirmar devolución de venta facturada. Cola de reintento `nc_afip_pendientes` + sweep con escalamiento a revisión humana ante error ambiguo (REGLA #0) — ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)". |
 | A11 | **C + A** | Devolución sin ticket: permitir buscando por DNI del cliente; si no hay match, no se acepta (no devolución "huérfana"). |
 | A12 | **A** | Múltiples devoluciones sobre la misma venta sin límite. Sin cambios. |
 
@@ -146,12 +153,33 @@ updated: 2026-05-31
 | K3 | **(a)** | Exportaciones: **Excel + PDF + CSV** en cada reporte (consistente con Caja). |
 
 > **L (Top 3 prioridad)**: pendiente de responder por GO. El plan propone un orden por dependencia/valor; reordenable según L1.
+>
+> **⚠ ACLARACIÓN (2026-08-13, sin construir nada):** esta pregunta quedó OBSOLETA en la práctica. GO
+> preguntó por esta sección pensando que el relevamiento de Ventas no estaba 100% cerrado; se investigó
+> este archivo y `project_pendientes.md` y se confirmó que la L pedía originalmente que GO priorizara el
+> ORDEN de construcción de las fases VF1-VF5 (dependencia/valor) — pero esas 5 fases YA SE CONSTRUYERON
+> TODAS (en PROD desde 2026-06-01, ver `project_pendientes.md` → "Relevamiento Ventas H-K — plan de
+> implementación"), así que la pregunta de orden ya no tiene sentido: no hay nada que priorizar. GO
+> **no la respondió** con ninguna opción — no se la marca "respondida", se aclara que dejó de aplicar.
+> En ese momento, lo único que seguía siendo una feature real y NO construida era:
+> - **NC electrónica AFIP automática al confirmar una devolución** (A10 — GO ya había elegido la opción
+>   "automática al confirmar", con recomendación de agregar una cola de reintentos para cuando AFIP esté
+>   caído). **✅ IMPLEMENTADA el mismo día (2026-08-13, mig 359, EN DEV sin commitear)** — ver la fila A10
+>   más arriba y [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
+> - Venta física en USD / caja en USD (G5) — sigue diferida, sin cambios (ver nota de G5 más arriba).
 
 ---
 
 ## Preguntas abiertas — recomendaciones de Claude
 
 ### A10 — NC electrónica AFIP automática
+
+> **✅ IMPLEMENTADA 2026-08-13 (mig 359, EN DEV sin commitear)** — ejecutada tal cual esta
+> recomendación, con un refinamiento de seguridad adicional (REGLA #0): el reintento NO es ciego para
+> cualquier error — si `emitir-factura` responde con la frase "NO reintentar" (AFIP pudo haber
+> autorizado el comprobante sin que el sistema tenga el CAE), el sweep escala directo a revisión humana
+> en vez de reintentar, para no arriesgar una NC duplicada en AFIP. Detalle completo, diseño y
+> verificación en [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
 
 Tu elección **A (auto al confirmar)** es la correcta contablemente. Riesgo único: si AFIP cae, bloquea la devolución y queda el cliente esperando. Mitigación recomendada:
 
@@ -235,7 +263,7 @@ Cambios estructurales que van a salir de lo respondido:
    - `tenants.cc_notificacion_canales TEXT[]` (D3)
    - `clientes.cc_notificacion_override` (D4)
    - `tenants.cc_morosidad_politica TEXT` (D6)
-   - Cola `nc_afip_pendientes` (A10)
+   - Cola `nc_afip_pendientes` (A10) — ✅ mig 359 (2026-08-13, EN DEV sin commitear)
    - Tabla descuentos por medio de pago + límite % por rol (C3 + G3)
    - `tenants.reserva_vencimiento_dias INT` + `tenants.reserva_sena_minima_pct` + `tenants.reserva_penalidad_pct` (E1/E2/E6)
    - `tenants.presupuesto_vencimiento_dias INT` + `tenants.presupuesto_conversion_politica TEXT` (F1/F2)
@@ -300,4 +328,4 @@ Lo respondido en E/F/G **no depende** de las secciones pendientes (H edición PO
 3. **Jobs nuevos**:
    - Cálculo de intereses CC nocturno (D2c).
    - Notificación vencimiento CC (depende de D4 = pendiente sección posterior).
-   - Retry NC AFIP fallidas (A10).
+   - Retry NC AFIP fallidas (A10) — ✅ EF `nc-afip-retry-sweep` (mig 359, 2026-08-13, EN DEV sin commitear).

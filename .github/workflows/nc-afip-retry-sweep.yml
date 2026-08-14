@@ -1,0 +1,22 @@
+name: NC electrónica AFIP — reintento de pendientes (A10)
+
+on:
+  schedule:
+    # Cada 15 minutos — ventana razonable para que una caída transitoria de AFIP se resuelva sola
+    # sin que el dueño/contador tenga que esperar demasiado para el aviso de "requiere revisión".
+    - cron: '*/15 * * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  nc-afip-retry-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call nc-afip-retry-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/nc-afip-retry-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

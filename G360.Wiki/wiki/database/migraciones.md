@@ -6,7 +6,48 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-18
 ---
 
-# Historial de Migraciones (001-370)
+# Historial de Migraciones (001-371)
+
+**371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código TODAVÍA SIN COMMITEAR (2026-08-18):** Fase 3 ("ciclo operativo") del plan
+Caja USD (relevamiento G5). Continúa la Fase 2 (mig 370, ya commiteada/pusheada). Agrega **2 triggers**
+(sin cambios de schema — solo funciones + triggers):
+- `fn_validar_traspaso_misma_moneda` (`BEFORE INSERT ON caja_traspasos`) — bloquea un traspaso entre 2
+  sesiones de caja de distinta moneda (F1 del relevamiento: antes se podía traspasar "100" de una caja
+  ARS a una USD y acreditar 100 dólares directamente, un bug de integridad latente). El código cliente
+  (`CajaPage.tsx`: `realizarTraspaso` + el selector del modal) ya filtraba/validaba esto, pero REGLA #0
+  pide guard server-side además de la UI.
+- `fn_validar_rol_opera_caja_usd` (`BEFORE INSERT ON caja_sesiones`) — bloquea abrir una sesión en una
+  caja `moneda='USD'` si el rol de quien la abre no es DUEÑO ni está en `tenants.caja_usd_roles_permitidos`
+  (mig 370, I1 del relevamiento). DUEÑO siempre puede — mismo criterio aditivo que
+  `cotizacion_usd_roles_permitidos`.
+
+Verificado con tests manuales reales en DEV (INSERT dentro de transacciones con `ROLLBACK`, sin dejar
+datos): ARS→USD rechazado con `P0001 No se puede traspasar entre cajas de distinta moneda`, ARS→ARS
+permitido; CAJERO rechazado con `P0001 Tu rol no tiene permiso para operar una Caja USD`, DUEÑO permitido.
+Para el 100% de cajas ARS (todo tenant real hoy) ambos triggers cortan temprano sin tocar nada — cero
+impacto en el flujo actual. Existe 1 caja de prueba real en DEV con `moneda='USD'` (tenant "Almacén
+Jorgito"), creada durante el desarrollo de este feature.
+
+**Código cableado** (`src/pages/CajaPage.tsx`): fix del bug de formato — nueva `formatMonedaCaja` usa la
+moneda REAL de la caja/sesión activa en vez de `tenant.moneda` (E1); conteo por denominación de billete
+USD para Arqueo/Cierre — componente nuevo `src/components/ConteoDenominaciones.tsx` + lógica pura
+`src/lib/cajaArqueo.ts` (`sumaDenominaciones`, `DENOMINACIONES_USD`, E2/J2, 6 tests nuevos); umbral de
+diferencia propio en USD al cerrar (E3); guard cliente de traspaso cross-moneda + selector filtrado (F1);
+`puedeOperarCajaUsd` filtra el picker de cajas operativas (I1); moneda stampeada en cada
+movimiento/sesión/arqueo nuevo (activa de verdad las columnas de la Fase 1). 2 hallazgos de code-review
+corregidos en la misma sesión: Bóveda excluye Cajas USD como origen/destino; "Abrir caja para" (A2) respeta
+el permiso de Caja USD.
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. Revisión de código completa del diff de
+`CajaPage.tsx`: sin hallazgos 🔴 (los 2 🟡 arriba ya corregidos). Typecheck + build + suite completa de
+tests verdes. UAT nuevos: `CAJ-31` a `CAJ-36` (`tests/specs/uat-modo-basico.md`). Ver [[wiki/features/caja]]
+→ "Caja en USD — Fase 3 de 8".
+
+**Fase 3 de Caja USD (G5) queda 100% completa** (mig 371), sumada a las Fases 1+2 (migs 368-370) — el
+proyecto completo (Fases 1+2+3 de 8) está 100% en DEV. **Estado real: mig 371 aplicada y verificada en DEV,
+código TODAVÍA SIN COMMITEAR al cierre de esta tanda** (se commitea junto con el resto del wiki). Próximo
+paso: Fase 4 (venta con pago combinado ARS+USD en `VentasPage.tsx`).
 
 **370 (`370_caja_usd_fase2_permisos_config.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
@@ -101,7 +142,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-18:** 370 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-18:** 371 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
@@ -113,7 +154,9 @@ había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin 
 moneda en Producto, y Caja USD Fases 1+2) están APLICADAS Y VERIFICADAS EN DEV, y — a diferencia de
 sesiones anteriores documentadas más abajo — ahora COMMITEADAS Y PUSHEADAS a `origin/dev`** (commit
 `310d9b3b` + bump de versión `0b4d431a`, tag+release `v1.171.0` publicados; verificado con `git status`
-`dev...origin/dev` sin diferencia de commits). **Sigue sin PR `dev`→`main`, sin deploy a PROD.** El resto
+`dev...origin/dev` sin diferencia de commits). **371 (Caja USD Fase 3, ciclo operativo) está APLICADA Y
+VERIFICADA EN DEV, TODAVÍA SIN COMMITEAR** al cierre de esta tanda (se commitea junto con el resto del
+wiki al final de la sesión). **Sigue sin PR `dev`→`main`, sin deploy a PROD.** El resto
 de este bloque describe el detalle técnico de cada una, incluyendo texto histórico ("SIN COMMITEAR") que
 reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
 habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de

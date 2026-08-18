@@ -6,7 +6,89 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-18, cont. 12) — TODO el trabajo acumulado (migs 358-370) quedó COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b` + bump de versión `0b4d431a`, tag `v1.171.0` creado y pusheado a `origin`); Fase 2/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 370, permisos y configuración); los 2 hallazgos nuevos siguen como RECORDATORIO PERMANENTE — este bloque reemplaza al cont. 11 de abajo (que documentaba todo "sin commitear") como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD — no hubo autorización de GO para deployar en esta sesión, solo para continuar en autónomo con lo pendiente
+> ### ✅ ARRANCÁ ACÁ (2026-08-18, cont. 13) — Fase 3/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 371,
+> ciclo operativo de Caja USD) — **TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre de
+> esta sesión, junto) — este bloque reemplaza al cont. 12 de abajo (que documentaba Fases 1+2 ya
+> commiteadas/pusheadas, tag `v1.171.0`) como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
+>
+> #### ✅ Relevamiento G5 (Caja USD) — Fase 3/8 (ciclo operativo) 100% COMPLETA en DEV, mig 371
+>
+> Continuación directa de la Fase 2 (mig 370, ya commiteada/pusheada — commit `310d9b3b`, tag `v1.171.0`).
+> **Migración 371** (`371_caja_usd_fase3_ciclo_operativo.sql`), APLICADA Y VERIFICADA en DEV
+> (`gcmhzdedrkmmzfzfveig`) con tests manuales reales (INSERT dentro de transacciones con ROLLBACK, sin
+> dejar datos):
+> - Trigger `fn_validar_traspaso_misma_moneda` (BEFORE INSERT ON `caja_traspasos`) — bloquea un traspaso
+>   entre 2 sesiones de caja de distinta moneda (F1 del relevamiento: antes se podía traspasar "100" de una
+>   caja ARS a una USD y acreditar 100 dólares). Verificado: intento ARS→USD rechazado con error `P0001 No
+>   se puede traspasar entre cajas de distinta moneda`; ARS→ARS permitido.
+> - Trigger `fn_validar_rol_opera_caja_usd` (BEFORE INSERT ON `caja_sesiones`) — bloquea abrir una sesión
+>   en una caja `moneda='USD'` si el rol de quien la abre no es DUEÑO ni está en
+>   `tenants.caja_usd_roles_permitidos` (mig 370, I1 del relevamiento). Verificado: CAJERO rechazado con
+>   `P0001 Tu rol no tiene permiso para operar una Caja USD`, DUEÑO permitido. Para el 100% de cajas ARS
+>   (todo tenant real hoy) el trigger corta temprano sin tocar nada — cero impacto en el flujo actual.
+>   Existe 1 caja de prueba real en DEV con `moneda='USD'` (tenant "Almacén Jorgito", caja "Caja USD"),
+>   creada durante el desarrollo de este feature — no afecta a ningún tenant real.
+>
+> **Código (`src/pages/CajaPage.tsx`, archivo central del módulo):**
+> 1. **E1 — fix del bug de formato**: antes `formatMoneda` SIEMPRE mostraba la moneda del tenant, incluso
+>    para una caja/sesión en USD. Nueva función `formatMonedaCaja` usa la moneda REAL de la caja/sesión
+>    seleccionada (`sesionActiva.moneda ?? cajaActual.moneda`) y reemplaza a `formatMoneda` en todo lo que
+>    muestra montos de la caja actualmente operada (saldo, apertura, ingresos/egresos, movimientos,
+>    arqueos, modales de apertura/cierre/arqueo/traspaso/corrección). El historial de cierres (que puede
+>    listar sesiones de OTRAS cajas/monedas) usa la moneda de CADA fila (`s.moneda`), no la de la caja
+>    actualmente seleccionada. `formatMoneda` (moneda del tenant) se dejó SIN TOCAR en Bóveda/Caja Fuerte a
+>    propósito — sin soporte multi-moneda todavía (es la Fase 5).
+> 2. **E2 — conteo por denominación de billete USD**: nuevo componente
+>    `src/components/ConteoDenominaciones.tsx` — cuando la caja/sesión activa es USD, el modal de Arqueo
+>    parcial y el de Cierre reemplazan el input de monto único por un conteo de billetes (US$1/5/10/20/
+>    50/100, solo enteros — J2 del relevamiento). Lógica pura nueva en `src/lib/cajaArqueo.ts`
+>    (`sumaDenominaciones`, `DENOMINACIONES_USD`), con 6 tests nuevos en `tests/unit/cajaArqueo.test.ts`
+>    (CAJA-USD-01 a 06).
+> 3. **E3 — umbral de diferencia propio en USD**: la alerta de diferencia al cerrar caja ahora usa
+>    `tenants.diferencia_caja_umbral_usd` (no el de pesos) cuando la caja es USD.
+> 4. **F1 — bloqueo cliente+servidor de traspaso cross-moneda**: guard en `realizarTraspaso` + el selector
+>    del modal solo ofrece cajas destino de la misma moneda (además del trigger de la migración, defensa
+>    en profundidad).
+> 5. **I1 — quién puede operar Caja USD**: nueva variable `puedeOperarCajaUsd` (DUEÑO siempre + roles en
+>    `tenant.caja_usd_roles_permitidos`, mig 370) filtra `cajasOperativas` para que una Caja USD ni
+>    aparezca en el picker para un rol sin permiso (además del trigger server-side).
+> 6. **Moneda stampeada en cada movimiento/sesión/arqueo nuevo** del ciclo operativo (abrirCaja, ingreso
+>    manual, corrección de movimiento, traspaso, ajuste de diferencia al cerrar, arqueo) — activa de
+>    verdad las columnas `moneda` que la Fase 1 (mig 368) había agregado pero nadie todavía escribía con el
+>    valor real.
+> 7. **2 hallazgos de una revisión de código, ya corregidos en esta misma sesión** (no quedan pendientes):
+>    los selectores de "Ingresar a Caja Fuerte"/"Enviar desde Caja Fuerte" ahora excluyen Cajas USD (para
+>    no mezclar dólares con pesos en la Bóveda, que todavía no soporta multi-moneda); el picker "Abrir caja
+>    para" (A2, abrir a nombre de otro cajero) ahora también respeta el permiso de Caja USD cuando la caja
+>    elegida es USD.
+>
+> **Verificación**: typecheck + build verdes, suite completa de tests unitarios verde (incluye los 6 tests
+> nuevos de `sumaDenominaciones`), migración 371 (con sus 2 triggers) revisada por `migration-reviewer`
+> (APTA, sin hallazgos bloqueantes) y una revisión de código completa del diff de `CajaPage.tsx` (sin
+> hallazgos 🔴, 2 hallazgos 🟡 ya corregidos como se detalla arriba). Escenarios agregados al UAT
+> (`tests/specs/uat-modo-basico.md`): `CAJ-31` a `CAJ-36`.
+>
+> **Con esto, la Fase 3/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3 completas, migs 368-371).
+>
+> **Próximo paso: Fase 4** (venta con pago combinado ARS+USD — toca `VentasPage.tsx`, `calcularVuelto`,
+> `registrarVenta`). Fases 4-8 siguen sin construir. Recordatorios permanentes sin cambios (importador CSV
+> guarda costo/precio USD sin convertir; "Crear variante" no copia moneda/USD). C2 (cotización BNA para
+> AFIP, Fase 8) sigue pendiente de un contador, no bloquea nada de las Fases 1-7.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tanda (Fase 3)
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | v1.171.0 (sin bump en esta tanda — Fase 3 sigue sumando sobre el mismo release DEV que las Fases 1+2) | v1.170.0 (sin cambios — última confirmada, PR #330, `0687213b`) |
+> | Migraciones aplicadas en la DB | 001-371 | 001-359 (sin cambios — 360-371 solo en DEV) |
+> | Branch | `dev` local — mig 371 + código de Fase 3 **TODAVÍA SIN COMMITEAR** (GO commitea al cierre de esta sesión) | `main` (sin cambios) |
+> | Tag / release | `v1.171.0` (cubre Fases 1+2, ya publicado) — Fase 3 (mig 371) queda pendiente de un tag nuevo cuando GO commitee/pushee | `v1.170.0` (sin cambios) |
+> | PR `dev`→`main` | No abierto | — |
+> | Vercel | sin cambios (código de Fase 3 todavía no pusheado) | sin cambios desde v1.170.0 |
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-18, cont. 12) — TODO el trabajo acumulado (migs 358-370) quedó COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b` + bump de versión `0b4d431a`, tag `v1.171.0` creado y pusheado a `origin`); Fase 2/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 370, permisos y configuración); los 2 hallazgos nuevos siguen como RECORDATORIO PERMANENTE — este bloque quedó SUPERADO por el de arriba (cont. 13: Fase 3/8 de Caja USD, mig 371, ciclo operativo) pero su contenido sigue VIGENTE (no fue revertido)
 >
 > Instrucción de GO: "arrancá por lo crítico y que no estés esperando confirmación... lo que ya tengamos
 > cerrado y definido... lo que falte definir o cerrar lo dejamos para después pero me lo remarcás para

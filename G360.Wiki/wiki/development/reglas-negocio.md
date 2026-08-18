@@ -293,12 +293,16 @@ Razones:
 > **A1 = (b) Caja USD completa**, con su propio ciclo apertura→cobro→arqueo→cierre, activando la lógica
 > real detrás de `cajas.moneda` (hoy solo una etiqueta) — no el MVP mixto (a)/(c). Fede pidió
 > explícitamente no ir por partes ("no estar haciendo y deshaciendo") — K3 (prioridad) = "TODO", sin orden
-> parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos de datos, migs 368+369) y Fase 2
-> (permisos y configuración, mig 370) 100% COMPLETAS en DEV** (2026-08-18) — código COMMITEADO Y PUSHEADO
-> a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`), SIN deploy a PROD. Todavía **no hay ninguna Caja USD
-> operando de verdad** — falta Fase 3 en adelante (ciclo operativo moneda-aware, pago combinado, Bóveda
-> por moneda, devoluciones/NC, reportes). Detalle técnico completo: [[wiki/features/caja]] → "Caja en USD
-> — Fase 2 de 8", `wiki/database/migraciones.md` (migs 368-370).
+> parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos de datos, migs 368+369), Fase 2
+> (permisos y configuración, mig 370) y Fase 3 (ciclo operativo, mig 371) 100% COMPLETAS en DEV**
+> (2026-08-18). Fases 1+2 (migs 368-370) COMMITEADAS Y PUSHEADAS a `origin/dev` (commit `310d9b3b`, tag
+> `v1.171.0`); Fase 3 (mig 371) aplicada y verificada en DEV, **TODAVÍA SIN COMMITEAR** al cierre de esta
+> tanda (GO commitea). SIN deploy a PROD en ningún caso. La Fase 3 ya activa el ciclo operativo real de
+> una Caja USD: formato de moneda correcto (fix del bug de "$"), conteo por denominación de billete
+> (J2), umbral de diferencia propio en USD, y 2 triggers server-side (defensa en profundidad) que
+> bloquean traspaso cross-moneda (F1) y abrir una Caja USD sin permiso de rol (I1). Detalle técnico
+> completo: [[wiki/features/caja]] → "Caja en USD — Fase 3 de 8", `wiki/database/migraciones.md` (migs
+> 368-371).
 >
 > **Fede confirmó por escrito (2026-08-18) las 3 preguntas abiertas que quedaban antes de dar el OK
 > completo al plan de 8 fases:**

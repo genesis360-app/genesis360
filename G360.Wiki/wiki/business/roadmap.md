@@ -13,28 +13,36 @@ updated: 2026-08-18
 `src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
 `dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
 completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.171.0 (`origin/dev`, commit `0b4d431a` — commiteado y pusheado, tag+release
-`v1.171.0` publicados, **SIN PR a `main`, SIN deploy a PROD**). **11 migraciones nuevas sobre PROD — 360 a
-370 (la última migración es la 370).**  
+**Versión en DEV:** v1.171.0 (Fases 1+2 de Caja USD ya en `origin/dev`, commit `0b4d431a` — commiteado y
+pusheado, tag+release `v1.171.0` publicados; **Fase 3 de Caja USD (mig 371) construida y verificada en DEV
+en una tanda posterior de la misma sesión, TODAVÍA SIN COMMITEAR** al cierre de esta entrada — sin bump de
+versión propio, sigue sumando sobre el mismo v1.171.0. **SIN PR a `main`, SIN deploy a PROD**). **12
+migraciones nuevas sobre PROD — 360 a 371 (la última migración es la 371).**  
 **Última actualización:** 18 de Agosto, 2026
 
 ---
 
-## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2) + auditoría de performance/seguridad + fixes de moneda en Producto — 🟡 EN DEV, sin deploy a PROD (2026-08-18)
+## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2+3) + auditoría de performance/seguridad + fixes de moneda en Producto — 🟡 EN DEV, sin deploy a PROD (2026-08-18)
 
 Commit + push a `origin/dev` de TODO el trabajo acumulado de varias sesiones previas (llevaba días sin
-resguardo en git) más una fase nueva construida en esta sesión — un solo commit `310d9b3b` + bump de
-versión `0b4d431a`, tag+release `v1.171.0` publicados sobre `dev` (no sobre `main`). **11 migraciones
-nuevas: 360 a 370.**
+resguardo en git) más 2 fases nuevas construidas en esta sesión (Fase 2 en la primera tanda, Fase 3 en una
+tanda posterior) — Fases 1+2 en un solo commit `310d9b3b` + bump de versión `0b4d431a`, tag+release
+`v1.171.0` publicados sobre `dev` (no sobre `main`); **Fase 3 (mig 371) construida y verificada en DEV,
+TODAVÍA SIN COMMITEAR** al cierre de esta entrada. **12 migraciones nuevas: 360 a 371.**
 
-- **Caja en Dólares (relevamiento G5) — Fase 1 (cimientos) + Fase 2 (permisos/config) completas** (migs
-  368-370): moneda real en `caja_sesiones`/`caja_movimientos`/`caja_arqueos` (antes solo etiqueta),
-  `ventas.cotizacion_usd` (snapshot), `metodos_pago.es_efectivo`/`moneda` reemplaza el string hardcodeado
-  `'Efectivo'`. Fase 2: cotización con compra+venta+casa (blue/oficial/bolsa/cripto); gate de rol para
-  elegir tipo de cotización (DUEÑO siempre + roles configurables, resto solo refresca, implementado en
-  `useCotizacion.ts` — defensa en profundidad); roles habilitados para operar la futura Caja USD; umbrales
-  propios en USD (arqueo, clave maestra); checkbox `productos.acepta_cualquier_moneda`. Ninguna Caja USD
-  operando de verdad todavía — falta Fase 3 en adelante.
+- **Caja en Dólares (relevamiento G5) — Fase 1 (cimientos) + Fase 2 (permisos/config) + Fase 3 (ciclo
+  operativo) completas** (migs 368-371): moneda real en `caja_sesiones`/`caja_movimientos`/`caja_arqueos`
+  (antes solo etiqueta), `ventas.cotizacion_usd` (snapshot), `metodos_pago.es_efectivo`/`moneda` reemplaza
+  el string hardcodeado `'Efectivo'`. Fase 2: cotización con compra+venta+casa (blue/oficial/bolsa/
+  cripto); gate de rol para elegir tipo de cotización (DUEÑO siempre + roles configurables, resto solo
+  refresca, implementado en `useCotizacion.ts` — defensa en profundidad); roles habilitados para operar la
+  futura Caja USD; umbrales propios en USD (arqueo, clave maestra); checkbox
+  `productos.acepta_cualquier_moneda`. **Fase 3 (mig 371): el ciclo apertura→movimientos→arqueo→cierre de
+  una Caja USD ya funciona de verdad** — fix del bug de formato ("$" en vez de "US$", `formatMonedaCaja`),
+  conteo por denominación de billete (solo enteros), umbral de diferencia propio en USD, y 2 triggers
+  server-side (defensa en profundidad) que bloquean traspaso entre cajas de distinta moneda y abrir una
+  Caja USD sin permiso de rol. Falta Fase 4 en adelante (pago combinado, Bóveda por moneda, devoluciones/
+  NC, reportes, cotización fiscal AFIP).
 - **Auditoría de performance/seguridad** (migs 361-366): lock anti doble-submit en `emitir-factura`
   (🛑 REGLA #0 fiscal), reserva de stock atómica con `SELECT ... FOR UPDATE` (🛑 REGLA #0 inventario,
   causa raíz de VEN-23), 6 índices FK faltantes en rutas calientes, dedupe real del sync a MercadoLibre,
@@ -48,10 +56,12 @@ Typecheck + build + suite completa de tests verdes antes de cada aplicación (ú
 archivos, 1574 tests). Todas las migraciones pasaron por `migration-reviewer` (APTA) antes de aplicarse a
 DEV; la 370 además por `code-reviewer` (OK, sin hallazgos 🔴).
 
-**Estado real: DEV en migs 001-370, COMMITEADO Y PUSHEADO a `origin/dev`, tag+release `v1.171.0`
-publicados. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle completo:
-`sources/raw/project_pendientes.md` (cont. 12), `log.md`, [[wiki/features/caja]] (sección "Caja en USD —
-Fase 2 de 8"), [[wiki/features/productos]], `wiki/database/migraciones.md` (migs 360-370).
+**Estado real: DEV en migs 001-371. Migs 001-370 y su código COMMITEADO Y PUSHEADO a `origin/dev`,
+tag+release `v1.171.0` publicados; mig 371 (Fase 3 de Caja USD) aplicada y verificada en DEV, código
+TODAVÍA SIN COMMITEAR al cierre de esta entrada. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión
+pendiente de GO. Detalle completo: `sources/raw/project_pendientes.md` (cont. 13), `log.md`,
+[[wiki/features/caja]] (sección "Caja en USD —
+Fase 3 de 8"), [[wiki/features/productos]], `wiki/database/migraciones.md` (migs 360-371).
 
 ---
 

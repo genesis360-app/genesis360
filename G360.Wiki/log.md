@@ -6,6 +6,53 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-18] update | Fase 3/8 de Caja USD (G5): ciclo operativo completo — mig 371, EN DEV sin commitear
+
+Continuación directa de la Fase 2 (mig 370, ya commiteada/pusheada en la entrada de abajo, commit
+`310d9b3b`, tag `v1.171.0`). Se construyó y verificó en DEV la **Fase 3/8** del plan "Caja en USD"
+(relevamiento G5): el **ciclo operativo real** de una Caja USD (apertura/movimientos/arqueo/cierre).
+
+**Migración 371** (`371_caja_usd_fase3_ciclo_operativo.sql`), aplicada y verificada en DEV
+(`gcmhzdedrkmmzfzfveig`) con tests manuales reales (INSERT dentro de transacciones con ROLLBACK, sin dejar
+datos): trigger `fn_validar_traspaso_misma_moneda` (BEFORE INSERT ON `caja_traspasos`) bloquea un traspaso
+entre 2 sesiones de distinta moneda (F1 del relevamiento — verificado: ARS→USD rechazado con
+`P0001 No se puede traspasar entre cajas de distinta moneda`, ARS→ARS permitido); trigger
+`fn_validar_rol_opera_caja_usd` (BEFORE INSERT ON `caja_sesiones`) bloquea abrir una sesión en una caja
+`moneda='USD'` si el rol no es DUEÑO ni está en `tenants.caja_usd_roles_permitidos` (mig 370, I1 —
+verificado: CAJERO rechazado, DUEÑO permitido). Para el 100% de cajas ARS (todo tenant real hoy) ambos
+triggers cortan temprano sin tocar nada.
+
+**Código (`src/pages/CajaPage.tsx`):** (1) **E1** fix del bug de formato — nueva `formatMonedaCaja` usa la
+moneda REAL de la caja/sesión seleccionada (antes `formatMoneda` siempre mostraba la moneda del tenant,
+incluso en una caja USD); aplicada a saldo/apertura/ingresos/egresos/movimientos/arqueos/modales; Bóveda
+queda con `formatMoneda` sin tocar a propósito (sin soporte multi-moneda, es Fase 5). (2) **E2** conteo por
+denominación de billete USD — componente nuevo `src/components/ConteoDenominaciones.tsx` + lógica pura
+`src/lib/cajaArqueo.ts` (`sumaDenominaciones`, `DENOMINACIONES_USD`, solo enteros — J2), 6 tests nuevos.
+(3) **E3** umbral de diferencia propio en USD (`tenants.diferencia_caja_umbral_usd`). (4) **F1** guard
+cliente además del trigger (selector de traspaso solo ofrece cajas de la misma moneda). (5) **I1** guard
+cliente además del trigger (`puedeOperarCajaUsd` filtra el picker de cajas operativas). (6) Moneda
+stampeada en cada movimiento/sesión/arqueo nuevo — activa de verdad las columnas `moneda` que la Fase 1
+había agregado sin que nadie las escribiera con el valor real. (7) 2 hallazgos de code-review corregidos en
+la misma sesión: Bóveda excluye Cajas USD como origen/destino; "Abrir caja para" (A2) respeta el permiso de
+Caja USD.
+
+**Verificación:** typecheck + build verdes, suite completa de tests unitarios verde, migración 371 revisada
+por `migration-reviewer` (APTA) y revisión de código completa del diff de `CajaPage.tsx` (sin hallazgos
+🔴). UAT nuevos: `CAJ-31` a `CAJ-36` (`tests/specs/uat-modo-basico.md`).
+
+**Con esto, la Fase 3/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3, migs 368-371). Próximo
+paso: Fase 4 (venta con pago combinado ARS+USD, toca `VentasPage.tsx`). Fases 4-8 siguen sin construir.
+Recordatorios permanentes sin cambios (importador CSV con moneda sin convertir; "Crear variante" no copia
+moneda/USD). C2 (cotización BNA para AFIP, Fase 8) sigue pendiente de un contador real.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 13), `wiki/database/migraciones.md` (mig 371,
+título a 001-371), `wiki/features/caja.md` (sección "Caja en USD — Fase 3 de 8"),
+`wiki/development/reglas-negocio.md` (módulo G5). **Estado real: mig 371 aplicada y verificada en DEV,
+código TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre de esta sesión). Sin PR a `main`,
+sin deploy a PROD.
+
+---
+
 ## [2026-08-18] update | Fede confirmó las 3 preguntas abiertas del plan de Caja USD (G5)
 
 Continuación autónoma de la misma sesión (entrada de abajo). GO trajo la respuesta escrita de Fede a las

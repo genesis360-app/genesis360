@@ -299,6 +299,31 @@ Razones:
 > operando de verdad** — falta Fase 3 en adelante (ciclo operativo moneda-aware, pago combinado, Bóveda
 > por moneda, devoluciones/NC, reportes). Detalle técnico completo: [[wiki/features/caja]] → "Caja en USD
 > — Fase 2 de 8", `wiki/database/migraciones.md` (migs 368-370).
+>
+> **Fede confirmó por escrito (2026-08-18) las 3 preguntas abiertas que quedaban antes de dar el OK
+> completo al plan de 8 fases:**
+> 1. **Orden 1→8 confirmado tal cual está planteado.** Única duda de Fede: si la Fase 5 (Bóveda) depende
+>    técnicamente de la Fase 6 (Devoluciones/NC) o viceversa, o son independientes y se podrían construir
+>    en paralelo — lo dejó a criterio de quien mira el código real. Análisis: **no hay dependencia directa
+>    entre 5 y 6** (tocan código distinto — `vw_boveda_cuentas`/`operarCajaFuerte` vs.
+>    `devolver_saldo_a_favor`/`emitir-nota-credito` — y ninguna necesita que la otra exista). Ambas SÍ
+>    dependen de que la Fase 3 (Caja USD operativa) ya exista (Bóveda necesita algo real para depositar;
+>    el reintegro en caja de la Fase 6 necesita una sesión de Caja USD viva para acreditar la devolución).
+>    La NC de la Fase 6 (lado fiscal) técnicamente podría construirse ya mismo — solo lee el snapshot de
+>    `ventas.cotizacion_usd` que la Fase 1 ya deja listo — pero el reintegro en caja (la otra mitad de la
+>    Fase 6) además se beneficia de que la Fase 4 (pago combinado) ya exista, para saber cómo se pagó
+>    originalmente una venta mixta antes de revertirla. Conclusión: el orden 1→8 ya resuelve esto sin
+>    necesidad de reordenar (4 queda antes de 5 y 6); no hay ganancia real de "paralelizar" 5 y 6 al ser un
+>    solo build secuencial, pero tampoco hay riesgo en construirlas en cualquier orden entre sí si en algún
+>    momento conviniera.
+> 2. **Punto 1 (G1 ≠ G2) — confirmado intencional**, ver fila G2 de la tabla de abajo. Deja de ser
+>    bloqueante para la Fase 6.
+> 3. **Punto 2 (¿arrancar ya o dejarlo para sesión dedicada?) — a criterio de Tonga (GO).** GO instruyó
+>    seguir con el plan.
+>
+> Con esto, **la Fase 6 ya no tiene ningún punto abierto propio** — el único punto que sigue sin cerrar en
+> todo el plan de 8 fases es **C2** (cotización Banco Nación para AFIP, Fase 8), pendiente de confirmación
+> con un contador real, y no bloquea nada de las Fases 1-7.
 
 ### Decisiones cerradas
 
@@ -322,7 +347,7 @@ Razones:
 | F2 | Sembrar cuenta "Efectivo USD" automáticamente en `cuentas_origen`. Además: la Bóveda debe tener **pestañas separadas ARS / USD**, incluyendo USD "virtual" (MercadoPago, transferencias en USD) como categoría propia — nunca mezclado con efectivo físico. **La conversión USD↔$ solo puede hacerse desde la Bóveda, y solo la hace el DUEÑO** — es el único punto de conversión de todo el sistema |
 | F3 | Retiro de Caja USD sin destino (dueño se lleva dólares) requiere, además del motivo obligatorio, **contraseña maestra** |
 | G1 | Reintegro de una venta cobrada en USD: configurable por tenant. **Default: en pesos, a la cotización del momento de la devolución** |
-| G2 | La Nota de Crédito AFIP usa la cotización **de la venta original** (registrada internamente por B1/B2), no la del momento de la devolución — distinto de G1 (que es la devolución de plata en caja, no el comprobante fiscal). **Confirmar explícitamente que esta distinción (G1 ≠ G2) es intencional antes de codear**, no una contradicción sin resolver |
+| G2 | ✅ **Confirmado por Fede como intencional (2026-08-18)** — la Nota de Crédito AFIP usa la cotización **de la venta original** (registrada internamente por B1/B2), no la del momento de la devolución. Distinto a propósito de G1 (reintegro en caja = plata real moviéndose hoy, refleja el valor de hoy; NC = comprobante fiscal, preserva coherencia con lo ya declarado ante AFIP) — "no deben usar la misma cotización entre sí, y no hay que buscar unificarlos". Deja de ser bloqueante para la Fase 6 |
 | H1 | Reportes: total único en pesos como resumen **+** detalle desglosado por moneda debajo (no ocultar el desglose) |
 | H2 | Dashboard: las ventas en USD se **excluyen** de los totales/indicadores en pesos (ticket promedio, etc.) y se muestran aparte — mezclarlas distorsiona la métrica sin que se note por qué cambió |
 | I1 | Quién puede operar la Caja USD: configurable por tenant, por rol |

@@ -122,10 +122,14 @@ type: project
 > confirmación de un contador real, no bloquea el resto). Ver plan de 8 fases completo en el Artifact de la
 > sesión.
 >
-> **Dos puntos marcados para NO arrancar sin resolver primero** (ver `wiki/development/reglas-negocio.md`):
-> C2 (cotización BNA para AFIP, pendiente confirmación con un contador real) y la distinción G1≠G2
-> (reintegro en caja vs. cotización de la NC) — confirmar que es intencional antes de construir esa fase
-> específica (Fase 6, Devoluciones y NC). Ninguna de las dos bloquea las Fases 1-5/7.
+> ✅ **Actualización 2026-08-18 (mismo día, tanda siguiente) — Fede confirmó por escrito las 3 preguntas
+> abiertas del Artifact.** (1) Orden 1→8 confirmado tal cual; sobre su duda de si Fase 5 (Bóveda) y Fase 6
+> (Devoluciones/NC) son paralelizables: no hay dependencia directa entre ellas (tocan código distinto),
+> pero ambas dependen de que la Fase 3 exista primero — el orden actual ya lo resuelve sin reordenar, ver
+> detalle en `wiki/development/reglas-negocio.md` → módulo G5. (2) **G1≠G2 confirmado intencional** — ya
+> NO es un punto abierto, deja de bloquear la Fase 6. (3) Arrancar ya vs. sesión dedicada: a criterio de
+> GO, que instruyó seguir con el plan. **El único punto que sigue sin cerrar en las 8 fases es C2**
+> (cotización BNA para AFIP, Fase 8, pendiente de un contador real) — no bloquea nada de las Fases 1-7.
 >
 > #### 📊 Estado DEV/PROD al cierre de esta sesión
 >

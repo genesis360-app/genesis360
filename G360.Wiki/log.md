@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-18] update | Fede confirmó las 3 preguntas abiertas del plan de Caja USD (G5)
+
+Continuación autónoma de la misma sesión (entrada de abajo). GO trajo la respuesta escrita de Fede a las
+3 preguntas que quedaban abiertas en el Artifact de Caja USD antes de dar el OK completo al plan de 8
+fases: (1) confirma el orden 1→8 tal cual, con una duda técnica sobre si Fase 5 (Bóveda) y Fase 6
+(Devoluciones/NC) son paralelizables — resuelto: no hay dependencia directa entre ellas, ambas dependen
+de que la Fase 3 exista primero, el orden actual ya lo cubre sin reordenar; (2) confirma que la distinción
+G1≠G2 (cotización del reintegro en caja vs. cotización de la NC AFIP) es intencional, no una contradicción
+— deja de bloquear la Fase 6; (3) si arrancar ya o esperar, a criterio de GO, que instruyó seguir con el
+plan. **Con esto, el único punto sin cerrar en las 8 fases queda C2** (cotización BNA para AFIP, Fase 8,
+pendiente de un contador real) — no bloquea nada de las Fases 1-7. Sin cambios de código en esta entrada,
+solo reglas de negocio actualizadas: `wiki/development/reglas-negocio.md` (fila G2 + intro del módulo G5),
+`sources/raw/project_pendientes.md`. Sesión continúa con la Fase 3 (ciclo operativo de Caja USD).
+
+---
+
 ## [2026-08-18] update | Commit+push de todo lo acumulado (migs 358-370) + Fase 2 de Caja USD (mig 370) + tag v1.171.0
 
 Continuación autónoma de la misma sesión (entradas de abajo del mismo día). Dos cosas se hicieron en esta

@@ -61,6 +61,16 @@ type: project
 >    no mezclar dólares con pesos en la Bóveda, que todavía no soporta multi-moneda); el picker "Abrir caja
 >    para" (A2, abrir a nombre de otro cajero) ahora también respeta el permiso de Caja USD cuando la caja
 >    elegida es USD.
+> 8. **Defensa en profundidad adicional para el hallazgo de Bóveda (mismo día, tras seguir tirando del
+>    hilo del punto 7)**: el filtro del `<select>` no alcanzaba todos los caminos — en modo básico el
+>    origen queda fijo a la caja activa SIN selector (`disabled`), así que si esa caja era USD quedaba un
+>    botón que siempre iba a fallar al confirmar. Se agregó: (a) guard real en `operarCajaFuerte` y
+>    `enviarSolicitudFuerte` (tiran error si el `sesion_id` involucrado es de una Caja USD, sea cual sea
+>    el camino por el que llegó ese id); (b) el botón "Depositar en Caja Fuerte" se OCULTA en vez de
+>    mostrarse roto cuando modo básico + caja activa es USD; (c) el mismo guard en
+>    `aprobarSolicitudCajaFuerte` (`NotificacionesButton.tsx`, archivo de otra sesión, no tocado hasta
+>    hoy) por si quedó una solicitud vieja pendiente de aprobar de antes de este fix. UAT: CAJ-36 ampliado
+>    para cubrir las 4 capas (selector, modo básico, solicitud CAJERO, aprobación).
 >
 > **Verificación**: typecheck + build verdes, suite completa de tests unitarios verde (incluye los 6 tests
 > nuevos de `sumaDenominaciones`), migración 371 (con sus 2 triggers) revisada por `migration-reviewer`

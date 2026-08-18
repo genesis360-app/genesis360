@@ -66,12 +66,19 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
       // Verificar que la sesión sigue abierta
       const { data: sesion } = await supabase
         .from('caja_sesiones')
-        .select('id, estado')
+        .select('id, estado, moneda')
         .eq('id', sesion_id)
         .single()
       if (!sesion || sesion.estado !== 'abierta') {
         toast.error('La sesión de caja ya fue cerrada. La solicitud no puede ejecutarse.')
         await markRead(n.id)
+        return
+      }
+      // G5 Fase 3 — la Bóveda todavía no soporta Caja USD (Fase 5). enviarSolicitudFuerte ya no
+      // deja crear esta solicitud desde una Caja USD, pero se chequea igual acá por si quedó una
+      // solicitud vieja pendiente de antes del fix.
+      if ((sesion as any).moneda === 'USD') {
+        toast.error('La Bóveda todavía no soporta Caja USD. No se puede aprobar esta solicitud.')
         return
       }
 

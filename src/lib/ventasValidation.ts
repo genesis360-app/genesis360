@@ -58,13 +58,22 @@ export function validarDespacho(
   return null
 }
 
+// Fase 1 de Caja USD (G5, mig 368, A3): antes "efectivo real" era el string único hardcodeado
+// 'Efectivo' — hoy `metodos_pago.es_efectivo` es una LISTA explícita por tenant (para reconocer
+// "Efectivo USD" el día que exista). Default preserva el comportamiento de siempre para cualquier
+// caller que todavía no pase el set real del tenant.
+const MEDIOS_EFECTIVO_DEFAULT: ReadonlySet<string> = new Set(['Efectivo'])
+
 /** Calcula cuánto vuelto debe darse al cliente.
  *  Vuelto solo aplica sobre efectivo: es lo que sobra del efectivo luego de cubrir
  *  lo que no cubrieron otros medios de pago.
+ *  `mediosEfectivo`: nombres de `metodos_pago` con `es_efectivo=true` para el tenant (mig 368).
  *  Retorna 0 si no hay vuelto. */
-export function calcularVuelto(mediosPago: MedioPagoItem[], total: number): number {
-  const efectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
-  const otrosMedios = mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+export function calcularVuelto(
+  mediosPago: MedioPagoItem[], total: number, mediosEfectivo: ReadonlySet<string> = MEDIOS_EFECTIVO_DEFAULT,
+): number {
+  const efectivo = mediosPago.filter(m => mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const otrosMedios = mediosPago.filter(m => m.tipo && !mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   // Cuánto debe cubrir el efectivo (lo que no cubrieron otros medios)
   const neededFromEfectivo = Math.max(0, total - otrosMedios)
   const vuelto = efectivo - neededFromEfectivo
@@ -72,9 +81,11 @@ export function calcularVuelto(mediosPago: MedioPagoItem[], total: number): numb
 }
 
 /** Calcula el efectivo neto que debe registrarse en caja (lo recibido menos el vuelto). */
-export function calcularEfectivoCaja(mediosPago: MedioPagoItem[], total: number): number {
-  const efectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
-  const vuelto = calcularVuelto(mediosPago, total)
+export function calcularEfectivoCaja(
+  mediosPago: MedioPagoItem[], total: number, mediosEfectivo: ReadonlySet<string> = MEDIOS_EFECTIVO_DEFAULT,
+): number {
+  const efectivo = mediosPago.filter(m => mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const vuelto = calcularVuelto(mediosPago, total, mediosEfectivo)
   return Math.max(0, efectivo - vuelto)
 }
 
@@ -314,7 +325,8 @@ export function parseCantidad(val: string, u?: string | null): number {
 export function validarMediosPago(
   estado: EstadoVenta,
   mediosPago: MedioPagoItem[],
-  total: number
+  total: number,
+  mediosEfectivo: ReadonlySet<string> = MEDIOS_EFECTIVO_DEFAULT,
 ): string | null {
   const totalAsignado = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const totalFaltante = total - totalAsignado
@@ -335,7 +347,7 @@ export function validarMediosPago(
     if (totalFaltante > 0.5) return `Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`
   }
   if (hayMontos && totalFaltante < -0.5) {
-    const efectivoPagado = mediosPago.reduce((acc, m) => m.tipo === 'Efectivo' ? acc + (parseFloat(m.monto) || 0) : acc, 0)
+    const efectivoPagado = mediosPago.reduce((acc, m) => mediosEfectivo.has(m.tipo) ? acc + (parseFloat(m.monto) || 0) : acc, 0)
     if (efectivoPagado < 0.5)
       return `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
     // Si hay efectivo, el exceso es vuelto — se permite

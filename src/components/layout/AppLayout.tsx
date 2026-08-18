@@ -317,7 +317,11 @@ export function AppLayout() {
       return data ?? []
     },
     enabled: !!tenant && !!user,
-    refetchInterval: 30_000,
+    // Auditoría perf 2026-08-14 (P1): 30s corría en TODAS las pantallas para un guard que solo
+    // se consulta al hacer click en "cambiar sucursal" — staleTime:0 global + refetch al montar/
+    // enfocar ya lo mantiene razonablemente fresco. Se sube a 2min (no se elimina del todo: es
+    // un guard contable, mejor conservador) en vez de sacar el polling.
+    refetchInterval: 120_000,
   })
 
   // L4 — Wrapper de setSucursal: bloquea cambio si hay caja propia abierta en otra sucursal
@@ -402,9 +406,12 @@ export function AppLayout() {
       return (data ?? []).length > 0
     },
     enabled: !!tenant,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P1): 10s en TODAS las pantallas para un puntito decorativo
+    // (verde/rojo en el sidebar, sin ningún gate funcional) — subido a 1min. refetchOnWindowFocus
+    // + staleTime:0 global ya cubren el caso real (usuario vuelve a la pestaña).
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
-    staleTime: 8_000,
+    staleTime: 30_000,
   })
 
   const trialDaysLeft = tenant

@@ -93,6 +93,50 @@ serve(async (req) => {
       }
     }
 
+    // 0b. 🛑 REGLA #0 — lock contra doble-submit del mismo comprobante (mig 361). PostgREST
+    //     no mantiene conexión persistente entre llamadas, así que un pg_advisory_xact_lock
+    //     no serviría acá (se liberaría apenas terminara esa llamada puntual, mucho antes de
+    //     terminar la llamada real a AFIP) — se usa en cambio una fila con PK como mutex
+    //     explícito entre requests HTTP, mismo patrón que el proyecto ya usa para esto
+    //     (nc_afip_pendientes, ventas.pedido_entrega_key): el INSERT es atómico sin importar
+    //     cuántos clientes concurrentes lo intenten a la vez.
+    const claveLock = esNC ? `nc:${devolucion_id}` : `fc:${venta_id}`
+    // Auto-limpieza de un lock huérfano (instancia que crasheó sin llegar al finally). 5 min
+    // de margen sobre el techo real de wall-clock de las Edge Functions (~150s, ver
+    // wiki/architecture/escalabilidad.md) — un TTL más corto podía vencer con una invocación
+    // legítima todavía viva y abrir la misma carrera que este mutex vino a cerrar (hallazgo del
+    // code-reviewer). NUNCA limpia un lock en cuarentena (`requiere_reconciliacion_manual`):
+    // ese requiere que un humano concilie contra AFIP antes de reintentar, no una expiración
+    // por tiempo — ver el `catch` de abajo.
+    await supabase.from('emision_factura_locks').delete()
+      .eq('clave', claveLock).eq('requiere_reconciliacion_manual', false)
+      .lt('iniciado_at', new Date(Date.now() - 5 * 60_000).toISOString())
+    const { error: lockErr } = await supabase.from('emision_factura_locks').insert({ clave: claveLock, tenant_id })
+    if (lockErr) {
+      // Fail-closed: cualquier error del INSERT (no solo unique_violation/23505) bloquea acá —
+      // más seguro que arriesgar un fail-open sobre un comprobante fiscal. Se loguea el código
+      // real para no confundir contención legítima con un incidente de infra (hallazgo del
+      // code-reviewer).
+      if (lockErr.code !== '23505') {
+        console.error(`[emitir-factura] error inesperado tomando el lock (${claveLock}): ${lockErr.message}`)
+      }
+      const { data: lockRow } = await supabase.from('emision_factura_locks')
+        .select('requiere_reconciliacion_manual').eq('clave', claveLock).maybeSingle()
+      const enCuarentena = lockRow?.requiere_reconciliacion_manual === true
+      return new Response(JSON.stringify({
+        error: enCuarentena
+          ? 'Este comprobante quedó en un estado que requiere reconciliación manual contra AFIP antes de poder reintentar — contactá a soporte.'
+          : 'Ya hay una emisión de este comprobante en curso — esperá unos segundos y volvé a intentar.',
+      }), {
+        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    // Todo lo que sigue queda protegido por el lock, liberado en el catch/finally de abajo —
+    // sin re-indentar el resto de la función a propósito, para mantener este patch mínimo y
+    // revisable (el resto del archivo no cambia una sola línea de lógica fiscal).
+    let liberarLockAlFinal = true
+    try {
+
     // 1. Fetch config del tenant
     const { data: tenant, error: tErr } = await supabase.from('tenants')
       .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion, afip_provider')
@@ -160,7 +204,11 @@ serve(async (req) => {
           productos(nombre, sku, alicuota_iva)),
         clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)
       `)
-      .eq('id', venta_id).maybeSingle()
+      // 🔴 Hallazgo del code-reviewer (revisión de mig 361, preexistente): esta EF usa
+      // service_role (bypassea RLS por completo) — sin el .eq('tenant_id', ...) explícito acá,
+      // un venta_id de OTRO tenant se leería igual. Mismo criterio que ya usa el fetch de
+      // `devoluciones` unas líneas más abajo.
+      .eq('id', venta_id).eq('tenant_id', tenant_id).maybeSingle()
 
     // 2a. Resolución del emisor (una sola, con toda la información disponible):
     //     NC → emisor de la factura original · factura → override ?? sucursal ?? default.
@@ -538,7 +586,7 @@ serve(async (req) => {
         // no al de la devolución (created_at).
         nc_fecha:             new Date().toISOString(),
         afip_provider_usado:  providerName,
-      }).eq('id', devolucion_id))
+      }).eq('id', devolucion_id).eq('tenant_id', tenant_id))
     } else {
       // Factura normal: guardar en ventas. Si estaba 'despachada', pasa a 'facturada'
       // automáticamente (antes había que marcarla a mano desde el detalle de la venta).
@@ -553,7 +601,7 @@ serve(async (req) => {
         ...(emisor.id ? { emisor_id: emisor.id } : {}),
       }
       if (venta.estado === 'despachada') ventaUpdate.estado = 'facturada'
-      await persistirCAE(() => supabase.from('ventas').update(ventaUpdate).eq('id', venta_id))
+      await persistirCAE(() => supabase.from('ventas').update(ventaUpdate).eq('id', venta_id).eq('tenant_id', tenant_id))
     }
 
     console.log(`CAE emitido: ${resultado.CAE} — ${esNC ? `NC devolucion ${devolucion_id}` : `Venta ${venta_id}`}`)
@@ -601,6 +649,39 @@ serve(async (req) => {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+
+    } catch (innerErr) {
+      // 🔴 Hallazgo del code-reviewer: liberar el lock a ciegas acá reabriría la misma carrera
+      // que esta migración vino a cerrar, justo en el escenario de mayor riesgo — "NO
+      // reintentar" significa que AFIP pudo haber autorizado el comprobante sin que nosotros
+      // tengamos el CAE. En ese caso el lock queda en cuarentena (no se borra) en vez de
+      // liberarse, para que nadie pueda volver a intentar hasta que un humano concilie con AFIP.
+      const innerMsg = innerErr instanceof Error ? innerErr.message : String(innerErr)
+      if (innerMsg.includes('NO reintentar')) {
+        liberarLockAlFinal = false
+        // Reintenta el propio UPDATE de cuarentena (mismo criterio que persistirCAE más abajo):
+        // si este UPDATE fallara y quedara sin aplicarse, la auto-limpieza de locks huérfanos
+        // (arriba, filtra por requiere_reconciliacion_manual=false) terminaría borrando la fila
+        // pasados los 5 min igual — reabriendo la misma carrera (hallazgo del code-reviewer).
+        let quarantineOk = false
+        for (let i = 0; i < 3 && !quarantineOk; i++) {
+          const { error: quarantineErr } = await supabase.from('emision_factura_locks')
+            .update({ requiere_reconciliacion_manual: true }).eq('clave', claveLock)
+          if (!quarantineErr) { quarantineOk = true; break }
+          console.error(`[emitir-factura] intento ${i + 1}/3 de poner en cuarentena el lock ${claveLock} falló: ${quarantineErr.message}`)
+          if (i < 2) await new Promise(r => setTimeout(r, 250 * (i + 1)))
+        }
+        console.error(`[emitir-factura] lock ${claveLock} en CUARENTENA${quarantineOk ? '' : ' (⚠ el UPDATE falló las 3 veces — revisar la fila a mano)'} — requiere reconciliación manual contra AFIP antes de reintentar`)
+      }
+      throw innerErr
+    } finally {
+      // Se libera siempre — éxito, error de validación, o error de AFIP "seguro" — salvo el
+      // caso de cuarentena de arriba.
+      if (liberarLockAlFinal) {
+        const { error: unlockErr } = await supabase.from('emision_factura_locks').delete().eq('clave', claveLock)
+        if (unlockErr) console.warn(`[emitir-factura] no se pudo liberar el lock ${claveLock}: ${unlockErr.message}`)
+      }
+    }
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

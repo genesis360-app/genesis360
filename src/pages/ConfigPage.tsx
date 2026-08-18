@@ -912,6 +912,13 @@ export default function ConfigPage() {
   const [bizSupervisorEdita, setBizSupervisorEdita] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_editar_movimientos === true)
   const [bizSupervisorBoveda, setBizSupervisorBoveda] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_ver_boveda === true)
   const [savingConfigCaja, setSavingConfigCaja] = useState(false)
+  // G5 Fase 2 — Caja en Dólares: permisos (cotización + operar) y umbrales propios en USD.
+  // Los roles guardados son ADICIONALES a DUEÑO (que siempre puede elegir cotización/operar Caja USD).
+  const [bizCotizacionRoles,     setBizCotizacionRoles]     = useState<string[]>((tenant as any)?.cotizacion_usd_roles_permitidos ?? [])
+  const [bizCajaUsdRoles,        setBizCajaUsdRoles]        = useState<string[]>((tenant as any)?.caja_usd_roles_permitidos ?? [])
+  const [bizDifUmbralUsd,        setBizDifUmbralUsd]        = useState<string>((tenant as any)?.diferencia_caja_umbral_usd != null ? String((tenant as any).diferencia_caja_umbral_usd) : '')
+  const [bizCajaUsdClaveUmbral,  setBizCajaUsdClaveUmbral]  = useState<string>((tenant as any)?.caja_usd_clave_maestra_umbral != null ? String((tenant as any).caja_usd_clave_maestra_umbral) : '')
+  const [savingCajaUsd,          setSavingCajaUsd]          = useState(false)
   const handleSaveConfigCaja = async () => {
     setSavingConfigCaja(true)
     const configActual = (tenant as any)?.config_caja ?? {}
@@ -939,6 +946,19 @@ export default function ConfigPage() {
     if (error || !data) { toast.error('No se pudo guardar'); return }
     setTenant(data)
     toast.success('Configuración de alertas guardada')
+  }
+  const handleSaveCajaUsd = async () => {
+    setSavingCajaUsd(true)
+    const { data, error } = await supabase.from('tenants').update({
+      cotizacion_usd_roles_permitidos: bizCotizacionRoles,
+      caja_usd_roles_permitidos: bizCajaUsdRoles,
+      diferencia_caja_umbral_usd: bizDifUmbralUsd.trim() ? parseFloat(bizDifUmbralUsd) : null,
+      caja_usd_clave_maestra_umbral: bizCajaUsdClaveUmbral.trim() ? parseFloat(bizCajaUsdClaveUmbral) : null,
+    }).eq('id', tenant!.id).select().single()
+    setSavingCajaUsd(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)
+    toast.success('Configuración de Caja USD guardada')
   }
 
   // Gastos — reglas comprobante + alertas (v1.8.42)
@@ -7537,6 +7557,78 @@ export default function ConfigPage() {
                     <button onClick={handleSaveDif} disabled={savingDif}
                       className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                       {savingDif ? 'Guardando...' : 'Guardar alertas'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* G5 Fase 2 — Caja en Dólares: permisos + umbrales propios en USD */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <DollarSign size={16} className="text-accent-text" /> Caja en Dólares
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede elegir el tipo de cotización</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    El <strong>DUEÑO</strong> siempre puede elegir tipo (blue/oficial/MEP/cripto) o cargar un valor manual.
+                    Los roles de acá abajo pueden hacer lo mismo; el resto solo puede refrescar repitiendo el último tipo usado.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR'].map(r => {
+                      const activo = bizCotizacionRoles.includes(r)
+                      return (
+                        <button key={r} type="button" disabled={!canEdit}
+                          onClick={() => setBizCotizacionRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede operar la Caja USD</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    El <strong>DUEÑO</strong> siempre puede operarla. Roles adicionales habilitados a abrir/cerrar/mover una caja en dólares.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR'].map(r => {
+                      const activo = bizCajaUsdRoles.includes(r)
+                      return (
+                        <button key={r} type="button" disabled={!canEdit}
+                          onClick={() => setBizCajaUsdRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral de diferencia de arqueo (USD)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                      value={bizDifUmbralUsd} disabled={!canEdit}
+                      onChange={e => setBizDifUmbralUsd(e.target.value)}
+                      placeholder="Alertar con cualquier diferencia"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Propio de USD — un mismo número no significa lo mismo que el umbral en pesos de arriba.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral de clave maestra (USD)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                      value={bizCajaUsdClaveUmbral} disabled={!canEdit}
+                      onChange={e => setBizCajaUsdClaveUmbral(e.target.value)}
+                      placeholder="Sin umbral propio"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">A partir de qué monto en USD un retiro/movimiento exige la clave maestra del dueño.</p>
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveCajaUsd} disabled={savingCajaUsd}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingCajaUsd ? 'Guardando...' : 'Guardar Caja USD'}
                     </button>
                   </div>
                 )}

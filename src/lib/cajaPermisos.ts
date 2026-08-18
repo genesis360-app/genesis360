@@ -97,8 +97,21 @@ export function accedeABoveda(
   rolCustomId: string | null | undefined,
   cajaFuerteRoles: string[] | null | undefined,
 ): boolean {
-  const roles = cajaFuerteRoles ?? ['DUEÑO']
-  if (rol && roles.includes(rol)) return true
-  if (rolCustomId && roles.includes(`custom:${rolCustomId}`)) return true
+  return rolEnLista(rol, rolCustomId, cajaFuerteRoles)
+}
+
+/**
+ * Chequeo genérico "¿este rol está en la lista?" — mismo patrón que accedeABoveda (roles fijos +
+ * roles custom `'custom:<id>'`, default `['DUEÑO']` cuando la lista es null/undefined). Reusado por
+ * Caja USD (G5 Fase 2: quién opera la caja, quién puede elegir tipo de cotización).
+ */
+export function rolEnLista(
+  rol: RolUsuario | null | undefined,
+  rolCustomId: string | null | undefined,
+  roles: string[] | null | undefined,
+): boolean {
+  const lista = roles ?? ['DUEÑO']
+  if (rol && lista.includes(rol)) return true
+  if (rolCustomId && lista.includes(`custom:${rolCustomId}`)) return true
   return false
 }

@@ -56,7 +56,7 @@ import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor }
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { useConfirm } from '@/hooks/useConfirm'
 import { sugerirNombreKit, sugerirPrecioKit } from '@/lib/kits'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en exportarConteo (auditoría perf 2026-08-14, P5).
 
 type Tab = 'inventario' | 'agregar' | 'quitar' | 'traslados' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
@@ -564,7 +564,10 @@ export default function InventarioPage() {
 
   // ── Inventario queries ─────────────────────────────────────────────────────
   const { data: productos = [], isLoading: invLoading } = useQuery({
-    queryKey: ['productos', tenant?.id],
+    // Auditoría perf 2026-08-14 (P4): namespaced para no colisionar con la query de
+    // ProductosPage.tsx — mismo prefijo 'productos' así que invalidateQueries(['productos'])
+    // desde cualquier otro archivo sigue invalidando ambas por prefix-match.
+    queryKey: ['productos', 'inventario', tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('productos')
@@ -1863,7 +1866,8 @@ export default function InventarioPage() {
   }
 
   // F4 (H2) — export Excel del detalle de un conteo (líneas + diferencia + valorización)
-  const exportarConteo = (c: any) => {
+  const exportarConteo = async (c: any) => {
+    const XLSX = await import('xlsx')
     const items = (c.inventario_conteo_items ?? []) as any[]
     const rows = items.map(i => {
       const noContada = i.cantidad_contada == null

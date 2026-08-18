@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-12T03:50:15.384Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260812033819 · 154 tablas
+-- Generado 2026-08-14T20:59:49.722Z desde gcmhzdedrkmmzfzfveig vía API (MCP execute_sql, ensamblado local)
+-- Última migración aplicada: 20260814203250 · 156 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -656,6 +656,13 @@ CREATE TABLE public.devoluciones_proveedor (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.emision_factura_locks (
+  clave text NOT NULL,
+  tenant_id uuid NOT NULL,
+  iniciado_at timestamp with time zone NOT NULL DEFAULT now(),
+  requiere_reconciliacion_manual boolean NOT NULL DEFAULT false
+);
+
 CREATE TABLE public.emisores_fiscales (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -1212,6 +1219,21 @@ CREATE TABLE public.mp_billing_alertas (
   detalle jsonb,
   first_seen timestamp with time zone NOT NULL DEFAULT now(),
   resolved_at timestamp with time zone
+);
+
+CREATE TABLE public.nc_afip_pendientes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  devolucion_id uuid NOT NULL,
+  venta_id uuid NOT NULL,
+  tipo_comprobante text NOT NULL,
+  punto_venta integer NOT NULL,
+  intentos integer NOT NULL DEFAULT 0,
+  ultimo_error text,
+  requiere_reconciliacion_manual boolean NOT NULL DEFAULT false,
+  resuelto_at timestamp with time zone,
+  notificado_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.notificaciones (
@@ -2309,7 +2331,8 @@ CREATE TABLE public.tenants (
   repricing_tope_pct numeric(5,2),
   repricing_umbral_aviso_monto numeric(12,2),
   repositor_etiquetas_por_hoja integer NOT NULL DEFAULT 12,
-  repositor_hora_impresion time without time zone
+  repositor_hora_impresion time without time zone,
+  delete_scheduled_at timestamp with time zone
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2719,6 +2742,7 @@ ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_origen_check CHECK (
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devoluciones_proveedor_pkey PRIMARY KEY (id);
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devprov_forma_check CHECK ((forma = ANY (ARRAY['credito_cc'::text, 'efectivo'::text, 'reposicion'::text])));
+ALTER TABLE public.emision_factura_locks ADD CONSTRAINT emision_factura_locks_pkey PRIMARY KEY (clave);
 ALTER TABLE public.emisores_fiscales ADD CONSTRAINT emisores_fiscales_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
 ALTER TABLE public.emisores_fiscales ADD CONSTRAINT emisores_fiscales_pkey PRIMARY KEY (id);
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_genero_check CHECK ((genero = ANY (ARRAY['M'::text, 'F'::text, 'OTRO'::text])));
@@ -2794,6 +2818,7 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_check CHECK ((tipo = ANY (ARRAY['huerfana'::text, 'drift_mp_cobra'::text, 'drift_acceso_gratis'::text])));
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_preapproval_id_key UNIQUE (tipo, preapproval_id);
+ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_pkey PRIMARY KEY (id);
 ALTER TABLE public.notificaciones ADD CONSTRAINT notificaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_pkey PRIMARY KEY (id);
@@ -3016,7 +3041,7 @@ ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_asignado_a_fkey 
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_aprobado_por_fkey FOREIGN KEY (aprobado_por) REFERENCES users(id);
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id);
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_solicitado_por_fkey FOREIGN KEY (solicitado_por) REFERENCES users(id);
-ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id);
+ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_aprobador_id_fkey FOREIGN KEY (aprobador_id) REFERENCES users(id);
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_oc_id_fkey FOREIGN KEY (oc_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
@@ -3125,6 +3150,7 @@ ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devoluciones_proveedor_
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devoluciones_proveedor_recepcion_id_fkey FOREIGN KEY (recepcion_id) REFERENCES recepciones(id) ON DELETE SET NULL;
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devoluciones_proveedor_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devoluciones_proveedor_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.emision_factura_locks ADD CONSTRAINT emision_factura_locks_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.emisores_fiscales ADD CONSTRAINT emisores_fiscales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_departamento_id_fkey FOREIGN KEY (departamento_id) REFERENCES rrhh_departamentos(id) ON DELETE SET NULL;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_puesto_id_fkey FOREIGN KEY (puesto_id) REFERENCES rrhh_puestos(id) ON DELETE SET NULL;
@@ -3233,6 +3259,9 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_unidad_med
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_devolucion_id_fkey FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id) ON DELETE CASCADE;
+ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.notificaciones ADD CONSTRAINT notificaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.notificaciones ADD CONSTRAINT notificaciones_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_orden_compra_id_fkey FOREIGN KEY (orden_compra_id) REFERENCES ordenes_compra(id) ON DELETE CASCADE;
@@ -3738,6 +3767,7 @@ CREATE INDEX idx_movimientos_tenant ON public.movimientos_stock USING btree (ten
 CREATE INDEX idx_mp_billing_alertas_tenant_id ON public.mp_billing_alertas USING btree (tenant_id);
 CREATE INDEX idx_mp_creds_expires ON public.mercadopago_credentials USING btree (expires_at) WHERE (conectado = true);
 CREATE INDEX idx_mp_creds_tenant ON public.mercadopago_credentials USING btree (tenant_id);
+CREATE INDEX idx_nc_afip_pendientes_para_sweep ON public.nc_afip_pendientes USING btree (tenant_id) WHERE ((resuelto_at IS NULL) AND (requiere_reconciliacion_manual = false));
 CREATE INDEX idx_notif_user ON public.notificaciones USING btree (user_id, leida, created_at DESC);
 CREATE INDEX idx_notificaciones_tenant_id ON public.notificaciones USING btree (tenant_id);
 CREATE INDEX idx_oc_estado_pago ON public.ordenes_compra USING btree (tenant_id, estado_pago);
@@ -3755,8 +3785,10 @@ CREATE INDEX idx_pcc_oc ON public.proveedor_cc_movimientos USING btree (oc_id) W
 CREATE INDEX idx_pcc_tenant_proveedor ON public.proveedor_cc_movimientos USING btree (tenant_id, proveedor_id);
 CREATE INDEX idx_pcc_vencimiento ON public.proveedor_cc_movimientos USING btree (tenant_id, fecha_vencimiento) WHERE (fecha_vencimiento IS NOT NULL);
 CREATE INDEX idx_pedido_items_estado ON public.pedido_items USING btree (estado);
+CREATE INDEX idx_pedido_items_estado_id ON public.pedido_items USING btree (estado_id) WHERE (estado_id IS NOT NULL);
 CREATE INDEX idx_pedido_items_pedido ON public.pedido_items USING btree (pedido_id);
 CREATE INDEX idx_pedido_items_producto ON public.pedido_items USING btree (producto_id);
+CREATE INDEX idx_pedido_items_tenant ON public.pedido_items USING btree (tenant_id);
 CREATE INDEX idx_pedido_lanzamientos_tenant ON public.pedido_lanzamientos USING btree (tenant_id);
 CREATE INDEX idx_pedidos_cliente ON public.pedidos USING btree (cliente_id);
 CREATE INDEX idx_pedidos_estado ON public.pedidos USING btree (estado);
@@ -3909,9 +3941,11 @@ CREATE INDEX idx_support_tickets_tenant ON public.support_tickets USING btree (t
 CREATE INDEX idx_tareas_repositor_estado ON public.tareas_repositor USING btree (estado);
 CREATE INDEX idx_tareas_repositor_sucursal ON public.tareas_repositor USING btree (sucursal_id);
 CREATE INDEX idx_tareas_repositor_tenant ON public.tareas_repositor USING btree (tenant_id);
+CREATE INDEX idx_tareas_repositor_tenant_estado_usuario ON public.tareas_repositor USING btree (tenant_id, estado, usuario_asignado_id);
 CREATE INDEX idx_tenant_addons_tenant ON public.tenant_addons USING btree (tenant_id, dimension);
 CREATE INDEX idx_tenant_certificates_emisor_id ON public.tenant_certificates USING btree (emisor_id);
 CREATE INDEX idx_tenant_certificates_tenant ON public.tenant_certificates USING btree (tenant_id);
+CREATE INDEX idx_tenants_delete_scheduled_at ON public.tenants USING btree (delete_scheduled_at) WHERE (delete_scheduled_at IS NOT NULL);
 CREATE UNIQUE INDEX idx_tenants_fichado_token ON public.tenants USING btree (fichado_token) WHERE (fichado_token IS NOT NULL);
 CREATE INDEX idx_tenants_plan_id ON public.tenants USING btree (plan_id);
 CREATE INDEX idx_tiendanube_credentials_sucursal_id ON public.tiendanube_credentials USING btree (sucursal_id);
@@ -3983,6 +4017,9 @@ CREATE INDEX idx_wms_tareas_pedido ON public.wms_tareas USING btree (pedido_id);
 CREATE INDEX idx_wms_tareas_producto ON public.wms_tareas USING btree (producto_id);
 CREATE INDEX idx_wms_tareas_sucursal ON public.wms_tareas USING btree (sucursal_id);
 CREATE INDEX idx_wms_tareas_tenant ON public.wms_tareas USING btree (tenant_id);
+CREATE INDEX idx_wms_tareas_tenant_estado_usuario ON public.wms_tareas USING btree (tenant_id, estado, usuario_asignado_id);
+CREATE INDEX idx_zonas_sucursal ON public.zonas USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
+CREATE INDEX idx_zonas_tenant ON public.zonas USING btree (tenant_id);
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
 CREATE UNIQUE INDEX uq_addon_batch_programado ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = ANY (ARRAY['programado'::text, 'esperando_cobro'::text]));
@@ -3991,6 +4028,7 @@ CREATE UNIQUE INDEX uq_billing_manual_pagos_mp_payment ON public.billing_manual_
 CREATE UNIQUE INDEX uq_cuentas_origen_efectivo_por_tenant ON public.cuentas_origen USING btree (tenant_id) WHERE (tipo = 'efectivo'::text);
 CREATE UNIQUE INDEX uq_emisores_fiscales_default ON public.emisores_fiscales USING btree (tenant_id) WHERE es_default;
 CREATE UNIQUE INDEX uq_emisores_fiscales_tenant_cuit ON public.emisores_fiscales USING btree (tenant_id, cuit);
+CREATE UNIQUE INDEX uq_nc_afip_pendientes_devolucion_activa ON public.nc_afip_pendientes USING btree (devolucion_id) WHERE (resuelto_at IS NULL);
 CREATE UNIQUE INDEX uq_puntos_venta_afip_emisor_numero ON public.puntos_venta_afip USING btree (tenant_id, COALESCE(emisor_id, '00000000-0000-0000-0000-000000000000'::uuid), numero);
 CREATE UNIQUE INDEX uq_tareas_repositor_activa ON public.tareas_repositor USING btree (producto_id, sucursal_id, tipo) WHERE (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text]));
 CREATE UNIQUE INDEX uq_tenant_addons_fijo_dim ON public.tenant_addons USING btree (tenant_id, dimension) WHERE (tipo = 'fijo'::text);
@@ -4958,7 +4996,14 @@ BEGIN
            'pending', NOW()
     FROM inventario_meli_map
     WHERE tenant_id = v_tenant_id AND producto_id = v_producto_id AND sync_stock = TRUE
-    ON CONFLICT DO NOTHING;
+      AND NOT EXISTS (
+        SELECT 1 FROM integration_job_queue q
+        WHERE q.tenant_id   = v_tenant_id
+          AND q.integracion = 'MercadoLibre'
+          AND q.tipo        = 'sync_stock'
+          AND q.status      = 'pending'
+          AND q.payload->>'producto_id' = v_producto_id::text
+      );
   END LOOP;
 
   RETURN COALESCE(NEW, OLD);
@@ -6215,6 +6260,35 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_liberar_stock_linea(p_linea_id uuid, p_cantidad numeric)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_reservada numeric;
+  v_liberar   numeric;
+BEGIN
+  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN 0; END IF;
+
+  SELECT GREATEST(cantidad_reservada, 0) INTO v_reservada
+  FROM inventario_lineas WHERE id = p_linea_id FOR UPDATE;
+
+  IF v_reservada IS NULL THEN RETURN 0; END IF; -- línea inexistente (no rompe al caller)
+
+  v_liberar := LEAST(p_cantidad, v_reservada);
+  IF v_liberar <= 0 THEN RETURN 0; END IF;
+  -- Ver comentario equivalente en fn_reservar_stock_linea.
+  v_liberar := ROUND(v_liberar);
+
+  UPDATE inventario_lineas SET cantidad_reservada = cantidad_reservada - v_liberar
+  WHERE id = p_linea_id;
+
+  RETURN v_liberar;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_notificar_cc_vencidas()
  RETURNS void
  LANGUAGE plpgsql
@@ -6230,9 +6304,9 @@ BEGIN
     SELECT
       v.tenant_id,
       v.cliente_id,
-      c.nombre                                         AS cliente_nombre,
-      ROUND(SUM(v.total - COALESCE(v.monto_pagado, 0))::numeric, 2) AS deuda_total,
-      u.id                                             AS user_id
+      c.nombre                                                                              AS cliente_nombre,
+      ROUND(SUM(GREATEST(v.total - COALESCE(v.monto_pagado, 0), 0) + COALESCE(v.interes_cc, 0))::numeric, 2) AS deuda_total,
+      u.id                                                                                   AS user_id
     FROM ventas v
     JOIN clientes c ON c.id = v.cliente_id
     JOIN users u ON u.tenant_id = v.tenant_id AND u.rol IN ('OWNER','ADMIN')
@@ -6241,7 +6315,7 @@ BEGIN
       AND (v.total - COALESCE(v.monto_pagado, 0)) > 0.5
       AND (v.created_at + (COALESCE(c.plazo_pago_dias, 30) || ' days')::interval)::date < CURRENT_DATE
     GROUP BY v.tenant_id, v.cliente_id, c.nombre, u.id
-    HAVING SUM(v.total - COALESCE(v.monto_pagado, 0)) > 0.5
+    HAVING SUM(GREATEST(v.total - COALESCE(v.monto_pagado, 0), 0) + COALESCE(v.interes_cc, 0)) > 0.5
   LOOP
     IF NOT EXISTS (
       SELECT 1 FROM notificaciones
@@ -6680,7 +6754,8 @@ BEGIN
   LOOP
     IF (v_mp->>'tipo') IS DISTINCT FROM 'Cuenta Corriente' THEN
       v_monto_pagado := v_monto_pagado + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
-      IF (v_mp->>'tipo') = 'Efectivo' THEN
+      -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
+      IF EXISTS (SELECT 1 FROM metodos_pago WHERE tenant_id = v_pedido.tenant_id AND nombre = (v_mp->>'tipo') AND es_efectivo = true) THEN
         v_monto_efectivo := v_monto_efectivo + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
       END IF;
     ELSE
@@ -7562,6 +7637,39 @@ AS $function$
   ) carga ON carga.usuario_asignado_id = e.usuario_id
   ORDER BY COALESCE(carga.n, 0) ASC, random()
   LIMIT 1
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_reservar_stock_linea(p_linea_id uuid, p_cantidad numeric)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_disponible numeric;
+  v_reservar   numeric;
+BEGIN
+  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN 0; END IF;
+
+  SELECT GREATEST(cantidad - cantidad_reservada, 0) INTO v_disponible
+  FROM inventario_lineas WHERE id = p_linea_id FOR UPDATE;
+
+  IF v_disponible IS NULL THEN RETURN 0; END IF; -- línea inexistente (no rompe al caller)
+
+  v_reservar := LEAST(p_cantidad, v_disponible);
+  IF v_reservar <= 0 THEN RETURN 0; END IF;
+  -- `inventario_lineas.cantidad`/`cantidad_reservada` son integer — redondear ACÁ (antes de
+  -- persistir) para que el valor devuelto sea exactamente el que quedó escrito. Sin esto, un
+  -- p_cantidad fraccionario (el parámetro es numeric) se guardaría redondeado por el cast
+  -- implícito del UPDATE pero se devolvería sin redondear — contrato roto (hallazgo del
+  -- migration-reviewer).
+  v_reservar := ROUND(v_reservar);
+
+  UPDATE inventario_lineas SET cantidad_reservada = cantidad_reservada + v_reservar
+  WHERE id = p_linea_id;
+
+  RETURN v_reservar;
+END;
 $function$
 
 
@@ -8803,7 +8911,7 @@ DECLARE
   v_n_envios   int := 0;
   v_umbral     numeric;
   v_clave_real text;
-  v_es_efectivo boolean := (p_medio = 'Efectivo');
+  v_es_efectivo boolean;
   v_fecha      date := COALESCE(p_fecha, CURRENT_DATE);
   v_grp        record;
   v_neto       numeric;
@@ -8817,6 +8925,10 @@ BEGIN
   IF p_envio_ids IS NULL OR array_length(p_envio_ids, 1) IS NULL THEN
     RAISE EXCEPTION 'Seleccioná al menos un envío';
   END IF;
+
+  -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
+  SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = p_medio;
+  v_es_efectivo := COALESCE(v_es_efectivo, false);
 
   SELECT COALESCE(SUM(COALESCE(costo_cotizado,0)),0), COUNT(*)
     INTO v_totalpago, v_n_envios
@@ -9478,6 +9590,7 @@ DECLARE
   v_medio       jsonb;
   v_medios_nocc jsonb;
   v_concepto    text;
+  v_es_efectivo boolean;
 BEGIN
   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
   IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
@@ -9575,12 +9688,15 @@ BEGIN
     v_concepto := 'Pago OC #'||v_oc.numero||' — '||COALESCE(v_prov_nombre,'');
     FOR v_medio IN SELECT e FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente'
     LOOP
+      -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
+      SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
+      v_es_efectivo := COALESCE(v_es_efectivo, false);
       INSERT INTO public.caja_movimientos(tenant_id, sesion_id, tipo, monto, concepto, cuenta_origen_id, usuario_id)
       VALUES (v_tenant, p_caja_sesion_id,
-              CASE WHEN v_medio->>'tipo' = 'Efectivo' THEN 'egreso' ELSE 'egreso_informativo' END,
+              CASE WHEN v_es_efectivo THEN 'egreso' ELSE 'egreso_informativo' END,
               (v_medio->>'monto')::numeric,
-              CASE WHEN v_medio->>'tipo' = 'Efectivo' THEN v_concepto ELSE '['||(v_medio->>'tipo')||'] '||v_concepto END,
-              CASE WHEN v_medio->>'tipo' = 'Efectivo' THEN NULL ELSE NULLIF(v_medio->>'cuenta_origen_id','')::uuid END,
+              CASE WHEN v_es_efectivo THEN v_concepto ELSE '['||(v_medio->>'tipo')||'] '||v_concepto END,
+              CASE WHEN v_es_efectivo THEN NULL ELSE NULLIF(v_medio->>'cuenta_origen_id','')::uuid END,
               v_user);
     END LOOP;
   END IF;
@@ -9989,6 +10105,49 @@ BEGIN
   END IF;
   RETURN CASE TG_OP WHEN 'DELETE' THEN OLD ELSE NEW END;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_envio_entregado_sincroniza_pedido()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido_tenant uuid;
+BEGIN
+  IF NEW.pedido_id IS NULL THEN RETURN NEW; END IF;
+  IF NEW.estado IS DISTINCT FROM 'entregado' THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND OLD.estado IS NOT DISTINCT FROM 'entregado' THEN RETURN NEW; END IF;
+
+  -- 🔴 Hallazgo del migration-reviewer: sin este chequeo, al ser SECURITY DEFINER, un envío cuyo
+  -- pedido_id apuntara (por error o manipulación) a un pedido de OTRO tenant bypassearía RLS —
+  -- mismo chequeo que ya hace `trg_envio_marca_pedido_con_envio` (mig 315) en este módulo.
+  SELECT tenant_id INTO v_pedido_tenant FROM pedidos WHERE id = NEW.pedido_id;
+  IF v_pedido_tenant IS DISTINCT FROM NEW.tenant_id THEN RETURN NEW; END IF;
+
+  -- Mismo criterio que `fn_pedido_entregar_retiro` (mig 316): marca las líneas como preparadas y
+  -- entregadas en su totalidad — un envío entregado es "todo o nada", no hay entrega parcial acá.
+  UPDATE pedido_items
+     SET cantidad_entregada = cantidad, estado = 'preparado'
+   WHERE pedido_id = NEW.pedido_id AND estado <> 'cancelada';
+
+  -- No pisa un pedido ya `entregado` (idempotente) ni uno `cancelado` (la mercadería no debería
+  -- haber salido, pero si el dato real dice que se entregó no lo forzamos a un estado inconsistente
+  -- con silencio — queda tal cual para revisión manual, no es un caso que deba bloquear el POD).
+  UPDATE pedidos
+     SET estado = 'entregado', entregado_at = now()
+   WHERE id = NEW.pedido_id
+     AND estado NOT IN ('entregado', 'cancelado');
+
+  RETURN NEW;
+-- Nunca debe bloquear el guardado del POD (prueba de entrega real) por un problema de sincronización
+-- del lado de Pedidos — mismo criterio defensivo que `trg_envio_marca_pedido_con_envio` (mig 315).
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING '[trg_envio_entregado_sincroniza_pedido] envío % pedido % : %', NEW.id, NEW.pedido_id, SQLERRM;
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.trg_envio_marca_pedido_con_envio()
@@ -10832,6 +10991,7 @@ CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default O
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
 CREATE TRIGGER trg_guard_emisor_default BEFORE DELETE OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_guard_emisor_default();
 CREATE TRIGGER empleados_update_timestamp BEFORE UPDATE ON public.empleados FOR EACH ROW EXECUTE FUNCTION update_empleados_timestamp();
+CREATE TRIGGER trg_envios_entregado_sync_pedido AFTER INSERT OR UPDATE OF estado ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_entregado_sincroniza_pedido();
 CREATE TRIGGER trg_envios_marca_pedido AFTER INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_marca_pedido_con_envio();
 CREATE TRIGGER trg_envios_updated_at BEFORE UPDATE ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envios_updated_at();
 CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION set_envio_numero();
@@ -10845,7 +11005,7 @@ CREATE TRIGGER lineas_recalcular_stock AFTER INSERT OR DELETE OR UPDATE OF canti
 CREATE TRIGGER lineas_updated_at BEFORE UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_inventario_estado_aprobacion_guard BEFORE UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_inventario_estado_aprobacion_guard();
 CREATE TRIGGER trg_inventario_lineas_estado_genera_tarea_repositor AFTER UPDATE OF estado_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_generar_tarea_repositor_estado();
-CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
+CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
 CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
 CREATE TRIGGER series_recalcular_stock AFTER INSERT OR DELETE OR UPDATE ON public.inventario_series FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
 CREATE TRIGGER trg_updated_at_meli_cred BEFORE UPDATE ON public.meli_credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -10962,6 +11122,7 @@ ALTER TABLE public.devolucion_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.devolucion_proveedor_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.devoluciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.devoluciones_proveedor ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.emision_factura_locks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.emisores_fiscales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.empleados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.envio_incidencias ENABLE ROW LEVEL SECURITY;
@@ -10994,6 +11155,7 @@ ALTER TABLE public.modo_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.motivos_movimiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.movimientos_stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mp_billing_alertas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.nc_afip_pendientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orden_compra_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_compra ENABLE ROW LEVEL SECURITY;
@@ -11140,14 +11302,14 @@ CREATE POLICY autoriz_gasto_tenant ON public.autorizaciones_gasto AS PERMISSIVE 
 CREATE POLICY autorizaciones_reglas_enrutamiento_select ON public.autorizaciones_reglas_enrutamiento AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))));
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY autorizaciones_reglas_enrutamiento_write ON public.autorizaciones_reglas_enrutamiento AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))))
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))))
   WITH CHECK (((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))));
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))));
 CREATE POLICY billing_manual_pagos_select ON public.billing_manual_pagos AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) OR is_admin()));
 CREATE POLICY boveda_arqueos_solo_dueno ON public.boveda_arqueos AS PERMISSIVE FOR ALL TO public
@@ -11298,17 +11460,17 @@ CREATE POLICY cuentas_origen_tenant ON public.cuentas_origen AS PERMISSIVE FOR A
 CREATE POLICY cupones_tenant ON public.cupones AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))))
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))));
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY cupones_codigos_tenant ON public.cupones_codigos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))))
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))));
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY devitem_tenant_insert ON public.devolucion_items AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((devolucion_id IN ( SELECT devoluciones.id
    FROM devoluciones
@@ -11496,6 +11658,10 @@ CREATE POLICY movimientos_insert ON public.movimientos_stock AS PERMISSIVE FOR I
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY movimientos_select ON public.movimientos_stock AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))));
+CREATE POLICY nc_afip_pendientes_insert ON public.nc_afip_pendientes AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY nc_afip_pendientes_select ON public.nc_afip_pendientes AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY notif_delete ON public.notificaciones AS PERMISSIVE FOR DELETE TO public
   USING ((user_id = ( SELECT auth.uid() AS uid)));
 CREATE POLICY notif_insert ON public.notificaciones AS PERMISSIVE FOR INSERT TO public
@@ -12037,6 +12203,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.de
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emision_factura_locks TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.empleados TO anon;
@@ -12130,6 +12297,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mo
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.movimientos_stock TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.movimientos_stock TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mp_billing_alertas TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc_afip_pendientes TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc_afip_pendientes TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO service_role;

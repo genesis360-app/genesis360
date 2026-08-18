@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { SlidersHorizontal, X, Shield, AlertTriangle, CheckCircle, Clock, BarChart2, Zap, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { mapDevolucionNc, ivaNcTotal, netoNcTotal, type NcEmitida } from '@/lib/libroIva'
@@ -16,7 +17,7 @@ import type { DashSection } from '@/components/dashAreaSection'
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const IVA_COLORS: Record<string, string> = { '21': '#06B6D4', '10.5': '#F59E0B', '27': '#7B00FF', '0': '#9CA3AF' }
 
-function fmt(v: number) { return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` }
+function fmt(v: number) { return formatMoneda(v) }
 function fmtCorto(v: number) {
   if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${(v/1_000).toFixed(0)}K`

@@ -89,6 +89,18 @@ describe('precioUnitarioDeTier', () => {
     expect(precioUnitarioDeTier({ tipo_valor: 'pct', precio: 150 }, 100)).toBe(0)
     expect(precioUnitarioDeTier({ tipo_valor: 'pct', precio: -10 }, 100)).toBe(100)
   })
+
+  // Bug real (Fede, 2026-08-18, mig 367): faltaba la opción USD en los tiers — un tier
+  // `precio_fijo` siempre se cobraba en pesos, sin mirar la moneda del producto.
+  it('usd: convierte el monto en dólares a la cotización vigente', () => {
+    expect(precioUnitarioDeTier({ tipo_valor: 'usd', precio: 10 }, 999999, 1200)).toBe(12000)
+  })
+
+  it('usd: sin cotización cargada, no se puede convertir con seguridad → no aplica el tier (precio de lista)', () => {
+    expect(precioUnitarioDeTier({ tipo_valor: 'usd', precio: 10 }, 5000)).toBe(5000)
+    expect(precioUnitarioDeTier({ tipo_valor: 'usd', precio: 10 }, 5000, 0)).toBe(5000)
+    expect(precioUnitarioDeTier({ tipo_valor: 'usd', precio: 10 }, 5000, -1)).toBe(5000)
+  })
 })
 
 describe('resolverBloquesTier — descuento por múltiplo de empaque ("el caso del pallet")', () => {
@@ -156,6 +168,18 @@ describe('resolverBloquesTier — descuento por múltiplo de empaque ("el caso d
     const bloques = resolverBloquesTier([pallet({ precio: 50 })], 2000, PRECIO_LISTA)
     expect(bloques[0].precioUnitario).toBe(50) // 50% de 100, no 50% de un precio ya menor
   })
+
+  it('un tier usd enlazado a empaque se convierte a la cotización vigente', () => {
+    const t = pallet({ tipo_valor: 'usd', precio: 0.08 }) // USD 0.08 × 1200 = $96/u
+    const bloques = resolverBloquesTier([t], 2000, PRECIO_LISTA, 1200)
+    expect(bloques).toEqual([{ cantidad: 2000, precioUnitario: 96, tier: t }])
+  })
+
+  it('un tier usd sin cotización cargada no se aplica (precio de lista)', () => {
+    const t = pallet({ tipo_valor: 'usd', precio: 0.08 })
+    const bloques = resolverBloquesTier([t], 2000, PRECIO_LISTA)
+    expect(bloques).toEqual([{ cantidad: 2000, precioUnitario: PRECIO_LISTA, tier: t }])
+  })
 })
 
 describe('mejorPrecioMayorista', () => {
@@ -182,6 +206,14 @@ describe('mejorPrecioMayorista', () => {
       { cantidad_minima: 10, precio: 90, operador: '>=', orden: 1, tipo_valor: 'precio_fijo' },
     ]
     expect(mejorPrecioMayorista(tiers, 100)).toBe(90)
+  })
+
+  it('un tier usd compite convertido a la cotización vigente', () => {
+    const tiers: TierMayorista[] = [
+      { cantidad_minima: 10, precio: 90, operador: '>=', orden: 0, tipo_valor: 'precio_fijo' },
+      { cantidad_minima: 10, precio: 0.05, operador: '>=', orden: 1, tipo_valor: 'usd' }, // USD 0.05 × 1200 = $60
+    ]
+    expect(mejorPrecioMayorista(tiers, 100, 1200)).toBe(60)
   })
 })
 

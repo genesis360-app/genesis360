@@ -95,7 +95,20 @@ class AfipSdkProvider implements AfipProvider {
   }
 
   async createVoucher(payload: Record<string, unknown>): Promise<WsfeResult> {
-    const r = await this.eb.createVoucher(payload)
+    let r: { CAE?: string; CAEFchVto?: string }
+    try {
+      r = await this.eb.createVoucher(payload)
+    } catch (e) {
+      // 🛑 REGLA #0 — mismo criterio que WsfePropioProvider.createVoucher: la librería
+      // @afipsdk/afip.js no distingue de forma confiable "AFIP rechazó limpio" de "falla de
+      // transporte ambigua" (timeout, corte de red hacia el cloud de AfipSDK) — el comprobante
+      // pudo haberse autorizado igual del lado de AFIP sin que nosotros tengamos el CAE.
+      // Tratamos CUALQUIER error acá como ambiguo (hallazgo del code-reviewer: sin este catch,
+      // el circuito AfipSDK —el camino de emergencia cuando 'propio' falla— podía liberar el
+      // lock de emisión igual que un error seguro, reabriendo la carrera de doble-submit).
+      const msg = e instanceof Error ? e.message : String(e)
+      throw new Error(`Error al emitir contra AFIP (AfipSDK): ${msg}. ⚠ NO reintentar la emisión a ciegas: el comprobante pudo haberse autorizado igual.`)
+    }
     return { CAE: r.CAE, CAEFchVto: r.CAEFchVto }
   }
 }

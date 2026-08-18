@@ -12,9 +12,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// xlsx/jspdf/jspdf-autotable se importan dinámicamente en cada handler de export (auditoría
+// perf 2026-08-14, P5) — este archivo es la página más pesada en exports (SQL/reportes/master).
 import toast from 'react-hot-toast'
 
 type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado' | 'productos-atributos'
@@ -102,8 +101,9 @@ export default function ReportesPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [runSql])
 
-  const exportSqlCsv = () => {
+  const exportSqlCsv = async () => {
     if (!sqlResult || sqlResult.rows.length === 0) return
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet([sqlResult.columns, ...sqlResult.rows])
     XLSX.utils.book_append_sheet(wb, ws, 'Resultado')
@@ -111,8 +111,11 @@ export default function ReportesPage() {
     toast.success('Exportado a Excel')
   }
 
-  const printSqlPdf = () => {
+  const printSqlPdf = async () => {
     if (!sqlResult || sqlResult.rows.length === 0) return
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({ orientation: sqlResult.columns.length > 5 ? 'landscape' : 'portrait' })
     doc.setFontSize(12)
     doc.text('Resultado SQL — Genesis360', 14, 15)
@@ -480,12 +483,13 @@ export default function ReportesPage() {
   })()
 
   // ── Exportar Excel ───────────────────────────────────────────────────────────
-  const exportarExcel = (id: ReporteId) => {
+  const exportarExcel = async (id: ReporteId) => {
     setGenerando(true)
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
 
+      const XLSX = await import('xlsx')
       const reporte = REPORTES.find(r => r.id === id)!
       const wb = XLSX.utils.book_new()
       const ws = XLSX.utils.json_to_sheet(datos)
@@ -513,11 +517,12 @@ export default function ReportesPage() {
   }
 
   // ── Exportar CSV (K3) ────────────────────────────────────────────────────────
-  const exportarCSV = (id: ReporteId) => {
+  const exportarCSV = async (id: ReporteId) => {
     setGenerando(true)
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
+      const XLSX = await import('xlsx')
       const ws = XLSX.utils.json_to_sheet(datos)
       const csv = XLSX.utils.sheet_to_csv(ws)
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -534,13 +539,16 @@ export default function ReportesPage() {
   }
 
   // ── Exportar PDF ─────────────────────────────────────────────────────────────
-  const exportarPDF = (id: ReporteId) => {
+  const exportarPDF = async (id: ReporteId) => {
     setGenerando(true)
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
 
       const reporte = REPORTES.find(r => r.id === id)!
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'), import('jspdf-autotable'),
+      ])
       const doc = new jsPDF({ orientation: datos[0] && Object.keys(datos[0]).length > 6 ? 'landscape' : 'portrait' })
 
       // Header
@@ -601,7 +609,7 @@ export default function ReportesPage() {
     { id: 'motivos',     label: 'Motivos',       icon: CornerDownRight, datos: masterMotivos,  cols: ['nombre', 'tipo'] },
   ] as const
 
-  const exportarMaster = (id: string) => {
+  const exportarMaster = async (id: string) => {
     const item = MASTER_ITEMS.find(m => m.id === id)
     if (!item) return
     const datos = item.datos as any[]
@@ -613,6 +621,7 @@ export default function ReportesPage() {
       return row
     })
 
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const wsInfo = XLSX.utils.aoa_to_sheet([
       [BRAND.name], [item.label], [`Generado: ${new Date().toLocaleString('es-AR')}`], [`Negocio: ${tenant?.nombre}`], [''],

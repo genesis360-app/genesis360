@@ -720,12 +720,19 @@ export default function VentasPage() {
     queryKey: ['metodos_pago_cfg', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('id, nombre, cuenta_origen_id, habilitado_ventas, config')
+        .select('id, nombre, cuenta_origen_id, habilitado_ventas, config, es_efectivo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
     enabled: !!tenant,
   })
+  // Fase 1 Caja USD (G5, mig 368, A3): nombres de métodos "efectivo real" del tenant — reemplaza el
+  // string hardcodeado 'Efectivo' (así un futuro "Efectivo USD" calcula vuelto/mueve caja). Fallback
+  // al comportamiento de siempre si todavía no cargó la config.
+  const mediosEfectivo = useMemo(() => {
+    const nombres = (metodosPagoCfg as any[]).filter(m => m.es_efectivo).map(m => m.nombre as string)
+    return nombres.length > 0 ? new Set(nombres) : new Set(['Efectivo'])
+  }, [metodosPagoCfg])
   // Descuentos por método vigentes HOY (se recalcula al abrir el POS; la fecha no cambia intra-venta)
   const metodosConDescuento = useMemo(() => {
     const hoy = hoyLocalISO()
@@ -2625,7 +2632,7 @@ export default function VentasPage() {
     // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
     const lista = reglaDe(canalPOS).lista_precio
     if (lista === 'minorista') return item.precio_unitario
-    if (lista === 'mayorista') return mejorPrecioMayorista(tiers, item.precio_unitario) ?? item.precio_unitario
+    if (lista === 'mayorista') return mejorPrecioMayorista(tiers, item.precio_unitario, cotizacionUSD) ?? item.precio_unitario
     // Agregación por SKU (mig 306, decisión Fede): el tier se resuelve contra la cantidad TOTAL de
     // este producto en el carrito (todas las líneas del mismo SKU sumadas), no por línea — el precio
     // mayorista es por volumen. `cart` acá es el estado committeado (render-time correcto).
@@ -2633,7 +2640,7 @@ export default function VentasPage() {
       .filter(i => i.producto_id === item.producto_id)
       .reduce((s, i) => s + (i.tiene_series ? i.series_seleccionadas.length : i.cantidad), 0)
     if (!(cantTotalSku > 0)) return item.precio_unitario
-    return precioBlendedTier(tiers, cantTotalSku, item.precio_unitario)
+    return precioBlendedTier(tiers, cantTotalSku, item.precio_unitario, cotizacionUSD)
   }
 
   // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
@@ -2879,6 +2886,22 @@ export default function VentasPage() {
   // La config existía pero nada la leía (hallazgo del relevamiento). Reglas multi (AND adentro,
   // OR entre reglas) evaluadas sobre: total de mercadería (post-descuentos, sin envío),
   // etiquetas del cliente, fecha de hoy y km del envío (si se conocen).
+  // Auditoría perf 2026-08-14 (P2): el carrito recalculaba stockDisp (reduce) y llamaba
+  // atributoAmbiguoEnStock() dos veces por línea en CADA render de VentasPage (ej. al tipear en
+  // el buscador de productos, sin relación con el carrito) — memoizado por referencia de `item`,
+  // solo se recalcula cuando `cart` cambia de verdad. No se tocó el JSX del carrito (sigue
+  // exactamente igual), solo de dónde sale el valor.
+  const cartDerived = useMemo(() => {
+    const m = new Map<CartItem, { stockDisp: number | null; atributoAmbiguo: string | null }>()
+    for (const item of cart) {
+      const stockDisp = item.lineas_disponibles
+        ? item.lineas_disponibles.reduce((acc, l) => acc + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
+        : null
+      const atributoAmbiguo = item.lineas_disponibles ? atributoAmbiguoEnStock(item.lineas_disponibles) : null
+      m.set(item, { stockDisp, atributoAmbiguo })
+    }
+    return m
+  }, [cart])
   const reglasEnvioGratis = useMemo(() => normalizarReglasGratis((tenant as any)?.envio_gratis_reglas), [tenant])
   const { data: etiquetasClienteSel = [] } = useQuery<string[]>({
     queryKey: ['cliente-etiquetas', clienteId],
@@ -3116,7 +3139,7 @@ export default function VentasPage() {
     // Full CC (montoCC cubre todo): no hay otros medios que validar
     const errorPago = modoCC && totalSinCC < 0.5
       ? null
-      : validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, modoCC ? totalSinCC : totalConEnvio)
+      : validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, modoCC ? totalSinCC : totalConEnvio, mediosEfectivo)
     if (errorPago) { toast.error(errorPago); return }
     // Validar que hay sucursal seleccionada cuando hay varias sucursales
     if (sucursales.length > 1 && !sucursalId) {
@@ -3136,9 +3159,9 @@ export default function VentasPage() {
         return
       }
     }
-    const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
+    const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC, mediosEfectivo)
     // ISS-105: efectivo en caja se calcula contra totalConEnvio (costo de envío incluido)
-    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
+    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC, mediosEfectivo)
     // Caja para los asientos: la elegida, o la única abierta (con varias el guard ya exigió elegir).
     // Sin este fallback, vender/reservar con UNA caja sin selección explícita perdía el efectivo en silencio.
     const sesionCaja = sesionCajaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
@@ -3419,9 +3442,13 @@ export default function VentasPage() {
           const consumirLinea = async (linea: any, qty: number, origen: 'manual' | 'auto'): Promise<number> => {
             if (qty <= 0) return 0
             if (estado === 'reservada') {
-              const areservar = Math.min((linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0), qty)
+              // Atómico server-side (mig 362) — evita pisar una reserva concurrente (ej. un
+              // webhook de TN/MELI tocando la misma línea a la vez). El disponible lo calcula
+              // la RPC contra el valor real y lockeado, no el leído acá hace un rato.
+              const { data: areservarData, error: areservarErr } = await supabase.rpc('fn_reservar_stock_linea', { p_linea_id: linea.id, p_cantidad: qty })
+              if (areservarErr) console.error('[fn_reservar_stock_linea]', areservarErr.message)
+              const areservar = Number(areservarData ?? 0)
               if (areservar <= 0) return 0
-              await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
               linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
               return areservar
             }
@@ -4484,11 +4511,11 @@ export default function VentasPage() {
             // Reserva cantidad_reservada en una línea concreta. Muta in-memory para el fallback.
             const reservarEn = async (linea: any, qty: number): Promise<number> => {
               if (!linea || qty <= 0) return 0
-              const areservar = Math.min(linea.cantidad - (linea.cantidad_reservada ?? 0), qty)
+              // Atómico server-side (mig 362) — ver mismo comentario en consumirLinea arriba.
+              const { data: areservarData, error: areservarErr } = await supabase.rpc('fn_reservar_stock_linea', { p_linea_id: linea.id, p_cantidad: qty })
+              if (areservarErr) console.error('[fn_reservar_stock_linea]', areservarErr.message)
+              const areservar = Number(areservarData ?? 0)
               if (areservar <= 0) return 0
-              await supabase.from('inventario_lineas')
-                .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar })
-                .eq('id', linea.id)
               linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
               return areservar
             }
@@ -4535,7 +4562,7 @@ export default function VentasPage() {
         if (saldoMediosPago && saldoMediosPago.some(m => parseFloat(m.monto) > 0)) {
           const _sesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
           if (_sesionId) {
-            const efectivoSena = calcularEfectivoCaja(saldoMediosPago, montoPagadoReserva)
+            const efectivoSena = calcularEfectivoCaja(saldoMediosPago, montoPagadoReserva, mediosEfectivo)
             if (efectivoSena > 0) {
               const { error: senaErr } = await supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id, sesion_id: _sesionId,
@@ -4774,10 +4801,10 @@ export default function VentasPage() {
             let restante = item.cantidad
             for (const linea of lineas ?? []) {
               if (restante <= 0) break
-              const liberar = Math.min(linea.cantidad_reservada ?? 0, restante)
-              await supabase.from('inventario_lineas')
-                .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) - liberar })
-                .eq('id', linea.id)
+              // Atómico server-side (mig 362) — evita pisar una liberación/reserva concurrente.
+              const { data: liberarData, error: liberarErr } = await supabase.rpc('fn_liberar_stock_linea', { p_linea_id: linea.id, p_cantidad: restante })
+              if (liberarErr) console.error('[fn_liberar_stock_linea]', liberarErr.message)
+              const liberar = Number(liberarData ?? 0)
               restante -= liberar
             }
           }
@@ -5188,9 +5215,7 @@ export default function VentasPage() {
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-primary">{item.nombre}</p>
                             {!item.tiene_series && (() => {
-                              const stockDisp = item.lineas_disponibles
-                                ? item.lineas_disponibles.reduce((acc, l) => acc + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
-                                : null
+                              const stockDisp = cartDerived.get(item)?.stockDisp ?? null
                               if (stockDisp === null || item.cantidad <= stockDisp) return null
                               return (
                                 <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex-shrink-0">
@@ -5204,17 +5229,18 @@ export default function VentasPage() {
                             {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
                               const canPick = (item.lineas_disponibles?.length ?? 0) > 1
                               const isOpen = lpnPickerIdx === idx
+                              const atributoAmbiguo = cartDerived.get(item)?.atributoAmbiguo ?? null
                               // REGLA #0: hay >1 talle/color en stock y el cajero todavía no pasó
                               // por el picker — sin esto, "cobrar" se va a bloquear (ver registrarVenta).
                               const requiereConfirmar = canPick && item.lineas_disponibles
-                                && !!atributoAmbiguoEnStock(item.lineas_disponibles) && !(item.lpn_manual_ids?.length)
+                                && !!atributoAmbiguo && !(item.lpn_manual_ids?.length)
                               return (
                                 <>
                                   {requiereConfirmar && (
                                     <span onClick={() => setLpnPickerIdx(isOpen ? null : idx)}
                                       className="text-xs px-1.5 py-0.5 rounded font-semibold cursor-pointer
                                         text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 ring-1 ring-amber-300 dark:ring-amber-700 animate-pulse">
-                                      ⚠ Elegí {atributoAmbiguoEnStock(item.lineas_disponibles!)}
+                                      ⚠ Elegí {atributoAmbiguo}
                                     </span>
                                   )}
                                   {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
@@ -6156,7 +6182,7 @@ export default function VentasPage() {
                 {cart.length > 0 && committedAsignado > 0 && (() => {
                   // ISS-105: faltante calculado contra totalConEnvio
                   const displayFaltante = Math.round((totalConEnvio - committedAsignado) * 100) / 100
-                  const vueltoUI = calcularVuelto(mediosPago, totalConEnvio)
+                  const vueltoUI = calcularVuelto(mediosPago, totalConEnvio, mediosEfectivo)
                   const esVuelto = vueltoUI >= 0.5
                   const fmt = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
                   return (

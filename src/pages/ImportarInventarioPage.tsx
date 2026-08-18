@@ -2,18 +2,19 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, Boxes } from 'lucide-react'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
-// Convierte cualquier formato de fecha a YYYY-MM-DD
-function parseFecha(val: any): string | undefined {
+// Convierte cualquier formato de fecha a YYYY-MM-DD. Recibe el módulo xlsx ya cargado (dynamic
+// import, auditoría perf 2026-08-14, P5) — este helper corre siempre después de leer el archivo.
+function parseFecha(val: any, xlsxMod: typeof import('xlsx')): string | undefined {
   if (val === null || val === undefined || val === '') return undefined
   if (typeof val === 'number') {
-    const d = XLSX.SSF.parse_date_code(val)
+    const d = xlsxMod.SSF.parse_date_code(val)
     if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
     return undefined
   }
@@ -84,7 +85,8 @@ export default function ImportarInventarioPage() {
     enabled: !!tenant,
   })
 
-  const descargarPlantilla = () => {
+  const descargarPlantilla = async () => {
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([
       ['sku','cantidad','precio_costo','ubicacion','estado','proveedor','nro_lote','fecha_vencimiento','lpn','motivo','numeros_serie'],
       ['TORN-0001',100,150,'Depósito A','Disponible','Proveedor A','L-2024-001','2025-12-31','','Carga inicial',''],
@@ -118,8 +120,9 @@ export default function ImportarInventarioPage() {
   const procesarArchivo = (file: File) => {
     setResultado(null)
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await import('xlsx')
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
@@ -154,7 +157,7 @@ export default function ImportarInventarioPage() {
             estado: String(row.estado || '').trim() || undefined,
             proveedor: String(row.proveedor || '').trim() || undefined,
             nro_lote: String(row.nro_lote || '').trim() || undefined,
-            fecha_vencimiento: parseFecha(row.fecha_vencimiento),
+            fecha_vencimiento: parseFecha(row.fecha_vencimiento, XLSX),
             lpn: String(row.lpn || '').trim() || undefined,
             motivo: String(row.motivo || '').trim() || undefined,
             numeros_serie: tieneSeries ? numerosSerie : undefined,

@@ -16,7 +16,8 @@ import { agruparAgingCC } from '@/lib/ccLogic'
 import { notificarPagoCC } from '@/lib/notificacionesCC'
 import { logActividad } from '@/lib/actividadLog'
 import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en cada handler (auditoría perf 2026-08-14, P5) — evita
+// descargar la librería (7.8MB) al entrar a la página si el usuario nunca exporta/importa.
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
@@ -713,7 +714,8 @@ export default function ClientesPage() {
   }
 
   // ── Importación masiva ───────────────────────────────────────────────────
-  const descargarPlantilla = () => {
+  const descargarPlantilla = async () => {
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([
       ['nombre', 'dni', 'telefono', 'email', 'notas', 'etiquetas'],
       ['Juan Pérez', '20123456', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente', 'mayorista, vip'],
@@ -732,6 +734,7 @@ export default function ClientesPage() {
     const reader = new FileReader()
     reader.onload = async (e) => {
       try {
+        const XLSX = await import('xlsx')
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
@@ -1163,10 +1166,11 @@ export default function ClientesPage() {
             Deuda: Math.round(deudaSeg[c.id] ?? 0), 'Saldo a favor': Math.round(creditoMap[c.id] ?? 0),
           }
         })
-        const exportarSegmento = (fmt: 'csv' | 'xlsx') => {
+        const exportarSegmento = async (fmt: 'csv' | 'xlsx') => {
           if (segRows.length === 0) { toast.error('No hay clientes en el segmento'); return }
           const fname = `segmento_clientes_${new Date().toISOString().slice(0, 10)}`
           if (fmt === 'xlsx') {
+            const XLSX = await import('xlsx')
             const wb = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(segRows), 'Segmento')
             XLSX.writeFile(wb, `${fname}.xlsx`)
@@ -1181,7 +1185,8 @@ export default function ClientesPage() {
           }
         }
 
-        const exportarReporte = () => {
+        const exportarReporte = async () => {
+          const XLSX = await import('xlsx')
           const wb = XLSX.utils.book_new()
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topClientes.map(c => ({ Cliente: c.nombre, Total: Math.round(c.total), Compras: c.count, 'Última': c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '' }))), 'Top clientes')
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inactivos.map(c => ({ Cliente: c.nombre, Teléfono: c.telefono ?? '', 'Última compra': c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '', Total: Math.round(c.total) }))), 'Inactivos +60d')

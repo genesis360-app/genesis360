@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarMediosPago, validarDescuentosPorRol, descuentoEfectivoPct, type ValidarDescuentosArgs } from '@/lib/ventasValidation'
+import { validarMediosPago, validarDescuentosPorRol, descuentoEfectivoPct, calcularVuelto, calcularEfectivoCaja, type ValidarDescuentosArgs } from '@/lib/ventasValidation'
 
 describe('Ventas — validación medios de pago', () => {
   const total = 1000
@@ -77,6 +77,48 @@ describe('Ventas — validación medios de pago', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // descuentoEfectivoPct — % efectivo de un descuento (% o $ sobre una base)
 // ─────────────────────────────────────────────────────────────────────────────
+// Fase 1 Caja USD (G5, mig 368, A3): 'Efectivo' hardcodeado → lista `mediosEfectivo` por tenant. El
+// default preserva el comportamiento de siempre (solo 'Efectivo'); un tenant real pasa el set de
+// metodos_pago.es_efectivo (podría incluir "Efectivo USD" el día que exista).
+describe('calcularVuelto / calcularEfectivoCaja — mediosEfectivo (mig 368)', () => {
+  it('sin 2do parámetro: se comporta igual que siempre (solo "Efectivo" da vuelto)', () => {
+    const medios = [{ tipo: 'Efectivo', monto: '1500' }]
+    expect(calcularVuelto(medios, 1000)).toBe(500)
+    expect(calcularEfectivoCaja(medios, 1000)).toBe(1000)
+  })
+
+  it('un medio que NO está en mediosEfectivo no da vuelto ni cuenta como efectivo en caja', () => {
+    const medios = [{ tipo: 'Efectivo USD', monto: '1500' }]
+    expect(calcularVuelto(medios, 1000)).toBe(0) // 'Efectivo USD' no está en el set default → no reconocido
+    expect(calcularEfectivoCaja(medios, 1000)).toBe(0)
+  })
+
+  it('con el set real del tenant, "Efectivo USD" se reconoce igual que "Efectivo"', () => {
+    const mediosEfectivo = new Set(['Efectivo', 'Efectivo USD'])
+    const medios = [{ tipo: 'Efectivo USD', monto: '1500' }]
+    expect(calcularVuelto(medios, 1000, mediosEfectivo)).toBe(500)
+    expect(calcularEfectivoCaja(medios, 1000, mediosEfectivo)).toBe(1000)
+  })
+
+  it('mezcla: efectivo real + otro medio no-efectivo, con set custom', () => {
+    const mediosEfectivo = new Set(['Efectivo USD'])
+    const medios = [{ tipo: 'Efectivo USD', monto: '800' }, { tipo: 'Tarjeta débito', monto: '200' }]
+    expect(calcularVuelto(medios, 1000, mediosEfectivo)).toBe(0) // cubre justo, sin vuelto
+    expect(calcularEfectivoCaja(medios, 1000, mediosEfectivo)).toBe(800)
+  })
+})
+
+describe('validarMediosPago — mediosEfectivo (mig 368)', () => {
+  it('excedente cubierto por un medio del set custom se permite (vuelto)', () => {
+    const mediosEfectivo = new Set(['Efectivo USD'])
+    expect(validarMediosPago('despachada', [{ tipo: 'Efectivo USD', monto: '1500' }], 1000, mediosEfectivo)).toBeNull()
+  })
+  it('excedente de un medio FUERA del set custom se rechaza', () => {
+    const mediosEfectivo = new Set(['Efectivo USD'])
+    expect(validarMediosPago('despachada', [{ tipo: 'Efectivo', monto: '1500' }], 1000, mediosEfectivo)).not.toBeNull()
+  })
+})
+
 describe('descuentoEfectivoPct', () => {
   it('descuento en % devuelve el % crudo', () => {
     expect(descuentoEfectivoPct(10, 'pct', 1000)).toBe(10)

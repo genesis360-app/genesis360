@@ -21,8 +21,8 @@ import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabas
 import { esDecimal } from '@/lib/ventasValidation'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// jspdf/jspdf-autotable se importan dinámicamente en descargarEstadoProveedor/descargarOCpdf
+// (auditoría perf 2026-08-14, P5).
 import toast from 'react-hot-toast'
 import {
   Truck, Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp,
@@ -376,9 +376,12 @@ export default function ProveedoresPage() {
   }
 
   // D3 — PDF estado de cuenta del proveedor
-  const descargarEstadoProveedor = () => {
+  const descargarEstadoProveedor = async () => {
     const prov = (proveedores as any[]).find((p: any) => p.id === ccProvId)
     if (!prov) return
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF()
     const fmt = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
     doc.setFontSize(16); doc.setTextColor(30, 58, 95); doc.text(tenant?.nombre ?? 'Genesis360', 14, 18)
@@ -502,7 +505,10 @@ export default function ProveedoresPage() {
     }
   }
 
-  function descargarOCpdf(oc: OrdenCompra, items: OrdenCompraItem[]) {
+  async function descargarOCpdf(oc: OrdenCompra, items: OrdenCompraItem[]) {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
     const W = 210
     doc.setFontSize(16).setFont('helvetica', 'bold')

@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { SlidersHorizontal, X, Send, AlertTriangle, CheckCircle, Clock, BarChart2, Zap, TrendingDown, Package } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
@@ -17,7 +18,7 @@ const ESTADO_COLORS: Record<string, string> = {
   despachado: '#06B6D4', pendiente: '#9CA3AF', devolucion: '#EF4444', cancelado: '#6B7280',
 }
 
-function fmt(v: number) { return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` }
+function fmt(v: number) { return formatMoneda(v) }
 function fmtCorto(v: number) {
   if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${(v/1_000).toFixed(0)}K`

@@ -17,8 +17,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// jspdf/jspdf-autotable se importan dinámicamente en imprimirCierre (auditoría perf 2026-08-14, P5).
 import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
@@ -175,7 +174,9 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!(fuerteSesion as any)?.id,
-    refetchInterval: 15_000,
+    // Auditoría perf 2026-08-14 (P6): traspasos a bóveda son eventos manuales infrecuentes,
+    // no ventas continuas — subido de 15s a 60s. Sigue con polling (dato de capital).
+    refetchInterval: 60_000,
   })
 
   const fuerteSaldo = (fuerteMovimientos as any[]).reduce((acc: number, m: any) => {
@@ -219,7 +220,9 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'caja_fuerte',
-    refetchInterval: 30_000,
+    // Auditoría perf 2026-08-14 (P6): saldo de bóveda por cuenta, ya gateado al tab caja_fuerte;
+    // cambia solo con traspasos/retiros manuales — subido de 30s a 2min.
+    refetchInterval: 120_000,
   })
 
   // Capital del negocio por moneda = suma de las cuentas activas de la bóveda, AGRUPADA por moneda
@@ -383,7 +386,9 @@ export default function CajaPage() {
       return (data ?? []).map((r: any) => r.caja_id as string)
     },
     enabled: !!tenant,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P6): indicador visual (qué cajas están abiertas) en el selector,
+    // sin gate funcional — subido de 10s a 1min, igual criterio que el badge de AppLayout.
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 
@@ -398,7 +403,10 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!tenant && !!user,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P6): guard consultado al intentar abrir caja (acción puntual del
+    // usuario), no un número que cambie solo — subido de 10s a 1min; refetchOnWindowFocus cubre
+    // el caso de volver a la pestaña.
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 
@@ -462,8 +470,11 @@ export default function CajaPage() {
       return data ?? null
     },
     enabled: !!cajaId,
-    // Sincronización multi-dispositivo: refresca cada 10s y al volver al foco
-    refetchInterval: 10_000,
+    // Sincronización multi-dispositivo: refresca cada 10s y al volver al foco.
+    // Auditoría perf 2026-08-14 (P6): es el saldo/estado real de la sesión que el cajero está
+    // cobrando — se mantiene conservador (30s en vez de 10s, no se sube a 1min como los guards
+    // decorativos de arriba); refetchOnWindowFocus sigue cubriendo el caso de volver a la pestaña.
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   })
 
@@ -477,7 +488,10 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!sesionActiva?.id,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P6): alimenta el saldo de caja que el cajero usa para cobrar/
+    // arquear (multi-dispositivo: otra terminal puede registrar una venta que afecte esta caja) —
+    // se mantiene conservador en 30s (no se sube al mismo nivel que los indicadores decorativos).
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   })
 
@@ -1234,7 +1248,12 @@ export default function CajaPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [sesionActiva, tab])
 
-  const imprimirCierre = (sesion: any, formato: 'a4' | 'termico' = 'a4') => {
+  const imprimirCierre = async (sesion: any, formato: 'a4' | 'termico' = 'a4') => {
+    // xlsx/jspdf dinámico (auditoría perf 2026-08-14, P5) — evita cargar jspdf (29MB paquete)
+    // en cada entrada a Caja si el usuario nunca imprime un cierre.
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     // Si la sesión tiene snapshot_totales (K2), lo usamos. Si no, fallback a campos legacy.
     const snap = sesion.snapshot_totales || null
     const numCierre = sesion.numero ?? snap?.numero_cierre ?? null

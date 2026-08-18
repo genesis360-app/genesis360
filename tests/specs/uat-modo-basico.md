@@ -105,6 +105,9 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | PRD-15 | **Alícuota IVA 10,5% se guarda Y se muestra al reabrir** (BUG sesión 2026-06-18) | Editar producto → Alícuota IVA = 10,5% → Guardar → reabrir | Persiste `10.50` en DB; al reabrir el `<select>` muestra **10,5% seleccionado** (no en blanco). El numeric `"10.50"` se normaliza a `"10.5"` para matchear la opción | B | 🔴 | ⬜ | |
 | PRD-16 | **Producto Exento (0%) NO se guarda como 21%** (BUG sesión 2026-06-18) | Alícuota IVA = Exento (0%) → Guardar | Persiste `0` (no 21). Antes `parseFloat||21` convertía `0→21` (IVA fantasma) | E | 🔴 | ⬜ | |
 | PRD-17 | Alícuotas 21% / 27% se guardan y muestran bien | Setear 21% y 27%, reabrir | `21.00`/`27.00` en DB; select muestra la opción correcta (normalización `String(parseFloat())`) | B | 🟡 | ⬜ | |
+| PRD-18 | **Costo/precio en USD persisten al reabrir** (BUG real reportado por Fede, 2026-08-18, mig 367) | "Ingresar en USD" en costo y venta → cargar montos → Guardar → salir → reabrir la ficha | El toggle vuelve a mostrar **"USD" seleccionado** (no "$") con el monto USD original intacto en ambos campos; el ARS mostrado corresponde a `precio_usd`/`precio_costo_usd` × cotización vigente | E | 🔴 | ⬜ | |
+| PRD-19 | **Tier mayorista en USD se convierte a cotización vigente en el POS** (BUG real reportado por Fede, 2026-08-18, mig 367) | Producto con tier `tipo_valor='usd'` → vender cantidad que matchea el tier | Cobra el tier convertido a pesos a la cotización del momento (no el número USD tal cual como si fueran pesos); sin cotización cargada, no aplica el tier (usa precio de lista) | E | 🔴 | ⬜ | |
+| PRD-20 | **"Puede cobrarse en cualquier moneda" persiste al reabrir** (G5 Fase 2, mig 370, 2026-08-18) | Activar el toggle "Puede cobrarse en cualquier moneda" → Guardar → reabrir la ficha | `acepta_cualquier_moneda=true` persiste y el toggle vuelve activado al reabrir. Por default (producto existente o nuevo) queda `false` — sin cambio de comportamiento hasta que se cablee el cobro real (Fase 4, todavía no implementada) | B | 🟡 | ⬜ | |
 
 ---
 
@@ -204,6 +207,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | CAJ-27 | **Efectivo por default en alta de tenant** (v1.78.2, mig 225) | Crear un tenant nuevo | Nace con la Cuenta de Origen Efectivo (tipo efectivo, en su moneda) + 5 métodos default con Efectivo vinculado | H | 🔴 | ✅ | *Verificado en DEV 2026-06-19: 9/9 tenants con cuenta Efectivo, 0 métodos Efectivo sin link* |
 | CAJ-28 | **Capital inicial vía "Ingreso externo" + las aperturas NO se cuentan** (decisión 2026-06-19) | Ver tooltip de la tarjeta Capital; ingresar capital inicial real | Las aperturas (`monto_apertura`) NO se suman al capital (evita doble conteo del arrastre, que ya viene de ventas registradas). El capital inicial real (plata propia/aporte de socio nunca asentada) se registra **una vez** como "Ingreso externo (sin caja)" a la bóveda → entra al capital. El tooltip ℹ️ de la tarjeta lo explica | B | 🟡 | ✅ | *Implementado 2026-06-19: tooltip CajaPage.tsx:1989 + nota del modal :2216. Vista sin cambios (Opción A elegida por GO). Ver [[reference_caja_fuerte_capital_efectivo]]* |
 | CAJ-29 | **Capital total con cuentas multi-moneda suma SIN convertir** (HALLAZGO 2026-06-19) | Tenant con cuentas en ARS **y** USD → ver "Capital total del negocio" | ⚠️ Hoy `capitalTotal` suma los saldos de todas las cuentas activas sin mirar `moneda` (CajaPage.tsx:223) → mezcla ARS+USD en un solo número. **Real en DEV: Almacén Jorgito (ARS+USD).** Pendiente decisión de diseño (sumar solo moneda principal / mostrar por moneda / convertir con cotización) | B | 🔴 | ❌ | *Hallazgo capa código 2026-06-19. No es regresión (preexistía); afecta solo tenants multi-moneda. Ver Hallazgos* |
+| CAJ-30 | **Elegir tipo de cotización USD gateado por rol** (G5 Fase 2, mig 370, 2026-08-18) | Usuario CAJERO (sin permiso en `cotizacion_usd_roles_permitidos`) abre el widget de cotización en el sidebar | Antes cualquier rol podía elegir la casa (blue/oficial/MEP/cripto) o cargar un valor manual. Ahora el CAJERO solo ve un botón "Actualizar" (repite la última casa guardada en `cotizacion_usd_casa`); no ve el dropdown de casas ni puede editar el número a mano. DUEÑO siempre puede elegir, sea cual sea la config | H | 🟡 | ⬜ | |
 
 ---
 
@@ -890,6 +894,44 @@ Cubiertos en pases previos (v1.74.0 efectivo↔caja / v1.76.0): VEN-11/12 (reser
 **Pendiente SOLO capa C (click-through manual / runtime — NO code-auditable):** PDFs e impresión (FAC-06/07/19, §23 comprobantes), config UI (§2 parcial), integraciones reales TN/MeLi/MP/courier (§17 — couriers bloqueados por cuentas B2B), i18n, concurrencia real (VEN-23), PWA/offline (§26), auth/sesión runtime (§1 AUTH-05/06/08). Estos requieren ejecutar la app y un humano; no se pueden cerrar leyendo código.
 
 **Conclusión:** el code-audit del UAT está **completo para todo lo automatizable/auditable por código**. Lo que resta es exclusivamente verificación manual en runtime (capa C), que es un click-through, no una auditoría de código.
+
+---
+
+## 🛑 Auditoría de performance/calidad (2026-08-14) — 2 hallazgos críticos de REGLA #0 cerrados
+
+Una auditoría de performance/calidad de todo el código (no buscaba bugs de negocio, pero encontró 2
+reales) detectó y GO pidió cerrar en el momento:
+
+**VEN-23 (concurrencia: 2 cajeros venden la última unidad) — la causa RAÍZ queda cerrada a nivel DB,
+falta el click-through manual.** El código de reserva/liberación de stock (`VentasPage.tsx` ×3,
+`tn-webhook`, `meli-webhook`) leía `cantidad_reservada` del cliente, calculaba en JS, y pisaba con
+`.update()` — no atómico, podía perder una reserva bajo concurrencia real. Fix: dos RPCs nuevas
+(`fn_reservar_stock_linea`/`fn_liberar_stock_linea`, mig 362) con `SELECT...FOR UPDATE` — Postgres
+serializa dos transacciones concurrentes sobre la misma línea en vez de dejarlas pisarse. **Verificado
+con SQL real en DEV**: dos llamadas pidiendo 10 unidades cada una sobre una línea con 14 disponibles →
+la primera se llevó 10, la segunda quedó clampeada a 4 exactos (nunca 20) — el CHECK
+`chk_cantidad_mayor_o_igual_reservada` nunca se hubiera disparado, pero antes del fix el resultado final
+hubiera sido silenciosamente incorrecto. **Sigue pendiente capa C**: abrir 2 sesiones de navegador reales
+y vender la última unidad desde ambas a la vez (esto valida la UX del segundo cajero — "sin stock" — no
+solo la integridad del dato, que ya está probada).
+
+**FAC-nuevo — `emitir-factura` sin lock contra doble-submit (no estaba en la tabla, hallazgo nuevo).**
+El guard "¿ya tiene CAE?" era una lectura simple sin lock — dos invocaciones casi simultáneas podían
+ambas pasar el guard y emitir dos CAE reales en AFIP para la misma venta. Fix: mutex explícito
+(`emision_factura_locks`, mig 361) — INSERT atómico por PK antes de cualquier lógica fiscal, con
+cuarentena (`requiere_reconciliacion_manual`) si el error es de la familia "NO reintentar" (AFIP pudo
+haber autorizado sin que el sistema tenga el CAE) en vez de liberar el lock a ciegas. Encontrado de paso
+en la revisión: `AfipSdkProvider.createVoucher` no envolvía la llamada en try/catch (a diferencia de
+`WsfePropioProvider`) — corregido para que cualquier error de ese circuito también dispare cuarentena.
+**Verificado con SQL real en DEV**: el INSERT duplicado de la misma clave falla con `23505` (el código
+exacto que chequea la EF); un lock viejo en cuarentena sobrevive la auto-limpieza, uno viejo normal no.
+**No se hizo una invocación HTTP real de punta a punta contra AFIP homologación** en esta sesión (para
+no gastar un CAE real ni necesitar la service role key) — la EF se deployó a DEV (v25) y pasó 3 pasadas
+de code-review con verificación de balance de llaves por AST; recomendado un smoke test real (emitir una
+factura real) antes de decidir deploy a PROD.
+
+Ambos fixes: **migraciones 361+362 aplicadas y verificadas en DEV, código deployado a DEV — SIN
+commitear al repo git, SIN aplicar a PROD.**
 
 ---
 

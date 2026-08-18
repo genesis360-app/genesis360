@@ -170,7 +170,11 @@ export default function ProductosPage() {
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: productos = [], isLoading } = useQuery({
-    queryKey: ['productos', tenant?.id],
+    // Auditoría perf 2026-08-14 (P4): namespaced para no colisionar con la query de
+    // InventarioPage.tsx (mismo query key, shapes/filtros distintos — riesgo real de mostrar
+    // datos con el shape equivocado al navegar entre las dos). Mismo prefijo 'productos' así
+    // que invalidateQueries(['productos']) desde cualquier otro archivo sigue invalidando ambas.
+    queryKey: ['productos', 'catalogo', tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('productos')
@@ -339,7 +343,7 @@ export default function ProductosPage() {
         }
         toast.success(`Precio actualizado en ${n} producto${s ? 's' : ''}`)
         setSelectedIds(new Set()); setBulkModal(null); setBulkPrecioValor('')
-        qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
+        qc.invalidateQueries({ queryKey: ['productos'] })
         return
       }
 
@@ -370,7 +374,7 @@ export default function ProductosPage() {
           toast.error(`Ninguno se pudo eliminar: todos tienen actividad registrada (ventas, movimientos, compras, etc.). Usá "Desactivar" en su lugar.${porStock}`, { duration: 9000 })
         }
         setSelectedIds(new Set()); setBulkModal(null)
-        qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
+        qc.invalidateQueries({ queryKey: ['productos'] })
         return
       }
 

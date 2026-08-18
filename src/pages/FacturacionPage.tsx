@@ -5,7 +5,7 @@ import {
   AlertTriangle, Download, X, ChevronDown, Filter, RefreshCw,
   FileText, ExternalLink, Info, Building, Calendar, Printer,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en exportarLibroIVA (auditoría perf 2026-08-14, P5).
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { PageTabs } from '@/components/PageTabs'
@@ -480,7 +480,8 @@ export default function FacturacionPage() {
   })
 
   // ── Exportar Excel ────────────────────────────────────────────────────────────
-  const exportarLibroIVA = (tipo: 'ventas' | 'compras') => {
+  const exportarLibroIVA = async (tipo: 'ventas' | 'compras') => {
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     if (tipo === 'ventas') {
       const rows = (ivaVentas as any[]).map(r => ({

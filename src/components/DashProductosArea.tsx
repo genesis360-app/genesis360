@@ -10,6 +10,7 @@ import {
   AlertTriangle, CheckCircle, Clock, BarChart2, Star, Target, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
@@ -135,7 +136,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
     return () => document.removeEventListener('mousedown', handler)
   }, [filterOpen])
 
-  const fmt = (v: number) => `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  const fmt = (v: number) => formatMoneda(v)
   const fmtCorto = (v: number) => {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
     if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`

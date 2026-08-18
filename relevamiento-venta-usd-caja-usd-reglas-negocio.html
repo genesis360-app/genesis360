@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Venta física en USD / Caja en USD · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Venta física en USD / Caja en USD</h1>
+<div class="meta">
+  Genesis360 · v1.170.0 · Fecha: 13 de agosto de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan una contradicción o un bug latente entre lo que el código
+  hace hoy y lo que hace falta para que la Caja USD sea segura. Cuando contesten, las cargo en wiki y
+  planificamos la implementación.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> Esto NO parte de cero — ya hay piezas construidas — pero el hallazgo
+  central es que <strong><code>cajas.moneda</code> (mig 136, "F1 · Cajas separadas por moneda") hoy es sólo una
+  ETIQUETA</strong>, sin ninguna lógica real detrás:
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li>Se puede crear una "Caja USD" desde Config → Caja (selector de moneda) y aparece un badge <code>USD</code> en los
+    listados, pero <code>caja_movimientos.monto</code> y <code>caja_sesiones.monto_apertura/monto_cierre/monto_real_cierre</code>
+    son <code>numeric(12,2)</code> <strong>sin ninguna columna de moneda</strong> — el sistema no sabe, número a número, en
+    qué unidad está parado cada movimiento.</li>
+    <li>La pantalla operativa de Caja (saldo, apertura, arqueo, cierre, traspasos) formatea TODOS los montos con
+    <code>tenant.moneda</code> (típicamente ARS "$"), sin mirar la moneda de la caja seleccionada — abrir hoy una Caja
+    USD muestra "$" igual que una caja en pesos.</li>
+    <li><code>realizarTraspaso</code> mueve el mismo número entre sesiones sin chequear ni convertir monedas: hoy es
+    posible traspasar "100" de una Caja ARS a una Caja USD y quedarían acreditados 100 dólares.</li>
+    <li>La lógica de "qué es efectivo" (vuelto, ingreso real de caja vs. <code>ingreso_informativo</code>) filtra por el
+    string exacto <code>tipo === 'Efectivo'</code> (<code>ventasValidation.ts</code>, y varias RPC server-side). Un método
+    de pago nuevo llamado "Efectivo USD" hoy <strong>no</strong> es reconocido como efectivo: no calcula vuelto, no
+    genera un ingreso real de caja, cae como movimiento informativo (no afecta el arqueo).</li>
+  </ul>
+  Piezas que SÍ existen y son precedente de diseño útil: <code>productos.precio_usd</code> + <code>moneda_venta</code>
+  (mig 161, G5 — precio en USD convertido a pesos al cargar al carrito, "precio en USD cobrado en pesos", que es
+  distinto de lo que releva este documento) · <code>tenant.cotizacion_usd</code> (manual o vía <code>dolarapi.com</code>,
+  sin historial, se pisa en cada actualización) · <code>cuentas_origen.moneda</code> (mig 136, ya soporta cuentas con
+  moneda propia y la vista <code>vw_boveda_cuentas</code> agrupa el "Capital del negocio" por moneda sin convertir) ·
+  el motor WSFE propio (<code>wsfe-core.ts</code>) ya parametriza <code>MonId</code>/<code>MonCotiz</code> para moneda
+  extranjera, pero <code>emitir-factura</code> y <code>emitir-factura-plataforma</code> lo tienen hardcodeado a
+  <code>PES</code>/<code>1</code> siempre.
+</div>
+
+<div class="alerta-critica">
+  <strong>Nota REGLA #0 (fiscal/contable, cero errores tolerados):</strong> este módulo toca directo caja, cuenta
+  corriente, bóveda, medios de pago y AFIP. Ninguna de las preguntas de este documento se resuelve agregando
+  "una columna moneda" sin más — cada decisión (cotización a usar, redondeo, qué pasa en AFIP, traspasos entre
+  cajas de distinta moneda) tiene que quedar explícitamente definida ANTES de tocar código, porque un diseño
+  ingenuo acá puede dejar un arqueo que nunca cierra o una factura mal declarada ante AFIP.
+</div>
+
+<!-- ============================ A. ALCANCE ============================ -->
+<h2>A. Alcance del proyecto</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿Qué se está pidiendo realmente? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy existe "precio en USD cobrado en pesos" (G5, mig 161) — el POS convierte
+  <code>precio_usd</code> a pesos con <code>cotizacion_usd</code> al cargar el carrito, y el cliente paga en pesos.
+  Eso NO es lo que falta. Lo que falta es poder cobrar literalmente en billetes de dólar y que quede un saldo
+  real en dólares en algún lado.</div>
+  <ul class="opciones">
+    <li>(a) Aceptar USD físico como UN MEDIO DE PAGO MÁS dentro de la Caja en pesos — se convierte a pesos a la
+    cotización del día y entra como un ingreso más (tipo "Efectivo USD"), con un saldo informativo aparte para
+    saber cuántos dólares hay guardados</li>
+    <li>(b) Una CAJA USD COMPLETA con su propio ciclo apertura → cobro → arqueo → cierre en dólares,
+    independiente de la Caja Principal en pesos (activar la lógica real detrás de <code>cajas.moneda='USD'</code>
+    que hoy es sólo la etiqueta)</li>
+    <li>(c) Ambas — empezar por (a) como MVP rápido y evolucionar a (b) más adelante</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Relación entre "producto en USD" (G5) y "cobro en USD físico" — ¿son independientes? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>moneda_venta</code> es una propiedad del PRODUCTO (define el precio de lista) totalmente
+  desacoplada del medio de pago elegido en caja — no hay ningún vínculo entre "el producto se lista en USD" y
+  "el cliente pagó en billetes de USD".</div>
+  <ul class="opciones">
+    <li>(a) Totalmente independientes — cualquier venta (sea el producto <code>moneda_venta='local'</code> o
+    <code>'usd'</code>) puede cobrarse parcial o totalmente en USD físico si el cajero lo elige</li>
+    <li>(b) Sólo se puede cobrar en USD físico si el producto ya está en <code>moneda_venta='usd'</code> (evita
+    convertir dos veces)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    ¿"Efectivo USD" nace como un método de pago normal o necesita ser un tipo especial reconocido por el sistema? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy cualquiera puede crear un método de pago llamado "Efectivo USD" en Config → Métodos de
+  pago (tabla <code>metodos_pago</code>, sin columna de moneda) — pero el sistema no lo trataría como efectivo real:
+  <code>calcularVuelto</code>/<code>calcularEfectivoCaja</code> (<code>ventasValidation.ts</code>) y varias RPC de
+  servidor (pago de OC, pago de fletes) filtran por el string exacto <code>tipo === 'Efectivo'</code>. Un "Efectivo
+  USD" creado hoy caería siempre como <code>ingreso_informativo</code> (no calcula vuelto, no mueve el saldo real
+  de ninguna caja, no cuenta para el arqueo).</div>
+  <ul class="opciones">
+    <li>(a) Generalizar la lógica para reconocer una LISTA de "medios que son efectivo real" (no un string único
+    hardcodeado) — cada uno atado a una moneda</li>
+    <li>(b) Mantener "Efectivo" como el único string mágico y tratar "Efectivo USD" como un caso aparte,
+    codificado explícitamente en cada lugar que hoy compara contra 'Efectivo'</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. COTIZACIÓN ============================ -->
+<h2>B. Cotización y trazabilidad</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Cotización a usar en el momento del cobro <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>tenant.cotizacion_usd</code> es un valor único que se pisa cada vez que se actualiza
+  (<code>useCotizacion.ts</code> hace <code>UPDATE tenants</code> directo, sin historial). Se usa hoy sólo al cargar
+  un producto <code>moneda_venta='usd'</code> al carrito — la conversión queda "congelada" en el
+  <code>precio_unitario</code> del ítem, pero la cotización usada NO se guarda en ningún lado de la venta.</div>
+  <ul class="opciones">
+    <li>(a) Usar siempre <code>tenant.cotizacion_usd</code> vigente al momento del cobro (la misma que ya se usa
+    para <code>precio_usd</code>)</li>
+    <li>(b) Snapshot congelado en la venta/movimiento — se guarda la cotización usada, para no perder
+    trazabilidad si la cotización cambia después</li>
+    <li>(c) El cajero puede editar la cotización puntual de esa venta (para negociar con el cliente), quedando
+    registrada aparte de la del tenant</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿Guardar la cotización usada en cada venta/movimiento de Caja USD? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy NO existe ninguna columna de cotización en <code>ventas</code>, <code>caja_movimientos</code>
+  ni <code>caja_sesiones</code> — sólo <code>tenant.cotizacion_usd</code> (valor único, sin historial) y
+  <code>cotizacion_usd_updated_at</code>. Si B1 se resuelve con snapshot (opción b/c), hace falta agregar columna(s)
+  nueva(s).</div>
+  <ul class="opciones">
+    <li>(a) Sí — agregar <code>cotizacion_usd</code> a <code>ventas</code> y a los movimientos de Caja USD
+    relevantes (arqueo, traspaso, bóveda)</li>
+    <li>(b) Alcanza con guardarla sólo en <code>ventas</code> (no en cada movimiento de caja)</li>
+    <li>(c) No hace falta — no se necesita trazabilidad de cotización histórica</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    ¿Quién puede editar la cotización vigente del tenant? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy cualquier usuario con el sidebar visible (<code>CotizacionWidget.tsx</code>) puede editar
+  <code>tenant.cotizacion_usd</code> sin restricción de rol y sin quedar registrado quién la cambió (sólo
+  <code>cotizacion_usd_updated_at</code>, sin <code>updated_by</code>). Con una Caja USD real operando, un cajero
+  podría alterar la cotización a su favor antes de cobrar.</div>
+  <ul class="opciones">
+    <li>(a) Mantener sin restricción — cualquier usuario con acceso al sistema (como hoy)</li>
+    <li>(b) Restringir a DUEÑO/SUPERVISOR — el CAJERO sólo ve la cotización, no la edita</li>
+    <li>(c) Cualquiera puede editarla pero queda registrado quién y cuándo (<code>updated_by</code>) para
+    auditoría</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. FACTURACIÓN AFIP ============================ -->
+<h2>C. Facturación AFIP</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    El comprobante AFIP — ¿siempre en pesos, o usar el soporte nativo de WSFE para moneda extranjera? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy <code>emitir-factura/index.ts</code> (línea ~485) y <code>emitir-factura-plataforma/index.ts</code>
+  (línea ~184) hardcodean <code>MonId: 'PES', MonCotiz: 1</code> en TODO comprobante, sin excepción. El propio motor
+  WSFE (<code>wsfe-core.ts</code>) ya sabe serializar <code>MonId</code>/<code>MonCotiz</code> como parámetros
+  dinámicos (WSFE soporta moneda extranjera con cotización), pero ningún caller lo usa hoy.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está — toda venta (aunque se haya cobrado en USD) se factura 100% en pesos (PES),
+    convertida a la cotización del momento, como cualquier venta (no tocar <code>emitir-factura</code>)</li>
+    <li>(b) Usar el soporte nativo de WSFE — comprobante declarado en moneda extranjera
+    (<code>MonId='DOL'</code>, <code>MonCotiz=</code>cotización del día) cuando la venta se cobró en USD</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Si se factura en pesos (C1-a): ¿qué cotización se declara? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">AFIP exige que las operaciones en moneda extranjera liquidadas en pesos usen la cotización del
+  Banco Nación tipo vendedor del día hábil anterior — que puede diferir de la cotización manual/API que hoy
+  carga el tenant (<code>cotizacion_usd</code>, hoy alimentada por <code>dolarapi.com</code>, no por BNA).</div>
+  <ul class="opciones">
+    <li>(a) Usar siempre <code>tenant.cotizacion_usd</code> (la que ya usa el POS), aceptando que puede no
+    coincidir exacto con el BNA</li>
+    <li>(b) Agregar una cotización BNA específica para AFIP (nueva fuente/API), separada de la cotización
+    comercial del POS</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Redondeo del total facturado en pesos vs. lo efectivamente cobrado en USD × cotización <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) La factura sale por el monto redondeado (puede no calzar centavo a centavo con lo cobrado en USD)</li>
+    <li>(b) El sistema ajusta el vuelto/cambio en USD para que el equivalente en pesos cierre exacto con la
+    factura</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. COBRO / VUELTO ============================ -->
+<h2>D. Cobro, vuelto y pago combinado</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Vuelto cuando el cliente paga con billetes USD y el monto no es exacto <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>calcularVuelto</code> (<code>ventasValidation.ts</code>) sólo sabe dar vuelto en la
+  MISMA moneda del total (pesos): filtra <code>tipo === 'Efectivo'</code> contra un <code>total</code> expresado en
+  pesos. No hay ningún concepto de "vuelto en otra moneda" hoy.</div>
+  <ul class="opciones">
+    <li>(a) El vuelto siempre se da en pesos, a la cotización vigente</li>
+    <li>(b) El vuelto siempre se da en USD (sólo posible si hay una Caja USD con billetes suficientes)</li>
+    <li>(c) El cajero elige en el momento del cobro (según qué billetes tenga a mano)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Pago combinado — parte en USD física + parte en ARS, en una misma venta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy <code>medio_pago</code> ya admite un array de métodos con un monto cada uno
+  (<code>[{"tipo":"Efectivo","monto":1500}]</code>), así que técnicamente ya se puede combinar "Efectivo" +
+  otro método en la misma venta. La pregunta es cómo se ingresa el monto en USD: si el cajero tipea directamente
+  dólares (y el sistema convierte a pesos para sumar contra el total) o si tiene que convertir mentalmente antes
+  de tipear.</div>
+  <ul class="opciones">
+    <li>(a) Sí, permitido — el cajero tipea el monto en USD, el sistema lo convierte a pesos con la cotización
+    vigente y lo suma al resto de los medios</li>
+    <li>(b) Sí, permitido, pero el cajero tipea directamente el equivalente en pesos (como cualquier otro
+    método hoy) — sin campo separado en USD</li>
+    <li>(c) No permitido — una venta se cobra 100% en una sola moneda</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    ¿Alguna caja/venta admite MÁS de un "tipo Efectivo" simultáneo (Efectivo ARS + Efectivo USD) en la misma
+    sesión de cajero? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy un cajero puede tener varias sesiones abiertas si hay varias cajas (selector visible
+  cuando hay ≥2 <code>sesionesAbiertas</code>), pero el ingreso de UNA venta siempre entra en UNA sola
+  <code>sesion_id</code> — nunca se reparte entre dos sesiones de caja distintas.</div>
+  <ul class="opciones">
+    <li>(a) Sí — si la venta tiene pago combinado ARS+USD, el ingreso ARS entra en la sesión de la Caja
+    Principal y el ingreso USD entra en la sesión de la Caja USD, automáticamente, en la misma operación</li>
+    <li>(b) No — para cobrar en USD el cajero tiene que tener la Caja USD seleccionada como caja activa de esa
+    venta (una sola caja por venta, como hoy)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. APERTURA/ARQUEO/CIERRE ============================ -->
+<h2>E. Caja USD — apertura, arqueo y cierre</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Se replica el mismo flujo de apertura/arqueo/cierre (D3 del relevamiento Caja) para la Caja USD? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy el flujo de apertura (<code>abrirCaja</code>), arqueo (tabla <code>caja_arqueos</code>:
+  <code>saldo_calculado</code>/<code>saldo_real</code> numeric, sin distinción de moneda) y cierre
+  (<code>cerrarCaja</code>) son genéricos — funcionan igual sin mirar <code>cajas.moneda</code>. Pero TODOS los
+  montos que el cajero ve/tipea en esos modales (saldo del header, apertura, arqueo, cierre, traspaso) se
+  formatean con <code>tenant.moneda</code> (típicamente "$" ARS) — hoy abrir una Caja USD muestra "$" igual que
+  una caja en pesos, algo confuso/incorrecto si se opera con dólares reales.</div>
+  <ul class="opciones">
+    <li>(a) Confirmar el mismo flujo — sólo corregir el bug de formato (mostrar "US$" cuando la caja/sesión
+    activa es USD, en vez de siempre <code>tenant.moneda</code>)</li>
+    <li>(b) Flujo separado/simplificado para Caja USD, con denominaciones típicas de billete USD
+    (1/5/10/20/50/100) en el arqueo</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Arqueo por denominación de billete USD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el arqueo (<code>caja_arqueos</code>) sólo pide un monto total contado
+  (<code>saldo_real</code>), sin desglose por denominación — igual en pesos.</div>
+  <ul class="opciones">
+    <li>(a) Alcanza con el mismo arqueo por monto total (como hoy en pesos), sin desglose por billete</li>
+    <li>(b) Agregar conteo por denominación de billete USD (1/5/10/20/50/100), que suma automáticamente el
+    total contado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Umbral de diferencia de arqueo en Caja USD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Un billete de más/menos vale mucho más en dólares que en pesos — el umbral de tolerancia
+  de diferencia que se defina para Caja (relevamiento previo, sección B) puede no ser apropiado para USD.</div>
+  <ul class="opciones">
+    <li>(a) Mismo umbral relativo (%) que en pesos, aplicado sobre el valor en USD</li>
+    <li>(b) Umbral propio en USD (ej: cualquier diferencia > US$1 pide observación obligatoria)</li>
+    <li>(c) Tolerancia cero — cualquier diferencia en USD pide observación obligatoria</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. TRASPASOS Y BÓVEDA ============================ -->
+<h2>F. Traspasos y Bóveda</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Traspaso entre una Caja ARS y una Caja USD <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>realizarTraspaso</code> (<code>CajaPage.tsx</code>) inserta un egreso en la sesión
+  origen y un ingreso en la sesión destino por el MISMO número, sin chequear ni convertir monedas — ni siquiera
+  valida que <code>cajaOrigen.moneda === cajaDestino.moneda</code>. Hoy es posible traspasar "100" de una Caja
+  ARS a una Caja USD y quedarían acreditados 100 dólares por error. Esto es un bug de integridad latente que hay
+  que cerrar antes de habilitar Cajas USD reales.</div>
+  <ul class="opciones">
+    <li>(a) Bloquear el traspaso entre cajas de distinta moneda (sólo se traspasa ARS↔ARS, USD↔USD)</li>
+    <li>(b) Permitir con conversión automática — el cajero ingresa el monto en la moneda de origen y el sistema
+    acredita el equivalente convertido en destino, a la cotización vigente</li>
+    <li>(c) Permitir, pero el cajero ingresa manualmente el monto ya convertido a acreditar en destino (sin
+    conversión automática)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Depósito de Caja USD a Bóveda — ¿mantiene el monto en dólares? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>operarCajaFuerte</code> (depósito a bóveda) siempre usa la ÚNICA cuenta tipo
+  "efectivo" del tenant como destino por default, sin filtrar por la moneda de la caja de origen.
+  <code>cuentas_origen.moneda</code> SÍ existe (mig 136) y <code>vw_boveda_cuentas</code> ya agrupa el "Capital
+  del negocio" por moneda sin convertir (comentario "CAJ-29" en el código) — es el precedente de diseño más
+  cercano — pero hoy no se siembra ninguna cuenta "Efectivo USD", y el modal de depósito no la sugiere según la
+  moneda de la caja origen.</div>
+  <ul class="opciones">
+    <li>(a) Sembrar automáticamente una cuenta "Efectivo USD" en <code>cuentas_origen</code> al crear la primera
+    Caja USD del tenant, y que el depósito la use como destino default</li>
+    <li>(b) El cajero elige manualmente la cuenta destino en cada depósito (ya es técnicamente posible hoy,
+    sólo falta que el modal la preseleccione/valide)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Retiro de Caja USD sin destino caja (el dueño se lleva dólares) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Análogo a E5 del relevamiento de Caja (retiro de bóveda con motivo obligatorio), pero
+  para dólares físicos.</div>
+  <ul class="opciones">
+    <li>(a) Mismo flujo que hoy en pesos — motivo obligatorio (Banco / Retiro personal / Otro)</li>
+    <li>(b) Requiere además contraseña maestra, dado el mayor valor de referencia del dólar físico</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. DEVOLUCIONES / NC ============================ -->
+<h2>G. Devoluciones y Notas de Crédito</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Reintegro de una venta cobrada en USD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el flujo de devolución de caja (relevamiento Caja, L1) y
+  <code>devolver_saldo_a_favor</code> no distinguen moneda — asumen que el reintegro sale de la misma
+  sesión/caja que cobró, en el mismo número. La cotización puede haber cambiado entre la venta y la devolución.</div>
+  <ul class="opciones">
+    <li>(a) El reintegro es en USD física, por el mismo número de dólares cobrado originalmente (sin
+    reconversión)</li>
+    <li>(b) El reintegro es en pesos, a la cotización del momento de la devolución (puede ser distinta a la de
+    la venta — el negocio absorbe o se beneficia de la diferencia)</li>
+    <li>(c) El reintegro es en pesos, pero SIEMPRE a la cotización original de la venta (congelada, si B1/B2 se
+    resuelve con snapshot)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Nota de Crédito AFIP de una venta cobrada en USD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Heredado de C1/C2: la NC AFIP tiene que salir en la misma moneda declarada en la factura
+  original (regla AFIP: <code>CbtesAsoc</code> exige coherencia de <code>MonId</code> con el comprobante
+  asociado). Si la factura salió en pesos (C1-a), ¿la NC usa la cotización de la venta original o la del momento
+  de la devolución?</div>
+  <ul class="opciones">
+    <li>(a) La NC usa la cotización de la VENTA original (coherente con lo facturado en su momento)</li>
+    <li>(b) La NC usa la cotización del momento de la DEVOLUCIÓN (puede generar una diferencia entre lo
+    facturado originalmente y lo acreditado)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. REPORTES / DASHBOARD ============================ -->
+<h2>H. Reportes y Dashboard</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Totales de ventas/caja — ¿un único total en pesos, o USD y ARS separados? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy todos los reportes/Dashboard muestran un único total en pesos. El único precedente de
+  "separado por moneda sin convertir" es la tarjeta "Capital del negocio" en la pestaña Bóveda de Caja
+  (<code>monedasCapital</code>, agrupa por <code>cuentas_origen.moneda</code>).</div>
+  <ul class="opciones">
+    <li>(a) Mostrar USD y ARS separados en todos los reportes de caja/ventas donde aplique (como ya hace
+    "Capital del negocio"), sin convertir a un total único</li>
+    <li>(b) Convertir todo a un total único en pesos (a la cotización vigente al momento de generar el reporte)</li>
+    <li>(c) Ambos — total único en pesos como resumen + detalle desglosado por moneda debajo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Dashboard — indicadores (ventas del día, ticket promedio, mix de medios de pago) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Incluyen las ventas cobradas en USD, convertidas a pesos a la cotización del día</li>
+    <li>(b) Excluyen las ventas en USD de los totales en pesos — se muestran aparte</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. PERMISOS ============================ -->
+<h2>I. Permisos y umbrales</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    ¿Quién puede operar la Caja USD? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Dado el mayor valor de referencia y menor tolerancia a error del efectivo en dólares.</div>
+  <ul class="opciones">
+    <li>(a) Cualquier CAJERO con acceso a Caja, igual que hoy en pesos</li>
+    <li>(b) Sólo DUEÑO/SUPERVISOR — el CAJERO no puede abrir/cerrar/operar la Caja USD</li>
+    <li>(c) Configurable por tenant (algunos confían el manejo de USD a cualquier cajero, otros no)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Umbrales de contraseña maestra / doble validación en USD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El relevamiento de Caja (B1/B5) define umbrales en pesos para pedir clave maestra en
+  cierres con diferencia. Un umbral en pesos puede no tener sentido para una Caja USD (valores absolutos muy
+  distintos).</div>
+  <ul class="opciones">
+    <li>(a) Mismo umbral relativo (%), aplicado sobre el valor en USD convertido a pesos</li>
+    <li>(b) Umbral propio en USD, configurable aparte del umbral en pesos</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. REDONDEO ============================ -->
+<h2>J. Redondeo</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    Redondeo al convertir USD↔ARS <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Redondeo al peso entero (sin centavos), a favor de quien resulte del cálculo matemático estándar</li>
+    <li>(b) Redondeo a favor del NEGOCIO (nunca perder centavos en la conversión)</li>
+    <li>(c) Redondeo a favor del CLIENTE (política comercial, genera fidelización)</li>
+    <li>(d) Sin redondeo — se maneja con decimales exactos (menos práctico para efectivo físico)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    Redondeo dentro de la propia Caja USD (centavos de dólar vs. sólo billetes enteros) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sólo billetes enteros (US$1 como unidad mínima) — no se manejan monedas/centavos de dólar</li>
+    <li>(b) Se permiten centavos de dólar (para negocios que manejan cambio chico en USD)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ K. TEMAS ABIERTOS ============================ -->
+<h2>K. Temas adicionales / abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    ¿Hoy resuelven el cobro en USD "a mano" (fuera del sistema)? Contá cómo lo hacen hoy — ayuda a diseñar el
+    flujo real
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K2</span><span class="pregunta-titulo">
+    ¿Algo que les gustaría que tenga y no está en este documento? (lista libre)
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K3</span><span class="pregunta-titulo">
+    Prioridad relativa: si tuvieran que elegir 3 features para implementar primero, ¿cuáles?
+  </span>
+  <div class="respuesta-libre">1) ____<br/>2) ____<br/>3) ____</div>
+</div>
+
+<div class="footer">
+  Documento generado automáticamente · Genesis360 v1.170.0 · Para devolverlo: respondan con los códigos
+  (ej: "A1=b, A2=a, B1=b...") y lo cargo al wiki en <code>G360.Wiki/wiki/development/reglas-negocio.md</code>.
+</div>
+
+</body>
+</html>

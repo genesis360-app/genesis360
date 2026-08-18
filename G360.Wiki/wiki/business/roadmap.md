@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-13
+updated: 2026-08-18
 ---
 
 # Roadmap y Versiones
@@ -11,12 +11,47 @@ updated: 2026-08-13
 **Versión en PROD:** v1.170.0 (código/Vercel, CONFIRMADO de forma independiente — PR #330 mergeado a
 `main` (`0687213b39ce7d942de8763756245016a5556cff`), tag+release `v1.170.0` publicados,
 `src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
-`dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **2 migraciones nuevas — 358 y 359 (la última
-migración es la 359).** Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de
-verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.170.0 (`origin/dev`, en paridad con PROD tras el merge del PR #330, commit
-`5576092f`) — sin pendientes de deploy  
-**Última actualización:** 13 de Agosto, 2026
+`dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
+completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
+**Versión en DEV:** v1.171.0 (`origin/dev`, commit `0b4d431a` — commiteado y pusheado, tag+release
+`v1.171.0` publicados, **SIN PR a `main`, SIN deploy a PROD**). **11 migraciones nuevas sobre PROD — 360 a
+370 (la última migración es la 370).**  
+**Última actualización:** 18 de Agosto, 2026
+
+---
+
+## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2) + auditoría de performance/seguridad + fixes de moneda en Producto — 🟡 EN DEV, sin deploy a PROD (2026-08-18)
+
+Commit + push a `origin/dev` de TODO el trabajo acumulado de varias sesiones previas (llevaba días sin
+resguardo en git) más una fase nueva construida en esta sesión — un solo commit `310d9b3b` + bump de
+versión `0b4d431a`, tag+release `v1.171.0` publicados sobre `dev` (no sobre `main`). **11 migraciones
+nuevas: 360 a 370.**
+
+- **Caja en Dólares (relevamiento G5) — Fase 1 (cimientos) + Fase 2 (permisos/config) completas** (migs
+  368-370): moneda real en `caja_sesiones`/`caja_movimientos`/`caja_arqueos` (antes solo etiqueta),
+  `ventas.cotizacion_usd` (snapshot), `metodos_pago.es_efectivo`/`moneda` reemplaza el string hardcodeado
+  `'Efectivo'`. Fase 2: cotización con compra+venta+casa (blue/oficial/bolsa/cripto); gate de rol para
+  elegir tipo de cotización (DUEÑO siempre + roles configurables, resto solo refresca, implementado en
+  `useCotizacion.ts` — defensa en profundidad); roles habilitados para operar la futura Caja USD; umbrales
+  propios en USD (arqueo, clave maestra); checkbox `productos.acepta_cualquier_moneda`. Ninguna Caja USD
+  operando de verdad todavía — falta Fase 3 en adelante.
+- **Auditoría de performance/seguridad** (migs 361-366): lock anti doble-submit en `emitir-factura`
+  (🛑 REGLA #0 fiscal), reserva de stock atómica con `SELECT ... FOR UPDATE` (🛑 REGLA #0 inventario,
+  causa raíz de VEN-23), 6 índices FK faltantes en rutas calientes, dedupe real del sync a MercadoLibre,
+  fix de fórmula en `fn_notificar_cc_vencidas`, RLS `auth.uid()` envuelto en `(select ...)`.
+- **Fix sincronización Pedido↔Envío** (mig 360): el envío real nunca marcaba el pedido como entregado.
+- **Fix 2 bugs de moneda en Producto** reportados por Fede (mig 367): tiers mayoristas ganan
+  `tipo_valor='usd'`; costo/precio en USD ya no se pierden al reabrir la ficha (antes vivían en un
+  `useState` efímero sin persistir).
+
+Typecheck + build + suite completa de tests verdes antes de cada aplicación (última verificación: 99
+archivos, 1574 tests). Todas las migraciones pasaron por `migration-reviewer` (APTA) antes de aplicarse a
+DEV; la 370 además por `code-reviewer` (OK, sin hallazgos 🔴).
+
+**Estado real: DEV en migs 001-370, COMMITEADO Y PUSHEADO a `origin/dev`, tag+release `v1.171.0`
+publicados. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle completo:
+`sources/raw/project_pendientes.md` (cont. 12), `log.md`, [[wiki/features/caja]] (sección "Caja en USD —
+Fase 2 de 8"), [[wiki/features/productos]], `wiki/database/migraciones.md` (migs 360-370).
 
 ---
 

@@ -2,8 +2,8 @@
 title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
-sources: [CLAUDE.md, migrations 289, 290, 292, 299]
-updated: 2026-08-08
+sources: [CLAUDE.md, migrations 289, 290, 292, 299, 370]
+updated: 2026-08-18
 ---
 
 # Módulo Configuración
@@ -165,6 +165,15 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 > Caja" — decía que faltaba "doble validación cierre" cuando esa función ya estaba implementada con
 > un checkbox real (ver [[wiki/features/caja]] → v1.9.5, B7). Ahora solo menciona lo que sigue
 > pendiente: tolerancia de diferencia en arqueo y panel cajero.
+
+> [!NOTE] **🆕 Sección "Caja en Dólares" (mig 370, Fase 2 de Caja USD/G5, 🟡 EN DEV, COMMITEADO Y
+> PUSHEADO a `origin/dev` — commit `310d9b3b`, tag `v1.171.0`, SIN deploy a PROD, 2026-08-18).** Nueva
+> sección junto a "Diferencias en cierre de caja": pills de roles habilitados para elegir tipo de
+> cotización (`tenants.cotizacion_usd_roles_permitidos`), pills de roles habilitados para operar la
+> futura Caja USD (`caja_usd_roles_permitidos`), input de umbral de diferencia de arqueo en USD
+> (`diferencia_caja_umbral_usd`) e input de umbral de clave maestra en USD
+> (`caja_usd_clave_maestra_umbral`), con botón de guardado propio. Detalle completo en
+> [[wiki/features/caja]] → "Caja en USD — Fase 2 de 8".
 
 ---
 

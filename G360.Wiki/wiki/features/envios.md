@@ -2,8 +2,8 @@
 title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351]
-updated: 2026-08-11
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360]
+updated: 2026-08-18
 ---
 
 # Módulo Envíos
@@ -273,6 +273,20 @@ Soporte para N fotos por envío. Mantiene compatibilidad con `envios.pod_url` (l
 ### Cron limpieza tokens transportista (v1.10.1, migration 143)
 
 pg_cron diario 07:00 UTC `cleanup_envio_tokens_transportista` que setea `token_transportista = NULL` en envíos en `entregado`/`cancelado`/`devolucion` con +30 días desde el último update. Invalida los links públicos viejos sin tocar el resto del envío. Los chofers no pueden seguir actualizando estado vía un link que ya cumplió su propósito.
+
+### 🆕 Sincroniza `pedidos.estado` al entregar (mig 360, 2026-08-14, EN DEV — commiteado y pusheado, sin PROD)
+
+Hasta esta migración, marcar un envío como `entregado` (modal POD acá arriba, o vía
+`update_envio_by_token` desde la página Transportista) nunca avisaba a Pedidos si el envío tenía
+`pedido_id` — el pedido asociado quedaba pegado en `listo_para_entrega` para siempre, una contradicción
+visible en la ficha de venta ("Envío · Entregado" junto a "Pedido · Listo para entrega"). Trigger nuevo
+`trg_envio_entregado_sincroniza_pedido` (`AFTER INSERT OR UPDATE OF estado ON envios`, `SECURITY
+DEFINER` con guard de `tenant_id`) sincroniza `pedidos.estado='entregado'` + `pedido_items.
+cantidad_entregada`/`estado` para las líneas no canceladas, sin importar qué código marcó el envío como
+entregado — cubre este modal, la página Transportista, y cualquier camino futuro (webhooks TN/MELI).
+Causa raíz, diseño completo y verificación en DEV: [[wiki/features/pedidos]] → sección junto a la
+"Cuarta barrera" (Ventas↔Pedidos↔Envíos). **Estado real: aplicado y verificado en DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), SIN aplicar a PROD.**
 
 ---
 

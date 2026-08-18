@@ -2,8 +2,8 @@
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging, pildoras, buscador]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
-updated: 2026-08-13
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, 360, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
+updated: 2026-08-18
 ---
 
 # Módulo Pedidos
@@ -747,6 +747,53 @@ canal ONLINE sin envío (= retiro en local)                    -> genera
 > estado en DEV, dejada como evidencia viva del bug — no hay backfill/fix retroactivo de datos (misma
 > regla de no reescribir históricos). No confundir con la venta #619 (caso de estudio de la Cuarta
 > barrera original, arriba) — son ventas reales distintas del mismo tenant.
+
+> 🚚📦 **Sincronización Pedido↔Envío al entregar (mig 360, 2026-08-14, EN DEV — construida, revisada por
+> `migration-reviewer` y verificada, COMMITEADA Y PUSHEADA a `origin/dev` desde el 2026-08-18 (commit
+> `310d9b3b`, tag `v1.171.0`), SIN aplicar a PROD) — gap real y distinto de
+> las barreras de arriba: no es un guard contra doble rebaje, es que el pedido nunca se enteraba de que
+> su envío ya se había entregado.** GO notó, conversando con Claude, una contradicción real y visible en
+> la ficha de una venta con envío real (courier/reparto propio): dos badges independientes,
+> "Envío #N · Entregado" junto a "Pedido #N · Listo para entrega" — el pedido quedaba pegado ahí para
+> siempre, aunque la mercadería ya se hubiera entregado.
+>
+> **Causa real**: el camino "retiro en mostrador" SÍ está bien sincronizado — `fn_pedido_entregar_retiro`
+> (mig 316, ver más abajo "La pestaña Ventas → Pedidos") actualiza `pedidos` Y `envios` en la misma
+> transacción. Pero el camino "envío real" nunca pasa por ahí: `EnviosPage.tsx` (`savePod`, guardar
+> prueba de entrega) hace un `UPDATE envios SET estado='entregado', ...` directo, sin tocar `pedidos`
+> para nada. Confirmado revisando las migraciones 292-351 completas: nunca existió ningún trigger/RPC
+> que sincronizara esto para el camino de envío real.
+>
+> **Fix**: trigger `AFTER INSERT OR UPDATE OF estado ON envios` (`trg_envio_entregado_sincroniza_pedido`,
+> `SECURITY DEFINER`, mismo criterio de diseño que la mig 315 — un trigger en vez de tocar
+> `EnviosPage.tsx`, para cubrir cualquier camino futuro que marque un envío entregado, incluidos
+> webhooks TN/MELI a futuro) — cuando un envío pasa a `entregado` y tiene `pedido_id`, sincroniza
+> `pedidos.estado='entregado'` + `entregado_at=now()` (solo si el pedido no está ya `entregado` ni
+> `cancelado` — idempotente) y `pedido_items.cantidad_entregada=cantidad`/`estado='preparado'` para las
+> líneas no canceladas. Envuelto en `EXCEPTION WHEN OTHERS`: nunca debe bloquear el guardado real de un
+> POD por un problema de sincronización del lado de Pedidos.
+>
+> 🛑 **Hallazgo del `migration-reviewer` corregido antes de aplicar**: la primera versión no filtraba por
+> `tenant_id` — como la función es `SECURITY DEFINER`, eso bypasseaba RLS (un envío cuyo `pedido_id`
+> apuntara a un pedido de OTRO tenant hubiera podido escribir ahí). Se agregó el mismo chequeo explícito
+> que ya usa `trg_envio_marca_pedido_con_envio` (mig 315): si el `tenant_id` del pedido no coincide con
+> el del envío, el trigger no toca nada.
+>
+> **Verificado con datos reales de DEV**: (1) pedido #89 (tenant "Almacén Jorgito", envío canal
+> "Propio") en `confirmado` → se marcó su envío `entregado` → el pedido pasó solo a `entregado` con
+> `entregado_at` seteado; (2) repetir la misma UPDATE del envío no movió `entregado_at` (idempotente,
+> sin error); (3) un envío de un tenant apuntando (a propósito, como prueba) a un pedido de OTRO tenant
+> no tocó el pedido ajeno al marcarse entregado (guard de tenant funciona; dato de prueba revertido
+> después); (4) se encontró y corrigió un caso real preexistente del bug: pedido #106 tenía su envío
+> `entregado` desde antes de este fix (meses), `cantidad_entregada=0` y
+> `pedidos.estado='listo_para_entrega'` para siempre — backfill puntual (dato de test, no fiscal) con
+> la misma lógica del trigger; se buscó con una query si había más pedidos en el mismo estado
+> inconsistente en DEV y no había ninguno más.
+>
+> **Estado real: migración escrita, revisada por `migration-reviewer`, aplicada y verificada en DEV
+> (`gcmhzdedrkmmzfzfveig`) — COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`,
+> 2026-08-18), SIN aplicar a PROD.** Ver
+> [[wiki/features/envios]] → "POD — Proof of Delivery" para el lado del envío.
 
 Deriva de `canales_venta.clasificacion` (mig 168): **no hay nada que configurar** y es correcto por
 default para todos los tenants. `tenants.pedido_canales_excluidos` es solo la excepción (canales que

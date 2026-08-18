@@ -2,8 +2,8 @@
 title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf]
-updated: 2026-06-16
+sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370]
+updated: 2026-08-18
 ---
 
 # Módulo Caja
@@ -335,6 +335,24 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 - Listados: badge `MONEDA` junto al nombre en pílulas del selector (solo si difiere de la moneda del tenant) y en lista del tab Configuración.
 - Para manejar varias monedas, crear cajas separadas (ej: `Caja USD` además de `Caja Principal`).
 
+> [!NOTE] **🚧 EN CONSTRUCCIÓN — proyecto "Caja en USD" (relevamiento G5, 2026-08-18).** Hasta acá
+> `cajas.moneda` era solo una ETIQUETA visual — `caja_movimientos`/`caja_sesiones`/`caja_arqueos` no
+> tenían columna de moneda propia, y "efectivo real" (línea de arriba: ingreso/egreso que afecta saldo)
+> era un string hardcodeado `'Efectivo'` en varios lugares del código. **Fase 1 de 8 completa en DEV**
+> (migs 368/369): se agregó `moneda` real a `caja_sesiones`/`caja_movimientos`/`caja_arqueos`
+> (denormalizada desde `cajas.moneda`), `ventas.cotizacion_usd` (snapshot interno), y
+> `metodos_pago.es_efectivo`/`moneda` reemplaza el string hardcodeado en los 4 lugares que lo usaban
+> (`ventasValidation.ts`, `VentasPage.tsx`, `GastosPage.tsx`, y los RPC `fn_pedido_generar_venta`/
+> `marcar_envios_pagados`/`registrar_pago_oc`) — comportamiento idéntico a hoy para todo tenant existente.
+> **Fase 2 de 8 completa en DEV** (mig 370, ver sección dedicada "Fase 2 de Caja USD — permisos y
+> configuración" más abajo): permisos de quién elige tipo de cotización, quién opera Caja USD, umbrales
+> propios en USD, y el checkbox `productos.acepta_cualquier_moneda`. **Estado real: migs 368-370
+> APLICADAS Y VERIFICADAS en DEV, código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag
+> `v1.171.0`), SIN deploy a PROD.** Todavía NO hay ninguna Caja USD operando de verdad (falta Fase 3 en
+> adelante: ciclo operativo apertura/arqueo/cierre moneda-aware, pago combinado, Bóveda por moneda,
+> devoluciones/NC, reportes). Ver el relevamiento completo (29 preguntas respondidas) en
+> [[wiki/development/reglas-negocio]] → "Caja en USD / Venta física en USD".
+
 ### H1 · Cuentas de Origen + Bóveda discriminada
 
 > Feature transversal que vincula cobros a cuentas bancarias/billeteras para conciliación virtual.
@@ -446,3 +464,74 @@ Indicador **Total: $X** arriba a la derecha (visible solo para DUEÑO+) sumando 
 - **Selector de caja en la VENTA (v1.78.3):** excluye la sesión permanente de la Caja Fuerte (solo cajas operativas); con 1 caja abierta se autopreselecciona (antes la bóveda inflaba el conteo y obligaba a elegir).
 - **Arqueo repetible (v1.78.4):** se pueden hacer **varios arqueos parciales por sesión** (siempre se pudo — no hay constraint ni guard; era descubribilidad). El botón ahora dice "Arqueo" + tooltip. La fila de acciones es `flex-wrap`.
 - **Layout:** el módulo Caja usa **pantalla completa**; el tab principal va en **2 columnas** (izq: saldo + acciones sticky / der: movimientos + arqueos + cierre).
+
+---
+
+## 🚧 Caja en USD — Fase 2 de 8 (permisos y configuración) — EN DEV, mig 370 (2026-08-18)
+
+Segunda fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
+en USD / Venta física en USD"). La Fase 1 (migs 368/369, ver nota en "F1 · Cajas separadas por moneda"
+arriba) generalizó el dato ("efectivo real" ya no es un string hardcodeado); esta fase agrega **quién**
+puede configurar/operar cada pieza. **Todavía NO hay ninguna Caja USD operando de verdad** — eso es Fase 3
+en adelante. **Estado real: mig 370 APLICADA Y VERIFICADA en DEV, código COMMITEADO Y PUSHEADO a
+`origin/dev` (commit `310d9b3b`, tag `v1.171.0`), SIN deploy a PROD.**
+
+### Columnas nuevas (migration 370)
+
+| Columna | Tabla | Uso |
+|---------|-------|-----|
+| `cotizacion_usd_compra` | `tenants` | Pata de compra de la cotización (la API ya la devolvía; antes se descartaba y solo se guardaba `venta`) |
+| `cotizacion_usd_casa` | `tenants` | Qué casa (blue/oficial/bolsa/cripto) se usó la última vez que se actualizó la cotización |
+| `cotizacion_usd_roles_permitidos` | `tenants` (jsonb) | Roles ADICIONALES a DUEÑO que pueden elegir tipo de cotización o cargar un valor manual — DUEÑO siempre puede, sea cual sea lo guardado. Acepta roles fijos y custom (`custom:<id>`) |
+| `caja_usd_roles_permitidos` | `tenants` (jsonb) | Mismo patrón aditivo, para quién podrá operar la futura Caja USD (Fase 3+) |
+| `diferencia_caja_umbral_usd` | `tenants` | Umbral de diferencia de arqueo propio en USD, separado del umbral en pesos (`boveda_umbral_caja`) |
+| `caja_usd_clave_maestra_umbral` | `tenants` | Umbral USD para exigir clave maestra en un retiro/movimiento de Caja USD — el campo nace acá, el **enforcement real llega en la Fase 5** |
+| `acepta_cualquier_moneda` | `productos` (boolean, default `false`) | Checkbox "puede cobrarse en cualquier moneda" (A2 del relevamiento), independiente de `moneda_venta`/`precio_usd`. Solo se persiste en esta fase — el cobro mixto real de monedas es Fase 4, sin construir |
+
+### Gate de rol para elegir tipo de cotización — `useCotizacion.ts` (defensa en profundidad)
+
+Antes de esta fase, **cualquier usuario con acceso al sidebar** podía elegir el tipo de dólar (blue/
+oficial/bolsa/cripto) o cargar un valor manual — sin ningún gate de rol. Ahora:
+
+- **DUEÑO**: siempre puede elegir tipo y cargar manual, sea cual sea lo guardado en `cotizacion_usd_roles_permitidos`.
+- **Roles habilitados** (`tenants.cotizacion_usd_roles_permitidos`): mismo permiso que DUEÑO.
+- **Resto de roles**: solo puede "refrescar" — repite la última casa usada (`cotizacion_usd_casa`), sin poder cambiar de casa ni cargar un valor manual.
+- El gate está implementado **en el hook** (`src/hooks/useCotizacion.ts`), no solo ocultando el control en la UI — defensa en profundidad, coherente con el resto de guards de REGLA #0.
+- El hook ahora guarda **compra + venta + casa** de la API (antes solo guardaba `venta`).
+
+`src/components/CotizacionWidget.tsx` respeta el gate: dropdown de casas + edición manual solo visibles
+para roles permitidos; el resto ve un simple botón "Actualizar".
+
+### `rolEnLista()` — helper genérico nuevo (`cajaPermisos.ts`)
+
+`src/lib/cajaPermisos.ts` gana una función genérica `rolEnLista(rol, rolCustomId, lista)` (roles fijos +
+roles custom `custom:<id>`), usada por los checks de `cotizacion_usd_roles_permitidos`/
+`caja_usd_roles_permitidos`. `accedeABoveda` (la función existente que gatea la Caja Fuerte) fue
+refactorizada para reusar este helper — **verificado que su comportamiento no cambió**.
+
+### Checkbox "Puede cobrarse en cualquier moneda" — `ProductoFormPage.tsx`
+
+Cableado en los 4 puntos: estado inicial del formulario, carga desde DB al editar, payload de creación/
+edición, y payload de "Duplicar producto". Ver [[wiki/features/productos]] → "Card 2: Clasificación".
+
+### Config → Negocio → sección "Caja en Dólares" — `ConfigPage.tsx`
+
+Nueva sección (junto a "Diferencias en cierre de caja"):
+- Pills de roles habilitados para elegir tipo de cotización
+- Pills de roles habilitados para operar Caja USD
+- Input de umbral de diferencia de arqueo en USD
+- Input de umbral de clave maestra en USD
+- Botón de guardado propio (independiente del resto de Config → Negocio)
+
+### Revisión y verificación
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. `code-reviewer`: OK para commitear, sin hallazgos
+🔴 (2 mejoras de forma ya aplicadas: `setTenant` alineado al patrón `.select().single()` del resto del
+código, y agregado de escenarios UAT). Verificado en DEV con `information_schema.columns` (las 7 columnas
+nuevas, tipo/nullable/default correctos). Typecheck + build + suite completa de tests (99 archivos, 1574
+tests) verdes antes y después. UAT nuevos: `PRD-20` (checkbox persiste) y `CAJ-30` (gate de rol en
+cotización) en `tests/specs/uat-modo-basico.md`.
+
+**Próximo paso: Fase 3** (ciclo operativo de Caja USD — apertura/arqueo/cierre moneda-aware en
+`CajaPage.tsx`, corrige el bug de formato que hoy muestra "$" en una caja USD, bloquea traspasos entre
+cajas de distinta moneda).

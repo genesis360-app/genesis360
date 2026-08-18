@@ -2,8 +2,8 @@
 title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
-sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, 344, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts]
-updated: 2026-08-12
+sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, 344, 367, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts, tests/unit/tiers.test.ts]
+updated: 2026-08-18
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
@@ -99,10 +99,15 @@ completa queda diferida a un paso aparte (ver abajo).
 ### Modelo de datos (migs 329/330)
 
 - **Mig 329** (`producto_precios_mayorista`): dos columnas nuevas.
-  - **`tipo_valor`** ('precio_fijo', default/legacy | 'pct'): un tier puede ser un **% de
-    descuento** en vez de un precio fijo. El % siempre se aplica sobre el precio de **LISTA**
+  - **`tipo_valor`** ('precio_fijo', default/legacy | 'pct' | 'usd', mig 367): un tier puede ser un
+    **% de descuento** en vez de un precio fijo. El % siempre se aplica sobre el precio de **LISTA**
     (`productos.precio_venta`), **nunca** sobre un precio ya rebajado por otra capa — CHECK
     `producto_precios_mayorista_precio_pct_chk` (0-100) valida el rango cuando `tipo_valor='pct'`.
+    **`'usd'`** (mig 367, 🛑 bug real reportado por Fede — antes solo existía `$`/`%`, un tier fijo
+    siempre se cobraba en pesos sin mirar la moneda del producto): `t.precio` es un monto en
+    dólares, se convierte a `tenants.cotizacion_usd` vigente al resolver el precio; sin cotización
+    cargada (0/null) el tier NO se aplica (usa precio de lista), mismo criterio defensivo que un
+    tier sin match — nunca cobra "10" como si fueran 10 pesos por error.
   - **`presentacion_id`** (FK nullable → `producto_presentaciones(id)`, `ON DELETE SET NULL`):
     enlace **opcional** a una línea puntual del árbol de empaque. Si está seteado, el tier se
     evalúa contra la cantidad de **MÚLTIPLOS COMPLETOS** de esa presentación
@@ -123,9 +128,12 @@ completa queda diferida a un paso aparte (ver abajo).
 
 ### Cómo se resuelve el precio (`src/lib/tiers.ts` + espejo SQL en `fn_precio_venta_efectivo`)
 
-- **`precioUnitarioDeTier(tier, precioLista)`** — precio por unidad de un tier individual
-  ($/unidad si `precio_fijo`, `precioLista × (1 - pct/100)` si `pct`).
-- **`resolverBloquesTier(tiers, cantidadTotal, precioLista)`** — separa la cantidad total del SKU en
+- **`precioUnitarioDeTier(tier, precioLista, cotizacionUsd?)`** — precio por unidad de un tier
+  individual ($/unidad si `precio_fijo`, `precioLista × (1 - pct/100)` si `pct`, `precio × cotizacionUsd`
+  si `usd` — sin cotización, cae a `precioLista`). El 3er parámetro es opcional y se enhebra por las
+  4 funciones de abajo (mig 367); `VentasPage.tsx` pasa `cotizacionUSD` (mismo hook `useCotizacion`
+  que usa el resto del checkout) en sus 2 call sites (`mejorPrecioMayorista`/`precioBlendedTier`).
+- **`resolverBloquesTier(tiers, cantidadTotal, precioLista, cotizacionUsd?)`** — separa la cantidad total del SKU en
   el carrito en **bloques**: si hay un tier enlazado a una presentación cuyos múltiplos completos
   matchean su regla (ej. "≥ 1 pallet"), ese bloque compite contra el **mejor tier normal** que
   también aplique a esa misma cantidad (gana el mejor precio, no se acumulan) — y el **resto**
@@ -133,7 +141,7 @@ completa queda diferida a un paso aparte (ver abajo).
   Entre varios tiers enlazados que matcheen a la vez (ej. uno por Caja y otro por Pallet), gana el
   de mejor precio unitario. Si ningún tier enlazado matchea, devuelve un único bloque —
   comportamiento IDÉNTICO al de siempre.
-- **`precioBlendedTier(tiers, cantidadTotal, precioLista)`** — precio unitario ÚNICO "equivalente" a
+- **`precioBlendedTier(tiers, cantidadTotal, precioLista, cotizacionUsd?)`** — precio unitario ÚNICO "equivalente" a
   los bloques: el **promedio ponderado por cantidad**. Existe para integrarse sin romper
   `getItemSubtotal` (que multiplica "un precio × la cantidad de la línea"): aplicado a
   **cualquier** reparto de la misma cantidad total entre varias líneas/entregas del carrito,

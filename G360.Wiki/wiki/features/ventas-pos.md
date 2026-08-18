@@ -2,8 +2,8 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, src/lib/tiers.ts, src/lib/ventasFiltro.ts]
-updated: 2026-08-13
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
+updated: 2026-08-18
 ---
 
 # Ventas / POS
@@ -171,6 +171,25 @@ Toggle en el checkout:
 - Cola secuencial: `scanQueueRef` + `scanProcessingRef` procesa de a uno
 - Mismo producto sin series → suma cantidad, no crea nueva línea
 - `pendingAddRef` previene duplicados por concurrencia
+
+### Memoización del carrito (2026-08-14, auditoría de performance, frontend #5)
+- El carrito recalculaba `stockDisp` (un `reduce` sobre `lineas_disponibles`) y llamaba
+  `atributoAmbiguoEnStock()` **dos veces por línea en cada render de toda la página** — incluso al
+  tipear en el buscador de productos, sin ninguna relación con el carrito.
+- Fix: `useMemo` nuevo `cartDerived` — `Map<CartItem, { stockDisp, atributoAmbiguo }>` indexado por
+  referencia del `item`, solo se recalcula cuando `cart` cambia de verdad. El JSX del carrito no se
+  tocó, solo de dónde sale el valor (`cartDerived.get(item)?.stockDisp` en vez del `reduce` inline).
+- **Diferido a propósito** (misma auditoría, mismo ítem del top5): extraer 2-3 modales del carrito a
+  componentes propios — es el cambio de mayor riesgo/esfuerzo de todo el top5 (mover JSX+estado+
+  handlers de un componente de 8500+ líneas, núcleo del POS), no se podía verificar con la misma
+  confianza que el resto sin un review más profundo.
+- Verificado con `tsc`+build verdes y la suite e2e real; los specs "mutante" de atributo ambiguo
+  (`95_rebaje_masivo_atributo_ambiguo_mutante`, `96_venta_bloqueada_atributo_ambiguo_mutante`)
+  fallaron en la corrida pero se confirmó con `git stash` que la misma falla ya existía contra el
+  código original (dato preexistente de corridas anteriores, no una regresión de este cambio).
+- **Estado: código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `310d9b3b`, tag `v1.171.0`,
+  2026-08-18), SIN deploy a PROD. Ver [[wiki/architecture/frontend-stack]] → nota de code-splitting
+  xlsx/jspdf para el otro hallazgo frontend de la misma auditoría.
 
 ---
 
@@ -538,8 +557,8 @@ validarDespacho(carrito, medios)    // cubre el total
 calcularSaldoPendiente(venta)       // total - monto_pagado
 validarSaldoMediosPago(saldo, medios)
 acumularMediosPago(anterior, nuevo)
-calcularVuelto(medios, total)
-calcularEfectivoCaja(medios, total)
+calcularVuelto(medios, total, mediosEfectivo?)       // mig 368/369: set de metodos_pago.es_efectivo del tenant
+calcularEfectivoCaja(medios, total, mediosEfectivo?)  // default preserva el comportamiento de siempre (solo 'Efectivo')
 calcularComboRows(carrito)
 restaurarMediosPago(json)
 esDecimal(unidadMedida)

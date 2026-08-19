@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-19] update | Cierre de sesión: Fase 4 (mig 372) COMMITEADA Y PUSHEADA (v1.173.0) + reconciliación de todo el wiki para /clear
+
+**Corrección primero**: la entrada de abajo (Fase 4/8 de Caja USD, mig 372) quedó documentada como "EN DEV
+sin commitear" en el momento en que se escribió, pero en una tanda posterior de esa misma sesión SÍ se
+commiteó y pusheó a `origin/dev` — wiki en commit `7d511c5d`, código en commit `d783727d`, bump de versión
+`05801eb4`, tag+release **`v1.173.0`** publicados (verificado con `git log origin/dev..dev` vacío y
+`git describe --tags` = `v1.173.0`). Con esto, **Fases 1+2+3+4/8 de Caja USD (migs 368-372) están 100%
+completas y commiteadas** en `dev`. Sigue sin PR a `main`, sin deploy a PROD.
+
+GO pidió dejar todo listo para hacer `/clear` y continuar en una sesión nueva. Se hizo un barrido completo
+del wiki buscando referencias "SIN COMMITEAR"/"TODAVÍA SIN COMMITEAR" que quedaron obsoletas tras el commit
+de Fase 4 (`sources/raw/project_pendientes.md`, `index.md`, `wiki/business/roadmap.md`,
+`wiki/database/migraciones.md`, `wiki/development/reglas-negocio.md`, `wiki/features/caja.md`,
+`wiki/features/configuracion.md`, `wiki/features/gastos.md`, `wiki/features/ventas-pos.md`) y se corrigió
+cada una para reflejar el estado real. De paso se encontró y corrigió un gap real: `roadmap.md` no tenía
+la sección `## v1.173.0` (el wiki-keeper la había salteado por el corte de spend limit, ver más abajo) —
+se agregó, en el mismo formato que las secciones `v1.171.0`/`v1.172.0` existentes. Todas las demás
+menciones "SIN COMMITEAR" que quedan en el wiki son texto histórico de sesiones anteriores (marcado
+explícitamente `histórico` o dentro de este mismo `log.md`, que es append-only) — no son el estado actual.
+
+**Nota operativa (no bloqueante):** durante la documentación de la Fase 4, el subagente `wiki-keeper` falló
+a mitad de camino con "You've hit your monthly spend limit" (límite de gasto mensual de la cuenta de
+Claude). En vez de asumir que el trabajo se perdió, se verificó con `git diff --stat`/`git diff` por
+archivo — el agente había completado ~95%+ del trabajo de forma coherente en los 10 archivos objetivo antes
+de la interrupción; no se rehizo el trabajo, se revisó y se corrigió el único hallazgo real (un comentario
+con la firma de parámetros equivocada de `calcularEfectivoPorMoneda` en `ventas-pos.md`). Lección para la
+próxima vez que un subagente reporte fallo por spend limit: verificar con git diff antes de descartar o
+reintentar.
+
+Commit de esta reconciliación: `1a5609d0` (solo wiki, sin cambios de código). **Estado real al cierre:
+DEV en migs 001-372, TODO commiteado y pusheado a `origin/dev` (tag `v1.173.0`), wiki 100% consistente, sin
+contradicciones conocidas. Próxima sesión (post-`/clear`): arrancar directo con la Fase 5/8 (Bóveda —
+pestañas ARS/USD, conversión USD↔$, retiro con clave maestra), no hay nada pendiente de commitear/pushear
+de esta sesión.** Sin PR a `main`, sin deploy a PROD.
+
+---
+
 ## [2026-08-18] update | Fase 4/8 de Caja USD (G5): venta con pago combinado ARS+USD — mig 372, EN DEV sin commitear
 
 Continuación directa de la Fase 3 (entrada de abajo, mig 371) — **corrección importante primero**: esa

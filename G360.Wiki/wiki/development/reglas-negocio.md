@@ -293,16 +293,18 @@ Razones:
 > **A1 = (b) Caja USD completa**, con su propio ciclo apertura→cobro→arqueo→cierre, activando la lógica
 > real detrás de `cajas.moneda` (hoy solo una etiqueta) — no el MVP mixto (a)/(c). Fede pidió
 > explícitamente no ir por partes ("no estar haciendo y deshaciendo") — K3 (prioridad) = "TODO", sin orden
-> parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos de datos, migs 368+369), Fase 2
-> (permisos y configuración, mig 370) y Fase 3 (ciclo operativo, mig 371) 100% COMPLETAS en DEV**
-> (2026-08-18). Fases 1+2 (migs 368-370) COMMITEADAS Y PUSHEADAS a `origin/dev` (commit `310d9b3b`, tag
-> `v1.171.0`); Fase 3 (mig 371) aplicada y verificada en DEV, **TODAVÍA SIN COMMITEAR** al cierre de esta
-> tanda (GO commitea). SIN deploy a PROD en ningún caso. La Fase 3 ya activa el ciclo operativo real de
-> una Caja USD: formato de moneda correcto (fix del bug de "$"), conteo por denominación de billete
-> (J2), umbral de diferencia propio en USD, y 2 triggers server-side (defensa en profundidad) que
-> bloquean traspaso cross-moneda (F1) y abrir una Caja USD sin permiso de rol (I1). Detalle técnico
-> completo: [[wiki/features/caja]] → "Caja en USD — Fase 3 de 8", `wiki/database/migraciones.md` (migs
-> 368-371).
+> parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos, migs 368+369), Fase 2 (permisos y
+> configuración, mig 370), Fase 3 (ciclo operativo, mig 371) y Fase 4 (pago combinado ARS+USD, mig 372)
+> 100% COMPLETAS en DEV** (2026-08-18). Fases 1+2 COMMITEADAS Y PUSHEADAS (commit `310d9b3b`, tag
+> `v1.171.0`); Fase 3 también COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión (commit
+> `010440cd`, tag `v1.172.0`); **Fase 4 (mig 372) aplicada y verificada en DEV, TODAVÍA SIN COMMITEAR** al
+> cierre de esta tanda (GO commitea). SIN deploy a PROD en ningún caso. La Fase 4 activa **D1/D2/D3/A2**:
+> el cajero tipea el monto en USD y el sistema convierte (D2), cada caja se contabiliza por lo
+> efectivamente cobrado en ESA moneda — nunca el total convertido — y el vuelto de un pago en USD siempre
+> sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2, agregado en la Fase 2 sin usarse hasta
+> ahora) por fin gobierna si un producto puede cobrarse en USD. Detalle técnico completo:
+> [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8", [[wiki/features/ventas-pos]] → "Pago combinado
+> ARS+USD", `wiki/database/migraciones.md` (migs 368-372).
 >
 > **Fede confirmó por escrito (2026-08-18) las 3 preguntas abiertas que quedaban antes de dar el OK
 > completo al plan de 8 fases:**

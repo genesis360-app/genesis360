@@ -2,7 +2,7 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
 updated: 2026-08-18
 ---
 
@@ -456,7 +456,94 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 - `productos.precio_usd` + `productos.moneda_venta` (`'local'` default | `'usd'`). Se configura en el form de producto (select de moneda + input USD + preview de conversión).
 - Si `moneda_venta='usd'`, el POS **convierte a moneda local a la cotización vigente** al cargar el producto al carrito (`precio_unitario` queda fijado al cambio del momento; `precio_usd_origen` guarda el dólar original para el hint "Precio USD X · convertido a $Y").
-- Cubre el caso "producto cotizado en dólares, cobrado en pesos al cambio del día". **Venta física en USD / caja USD: fase futura.**
+- Cubre el caso "producto cotizado en dólares, cobrado en pesos al cambio del día". **Venta física en USD / caja USD: ver sección "Pago combinado ARS+USD" más abajo (✅ EN DEV desde la Fase 4 del proyecto Caja USD).**
+
+---
+
+## 💵 Pago combinado ARS+USD — Caja en USD Fase 4/8 (relevamiento G5, mig 372) — EN DEV, SIN COMMITEAR (2026-08-18)
+
+Cuarta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
+en USD / Venta física en USD" y [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8" para el detalle
+completo de la migración/triggers/hallazgos de Gastos). Continúa sobre la Fase 3 (ciclo operativo de Caja
+USD, mig 371, ya commiteada/pusheada como tag `v1.172.0`). Con esta fase, **el checkout de esta página
+puede cobrar una venta combinando ARS y USD de verdad** — antes, una Caja USD podía existir y operarse
+(Fase 3), pero ningún flujo de venta sabía cobrar en dólares. **Estado real: mig 372 APLICADA Y VERIFICADA
+en DEV (`gcmhzdedrkmmzfzfveig`), código TODAVÍA SIN COMMITEAR** al cierre de esta tanda (se commitea junto
+con el resto del wiki). SIN deploy a PROD.
+
+### El cajero tipea el monto en USD (D2)
+
+Nuevo campo opcional `MedioPagoItem.montoUsd` (`src/lib/ventasValidation.ts`) — para un método de pago
+"efectivo + USD" (ej. "Efectivo USD", ahora creable desde **Config → Ventas → Métodos de pago**, que hasta
+esta fase nunca exponía los campos `moneda`/`es_efectivo` en su UI de alta/edición pese a existir en la
+tabla desde mig 368 — ver [[wiki/features/configuracion]]), el cajero tipea dólares en un input dedicado
+(prefijo "USD", con "≈ $X" de referencia en pesos). El campo `monto` de siempre SIGUE siendo el
+equivalente en ARS (se deriva de `montoUsd × cotización vigente`) — todas las funciones que YA existían
+(`calcularVuelto`, `calcularEfectivoCaja`, `validarMediosPago`, el total de la venta) siguen funcionando
+exactamente igual, sin ningún cambio.
+
+### Cada caja se contabiliza por lo cobrado en ESA moneda, nunca el total convertido (D3/D1)
+
+Nueva función pura `calcularEfectivoPorMoneda` (`ventasValidation.ts`, 7 tests nuevos) separa el efectivo
+cobrado en `{ arsNeto, usdIngreso, vueltoArs }`. Regla clave (**D1** del relevamiento: "el vuelto de un
+pago en USD SIEMPRE se da en pesos, nunca dólares"): los dólares físicos recibidos van SIEMPRE completos a
+la sesión USD (nunca se "netean" contra el vuelto); si hay sobrepago, el vuelto sale SIEMPRE en pesos de
+la sesión ARS — incluso si el sobrante vino enteramente de dólares, en cuyo caso la sesión ARS puede
+terminar con un EGRESO neto (plata que sale de la caja en pesos para dar el vuelto) mientras la Caja USD
+igual se acredita completa.
+
+### Selector de caja doble
+
+Antes había un único selector que mezclaba TODAS las sesiones de caja abiertas sin importar la moneda.
+Ahora hay `sesionesArs`/`sesionesUsd` (filtradas por la moneda real de cada sesión) y, cuando corresponde,
+aparece un segundo selector "Registrar USD en caja". Para cualquier tenant sin una Caja USD real (el 100%
+de los tenants hoy), `sesionesArs` es matemáticamente idéntico al array de siempre — cero cambio de
+comportamiento.
+
+### `carritoAceptaUsd` — A2 del relevamiento gana su primer consumidor real
+
+`productos.acepta_cualquier_moneda` (agregado en la Fase 2, mig 370, sin usarse hasta esta fase) ahora se
+lee al agregar un producto al carrito. Nueva función pura `carritoAceptaUsd`: un producto solo puede
+cobrarse en USD si ya está priceado en USD (`moneda_venta='usd'`) o si tiene el flag activado — si
+CUALQUIER línea del carrito no cumple ninguna de las 2, la venta entera se bloquea para cobro en USD
+(mensaje claro, se puede cobrar esa parte en pesos u otro medio).
+
+### `ventas.cotizacion_usd` finalmente se escribe
+
+Columna de la Fase 1 (mig 368), nunca usada hasta esta fase: se stampea la cotización vigente cuando la
+venta involucró una conversión real de USD (pago en USD o producto priceado en USD) — snapshot interno,
+NUNCA va a AFIP (la factura sigue siempre en pesos). Sienta la base para que la Fase 6 (Nota de Crédito)
+use la cotización DE LA VENTA ORIGINAL, no la del momento de la devolución (**G2** del relevamiento).
+
+### 🐛 Bug real encontrado y corregido por code-review antes de commitear
+
+Cambiar el `<select>` de un medio de pago de "Efectivo" a "Efectivo USD" (o viceversa) dejaba el monto
+viejo arrastrado en el campo equivocado — la venta podía pasar todas las validaciones ("total cubierto")
+pero NO acreditar nada en NINGUNA caja (ni ARS ni USD), plata "cobrada" que desaparecía sin rastro.
+Corregido en 2 capas: (a) cambiar el tipo de medio ahora resetea el monto; (b) `registrarVenta` bloquea
+explícitamente si detecta un medio USD con monto cargado pero sin el monto en dólares correspondiente
+(defensa en profundidad). También se agregó un guard si el cajero intenta cobrar en USD sin haber cargado
+la cotización del dólar.
+
+### Completar una reserva en USD — explícitamente NO soportado todavía
+
+Completar el saldo de una reserva (seña o saldo final) en USD reusa un modal/picker de medios de pago
+genérico distinto al POS principal, sin el input especial de dólares. En vez de dejarlo a medias (mismo
+riesgo del bug de arriba), se agregó un guard explícito que bloquea con un mensaje claro pidiendo usar el
+POS principal — alcance reducido de esta fase, documentado, no un olvido.
+
+### Revisión y verificación
+
+Typecheck + build + suite completa de tests unitarios verdes (incluye los 7 tests nuevos de
+`calcularEfectivoPorMoneda` + 6 de `carritoAceptaUsd`). Migración 372 revisada por `migration-reviewer`
+(APTA, con auditoría completa de insert-sites de `caja_movimientos`/`caja_arqueos` de todo el repo — ver
+[[wiki/features/caja]]). Revisión de código completa del diff de `VentasPage.tsx`/`ConfigPage.tsx`/
+`GastosPage.tsx`: encontró el bug del `<select>` (ya corregido) más 2 gaps preexistentes de REGLA #0 en
+`GastosPage.tsx` (ver [[wiki/features/gastos]] y [[wiki/features/caja]]). UAT nuevos: `VEN-37` a `VEN-43`
+(`tests/specs/uat-modo-basico.md`).
+
+**Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4 completas (migs 368-372).
+Próximo paso: Fase 5 (Bóveda por moneda). Ver [[wiki/features/caja]] para el estado completo del proyecto.
 
 ## Visibilidad de costo/margen (G4)
 
@@ -559,6 +646,8 @@ validarSaldoMediosPago(saldo, medios)
 acumularMediosPago(anterior, nuevo)
 calcularVuelto(medios, total, mediosEfectivo?)       // mig 368/369: set de metodos_pago.es_efectivo del tenant
 calcularEfectivoCaja(medios, total, mediosEfectivo?)  // default preserva el comportamiento de siempre (solo 'Efectivo')
+calcularEfectivoPorMoneda(medios, total, mediosEfectivo?, mediosEfectivoUsd?) // mig 372 (Fase 4 Caja USD): { arsNeto, usdIngreso, vueltoArs } — vuelto SIEMPRE en ARS (D1)
+carritoAceptaUsd(carrito)                             // mig 372 (Fase 4 Caja USD): bloquea cobro USD si alguna línea no acepta esa moneda (A2)
 calcularComboRows(carrito)
 restaurarMediosPago(json)
 esDecimal(unidadMedida)

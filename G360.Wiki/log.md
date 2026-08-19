@@ -6,6 +6,71 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-18] update | Fase 4/8 de Caja USD (G5): venta con pago combinado ARS+USD — mig 372, EN DEV sin commitear
+
+Continuación directa de la Fase 3 (entrada de abajo, mig 371) — **corrección importante primero**: esa
+Fase 3 quedó documentada como "TODAVÍA SIN COMMITEAR" en su momento, pero en una tanda posterior de esa
+misma sesión SÍ se commiteó y pusheó (commit `010440cd` + bump de versión `56f48fe8`, tag+release
+`v1.172.0` publicados, verificado con `git ls-remote --tags origin` y `gh release view v1.172.0`). Se
+construyó y verificó en DEV la **Fase 4/8** del plan "Caja en USD" (relevamiento G5): **venta con pago
+combinado ARS+USD** en el POS.
+
+**Migración 372** (`372_caja_usd_fase4_pago_combinado.sql`), aplicada y verificada en DEV
+(`gcmhzdedrkmmzfzfveig`): 2 triggers `fn_validar_moneda_coincide_sesion` (sobre `caja_movimientos` y
+`caja_arqueos`) que rechazan cualquier movimiento/arqueo cuya `moneda` no coincida con la moneda real de
+su sesión de caja (`caja_sesiones.moneda`, inmutable desde que se abre — mig 368) — red de seguridad
+server-side necesaria porque con esta fase hay muchos más lugares del código (`VentasPage.tsx`, no solo
+`CajaPage.tsx`) escribiendo `moneda` en cada movimiento. Una revisión de la migración auditó TODOS los
+insert-sites de `caja_movimientos`/`caja_arqueos` de todo el repo (no solo lo tocado hoy) y confirmó cero
+riesgo para tenants reales hoy (ninguno tiene Caja USD en producción de datos), pero encontró **2 gaps
+preexistentes de REGLA #0 en `GastosPage.tsx`** (3 movimientos de caja fire-and-forget sin `await`/
+`toast`, corregidos en esta sesión) y un **picker de caja en Gastos que no filtraba por moneda**
+(corregido: excluye Cajas USD, mismo patrón que Ventas). Sin cambios de esquema para la funcionalidad en
+sí — los campos ya existían desde mig 368/370.
+
+**Código (`src/pages/VentasPage.tsx`, el checkout completo del POS):** (1) **D2** el cajero tipea el monto
+en USD y el sistema convierte — nuevo `MedioPagoItem.montoUsd` (`ventasValidation.ts`), para un método
+"Efectivo USD" (ahora creable desde Config → Ventas → Métodos de pago, que hasta hoy nunca exponía
+`moneda`/`es_efectivo` en su UI pese a existir desde mig 368); `monto` sigue siendo el equivalente ARS
+(`montoUsd × cotización`), así que `calcularVuelto`/`calcularEfectivoCaja`/`validarMediosPago` no cambian.
+(2) **D3** cada caja se contabiliza por lo cobrado en ESA moneda, nunca el total convertido — función pura
+nueva `calcularEfectivoPorMoneda` (7 tests nuevos), regla D1: el vuelto de un pago en USD SIEMPRE se da en
+pesos (los dólares recibidos van completos a la sesión USD, nunca se netean contra el vuelto). (3)
+Selector de caja doble `sesionesArs`/`sesionesUsd` — para el 100% de tenants sin Caja USD real, idéntico
+al array de siempre. (4) **A2** por fin tiene consumidor real: `carritoAceptaUsd` bloquea el cobro en USD
+si alguna línea del carrito no acepta esa moneda (`moneda_venta='usd'` o `acepta_cualquier_moneda`). (5)
+`ventas.cotizacion_usd` (Fase 1, nunca usada) finalmente se escribe — snapshot interno, nunca va a AFIP,
+sienta la base de la Fase 6 (NC con la cotización de la venta original). (6) 🐛 bug real encontrado y
+corregido por code-review: cambiar el `<select>` de "Efectivo" a "Efectivo USD" (o viceversa) dejaba el
+monto viejo en el campo equivocado — la venta pasaba validaciones pero no acreditaba nada en ninguna caja;
+corregido en 2 capas (reset de monto al cambiar tipo + guard server-aware en `registrarVenta`). (7)
+Completar una reserva en USD queda explícitamente NO soportado en esta fase (guard con mensaje claro,
+alcance reducido documentado, no un olvido).
+
+**Verificación:** typecheck + build + suite completa de tests unitarios verdes (7 tests nuevos de
+`calcularEfectivoPorMoneda` + 6 de `carritoAceptaUsd`), migración 372 revisada por `migration-reviewer`
+(APTA, con la auditoría completa de insert-sites) y revisión de código completa del diff de
+`VentasPage.tsx`/`ConfigPage.tsx`/`GastosPage.tsx` (encontró el bug del punto 6 + los 2 gaps de Gastos,
+todos ya corregidos). UAT nuevos: `VEN-37` a `VEN-43` (`tests/specs/uat-modo-basico.md`).
+
+**Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4, migs 368-372). Próximo
+paso: Fase 5 (Bóveda — pestañas separadas ARS/USD, conversión USD↔$ solo desde la Bóveda y solo por el
+DUEÑO, retiro de Caja USD sin destino con contraseña maestra) — nota importante: Fase 3 y Fase 4 dejaron
+explícitamente BLOQUEADO que la Bóveda reciba/envíe plata desde/hacia una Caja USD, justo lo que la Fase 5
+tiene que habilitar de verdad. Recordatorios permanentes sin cambios (importador CSV; "Crear variante" no
+copia moneda/USD). C2 (cotización BNA para AFIP, Fase 8) sigue pendiente de un contador real.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 14), `wiki/database/migraciones.md` (mig
+372, título a 001-372), `wiki/features/caja.md` (sección "Caja en USD — Fase 4 de 8"),
+`wiki/features/ventas-pos.md` (sección "Pago combinado ARS+USD"), `wiki/features/gastos.md` (2 gaps de
+REGLA #0 corregidos), `wiki/features/configuracion.md` (moneda/es_efectivo en Métodos de pago),
+`wiki/development/reglas-negocio.md` (módulo G5), `wiki/business/roadmap.md` (correcciones a v1.171.0/
+v1.172.0). **Estado real: mig 372 aplicada y verificada en DEV, código TODAVÍA SIN COMMITEAR** (GO
+commitea el wiki + el código al cierre de esta sesión; próximo tag a crear: `v1.173.0`). Sin PR a `main`,
+sin deploy a PROD.
+
+---
+
 ## [2026-08-18] update | Fase 3/8 de Caja USD (G5): ciclo operativo completo — mig 371, EN DEV sin commitear
 
 Continuación directa de la Fase 2 (mig 370, ya commiteada/pusheada en la entrada de abajo, commit

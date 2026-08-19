@@ -6,10 +6,73 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-18
 ---
 
-# Historial de Migraciones (001-371)
+# Historial de Migraciones (001-372)
 
-**371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código TODAVÍA SIN COMMITEAR (2026-08-18):** Fase 3 ("ciclo operativo") del plan
+**372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código TODAVÍA SIN COMMITEAR (2026-08-18):** Fase 4 ("venta con pago combinado
+ARS+USD") del plan Caja USD (relevamiento G5). Continúa la Fase 3 (mig 371, ya commiteada/pusheada como
+tag `v1.172.0`). Agrega **2 triggers** `fn_validar_moneda_coincide_sesion` (sobre `caja_movimientos` y
+`caja_arqueos`) que rechazan cualquier movimiento/arqueo cuya `moneda` no coincida con la moneda real de
+su sesión de caja (`caja_sesiones.moneda`, inmutable desde que se abre — mig 368) — red de seguridad
+server-side, ya que con esta fase hay MUCHOS más lugares del código (`VentasPage.tsx`) escribiendo
+`moneda` en cada movimiento, no solo `CajaPage.tsx` (Fase 3). No hizo falta ningún cambio de esquema para
+la funcionalidad en sí — los campos ya existían desde mig 368 (`metodos_pago.moneda`/`es_efectivo`) y mig
+370 (`productos.acepta_cualquier_moneda`, `ventas.cotizacion_usd`).
+
+Una revisión de esta migración auditó TODOS los insert-sites de `caja_movimientos`/`caja_arqueos` en todo
+el repo (no solo lo tocado en esta sesión) y confirmó: cero riesgo para tenants reales hoy (ninguno tiene
+Caja USD en producción de datos), pero encontró **2 gaps preexistentes de REGLA #0 en `GastosPage.tsx`**
+(3 movimientos de caja fire-and-forget sin `await`/`toast`, corregidos en esta misma sesión) y un **picker
+de caja en Gastos que no filtraba por moneda** (también corregido: ahora excluye Cajas USD, mismo patrón
+que Ventas).
+
+**Código — el corazón de la fase, `src/pages/VentasPage.tsx` (el checkout completo del POS):**
+- **D2** — nuevo campo opcional `MedioPagoItem.montoUsd` (`src/lib/ventasValidation.ts`): para un método
+  de pago "efectivo + USD" (ej. "Efectivo USD", ahora creable desde Config → Ventas → Métodos de pago, que
+  hasta esta fase nunca exponía los campos `moneda`/`es_efectivo` en su UI de alta/edición pese a existir
+  desde mig 368), el cajero tipea dólares en un input dedicado; el campo `monto` de siempre sigue siendo
+  el equivalente en ARS (`montoUsd × cotización vigente`) — `calcularVuelto`/`calcularEfectivoCaja`/
+  `validarMediosPago` siguen funcionando exactamente igual, sin cambios.
+- **D3** — nueva función pura `calcularEfectivoPorMoneda` (`ventasValidation.ts`, 7 tests nuevos) que
+  separa el efectivo cobrado en `{ arsNeto, usdIngreso, vueltoArs }`. Regla D1: el vuelto de un pago en
+  USD SIEMPRE se da en pesos — los dólares físicos recibidos van siempre completos a la sesión USD (nunca
+  se "netean" contra el vuelto); si hay sobrepago, el vuelto sale siempre en pesos de la sesión ARS
+  (puede quedar en EGRESO neto aunque el sobrante haya venido de dólares).
+- **Selector de caja doble** (`sesionesArs`/`sesionesUsd`, filtradas por la moneda real de cada sesión) —
+  para el 100% de tenants sin Caja USD real, `sesionesArs` es idéntico al array de siempre.
+- **A2 gana su primer consumidor real**: `carritoAceptaUsd` — un producto solo puede cobrarse en USD si
+  `moneda_venta='usd'` o tiene `acepta_cualquier_moneda=true`; si cualquier línea del carrito no cumple
+  ninguna, la venta se bloquea para cobro en USD.
+- **`ventas.cotizacion_usd` finalmente se escribe** (columna de la Fase 1, nunca usada hasta ahora):
+  snapshot interno cuando la venta involucró conversión real de USD — NUNCA va a AFIP. Base para que la
+  Fase 6 (NC) use la cotización de la venta original (G2).
+- **🐛 Bug real encontrado y corregido por code-review antes de commitear**: cambiar el `<select>` de un
+  medio de "Efectivo" a "Efectivo USD" (o viceversa) dejaba el monto viejo en el campo equivocado — la
+  venta pasaba todas las validaciones pero no acreditaba nada en NINGUNA caja. Corregido en 2 capas:
+  cambiar el tipo de medio resetea el monto, y `registrarVenta` bloquea si detecta un medio USD con monto
+  sin su contraparte en dólares (defensa en profundidad) + guard si falta cargar la cotización.
+- **Completar una reserva (seña/saldo) en USD — explícitamente NO soportado en esta fase**: ese flujo
+  reusa un picker de medios de pago genérico sin el input especial de dólares; se agregó un guard
+  explícito que bloquea con mensaje claro pidiendo usar el POS principal (alcance reducido, documentado).
+
+`migration-reviewer`: APTA, con la auditoría completa de insert-sites descripta arriba. Revisión de código
+completa del diff de `VentasPage.tsx`/`ConfigPage.tsx`/`GastosPage.tsx`: encontró el bug de arriba (ya
+corregido) + los 2 gaps de Gastos (ya corregidos). Typecheck + build + suite completa de tests verdes
+(incluye 7 tests nuevos de `calcularEfectivoPorMoneda` + 6 de `carritoAceptaUsd`). UAT nuevos: `VEN-37` a
+`VEN-43` (`tests/specs/uat-modo-basico.md`). Ver [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8" y
+[[wiki/features/ventas-pos]] → "Pago combinado ARS+USD".
+
+**Fase 4 de Caja USD (G5) queda 100% completa** (mig 372), sumada a las Fases 1+2+3 (migs 368-371) — el
+proyecto completo (Fases 1+2+3+4 de 8) está 100% en DEV. **Estado real: mig 372 aplicada y verificada en
+DEV, código TODAVÍA SIN COMMITEAR al cierre de esta tanda** (se commitea junto con el resto del wiki).
+Próximo paso: Fase 5 (Bóveda por moneda — pestañas ARS/USD, conversión USD↔$ solo desde la Bóveda y solo
+por el DUEÑO, retiro de Caja USD sin destino con clave maestra). Fase 3 y Fase 4 dejaron explícitamente
+BLOQUEADO que la Bóveda reciba/envíe plata desde/hacia una Caja USD — la Fase 5 es justo lo que tiene que
+habilitar eso de verdad.
+
+**371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd`, tag `v1.172.0`),
+NO en PROD (2026-08-18):** Fase 3 ("ciclo operativo") del plan
 Caja USD (relevamiento G5). Continúa la Fase 2 (mig 370, ya commiteada/pusheada). Agrega **2 triggers**
 (sin cambios de schema — solo funciones + triggers):
 - `fn_validar_traspaso_misma_moneda` (`BEFORE INSERT ON caja_traspasos`) — bloquea un traspaso entre 2
@@ -45,9 +108,10 @@ tests verdes. UAT nuevos: `CAJ-31` a `CAJ-36` (`tests/specs/uat-modo-basico.md`)
 → "Caja en USD — Fase 3 de 8".
 
 **Fase 3 de Caja USD (G5) queda 100% completa** (mig 371), sumada a las Fases 1+2 (migs 368-370) — el
-proyecto completo (Fases 1+2+3 de 8) está 100% en DEV. **Estado real: mig 371 aplicada y verificada en DEV,
-código TODAVÍA SIN COMMITEAR al cierre de esta tanda** (se commitea junto con el resto del wiki). Próximo
-paso: Fase 4 (venta con pago combinado ARS+USD en `VentasPage.tsx`).
+proyecto completo (Fases 1+2+3 de 8) está 100% en DEV. **Estado real: mig 371 COMMITEADA Y PUSHEADA a
+`origin/dev` (commit `010440cd` + bump `56f48fe8`), tag+release `v1.172.0` publicados**, corrigiendo el
+estado "TODAVÍA SIN COMMITEAR" con el que se documentó esta sección originalmente. Fase 4 (mig 372, ver
+arriba) ya está completa también, en una tanda posterior.
 
 **370 (`370_caja_usd_fase2_permisos_config.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
@@ -142,7 +206,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-18:** 371 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-18:** 372 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
@@ -150,14 +214,16 @@ PR #328); **358 (hard delete de tenant con grace period) y 359 (NC electrónica 
 deployadas a PROD el 2026-08-13 (v1.170.0, PR #330)**, verificado con `gh release view v1.170.0` +
 migraciones 358/359 confirmadas aplicadas contra el proyecto PROD. **v1.169.0 (2026-08-13, PR #329) no
 había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin cambios de DB.
-**360-370 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
-moneda en Producto, y Caja USD Fases 1+2) están APLICADAS Y VERIFICADAS EN DEV, y — a diferencia de
-sesiones anteriores documentadas más abajo — ahora COMMITEADAS Y PUSHEADAS a `origin/dev`** (commit
-`310d9b3b` + bump de versión `0b4d431a`, tag+release `v1.171.0` publicados; verificado con `git status`
-`dev...origin/dev` sin diferencia de commits). **371 (Caja USD Fase 3, ciclo operativo) está APLICADA Y
+**360-371 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
+moneda en Producto, y Caja USD Fases 1+2+3) están APLICADAS Y VERIFICADAS EN DEV, y — a diferencia de
+sesiones anteriores documentadas más abajo — ahora COMMITEADAS Y PUSHEADAS a `origin/dev`** en 2 tandas:
+360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release `v1.171.0`), y 371 en commit `010440cd` + bump
+`56f48fe8` (tag+release `v1.172.0`) — verificado con `git ls-remote --tags origin` (ambos tags presentes
+en `origin`) y `gh release view` de ambos. **372 (Caja USD Fase 4, pago combinado ARS+USD) está APLICADA Y
 VERIFICADA EN DEV, TODAVÍA SIN COMMITEAR** al cierre de esta tanda (se commitea junto con el resto del
-wiki al final de la sesión). **Sigue sin PR `dev`→`main`, sin deploy a PROD.** El resto
-de este bloque describe el detalle técnico de cada una, incluyendo texto histórico ("SIN COMMITEAR") que
+wiki al final de la sesión; próximo tag a crear: `v1.173.0`). **Sigue sin PR `dev`→`main`, sin deploy a
+PROD.** El resto de este bloque describe el detalle técnico de cada una, incluyendo texto histórico
+("SIN COMMITEAR") que
 reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
 habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de
 una sesión anterior (bloqueante técnico real, no una decisión de diseño) — con el MCP reconectado se

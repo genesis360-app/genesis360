@@ -6,10 +6,117 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-18, cont. 13) — Fase 3/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 371,
-> ciclo operativo de Caja USD) — **TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre de
-> esta sesión, junto) — este bloque reemplaza al cont. 12 de abajo (que documentaba Fases 1+2 ya
-> commiteadas/pusheadas, tag `v1.171.0`) como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
+> ### ✅ ARRANCÁ ACÁ (2026-08-18, cont. 14) — Fase 4/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 372,
+> venta con pago combinado ARS+USD) — **TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre
+> de esta sesión, junto) — este bloque reemplaza al cont. 13 de abajo (que documentaba Fase 3, cuyo código
+> quedó COMMITEADO Y PUSHEADO en una tanda posterior de esa misma sesión — tag `v1.172.0` — corrigiendo el
+> "TODAVÍA SIN COMMITEAR" con el que se había escrito ese bloque) como punto de entrada. Sigue SIN PR a
+> `main`, SIN deploy a PROD.
+>
+> #### ✅ Relevamiento G5 (Caja USD) — Fase 4/8 (venta con pago combinado ARS+USD) 100% COMPLETA en DEV, mig 372
+>
+> Continuación directa de la Fase 3 (mig 371, ciclo operativo — commit `010440cd`, tag `v1.172.0`, ya
+> commiteada/pusheada). **Migración 372** (`372_caja_usd_fase4_pago_combinado.sql`), APLICADA Y VERIFICADA
+> en DEV (`gcmhzdedrkmmzfzfveig`):
+> - **2 triggers `fn_validar_moneda_coincide_sesion`** (sobre `caja_movimientos` y `caja_arqueos`) —
+>   rechazan cualquier movimiento/arqueo cuya `moneda` no coincida con la moneda real de su sesión de caja
+>   (`caja_sesiones.moneda`, inmutable desde que se abre — mig 368). Red de seguridad server-side: con esta
+>   fase hay MUCHOS más lugares del código (`VentasPage.tsx`) escribiendo `moneda` en cada movimiento, no
+>   solo `CajaPage.tsx` (Fase 3).
+> - Una revisión de esta migración auditó TODOS los insert-sites de `caja_movimientos`/`caja_arqueos` en
+>   todo el repo (no solo lo tocado en esta sesión) y confirmó: cero riesgo para tenants reales hoy
+>   (ninguno tiene Caja USD en producción de datos), pero encontró **2 gaps preexistentes de REGLA #0 en
+>   `GastosPage.tsx`** (3 movimientos de caja fire-and-forget sin `await`/`toast`, corregidos en esta misma
+>   sesión) y un **picker de caja en Gastos que no filtraba por moneda** (también corregido: ahora excluye
+>   Cajas USD, mismo patrón que Ventas).
+> - No hizo falta ningún cambio de esquema para la funcionalidad en sí — los campos ya existían desde mig
+>   368 (`metodos_pago.moneda`/`es_efectivo`) y mig 370 (`productos.acepta_cualquier_moneda`,
+>   `ventas.cotizacion_usd`).
+>
+> **Código — el corazón de la fase, `src/pages/VentasPage.tsx` (el checkout completo del POS):**
+> 1. **D2 — el cajero tipea el monto en USD, el sistema convierte**: nuevo campo opcional
+>    `MedioPagoItem.montoUsd` (`src/lib/ventasValidation.ts`) — para un método de pago "efectivo + USD"
+>    (ej. "Efectivo USD", ahora creable desde Config → Ventas → Métodos de pago, que hasta hoy nunca
+>    exponía los campos `moneda`/`es_efectivo` en su UI de alta/edición pese a existir en la tabla desde
+>    mig 368), el cajero tipea dólares en un input dedicado (prefijo "USD", con "≈ $X" de referencia en
+>    pesos). El campo `monto` de siempre SIGUE siendo el equivalente en ARS (se deriva de `montoUsd ×
+>    cotización vigente`) — así todas las funciones que YA existían (`calcularVuelto`,
+>    `calcularEfectivoCaja`, `validarMediosPago`, el total de la venta) siguen funcionando exactamente
+>    igual, sin ningún cambio.
+> 2. **D3 — cada caja se contabiliza por lo efectivamente cobrado en ESA moneda, nunca el total
+>    convertido**: nueva función pura `calcularEfectivoPorMoneda` (`ventasValidation.ts`, 7 tests nuevos)
+>    que separa el efectivo cobrado en `{ arsNeto, usdIngreso, vueltoArs }`. Regla clave (D1 del
+>    relevamiento: "el vuelto de un pago en USD SIEMPRE se da en pesos, nunca dólares"): los dólares
+>    físicos recibidos van SIEMPRE completos a la sesión USD (nunca se "netean" contra el vuelto); si hay
+>    sobrepago, el vuelto sale SIEMPRE en pesos de la sesión ARS — incluso si el sobrante vino enteramente
+>    de dólares, en cuyo caso la sesión ARS puede terminar con un EGRESO neto (plata que sale de la caja en
+>    pesos para dar el vuelto) mientras la Caja USD igual se acredita completa.
+> 3. **Selector de caja doble**: antes había un único selector ("¿en qué caja registro esto?") que
+>    mezclaba TODAS las sesiones abiertas sin importar la moneda. Ahora hay `sesionesArs`/`sesionesUsd`
+>    (filtradas por la moneda real de cada sesión) y, cuando corresponde, aparece un segundo selector
+>    "Registrar USD en caja". Para cualquier tenant sin una Caja USD real (el 100% de los tenants hoy),
+>    `sesionesArs` es matemáticamente idéntico al array de siempre — cero cambio de comportamiento.
+> 4. **A2 del relevamiento (por fin tiene un consumidor real)**: `productos.acepta_cualquier_moneda`
+>    (agregado en la Fase 2, mig 370, sin usarse hasta hoy) ahora se lee al agregar un producto al
+>    carrito. Nueva función pura `carritoAceptaUsd`: un producto solo puede cobrarse en USD si ya está
+>    priceado en USD (`moneda_venta='usd'`) o si tiene el flag activado — si CUALQUIER línea del carrito no
+>    cumple ninguna de las 2, la venta entera se bloquea para cobro en USD (mensaje claro, se puede cobrar
+>    esa parte en pesos u otro medio).
+> 5. **`ventas.cotizacion_usd` finalmente se escribe** (columna de la Fase 1, mig 368, nunca usada hasta
+>    hoy): se stampea la cotización vigente cuando la venta involucró una conversión real de USD (pago en
+>    USD o producto priceado en USD) — snapshot interno, NUNCA va a AFIP (la factura sigue siempre en
+>    pesos). Sienta la base para que la Fase 6 (Nota de Crédito) use la cotización DE LA VENTA ORIGINAL, no
+>    la del momento de la devolución (G2 del relevamiento).
+> 6. **🐛 Un bug real encontrado y corregido por code-review antes de commitear**: cambiar el `<select>`
+>    de un medio de pago de "Efectivo" a "Efectivo USD" (o viceversa) dejaba el monto viejo arrastrado en
+>    el campo equivocado — la venta podía pasar todas las validaciones ("total cubierto") pero NO
+>    acreditar nada en NINGUNA caja (ni ARS ni USD), plata "cobrada" que desaparecía sin rastro. Se
+>    corrigió en 2 capas: (a) cambiar el tipo de medio ahora resetea el monto; (b) `registrarVenta` bloquea
+>    explícitamente si detecta un medio USD con monto cargado pero sin el monto en dólares correspondiente
+>    (defensa en profundidad). También se agregó un guard si el cajero intenta cobrar en USD sin haber
+>    cargado la cotización del dólar.
+> 7. **Completar una reserva (seña o saldo final) en USD — explícitamente NO soportado todavía**: ese
+>    flujo reusa un modal/picker de medios de pago genérico distinto al POS principal, sin el input
+>    especial de dólares. En vez de dejarlo a medias (mismo riesgo del bug del punto 6), se agregó un guard
+>    explícito que bloquea con un mensaje claro pidiendo usar el POS principal — queda documentado como
+>    alcance reducido de esta fase, no un olvido.
+>
+> **Verificación**: typecheck + build + suite completa de tests unitarios verdes (incluye los 7 tests
+> nuevos de `calcularEfectivoPorMoneda` + 6 de `carritoAceptaUsd`), migración 372 revisada por
+> `migration-reviewer` (APTA, con la auditoría completa de insert-sites mencionada arriba), y una revisión
+> de código completa del diff de `VentasPage.tsx`/`ConfigPage.tsx`/`GastosPage.tsx` que encontró el bug del
+> punto 6 (ya corregido) más los 2 gaps de Gastos (ya corregidos). Escenarios agregados al UAT
+> (`tests/specs/uat-modo-basico.md`): `VEN-37` a `VEN-43`.
+>
+> **Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4 completas, migs
+> 368-372).
+>
+> **Próximo paso: Fase 5** (Bóveda — pestañas separadas ARS/USD, conversión USD↔$ solo desde la Bóveda y
+> solo por el DUEÑO, retiro de Caja USD sin destino con contraseña maestra). Nota importante para la Fase
+> 5: Fase 3 y Fase 4 dejaron explícitamente BLOQUEADO (con toasts claros) que la Bóveda reciba/envíe plata
+> desde/hacia una Caja USD — eso es justamente lo que la Fase 5 tiene que habilitar de verdad. Fases 5-8
+> siguen sin construir. Recordatorios permanentes sin cambios (importador CSV; "Crear variante" no copia
+> moneda/USD). C2 (cotización BNA para AFIP, Fase 8) sigue pendiente de un contador, no bloquea nada.
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tanda (Fase 4)
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | v1.172.0 (sin bump en esta tanda — Fase 4 sigue sumando sobre el mismo release DEV que las Fases 1+2+3; próximo tag a crear junto con el commit de esta fase: **`v1.173.0`**) | v1.170.0 (sin cambios — última confirmada, PR #330, `0687213b`) |
+> | Migraciones aplicadas en la DB | 001-372 | 001-359 (sin cambios — 360-372 solo en DEV) |
+> | Branch | `dev` local — mig 372 + código de Fase 4 **TODAVÍA SIN COMMITEAR** (GO commitea al cierre de esta sesión) | `main` (sin cambios) |
+> | Tag / release | `v1.172.0` (cubre Fases 1+2+3) — Fase 4 (mig 372) queda pendiente del tag **`v1.173.0`**, a crear cuando GO commitee/pushee | `v1.170.0` (sin cambios) |
+> | PR `dev`→`main` | No abierto | — |
+> | Vercel | sin cambios (código de Fase 4 todavía no pusheado) | sin cambios desde v1.170.0 |
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-18, cont. 13) — Fase 3/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 371,
+> ciclo operativo de Caja USD) — código luego COMMITEADO Y PUSHEADO en una tanda posterior de la misma
+> sesión (commit `010440cd`, bump `56f48fe8`, tag+release `v1.172.0` publicados — corrige el "TODAVÍA SIN
+> COMMITEAR" con el que se escribió originalmente este bloque) — este bloque quedó SUPERADO por el de
+> arriba (cont. 14: Fase 4/8 de Caja USD, mig 372, venta con pago combinado ARS+USD) pero su contenido
+> sigue VIGENTE (no fue revertido).
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 3/8 (ciclo operativo) 100% COMPLETA en DEV, mig 371
 >

@@ -117,6 +117,12 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 - **Promo por método** (`metodos_pago.config` jsonb): descuento **al cliente** por pagar con ese método — % + tope $ opcional + días de la semana + vigencia desde/hasta. Distinto de la comisión (naranja = costo del tenant; verde = descuento al cliente). Detalle de aplicación en el POS: [[wiki/features/ventas-pos]] → "Promo por método de pago".
 - **Agregar método personalizado**
 - **Cuotas por banco** (`tenants.cuotas_bancos JSONB`): config por banco → planes de cuotas
+- **🆕 Moneda + "Es efectivo real" (mig 372, Fase 4/8 Caja USD, EN DEV, SIN COMMITEAR, 2026-08-18)**: el
+  alta/edición de un método de pago ahora expone `metodos_pago.moneda`/`es_efectivo` — campos que existían
+  en la tabla desde la mig 368 (Fase 1 de Caja USD) pero nunca tuvieron UI propia. Permite crear un método
+  "Efectivo USD" (moneda `USD`, `es_efectivo=true`) para habilitar el input de dólares del POS — ver
+  [[wiki/features/ventas-pos]] → "Pago combinado ARS+USD" y [[wiki/features/caja]] → "Caja en USD — Fase 4
+  de 8".
 
 ### Sub-tab: Descuentos y combos
 

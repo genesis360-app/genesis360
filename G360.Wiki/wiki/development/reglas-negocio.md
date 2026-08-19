@@ -297,8 +297,8 @@ Razones:
 > configuración, mig 370), Fase 3 (ciclo operativo, mig 371) y Fase 4 (pago combinado ARS+USD, mig 372)
 > 100% COMPLETAS en DEV** (2026-08-18). Fases 1+2 COMMITEADAS Y PUSHEADAS (commit `310d9b3b`, tag
 > `v1.171.0`); Fase 3 también COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión (commit
-> `010440cd`, tag `v1.172.0`); **Fase 4 (mig 372) aplicada y verificada en DEV, TODAVÍA SIN COMMITEAR** al
-> cierre de esta tanda (GO commitea). SIN deploy a PROD en ningún caso. La Fase 4 activa **D1/D2/D3/A2**:
+> `010440cd`, tag `v1.172.0`); **Fase 4 (mig 372) COMMITEADA Y PUSHEADA** (commit `d783727d`, tag
+> `v1.173.0`). SIN deploy a PROD en ningún caso. La Fase 4 activa **D1/D2/D3/A2**:
 > el cajero tipea el monto en USD y el sistema convierte (D2), cada caja se contabiliza por lo
 > efectivamente cobrado en ESA moneda — nunca el total convertido — y el vuelto de un pago en USD siempre
 > sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2, agregado en la Fase 2 sin usarse hasta

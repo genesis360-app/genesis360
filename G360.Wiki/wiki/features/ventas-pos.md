@@ -460,7 +460,7 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 ---
 
-## 💵 Pago combinado ARS+USD — Caja en USD Fase 4/8 (relevamiento G5, mig 372) — EN DEV, SIN COMMITEAR (2026-08-18)
+## 💵 Pago combinado ARS+USD — Caja en USD Fase 4/8 (relevamiento G5, mig 372) — EN DEV, COMMITEADO (2026-08-18)
 
 Cuarta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD" y [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8" para el detalle
@@ -468,8 +468,8 @@ completo de la migración/triggers/hallazgos de Gastos). Continúa sobre la Fase
 USD, mig 371, ya commiteada/pusheada como tag `v1.172.0`). Con esta fase, **el checkout de esta página
 puede cobrar una venta combinando ARS y USD de verdad** — antes, una Caja USD podía existir y operarse
 (Fase 3), pero ningún flujo de venta sabía cobrar en dólares. **Estado real: mig 372 APLICADA Y VERIFICADA
-en DEV (`gcmhzdedrkmmzfzfveig`), código TODAVÍA SIN COMMITEAR** al cierre de esta tanda (se commitea junto
-con el resto del wiki). SIN deploy a PROD.
+en DEV (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, bump
+`05801eb4`, tag+release `v1.173.0` publicados). SIN deploy a PROD.
 
 ### El cajero tipea el monto en USD (D2)
 

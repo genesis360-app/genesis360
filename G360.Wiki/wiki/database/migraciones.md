@@ -8,8 +8,9 @@ updated: 2026-08-18
 
 # Historial de Migraciones (001-372)
 
-**372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código TODAVÍA SIN COMMITEAR (2026-08-18):** Fase 4 ("venta con pago combinado
+**372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d`, tag `v1.173.0`),
+NO en PROD (2026-08-18):** Fase 4 ("venta con pago combinado
 ARS+USD") del plan Caja USD (relevamiento G5). Continúa la Fase 3 (mig 371, ya commiteada/pusheada como
 tag `v1.172.0`). Agrega **2 triggers** `fn_validar_moneda_coincide_sesion` (sobre `caja_movimientos` y
 `caja_arqueos`) que rechazan cualquier movimiento/arqueo cuya `moneda` no coincida con la moneda real de
@@ -64,7 +65,7 @@ corregido) + los 2 gaps de Gastos (ya corregidos). Typecheck + build + suite com
 
 **Fase 4 de Caja USD (G5) queda 100% completa** (mig 372), sumada a las Fases 1+2+3 (migs 368-371) — el
 proyecto completo (Fases 1+2+3+4 de 8) está 100% en DEV. **Estado real: mig 372 aplicada y verificada en
-DEV, código TODAVÍA SIN COMMITEAR al cierre de esta tanda** (se commitea junto con el resto del wiki).
+DEV, código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.173.0`).
 Próximo paso: Fase 5 (Bóveda por moneda — pestañas ARS/USD, conversión USD↔$ solo desde la Bóveda y solo
 por el DUEÑO, retiro de Caja USD sin destino con clave maestra). Fase 3 y Fase 4 dejaron explícitamente
 BLOQUEADO que la Bóveda reciba/envíe plata desde/hacia una Caja USD — la Fase 5 es justo lo que tiene que
@@ -214,15 +215,14 @@ PR #328); **358 (hard delete de tenant con grace period) y 359 (NC electrónica 
 deployadas a PROD el 2026-08-13 (v1.170.0, PR #330)**, verificado con `gh release view v1.170.0` +
 migraciones 358/359 confirmadas aplicadas contra el proyecto PROD. **v1.169.0 (2026-08-13, PR #329) no
 había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin cambios de DB.
-**360-371 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
-moneda en Producto, y Caja USD Fases 1+2+3) están APLICADAS Y VERIFICADAS EN DEV, y — a diferencia de
-sesiones anteriores documentadas más abajo — ahora COMMITEADAS Y PUSHEADAS a `origin/dev`** en 2 tandas:
-360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release `v1.171.0`), y 371 en commit `010440cd` + bump
-`56f48fe8` (tag+release `v1.172.0`) — verificado con `git ls-remote --tags origin` (ambos tags presentes
-en `origin`) y `gh release view` de ambos. **372 (Caja USD Fase 4, pago combinado ARS+USD) está APLICADA Y
-VERIFICADA EN DEV, TODAVÍA SIN COMMITEAR** al cierre de esta tanda (se commitea junto con el resto del
-wiki al final de la sesión; próximo tag a crear: `v1.173.0`). **Sigue sin PR `dev`→`main`, sin deploy a
-PROD.** El resto de este bloque describe el detalle técnico de cada una, incluyendo texto histórico
+**360-372 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
+moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y — a diferencia de
+sesiones anteriores documentadas más abajo — ahora COMMITEADAS Y PUSHEADAS a `origin/dev`** en 3 tandas:
+360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release `v1.171.0`); 371 en commit `010440cd` + bump
+`56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d` + bump `05801eb4` (tag+release `v1.173.0`) —
+verificado con `git log origin/dev..dev` vacío y `git describe --tags` = `v1.173.0`. **Sigue sin PR
+`dev`→`main`, sin deploy a PROD.** El resto de este bloque describe el detalle técnico de cada una,
+incluyendo texto histórico
 ("SIN COMMITEAR") que
 reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
 habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de

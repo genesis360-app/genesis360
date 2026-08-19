@@ -353,10 +353,10 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 > **Fase 4 de 8 completa** (mig 372, ver sección "Fase 4 de Caja USD — pago combinado ARS+USD" más abajo):
 > la venta del POS ya cobra en ARS+USD combinado, con selector de caja doble y un nuevo trigger
 > `fn_validar_moneda_coincide_sesion` que rechaza cualquier movimiento/arqueo con moneda distinta a la de
-> su sesión. **Estado real: migs 368-371 APLICADAS Y VERIFICADAS en DEV, código COMMITEADO Y PUSHEADO a
-> `origin/dev` en 2 tandas** (368-370 en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag
-> `v1.172.0`); **mig 372 (Fase 4) APLICADA Y VERIFICADA en DEV, código TODAVÍA SIN COMMITEAR** al cierre de
-> esta tanda. **SIN deploy a PROD en ningún caso.** Ya hay una Caja USD de prueba operando de verdad en DEV
+> su sesión. **Estado real: migs 368-372 APLICADAS Y VERIFICADAS en DEV, código COMMITEADO Y PUSHEADO a
+> `origin/dev` en 3 tandas** (368-370 en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag
+> `v1.172.0`; 372 en commit `d783727d`, tag **`v1.173.0`**). **SIN deploy a PROD en ningún caso.** Ya hay
+> una Caja USD de prueba operando de verdad en DEV
 > (tenant "Almacén Jorgito"). Falta Fase 5 en adelante: Bóveda por moneda, devoluciones/NC, reportes,
 > cotización fiscal AFIP. Ver el relevamiento completo (29 preguntas respondidas) en
 > [[wiki/development/reglas-negocio]] → "Caja en USD / Venta física en USD".
@@ -639,15 +639,15 @@ corregidos). Escenarios agregados al UAT (`tests/specs/uat-modo-basico.md`): `CA
 
 ---
 
-## ✅ Caja en USD — Fase 4 de 8 (pago combinado ARS+USD) — EN DEV, mig 372, SIN COMMITEAR (2026-08-18)
+## ✅ Caja en USD — Fase 4 de 8 (pago combinado ARS+USD) — EN DEV, mig 372, COMMITEADA (2026-08-18)
 
 Cuarta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD"). Continúa directo sobre la Fase 3 (mig 371, ciclo operativo, ya
 commiteada/pusheada como tag `v1.172.0`). Con esta fase, **el POS puede cobrar una venta combinando ARS y
 USD de verdad** — antes, una Caja USD podía abrirse/operarse (Fase 3) pero ningún flujo de venta sabía
 cobrar en dólares. **Estado real: mig 372 APLICADA Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), código
-TODAVÍA SIN COMMITEAR** al cierre de esta tanda (se commitea junto con el resto del wiki al final de la
-sesión). SIN deploy a PROD.
+COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, bump `05801eb4`, tag+release `v1.173.0`
+publicados). SIN deploy a PROD.
 
 ### Trigger nuevo (migration 372) — defensa en profundidad server-side
 

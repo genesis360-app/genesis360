@@ -486,7 +486,8 @@ Aplica en 5 puntos de `GastosPage.tsx`:
 > "Integridad del efectivo") y **el selector de caja de Gastos no filtraba por moneda** (podía ofrecer una
 > Caja USD para un gasto en pesos). Ambos corregidos en la misma sesión: los 3 inserts pasan a `await`eados
 > con toast de error, y el picker de caja ahora excluye Cajas USD (mismo patrón que el selector doble de
-> Ventas). **Estado: código TODAVÍA SIN COMMITEAR al momento de escribir esto** (mig 372).
+> Ventas). **Estado: código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.173.0`, mig
+> 372).
 
 ---
 

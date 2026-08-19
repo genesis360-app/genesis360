@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-18, cont. 14) — Fase 4/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 372,
-> venta con pago combinado ARS+USD) — **TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre
-> de esta sesión, junto) — este bloque reemplaza al cont. 13 de abajo (que documentaba Fase 3, cuyo código
-> quedó COMMITEADO Y PUSHEADO en una tanda posterior de esa misma sesión — tag `v1.172.0` — corrigiendo el
-> "TODAVÍA SIN COMMITEAR" con el que se había escrito ese bloque) como punto de entrada. Sigue SIN PR a
-> `main`, SIN deploy a PROD.
+> ### ✅ ARRANCÁ ACÁ (2026-08-18→19, cont. 14) — Fase 4/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 372,
+> venta con pago combinado ARS+USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (wiki en commit `7d511c5d`,
+> código en commit `d783727d`, bump de versión `05801eb4`; tag+release **`v1.173.0`** publicados sobre
+> `dev`, verificado con `git log origin/dev..dev` vacío y `git describe --tags` = `v1.173.0`) — este
+> bloque reemplaza al cont. 13 de abajo (Fase 3, ya commiteada como tag `v1.172.0`) como punto de entrada.
+> Sigue SIN PR a `main`, SIN deploy a PROD — decisión pendiente de GO.
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 4/8 (venta con pago combinado ARS+USD) 100% COMPLETA en DEV, mig 372
 >
@@ -98,16 +98,19 @@ type: project
 > siguen sin construir. Recordatorios permanentes sin cambios (importador CSV; "Crear variante" no copia
 > moneda/USD). C2 (cotización BNA para AFIP, Fase 8) sigue pendiente de un contador, no bloquea nada.
 >
-> #### 📊 Estado DEV/PROD al cierre de esta tanda (Fase 4)
+> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 4 commiteada, sesión cerrando con `/clear`)
 >
 > | | DEV | PROD |
 > |---|---|---|
-> | `APP_VERSION` (código) | v1.172.0 (sin bump en esta tanda — Fase 4 sigue sumando sobre el mismo release DEV que las Fases 1+2+3; próximo tag a crear junto con el commit de esta fase: **`v1.173.0`**) | v1.170.0 (sin cambios — última confirmada, PR #330, `0687213b`) |
+> | `APP_VERSION` (código) | **v1.173.0** (bump en commit `05801eb4`) | v1.170.0 (sin cambios — última confirmada, PR #330, `0687213b`) |
 > | Migraciones aplicadas en la DB | 001-372 | 001-359 (sin cambios — 360-372 solo en DEV) |
-> | Branch | `dev` local — mig 372 + código de Fase 4 **TODAVÍA SIN COMMITEAR** (GO commitea al cierre de esta sesión) | `main` (sin cambios) |
-> | Tag / release | `v1.172.0` (cubre Fases 1+2+3) — Fase 4 (mig 372) queda pendiente del tag **`v1.173.0`**, a crear cuando GO commitee/pushee | `v1.170.0` (sin cambios) |
+> | Branch | `dev` local = `origin/dev` (sincronizado, sin commits pendientes de push) | `main` (sin cambios) |
+> | Tag / release | **`v1.173.0`** (cubre Fases 1+2+3+4, publicado en GitHub) | `v1.170.0` (sin cambios) |
 > | PR `dev`→`main` | No abierto | — |
-> | Vercel | sin cambios (código de Fase 4 todavía no pusheado) | sin cambios desde v1.170.0 |
+> | Vercel | sin cambios (nada nuevo pusheado a `main`, DEV no se autodeploya) | sin cambios desde v1.170.0 |
+>
+> **Próxima sesión (post-`/clear`): arrancar directo con la Fase 5** (Bóveda por moneda) si GO no indica
+> otra cosa — no hay nada pendiente de commitear/pushear de esta sesión, el wiki ya quedó al día.
 >
 > ---
 >

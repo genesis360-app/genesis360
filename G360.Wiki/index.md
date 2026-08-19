@@ -26,8 +26,8 @@ ficha (`moneda_costo`/`precio_costo_usd`, mismo patrón que `moneda_venta`/`prec
 antes vivía en un `useState` efímero que nunca persistía) · **🆕 2026-08-18 (mig 370, Fase 2/8 de Caja USD/
 G5, 🟡 EN DEV, COMMITEADO Y PUSHEADO, SIN deploy a PROD): checkbox "Puede cobrarse en cualquier moneda"**
 (`productos.acepta_cualquier_moneda`) en Card 2 Clasificación — independiente de `moneda_venta` ·
-**🆕 2026-08-18 (mig 372, Fase 4/8 de Caja USD/G5, 🟡 EN DEV, SIN COMMITEAR): el checkbox gana su primer
-consumidor real** — `carritoAceptaUsd` (`VentasPage.tsx`) lee este flag para decidir si un producto puede
+**🆕 2026-08-18 (mig 372, Fase 4/8 de Caja USD/G5, 🟡 EN DEV, COMMITEADO Y PUSHEADO): el checkbox gana su
+primer consumidor real** — `carritoAceptaUsd` (`VentasPage.tsx`) lee este flag para decidir si un producto puede
 cobrarse en USD, ver [[wiki/features/ventas-pos]] "Pago combinado ARS+USD"; recordatorio pendiente: "Crear
 variante" todavía no copia moneda/USD del producto madre — ver [[wiki/features/caja]] | ✅ PROD |
 | [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · **Conteos 2.0 cerrado 100%** (scope marca/wall-to-wall · modos+ciego · gate+autorizaciones+delta · scan-to-count + fuera-de-alcance · ABC+cíclico+reportes+trazabilidad · doble conteo formal · wall-to-wall bloqueante) · **v1.53.0: tab Traslados** (entre sucursales, tránsito + confirmación, mig 205) · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · modales inline · **✅ PROD (v1.138.0, deploy real 2026-07-22): columna "Estructura" de solo lectura en el detalle de líneas por producto** (join a `producto_estructuras`) · Aging Profiles con nota cruzada al descuento automático por estado (v1.139.0, ✅ PROD desde el 2026-07-22, distinto feature — ver ventas-pos) · ⛔ **tab "Tareas WMS"** (✅ EN PROD desde v1.144.0, migs 289-291, cerró Fases 3-5 de estructuras-udm — **2026-08-08, ✅ EN PROD desde v1.161.0: MUDADO por completo al módulo Pedidos**, con asignación de cada tarea a un usuario puntual y filtro en `/picking`; Inventario ya NO tiene esta pestaña, ver wms/pedidos) · **🟡 EN DEV (mig 293, 2026-07-22, SIN deploy a PROD): ingreso Y rebaje (simple+masivo) por UdM** (Fase 2 de estructuras-udm, CIERRA ese pendiente) · **🟡 EN DEV (mig 331, 2026-07-30, SIN deploy a PROD, backlog Fede 25/7 Fase B): aprobación de cambio de estado con foto** — control anti-fraude, `estados_inventario.requiere_aprobacion` independiente de `descuento_pct`, bucket `autorizaciones-fotos` scopeado por tenant, wireado en `LpnAccionesModal` y en el cambio masivo (cerró un bypass real que este último tenía) — ver "Aprobación de cambio de estado con foto" · **🆕 2026-08-06, ✅ PROD desde v1.159.0: footer de conteo de registros** (`ListaConteoFooter.tsx`) en el tab Inventario — "N líneas" o "Mostrando N de M líneas" · **🆕 sticky al fondo del viewport desde v1.165.0 (2026-08-11, `sticky bottom-0`)** · **🛑 2026-08-14 (mig 362, CONSTRUIDO Y VERIFICADO EN DEV, SIN COMMITEAR): reservas de stock atómicas** — hallazgo CRÍTICO de una auditoría de performance/calidad, cierra VEN-23 del UAT ("2 cajeros venden la última unidad"); 6 puntos del código (Ventas POS + webhooks TN/MELI) pisaban `cantidad_reservada` con un leer-modificar-escribir NO atómico en JS; RPCs nuevas `fn_reservar_stock_linea`/`fn_liberar_stock_linea` con `SELECT ... FOR UPDATE` — ver "Reservas de stock — race condition atómica" · **🎉 2026-08-14 (cierre completo de la misma auditoría): hallazgo relacionado DIFERIDO a propósito** — el `SUM()` del log de `movimientos_stock` en `fn_pedido_generar_venta` no comparte lock con el UPDATE real (stock real ya protegido, solo el número narrativo del log podría no reflejar el orden exacto); lockear rompería el `SKIP LOCKED` que permite despachos concurrentes — arquitectónico, ver "Hallazgo relacionado, DIFERIDO a propósito" | ✅ |
@@ -87,16 +87,17 @@ variante" todavía no copia moneda/USD del producto madre — ver [[wiki/feature
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | **⚠ Estado actual (2026-08-18, prevalece sobre el resto de esta celda):
-migraciones 001-371 aplicadas y verificadas en DEV. Las migs 360-370 (fix Pedido↔Envío, auditoría de
-performance/seguridad 361-366, 2 bugs de moneda en Producto 367, Caja USD Fases 1+2 368-370) ya NO están
-"sin commitear" — quedaron COMMITEADAS Y PUSHEADAS a `origin/dev` en el commit `310d9b3b` (+ bump de
-versión `0b4d431a`), tag+release `v1.171.0` publicados. **La mig 371 (Caja USD Fase 3, ciclo operativo)
-sigue SIN COMMITEAR** al cierre de esta entrada — aplicada y verificada solo en DEV. Sigue sin PR a `main`,
-sin deploy a PROD. El resto de las menciones "SIN COMMITEAR" más abajo en esta celda son texto histórico de
-sesiones anteriores, no el estado actual — ver `wiki/database/migraciones.md` (línea "Total al 2026-08-18")
-y `sources/raw/project_pendientes.md` (cont. 13) para el detalle real.** · **371** Fase 3 de Caja USD
-(ciclo operativo) — 2 triggers server-side (`fn_validar_traspaso_misma_moneda`/
+| [[wiki/database/migraciones]] | **⚠ Estado actual (2026-08-19, prevalece sobre el resto de esta celda):
+migraciones 001-372 aplicadas y verificadas en DEV, y TODAS (360-372: fix Pedido↔Envío, auditoría de
+performance/seguridad 361-366, 2 bugs de moneda en Producto 367, Caja USD Fases 1-4 368-372) quedaron
+COMMITEADAS Y PUSHEADAS a `origin/dev` (tags+releases `v1.171.0`/`v1.172.0`/`v1.173.0` publicados —
+`v1.173.0` es el estado final de esta tanda). Ninguna migración de esta tanda queda "sin commitear". Sigue
+sin PR a `main`, sin deploy a PROD. El resto de las menciones "SIN COMMITEAR" más abajo en esta celda son
+texto histórico de sesiones anteriores, no el estado actual — ver `wiki/database/migraciones.md` (línea
+"Total al 2026-08-18") y `sources/raw/project_pendientes.md` (cont. 14) para el detalle real.** · **372**
+Fase 4 de Caja USD (pago combinado ARS+USD) — `calcularEfectivoPorMoneda`/`carritoAceptaUsd` en
+`VentasPage.tsx`, trigger `fn_validar_moneda_coincide_sesion` (moneda de movimiento = moneda de sesión) ·
+**371** Fase 3 de Caja USD (ciclo operativo) — 2 triggers server-side (`fn_validar_traspaso_misma_moneda`/
 `fn_validar_rol_opera_caja_usd`) + `formatMonedaCaja`/conteo por denominación/umbral USD en
 `CajaPage.tsx` · **370** Fase 2 de Caja USD (permisos/config) — gate de rol en `useCotizacion.ts`, umbrales
 USD, checkbox `productos.acepta_cualquier_moneda` · **368-369** Fase 1 de Caja USD (cimientos) — moneda
@@ -187,8 +188,56 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-08-18 — 💵 Fase 3/8 de Caja USD (G5): ciclo operativo completo (mig 371), EN
-DEV sin commitear.* Continuación directa de la Fase 2 (ver "Antes" más abajo, ya commiteada/pusheada, tag
+*Última actualización: 2026-08-19 — 💵 Fase 4/8 de Caja USD (G5): venta con pago combinado ARS+USD (mig
+372), COMMITEADA Y PUSHEADA, tag `v1.173.0`.* Continuación directa de la Fase 3 (ver "Antes" más abajo).
+
+Se construyó, verificó y **commiteó** en DEV la **Fase 4/8** del plan "Caja en USD" (relevamiento G5): el
+POS ya puede cobrar una venta combinando ARS y USD de verdad. **Migración 372**
+(`372_caja_usd_fase4_pago_combinado.sql`), aplicada y verificada en DEV: agrega el trigger
+`fn_validar_moneda_coincide_sesion` (sobre `caja_movimientos`/`caja_arqueos`) que rechaza cualquier
+movimiento/arqueo cuya `moneda` no coincida con la de su sesión — red de seguridad porque, desde esta fase,
+`VentasPage.tsx` (no solo `CajaPage.tsx`) escribe `moneda` en cada movimiento. Una auditoría completa de
+insert-sites de todo el repo (hecha al construir el trigger) encontró y corrigió de paso **2 gaps
+preexistentes de REGLA #0 en `GastosPage.tsx`** (3 movimientos de caja fire-and-forget sin `await`/`toast`,
+y un picker de caja sin filtrar por moneda).
+
+**Código (`src/pages/VentasPage.tsx`):** nuevo campo `MedioPagoItem.montoUsd` — el cajero tipea dólares en
+un input dedicado para un método "efectivo + USD" (ej. "Efectivo USD", ahora creable desde Config → Ventas
+→ Métodos de pago, que hasta esta fase nunca exponía `moneda`/`es_efectivo` en su UI); `monto` sigue siendo
+SIEMPRE el equivalente en ARS, así `calcularVuelto`/`calcularEfectivoCaja`/`validarMediosPago` no cambian
+(D2). Nueva función pura `calcularEfectivoPorMoneda` reparte lo cobrado en `{ arsNeto, usdIngreso,
+vueltoArs }` — el vuelto de un pago en USD SIEMPRE sale en pesos, los dólares recibidos van completos a la
+Caja USD sin netear contra el vuelto (D3/D1). Selector de caja doble `sesionesArs`/`sesionesUsd` (cero
+cambio para tenants sin Caja USD real). `carritoAceptaUsd` le da su primer uso real a
+`productos.acepta_cualquier_moneda` (A2, Fase 2, sin consumidor hasta ahora). `ventas.cotizacion_usd`
+(Fase 1, nunca escrita) finalmente se stampea. Completar una reserva en USD queda explícitamente
+bloqueado (guard con mensaje claro) — alcance reducido documentado, no un olvido.
+
+🐛 Bug real encontrado por code-review y corregido antes de commitear: cambiar el medio de pago de
+"Efectivo" a "Efectivo USD" dejaba el monto viejo arrastrado — la venta pasaba validación pero no
+acreditaba nada en NINGUNA caja. Corregido en 2 capas (reset de monto al cambiar tipo + guard defensivo).
+
+Typecheck + build + suite completa de tests verdes (13 tests nuevos). Migración 372 revisada por
+`migration-reviewer` (APTA, con la auditoría de insert-sites) y revisión de código completa (encontró el
+bug de arriba + los 2 gaps de Gastos, todos corregidos). UAT nuevos: `VEN-37` a `VEN-43`.
+
+**Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4, migs 368-372). Próximo
+paso: Fase 5 (Bóveda por moneda) — Fases 3 y 4 dejaron explícitamente bloqueado que la Bóveda reciba/envíe
+plata desde/hacia una Caja USD, justo lo que la Fase 5 tiene que habilitar. Recordatorios permanentes sin
+cambios (importador CSV, "Crear variante").
+
+**Estado: PROD sin cambios, v1.170.0, migraciones 001-359. DEV: migraciones 001-372, TODO COMMITEADO Y
+PUSHEADO a `origin/dev`** (commit `d783727d` + bump `05801eb4`, tag+release **`v1.173.0`** publicados —
+verificado con `git log origin/dev..dev` vacío). **Sin PR a `main`, sin deploy a PROD.** Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 14), `log.md`, [[wiki/features/caja]] (sección
+"Caja en USD — Fase 4 de 8"), [[wiki/features/ventas-pos]] ("Pago combinado ARS+USD"),
+`wiki/database/migraciones.md` (mig 372, título a 001-372), [[wiki/business/roadmap]] (v1.173.0).
+
+---
+
+Antes: *Última actualización: 2026-08-18 — 💵 Fase 3/8 de Caja USD (G5): ciclo operativo completo (mig 371),
+EN DEV sin commitear (luego COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión, tag
+`v1.172.0`).* Continuación directa de la Fase 2 (ver "Antes" más abajo, ya commiteada/pusheada, tag
 `v1.171.0`).
 
 Se construyó y verificó en DEV la **Fase 3/8** del plan "Caja en USD" (relevamiento G5): el ciclo

@@ -13,15 +13,43 @@ updated: 2026-08-18
 `src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
 `dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
 completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.172.0 (Fases 1+2+3 de Caja USD ya en `origin/dev` — Fases 1+2 commit `0b4d431a`,
-tag+release `v1.171.0`; **Fase 3 (mig 371) también COMMITEADA Y PUSHEADA en una tanda posterior de esa
-misma sesión** — commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0` publicados, corrige el estado
-"TODAVÍA SIN COMMITEAR" que documentaba la entrada anterior de este roadmap. **Fase 4 de Caja USD (mig 372,
-pago combinado ARS+USD) construida y verificada en DEV en una sesión posterior, TODAVÍA SIN COMMITEAR** al
-cierre de esta entrada — sin bump de versión propio, sigue sumando sobre el mismo v1.172.0 (próximo tag a
-crear cuando GO commitee: `v1.173.0`). **SIN PR a `main`, SIN deploy a PROD**). **13 migraciones nuevas
-sobre PROD — 360 a 372 (la última migración es la 372).**  
+**Versión en DEV:** v1.173.0 (Fases 1+2+3+4 de Caja USD ya en `origin/dev` — Fases 1+2 commit `0b4d431a`,
+tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; **Fase 4
+(mig 372, pago combinado ARS+USD) también COMMITEADA Y PUSHEADA** — commit `d783727d` (código) + `7d511c5d`
+(wiki) + bump `05801eb4`, tag+release `v1.173.0` publicados, corrige el estado "TODAVÍA SIN COMMITEAR" que
+documentaba la entrada anterior de este roadmap. **SIN PR a `main`, SIN deploy a PROD**). **13 migraciones
+nuevas sobre PROD — 360 a 372 (la última migración es la 372).**  
 **Última actualización:** 18 de Agosto, 2026
+
+---
+
+## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — 🟡 EN DEV, sin deploy a PROD (2026-08-18)
+
+Continúa la Fase 3 (v1.172.0, abajo) en una sesión posterior. **Migración 372**
+(`372_caja_usd_fase4_pago_combinado.sql`), commiteada junto con el código en `d783727d` (wiki en `7d511c5d`,
+bump de versión `05801eb4`), tag+release `v1.173.0` publicados sobre `dev`. **1 migración nueva: 372.**
+
+- **Caja en Dólares (relevamiento G5) — Fase 4 (pago combinado ARS+USD) completa**: una venta ya puede
+  cobrarse combinando medios en pesos y en dólares en el mismo checkout (`calcularEfectivoPorMoneda` en
+  `ventasValidation.ts` — USD siempre se acredita entero, el vuelto siempre sale en pesos, la sesión ARS
+  puede quedar en neto negativo/egreso si el vuelto supera lo recibido en pesos), gate `carritoAceptaUsd`
+  que exige que todo el carrito acepte USD antes de habilitar el cobro en esa moneda, y trigger server-side
+  `fn_validar_moneda_coincide_sesion` (defensa en profundidad) que rechaza cualquier movimiento/arqueo cuya
+  `moneda` no coincida con la de su sesión.
+- **🔴 Bug crítico encontrado y corregido en la misma sesión** (antes de commitear): cambiar el tipo de
+  medio de pago de una fila sin resetear el monto dejaba una venta "cobrada" sin ningún asiento en
+  `caja_movimientos` en ninguna de las dos monedas — plata que desaparecía sin rastro. Fix en 2 capas:
+  reset de `monto` al cambiar `tipo`, más guard explícito en `registrarVenta` que bloquea con
+  `monto>0`/`montoUsd<=0`. Detalle: [[wiki/features/ventas-pos]].
+
+Typecheck + build + suite completa de tests verdes (13 tests nuevos en `ventasValidation.test.ts`, incluido
+el caso 🔴 de `arsNeto` negativo). Migración 372 revisada por `migration-reviewer` (APTA, 0 filas con
+moneda inconsistente pre-existentes). UAT nuevos: `VEN-37` a `VEN-43`.
+
+**Estado real: DEV en migs 001-372, COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d` + wiki
+`7d511c5d` + bump `05801eb4`), tag+release `v1.173.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD**
+— decisión pendiente de GO. Detalle completo: [[wiki/features/ventas-pos]], [[wiki/features/caja]]
+(sección "Caja en USD — Fase 4 de 8"), `wiki/database/migraciones.md` (mig 372).
 
 ---
 

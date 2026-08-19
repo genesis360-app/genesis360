@@ -6,6 +6,58 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-19] update | Fase 7/8 de Caja USD (G5): Reportes (H1/H2) — sin migración, EN DEV sin commitear
+
+Continuación directa de la Fase 6 (mig 375, Devoluciones/NC con soporte USD — commit `e55a1009`, tag
+`v1.175.0`, ya commiteada/pusheada). Se construyó y verificó en DEV la **Fase 7/8** del plan "Caja en USD"
+(relevamiento G5): **Reportes** (H1/H2) — 100% frontend, **sin ninguna migración nueva**, toda la data ya
+existía desde la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de
+las Fases 4/6).
+
+**H1** (Reportes → total único en pesos + desglose por moneda debajo, sin ocultar el desglose):
+`src/pages/ReportesPage.tsx` — el desglose "Ingresos por método de pago" del reporte "Ventas" ahora muestra
+también el monto real en dólares entre paréntesis para cualquier medio con componente USD real, además del
+equivalente en pesos que ya mostraba (el "Total facturado" en pesos queda sin cambios).
+
+**H2** (Dashboard → ventas USD excluidas de los totales/indicadores en pesos, mostradas aparte):
+`src/pages/DashboardPage.tsx` — 4 indicadores tocados: (1) KPI "Ventas del mes" (+ tendencia + semáforo +
+insights) filtra `cotizacion_usd IS NULL`, con `totalVentasMesUsd`/`cantVentasMesUsd` e insight nuevo tipo
+'info'; (2) "Margen Contribución" (`getVentaIdsConfirmadas`) también filtra `cotizacion_usd IS NULL` — NO
+toca "Posición IVA" (débito fiscal real con CAE, sigue 100% en pesos, decisión C1 ya cerrada); (3) "Ingreso
+Neto (Caja)" ahora separa `caja_movimientos` por su columna `moneda` real, con `ingresoNetoUsd` mostrado
+aparte; (4) Rentabilidad (`RentabilidadPage.tsx`): los 4 KPIs agregados y el "Estado de resultados" excluyen
+ventas USD de sus acumuladores — esas ventas siguen visibles en "Detalle por venta" con badge "USD", no
+desaparecen.
+
+**🐛 2 bugs preexistentes encontrados y corregidos de paso** (no introducidos por esta sesión): (1)
+`costoVentas` (Dashboard, usado en `rentabilidadNeta`/`margenNeto`, actualmente sin renderizar en ningún
+lado) no filtraba por `estado` de la venta — contaba costo de ventas `cancelada`/`reservada`/`pendiente`/
+`devuelta` también; verificado con SQL real en DEV: infla el costo histórico en ~$3,9M sobre $31,8M reales.
+Corregido con join filtrado (mismo patrón que `ivaFiscalQ`), verificado que da el mismo número que una
+subquery independiente. (2) `ingresoNeto` (KPI "Ingreso Neto (Caja)") sumaba `caja_movimientos.monto` de
+todas las sesiones sin mirar `moneda` — riesgo latente (0 movimientos USD reales en DEV hoy, no afectó
+ningún número real) de sumar dólares crudos dentro de un total en pesos apenas exista una Caja USD real con
+movimientos. Corregido separando el acumulador por `m.moneda`.
+
+**Verificación**: typecheck + build + suite completa de tests verdes (100 archivos, 1605 tests, sin tests
+nuevos — lógica de solo lectura/presentación, verificada contra SQL real en DEV en vez de unitarios).
+Revisado por `code-reviewer`: 0 hallazgos 🔴, 2 hallazgos 🟡 cosméticos de wording, corregidos antes de
+commitear. UAT nuevos: `DSH-06` a `DSH-09` (`tests/specs/uat-modo-basico.md`).
+
+**Con esto, la Fase 7/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5+6+7, migs 368-375 — sin
+migración nueva en esta fase) — el único punto abierto del plan de 8 fases sigue siendo **C2** (cotización
+Banco Nación para AFIP, Fase 8), pendiente de confirmación con un contador real, no bloqueante. Próximo
+paso: Fase 8 (C2, bloqueada) — probablemente la sesión que sigue haga otra cosa hasta que GO consiga esa
+confirmación. Detalle completo: `sources/raw/project_pendientes.md` (cont. 17), `wiki/features/reportes-metricas.md`
+(sección "Caja en USD — Fase 7 de 8"), `wiki/features/caja.md`, `wiki/features/ventas-pos.md`,
+`wiki/development/reglas-negocio.md` (módulo G5), `wiki/business/roadmap.md` (v1.176.0).
+
+**Estado real: código completo en DEV, typecheck+build+tests verdes, TODAVÍA SIN COMMITEAR** — el
+orquestador commitea el wiki + el código al cierre de esta sesión, junto con el bump de versión a
+**v1.176.0** (ya hecho en `src/config/brand.ts`). Sin PR a `main`, sin deploy a PROD.
+
+---
+
 ## [2026-08-19] update | Fase 6/8 de Caja USD (G5) COMMITEADA Y PUSHEADA (v1.175.0)
 
 **Corrección**: la entrada de abajo (Fase 6/8, Devoluciones/NC con soporte USD, mig 375) quedó documentada

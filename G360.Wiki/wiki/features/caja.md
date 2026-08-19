@@ -365,9 +365,15 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 > Y VERIFICADAS en DEV, código de las Fases 1-6 COMMITEADO Y PUSHEADO a `origin/dev` en 5 tandas** (368-370
 > en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en commit `d783727d`,
 > tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`; 375 en commit `e55a1009`, tag `v1.175.0`).
-> **SIN deploy a PROD en ningún caso.** Ya hay una Caja USD de prueba operando de verdad en DEV (tenant
-> "Almacén Jorgito"). Falta Fase 7 en adelante: reportes, cotización fiscal AFIP (C2, bloqueada por un
-> contador real). Ver el relevamiento completo (29 preguntas respondidas) en
+> **Fase 7 de 8 completa** (Reportes — H1/H2, SIN migración nueva, ver
+> [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8" — el detalle completo vive ahí porque la
+> fase toca Dashboard/Reportes, no Caja): el reporte de Ventas desglosa el monto real en USD por método de
+> pago junto al equivalente en pesos (H1), y el Dashboard excluye las ventas con componente USD de sus
+> indicadores en pesos, mostrándolas aparte (H2) — está CONSTRUIDA Y VERIFICADA en DEV, TODAVÍA SIN
+> COMMITEAR (bump a `v1.176.0` pendiente de commit). **SIN deploy a PROD en ningún caso.** Ya hay una Caja
+> USD de prueba operando de verdad en DEV (tenant "Almacén Jorgito"). Falta solo la Fase 8: cotización
+> fiscal AFIP (C2, bloqueada por confirmación de un contador real). Ver el relevamiento completo (29
+> preguntas respondidas) en
 > [[wiki/development/reglas-negocio]] → "Caja en USD /
 > Venta física en USD".
 
@@ -921,3 +927,32 @@ COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0
 para AFIP, Fase 8), pendiente de confirmación con un contador real, sin bloquear el resto. **Próximo paso:
 Fase 7** (Reportes — H1/H2 del relevamiento: total único en pesos + desglose por moneda en reportes;
 Dashboard excluye ventas USD de los totales/indicadores en pesos).
+
+---
+
+## ✅ Caja en USD — Fase 7 de 8 (Reportes) — EN DEV, SIN migración, TODAVÍA SIN COMMITEAR (2026-08-19)
+
+Séptima fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
+USD / Venta física en USD"). Continúa directo sobre la Fase 6 (mig 375, Devoluciones/NC con soporte USD, ya
+commiteada/pusheada como tag `v1.175.0`). **Esta fase toca Dashboard/Reportes, no Caja** — el detalle
+técnico completo (queries de `DashboardPage.tsx`/`ReportesPage.tsx`/`RentabilidadPage.tsx`, los 2 bugs
+preexistentes encontrados, verificación) vive en [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7
+de 8", que queda como fuente de verdad de esta fase.
+
+Resumen: implementa **H1** (el reporte "Ventas" desglosa el monto real en USD por método de pago, junto al
+equivalente en pesos que ya mostraba) y **H2** (el Dashboard excluye las ventas con `cotizacion_usd` no nulo
+de sus indicadores en pesos — "Ventas del mes", "Margen Contribución", "Ingreso Neto (Caja)" y Rentabilidad
+— mostrando el componente USD aparte, sin ocultarlo). **100% frontend, sin ninguna migración nueva** — toda
+la data ya existía desde la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`,
+`medio_pago[].monto_usd` de las Fases 4/6). De paso se encontraron y corrigieron 2 bugs preexistentes (no
+introducidos por esta sesión): `costoVentas` sin filtro de `estado` de venta (inflaba el costo histórico en
+~$3,9M sobre $31,8M reales, verificado con SQL real en DEV) e `ingresoNeto` sin filtro de `moneda` (riesgo
+latente de sumar dólares crudos dentro de un total en pesos, sin impacto real hoy porque DEV no tiene
+movimientos USD todavía). **Estado real: código completo — typecheck+build+tests verdes (100 archivos, 1605
+tests) —, TODAVÍA SIN COMMITEAR** (bump a `v1.176.0` hecho en `src/config/brand.ts`, pendiente de commit por
+el orquestador). SIN deploy a PROD.
+
+**Con esto, la Fase 7/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5+6+7 completas (migs
+368-375, sin migración nueva en esta fase). El plan de 8 fases NO tiene ningún punto abierto propio salvo
+**C2** (cotización Banco Nación para AFIP, Fase 8), pendiente de confirmación con un contador real. **Próximo
+paso: Fase 8** (bloqueada por el contador).

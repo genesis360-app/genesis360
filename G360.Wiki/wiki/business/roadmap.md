@@ -13,14 +13,58 @@ updated: 2026-08-19
 `src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
 `dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
 completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.175.0 (Fases 1+2+3+4+5+6 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
+**Versión en DEV:** v1.176.0 (Fases 1+2+3+4+5+6+7 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
 `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; Fase 4 (mig 372,
 pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; Fase 5 (migs
 373+374, Bóveda ARS/USD) COMMITEADA Y PUSHEADA a `origin/dev` — commit `28d9291e`, tag+release `v1.174.0`
-publicados; **Fase 6 (mig 375, Devoluciones/NC con soporte USD) COMMITEADA Y PUSHEADA** — commit
-`e55a1009`, tag+release **`v1.175.0`** publicados. **SIN PR a `main`, SIN
-deploy a PROD**). **16 migraciones nuevas sobre PROD — 360 a 375 (la última migración es la 375).**  
+publicados; Fase 6 (mig 375, Devoluciones/NC con soporte USD) COMMITEADA Y PUSHEADA — commit
+`e55a1009`, tag+release `v1.175.0` publicados; **Fase 7 (Reportes — H1/H2, SIN migración nueva) CONSTRUIDA Y
+VERIFICADA en DEV, TODAVÍA SIN COMMITEAR** — bump a **v1.176.0** hecho en `src/config/brand.ts`, tag+release
+pendientes de que el orquestador commitee. **SIN PR a `main`, SIN
+deploy a PROD**). **16 migraciones nuevas sobre PROD — 360 a 375 (la última migración es la 375; la Fase 7 no
+agrega migración).**  
 **Última actualización:** 19 de Agosto, 2026
+
+---
+
+## v1.176.0 — 💵 Caja en Dólares (Fase 7/8: Reportes H1/H2) — 🟡 EN DEV, TODAVÍA SIN COMMITEAR (2026-08-19)
+
+Continúa la Fase 6 (v1.175.0, abajo). **Sin migración nueva** — 100% frontend, toda la data ya existía desde
+la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de las Fases 4/6).
+Código completo, typecheck+build+suite de tests verdes, **TODAVÍA SIN COMMITEAR** — el orquestador commitea
+el wiki junto con el código en un solo commit, tag+release `v1.176.0`, al cierre de la sesión.
+
+- **Caja en Dólares (relevamiento G5) — Fase 7 (Reportes) completa**:
+  - **H1** (Reportes): el reporte "Ventas" (`ReportesPage.tsx`) desglosa el monto real en USD por método de
+    pago, entre paréntesis junto al equivalente en pesos que ya mostraba — el "Total facturado" en pesos
+    queda sin cambios.
+  - **H2** (Dashboard): `DashboardPage.tsx` excluye las ventas con `cotizacion_usd` no nulo de 4 indicadores
+    en pesos, mostrando el componente USD aparte: KPI "Ventas del mes" (+ insight nuevo), "Margen
+    Contribución" (sin tocar "Posición IVA", 100% fiscal en pesos por decisión C1), "Ingreso Neto (Caja)"
+    (separado por `moneda` real), y Rentabilidad (`RentabilidadPage.tsx` — las ventas USD siguen visibles en
+    "Detalle por venta" con badge "USD", no desaparecen).
+- **🔴 2 bugs preexistentes encontrados y corregidos de paso** (no introducidos por esta sesión): (1)
+  `costoVentas` (usado en `rentabilidadNeta`/`margenNeto`, hoy sin renderizar en ningún lado del Dashboard)
+  no filtraba por `estado` de la venta — infla el costo histórico en ~$3,9M sobre $31,8M reales de costo de
+  ventas confirmadas, verificado con SQL real en DEV; corregido con join filtrado (mismo patrón que
+  `ivaFiscalQ`). (2) `ingresoNeto` (KPI "Ingreso Neto (Caja)") sumaba `caja_movimientos.monto` de todas las
+  sesiones sin mirar `moneda` — riesgo latente sin impacto real hoy (0 movimientos USD en DEV); corregido
+  separando el acumulador por `m.moneda`. Detalle: [[wiki/features/reportes-metricas]] → "Caja en USD — Fase
+  7 de 8".
+
+Typecheck + build + suite completa de tests verdes (100 archivos, 1605 tests — sin tests nuevos, lógica de
+solo lectura/presentación verificada contra SQL real en DEV). Revisado por `code-reviewer`: 0 hallazgos 🔴,
+2 hallazgos 🟡 cosméticos de wording corregidos antes de commitear. UAT nuevos: `DSH-06` a `DSH-09`.
+
+**Con esto, la Fase 7/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5+6+7, migs 368-375 — sin
+migración nueva en esta fase) — el plan de 8 fases NO tiene ningún punto abierto propio salvo **C2**
+(cotización Banco Nación para AFIP, Fase 8, bloqueada por confirmación de un contador real). Próximo paso:
+Fase 8.
+
+**Estado real: DEV en migs 001-375 (sin cambios), código completo, TODAVÍA SIN COMMITEAR** — el
+orquestador commitea código + wiki al cierre de esta sesión, con bump a **v1.176.0**. **SIN PR
+`dev`→`main`, SIN deploy a PROD.** Detalle completo: [[wiki/features/reportes-metricas]] (sección "Caja en
+USD — Fase 7 de 8"), [[wiki/features/caja]], `sources/raw/project_pendientes.md` (cont. 17).
 
 ---
 

@@ -6,11 +6,110 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-19, cont. 16) — Fase 6/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 375,
+> ### 🟡 ARRANCÁ ACÁ (2026-08-19, cont. 17) — Fase 7/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (Reportes —
+> H1/H2, SIN migración nueva) — **TODAVÍA SIN COMMITEAR** (el orquestador commitea código + wiki en un solo
+> commit al cierre de esta sesión, con bump a **v1.176.0**, igual que las fases anteriores) — este bloque
+> reemplaza al cont. 16 de abajo (Fase 6, tag `v1.175.0`) como punto de entrada. Sigue SIN PR a `main`, SIN
+> deploy a PROD.
+>
+> #### ✅ Relevamiento G5 (Caja USD) — Fase 7/8 (Reportes) 100% COMPLETA en DEV, sin migración
+>
+> Continuación directa de la Fase 6 (mig 375, Devoluciones/NC con soporte USD — commit `e55a1009`, tag
+> `v1.175.0`, ya commiteada/pusheada). Con esta fase se implementan **H1** (Reportes) y **H2** (Dashboard)
+> del relevamiento — **100% frontend, sin ningún cambio de DB**: toda la data que necesitaba ya existía
+> desde la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de las Fases
+> 4/6).
+>
+> **H1** (Reportes → total único en pesos como resumen + detalle desglosado por moneda debajo, sin ocultar
+> el desglose): `src/pages/ReportesPage.tsx` — el reporte "Ventas" ya tenía un resumen "Total facturado"
+> (pesos, sin cambios) y un desglose "Ingresos por método de pago" (`breakdownMediosPago`) que sumaba el
+> monto en pesos por cada medio. Se agregó que, cuando un medio tuvo componente USD real (el JSON de
+> `medio_pago` ya trae `monto_usd` por línea desde las Fases 4/6), el chip de ese medio muestre TAMBIÉN el
+> monto real en dólares entre paréntesis, además del equivalente en pesos que ya mostraba — el desglose pasa
+> a ser "por moneda" de verdad, no solo por medio de pago en pesos.
+>
+> **H2** (Dashboard → las ventas en USD se excluyen de los totales/indicadores en pesos y se muestran
+> aparte): `src/pages/DashboardPage.tsx`, 4 indicadores tocados:
+> 1. **KPI "Ventas del mes"** (+ tendencia vs. mes anterior + semáforo + insights, query `stats`): ahora
+>    filtra `cotizacion_usd IS NULL` (columna de la Fase 1, no-nula solo si la venta tuvo componente USD
+>    real). Se agregó `totalVentasMesUsd`/`cantVentasMesUsd` + un insight nuevo tipo 'info' ("N ventas con
+>    componente USD este mes... excluidas del total en pesos de arriba") cuando corresponde.
+> 2. **"Margen Contribución"** (`dashKpis.margenContrib`, sección "4 KPI Cards ejecutivas"): la función
+>    interna `getVentaIdsConfirmadas` (arma la base de ventas para el margen) también filtra
+>    `cotizacion_usd IS NULL`. **NO toca "Posición IVA"** (débito fiscal real con CAE, query `ivaFiscalQ`
+>    separada) — la factura AFIP de una venta USD sigue siendo 100% en pesos (decisión C1, ya cerrada, sin
+>    cambios).
+> 3. **"Ingreso Neto (Caja)"** (`dashKpis.ingresoNeto`): ahora separa los movimientos de `caja_movimientos`
+>    por su columna `moneda` real (Fase 1) — antes sumaba todo junto sin filtrar. Se agregó `ingresoNetoUsd`
+>    mostrado aparte en el sub-texto de la card ("+US$X" o "−US$X" si el saldo USD del período es negativo).
+> 4. **Rentabilidad** (`src/pages/RentabilidadPage.tsx`, embebida en el tab "Rentabilidad"): los 4 KPIs
+>    agregados ("Ventas totales"/"Costo total"/"Ganancia bruta"/"Margen promedio") y el "Estado de
+>    resultados" excluyen ventas con `cotizacion_usd` no nulo de sus acumuladores. Esas ventas NO
+>    desaparecen de la tabla "Detalle por venta" — siguen ahí, tageadas con un badge "USD" junto al número
+>    de venta. El sub-texto de "Ventas totales" indica cuántas quedaron afuera y su equivalente en pesos.
+>
+> **🐛 2 bugs preexistentes encontrados y corregidos de paso** (no introducidos por esta sesión, pero
+> descubiertos al tocar este código):
+> 1. **`costoVentas` sin filtro de estado** (`DashboardPage.tsx`, usado en `rentabilidadNeta`/`margenNeto` —
+>    actualmente esos 2 valores se calculan pero no se renderizan en ningún lado del Dashboard, así que el
+>    bug no era visible al usuario todavía, pero los datos ya estaban mal si algo los llegara a consumir):
+>    la query vieja de costo de ventas del mes NO filtraba por `estado` de la venta, así que contaba costo
+>    de `venta_items` de ventas `cancelada`/`reservada`/`pendiente`/`devuelta` también, no solo
+>    `despachada`/`facturada`. Verificado con SQL real contra DEV (`gcmhzdedrkmmzfzfveig`): infla el costo
+>    total histórico en ~$3,9M sobre $31,8M reales de costo de ventas confirmadas (cancelada $1.975.180 +
+>    reservada $1.851.500 + pendiente $34.950 + devuelta $13.800 mezclados adentro). Se corrigió
+>    reescribiendo la query como un join filtrado (`venta_items.select(...,
+>    ventas!inner(estado, cotizacion_usd, ...)).in('ventas.estado', [...]).is('ventas.cotizacion_usd',
+>    null)`), mismo patrón que ya usaba `ivaFiscalQ` en el mismo archivo. Verificado con SQL que el
+>    join-filtrado da EXACTO el mismo número que una subquery IN independiente (31.991.175,32 en ambas).
+> 2. **`ingresoNeto` sin filtro de moneda** (`DashboardPage.tsx`, KPI "Ingreso Neto (Caja)", visible en el
+>    Dashboard ejecutivo): sumaba `caja_movimientos.monto` de TODAS las sesiones sin mirar la columna
+>    `moneda` (real desde la Fase 1, mig 368) — si alguna vez hubiera una sesión de Caja USD real con
+>    movimientos, el monto en dólares (ej. "50") se sumaría CRUDO adentro de un total en pesos (ej. "15000"
+>    + "50" = "15050" mostrado como pesos), sin convertir. Confirmado con SQL que hoy en DEV no hay ningún
+>    movimiento con `moneda='USD'` todavía (0 ventas USD reales en DEV), así que el bug no afectó ningún
+>    número real hasta ahora, pero era un riesgo latente real apenas alguien probara la Caja USD real. Se
+>    corrigió separando el acumulador por `m.moneda` en el mismo loop.
+>
+> **Verificación**: `npx tsc --noEmit` limpio, `npm run build` limpio, suite completa de vitest (100
+> archivos, 1605 tests) en verde — sin tests nuevos (es lógica de solo lectura/presentación, no mueve
+> plata/stock/comprobantes, verificada contra SQL real en DEV en vez de tests unitarios nuevos). Revisado
+> por el subagente `code-reviewer`: 0 hallazgos 🔴 bloqueantes, 2 hallazgos 🟡 cosméticos de wording (signo
+> del sub-texto de "Ingreso Neto (Caja)" y aclarar "equivalentes en pesos" en Rentabilidad) — AMBOS
+> corregidos antes de commitear. Escenarios UAT nuevos: **DSH-06 a DSH-09** en
+> `tests/specs/uat-modo-basico.md` (sección "13. Dashboard y Reportes").
+>
+> **Con esto, la Fase 7/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5+6+7, migs 368-375 — la
+> Fase 7 no agrega migración) — el único punto abierto de todo el plan de 8 fases sigue siendo **C2**
+> (cotización Banco Nación para AFIP, Fase 8), pendiente de confirmación con un contador real, no
+> bloqueante.
+>
+> **Próximo paso: Fase 8** (C2 — bloqueada por el contador, así que probablemente la sesión que sigue haga
+> otra cosa o quede pendiente hasta que GO consiga esa confirmación).
+>
+> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 7 CONSTRUIDA, SIN COMMITEAR)
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | **v1.176.0** (bump en `brand.ts`, SIN COMMITEAR) | v1.170.0 (sin cambios) |
+> | Migraciones aplicadas en la DB | 001-375 (sin cambios — Fase 7 no agrega migración) | 001-359 (sin cambios) |
+> | Branch | `dev`, working tree con código+wiki SIN COMMITEAR | `main` (sin cambios) |
+> | Tag / release | ninguno todavía (se crea al commitear, `v1.176.0`) | `v1.170.0` (sin cambios) |
+> | PR `dev`→`main` | No abierto | — |
+> | Vercel | sin cambios (sin deploy a PROD) | sin cambios desde v1.170.0 |
+>
+> `ReportesPage.tsx`, `DashboardPage.tsx`, `RentabilidadPage.tsx`, UAT (`DSH-06` a `DSH-09`) y el wiki — el
+> orquestador los commitea todos juntos en un solo commit, tag+release **v1.176.0**, al cierre de esta
+> sesión. Próxima sesión (post-`/clear`): arrancar con la Fase 8 (C2, bloqueada) o lo que decida GO.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-19, cont. 16) — Fase 6/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 375,
 > Devoluciones/NC con soporte USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`,
 > tag+release **`v1.175.0`** publicados, verificado con `git log origin/dev..dev` vacío — una reconciliación
-> de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal) — este bloque reemplaza al
-> cont. 15 de abajo (Fase 5, tag `v1.174.0`) como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
+> de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal) — este bloque quedó
+> SUPERADO por el de arriba (cont. 17: Fase 7/8 de Caja USD, Reportes) pero su contenido sigue VIGENTE (no
+> fue revertido). Sigue SIN PR a `main`, SIN deploy a PROD.
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 6/8 (Devoluciones/NC) 100% COMPLETA en DEV, mig 375
 >

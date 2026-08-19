@@ -548,8 +548,11 @@ Typecheck + build + suite completa de tests unitarios verdes (incluye los 7 test
 USD, mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`) SÍ toca esta página** — el modal/flujo de devolución
 (`abrirModalDevolucion`/`procesarDevolucion`) gana su propio selector de Caja USD, input en dólares y
 validaciones ARS/USD separadas, mismo patrón que el pago combinado de arriba. Detalle técnico completo en
-[[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" (fuente de verdad de esa fase). Próximo paso
-del proyecto: Fase 7 (Reportes).
+[[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" (fuente de verdad de esa fase). **🆕 Fase 7/8
+(Reportes, H1/H2, sin migración, 2026-08-19, CONSTRUIDA EN DEV, TODAVÍA SIN COMMITEAR) NO toca esta
+página** — toca Dashboard/Reportes, ver [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8".
+Próximo paso del proyecto: Fase 8 (C2, cotización fiscal AFIP, bloqueada por confirmación de un contador
+real).
 
 ## Visibilidad de costo/margen (G4)
 

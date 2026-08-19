@@ -220,18 +220,31 @@ export default function DashboardPage() {
       const bySuc = <T extends object>(q: T): T =>
         sucursalId ? (q as any).eq('sucursal_id', sucursalId) : q
 
+      // G5 Fase 7 (H2) — `cotizacion_usd` (Fase 1) queda seteado solo cuando la venta tuvo un
+      // componente real en USD (producto en moneda_venta='usd' o pago con medio USD). El costo
+      // (`ventasMesCosto`) se filtra por el mismo criterio vía join `ventas!inner`, no por fecha
+      // suelta como antes — 🐛 bug pre-existente encontrado de paso: la query vieja no filtraba
+      // por `estado` (contaba costo de venta_items de CUALQUIER venta del mes, incluidas
+      // canceladas/pendientes), inflando el costo y subestimando `rentabilidadNeta`/`margenNeto`.
+      const ESTADOS_CONFIRMADOS = ['despachada', 'facturada']
+      let ventasMesCostoQ = supabase.from('venta_items')
+        .select('cantidad, precio_costo_historico, ventas!inner(estado, cotizacion_usd, tenant_id, sucursal_id, created_at)')
+        .eq('ventas.tenant_id', tenant!.id).in('ventas.estado', ESTADOS_CONFIRMADOS)
+        .is('ventas.cotizacion_usd', null).gte('ventas.created_at', inicioMes)
+      if (sucursalId) ventasMesCostoQ = ventasMesCostoQ.eq('ventas.sucursal_id', sucursalId)
+
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas, gastosMes, ventasMesCosto] = await Promise.all([
         supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
         bySuc(supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias)),
-        bySuc(supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)),
-        bySuc(supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt)),
+        bySuc(supabase.from('ventas').select('total, cotizacion_usd').eq('tenant_id', tenant!.id).in('estado', ESTADOS_CONFIRMADOS).gte('created_at', inicioMes)),
+        bySuc(supabase.from('ventas').select('total, cotizacion_usd').eq('tenant_id', tenant!.id).in('estado', ESTADOS_CONFIRMADOS).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt)),
         bySuc(supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias)),
         bySuc(supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada'])),
         supabase.from('productos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('activo', false),
         bySuc(supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja)),
         bySuc(supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr)),
-        supabase.from('venta_items').select('cantidad, precio_costo_historico').eq('tenant_id', tenant!.id).gte('created_at', inicioMes),
+        ventasMesCostoQ,
       ])
 
       const prods                 = productos.data ?? []
@@ -246,9 +259,15 @@ export default function DashboardPage() {
       const ingresosHoy      = ingresosMovs.reduce((a, m) => a + m.cantidad * ((m as any).productos?.precio_costo ?? 0), 0)
       const cantIngresosHoy  = ingresosMovs.reduce((a, m) => a + m.cantidad, 0)
       const rebajesHoy       = movs.filter(m => m.tipo === 'rebaje').reduce((a, m) => a + m.cantidad, 0)
-      const totalVentasMes   = (ventasMes.data ?? []).reduce((a, v) => a + (v.total ?? 0), 0)
-      const cantVentasMes    = ventasMes.data?.length ?? 0
-      const totalVentasMesAnt = (ventasMesAnt.data ?? []).reduce((a, v) => a + (v.total ?? 0), 0)
+      // G5 Fase 7 (H2) — ARS-only para el KPI/tendencia principal; el componente USD se separa
+      // (totalVentasMesUsd) para no distorsionar la comparación vs. mes anterior con el tipo de cambio.
+      const ventasMesArs      = (ventasMes.data ?? []).filter(v => v.cotizacion_usd == null)
+      const ventasMesUsd      = (ventasMes.data ?? []).filter(v => v.cotizacion_usd != null)
+      const totalVentasMes    = ventasMesArs.reduce((a, v) => a + (v.total ?? 0), 0)
+      const cantVentasMes     = ventasMesArs.length
+      const totalVentasMesUsd = ventasMesUsd.reduce((a, v) => a + (v.total ?? 0), 0)
+      const cantVentasMesUsd  = ventasMesUsd.length
+      const totalVentasMesAnt = (ventasMesAnt.data ?? []).filter(v => v.cotizacion_usd == null).reduce((a, v) => a + (v.total ?? 0), 0)
 
       // Velocidad de ventas en últimos 30d
       const velocidadMap: Record<string, number> = {}
@@ -305,6 +324,7 @@ export default function DashboardPage() {
       return {
         totalProductos, totalProductosInactivos, stockCritico, valorInventario, alertasActivas,
         ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
+        totalVentasMesUsd, cantVentasMesUsd,
         totalVentasMesAnt, cantStockMuerto, valorStockMuerto, prodsInactivos, prodsCriticos,
         proyeccionCobertura, deudaTotal, cantDeudoras,
         gastosTotal, costoVentas, rentabilidadNeta, margenNeto,
@@ -378,9 +398,14 @@ export default function DashboardPage() {
       // Margen/IVA: venta_items NO tiene estado ni sucursal_id → se filtra vía ventas.
       // REGLA #0: solo comprobantes VÁLIDOS ('despachada'/'facturada'); nunca cancelada/
       // pendiente/reservada/devuelta (no son débito fiscal ni venta efectiva). Respeta sucursal.
+      // G5 Fase 7 (H2) — excluye ventas con componente USD (`cotizacion_usd` no nulo): el margen
+      // de contribución es un indicador de rentabilidad en pesos, mezclarlas lo distorsiona con
+      // el tipo de cambio del día. NO afecta `ivaDebitoFiscal` de abajo (query aparte, fiscal —
+      // la factura AFIP de una venta USD sigue siendo 100% en pesos, C1, sin exclusión ahí).
       const getVentaIdsConfirmadas = async (d1: string, d2: string) => {
         let q = supabase.from('ventas').select('id').eq('tenant_id', tenant!.id)
-          .in('estado', ['despachada', 'facturada']).gte('created_at', d1).lte('created_at', d2)
+          .in('estado', ['despachada', 'facturada']).is('cotizacion_usd', null)
+          .gte('created_at', d1).lte('created_at', d2)
         if (sucursalId) q = q.eq('sucursal_id', sucursalId)
         const { data } = await q
         return (data ?? []).map((v: any) => v.id as string)
@@ -432,20 +457,31 @@ export default function DashboardPage() {
       const ivaDebitoFiscal = (ivaFiscalRows ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
         - ivaNcTotal((ncFiscalRows ?? []).map((d: any) => mapDevolucionNc(d)))
 
-      // Ingreso Neto desde caja_movimientos
-      let ingresoNeto = 0
-      let ingresoNetoPrev = 0
+      // Ingreso Neto desde caja_movimientos — 🐛 bug pre-existente encontrado y corregido de
+      // paso (G5 Fase 7, H2): esta suma no filtraba por `moneda` (real desde Fase 1, mig 368),
+      // así que una sesión de Caja USD ya mezclaba montos en dólares crudos (ej. "50") directo
+      // dentro de un total en pesos (ej. "15000" + "50" = "15050") apenas alguien operara una
+      // Caja USD real. Ahora separa por `moneda` propia del movimiento — ARS al indicador
+      // principal, USD a un indicador aparte (mismo criterio que el resto de la Fase 7).
+      let ingresoNeto = 0, ingresoNetoUsd = 0
+      let ingresoNetoPrev = 0, ingresoNetoUsdPrev = 0
       const sesIds = sessionsRes.data?.map(s => s.id) ?? []
       const sesIdsPrev = sessionsPrevRes.data?.map(s => s.id) ?? []
       if (sesIds.length > 0) {
         const { data: movs } = await supabase.from('caja_movimientos')
-          .select('tipo, monto').in('sesion_id', sesIds).in('tipo', ['ingreso', 'egreso'])
-        movs?.forEach(m => { ingresoNeto += m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0) })
+          .select('tipo, monto, moneda').in('sesion_id', sesIds).in('tipo', ['ingreso', 'egreso'])
+        movs?.forEach(m => {
+          const delta = m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0)
+          if (m.moneda === 'USD') ingresoNetoUsd += delta; else ingresoNeto += delta
+        })
       }
       if (sesIdsPrev.length > 0) {
         const { data: movsPrev } = await supabase.from('caja_movimientos')
-          .select('tipo, monto').in('sesion_id', sesIdsPrev).in('tipo', ['ingreso', 'egreso'])
-        movsPrev?.forEach(m => { ingresoNetoPrev += m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0) })
+          .select('tipo, monto, moneda').in('sesion_id', sesIdsPrev).in('tipo', ['ingreso', 'egreso'])
+        movsPrev?.forEach(m => {
+          const delta = m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0)
+          if (m.moneda === 'USD') ingresoNetoUsdPrev += delta; else ingresoNetoPrev += delta
+        })
       }
 
       // Margen de contribución = (ventas netas − costo) / ventas netas.
@@ -484,7 +520,7 @@ export default function DashboardPage() {
       const burnRatePrev = daysPrev > 0 ? totalGastosPrev / daysPrev : 0
 
       return {
-        ingresoNeto, ingresoNetoPrev,
+        ingresoNeto, ingresoNetoPrev, ingresoNetoUsd, ingresoNetoUsdPrev,
         margenContrib, margenContribPrev,
         burnRate, burnRatePrev,
         ivaVentas, ivaDebitoFiscal,
@@ -612,6 +648,18 @@ export default function DashboardPage() {
           link: '/metricas',
         })
       }
+    }
+
+    // G5 Fase 7 (H2) — ventas con componente USD quedan afuera del total/tendencia de arriba
+    // (para no distorsionarlo con el tipo de cambio); se muestran acá aparte, informativo.
+    if (stats.cantVentasMesUsd > 0) {
+      list.push({
+        tipo: 'info',
+        titulo: `${stats.cantVentasMesUsd} venta${stats.cantVentasMesUsd !== 1 ? 's' : ''} con componente USD este mes`,
+        impacto: `$${stats.totalVentasMesUsd.toLocaleString('es-AR', { maximumFractionDigits: 0 })} equivalentes — excluidas del total en pesos de arriba para no distorsionarlo`,
+        accion: 'Ver caja',
+        link: '/caja',
+      })
     }
 
     if (list.length === 0) {
@@ -1008,7 +1056,11 @@ export default function DashboardPage() {
           title="Ingreso Neto (Caja)"
           value={dashKpis ? fmtARS(dashKpis.ingresoNeto) : '—'}
           badge={badgeVsAnterior(dashKpis?.ingresoNeto ?? null, dashKpis?.ingresoNetoPrev ?? null)}
-          sub={`Efectivo ${labelPeriodo(periodo)}`}
+          // G5 Fase 7 (H2) — Caja USD se muestra aparte, en dólares reales (no re-convertir con `conv`).
+          // Signo explícito: si los egresos superan a los ingresos del período, es negativo.
+          sub={dashKpis?.ingresoNetoUsd
+            ? `Efectivo ${labelPeriodo(periodo)} · ${dashKpis.ingresoNetoUsd >= 0 ? '+' : '−'}US$${Math.abs(dashKpis.ingresoNetoUsd).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+            : `Efectivo ${labelPeriodo(periodo)}`}
           icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"><Wallet size={20} /></div>}
         />
 

@@ -461,17 +461,21 @@ export default function ReportesPage() {
     'productos-atributos': { total: productos.length },
   }
 
-  // Breakdown de ventas por método de pago
-  const breakdownMediosPago: Array<{ tipo: string; monto: number; count: number }> = (() => {
-    const map: Record<string, { monto: number; count: number }> = {}
+  // Breakdown de ventas por método de pago — G5 Fase 7 (H1): además del monto en pesos (ya
+  // convertido, lo que siempre fue), suma el real `monto_usd` cuando el medio lo trae (Fases
+  // 4/6 lo persisten en cada línea de `medio_pago` para medios "Efectivo USD") — así el desglose
+  // muestra la moneda real cobrada, no solo su equivalente en pesos.
+  const breakdownMediosPago: Array<{ tipo: string; monto: number; count: number; montoUsd: number }> = (() => {
+    const map: Record<string, { monto: number; count: number; montoUsd: number }> = {}
     ventas.forEach((v: any) => {
       try {
         const parsed = typeof v.medio_pago === 'string' ? JSON.parse(v.medio_pago) : (v.medio_pago ?? [])
         if (Array.isArray(parsed)) {
           parsed.forEach((mp: any) => {
             const tipo = mp.tipo || 'Otro'
-            if (!map[tipo]) map[tipo] = { monto: 0, count: 0 }
+            if (!map[tipo]) map[tipo] = { monto: 0, count: 0, montoUsd: 0 }
             map[tipo].monto += Number(mp.monto) || 0
+            map[tipo].montoUsd += Number(mp.monto_usd) || 0
             map[tipo].count += 1
           })
         }
@@ -764,10 +768,14 @@ export default function ReportesPage() {
                 <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Ingresos por método de pago</p>
                   <div className="flex flex-wrap gap-2">
-                    {breakdownMediosPago.map(({ tipo, monto, count }) => (
+                    {breakdownMediosPago.map(({ tipo, monto, count, montoUsd }) => (
                       <div key={tipo} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-1.5">
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{tipo}</span>
                         <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{formatMoneda(monto)}</span>
+                        {/* G5 Fase 7 (H1) — desglose por moneda: monto real en USD junto al equivalente en pesos */}
+                        {montoUsd > 0 && (
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">({formatMonedaLib(montoUsd, 'USD')})</span>
+                        )}
                         <span className="text-xs text-gray-400 dark:text-gray-500">({count})</span>
                       </div>
                     ))}

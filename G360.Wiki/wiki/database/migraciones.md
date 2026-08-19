@@ -9,7 +9,8 @@ updated: 2026-08-19
 # Historial de Migraciones (001-375)
 
 **375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), TODAVÍA SIN COMMITEAR, NO en PROD (2026-08-19):** Fase 6 ("Devoluciones/NC con
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `e55a1009`, tag `v1.175.0`), NO en
+PROD (2026-08-19):** Fase 6 ("Devoluciones/NC con
 soporte USD") del plan Caja USD (relevamiento G5). Continúa la Fase 5 (migs 373+374, ya
 commiteada/pusheada, tag `v1.174.0`). Puramente aditiva, sin funciones/triggers/vistas nuevas — los
 `caja_movimientos` que este flujo inserta ya quedan protegidos por los triggers
@@ -332,7 +333,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-19:** 374 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-19:** 375 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
@@ -344,9 +345,10 @@ había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin 
 moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y COMMITEADAS Y
 PUSHEADAS a `origin/dev`** en 3 tandas: 360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release
 `v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d`
-+ bump `05801eb4` (tag+release `v1.173.0`); 373-374 en commit `28d9291e` (tag+release `v1.174.0`) —
-verificado con `git log origin/dev..dev` vacío y `git describe --tags` = `v1.174.0`. **Ninguna migración de
-360 a 374 queda "sin commitear".** **Sigue sin PR `dev`→`main`, sin deploy a PROD.** El resto de este
++ bump `05801eb4` (tag+release `v1.173.0`); 373-374 en commit `28d9291e` (tag+release `v1.174.0`); 375 en
+commit `e55a1009` (tag+release `v1.175.0`) — verificado con `git log origin/dev..dev` vacío y
+`git describe --tags` = `v1.175.0`. **Ninguna migración de 360 a 375 queda "sin commitear".** **Sigue sin
+PR `dev`→`main`, sin deploy a PROD.** El resto de este
 bloque describe el detalle técnico de cada una, incluyendo texto histórico
 ("SIN COMMITEAR") que
 reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365

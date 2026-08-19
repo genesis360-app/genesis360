@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-19] update | Fase 6/8 de Caja USD (G5) COMMITEADA Y PUSHEADA (v1.175.0)
+
+**Corrección**: la entrada de abajo (Fase 6/8, Devoluciones/NC con soporte USD, mig 375) quedó documentada
+como "EN DEV sin commitear" en el momento en que se escribió, pero en la misma sesión, inmediatamente
+después, se commiteó y pusheó a `origin/dev` — commit `e55a1009` (código + wiki + migración + tests en un
+solo commit), tag+release **`v1.175.0`** publicados (verificado con `git log origin/dev..dev` vacío y
+`git describe --tags` = `v1.175.0`). Con esto, **Fases 1+2+3+4+5+6/8 de Caja USD (migs 368-375) están 100%
+completas y commiteadas** en `dev` — el plan de 8 fases no tiene ningún punto abierto propio salvo C2
+(cotización BNA para AFIP, Fase 8, bloqueada por confirmación de un contador real). Sigue sin PR a `main`,
+sin deploy a PROD. Próxima sesión: Fase 7 (Reportes).
+
+---
+
 ## [2026-08-19] update | Fase 6/8 de Caja USD (G5): Devoluciones/NC con soporte USD — mig 375, EN DEV sin commitear
 
 Continuación directa de la Fase 5 (migs 373+374, Bóveda ARS/USD — commit `28d9291e`, tag `v1.174.0`, ya

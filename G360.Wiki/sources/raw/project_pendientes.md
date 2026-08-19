@@ -7,10 +7,10 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### ✅ ARRANCÁ ACÁ (2026-08-19, cont. 16) — Fase 6/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 375,
-> Devoluciones/NC con soporte USD) — **TODAVÍA SIN COMMITEAR** — este bloque reemplaza al cont. 15 de abajo
-> (Fase 5, ya commiteada como tag `v1.174.0`) como punto de entrada. GO commitea el wiki + el código al
-> cierre de esta sesión, junto con el bump de versión a **v1.175.0** (ya hecho en `src/config/brand.ts`).
-> Sigue SIN PR a `main`, SIN deploy a PROD.
+> Devoluciones/NC con soporte USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`,
+> tag+release **`v1.175.0`** publicados, verificado con `git log origin/dev..dev` vacío y
+> `git describe --tags` = `v1.175.0`) — este bloque reemplaza al cont. 15 de abajo (Fase 5, tag `v1.174.0`)
+> como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 6/8 (Devoluciones/NC) 100% COMPLETA en DEV, mig 375
 >
@@ -131,21 +131,21 @@ type: project
 > **Próximo paso: Fase 7** (Reportes — H1/H2 del relevamiento: total único en pesos + desglose por moneda en
 > reportes; Dashboard excluye ventas USD de los totales/indicadores en pesos).
 >
-> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 6 CONSTRUIDA, TODAVÍA SIN COMMITEAR)
+> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 6 COMMITEADA Y PUSHEADA)
 >
 > | | DEV | PROD |
 > |---|---|---|
-> | `APP_VERSION` (código) | **v1.175.0** (ya bumpeado, sin commitear) | v1.170.0 (sin cambios) |
+> | `APP_VERSION` (código) | **v1.175.0** (commiteado) | v1.170.0 (sin cambios) |
 > | Migraciones aplicadas en la DB | 001-375 | 001-359 (sin cambios) |
-> | Branch | `dev`, working tree con los cambios de Fase 6 SIN COMMITEAR | `main` (sin cambios) |
-> | Tag / release | — (pendiente del commit de esta fase) | v1.170.0 (sin cambios) |
+> | Branch | `dev`, COMMITEADO Y PUSHEADO a `origin/dev` (commit `e55a1009`) | `main` (sin cambios) |
+> | Tag / release | `v1.175.0` publicado | `v1.170.0` (sin cambios) |
 > | PR `dev`→`main` | No abierto | — |
 > | Vercel | sin cambios (sin deploy a PROD) | sin cambios desde v1.170.0 |
 >
 > Migración 375, `ventasValidation.ts`, `VentasPage.tsx`, `ConfigPage.tsx`, `emitir-factura/index.ts`, tests
-> y el wiki — TODO en working tree, listo para que GO lo commitee en un solo commit junto con el bump de
-> versión a v1.175.0. Próxima sesión (post-commit): arrancar directo con la Fase 7 (Reportes) si GO no
-> indica otra cosa.
+> y el wiki — todo en un solo commit `e55a1009`, tag+release `v1.175.0` publicados. Próxima sesión
+> (post-`/clear`): arrancar directo con la Fase 7 (Reportes) — no hay nada pendiente de commitear/pushear
+> de esta sesión.
 >
 > ---
 >

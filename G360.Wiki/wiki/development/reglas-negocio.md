@@ -300,9 +300,8 @@ Razones:
 > también COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión (commit `010440cd`, tag
 > `v1.172.0`); Fase 4 (mig 372) COMMITEADA Y PUSHEADA (commit `d783727d`, tag `v1.173.0`); Fase 5 (migs
 > 373+374) COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag+release `v1.174.0` publicados);
-> **Fase 6 (mig 375) construida y verificada en DEV, TODAVÍA SIN COMMITEAR** (bump de versión a `v1.175.0`
-> ya hecho en `src/config/brand.ts`, pendiente de que GO commitee wiki + código). SIN deploy a PROD en
-> ningún caso. La Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte
+> **Fase 6 (mig 375) COMMITEADA Y PUSHEADA a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0`
+> publicados). SIN deploy a PROD en ningún caso. La Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte
 > (D2), cada caja se contabiliza por lo efectivamente cobrado en ESA moneda — nunca el total convertido — y
 > el vuelto de un pago en USD siempre sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2,
 > agregado en la Fase 2 sin usarse hasta ahora) por fin gobierna si un producto puede cobrarse en USD. La

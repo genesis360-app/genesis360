@@ -140,7 +140,7 @@ No aplica a items serializados — esos siempre reactivan a su línea original (
   ambiguo (REGLA #0 — riesgo de NC duplicada en AFIP). El botón manual "Emitir NC" sigue existiendo
   como fallback (forzar antes del sweep, o resolver un caso escalado). Detalle completo en
   [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
-- **🟡 G5 Fase 6 de 8 (mig 375, 2026-08-19, EN DEV sin commitear): si la venta original tuvo componente
+- **🟡 G5 Fase 6 de 8 (mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`): si la venta original tuvo componente
   USD, la NC AFIP sigue usando la cotización de la venta original** — ya era así por construcción, sin
   cambio de código real (solo comentarios documentando el invariante). Ver sección "Caja en USD — Fase 6
   de 8" más abajo.
@@ -150,7 +150,7 @@ No aplica a items serializados — esos siempre reactivan a su línea original (
 - Efectivo en `medio_pago` de la devolución → INSERT `egreso` en `caja_movimientos`. **v1.74.0:** el insert se **aguarda** + fallback a la **única caja abierta** + aviso si falla (antes era fire-and-forget y un fallo perdía el egreso en silencio — bug venta #26). Ver [[caja]] (auditoría efectivo↔caja).
 - Otro medio → `egreso_informativo`
 - Bloquea si no hay sesión de caja abierta y el medio es efectivo
-- **🟡 G5 Fase 6 de 8 (mig 375, 2026-08-19, EN DEV sin commitear): devolución vía "Efectivo USD"** — egreso
+- **🟡 G5 Fase 6 de 8 (mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`): devolución vía "Efectivo USD"** — egreso
   real en la Caja USD elegida, con su propio guard CAJ-18 (no negativo) y su propia cotización (hoy por
   default, o la de la venta original si el tenant activó el toggle). Ver sección "Caja en USD — Fase 6 de
   8" más abajo.
@@ -217,7 +217,7 @@ la devolución (A10)".
 
 ---
 
-## 💵 Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, TODAVÍA SIN COMMITEAR (2026-08-19)
+## 💵 Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, commiteado y pusheado (2026-08-19)
 
 Sexta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
 USD / Venta física en USD"). Continúa directo sobre la Fase 5 (migs 373+374, Bóveda ARS/USD, ya
@@ -225,9 +225,8 @@ commiteada/pusheada como tag `v1.174.0`). Con esta fase, **la devolución en caj
 quedan completamente cableadas para ventas con componente USD** — hasta acá el modal de devolución de
 `VentasPage.tsx` era 100% ciego a USD, pese a que la Fase 4 ya había resuelto el mismo problema del lado de
 la venta. **Estado real: mig 375 APLICADA Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), código completo —
-typecheck + build + suite completa de tests verdes —, TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el
-código al cierre de esta sesión, junto con el bump de versión a `v1.175.0` en `src/config/brand.ts`). SIN
-deploy a PROD.
+typecheck + build + suite completa de tests verdes —, COMMITEADO Y PUSHEADO a `origin/dev`** (commit
+`e55a1009`, tag+release `v1.175.0` publicados). SIN deploy a PROD.
 
 ### G1 — reintegro en caja de una devolución cobrada en USD (configurable)
 

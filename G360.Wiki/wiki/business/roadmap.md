@@ -17,19 +17,18 @@ completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, blo
 `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; Fase 4 (mig 372,
 pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; Fase 5 (migs
 373+374, Bóveda ARS/USD) COMMITEADA Y PUSHEADA a `origin/dev` — commit `28d9291e`, tag+release `v1.174.0`
-publicados; **Fase 6 (mig 375, Devoluciones/NC con soporte USD) construida y verificada en DEV, TODAVÍA SIN
-COMMITEAR** — bump de versión a `v1.175.0` ya hecho en `src/config/brand.ts`. **SIN PR a `main`, SIN
+publicados; **Fase 6 (mig 375, Devoluciones/NC con soporte USD) COMMITEADA Y PUSHEADA** — commit
+`e55a1009`, tag+release **`v1.175.0`** publicados. **SIN PR a `main`, SIN
 deploy a PROD**). **16 migraciones nuevas sobre PROD — 360 a 375 (la última migración es la 375).**  
 **Última actualización:** 19 de Agosto, 2026
 
 ---
 
-## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — 🟡 EN DEV, construido y verificado, TODAVÍA SIN COMMITEAR (2026-08-19)
+## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — 🟡 EN DEV, commiteado y pusheado (2026-08-19)
 
 Continúa la Fase 5 (v1.174.0, abajo). **Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), aplicada
-y verificada en DEV — código completo, typecheck+build+suite de tests verdes, **TODAVÍA SIN COMMITEAR**
-(bump de versión a `v1.175.0` ya hecho en `src/config/brand.ts`; GO commitea wiki + código al cierre de
-esta sesión, en un solo commit). **1 migración nueva: 375.**
+y verificada en DEV — código completo, typecheck+build+suite de tests verdes, commiteado junto con el wiki
+en un solo commit `e55a1009`, tag+release `v1.175.0` publicados. **1 migración nueva: 375.**
 
 - **Caja en Dólares (relevamiento G5) — Fase 6 (Devoluciones/NC con soporte USD) completa**: hasta acá el
   modal de devolución de `VentasPage.tsx` era 100% ciego a USD, pese a que la Fase 4 ya había resuelto el
@@ -70,9 +69,8 @@ bloqueante). Código revisado por `code-reviewer` (2 hallazgos 🟡 corregidos, 
 plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación para AFIP, Fase
 8, bloqueada por confirmación de un contador real). Próximo paso: Fase 7 (Reportes).
 
-**Estado real: DEV en migs 001-375, código completo, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el
-código al cierre de esta sesión, junto con el bump de versión a **v1.175.0** (ya hecho en
-`src/config/brand.ts`). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
+**Estado real: DEV en migs 001-375, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release
+`v1.175.0` publicados). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
 completo: [[wiki/features/devoluciones]] (sección "Caja en USD — Fase 6 de 8"), [[wiki/features/caja]],
 `wiki/database/migraciones.md` (mig 375).
 

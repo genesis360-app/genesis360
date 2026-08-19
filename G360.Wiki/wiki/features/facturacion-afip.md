@@ -230,7 +230,7 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 **Anular vs Devolver una facturada:** una venta **con CAE** no se puede "Anular" (los botones Anular + Cambiar cliente se **ocultan** si `ventaDetalle.cae`) — la reversión correcta es Devolver → NC. Anularla dejaría la factura viva en AFIP (libros descuadrados).
 
-> [!NOTE] **🆕 G5 Fase 6/8 de Caja USD (G2, mig 375, 2026-08-19, EN DEV sin commitear) — invariante
+> [!NOTE] **🆕 G5 Fase 6/8 de Caja USD (G2, mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`) — invariante
 > confirmado: la NC siempre usa la cotización de la venta original, nunca la de "hoy" ni la del reintegro
 > en caja.** Investigado a fondo al construir la Fase 6: `devolucion_items.precio_unitario` se copia de
 > `venta_items.subtotal/cantidad`, que quedó fijo en pesos desde la venta original y nunca se recalcula —

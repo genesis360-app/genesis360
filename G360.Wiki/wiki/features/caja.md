@@ -362,11 +362,9 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 > soporta un medio "Efectivo USD" (egreso real en la Caja USD elegida, cotización de hoy por default o de
 > la venta original si el tenant activa el toggle — G1) y la NC AFIP confirma que ya usaba la cotización de
 > la venta original por construcción (G2, sin cambio de código real). **Estado real: migs 368-375 APLICADAS
-> Y VERIFICADAS en DEV, código de las Fases 1-5 COMMITEADO Y PUSHEADO a `origin/dev` en 4 tandas** (368-370
+> Y VERIFICADAS en DEV, código de las Fases 1-6 COMMITEADO Y PUSHEADO a `origin/dev` en 5 tandas** (368-370
 > en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en commit `d783727d`,
-> tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`); **la Fase 6 (mig 375) está construida y
-> verificada en DEV pero TODAVÍA SIN COMMITEAR** (bump de versión a `v1.175.0` ya hecho en
-> `src/config/brand.ts`, pendiente de que GO commitee wiki + código).
+> tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`; 375 en commit `e55a1009`, tag `v1.175.0`).
 > **SIN deploy a PROD en ningún caso.** Ya hay una Caja USD de prueba operando de verdad en DEV (tenant
 > "Almacén Jorgito"). Falta Fase 7 en adelante: reportes, cotización fiscal AFIP (C2, bloqueada por un
 > contador real). Ver el relevamiento completo (29 preguntas respondidas) en
@@ -897,7 +895,7 @@ Escenarios agregados al UAT (`tests/specs/uat-modo-basico.md`): `CAJ-36` (reescr
 
 ---
 
-## ✅ Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, TODAVÍA SIN COMMITEAR (2026-08-19)
+## ✅ Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, commiteado y pusheado (2026-08-19)
 
 Sexta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
 USD / Venta física en USD"). Continúa directo sobre la Fase 5 (migs 373+374, Bóveda ARS/USD, ya
@@ -916,8 +914,7 @@ Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), puramente aditiva — sin funcione
 (protegida por los triggers de moneda de las migs 372/373): `tenants.reintegro_usd_cotizacion_original` +
 `devoluciones.monto_usd`/`cotizacion_usd_usada` + `CHECK devoluciones_usd_ambos_o_ninguno`. **Estado real:
 mig 375 aplicada y verificada, código completo — typecheck+build+tests verdes (100 archivos, 1605 tests) —,
-TODAVÍA SIN COMMITEAR** (bump de versión a `v1.175.0` ya hecho en `src/config/brand.ts`, pendiente de que
-GO commitee wiki + código en un solo commit). SIN deploy a PROD.
+COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0` publicados). SIN deploy a PROD.
 
 **Con esto, la Fase 6/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5+6 completas (migs
 368-375). El plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación

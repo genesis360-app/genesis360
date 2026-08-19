@@ -298,9 +298,8 @@ Razones:
 > Fase 5 (Bóveda ARS/USD, migs 373+374) 100% COMPLETAS en DEV** (2026-08-18/19). Fases 1+2 COMMITEADAS Y
 > PUSHEADAS (commit `310d9b3b`, tag `v1.171.0`); Fase 3 también COMMITEADA Y PUSHEADA en una tanda
 > posterior de la misma sesión (commit `010440cd`, tag `v1.172.0`); Fase 4 (mig 372) COMMITEADA Y PUSHEADA
-> (commit `d783727d`, tag `v1.173.0`); **Fase 5 (migs 373+374) APLICADA Y VERIFICADA en DEV, código
-> completo, TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre de la sesión, junto con el
-> bump de versión a `v1.174.0` ya hecho en `src/config/brand.ts`). SIN deploy a PROD en ningún caso. La
+> (commit `d783727d`, tag `v1.173.0`); **Fase 5 (migs 373+374) COMMITEADA Y PUSHEADA a `origin/dev`**
+> (commit `28d9291e`, tag+release `v1.174.0` publicados). SIN deploy a PROD en ningún caso. La
 > Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte (D2), cada caja se
 > contabiliza por lo efectivamente cobrado en ESA moneda — nunca el total convertido — y el vuelto de un
 > pago en USD siempre sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2, agregado en la Fase

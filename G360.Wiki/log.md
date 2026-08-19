@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-19] update | Fase 5/8 de Caja USD (G5) COMMITEADA Y PUSHEADA (v1.174.0)
+
+**Corrección**: la entrada de abajo (Fase 5/8, Bóveda ARS/USD, migs 373+374) quedó documentada como
+"TODAVÍA SIN COMMITEAR" en el momento en que se escribió, pero en la misma sesión, inmediatamente después,
+se commiteó y pusheó a `origin/dev` — commit `28d9291e` (código + wiki + migraciones + tests en un solo
+commit), tag+release **`v1.174.0`** publicados (verificado con `git log origin/dev..dev` vacío y
+`git describe --tags` = `v1.174.0`). Con esto, **Fases 1+2+3+4+5/8 de Caja USD (migs 368-374) están 100%
+completas y commiteadas** en `dev`. Sigue sin PR a `main`, sin deploy a PROD. Próxima sesión: Fase 6
+(Devoluciones/NC).
+
+---
+
 ## [2026-08-19] update | Fase 5/8 de Caja USD (G5): Bóveda ARS/USD — migs 373+374, EN DEV sin commitear
 
 Continuación directa de la Fase 4 (mig 372, ya commiteada/pusheada, tag `v1.173.0`, ver la entrada de abajo

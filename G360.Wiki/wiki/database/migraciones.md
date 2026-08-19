@@ -9,7 +9,8 @@ updated: 2026-08-19
 # Historial de Migraciones (001-374)
 
 **374 (`374_vw_boveda_cuentas_security_invoker.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código y migración TODAVÍA SIN COMMITEAR, NO en PROD (2026-08-19):** cierra un
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en
+PROD (2026-08-19):** cierra un
 "Security Definer View" PRE-EXISTENTE en `vw_boveda_cuentas`, hallazgo real ocurrido al tocar esa vista
 durante la Fase 5 de Caja USD (mig 373, ver abajo). El advisor de seguridad de Supabase (`get_advisors`,
 nivel ERROR) marcó que la vista corre con los privilegios de su DUEÑO (comportamiento default de toda vista
@@ -23,8 +24,9 @@ la vista con otro `WHERE`. Fix: `ALTER VIEW public.vw_boveda_cuentas SET (securi
 verificado antes de aplicar que ambas tablas base tienen RLS habilitado con policy propia.
 `migration-reviewer`: APTA. Ver [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
 
-**373 (`373_caja_usd_fase5_boveda.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), código y
-migración TODAVÍA SIN COMMITEAR, NO en PROD (2026-08-19):** Fase 5 ("Bóveda ARS/USD") del plan Caja USD
+**373 (`373_caja_usd_fase5_boveda.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en PROD (2026-08-19):** Fase 5
+("Bóveda ARS/USD") del plan Caja USD
 (relevamiento G5). Continúa la Fase 4 (mig 372, ya commiteada/pusheada, tag `v1.173.0`). Con esta fase, **la
 Bóveda deja de asumir 1 sola fila por tenant** — pasa a tener 2 (ARS y USD, pestañas separadas en la UI).
 Agrega:
@@ -94,9 +96,8 @@ Typecheck + build + suite completa de tests verdes (100 archivos, 1600 tests). U
 
 **Fase 5 de Caja USD (G5) queda 100% completa** (migs 373+374), sumada a las Fases 1+2+3+4 (migs 368-372) —
 el proyecto completo (Fases 1+2+3+4+5 de 8) está 100% en DEV. **Estado real: migs 373+374 aplicadas y
-verificadas en DEV, código completo y verificado, TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código
-al cierre de esta sesión, junto con el bump de versión a `v1.174.0`). Próximo paso: Fase 6
-(Devoluciones/NC — sin puntos abiertos propios).
+verificadas en DEV, COMMITEADAS Y PUSHEADAS a `origin/dev`** (commit `28d9291e`, tag+release `v1.174.0`
+publicados). Próximo paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios).
 
 **372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d`, tag `v1.173.0`),
@@ -307,15 +308,12 @@ había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin 
 moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y COMMITEADAS Y
 PUSHEADAS a `origin/dev`** en 3 tandas: 360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release
 `v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d`
-+ bump `05801eb4` (tag+release `v1.173.0`) — verificado con `git log origin/dev..dev` vacío y `git describe
---tags` = `v1.173.0`. **373 y 374 (Caja USD Fase 5, Bóveda ARS/USD) están APLICADAS Y VERIFICADAS EN DEV,
-código completo y verificado, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el código al cierre de esta
-sesión, junto con el bump de versión a `v1.174.0` (ya hecho en `src/config/brand.ts`). **Sigue sin PR
-`dev`→`main`, sin deploy a PROD.** El resto de este bloque describe el detalle técnico de cada una,
-incluyendo texto histórico
++ bump `05801eb4` (tag+release `v1.173.0`); 373-374 en commit `28d9291e` (tag+release `v1.174.0`) —
+verificado con `git log origin/dev..dev` vacío y `git describe --tags` = `v1.174.0`. **Ninguna migración de
+360 a 374 queda "sin commitear".** **Sigue sin PR `dev`→`main`, sin deploy a PROD.** El resto de este
+bloque describe el detalle técnico de cada una, incluyendo texto histórico
 ("SIN COMMITEAR") que
-reflejaba el estado AL MOMENTO de escribirse cada entrada de las migraciones 360-372 (ya commiteadas, ver
-arriba) — la única entrada donde "SIN COMMITEAR" sigue siendo el estado actual es la de 373/374. **363-365
+reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
 habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de
 una sesión anterior (bloqueante técnico real, no una decisión de diseño) — con el MCP reconectado se
 aplicaron y verificaron en esa sesión, junto con la 366 nueva.** **361 y 362 cierran 2 hallazgos 🛑

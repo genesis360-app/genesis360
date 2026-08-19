@@ -79,8 +79,9 @@ Cuando `metadata.accion === 'solicitud_caja_fuerte'`, `NotificacionesButton` mue
 4. Inserta `ingreso_traspaso` en la sesión de la caja fuerte
 5. Marca la notificación como leída
 
-> 💵 **G5 Fase 5 de Caja USD (migs 373+374, 2026-08-19, EN DEV, código TODAVÍA SIN COMMITEAR): moneda-aware
-> de extremo a extremo.** `aprobarSolicitudCajaFuerte` ya NO rechaza en bloque las solicitudes en USD —
+> 💵 **G5 Fase 5 de Caja USD (migs 373+374, 2026-08-19, COMMITEADO Y PUSHEADO, commit `28d9291e`, tag
+> `v1.174.0`): moneda-aware de extremo a extremo.** `aprobarSolicitudCajaFuerte` ya NO rechaza en bloque las
+> solicitudes en USD —
 > resuelve la Caja Fuerte de la MISMA moneda que la sesión que pidió la transferencia, vía
 > `ensureFuerteSesionId()` (`src/lib/cajaBoveda.ts`, reemplaza 4 bloques de código antes duplicados que
 > nunca stampeaban `moneda` al crear/buscar esa sesión). Además, a quién se notifica una solicitud en USD

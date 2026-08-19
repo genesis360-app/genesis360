@@ -357,10 +357,9 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 > abajo): la Bóveda deja de asumir 1 sola fila por tenant y pasa a tener 2 (ARS y USD, pestañas separadas),
 > sembradas automáticamente para todo tenant; función nueva "Convertir USD↔$" (único punto de conversión de
 > todo el sistema, exclusivo del DUEÑO); retiro de Caja USD sin destino con clave maestra (F3). **Estado
-> real: migs 368-372 APLICADAS Y VERIFICADAS en DEV, código COMMITEADO Y PUSHEADO a `origin/dev` en 3
+> real: migs 368-374 APLICADAS Y VERIFICADAS en DEV, código COMMITEADO Y PUSHEADO a `origin/dev` en 4
 > tandas** (368-370 en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en
-> commit `d783727d`, tag `v1.173.0`); **migs 373+374 (Fase 5) APLICADAS Y VERIFICADAS en DEV, código
-> completo, TODAVÍA SIN COMMITEAR** (GO commitea al cierre de esta sesión junto con el bump a `v1.174.0`).
+> commit `d783727d`, tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`).
 > **SIN deploy a PROD en ningún caso.** Ya hay una Caja USD de prueba operando de verdad en DEV (tenant
 > "Almacén Jorgito"). Falta Fase 6 en adelante: devoluciones/NC, reportes, cotización fiscal AFIP. Ver el
 > relevamiento completo (29 preguntas respondidas) en [[wiki/development/reglas-negocio]] → "Caja en USD /
@@ -737,7 +736,7 @@ los 2 gaps de Gastos (ya corregidos). UAT nuevos: `VEN-37` a `VEN-43` (`tests/sp
 
 ---
 
-## ✅ Caja en USD — Fase 5 de 8 (Bóveda ARS/USD) — EN DEV, migs 373+374, TODAVÍA SIN COMMITEAR (2026-08-19)
+## ✅ Caja en USD — Fase 5 de 8 (Bóveda ARS/USD) — EN DEV, migs 373+374, commiteado y pusheado (2026-08-19)
 
 Quinta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD"). Continúa directo sobre la Fase 4 (mig 372, pago combinado ARS+USD, ya
@@ -747,9 +746,9 @@ una única caja `es_caja_fuerte=true` por tenant — y pasa a tener **2 filas se
 pestañas propias en la UI, más la función **"Convertir USD↔$"** (único punto de conversión de todo el
 sistema, exclusivo del rol DUEÑO) y el retiro de Caja USD sin destino con clave maestra (F3). **Estado
 real: migs 373+374 APLICADAS Y VERIFICADAS en DEV (`gcmhzdedrkmmzfzfveig`), código completo — typecheck +
-build + suite completa de tests verdes —, TODAVÍA SIN COMMITEAR.** GO commitea el wiki + el código al
-cierre de esta sesión, junto con el bump de versión a `v1.174.0` (ya hecho en `src/config/brand.ts`). SIN
-deploy a PROD.
+build + suite completa de tests verdes —, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`,
+tag+release `v1.174.0` publicados, bump de versión a `v1.174.0` en `src/config/brand.ts`). SIN deploy a
+PROD.
 
 ### Migración 373 (`373_caja_usd_fase5_boveda.sql`) — siembra + constraint + trigger + tabla de auditoría
 

@@ -7,10 +7,10 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### ✅ ARRANCÁ ACÁ (2026-08-19, cont. 15) — Fase 5/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (migs
-> 373+374, Bóveda ARS/USD) — **TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre de esta
-> sesión, junto con el bump de versión a `v1.174.0` ya hecho en `src/config/brand.ts`) — este bloque
-> reemplaza al cont. 14 de abajo (Fase 4, ya commiteada como tag `v1.173.0`) como punto de entrada. Sigue
-> SIN PR a `main`, SIN deploy a PROD.
+> 373+374, Bóveda ARS/USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`, tag+release
+> **`v1.174.0`** publicados, verificado con `git log origin/dev..dev` vacío y `git describe --tags` =
+> `v1.174.0`) — este bloque reemplaza al cont. 14 de abajo (Fase 4, ya commiteada como tag `v1.173.0`) como
+> punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 5/8 (Bóveda ARS/USD) 100% COMPLETA en DEV, migs 373+374
 >
@@ -146,21 +146,21 @@ type: project
 > **Próximo paso: Fase 6** (Devoluciones/NC — sin puntos abiertos propios, ver
 > [[wiki/development/reglas-negocio]], lista para construir).
 >
-> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 5 CONSTRUIDA, TODAVÍA SIN COMMITEAR)
+> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 5 COMMITEADA Y PUSHEADA)
 >
 > | | DEV | PROD |
 > |---|---|---|
-> | `APP_VERSION` (código, working tree) | **v1.174.0** (bump ya hecho en `src/config/brand.ts`, sin commitear) | v1.170.0 (sin cambios) |
+> | `APP_VERSION` (código) | **v1.174.0** (commiteado) | v1.170.0 (sin cambios) |
 > | Migraciones aplicadas en la DB | 001-374 | 001-359 (sin cambios) |
-> | Branch | `dev` local con working tree sucio (migs 373/374 + código de esta fase, TODAVÍA SIN COMMITEAR) | `main` (sin cambios) |
-> | Tag / release | `v1.173.0` (sin cambios — `v1.174.0` se crea al commitear) | `v1.170.0` (sin cambios) |
+> | Branch | `dev`, COMMITEADO Y PUSHEADO a `origin/dev` (commit `28d9291e`) | `main` (sin cambios) |
+> | Tag / release | `v1.174.0` publicado | `v1.170.0` (sin cambios) |
 > | PR `dev`→`main` | No abierto | — |
-> | Vercel | sin cambios | sin cambios desde v1.170.0 |
+> | Vercel | sin cambios (sin deploy a PROD) | sin cambios desde v1.170.0 |
 >
-> **GO commitea el wiki + el código de esta sesión** (migs 373+374, `cajaBoveda.ts`, cambios en
-> `CajaPage.tsx`/`NotificacionesButton.tsx`/`GastosPage.tsx`/`cajaPermisos.ts`, bump a `v1.174.0`) —
-> próximo tag a crear: `v1.174.0`. Próxima sesión: arrancar con la Fase 6 (Devoluciones/NC) si GO no indica
-> otra cosa.
+> Migs 373+374, `cajaBoveda.ts`, cambios en `CajaPage.tsx`/`NotificacionesButton.tsx`/`GastosPage.tsx`/
+> `cajaPermisos.ts` y el wiki, todo en un solo commit `28d9291e`, tag+release `v1.174.0` publicados. Próxima
+> sesión (post-`/clear`): arrancar directo con la Fase 6 (Devoluciones/NC) si GO no indica otra cosa — no
+> hay nada pendiente de commitear/pushear de esta sesión.
 >
 > ---
 >

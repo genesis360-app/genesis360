@@ -6,6 +6,77 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-19] update | Fase 5/8 de Caja USD (G5): Bóveda ARS/USD — migs 373+374, EN DEV sin commitear
+
+Continuación directa de la Fase 4 (mig 372, ya commiteada/pusheada, tag `v1.173.0`, ver la entrada de abajo
+de esta misma fecha). Se construyó, verificó y validó en DEV la **Fase 5/8** del plan "Caja en USD"
+(relevamiento G5): **Bóveda ARS/USD**. La Bóveda (Caja Fuerte) deja de asumir 1 sola fila por tenant y pasa
+a tener 2 (ARS y USD, pestañas separadas en la UI); se agrega la función "Convertir USD↔$" (único punto de
+conversión de todo el sistema, exclusivo del rol DUEÑO); y se cablea F3 (retiro de Caja USD sin destino
+requiere clave maestra si el tenant la tiene configurada y el monto alcanza el umbral propio en USD).
+
+**Migración 373** (`373_caja_usd_fase5_boveda.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`):
+`fn_seed_tenant_defaults()`/`fn_crear_caja_fuerte()` (CREATE OR REPLACE) siembran "Efectivo USD"/"Caja
+Fuerte USD" para tenants nuevos, dormidas en $0; backfill verificado para los 10 tenants existentes de DEV;
+`vw_boveda_cuentas` corrige un fallback de atribución que se volvió ambiguo al haber 2 cuentas
+`tipo='efectivo'` por tenant (ahora cruza también por `moneda`); el índice único parcial
+`uq_cuentas_origen_efectivo_por_tenant` (mig 137) bloqueaba directamente la 2da cuenta "Efectivo USD" —
+descubierto porque la migración FALLÓ al aplicar por primera vez con ese error exacto — reemplazado por
+`uq_cuentas_origen_efectivo_por_tenant_moneda`, scopeado a `(tenant_id, moneda)`; trigger nuevo
+`fn_validar_moneda_coincide_cuenta_origen` (defensa en profundidad complementaria a
+`fn_validar_moneda_coincide_sesion` de la mig 372); tabla nueva `boveda_conversiones_usd` (auditoría de la
+conversión, RLS calcada de `boveda_retiros`).
+
+**Migración 374** (`374_vw_boveda_cuentas_security_invoker.sql`) — hallazgo real durante la Fase 5: al
+tocar `vw_boveda_cuentas`, el advisor de seguridad de Supabase (nivel ERROR) marcó que la vista corría como
+"Security Definer View" (bypaseaba el RLS de `cuentas_origen`/`caja_movimientos`, cualquier usuario
+autenticado de cualquier tenant podía en teoría leer saldos de otros tenants). Confirmado PRE-EXISTENTE (no
+introducido por la Fase 5, solo hecho visible al re-crear la vista). Fix: `ALTER VIEW ... SET
+(security_invoker = true)`. Ambas migraciones revisadas por `migration-reviewer` ANTES de aplicar — la 373
+tuvo una primera versión con 2 hallazgos bloqueantes reales (columnas inexistentes copiadas mal en
+`fn_seed_tenant_defaults`, `fn_crear_caja_fuerte` sin `search_path`), corregidos y re-revisados como APTA.
+Verificadas con 4 tests manuales reales en DEV (INSERT dentro de transacciones con `ROLLBACK`).
+
+**Código**: `src/lib/cajaBoveda.ts` (nuevo) — `calcularConversionUsd` (función pura, 7 tests) +
+`ensureFuerteSesionId` (helper async compartido que reemplaza 4 bloques duplicados que nunca stampeaban
+`moneda`). `src/lib/cajaPermisos.ts` gana `convertir_usd_boveda`, solo `['DUEÑO']`. `src/pages/CajaPage.tsx`
+(el cambio grande): `bovedaTab: 'ARS'|'USD'`, `cajaFuerteArs`/`cajaFuerteUsd` derivados de `cajas`,
+`cajaFuerte` ahora depende de la pestaña activa (vuelve moneda-aware TODA la lógica preexistente de Bóveda
+con un cambio mínimo), mutation `convertirUsdBoveda` + modal nuevo, campo de clave maestra condicional en
+"Extraer dinero" (F3), y se levantaron los bloqueos "todavía no soporta Caja USD" que había puesto la Fase
+3. `src/components/NotificacionesButton.tsx`: `aprobarSolicitudCajaFuerte` ya no rechaza en bloque
+solicitudes en USD, resuelve la Caja Fuerte de la misma moneda. `src/pages/GastosPage.tsx`: 1 línea,
+`sesionFuerte` filtra explícitamente `moneda==='ARS'`.
+
+**🐛 2 bugs reales encontrados y corregidos antes de commitear**: (1) auto-selección de caja al entrar al
+tab "Caja" usaba `cajasAbiertas[0]` sin excluir la Caja Fuerte — con 2 Cajas Fuerte permanentemente
+abiertas el riesgo de operar sobre la Caja Fuerte por accidente se duplicó; fix: filtrar contra
+`cajasOperativas`. (2) el selector "Cuenta de destino" del modal "Ingresar a Caja Fuerte" no filtraba por
+moneda — podía dejar plata huérfana sin contraparte (egreso commiteado, ingreso rechazado por el trigger
+nuevo); fix: filtrar por la moneda de la pestaña activa. También ~8 lugares con bug de visualización
+(símbolo de moneda del tenant en vez de la moneda real mostrada).
+
+**Verificación**: typecheck + build + suite completa de tests verdes (100 archivos, 1600 tests). UAT
+nuevos: `CAJ-36` (reescrito) a `CAJ-40` (`tests/specs/uat-modo-basico.md`). Detalle completo:
+`sources/raw/project_pendientes.md` (cont. 15), `wiki/database/migraciones.md` (migs 373/374, título a
+001-374), `wiki/features/caja.md` (sección "Caja en USD — Fase 5 de 8"),
+`wiki/development/reglas-negocio.md` (módulo G5), `wiki/business/roadmap.md` (v1.174.0).
+
+**Con esto, la Fase 5/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5, migs 368-374). Próximo
+paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios, lista para construir). Recordatorios
+permanentes sin cambios (importador CSV; "Crear variante"; `schema_full.sql` sin regenerar). 2 hallazgos
+PRE-EXISTENTES documentados sin resolver (Caja Fuerte primaria con `moneda='ARS'` hardcodeado en vez de
+`COALESCE(tenant.moneda,'ARS')`; drift de la mig `368b` sin archivo local commiteado, sin riesgo real). **El
+guard de F3 y la restricción "solo DUEÑO" de la conversión son 100% client-side hoy** — mismo patrón
+preexistente del resto del módulo, candidato a un futuro RPC `SECURITY DEFINER`, no bloqueante.
+
+**Estado real: migs 373+374 aplicadas y verificadas en DEV (`gcmhzdedrkmmzfzfveig`), código completo,
+typecheck+build+tests verdes, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el código al cierre de esta
+sesión, junto con el bump de versión a **v1.174.0** (ya hecho en `src/config/brand.ts`). Sin PR a `main`,
+sin deploy a PROD.
+
+---
+
 ## [2026-08-19] update | Cierre de sesión: Fase 4 (mig 372) COMMITEADA Y PUSHEADA (v1.173.0) + reconciliación de todo el wiki para /clear
 
 **Corrección primero**: la entrada de abajo (Fase 4/8 de Caja USD, mig 372) quedó documentada como "EN DEV

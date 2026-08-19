@@ -341,7 +341,10 @@ export default function GastosPage() {
     return m?.cuenta_origen_id ?? null
   }
 
-  const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte) ?? null
+  // G5 Fase 5 — desde mig 373 hay 2 filas es_caja_fuerte=true por tenant (ARS y USD); Gastos solo
+  // paga en ARS (ver comentario de sesionesOperativas debajo), así que la fuerte de fallback tiene
+  // que ser específicamente la de pesos.
+  const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte && (s.cajas?.moneda ?? 'ARS') === 'ARS') ?? null
   // G5 Fase 4 (hallazgo de code-review, mig 372) — Gastos todavía no soporta pagar en USD (eso es
   // específico de Ventas). Sin filtrar acá, el picker podía ofrecer una Caja USD y el trigger de
   // moneda-por-sesión rechazaría el insert (fallaría con toast en vez de plata perdida en silencio,

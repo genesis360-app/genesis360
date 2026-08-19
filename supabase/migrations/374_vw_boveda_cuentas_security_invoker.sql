@@ -1,0 +1,21 @@
+-- Migration 374: vw_boveda_cuentas — cierra un "Security Definer View" pre-existente.
+--
+-- Hallazgo real durante la Fase 5 (Bóveda ARS/USD, mig 373): al tocar esta vista, el advisor de
+-- seguridad de Supabase (get_advisors, nivel ERROR) marcó que vw_boveda_cuentas corre con los
+-- privilegios de su DUEÑO (comportamiento default de toda vista en Postgres sin
+-- `security_invoker`), no con los del usuario que consulta — es decir, IGNORA el RLS de
+-- `cuentas_origen`/`caja_movimientos`. Confirmado que esto es PRE-EXISTENTE (la definición en
+-- `schema_full.sql` de antes de esta sesión ya no tenía `security_invoker`, y `CREATE OR REPLACE
+-- VIEW` no lo agrega ni lo quita solo — mig 373 no lo introdujo, solo lo hizo visible al re-crear
+-- la vista con otro WHERE).
+--
+-- Riesgo real: cualquier usuario autenticado (de CUALQUIER tenant) que consulte
+-- `/rest/v1/vw_boveda_cuentas` sin el filtro `?tenant_id=eq....` que sí aplica CajaPage.tsx podría
+-- leer nombres de cuenta y saldos de la Bóveda de OTROS tenants — RLS de las tablas base existe
+-- (`cuentas_origen`/`caja_movimientos`, confirmado 1 policy cada una) pero la vista la bypasea.
+--
+-- Fix: `security_invoker=true` hace que la vista corra con los permisos del usuario que consulta,
+-- así que el RLS de las tablas base (que sí filtran por tenant_id correctamente) vuelve a aplicar.
+-- Verificado que ambas tablas base tienen RLS habilitado con policy propia antes de aplicar esto.
+
+ALTER VIEW public.vw_boveda_cuentas SET (security_invoker = true);

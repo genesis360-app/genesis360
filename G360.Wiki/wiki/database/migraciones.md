@@ -3,10 +3,100 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-18
+updated: 2026-08-19
 ---
 
-# Historial de Migraciones (001-372)
+# Historial de Migraciones (001-374)
+
+**374 (`374_vw_boveda_cuentas_security_invoker.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código y migración TODAVÍA SIN COMMITEAR, NO en PROD (2026-08-19):** cierra un
+"Security Definer View" PRE-EXISTENTE en `vw_boveda_cuentas`, hallazgo real ocurrido al tocar esa vista
+durante la Fase 5 de Caja USD (mig 373, ver abajo). El advisor de seguridad de Supabase (`get_advisors`,
+nivel ERROR) marcó que la vista corre con los privilegios de su DUEÑO (comportamiento default de toda vista
+en Postgres sin `security_invoker`) en vez de los del usuario que consulta — es decir, **ignora el RLS** de
+`cuentas_origen`/`caja_movimientos`. Riesgo real: cualquier usuario autenticado (de cualquier tenant) que
+consultara `/rest/v1/vw_boveda_cuentas` sin el filtro `?tenant_id=eq....` que sí aplica `CajaPage.tsx`
+podría leer nombres de cuenta y saldos de la Bóveda de OTROS tenants. Confirmado **PRE-EXISTENTE**: la
+definición en `schema_full.sql` de antes de esta sesión ya no tenía `security_invoker`, y `CREATE OR
+REPLACE VIEW` no lo agrega ni lo quita solo — la mig 373 no lo introdujo, solo lo hizo visible al re-crear
+la vista con otro `WHERE`. Fix: `ALTER VIEW public.vw_boveda_cuentas SET (security_invoker = true)` —
+verificado antes de aplicar que ambas tablas base tienen RLS habilitado con policy propia.
+`migration-reviewer`: APTA. Ver [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
+
+**373 (`373_caja_usd_fase5_boveda.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), código y
+migración TODAVÍA SIN COMMITEAR, NO en PROD (2026-08-19):** Fase 5 ("Bóveda ARS/USD") del plan Caja USD
+(relevamiento G5). Continúa la Fase 4 (mig 372, ya commiteada/pusheada, tag `v1.173.0`). Con esta fase, **la
+Bóveda deja de asumir 1 sola fila por tenant** — pasa a tener 2 (ARS y USD, pestañas separadas en la UI).
+Agrega:
+1. `fn_seed_tenant_defaults()` (`CREATE OR REPLACE`) — siembra "Efectivo USD" (`cuentas_origen`) para
+   tenants nuevos, dormida en $0, junto a "Efectivo" (ARS).
+2. `fn_crear_caja_fuerte()` (`CREATE OR REPLACE`) — siembra "Caja Fuerte USD" (`cajas.es_caja_fuerte=true,
+   moneda='USD'`) para tenants nuevos, también dormida en $0.
+3. **Backfill para los 10 tenants existentes en DEV** — verificado con query real: los 10 quedaron con
+   "Efectivo USD" y "Caja Fuerte USD" sembradas.
+4. `vw_boveda_cuentas` (`CREATE OR REPLACE VIEW`) — corrige un fallback de atribución que se volvió
+   ambiguo al haber 2 cuentas `tipo='efectivo'` por tenant (ahora cruza también por `moneda`, no solo
+   `tenant_id`) — sin este fix, un movimiento en USD sin `cuenta_origen_id` explícito podía atribuirse a la
+   cuenta Efectivo ARS (o viceversa) según el orden no determinístico de un `LIMIT 1` sin `ORDER BY`.
+5. **Cambio de constraint real, descubierto porque la migración FALLÓ al aplicar por primera vez**: el
+   índice único parcial `uq_cuentas_origen_efectivo_por_tenant` (mig 137, "1 sola cuenta efectivo POR
+   TENANT") bloqueaba directamente la 2da cuenta "Efectivo USD". Reemplazado por
+   `uq_cuentas_origen_efectivo_por_tenant_moneda`, scopeado a `(tenant_id, moneda)` — preserva la intención
+   original (evitar ambigüedad) pero ahora permite 1 cuenta efectivo POR MONEDA.
+6. Trigger nuevo `fn_validar_moneda_coincide_cuenta_origen` (`BEFORE INSERT OR UPDATE OF moneda,
+   cuenta_origen_id ON caja_movimientos`) — defensa en profundidad complementaria a
+   `fn_validar_moneda_coincide_sesion` (mig 372, valida movimiento vs. sesión); este valida movimiento vs.
+   `cuenta_origen_id` — rechaza un movimiento cuya `moneda` no coincida con la de su cuenta de origen.
+7. Tabla nueva `boveda_conversiones_usd` (auditoría de la conversión USD↔$: `sentido`, `monto_origen`,
+   `monto_destino`, `cotizacion_usada`, `usuario_id`, `movimiento_origen_id`/`movimiento_destino_id`) — RLS
+   calcada del patrón de `boveda_retiros` (DUEÑO/ADMIN/SUPER_USUARIO a nivel DB; la restricción "solo
+   DUEÑO" de F2 del relevamiento es de producto/UI, no de aislamiento de datos).
+
+`migration-reviewer` revisó la migración **antes de aplicar**: la primera versión tuvo **2 hallazgos
+bloqueantes reales** (columnas inexistentes copiadas mal en `fn_seed_tenant_defaults`, y
+`fn_crear_caja_fuerte` basada en una versión vieja sin `search_path`), corregidos y re-revisados como APTA.
+Verificada en DEV con 4 tests manuales reales (INSERT dentro de transacciones con `ROLLBACK`, sin dejar
+datos): movimiento con moneda≠cuenta rechazado, movimiento con moneda≠sesión rechazado, movimiento con todo
+coincidente permitido, 2da cuenta efectivo misma moneda rechazada por el índice único.
+
+**Código cableado**: `src/lib/cajaBoveda.ts` (nuevo) — `calcularConversionUsd()` (función pura, 7 tests
+`BOV-CNV-01` a `07`: USD→$ usa la cotización de COMPRA, $→USD usa la de VENTA, sin redondeo — J1) +
+`ensureFuerteSesionId()` (helper async compartido, reemplaza 4 bloques duplicados que nunca stampeaban
+`moneda` al crear la sesión permanente de la bóveda). `src/lib/cajaPermisos.ts` suma
+`convertir_usd_boveda`, solo `['DUEÑO']`. `src/pages/CajaPage.tsx`: `bovedaTab: 'ARS'|'USD'`,
+`cajaFuerteArs`/`cajaFuerteUsd` derivados de `cajas`, `cajaFuerte` pasa a depender de la pestaña activa
+(vuelve moneda-aware TODA la lógica preexistente de Bóveda con un cambio mínimo), mutation
+`convertirUsdBoveda` + modal nuevo, campo de clave maestra condicional en "Extraer dinero" (F3), se
+levantan los bloqueos "todavía no soporta Caja USD" que había puesto la Fase 3.
+`src/components/NotificacionesButton.tsx`: `aprobarSolicitudCajaFuerte` ya no rechaza en bloque solicitudes
+en USD. `src/pages/GastosPage.tsx`: `sesionFuerte` filtra explícitamente `moneda==='ARS'`.
+
+**🐛 2 bugs reales encontrados y corregidos antes de commitear**: (1) la auto-selección de caja al entrar
+al tab "Caja" usaba `cajasAbiertas[0]` sin excluir la Caja Fuerte — con 2 Cajas Fuerte permanentemente
+abiertas el riesgo de operar sobre ella por accidente se duplicó; fix: filtra contra `cajasOperativas`. (2)
+el selector "Cuenta de destino" de "Ingresar a Caja Fuerte" no filtraba por moneda — podía dejar plata
+huérfana sin contraparte (egreso commiteado, ingreso rechazado por el trigger nuevo); fix: filtra por la
+moneda de la pestaña activa. También ~8 lugares con bug de visualización (símbolo de moneda del tenant en
+vez de la moneda real de la cuenta/caja fuerte mostrada).
+
+Typecheck + build + suite completa de tests verdes (100 archivos, 1600 tests). UAT nuevos: `CAJ-37` a
+`CAJ-40` (`tests/specs/uat-modo-basico.md`). Ver [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
+
+> **Limitaciones conocidas, documentadas y NO resueltas**: el guard de F3 (clave maestra) y la restricción
+> "solo DUEÑO" de la conversión son 100% client-side hoy (sin RPC `SECURITY DEFINER` que las revalide en
+> DB — mismo patrón preexistente que `verificar_clave_maestra` en otras partes del módulo, no una regresión
+> de esta fase). `schema_full.sql` sigue sin regenerar (bug del pooler Supavisor + falta
+> `SUPABASE_ACCESS_TOKEN` en esta sesión). Hallazgo PRE-EXISTENTE sin tocar: la Caja Fuerte "primaria" de
+> un tenant nace con `cajas.moneda='ARS'` hardcodeado (no `COALESCE(tenant.moneda,'ARS')` como sí hace
+> "Efectivo") — bug latente más amplio de la Bóveda multi-moneda, fuera del alcance G5. Hallazgo
+> PRE-EXISTENTE sin tocar: migración `368b_fix_acentos_fn_seed_tenant_defaults` aplicada a DEV sin archivo
+> local commiteado (drift real, sin riesgo de regresión verificado).
+
+**Fase 5 de Caja USD (G5) queda 100% completa** (migs 373+374), sumada a las Fases 1+2+3+4 (migs 368-372) —
+el proyecto completo (Fases 1+2+3+4+5 de 8) está 100% en DEV. **Estado real: migs 373+374 aplicadas y
+verificadas en DEV, código completo y verificado, TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código
+al cierre de esta sesión, junto con el bump de versión a `v1.174.0`). Próximo paso: Fase 6
+(Devoluciones/NC — sin puntos abiertos propios).
 
 **372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d`, tag `v1.173.0`),
@@ -66,10 +156,8 @@ corregido) + los 2 gaps de Gastos (ya corregidos). Typecheck + build + suite com
 **Fase 4 de Caja USD (G5) queda 100% completa** (mig 372), sumada a las Fases 1+2+3 (migs 368-371) — el
 proyecto completo (Fases 1+2+3+4 de 8) está 100% en DEV. **Estado real: mig 372 aplicada y verificada en
 DEV, código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.173.0`).
-Próximo paso: Fase 5 (Bóveda por moneda — pestañas ARS/USD, conversión USD↔$ solo desde la Bóveda y solo
-por el DUEÑO, retiro de Caja USD sin destino con clave maestra). Fase 3 y Fase 4 dejaron explícitamente
-BLOQUEADO que la Bóveda reciba/envíe plata desde/hacia una Caja USD — la Fase 5 es justo lo que tiene que
-habilitar eso de verdad.
+**Fase 5 (Bóveda por moneda — pestañas ARS/USD, conversión USD↔$, retiro de Caja USD sin destino con clave
+maestra) ya la completa — ver migs 373+374 arriba.**
 
 **371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd`, tag `v1.172.0`),
@@ -207,7 +295,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-18:** 372 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-19:** 374 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
@@ -216,15 +304,18 @@ deployadas a PROD el 2026-08-13 (v1.170.0, PR #330)**, verificado con `gh releas
 migraciones 358/359 confirmadas aplicadas contra el proyecto PROD. **v1.169.0 (2026-08-13, PR #329) no
 había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin cambios de DB.
 **360-372 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
-moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y — a diferencia de
-sesiones anteriores documentadas más abajo — ahora COMMITEADAS Y PUSHEADAS a `origin/dev`** en 3 tandas:
-360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release `v1.171.0`); 371 en commit `010440cd` + bump
-`56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d` + bump `05801eb4` (tag+release `v1.173.0`) —
-verificado con `git log origin/dev..dev` vacío y `git describe --tags` = `v1.173.0`. **Sigue sin PR
+moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y COMMITEADAS Y
+PUSHEADAS a `origin/dev`** en 3 tandas: 360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release
+`v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d`
++ bump `05801eb4` (tag+release `v1.173.0`) — verificado con `git log origin/dev..dev` vacío y `git describe
+--tags` = `v1.173.0`. **373 y 374 (Caja USD Fase 5, Bóveda ARS/USD) están APLICADAS Y VERIFICADAS EN DEV,
+código completo y verificado, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el código al cierre de esta
+sesión, junto con el bump de versión a `v1.174.0` (ya hecho en `src/config/brand.ts`). **Sigue sin PR
 `dev`→`main`, sin deploy a PROD.** El resto de este bloque describe el detalle técnico de cada una,
 incluyendo texto histórico
 ("SIN COMMITEAR") que
-reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
+reflejaba el estado AL MOMENTO de escribirse cada entrada de las migraciones 360-372 (ya commiteadas, ver
+arriba) — la única entrada donde "SIN COMMITEAR" sigue siendo el estado actual es la de 373/374. **363-365
 habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de
 una sesión anterior (bloqueante técnico real, no una decisión de diseño) — con el MCP reconectado se
 aplicaron y verificaron en esa sesión, junto con la 366 nueva.** **361 y 362 cierran 2 hallazgos 🛑

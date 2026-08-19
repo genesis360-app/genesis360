@@ -13,6 +13,7 @@ export type AccionCaja =
   | 'ver_boveda_saldo'
   | 'depositar_boveda'
   | 'extraer_boveda'           // E4 — solo DUEÑO+
+  | 'convertir_usd_boveda'     // G5 Fase 5 (F2) — único punto de conversión USD↔$, solo DUEÑO
   | 'cambiar_clave_maestra'    // B6 — solo DUEÑO
   | 'reimprimir_ticket_cierre'
   | 'editar_movimiento'        // botón "Corregir" — G1
@@ -33,6 +34,7 @@ const MATRIZ: Record<AccionCaja, RolUsuario[]> = {
   ver_boveda_saldo:       ['DUEÑO', 'ADMIN', 'SUPER_USUARIO'],            // SUPERVISOR opcional via config
   depositar_boveda:       ['DUEÑO', 'SUPERVISOR', 'CAJERO', 'ADMIN', 'SUPER_USUARIO'],
   extraer_boveda:         ['DUEÑO', 'ADMIN', 'SUPER_USUARIO'],
+  convertir_usd_boveda:   ['DUEÑO'],                                       // F2 — estricto, sin excepción de rol
   cambiar_clave_maestra:  ['DUEÑO'],                                       // B6 — estricto
   reimprimir_ticket_cierre: ['DUEÑO', 'SUPERVISOR', 'CONTADOR', 'ADMIN', 'SUPER_USUARIO'],
   editar_movimiento:      ['DUEÑO', 'ADMIN', 'SUPER_USUARIO'],             // SUPERVISOR opcional via config

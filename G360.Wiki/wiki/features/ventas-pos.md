@@ -543,7 +543,8 @@ Typecheck + build + suite completa de tests unitarios verdes (incluye los 7 test
 (`tests/specs/uat-modo-basico.md`).
 
 **Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4 completas (migs 368-372).
-Próximo paso: Fase 5 (Bóveda por moneda). Ver [[wiki/features/caja]] para el estado completo del proyecto.
+**Fase 5 (Bóveda ARS/USD, migs 373+374) también completa, sin tocar `VentasPage.tsx`** — ver
+[[wiki/features/caja]] para el estado completo del proyecto (próximo paso: Fase 6, Devoluciones/NC).
 
 ## Visibilidad de costo/margen (G4)
 

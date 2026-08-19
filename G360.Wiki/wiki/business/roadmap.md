@@ -13,17 +13,59 @@ updated: 2026-08-18
 `src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
 `dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
 completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.173.0 (Fases 1+2+3+4 de Caja USD ya en `origin/dev` — Fases 1+2 commit `0b4d431a`,
-tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; **Fase 4
-(mig 372, pago combinado ARS+USD) también COMMITEADA Y PUSHEADA** — commit `d783727d` (código) + `7d511c5d`
-(wiki) + bump `05801eb4`, tag+release `v1.173.0` publicados, corrige el estado "TODAVÍA SIN COMMITEAR" que
-documentaba la entrada anterior de este roadmap. **SIN PR a `main`, SIN deploy a PROD**). **13 migraciones
-nuevas sobre PROD — 360 a 372 (la última migración es la 372).**  
-**Última actualización:** 18 de Agosto, 2026
+**Versión en DEV:** v1.174.0 (Fases 1+2+3+4+5 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
+`v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; Fase 4 (mig 372,
+pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; **Fase 5 (migs
+373+374, Bóveda ARS/USD) CONSTRUIDA Y VERIFICADA EN DEV, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el
+código al cierre de la sesión, junto con el bump de versión a `v1.174.0` ya hecho en
+`src/config/brand.ts`. **SIN PR a `main`, SIN deploy a PROD**). **15 migraciones nuevas sobre PROD — 360 a
+374 (la última migración es la 374).**  
+**Última actualización:** 19 de Agosto, 2026
 
 ---
 
-## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — 🟡 EN DEV, sin deploy a PROD (2026-08-18)
+## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — 🟡 EN DEV, TODAVÍA SIN COMMITEAR, sin deploy a PROD (2026-08-19)
+
+Continúa la Fase 4 (v1.173.0, abajo). **Migraciones 373 y 374** (`373_caja_usd_fase5_boveda.sql` +
+`374_vw_boveda_cuentas_security_invoker.sql`), aplicadas y verificadas en DEV — código completo,
+typecheck+build+suite de tests verdes, **TODAVÍA SIN COMMITEAR** (GO commitea al cierre de esta sesión
+junto con el bump de versión, ya hecho en `src/config/brand.ts`). **2 migraciones nuevas: 373 y 374.**
+
+- **Caja en Dólares (relevamiento G5) — Fase 5 (Bóveda ARS/USD) completa**: la Bóveda (Caja Fuerte) deja de
+  asumir 1 sola fila por tenant y pasa a tener 2 (ARS y USD, pestañas separadas), sembradas automáticamente
+  para todo tenant (nuevo y existente vía backfill) — "Efectivo USD" en `cuentas_origen` + "Caja Fuerte
+  USD" en `cajas`, ambas dormidas en $0 hasta que se usen. Función nueva **"Convertir USD↔$"** (único punto
+  de conversión de todo el sistema, exclusivo del rol DUEÑO): USD→$ usa la cotización de COMPRA, $→USD usa
+  la cotización de VENTA (la misma que el resto del POS), sin redondeo — auditada en la tabla nueva
+  `boveda_conversiones_usd`. **F3**: retiro de Caja USD sin destino requiere clave maestra, además del
+  motivo, si el tenant la tiene configurada y el monto alcanza el umbral propio en USD.
+- **2 triggers server-side nuevos** (defensa en profundidad): `fn_validar_moneda_coincide_cuenta_origen`
+  (movimiento vs. cuenta de origen, complementa a `fn_validar_moneda_coincide_sesion` de la mig 372) y el
+  fix de `vw_boveda_cuentas` a `security_invoker=true` (mig 374, cierra un "Security Definer View"
+  PRE-EXISTENTE que bypaseaba el RLS de `cuentas_origen`/`caja_movimientos`, hallazgo del advisor de
+  seguridad de Supabase durante esta misma fase).
+- **🔴 2 bugs reales encontrados y corregidos en la misma sesión** (antes de commitear): (1) la
+  auto-selección de caja al entrar al tab "Caja" podía terminar eligiendo la Caja Fuerte (fix: filtra
+  contra `cajasOperativas`); (2) el selector "Cuenta de destino" de "Ingresar a Caja Fuerte" no filtraba
+  por moneda, riesgo de plata huérfana sin contraparte (fix: filtra por la moneda de la pestaña activa).
+  Detalle: [[wiki/features/caja]].
+
+Typecheck + build + suite completa de tests verdes (100 archivos, 1600 tests, incluye 7 tests nuevos de
+`calcularConversionUsd`). Ambas migraciones revisadas por `migration-reviewer` (373 tuvo 2 hallazgos
+bloqueantes reales en la primera versión, corregidos y re-revisados como APTA; 374 APTA directo). UAT
+nuevos: `CAJ-36` (reescrito) a `CAJ-40`.
+
+**Con esto, la Fase 5/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5, migs 368-374). Próximo
+paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios).
+
+**Estado real: DEV en migs 001-374, código completo y verificado, TODAVÍA SIN COMMITEAR** — GO commitea el
+wiki + el código al cierre de esta sesión (próximo tag: `v1.174.0`). **SIN PR `dev`→`main`, SIN deploy a
+PROD** — decisión pendiente de GO. Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 5
+de 8"), `wiki/database/migraciones.md` (migs 373-374).
+
+---
+
+## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — ✅ EN DEV, commiteado y pusheado (2026-08-18)
 
 Continúa la Fase 3 (v1.172.0, abajo) en una sesión posterior. **Migración 372**
 (`372_caja_usd_fase4_pago_combinado.sql`), commiteada junto con el código en `d783727d` (wiki en `7d511c5d`,
@@ -53,7 +95,7 @@ moneda inconsistente pre-existentes). UAT nuevos: `VEN-37` a `VEN-43`.
 
 ---
 
-## v1.172.0 — 💵 Caja en Dólares (Fase 3/8: ciclo operativo) — 🟡 EN DEV, sin deploy a PROD (2026-08-18)
+## v1.172.0 — 💵 Caja en Dólares (Fase 3/8: ciclo operativo) — ✅ EN DEV, commiteado y pusheado (2026-08-18)
 
 Continúa la Fase 1+2 (v1.171.0, abajo) en una tanda posterior de la misma sesión. **Migración 371**
 (`371_caja_usd_fase3_ciclo_operativo.sql`), commiteada junto con el código en `010440cd` (bump de versión

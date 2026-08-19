@@ -294,17 +294,23 @@ Razones:
 > real detrás de `cajas.moneda` (hoy solo una etiqueta) — no el MVP mixto (a)/(c). Fede pidió
 > explícitamente no ir por partes ("no estar haciendo y deshaciendo") — K3 (prioridad) = "TODO", sin orden
 > parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos, migs 368+369), Fase 2 (permisos y
-> configuración, mig 370), Fase 3 (ciclo operativo, mig 371) y Fase 4 (pago combinado ARS+USD, mig 372)
-> 100% COMPLETAS en DEV** (2026-08-18). Fases 1+2 COMMITEADAS Y PUSHEADAS (commit `310d9b3b`, tag
-> `v1.171.0`); Fase 3 también COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión (commit
-> `010440cd`, tag `v1.172.0`); **Fase 4 (mig 372) COMMITEADA Y PUSHEADA** (commit `d783727d`, tag
-> `v1.173.0`). SIN deploy a PROD en ningún caso. La Fase 4 activa **D1/D2/D3/A2**:
-> el cajero tipea el monto en USD y el sistema convierte (D2), cada caja se contabiliza por lo
-> efectivamente cobrado en ESA moneda — nunca el total convertido — y el vuelto de un pago en USD siempre
-> sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2, agregado en la Fase 2 sin usarse hasta
-> ahora) por fin gobierna si un producto puede cobrarse en USD. Detalle técnico completo:
-> [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8", [[wiki/features/ventas-pos]] → "Pago combinado
-> ARS+USD", `wiki/database/migraciones.md` (migs 368-372).
+> configuración, mig 370), Fase 3 (ciclo operativo, mig 371), Fase 4 (pago combinado ARS+USD, mig 372) y
+> Fase 5 (Bóveda ARS/USD, migs 373+374) 100% COMPLETAS en DEV** (2026-08-18/19). Fases 1+2 COMMITEADAS Y
+> PUSHEADAS (commit `310d9b3b`, tag `v1.171.0`); Fase 3 también COMMITEADA Y PUSHEADA en una tanda
+> posterior de la misma sesión (commit `010440cd`, tag `v1.172.0`); Fase 4 (mig 372) COMMITEADA Y PUSHEADA
+> (commit `d783727d`, tag `v1.173.0`); **Fase 5 (migs 373+374) APLICADA Y VERIFICADA en DEV, código
+> completo, TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el código al cierre de la sesión, junto con el
+> bump de versión a `v1.174.0` ya hecho en `src/config/brand.ts`). SIN deploy a PROD en ningún caso. La
+> Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte (D2), cada caja se
+> contabiliza por lo efectivamente cobrado en ESA moneda — nunca el total convertido — y el vuelto de un
+> pago en USD siempre sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2, agregado en la Fase
+> 2 sin usarse hasta ahora) por fin gobierna si un producto puede cobrarse en USD. La Fase 5 activa **F2/
+> F3**: la Bóveda deja de asumir 1 sola fila por tenant y pasa a tener 2 (ARS y USD, pestañas separadas),
+> sembradas automáticamente para todo tenant; la función "Convertir USD↔$" (único punto de conversión de
+> todo el sistema, exclusivo del DUEÑO) queda implementada; y un retiro de Caja USD sin destino exige clave
+> maestra además del motivo, si el tenant la tiene configurada y el monto alcanza el umbral propio en USD.
+> Detalle técnico completo: [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8" y "Fase 5 de 8",
+> [[wiki/features/ventas-pos]] → "Pago combinado ARS+USD", `wiki/database/migraciones.md` (migs 368-374).
 >
 > **Fede confirmó por escrito (2026-08-18) las 3 preguntas abiertas que quedaban antes de dar el OK
 > completo al plan de 8 fases:**

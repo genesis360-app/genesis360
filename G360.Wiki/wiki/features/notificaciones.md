@@ -2,8 +2,8 @@
 title: Notificaciones
 category: features
 tags: [notificaciones, campana, alertas, push, email, v1.5.0]
-sources: [CLAUDE.md]
-updated: 2026-05-12
+sources: [CLAUDE.md, migrations 373, 374]
+updated: 2026-08-19
 ---
 
 # Notificaciones
@@ -78,6 +78,16 @@ Cuando `metadata.accion === 'solicitud_caja_fuerte'`, `NotificacionesButton` mue
 3. Inserta `egreso_traspaso` en la sesión del cajero
 4. Inserta `ingreso_traspaso` en la sesión de la caja fuerte
 5. Marca la notificación como leída
+
+> 💵 **G5 Fase 5 de Caja USD (migs 373+374, 2026-08-19, EN DEV, código TODAVÍA SIN COMMITEAR): moneda-aware
+> de extremo a extremo.** `aprobarSolicitudCajaFuerte` ya NO rechaza en bloque las solicitudes en USD —
+> resuelve la Caja Fuerte de la MISMA moneda que la sesión que pidió la transferencia, vía
+> `ensureFuerteSesionId()` (`src/lib/cajaBoveda.ts`, reemplaza 4 bloques de código antes duplicados que
+> nunca stampeaban `moneda` al crear/buscar esa sesión). Además, a quién se notifica una solicitud en USD
+> se filtra (cableado en `CajaPage.tsx` al crear la notificación): solo DUEÑO + roles con permiso de operar
+> Caja USD (`tenants.caja_usd_roles_permitidos`) — para no notificar a alguien que de todos modos no
+> podría aprobarla (el trigger `fn_validar_rol_opera_caja_usd`, mig 371, la rechazaría igual). Ver
+> [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
 
 Payload `metadata` de `solicitud_caja_fuerte`:
 ```json

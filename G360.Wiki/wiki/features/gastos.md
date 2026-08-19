@@ -2,8 +2,8 @@
 title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador]
-sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372]
-updated: 2026-08-18
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373]
+updated: 2026-08-19
 ---
 
 # Módulo Gastos
@@ -488,6 +488,12 @@ Aplica en 5 puntos de `GastosPage.tsx`:
 > con toast de error, y el picker de caja ahora excluye Cajas USD (mismo patrón que el selector doble de
 > Ventas). **Estado: código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.173.0`, mig
 > 372).
+>
+> 🐛 **1 fix más chico, mismo motivo, sesión posterior (2026-08-19, G5 Fase 5 de Caja USD, mig 373, EN DEV,
+> código TODAVÍA SIN COMMITEAR)**: la Bóveda pasó a tener 2 filas `es_caja_fuerte=true` por tenant (ARS y
+> USD) — `sesionFuerte` (fallback de pago cuando no hay caja operativa abierta) ahora filtra explícitamente
+> `moneda==='ARS'`, porque el `.find()` anterior podía agarrar cualquiera de las 2 sin criterio. Ver
+> [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
 
 ---
 

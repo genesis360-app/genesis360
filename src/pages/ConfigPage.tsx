@@ -918,6 +918,9 @@ export default function ConfigPage() {
   const [bizCajaUsdRoles,        setBizCajaUsdRoles]        = useState<string[]>((tenant as any)?.caja_usd_roles_permitidos ?? [])
   const [bizDifUmbralUsd,        setBizDifUmbralUsd]        = useState<string>((tenant as any)?.diferencia_caja_umbral_usd != null ? String((tenant as any).diferencia_caja_umbral_usd) : '')
   const [bizCajaUsdClaveUmbral,  setBizCajaUsdClaveUmbral]  = useState<string>((tenant as any)?.caja_usd_clave_maestra_umbral != null ? String((tenant as any).caja_usd_clave_maestra_umbral) : '')
+  // G5 Fase 6 (G1) — qué cotización usa el reintegro en caja de una devolución vía "Efectivo USD":
+  // de hoy (default) o la de la venta original.
+  const [bizReintegroUsdCotOriginal, setBizReintegroUsdCotOriginal] = useState<boolean>((tenant as any)?.reintegro_usd_cotizacion_original === true)
   const [savingCajaUsd,          setSavingCajaUsd]          = useState(false)
   const handleSaveConfigCaja = async () => {
     setSavingConfigCaja(true)
@@ -954,6 +957,7 @@ export default function ConfigPage() {
       caja_usd_roles_permitidos: bizCajaUsdRoles,
       diferencia_caja_umbral_usd: bizDifUmbralUsd.trim() ? parseFloat(bizDifUmbralUsd) : null,
       caja_usd_clave_maestra_umbral: bizCajaUsdClaveUmbral.trim() ? parseFloat(bizCajaUsdClaveUmbral) : null,
+      reintegro_usd_cotizacion_original: bizReintegroUsdCotOriginal,
     }).eq('id', tenant!.id).select().single()
     setSavingCajaUsd(false)
     if (error || !data) { toast.error('No se pudo guardar'); return }
@@ -7665,6 +7669,14 @@ export default function ConfigPage() {
                       className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">A partir de qué monto en USD un retiro/movimiento exige la clave maestra del dueño.</p>
                   </div>
+                </div>
+                <div className="flex items-center justify-between gap-4 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Reintegro de devolución en USD: usar cotización de la venta original</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Al devolver con el medio "Efectivo USD", por default se convierte con la cotización de HOY (la plata sale hoy). Activá esto para usar la cotización de la venta original en su lugar — mismo criterio que la Nota de Crédito AFIP.</p>
+                  </div>
+                  <Toggle size="lg" disabled={!canEdit} checked={bizReintegroUsdCotOriginal}
+                    onChange={setBizReintegroUsdCotOriginal} />
                 </div>
                 {canEdit && (
                   <div className="flex justify-end">

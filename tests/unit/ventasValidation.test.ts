@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarMediosPago, validarDescuentosPorRol, descuentoEfectivoPct, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, type ValidarDescuentosArgs } from '@/lib/ventasValidation'
+import { validarMediosPago, validarDescuentosPorRol, descuentoEfectivoPct, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, elegirCotizacionReintegro, type ValidarDescuentosArgs } from '@/lib/ventasValidation'
 
 describe('Ventas — validación medios de pago', () => {
   const total = 1000
@@ -309,5 +309,26 @@ describe('carritoAceptaUsd', () => {
   })
   it('producto local sin flag (default) → false', () => {
     expect(carritoAceptaUsd([{ moneda_venta: 'local' }])).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// elegirCotizacionReintegro (G5 Fase 6, G1)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('elegirCotizacionReintegro', () => {
+  it('DEV-CTZ-01 default (tenant sin configurar) → cotización de hoy', () => {
+    expect(elegirCotizacionReintegro(false, 1000, 1300)).toBe(1300)
+  })
+  it('DEV-CTZ-02 tenant configurado + venta con cotización → usa la de la venta original', () => {
+    expect(elegirCotizacionReintegro(true, 1000, 1300)).toBe(1000)
+  })
+  it('DEV-CTZ-03 tenant configurado pero venta sin cotización registrada (null) → cae a la de hoy', () => {
+    expect(elegirCotizacionReintegro(true, null, 1300)).toBe(1300)
+  })
+  it('DEV-CTZ-04 tenant configurado pero venta con cotización 0 → cae a la de hoy', () => {
+    expect(elegirCotizacionReintegro(true, 0, 1300)).toBe(1300)
+  })
+  it('DEV-CTZ-05 tenant configurado, venta undefined → cae a la de hoy', () => {
+    expect(elegirCotizacionReintegro(true, undefined, 1300)).toBe(1300)
   })
 })

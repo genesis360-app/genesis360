@@ -2,7 +2,7 @@
 title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374]
+sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375]
 updated: 2026-08-19
 ---
 
@@ -356,13 +356,21 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 > su sesión. **Fase 5 de 8 completa** (migs 373+374, ver sección "Fase 5 de Caja USD — Bóveda ARS/USD" más
 > abajo): la Bóveda deja de asumir 1 sola fila por tenant y pasa a tener 2 (ARS y USD, pestañas separadas),
 > sembradas automáticamente para todo tenant; función nueva "Convertir USD↔$" (único punto de conversión de
-> todo el sistema, exclusivo del DUEÑO); retiro de Caja USD sin destino con clave maestra (F3). **Estado
-> real: migs 368-374 APLICADAS Y VERIFICADAS en DEV, código COMMITEADO Y PUSHEADO a `origin/dev` en 4
-> tandas** (368-370 en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en
-> commit `d783727d`, tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`).
+> todo el sistema, exclusivo del DUEÑO); retiro de Caja USD sin destino con clave maestra (F3). **Fase 6 de
+> 8 completa** (mig 375, ver [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" — el detalle
+> completo vive ahí porque la fase toca principalmente Ventas/Devoluciones, no Caja): la devolución en caja
+> soporta un medio "Efectivo USD" (egreso real en la Caja USD elegida, cotización de hoy por default o de
+> la venta original si el tenant activa el toggle — G1) y la NC AFIP confirma que ya usaba la cotización de
+> la venta original por construcción (G2, sin cambio de código real). **Estado real: migs 368-375 APLICADAS
+> Y VERIFICADAS en DEV, código de las Fases 1-5 COMMITEADO Y PUSHEADO a `origin/dev` en 4 tandas** (368-370
+> en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en commit `d783727d`,
+> tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`); **la Fase 6 (mig 375) está construida y
+> verificada en DEV pero TODAVÍA SIN COMMITEAR** (bump de versión a `v1.175.0` ya hecho en
+> `src/config/brand.ts`, pendiente de que GO commitee wiki + código).
 > **SIN deploy a PROD en ningún caso.** Ya hay una Caja USD de prueba operando de verdad en DEV (tenant
-> "Almacén Jorgito"). Falta Fase 6 en adelante: devoluciones/NC, reportes, cotización fiscal AFIP. Ver el
-> relevamiento completo (29 preguntas respondidas) en [[wiki/development/reglas-negocio]] → "Caja en USD /
+> "Almacén Jorgito"). Falta Fase 7 en adelante: reportes, cotización fiscal AFIP (C2, bloqueada por un
+> contador real). Ver el relevamiento completo (29 preguntas respondidas) en
+> [[wiki/development/reglas-negocio]] → "Caja en USD /
 > Venta física en USD".
 
 ### H1 · Cuentas de Origen + Bóveda discriminada
@@ -885,13 +893,34 @@ Escenarios agregados al UAT (`tests/specs/uat-modo-basico.md`): `CAJ-36` (reescr
   local de la mig 368), sin riesgo de regresión, pero sigue siendo drift sin reconciliar.
 
 **Con esto, la Fase 5/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5 completas (migs
-368-374). **Próximo paso: Fase 6** (Devoluciones/NC) — sin puntos abiertos propios según el relevamiento
-(ver [[wiki/development/reglas-negocio]]), lista para construir.
+368-374). **Continúa directo con la Fase 6 (Devoluciones/NC), ver sección siguiente.**
 
-**Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4 completas (migs 368-372).
+---
 
-**Próximo paso: Fase 5** (Bóveda por moneda — pestañas separadas ARS/USD, conversión USD↔$ solo desde la
-Bóveda y solo por el DUEÑO, retiro de Caja USD sin destino con contraseña maestra). Fase 3 y Fase 4
-dejaron explícitamente BLOQUEADO (con toasts claros) que la Bóveda reciba/envíe plata desde/hacia una Caja
-USD — eso es justamente lo que la Fase 5 tiene que habilitar de verdad. Fases 5-8 siguen sin construir. C2
-(cotización BNA para AFIP, Fase 8) sigue pendiente de un contador real, no bloquea nada de las Fases 1-7.
+## ✅ Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, TODAVÍA SIN COMMITEAR (2026-08-19)
+
+Sexta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
+USD / Venta física en USD"). Continúa directo sobre la Fase 5 (migs 373+374, Bóveda ARS/USD, ya
+commiteada/pusheada como tag `v1.174.0`). **Esta fase toca principalmente Ventas/Devoluciones, no Caja** —
+el detalle técnico completo (migración 375, código de `VentasPage.tsx`/`ConfigPage.tsx`, los 2 bugs reales
+de code-review, verificación, limitaciones conocidas) vive en [[wiki/features/devoluciones]] → "Caja en USD
+— Fase 6 de 8", que queda como fuente de verdad de esta fase.
+
+Resumen: la devolución en caja soporta un medio **"Efectivo USD"** — egreso real en la Caja USD elegida,
+convertido a la cotización de HOY por default o a la de la **venta original** si el tenant activa el
+toggle nuevo `tenants.reintegro_usd_cotizacion_original` (Config → Ventas → Caja en Dólares, **G1** del
+relevamiento), con su propio guard CAJ-18 (no negativo). La Nota de Crédito AFIP se confirmó que **ya**
+usaba la cotización de la venta original por construcción (**G2**, sin cambio de código real en
+`emitir-factura`, solo comentarios). **Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), APLICADA
+Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), puramente aditiva — sin funciones/triggers/vistas nuevas
+(protegida por los triggers de moneda de las migs 372/373): `tenants.reintegro_usd_cotizacion_original` +
+`devoluciones.monto_usd`/`cotizacion_usd_usada` + `CHECK devoluciones_usd_ambos_o_ninguno`. **Estado real:
+mig 375 aplicada y verificada, código completo — typecheck+build+tests verdes (100 archivos, 1605 tests) —,
+TODAVÍA SIN COMMITEAR** (bump de versión a `v1.175.0` ya hecho en `src/config/brand.ts`, pendiente de que
+GO commitee wiki + código en un solo commit). SIN deploy a PROD.
+
+**Con esto, la Fase 6/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5+6 completas (migs
+368-375). El plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación
+para AFIP, Fase 8), pendiente de confirmación con un contador real, sin bloquear el resto. **Próximo paso:
+Fase 7** (Reportes — H1/H2 del relevamiento: total único en pesos + desglose por moneda en reportes;
+Dashboard excluye ventas USD de los totales/indicadores en pesos).

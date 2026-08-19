@@ -6,7 +6,43 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-19
 ---
 
-# Historial de Migraciones (001-374)
+# Historial de Migraciones (001-375)
+
+**375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), TODAVÍA SIN COMMITEAR, NO en PROD (2026-08-19):** Fase 6 ("Devoluciones/NC con
+soporte USD") del plan Caja USD (relevamiento G5). Continúa la Fase 5 (migs 373+374, ya
+commiteada/pusheada, tag `v1.174.0`). Puramente aditiva, sin funciones/triggers/vistas nuevas — los
+`caja_movimientos` que este flujo inserta ya quedan protegidos por los triggers
+`fn_validar_moneda_coincide_sesion` (mig 372) y `fn_validar_moneda_coincide_cuenta_origen` (mig 373), que
+se disparan sobre cualquier INSERT a esa tabla sin filtrar por origen. Agrega:
+1. `tenants.reintegro_usd_cotizacion_original boolean NOT NULL DEFAULT false` — toggle de **G1** (qué
+   cotización usa el reintegro en caja de una devolución vía "Efectivo USD": la de hoy por default, o la
+   de la venta original si se activa).
+2. `devoluciones.monto_usd numeric(14,2)` + `devoluciones.cotizacion_usd_usada numeric(14,4)` — auditoría
+   de cuánto USD real se devolvió y con qué cotización; NULL en ambas si la devolución no tuvo componente
+   USD.
+3. `CHECK devoluciones_usd_ambos_o_ninguno` — exige que las 2 columnas de arriba vayan siempre juntas
+   (ambas NULL, o ambas presentes y positivas).
+
+**🐛 Bug real encontrado y corregido en DEV, antes de commitear**: la primera versión del CHECK usaba
+`monto_usd > 0 AND cotizacion_usd_usada > 0` sin `IS NOT NULL` explícito — en SQL de 3 valores, comparar
+contra NULL da NULL (no `false`), y un CHECK trata NULL como "la fila pasa" (no como rechazo). El
+constraint NO rechazaba una fila con solo una de las 2 columnas cargada — exactamente el gap que debía
+cerrar. Detectado corriendo 4 INSERTs reales dentro de una transacción con `ROLLBACK` en DEV (no se asumió
+que el CHECK funcionaba, se probó). Corregido agregando `IS NOT NULL` explícito en cada rama del CHECK y
+reverificado con los mismos 4 tests — los 4 dieron el resultado esperado. La migración aplicada en DEV ya
+tiene la versión corregida.
+
+**G2 del relevamiento** (la NC AFIP usa la cotización de la venta original, no la del momento de la
+devolución) se investigó a fondo y se confirmó **YA correcta por construcción** en el código existente
+(`devolucion_items.precio_unitario` se copia de `venta_items.subtotal/cantidad`, fijo en pesos desde la
+venta original, nunca recalculado) — no hizo falta ningún cambio de lógica en `emitir-factura`, solo
+comentarios documentando el invariante. Verificado en DEV con INSERTs reales en transacciones con
+`ROLLBACK`: default `false` correcto para tenants existentes, CHECK funcionando en sus 4 combinaciones.
+Código: `src/lib/ventasValidation.ts` (`elegirCotizacionReintegro`, 5 tests) + `VentasPage.tsx`
+(devolución con Caja USD paralela) + `ConfigPage.tsx` (toggle) + `emitir-factura/index.ts` (solo
+comentarios). `migration-reviewer`: 3 notas menores, ninguna bloqueante. Ver [[wiki/features/devoluciones]]
+→ "Caja en USD — Fase 6 de 8".
 
 **374 (`374_vw_boveda_cuentas_security_invoker.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en

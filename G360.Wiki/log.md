@@ -6,6 +6,82 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-19] update | Fase 6/8 de Caja USD (G5): Devoluciones/NC con soporte USD — mig 375, EN DEV sin commitear
+
+Continuación directa de la Fase 5 (migs 373+374, Bóveda ARS/USD — commit `28d9291e`, tag `v1.174.0`, ya
+commiteada/pusheada). Se construyó, verificó y validó en DEV la **Fase 6/8** del plan "Caja en USD"
+(relevamiento G5): **Devoluciones/NC con soporte USD**. Hasta ahora el modal de devolución de
+`VentasPage.tsx` era 100% ciego a USD, pese a que la Fase 4 ya había resuelto el mismo problema del lado de
+la venta.
+
+**G1** (reintegro en caja de una devolución cobrada en USD): se dispara cuando el CAJERO elige un medio
+"Efectivo USD" en el modal de devolución — independiente de cómo se pagó la venta original (sin prorrateo
+por línea de pago combinado, esa data no existe a nivel de línea). Default: convierte a dólares con la
+cotización DE HOY (`tenant.cotizacion_usd`). Configurable por tenant
+(`tenants.reintegro_usd_cotizacion_original`, toggle nuevo en Config → Ventas → Caja en Dólares): si está
+activado, usa la cotización de la VENTA ORIGINAL (`ventas.cotizacion_usd`), mismo criterio que la NC (G2),
+con fallback seguro a la de hoy si esa venta no tiene cotización registrada.
+
+**G2** (ya confirmado por Fede en la sesión anterior): la NC AFIP debe usar la cotización de la venta
+original. Investigado a fondo — **ya era correcto por construcción**: `devolucion_items.precio_unitario`
+se copia de `venta_items.subtotal/cantidad`, fijo en pesos desde la venta original, nunca recalculado. **No
+hizo falta ningún cambio de lógica** en `emitir-factura`, solo comentarios documentando el invariante.
+
+**Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), aplicada y verificada en DEV
+(`gcmhzdedrkmmzfzfveig`), puramente aditiva (sin funciones/triggers/vistas nuevas — protegida por los
+triggers de moneda de las migs 372/373): `tenants.reintegro_usd_cotizacion_original boolean DEFAULT false`
+(toggle de G1) + `devoluciones.monto_usd numeric(14,2)`/`cotizacion_usd_usada numeric(14,4)` (auditoría,
+NULL si no hubo componente USD) + `CHECK devoluciones_usd_ambos_o_ninguno` (ambas columnas van juntas).
+
+**🐛 Bug real encontrado y corregido en DEV, antes de commitear**: la primera versión del CHECK usaba
+`monto_usd > 0 AND cotizacion_usd_usada > 0` sin `IS NOT NULL` explícito — comparar contra NULL da NULL (no
+`false`), y un CHECK trata NULL como "la fila pasa". El constraint NO rechazaba una fila con solo una de las
+2 columnas cargada — el gap exacto que debía cerrar. Detectado corriendo 4 INSERTs reales en una transacción
+con `ROLLBACK` (no se asumió que el CHECK funcionaba). Corregido con `IS NOT NULL` explícito en cada rama y
+reverificado — los 4 tests dieron el resultado esperado.
+
+**Código**: `src/lib/ventasValidation.ts` gana `elegirCotizacionReintegro(usarCotizacionOriginal,
+cotizacionVentaOriginal, cotizacionHoy)` (función pura, 5 tests `DEV-CTZ-01` a `05`). `src/pages/VentasPage.tsx`
+(el cambio grande, todo en `abrirModalDevolucion`/`procesarDevolucion`): selector de Caja USD paralelo al de
+pesos, input en dólares en el picker de medio de devolución, validaciones ARS/USD separadas (caja requerida
++ CAJ-18 propio), 2 `caja_movimientos` posibles por devolución (egreso ARS explícito + egreso USD nuevo), y
+el INSERT de `devoluciones` completa `monto_usd`/`cotizacion_usd_usada` en el mismo INSERT (la tabla no
+tiene policy RLS de UPDATE). `src/pages/ConfigPage.tsx`: toggle nuevo en "Caja en Dólares". `supabase/
+functions/emitir-factura/index.ts`: solo comentarios documentando el invariante de G2, sin cambio de lógica.
+
+**🐛 2 bugs reales corregidos antes de commitear (hallazgos de code-review)**: (1) el guard "No hay
+cotización de dólar cargada" era inalcanzable en la práctica (dependía de `mediosValidos`, que un medio USD
+sin cotización nunca llegaba a integrar) — el cajero veía un error genérico en vez de la causa real; fix:
+chequeo movido antes del filtro, sobre `montoUsd` crudo. (2) mismo espíritu que un bug que la Fase 4 ya
+había corregido del lado de venta pero nunca se aplicó del lado de devolución: el código hardcodeaba
+`m.tipo === 'Efectivo'` en 5 puntos de la devolución — cualquier medio efectivo con otro nombre (no solo
+"Efectivo USD") nunca generaba movimiento de caja, plata "devuelta" sin rastro contable; fix: reemplazado
+por `mediosEfectivo.has()`/`mediosEfectivoUsd.has()` (utilidades existentes desde la Fase 4, nunca aplicadas
+acá).
+
+**Verificación**: typecheck + build + suite completa de tests verdes (100 archivos, 1605 tests). Migración
+375 revisada por `migration-reviewer` (3 notas menores, ninguna bloqueante). Código revisado por
+`code-reviewer` (2 hallazgos 🟡 corregidos, ver arriba; 2 notas quedaron documentadas sin resolver, no
+bloqueantes: un `.find()` que no discrimina 2+ métodos "Efectivo USD" con distinta cuenta de origen —mismo
+patrón preexistente del lado ARS—, y un desfasaje teórico de auditoría de muy baja probabilidad si la
+cotización cambia en vivo con el modal abierto). UAT nuevos: `VEN-44` a `VEN-48`
+(`tests/specs/uat-modo-basico.md`). Detalle completo: `sources/raw/project_pendientes.md` (cont. 16),
+`wiki/database/migraciones.md` (mig 375, título a 001-375), `wiki/features/devoluciones.md` (sección "Caja
+en USD — Fase 6 de 8"), `wiki/features/caja.md`, `wiki/features/ventas-pos.md`,
+`wiki/features/facturacion-afip.md`, `wiki/development/reglas-negocio.md` (módulo G5), `wiki/business/roadmap.md` (v1.175.0).
+
+**Con esto, la Fase 6/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5+6, migs 368-375) — el plan
+de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación para AFIP, Fase 8),
+pendiente de confirmación con un contador real, no bloqueante. Próximo paso: Fase 7 (Reportes — H1/H2 del
+relevamiento).
+
+**Estado real: migración 375 aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`), código completo,
+typecheck+build+tests verdes, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el código al cierre de esta
+sesión, junto con el bump de versión a **v1.175.0** (ya hecho en `src/config/brand.ts`). Sin PR a `main`,
+sin deploy a PROD.
+
+---
+
 ## [2026-08-19] update | Fase 5/8 de Caja USD (G5) COMMITEADA Y PUSHEADA (v1.174.0)
 
 **Corrección**: la entrada de abajo (Fase 5/8, Bóveda ARS/USD, migs 373+374) quedó documentada como

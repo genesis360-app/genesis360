@@ -2,8 +2,8 @@
 title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
-sources: [CLAUDE.md, ROADMAP.md, migration 361]
-updated: 2026-08-18
+sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375]
+updated: 2026-08-19
 ---
 
 # Facturación Electrónica AFIP
@@ -229,6 +229,18 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 > - **Falta `CbtesAsoc`** → AFIP rechaza con **error 10197** ("Si el comprobante es Débito o Crédito, enviar CbteAsoc o PeriodoAsoc"). Fix v1.71.0: `CbtesAsoc:[{ Tipo (del original), PtoVta (mismo PV), Nro (`numero_comprobante`) }]`. **Asume mismo PV que la NC** (caso single-PV; si el tenant usa otro PV para NC, guardar el PV de la factura original).
 
 **Anular vs Devolver una facturada:** una venta **con CAE** no se puede "Anular" (los botones Anular + Cambiar cliente se **ocultan** si `ventaDetalle.cae`) — la reversión correcta es Devolver → NC. Anularla dejaría la factura viva en AFIP (libros descuadrados).
+
+> [!NOTE] **🆕 G5 Fase 6/8 de Caja USD (G2, mig 375, 2026-08-19, EN DEV sin commitear) — invariante
+> confirmado: la NC siempre usa la cotización de la venta original, nunca la de "hoy" ni la del reintegro
+> en caja.** Investigado a fondo al construir la Fase 6: `devolucion_items.precio_unitario` se copia de
+> `venta_items.subtotal/cantidad`, que quedó fijo en pesos desde la venta original y nunca se recalcula —
+> por lo tanto la NC **ya cumplía G2 por construcción**, sin necesitar que el código lea
+> `ventas.cotizacion_usd` explícitamente. **No hubo cambio de lógica en `emitir-factura`**, solo
+> comentarios nuevos documentando el invariante (para que un futuro dev no lo "arregle" pensando que es un
+> bug). La factura/NC sigue **siempre en pesos** (`MonId:'PES'`, decisión C1, nunca `'DOL'`) —
+> independiente de la cotización que use el reintegro en caja de la devolución (G1, ver
+> [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8", donde vive el detalle completo de esta
+> fase — no toca esta página salvo estos comentarios).
 
 ---
 

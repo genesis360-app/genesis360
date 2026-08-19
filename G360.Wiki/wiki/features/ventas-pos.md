@@ -2,8 +2,8 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-08-18
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
+updated: 2026-08-19
 ---
 
 # Ventas / POS
@@ -544,7 +544,12 @@ Typecheck + build + suite completa de tests unitarios verdes (incluye los 7 test
 
 **Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4 completas (migs 368-372).
 **Fase 5 (Bóveda ARS/USD, migs 373+374) también completa, sin tocar `VentasPage.tsx`** — ver
-[[wiki/features/caja]] para el estado completo del proyecto (próximo paso: Fase 6, Devoluciones/NC).
+[[wiki/features/caja]] para el estado completo del proyecto. **🆕 Fase 6/8 (Devoluciones/NC con soporte
+USD, mig 375, 2026-08-19, EN DEV sin commitear) SÍ toca esta página** — el modal/flujo de devolución
+(`abrirModalDevolucion`/`procesarDevolucion`) gana su propio selector de Caja USD, input en dólares y
+validaciones ARS/USD separadas, mismo patrón que el pago combinado de arriba. Detalle técnico completo en
+[[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" (fuente de verdad de esa fase). Próximo paso
+del proyecto: Fase 7 (Reportes).
 
 ## Visibilidad de costo/margen (G4)
 
@@ -633,7 +638,10 @@ Auto-detecta tipo A/B/C. Ver [[wiki/features/facturacion-afip]].
 
 ## Devoluciones
 
-Botón "Devolver" en modal de venta despachada/facturada. Ver [[wiki/features/devoluciones]].
+Botón "Devolver" en modal de venta despachada/facturada. Ver [[wiki/features/devoluciones]]. **🆕 G5 Fase
+6/8 de Caja USD (mig 375, 2026-08-19, EN DEV sin commitear): el modal soporta devolver por un medio
+"Efectivo USD"** (selector de Caja USD propio, input en dólares, guard CAJ-18 en USD) — ver
+[[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8".
 
 ---
 
@@ -649,6 +657,7 @@ calcularVuelto(medios, total, mediosEfectivo?)       // mig 368/369: set de meto
 calcularEfectivoCaja(medios, total, mediosEfectivo?)  // default preserva el comportamiento de siempre (solo 'Efectivo')
 calcularEfectivoPorMoneda(medios, total, mediosEfectivo?, mediosEfectivoUsd?) // mig 372 (Fase 4 Caja USD): { arsNeto, usdIngreso, vueltoArs } — vuelto SIEMPRE en ARS (D1)
 carritoAceptaUsd(carrito)                             // mig 372 (Fase 4 Caja USD): bloquea cobro USD si alguna línea no acepta esa moneda (A2)
+elegirCotizacionReintegro(usarCotizacionOriginal, cotizacionVentaOriginal, cotizacionHoy) // mig 375 (Fase 6 Caja USD, G1): cotización del reintegro en USD de una devolución — hoy por default, o la de la venta original si el tenant lo configura
 calcularComboRows(carrito)
 restaurarMediosPago(json)
 esDecimal(unidadMedida)

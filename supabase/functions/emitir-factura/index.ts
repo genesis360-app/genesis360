@@ -317,6 +317,17 @@ serve(async (req) => {
       if (devolucion.nc_cae) throw new Error('Esta devolución ya tiene NC emitida: ' + devolucion.nc_cae)
 
       // Mapear ítems de devolución al mismo formato que venta_items
+      //
+      // G5 Fase 6 (G2, relevamiento Caja USD) — `di.precio_unitario` viene de `devolucion_items`,
+      // que a su vez se copió de `venta_items.subtotal / cantidad` (VentasPage.tsx, abrirModalDevolucion)
+      // AL MOMENTO de la venta original — un número en pesos ya fijo, jamás recalculado con la
+      // cotización de hoy. Esto satisface G2 por construcción: la NC siempre usa la cotización de
+      // la VENTA ORIGINAL (no la del momento de la devolución), sin que este archivo necesite leer
+      // `ventas.cotizacion_usd` para nada. NO "arreglar" esto reconvirtiendo con la cotización
+      // actual — eso rompería la reconciliación con lo ya declarado en la factura original ante
+      // AFIP. El reintegro EN CAJA (plata real, no este comprobante) sí puede usar la cotización de
+      // hoy — ver G1, `elegirCotizacionReintegro` en `src/lib/ventasValidation.ts` — pero es un
+      // cálculo completamente separado de este.
       items = ((devolucion as any).devolucion_items ?? []).map((di: any) => ({
         cantidad: di.cantidad,
         precio_unitario: di.precio_unitario,
@@ -530,6 +541,9 @@ serve(async (req) => {
       ImpOpEx:    0,
       ImpIVA:     totalIVA,
       ImpTrib:    0,
+      // G5 (relevamiento) C1 — factura Y NC AFIP siempre en pesos, sin excepción; nunca usar
+      // MonId='DOL' de WSFE aunque la venta/devolución haya tenido componente USD (ver G2 más
+      // arriba, en el mapeo de items de la NC).
       MonId:      'PES',
       MonCotiz:   1,
       CondicionIVAReceptorId: condicionId,

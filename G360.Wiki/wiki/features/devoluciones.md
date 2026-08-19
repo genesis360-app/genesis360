@@ -3,7 +3,7 @@ title: Devoluciones
 category: features
 tags: [devoluciones, stock, nota-credito, caja, serializado]
 sources: [CLAUDE.md]
-updated: 2026-08-13
+updated: 2026-08-19
 ---
 
 # Devoluciones
@@ -140,12 +140,20 @@ No aplica a items serializados — esos siempre reactivan a su línea original (
   ambiguo (REGLA #0 — riesgo de NC duplicada en AFIP). El botón manual "Emitir NC" sigue existiendo
   como fallback (forzar antes del sweep, o resolver un caso escalado). Detalle completo en
   [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
+- **🟡 G5 Fase 6 de 8 (mig 375, 2026-08-19, EN DEV sin commitear): si la venta original tuvo componente
+  USD, la NC AFIP sigue usando la cotización de la venta original** — ya era así por construcción, sin
+  cambio de código real (solo comentarios documentando el invariante). Ver sección "Caja en USD — Fase 6
+  de 8" más abajo.
 
 ### Caja
 
 - Efectivo en `medio_pago` de la devolución → INSERT `egreso` en `caja_movimientos`. **v1.74.0:** el insert se **aguarda** + fallback a la **única caja abierta** + aviso si falla (antes era fire-and-forget y un fallo perdía el egreso en silencio — bug venta #26). Ver [[caja]] (auditoría efectivo↔caja).
 - Otro medio → `egreso_informativo`
 - Bloquea si no hay sesión de caja abierta y el medio es efectivo
+- **🟡 G5 Fase 6 de 8 (mig 375, 2026-08-19, EN DEV sin commitear): devolución vía "Efectivo USD"** — egreso
+  real en la Caja USD elegida, con su propio guard CAJ-18 (no negativo) y su propia cotización (hoy por
+  default, o la de la venta original si el tenant activó el toggle). Ver sección "Caja en USD — Fase 6 de
+  8" más abajo.
 
 ---
 
@@ -206,6 +214,153 @@ CONTADOR) ante cualquier error donde AFIP pudo haber autorizado el comprobante s
 (REGLA #0 — evita NC duplicada). El botón manual sigue disponible como fallback. Detalle completo,
 diseño de seguridad y verificación en [[wiki/features/facturacion-afip]] → "NC automática al confirmar
 la devolución (A10)".
+
+---
+
+## 💵 Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, TODAVÍA SIN COMMITEAR (2026-08-19)
+
+Sexta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
+USD / Venta física en USD"). Continúa directo sobre la Fase 5 (migs 373+374, Bóveda ARS/USD, ya
+commiteada/pusheada como tag `v1.174.0`). Con esta fase, **la devolución en caja y la Nota de Crédito AFIP
+quedan completamente cableadas para ventas con componente USD** — hasta acá el modal de devolución de
+`VentasPage.tsx` era 100% ciego a USD, pese a que la Fase 4 ya había resuelto el mismo problema del lado de
+la venta. **Estado real: mig 375 APLICADA Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), código completo —
+typecheck + build + suite completa de tests verdes —, TODAVÍA SIN COMMITEAR** (GO commitea el wiki + el
+código al cierre de esta sesión, junto con el bump de versión a `v1.175.0` en `src/config/brand.ts`). SIN
+deploy a PROD.
+
+### G1 — reintegro en caja de una devolución cobrada en USD (configurable)
+
+El disparador es que el **CAJERO elija un medio "Efectivo USD"** en el modal de devolución —
+**independiente de cómo se pagó la venta original** (decisión de diseño confirmada con GO: no hay
+prorrateo por línea de pago combinado, porque esa data no existe a nivel de línea). Default: convierte el
+monto en pesos de la devolución a dólares usando la cotización **DE HOY** (`tenant.cotizacion_usd`).
+Configurable por tenant (`tenants.reintegro_usd_cotizacion_original`, toggle nuevo en **Config → Ventas →
+Caja en Dólares**, junto a los umbrales de la Fase 2): si está activado, usa la cotización de la **VENTA
+ORIGINAL** (`ventas.cotizacion_usd`) en su lugar — mismo criterio que la NC (G2) — salvo que esa venta no
+tenga cotización registrada, en cuyo caso cae a la de hoy igual (no bloquea).
+
+### G2 — la NC AFIP usa la cotización de la venta original (ya confirmado por Fede, no era punto abierto)
+
+Investigado a fondo: **ya es correcto por construcción** en el código existente —
+`devolucion_items.precio_unitario` se copia de `venta_items.subtotal/cantidad`, que quedó fijo en pesos al
+momento de la venta original y nunca se recalcula. **No hizo falta ningún cambio de lógica** en
+`emitir-factura` — solo se agregaron comentarios documentando el invariante (para que un futuro dev no lo
+"arregle" pensando que es un bug, ya que el código nunca leía `cotizacion_usd` explícitamente pese a que
+era necesario para cumplir G2). G1 y G2 usan cotizaciones potencialmente distintas a propósito: el
+reintegro en caja es plata real moviéndose hoy (refleja el valor de hoy salvo que el tenant configure lo
+contrario), mientras que la NC es un comprobante fiscal que preserva coherencia con lo ya declarado ante
+AFIP — "no deben usar la misma cotización entre sí, y no hay que buscar unificarlos" (Fede).
+
+### Migración 375 (`375_caja_usd_fase6_devoluciones_nc.sql`)
+
+Puramente aditiva, **sin funciones/triggers/vistas nuevas** — los `caja_movimientos` que este flujo
+inserta ya quedan protegidos por los triggers existentes `fn_validar_moneda_coincide_sesion` (mig 372) y
+`fn_validar_moneda_coincide_cuenta_origen` (mig 373), que se disparan sobre CUALQUIER insert a esa tabla
+sin filtrar por origen.
+
+| Cambio | Detalle |
+|--------|---------|
+| `tenants.reintegro_usd_cotizacion_original` (boolean, `NOT NULL DEFAULT false`) | Toggle de G1 |
+| `devoluciones.monto_usd` (`numeric(14,2)`) | Dólares reales devueltos, NULL si la devolución no tuvo componente USD |
+| `devoluciones.cotizacion_usd_usada` (`numeric(14,4)`) | Cotización efectivamente usada para convertir `monto_usd`, NULL en el mismo caso |
+| `CHECK devoluciones_usd_ambos_o_ninguno` | Exige que las 2 columnas de arriba vayan siempre juntas (ambas NULL, o ambas presentes y positivas) |
+
+**🐛 Bug real encontrado y corregido durante la verificación en DEV, antes de commitear**: la primera
+versión del CHECK usaba `monto_usd > 0 AND cotizacion_usd_usada > 0` sin `IS NOT NULL` explícito — en SQL
+de 3 valores, comparar contra NULL da NULL (no `false`), y un CHECK constraint trata NULL como "la fila
+pasa" (no como rechazo). Esto significaba que el constraint **NO rechazaba** una fila con
+`monto_usd=50, cotizacion_usd_usada=NULL` (o viceversa) — el gap exacto que el CHECK debía cerrar. Se
+detectó corriendo **4 INSERTs reales dentro de una transacción con `ROLLBACK`** en DEV (no se asumió que
+el CHECK funcionaba, se probó). Se corrigió agregando `IS NOT NULL` explícito en cada rama, y se
+reverificó con los mismos 4 tests — los 4 dieron el resultado esperado. La migración aplicada en DEV ya
+tiene la versión corregida (se corrigió con un `ALTER` antes de que ninguna fila real dependiera del
+constraint viejo). `migration-reviewer` revisó la migración antes de aplicar: 3 notas menores, ninguna
+bloqueante (RLS de `devoluciones` sin policy UPDATE, fallback de cotización null, la sugerencia del CHECK
+que luego se encontró rota en la verificación real de arriba).
+
+### Código — `src/lib/ventasValidation.ts`
+
+**`elegirCotizacionReintegro(usarCotizacionOriginal, cotizacionVentaOriginal, cotizacionHoy)`** — función
+pura (5 tests nuevos, `DEV-CTZ-01` a `05`, en `tests/unit/ventasValidation.test.ts`) que decide qué
+cotización usar para G1: si el tenant activó el toggle y la venta original tiene una cotización > 0 real,
+usa esa; en cualquier otro caso (toggle apagado, o venta sin cotización registrada / en 0 / `undefined`),
+cae a la de hoy. Fallback siempre seguro, nunca bloquea.
+
+### Código — `src/pages/VentasPage.tsx` (el cambio grande de la fase)
+
+Todo dentro del modal/flujo de devolución (`abrirModalDevolucion`/`procesarDevolucion`), que hasta ahora
+estaba 100% ciego a USD pese a que la Fase 4 ya había resuelto el mismo problema del lado de la venta:
+
+- **Nuevo estado `devCajaSesionUsdId`** — selector de Caja USD para el egreso, paralelo al
+  `devCajaSesionId` existente que ahora queda escopeado a `sesionesArs`.
+- **`cotizacionParaDevolucion`** (computado, usa `elegirCotizacionReintegro`) + **`updateDevMedioPagoUsd`**
+  (handler, mismo patrón que `updateMedioPagoUsd` de la Fase 4 del lado de venta: el cajero tipea dólares,
+  el `monto` en pesos se deriva).
+- **Validaciones separadas ARS/USD**: `hayEfectivoArs`/`hayEfectivoUsd`, cada una con su propio guard de
+  "caja requerida" y su propio chequeo **CAJ-18** (no dejar la caja en negativo) — el de USD compara contra
+  el saldo real de la Caja USD elegida, no contra el de pesos.
+- **2 `caja_movimientos` posibles por devolución** (antes solo 1, siempre ARS): el egreso en pesos (ahora
+  con `moneda:'ARS'` explícito, antes caía al default de la columna) y el nuevo egreso en USD
+  (`moneda:'USD'`, cuenta de origen resuelta del método USD real elegido, sesión = la Caja USD
+  seleccionada).
+- **El INSERT de `devoluciones` ahora completa `monto_usd`/`cotizacion_usd_usada`** cuando aplica, en el
+  MISMO INSERT — `devoluciones` no tiene policy RLS de UPDATE (hallazgo de `migration-reviewer`), así que
+  no se puede completar después.
+- **UI**: selector de Caja USD paralelo al de pesos (mismo estilo, verde en vez de ámbar); en el picker de
+  "Medio de devolución", si la fila es un medio USD aparece un input en dólares con "≈ $X" de referencia en
+  vez del input genérico en pesos.
+
+### Código — `src/pages/ConfigPage.tsx`
+
+Nuevo toggle **"Reintegro de devolución en USD: usar cotización de la venta original"** en la sección
+"Caja en Dólares" (Fase 2), junto a los umbrales ya existentes.
+
+### Código — `supabase/functions/emitir-factura/index.ts`
+
+**SOLO comentarios nuevos, sin cambio de lógica** — documentan el invariante de G2: dónde exactamente el
+código ya usa el monto congelado de la venta original, y una nota junto a `MonId:'PES'` recordando que la
+factura/NC nunca usa `MonId='DOL'` (decisión C1, ya cerrada, sin cambios). Ver
+[[wiki/features/facturacion-afip]].
+
+### 🐛 2 bugs reales corregidos ANTES de commitear (hallazgos de code-review)
+
+1. **Guard de cotización inalcanzable**: el guard "No hay cotización de dólar cargada" quedaba
+   inalcanzable en la práctica — dependía de que la fila ya estuviera en `mediosValidos` (filtrado por
+   `monto > 0`), pero si no había cotización, `.monto` nunca se completaba (por diseño, ver
+   `updateDevMedioPagoUsd`), así que la fila jamás entraba a `mediosValidos` y el guard específico nunca se
+   disparaba — el cajero veía un error genérico de descuadre de totales en vez de la causa real. **Fix**:
+   se movió el chequeo para que corra ANTES del filtro, sobre `devMediosPago` crudo (mirando `montoUsd`
+   directamente, no `monto`).
+2. **Mismo espíritu que el bug que la Fase 4 corrigió del lado de venta pero NUNCA se aplicó del lado de
+   devolución**: el código hardcodeaba `m.tipo === 'Efectivo'` en TODAS las validaciones/cálculos de
+   devolución (guard de caja requerida, cálculo de CAJ-18, el INSERT del egreso) — cualquier medio efectivo
+   con nombre distinto de "Efectivo" (no solo "Efectivo USD") nunca generaba ningún movimiento de caja, la
+   plata "devuelta" quedaba **sin ningún rastro contable**. **Fix**: reemplazado por
+   `mediosEfectivo.has()`/`mediosEfectivoUsd.has()` (las mismas utilidades que ya existían desde la Fase 4,
+   nunca aplicadas acá) en los 5 puntos afectados.
+
+### Revisión y verificación
+
+Typecheck + build + suite completa de tests unitarios verdes (100 archivos, 1605 tests — 5 nuevos de
+`elegirCotizacionReintegro`). Migración 375 revisada por `migration-reviewer` (3 notas menores, ninguna
+bloqueante). Código revisado por `code-reviewer` — 2 hallazgos 🟡 corregidos antes de commitear (ver arriba)
+más `Number()` faltante sobre `ventas.cotizacion_usd` (que llega como string de Postgres — bug de REGLA #0
+fiscal/contable evitado). Escenarios agregados al UAT (`tests/specs/uat-modo-basico.md`): `VEN-44` a
+`VEN-48`.
+
+### Limitaciones conocidas (documentadas, no resueltas en esta fase)
+
+- Un `.find()` que no discrimina si un tenant configurara 2+ métodos "Efectivo USD" con cuentas de origen
+  distintas — mismo patrón preexistente del lado ARS, no es una regresión nueva de esta fase.
+- Desfasaje teórico de auditoría de muy baja probabilidad si la cotización cambia en vivo con el modal de
+  devolución abierto (`cotizacionParaDevolucion` se computa una vez al abrir el modal).
+
+**Con esto, la Fase 6/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5+6 completas (migs
+368-375). El plan de 8 fases **NO tiene ningún punto abierto propio** salvo **C2** (cotización Banco Nación
+para AFIP, Fase 8), pendiente de confirmación con un contador real, sin bloquear el resto. **Próximo paso:
+Fase 7** (Reportes — H1/H2 del relevamiento: total único en pesos + desglose por moneda en reportes;
+Dashboard excluye ventas USD de los totales/indicadores en pesos).
 
 ---
 

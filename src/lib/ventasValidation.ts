@@ -148,6 +148,26 @@ export function carritoAceptaUsd(
   return items.every(i => i.moneda_venta === 'usd' || !!i.acepta_cualquier_moneda)
 }
 
+/**
+ * G5 Fase 6 (G1) — qué cotización usar al convertir el reintegro de una devolución a dólares
+ * reales (medio "Efectivo USD" elegido por el cajero al devolver, independiente del medio que
+ * usó la venta original). Default (tenant sin configurar u opción apagada): cotización DE HOY —
+ * la plata se mueve hoy, refleja su valor actual. Si el tenant activó
+ * `reintegro_usd_cotizacion_original`, usa la cotización de la VENTA ORIGINAL en su lugar (mismo
+ * criterio que G2 para la NC) — salvo que esa venta nunca haya tenido cotización registrada, en
+ * cuyo caso cae a la de hoy igual (es la única cotización disponible).
+ */
+export function elegirCotizacionReintegro(
+  usarCotizacionOriginal: boolean,
+  cotizacionVentaOriginal: number | null | undefined,
+  cotizacionHoy: number,
+): number {
+  if (usarCotizacionOriginal && cotizacionVentaOriginal && cotizacionVentaOriginal > 0) {
+    return cotizacionVentaOriginal
+  }
+  return cotizacionHoy
+}
+
 /** Convierte un descuento (ingresado como % o como monto fijo $) a su PORCENTAJE EFECTIVO
  *  sobre `base` (precio efectivo × cantidad del ítem, o subtotal para el descuento global).
  *  Necesario para validar los topes por rol/canal: están expresados en %, pero el usuario

@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-18
+updated: 2026-08-19
 ---
 
 # Roadmap y Versiones
@@ -13,17 +13,72 @@ updated: 2026-08-18
 `src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
 `dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
 completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.174.0 (Fases 1+2+3+4+5 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
+**Versión en DEV:** v1.175.0 (Fases 1+2+3+4+5+6 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
 `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; Fase 4 (mig 372,
-pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; **Fase 5 (migs
-373+374, Bóveda ARS/USD) COMMITEADA Y PUSHEADA a `origin/dev`** — commit `28d9291e`, tag+release
-**`v1.174.0`** publicados. **SIN PR a `main`, SIN deploy a PROD**). **15 migraciones nuevas sobre PROD — 360 a
-374 (la última migración es la 374).**  
+pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; Fase 5 (migs
+373+374, Bóveda ARS/USD) COMMITEADA Y PUSHEADA a `origin/dev` — commit `28d9291e`, tag+release `v1.174.0`
+publicados; **Fase 6 (mig 375, Devoluciones/NC con soporte USD) construida y verificada en DEV, TODAVÍA SIN
+COMMITEAR** — bump de versión a `v1.175.0` ya hecho en `src/config/brand.ts`. **SIN PR a `main`, SIN
+deploy a PROD**). **16 migraciones nuevas sobre PROD — 360 a 375 (la última migración es la 375).**  
 **Última actualización:** 19 de Agosto, 2026
 
 ---
 
-## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — 🟡 EN DEV, commiteado y pusheado, sin deploy a PROD (2026-08-19)
+## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — 🟡 EN DEV, construido y verificado, TODAVÍA SIN COMMITEAR (2026-08-19)
+
+Continúa la Fase 5 (v1.174.0, abajo). **Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), aplicada
+y verificada en DEV — código completo, typecheck+build+suite de tests verdes, **TODAVÍA SIN COMMITEAR**
+(bump de versión a `v1.175.0` ya hecho en `src/config/brand.ts`; GO commitea wiki + código al cierre de
+esta sesión, en un solo commit). **1 migración nueva: 375.**
+
+- **Caja en Dólares (relevamiento G5) — Fase 6 (Devoluciones/NC con soporte USD) completa**: hasta acá el
+  modal de devolución de `VentasPage.tsx` era 100% ciego a USD, pese a que la Fase 4 ya había resuelto el
+  mismo problema del lado de la venta. Ahora la devolución soporta un medio **"Efectivo USD"** — egreso
+  real en la Caja USD elegida (selector propio, paralelo al de pesos), con su propio guard CAJ-18 (no
+  negativo). **G1**: la conversión a dólares usa la cotización de HOY por default, o la de la **venta
+  original** si el tenant activa el toggle nuevo `tenants.reintegro_usd_cotizacion_original` (Config →
+  Ventas → Caja en Dólares), con fallback seguro a la de hoy si esa venta no tiene cotización registrada.
+  **G2** (ya confirmado por Fede como intencional en la sesión anterior): se investigó a fondo y se
+  confirmó que la NC AFIP **ya usaba la cotización de la venta original por construcción**
+  (`devolucion_items.precio_unitario` se copia del monto en pesos fijado en la venta original, nunca
+  recalculado) — **no hizo falta ningún cambio de lógica** en `emitir-factura`, solo comentarios
+  documentando el invariante.
+- **Migración 375 puramente aditiva, sin funciones/triggers/vistas nuevas** — los `caja_movimientos` de
+  este flujo ya quedan protegidos por los triggers `fn_validar_moneda_coincide_sesion`/
+  `fn_validar_moneda_coincide_cuenta_origen` de las migs 372/373. Agrega
+  `tenants.reintegro_usd_cotizacion_original` (boolean, default `false`) +
+  `devoluciones.monto_usd`/`cotizacion_usd_usada` (auditoría) + `CHECK devoluciones_usd_ambos_o_ninguno`.
+- **🔴 Bug real de CHECK constraint encontrado y corregido en DEV, antes de commitear** (verificación real,
+  no asumida): la primera versión del CHECK usaba `monto_usd > 0 AND cotizacion_usd_usada > 0` sin `IS NOT
+  NULL` explícito — en SQL, comparar contra NULL da NULL (no `false`), y un CHECK trata NULL como "la fila
+  pasa". El constraint no rechazaba una fila con solo una de las 2 columnas cargada. Detectado corriendo 4
+  INSERTs reales en una transacción con `ROLLBACK`; corregido con `IS NOT NULL` explícito en cada rama y
+  reverificado.
+- **🔴 2 bugs reales corregidos en la misma sesión** (hallazgos de code-review, antes de commitear): (1) el
+  guard "No hay cotización de dólar cargada" era inalcanzable en la práctica (el cajero veía un error
+  genérico de descuadre en vez de la causa real); (2) el código hardcodeaba `m.tipo === 'Efectivo'` en 5
+  puntos de la devolución — cualquier medio efectivo con otro nombre (no solo "Efectivo USD") nunca
+  generaba movimiento de caja, plata "devuelta" sin rastro contable (mismo bug que la Fase 4 ya había
+  corregido del lado de venta, pero nunca se aplicó del lado de devolución). Detalle: [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8".
+
+Typecheck + build + suite completa de tests verdes (100 archivos, 1605 tests, incluye 5 tests nuevos de
+`elegirCotizacionReintegro`). Migración 375 revisada por `migration-reviewer` (3 notas menores, ninguna
+bloqueante). Código revisado por `code-reviewer` (2 hallazgos 🟡 corregidos, ver arriba). UAT nuevos:
+`VEN-44` a `VEN-48`.
+
+**Con esto, la Fase 6/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5+6, migs 368-375) — el
+plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación para AFIP, Fase
+8, bloqueada por confirmación de un contador real). Próximo paso: Fase 7 (Reportes).
+
+**Estado real: DEV en migs 001-375, código completo, TODAVÍA SIN COMMITEAR** — GO commitea el wiki + el
+código al cierre de esta sesión, junto con el bump de versión a **v1.175.0** (ya hecho en
+`src/config/brand.ts`). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
+completo: [[wiki/features/devoluciones]] (sección "Caja en USD — Fase 6 de 8"), [[wiki/features/caja]],
+`wiki/database/migraciones.md` (mig 375).
+
+---
+
+## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — ✅ EN DEV, commiteado y pusheado, sin deploy a PROD (2026-08-19)
 
 Continúa la Fase 4 (v1.173.0, abajo). **Migraciones 373 y 374** (`373_caja_usd_fase5_boveda.sql` +
 `374_vw_boveda_cuentas_security_invoker.sql`), aplicadas y verificadas en DEV — código completo,

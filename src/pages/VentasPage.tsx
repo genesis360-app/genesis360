@@ -40,7 +40,7 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { cuponVigente, montoDescuentoCupon } from '@/lib/cupones'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
@@ -542,8 +542,11 @@ export default function VentasPage() {
   const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   // A7 (relevamiento Ventas A-D): destino del stock devuelto — DEV (revisión) o vendible directo. Default DEV.
   const [devDestinoStock, setDevDestinoStock] = useState<'dev' | 'vendible'>('dev')
-  // L1 — caja específica para egreso efectivo en devolución
+  // L1 — caja específica para egreso efectivo en devolución (ARS)
   const [devCajaSesionId, setDevCajaSesionId] = useState<string>('')
+  // G5 Fase 6 (G1) — caja específica para el egreso en USD, cuando el medio de devolución es
+  // "Efectivo USD" (paralelo a devCajaSesionId, que queda escopeado a ARS)
+  const [devCajaSesionUsdId, setDevCajaSesionUsdId] = useState<string>('')
   const [devSaving, setDevSaving] = useState(false)
   const [devComprobante, setDevComprobante] = useState<any | null>(null)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
@@ -2985,6 +2988,20 @@ export default function VentasPage() {
       ? { ...m, montoUsd: usdValue, monto: cotizacionUSD > 0 ? String(Math.round((parseFloat(usdValue) || 0) * cotizacionUSD * 100) / 100) : m.monto }
       : m))
 
+  // G5 Fase 6 (G1) — qué cotización usar para el medio "Efectivo USD" del modal de devolución:
+  // la de HOY por default, o la de la VENTA ORIGINAL si el tenant activó
+  // reintegro_usd_cotizacion_original (ver elegirCotizacionReintegro, ventasValidation.ts).
+  const cotizacionParaDevolucion = elegirCotizacionReintegro(
+    !!(tenant as any)?.reintegro_usd_cotizacion_original,
+    // REGLA #0 — el `numeric` de Postgres llega como string; normalizar antes de comparar/mapear.
+    devolucionVenta?.cotizacion_usd != null ? Number(devolucionVenta.cotizacion_usd) : null,
+    cotizacionUSD,
+  )
+  const updateDevMedioPagoUsd = (idx: number, usdValue: string) =>
+    setDevMediosPago(prev => prev.map((m, i) => i === idx
+      ? { ...m, montoUsd: usdValue, monto: cotizacionParaDevolucion > 0 ? String(Math.round((parseFloat(usdValue) || 0) * cotizacionParaDevolucion * 100) / 100) : m.monto }
+      : m))
+
   const serializeMediosPago = (items: MedioPagoItem[], totalVenta: number): string | null => {
     const filled = items.filter(m => m.tipo)
     if (filled.length === 0) return null
@@ -4028,7 +4045,8 @@ export default function VentasPage() {
       setDevItems(items)
       setDevMotivo('')
       setDevMediosPago([{ tipo: '', monto: '' }])
-      setDevCajaSesionId(sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : '')
+      setDevCajaSesionId(sesionesArs.length === 1 ? (sesionesArs[0] as any).id : '')
+      setDevCajaSesionUsdId(sesionesUsd.length === 1 ? (sesionesUsd[0] as any).id : '')
       setDevDestinoStock('dev')
       setDevolucionVenta(venta)
     }
@@ -4211,10 +4229,24 @@ export default function VentasPage() {
     const aplicarADeuda = deudaActual > 0 ? Math.min(montoTotal, deudaActual) : 0
     const montoARefundir = Math.max(0, montoTotal - aplicarADeuda)
 
+    // G5 Fase 6 (G1, hallazgo de code-review) — chequear ANTES de filtrar mediosValidos: si el
+    // cajero tipeó dólares pero no hay cotización, `.monto` (derivado) nunca se completa
+    // (updateDevMedioPagoUsd) y esa fila quedaría excluida de mediosValidos más abajo — el error
+    // específico de "falta cotización" nunca se vería, solo un descuadre de totales genérico.
+    if (devMediosPago.some(m => mediosEfectivoUsd.has(m.tipo) && (parseFloat(m.montoUsd ?? '') || 0) > 0) && !(cotizacionParaDevolucion > 0)) {
+      toast.error('No hay cotización de dólar cargada. Cargala antes de devolver en Efectivo USD.')
+      return
+    }
+
     // Validar medio de pago: deben cubrir el EXCEDENTE (no el total cuando hay deuda).
     const mediosValidos = devMediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
     const totalMedios = mediosValidos.reduce((a, m) => a + parseFloat(m.monto), 0)
-    const hayEfectivo = mediosValidos.some(m => m.tipo === 'Efectivo')
+    // G5 Fase 6 (G1) — "Efectivo" hardcodeado → mediosEfectivo.has() (mismo fix que Fase 4 hizo del
+    // lado de la venta, nunca aplicado acá): cualquier medio efectivo con nombre custom (no solo
+    // "Efectivo USD") ahora sí genera su egreso de caja en vez de perderse sin rastro.
+    const hayEfectivoArs = mediosValidos.some(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo))
+    const hayEfectivoUsd = mediosValidos.some(m => mediosEfectivoUsd.has(m.tipo))
+    const hayEfectivo = hayEfectivoArs || hayEfectivoUsd
 
     if (aplicarADeuda > 0 && montoARefundir <= 0.5 && totalMedios > 0.5) {
       toast.error(`Este cliente tiene deuda de ${fmt0(deudaActual)}: la devolución de ${fmt0(montoTotal)} se aplica completa a su deuda. No corresponde devolución monetaria — quitá los medios.`)
@@ -4230,25 +4262,45 @@ export default function VentasPage() {
       toast.error('Para dejar el monto como crédito a favor, la venta debe tener un cliente asociado.')
       return
     }
-    if (hayEfectivo) {
+    if (hayEfectivoArs) {
       // L1 — si hay efectivo, debe haber caja para el egreso. Con UNA sola caja abierta se usa
       // esa (el modal muestra "→ Caja única"); con varias hace falta elegir explícitamente.
-      const cajaParaEgreso = devCajaSesionId || sesionCajaId || (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId || (sesionesArs.length === 1 ? (sesionesArs[0] as any).id : null)
       if (!cajaParaEgreso) {
-        toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
+        toast.error('No hay caja en pesos abierta. Abrí una caja antes de devolver en efectivo.')
         return
       }
-      if (sesionesAbiertas.length > 1 && !devCajaSesionId) {
-        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el egreso.')
+      if (sesionesArs.length > 1 && !devCajaSesionId) {
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el egreso en pesos.')
         return
       }
       // CAJ-18 — no permitir egreso que deje la caja en negativo.
-      const cajaEg = devCajaSesionId || sesionCajaId || (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
-      const efectivoADevolver = mediosValidos.filter(m => m.tipo === 'Efectivo').reduce((a, m) => a + parseFloat(m.monto), 0)
+      const cajaEg = devCajaSesionId || sesionCajaId || (sesionesArs.length === 1 ? (sesionesArs[0] as any).id : null)
+      const efectivoADevolver = mediosValidos.filter(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo)).reduce((a, m) => a + parseFloat(m.monto), 0)
       if (cajaEg && efectivoADevolver > 0.5) {
         const saldo = await saldoEfectivoSesion(supabase, cajaEg)
         if (efectivoADevolver > saldo + 0.001) {
           toast.error(`No hay suficiente efectivo en caja (${fmt0(saldo)}) para devolver ${fmt0(efectivoADevolver)}. Hacé un ingreso a la caja o devolvé por otro medio / crédito a favor.`, { duration: 10000 })
+          return
+        }
+      }
+    }
+    if (hayEfectivoUsd) {
+      // G5 Fase 6 (G1) — mismas 2 validaciones que arriba (caja + CAJ-18), pero en la sesión USD.
+      const cajaUsdParaEgreso = devCajaSesionUsdId || (sesionesUsd.length === 1 ? (sesionesUsd[0] as any).id : null)
+      if (!cajaUsdParaEgreso) {
+        toast.error('No hay Caja USD abierta. Abrí una antes de devolver en Efectivo USD.')
+        return
+      }
+      if (sesionesUsd.length > 1 && !devCajaSesionUsdId) {
+        toast.error('Hay varias Cajas USD abiertas. Seleccioná en cuál registrar el egreso en dólares.')
+        return
+      }
+      const usdADevolver = mediosValidos.filter(m => mediosEfectivoUsd.has(m.tipo)).reduce((a, m) => a + (parseFloat(m.montoUsd ?? '') || 0), 0)
+      if (usdADevolver > 0.5) {
+        const saldoUsd = await saldoEfectivoSesion(supabase, cajaUsdParaEgreso)
+        if (usdADevolver > saldoUsd + 0.001) {
+          toast.error(`No hay suficientes dólares en la Caja USD (US$${saldoUsd.toLocaleString('es-AR')}) para devolver US$${usdADevolver.toLocaleString('es-AR')}.`, { duration: 10000 })
           return
         }
       }
@@ -4267,6 +4319,10 @@ export default function VentasPage() {
       }
 
       // 2. Insertar devolución
+      // G5 Fase 6 (G1) — monto_usd/cotizacion_usd_usada quedan en el header de la devolución para
+      // auditoría (no hay policy de UPDATE en `devoluciones`, así que se setean en este mismo
+      // INSERT — no se pueden completar después).
+      const usdADevolverTotal = mediosValidos.filter(m => mediosEfectivoUsd.has(m.tipo)).reduce((a, m) => a + (parseFloat(m.montoUsd ?? '') || 0), 0)
       const { data: dev, error: devError } = await supabase.from('devoluciones').insert({
         tenant_id: tenant.id,
         venta_id: devolucionVenta.id,
@@ -4274,7 +4330,11 @@ export default function VentasPage() {
         origen: devolucionVenta.estado as 'despachada' | 'facturada',
         motivo: devMotivo || null,
         monto_total: montoTotal,
-        medio_pago: mediosValidos.length > 0 ? JSON.stringify(mediosValidos.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) }))) : null,
+        medio_pago: mediosValidos.length > 0 ? JSON.stringify(mediosValidos.map(m => ({
+          tipo: m.tipo, monto: parseFloat(m.monto),
+          ...(mediosEfectivoUsd.has(m.tipo) && m.montoUsd ? { monto_usd: parseFloat(m.montoUsd) || 0 } : {}),
+        }))) : null,
+        ...(usdADevolverTotal > 0.5 ? { monto_usd: usdADevolverTotal, cotizacion_usd_usada: cotizacionParaDevolucion } : {}),
         created_by: user?.id,
       }).select().single()
       if (devError) throw devError
@@ -4456,22 +4516,53 @@ export default function VentasPage() {
       // selección explícita (consistente con el "→ Caja única" del modal). Se AGUARDA el insert y
       // se avisa si falla: antes era fire-and-forget y un fallo dejaba el efectivo devuelto sin
       // asentar en el arqueo, en silencio (bug detectado en la devolución de la venta #26).
-      const cajaParaEgreso = devCajaSesionId || sesionCajaId || (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
-      if (hayEfectivo && cajaParaEgreso) {
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId || (sesionesArs.length === 1 ? (sesionesArs[0] as any).id : null)
+      const medioEfectivoArs = mediosValidos.find(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo))
+      if (hayEfectivoArs && cajaParaEgreso) {
         const montoEfectivo = mediosValidos
-          .filter(m => m.tipo === 'Efectivo')
+          .filter(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo))
           .reduce((a, m) => a + parseFloat(m.monto), 0)
         const { error: egresoErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant.id,
           sesion_id: cajaParaEgreso,
           tipo: 'egreso',
+          moneda: 'ARS',
           concepto: `Devolución venta #${devolucionVenta.numero}${numero_nc ? ` · ${numero_nc}` : ''}`,
           monto: montoEfectivo,
-          cuenta_origen_id: cuentaOrigenDeMetodo('Efectivo'),
+          cuenta_origen_id: cuentaOrigenDeMetodo(medioEfectivoArs?.tipo ?? 'Efectivo'),
           usuario_id: user?.id,
         })
         if (egresoErr) {
           toast.error(`La devolución se procesó, pero el egreso de $${montoEfectivo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} NO se registró en la caja. Registralo manualmente. (${egresoErr.message})`, { duration: 12000 })
+        } else {
+          qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+        }
+      }
+
+      // G5 Fase 6 (G1) — mismo patrón que el egreso ARS de arriba, pero en la sesión de Caja USD
+      // (dólares reales, nunca el equivalente convertido — mismo criterio D3 de la Fase 4).
+      // Nota (hallazgo de code-review, mismo patrón preexistente del lado ARS): si el tenant
+      // configurara 2+ métodos "efectivo USD" con cuentas de origen DISTINTAS, este `.find()` toma
+      // el primero para la cuenta destino aunque `montoUsdEfectivo` sume todos — edge case de
+      // config poco común, no específico de esta fase, no resuelto acá.
+      const cajaUsdParaEgreso = devCajaSesionUsdId || (sesionesUsd.length === 1 ? (sesionesUsd[0] as any).id : null)
+      const medioEfectivoUsd = mediosValidos.find(m => mediosEfectivoUsd.has(m.tipo))
+      if (hayEfectivoUsd && cajaUsdParaEgreso && medioEfectivoUsd) {
+        const montoUsdEfectivo = mediosValidos
+          .filter(m => mediosEfectivoUsd.has(m.tipo))
+          .reduce((a, m) => a + (parseFloat(m.montoUsd ?? '') || 0), 0)
+        const { error: egresoUsdErr } = await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant.id,
+          sesion_id: cajaUsdParaEgreso,
+          tipo: 'egreso',
+          moneda: 'USD',
+          concepto: `Devolución venta #${devolucionVenta.numero}${numero_nc ? ` · ${numero_nc}` : ''} (cotización ${cotizacionParaDevolucion})`,
+          monto: montoUsdEfectivo,
+          cuenta_origen_id: cuentaOrigenDeMetodo(medioEfectivoUsd.tipo),
+          usuario_id: user?.id,
+        })
+        if (egresoUsdErr) {
+          toast.error(`La devolución se procesó, pero el egreso de US$${montoUsdEfectivo.toLocaleString('es-AR', { maximumFractionDigits: 2 })} NO se registró en la Caja USD. Registralo manualmente. (${egresoUsdErr.message})`, { duration: 12000 })
         } else {
           qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
         }
@@ -7290,22 +7381,44 @@ export default function VentasPage() {
               </div>
               )}
 
-              {/* L1 — Selector de caja para el egreso efectivo */}
-              {devMediosPago.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0) && sesionesAbiertas.length > 0 && (
+              {/* L1 — Selector de caja para el egreso efectivo (ARS) */}
+              {devMediosPago.some(mp => mediosEfectivo.has(mp.tipo) && !mediosEfectivoUsd.has(mp.tipo) && parseFloat(mp.monto) > 0) && sesionesArs.length > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
                   <label className="block text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">
                     💵 Caja para el egreso efectivo *
                   </label>
-                  {sesionesAbiertas.length === 1 ? (
+                  {sesionesArs.length === 1 ? (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
-                      → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja única'}
+                      → {(sesionesArs[0] as any).cajas?.nombre ?? 'Caja única'}
                     </p>
                   ) : (
                     <select value={devCajaSesionId} onChange={e => setDevCajaSesionId(e.target.value)}
                       className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-amber-500 bg-white dark:bg-gray-800">
                       <option value="">— Seleccioná de qué caja sale el efectivo —</option>
-                      {(sesionesAbiertas as any[]).map((s: any) => (
+                      {(sesionesArs as any[]).map((s: any) => (
                         <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* G5 Fase 6 (G1) — Selector de Caja USD para el egreso en dólares */}
+              {devMediosPago.some(mp => mediosEfectivoUsd.has(mp.tipo) && (parseFloat(mp.montoUsd ?? '') || 0) > 0) && sesionesUsd.length > 0 && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-emerald-800 dark:text-emerald-300 mb-1">
+                    💵 Caja USD para el egreso en dólares *
+                  </label>
+                  {sesionesUsd.length === 1 ? (
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                      → {(sesionesUsd[0] as any).cajas?.nombre ?? 'Caja USD única'}
+                    </p>
+                  ) : (
+                    <select value={devCajaSesionUsdId} onChange={e => setDevCajaSesionUsdId(e.target.value)}
+                      className="w-full px-3 py-2 border border-emerald-300 dark:border-emerald-600 rounded-lg text-sm focus:outline-none focus:border-emerald-500 bg-white dark:bg-gray-800">
+                      <option value="">— Seleccioná de qué Caja USD salen los dólares —</option>
+                      {(sesionesUsd as any[]).map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja USD'}</option>
                       ))}
                     </select>
                   )}
@@ -7318,13 +7431,26 @@ export default function VentasPage() {
                 <div className="space-y-2">
                   {devMediosPago.map((mp, idx) => (
                     <div key={idx} className="flex gap-2">
-                      <select value={mp.tipo} onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, tipo: e.target.value }))}
+                      <select value={mp.tipo} onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, tipo: e.target.value, monto: '', montoUsd: undefined }))}
                         className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                         <option value="">Sin devolución monetaria</option>
                         {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                         {devolucionVenta?.cliente_id && <option value="Crédito a favor">Crédito a favor (saldo del cliente)</option>}
                       </select>
-                      {mp.tipo && (
+                      {mp.tipo && mediosEfectivoUsd.has(mp.tipo) ? (
+                        <div className="w-32">
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">US$</span>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.montoUsd ?? ''}
+                              onChange={e => updateDevMedioPagoUsd(idx, e.target.value)}
+                              placeholder="0.00"
+                              className="w-full pl-9 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                          </div>
+                          {cotizacionParaDevolucion > 0 && (parseFloat(mp.montoUsd ?? '') || 0) > 0 && (
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">≈ ${(parseFloat(mp.monto) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                          )}
+                        </div>
+                      ) : mp.tipo && (
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                           onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, monto: e.target.value }))}
                           placeholder="Monto"

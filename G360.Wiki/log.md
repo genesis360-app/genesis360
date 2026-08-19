@@ -11,8 +11,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 **Corrección**: la entrada de abajo (Fase 6/8, Devoluciones/NC con soporte USD, mig 375) quedó documentada
 como "EN DEV sin commitear" en el momento en que se escribió, pero en la misma sesión, inmediatamente
 después, se commiteó y pusheó a `origin/dev` — commit `e55a1009` (código + wiki + migración + tests en un
-solo commit), tag+release **`v1.175.0`** publicados (verificado con `git log origin/dev..dev` vacío y
-`git describe --tags` = `v1.175.0`). Con esto, **Fases 1+2+3+4+5+6/8 de Caja USD (migs 368-375) están 100%
+solo commit), tag+release **`v1.175.0`** publicados sobre ese commit (verificado con `git log
+origin/dev..dev` vacío; una reconciliación de wiki posterior, sin código, agregó el commit `1f4d1b6e` encima
+del tag — normal, no afecta el release). Con esto, **Fases 1+2+3+4+5+6/8 de Caja USD (migs 368-375) están 100%
 completas y commiteadas** en `dev` — el plan de 8 fases no tiene ningún punto abierto propio salvo C2
 (cotización BNA para AFIP, Fase 8, bloqueada por confirmación de un contador real). Sigue sin PR a `main`,
 sin deploy a PROD. Próxima sesión: Fase 7 (Reportes).

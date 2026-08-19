@@ -346,8 +346,9 @@ moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN 
 PUSHEADAS a `origin/dev`** en 3 tandas: 360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release
 `v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d`
 + bump `05801eb4` (tag+release `v1.173.0`); 373-374 en commit `28d9291e` (tag+release `v1.174.0`); 375 en
-commit `e55a1009` (tag+release `v1.175.0`) — verificado con `git log origin/dev..dev` vacío y
-`git describe --tags` = `v1.175.0`. **Ninguna migración de 360 a 375 queda "sin commitear".** **Sigue sin
+commit `e55a1009` (tag+release `v1.175.0`) — verificado con `git log origin/dev..dev` vacío (una
+reconciliación de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal). **Ninguna
+migración de 360 a 375 queda "sin commitear".** **Sigue sin
 PR `dev`→`main`, sin deploy a PROD.** El resto de este
 bloque describe el detalle técnico de cada una, incluyendo texto histórico
 ("SIN COMMITEAR") que

@@ -8,9 +8,9 @@ type: project
 
 > ### ✅ ARRANCÁ ACÁ (2026-08-19, cont. 16) — Fase 6/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (mig 375,
 > Devoluciones/NC con soporte USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`,
-> tag+release **`v1.175.0`** publicados, verificado con `git log origin/dev..dev` vacío y
-> `git describe --tags` = `v1.175.0`) — este bloque reemplaza al cont. 15 de abajo (Fase 5, tag `v1.174.0`)
-> como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
+> tag+release **`v1.175.0`** publicados, verificado con `git log origin/dev..dev` vacío — una reconciliación
+> de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal) — este bloque reemplaza al
+> cont. 15 de abajo (Fase 5, tag `v1.174.0`) como punto de entrada. Sigue SIN PR a `main`, SIN deploy a PROD.
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 6/8 (Devoluciones/NC) 100% COMPLETA en DEV, mig 375
 >

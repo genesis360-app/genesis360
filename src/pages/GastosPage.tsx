@@ -342,7 +342,11 @@ export default function GastosPage() {
   }
 
   const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte) ?? null
-  const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte)
+  // G5 Fase 4 (hallazgo de code-review, mig 372) — Gastos todavía no soporta pagar en USD (eso es
+  // específico de Ventas). Sin filtrar acá, el picker podía ofrecer una Caja USD y el trigger de
+  // moneda-por-sesión rechazaría el insert (fallaría con toast en vez de plata perdida en silencio,
+  // pero es mejor no ofrecerla directamente). Mismo patrón sesionesArs que ya usa VentasPage.tsx.
+  const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte && (s.cajas?.moneda ?? 'ARS') === 'ARS')
   const efectivoEnMedios = mediosPago.some(m => mediosEfectivo.has(m.tipo) && parseFloat(m.monto) > 0)
   const montoEfectivo = mediosPago.filter(m => mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   // Para mostrar el selector de caja en JSX (mediosValidos completo se calcula en guardar())
@@ -1194,18 +1198,20 @@ export default function GastosPage() {
           const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
           if (sesionUsar) {
             const concepto = `Gasto: ${form.descripcion.trim()}`
+            // REGLA #0 — awaiteado + aviso si falla (nunca fire-and-forget en un movimiento real).
             for (const mp of mediosValidos) {
               const montoMp = parseFloat(mp.monto)
               const esEfectivo = mediosEfectivo.has(mp.tipo)
               const tipo = esEfectivo ? 'egreso' : 'egreso_informativo'
-              supabase.from('caja_movimientos').insert({
+              const { error: cajErr } = await supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id, sesion_id: sesionUsar,
                 tipo,
                 concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
                 monto: montoMp,
                 cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
                 usuario_id: user?.id,
-              }).then(({ error: cajErr }) => { if (cajErr) console.error('caja edit gasto:', cajErr.message) })
+              })
+              if (cajErr) toast.error(`El gasto se editó, pero el movimiento de caja de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
             }
             qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
             qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
@@ -1320,10 +1326,11 @@ export default function GastosPage() {
       const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
       if (sesionUsar) {
         const medios = parseMediosPago(g.medio_pago)
+        // REGLA #0 — awaiteado + aviso si falla (nunca fire-and-forget en un movimiento real).
         for (const mp of medios.filter(m => m.tipo && parseFloat(String(m.monto)) > 0)) {
           const montoMp = parseFloat(String(mp.monto))
           const esEfectivo = mediosEfectivo.has(mp.tipo)
-          supabase.from('caja_movimientos').insert({
+          const { error: cajErr } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: sesionUsar,
             tipo: esEfectivo ? 'ingreso' : 'ingreso_informativo',
             monto: montoMp,
@@ -1332,7 +1339,8 @@ export default function GastosPage() {
               : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
-          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja reversión gasto:', cajErr.message) })
+          })
+          if (cajErr) toast.error(`El gasto se eliminó, pero la reversión de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó en caja. Registrala manualmente. (${cajErr.message})`, { duration: 12000 })
         }
         qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
         qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
@@ -1390,13 +1398,15 @@ export default function GastosPage() {
       const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
       if (sesionUsar) {
         const esEfectivo = mediosEfectivo.has(pagoParcialmedio)
-        supabase.from('caja_movimientos').insert({
+        // REGLA #0 — awaiteado + aviso si falla (nunca fire-and-forget en un movimiento real).
+        const { error: cajErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: sesionUsar,
           tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
           concepto: esEfectivo ? `Pago gasto: ${pagoGastoModal.descripcion}` : `[${pagoParcialmedio}] Pago gasto: ${pagoGastoModal.descripcion}`,
           monto, cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(pagoParcialmedio),
           usuario_id: user?.id,
-        }).then(({ error: cajErr }) => { if (cajErr) console.error('caja pago parcial gasto:', cajErr.message) })
+        })
+        if (cajErr) toast.error(`El pago se registró en el gasto, pero el movimiento de caja no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
       }
       qc.invalidateQueries({ queryKey: ['gastos'] })
       qc.invalidateQueries({ queryKey: ['gastos-historial'] })

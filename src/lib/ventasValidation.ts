@@ -1,7 +1,11 @@
 import { atributoAmbiguoEnLineas } from './atributosVariante'
 
 export type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada' | 'devuelta'
-export interface MedioPagoItem { tipo: string; monto: string }
+// G5 Fase 4 (D2) — `monto` sigue siendo SIEMPRE el equivalente en ARS (fuente de verdad para
+// total/vuelto/validarMediosPago, sin cambios). `montoUsd` solo existe para un medio "efectivo
+// USD" real: el monto en dólares que el cajero tipeó, fuente de verdad para lo que se acredita
+// en la sesión de Caja USD (D3 — nunca el equivalente convertido).
+export interface MedioPagoItem { tipo: string; monto: string; montoUsd?: string }
 
 /** Calcula el saldo pendiente de cobrar al despachar. */
 export function calcularSaldoPendiente(total: number, montoPagado: number): number {
@@ -87,6 +91,61 @@ export function calcularEfectivoCaja(
   const efectivo = mediosPago.filter(m => mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const vuelto = calcularVuelto(mediosPago, total, mediosEfectivo)
   return Math.max(0, efectivo - vuelto)
+}
+
+export interface EfectivoPorMoneda {
+  /** Neto a asentar en la sesión de Caja ARS. Positivo = ingreso, negativo = egreso (vuelto en
+   *  pesos financiado por un excedente que vino en USD — D1: el vuelto SIEMPRE es en pesos, nunca
+   *  se devuelven dólares de cambio). */
+  arsNeto: number
+  /** Monto a ingresar en la sesión de Caja USD — SIEMPRE el total de dólares reales recibidos,
+   *  nunca neteado contra el vuelto (D3: "cada caja se contabiliza por lo efectivamente cobrado
+   *  en esa moneda, nunca por el total de la venta convertido"). 0 si no hubo pago en USD. */
+  usdIngreso: number
+  /** Vuelto total en pesos (igual a calcularVuelto) — informativo, ya está reflejado en arsNeto. */
+  vueltoArs: number
+}
+
+/**
+ * G5 Fase 4 (D2/D3) — separa lo efectivamente cobrado en una venta por moneda REAL, para asentar
+ * cada sesión de caja (ARS y USD) por separado. `mediosEfectivoUsd` es el subconjunto de
+ * `mediosEfectivo` cuyo método está en USD (`metodos_pago.moneda='USD'`) — normalmente un único
+ * método tipo "Efectivo USD". Los dólares físicos recibidos van ENTEROS a la sesión USD (nunca se
+ * da vuelto en dólares); si hubo sobrepago, el vuelto en pesos sale de la sesión ARS aunque el
+ * sobrante haya venido en dólares (puede dejar `arsNeto` negativo → esa sesión registra un egreso).
+ */
+export function calcularEfectivoPorMoneda(
+  mediosPago: MedioPagoItem[],
+  total: number,
+  mediosEfectivo: ReadonlySet<string> = MEDIOS_EFECTIVO_DEFAULT,
+  mediosEfectivoUsd: ReadonlySet<string> = new Set(),
+): EfectivoPorMoneda {
+  const vueltoArs = calcularVuelto(mediosPago, total, mediosEfectivo)
+  const arsCashRecibido = mediosPago
+    .filter(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo))
+    .reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const usdIngreso = mediosPago
+    .filter(m => mediosEfectivoUsd.has(m.tipo))
+    .reduce((acc, m) => acc + (parseFloat(m.montoUsd ?? '') || 0), 0)
+  return {
+    arsNeto: Math.round((arsCashRecibido - vueltoArs) * 100) / 100,
+    usdIngreso: Math.round(usdIngreso * 100) / 100,
+    vueltoArs,
+  }
+}
+
+/**
+ * A2 del relevamiento G5 — un producto solo puede cobrarse en USD si YA está priceado en USD
+ * (`moneda_venta='usd'`) o si el DUEÑO marcó explícitamente que acepta cualquier moneda
+ * (`acepta_cualquier_moneda`, mig 370) — no es una decisión del cajero en el momento de cobrar.
+ * Si CUALQUIER línea del carrito no cumple ninguna de las 2 condiciones, esa venta no puede
+ * cobrarse (ni parcialmente) en USD físico.
+ */
+export function carritoAceptaUsd(
+  items: Array<{ moneda_venta?: string | null; acepta_cualquier_moneda?: boolean | null }>,
+): boolean {
+  if (items.length === 0) return false
+  return items.every(i => i.moneda_venta === 'usd' || !!i.acepta_cualquier_moneda)
 }
 
 /** Convierte un descuento (ingresado como % o como monto fijo $) a su PORCENTAJE EFECTIVO

@@ -8,8 +8,13 @@ updated: 2026-08-20
 
 # Historial de Migraciones (001-378)
 
-**378 (`378_ai_memoria_listar_rpc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
-APLICADA EN PROD, commit pendiente en esta misma sesión:** fix de un hallazgo real de `code-reviewer` sobre
+**Migraciones 376-378 — ✅ APLICADAS Y VERIFICADAS TAMBIÉN EN PROD (`jjffnbrdjchquexdfgwq`) el 2026-08-20**,
+como parte del deploy de `v1.179.0` (PR #332, merge commit `7e19e7a3`) — el detalle de cada una (abajo)
+quedó escrito cuando solo estaban en DEV; ver `sources/raw/project_pendientes.md` (cont. 22) para la
+confirmación real post-deploy (5 funciones + 2 tablas + 3 policies verificadas con query directa a PROD).
+
+**378 (`378_ai_memoria_listar_rpc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y EN
+PROD (`jjffnbrdjchquexdfgwq`, 2026-08-20, commit `dcccc682`, release `v1.179.0`):** fix de un hallazgo real de `code-reviewer` sobre
 la mig 377 (abajo) — la EF `ai-assistant` pretendía inyectar la memoria del negocio en el prompt para
 CUALQUIER rol que chatee (solo la ESCRITURA está restringida a DUEÑO/ADMIN), pero lo hacía con un `SELECT`
 directo a `ai_tenant_memoria` usando la sesión real del usuario; la policy SELECT de la mig 377 solo permite
@@ -25,9 +30,8 @@ da 0 filas (RLS bloquea, como se espera) mientras que `fn_ai_memoria_listar()` d
 que el fix cierra la brecha. Con esto, el hallazgo del `code-reviewer` quedó 100% resuelto, no solo
 reportado.
 
-**377 (`377_ai_tenant_memoria.sql`) — reportada como APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
-NO APLICADA EN PROD, commit pendiente en esta misma sesión (`APP_VERSION` ya bumpeado a `v1.179.0` en el
-working tree, sin commit todavía):** Plan IA — Fase 3 (memoria persistente por tenant), continúa la Fase 2
+**377 (`377_ai_tenant_memoria.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y EN PROD
+(`jjffnbrdjchquexdfgwq`, 2026-08-20, commit `dcccc682`, release `v1.179.0`):** Plan IA — Fase 3 (memoria persistente por tenant), continúa la Fase 2
 (mig 376). Diseño ya definido en el Artifact original del plan (2026-08-14/15): NO se guarda charla cruda —
 se guardan HECHOS DESTILADOS que la IA propone guardar, con confirmación explícita del usuario en el chat
 (mismo patrón de la Fase 2), y el tenant puede ver/borrar su propia memoria desde Configuración. Agrega:
@@ -49,8 +53,10 @@ propuesta, tarjeta de confirmación en el chat (ícono `Brain`), y recién al co
 IA" (lista/borra hechos, gateada a DUEÑO). Ver mig 378 arriba (fix, ya resuelto, de lectura para roles no
 DUEÑO/ADMIN) y [[wiki/features/asistente-ia]] → "Plan IA" → Fase 3.
 
-**376 (`376_ai_config_rpc_layer.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
-APLICADA EN PROD, ✅ COMMITEADA (commit `1b5e89aa`, tag+release `v1.177.0`):** capa de RPCs para que
+**376 (`376_ai_config_rpc_layer.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y EN PROD
+(`jjffnbrdjchquexdfgwq`, aplicada retroactivamente el 2026-08-20 junto con 377/378 — era prerrequisito del
+wiring que llegó a PROD en `v1.179.0`, no se había aplicado sola en su momento), ✅ COMMITEADA (commit
+`1b5e89aa`, tag+release `v1.177.0`):** capa de RPCs para que
 el Asistente IA pueda proponer/aplicar cambios de configuración con confirmación previa — Fase 2 del "Plan
 IA" (memoria + configuración), continúa la Fase 1 (memoria conversacional del Asistente, sin migración,
 mismo commit). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO el 2026-08-20:

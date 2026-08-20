@@ -6,7 +6,46 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 21) — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100%
+> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 22) — 🚀 DEPLOY A PROD CONFIRMADO: Plan IA (Fases 1+2+3) 100% en
+> PROD — cierra el ciclo completo del "Plan IA" en producción, GO autorizó explícitamente en esta misma
+> sesión ("pasamos todo eso a PRD") — supera al bloque de abajo (cont. 21, que documentaba el estado
+> "recién commiteado, deploy todavía pendiente") — Caja USD/Auditoría (cont. 18, más abajo) SIGUE VIGENTE
+> como estado real de DEV/PROD para ESE proyecto, sin cambios en esta sesión
+>
+> #### 🚀 Deploy real a PROD — verificado con queries/comandos reales, no solo code-audit
+>
+> - **Migraciones aplicadas y verificadas en PROD** (`jjffnbrdjchquexdfgwq`), en orden: **376**
+>   (`376_ai_config_rpc_layer.sql`, tabla `ai_config_audit` + RPCs `fn_ai_config_set_bool/_int/_text`,
+>   Fase 2 — hallazgo real del deploy-runner: NO estaba aplicada en PROD todavía pese a ser prerrequisito
+>   directo del código de este commit, `AiAssistant.tsx` llama a esas RPCs; cerrado antes de tocar nada
+>   más), **377** (`ai_tenant_memoria` + `fn_ai_memoria_guardar`) y **378** (`fn_ai_memoria_listar`).
+>   Verificado con query real contra PROD: 5 funciones + 2 tablas + 3 policies existen, encoding de
+>   tildes/eñes intacto.
+> - **Edge Function `ai-assistant` redeployada en PROD** (`npx supabase functions deploy ai-assistant
+>   --project-ref jjffnbrdjchquexdfgwq`) — reemplaza el fix aislado (2 constantes de modelo Groq) que
+>   corría en PROD por el código completo real del repo (Fases 1+2+3). Smoke test: `POST` sin auth →
+>   `401` (esperado, `verify_jwt: true`), confirma que quedó viva.
+> - **Commit `dcccc682`** (`feat(ai-assistant,config,wiki): plan IA — Fase 3, memoria persistente por
+>   tenant (v1.179.0)`) mergeado a `main` vía **PR #332** (`dev → main`) — merge commit **`7e19e7a3`**.
+> - **Release `v1.179.0`** (el tag ya existía sobre `dev` de una tanda anterior de esta misma sesión;
+>   como el merge fue real, no squash, ese commit ya es ancestro de `main` — se actualizó el release
+>   existente a `target: main` + `--latest` en vez de crear uno nuevo) —
+>   https://github.com/genesis360-app/genesis360/releases/tag/v1.179.0
+> - **Vercel**: deployment `dpl_H3eMHxC6TKR3pNmSgR3Hkun5KzHG`, `target: production`, commit `7e19e7a3`,
+>   estado **`READY`**.
+>
+> Con esto, el "Plan IA" (Fases 1-3) queda **100% en PROD** por primera vez — hasta este deploy, PROD solo
+> tenía el fix aislado del modelo Groq (sin wiring de propuesta de config ni de memoria). **Fase 4**
+> (comparación entre negocios) sigue diferida, sin diseño ni código, por decisión de producto/legal (ver
+> cont. 21 abajo, sin cambios).
+>
+> Ver `log.md` (entrada al principio), [[wiki/features/asistente-ia]] (sección "Plan IA"),
+> `wiki/database/migraciones.md` (migs 376-378 marcadas EN PROD), `wiki/business/roadmap.md` (v1.179.0),
+> `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 21) — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100%
 > COMPLETA EN CÓDIGO — cierra el plan de código de 3 fases (Fase 4 queda deliberadamente diferida, sin
 > diseño ni código) — **TODAVÍA SOLO EN DEV, commit pendiente en esta misma sesión** (`APP_VERSION` ya
 > bumpeado a `v1.179.0` en el working tree, sin commitear al momento de escribir esto — NO inventar un hash
@@ -103,6 +142,12 @@ type: project
 > la punta en `4dbe7fdb` (ancestro `50f5579a`, la Fase 7/8 de Caja USD) — nada del Plan IA llegó a `main`
 > todavía. El único código del Plan IA en PROD sigue siendo el fix aislado del modelo Groq (2 constantes,
 > deployado directo a la EF, sin pasar por `main`/Vercel — ver cont. 20 abajo).
+> **⚠ ACTUALIZACIÓN (cont. 22, ver arriba de todo): el párrafo de arriba quedó desactualizado — el deploy
+> a PROD SÍ se concretó en esta misma sesión.** PR #332 (`dev → main`) mergeado, merge commit `7e19e7a3`,
+> migraciones 376-378 aplicadas y verificadas en PROD, EF `ai-assistant` redeployada en PROD, release
+> `v1.179.0` sobre `main`, Vercel `READY`. Detalle completo en el bloque "cont. 22" al principio de este
+> documento.
+>
 >
 > **Próximo paso**: (1) commitear esta tanda (Fase 3 completa, incluido el fix de la mig 378) — bump ya
 > hecho a `v1.179.0`; (2) GO ya autorizó deployar a PROD el wiring completo del Plan IA (Fases 1-3, hoy

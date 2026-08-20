@@ -6,6 +6,37 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-20] deploy | 🚀 Plan IA (Fases 1+2+3) a PROD — v1.179.0, PR #332 mergeado, migs 376-378 en PROD
+
+Deploy real a PROD del "Plan IA" completo (memoria conversacional + propuesta de config con confirmación +
+memoria persistente por tenant), autorizado explícitamente por GO en esta misma sesión ("pasamos todo eso
+a PRD"). Hasta este deploy, PROD solo tenía el fix aislado del modelo Groq (2 constantes en la EF, sin
+wiring de config ni de memoria) — este es el primer deploy real de todo el código del plan.
+
+**Migraciones aplicadas en PROD** (`jjffnbrdjchquexdfgwq`), en orden: **376** (`ai_config_rpc_layer` —
+tabla `ai_config_audit` + RPCs `fn_ai_config_set_bool/_int/_text`, Fase 2). Hallazgo del deploy-runner:
+esta migración NO estaba aplicada en PROD todavía pese a ser prerrequisito directo del código de este
+commit (`AiAssistant.tsx` llama a esas RPCs) — el briefing original solo mencionaba 377/378, se detectó el
+gap con una query real contra PROD antes de tocar nada y se aplicó también. **377** (`ai_tenant_memoria` +
+`fn_ai_memoria_guardar`) y **378** (`fn_ai_memoria_listar`). Verificado post-aplicación con query real: 5
+funciones + 2 tablas + 3 policies existen en PROD, encoding de tildes/eñes intacto.
+
+**Edge Function `ai-assistant` redeployada en PROD** con el código completo del repo (Fases 1+2+3),
+reemplazando el fix aislado. Smoke test: `POST` sin auth → `401` (esperado, `verify_jwt: true`).
+
+**Commit `dcccc682`** mergeado a `main` vía **PR #332** — merge commit **`7e19e7a3`**. **Release
+`v1.179.0`** actualizado a `target: main` + `--latest` (el tag ya existía sobre `dev` de una tanda anterior
+de esta sesión; como el merge fue real y no squash, ese commit ya era ancestro de `main`, así que se editó
+el release existente en vez de crear uno duplicado). **Vercel**: deployment
+`dpl_H3eMHxC6TKR3pNmSgR3Hkun5KzHG`, `target: production`, commit `7e19e7a3`, estado `READY`.
+
+Con esto el "Plan IA" (Fases 1-3) queda 100% en PROD. Fase 4 (comparación entre negocios) sigue diferida,
+sin diseño ni código, por decisión de producto/legal ya tomada por GO.
+
+Co-Authored-By: GNO <gaston.otranto@gmail.com>
+
+---
+
 ## [2026-08-20] update | 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100% completa en código — cierra el plan de 3 fases (Fase 4 diferida)
 
 Continuación directa de la entrada de abajo (fix del modelo Groq + wiring completo de Fase 2, **✅ ya
@@ -54,16 +85,16 @@ ya llama a `fn_ai_memoria_listar()` (ya no al `SELECT` directo) — redeployada 
 e2e mutante 134, y confirmada con impersonación real (`SET LOCAL ROLE`): rol no-privilegiado → `SELECT`
 directo da 0 filas, la RPC da la fila real.
 
-**Estado real**: **commit pendiente en esta misma sesión** — `git status` muestra el working tree
-modificado + migs 377/378 sin trackear, sin ningún commit nuevo sobre `5501304b` (punta de `origin/dev`).
-`APP_VERSION` ya bumpeado a `v1.179.0` en el working tree. **Deploy a PROD**: GO ya autorizó deployarlo en
-esta misma sesión ("pasamos todo eso a PRD") — al momento de escribir esta entrada `gh pr list`/`git log
-origin/main` seguían mostrando PR #331/`v1.176.0` como último merge, sin nada del Plan IA en `main`
-todavía; confirmar el estado real (puede que ya se haya deployado para cuando se lea esto). **Fase 4
-(comparación entre negocios) sigue SIN EMPEZAR** — inteligencia interna de Genesis360, sin urgencia, sin
-diseño ni código, necesita decisión de producto/legal (extender `tenant_consentimiento_legal`, mig 249)
-antes de cualquier código. Con esto, el "Plan IA" de 4 fases queda: Fases 1-3 completas en código
-(1-2 commiteadas como `v1.177.0`/`v1.178.0`, Fase 3 pendiente de commit), Fase 4 deliberadamente diferida.
+**Estado real**: **✅ ACTUALIZACIÓN — deployado a PROD más tarde en esta misma sesión**, ver la entrada
+`deploy` al principio de este mismo archivo (commit `dcccc682`, PR #332, merge `7e19e7a3`, migs 376-378
+en PROD, release `v1.179.0`, Vercel `READY`). Al momento de escribir ESTA entrada (antes del commit) el
+estado era: working tree modificado + migs 377/378 sin trackear, sin ningún commit nuevo sobre `5501304b`
+(punta de `origin/dev`), `APP_VERSION` ya bumpeado a `v1.179.0`. **Fase 4 (comparación entre negocios)
+sigue SIN EMPEZAR** — inteligencia interna de Genesis360, sin urgencia, sin diseño ni código, necesita
+decisión de producto/legal (extender `tenant_consentimiento_legal`, mig 249) antes de cualquier código.
+Con esto, el "Plan IA" de 4 fases queda: Fases 1-3 completas en código y **en PROD** (1-2 ya en PROD desde
+`v1.177.0`/`v1.178.0` en cuanto al backend/hotfix, wiring completo de las 3 en PROD desde `v1.179.0`),
+Fase 4 deliberadamente diferida.
 
 Detalle completo: `sources/raw/project_pendientes.md` (cont. 21, "ARRANCÁ ACÁ"),
 [[wiki/features/asistente-ia]] (sección "Plan IA"), `wiki/database/migraciones.md` (migs 377-378),

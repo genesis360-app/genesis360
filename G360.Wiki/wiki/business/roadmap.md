@@ -8,45 +8,30 @@ updated: 2026-08-20
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.176.0 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-20: PR #331 mergeado a
-`main` (merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`), confirmado con `gh pr view 331` →
-`state: MERGED`, tag+release `v1.176.0` ya publicados sobre el commit `50f5579a` de `dev` que ahora es
-ancestro de `main`. **16 migraciones aplicadas y verificadas en PROD: 360 a 375** (Auditoría
-performance/calidad 361-366, fixes de moneda en Producto 367, Caja USD Fases 1-6 368-375 — la Fase 7,
-Reportes, no agregó migración). Security advisor de PROD post-migración: 0 hallazgos ERROR, 135 WARN
-(baseline preexistente), 1 hallazgo INFO nuevo esperado (`emision_factura_locks`, intencional — deny-by-
-default, ver mig 361). Vercel: deploy de producción **✅ CONFIRMADO READY** (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`,
-commit `4dbe7fdb`, build de ~96s, `app.genesis360.pro` sirviendo el commit actual). Verificado contra datos
-reales de PROD: los 8 tenants existentes quedaron con "Caja Fuerte USD"/"Efectivo USD" sembrados (backfill
-mig 373), 0 ventas con componente USD — sin cambio de comportamiento para tenants existentes. Detalle completo en
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 18)  
-**Aparte (no es un deploy de código/Vercel, es infraestructura independiente):** la Edge Function
-`ai-assistant` de PROD recibió un hotfix aislado el mismo 2026-08-20 (modelos de Groq deprecados →
-`openai/gpt-oss-120b`/`20b`), deployada directo vía `supabase functions deploy` — no pasa por PR/Vercel,
-así que no mueve el número de versión de arriba. Ver sección v1.178.0 abajo.  
-**Versión en DEV:** v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100% completa en código,
-**commit pendiente en esta misma sesión** (`APP_VERSION` ya bumpeado a `v1.179.0` en el working tree, sin
-commit todavía — confirmado con `git status`/`git log`, no inventar hash ni tag). Cierra el plan de código
-de 3 fases del Asistente IA (Fase 4 queda deliberadamente diferida, sin diseño ni código — ver detalle
-abajo). Migración 377 (`ai_tenant_memoria` + `fn_ai_memoria_guardar`) y migración 378 (`fn_ai_memoria_listar`,
-fix de un hallazgo de `code-reviewer` sobre lectura de memoria para roles no DUEÑO/ADMIN) APLICADAS Y
-VERIFICADAS en DEV, wiring conectado y re-verificado con el e2e mutante 134 — ver
-`sources/raw/project_pendientes.md` (cont. 21). Antes: v1.178.0 — wiring completo de
-Fase 2 (propuesta de config con confirmación en el chat, verificado en browser real contra DEV con
-Playwright) + fix del bug crítico que rompía el Asistente IA para TODOS los usuarios (Groq descatalogó
-`llama-3.3-70b-versatile`/`llama-3.1-8b-instant` del catálogo de la cuenta; reemplazados por
-`openai/gpt-oss-120b`/`openai/gpt-oss-20b`, confirmados vigentes con un `GET /openai/v1/models` real). **El
-fix del modelo, aislado (sin el resto del wiring de Fase 2/3), sigue siendo el ÚNICO código del Plan IA
-deployado DIRECTO a la Edge Function de PROD** (`jjffnbrdjchquexdfgwq`, vía
-`supabase functions deploy --workdir <carpeta aislada>`, confirmado con `get_edge_function` que PROD quedó
-con los 2 modelos nuevos y CERO código de Fase 2/3/tool-calling) — el Asistente IA de los 8 tenants reales
-vuelve a funcionar. **El resto (Fases 1-3 completas: memoria conversacional, propuesta de config, memoria
-persistente) queda 100% en DEV, sin deploy a PROD todavía — confirmado con `gh pr list`: el último merge a
-`main` sigue siendo PR #331 (`v1.176.0`), sin ningún PR nuevo para v1.177/178/179.** Ver
-`wiki/features/asistente-ia.md` → "Plan IA" y "🐛 Modelo Groq roto", `sources/raw/project_pendientes.md`
-(cont. 21, "ARRANCÁ ACÁ").  
-Código base en paridad con PROD hasta v1.176.0 (mismo commit `50f5579a`, ahora ancestro de `main` tras el
-merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
+**Versión en PROD:** v1.179.0 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-20: PR #332 mergeado a
+`main` (merge commit `7e19e7a3a11fba24389153f0c02dc56f70ddce11`), confirmado con `gh pr view 332` →
+`state: MERGED`, release `v1.179.0` actualizado a `target: main` + `--latest` (el tag ya existía sobre
+`dev` de una tanda anterior de la misma sesión; el merge fue real, no squash, así que ese commit ya era
+ancestro de `main`). **3 migraciones aplicadas y verificadas en PROD: 376-378** — 376 (`ai_config_rpc_layer`
+— tabla `ai_config_audit` + RPCs `fn_ai_config_set_bool/_int/_text`, Fase 2, hallazgo del deploy-runner: no
+estaba aplicada en PROD todavía pese a ser prerrequisito directo del código de este commit), 377
+(`ai_tenant_memoria` + `fn_ai_memoria_guardar`, Fase 3) y 378 (`fn_ai_memoria_listar`, Fase 3). Verificado
+con query real contra PROD: 5 funciones + 2 tablas + 3 policies existen, encoding de tildes/eñes intacto.
+Edge Function `ai-assistant` redeployada en PROD con el código completo (Fases 1+2+3), reemplazando el fix
+aislado del modelo Groq que corría antes — smoke test `POST` sin auth → `401` (esperado). Vercel: deploy
+de producción **✅ CONFIRMADO READY** (`dpl_H3eMHxC6TKR3pNmSgR3Hkun5KzHG`, commit `7e19e7a3`). Con esto el
+"Plan IA" (Fases 1-3: memoria conversacional, propuesta de config con confirmación, memoria persistente
+por tenant) queda **100% en PROD** por primera vez — hasta este deploy, PROD solo tenía el fix aislado del
+modelo Groq (2 constantes, sin wiring de config ni de memoria). Fase 4 (comparación entre negocios) sigue
+diferida, sin diseño ni código, por decisión de producto/legal ya tomada por GO. Detalle completo en
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 22).  
+Antes de este release: v1.176.0 — Auditoría performance/calidad + Caja USD Fases 1-7/8 (PR #331, merge
+commit `4dbe7fdb`, 16 migraciones 360-375). Ver detalle histórico de v1.176.0 más abajo.  
+**Versión en DEV:** v1.179.0 — igual a PROD, sin código adicional sin deployar al momento de esta
+actualización (`git log origin/main`/`git log origin/dev` en paridad tras el merge de PR #332).  
+Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 22, "ARRANCÁ
+ACÁ").  
+Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
 `v1.172.0`; Fase 4 (mig 372, pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release
 `v1.173.0`; Fase 5 (migs 373+374, Bóveda ARS/USD) commit `28d9291e`, tag+release `v1.174.0`; Fase 6 (mig
@@ -58,7 +43,7 @@ bloqueante.
 
 ---
 
-## v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) — 100% completa en código, cierra el plan de 3 fases — commit pendiente en esta misma sesión (2026-08-20)
+## v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) — 100% completa en código, cierra el plan de 3 fases — ✅ DEPLOYADO A PROD (PR #332, merge `7e19e7a3`, 2026-08-20)
 
 Continúa directo la v1.178.0 (abajo), misma jornada. Diseño ya definido en el Artifact original del plan
 (2026-08-14/15): NO se guarda charla cruda — se guardan HECHOS DESTILADOS que la IA propone guardar, con
@@ -100,20 +85,20 @@ DEV, agrega el fix — `ai-assistant/index.ts` ya llama a la RPC nueva, redeploy
 e2e mutante 134, y confirmada con impersonación real (rol no-privilegiado: `SELECT` directo da 0 filas, la
 RPC da la fila real). Ver `sources/raw/project_pendientes.md` (cont. 21).
 
-**Estado real: commit pendiente en esta misma sesión** (`APP_VERSION` bumpeado a `v1.179.0` en el working
-tree, sin commit todavía) — con esto, las Fases 1 a 3 del "Plan IA" quedan 100% completas en código y
-verificadas (1-2 commiteadas como `v1.177.0`/`v1.178.0`). **Fase 4** (comparación entre negocios) sigue sin
-empezar — inteligencia interna de Genesis360, sin urgencia, necesita decisión de producto/legal (extender
-`tenant_consentimiento_legal`, mig 249) antes de cualquier código; no es un pendiente urgente, es una
-decisión de scope ya tomada. **Deploy a PROD**: GO ya autorizó deployar el wiring completo en esta misma
-sesión — confirmar el resultado real (`git log origin/main`) antes de asumir que ya ocurrió o que no.
+**Estado real: ✅ DEPLOYADO A PROD** (commit `dcccc682`, tag+release `v1.179.0`, mergeado a `main` vía
+PR #332, merge commit `7e19e7a3`, 2026-08-20) — con esto, las Fases 1 a 3 del "Plan IA" quedan 100%
+completas en código, verificadas y en PROD (1-2 ya estaban en PROD desde `v1.177.0`/`v1.178.0` en cuanto
+al backend/hotfix aislado; este release lleva TODO el wiring, incluida la mig 376, a PROD por primera
+vez). **Fase 4** (comparación entre negocios) sigue sin empezar — inteligencia interna de Genesis360, sin
+urgencia, necesita decisión de producto/legal (extender `tenant_consentimiento_legal`, mig 249) antes de
+cualquier código; no es un pendiente urgente, es una decisión de scope ya tomada.
 
 Detalle completo: `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md`
-(cont. 21, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (migs 377-378).
+(cont. 22, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (migs 376-378, todas EN PROD).
 
 ---
 
-## v1.177.0 — 🤖 Plan IA: memoria conversacional (Fase 1) + capa de RPCs de config (Fase 2, backend) — ✅ COMMITEADO EN DEV (2026-08-20), sin deploy a PROD
+## v1.177.0 — 🤖 Plan IA: memoria conversacional (Fase 1) + capa de RPCs de config (Fase 2, backend) — ✅ COMMITEADO EN DEV (2026-08-20), ✅ EN PROD desde v1.179.0
 
 Primera vez que el "plan IA" (Artifact publicado 2026-08-14/15, ver `wiki/features/asistente-ia.md`) pasa de
 propuesta a código. Las 3 preguntas que lo bloqueaban fueron respondidas por GO hoy: arrancar Fase 1 + ya la
@@ -136,7 +121,9 @@ que ya tenían su handler de 1-campo en `ConfigPage.tsx`. Revisada por `migratio
 hallazgos bloqueantes. Verificada con tests reales en DEV (impersonación, sin persistencia).
 
 **✅ Estado real: commiteado** (commit `1b5e89aa`, tag+release `v1.177.0`, incluye el bump de versión). Mig
-376 aplicada y verificada solo en DEV, todavía sin PROD.
+376 aplicada y verificada en DEV en su momento — **✅ aplicada y verificada también en PROD el 2026-08-20,
+de forma retroactiva, como parte del deploy de v1.179.0** (era prerrequisito directo del wiring de esa
+versión y no había llegado a PROD todavía).
 
 ---
 
@@ -171,8 +158,9 @@ tool-calling/Fase 2** — el Asistente IA de los 8 tenants reales de PROD volvi�
 `wiki/features/asistente-ia.md` → "🐛 Modelo Groq roto".
 
 **Estado real: commiteado en DEV** (bump `APP_VERSION` a `v1.178.0`) — el wiring completo de Fase 2 (tool-
-calling + tarjeta de confirmación) queda SOLO en DEV a propósito, sin deploy a PROD todavía. El fix del
-modelo (aislado) SÍ está en PROD desde hoy.
+calling + tarjeta de confirmación) quedó SOLO en DEV a propósito en su momento. El fix del modelo
+(aislado) SÍ está en PROD desde ese día. **✅ Actualización: el wiring completo llegó a PROD el 2026-08-20
+como parte del release v1.179.0 (ver arriba).**
 
 Detalle completo en `wiki/features/asistente-ia.md` y `sources/raw/project_pendientes.md` (bloque "ARRANCÁ
 ACÁ", cont. 20).

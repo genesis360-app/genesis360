@@ -1,9 +1,9 @@
 ---
 title: Reportes y Métricas
 category: features
-tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights]
-sources: [CLAUDE.md, migrations 155, 351]
-updated: 2026-08-11
+tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights, caja-usd]
+sources: [CLAUDE.md, migrations 155, 351, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
+updated: 2026-08-19
 ---
 
 # Reportes y Métricas
@@ -338,9 +338,96 @@ Row 2 — Sub-tabs (underline) + Filtros (derecha, solo "Todo"):
 
 ---
 
+## 💵 Caja en USD — Fase 7 de 8 (Reportes) — EN DEV, SIN migración, TODAVÍA SIN COMMITEAR (2026-08-19)
+
+Séptima fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
+USD / Venta física en USD"). Continúa directo sobre la Fase 6 (mig 375, Devoluciones/NC con soporte USD, ya
+commiteada/pusheada como tag `v1.175.0`, ver [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8").
+Implementa **H1** y **H2** de la tabla de decisiones (ver [[wiki/development/reglas-negocio]]) — **100%
+frontend, sin ninguna migración nueva**: toda la data que necesitaba ya existía desde la Fase 1
+(`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de las Fases 4/6). **Estado
+real: código completo — typecheck + build + suite completa de tests verdes (100 archivos, 1605 tests, sin
+tests nuevos) —, TODAVÍA SIN COMMITEAR** (bump a `v1.176.0` hecho en `src/config/brand.ts`, pendiente de
+commit por el orquestador). SIN deploy a PROD.
+
+### H1 — Reportes: total único en pesos + desglose por moneda debajo
+
+`src/pages/ReportesPage.tsx` — el reporte "Ventas" ya tenía un resumen "Total facturado" (siempre en pesos,
+sin cambios en esta fase) y un desglose "Ingresos por método de pago" (`breakdownMediosPago`) que sumaba el
+monto en pesos por cada medio. Se agregó que, cuando un medio tuvo componente USD real (el JSON de
+`medio_pago` ya trae `monto_usd` por línea desde las Fases 4/6), el chip de ese medio muestre TAMBIÉN el
+monto real en dólares entre paréntesis, además del equivalente en pesos que ya mostraba — el desglose pasa a
+ser "por moneda" de verdad, no solo por medio de pago en pesos, cumpliendo H1 sin ocultar el detalle.
+
+### H2 — Dashboard: ventas USD excluidas de los indicadores en pesos, mostradas aparte
+
+`src/pages/DashboardPage.tsx` — 4 indicadores tocados, todos filtrando por `ventas.cotizacion_usd IS NULL`
+(columna de la Fase 1, no-nula solo si la venta tuvo componente USD real):
+
+1. **KPI "Ventas del mes"** (+ tendencia vs. mes anterior + semáforo + insights, query `stats`): filtra
+   `cotizacion_usd IS NULL`. Se agregó `totalVentasMesUsd`/`cantVentasMesUsd` + un insight nuevo tipo 'info'
+   ("N ventas con componente USD este mes... excluidas del total en pesos de arriba") cuando corresponde.
+2. **"Margen Contribución"** (`dashKpis.margenContrib`, sección "4 KPI Cards ejecutivas"): la función interna
+   `getVentaIdsConfirmadas` (arma la base de ventas para el margen) también filtra `cotizacion_usd IS NULL`.
+   **NO toca "Posición IVA"** (débito fiscal real con CAE, query `ivaFiscalQ` separada) — la factura AFIP de
+   una venta USD sigue siendo 100% en pesos (decisión C1, ya cerrada, sin cambios en esta fase).
+3. **"Ingreso Neto (Caja)"** (`dashKpis.ingresoNeto`): ahora separa los movimientos de `caja_movimientos` por
+   su columna `moneda` real (Fase 1) — antes sumaba todo junto sin filtrar. Se agregó `ingresoNetoUsd`
+   mostrado aparte en el sub-texto de la card ("+US$X" o "−US$X" si el saldo USD del período es negativo).
+4. **Rentabilidad** (`src/pages/RentabilidadPage.tsx`, embebida en el tab "Rentabilidad" del Dashboard): los
+   4 KPIs agregados ("Ventas totales"/"Costo total"/"Ganancia bruta"/"Margen promedio") y el "Estado de
+   resultados" excluyen ventas con `cotizacion_usd` no nulo de sus acumuladores. Esas ventas NO desaparecen
+   de la tabla "Detalle por venta" — siguen ahí, tageadas con un badge "USD" junto al número de venta, para
+   no perder visibilidad. El sub-texto de "Ventas totales" indica cuántas quedaron afuera y su equivalente
+   en pesos.
+
+### 🐛 2 bugs preexistentes encontrados y corregidos de paso
+
+No introducidos por esta sesión, pero descubiertos al tocar este código:
+
+1. **`costoVentas` sin filtro de estado** (`DashboardPage.tsx`, usado en `rentabilidadNeta`/`margenNeto` —
+   actualmente esos 2 valores se calculan pero no se renderizan en ningún lado del Dashboard, así que el bug
+   no era visible al usuario todavía, pero los datos ya estaban mal si algo los llegara a consumir): la
+   query vieja de costo de ventas del mes NO filtraba por `estado` de la venta, así que contaba costo de
+   `venta_items` de ventas `cancelada`/`reservada`/`pendiente`/`devuelta` también, no solo
+   `despachada`/`facturada`. Verificado con SQL real contra DEV (`gcmhzdedrkmmzfzfveig`): infla el costo
+   total histórico en ~$3,9M sobre $31,8M reales de costo de ventas confirmadas (cancelada $1.975.180 +
+   reservada $1.851.500 + pendiente $34.950 + devuelta $13.800 mezclados adentro). Se corrigió reescribiendo
+   la query como un join filtrado (`venta_items.select(..., ventas!inner(estado, cotizacion_usd,
+   ...)).in('ventas.estado', [...]).is('ventas.cotizacion_usd', null)`), mismo patrón que ya usaba
+   `ivaFiscalQ` en el mismo archivo. Verificado con SQL que el join-filtrado da EXACTO el mismo número que
+   una subquery IN independiente (31.991.175,32 en ambas).
+2. **`ingresoNeto` sin filtro de moneda** (`DashboardPage.tsx`, KPI "Ingreso Neto (Caja)", visible en el
+   Dashboard ejecutivo): sumaba `caja_movimientos.monto` de TODAS las sesiones sin mirar la columna `moneda`
+   (real desde la Fase 1, mig 368) — si alguna vez hubiera una sesión de Caja USD real con movimientos, el
+   monto en dólares (ej. "50") se sumaría CRUDO adentro de un total en pesos (ej. "15000" + "50" = "15050"
+   mostrado como pesos), sin convertir. Confirmado con SQL que hoy en DEV no hay ningún movimiento con
+   `moneda='USD'` todavía (0 ventas USD reales en DEV), así que el bug no afectó ningún número real hasta
+   ahora, pero era un riesgo latente real apenas alguien probara la Caja USD real. Se corrigió separando el
+   acumulador por `m.moneda` en el mismo loop.
+
+### Revisión y verificación
+
+`npx tsc --noEmit` limpio, `npm run build` limpio, suite completa de vitest (100 archivos, 1605 tests) en
+verde — **sin tests nuevos** (es lógica de solo lectura/presentación, no mueve plata/stock/comprobantes,
+verificada contra SQL real en DEV en vez de tests unitarios nuevos). Revisado por el subagente
+`code-reviewer`: 0 hallazgos 🔴 bloqueantes, 2 hallazgos 🟡 cosméticos de wording (signo del sub-texto de
+"Ingreso Neto (Caja)" y aclarar "equivalentes en pesos" en Rentabilidad) — AMBOS corregidos antes de
+commitear. Escenarios UAT nuevos: **DSH-06 a DSH-09** en `tests/specs/uat-modo-basico.md` (sección "13.
+Dashboard y Reportes").
+
+**Con esto, la Fase 7/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5+6+7, migs 368-375 — la
+Fase 7 no agrega migración) — el único punto abierto de todo el plan de 8 fases sigue siendo **C2**
+(cotización Banco Nación para AFIP, Fase 8), pendiente de confirmación con un contador real, no bloqueante.
+**Próximo paso: Fase 8** (C2, bloqueada por el contador).
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/gastos]]
 - [[wiki/features/rrhh]]
+- [[wiki/features/caja]]
+- [[wiki/development/reglas-negocio]]

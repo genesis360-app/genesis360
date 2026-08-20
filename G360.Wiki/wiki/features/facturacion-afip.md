@@ -2,8 +2,8 @@
 title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
-sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-13
+sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375]
+updated: 2026-08-19
 ---
 
 # Facturación Electrónica AFIP
@@ -216,7 +216,7 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 "NC manual" suelta: una NC siempre reversa un comprobante puntual y queda atada a una `devoluciones`
 (`devolucion_id`). La EF toma los ítems de la devolución (no de la venta).
 
-> [!NOTE] **🆕 Desde mig 359 (2026-08-13, EN DEV, SIN COMMITEAR) la emisión es AUTOMÁTICA por default**
+> [!NOTE] **🆕 Desde mig 359 (2026-08-13, ✅ EN PROD desde v1.170.0) la emisión es AUTOMÁTICA por default**
 > (ver "NC automática al confirmar la devolución (A10)" más abajo) — al confirmar la devolución de una
 > venta facturada, el sistema intenta emitir la NC solo, en segundo plano. **El botón manual "Emitir
 > NC" sigue existiendo como fallback**: para forzar la emisión antes de que corra el sweep de reintento
@@ -230,9 +230,21 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 **Anular vs Devolver una facturada:** una venta **con CAE** no se puede "Anular" (los botones Anular + Cambiar cliente se **ocultan** si `ventaDetalle.cae`) — la reversión correcta es Devolver → NC. Anularla dejaría la factura viva en AFIP (libros descuadrados).
 
+> [!NOTE] **🆕 G5 Fase 6/8 de Caja USD (G2, mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`) — invariante
+> confirmado: la NC siempre usa la cotización de la venta original, nunca la de "hoy" ni la del reintegro
+> en caja.** Investigado a fondo al construir la Fase 6: `devolucion_items.precio_unitario` se copia de
+> `venta_items.subtotal/cantidad`, que quedó fijo en pesos desde la venta original y nunca se recalcula —
+> por lo tanto la NC **ya cumplía G2 por construcción**, sin necesitar que el código lea
+> `ventas.cotizacion_usd` explícitamente. **No hubo cambio de lógica en `emitir-factura`**, solo
+> comentarios nuevos documentando el invariante (para que un futuro dev no lo "arregle" pensando que es un
+> bug). La factura/NC sigue **siempre en pesos** (`MonId:'PES'`, decisión C1, nunca `'DOL'`) —
+> independiente de la cotización que use el reintegro en caja de la devolución (G1, ver
+> [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8", donde vive el detalle completo de esta
+> fase — no toca esta página salvo estos comentarios).
+
 ---
 
-## NC automática al confirmar la devolución (A10, mig 359 — 2026-08-13, EN DEV, SIN COMMITEAR)
+## NC automática al confirmar la devolución (A10, mig 359 — ✅ EN PROD desde v1.170.0, 2026-08-13)
 
 Resuelve la pregunta **A10** del relevamiento de reglas de negocio de Ventas
 (`sources/raw/relevamiento_ventas_respuestas.md`): GO había elegido hace tiempo la opción **"A" (NC
@@ -322,11 +334,123 @@ Todos los datos de prueba de la cola (`nc_afip_pendientes`) y las notificaciones
 limpiaron después — solo quedó la devolución real de la venta #607 con su NC real, que se dejó a
 propósito. Typecheck + `vite build` + 1563 tests unitarios, todos verdes.
 
-**Estado real: construido y verificado — SIN COMMITEAR todavía** (working tree local de `dev`, se suma
-al hard delete de tenant, mig 358, y a los 5 diagramas de flujo de la misma sesión).
+**Estado real: ✅ EN PROD desde v1.170.0 (2026-08-13)** — deployado junto con el hard delete de tenant
+(mig 358) y los 10 diagramas de flujo, todo en un solo commit/PR (#330, mergeado a `main`). Verificado
+de forma independiente: `gh pr view 330` → `MERGED`; `gh release view v1.170.0` → publicado; migración
+359 aplicada en PROD (`jjffnbrdjchquexdfgwq`); Edge Function `nc-afip-retry-sweep` deployada a PROD +
+workflow `.github/workflows/nc-afip-retry-sweep.yml` (cron cada 15 min) recién ahora activo en `main`.
 
 Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/database/migraciones.md`
 (mig 359), `sources/raw/relevamiento_ventas_respuestas.md` (A10), [[wiki/features/devoluciones]].
+
+---
+
+## Lock anti doble-submit en `emitir-factura` (mig 361 — 🟡 EN DEV, commiteado y pusheado desde el 2026-08-18, 2026-08-14)
+
+🛑 **REGLA #0 (fiscal)** — hallazgo CRÍTICO de una auditoría general de performance/calidad pedida por GO
+(2 agentes en paralelo, reporte publicado como Artifact; este fix y el de reservas de stock —
+[[wiki/features/inventario-stock]] → "Reservas de stock — race condition atómica" — fueron los 2 únicos
+hallazgos marcados 🛑 CRÍTICO, priorizados sobre el resto del backlog de performance/calidad).
+
+### El problema real
+
+El guard "¿la venta ya tiene CAE?" / "¿la devolución ya tiene NC?" (justo antes de armar el payload y
+llamar a AFIP) era una simple **lectura sin ningún lock** — check-then-act clásico. Dos invocaciones casi
+simultáneas de `emitir-factura` para el **mismo** `venta_id`/`devolucion_id` (doble click que esquiva el
+debounce de UI, un timeout de red seguido de un reintento del usuario, o dos pestañas abiertas) podían
+ambas leer "sin CAE", ambas pasar el guard, y ambas llamar a AFIP — resultando en **DOS comprobantes
+fiscales reales autorizados para la misma venta/devolución**.
+
+### El fix
+
+Tabla mutex nueva `emision_factura_locks (clave PK, tenant_id, iniciado_at,
+requiere_reconciliacion_manual)`. RLS habilitada **sin policies** + `REVOKE` explícito de
+PUBLIC/anon/authenticated (mismo patrón que `afip_wsaa_ta`/`platform_facturas`) — es un detalle interno
+de la EF, que siempre usa `service_role`.
+
+`emitir-factura/index.ts` hace un `INSERT` **atómico** (clave = `'fc:'+venta_id` para facturas o
+`'nc:'+devolucion_id` para NC) ANTES de cualquier lógica fiscal:
+- Si el INSERT falla por violar la PK (código Postgres `23505`) → ya hay una emisión en curso para esa
+  clave → responde **409** sin llamar a AFIP ("Ya hay una emisión de este comprobante en curso — esperá
+  unos segundos y volvé a intentar").
+- Fail-closed: cualquier otro tipo de error del INSERT (no solo `23505`) también bloquea — más seguro que
+  arriesgar un fail-open sobre un comprobante fiscal.
+- Al terminar (éxito o cualquier error) libera el lock en un `finally` — **EXCEPTO** si el mensaje de
+  error contiene la frase literal **"NO reintentar"** (AFIP pudo haber autorizado el comprobante sin que
+  el sistema tenga registrado el CAE — los mismos 2 escenarios que ya documenta la sección de NC
+  automática de arriba). En ese caso el lock **NO se borra**: queda marcado
+  `requiere_reconciliacion_manual=true` — "en cuarentena" — hasta que un humano concilie a mano contra
+  AFIP y borre la fila. Mismo patrón que `nc_afip_pendientes.requiere_reconciliacion_manual` (mig 359).
+- **Auto-limpieza de locks huérfanos**: antes de cada INSERT se borra cualquier lock con esa clave que
+  tenga más de **5 minutos** (margen sobre el techo real de wall-clock de las Edge Functions, ~150s) Y
+  `requiere_reconciliacion_manual=false` — cubre el caso de una instancia que crasheó antes de llegar al
+  `finally`. Un lock en cuarentena **nunca** se limpia por tiempo, solo a mano.
+
+**Por qué una tabla-mutex y no `pg_advisory_xact_lock`**: la Edge Function habla con Postgres vía
+PostgREST (`supabase-js`), que **no mantiene una transacción persistente entre llamadas** — cada
+`.from(...).select()/.update()` es un request HTTP independiente. Un advisory lock transaccional se
+liberaría apenas terminara esa llamada puntual, mucho antes de terminar la llamada real a AFIP. Se usa en
+cambio el mismo patrón que el proyecto ya usa para este tipo de problema (`nc_afip_pendientes` con índice
+único parcial, `ventas.pedido_entrega_key` con índice único parcial): una fila con PK como mutex explícito
+entre requests HTTP.
+
+### Hallazgo de paso, corregido en el mismo fix
+
+`AfipSdkProvider.createVoucher` (`providers.ts` — el circuito de rollback manual de emergencia, ver
+"Decisión técnica" arriba) **no envolvía la llamada en try/catch**, a diferencia de
+`WsfePropioProvider.createVoucher`, que sí trata cualquier error de transporte como "NO reintentar". Sin
+el fix, un error en el circuito AfipSDK liberaba el lock igual que un error seguro, reabriendo la misma
+carrera justo en el camino de emergencia. Corregido con el mismo criterio: cualquier error de
+`this.eb.createVoucher` se trata como ambiguo → "NO reintentar".
+
+### También corregido de paso (hallazgo preexistente, no introducido por este fix)
+
+Revisando el mismo código se encontró que el fetch de `ventas` y el update de `ventas`/`devoluciones` en
+`emitir-factura` **no filtraban por `tenant_id`** — como la EF usa `service_role` (bypassea RLS por
+completo), un `venta_id` de OTRO tenant se hubiera leído/escrito igual. Se agregó `.eq('tenant_id',
+tenant_id)` a los 3 puntos.
+
+### Verificación real en DEV (SQL directo, no HTTP)
+
+1. El INSERT duplicado de la misma clave falla con `23505` — el código exacto que la EF chequea.
+2. Se simuló un lock viejo (`iniciado_at` hace 10 min) en cuarentena y uno viejo normal (sin cuarentena) —
+   la query de auto-limpieza (idéntica a la de la EF, TTL 5 min) borró el normal y dejó **intacto** el de
+   cuarentena.
+
+**No se hizo una invocación HTTP real de punta a punta contra AFIP homologación** en esta sesión (para no
+gastar un CAE real ni necesitar la service role key fuera de las tools disponibles) — la Edge Function se
+deployó a DEV (versión 25, status ACTIVE) y pasó 3 pasadas de code-review (incluida verificación de
+balance de llaves con el parser de TypeScript, no solo lectura manual). **Recomendado un smoke test real
+(emitir una factura real desde la UI) antes de decidir el deploy a PROD.**
+
+### Revisión
+
+`migration-reviewer` sobre mig 361: faltaba `IF NOT EXISTS` en el `CREATE TABLE` + el `REVOKE` explícito
+del patrón `afip_wsaa_ta` — corregido antes de aplicar. `code-reviewer` sobre el diff de
+`emitir-factura/index.ts`, DOS pasadas: 1ª — el lock se liberaba incluso en casos "NO reintentar" + falta
+de `tenant_id` en el fetch de venta; 2ª — el `AfipSdkProvider` no disparaba cuarentena. Todos los
+hallazgos corregidos antes de aplicar a DEV.
+
+**Estado real: migración escrita, revisada, aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) —
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), SIN aplicar a
+PROD.** PROD sigue en v1.170.0, sin cambios. Nace de la misma
+auditoría de performance/calidad que el fix de reservas de stock (mig 362) — ambos hallazgos 🛑 CRÍTICO,
+priorizados sobre el resto del backlog (no crítico, vive en el Artifact publicado a GO).
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/database/migraciones.md` (mig
+361), [[wiki/features/inventario-stock]] (fix hermano, mig 362), `tests/specs/uat-modo-basico.md`
+(hallazgo fiscal nuevo registrado, sección tras "Balance de finalización del UAT").
+
+### Hallazgo relacionado, DIFERIDO a propósito (cierre del resto de la auditoría, 2026-08-14)
+
+Al cerrar el resto (no-top5) del mismo reporte de auditoría se evaluó paralelizar los sweeps de cron que
+recorren tenants de forma secuencial (`for...await`) — entre ellos **`platform-facturacion-sweep`**, que
+habla con AFIP/MercadoPago real. Investigado y **diferido a propósito**: junto con
+`tenant-hard-delete-sweep` (`DELETE CASCADE` irreversible) y `billing-manual-sweep`, son sweeps con
+side-effects fiscales/irreversibles por tenant — con ~8 tenants reales el beneficio de paralelizar es de
+segundos, y el riesgo de introducir una race nueva en un flujo fiscal no se justifica. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8) y `log.md` (2026-08-14, cierre completo de
+la auditoría).
 
 ---
 
@@ -410,7 +534,8 @@ gastos.conciliado_iva BOOLEAN
 | Emisión CAE | EF `emitir-factura` + prompt al despachar | ✅ PROD v1.3.0 |
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
-| NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | 🟡 EN DEV, SIN COMMITEAR |
+| NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | ✅ PROD v1.170.0 |
+| Lock anti doble-submit (REGLA #0) | Tabla mutex `emision_factura_locks` + INSERT atómico antes de llamar a AFIP, cuarentena ante "NO reintentar" (mig 361) | 🟡 EN DEV, commiteado y pusheado (`310d9b3b`), sin PROD |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ PROD v1.60.0 |
 | Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ PROD v1.60.0 |

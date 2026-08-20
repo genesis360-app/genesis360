@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, FileSpreadsheet, RefreshCw, Tag, Truck, MapPin, CircleDot, MessageSquare, Gift, Timer, Layers } from 'lucide-react'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -73,7 +73,8 @@ export default function ImportarMasterPage() {
     return map
   }
 
-  const descargarPlantilla = (tipo: TipoMaster) => {
+  const descargarPlantilla = async (tipo: TipoMaster) => {
+    const XLSX = await import('xlsx')
     const cfg = MASTER_CONFIG[tipo]
     const rows = [cfg.cols, ...PLANTILLA_EJEMPLOS[tipo]]
     const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -91,8 +92,9 @@ export default function ImportarMasterPage() {
     setResultado(null)
     const existentesMap = getExistentesMap(tipo)
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await import('xlsx')
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
         const wb = XLSX.read(data, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]

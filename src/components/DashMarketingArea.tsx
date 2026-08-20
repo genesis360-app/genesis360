@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { SlidersHorizontal, X, TrendingUp, TrendingDown, Zap, AlertTriangle, CheckCircle, Clock, BarChart2, Target } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
@@ -15,7 +16,7 @@ const CANAL_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444']
 const CANAL_DISPLAY: Record<string, string> = { POS: 'Presencial', pos: 'Presencial', tiendanube: 'TiendaNube', mercadolibre: 'MercadoLibre', whatsapp: 'WhatsApp' }
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
-function fmt(v: number) { return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` }
+function fmt(v: number) { return formatMoneda(v) }
 function fmtCorto(v: number) {
   if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${(v/1_000).toFixed(0)}K`

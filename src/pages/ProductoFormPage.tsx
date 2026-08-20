@@ -71,6 +71,14 @@ export default function ProductoFormPage() {
     descripcion_marketplace: '',
     // G5 — precio en USD + moneda de venta
     precio_usd: '', moneda_venta: 'local',
+    // G5 Fase 2 (A2) — "puede cobrarse en cualquier moneda" independiente de moneda_venta
+    acepta_cualquier_moneda: false,
+    // Bug real (Fede, 2026-08-18, mig 367) — mismo patrón que precio_usd/moneda_venta pero para el
+    // costo. Antes había un toggle "Ingresar en USD" que convertía a pesos sin persistir el origen
+    // USD — se perdía al reabrir la ficha. precio_costo/precio_venta siguen siendo SIEMPRE el
+    // espejo en ARS (fuente para margen/reportes/POS); precio_costo_usd/precio_usd son la fuente
+    // real cuando moneda_costo/moneda_venta='usd'.
+    precio_costo_usd: '', moneda_costo: 'local',
     // ISS-174 — peso/medidas para cotizar envíos (fuente 'producto')
     peso_kg: '', largo_cm: '', ancho_cm: '', alto_cm: '',
   })
@@ -97,11 +105,6 @@ export default function ProductoFormPage() {
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false)
   const [skuTaken, setSkuTaken] = useState(false)
 
-  // USD mode (usa cotización global del sidebar)
-  const [usdModoCosto, setUsdModoCosto] = useState(false)
-  const [usdModoVenta, setUsdModoVenta] = useState(false)
-  const [usdInputCosto, setUsdInputCosto] = useState('')
-  const [usdInputVenta, setUsdInputVenta] = useState('')
 
   // Variantes madre/hijo (rediseño UoM Fase 3, mig 305)
   const [productoPadreId, setProductoPadreId] = useState<string | null>(null)
@@ -408,6 +411,9 @@ export default function ProductoFormPage() {
         precio_marketplace: productoData.precio_marketplace != null ? productoData.precio_marketplace.toString() : '',
         precio_usd: (productoData as any).precio_usd != null ? (productoData as any).precio_usd.toString() : '',
         moneda_venta: (productoData as any).moneda_venta ?? 'local',
+        precio_costo_usd: (productoData as any).precio_costo_usd != null ? (productoData as any).precio_costo_usd.toString() : '',
+        moneda_costo: (productoData as any).moneda_costo ?? 'local',
+        acepta_cualquier_moneda: (productoData as any).acepta_cualquier_moneda ?? false,
         stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
         descripcion_marketplace: productoData.descripcion_marketplace ?? '',
         peso_kg:  (productoData as any).peso_kg  != null ? (productoData as any).peso_kg.toString()  : '',
@@ -536,6 +542,9 @@ export default function ProductoFormPage() {
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
+        precio_costo_usd: form.precio_costo_usd !== '' ? parseFloat(form.precio_costo_usd) : null,
+        moneda_costo: form.moneda_costo || 'local',
+        acepta_cualquier_moneda: form.acepta_cualquier_moneda,
         peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
         largo_cm: form.largo_cm !== '' ? parseFloat(form.largo_cm) : null,
         ancho_cm: form.ancho_cm !== '' ? parseFloat(form.ancho_cm) : null,
@@ -789,6 +798,9 @@ export default function ProductoFormPage() {
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
+        precio_costo_usd: form.precio_costo_usd !== '' ? parseFloat(form.precio_costo_usd) : null,
+        moneda_costo: form.moneda_costo || 'local',
+        acepta_cualquier_moneda: form.acepta_cualquier_moneda,
         peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
         largo_cm: form.largo_cm !== '' ? parseFloat(form.largo_cm) : null,
         ancho_cm: form.ancho_cm !== '' ? parseFloat(form.ancho_cm) : null,
@@ -1139,22 +1151,36 @@ export default function ProductoFormPage() {
                 </p>
               )}
 
-              {/* Precios costo + venta con toggles ARS/USD */}
+              {/* Precios costo + venta con toggles ARS/USD.
+                  Bug real (Fede, 2026-08-18, mig 367): antes el modo USD vivía en useState efímero
+                  (usdModoCosto/usdModoVenta) que nunca se persistía — al reabrir la ficha volvía a
+                  "$" y el monto USD original se perdía para siempre. Ahora el modo y el monto USD
+                  son campos del form (moneda_costo/precio_costo_usd, moneda_venta/precio_usd — estos
+                  últimos ya existían desde mig 161) que se guardan y se releen igual que cualquier
+                  otro campo — no pueden desincronizarse porque no hay un 2do estado paralelo. */}
               {(() => {
                 const cotizNum = cotizacionNum
                 // Rediseño UoM Fase 2: los precios son por la unidad base; el sufijo lo aclara
                 // solo si el producto tiene presentaciones (Caja/Pallet) sobre una base con nombre.
                 const sufijoAncla = (presentacionBase && presentaciones.length > 1)
                   ? ` (por ${presentacionBase.etiqueta})` : ''
+                const usdModoCosto = form.moneda_costo === 'usd'
+                const usdModoVenta = form.moneda_venta === 'usd'
                 const toggleCosto = () => {
-                  if (!usdModoCosto && cotizNum > 0)
-                    setUsdInputCosto(((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2))
-                  setUsdModoCosto(v => !v)
+                  setForm(p => {
+                    const activando = p.moneda_costo !== 'usd'
+                    const seed = activando && cotizNum > 0 && p.precio_costo_usd === ''
+                      ? ((parseFloat(p.precio_costo) || 0) / cotizNum).toFixed(2) : p.precio_costo_usd
+                    return { ...p, moneda_costo: activando ? 'usd' : 'local', precio_costo_usd: seed }
+                  })
                 }
                 const toggleVenta = () => {
-                  if (!usdModoVenta && cotizNum > 0)
-                    setUsdInputVenta(((parseFloat(form.precio_venta) || 0) / cotizNum).toFixed(2))
-                  setUsdModoVenta(v => !v)
+                  setForm(p => {
+                    const activando = p.moneda_venta !== 'usd'
+                    const seed = activando && cotizNum > 0 && p.precio_usd === ''
+                      ? ((parseFloat(p.precio_venta) || 0) / cotizNum).toFixed(2) : p.precio_usd
+                    return { ...p, moneda_venta: activando ? 'usd' : 'local', precio_usd: seed }
+                  })
                 }
                 return (
                   <div className={`grid ${verCosto ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
@@ -1174,18 +1200,18 @@ export default function ProductoFormPage() {
                           {usdModoCosto ? 'USD' : '$'}
                         </span>
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01" disabled={!canEdit}
-                          value={usdModoCosto ? usdInputCosto : form.precio_costo}
+                          value={usdModoCosto ? form.precio_costo_usd : form.precio_costo}
                           onChange={e => {
-                            if (usdModoCosto && cotizNum > 0) {
-                              setUsdInputCosto(e.target.value)
-                              setForm(p => ({ ...p, precio_costo: ((parseFloat(e.target.value) || 0) * cotizNum).toString() }))
+                            if (usdModoCosto) {
+                              const usd = e.target.value
+                              setForm(p => ({ ...p, precio_costo_usd: usd, precio_costo: cotizNum > 0 ? ((parseFloat(usd) || 0) * cotizNum).toString() : p.precio_costo }))
                             } else {
                               setForm(p => ({ ...p, precio_costo: e.target.value }))
                             }
                           }}
                           className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                       </div>
-                      {cotizNum > 0 && (parseFloat(form.precio_costo) || 0) > 0 && (
+                      {cotizNum > 0 && (usdModoCosto ? (parseFloat(form.precio_costo_usd) || 0) > 0 : (parseFloat(form.precio_costo) || 0) > 0) && (
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                           {usdModoCosto
                             ? `= $${(parseFloat(form.precio_costo) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
@@ -1209,18 +1235,18 @@ export default function ProductoFormPage() {
                           {usdModoVenta ? 'USD' : '$'}
                         </span>
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01" disabled={!canEdit}
-                          value={usdModoVenta ? usdInputVenta : form.precio_venta}
+                          value={usdModoVenta ? form.precio_usd : form.precio_venta}
                           onChange={e => {
-                            if (usdModoVenta && cotizNum > 0) {
-                              setUsdInputVenta(e.target.value)
-                              setForm(p => ({ ...p, precio_venta: ((parseFloat(e.target.value) || 0) * cotizNum).toString() }))
+                            if (usdModoVenta) {
+                              const usd = e.target.value
+                              setForm(p => ({ ...p, precio_usd: usd, precio_venta: cotizNum > 0 ? ((parseFloat(usd) || 0) * cotizNum).toString() : p.precio_venta }))
                             } else {
                               setForm(p => ({ ...p, precio_venta: e.target.value }))
                             }
                           }}
                           className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                       </div>
-                      {cotizNum > 0 && (parseFloat(form.precio_venta) || 0) > 0 && (
+                      {cotizNum > 0 && (usdModoVenta ? (parseFloat(form.precio_usd) || 0) > 0 : (parseFloat(form.precio_venta) || 0) > 0) && (
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                           {usdModoVenta
                             ? `= $${(parseFloat(form.precio_venta) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
@@ -1374,6 +1400,20 @@ export default function ProductoFormPage() {
                     )}
                   </div>
                 )}
+                {/* G5 Fase 2 (A2) — independiente de moneda_venta: si el precio está fijado en pesos
+                    o en USD, este flag decide si el cajero además puede cobrarlo en la OTRA moneda
+                    (convirtiendo a la cotización vigente) o si queda obligado a la moneda del precio. */}
+                <label className={`flex items-start gap-3 ${canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                  <div className="mt-0.5"><Toggle checked={form.acepta_cualquier_moneda} disabled={!canEdit}
+                    onChange={v => setForm(p => ({ ...p, acepta_cualquier_moneda: v }))} aria-label="acepta_cualquier_moneda" /></div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Puede cobrarse en cualquier moneda</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      Sin activar, este producto solo se cobra en su moneda de precio ({form.moneda_venta === 'usd' ? 'USD' : 'pesos'}).
+                      Activado, el cajero también puede cobrarlo en la otra moneda en el POS.
+                    </p>
+                  </div>
+                </label>
               </div>
 
               {/* Accordion Precios mayoristas — venta mayorista = modo avanzado */}
@@ -1414,18 +1454,19 @@ export default function ProductoFormPage() {
                             </div>
                             <select value={tier.tipo_valor}
                               onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, tipo_valor: e.target.value as TierTipoValor } : t))}
-                              className="w-14 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
-                              title="Precio fijo por unidad, o % de descuento sobre el precio de lista">
+                              className="w-16 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
+                              title="Precio fijo por unidad (en la moneda de venta del producto), % de descuento sobre el precio de lista, o precio fijo en USD (se convierte a la cotización vigente)">
                               <option value="precio_fijo">$</option>
                               <option value="pct">%</option>
+                              <option value="usd">USD</option>
                             </select>
                             <div className="relative flex-1">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{tier.tipo_valor === 'pct' ? '%' : '$'}</span>
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{tier.tipo_valor === 'pct' ? '%' : tier.tipo_valor === 'usd' ? 'USD' : '$'}</span>
                               <input type="number" min="0" max={tier.tipo_valor === 'pct' ? 100 : undefined} step="0.01" onWheel={e => e.currentTarget.blur()}
                                 placeholder={tier.tipo_valor === 'pct' ? 'Desc. %' : 'Precio'}
                                 value={tier.precio}
                                 onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, precio: e.target.value } : t))}
-                                className="w-full pl-6 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
+                                className={`w-full ${tier.tipo_valor === 'usd' ? 'pl-9' : 'pl-6'} pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700`} />
                             </div>
                             <button type="button" onClick={() => setTiersForm(prev => prev.filter((_, i) => i !== idx))}
                               className="text-red-400 hover:text-red-600 flex-shrink-0 transition-colors">
@@ -1459,7 +1500,7 @@ export default function ProductoFormPage() {
                         <Plus size={13} /> Agregar tier
                       </button>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
-                        Se evalúan de arriba hacia abajo (gana el primero que coincide con la cantidad total del producto en la venta). Poné los umbrales más grandes arriba. Usá <strong>=</strong> para un precio exacto (ej. un pallet completo). El <strong>%</strong> siempre se calcula sobre el precio de lista, nunca sobre uno ya rebajado. Enlazar a un empaque hace que el tier compita contra los demás descuentos y se multiplique solo para múltiplos completos (1, 2, 3 pallets…) — no hace falta cargar un tier por cada uno.
+                        Se evalúan de arriba hacia abajo (gana el primero que coincide con la cantidad total del producto en la venta). Poné los umbrales más grandes arriba. Usá <strong>=</strong> para un precio exacto (ej. un pallet completo). El <strong>%</strong> siempre se calcula sobre el precio de lista, nunca sobre uno ya rebajado. El <strong>USD</strong> se convierte a la cotización vigente al momento de la venta (si no hay cotización cargada, ese tier no se aplica). Enlazar a un empaque hace que el tier compita contra los demás descuentos y se multiplique solo para múltiplos completos (1, 2, 3 pallets…) — no hace falta cargar un tier por cada uno.
                       </p>
                       {tiersForm.length > 0 && parseFloat(form.precio_venta) > 0 && (
                         <p className="text-xs text-gray-400 dark:text-gray-500">

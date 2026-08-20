@@ -10,6 +10,7 @@ import {
   extraerNumeroVenta,
   extraerMedioPago,
   acumularTotalesPorMetodo,
+  sumaDenominaciones,
 } from '@/lib/cajaArqueo'
 
 // Plan: tests/specs/caja.plan.md (secciones 1-9)
@@ -202,5 +203,29 @@ describe('extraerMedioPago', () => {
   })
   it('CAJA-PAR-07 tipo desconocido → vacío', () => {
     expect(extraerMedioPago('foo', 'bar')).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección 10 — Conteo por denominación USD (G5 Fase 3, E2/J2)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('sumaDenominaciones', () => {
+  it('CAJA-USD-01 mezcla de billetes suma correcto', () => {
+    expect(sumaDenominaciones({ 100: '2', 50: '1', 20: '0', 10: '3', 5: '0', 1: '7' })).toBe(287)
+  })
+  it('CAJA-USD-02 vacío → 0', () => {
+    expect(sumaDenominaciones({})).toBe(0)
+  })
+  it('CAJA-USD-03 string vacía en un campo → se ignora (no NaN)', () => {
+    expect(sumaDenominaciones({ 100: '', 50: '2' })).toBe(100)
+  })
+  it('CAJA-USD-04 J2: cantidad con decimales se trunca a entero (solo billetes enteros)', () => {
+    expect(sumaDenominaciones({ 20: '2.9' })).toBe(40)
+  })
+  it('CAJA-USD-05 cantidad negativa se clampa a 0 (no resta)', () => {
+    expect(sumaDenominaciones({ 100: '-3', 10: '2' })).toBe(20)
+  })
+  it('CAJA-USD-06 denominación no reconocida se ignora', () => {
+    expect(sumaDenominaciones({ 200: '5', 10: '1' } as any)).toBe(10)
   })
 })

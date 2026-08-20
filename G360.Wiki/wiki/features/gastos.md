@@ -2,8 +2,8 @@
 title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador]
-sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx]
-updated: 2026-08-13
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373]
+updated: 2026-08-19
 ---
 
 # Módulo Gastos
@@ -477,6 +477,24 @@ Aplica en 5 puntos de `GastosPage.tsx`:
 - Creación de gasto nuevo con cualquier medio (incluida caja fuerte)
 - Reversión por eliminación de gasto pagado
 - Generación de gasto fijo desde el cron manual
+
+> 🛑 **2 gaps de REGLA #0 corregidos (2026-08-18, hallazgo lateral de la migración 372, Fase 4 de Caja
+> USD)**: una auditoría de todos los insert-sites de `caja_movimientos` (hecha al construir el trigger
+> `fn_validar_moneda_coincide_sesion`, ver [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8") encontró
+> **3 movimientos de caja de esta página que eran fire-and-forget** (sin `await` ni `toast` si fallaban —
+> el patrón exigido desde la auditoría efectivo↔caja de v1.74.0, ver arriba y [[wiki/features/caja]] →
+> "Integridad del efectivo") y **el selector de caja de Gastos no filtraba por moneda** (podía ofrecer una
+> Caja USD para un gasto en pesos). Ambos corregidos en la misma sesión: los 3 inserts pasan a `await`eados
+> con toast de error, y el picker de caja ahora excluye Cajas USD (mismo patrón que el selector doble de
+> Ventas). **Estado: código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.173.0`, mig
+> 372).
+>
+> 🐛 **1 fix más chico, mismo motivo, sesión posterior (2026-08-19, G5 Fase 5 de Caja USD, mig 373,
+> COMMITEADO Y PUSHEADO, commit `28d9291e`, tag `v1.174.0`)**: la Bóveda pasó a tener 2 filas
+> `es_caja_fuerte=true` por tenant (ARS y
+> USD) — `sesionFuerte` (fallback de pago cuando no hay caja operativa abierta) ahora filtra explícitamente
+> `moneda==='ARS'`, porque el `.find()` anterior podía agarrar cualquiera de las 2 sin criterio. Ver
+> [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
 
 ---
 

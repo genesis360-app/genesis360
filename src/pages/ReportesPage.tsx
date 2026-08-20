@@ -12,9 +12,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// xlsx/jspdf/jspdf-autotable se importan dinámicamente en cada handler de export (auditoría
+// perf 2026-08-14, P5) — este archivo es la página más pesada en exports (SQL/reportes/master).
 import toast from 'react-hot-toast'
 
 type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado' | 'productos-atributos'
@@ -102,8 +101,9 @@ export default function ReportesPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [runSql])
 
-  const exportSqlCsv = () => {
+  const exportSqlCsv = async () => {
     if (!sqlResult || sqlResult.rows.length === 0) return
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet([sqlResult.columns, ...sqlResult.rows])
     XLSX.utils.book_append_sheet(wb, ws, 'Resultado')
@@ -111,8 +111,11 @@ export default function ReportesPage() {
     toast.success('Exportado a Excel')
   }
 
-  const printSqlPdf = () => {
+  const printSqlPdf = async () => {
     if (!sqlResult || sqlResult.rows.length === 0) return
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({ orientation: sqlResult.columns.length > 5 ? 'landscape' : 'portrait' })
     doc.setFontSize(12)
     doc.text('Resultado SQL — Genesis360', 14, 15)
@@ -458,17 +461,21 @@ export default function ReportesPage() {
     'productos-atributos': { total: productos.length },
   }
 
-  // Breakdown de ventas por método de pago
-  const breakdownMediosPago: Array<{ tipo: string; monto: number; count: number }> = (() => {
-    const map: Record<string, { monto: number; count: number }> = {}
+  // Breakdown de ventas por método de pago — G5 Fase 7 (H1): además del monto en pesos (ya
+  // convertido, lo que siempre fue), suma el real `monto_usd` cuando el medio lo trae (Fases
+  // 4/6 lo persisten en cada línea de `medio_pago` para medios "Efectivo USD") — así el desglose
+  // muestra la moneda real cobrada, no solo su equivalente en pesos.
+  const breakdownMediosPago: Array<{ tipo: string; monto: number; count: number; montoUsd: number }> = (() => {
+    const map: Record<string, { monto: number; count: number; montoUsd: number }> = {}
     ventas.forEach((v: any) => {
       try {
         const parsed = typeof v.medio_pago === 'string' ? JSON.parse(v.medio_pago) : (v.medio_pago ?? [])
         if (Array.isArray(parsed)) {
           parsed.forEach((mp: any) => {
             const tipo = mp.tipo || 'Otro'
-            if (!map[tipo]) map[tipo] = { monto: 0, count: 0 }
+            if (!map[tipo]) map[tipo] = { monto: 0, count: 0, montoUsd: 0 }
             map[tipo].monto += Number(mp.monto) || 0
+            map[tipo].montoUsd += Number(mp.monto_usd) || 0
             map[tipo].count += 1
           })
         }
@@ -480,12 +487,13 @@ export default function ReportesPage() {
   })()
 
   // ── Exportar Excel ───────────────────────────────────────────────────────────
-  const exportarExcel = (id: ReporteId) => {
+  const exportarExcel = async (id: ReporteId) => {
     setGenerando(true)
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
 
+      const XLSX = await import('xlsx')
       const reporte = REPORTES.find(r => r.id === id)!
       const wb = XLSX.utils.book_new()
       const ws = XLSX.utils.json_to_sheet(datos)
@@ -513,11 +521,12 @@ export default function ReportesPage() {
   }
 
   // ── Exportar CSV (K3) ────────────────────────────────────────────────────────
-  const exportarCSV = (id: ReporteId) => {
+  const exportarCSV = async (id: ReporteId) => {
     setGenerando(true)
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
+      const XLSX = await import('xlsx')
       const ws = XLSX.utils.json_to_sheet(datos)
       const csv = XLSX.utils.sheet_to_csv(ws)
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -534,13 +543,16 @@ export default function ReportesPage() {
   }
 
   // ── Exportar PDF ─────────────────────────────────────────────────────────────
-  const exportarPDF = (id: ReporteId) => {
+  const exportarPDF = async (id: ReporteId) => {
     setGenerando(true)
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
 
       const reporte = REPORTES.find(r => r.id === id)!
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'), import('jspdf-autotable'),
+      ])
       const doc = new jsPDF({ orientation: datos[0] && Object.keys(datos[0]).length > 6 ? 'landscape' : 'portrait' })
 
       // Header
@@ -601,7 +613,7 @@ export default function ReportesPage() {
     { id: 'motivos',     label: 'Motivos',       icon: CornerDownRight, datos: masterMotivos,  cols: ['nombre', 'tipo'] },
   ] as const
 
-  const exportarMaster = (id: string) => {
+  const exportarMaster = async (id: string) => {
     const item = MASTER_ITEMS.find(m => m.id === id)
     if (!item) return
     const datos = item.datos as any[]
@@ -613,6 +625,7 @@ export default function ReportesPage() {
       return row
     })
 
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const wsInfo = XLSX.utils.aoa_to_sheet([
       [BRAND.name], [item.label], [`Generado: ${new Date().toLocaleString('es-AR')}`], [`Negocio: ${tenant?.nombre}`], [''],
@@ -755,10 +768,14 @@ export default function ReportesPage() {
                 <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Ingresos por método de pago</p>
                   <div className="flex flex-wrap gap-2">
-                    {breakdownMediosPago.map(({ tipo, monto, count }) => (
+                    {breakdownMediosPago.map(({ tipo, monto, count, montoUsd }) => (
                       <div key={tipo} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-1.5">
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{tipo}</span>
                         <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{formatMoneda(monto)}</span>
+                        {/* G5 Fase 7 (H1) — desglose por moneda: monto real en USD junto al equivalente en pesos */}
+                        {montoUsd > 0 && (
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">({formatMonedaLib(montoUsd, 'USD')})</span>
+                        )}
                         <span className="text-xs text-gray-400 dark:text-gray-500">({count})</span>
                       </div>
                     ))}

@@ -1,9 +1,9 @@
 ---
 title: Inventario y Stock
 category: features
-tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331]
-updated: 2026-08-08
+tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362]
+updated: 2026-08-18
 ---
 
 # Inventario y Stock
@@ -89,6 +89,97 @@ Jerarquía: **SKU > negocio > FIFO (fallback hardcoded)**
 Helper: `src/lib/rebajeSort.ts` → `getRebajeSort(reglaProducto, reglaTenant, tieneVencimiento)`
 
 **Default en onboarding nuevo negocio:** Manual (v1.1.0)
+
+---
+
+## Reservas de stock — race condition atómica (mig 362, REGLA #0 — 🟡 EN DEV, commiteado y pusheado desde el 2026-08-18, 2026-08-14)
+
+🛑 **REGLA #0 (inventario)** — hallazgo CRÍTICO de una auditoría general de performance/calidad pedida
+por GO (2 agentes en paralelo, reporte publicado como Artifact; este fix y el lock anti doble-submit de
+`emitir-factura` — ver [[wiki/features/facturacion-afip]] → "Lock anti doble-submit en
+`emitir-factura`" — fueron los 2 únicos hallazgos marcados 🛑 CRÍTICO, priorizados sobre el resto del
+backlog de performance/calidad).
+
+### El problema real
+
+6 puntos del código reservaban o liberaban `inventario_lineas.cantidad_reservada` con el mismo patrón
+inseguro: **leer** el valor actual del cliente, **calcular** el nuevo valor EN JAVASCRIPT, y **pisarlo**
+con un `.update({cantidad_reservada: nuevoValor})` directo — leer-modificar-escribir NO atómico:
+
+- `VentasPage.tsx` ×3 — reservar en `consumirLinea`, reservar en `reservarEn` (flujo
+  presupuesto→venta), liberar al cancelar una reserva.
+- `tn-webhook/index.ts` ×2 — reservar FIFO al recibir una orden de Tienda Nube, liberar al cancelarla.
+- `meli-webhook/index.ts` ×1 — reservar FIFO al recibir una orden de Mercado Libre.
+
+Dos operaciones concurrentes sobre la **misma línea** (una venta de mostrador + un webhook de TN/MELI
+llegando junto, o dos webhooks en ráfaga) podían pisarse una reserva sin que ningún CHECK lo detectara —
+el valor final seguía siendo válido para los constraints de la tabla, solo que estaba **mal**. Es la
+causa raíz real de **VEN-23 del UAT** ("2 cajeros venden la última unidad"). **Cierre PARCIAL**: la
+integridad del dato queda cerrada a nivel DB con este fix; sigue pendiente la capa C de VEN-23 (abrir 2
+sesiones de navegador reales y vender la última unidad desde ambas a la vez, para validar la UX del
+segundo cajero — "sin stock" — no solo la integridad del dato, que ya está probada) — ver
+`tests/specs/uat-modo-basico.md` → "Auditoría de performance/calidad (2026-08-14)".
+
+### El fix (mig 362)
+
+Dos RPCs nuevas, `SECURITY INVOKER` **a propósito** (NO `SECURITY DEFINER` — el usuario autenticado ya
+podía hacer este mismo UPDATE bajo RLS sobre `inventario_lineas`, no hace falta elevar privilegios; los
+webhooks llaman con `service_role`, que bypassea RLS igual que hoy):
+
+```sql
+fn_reservar_stock_linea(p_linea_id uuid, p_cantidad numeric) RETURNS numeric
+fn_liberar_stock_linea(p_linea_id uuid, p_cantidad numeric) RETURNS numeric
+```
+
+Cada una hace `SELECT ... FOR UPDATE` (lockea la fila) **antes** de calcular cuánto reservar/liberar —
+así dos transacciones concurrentes sobre la misma línea quedan **serializadas por Postgres** en vez de
+pisarse. Reciben la cantidad **DESEADA** (no un delta ya calculado en JS) y devuelven cuánto se aplicó
+**realmente**, clampeado contra el estado real y actual de la línea (no el leído hace unos milisegundos):
+- `fn_reservar_stock_linea` clampea a `GREATEST(cantidad - cantidad_reservada, 0)` (el disponible real).
+- `fn_liberar_stock_linea` clampea a `GREATEST(cantidad_reservada, 0)` (nunca deja la reserva negativa).
+- Ambas redondean (`ROUND`) antes de persistir, porque `inventario_lineas.cantidad`/`cantidad_reservada`
+  son `integer` — sin esto, un `p_cantidad` fraccionario se guardaría redondeado por el cast implícito
+  del UPDATE pero se devolvería sin redondear al caller (contrato roto, hallazgo del
+  `migration-reviewer`).
+
+Los 6 call sites de arriba se migraron a llamar estas RPCs en vez del `.update()` directo.
+
+### Verificación real en DEV (no solo lógica)
+
+Se tomó una línea real (`cantidad=14, cantidad_reservada=0`) y se dispararon **2 llamadas concurrentes**
+a `fn_reservar_stock_linea` pidiendo **10 unidades cada una** (20 en total, más de lo disponible) — la
+primera se llevó 10, la segunda quedó clampeada exactamente a **4** (no 10) — total reservado **14,
+nunca 20** (lo que hubiera violado el CHECK `chk_cantidad_mayor_o_igual_reservada`). Se probó también
+`fn_liberar_stock_linea` (clampea a 0, nunca negativo) y se restauró el dato de test a su estado
+original. `migration-reviewer`: sin hallazgos bloqueantes, solo mejoras sugeridas.
+
+**Estado real: migración escrita, revisada, aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) —
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), SIN aplicar a
+PROD.** PROD sigue en v1.170.0, sin cambios. Nace de la
+misma auditoría de performance/calidad que el fix del lock anti doble-submit de `emitir-factura` (mig
+361) — ambos hallazgos 🛑 CRÍTICO, priorizados sobre el resto del backlog (no crítico, vive en el
+Artifact publicado a GO).
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/database/migraciones.md` (mig
+362), [[wiki/features/facturacion-afip]] (fix hermano, mig 361), `tests/specs/uat-modo-basico.md`
+(cierre parcial de VEN-23, sección tras "Balance de finalización del UAT").
+
+### Hallazgo relacionado, DIFERIDO a propósito (cierre del resto de la auditoría, 2026-08-14)
+
+Al cerrar el resto (no-top5) del mismo reporte de auditoría se encontró que el `SUM()` que arma
+`stock_antes`/`stock_después` en el log de `movimientos_stock` (dentro de `fn_pedido_generar_venta`) no
+comparte lock con el `UPDATE` real de la línea. **No es un riesgo de integridad**: el stock real ya queda
+protegido por el mismo patrón `FOR UPDATE ... SKIP LOCKED` que usa esta sección (mig 362) — solo el
+número narrativo del log podría no reflejar el orden exacto bajo concurrencia real. Un fix tipo lock ahí
+sería **contraproducente**: bloquearía contra las mismas líneas que otras transacciones concurrentes usan
+vía `SKIP LOCKED`, rompiendo el propósito de permitir despachos concurrentes del mismo SKU. El mismo
+patrón se repite en `confirmar_armado_kit` y `recalcular_stock()` — es arquitectónico, no puntual, y
+requiere una decisión de diseño (serializar por producto vs. aceptar narrativa eventual en el log), no una
+limpieza de auditoría. Mismo criterio se aplicó al `SUM()` recalculado en el loop de
+`fn_pedido_generar_venta` (cachearlo dejaría de capturar un commit externo concurrente entre iteraciones;
+costo real del recompute confirmado marginal con `EXPLAIN ANALYZE`, 3.7ms). Sin acción tomada — ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8) y `log.md` (2026-08-14, cierre completo de la
+auditoría).
 
 ---
 

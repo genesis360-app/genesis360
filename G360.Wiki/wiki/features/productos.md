@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340, 357]
-updated: 2026-08-11
+sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370]
+updated: 2026-08-18
 ---
 
 # Productos
@@ -185,6 +185,25 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | Categoría | select | Lista del tenant |
 | Proveedor | select | Lista del tenant |
 | Activo / Inactivo | toggle | Inactivo bloquea ingreso de stock (soft-delete lógico) |
+| Puede cobrarse en cualquier moneda | toggle | `acepta_cualquier_moneda` (mig 370) — ver nota abajo |
+
+> [!NOTE] **Checkbox "Puede cobrarse en cualquier moneda" (mig 370, 🟡 EN DEV, COMMITEADO Y PUSHEADO a
+> `origin/dev` — commit `310d9b3b`, tag `v1.171.0`, SIN deploy a PROD, 2026-08-18).** Nuevo campo
+> `productos.acepta_cualquier_moneda` (boolean, default `false`), Fase 2 del proyecto "Caja en USD"
+> (relevamiento G5, respuesta A2: cobro en USD y `moneda_venta` son independientes, pero **por producto**).
+> Es **independiente** de `moneda_venta`/`precio_usd` (Card 3) — no es una decisión que tome el cajero en
+> el momento de cobrar, se define de antemano en la ficha. Cableado en los 4 puntos de
+> `ProductoFormPage.tsx`: estado inicial del formulario, carga desde DB al editar, payload de creación/
+> edición y payload de "Duplicar producto". **Solo se persiste en esta fase** — el cobro real mixto de
+> monedas (un producto en pesos cobrado en USD o viceversa) es la Fase 4 del proyecto, todavía sin
+> construir. Ver [[wiki/features/caja]] → "Caja en USD — Fase 2 de 8" y [[wiki/development/reglas-negocio]]
+> → "Caja en USD / Venta física en USD".
+>
+> ⚠️ **Recordatorio pendiente, NO resuelto todavía**: el flujo "Crear variante" (botón dentro de la ficha)
+> copia `precio_venta`/`precio_costo` (ARS) del producto madre pero NO copia `moneda_venta`/`precio_usd`/
+> `moneda_costo`/`precio_costo_usd` **ni** `acepta_cualquier_moneda` — una variante nueva de un producto en
+> USD (o con cobro en cualquier moneda habilitado) nace silenciosamente en modo "$"/`false`. Gap
+> preexistente, menor, no relacionado con lo que reportó Fede — queda anotado para una próxima pasada.
 
 > [!NOTE] **Botón "Eliminar" individual (mig 278, ✅ PROD v1.136.0, 2026-07-19).** Hasta esta
 > sesión el botón "Eliminar" de esta página en realidad hacía `UPDATE productos SET activo=false` —
@@ -199,13 +218,35 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 
 | Campo | Tipo | Notas |
 |-------|------|-------|
-| Precio costo | number | No required; alerta si queda en $0 |
+| Precio costo | number | No required; alerta si queda en $0. Toggle "Ingresar en USD" → `precio_costo_usd`/`moneda_costo` (mig 367) |
 | Precio venta ARS | number | Incluye IVA |
-| Precio venta USD | number | Opcional |
+| Precio venta USD | number | Opcional. Selector "Moneda de venta" + toggle "Ingresar en USD" → `precio_usd`/`moneda_venta` (mig 161) |
 | IVA | select | Alícuota aplicable |
 | Margen objetivo | number | % — activa insightMargen en Dashboard |
-| Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092), con operador (mig 306). **🆕 EN DEV (migs 329/330, backlog Fede 25/7):** selector $/% por tier + enlace opcional a una línea de empaque ("desde 2 pallets") — ver [[wiki/features/precios-tiers-empaque]] |
+| Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092), con operador (mig 306). Selector **$ / % / USD** por tier (mig 367) + enlace opcional a una línea de empaque ("desde 2 pallets") — ver [[wiki/features/precios-tiers-empaque]] |
 | ~~Estos precios corresponden a~~ | ⛔ **ELIMINADO (mig 304, v1.144.0)** | Era el "ancla de precio" (`productos.nivel_precio_orden`), un bug por POSICIÓN: no se revalidaba al reordenar niveles. Hoy `precio_venta`/`precio_costo` son **SIEMPRE por unidad base** y el precio de una presentación se deriva (`base × factor_base`); el precio por volumen se carga como **tier de cantidad**. Ver [[wiki/features/estructuras-udm]] → Fase 2 y Fase 2-bis. |
+
+> [!NOTE] **🛑 Fix bug real de persistencia USD (mig 367, 2026-08-18, reportado por Fede).** El toggle
+> "Ingresar en USD" de costo/venta vivía en `useState` efímero: convertía a pesos al tipear pero
+> nunca persistía que el origen era USD — al reabrir la ficha volvía a mostrar "$" y el monto USD
+> original se perdía para siempre (solo sobrevivía el peso congelado a la cotización del momento de
+> carga). Costo no tenía ningún equivalente persistido a `precio_usd`/`moneda_venta` (venta, mig
+> 161) — se agregó `precio_costo_usd`/`moneda_costo`, mismo patrón exacto. El toggle ahora lee/
+> escribe esos campos del form directamente (no hay 2do estado paralelo que pueda desincronizarse).
+> De paso, los tiers mayoristas (arriba) sumaron la 3ª opción `USD`, que antes no existía — un tier
+> `precio_fijo` siempre se cobraba en pesos sin mirar la moneda del producto.
+>
+> ⚠️ **Hallazgo aparte, NO resuelto en este fix**: las columnas `precio_costo_moneda`/
+> `precio_venta_moneda` (mig 007, distintas de las de arriba) son un mecanismo huérfano — solo las
+> escribe/lee el importador CSV (`ImportarProductosPage.tsx`), guardando el monto SIN convertir
+> (ej. `precio_costo=45, precio_costo_moneda='USD'` significa literalmente "45 dólares", no pesos).
+> Ningún otro consumidor de `precio_costo`/`precio_venta` en la app (cálculo de margen en esta misma
+> ficha, POS, reportes, dashboard) respeta esa columna — todos asumen que `precio_costo`/
+> `precio_venta` son SIEMPRE pesos. Si algún tenant real importó productos con costo/precio marcado
+> como USD por CSV, el margen/reportes de esos productos están **silenciosamente mal calculados
+> hoy**. Pendiente: (a) confirmar si algún tenant en PROD usó esa columna del importador, (b)
+> decidir si el importador pasa a convertir a ARS al importar (como hace el resto de la app) o si se
+> migra al patrón `precio_costo_usd`/`moneda_costo` nuevo.
 
 ### Card 4: Stock e inventario
 

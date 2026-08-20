@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Download, BarChart3 } from 'lucide-react'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en exportar() (auditoría perf 2026-08-14, P5).
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -99,9 +99,10 @@ export function RepositoresReportes() {
     enabled: !!tenant,
   })
 
-  const exportar = () => {
+  const exportar = async () => {
     setExportando(true)
     try {
+      const XLSX = await import('xlsx')
       const filasExport = (filas as FilaReporte[]).map(f => ({
         Repositor: f.nombre,
         'Carteles completados': f.carteles,

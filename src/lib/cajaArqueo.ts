@@ -116,3 +116,17 @@ export function acumularTotalesPorMetodo(movimientos: MovimientoCaja[]): Record<
   }
   return map
 }
+
+/** Denominaciones de billete USD soportadas para el conteo de Caja USD (E2/J2 del relevamiento G5). */
+export const DENOMINACIONES_USD = [100, 50, 20, 10, 5, 1] as const
+
+/**
+ * Suma total del conteo por denominación de billete (E2). J2: solo billetes enteros, sin centavos
+ * de dólar — cada cantidad se trunca a entero no negativo antes de multiplicar.
+ */
+export function sumaDenominaciones(cantidades: Record<number, string>): number {
+  return DENOMINACIONES_USD.reduce((total, denom) => {
+    const cant = Math.max(0, Math.floor(Number(cantidades[denom]) || 0))
+    return total + denom * cant
+  }, 0)
+}

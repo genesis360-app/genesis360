@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { ensureFuerteSesionId } from '@/lib/cajaBoveda'
 
 interface NotificacionesButtonProps {
   className?: string
@@ -66,7 +67,7 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
       // Verificar que la sesión sigue abierta
       const { data: sesion } = await supabase
         .from('caja_sesiones')
-        .select('id, estado')
+        .select('id, estado, moneda')
         .eq('id', sesion_id)
         .single()
       if (!sesion || sesion.estado !== 'abierta') {
@@ -74,42 +75,19 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
         await markRead(n.id)
         return
       }
-
-      // Obtener o crear sesión permanente de caja fuerte
+      // G5 Fase 5 — la Bóveda ya soporta Caja USD: resolvemos la Caja Fuerte de la MISMA moneda
+      // que la sesión que pidió la transferencia (nunca acreditar dólares como si fueran pesos).
+      const monedaSesion = (sesion as any).moneda ?? 'ARS'
       const { data: cajaFuerte } = await supabase
         .from('cajas')
         .select('id')
         .eq('tenant_id', tenant.id)
         .eq('es_caja_fuerte', true)
-        .single()
-      if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
-
-      let fuerteSessionId: string
-      const { data: fuerteSession } = await supabase
-        .from('caja_sesiones')
-        .select('id')
-        .eq('caja_id', cajaFuerte.id)
-        .eq('es_permanente', true)
+        .eq('moneda', monedaSesion)
         .maybeSingle()
+      if (!cajaFuerte) throw new Error(`No hay Caja Fuerte en ${monedaSesion} configurada`)
 
-      if (fuerteSession) {
-        fuerteSessionId = fuerteSession.id
-      } else {
-        const { data: ns, error: eNS } = await supabase
-          .from('caja_sesiones')
-          .insert({
-            tenant_id: tenant.id,
-            caja_id: cajaFuerte.id,
-            estado: 'abierta',
-            es_permanente: true,
-            usuario_id: user.id,
-            monto_apertura: 0,
-          })
-          .select('id')
-          .single()
-        if (eNS) throw eNS
-        fuerteSessionId = ns.id
-      }
+      const fuerteSessionId = await ensureFuerteSesionId(supabase, tenant.id, cajaFuerte.id, monedaSesion, user.id)
 
       // Egreso de la caja del cajero
       const { error: e1 } = await supabase.from('caja_movimientos').insert({
@@ -117,6 +95,7 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
         sesion_id,
         tipo: 'egreso_traspaso',
         monto,
+        moneda: monedaSesion,
         concepto: concepto || `Depósito aprobado en caja fuerte`,
         usuario_id: user.id,
       })
@@ -128,6 +107,7 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
         sesion_id: fuerteSessionId,
         tipo: 'ingreso_traspaso',
         monto,
+        moneda: monedaSesion,
         concepto: concepto || `Depósito aprobado desde ${caja_nombre}`,
         usuario_id: user.id,
       })
@@ -141,7 +121,7 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
       qc.invalidateQueries({ queryKey: ['caja-fuerte-movimientos'] })
       qc.invalidateQueries({ queryKey: ['caja-fuerte-sesion'] })
 
-      toast.success(`Transferencia de $${monto.toLocaleString('es-AR')} aprobada y ejecutada`)
+      toast.success(`Transferencia de ${monedaSesion === 'USD' ? 'US$' : '$'}${monto.toLocaleString('es-AR')} aprobada y ejecutada`)
     } catch (e: any) {
       toast.error(e.message ?? 'Error al aprobar la solicitud')
     } finally {

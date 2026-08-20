@@ -3,7 +3,7 @@ title: Frontend Stack
 category: architecture
 tags: [react, vite, typescript, tailwind, zustand, pwa]
 sources: []
-updated: 2026-07-19
+updated: 2026-08-18
 ---
 
 # Frontend Stack
@@ -35,6 +35,48 @@ updated: 2026-07-19
 | browser-image-compression | Compresión de imágenes antes de subir |
 | clsx + tailwind-merge | Clases CSS condicionales |
 | date-fns | Utilidades de fechas |
+
+> [!TIP] **Code-splitting de `xlsx`/`jspdf`/`jspdf-autotable` (2026-08-14, auditoría de performance,
+> frontend #4)**: estas 3 librerías son pesadas (`xlsx` 499KB, `jspdf`+`jspdf-autotable` 386KB+31KB) y
+> solo se usan dentro de handlers puntuales de exportar/importar — 19 páginas/componentes las importaban
+> de forma **estática** al tope del archivo (`ClientesPage`, `CajaPage`, `CajaReportes`,
+> `CierresContablesPanel`, `EnviosPage`, `ComprasReportesPanel`, `FacturacionPage`, `HistorialPage`,
+> `ImportarInventarioPage`, `ImportarMasterPage`, `ImportarProductosPage`, `InventarioPage`,
+> `EnviosReportesPanel`, `PedidosPage`, `ProveedoresPage`, `ReportesPage`, `RrhhPage`,
+> `RepositoresReportes`, `RrhhReportesPanel`), inflando el bundle de cada una aunque el usuario nunca
+> exportara nada. Migradas a `await import(...)` dentro de cada handler (~30 call sites) — verificado con
+> el build de producción que las 3 libs quedan como chunks separados, y con un test Playwright ad-hoc que
+> confirmó una descarga real de Excel funcionando en runtime. **A propósito NO se tocaron** los 8 módulos
+> compartidos `src/lib/*PDF.ts` (facturasPDF, ocPDF, presupuestoPDF, reciboSueldoPDF, remitoPDF,
+> estadoCuentaPDF, etiquetasPreciosPDF, etiquetasEnvioPDF) — tienen múltiples callers y uno genera las
+> facturas fiscales reales, mayor blast radius para un beneficio de performance menor. **Estado: código
+> COMMITEADO Y PUSHEADO a `origin/dev`** (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), verificado
+> (build + e2e), SIN deploy a PROD. Ver [[wiki/features/
+> ventas-pos]] → "Memoización del carrito" para el otro hallazgo de performance de la misma auditoría.
+
+> [!TIP] **Cierre del resto de la auditoría de performance/calidad (2026-08-14, COMMITEADO Y PUSHEADO a
+> `origin/dev` desde el 2026-08-18, commit `310d9b3b`)**: dos fixes más de la misma auditoría, aplicados en la sesión que cerró el
+> reporte completo (top5 + hallazgos menores). **1) `CajaPage.tsx`** — 6 `refetchInterval` propios
+> recalibrados según qué alimentan (ninguno eliminado, criterio conservador por ser área de caja): saldo
+> en vivo que usa el cajero para cobrar/arquear (`sesion-activa`, `caja-movimientos`) 10s→30s;
+> indicadores de multi-dispositivo/decorativos (`caja-fuerte-movimientos`, `boveda-cuentas`,
+> `cajas-abiertas-ids`, `mis-sesiones-abiertas`) 10-15s→60-120s. **2) `toLocaleString` → `formatMoneda()`**
+> en 9 archivos donde el formato local era un duplicado exacto del default de `formatMoneda` ($ es-AR sin
+> decimales, sin conversión de moneda): `ComprasReportesPanel.tsx`, `EnviosReportesPanel.tsx`,
+> `DashClientesArea.tsx`, `DashEnviosArea.tsx`, `DashFacturacionArea.tsx`, `DashInventarioArea.tsx`,
+> `DashMarketingArea.tsx`, `DashProductosArea.tsx`, `DashProveedoresArea.tsx` — el resto de los ~200 usos
+> dispersos en VentasPage/GastosPage/ProveedoresPage/RrhhPage queda diferido (migración oportunista, al
+> tocar cada archivo, no en pasada masiva). **3) Tipado `Database` genérico en el cliente de Supabase
+> (`src/lib/supabase.ts`) — DIFERIDO, probado empíricamente, no solo evaluado en teoría**: se generaron
+> los tipos y se cableó el genérico, `tsc --noEmit` pasó de 0 a **152 errores** en una docena+ de
+> archivos — se revirtió todo (working tree quedó exactamente como estaba). Confirma que es alto riesgo
+> real, no solo lo que decía el reporte original. **4) Extracción de secciones de `ConfigPage.tsx`
+> (8206 líneas) — DIFERIDO**: a diferencia de `ApiTab`/`MarketplaceSection`/`ModoOperacionSection` (ya
+> extraídos, sin props compartidos), el resto de las secciones comparte un state bag único de ~30
+> `useState` y handlers de guardado compartidos — sin un límite de bajo riesgo real, mismo criterio que la
+> extracción de modales de VentasPage. Verificación: `tsc --noEmit` + `npm run build` verdes tras combinar
+> ambos agentes. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8) y `log.md` (2026-08-14,
+> cierre completo de la auditoría).
 
 ## Estructura de carpetas (`src/`)
 

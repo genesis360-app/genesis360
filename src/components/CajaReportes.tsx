@@ -9,9 +9,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { BRAND } from '@/config/brand'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportarExcel/exportarPDF (auditoría
+// perf 2026-08-14, P5) — evita cargarlas al abrir el tab Reportes si el usuario no exporta.
 import toast from 'react-hot-toast'
 import { Calendar, FileSpreadsheet, FileText, Download, Building2, Users, BarChart3 } from 'lucide-react'
 
@@ -181,8 +180,9 @@ export default function CajaReportes() {
   }, [datos, columnas])
 
   // ── Exports ─────────────────────────────────────────────────────────────
-  const exportarExcel = () => {
+  const exportarExcel = async () => {
     if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
+    const XLSX = await import('xlsx')
     const dataExport = datos.map((r: any) => {
       const fila: any = {}
       for (const c of columnas) fila[COL_LABELS[c] ?? c] = r[c]
@@ -205,8 +205,11 @@ export default function CajaReportes() {
     toast.success('Excel descargado')
   }
 
-  const exportarPDF = () => {
+  const exportarPDF = async () => {
     if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({ orientation: columnas.length > 6 ? 'landscape' : 'portrait' })
     doc.setFillColor(30, 58, 95); doc.rect(0, 0, doc.internal.pageSize.width, 25, 'F')
     doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.setFont('helvetica', 'bold')

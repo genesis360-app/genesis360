@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Lock, Unlock, AlertTriangle, Calendar, FileText, ChevronDown, ChevronRight, Loader2, FileDown } from 'lucide-react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// jspdf/jspdf-autotable se importan dinámicamente en generarPdfCierre (auditoría perf 2026-08-14, P5).
 import toast from 'react-hot-toast'
 import { supabase, CierreContable } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -125,7 +124,10 @@ export default function CierresContablesPanel() {
     onError: (e: any) => { toast.error(e.message); setConfirmando(false) },
   })
 
-  function generarPdfCierre(c: any) {
+  async function generarPdfCierre(c: any) {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const t: any = c.totales ?? {}
     const usuario = c.cerrado_por_user?.nombre_display ?? c.cerrado_por?.slice(0, 8) ?? '—'
     const tInfo: any = tenant ?? {}

@@ -17,8 +17,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// jspdf/jspdf-autotable se importan dinámicamente en imprimirCierre (auditoría perf 2026-08-14, P5).
 import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
@@ -26,7 +25,7 @@ type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion' |
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
-import { puede as cajaPuede, accedeABoveda, type ConfigCaja } from '@/lib/cajaPermisos'
+import { puede as cajaPuede, accedeABoveda, rolEnLista, type ConfigCaja } from '@/lib/cajaPermisos'
 import {
   extraerNumeroVenta, extraerMedioPago, signoMovimiento, saldoSesion,
   calcularDiferenciaCierre, calcularDiferenciaApertura, superaUmbralDiferencia,
@@ -34,7 +33,10 @@ import {
 } from '@/lib/cajaArqueo'
 import CajaReportes from '@/components/CajaReportes'
 import CajaCobranzasCC from '@/components/CajaCobranzasCC'
+import { ConteoDenominaciones } from '@/components/ConteoDenominaciones'
 import { useConfirm } from '@/hooks/useConfirm'
+import { calcularConversionUsd, ensureFuerteSesionId } from '@/lib/cajaBoveda'
+import { useCotizacion } from '@/hooks/useCotizacion'
 
 const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
@@ -74,6 +76,14 @@ export default function CajaPage() {
   const puedeEditarMovimiento = cajaPuede(rol, 'editar_movimiento', configCaja)
   const esSoloLectura         = user?.rol === 'CONTADOR'                // J1 — read-only
   const puedeAdministrarCaja  = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
+  // G5 Fase 3 (I1) — quién puede operar una Caja USD. DUEÑO siempre puede, sea cual sea lo guardado;
+  // caja_usd_roles_permitidos (mig 370) son roles ADICIONALES, mismo criterio "aditivo" que la
+  // cotización (useCotizacion.ts).
+  const puedeOperarCajaUsd = user?.rol === 'DUEÑO' || rolEnLista(
+    rol, (user as any)?.rol_custom_id, (tenant as any)?.caja_usd_roles_permitidos ?? [],
+  )
+  // G5 Fase 5 — conversión USD↔$ de la Bóveda (F2: usa compra/venta según el sentido)
+  const { cotizacion: cotizacionUSD, cotizacionCompra } = useCotizacion()
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
   const [showApertura, setShowApertura] = useState(false)
@@ -93,6 +103,11 @@ export default function CajaPage() {
   const [fuerteMonto, setFuerteMonto] = useState('')
   const [fuerteConcepto, setFuerteConcepto] = useState('')
   const [retiroCajaDestinoSesionId, setRetiroCajaDestinoSesionId] = useState('')
+  // G5 Fase 5 — pestaña ARS/USD de la Bóveda (2 filas es_caja_fuerte=true por tenant, mig 373)
+  const [bovedaTab, setBovedaTab] = useState<'ARS' | 'USD'>('ARS')
+  const [showConvertirUsd, setShowConvertirUsd] = useState(false)
+  const [convertirSentido, setConvertirSentido] = useState<'usd_a_ars' | 'ars_a_usd'>('usd_a_ars')
+  const [convertirMonto, setConvertirMonto] = useState('')
   // Solicitud CAJERO → caja fuerte
   const [showSolicitudFuerte, setShowSolicitudFuerte] = useState(false)
   const [solicitudMonto, setSolicitudMonto] = useState('')
@@ -116,6 +131,8 @@ export default function CajaPage() {
   const [aperturaParaUsuarioId, setAperturaParaUsuarioId] = useState<string>('')
   // B5 — clave maestra al cerrar caja ajena
   const [claveMaestraCierre, setClaveMaestraCierre] = useState('')
+  // G5 Fase 5 (F3) — clave maestra al extraer USD de la bóveda sin destino (retiro personal, etc.)
+  const [claveMaestraExtraer, setClaveMaestraExtraer] = useState('')
   // G1 — corregir movimiento manual
   const [corregirMov, setCorregirMov] = useState<any | null>(null)
   const [corregirMonto, setCorregirMonto] = useState('')
@@ -152,8 +169,16 @@ export default function CajaPage() {
     enabled: !!tenant,
   })
 
-  const cajasOperativas = (cajas as any[]).filter(c => !c.es_caja_fuerte)
-  const cajaFuerte = (cajas as any[]).find(c => c.es_caja_fuerte) ?? null
+  // G5 Fase 3 (I1) — una caja USD no aparece como seleccionable para un rol sin permiso; ni
+  // siquiera puede verla en el picker, mucho menos abrirla/operarla.
+  const cajasOperativas = (cajas as any[]).filter(c => !c.es_caja_fuerte && (c.moneda !== 'USD' || puedeOperarCajaUsd))
+  // G5 Fase 5 — 2 filas es_caja_fuerte=true por tenant desde mig 373 (ARS y USD). `bovedaTab`
+  // gobierna cuál alimenta el resto del código de abajo (fuerteSesion/fuerteMovimientos/fuerteSaldo/
+  // operarCajaFuerte/etc. siguen usando `cajaFuerte` sin cambios, ahora tab-aware).
+  const cajaFuerteArs = (cajas as any[]).find(c => c.es_caja_fuerte && (c.moneda ?? 'ARS') === 'ARS') ?? null
+  const cajaFuerteUsd = (cajas as any[]).find(c => c.es_caja_fuerte && c.moneda === 'USD') ?? null
+  const cajaFuerte = bovedaTab === 'USD' ? cajaFuerteUsd : cajaFuerteArs
+  const puedeConvertirUsdBoveda = cajaPuede(rol, 'convertir_usd_boveda')
 
   const { data: fuerteSesion = null } = useQuery({
     queryKey: ['caja-fuerte-sesion', cajaFuerte?.id],
@@ -175,7 +200,9 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!(fuerteSesion as any)?.id,
-    refetchInterval: 15_000,
+    // Auditoría perf 2026-08-14 (P6): traspasos a bóveda son eventos manuales infrecuentes,
+    // no ventas continuas — subido de 15s a 60s. Sigue con polling (dato de capital).
+    refetchInterval: 60_000,
   })
 
   const fuerteSaldo = (fuerteMovimientos as any[]).reduce((acc: number, m: any) => {
@@ -183,6 +210,38 @@ export default function CajaPage() {
     if (m.tipo === 'egreso_traspaso') return acc - m.monto
     return acc
   }, 0)
+
+  // G5 Fase 5 — saldo de la Caja Fuerte que NO es la de la pestaña activa (`bovedaTab`). Solo el
+  // modal de conversión USD↔$ necesita los 2 saldos a la vez; mismo patrón que arriba, gateado a
+  // que el modal esté abierto para no pollear en segundo plano una query que casi nadie usa.
+  const cajaFuerteOtra = bovedaTab === 'USD' ? cajaFuerteArs : cajaFuerteUsd
+  const { data: fuerteSesionOtra = null } = useQuery({
+    queryKey: ['caja-fuerte-sesion', cajaFuerteOtra?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, caja_id').eq('caja_id', cajaFuerteOtra!.id).eq('es_permanente', true)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      return data
+    },
+    enabled: !!cajaFuerteOtra && showConvertirUsd,
+  })
+  const { data: fuerteMovimientosOtra = [] } = useQuery({
+    queryKey: ['caja-fuerte-movimientos', fuerteSesionOtra?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_movimientos')
+        .select('*, users(nombre_display)').eq('sesion_id', (fuerteSesionOtra as any)!.id)
+        .order('created_at', { ascending: false }).limit(20)
+      return data ?? []
+    },
+    enabled: !!(fuerteSesionOtra as any)?.id && showConvertirUsd,
+  })
+  const fuerteSaldoOtra = (fuerteMovimientosOtra as any[]).reduce((acc: number, m: any) => {
+    if (m.tipo === 'ingreso_traspaso') return acc + m.monto
+    if (m.tipo === 'egreso_traspaso') return acc - m.monto
+    return acc
+  }, 0)
+  const fuerteSaldoArs = bovedaTab === 'USD' ? fuerteSaldoOtra : fuerteSaldo
+  const fuerteSaldoUsd = bovedaTab === 'USD' ? fuerteSaldo : fuerteSaldoOtra
 
   // B4 — Reporte diferencias por cajero (últimos 30 días)
   const { data: difsPorCajero = [] } = useQuery({
@@ -219,7 +278,9 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'caja_fuerte',
-    refetchInterval: 30_000,
+    // Auditoría perf 2026-08-14 (P6): saldo de bóveda por cuenta, ya gateado al tab caja_fuerte;
+    // cambia solo con traspasos/retiros manuales — subido de 30s a 2min.
+    refetchInterval: 120_000,
   })
 
   // Capital del negocio por moneda = suma de las cuentas activas de la bóveda, AGRUPADA por moneda
@@ -238,7 +299,7 @@ export default function CajaPage() {
     queryKey: ['boveda-retiros', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('boveda_retiros')
-        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo)')
+        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo, moneda)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(50)
@@ -263,7 +324,7 @@ export default function CajaPage() {
     queryKey: ['boveda-arqueos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('boveda_arqueos')
-        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo)')
+        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo, moneda)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(50)
@@ -317,20 +378,27 @@ export default function CajaPage() {
       const cuenta = (bovedaCuentas as any[]).find(c => c.cuenta_origen_id === extraerCuentaId)
       if (!cuenta) throw new Error('Cuenta inválida')
       const saldoCuenta = Number(cuenta.saldo || 0)
-      if (monto > saldoCuenta) throw new Error(`Saldo insuficiente en ${cuenta.nombre}. Disponible: ${formatMoneda(saldoCuenta)}`)
+      if (monto > saldoCuenta) throw new Error(`Saldo insuficiente en ${cuenta.nombre}. Disponible: ${formatMonedaLib(saldoCuenta, cuenta.moneda ?? 'ARS')}`)
 
-      // Necesitamos una sesión donde anclar el movimiento (sesión de caja fuerte)
-      if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
-      let fuerteSessionId = (fuerteSesion as any)?.id
-      if (!fuerteSessionId) {
-        const { data: ns, error: eS } = await supabase.from('caja_sesiones').insert({
-          tenant_id: tenant!.id, caja_id: cajaFuerte.id,
-          estado: 'abierta', es_permanente: true,
-          usuario_id: user!.id, monto_apertura: 0,
-        }).select('id').single()
-        if (eS) throw eS
-        fuerteSessionId = ns.id
+      // G5 Fase 5 (F3) — retiro de Caja USD sin destino (dueño se lleva dólares) requiere,
+      // además del motivo (ya obligatorio arriba), clave maestra si el tenant la configuró y el
+      // monto alcanza el umbral propio en USD (default: siempre exige si no hay umbral cargado).
+      const monedaCuenta = cuenta.moneda ?? 'ARS'
+      const claveConfigurada = !!(tenant as any)?.clave_maestra
+      if (monedaCuenta === 'USD' && claveConfigurada && monto >= ((tenant as any)?.caja_usd_clave_maestra_umbral ?? 0)) {
+        if (!claveMaestraExtraer.trim()) throw new Error('Extracción en USD sin destino: ingresá la clave maestra.')
+        const { data: claveOK } = await supabase.rpc('verificar_clave_maestra', {
+          p_tenant_id: tenant!.id,
+          p_clave: claveMaestraExtraer.trim(),
+        })
+        if (!claveOK) throw new Error('Clave maestra incorrecta')
       }
+
+      // Necesitamos una sesión donde anclar el movimiento — la Caja Fuerte de la MISMA moneda que
+      // la cuenta elegida (no la pestaña activa: el dropdown ya mezcla cuentas ARS y USD).
+      const cajaFuerteCuenta = monedaCuenta === 'USD' ? cajaFuerteUsd : cajaFuerteArs
+      if (!cajaFuerteCuenta) throw new Error('No hay caja fuerte configurada')
+      const fuerteSessionId = await ensureFuerteSesionId(supabase, tenant!.id, cajaFuerteCuenta.id, monedaCuenta, user!.id)
 
       const tipoMov = cuenta.tipo === 'efectivo' ? 'egreso_traspaso' : 'egreso_informativo'
       const concepto = `[Extracción] ${extraerMotivo.trim()} (${extraerTipo.replace('_', ' ')})`
@@ -340,6 +408,7 @@ export default function CajaPage() {
         sesion_id: fuerteSessionId,
         tipo: tipoMov,
         monto,
+        moneda: monedaCuenta,
         concepto,
         cuenta_origen_id: extraerCuentaId,
         usuario_id: user!.id,
@@ -360,14 +429,15 @@ export default function CajaPage() {
     },
     onSuccess: () => {
       toast.success('Extracción registrada')
-      logActividad({ entidad: 'caja', entidad_nombre: 'Bóveda', accion: 'pagar', valor_nuevo: `Extracción ${formatMoneda(parseFloat(extraerMonto))} - ${extraerMotivo}`, pagina: '/caja' })
+      const cuentaExtraida = (bovedaCuentas as any[]).find(c => c.cuenta_origen_id === extraerCuentaId)
+      logActividad({ entidad: 'caja', entidad_nombre: 'Bóveda', accion: 'pagar', valor_nuevo: `Extracción ${formatMonedaLib(parseFloat(extraerMonto), cuentaExtraida?.moneda ?? 'ARS')} - ${extraerMotivo}`, pagina: '/caja' })
       qc.invalidateQueries({ queryKey: ['boveda-cuentas'] })
       qc.invalidateQueries({ queryKey: ['boveda-retiros'] })
       qc.invalidateQueries({ queryKey: ['caja-fuerte-movimientos'] })
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       setShowExtraerBoveda(false)
       setExtraerCuentaId(''); setExtraerMonto(''); setExtraerTipo('retiro_personal')
-      setExtraerMotivo(''); setExtraerNotas('')
+      setExtraerMotivo(''); setExtraerNotas(''); setClaveMaestraExtraer('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -383,7 +453,9 @@ export default function CajaPage() {
       return (data ?? []).map((r: any) => r.caja_id as string)
     },
     enabled: !!tenant,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P6): indicador visual (qué cajas están abiertas) en el selector,
+    // sin gate funcional — subido de 10s a 1min, igual criterio que el badge de AppLayout.
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 
@@ -398,7 +470,10 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!tenant && !!user,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P6): guard consultado al intentar abrir caja (acción puntual del
+    // usuario), no un número que cambie solo — subido de 10s a 1min; refetchOnWindowFocus cubre
+    // el caso de volver a la pestaña.
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 
@@ -415,7 +490,7 @@ export default function CajaPage() {
     queryFn: async () => {
       const { data } = await applyFilter(
         supabase.from('caja_sesiones')
-          .select('id, caja_id, monto_apertura, cajas(nombre)')
+          .select('id, caja_id, monto_apertura, moneda, cajas(nombre)')
           .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
       )
       return data ?? []
@@ -432,8 +507,14 @@ export default function CajaPage() {
     if (cajaSeleccionada !== null || cajasOperativas.length === 0) return
     if (cajaPreferidaId && cajasOperativas.find((c: any) => c.id === cajaPreferidaId)) {
       setCajaSeleccionada(cajaPreferidaId)
-    } else if (cajasAbiertas.length > 0) {
-      setCajaSeleccionada(cajasAbiertas[0])
+    } else {
+      // 🐛 fix (G5 Fase 5): `cajasAbiertas` trae TODAS las sesiones abiertas del tenant, incluida
+      // la sesión permanente de la Caja Fuerte (ahora 2, ARS y USD) — pese a que el comentario de
+      // arriba ya decía "nunca caja fuerte", `cajasAbiertas[0]` podía terminar siendo la fuerte si
+      // esa fila venía primero en la respuesta. Filtramos contra `cajasOperativas` (esa sí excluye
+      // es_caja_fuerte) antes de auto-seleccionar.
+      const primeraOperativaAbierta = (cajasAbiertas as string[]).find(id => cajasOperativas.some((c: any) => c.id === id))
+      if (primeraOperativaAbierta) setCajaSeleccionada(primeraOperativaAbierta)
     }
   }, [cajasOperativas, cajasAbiertas, cajaSeleccionada, cajaPreferidaId])
 
@@ -462,10 +543,23 @@ export default function CajaPage() {
       return data ?? null
     },
     enabled: !!cajaId,
-    // Sincronización multi-dispositivo: refresca cada 10s y al volver al foco
-    refetchInterval: 10_000,
+    // Sincronización multi-dispositivo: refresca cada 10s y al volver al foco.
+    // Auditoría perf 2026-08-14 (P6): es el saldo/estado real de la sesión que el cajero está
+    // cobrando — se mantiene conservador (30s en vez de 10s, no se sube a 1min como los guards
+    // decorativos de arriba); refetchOnWindowFocus sigue cubriendo el caso de volver a la pestaña.
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   })
+
+  // G5 Fase 3 (E1) — formatMoneda (arriba) sigue siendo tenant.moneda: correcto para montos de
+  // OTRA sesión puntual (ese caso usa la moneda de esa fila). La Bóveda/Caja Fuerte (Fase 5) tiene
+  // sus propios displays con formatMonedaLib(x, cajaFuerte.moneda) — no usa formatMoneda ni
+  // formatMonedaCaja, porque no está atada a sesionActiva/cajaActual sino a `bovedaTab`.
+  // formatMonedaCaja es específico de la caja/sesión SELECCIONADA ahora mismo — sesionActiva.moneda
+  // ya activa (mig 368/369) manda una vez que exista una sesión abierta; antes de abrir, cae a
+  // cajaActual.moneda (la etiqueta de la caja elegida en el selector).
+  const esCajaUsdActual = ((sesionActiva as any)?.moneda ?? cajaActual?.moneda) === 'USD'
+  const formatMonedaCaja = (v: number) => formatMonedaLib(v, (sesionActiva as any)?.moneda ?? cajaActual?.moneda ?? (tenant as any)?.moneda ?? 'ARS')
 
   const { data: movimientos = [] } = useQuery({
     queryKey: ['caja-movimientos', sesionActiva?.id],
@@ -477,12 +571,15 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!sesionActiva?.id,
-    refetchInterval: 10_000,
+    // Auditoría perf 2026-08-14 (P6): alimenta el saldo de caja que el cajero usa para cobrar/
+    // arquear (multi-dispositivo: otra terminal puede registrar una venta que afecte esta caja) —
+    // se mantiene conservador en 30s (no se sube al mismo nivel que los indicadores decorativos).
+    refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   })
 
   const { data: historialSesiones = [] } = useQuery({
-    queryKey: ['historial-sesiones', cajaId, sucursalId, cajaFuerte?.id],
+    queryKey: ['historial-sesiones', cajaId, sucursalId, cajaFuerteArs?.id, cajaFuerteUsd?.id],
     queryFn: async () => {
       let q = applyFilter(
         supabase.from('caja_sesiones')
@@ -492,8 +589,10 @@ export default function CajaPage() {
           .order('cerrada_at', { ascending: false })
           .limit(30)
       )
-      // Excluir la caja fuerte del historial — tiene su propio historial en el tab Caja Fuerte
-      if (cajaFuerte?.id) q = q.neq('caja_id', cajaFuerte.id)
+      // Excluir AMBAS Cajas Fuerte (ARS y USD, G5 Fase 5) del historial — tienen su propio
+      // historial en el tab Caja Fuerte.
+      const idsFuerte = [cajaFuerteArs?.id, cajaFuerteUsd?.id].filter(Boolean) as string[]
+      if (idsFuerte.length > 0) q = q.not('caja_id', 'in', `(${idsFuerte.join(',')})`)
       const { data } = await q
       return data ?? []
     },
@@ -615,6 +714,9 @@ export default function CajaPage() {
         monto_sugerido_apertura: montoSugerido,
         diferencia_apertura: difApertura,
         estado: 'abierta',
+        // G5 Fase 3 (E1) — moneda REAL de la sesión, denormalizada de cajas.moneda al abrir
+        // (mig 368: inmutable en el histórico aunque después se edite cajas.moneda).
+        moneda: cajaActual?.moneda ?? 'ARS',
         sucursal_id: sucursalId || null,
       })
       if (error) throw error
@@ -769,6 +871,7 @@ export default function CajaPage() {
           tipo: ajuste.tipo,
           concepto: ajuste.etiqueta === 'sobrante' ? `[Diferencia caja] Sobrante en cierre` : `[Diferencia caja] Faltante en cierre`,
           monto: Math.abs(dif),
+          moneda: (sesionActiva as any).moneda ?? 'ARS',
           usuario_id: sesionActiva.usuario_id,  // asociado al cajero responsable
         })
       }
@@ -778,23 +881,23 @@ export default function CajaPage() {
         entidad: 'caja', entidad_id: sesionActiva?.id,
         entidad_nombre: cajaActual?.nombre ?? 'Caja',
         accion: 'cerrar',
-        valor_nuevo: `Saldo: ${formatMoneda(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMoneda(diferencia)}` : ''}`,
+        valor_nuevo: `Saldo: ${formatMonedaCaja(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMonedaCaja(diferencia)}` : ''}`,
         pagina: '/caja',
       })
       const esCajeroPuro = user?.rol === 'CAJERO'
       // C2 — Mail al DUEÑO con detalle del cierre (siempre)
       // B1/B2/B3 — Alertas adicionales por diferencia según config del tenant
       void (async () => {
-        const titulo = `Cierre de ${cajaActual?.nombre ?? 'Caja'} #${(sesionActiva as any).numero ?? ''} — ${formatMoneda(saldoActual)}`
+        const titulo = `Cierre de ${cajaActual?.nombre ?? 'Caja'} #${(sesionActiva as any).numero ?? ''} — ${formatMonedaCaja(saldoActual)}`
         const lineas = [
           `Caja: ${cajaActual?.nombre ?? '—'}`,
           `Cerró: ${user?.nombre_display ?? (user as any)?.email ?? '—'}`,
           `Hora: ${new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`,
-          `Saldo sistema: ${formatMoneda(saldoActual)}`,
-          `Conteo real: ${formatMoneda(montoRealNum)}`,
-          `Diferencia: ${diferencia !== null ? formatMoneda(diferencia) : '—'}`,
-          `Ingresos: ${formatMoneda(totalIngresos)}`,
-          `Egresos: ${formatMoneda(totalEgresos)}`,
+          `Saldo sistema: ${formatMonedaCaja(saldoActual)}`,
+          `Conteo real: ${formatMonedaCaja(montoRealNum)}`,
+          `Diferencia: ${diferencia !== null ? formatMonedaCaja(diferencia) : '—'}`,
+          `Ingresos: ${formatMonedaCaja(totalIngresos)}`,
+          `Egresos: ${formatMonedaCaja(totalEgresos)}`,
           notasCierre ? `Notas: ${notasCierre}` : '',
         ].filter(Boolean).join('\n')
 
@@ -808,14 +911,17 @@ export default function CajaPage() {
           }).catch(() => {})
         }
 
-        // B1/B2/B3 — Si hay diferencia que supera umbral configurado, alertar a roles configurados
+        // B1/B2/B3 — Si hay diferencia que supera umbral configurado, alertar a roles configurados.
+        // G5 Fase 3 (E3): umbral propio en USD, separado del de pesos — un mismo número no significa
+        // lo mismo en las 2 monedas.
         const dif = diferencia ?? 0
-        const umbral = Number((tenant as any)?.diferencia_caja_umbral ?? 0)  // 0/NULL = alerta con cualquier dif
+        const esCajaUsd = ((sesionActiva as any)?.moneda ?? cajaActual?.moneda) === 'USD'
+        const umbral = Number((esCajaUsd ? (tenant as any)?.diferencia_caja_umbral_usd : (tenant as any)?.diferencia_caja_umbral) ?? 0)  // 0/NULL = alerta con cualquier dif
         if (superaUmbralDiferencia(dif, umbral)) {
           const rolesAlerta: string[] = (tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR']
           const canales: string[] = (tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email']
-          const tituloDif = `⚠ Diferencia en cierre ${cajaActual?.nombre ?? 'caja'}: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`
-          const mensajeDif = `${user?.nombre_display ?? 'Un cajero'} cerró ${cajaActual?.nombre ?? 'la caja'} con ${dif > 0 ? 'sobrante' : 'faltante'} de ${formatMoneda(Math.abs(dif))}. Saldo sistema: ${formatMoneda(saldoActual)} · Conteo: ${formatMoneda(montoRealNum)}.`
+          const tituloDif = `⚠ Diferencia en cierre ${cajaActual?.nombre ?? 'caja'}: ${dif > 0 ? '+' : ''}${formatMonedaCaja(dif)}`
+          const mensajeDif = `${user?.nombre_display ?? 'Un cajero'} cerró ${cajaActual?.nombre ?? 'la caja'} con ${dif > 0 ? 'sobrante' : 'faltante'} de ${formatMonedaCaja(Math.abs(dif))}. Saldo sistema: ${formatMonedaCaja(saldoActual)} · Conteo: ${formatMonedaCaja(montoRealNum)}.`
           const { data: destinatarios } = await supabase.from('users')
             .select('id, email').eq('tenant_id', tenant!.id).in('rol', rolesAlerta)
           if (destinatarios?.length) {
@@ -865,6 +971,7 @@ export default function CajaPage() {
         tipo: 'ingreso',
         concepto: movConcepto.trim(),
         monto,
+        moneda: (sesionActiva as any).moneda ?? 'ARS',
         usuario_id: user?.id,
       })
       if (error) throw error
@@ -908,12 +1015,14 @@ export default function CajaPage() {
 
       // 1) Insertar reversión del original (mismo tipo opuesto)
       const tipoReverso = corregirMov.tipo === 'ingreso' ? 'egreso' : 'ingreso'
+      const monedaMov = (corregirMov as any).moneda ?? 'ARS'
       const { error: e1 } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id,
         sesion_id: corregirMov.sesion_id,
         tipo: tipoReverso,
         concepto: `[Reversión] ${corregirMov.concepto}`,
         monto: montoOriginal,
+        moneda: monedaMov,
         usuario_id: user?.id,
       })
       if (e1) throw e1
@@ -924,6 +1033,7 @@ export default function CajaPage() {
         tipo: corregirMov.tipo,
         concepto: `[Corregido] ${corregirConcepto.trim()}`,
         monto: nuevoMonto,
+        moneda: monedaMov,
         usuario_id: user?.id,
       }).select('id').single()
       if (e2) throw e2
@@ -937,7 +1047,7 @@ export default function CajaPage() {
         if (Math.abs(diferencia) > 0.01) {
           // La sesión contraparte debe estar abierta para registrarle el ajuste
           const { data: sesionContraparte } = await supabase.from('caja_sesiones')
-            .select('id, estado, cajas(nombre)')
+            .select('id, estado, moneda, cajas(nombre)')
             .eq('id', contraSesionId)
             .maybeSingle()
           if (!sesionContraparte || (sesionContraparte as any).estado !== 'abierta') {
@@ -954,6 +1064,7 @@ export default function CajaPage() {
             tipo: tipoAjuste,
             concepto: `[Ajuste traspaso] ${conceptoBase} · diferencia ${diferencia > 0 ? '+' : ''}${diferencia.toLocaleString('es-AR')}`,
             monto: Math.abs(diferencia),
+            moneda: (sesionContraparte as any)?.moneda ?? 'ARS',
             usuario_id: user?.id,
           })
           if (e3) throw e3
@@ -987,23 +1098,32 @@ export default function CajaPage() {
       if (!traspasoDestinoSesionId) throw new Error('Seleccioná la caja destino')
       const monto = parseFloat(traspasoMonto)
       if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
-      if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
+      if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMonedaCaja(saldoActual)}`)
       const concepto = traspasoConcepto.trim() || 'Traspaso entre cajas'
       const sesDestino = (sesionesAbiertasAll as any[]).find(s => s.id === traspasoDestinoSesionId)
       const nombreDestino = sesDestino?.cajas?.nombre ?? 'otra caja'
       const nombreOrigen = cajaActual?.nombre ?? 'esta caja'
+      // G5 Fase 3 (F1) — bloquear traspaso entre cajas de distinta moneda: hoy sin esto se puede
+      // traspasar "100" de una caja ARS a una USD y acreditar 100 dólares (bug de integridad latente
+      // que el relevamiento pidió cerrar). El selector del modal ya filtra por moneda (defensa en la
+      // UI); esto es el guard real, no bypasseable eligiendo otra opción a mano.
+      const monedaOrigen = (sesionActiva as any).moneda ?? 'ARS'
+      const monedaDestino = (sesDestino as any)?.moneda ?? 'ARS'
+      if (monedaOrigen !== monedaDestino) {
+        throw new Error(`No se puede traspasar entre cajas de distinta moneda (${monedaOrigen} → ${monedaDestino}).`)
+      }
       // Egreso en origen
       const { data: movOrigen, error: e1 } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id, sesion_id: sesionActiva.id,
         tipo: 'egreso', concepto: `${concepto} → ${nombreDestino}`,
-        monto, usuario_id: user!.id,
+        monto, moneda: monedaOrigen, usuario_id: user!.id,
       }).select('id').single()
       if (e1) throw e1
       // Ingreso en destino
       const { data: movDestino, error: e2 } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id, sesion_id: traspasoDestinoSesionId,
         tipo: 'ingreso', concepto: `${concepto} ← ${nombreOrigen}`,
-        monto, usuario_id: user!.id,
+        monto, moneda: monedaDestino, usuario_id: user!.id,
       }).select('id').single()
       if (e2) throw e2
       // Registro en tabla de traspasos + FK a los movimientos para propagar correcciones (ISS-193)
@@ -1032,6 +1152,19 @@ export default function CajaPage() {
     }: { tipo: 'deposito' | 'retiro'; monto: number; concepto: string; desdeSessionId?: string; hastaSessionId?: string; cuentaOrigenId?: string }) => {
       if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
       if (monto <= 0) throw new Error('Ingresá un monto válido')
+      const monedaFuerte = cajaFuerte.moneda ?? 'ARS'
+      // G5 Fase 5 — la caja de origen/destino elegida en el modal SIEMPRE tiene que ser de la
+      // misma moneda que la pestaña de Bóveda activa (F1: nunca mezclar ARS/USD en un mismo
+      // movimiento). El selector del modal ya filtra estas opciones; esto es el guard real por si
+      // un valor pre-cargado (ej. "depositar desde la caja actual") llega igual al submit.
+      const monedaSesionDistinta = (id?: string) => {
+        if (!id) return false
+        const s = (sesionesAbiertasAll as any[]).find(s => s.id === id) as any
+        return (s?.moneda ?? 'ARS') !== monedaFuerte
+      }
+      if (monedaSesionDistinta(desdeSessionId) || monedaSesionDistinta(hastaSessionId)) {
+        throw new Error(`Esa caja no es de la misma moneda que la Caja Fuerte ${monedaFuerte}.`)
+      }
       // Depósito desde caja: requiere saldo en esa caja
       if (tipo === 'deposito' && desdeSessionId) {
         // Obtener saldo de la sesión de origen seleccionada
@@ -1044,26 +1177,18 @@ export default function CajaPage() {
           if (m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena' || m.tipo === 'egreso_traspaso') return acc - m.monto
           return acc
         }, 0)
-        if (monto > saldoOrigen) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoOrigen)}`)
+        if (monto > saldoOrigen) throw new Error(`Saldo insuficiente. Disponible: ${formatMonedaLib(saldoOrigen, monedaFuerte)}`)
       }
-      if (tipo === 'retiro' && monto > fuerteSaldo) throw new Error(`Saldo insuficiente en caja fuerte. Disponible: ${formatMoneda(fuerteSaldo)}`)
+      if (tipo === 'retiro' && monto > fuerteSaldo) throw new Error(`Saldo insuficiente en caja fuerte. Disponible: ${formatMonedaLib(fuerteSaldo, monedaFuerte)}`)
 
-      // Obtener o crear sesión permanente de la fuerte
-      let fuerteSessionId = (fuerteSesion as any)?.id
-      if (!fuerteSessionId) {
-        const { data: ns, error: eS } = await supabase.from('caja_sesiones').insert({
-          tenant_id: tenant!.id, caja_id: cajaFuerte.id,
-          estado: 'abierta', es_permanente: true,
-          usuario_id: user!.id, monto_apertura: 0,
-        }).select('id').single()
-        if (eS) throw eS
-        fuerteSessionId = ns.id
-      }
+      // Obtener o crear sesión permanente de la fuerte, con `moneda` explícita (mig 372 la exige
+      // igual a la de la sesión — el default de la columna es 'ARS', no sirve para la fuerte USD).
+      const fuerteSessionId = await ensureFuerteSesionId(supabase, tenant!.id, cajaFuerte.id, monedaFuerte, user!.id)
 
-      // Cuenta efectivo del tenant — default para retiros/traspasos entre cajas (siempre efectivo).
-      const cuentaEfectivo = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo')
+      // Cuenta efectivo de ESTA moneda — default para retiros/traspasos entre cajas.
+      const cuentaEfectivo = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo' && c.moneda === monedaFuerte)
       const cuentaEfectivoId = cuentaEfectivo?.cuenta_origen_id ?? null
-      // Cuenta destino del ingreso a la bóveda: la elegida en el modal (default Efectivo).
+      // Cuenta destino del ingreso a la bóveda: la elegida en el modal (default Efectivo de esta moneda).
       const cuentaIngresoId = cuentaOrigenId || cuentaEfectivoId
 
       if (tipo === 'deposito') {
@@ -1071,7 +1196,7 @@ export default function CajaPage() {
         if (desdeSessionId) {
           const { error: e1 } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: desdeSessionId,
-            tipo: 'egreso_traspaso', monto,
+            tipo: 'egreso_traspaso', monto, moneda: monedaFuerte,
             concepto: concepto || 'Depósito en caja fuerte',
             cuenta_origen_id: cuentaEfectivoId,
             usuario_id: user!.id,
@@ -1081,7 +1206,7 @@ export default function CajaPage() {
         // Ingreso en caja fuerte (siempre) — a la cuenta de origen elegida (default Efectivo)
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
-          tipo: 'ingreso_traspaso', monto,
+          tipo: 'ingreso_traspaso', monto, moneda: monedaFuerte,
           concepto: concepto || (desdeSessionId ? `Depósito desde caja` : 'Ingreso externo'),
           cuenta_origen_id: cuentaIngresoId,
           usuario_id: user!.id,
@@ -1092,7 +1217,7 @@ export default function CajaPage() {
         if (!destSesionId) throw new Error('Seleccioná la caja de destino')
         const { error: e1 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
-          tipo: 'egreso_traspaso', monto,
+          tipo: 'egreso_traspaso', monto, moneda: monedaFuerte,
           concepto: concepto || 'Retiro de caja fuerte',
           cuenta_origen_id: cuentaEfectivoId,
           usuario_id: user!.id,
@@ -1100,7 +1225,7 @@ export default function CajaPage() {
         if (e1) throw e1
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: destSesionId,
-          tipo: 'ingreso_traspaso', monto,
+          tipo: 'ingreso_traspaso', monto, moneda: monedaFuerte,
           concepto: concepto || 'Ingreso desde caja fuerte',
           cuenta_origen_id: cuentaEfectivoId,
           usuario_id: user!.id,
@@ -1122,15 +1247,25 @@ export default function CajaPage() {
   const enviarSolicitudFuerte = useMutation({
     mutationFn: async ({ monto, concepto }: { monto: number; concepto: string }) => {
       if (!sesionActiva) throw new Error('No hay sesión activa para transferir')
+      // G5 Fase 5 — la Bóveda ya soporta Caja USD; aprobarSolicitudCajaFuerte (NotificacionesButton)
+      // resuelve la Caja Fuerte de la misma moneda que esta sesión al aprobar.
       if (monto <= 0) throw new Error('Ingresá un monto válido')
-      if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
+      if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMonedaCaja(saldoActual)}`)
 
-      const { data: supervisores, error: eS } = await supabase.from('users')
-        .select('id')
+      const { data: supervisoresRaw, error: eS } = await supabase.from('users')
+        .select('id, rol, rol_custom_id')
         .eq('tenant_id', tenant!.id)
         .in('rol', ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'])
       if (eS) throw eS
-      if (!supervisores?.length) throw new Error('No hay supervisores para aprobar la solicitud')
+      // G5 Fase 5 — para una solicitud en USD, solo notificar a quien realmente puede aprobarla
+      // (DUEÑO o rol con permiso en caja_usd_roles_permitidos): aprobar crea/opera la sesión
+      // permanente de la Caja Fuerte USD, y fn_validar_rol_opera_caja_usd (mig 371) la rechaza
+      // igual si el aprobador no tiene ese permiso — mejor no notificar a quien de todos modos
+      // no va a poder completar la acción.
+      const supervisores = esCajaUsdActual
+        ? (supervisoresRaw ?? []).filter(s => s.rol === 'DUEÑO' || rolEnLista(s.rol as any, s.rol_custom_id, (tenant as any)?.caja_usd_roles_permitidos ?? []))
+        : (supervisoresRaw ?? [])
+      if (!supervisores?.length) throw new Error(esCajaUsdActual ? 'No hay usuarios habilitados para operar Caja USD que puedan aprobar' : 'No hay supervisores para aprobar la solicitud')
 
       const metadata = {
         accion: 'solicitud_caja_fuerte',
@@ -1147,7 +1282,7 @@ export default function CajaPage() {
           user_id: s.id,
           tipo: 'warning',
           titulo: `Solicitud de Caja Fuerte — ${user?.nombre_display ?? 'Cajero'}`,
-          mensaje: `Solicitar transferir ${formatMoneda(monto)} de "${cajaActual?.nombre}" a Caja Fuerte.${concepto ? ` Concepto: ${concepto}` : ''}`,
+          mensaje: `Solicitar transferir ${formatMonedaCaja(monto)} de "${cajaActual?.nombre}" a Caja Fuerte.${concepto ? ` Concepto: ${concepto}` : ''}`,
           action_url: '/caja',
           metadata,
         }))
@@ -1163,6 +1298,66 @@ export default function CajaPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // G5 Fase 5 (F2) — único punto de conversión USD↔$ de todo el sistema, solo DUEÑO. Mueve plata
+  // entre las 2 Cajas Fuerte (2 caja_movimientos, mismo patrón que un traspaso interno) y deja
+  // auditoría en boveda_conversiones_usd con la cotización efectivamente usada.
+  const convertirUsdBoveda = useMutation({
+    mutationFn: async ({ sentido, monto }: { sentido: 'usd_a_ars' | 'ars_a_usd'; monto: number }) => {
+      if (!puedeConvertirUsdBoveda) throw new Error('Solo el DUEÑO puede convertir USD↔$ en la Bóveda')
+      if (!cajaFuerteArs || !cajaFuerteUsd) throw new Error('Falta configurar la Caja Fuerte en pesos o en dólares')
+      const { montoDestino, tasaUsada } = calcularConversionUsd(sentido, monto, cotizacionUSD, cotizacionCompra)
+
+      const saldoOrigenDisponible = sentido === 'usd_a_ars' ? fuerteSaldoUsd : fuerteSaldoArs
+      if (monto > saldoOrigenDisponible) {
+        throw new Error(`Saldo insuficiente en la Caja Fuerte ${sentido === 'usd_a_ars' ? 'USD' : 'ARS'}. Disponible: ${formatMonedaLib(saldoOrigenDisponible, sentido === 'usd_a_ars' ? 'USD' : 'ARS')}`)
+      }
+
+      const origenMoneda = sentido === 'usd_a_ars' ? 'USD' : 'ARS'
+      const destinoMoneda = sentido === 'usd_a_ars' ? 'ARS' : 'USD'
+      const origenCaja = sentido === 'usd_a_ars' ? cajaFuerteUsd : cajaFuerteArs
+      const destinoCaja = sentido === 'usd_a_ars' ? cajaFuerteArs : cajaFuerteUsd
+
+      const origenSesionId = await ensureFuerteSesionId(supabase, tenant!.id, origenCaja.id, origenMoneda, user!.id)
+      const destinoSesionId = await ensureFuerteSesionId(supabase, tenant!.id, destinoCaja.id, destinoMoneda, user!.id)
+
+      const cuentaOrigenId = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo' && c.moneda === origenMoneda)?.cuenta_origen_id ?? null
+      const cuentaDestinoId = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo' && c.moneda === destinoMoneda)?.cuenta_origen_id ?? null
+
+      const concepto = `Conversión ${origenMoneda}→${destinoMoneda} (cotización ${tasaUsada})`
+
+      const { data: movOrigen, error: e1 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id, sesion_id: origenSesionId,
+        tipo: 'egreso_traspaso', monto, moneda: origenMoneda,
+        concepto, cuenta_origen_id: cuentaOrigenId, usuario_id: user!.id,
+      }).select('id').single()
+      if (e1) throw e1
+
+      const { data: movDestino, error: e2 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id, sesion_id: destinoSesionId,
+        tipo: 'ingreso_traspaso', monto: montoDestino, moneda: destinoMoneda,
+        concepto, cuenta_origen_id: cuentaDestinoId, usuario_id: user!.id,
+      }).select('id').single()
+      if (e2) throw e2
+
+      const { error: e3 } = await supabase.from('boveda_conversiones_usd').insert({
+        tenant_id: tenant!.id, sentido, monto_origen: monto, monto_destino: montoDestino,
+        cotizacion_usada: tasaUsada, usuario_id: user!.id,
+        movimiento_origen_id: movOrigen.id, movimiento_destino_id: movDestino.id,
+      })
+      if (e3) throw e3
+    },
+    onSuccess: (_data, vars) => {
+      toast.success(`Convertido ${vars.sentido === 'usd_a_ars' ? 'USD→$' : '$→USD'}`)
+      logActividad({ entidad: 'caja', entidad_nombre: 'Bóveda', accion: 'editar', valor_nuevo: `Conversión ${vars.sentido}`, pagina: '/caja' })
+      qc.invalidateQueries({ queryKey: ['caja-fuerte-sesion'] })
+      qc.invalidateQueries({ queryKey: ['caja-fuerte-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['boveda-cuentas'] })
+      setShowConvertirUsd(false); setConvertirMonto('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const realizarArqueo = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay sesión activa')
@@ -1174,6 +1369,7 @@ export default function CajaPage() {
         saldo_calculado: saldoActual,
         saldo_real: conteo,
         notas: arqueoNotas.trim() || null,
+        moneda: (sesionActiva as any).moneda ?? 'ARS',
         usuario_id: user?.id,
       })
       if (error) throw error
@@ -1219,9 +1415,12 @@ export default function CajaPage() {
   // siempre transfiere desde la caja en la que está parado).
   useEffect(() => {
     if (!showDepositoFuerte) return
-    const efId = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo')?.cuenta_origen_id ?? ''
+    const monedaFuerte = cajaFuerte?.moneda ?? 'ARS'
+    const efId = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo' && c.moneda === monedaFuerte)?.cuenta_origen_id ?? ''
     setDepositoCuentaId(efId)
-    if (!modoAvanzado && sesionActiva) setDepositoFuenteSesionId(sesionActiva.id)
+    // G5 Fase 5 — solo precargar la caja activa del cajero si es de la misma moneda que la
+    // pestaña de Bóveda abierta (nunca mezclar ARS/USD en el origen del depósito).
+    if (!modoAvanzado && sesionActiva && (sesionActiva.moneda ?? 'ARS') === monedaFuerte) setDepositoFuenteSesionId(sesionActiva.id)
   }, [showDepositoFuerte]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
@@ -1234,7 +1433,17 @@ export default function CajaPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [sesionActiva, tab])
 
-  const imprimirCierre = (sesion: any, formato: 'a4' | 'termico' = 'a4') => {
+  const imprimirCierre = async (sesion: any, formato: 'a4' | 'termico' = 'a4') => {
+    // xlsx/jspdf dinámico (auditoría perf 2026-08-14, P5) — evita cargar jspdf (29MB paquete)
+    // en cada entrada a Caja si el usuario nunca imprime un cierre.
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
+    // G5 Fase 3 (E1) — `sesion` puede ser de OTRA caja/moneda que la seleccionada ahora mismo
+    // (viene del historial). Shadowea el formatMoneda del componente para que todo este PDF use
+    // la moneda de ESA sesión (`caja_sesiones.moneda`, mig 368), nunca la de la caja actual.
+    // eslint-disable-next-line no-shadow
+    const formatMoneda = (v: number) => formatMonedaLib(v, sesion.moneda || (tenant as any)?.moneda || 'ARS')
     // Si la sesión tiene snapshot_totales (K2), lo usamos. Si no, fallback a campos legacy.
     const snap = sesion.snapshot_totales || null
     const numCierre = sesion.numero ?? snap?.numero_cierre ?? null
@@ -1575,7 +1784,13 @@ export default function CajaPage() {
                         onChange={e => setAperturaParaUsuarioId(e.target.value)}
                         className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                         <option value="">Yo ({user?.nombre_display ?? 'mi usuario'})</option>
-                        {(cajerosTenant as any[]).filter((u: any) => u.id !== user?.id).map((u: any) => (
+                        {/* G5 Fase 3 (I1) — si la caja es USD, no ofrecer abrirla "a nombre de" un
+                            cajero sin permiso: quedaría con una sesión que después ni puede ver
+                            (cajasOperativas la excluye para él) ni cerrar. */}
+                        {(cajerosTenant as any[])
+                          .filter((u: any) => u.id !== user?.id)
+                          .filter((u: any) => !esCajaUsdActual || u.rol === 'DUEÑO' || ((tenant as any)?.caja_usd_roles_permitidos ?? []).includes(u.rol))
+                          .map((u: any) => (
                           <option key={u.id} value={u.id}>{u.nombre_display ?? u.email} ({u.rol})</option>
                         ))}
                       </select>
@@ -1716,20 +1931,20 @@ export default function CajaPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-white dark:bg-gray-800/10 rounded-xl p-3 text-center">
                     <p className="text-blue-500 dark:text-blue-200 text-xs">Apertura</p>
-                    <p className="font-bold text-lg text-gray-900 dark:text-white">{formatMoneda(sesionActiva.monto_apertura)}</p>
+                    <p className="font-bold text-lg text-gray-900 dark:text-white">{formatMonedaCaja(sesionActiva.monto_apertura)}</p>
                   </div>
                   <div className="bg-green-400/20 rounded-xl p-3 text-center">
                     <p className="text-green-200 text-xs">Ingresos</p>
-                    <p className="font-bold text-lg text-green-100">{formatMoneda(totalIngresos)}</p>
+                    <p className="font-bold text-lg text-green-100">{formatMonedaCaja(totalIngresos)}</p>
                   </div>
                   <div className="bg-red-400/20 rounded-xl p-3 text-center">
                     <p className="text-red-200 text-xs">Egresos</p>
-                    <p className="font-bold text-lg text-red-100">{formatMoneda(totalEgresos)}</p>
+                    <p className="font-bold text-lg text-red-100">{formatMonedaCaja(totalEgresos)}</p>
                   </div>
                 </div>
                 <div className="mt-3 bg-white dark:bg-gray-800/10 rounded-xl p-3 flex items-center justify-between">
                   <span className="text-blue-500 dark:text-blue-200">Saldo actual</span>
-                  <span className="text-2xl font-bold text-gray-900 dark:text-white">{formatMoneda(saldoActual)}</span>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">{formatMonedaCaja(saldoActual)}</span>
                 </div>
               </div>
 
@@ -1749,10 +1964,13 @@ export default function CajaPage() {
                   className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold rounded-xl transition-all">
                   <CheckCircle size={16} /> Arqueo
                 </button>
-                {cajaFuerte && (() => {
+                {/* G5 Fase 5 — la Caja Fuerte de destino tiene que ser la de la MISMA moneda que
+                    la sesión activa (por eso se fuerza bovedaTab antes de abrir el modal, en vez de
+                    depender de en qué pestaña haya quedado la Bóveda la última vez). */}
+                {(esCajaUsdActual ? cajaFuerteUsd : cajaFuerteArs) && (() => {
                   const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
                   return accedeABoveda(user?.rol as any, (user as any)?.rol_custom_id, cajaFuerteRoles) ? (
-                    <button onClick={() => { setDepositoFuenteSesionId(sesionActiva?.id ?? ''); setShowDepositoFuerte(true) }}
+                    <button onClick={() => { setBovedaTab(esCajaUsdActual ? 'USD' : 'ARS'); setShowDepositoFuerte(true) }}
                       title="Depositar en Caja Fuerte"
                       className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-yellow-400 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-semibold rounded-xl transition-all">
                       🔒
@@ -1766,8 +1984,9 @@ export default function CajaPage() {
                     <ArrowRightLeft size={16} />
                   </button>
                 )}
-                {/* Solicitud a caja fuerte para CAJERO */}
-                {user?.rol === 'CAJERO' && cajaFuerte && sesionActiva && (
+                {/* Solicitud a caja fuerte para CAJERO — G5 Fase 5: ya soporta Caja USD, pide
+                    transferencia a la Caja Fuerte de la MISMA moneda que esta sesión. */}
+                {user?.rol === 'CAJERO' && (esCajaUsdActual ? cajaFuerteUsd : cajaFuerteArs) && sesionActiva && (
                   <button onClick={() => setShowSolicitudFuerte(true)}
                     title="Solicitar transferencia de esta caja a la Caja Fuerte (requiere aprobación)"
                     className="flex items-center gap-1.5 px-3 py-3 border border-yellow-300 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 text-xs font-medium hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-xl transition-all">
@@ -1836,7 +2055,7 @@ export default function CajaPage() {
                                 : esEgreso ? 'text-red-500'
                                 : 'text-blue-400'
                               }`}>
-                                {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMoneda(m.monto)}
+                                {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMonedaCaja(m.monto)}
                               </span>
                               {/* G1 — Corregir: solo en ingresos manuales (sin #venta), si rol tiene permiso */}
                               {puedeEditarMovimiento && m.tipo === 'ingreso' && !numVenta && !m.concepto.startsWith('[Reversión]') && !m.concepto.startsWith('[Corregido]') && !m.concepto.startsWith('[Diferencia caja]') && (
@@ -1867,7 +2086,7 @@ export default function CajaPage() {
                             <div key={medio} className="flex items-center gap-1.5 text-xs">
                               <span className="text-gray-500 dark:text-gray-400">{medio}:</span>
                               <span className={`font-semibold ${total >= 0 ? 'text-gray-800 dark:text-gray-100' : 'text-red-500'}`}>
-                                {total >= 0 ? formatMoneda(total) : `−${formatMoneda(Math.abs(total))}`}
+                                {total >= 0 ? formatMonedaCaja(total) : `−${formatMonedaCaja(Math.abs(total))}`}
                               </span>
                             </div>
                           ))}
@@ -1899,14 +2118,14 @@ export default function CajaPage() {
                             {a.notas && <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-0.5">{a.notas}</p>}
                           </div>
                           <div className="flex items-center gap-3 text-sm flex-shrink-0">
-                            <span className="text-gray-500 dark:text-gray-400">{formatMoneda(a.saldo_calculado)} calc.</span>
-                            <span className="font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(a.saldo_real)} real</span>
+                            <span className="text-gray-500 dark:text-gray-400">{formatMonedaCaja(a.saldo_calculado)} calc.</span>
+                            <span className="font-semibold text-gray-800 dark:text-gray-100">{formatMonedaCaja(a.saldo_real)} real</span>
                             <span className={`font-bold px-2 py-0.5 rounded-lg text-xs ${
                               dif > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
                               dif < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
                               'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                             }`}>
-                              {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? formatMoneda(dif) : 'OK'}
+                              {dif > 0 ? `+${formatMonedaCaja(dif)}` : dif < 0 ? formatMonedaCaja(dif) : 'OK'}
                             </span>
                           </div>
                         </div>
@@ -1960,6 +2179,19 @@ export default function CajaPage() {
                     <p className="text-xs text-gray-400 dark:text-gray-500">Efectivo + cuentas asociadas a métodos de pago.</p>
                   </div>
                 </div>
+                {/* G5 Fase 5 — pestaña ARS/USD (2 filas es_caja_fuerte=true por tenant, mig 373).
+                    Nunca se mezclan: cambiar de pestaña cambia qué Caja Fuerte alimenta todo lo de
+                    abajo (saldo, movimientos, ingresar/enviar/extraer). */}
+                {cajaFuerteUsd && (
+                  <div className="flex gap-1 mb-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1 w-fit">
+                    {(['ARS', 'USD'] as const).map(m => (
+                      <button key={m} onClick={() => setBovedaTab(m)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${bovedaTab === m ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => setShowDepositoFuerte(true)}
                     className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -1985,6 +2217,13 @@ export default function CajaPage() {
                       <Minus size={15} /> Extraer dinero
                     </button>
                   )}
+                  {puedeConvertirUsdBoveda && cajaFuerteUsd && (
+                    <button onClick={() => { setConvertirSentido(bovedaTab === 'USD' ? 'usd_a_ars' : 'ars_a_usd'); setShowConvertirUsd(true) }}
+                      title="Convertir dólares a pesos o pesos a dólares — único punto de conversión del sistema"
+                      className="flex items-center gap-2 px-4 py-2.5 border-2 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-sm font-semibold rounded-xl transition-colors">
+                      <DollarSign size={15} /> Convertir USD↔$
+                    </button>
+                  )}
                 </div>
               </div>
               {/* Tarjetas destacadas (estilo Dashboard): lo principal de la página.
@@ -1992,8 +2231,8 @@ export default function CajaPage() {
               {puedeExtraerBoveda && (
                 <div className="lg:w-72 shrink-0 flex flex-col gap-3">
                   <div className="rounded-2xl p-5 bg-brand-gradient text-white shadow-lg">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-white/80">En la caja fuerte</p>
-                    <p className="text-3xl font-bold leading-tight mt-1 break-words">{formatMoneda(fuerteSaldo)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-white/80">En la caja fuerte {bovedaTab === 'USD' ? '(USD)' : ''}</p>
+                    <p className="text-3xl font-bold leading-tight mt-1 break-words">{formatMonedaLib(fuerteSaldo, cajaFuerte?.moneda ?? 'ARS')}</p>
                     <p className="text-[11px] text-white/70 mt-1.5">Plata que hay hoy en la bóveda</p>
                   </div>
                   <div className="rounded-2xl p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
@@ -2051,7 +2290,7 @@ export default function CajaPage() {
                           <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/20 text-${tipoColor}-700 dark:text-${tipoColor}-400`}>{c.tipo}</span>
                         </div>
                         <p className={`text-xl font-bold ${Number(c.saldo) > 0 ? 'text-gray-900 dark:text-white' : Number(c.saldo) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                          {formatMoneda(Number(c.saldo || 0))}
+                          {formatMonedaLib(Number(c.saldo || 0), c.moneda ?? 'ARS')}
                         </p>
                         <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
                           {c.movimientos_count} mov · {c.moneda}
@@ -2110,7 +2349,7 @@ export default function CajaPage() {
                         </p>
                       </div>
                       <span className="font-bold text-red-600 dark:text-red-400 shrink-0">
-                        -{formatMoneda(r.monto)}
+                        -{formatMonedaLib(r.monto, r.cuentas_origen?.moneda ?? 'ARS')}
                       </span>
                     </div>
                   ))}
@@ -2137,7 +2376,7 @@ export default function CajaPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{a.cuentas_origen?.nombre ?? 'Efectivo'}</p>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">Sistema {formatMoneda(Number(a.saldo_sistema))} · Contado {formatMoneda(Number(a.saldo_contado))}</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">Sistema {formatMonedaLib(Number(a.saldo_sistema), a.cuentas_origen?.moneda ?? 'ARS')} · Contado {formatMonedaLib(Number(a.saldo_contado), a.cuentas_origen?.moneda ?? 'ARS')}</span>
                         </div>
                         {a.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{a.notas}</p>}
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
@@ -2146,7 +2385,7 @@ export default function CajaPage() {
                         </p>
                       </div>
                       <span className={`font-bold shrink-0 ${dif === 0 ? 'text-gray-500 dark:text-gray-400' : dif > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {dif === 0 ? 'OK' : `${dif > 0 ? '+' : ''}${formatMoneda(dif)}`}
+                        {dif === 0 ? 'OK' : `${dif > 0 ? '+' : ''}${formatMonedaLib(dif, a.cuentas_origen?.moneda ?? 'ARS')}`}
                       </span>
                     </div>
                   )
@@ -2176,7 +2415,7 @@ export default function CajaPage() {
                         </p>
                       </div>
                       <span className={`font-bold ${esIngreso ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {esIngreso ? '+' : '-'}{formatMoneda(m.monto)}
+                        {esIngreso ? '+' : '-'}{formatMonedaLib(m.monto, cajaFuerte?.moneda ?? 'ARS')}
                       </span>
                     </div>
                   )
@@ -2203,7 +2442,9 @@ export default function CajaPage() {
                 title={!modoAvanzado ? 'En modo básico se transfiere desde la caja en la que estás operando' : undefined}
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text disabled:opacity-60 disabled:cursor-not-allowed">
                 <option value="">Ingreso externo (sin caja)</option>
-                {(sesionesAbiertasAll as any[]).filter((s: any) => !cajaFuerte || s.caja_id !== cajaFuerte.id).map((s: any) => (
+                {/* G5 Fase 5 — solo cajas de la misma moneda que la pestaña activa (F1: nunca
+                    mezclar ARS/USD en un mismo movimiento). */}
+                {(sesionesAbiertasAll as any[]).filter((s: any) => (!cajaFuerte || s.caja_id !== cajaFuerte.id) && ((s as any).moneda ?? 'ARS') === (cajaFuerte?.moneda ?? 'ARS')).map((s: any) => (
                   <option key={s.id} value={s.id}>{s.cajas?.nombre}</option>
                 ))}
               </select>
@@ -2218,7 +2459,11 @@ export default function CajaPage() {
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cuenta de destino</label>
               <select value={depositoCuentaId} onChange={e => setDepositoCuentaId(e.target.value)}
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
-                {(bovedaCuentas as any[]).filter((c: any) => c.activo).map((c: any) => (
+                {/* G5 Fase 5 (hallazgo code-review) — solo cuentas de la MISMA moneda que la
+                    pestaña activa: elegir una cuenta de otra moneda acá hacía que el egreso en la
+                    caja de origen se commiteara igual y el ingreso a la fuerte fallara después
+                    (rechazado por el trigger de moneda-vs-cuenta), dejando plata huérfana. */}
+                {(bovedaCuentas as any[]).filter((c: any) => c.activo && c.moneda === (cajaFuerte?.moneda ?? 'ARS')).map((c: any) => (
                   <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>{c.nombre}</option>
                 ))}
               </select>
@@ -2270,11 +2515,12 @@ export default function CajaPage() {
               <select value={retiroCajaDestinoSesionId} onChange={e => setRetiroCajaDestinoSesionId(e.target.value)}
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Seleccioná una caja con sesión abierta</option>
-                {(sesionesAbiertasAll as any[]).map((s: any) => (
+                {/* G5 Fase 5 — mismo criterio que "Ingresar a Caja Fuerte": solo cajas de la misma moneda. */}
+                {(sesionesAbiertasAll as any[]).filter((s: any) => ((s as any).moneda ?? 'ARS') === (cajaFuerte?.moneda ?? 'ARS')).map((s: any) => (
                   <option key={s.id} value={s.id}>{s.cajas?.nombre}</option>
                 ))}
               </select>
-              {(sesionesAbiertasAll as any[]).length === 0 && (
+              {(sesionesAbiertasAll as any[]).filter((s: any) => ((s as any).moneda ?? 'ARS') === (cajaFuerte?.moneda ?? 'ARS')).length === 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">No hay cajas con sesión abierta en este momento.</p>
               )}
             </div>
@@ -2283,7 +2529,7 @@ export default function CajaPage() {
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={fuerteMonto} onChange={e => setFuerteMonto(e.target.value)} placeholder="0"
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Saldo en caja fuerte: {formatMoneda(fuerteSaldo)}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Saldo en caja fuerte: {formatMonedaLib(fuerteSaldo, cajaFuerte?.moneda ?? 'ARS')}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
@@ -2328,7 +2574,7 @@ export default function CajaPage() {
                   <div key={c.cuenta_origen_id} className="border border-gray-100 dark:border-gray-700 rounded-xl p-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{c.nombre}</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Sistema: {formatMoneda(sistema)}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Sistema: {formatMonedaLib(sistema, c.moneda ?? 'ARS')}</span>
                     </div>
                     <input type="number" inputMode="decimal" placeholder="Saldo contado…"
                       value={raw}
@@ -2336,7 +2582,7 @@ export default function CajaPage() {
                       className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
                     {dif !== null && (
                       <p className={`text-xs mt-1 font-medium ${dif === 0 ? 'text-gray-500 dark:text-gray-400' : dif > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {dif === 0 ? 'Coincide' : `Diferencia: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`}
+                        {dif === 0 ? 'Coincide' : `Diferencia: ${dif > 0 ? '+' : ''}${formatMonedaLib(dif, c.moneda ?? 'ARS')}`}
                       </p>
                     )}
                   </div>
@@ -2384,7 +2630,7 @@ export default function CajaPage() {
                 <option value="">Seleccioná una cuenta...</option>
                 {(bovedaCuentas as any[]).filter((c: any) => c.activo && Number(c.saldo) > 0).map((c: any) => (
                   <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>
-                    {c.nombre} ({c.tipo}) — {formatMoneda(Number(c.saldo))} disponible
+                    {c.nombre} ({c.tipo}) — {formatMonedaLib(Number(c.saldo), c.moneda ?? 'ARS')} disponible
                   </option>
                 ))}
               </select>
@@ -2426,13 +2672,38 @@ export default function CajaPage() {
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none" />
             </div>
 
+            {/* G5 Fase 5 (F3) — retiro de Caja USD sin destino requiere clave maestra, además del
+                motivo (ya obligatorio arriba). Solo aparece si la cuenta elegida es en dólares, el
+                tenant tiene clave maestra configurada, y el monto alcanza el umbral propio en USD. */}
+            {(() => {
+              const cuentaSel = (bovedaCuentas as any[]).find(c => c.cuenta_origen_id === extraerCuentaId)
+              const claveConfigurada = !!(tenant as any)?.clave_maestra
+              const requiereClave = cuentaSel?.moneda === 'USD' && claveConfigurada
+                && (parseFloat(extraerMonto) || 0) >= ((tenant as any)?.caja_usd_clave_maestra_umbral ?? 0)
+              if (!requiereClave) return null
+              return (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Clave maestra *</label>
+                  <input type="password" value={claveMaestraExtraer} onChange={e => setClaveMaestraExtraer(e.target.value)}
+                    placeholder="Retiro en USD sin destino"
+                    autoComplete="new-password"
+                    className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
+                </div>
+              )
+            })()}
+
             <div className="flex gap-2 pt-2">
               <button onClick={() => setShowExtraerBoveda(false)}
                 className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>
               <button onClick={() => extraerDeBoveda.mutate()}
-                disabled={extraerDeBoveda.isPending || !extraerCuentaId || !extraerMonto || !extraerMotivo.trim()}
+                disabled={extraerDeBoveda.isPending || !extraerCuentaId || !extraerMonto || !extraerMotivo.trim() || (() => {
+                  const cuentaSel = (bovedaCuentas as any[]).find(c => c.cuenta_origen_id === extraerCuentaId)
+                  const requiereClave = cuentaSel?.moneda === 'USD' && !!(tenant as any)?.clave_maestra
+                    && (parseFloat(extraerMonto) || 0) >= ((tenant as any)?.caja_usd_clave_maestra_umbral ?? 0)
+                  return requiereClave && !claveMaestraExtraer.trim()
+                })()}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
                 {extraerDeBoveda.isPending ? 'Registrando...' : 'Confirmar extracción'}
               </button>
@@ -2440,6 +2711,63 @@ export default function CajaPage() {
           </div>
         </div>
       )}
+
+      {/* G5 Fase 5 (F2) — Modal Convertir USD↔$, único punto de conversión del sistema, solo DUEÑO */}
+      {showConvertirUsd && puedeConvertirUsdBoveda && (() => {
+        const montoNum = parseFloat(convertirMonto) || 0
+        const saldoOrigen = convertirSentido === 'usd_a_ars' ? fuerteSaldoUsd : fuerteSaldoArs
+        const monedaOrigen = convertirSentido === 'usd_a_ars' ? 'USD' : 'ARS'
+        const monedaDestino = convertirSentido === 'usd_a_ars' ? 'ARS' : 'USD'
+        let preview: { montoDestino: number; tasaUsada: number } | null = null
+        let previewError: string | null = null
+        if (montoNum > 0) {
+          try { preview = calcularConversionUsd(convertirSentido, montoNum, cotizacionUSD, cotizacionCompra) }
+          catch (e: any) { previewError = e.message }
+        }
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConvertirUsd(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <DollarSign size={16} className="text-emerald-600" /> Convertir USD↔$
+                </h3>
+                <button onClick={() => setShowConvertirUsd(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Único punto de conversión del sistema. Mueve plata entre la Caja Fuerte en pesos y la Caja Fuerte en dólares — no afecta ninguna caja operativa.
+              </p>
+              <div className="flex gap-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1">
+                <button onClick={() => setConvertirSentido('usd_a_ars')}
+                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${convertirSentido === 'usd_a_ars' ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                  USD → $ (compra)
+                </button>
+                <button onClick={() => setConvertirSentido('ars_a_usd')}
+                  className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${convertirSentido === 'ars_a_usd' ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                  $ → USD (venta)
+                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto en {monedaOrigen} *</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                  value={convertirMonto} onChange={e => setConvertirMonto(e.target.value)} placeholder="0"
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Saldo en Caja Fuerte {monedaOrigen}: {formatMonedaLib(saldoOrigen, monedaOrigen)}</p>
+              </div>
+              {preview && (
+                <p className="text-sm text-gray-700 dark:text-gray-200 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl px-3 py-2.5">
+                  Recibís <strong>{formatMonedaLib(preview.montoDestino, monedaDestino)}</strong> en la Caja Fuerte {monedaDestino} (cotización {preview.tasaUsada})
+                </p>
+              )}
+              {previewError && <p className="text-xs text-red-600 dark:text-red-400">{previewError}</p>}
+              <button onClick={() => convertirUsdBoveda.mutate({ sentido: convertirSentido, monto: montoNum })}
+                disabled={convertirUsdBoveda.isPending || !montoNum || !preview || montoNum > saldoOrigen}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
+                {convertirUsdBoveda.isPending ? 'Procesando...' : 'Confirmar conversión'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* G1 — Modal corregir movimiento manual (DUEÑO/SUPERVISOR) */}
       {corregirMov && (
@@ -2470,7 +2798,7 @@ export default function CajaPage() {
                     onChange={e => setCorregirMonto(e.target.value)}
                     className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">Original: {formatMoneda(corregirMov.monto)}</p>
+                <p className="text-[11px] text-gray-400 mt-1">Original: {formatMonedaCaja(corregirMov.monto)}</p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -2506,7 +2834,7 @@ export default function CajaPage() {
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={solicitudMonto} onChange={e => setSolicitudMonto(e.target.value)} placeholder="0"
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMoneda(saldoActual)}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMonedaCaja(saldoActual)}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
@@ -2612,7 +2940,7 @@ export default function CajaPage() {
                               da !== 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' :
                               'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                             }`}>
-                              Apertura: {da === 0 ? 'Sin diferencia' : (da > 0 ? `+${formatMoneda(da)}` : `-${formatMoneda(Math.abs(da))}`)}
+                              Apertura: {da === 0 ? 'Sin diferencia' : (da > 0 ? `+${formatMonedaLib(da, s.moneda || 'ARS')}` : `-${formatMonedaLib(Math.abs(da), s.moneda || 'ARS')}`)}
                             </span>
                           )
                         })()}
@@ -2623,7 +2951,7 @@ export default function CajaPage() {
                             dif < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
                             'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                           }`}>
-                            Cierre: {dif === 0 ? 'Sin diferencia' : (dif > 0 ? `+${formatMoneda(dif)}` : `-${formatMoneda(Math.abs(dif))}`)}
+                            Cierre: {dif === 0 ? 'Sin diferencia' : (dif > 0 ? `+${formatMonedaLib(dif, s.moneda || 'ARS')}` : `-${formatMonedaLib(Math.abs(dif), s.moneda || 'ARS')}`)}
                           </span>
                         )}
                       </div>
@@ -2655,7 +2983,7 @@ export default function CajaPage() {
                     ].map(({ label, val, color }) => (
                       <div key={label} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-2">
                         <p className="text-gray-400 dark:text-gray-500 mb-0.5">{label}</p>
-                        <p className={`text-sm ${color}`}>{formatMoneda(val ?? 0)}</p>
+                        <p className={`text-sm ${color}`}>{formatMonedaLib(val ?? 0, s.moneda || 'ARS')}</p>
                       </div>
                     ))}
                   </div>
@@ -2690,7 +3018,7 @@ export default function CajaPage() {
                               </div>
                             </div>
                             <span className={`font-bold text-sm flex-shrink-0 ml-3 ${['ingreso','ingreso_reserva'].includes(m.tipo) ? 'text-green-600 dark:text-green-400' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? 'text-red-500' : 'text-blue-400'}`}>
-                              {['ingreso','ingreso_reserva'].includes(m.tipo) ? '+' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? '-' : '~'}{formatMoneda(m.monto)}
+                              {['ingreso','ingreso_reserva'].includes(m.tipo) ? '+' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? '-' : '~'}{formatMonedaLib(m.monto, s.moneda || 'ARS')}
                             </span>
                           </div>
                         ))}
@@ -2708,9 +3036,9 @@ export default function CajaPage() {
                             return (
                               <div key={a.id} className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                                 <span>{new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                <span>{formatMoneda(a.saldo_calculado)} → {formatMoneda(a.saldo_real)}</span>
+                                <span>{formatMonedaLib(a.saldo_calculado, s.moneda || 'ARS')} → {formatMonedaLib(a.saldo_real, s.moneda || 'ARS')}</span>
                                 <span className={`font-bold ${dif > 0 ? 'text-green-600 dark:text-green-400' : dif < 0 ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
-                                  {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? formatMoneda(dif) : 'OK'}
+                                  {dif > 0 ? `+${formatMonedaLib(dif, s.moneda || 'ARS')}` : dif < 0 ? formatMonedaLib(dif, s.moneda || 'ARS') : 'OK'}
                                 </span>
                               </div>
                             )
@@ -2866,24 +3194,28 @@ export default function CajaPage() {
             <div className="space-y-4">
               <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 flex justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Saldo calculado</span>
-                <span className="font-bold text-gray-800 dark:text-gray-100">{formatMoneda(saldoActual)}</span>
+                <span className="font-bold text-gray-800 dark:text-gray-100">{formatMonedaCaja(saldoActual)}</span>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Conteo físico real *</label>
-                <input type="number" onWheel={e => e.currentTarget.blur()}
-                  value={arqueoConteo} onChange={e => setArqueoConteo(e.target.value)}
-                  placeholder="0" min="0" step="0.01" autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
-                {arqueoConteo !== '' && (
-                  <p className={`mt-1.5 text-sm font-medium ${
-                    parseFloat(arqueoConteo) - saldoActual > 0 ? 'text-green-600 dark:text-green-400' :
-                    parseFloat(arqueoConteo) - saldoActual < 0 ? 'text-red-600 dark:text-red-400' :
-                    'text-gray-400 dark:text-gray-500'
-                  }`}>
-                    Diferencia: {formatMoneda(parseFloat(arqueoConteo) - saldoActual)}
-                  </p>
-                )}
-              </div>
+              {esCajaUsdActual ? (
+                <ConteoDenominaciones total={arqueoConteo} onChange={setArqueoConteo} />
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Conteo físico real *</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()}
+                    value={arqueoConteo} onChange={e => setArqueoConteo(e.target.value)}
+                    placeholder="0" min="0" step="0.01" autoFocus
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
+                </div>
+              )}
+              {arqueoConteo !== '' && (
+                <p className={`mt-1.5 text-sm font-medium ${
+                  parseFloat(arqueoConteo) - saldoActual > 0 ? 'text-green-600 dark:text-green-400' :
+                  parseFloat(arqueoConteo) - saldoActual < 0 ? 'text-red-600 dark:text-red-400' :
+                  'text-gray-400 dark:text-gray-500'
+                }`}>
+                  Diferencia: {formatMonedaCaja(parseFloat(arqueoConteo) - saldoActual)}
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
                 <input type="text" value={arqueoNotas} onChange={e => setArqueoNotas(e.target.value)}
@@ -2974,8 +3306,10 @@ export default function CajaPage() {
                   onChange={e => setTraspasoDestinoSesionId(e.target.value)}
                   className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                   <option value="">Seleccioná una caja...</option>
+                  {/* G5 Fase 3 (F1) — solo cajas de la MISMA moneda que la de origen; el guard real
+                      vive en realizarTraspaso, esto es para no dejar elegir algo que va a rebotar. */}
                   {(sesionesAbiertasAll as any[])
-                    .filter(s => s.id !== sesionActiva?.id)
+                    .filter(s => s.id !== sesionActiva?.id && ((s as any).moneda ?? 'ARS') === ((sesionActiva as any)?.moneda ?? 'ARS'))
                     .map(s => (
                       <option key={s.id} value={s.id}>{s.cajas?.nombre ?? s.id}</option>
                     ))}
@@ -2987,7 +3321,7 @@ export default function CajaPage() {
                   value={traspasoMonto} onChange={e => setTraspasoMonto(e.target.value)}
                   placeholder="0"
                   className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMoneda(saldoActual)}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMonedaCaja(saldoActual)}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto (opcional)</label>
@@ -3017,11 +3351,11 @@ export default function CajaPage() {
 
             {/* Resumen calculado — solo efectivo */}
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Apertura</span><span className="font-medium">{formatMoneda(sesionActiva?.monto_apertura ?? 0)}</span></div>
-              <div className="flex justify-between text-green-600 dark:text-green-400"><span>+ Ingresos efectivo</span><span className="font-medium">{formatMoneda(totalIngresos)}</span></div>
-              <div className="flex justify-between text-red-500"><span>− Egresos efectivo</span><span className="font-medium">{formatMoneda(totalEgresos)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Apertura</span><span className="font-medium">{formatMonedaCaja(sesionActiva?.monto_apertura ?? 0)}</span></div>
+              <div className="flex justify-between text-green-600 dark:text-green-400"><span>+ Ingresos efectivo</span><span className="font-medium">{formatMonedaCaja(totalIngresos)}</span></div>
+              <div className="flex justify-between text-red-500"><span>− Egresos efectivo</span><span className="font-medium">{formatMonedaCaja(totalEgresos)}</span></div>
               <div className="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-2 font-bold text-primary">
-                <span>Efectivo esperado</span><span>{formatMoneda(saldoActual)}</span>
+                <span>Efectivo esperado</span><span>{formatMonedaCaja(saldoActual)}</span>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">Tarjeta, transferencia y Mercado Pago no se cuentan aquí.</p>
             </div>
@@ -3031,13 +3365,17 @@ export default function CajaPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Efectivo contado en caja <span className="text-red-500 font-normal">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoRealCierre}
-                  onChange={e => setMontoRealCierre(e.target.value)}
-                  placeholder={formatMoneda(saldoActual).replace('$', '')}
-                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
-              </div>
+              {esCajaUsdActual ? (
+                <ConteoDenominaciones total={montoRealCierre} onChange={setMontoRealCierre} />
+              ) : (
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoRealCierre}
+                    onChange={e => setMontoRealCierre(e.target.value)}
+                    placeholder={formatMonedaCaja(saldoActual).replace('$', '')}
+                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                </div>
+              )}
               {diferencia !== null && (
                 <div className={`mt-2 flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg ${
                   diferencia > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
@@ -3045,9 +3383,9 @@ export default function CajaPage() {
                   'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}>
                   {diferencia > 0
-                    ? <><CheckCircle size={15} /> Sobran {formatMoneda(diferencia)}</>
+                    ? <><CheckCircle size={15} /> Sobran {formatMonedaCaja(diferencia)}</>
                     : diferencia < 0
-                    ? <><AlertTriangle size={15} /> Faltan {formatMoneda(Math.abs(diferencia))}</>
+                    ? <><AlertTriangle size={15} /> Faltan {formatMonedaCaja(Math.abs(diferencia))}</>
                     : 'Sin diferencia'}
                 </div>
               )}

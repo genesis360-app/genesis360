@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ClipboardList, Filter, X, Download, ChevronRight, User, Package, ShoppingCart, Tag, Truck, MapPin, CircleDot, MessageSquare, TrendingDown, Gift, ScanLine, Layers } from 'lucide-react'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en exportarExcel (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -325,6 +325,7 @@ export default function HistorialPage() {
     if (!tenant) return
     setExportando(true)
     try {
+      const XLSX = await import('xlsx')
       let q = supabase.from('actividad_log')
         .select('*')
         .eq('tenant_id', tenant.id)

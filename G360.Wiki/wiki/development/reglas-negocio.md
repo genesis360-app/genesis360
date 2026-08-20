@@ -1,9 +1,9 @@
 ---
 title: Reglas de Negocio Relevadas
 category: development
-tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat]
-sources: [reglas_negocio.md, uat.md]
-updated: 2026-05-24
+tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd]
+sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
+updated: 2026-08-19
 ---
 
 # Reglas de Negocio Relevadas
@@ -282,6 +282,124 @@ Razones:
 | **v1.8.44** | 133 | IVA auto + selector alícuota, multi-sucursal por categoría, CC proveedor (límite/vencimiento/override) |
 | **v1.8.45** | 134 | Recursos↔Gastos (mantenimiento + capitalización), Dashboard consolidado, vista `vw_egresos_consolidados` |
 | **v1.9.0** | 135 | **HITO**: Cierre contable mensual (Gastos + Ventas + Caja + OC), notas de corrección |
+
+---
+
+## Módulo: Caja en USD / Venta física en USD (G5)
+
+> Relevamiento 2026-08-13 (`relevamiento-venta-usd-caja-usd-reglas-negocio.html`, raíz del repo, 29
+> preguntas A-K). Fede respondió por escrito el 2026-08-18 (interpretado contra el enunciado completo del
+> HTML, varias respuestas eran solo códigos de opción). **Estado: relevamiento CERRADO.** Alcance elegido:
+> **A1 = (b) Caja USD completa**, con su propio ciclo apertura→cobro→arqueo→cierre, activando la lógica
+> real detrás de `cajas.moneda` (hoy solo una etiqueta) — no el MVP mixto (a)/(c). Fede pidió
+> explícitamente no ir por partes ("no estar haciendo y deshaciendo") — K3 (prioridad) = "TODO", sin orden
+> parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos, migs 368+369), Fase 2 (permisos y
+> configuración, mig 370), Fase 3 (ciclo operativo, mig 371), Fase 4 (pago combinado ARS+USD, mig 372),
+> Fase 5 (Bóveda ARS/USD, migs 373+374), Fase 6 (Devoluciones/NC con soporte USD, mig 375) y Fase 7
+> (Reportes — H1/H2, SIN migración nueva) 100% COMPLETAS en DEV** (2026-08-18/19). Fases 1+2 COMMITEADAS Y
+> PUSHEADAS (commit `310d9b3b`, tag `v1.171.0`); Fase 3
+> también COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión (commit `010440cd`, tag
+> `v1.172.0`); Fase 4 (mig 372) COMMITEADA Y PUSHEADA (commit `d783727d`, tag `v1.173.0`); Fase 5 (migs
+> 373+374) COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag+release `v1.174.0` publicados);
+> Fase 6 (mig 375) COMMITEADA Y PUSHEADA a `origin/dev` (commit `e55a1009`, tag+release `v1.175.0`
+> publicados); **Fase 7 (sin migración) CONSTRUIDA Y VERIFICADA en DEV, TODAVÍA SIN COMMITEAR** (bump a
+> `v1.176.0` hecho en `src/config/brand.ts`, pendiente de commit por el orquestador). SIN deploy a PROD en
+> ningún caso. La Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte
+> (D2), cada caja se contabiliza por lo efectivamente cobrado en ESA moneda — nunca el total convertido — y
+> el vuelto de un pago en USD siempre sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2,
+> agregado en la Fase 2 sin usarse hasta ahora) por fin gobierna si un producto puede cobrarse en USD. La
+> Fase 5 activa **F2/F3**: la Bóveda deja de asumir 1 sola fila por tenant y pasa a tener 2 (ARS y USD,
+> pestañas separadas), sembradas automáticamente para todo tenant; la función "Convertir USD↔$" (único
+> punto de conversión de todo el sistema, exclusivo del DUEÑO) queda implementada; y un retiro de Caja USD
+> sin destino exige clave maestra además del motivo, si el tenant la tiene configurada y el monto alcanza
+> el umbral propio en USD. **La Fase 6 activa G1/G2**: la devolución en caja soporta un medio "Efectivo
+> USD" (egreso real en la Caja USD elegida, cotización de hoy por default o de la venta original si el
+> tenant activa el toggle `tenants.reintegro_usd_cotizacion_original` — G1), y se confirma que la NC AFIP
+> ya usaba la cotización de la venta original por construcción (G2, sin cambio de lógica real en
+> `emitir-factura`, solo comentarios). **La Fase 7 activa H1/H2, sin migración**: el reporte de Ventas
+> desglosa el monto real en USD por método de pago junto al equivalente en pesos (H1), y el Dashboard excluye
+> las ventas con `cotizacion_usd` no nulo de sus indicadores en pesos ("Ventas del mes", "Margen
+> Contribución", "Ingreso Neto (Caja)", Rentabilidad), mostrando el componente USD aparte (H2) — de paso se
+> corrigieron 2 bugs preexistentes (`costoVentas` sin filtro de estado, `ingresoNeto` sin filtro de moneda).
+> Detalle técnico completo: [[wiki/features/caja]] → "Caja en USD —
+> Fase 4 de 8" y "Fase 5 de 8", [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" (fuente de
+> verdad de esa fase), [[wiki/features/ventas-pos]] → "Pago combinado ARS+USD",
+> [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8" (fuente de verdad de esa fase),
+> `wiki/database/migraciones.md` (migs 368-375).
+>
+> **Fede confirmó por escrito (2026-08-18) las 3 preguntas abiertas que quedaban antes de dar el OK
+> completo al plan de 8 fases:**
+> 1. **Orden 1→8 confirmado tal cual está planteado.** Única duda de Fede: si la Fase 5 (Bóveda) depende
+>    técnicamente de la Fase 6 (Devoluciones/NC) o viceversa, o son independientes y se podrían construir
+>    en paralelo — lo dejó a criterio de quien mira el código real. Análisis: **no hay dependencia directa
+>    entre 5 y 6** (tocan código distinto — `vw_boveda_cuentas`/`operarCajaFuerte` vs.
+>    `devolver_saldo_a_favor`/`emitir-nota-credito` — y ninguna necesita que la otra exista). Ambas SÍ
+>    dependen de que la Fase 3 (Caja USD operativa) ya exista (Bóveda necesita algo real para depositar;
+>    el reintegro en caja de la Fase 6 necesita una sesión de Caja USD viva para acreditar la devolución).
+>    La NC de la Fase 6 (lado fiscal) técnicamente podría construirse ya mismo — solo lee el snapshot de
+>    `ventas.cotizacion_usd` que la Fase 1 ya deja listo — pero el reintegro en caja (la otra mitad de la
+>    Fase 6) además se beneficia de que la Fase 4 (pago combinado) ya exista, para saber cómo se pagó
+>    originalmente una venta mixta antes de revertirla. Conclusión: el orden 1→8 ya resuelve esto sin
+>    necesidad de reordenar (4 queda antes de 5 y 6); no hay ganancia real de "paralelizar" 5 y 6 al ser un
+>    solo build secuencial, pero tampoco hay riesgo en construirlas en cualquier orden entre sí si en algún
+>    momento conviniera.
+> 2. **Punto 1 (G1 ≠ G2) — confirmado intencional**, ver fila G2 de la tabla de abajo. Deja de ser
+>    bloqueante para la Fase 6.
+> 3. **Punto 2 (¿arrancar ya o dejarlo para sesión dedicada?) — a criterio de Tonga (GO).** GO instruyó
+>    seguir con el plan.
+>
+> Con esto, **la Fase 6 no tenía ningún punto abierto propio** y se construyó completa (mig 375, ver
+> [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8") — **la Fase 7 (Reportes — H1/H2) tampoco
+> tenía ningún punto abierto propio** y se construyó completa, sin migración nueva (ver
+> [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8"), CONSTRUIDA Y VERIFICADA en DEV,
+> TODAVÍA SIN COMMITEAR (bump a `v1.176.0` pendiente de commit por el orquestador) — el único punto que sigue
+> sin cerrar en todo el plan de 8 fases es **C2** (cotización Banco Nación para AFIP, Fase 8), pendiente de
+> confirmación con un contador real, y no bloquea nada de las Fases 1-7. **Próximo paso: Fase 8** (C2,
+> bloqueada por el contador).
+
+### Decisiones cerradas
+
+| # | Decisión |
+|---|---|
+| A1 | Caja USD completa (ciclo propio, no un medio de pago más dentro de la caja en pesos) |
+| A2 | Cobro en USD y `producto.moneda_venta` son independientes, pero **por producto**: checkbox nuevo en la ficha ("puede cobrarse en cualquier moneda" vs. "obligado a la moneda de su precio de venta") — no es decisión del cajero en el momento |
+| A3 | Generalizar "medios que son efectivo real" a una **lista** (no el string único `'Efectivo'` hardcodeado), cada medio atado a una moneda |
+| B1/B2 | Snapshot de cotización **por venta** (columna nueva en `ventas`), uso interno — confirmado indirectamente vía G2 ("debe quedar registrado la cotización de cada venta convertida"). `tenant.cotizacion_usd` sigue siendo un valor único sobreescribible, sin historial propio — eso no cambia |
+| B3 | Solo el **DUEÑO** elige a qué tipo de dólar (blue/oficial/MEP/cripto) actualizar. Otros roles pueden "refrescar" (repetir la última actualización) pero **no elegir tipo**, salvo que el dueño le dé ese permiso puntual a un rol. Además: traer `compra` Y `venta` de la API (hoy `useCotizacion.ts` solo guarda `.venta`) y usar la que corresponda según si se compra o se vende USD |
+| C1 | Factura AFIP sigue **siempre en pesos** (no usar `MonId='DOL'` de WSFE) — sin cambios en `emitir-factura` |
+| C2 | 🟡 **Pendiente de confirmación contable, NO cerrado.** La cotización a declarar en el comprobante debe salir de una fuente **Banco Nación** específica, separada de `tenant.cotizacion_usd` (que sigue siendo la cotización comercial de uso interno/POS). Ni Fede ni Claude son contadores — no programar como regla fija hasta confirmar con un profesional. No bloquea el resto del proyecto |
+| C3 | La factura nunca redondea — sale siempre en pesos con 2 decimales exactos (no aplica "redondeo USD↔ARS" porque nunca se factura en USD) |
+| D1 | El vuelto de un pago en USD **siempre se da en pesos**, a la cotización vigente |
+| D2 | El cajero tipea el monto en USD directamente; el sistema lo convierte a pesos con la cotización vigente y lo suma al resto de los medios de pago |
+| D3 | Pago combinado ARS+USD reparte automáticamente entre las 2 sesiones de caja correspondientes (deben estar ambas abiertas). **Cada caja se contabiliza por lo efectivamente cobrado en esa moneda, nunca por el total de la venta convertido** — regla de integridad fiscal/contable clave |
+| E1 | Mismo flujo de apertura/arqueo/cierre — solo corregir el bug de formato (mostrar "US$" cuando la caja/sesión activa es USD, hoy siempre muestra `tenant.moneda`) |
+| E2 | Arqueo con conteo por denominación de billete USD (1/5/10/20/50/100) |
+| E3 | Umbral de diferencia de arqueo propio en USD (no relativo al de pesos), **default $0** (tolerancia cero), configurable |
+| F1 | **Bloquear** el traspaso entre cajas de distinta moneda (solo ARS↔ARS, USD↔USD) — cierra el bug de integridad latente donde hoy se puede traspasar "100" de una caja ARS a una USD y acreditar 100 dólares |
+| F2 | Sembrar cuenta "Efectivo USD" automáticamente en `cuentas_origen`. Además: la Bóveda debe tener **pestañas separadas ARS / USD**, incluyendo USD "virtual" (MercadoPago, transferencias en USD) como categoría propia — nunca mezclado con efectivo físico. **La conversión USD↔$ solo puede hacerse desde la Bóveda, y solo la hace el DUEÑO** — es el único punto de conversión de todo el sistema |
+| F3 | Retiro de Caja USD sin destino (dueño se lleva dólares) requiere, además del motivo obligatorio, **contraseña maestra** |
+| G1 | Reintegro de una venta cobrada en USD: configurable por tenant. **Default: en pesos, a la cotización del momento de la devolución** |
+| G2 | ✅ **Confirmado por Fede como intencional (2026-08-18)** — la Nota de Crédito AFIP usa la cotización **de la venta original** (registrada internamente por B1/B2), no la del momento de la devolución. Distinto a propósito de G1 (reintegro en caja = plata real moviéndose hoy, refleja el valor de hoy; NC = comprobante fiscal, preserva coherencia con lo ya declarado ante AFIP) — "no deben usar la misma cotización entre sí, y no hay que buscar unificarlos". Deja de ser bloqueante para la Fase 6 |
+| H1 | Reportes: total único en pesos como resumen **+** detalle desglosado por moneda debajo (no ocultar el desglose) |
+| H2 | Dashboard: las ventas en USD se **excluyen** de los totales/indicadores en pesos (ticket promedio, etc.) y se muestran aparte — mezclarlas distorsiona la métrica sin que se note por qué cambió |
+| I1 | Quién puede operar la Caja USD: configurable por tenant, por rol |
+| I2 | Umbral de contraseña maestra en Caja USD: propio en USD, separado del umbral en pesos |
+| J1 | Redondeo USD↔ARS: **ninguno** — decimales exactos |
+| J2 | Dentro de la Caja USD: **solo billetes enteros** (US$1 como unidad mínima, sin centavos de dólar) |
+| K1 | Cómo lo resuelven hoy "a mano": cobran en USD y van directo a una caja más segura o a la caja fuerte — valida el modelo de Caja USD completa (A1) y el depósito directo a Bóveda (F2) |
+| K2 | Nada para agregar — el documento cubre todo a criterio de Fede |
+| K3 | Sin prioridad parcial — pide la implementación completa ("TODO") |
+
+### Alcance real (lo que cambia en código, resumen técnico)
+
+Toca: `productos` (checkbox moneda libre), `cajas`/`caja_sesiones`/`caja_movimientos`/`caja_arqueos`
+(moneda real, no solo etiqueta), `ventas` (columna cotización snapshot, selector de 2 cajas en pago
+combinado), `metodos_pago` (lista de "efectivo real" por moneda en vez de string hardcodeado),
+`cuentas_origen`/Bóveda (pestañas ARS/USD, conversión centralizada), `realizarTraspaso` (bloqueo cross-
+moneda), `tenants` (permisos de quién elige tipo de dólar, umbrales USD), reportes/Dashboard (desglose
+USD/ARS separado). Backend: `abrirCaja`/`cerrarCaja`/`calcularVuelto`/`registrarVenta`/
+`devolver_saldo_a_favor` pasan a ser moneda-aware. No toca `emitir-factura` salvo la fuente de cotización
+del C2 (pendiente contador).
 
 ---
 

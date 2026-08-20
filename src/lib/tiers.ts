@@ -21,7 +21,7 @@
  */
 
 export type TierOperador = '>' | '<' | '=' | '>=' | '<='
-export type TierTipoValor = 'precio_fijo' | 'pct'
+export type TierTipoValor = 'precio_fijo' | 'pct' | 'usd'
 
 export interface TierMayorista {
   /** Valor de comparación en unidades base (nombre legacy `cantidad_minima`), o en MÚLTIPLOS del
@@ -46,11 +46,22 @@ export interface BloqueTier<T extends TierMayorista = TierMayorista> {
 
 function round2(n: number): number { return Math.round((n + Number.EPSILON) * 100) / 100 }
 
-/** Precio por unidad que resulta de aplicar un tier al precio de LISTA (nunca a uno ya rebajado). */
-export function precioUnitarioDeTier(t: Pick<TierMayorista, 'tipo_valor' | 'precio'>, precioLista: number): number {
+/**
+ * Precio por unidad que resulta de aplicar un tier al precio de LISTA (nunca a uno ya rebajado).
+ * `cotizacionUsd`: requerido para tiers `tipo_valor='usd'` (t.precio es un monto en dólares, se
+ * convierte a la cotización vigente). Sin cotización cargada (0/undefined) no se puede convertir con
+ * seguridad — el tier no se aplica, se devuelve `precioLista` (mismo criterio defensivo que un tier
+ * sin match).
+ */
+export function precioUnitarioDeTier(
+  t: Pick<TierMayorista, 'tipo_valor' | 'precio'>, precioLista: number, cotizacionUsd?: number,
+): number {
   if (t.tipo_valor === 'pct') {
     const pct = Math.min(100, Math.max(0, t.precio))
     return round2(precioLista * (1 - pct / 100))
+  }
+  if (t.tipo_valor === 'usd') {
+    return cotizacionUsd && cotizacionUsd > 0 ? round2(t.precio * cotizacionUsd) : precioLista
   }
   return t.precio
 }
@@ -85,22 +96,22 @@ export function precioTier(tiers: TierMayorista[], cantidad: number): number | n
 /** El mejor precio mayorista (el más barato) — para el canal que fuerza lista mayorista sin mirar
  *  cantidad. Ignora los tiers ENLAZADOS a empaque (dependen de comprar múltiplos completos, no
  *  tiene sentido forzarlos sin cantidad). null si no hay tiers normales válidos. */
-export function mejorPrecioMayorista(tiers: TierMayorista[], precioLista: number): number | null {
+export function mejorPrecioMayorista(tiers: TierMayorista[], precioLista: number, cotizacionUsd?: number): number | null {
   const validos = (tiers ?? []).filter(t => t.precio >= 0 && !(t.presentacion_factor && t.presentacion_factor > 0))
   if (validos.length === 0) return null
-  return validos.reduce((min, t) => Math.min(min, precioUnitarioDeTier(t, precioLista)), Infinity)
+  return validos.reduce((min, t) => Math.min(min, precioUnitarioDeTier(t, precioLista, cotizacionUsd)), Infinity)
 }
 
 /** El primer tier normal (no enlazado a empaque) que matchea `cantidad`, en `orden` asc — mismo
  *  criterio histórico que `precioTier` (gana el primero, no el mejor: eso no cambia acá). */
 function primerTierNormalQueMatchea<T extends TierMayorista>(
-  tiers: T[], cantidad: number, precioLista: number,
+  tiers: T[], cantidad: number, precioLista: number, cotizacionUsd?: number,
 ): { tier: T; precioUnitario: number } | null {
   const ordenados = [...tiers].sort((a, b) => a.orden - b.orden)
   for (const t of ordenados) {
     if (!Number.isFinite(t.cantidad_minima) || !(t.precio >= 0)) continue
     if (matchTier(cantidad, t.cantidad_minima, t.operador)) {
-      return { tier: t, precioUnitario: precioUnitarioDeTier(t, precioLista) }
+      return { tier: t, precioUnitario: precioUnitarioDeTier(t, precioLista, cotizacionUsd) }
     }
   }
   return null
@@ -121,7 +132,7 @@ function primerTierNormalQueMatchea<T extends TierMayorista>(
  * compitan entre sí igual que compite contra el tier normal.
  */
 export function resolverBloquesTier<T extends TierMayorista>(
-  tiers: T[], cantidadTotal: number, precioLista: number,
+  tiers: T[], cantidadTotal: number, precioLista: number, cotizacionUsd?: number,
 ): BloqueTier<T>[] {
   if (!(cantidadTotal > 0)) return []
   const validos = (tiers ?? []).filter(t => Number.isFinite(t.cantidad_minima) && t.precio >= 0)
@@ -133,18 +144,18 @@ export function resolverBloquesTier<T extends TierMayorista>(
     const factor = t.presentacion_factor as number
     const nMultiplos = Math.floor(cantidadTotal / factor)
     if (nMultiplos < 1 || !matchTier(nMultiplos, t.cantidad_minima, t.operador)) continue
-    const precioUnitario = precioUnitarioDeTier(t, precioLista)
+    const precioUnitario = precioUnitarioDeTier(t, precioLista, cotizacionUsd)
     if (!mejorLigado || precioUnitario < mejorLigado.precioUnitario) {
       mejorLigado = { tier: t, cantidadBloque: nMultiplos * factor, precioUnitario }
     }
   }
 
   if (!mejorLigado) {
-    const normal = primerTierNormalQueMatchea(normales, cantidadTotal, precioLista)
+    const normal = primerTierNormalQueMatchea(normales, cantidadTotal, precioLista, cotizacionUsd)
     return [{ cantidad: cantidadTotal, precioUnitario: normal?.precioUnitario ?? precioLista, tier: normal?.tier ?? null }]
   }
 
-  const normalParaBloqueEmpaque = primerTierNormalQueMatchea(normales, mejorLigado.cantidadBloque, precioLista)
+  const normalParaBloqueEmpaque = primerTierNormalQueMatchea(normales, mejorLigado.cantidadBloque, precioLista, cotizacionUsd)
   const bloqueEmpaqueGanaNormal = normalParaBloqueEmpaque && normalParaBloqueEmpaque.precioUnitario < mejorLigado.precioUnitario
 
   const bloques: BloqueTier<T>[] = [
@@ -155,7 +166,7 @@ export function resolverBloquesTier<T extends TierMayorista>(
 
   const resto = Math.round((cantidadTotal - mejorLigado.cantidadBloque) * 1e6) / 1e6
   if (resto > 0) {
-    const normalParaResto = primerTierNormalQueMatchea(normales, resto, precioLista)
+    const normalParaResto = primerTierNormalQueMatchea(normales, resto, precioLista, cotizacionUsd)
     bloques.push({ cantidad: resto, precioUnitario: normalParaResto?.precioUnitario ?? precioLista, tier: normalParaResto?.tier ?? null })
   }
   return bloques
@@ -171,10 +182,10 @@ export function resolverBloquesTier<T extends TierMayorista>(
  * que el `precioTier` de siempre, porque `resolverBloquesTier` devuelve un solo bloque.
  */
 export function precioBlendedTier<T extends TierMayorista>(
-  tiers: T[], cantidadTotal: number, precioLista: number,
+  tiers: T[], cantidadTotal: number, precioLista: number, cotizacionUsd?: number,
 ): number {
   if (!(cantidadTotal > 0)) return precioLista
-  const bloques = resolverBloquesTier(tiers, cantidadTotal, precioLista)
+  const bloques = resolverBloquesTier(tiers, cantidadTotal, precioLista, cotizacionUsd)
   if (bloques.length === 0) return precioLista
   const totalCobrado = bloques.reduce((s, b) => s + b.cantidad * b.precioUnitario, 0)
   return round2(totalCobrado / cantidadTotal)

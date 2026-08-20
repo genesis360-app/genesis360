@@ -56,7 +56,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       const { data, error } = await supabase
         .from('ventas')
         .select(`
-          id, numero, total, cliente_nombre, created_at,
+          id, numero, total, cliente_nombre, created_at, cotizacion_usd,
           venta_items(
             cantidad, precio_unitario, precio_costo_historico, subtotal, iva_monto,
             productos(nombre, categoria_id, categorias(nombre))
@@ -96,15 +96,26 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
   // Computar métricas derivadas
   const { kpis, porVenta, porProducto } = useMemo(() => {
     // Margen/ganancia sobre NETO sin IVA (el IVA débito no es ingreso del negocio).
-    let totalVentas = 0   // bruto facturado (Σ subtotal, c/IVA)
+    let totalVentas = 0   // bruto facturado (Σ subtotal, c/IVA) — solo ventas 100% en pesos
     let totalIva = 0
     let totalCosto = 0
     let ventasConCosto = 0
+    let totalVentasCount = 0
+
+    // G5 Fase 7 (H2) — ventas con componente USD (`cotizacion_usd` no nulo, seteado desde la
+    // Fase 1/4 cuando un producto se vendió en moneda_venta='usd' o se cobró con un medio USD) se
+    // EXCLUYEN de los totales/indicadores en pesos: mezclarlas distorsiona el margen/ticket sin
+    // que se note por qué cambió (una venta en USD "vale más" pesos solo porque subió la
+    // cotización, no porque el negocio vendió más). Se muestran aparte (totalVentasUsd* abajo) y
+    // siguen apareciendo en "Detalle por venta" (tagueadas `esUsd`), solo no suman al agregado.
+    let totalVentasUsdCount = 0
+    let totalVentasUsdMonto = 0
 
     const ventaRows: any[] = []
     const prodMap: Record<string, { nombre: string; venta: number; iva: number; costo: number; cantidad: number }> = {}
 
-    for (const v of ventas) {
+    for (const v of ventas as any[]) {
+      const esUsd = v.cotizacion_usd != null
       let costoVenta = 0
       let brutoVenta = 0
       let ivaVenta = 0
@@ -113,27 +124,34 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       for (const item of (v.venta_items ?? []) as any[]) {
         const subtotal = item.subtotal ?? (item.precio_unitario * item.cantidad)
         const ivaItem = item.iva_monto ?? 0
-        totalVentas += subtotal
-        totalIva += ivaItem
         brutoVenta += subtotal
         ivaVenta += ivaItem
-
         if (item.precio_costo_historico) {
-          const costo = item.precio_costo_historico * item.cantidad
-          costoVenta += costo
-          totalCosto += costo
+          costoVenta += item.precio_costo_historico * item.cantidad
           hayAlgunCosto = true
         }
 
-        const nombre = item.productos?.nombre ?? 'Producto'
-        if (!prodMap[nombre]) prodMap[nombre] = { nombre, venta: 0, iva: 0, costo: 0, cantidad: 0 }
-        prodMap[nombre].venta += subtotal
-        prodMap[nombre].iva += ivaItem
-        if (item.precio_costo_historico) prodMap[nombre].costo += item.precio_costo_historico * item.cantidad
-        prodMap[nombre].cantidad += item.cantidad
+        if (!esUsd) {
+          totalVentas += subtotal
+          totalIva += ivaItem
+          if (item.precio_costo_historico) totalCosto += item.precio_costo_historico * item.cantidad
+
+          const nombre = item.productos?.nombre ?? 'Producto'
+          if (!prodMap[nombre]) prodMap[nombre] = { nombre, venta: 0, iva: 0, costo: 0, cantidad: 0 }
+          prodMap[nombre].venta += subtotal
+          prodMap[nombre].iva += ivaItem
+          if (item.precio_costo_historico) prodMap[nombre].costo += item.precio_costo_historico * item.cantidad
+          prodMap[nombre].cantidad += item.cantidad
+        }
       }
 
-      if (hayAlgunCosto) ventasConCosto++
+      if (esUsd) {
+        totalVentasUsdCount++
+        totalVentasUsdMonto += v.total ?? 0
+      } else {
+        totalVentasCount++
+        if (hayAlgunCosto) ventasConCosto++
+      }
 
       const netoVenta = brutoVenta - ivaVenta
       const ganancia = costoVenta > 0 ? (netoVenta - costoVenta) : null
@@ -148,6 +166,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
         costo: costoVenta || null,
         ganancia,
         margen,
+        esUsd,
       })
     }
 
@@ -168,7 +187,10 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       .slice(0, 10)
 
     return {
-      kpis: { totalVentas, totalVentasNeto, totalIva, totalCosto, gananciaTotal, margenPromedio, ventasConCosto, totalVentasCount: ventas.length },
+      kpis: {
+        totalVentas, totalVentasNeto, totalIva, totalCosto, gananciaTotal, margenPromedio, ventasConCosto,
+        totalVentasCount, totalVentasUsdCount, totalVentasUsdMonto,
+      },
       porVenta: ventaRows,
       porProducto,
     }
@@ -230,7 +252,9 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
             <KpiCard
               label="Ventas totales"
               value={formatMoneda(kpis.totalVentas)}
-              sub={`${kpis.totalVentasCount} ventas confirmadas`}
+              sub={kpis.totalVentasUsdCount > 0
+                ? `${kpis.totalVentasCount} ventas confirmadas · +${kpis.totalVentasUsdCount} en USD (${formatMoneda(kpis.totalVentasUsdMonto)} equivalentes, aparte)`
+                : `${kpis.totalVentasCount} ventas confirmadas`}
               icon={ShoppingCart}
               color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
             />
@@ -356,7 +380,13 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                   {porVenta.slice(0, verVentas).map((v: any) => (
                     <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">#{v.numero ?? v.id.slice(-4)}</td>
+                      <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                        #{v.numero ?? v.id.slice(-4)}
+                        {/* G5 Fase 7 (H2) — venta con componente USD: sigue en el detalle, pero excluida de los KPIs de arriba */}
+                        {v.esUsd && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 align-middle">USD</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {new Date(v.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
                       </td>

@@ -13,9 +13,8 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode } from 'lucide-react'
 import toast from 'react-hot-toast'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportarExcel/exportarPDF
+// (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -201,9 +200,10 @@ export default function PedidosPage() {
     }))
   })
 
-  const exportarExcel = () => {
+  const exportarExcel = async () => {
     const filas = filasExport()
     if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Pedidos')
     XLSX.writeFile(wb, `pedidos_${new Date().toISOString().split('T')[0]}.xlsx`)
@@ -224,10 +224,13 @@ export default function PedidosPage() {
     toast.success('CSV descargado')
   }
 
-  const exportarPDF = () => {
+  const exportarPDF = async () => {
     const filas = filasExport()
     if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
     const cols = Object.keys(filas[0])
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({ orientation: 'landscape' })
     doc.setFillColor(30, 58, 95); doc.rect(0, 0, doc.internal.pageSize.width, 25, 'F')
     doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.setFont('helvetica', 'bold')

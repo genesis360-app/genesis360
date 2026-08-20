@@ -316,12 +316,19 @@ export default function GastosPage() {
     queryKey: ['metodos_pago_cfg', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('id, nombre, cuenta_origen_id, habilitado_gastos')
+        .select('id, nombre, cuenta_origen_id, habilitado_gastos, es_efectivo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return (data ?? []).filter((m: any) => m.habilitado_gastos !== false)
     },
     enabled: !!tenant,
   })
+  // Fase 1 Caja USD (G5, mig 368, A3): nombres de métodos "efectivo real" del tenant — reemplaza el
+  // string hardcodeado 'Efectivo' (así un futuro "Efectivo USD" mueve caja/bloquea egreso en negativo
+  // igual que el efectivo en pesos). Fallback al comportamiento de siempre si no cargó la config.
+  const mediosEfectivo = useMemo(() => {
+    const nombres = (metodosPagoCfg as any[]).filter(m => m.es_efectivo).map(m => m.nombre as string)
+    return nombres.length > 0 ? new Set(nombres) : new Set(['Efectivo'])
+  }, [metodosPagoCfg])
   const normalizarNombreMetodo = (s: string): string =>
     s.toLowerCase()
       .normalize('NFD').replace(/\p{Diacritic}/gu, '')
@@ -334,10 +341,17 @@ export default function GastosPage() {
     return m?.cuenta_origen_id ?? null
   }
 
-  const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte) ?? null
-  const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte)
-  const efectivoEnMedios = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
-  const montoEfectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  // G5 Fase 5 — desde mig 373 hay 2 filas es_caja_fuerte=true por tenant (ARS y USD); Gastos solo
+  // paga en ARS (ver comentario de sesionesOperativas debajo), así que la fuerte de fallback tiene
+  // que ser específicamente la de pesos.
+  const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte && (s.cajas?.moneda ?? 'ARS') === 'ARS') ?? null
+  // G5 Fase 4 (hallazgo de code-review, mig 372) — Gastos todavía no soporta pagar en USD (eso es
+  // específico de Ventas). Sin filtrar acá, el picker podía ofrecer una Caja USD y el trigger de
+  // moneda-por-sesión rechazaría el insert (fallaría con toast en vez de plata perdida en silencio,
+  // pero es mejor no ofrecerla directamente). Mismo patrón sesionesArs que ya usa VentasPage.tsx.
+  const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte && (s.cajas?.moneda ?? 'ARS') === 'ARS')
+  const efectivoEnMedios = mediosPago.some(m => mediosEfectivo.has(m.tipo) && parseFloat(m.monto) > 0)
+  const montoEfectivo = mediosPago.filter(m => mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   // Para mostrar el selector de caja en JSX (mediosValidos completo se calcula en guardar())
   const hayMediosValidos = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
 
@@ -792,7 +806,7 @@ export default function GastosPage() {
       // normalización de nombres se resuelve en el cliente, igual que antes).
       const mediosRpc = mediosValidos.map(m => ({
         tipo: m.tipo, monto: m.monto,
-        cuenta_origen_id: m.tipo === 'Efectivo' ? null : cuentaOrigenDeMetodo(m.tipo),
+        cuenta_origen_id: mediosEfectivo.has(m.tipo) ? null : cuentaOrigenDeMetodo(m.tipo),
       }))
       const chequeObj = montoCheque > 0
         ? { nro: ocChequeNro.trim() || null, banco: ocChequeBanco.trim() || null, fecha_cobro: ocChequeFechaCobro, sucursal_id: sucursalId || null }
@@ -809,7 +823,7 @@ export default function GastosPage() {
       })
       if (pagoErr) throw pagoErr
       if (montoCheque > 0) toast(`Cheque por $${montoCheque.toLocaleString('es-AR', { maximumFractionDigits: 0 })} registrado en Gastos → Cheques`, { icon: '🧾' })
-      if (!sesionId && mediosValidos.some(m => m.tipo === 'Efectivo'))
+      if (!sesionId && mediosValidos.some(m => mediosEfectivo.has(m.tipo)))
         toast(`⚠ Sin caja abierta — el egreso en efectivo no se registró en caja`, { icon: '⚠' })
 
       toast.success('Pago registrado')
@@ -1187,18 +1201,20 @@ export default function GastosPage() {
           const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
           if (sesionUsar) {
             const concepto = `Gasto: ${form.descripcion.trim()}`
+            // REGLA #0 — awaiteado + aviso si falla (nunca fire-and-forget en un movimiento real).
             for (const mp of mediosValidos) {
               const montoMp = parseFloat(mp.monto)
-              const esEfectivo = mp.tipo === 'Efectivo'
+              const esEfectivo = mediosEfectivo.has(mp.tipo)
               const tipo = esEfectivo ? 'egreso' : 'egreso_informativo'
-              supabase.from('caja_movimientos').insert({
+              const { error: cajErr } = await supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id, sesion_id: sesionUsar,
                 tipo,
                 concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
                 monto: montoMp,
                 cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
                 usuario_id: user?.id,
-              }).then(({ error: cajErr }) => { if (cajErr) console.error('caja edit gasto:', cajErr.message) })
+              })
+              if (cajErr) toast.error(`El gasto se editó, pero el movimiento de caja de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
             }
             qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
             qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
@@ -1206,7 +1222,7 @@ export default function GastosPage() {
         }
       } else {
         // CAJ-18 — no permitir un egreso de efectivo que deje la caja en negativo.
-        const efectivoGasto = mediosValidos.filter(mp => mp.tipo === 'Efectivo').reduce((a, mp) => a + parseFloat(mp.monto), 0)
+        const efectivoGasto = mediosValidos.filter(mp => mediosEfectivo.has(mp.tipo)).reduce((a, mp) => a + parseFloat(mp.monto), 0)
         const sesionParaEgreso = sesionCajaId ?? sesionesOperativas[0]?.id
         if (efectivoGasto > 0.5 && sesionParaEgreso) {
           const saldo = await saldoEfectivoSesion(supabase, sesionParaEgreso)
@@ -1223,7 +1239,7 @@ export default function GastosPage() {
         // un fallo o la falta de caja perdían el egreso del arqueo en silencio — bug clase #26).
         const sesionUsar = sesionCajaId ?? sesionesOperativas[0]?.id
         const esFuerte = cajaSeleccionadaId === '__fuerte__'
-        const hayEfectivoGasto = mediosValidos.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0)
+        const hayEfectivoGasto = mediosValidos.some(mp => mediosEfectivo.has(mp.tipo) && parseFloat(mp.monto) > 0)
         if (!sesionUsar && hayEfectivoGasto) {
           toast(`⚠ Sin caja abierta: el egreso en efectivo de "${form.descripcion.trim()}" no se asentó en caja. Abrí una caja o registralo manualmente.`, { icon: '⚠', duration: 10000 })
         }
@@ -1231,7 +1247,7 @@ export default function GastosPage() {
           const concepto = `Gasto: ${form.descripcion.trim()}`
           for (const mp of mediosValidos) {
             const montoMp = parseFloat(mp.monto)
-            const esEfectivo = mp.tipo === 'Efectivo'
+            const esEfectivo = mediosEfectivo.has(mp.tipo)
             // Caja fuerte: egreso_traspaso (visible en historial de caja fuerte)
             const tipo = esFuerte && esEfectivo ? 'egreso_traspaso' : esEfectivo ? 'egreso' : 'egreso_informativo'
             const { error: cajErr } = await supabase.from('caja_movimientos').insert({
@@ -1313,10 +1329,11 @@ export default function GastosPage() {
       const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
       if (sesionUsar) {
         const medios = parseMediosPago(g.medio_pago)
+        // REGLA #0 — awaiteado + aviso si falla (nunca fire-and-forget en un movimiento real).
         for (const mp of medios.filter(m => m.tipo && parseFloat(String(m.monto)) > 0)) {
           const montoMp = parseFloat(String(mp.monto))
-          const esEfectivo = mp.tipo === 'Efectivo'
-          supabase.from('caja_movimientos').insert({
+          const esEfectivo = mediosEfectivo.has(mp.tipo)
+          const { error: cajErr } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: sesionUsar,
             tipo: esEfectivo ? 'ingreso' : 'ingreso_informativo',
             monto: montoMp,
@@ -1325,7 +1342,8 @@ export default function GastosPage() {
               : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
-          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja reversión gasto:', cajErr.message) })
+          })
+          if (cajErr) toast.error(`El gasto se eliminó, pero la reversión de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó en caja. Registrala manualmente. (${cajErr.message})`, { duration: 12000 })
         }
         qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
         qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
@@ -1382,14 +1400,16 @@ export default function GastosPage() {
       }
       const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
       if (sesionUsar) {
-        const esEfectivo = pagoParcialmedio === 'Efectivo'
-        supabase.from('caja_movimientos').insert({
+        const esEfectivo = mediosEfectivo.has(pagoParcialmedio)
+        // REGLA #0 — awaiteado + aviso si falla (nunca fire-and-forget en un movimiento real).
+        const { error: cajErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: sesionUsar,
           tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
           concepto: esEfectivo ? `Pago gasto: ${pagoGastoModal.descripcion}` : `[${pagoParcialmedio}] Pago gasto: ${pagoGastoModal.descripcion}`,
           monto, cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(pagoParcialmedio),
           usuario_id: user?.id,
-        }).then(({ error: cajErr }) => { if (cajErr) console.error('caja pago parcial gasto:', cajErr.message) })
+        })
+        if (cajErr) toast.error(`El pago se registró en el gasto, pero el movimiento de caja no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
       }
       qc.invalidateQueries({ queryKey: ['gastos'] })
       qc.invalidateQueries({ queryKey: ['gastos-historial'] })
@@ -1539,13 +1559,13 @@ export default function GastosPage() {
       const sesionUsarFijo = cajaGenerarFijoId
         ?? sesionPropia?.id
         ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
-      const hayEfectivoFijo = mediosValGen.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0)
+      const hayEfectivoFijo = mediosValGen.some(mp => mediosEfectivo.has(mp.tipo) && parseFloat(mp.monto) > 0)
       if (!sesionUsarFijo && hayEfectivoFijo) {
         toast(`⚠ Sin caja abierta: el egreso en efectivo de "${f.descripcion}" no se asentó en caja. Abrí una caja o registralo manualmente.`, { icon: '⚠', duration: 10000 })
       }
       if (sesionUsarFijo && mediosValGen.length > 0) {
         for (const mp of mediosValGen) {
-          const esEfectivo = mp.tipo === 'Efectivo'
+          const esEfectivo = mediosEfectivo.has(mp.tipo)
           const { error: cajErr } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: sesionUsarFijo,
             tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
@@ -3417,7 +3437,7 @@ export default function GastosPage() {
                       </p>
                     </div>
                   )}
-                  {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
+                  {ocMediosPago.some(m => mediosEfectivo.has(m.tipo)) && (cajasAbiertasOC as any[]).length === 0 && (
                             <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso en efectivo no se registrará en caja.</p>
                           )}
                         </>

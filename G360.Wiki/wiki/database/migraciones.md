@@ -3,23 +3,512 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-13
+updated: 2026-08-19
 ---
 
-# Historial de Migraciones (001-359)
+# Historial de Migraciones (001-375)
 
-**Total al 2026-08-13:** 359 archivos de migración + 086b correctivo (algunos números salteados por
+**375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `e55a1009`, tag `v1.175.0`), NO en
+PROD (2026-08-19):** Fase 6 ("Devoluciones/NC con
+soporte USD") del plan Caja USD (relevamiento G5). Continúa la Fase 5 (migs 373+374, ya
+commiteada/pusheada, tag `v1.174.0`). Puramente aditiva, sin funciones/triggers/vistas nuevas — los
+`caja_movimientos` que este flujo inserta ya quedan protegidos por los triggers
+`fn_validar_moneda_coincide_sesion` (mig 372) y `fn_validar_moneda_coincide_cuenta_origen` (mig 373), que
+se disparan sobre cualquier INSERT a esa tabla sin filtrar por origen. Agrega:
+1. `tenants.reintegro_usd_cotizacion_original boolean NOT NULL DEFAULT false` — toggle de **G1** (qué
+   cotización usa el reintegro en caja de una devolución vía "Efectivo USD": la de hoy por default, o la
+   de la venta original si se activa).
+2. `devoluciones.monto_usd numeric(14,2)` + `devoluciones.cotizacion_usd_usada numeric(14,4)` — auditoría
+   de cuánto USD real se devolvió y con qué cotización; NULL en ambas si la devolución no tuvo componente
+   USD.
+3. `CHECK devoluciones_usd_ambos_o_ninguno` — exige que las 2 columnas de arriba vayan siempre juntas
+   (ambas NULL, o ambas presentes y positivas).
+
+**🐛 Bug real encontrado y corregido en DEV, antes de commitear**: la primera versión del CHECK usaba
+`monto_usd > 0 AND cotizacion_usd_usada > 0` sin `IS NOT NULL` explícito — en SQL de 3 valores, comparar
+contra NULL da NULL (no `false`), y un CHECK trata NULL como "la fila pasa" (no como rechazo). El
+constraint NO rechazaba una fila con solo una de las 2 columnas cargada — exactamente el gap que debía
+cerrar. Detectado corriendo 4 INSERTs reales dentro de una transacción con `ROLLBACK` en DEV (no se asumió
+que el CHECK funcionaba, se probó). Corregido agregando `IS NOT NULL` explícito en cada rama del CHECK y
+reverificado con los mismos 4 tests — los 4 dieron el resultado esperado. La migración aplicada en DEV ya
+tiene la versión corregida.
+
+**G2 del relevamiento** (la NC AFIP usa la cotización de la venta original, no la del momento de la
+devolución) se investigó a fondo y se confirmó **YA correcta por construcción** en el código existente
+(`devolucion_items.precio_unitario` se copia de `venta_items.subtotal/cantidad`, fijo en pesos desde la
+venta original, nunca recalculado) — no hizo falta ningún cambio de lógica en `emitir-factura`, solo
+comentarios documentando el invariante. Verificado en DEV con INSERTs reales en transacciones con
+`ROLLBACK`: default `false` correcto para tenants existentes, CHECK funcionando en sus 4 combinaciones.
+Código: `src/lib/ventasValidation.ts` (`elegirCotizacionReintegro`, 5 tests) + `VentasPage.tsx`
+(devolución con Caja USD paralela) + `ConfigPage.tsx` (toggle) + `emitir-factura/index.ts` (solo
+comentarios). `migration-reviewer`: 3 notas menores, ninguna bloqueante. Ver [[wiki/features/devoluciones]]
+→ "Caja en USD — Fase 6 de 8".
+
+**374 (`374_vw_boveda_cuentas_security_invoker.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en
+PROD (2026-08-19):** cierra un
+"Security Definer View" PRE-EXISTENTE en `vw_boveda_cuentas`, hallazgo real ocurrido al tocar esa vista
+durante la Fase 5 de Caja USD (mig 373, ver abajo). El advisor de seguridad de Supabase (`get_advisors`,
+nivel ERROR) marcó que la vista corre con los privilegios de su DUEÑO (comportamiento default de toda vista
+en Postgres sin `security_invoker`) en vez de los del usuario que consulta — es decir, **ignora el RLS** de
+`cuentas_origen`/`caja_movimientos`. Riesgo real: cualquier usuario autenticado (de cualquier tenant) que
+consultara `/rest/v1/vw_boveda_cuentas` sin el filtro `?tenant_id=eq....` que sí aplica `CajaPage.tsx`
+podría leer nombres de cuenta y saldos de la Bóveda de OTROS tenants. Confirmado **PRE-EXISTENTE**: la
+definición en `schema_full.sql` de antes de esta sesión ya no tenía `security_invoker`, y `CREATE OR
+REPLACE VIEW` no lo agrega ni lo quita solo — la mig 373 no lo introdujo, solo lo hizo visible al re-crear
+la vista con otro `WHERE`. Fix: `ALTER VIEW public.vw_boveda_cuentas SET (security_invoker = true)` —
+verificado antes de aplicar que ambas tablas base tienen RLS habilitado con policy propia.
+`migration-reviewer`: APTA. Ver [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
+
+**373 (`373_caja_usd_fase5_boveda.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en PROD (2026-08-19):** Fase 5
+("Bóveda ARS/USD") del plan Caja USD
+(relevamiento G5). Continúa la Fase 4 (mig 372, ya commiteada/pusheada, tag `v1.173.0`). Con esta fase, **la
+Bóveda deja de asumir 1 sola fila por tenant** — pasa a tener 2 (ARS y USD, pestañas separadas en la UI).
+Agrega:
+1. `fn_seed_tenant_defaults()` (`CREATE OR REPLACE`) — siembra "Efectivo USD" (`cuentas_origen`) para
+   tenants nuevos, dormida en $0, junto a "Efectivo" (ARS).
+2. `fn_crear_caja_fuerte()` (`CREATE OR REPLACE`) — siembra "Caja Fuerte USD" (`cajas.es_caja_fuerte=true,
+   moneda='USD'`) para tenants nuevos, también dormida en $0.
+3. **Backfill para los 10 tenants existentes en DEV** — verificado con query real: los 10 quedaron con
+   "Efectivo USD" y "Caja Fuerte USD" sembradas.
+4. `vw_boveda_cuentas` (`CREATE OR REPLACE VIEW`) — corrige un fallback de atribución que se volvió
+   ambiguo al haber 2 cuentas `tipo='efectivo'` por tenant (ahora cruza también por `moneda`, no solo
+   `tenant_id`) — sin este fix, un movimiento en USD sin `cuenta_origen_id` explícito podía atribuirse a la
+   cuenta Efectivo ARS (o viceversa) según el orden no determinístico de un `LIMIT 1` sin `ORDER BY`.
+5. **Cambio de constraint real, descubierto porque la migración FALLÓ al aplicar por primera vez**: el
+   índice único parcial `uq_cuentas_origen_efectivo_por_tenant` (mig 137, "1 sola cuenta efectivo POR
+   TENANT") bloqueaba directamente la 2da cuenta "Efectivo USD". Reemplazado por
+   `uq_cuentas_origen_efectivo_por_tenant_moneda`, scopeado a `(tenant_id, moneda)` — preserva la intención
+   original (evitar ambigüedad) pero ahora permite 1 cuenta efectivo POR MONEDA.
+6. Trigger nuevo `fn_validar_moneda_coincide_cuenta_origen` (`BEFORE INSERT OR UPDATE OF moneda,
+   cuenta_origen_id ON caja_movimientos`) — defensa en profundidad complementaria a
+   `fn_validar_moneda_coincide_sesion` (mig 372, valida movimiento vs. sesión); este valida movimiento vs.
+   `cuenta_origen_id` — rechaza un movimiento cuya `moneda` no coincida con la de su cuenta de origen.
+7. Tabla nueva `boveda_conversiones_usd` (auditoría de la conversión USD↔$: `sentido`, `monto_origen`,
+   `monto_destino`, `cotizacion_usada`, `usuario_id`, `movimiento_origen_id`/`movimiento_destino_id`) — RLS
+   calcada del patrón de `boveda_retiros` (DUEÑO/ADMIN/SUPER_USUARIO a nivel DB; la restricción "solo
+   DUEÑO" de F2 del relevamiento es de producto/UI, no de aislamiento de datos).
+
+`migration-reviewer` revisó la migración **antes de aplicar**: la primera versión tuvo **2 hallazgos
+bloqueantes reales** (columnas inexistentes copiadas mal en `fn_seed_tenant_defaults`, y
+`fn_crear_caja_fuerte` basada en una versión vieja sin `search_path`), corregidos y re-revisados como APTA.
+Verificada en DEV con 4 tests manuales reales (INSERT dentro de transacciones con `ROLLBACK`, sin dejar
+datos): movimiento con moneda≠cuenta rechazado, movimiento con moneda≠sesión rechazado, movimiento con todo
+coincidente permitido, 2da cuenta efectivo misma moneda rechazada por el índice único.
+
+**Código cableado**: `src/lib/cajaBoveda.ts` (nuevo) — `calcularConversionUsd()` (función pura, 7 tests
+`BOV-CNV-01` a `07`: USD→$ usa la cotización de COMPRA, $→USD usa la de VENTA, sin redondeo — J1) +
+`ensureFuerteSesionId()` (helper async compartido, reemplaza 4 bloques duplicados que nunca stampeaban
+`moneda` al crear la sesión permanente de la bóveda). `src/lib/cajaPermisos.ts` suma
+`convertir_usd_boveda`, solo `['DUEÑO']`. `src/pages/CajaPage.tsx`: `bovedaTab: 'ARS'|'USD'`,
+`cajaFuerteArs`/`cajaFuerteUsd` derivados de `cajas`, `cajaFuerte` pasa a depender de la pestaña activa
+(vuelve moneda-aware TODA la lógica preexistente de Bóveda con un cambio mínimo), mutation
+`convertirUsdBoveda` + modal nuevo, campo de clave maestra condicional en "Extraer dinero" (F3), se
+levantan los bloqueos "todavía no soporta Caja USD" que había puesto la Fase 3.
+`src/components/NotificacionesButton.tsx`: `aprobarSolicitudCajaFuerte` ya no rechaza en bloque solicitudes
+en USD. `src/pages/GastosPage.tsx`: `sesionFuerte` filtra explícitamente `moneda==='ARS'`.
+
+**🐛 2 bugs reales encontrados y corregidos antes de commitear**: (1) la auto-selección de caja al entrar
+al tab "Caja" usaba `cajasAbiertas[0]` sin excluir la Caja Fuerte — con 2 Cajas Fuerte permanentemente
+abiertas el riesgo de operar sobre ella por accidente se duplicó; fix: filtra contra `cajasOperativas`. (2)
+el selector "Cuenta de destino" de "Ingresar a Caja Fuerte" no filtraba por moneda — podía dejar plata
+huérfana sin contraparte (egreso commiteado, ingreso rechazado por el trigger nuevo); fix: filtra por la
+moneda de la pestaña activa. También ~8 lugares con bug de visualización (símbolo de moneda del tenant en
+vez de la moneda real de la cuenta/caja fuerte mostrada).
+
+Typecheck + build + suite completa de tests verdes (100 archivos, 1600 tests). UAT nuevos: `CAJ-37` a
+`CAJ-40` (`tests/specs/uat-modo-basico.md`). Ver [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
+
+> **Limitaciones conocidas, documentadas y NO resueltas**: el guard de F3 (clave maestra) y la restricción
+> "solo DUEÑO" de la conversión son 100% client-side hoy (sin RPC `SECURITY DEFINER` que las revalide en
+> DB — mismo patrón preexistente que `verificar_clave_maestra` en otras partes del módulo, no una regresión
+> de esta fase). `schema_full.sql` sigue sin regenerar (bug del pooler Supavisor + falta
+> `SUPABASE_ACCESS_TOKEN` en esta sesión). Hallazgo PRE-EXISTENTE sin tocar: la Caja Fuerte "primaria" de
+> un tenant nace con `cajas.moneda='ARS'` hardcodeado (no `COALESCE(tenant.moneda,'ARS')` como sí hace
+> "Efectivo") — bug latente más amplio de la Bóveda multi-moneda, fuera del alcance G5. Hallazgo
+> PRE-EXISTENTE sin tocar: migración `368b_fix_acentos_fn_seed_tenant_defaults` aplicada a DEV sin archivo
+> local commiteado (drift real, sin riesgo de regresión verificado).
+
+**Fase 5 de Caja USD (G5) queda 100% completa** (migs 373+374), sumada a las Fases 1+2+3+4 (migs 368-372) —
+el proyecto completo (Fases 1+2+3+4+5 de 8) está 100% en DEV. **Estado real: migs 373+374 aplicadas y
+verificadas en DEV, COMMITEADAS Y PUSHEADAS a `origin/dev`** (commit `28d9291e`, tag+release `v1.174.0`
+publicados). Próximo paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios).
+
+**372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d`, tag `v1.173.0`),
+NO en PROD (2026-08-18):** Fase 4 ("venta con pago combinado
+ARS+USD") del plan Caja USD (relevamiento G5). Continúa la Fase 3 (mig 371, ya commiteada/pusheada como
+tag `v1.172.0`). Agrega **2 triggers** `fn_validar_moneda_coincide_sesion` (sobre `caja_movimientos` y
+`caja_arqueos`) que rechazan cualquier movimiento/arqueo cuya `moneda` no coincida con la moneda real de
+su sesión de caja (`caja_sesiones.moneda`, inmutable desde que se abre — mig 368) — red de seguridad
+server-side, ya que con esta fase hay MUCHOS más lugares del código (`VentasPage.tsx`) escribiendo
+`moneda` en cada movimiento, no solo `CajaPage.tsx` (Fase 3). No hizo falta ningún cambio de esquema para
+la funcionalidad en sí — los campos ya existían desde mig 368 (`metodos_pago.moneda`/`es_efectivo`) y mig
+370 (`productos.acepta_cualquier_moneda`, `ventas.cotizacion_usd`).
+
+Una revisión de esta migración auditó TODOS los insert-sites de `caja_movimientos`/`caja_arqueos` en todo
+el repo (no solo lo tocado en esta sesión) y confirmó: cero riesgo para tenants reales hoy (ninguno tiene
+Caja USD en producción de datos), pero encontró **2 gaps preexistentes de REGLA #0 en `GastosPage.tsx`**
+(3 movimientos de caja fire-and-forget sin `await`/`toast`, corregidos en esta misma sesión) y un **picker
+de caja en Gastos que no filtraba por moneda** (también corregido: ahora excluye Cajas USD, mismo patrón
+que Ventas).
+
+**Código — el corazón de la fase, `src/pages/VentasPage.tsx` (el checkout completo del POS):**
+- **D2** — nuevo campo opcional `MedioPagoItem.montoUsd` (`src/lib/ventasValidation.ts`): para un método
+  de pago "efectivo + USD" (ej. "Efectivo USD", ahora creable desde Config → Ventas → Métodos de pago, que
+  hasta esta fase nunca exponía los campos `moneda`/`es_efectivo` en su UI de alta/edición pese a existir
+  desde mig 368), el cajero tipea dólares en un input dedicado; el campo `monto` de siempre sigue siendo
+  el equivalente en ARS (`montoUsd × cotización vigente`) — `calcularVuelto`/`calcularEfectivoCaja`/
+  `validarMediosPago` siguen funcionando exactamente igual, sin cambios.
+- **D3** — nueva función pura `calcularEfectivoPorMoneda` (`ventasValidation.ts`, 7 tests nuevos) que
+  separa el efectivo cobrado en `{ arsNeto, usdIngreso, vueltoArs }`. Regla D1: el vuelto de un pago en
+  USD SIEMPRE se da en pesos — los dólares físicos recibidos van siempre completos a la sesión USD (nunca
+  se "netean" contra el vuelto); si hay sobrepago, el vuelto sale siempre en pesos de la sesión ARS
+  (puede quedar en EGRESO neto aunque el sobrante haya venido de dólares).
+- **Selector de caja doble** (`sesionesArs`/`sesionesUsd`, filtradas por la moneda real de cada sesión) —
+  para el 100% de tenants sin Caja USD real, `sesionesArs` es idéntico al array de siempre.
+- **A2 gana su primer consumidor real**: `carritoAceptaUsd` — un producto solo puede cobrarse en USD si
+  `moneda_venta='usd'` o tiene `acepta_cualquier_moneda=true`; si cualquier línea del carrito no cumple
+  ninguna, la venta se bloquea para cobro en USD.
+- **`ventas.cotizacion_usd` finalmente se escribe** (columna de la Fase 1, nunca usada hasta ahora):
+  snapshot interno cuando la venta involucró conversión real de USD — NUNCA va a AFIP. Base para que la
+  Fase 6 (NC) use la cotización de la venta original (G2).
+- **🐛 Bug real encontrado y corregido por code-review antes de commitear**: cambiar el `<select>` de un
+  medio de "Efectivo" a "Efectivo USD" (o viceversa) dejaba el monto viejo en el campo equivocado — la
+  venta pasaba todas las validaciones pero no acreditaba nada en NINGUNA caja. Corregido en 2 capas:
+  cambiar el tipo de medio resetea el monto, y `registrarVenta` bloquea si detecta un medio USD con monto
+  sin su contraparte en dólares (defensa en profundidad) + guard si falta cargar la cotización.
+- **Completar una reserva (seña/saldo) en USD — explícitamente NO soportado en esta fase**: ese flujo
+  reusa un picker de medios de pago genérico sin el input especial de dólares; se agregó un guard
+  explícito que bloquea con mensaje claro pidiendo usar el POS principal (alcance reducido, documentado).
+
+`migration-reviewer`: APTA, con la auditoría completa de insert-sites descripta arriba. Revisión de código
+completa del diff de `VentasPage.tsx`/`ConfigPage.tsx`/`GastosPage.tsx`: encontró el bug de arriba (ya
+corregido) + los 2 gaps de Gastos (ya corregidos). Typecheck + build + suite completa de tests verdes
+(incluye 7 tests nuevos de `calcularEfectivoPorMoneda` + 6 de `carritoAceptaUsd`). UAT nuevos: `VEN-37` a
+`VEN-43` (`tests/specs/uat-modo-basico.md`). Ver [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8" y
+[[wiki/features/ventas-pos]] → "Pago combinado ARS+USD".
+
+**Fase 4 de Caja USD (G5) queda 100% completa** (mig 372), sumada a las Fases 1+2+3 (migs 368-371) — el
+proyecto completo (Fases 1+2+3+4 de 8) está 100% en DEV. **Estado real: mig 372 aplicada y verificada en
+DEV, código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.173.0`).
+**Fase 5 (Bóveda por moneda — pestañas ARS/USD, conversión USD↔$, retiro de Caja USD sin destino con clave
+maestra) ya la completa — ver migs 373+374 arriba.**
+
+**371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd`, tag `v1.172.0`),
+NO en PROD (2026-08-18):** Fase 3 ("ciclo operativo") del plan
+Caja USD (relevamiento G5). Continúa la Fase 2 (mig 370, ya commiteada/pusheada). Agrega **2 triggers**
+(sin cambios de schema — solo funciones + triggers):
+- `fn_validar_traspaso_misma_moneda` (`BEFORE INSERT ON caja_traspasos`) — bloquea un traspaso entre 2
+  sesiones de caja de distinta moneda (F1 del relevamiento: antes se podía traspasar "100" de una caja
+  ARS a una USD y acreditar 100 dólares directamente, un bug de integridad latente). El código cliente
+  (`CajaPage.tsx`: `realizarTraspaso` + el selector del modal) ya filtraba/validaba esto, pero REGLA #0
+  pide guard server-side además de la UI.
+- `fn_validar_rol_opera_caja_usd` (`BEFORE INSERT ON caja_sesiones`) — bloquea abrir una sesión en una
+  caja `moneda='USD'` si el rol de quien la abre no es DUEÑO ni está en `tenants.caja_usd_roles_permitidos`
+  (mig 370, I1 del relevamiento). DUEÑO siempre puede — mismo criterio aditivo que
+  `cotizacion_usd_roles_permitidos`.
+
+Verificado con tests manuales reales en DEV (INSERT dentro de transacciones con `ROLLBACK`, sin dejar
+datos): ARS→USD rechazado con `P0001 No se puede traspasar entre cajas de distinta moneda`, ARS→ARS
+permitido; CAJERO rechazado con `P0001 Tu rol no tiene permiso para operar una Caja USD`, DUEÑO permitido.
+Para el 100% de cajas ARS (todo tenant real hoy) ambos triggers cortan temprano sin tocar nada — cero
+impacto en el flujo actual. Existe 1 caja de prueba real en DEV con `moneda='USD'` (tenant "Almacén
+Jorgito"), creada durante el desarrollo de este feature.
+
+**Código cableado** (`src/pages/CajaPage.tsx`): fix del bug de formato — nueva `formatMonedaCaja` usa la
+moneda REAL de la caja/sesión activa en vez de `tenant.moneda` (E1); conteo por denominación de billete
+USD para Arqueo/Cierre — componente nuevo `src/components/ConteoDenominaciones.tsx` + lógica pura
+`src/lib/cajaArqueo.ts` (`sumaDenominaciones`, `DENOMINACIONES_USD`, E2/J2, 6 tests nuevos); umbral de
+diferencia propio en USD al cerrar (E3); guard cliente de traspaso cross-moneda + selector filtrado (F1);
+`puedeOperarCajaUsd` filtra el picker de cajas operativas (I1); moneda stampeada en cada
+movimiento/sesión/arqueo nuevo (activa de verdad las columnas de la Fase 1). 2 hallazgos de code-review
+corregidos en la misma sesión: Bóveda excluye Cajas USD como origen/destino; "Abrir caja para" (A2) respeta
+el permiso de Caja USD.
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. Revisión de código completa del diff de
+`CajaPage.tsx`: sin hallazgos 🔴 (los 2 🟡 arriba ya corregidos). Typecheck + build + suite completa de
+tests verdes. UAT nuevos: `CAJ-31` a `CAJ-36` (`tests/specs/uat-modo-basico.md`). Ver [[wiki/features/caja]]
+→ "Caja en USD — Fase 3 de 8".
+
+**Fase 3 de Caja USD (G5) queda 100% completa** (mig 371), sumada a las Fases 1+2 (migs 368-370) — el
+proyecto completo (Fases 1+2+3 de 8) está 100% en DEV. **Estado real: mig 371 COMMITEADA Y PUSHEADA a
+`origin/dev` (commit `010440cd` + bump `56f48fe8`), tag+release `v1.172.0` publicados**, corrigiendo el
+estado "TODAVÍA SIN COMMITEAR" con el que se documentó esta sección originalmente. Fase 4 (mig 372, ver
+arriba) ya está completa también, en una tanda posterior.
+
+**370 (`370_caja_usd_fase2_permisos_config.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
+NO en PROD (2026-08-18):** Fase 2 ("permisos y configuración") del plan Caja USD (relevamiento G5).
+Aditiva, 100% retro-compatible — solo agrega columnas de configuración, ningún comportamiento cambia salvo
+el gate de rol descripto abajo. Agrega a `tenants`: `cotizacion_usd_compra` (pata de compra que la API ya
+devolvía y se descartaba), `cotizacion_usd_casa` (qué casa blue/oficial/bolsa/cripto se usó la última
+vez), `cotizacion_usd_roles_permitidos` (jsonb, roles ADICIONALES a DUEÑO que pueden elegir tipo de
+cotización o cargar manual — DUEÑO siempre puede), `caja_usd_roles_permitidos` (jsonb, mismo patrón para
+quién podrá operar la futura Caja USD), `diferencia_caja_umbral_usd` (umbral de arqueo propio en USD,
+separado del de pesos), `caja_usd_clave_maestra_umbral` (umbral USD para exigir clave maestra — el campo
+nace acá, el enforcement real es Fase 5). Agrega a `productos`: `acepta_cualquier_moneda` (boolean,
+default `false`) — checkbox "puede cobrarse en cualquier moneda" (A2 del relevamiento), independiente de
+`moneda_venta`; solo se persiste en esta fase, el cobro mixto real es Fase 4 (sin construir).
+
+**Código cableado**: `src/hooks/useCotizacion.ts` gana el gate de rol (DUEÑO siempre + roles habilitados
+pueden elegir tipo/cargar manual, el resto solo "refresca" repitiendo la última casa) implementado **en el
+hook** (defensa en profundidad, no solo la UI); ahora guarda compra+venta+casa (antes solo venta).
+`src/components/CotizacionWidget.tsx` respeta el gate. `src/lib/cajaPermisos.ts` suma `rolEnLista()`
+genérica (roles fijos + `custom:<id>`), reusada por `accedeABoveda` sin cambiar su comportamiento
+(verificado). `src/pages/ProductoFormPage.tsx` cablea el checkbox en los 4 puntos (estado inicial, carga,
+creación/edición, duplicar). `src/pages/ConfigPage.tsx` suma la sección "Caja en Dólares" (tab Negocio).
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. `code-reviewer`: OK para commitear, sin hallazgos
+🔴 (2 mejoras de forma ya aplicadas: `setTenant` alineado al patrón `.select().single()`, y UAT).
+Verificado con `information_schema.columns` (las 7 columnas nuevas, tipo/nullable/default correctos).
+Typecheck + build + suite completa (99 archivos, 1574 tests) verdes. UAT nuevos: `PRD-20`/`CAJ-30`. Ver
+[[wiki/features/caja]] → "Caja en USD — Fase 2 de 8" y [[wiki/features/productos]].
+
+**Fase 2 de Caja USD (G5) queda 100% completa** (mig 370), sumada a la Fase 1 (migs 368+369) — el proyecto
+completo (Fases 1+2 de 8) está 100% en DEV. Próximo paso: Fase 3 (ciclo operativo moneda-aware en
+`CajaPage.tsx`).
+
+**369 (`369_caja_usd_fase1_es_efectivo_consumidores.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
+NO en PROD (2026-08-18):** cierra la Fase 1 de Caja USD.
+Cablea los 4 consumidores server-side/cliente que comparaban el string hardcodeado `'Efectivo'` a leer
+`metodos_pago.es_efectivo` (mig 368) — `fn_pedido_generar_venta`, `marcar_envios_pagados`,
+`registrar_pago_oc` (`CREATE OR REPLACE`, esta migración) + `ventasValidation.ts`/`VentasPage.tsx`/
+`GastosPage.tsx` (mismo cambio del lado cliente, aplicado en la misma sesión, sin migración porque es
+solo TS). Comportamiento IDÉNTICO a hoy para todo tenant existente — el backfill de la mig 368 garantiza
+`es_efectivo=true` únicamente para el método literalmente llamado 'Efectivo'. `migration-reviewer`: APTA,
+0 diferencias línea por línea contra las funciones originales salvo el cambio semántico pedido, sin
+pérdida de tildes (se verificó explícitamente después del incidente de la mig 368). Typecheck + build +
+`tests/unit/ventasValidation.test.ts` (40/40, 6 casos nuevos de `mediosEfectivo`) verdes.
+
+**Fase 1 de Caja USD (G5) queda 100% completa** (migs 368+369): moneda real en caja/sesiones/arqueos,
+cotización snapshot en ventas, y "efectivo real" generalizado de extremo a extremo (frontend + backend).
+Próximo paso: Fase 2 (permisos y configuración).
+
+**368 (`368_caja_usd_fase1_cimientos.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
+NO en PROD (2026-08-18):** Fase 1 ("cimientos de datos")
+del plan Caja USD (relevamiento G5, ver `wiki/development/reglas-negocio.md`). Solo schema, sin cablear
+todavía ninguna pantalla/RPC a comportarse distinto — aditiva y retro-compatible al 100%. (1) Agrega
+`moneda text NOT NULL DEFAULT 'ARS'` a `caja_sesiones`/`caja_movimientos`/`caja_arqueos`, denormalizado
+desde `cajas.moneda` para que quede inmutable en el histórico. (2) Agrega `ventas.cotizacion_usd
+numeric(14,2)` (snapshot interno, nunca va a AFIP). (3) Agrega `metodos_pago.es_efectivo boolean`/
+`moneda text` — generaliza el string hardcodeado `'Efectivo'` que hoy comparan `ventasValidation.ts` y 3
+RPC (`fn_pedido_generar_venta`, `registrar_pago_oc`, `marcar_envios_pagados`) a una lista explícita
+atada a moneda (A3 del relevamiento). Backfill `es_efectivo=true WHERE nombre='Efectivo'` — verificado
+con query real que TODOS los tenants (8 en DEV, 5 en PROD) usan ese nombre exacto, sin variantes de case,
+antes de aplicar el backfill. `fn_seed_tenant_defaults` actualizada para setear ambas columnas en el alta
+de tenants nuevos. `migration-reviewer`: APTA, sin hallazgos bloqueantes.
+
+> 🔤 **Nota operativa**: la primera aplicación de esta migración perdió los acentos del español al
+> retranscribir el `CREATE OR REPLACE FUNCTION` a mano (quedó "Devolucion"/"debito" sin tilde) — se
+> detectó con una verificación explícita post-aplicación y se corrigió en el momento con un segundo
+> `apply_migration`. El archivo del repo siempre tuvo el texto correcto. Ver
+> `feedback_apply_migration_acentos_transcripcion` en memoria — copiar el contenido exacto del archivo,
+> nunca retipear SQL con tildes/ñ a mano.
+
+**✅ Consumidores cableados en la mig 369** (ver arriba) — Fase 1 completa.
+
+**367 (`367_producto_moneda_costo_y_tier_usd.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
+NO en PROD (2026-08-18):** fix de 2 bugs reales de
+moneda reportados por Fede en la ficha de Producto. (1) Agrega `productos.moneda_costo`/
+`precio_costo_usd` — mismo patrón exacto que `moneda_venta`/`precio_usd` (mig 161), pero para el
+costo. Cierra un bug real de PERSISTENCIA: el toggle "Ingresar en USD" de costo/venta vivía en
+`useState` efímero, nunca guardaba que el origen era USD — al reabrir la ficha el monto USD original
+se perdía para siempre. (2) Agrega `'usd'` al CHECK `producto_precios_mayorista_tipo_valor_chk` (antes
+solo `precio_fijo`/`pct`) y actualiza `fn_precio_venta_efectivo` (espejo SQL de `src/lib/tiers.ts`) para
+convertir un tier `usd` a la cotización vigente del tenant. `migration-reviewer`: APTA, sin hallazgos
+bloqueantes (sugirió coordinar el PR de frontend, que se aplicó en la misma sesión). Verificado:
+typecheck + build + `tests/unit/tiers.test.ts` (33/33, incluye 6 casos nuevos de `tipo_valor='usd'`)
+verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.md`.
+
+> ⚠️ **Hallazgo aparte, NO resuelto en esta migración** (ver nota completa en `wiki/features/
+> productos.md`): las columnas `precio_costo_moneda`/`precio_venta_moneda` (mig 007) son un
+> mecanismo huérfano — solo las usa el importador CSV, guardando el monto SIN convertir; ningún otro
+> consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
+> productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
+
+**Total al 2026-08-19:** 375 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
-sesión). **Migraciones 001-357 TODAS aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
+sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
-PR #328), verificado con `list_migrations` real contra el proyecto PROD. **v1.169.0 (2026-08-13, PR
-#329) no agregó ninguna migración nueva.** **358 (hard delete de tenant con grace period) y 359 (NC
-electrónica AFIP automática) son NUEVAS (2026-08-13, misma sesión continuada): aplicadas SOLO en DEV —
-código y migraciones SIN COMMITEAR todavía, NO están en PROD.**
+PR #328); **358 (hard delete de tenant con grace period) y 359 (NC electrónica AFIP automática)
+deployadas a PROD el 2026-08-13 (v1.170.0, PR #330)**, verificado con `gh release view v1.170.0` +
+migraciones 358/359 confirmadas aplicadas contra el proyecto PROD. **v1.169.0 (2026-08-13, PR #329) no
+había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin cambios de DB.
+**360-372 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
+moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y COMMITEADAS Y
+PUSHEADAS a `origin/dev`** en 3 tandas: 360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release
+`v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d`
++ bump `05801eb4` (tag+release `v1.173.0`); 373-374 en commit `28d9291e` (tag+release `v1.174.0`); 375 en
+commit `e55a1009` (tag+release `v1.175.0`) — verificado con `git log origin/dev..dev` vacío (una
+reconciliación de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal). **Ninguna
+migración de 360 a 375 queda "sin commitear".** **Sigue sin
+PR `dev`→`main`, sin deploy a PROD.** El resto de este
+bloque describe el detalle técnico de cada una, incluyendo texto histórico
+("SIN COMMITEAR") que
+reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
+habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de
+una sesión anterior (bloqueante técnico real, no una decisión de diseño) — con el MCP reconectado se
+aplicaron y verificaron en esa sesión, junto con la 366 nueva.** **361 y 362 cierran 2 hallazgos 🛑
+CRÍTICO (REGLA #0) de una auditoría general de performance/calidad pedida por GO; 363-365 cierran el
+resto del top5 de esa misma auditoría (backend ítems #3-#5); 366 cierra el único hallazgo backend "DONE"
+del resto del reporte original de esa auditoría (los demás hallazgos quedaron diferidos con razón
+documentada o confirmados que no eran un bug — ver
+`sources/raw/project_pendientes.md` "ARRANCÁ ACÁ", cont. 8, y `log.md`)** — ver el detalle de cada una más
+abajo.
 
-**359 (`359_nc_afip_pendientes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
-🛑 NO APLICADA EN PROD (`jjffnbrdjchquexdfgwq`), código SIN COMMITEAR (working tree local de `dev`,
-mismo working tree que la 358 y los 5 diagramas de flujo):** 🧾⚡ NC electrónica AFIP automática al
+**366 (`366_rls_auth_uid_select_wrap.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
+código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** cierre del resto (no-top5) de la auditoría de
+performance/calidad — antipattern de RLS documentado oficialmente por Supabase: `auth.uid()` usado
+directo en vez de `(select auth.uid())` fuerza reevaluación fila por fila del predicado en vez de una sola
+vez por query (initPlan). Único lugar del schema donde sobrevivía el patrón viejo (el resto de las ~150
+policies ya usa `(select auth.uid())`, confirmado contra `pg_policies`): 4 policies en 3 tablas —
+`autorizaciones_reglas_enrutamiento_select`/`_write`, `cupones_tenant`, `cupones_codigos_tenant`. `DROP`+
+`CREATE` porque `ALTER POLICY` no permite reemplazar `USING`/`WITH CHECK`; cambio puramente mecánico,
+mismo predicado, no cambia ningún permiso ni comportamiento. `migration-reviewer`: sin hallazgos.
+**Verificado con datos reales de DEV**: `pg_policies` confirma el predicado idéntico post-cambio (solo
+envuelto en `(select ...)`) + impersonación real de 2 usuarios vía `SET LOCAL ROLE` (el dueño sigue viendo
+sus 53 cupones, un usuario de otro tenant sigue viendo 0 — aislamiento intacto). De paso,
+`supabase/schema_full.sql` se regeneró completo contra DEV (estaba desactualizado desde antes de esta
+sesión, no reflejaba las migs 358-365). **Estado real: EN DEV, sin commitear, sin PR, sin deploy a PROD.**
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
+
+**365 (`365_fix_formula_notificar_cc_vencidas.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), código SIN COMMITEAR, NO en PROD (2026-08-14):** resto del top5
+de la auditoría de performance/calidad (backend #5). `fn_notificar_cc_vencidas` está MUERTA (ningún
+sweep la invoca — `cron-sweeps` solo llama `recalcular_intereses_cc_all`/`liberar_reservas_vencidas_all`;
+el proyecto no tiene `pg_cron` habilitado) pero calculaba la deuda de CC con la fórmula vieja `SUM(v.total
+- COALESCE(v.monto_pagado,0))` — dos gaps reales contra la fórmula canónica de `cliente_cc_estado`
+(`GREATEST(v.total - v.monto_pagado, 0) + v.interes_cc`, la misma que usan `fn_ventas_cc_guard`/
+`fn_pedido_generar_venta`): (1) sin el `GREATEST(...,0)` una venta sobrepagada de un cliente podía restar
+del total agregado de sus otras ventas con CC; (2) sin sumar `interes_cc`, el monto quedaba subestimado.
+Inofensivo hoy (código inerte), pero landmine real si alguien la reactiva sin notar el drift. **Alcance a
+propósito acotado**: SOLO se corrigió la fórmula — NO se wireó a ningún sweep/cron, esa es una decisión
+de producto (¿se quiere la feature de notificación de CC vencida?) que no correspondía tomar en una
+migración de limpieza de auditoría. **Estado real: escrita y revisada en la sesión anterior (MCP de
+Supabase desconectado a mitad de sesión, bloqueante técnico); aplicada y verificada en esta sesión** —
+`prosrc` confirma la fórmula corregida, función ejecutada sin error. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
+
+**364 (`364_meli_stock_sync_dedupe.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV, código SIN COMMITEAR, NO en
+PROD (2026-08-14):** resto del top5 (backend #4). Dos gaps reales
+encontrados comparando `fn_enqueue_meli_stock_sync`/`trg_meli_stock_sync` contra su gemelo bien hecho
+`fn_enqueue_tn_stock_sync`/`trg_tn_stock_sync`: (1) el trigger MELI era `AFTER INSERT OR DELETE OR UPDATE`
+SIN acotar columnas — disparaba en CUALQUIER update de `inventario_lineas` (mover de ubicación, cambiar
+una nota), no solo cambios que afecten el stock disponible real; corregido a `UPDATE OF cantidad,
+cantidad_reservada, activo, producto_id`, igual que TN. (2) `fn_enqueue_meli_stock_sync` "dedupeaba" con
+`ON CONFLICT DO NOTHING` pero `integration_job_queue` no tiene ningún constraint UNIQUE detrás — nunca
+conflictuaba, dedupe muerto; reemplazado por el mismo patrón `NOT EXISTS` (contra jobs `pending` ya
+encolados para el mismo producto) que ya usa correctamente `fn_enqueue_tn_stock_sync`. Consecuencia real
+en tenants con integración MELI activa y alto movimiento de líneas: una ráfaga de cambios sobre la misma
+línea (sin relación con stock real) encolaba N jobs redundantes, y el worker terminaba llamando N veces a
+la API de MercadoLibre para lo mismo. Lógica de negocio preservada exacta, verificada carácter por
+carácter contra el original por el `migration-reviewer`. **Estado real: escrita y revisada en la sesión
+anterior (MCP de Supabase desconectado a mitad de sesión); aplicada y verificada en esta sesión** —
+`pg_get_triggerdef` confirma el trigger acotado, `prosrc` confirma el patrón `NOT EXISTS` real. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
+
+**363 (`363_indices_fk_faltantes.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV, código SIN COMMITEAR, NO en
+PROD (2026-08-14):** resto del top5 (backend #3). 6 `CREATE INDEX IF NOT
+EXISTS` aditivos en rutas calientes de uso diario: compuesto `(tenant_id, estado, usuario_asignado_id)`
+en `wms_tareas` y `tareas_repositor` (la query de "mis tareas" en Picking/Repositores filtra siempre por
+esas 3 columnas — `PickingPage.tsx`: tenant + `estado IN (...)` + `usuario_asignado_id IS NULL/=user.id`
+— y resolvía el último filtro con seq scan sobre lo que ya filtró tenant+estado; compuesto en vez de
+columnas sueltas porque tenant_id/estado siempre están presentes en la query real); `pedido_items.
+tenant_id` (toda policy RLS lo filtra, no tenía índice) y `pedido_items.estado_id` (FK a
+`estados_inventario`, modo avanzado); `zonas.tenant_id` y `zonas.sucursal_id` (no tenía NINGÚN índice más
+allá de la PK pese a 2 FKs). Sin riesgo — solo `CREATE INDEX`, nada que pueda romper una query existente.
+**Estado real: escrita y revisada en la sesión anterior (MCP de Supabase desconectado a mitad de sesión);
+aplicada y verificada en esta sesión** — `pg_indexes` confirma los 6 índices. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
+
+**362 (`362_stock_reserva_atomica.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
+código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** 🛑 REGLA #0 (inventario) — race condition
+real en reservas de stock, hallazgo 🛑 CRÍTICO de una auditoría de performance/calidad pedida por GO.
+6 puntos del código (`VentasPage.tsx` ×3, `tn-webhook/index.ts` ×2, `meli-webhook/index.ts` ×1)
+reservaban/liberaban `inventario_lineas.cantidad_reservada` leyendo el valor, calculando el nuevo EN
+JAVASCRIPT y pisándolo con un `.update()` directo — patrón leer-modificar-escribir NO atómico; dos
+operaciones concurrentes sobre la MISMA línea (venta de mostrador + webhook TN/MELI llegando junto, o dos
+webhooks en ráfaga) podían pisarse una reserva sin que ningún CHECK lo detectara. Causa raíz real de
+**VEN-23 del UAT** ("2 cajeros venden la última unidad"). Dos RPCs nuevas `SECURITY INVOKER` (no
+definer — el usuario ya podía hacer este UPDATE bajo RLS): `fn_reservar_stock_linea(p_linea_id,
+p_cantidad)` y `fn_liberar_stock_linea(p_linea_id, p_cantidad)`, cada una con `SELECT ... FOR UPDATE`
+(lock de fila) antes de calcular el ajuste — serializa transacciones concurrentes en vez de dejarlas
+pisarse; reciben la cantidad DESEADA (no un delta ya calculado en JS) y devuelven cuánto se aplicó
+realmente, clampeado contra el estado real de la línea. Los 6 call sites migrados a usarlas.
+**Verificado con datos reales de DEV**: línea real (`cantidad=14, cantidad_reservada=0`), 2 llamadas
+concurrentes a `fn_reservar_stock_linea` pidiendo 10 c/u (20 en total) → la primera se llevó 10, la
+segunda clampeó a 4 — total 14, nunca 20 (hubiera violado `chk_cantidad_mayor_o_igual_reservada`);
+`fn_liberar_stock_linea` clampea a 0 (verificado); dato de test restaurado después. `migration-reviewer`:
+solo mejoras sugeridas. **Estado real: EN DEV, sin commitear, sin PR, sin deploy a PROD.** Ver
+[[wiki/features/inventario-stock]] → "Reservas de stock — race condition atómica".
+
+**361 (`361_emision_factura_lock.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
+código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** 🛑 REGLA #0 (fiscal) — lock anti
+doble-submit en `emitir-factura`, hallazgo 🛑 CRÍTICO de la misma auditoría de performance/calidad. El
+guard "¿ya tiene CAE?"/"¿ya tiene NC?" era una simple lectura sin lock — check-then-act; dos invocaciones
+casi simultáneas (doble click, timeout+reintento, dos pestañas) podían ambas pasar el guard y llamar a
+AFIP, resultando en **DOS comprobantes fiscales reales autorizados para la misma venta/devolución**.
+Tabla mutex nueva `emision_factura_locks (clave PK, tenant_id, iniciado_at,
+requiere_reconciliacion_manual)`, RLS habilitada sin policies + `REVOKE` explícito de
+PUBLIC/anon/authenticated (mismo patrón que `afip_wsaa_ta`/`platform_facturas`) — solo `service_role` la
+toca. `emitir-factura/index.ts` hace un `INSERT` atómico (clave `'fc:'+venta_id` / `'nc:'+devolucion_id`)
+ANTES de cualquier lógica fiscal — si falla por PK duplicada (`23505`) responde 409 sin llamar a AFIP;
+libera el lock en un `finally` EXCEPTO si el error contiene la frase literal "NO reintentar" (AFIP pudo
+haber autorizado el comprobante sin que el sistema tenga el CAE), caso en que queda en CUARENTENA
+(`requiere_reconciliacion_manual=true`, nunca se auto-limpia por tiempo) hasta reconciliación manual —
+mismo patrón que `nc_afip_pendientes` (mig 359). Auto-limpieza de locks huérfanos con TTL de 5 min (nunca
+limpia los en cuarentena). Tabla-mutex en vez de `pg_advisory_xact_lock` porque la EF habla con Postgres
+vía PostgREST/supabase-js sin transacción persistente entre llamadas. **Hallazgo de paso corregido**:
+`AfipSdkProvider.createVoucher` no envolvía la llamada en try/catch (a diferencia de
+`WsfePropioProvider.createVoucher`) — sin el fix, un error ahí liberaba el lock igual que un error
+seguro, reabriendo la carrera en el camino de emergencia; corregido con el mismo criterio ("NO
+reintentar"). **También corregido** (hallazgo preexistente, no introducido por este fix): el fetch de
+`ventas` y el update de `ventas`/`devoluciones` en `emitir-factura` no filtraban por `tenant_id` (la EF
+usa `service_role`, bypassea RLS) — agregado `.eq('tenant_id', tenant_id)` a los 3 puntos.
+**Verificado en DEV (SQL directo)**: INSERT duplicado de la misma clave falla con `23505`; lock viejo
+simulado en cuarentena + uno viejo normal → la auto-limpieza (TTL 5 min) borró el normal y dejó intacto
+el de cuarentena. **No se hizo una invocación HTTP real de punta a punta contra AFIP homologación** en
+esta sesión (para no gastar un CAE real) — EF deployada a DEV (v25, ACTIVE), 3 pasadas de code-review.
+`migration-reviewer`: faltaba `IF NOT EXISTS` + el `REVOKE` explícito, corregido. Recomendado un smoke
+test real antes de decidir el deploy a PROD. **Estado real: EN DEV, sin commitear, sin PR, sin deploy a
+PROD.** Ver [[wiki/features/facturacion-afip]] → "Lock anti doble-submit en `emitir-factura`".
+
+**360 (`360_pedido_envio_entregado_sync.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** 🚚📦 Fix de
+sincronización Pedido↔Envío al entregar — GO notó, conversando con Claude, una contradicción real y
+visible en la ficha de venta (badge "Envío · Entregado" junto a "Pedido · Listo para entrega") cuando
+un pedido tiene envío real (courier/reparto propio). Causa: el camino "retiro en mostrador" sincroniza
+`pedidos`+`envios` en una transacción (`fn_pedido_entregar_retiro`, mig 316), pero el camino "envío
+real" (`EnviosPage.tsx`, guardar POD) hace un `UPDATE envios` directo sin tocar `pedidos` — confirmado
+revisando las migraciones 292-351 completas, nunca existió sincronización para ese camino. Trigger
+nuevo `trg_envio_entregado_sincroniza_pedido` (`AFTER INSERT OR UPDATE OF estado ON envios`,
+`SECURITY DEFINER`, mismo criterio que la mig 315) sincroniza `pedidos.estado='entregado'` +
+`entregado_at=now()` (idempotente, no pisa `entregado`/`cancelado`) + `pedido_items.
+cantidad_entregada=cantidad`/`estado='preparado'` para las líneas no canceladas; envuelto en
+`EXCEPTION WHEN OTHERS` para nunca bloquear el guardado real del POD. 🛑 **Hallazgo del
+`migration-reviewer` corregido antes de aplicar**: la primera versión no filtraba por `tenant_id` —
+al ser `SECURITY DEFINER` eso bypasseaba RLS (un envío cuyo `pedido_id` apuntara a un pedido de OTRO
+tenant hubiera podido escribir ahí); se agregó el mismo guard de tenant que ya usa
+`trg_envio_marca_pedido_con_envio` (mig 315). **Verificado con datos reales de DEV**: sincronización
+real (pedido #89, tenant "Almacén Jorgito"); idempotencia (repetir la UPDATE del envío no mueve
+`entregado_at`); aislamiento multi-tenant (un envío de un tenant no tocó un pedido de otro al marcarse
+entregado, dato de prueba revertido después); y backfill puntual de un caso preexistente real del bug
+(pedido #106, `cantidad_entregada=0`/`listo_para_entrega` eterno desde meses antes de este fix — dato
+de test, no fiscal; se confirmó por query que no había más casos iguales en DEV). Typecheck/lógica
+revisada, sin cambios en build ni tests (migración pura de DB). **Estado real: EN DEV, sin commitear,
+sin PR, sin deploy a PROD.** Ver [[wiki/features/pedidos]] → sección junto a la "Cuarta barrera" y
+[[wiki/features/envios]] → "POD — Proof of Delivery".
+
+**359 (`359_nc_afip_pendientes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), código release `v1.170.0` (PR #330 mergeado
+`0687213b39ce7d942de8763756245016a5556cff`, tag+release `v1.170.0`):** 🧾⚡ NC electrónica AFIP automática al
 confirmar una devolución — retoma la pregunta **A10** del relevamiento de Ventas (GO ya había elegido
 la opción "automática al confirmar", con la cola de reintentos recomendada en la misma respuesta),
 pedido explícito de GO hoy ("dale con la NC nomás") tras confirmar que el motor propio de AFIP
@@ -60,11 +549,12 @@ error genérico → el sweep SÍ llamó a `emitir-factura` de verdad, devolvió 
 "Un emisor Monotributista solo puede emitir comprobantes tipo C", `intentos` pasó a 1 sin escalar; (4)
 agotamiento — `intentos` llevado a 8 a mano → escaló igual que el caso peligroso. Datos de prueba de la
 cola y notificaciones sintéticas limpiados después (solo quedó la NC real de la venta #607). Typecheck
-+ `vite build` + 1563 tests unitarios verdes. **Estado real: construido y verificado — SIN COMMITEAR
-todavía.** Ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
++ `vite build` + 1563 tests unitarios verdes. **Estado real: ✅ EN PROD desde v1.170.0 (2026-08-13, PR
+#330).** Ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
 
-**358 (`358_hard_delete_grace_period.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
-🛑 NO APLICADA EN PROD (`jjffnbrdjchquexdfgwq`), código SIN COMMITEAR (working tree local de `dev`):**
+**358 (`358_hard_delete_grace_period.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y
+PROD (`jjffnbrdjchquexdfgwq`), código release `v1.170.0` (PR #330 mergeado
+`0687213b39ce7d942de8763756245016a5556cff`, tag+release `v1.170.0`):**
 🗑️⏳ Hard delete de tenant con grace period — pedido de GO inmediatamente después del deploy de
 v1.169.0, retoma un pendiente marcado explícitamente el 2026-08-04 ("auditoría de FKs hecha... NO se
 construyó el flujo — queda pendiente de que el usuario lo pida explícito"). Hoy "Eliminar cuenta y
@@ -100,9 +590,8 @@ a NULL, confirmado por SQL; app 100% funcional durante toda la ventana) y con el
 por curl contra un tenant 100% descartable (`__TEST_HARD_DELETE_DESCARTABLE__`) + una fila de prueba en
 `autorizaciones` (tenant y fila desaparecieron, CASCADE + fix del FK funcionando; reinvocado, 0
 evaluados — no reprocesa lo ya purgado; datos de prueba limpiados sin dejar rastro). Typecheck +
-`vite build` + 1563 tests unitarios verdes. **Estado real: construido y verificado — SIN COMMITEAR
-todavía**, próximo paso es que GO decida cuándo commitear/deployar. Ver
-[[wiki/features/cancelacion-arrepentimiento]] → "Hard delete de tenant con grace period".
+`vite build` + 1563 tests unitarios verdes. **Estado real: ✅ EN PROD desde v1.170.0 (2026-08-13, PR
+#330).** Ver [[wiki/features/cancelacion-arrepentimiento]] → "Hard delete de tenant con grace period".
 
 **357 (`357_repositores_fase4_etiquetas.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
 Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado

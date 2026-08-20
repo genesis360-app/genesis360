@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportar() (auditoría perf 2026-08-14, P5).
 import {
   FileSpreadsheet, FileDown, FileText, Truck, Clock, DollarSign, MapPin, Users, AlertTriangle, Package,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { formatMoneda } from '@/lib/formato'
 import {
   pendientesAtrasados, cumplimientoPorCourier, pagosCourierPorMes,
   margenLogistico, distribucionPorZona, alertasEnvios,
@@ -18,11 +17,12 @@ import { productividadRepartidor } from '@/lib/enviosReparto'
 type Col = { key: string; label: string }
 type ExportFmt = 'excel' | 'csv' | 'pdf'
 
-function exportar(fmt: ExportFmt, titulo: string, cols: Col[], rows: any[]) {
+async function exportar(fmt: ExportFmt, titulo: string, cols: Col[], rows: any[]) {
   if (!rows.length) { toast.error('No hay datos para exportar'); return }
   const fecha = new Date().toISOString().split('T')[0]
   const fname = `envios_${titulo.toLowerCase().replace(/\s+/g, '_')}_${fecha}`
   if (fmt === 'excel') {
+    const XLSX = await import('xlsx')
     const data = rows.map(r => Object.fromEntries(cols.map(c => [c.label, r[c.key]])))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Datos')
@@ -33,6 +33,9 @@ function exportar(fmt: ExportFmt, titulo: string, cols: Col[], rows: any[]) {
     const blob = new Blob(['﻿' + header + '\n' + body], { type: 'text/csv;charset=utf-8;' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.csv`; a.click()
   } else {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF({ orientation: cols.length > 5 ? 'landscape' : 'portrait' })
     doc.setFontSize(13); doc.text(titulo, 14, 16)
     autoTable(doc, {
@@ -53,7 +56,7 @@ function ExportBtns({ titulo, cols, rows }: { titulo: string; cols: Col[]; rows:
   )
 }
 
-const fmt$ = (n: number) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+const fmt$ = (n: number) => formatMoneda(n || 0)
 const card = 'bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4'
 
 export default function EnviosReportesPanel({ tenant, sucursalId }: { tenant: any; sucursalId?: string | null }) {

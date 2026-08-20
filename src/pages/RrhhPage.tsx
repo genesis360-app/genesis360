@@ -10,7 +10,8 @@ import {
   UserCheck, UserX, TrendingUp, Download, Paperclip, FolderOpen, File,
   BookOpen, Award, Network, FileText, Star, QrCode, Copy,
 } from 'lucide-react'
-import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
+// xlsx se importa dinámicamente en exportAsistenciaMes/exportNominaHistorica (auditoría perf
+// 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -1495,6 +1496,7 @@ export default function RrhhPage() {
       .lte('fecha', hasta)
       .order('fecha')
     if (error) { toast.error('Error al exportar'); return }
+    const { utils: xlsxUtils, writeFile: xlsxWriteFile } = await import('xlsx')
     const rows = (data ?? []).map((a: any) => ({
       Fecha: a.fecha,
       Empleado: ([a.empleado?.nombre, a.empleado?.apellido].filter(Boolean).join(' ') || a.empleado?.dni_rut) ?? '',
@@ -1516,6 +1518,7 @@ export default function RrhhPage() {
       .eq('tenant_id', tenant!.id)
       .order('periodo', { ascending: false })
     if (error) { toast.error('Error al exportar'); return }
+    const { utils: xlsxUtils, writeFile: xlsxWriteFile } = await import('xlsx')
     const rows = (data ?? []).map((s: any) => ({
       Período: s.periodo?.slice(0, 7) ?? '',
       Empleado: ([s.empleado?.nombre, s.empleado?.apellido].filter(Boolean).join(' ') || s.empleado?.dni_rut) ?? '',

@@ -2,7 +2,7 @@
 name: relevamiento_ventas_respuestas
 description: Respuestas consolidadas del relevamiento de reglas de negocio del módulo Ventas (GO + socio). Origen del backlog de implementación.
 type: project
-status: A-K respondidas (H-K relevadas 2026-06-01, ver sección propia más abajo); L (Top 3 prioridad) aclarada OBSOLETA 2026-08-13 — VF1-VF5 ya construidas y en PROD, no queda nada que priorizar; A10 (NC AFIP automática) IMPLEMENTADA 2026-08-13 (mig 359, EN DEV, sin commitear)
+status: A-K respondidas (H-K relevadas 2026-06-01, ver sección propia más abajo); L (Top 3 prioridad) aclarada OBSOLETA 2026-08-13 — VF1-VF5 ya construidas y en PROD, no queda nada que priorizar; A10 (NC AFIP automática) IMPLEMENTADA y ✅ EN PROD desde v1.170.0 (2026-08-13, mig 359)
 source: relevamiento-ventas-reglas-negocio.html
 updated: 2026-08-13
 ---
@@ -35,7 +35,7 @@ updated: 2026-08-13
 | A7 | **B con DEV default** | ✅ **Implementado v1.10.4 (PROD)** — radio "Dejar en DEV" / "Reintegrar a stock vendible" en modal de devolución, default DEV. Vendible: línea sin ubicación + `estado_id = primer es_disponible_venta` (aparece en alerta "Inventario sin ubicación"). Solo aplica a items no serializados. |
 | A8 | **A** | Series devueltas re-activan en la línea original. Sin cambios. |
 | A9 | **B** | PDF + email automático al cliente al confirmar la devolución (si el cliente tiene email cargado). |
-| A10 | **A** ✅ IMPLEMENTADA (mig 359, 2026-08-13, EN DEV sin commitear) | NC electrónica AFIP automática al confirmar devolución de venta facturada. Cola de reintento `nc_afip_pendientes` + sweep con escalamiento a revisión humana ante error ambiguo (REGLA #0) — ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)". |
+| A10 | **A** ✅ IMPLEMENTADA — ✅ EN PROD desde v1.170.0 (mig 359, 2026-08-13) | NC electrónica AFIP automática al confirmar devolución de venta facturada. Cola de reintento `nc_afip_pendientes` + sweep con escalamiento a revisión humana ante error ambiguo (REGLA #0) — ver [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)". |
 | A11 | **C + A** | Devolución sin ticket: permitir buscando por DNI del cliente; si no hay match, no se acepta (no devolución "huérfana"). |
 | A12 | **A** | Múltiples devoluciones sobre la misma venta sin límite. Sin cambios. |
 
@@ -164,8 +164,8 @@ updated: 2026-08-13
 > En ese momento, lo único que seguía siendo una feature real y NO construida era:
 > - **NC electrónica AFIP automática al confirmar una devolución** (A10 — GO ya había elegido la opción
 >   "automática al confirmar", con recomendación de agregar una cola de reintentos para cuando AFIP esté
->   caído). **✅ IMPLEMENTADA el mismo día (2026-08-13, mig 359, EN DEV sin commitear)** — ver la fila A10
->   más arriba y [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
+>   caído). **✅ IMPLEMENTADA el mismo día (2026-08-13, mig 359) y ✅ EN PROD desde v1.170.0** — ver la fila
+>   A10 más arriba y [[wiki/features/facturacion-afip]] → "NC automática al confirmar la devolución (A10)".
 > - Venta física en USD / caja en USD (G5) — sigue diferida, sin cambios (ver nota de G5 más arriba).
 
 ---
@@ -174,7 +174,7 @@ updated: 2026-08-13
 
 ### A10 — NC electrónica AFIP automática
 
-> **✅ IMPLEMENTADA 2026-08-13 (mig 359, EN DEV sin commitear)** — ejecutada tal cual esta
+> **✅ IMPLEMENTADA 2026-08-13 (mig 359) — ✅ EN PROD desde v1.170.0** — ejecutada tal cual esta
 > recomendación, con un refinamiento de seguridad adicional (REGLA #0): el reintento NO es ciego para
 > cualquier error — si `emitir-factura` responde con la frase "NO reintentar" (AFIP pudo haber
 > autorizado el comprobante sin que el sistema tenga el CAE), el sweep escala directo a revisión humana
@@ -263,7 +263,7 @@ Cambios estructurales que van a salir de lo respondido:
    - `tenants.cc_notificacion_canales TEXT[]` (D3)
    - `clientes.cc_notificacion_override` (D4)
    - `tenants.cc_morosidad_politica TEXT` (D6)
-   - Cola `nc_afip_pendientes` (A10) — ✅ mig 359 (2026-08-13, EN DEV sin commitear)
+   - Cola `nc_afip_pendientes` (A10) — ✅ mig 359 (2026-08-13) — ✅ EN PROD desde v1.170.0
    - Tabla descuentos por medio de pago + límite % por rol (C3 + G3)
    - `tenants.reserva_vencimiento_dias INT` + `tenants.reserva_sena_minima_pct` + `tenants.reserva_penalidad_pct` (E1/E2/E6)
    - `tenants.presupuesto_vencimiento_dias INT` + `tenants.presupuesto_conversion_politica TEXT` (F1/F2)
@@ -328,4 +328,4 @@ Lo respondido en E/F/G **no depende** de las secciones pendientes (H edición PO
 3. **Jobs nuevos**:
    - Cálculo de intereses CC nocturno (D2c).
    - Notificación vencimiento CC (depende de D4 = pendiente sección posterior).
-   - Retry NC AFIP fallidas (A10) — ✅ EF `nc-afip-retry-sweep` (mig 359, 2026-08-13, EN DEV sin commitear).
+   - Retry NC AFIP fallidas (A10) — ✅ EF `nc-afip-retry-sweep` (mig 359, 2026-08-13) — ✅ EN PROD desde v1.170.0.

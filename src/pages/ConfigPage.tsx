@@ -912,6 +912,16 @@ export default function ConfigPage() {
   const [bizSupervisorEdita, setBizSupervisorEdita] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_editar_movimientos === true)
   const [bizSupervisorBoveda, setBizSupervisorBoveda] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_ver_boveda === true)
   const [savingConfigCaja, setSavingConfigCaja] = useState(false)
+  // G5 Fase 2 — Caja en Dólares: permisos (cotización + operar) y umbrales propios en USD.
+  // Los roles guardados son ADICIONALES a DUEÑO (que siempre puede elegir cotización/operar Caja USD).
+  const [bizCotizacionRoles,     setBizCotizacionRoles]     = useState<string[]>((tenant as any)?.cotizacion_usd_roles_permitidos ?? [])
+  const [bizCajaUsdRoles,        setBizCajaUsdRoles]        = useState<string[]>((tenant as any)?.caja_usd_roles_permitidos ?? [])
+  const [bizDifUmbralUsd,        setBizDifUmbralUsd]        = useState<string>((tenant as any)?.diferencia_caja_umbral_usd != null ? String((tenant as any).diferencia_caja_umbral_usd) : '')
+  const [bizCajaUsdClaveUmbral,  setBizCajaUsdClaveUmbral]  = useState<string>((tenant as any)?.caja_usd_clave_maestra_umbral != null ? String((tenant as any).caja_usd_clave_maestra_umbral) : '')
+  // G5 Fase 6 (G1) — qué cotización usa el reintegro en caja de una devolución vía "Efectivo USD":
+  // de hoy (default) o la de la venta original.
+  const [bizReintegroUsdCotOriginal, setBizReintegroUsdCotOriginal] = useState<boolean>((tenant as any)?.reintegro_usd_cotizacion_original === true)
+  const [savingCajaUsd,          setSavingCajaUsd]          = useState(false)
   const handleSaveConfigCaja = async () => {
     setSavingConfigCaja(true)
     const configActual = (tenant as any)?.config_caja ?? {}
@@ -939,6 +949,20 @@ export default function ConfigPage() {
     if (error || !data) { toast.error('No se pudo guardar'); return }
     setTenant(data)
     toast.success('Configuración de alertas guardada')
+  }
+  const handleSaveCajaUsd = async () => {
+    setSavingCajaUsd(true)
+    const { data, error } = await supabase.from('tenants').update({
+      cotizacion_usd_roles_permitidos: bizCotizacionRoles,
+      caja_usd_roles_permitidos: bizCajaUsdRoles,
+      diferencia_caja_umbral_usd: bizDifUmbralUsd.trim() ? parseFloat(bizDifUmbralUsd) : null,
+      caja_usd_clave_maestra_umbral: bizCajaUsdClaveUmbral.trim() ? parseFloat(bizCajaUsdClaveUmbral) : null,
+      reintegro_usd_cotizacion_original: bizReintegroUsdCotOriginal,
+    }).eq('id', tenant!.id).select().single()
+    setSavingCajaUsd(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)
+    toast.success('Configuración de Caja USD guardada')
   }
 
   // Gastos — reglas comprobante + alertas (v1.8.42)
@@ -2410,9 +2434,12 @@ export default function ConfigPage() {
   }
 
   // ── Métodos de pago ─────────────────────────────────────────────────────────
-  const [nuevoMetodo, setNuevoMetodo] = useState({ nombre: '', color: '#22c55e' })
+  // G5 Fase 4 (A3) — moneda + es_efectivo ya existen en la tabla desde mig 368 (Fase 1), pero
+  // hasta ahora esta UI nunca los seteaba: un tenant no podía crear un "Efectivo USD" que
+  // realmente funcionara como efectivo (calcularVuelto/caja lo trataban como ingreso_informativo).
+  const [nuevoMetodo, setNuevoMetodo] = useState({ nombre: '', color: '#22c55e', moneda: 'ARS', es_efectivo: false })
   const [editMetodoId, setEditMetodoId] = useState<string | null>(null)
-  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '', comision_pct: '', cuenta_origen_id: '' as string | null | '' })
+  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '', comision_pct: '', cuenta_origen_id: '' as string | null | '', moneda: 'ARS', es_efectivo: false })
 
   // ISS-086: Cuotas por banco
   type BancoCuota = { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }
@@ -2473,11 +2500,12 @@ export default function ConfigPage() {
       const { error } = await supabase.from('metodos_pago').insert({
         tenant_id: tenant!.id, nombre: nuevoMetodo.nombre.trim(),
         color: nuevoMetodo.color, activo: true, es_sistema: false,
+        moneda: nuevoMetodo.moneda, es_efectivo: nuevoMetodo.es_efectivo,
         orden: (metodosPago.length + 1),
       })
       if (error) throw error
     },
-    onSuccess: () => { toast.success('Método agregado'); setNuevoMetodo({ nombre: '', color: '#22c55e' }); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onSuccess: () => { toast.success('Método agregado'); setNuevoMetodo({ nombre: '', color: '#22c55e', moneda: 'ARS', es_efectivo: false }); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -2488,6 +2516,8 @@ export default function ConfigPage() {
         color: editMetodoData.color,
         comision_pct: editMetodoData.comision_pct ? parseFloat(editMetodoData.comision_pct) : 0,
         cuenta_origen_id: editMetodoData.cuenta_origen_id || null,
+        moneda: editMetodoData.moneda,
+        es_efectivo: editMetodoData.es_efectivo,
       }).eq('id', id).eq('tenant_id', tenant!.id)
       if (error) throw error
     },
@@ -6337,6 +6367,22 @@ export default function ConfigPage() {
                           <option key={c.id} value={c.id}>{c.nombre}</option>
                         ))}
                       </select>
+                      {/* G5 Fase 4 (A3) — moneda + es_efectivo: para que "Efectivo USD" cuente de
+                          verdad como efectivo real (vuelto, saldo de caja, arqueo) en esa moneda. */}
+                      <select
+                        value={editMetodoData.moneda}
+                        onChange={e => setEditMetodoData(p => ({ ...p, moneda: e.target.value }))}
+                        title="Moneda de este método"
+                        className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white shrink-0">
+                        <option value="ARS">ARS</option>
+                        <option value="USD">USD</option>
+                      </select>
+                      <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 shrink-0" title="Cuenta como efectivo real: mueve el saldo de caja, calcula vuelto y entra al arqueo — igual que 'Efectivo' hoy">
+                        <input type="checkbox" checked={editMetodoData.es_efectivo}
+                          onChange={e => setEditMetodoData(p => ({ ...p, es_efectivo: e.target.checked }))}
+                          className="rounded" />
+                        Efectivo real
+                      </label>
                       <button onClick={() => updateMetodoPago.mutate(m.id)} disabled={updateMetodoPago.isPending}
                         className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
                         <Check size={15} />
@@ -6371,6 +6417,12 @@ export default function ConfigPage() {
                           </span>
                         ) : null
                       })()}
+                      {m.moneda && m.moneda !== 'ARS' && (
+                        <span className="text-xs px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded font-mono">{m.moneda}</span>
+                      )}
+                      {m.es_efectivo && (
+                        <span className="text-xs px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded" title="Cuenta como efectivo real en caja">💵</span>
+                      )}
                       {m.es_sistema && <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">sistema</span>}
                       <button onClick={() => toggleMetodoPago.mutate({ id: m.id, activo: !m.activo })}
                         title={m.activo ? 'Deshabilitar' : 'Habilitar'}
@@ -6394,7 +6446,7 @@ export default function ConfigPage() {
                           Promo
                         </button>
                       )}
-                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '' }) }}
+                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '', moneda: m.moneda ?? 'ARS', es_efectivo: !!m.es_efectivo }) }}
                         className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                         <Pencil size={14} />
                       </button>
@@ -6480,15 +6532,29 @@ export default function ConfigPage() {
                 className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 dark:border-gray-600 p-0.5 flex-shrink-0" />
               <input type="text" value={nuevoMetodo.nombre}
                 onChange={e => setNuevoMetodo(p => ({ ...p, nombre: e.target.value }))}
-                placeholder="Ej: Cripto, Cheque..."
+                placeholder="Ej: Cripto, Cheque, Efectivo USD..."
                 onKeyDown={e => e.key === 'Enter' && addMetodoPago.mutate()}
                 className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
+              <select value={nuevoMetodo.moneda} onChange={e => setNuevoMetodo(p => ({ ...p, moneda: e.target.value }))}
+                title="Moneda de este método"
+                className="px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
+                <option value="ARS">ARS</option>
+                <option value="USD">USD</option>
+              </select>
               <button onClick={() => addMetodoPago.mutate()}
                 disabled={!nuevoMetodo.nombre.trim() || addMetodoPago.isPending}
                 className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5">
                 <Plus size={14} /> Agregar
               </button>
             </div>
+            {/* G5 Fase 4 (A3) — sin esto, un "Efectivo USD" recién creado seguiría cayendo como
+                ingreso_informativo (no calcula vuelto ni mueve saldo de ninguna caja). */}
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mt-2" title="Cuenta como efectivo real: mueve el saldo de caja, calcula vuelto y entra al arqueo — igual que 'Efectivo' hoy">
+              <input type="checkbox" checked={nuevoMetodo.es_efectivo}
+                onChange={e => setNuevoMetodo(p => ({ ...p, es_efectivo: e.target.checked }))}
+                className="rounded" />
+              Es efectivo real (billetes físicos — mueve el saldo de caja)
+            </label>
           </div>
 
           {/* ISS-086: Cuotas por banco — Tarjeta de crédito */}
@@ -7537,6 +7603,86 @@ export default function ConfigPage() {
                     <button onClick={handleSaveDif} disabled={savingDif}
                       className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                       {savingDif ? 'Guardando...' : 'Guardar alertas'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* G5 Fase 2 — Caja en Dólares: permisos + umbrales propios en USD */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <DollarSign size={16} className="text-accent-text" /> Caja en Dólares
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede elegir el tipo de cotización</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    El <strong>DUEÑO</strong> siempre puede elegir tipo (blue/oficial/MEP/cripto) o cargar un valor manual.
+                    Los roles de acá abajo pueden hacer lo mismo; el resto solo puede refrescar repitiendo el último tipo usado.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR'].map(r => {
+                      const activo = bizCotizacionRoles.includes(r)
+                      return (
+                        <button key={r} type="button" disabled={!canEdit}
+                          onClick={() => setBizCotizacionRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede operar la Caja USD</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    El <strong>DUEÑO</strong> siempre puede operarla. Roles adicionales habilitados a abrir/cerrar/mover una caja en dólares.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR'].map(r => {
+                      const activo = bizCajaUsdRoles.includes(r)
+                      return (
+                        <button key={r} type="button" disabled={!canEdit}
+                          onClick={() => setBizCajaUsdRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral de diferencia de arqueo (USD)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                      value={bizDifUmbralUsd} disabled={!canEdit}
+                      onChange={e => setBizDifUmbralUsd(e.target.value)}
+                      placeholder="Alertar con cualquier diferencia"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Propio de USD — un mismo número no significa lo mismo que el umbral en pesos de arriba.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral de clave maestra (USD)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                      value={bizCajaUsdClaveUmbral} disabled={!canEdit}
+                      onChange={e => setBizCajaUsdClaveUmbral(e.target.value)}
+                      placeholder="Sin umbral propio"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">A partir de qué monto en USD un retiro/movimiento exige la clave maestra del dueño.</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-4 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Reintegro de devolución en USD: usar cotización de la venta original</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Al devolver con el medio "Efectivo USD", por default se convierte con la cotización de HOY (la plata sale hoy). Activá esto para usar la cotización de la venta original en su lugar — mismo criterio que la Nota de Crédito AFIP.</p>
+                  </div>
+                  <Toggle size="lg" disabled={!canEdit} checked={bizReintegroUsdCotOriginal}
+                    onChange={setBizReintegroUsdCotOriginal} />
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveCajaUsd} disabled={savingCajaUsd}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingCajaUsd ? 'Guardando...' : 'Guardar Caja USD'}
                     </button>
                   </div>
                 )}

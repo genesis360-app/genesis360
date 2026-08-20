@@ -274,12 +274,12 @@ serve(async (req) => {
         let primaryLineaId: string | null = null
 
         for (const linea of lineas ?? []) {
-          const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
-          if (disponible <= 0) continue
-          const toReserve = Math.min(disponible, remaining)
-          await supabase.from('inventario_lineas')
-            .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + toReserve })
-            .eq('id', linea.id)
+          // Atómico server-side (mig 362) — evita pisar una reserva concurrente (ej. una venta
+          // de mostrador o el webhook de TN tocando la misma línea a la vez).
+          const { data: toReserveData, error: toReserveErr } = await supabase.rpc('fn_reservar_stock_linea', { p_linea_id: linea.id, p_cantidad: remaining })
+          if (toReserveErr) console.error('[fn_reservar_stock_linea]', toReserveErr.message)
+          const toReserve = Number(toReserveData ?? 0)
+          if (toReserve <= 0) continue
           if (!primaryLineaId) primaryLineaId = linea.id
           remaining -= toReserve
           if (remaining <= 0) break

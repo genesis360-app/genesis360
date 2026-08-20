@@ -2,7 +2,8 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, RefreshCw } from 'lucide-react'
-import * as XLSX from 'xlsx'
+// xlsx se importa dinámicamente en descargarPlantillaProductos/procesarArchivoProductos
+// (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -92,7 +93,8 @@ export default function ImportarProductosPage() {
     enabled: !!tenant,
   })
 
-  const descargarPlantillaProductos = () => {
+  const descargarPlantillaProductos = async () => {
+    const XLSX = await import('xlsx')
     // ── Hoja principal ──────────────────────────────────────────────────────
     const headers = [
       'nombre','sku','codigo_barras','categoria','proveedor',
@@ -207,6 +209,7 @@ export default function ImportarProductosPage() {
     const reader = new FileReader()
     reader.onload = async (e) => {
       try {
+        const XLSX = await import('xlsx')
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }

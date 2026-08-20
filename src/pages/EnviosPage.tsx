@@ -12,8 +12,8 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { PageTabs } from '@/components/PageTabs'
 import PodFotosManager from '@/components/PodFotosManager'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+// jspdf/jspdf-autotable se importan dinámicamente en generarHojaRutaPDF/generarRemito
+// (auditoría perf 2026-08-14, P5).
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { sugerirBultoEnvio, avisoBultoIncompleto, type BultoSugerido } from '@/lib/medidasLogistica'
@@ -948,10 +948,13 @@ export default function EnviosPage() {
     ).map(o => (enviosReparto as any[]).find((e: any) => e.id === o.id)).filter(Boolean)
   }
 
-  const generarHojaRutaPDF = () => {
+  const generarHojaRutaPDF = async () => {
     const ordenados = hojaRutaOrdenada()
     if (ordenados.length === 0) { toast.error('No hay envíos para la hoja de ruta'); return }
     const rep = (repartidores as any[]).find(r => r.id === hrRepartidor)
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF()
     doc.setFontSize(15); doc.text(`Hoja de ruta — ${tenant?.nombre ?? BRAND.name}`, 14, 16)
     doc.setFontSize(10)
@@ -1049,6 +1052,9 @@ export default function EnviosPage() {
 
   // ── ISS-167: Remito PDF con QR codes ─────────────────────────────────────────
   const generarRemito = async (envio: any) => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'), import('jspdf-autotable'),
+    ])
     const doc = new jsPDF()
     const items = ventaItems as any[]
     const numVenta = envio.ventas ? formatVentaNum(envio.ventas) : null

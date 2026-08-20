@@ -9,6 +9,7 @@ import {
   BarChart2, Zap, DollarSign, Flame,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
@@ -17,7 +18,7 @@ import type { DashSection } from '@/components/dashAreaSection'
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#EC4899','#6B7280','#F97316']
 
-function fmt(v: number) { return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` }
+function fmt(v: number) { return formatMoneda(v) }
 function fmtCorto(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`

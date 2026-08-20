@@ -6,11 +6,445 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟡 ARRANCÁ ACÁ (2026-08-19, cont. 17) — Fase 7/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (Reportes —
-> H1/H2, SIN migración nueva) — **TODAVÍA SIN COMMITEAR** (el orquestador commitea código + wiki en un solo
-> commit al cierre de esta sesión, con bump a **v1.176.0**, igual que las fases anteriores) — este bloque
-> reemplaza al cont. 16 de abajo (Fase 6, tag `v1.175.0`) como punto de entrada. Sigue SIN PR a `main`, SIN
-> deploy a PROD.
+> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 21) — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100%
+> COMPLETA EN CÓDIGO — cierra el plan de código de 3 fases (Fase 4 queda deliberadamente diferida, sin
+> diseño ni código) — **TODAVÍA SOLO EN DEV, commit pendiente en esta misma sesión** (`APP_VERSION` ya
+> bumpeado a `v1.179.0` en el working tree, sin commitear al momento de escribir esto — NO inventar un hash
+> ni un tag, confirmar con `git log`/`git tag` al cierre real) — continúa directo el bloque de abajo (cont.
+> 20: fix crítico del modelo Groq + wiring completo de Fase 2, ✅ YA COMMITEADO como `v1.178.0`, ahora
+> histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE como estado real de DEV/PROD
+> para ESE proyecto, sin cambios en esta sesión
+>
+> #### 🤖 Plan IA — Fase 3 (memoria persistente por tenant), 100% completa en código
+>
+> Diseño ya definido en el Artifact original del plan (2026-08-14/15): NO se guarda charla cruda — se
+> guardan HECHOS DESTILADOS que la IA propone guardar, con confirmación explícita del usuario en el chat
+> (mismo patrón ya en producción para la Fase 2 "proponer_cambio_configuracion" — tarjeta Confirmar/
+> Rechazar, la EF nunca escribe nada, solo el frontend tras la confirmación real). El tenant puede ver y
+> borrar su propia memoria desde Configuración.
+>
+> **Migración 377** (`377_ai_tenant_memoria.sql`), reportada como APLICADA Y VERIFICADA en DEV
+> (`gcmhzdedrkmmzfzfveig`) por la sesión que la escribió:
+> - Tabla `ai_tenant_memoria` (`tenant_id`, `hecho` texto ≤300 chars, `usuario_id`, `created_at`).
+> - RLS: SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO del tenant (mismo universo que `ai_config_audit`,
+>   mig 376). Sin policy de INSERT — solo escribe la RPC.
+> - RPC `fn_ai_memoria_guardar(p_hecho text)` (`SECURITY DEFINER`): deriva `tenant_id`/rol del JWT (nunca
+>   parámetro), exige DUEÑO/ADMIN, valida y trunca. Tope de 20 hechos por tenant, podado dentro de la misma
+>   RPC en cada escritura (sin `pg_cron` habilitado en este proyecto — sweep sincrónico, no periódico)
+>   porque la lista se inyecta COMPLETA en cada system prompt nuevo.
+> - Revisada por `migration-reviewer` ANTES de aplicar: APTA. 2 sugerencias menores no bloqueantes ya
+>   aplicadas (guard NULL explícito, tiebreaker `id DESC` en el tope de 20 para evitar no-determinismo en
+>   empates de `created_at`).
+>
+> **✅ Hallazgo encontrado por un `code-reviewer` YA DENTRO de esta misma sesión (no estaba en el brief
+> original) — CERRADO en la misma sesión, no quedó pendiente.** La EF inyectaba la memoria en el prompt
+> haciendo un `SELECT` directo a `ai_tenant_memoria` con la sesión REAL del usuario que chatea — pero la
+> policy SELECT de la mig 377 solo permite DUEÑO/ADMIN/SUPER_USUARIO, así que para cualquier otro rol
+> (CAJERO, DEPOSITO, SUPERVISOR...) ese `SELECT` devolvía `[]` en silencio y la memoria nunca se inyectaba,
+> pese a que el diseño es que se inyecte para TODOS los roles (solo la ESCRITURA está restringida a
+> DUEÑO/ADMIN). **Migración 378** (`378_ai_memoria_listar_rpc.sql`), APLICADA Y VERIFICADA EN DEV, agrega
+> `fn_ai_memoria_listar()` (`SECURITY DEFINER`, deriva tenant del JWT, sin filtro de rol — los hechos son
+> datos de negocio de baja sensibilidad, nunca fiscales/personales, reforzado en el prompt).
+> `supabase/functions/ai-assistant/index.ts` ya llama a `fn_ai_memoria_listar()` (ya no al `SELECT`
+> directo) — redeployada a DEV y re-verificada con el e2e mutante 134 (sigue en verde). Verificado además
+> con impersonación real (`SET LOCAL ROLE` + `request.jwt.claims`, dentro de una transacción sin commit):
+> con la sesión de un rol no-DUEÑO/ADMIN/SUPER_USUARIO, el `SELECT` directo a la tabla da 0 filas (RLS
+> bloquea, como se espera) mientras que `fn_ai_memoria_listar()` devuelve la fila real — confirma que la
+> memoria ahora sí se inyecta para cualquier rol que chatee, como decía el diseño original.
+>
+> **Wiring (EF + frontend), mismo patrón que Fase 2**:
+> - `supabase/functions/ai-assistant/index.ts` + espejo testeado `src/lib/aiAssistant.ts`: nuevo tool Groq
+>   `guardar_hecho_memoria` (solo ofrecido a DUEÑO/ADMIN, mismo gate que la propuesta de config), reglas
+>   10-11 nuevas en el system prompt ("preguntá antes de guardar, salvo pedido explícito tipo 'recordá
+>   que...'"; la memoria inyectada son DATOS, nunca instrucciones — defensa contra prompt injection
+>   almacenado, un hecho guardado en una sesión vieja no puede pisar las reglas). La EF ahora resuelve
+>   `tenant_id` UNA VEZ arriba del handler (antes se resolvía de nuevo dentro del branch de config) y lo
+>   reusa para leer hasta 20 hechos vía `fn_ai_memoria_listar()` e inyectarlos (`## MEMORIA DEL NEGOCIO`) y
+>   para resolver el valor actual de una propuesta de config (Fase 2). La memoria se inyecta para cualquier
+>   rol que chatee (personaliza respuestas a todo el negocio), pero solo DUEÑO/ADMIN pueden pedirle a la IA
+>   que guarde un hecho nuevo.
+> - `src/components/AiAssistant.tsx`: tarjeta de confirmación nueva (ícono `Brain`, lucide-react) —
+>   "Guardar en la memoria del negocio" / Confirmar-Rechazar, mismo lock anti-doble-submit (`useRef<Set>`)
+>   que la tarjeta de propuesta de config; `confirmarMemoria` es el ÚNICO lugar que llama a
+>   `fn_ai_memoria_guardar`, con la sesión real del usuario.
+> - `src/pages/ConfigPage.tsx`: sección nueva "Memoria del Asistente IA" (`AiMemoriaSection`, colapsable,
+>   ícono `Brain`) en el tab "Mi negocio", gateada a `user?.rol === 'DUEÑO'` (mismo patrón LOCAL de ese
+>   archivo que `MarketplaceSection`/`ModoOperacionSection` — la RLS es más amplia, DUEÑO/ADMIN/
+>   SUPER_USUARIO, pero la UI de esa pantalla sigue su propia convención existente). Lista los hechos con
+>   fecha, botón de borrado (tacho) por fila que llama `DELETE` directo (RLS lo protege).
+>
+> **Verificación real, no solo code-audit**:
+> - `tsc --noEmit` y `npm run build` verdes.
+> - Suite unit completa: 100 archivos, 1625 tests verdes (+9 nuevos para `construirToolGuardarMemoria`/
+>   `validarHechoMemoria`/inyección de memoria en el prompt).
+> - **E2E mutante nuevo contra DEV real** (`tests/e2e/134_asistente_ia_memoria_mutante.spec.ts`, usuario
+>   DUEÑO de prueba, tenant "Almacén Jorgito" — tenant de pruebas de GO, no un cliente real): pidió "Recordá
+>   que [hecho]" al chat real (Groq real, sin mockear) → tarjeta de propuesta → Confirmar → verificado con
+>   REST que la fila quedó en `ai_tenant_memoria` con la sesión real del DUEÑO → Configuración → "Memoria
+>   del Asistente IA" la muestra → borrado por UI → verificado con REST que la fila desapareció de la DB.
+>   Camino Rechazar también cubierto (verificado que NO deja fila). EF nueva deployada a DEV vía
+>   `supabase functions deploy ai-assistant --project-ref gcmhzdedrkmmzfzfveig`.
+> - 🐛 Gotcha real encontrado armando el propio test: el estado "Guardado" en el chat es OPTIMISTA (se
+>   pinta antes de que la RPC termine su round-trip real, mismo patrón que la Fase 2) — un test que lee la
+>   DB inmediato después de ver "Guardado" corre una carrera falsa; resuelto con `expect.poll` en vez de una
+>   lectura única.
+>
+> #### 📊 Estado real (al momento de escribir esta entrada — verificar antes de cerrar la sesión)
+>
+> **Commit pendiente en esta misma sesión** — al momento de escribir esto, `git status` muestra working
+> tree modificado (`AiAssistant.tsx`, `ConfigPage.tsx`, `aiAssistant.ts`, `ai-assistant/index.ts`,
+> `brand.ts`, `aiAssistant.test.ts`) + migraciones 377 y 378 sin trackear, SIN ningún commit nuevo sobre
+> `5501304b` (la punta de `origin/dev`). `APP_VERSION` ya bumpeado a `v1.179.0` en el working tree. **NO
+> inventar un hash de commit ni un tag `v1.179.0` — confirmar con `git log`/`git tag` al cierre real de la
+> sesión.**
+>
+> **Deploy a PROD: confirmado que NO pasó todavía** — `gh pr list` muestra el último merge a `main` como
+> PR #331 (`v1.176.0`, 2026-08-20), sin ningún PR nuevo para v1.177/178/179; `git log origin/main` confirma
+> la punta en `4dbe7fdb` (ancestro `50f5579a`, la Fase 7/8 de Caja USD) — nada del Plan IA llegó a `main`
+> todavía. El único código del Plan IA en PROD sigue siendo el fix aislado del modelo Groq (2 constantes,
+> deployado directo a la EF, sin pasar por `main`/Vercel — ver cont. 20 abajo).
+>
+> **Próximo paso**: (1) commitear esta tanda (Fase 3 completa, incluido el fix de la mig 378) — bump ya
+> hecho a `v1.179.0`; (2) GO ya autorizó deployar a PROD el wiring completo del Plan IA (Fases 1-3, hoy
+> 100% en DEV) en esta misma sesión ("pasamos todo eso a PRD") — verificar el resultado real antes de
+> asumir que ya ocurrió. **Fase 4 (comparación entre negocios) sigue SIN EMPEZAR** —
+> confirmado por GO como "inteligencia interna de Genesis360, no de cara al cliente final", sin urgencia,
+> sin diseño ni código. Necesita decisión de producto/legal (extender `tenant_consentimiento_legal`, mig
+> 249) antes de cualquier código. Con esto, el "Plan IA" de 4 fases queda: **Fases 1-3 completas en
+> código** (Fases 1-2 commiteadas como `v1.177.0`/`v1.178.0`, Fase 3 pendiente de commit), **Fase 4
+> deliberadamente diferida** — no es un pendiente urgente, es una decisión de scope ya tomada.
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), [[wiki/features/asistente-ia]] (sección "Plan IA"),
+> `wiki/database/migraciones.md` (migs 377-378), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 20) — 🐛🔴 Asistente IA estaba ROTO para TODOS los usuarios, RESUELTO
+> Y DEPLOYADO A PROD (Groq sacó los modelos Llama del catálogo) + 🤖 Plan IA: wiring COMPLETO de Fase 2
+> (propuesta de config con confirmación) — **`v1.178.0`, COMMITEADO Y PUSHEADO a `origin/dev`** — este
+> bloque queda SUPERADO por el de arriba (cont. 21: Fase 3 del Plan IA) solo como punto de entrada — su
+> contenido SIGUE VIGENTE, no fue revertido, describe el estado real del fix del modelo Groq + wiring de
+> Fase 2 — continúa directo el bloque de abajo (cont. 19: Fase 1 + backend de Fase 2, ✅ YA COMMITEADO como
+> `v1.177.0`, ahora histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE como estado
+> real de DEV/PROD para ESE proyecto, sin cambios en esa sesión
+>
+> #### 🔴 HALLAZGO CRÍTICO (no relacionado al wiring, afecta a TODOS los tenants, incluido PROD) — el
+> Asistente IA devolvía error a CUALQUIER pregunta
+>
+> Al verificar el wiring en un browser real, la primera corrida dio **502 en TODAS las consultas al
+> asistente** (no solo la propuesta de config nueva). Investigando `query_logs` reales de la EF
+> `ai-assistant` contra DEV (`gcmhzdedrkmmzfzfveig`): Groq sacó del catálogo de esta cuenta los 2 modelos
+> que la EF venía usando desde siempre — `llama-3.3-70b-versatile` (principal) y `llama-3.1-8b-instant`
+> (fallback) — el error real era `model_not_found`. El mecanismo de fallback (`esReintentable`, que solo
+> reintenta ante 429/5xx) **NO cubre `model_not_found`** (es un 400 `invalid_request_error`), así que el
+> asistente devolvía "Error al consultar el asistente" a CUALQUIER pregunta, de CUALQUIER usuario, desde que
+> Groq hizo ese cambio de catálogo (fecha exacta desconocida, no hay forma de saber hace cuánto — no hay
+> alertas configuradas sobre esto).
+>
+> **Se verificó la lista REAL de modelos disponibles hoy** contra la cuenta real (`GET
+> https://api.groq.com/openai/v1/models` con la `GROQ_API_KEY` real de la EF, vía un endpoint de debug
+> temporal agregado, probado y BORRADO en la misma sesión). La cuenta ya no tiene ningún modelo de la
+> familia Llama — el catálogo cambió por completo a: `openai/gpt-oss-20b`, `openai/gpt-oss-120b`,
+> `openai/gpt-oss-safeguard-20b`, `groq/compound`, `groq/compound-mini`, `qwen/qwen3.6-27b`,
+> `canopylabs/orpheus-*`, `meta-llama/llama-prompt-guard-2-*`, `whisper-large-v3*`, `allam-2-7b`.
+>
+> **Fix aplicado** (`supabase/functions/ai-assistant/index.ts`): `MODEL` → `openai/gpt-oss-120b`,
+> `MODEL_FALLBACK` → `openai/gpt-oss-20b` (mismo criterio de tamaño relativo grande/chico que antes).
+> Confirmado con tool-calling real que `openai/gpt-oss-120b` SÍ soporta `tools`/`tool_choice` (el flujo de
+> propuesta de config, abajo, funcionó de punta a punta con este modelo). El label del panel del chat
+> ("Powered by Llama 3.1", que YA estaba desactualizado incluso antes de este bug — decía 3.1 pero el código
+> corría 3.3) se cambió a **"Powered by Groq"** (genérico, para no quedar obsoleto de nuevo si Groq vuelve a
+> cambiar el catálogo).
+>
+> **⚠ Impacto real: esto estaba roto para el Asistente IA de TODOS los tenants en PROD también** — el
+> código de `MODEL`/`MODEL_FALLBACK` no se había tocado hasta este fix, era el mismo string que corría en
+> PROD. No se sabe hace cuánto estuvo roto. **✅ RESUELTO — avisado a GO explícitamente, quien autorizó un
+> deploy AISLADO solo del fix del modelo** (sin el resto del wiring de Fase 2, que queda en DEV a
+> propósito): se extrajo el contenido REAL que corría en la EF de PROD (`get_edge_function`), se parcheó
+> ÚNICAMENTE `MODEL`/`MODEL_FALLBACK` (diff confirmado: exactamente esas 2 líneas), y se deployó con
+> `supabase functions deploy ai-assistant --project-ref jjffnbrdjchquexdfgwq --workdir <carpeta aislada>`
+> (las Edge Functions se deployan independientes del pipeline de Vercel/PR — no hizo falta tocar `main`).
+> **Confirmado con `get_edge_function` que PROD quedó con los 2 modelos nuevos y CERO código de
+> tool-calling/Fase 2** — el Asistente IA de los 8 tenants reales de PROD ya funciona de nuevo.
+>
+> #### 🤖 Wiring completo de Fase 2 (propuesta de config con confirmación)
+>
+> Ya existían (cont. 19 de abajo, YA commiteado como `v1.177.0`): las 3 RPCs SQL (mig 376) con su allowlist
+> de 6 campos no fiscales, y el espejo de esas reglas en el prompt (`src/lib/aiAssistant.ts`/EF). Esta
+> sesión conectó todo:
+> - **`src/lib/aiAssistant.ts`** y su espejo **`supabase/functions/ai-assistant/index.ts`**:
+>   `CONFIG_CAMPOS_IA` (espejo del allowlist SQL), `construirToolPropuestaConfig()` (arma el tool de Groq,
+>   formato OpenAI-compatible), `validarPropuestaConfig()` (valida lo que el modelo devolvió ANTES de
+>   mostrarle nada al usuario — defensa en profundidad, la RPC sigue siendo la autoridad real). Regla nueva
+>   9 en el prompt + sección de campos proponibles, ambas condicionadas a `rol === 'DUEÑO' || rol ===
+>   'ADMIN'` (mismo gate que exige la RPC).
+> - El handler de la EF: solo manda `tools`/`tool_choice` a Groq si el rol califica; si el modelo devuelve
+>   un `tool_call`, la EF **NUNCA aplica nada** — valida, lee el valor ACTUAL real (con la sesión del
+>   usuario, tenant resuelto EXPLÍCITAMENTE vía `users.tenant_id` — no depende de RLS desnuda, que se
+>   rompía para rol ADMIN/staff porque su policy tiene `OR is_admin()` y devuelve todas las filas) y
+>   devuelve la propuesta estructurada.
+> - **`src/components/AiAssistant.tsx`**: si la respuesta trae `propuesta`, se renderiza como tarjeta
+>   (campo, valor actual → propuesto, razón, botones Confirmar/Rechazar) en vez de bubble de texto.
+>   `confirmarPropuesta` es el ÚNICO lugar de todo el flujo que llama a la RPC de verdad, con la sesión REAL
+>   del usuario (revalida rol/allowlist server-side de nuevo). `rechazarPropuesta` no llama a nada.
+>
+> **2 hallazgos reales de un `code-reviewer` corregidos ANTES de la verificación en browser**:
+> 1. 🔴 `confirmarPropuesta` no sincronizaba el store Zustand (`setTenant`) tras el UPDATE real — violaba
+>    la regla del CLAUDE.md de sincronizar el store tras un UPDATE en `tenants`. El resto de la app hubiera
+>    seguido mostrando el valor viejo hasta el próximo login. Corregido.
+> 2. 🟡 La lectura del "valor actual" en la EF (`.select(campo).maybeSingle()` sin filtro explícito) se
+>    rompía en silencio para rol ADMIN (staff) porque su policy RLS bypassea el filtro de tenant — devolvía
+>    "(sin valor)" siempre para esas cuentas. Corregido resolviendo el tenant explícitamente vía
+>    `users.tenant_id`.
+> 3. 🟡 Ventana de doble-submit en "Confirmar" (doble click antes del re-render) — agregado un lock
+>    síncrono (`useRef<Set>`).
+>
+> #### ✅ Verificación real (no solo tests unitarios)
+>
+> `tsc --noEmit` limpio, `npm run build` verde, suite completa vitest (100 archivos, **1616 tests**, +10
+> nuevos de `validarPropuestaConfig`/`construirToolPropuestaConfig`) en verde.
+>
+> **Verificado en un browser real** (Playwright, contra DEV real `gcmhzdedrkmmzfzfveig`, usuario DUEÑO real
+> de prueba — tenant "Almacén Jorgito", tenant de PRUEBAS de GO, no un cliente real):
+> 1. Pedido "Quiero habilitar los pedidos manuales" → apareció la tarjeta con descripción, "No → Sí",
+>    razón, botones. Confirmado con captura de pantalla.
+> 2. Click "Confirmar" → "Cambio aplicado". Verificado con SQL real contra DEV: `tenants.pedido_manual_habilitado`
+>    pasó de `false` a `true`, y quedó una fila en `ai_config_audit` con campo/valor_anterior/valor_nuevo/razon
+>    correctos.
+> 3. Pedido "Activá el reabastecimiento por umbral mínimo" → tarjeta apareció → click "Rechazar" →
+>    verificado con SQL que `wms_reabastecimiento_umbral` NO cambió y NO se creó ninguna fila de auditoría
+>    para ese campo.
+> 4. Revertido el valor de prueba (`pedido_manual_habilitado` de vuelta a `false`) para no dejar el tenant
+>    de pruebas en un estado distinto al que tenía antes de la verificación.
+>
+> Deploy real de la Edge Function a DEV vía `supabase functions deploy ai-assistant --project-ref
+> gcmhzdedrkmmzfzfveig` (CLI local, no Docker — funciona igual).
+>
+> #### 📊 Estado real (al cierre de esta sesión)
+>
+> **`APP_VERSION` bumpeado a `v1.178.0`** (código real nuevo: wiring completo de Fase 2 + fix crítico que
+> afectaba PROD, sobre lo ya tageado como `v1.177.0`). **Sin migración nueva** — 100% wiring de la mig 376
+> ya existente + fix de constantes de modelo. El fix del modelo YA está deployado, aislado, en la Edge
+> Function de **DEV y PROD** (`gcmhzdedrkmmzfzfveig` y `jjffnbrdjchquexdfgwq`, ambos vía
+> `supabase functions deploy`, confirmados con `get_edge_function`) — PROD solo tiene el fix puntual (2
+> constantes), NO el resto del wiring de Fase 2 (que sigue solo en DEV, a propósito). El código del wiring
+> completo (frontend + EF con tool-calling) se commitea y pushea a `origin/dev` al cierre de esta sesión,
+> junto con este wiki. Sin PR a `main`, sin deploy de FRONTEND a PROD (el hotfix de la EF es infraestructura
+> independiente del pipeline de Vercel).
+>
+> **Próximo paso**: commitear esta tanda (bump de versión a decidir), evaluar deploy urgente a PROD del fix
+> de modelo (aunque sea aislado del resto del wiring), y luego Fase 3 del plan (memoria persistente por
+> tenant). No avanzar Fase 4 sin decisión de producto/legal adicional (ya definida como "inteligencia
+> interna", pero sin diseño ni código todavía).
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), [[wiki/features/asistente-ia]] (secciones "Plan IA" y
+> "🐛 Modelo Groq roto"), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 19) — 🤖 Plan IA: Fase 1 (memoria conversacional) COMPLETA + arranca
+> Fase 2 (capa de RPCs de config), mig 376 — **✅ COMMITEADO** (commit `1b5e89aa`, tag+release `v1.177.0`,
+> incluye el bump de `v1.176.0`→`v1.177.0`) — este bloque quedó SUPERADO por el de arriba (cont. 20: wiring
+> completo de Fase 2 + 🐛 hallazgo crítico del modelo Groq roto) — Caja USD/Auditoría (bloque de abajo,
+> cont. 18, SIGUE VIGENTE como estado real de DEV/PROD para ESE proyecto — no queda superado, solo deja de
+> ser el punto de entrada)
+>
+> Primera sesión de código real del "Plan IA" (Asistente IA con memoria + capacidad de proponer cambios de
+> configuración) desde que se publicó el Artifact de la propuesta (2026-08-14/15, ver bloque cont. 9 más
+> abajo). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO hoy: (1) arrancar por Fase 1 +
+> ya empezar la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2) alcance de Fase 2 = "todo lo NO
+> fiscal" (default amplio a futuro, hoy allowlist chico y curado, no se clasificaron las ~190 columnas de
+> `tenants` de una); (3) Fase 4 (comparación entre negocios) = inteligencia interna de Genesis360, no de
+> cara al cliente final — sin urgencia, sin código tocado hoy.
+>
+> #### Fase 1 — Memoria conversacional de corto plazo (✅ COMPLETA)
+>
+> Investigación primero: el multi-turno YA funcionaba bien (`AiAssistant.tsx` ya mandaba el array completo
+> de `messages` a la EF `ai-assistant`, que ya reenviaba `messages.slice(-12)` a Groq como mensajes de chat
+> reales — mejor que lo que el plan original asumía). El gap real: un F5/recarga de página perdía toda la
+> conversación (estado de React plano, sin persistencia). Cambios:
+> - `src/components/AiAssistant.tsx` — persistencia en `sessionStorage` (sobrevive a F5, se pierde al
+>   cerrar la pestaña — corto plazo a propósito, la memoria entre sesiones sigue siendo Fase 3). Keyed por
+>   `user?.id` (PC compartida, ej. POS de mostrador con varios cajeros). 🐛 Race real encontrada y
+>   corregida antes de terminar (no llegó a producción): sin un `useRef` guard, los mensajes del usuario
+>   viejo se escribían bajo la clave del usuario nuevo antes de reemplazarse, al cambiar de usuario en la
+>   misma pestaña.
+> - `supabase/functions/ai-assistant/index.ts` + espejo `src/lib/aiAssistant.ts` (verificado con `diff` que
+>   quedaron idénticos) — regla 8 nueva en el prompt: "PREGUNTÁ ANTES DE ASUMIR" (ambigüedad → pregunta
+>   corta para desambiguar, no adivinar).
+> - Test nuevo en `tests/unit/aiAssistant.test.ts` (16/16 verdes) verificando la regla 8 en el prompt.
+>
+> #### Fase 2 — Capa de RPCs para que la IA proponga/aplique config (backend arrancado, SIN wiring todavía)
+>
+> **Migración 376** (`376_ai_config_rpc_layer.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`):
+> - Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
+>   DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); SIN
+>   policy de escritura — solo las RPCs (`SECURITY DEFINER`) insertan ahí.
+> - 3 RPCs tipadas — `fn_ai_config_set_bool`/`_int`/`_text` (una por tipo de dato, evita casteos dinámicos
+>   ambiguos de una única función "genérica"). Cada una: deriva `tenant_id`/rol DEL JWT de quien llama
+>   (`get_user_tenant_id()`/`get_user_role()` — NUNCA como parámetro, imposible apuntar a otro tenant aunque
+>   el caller mienta); exige rol DUEÑO o ADMIN; valida el campo contra un ALLOWLIST hardcodeado DENTRO del
+>   cuerpo de la función (no una tabla editable — ampliarlo es siempre una migración nueva, auditable en
+>   git); escribe en `ai_config_audit`.
+> - **Allowlist inicial: 6 campos NO fiscales de `tenants`** (ya tienen su propio handler de 1-campo en
+>   `ConfigPage.tsx`, mismo patrón replicado server-side, no abre capacidad de escritura nueva):
+>   `wms_reabastecimiento_on_demand`, `wms_reabastecimiento_umbral` (boolean), `pedido_manual_habilitado`,
+>   `pedido_cierre_automatico` (boolean), `repositor_etiquetas_por_hoja` (integer), `pedido_numeracion`
+>   (text). Cero campos fiscales/AFIP/contables — ninguno toca `caja`, `stock_actual`, comprobantes ni
+>   cuenta corriente.
+> - Revisada por `migration-reviewer` ANTES de aplicar: **APTA, sin hallazgos bloqueantes**. 4 notas 🟡 no
+>   bloqueantes documentadas para cuando se conecte la IA de verdad (Fase 3 del plan): capturar
+>   `check_violation` con un mensaje lindo en vez del error crudo de Postgres (ej.
+>   `repositor_etiquetas_por_hoja` fuera de {4,6,12}); TOCTOU menor entre el SELECT y el UPDATE (solo
+>   afectaría el campo `valor_anterior` del audit log en una carrera extrema, nunca el valor final
+>   escrito); falta `COMMENT ON` en tabla/funciones; falta guard explícito de `p_valor IS NULL`.
+> - **Verificado con tests reales en DEV** (impersonación vía `set_config('request.jwt.claims', ...)`
+>   dentro de bloques `DO $$` sin COMMIT, confirmado con `SELECT` posterior que nada persistió): (1) caso
+>   feliz cambia el campo y devuelve valor anterior/nuevo correctos; (2) un campo NO allowlisted (`cuit`)
+>   es rechazado; (3) un rol sin permiso (SUPERVISOR) es rechazado aunque el campo esté permitido; (4) un
+>   valor fuera de dominio (`repositor_etiquetas_por_hoja=7`, fuera de {4,6,12}) es frenado por un `CHECK`
+>   YA EXISTENTE en la tabla `tenants` (no hizo falta agregar nada nuevo — confirmado, no es un agujero).
+>
+> **IMPORTANTE — todavía NO hay wiring**: ni la EF `ai-assistant` ni el frontend invocan estas 3 RPCs
+> todavía. Nadie puede usarlas hoy salvo llamándolas directo (y solo si es DUEÑO/ADMIN del propio tenant,
+> con el campo en el allowlist). El wiring real (tool-calling de la IA con Groq + tarjeta de confirmación
+> en el chat antes de aplicar) queda para una sesión futura, a propósito, para poder revisar esta capa de
+> forma aislada primero.
+>
+> #### 📊 Estado real (histórico — ✅ ya commiteado, ver cont. 20 arriba para el estado actual)
+>
+> **✅ COMMITEADO** — commit `1b5e89aa` ("feat(ai-assistant,wiki): plan IA — Fase 1 memoria conversacional +
+> Fase 2 capa de RPCs de config"), tag+release `v1.177.0` publicados (incluye el bump `v1.176.0`→
+> `v1.177.0` en el mismo commit). Migración 376 aplicada y verificada solo en DEV, todavía NO en PROD.
+>
+> **Próximo paso (✅ YA HECHO en la sesión siguiente, ver cont. 20 arriba)**: wiring de las RPCs
+> (tool-calling de la IA + confirmación en el chat, completa Fase 2) — construido, verificado en browser
+> real y TODAVÍA SIN COMMITEAR al momento de escribir esto. Fase 3 (memoria persistente por tenant) sigue
+> sin arrancar. No avanzar Fase 4 sin decisión de producto/legal adicional (ya definida como "inteligencia
+> interna", pero sin diseño ni código todavía).
+>
+> Ver `log.md`, [[wiki/features/asistente-ia]] (sección "Plan IA — memoria + configuración con
+> confirmación"), `wiki/database/migraciones.md` (mig 376), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 18) — 🚀 v1.176.0 DEPLOYADO A PROD Y VERIFICADO — Auditoría
+> performance/calidad (migs 361-366) + Caja USD Fases 1-7/8 (migs 367-375), 16 migraciones nuevas (360-375)
+> aplicadas a PROD en un solo deploy — este bloque había reemplazado al de abajo (cont. 17: Fase 7/8 de
+> Caja USD, tag `v1.176.0`, ya commiteada en `dev`) como punto de entrada, y ahora queda SUPERADO por el de
+> arriba (cont. 19: Plan IA — Fase 1 completa + arranca Fase 2, mig 376, proyecto independiente, TODAVÍA
+> SIN COMMITEAR) solo como punto de entrada — su contenido SIGUE VIGENTE, no fue revertido, describe el
+> estado real de DEV/PROD para Auditoría performance/calidad + Caja USD. **No hubo código nuevo en esa
+> tanda** —
+> el código ya estaba commiteado en `dev` desde la sesión anterior (commit `50f5579a`, tag+release
+> `v1.176.0` ya publicados); esa tanda fue PURAMENTE el deploy: 16 migraciones a PROD + PR `dev`→`main`
+> mergeado. Tampoco hubo tag/release nuevo que crear — `v1.176.0` ya existía sobre el commit `50f5579a` de
+> `dev`, y ese mismo commit ahora es ancestro de `main` tras el merge.
+>
+> #### ✅ Deploy verificado de forma independiente
+>
+> - **16 migraciones aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), en orden, cada una confirmada con
+>   `apply_migration` exitoso (`{"success":true}`) y re-verificadas con `list_migrations` al final:
+>   1. `360_pedido_envio_entregado_sync` — sincroniza `pedidos.estado` cuando un envío real (no retiro en
+>      mostrador) se marca entregado.
+>   2. `361_emision_factura_lock` — lock anti doble-submit en `emitir-factura` (tabla mutex
+>      `emision_factura_locks`), evita 2 comprobantes fiscales para la misma venta/devolución.
+>   3. `362_stock_reserva_atomica` — RPCs `SECURITY INVOKER` con `SELECT ... FOR UPDATE` para reservar/
+>      liberar stock sin race condition (causa raíz de VEN-23 del UAT).
+>   4. `363_indices_fk_faltantes` — 6 índices aditivos en rutas calientes (`wms_tareas`, `tareas_repositor`,
+>      `pedido_items`, `zonas`).
+>   5. `364_meli_stock_sync_dedupe` — acota el trigger de sync de stock MELI a columnas relevantes + dedupe
+>      real vía `NOT EXISTS` (mismo patrón que TN).
+>   6. `365_fix_formula_notificar_cc_vencidas` — corrige la fórmula de deuda CC en una función hoy inerte
+>      (sin sweep que la invoque), landmine latente si se reactiva.
+>   7. `366_rls_auth_uid_select_wrap` — envuelve `auth.uid()` en `(select auth.uid())` en las 4 últimas
+>      policies que sobrevivían con el antipattern (initPlan, performance).
+>   8. `367_producto_moneda_costo_y_tier_usd` — persiste moneda/costo USD en Producto + tier mayorista
+>      `tipo_valor='usd'`.
+>   9. `368_caja_usd_fase1_cimientos` — Fase 1/8 Caja USD: `moneda` real en sesiones/movimientos/arqueos,
+>      `ventas.cotizacion_usd`, `metodos_pago.es_efectivo`.
+>   10. `369_caja_usd_fase1_es_efectivo_consumidores` — cierra la Fase 1, cablea los consumidores server-side
+>       a `es_efectivo` real.
+>   11. `370_caja_usd_fase2_permisos_config` — Fase 2/8: permisos/config de cotización y Caja USD por rol,
+>       `productos.acepta_cualquier_moneda`.
+>   12. `371_caja_usd_fase3_ciclo_operativo` — Fase 3/8: triggers de validación de moneda para el ciclo
+>       operativo de Caja USD.
+>   13. `372_caja_usd_fase4_pago_combinado` — Fase 4/8: venta con pago combinado ARS+USD, trigger
+>       `fn_validar_moneda_coincide_sesion`.
+>   14. `373_caja_usd_fase5_boveda` — Fase 5/8: Bóveda ARS/USD (2 cuentas por tenant), conversión USD↔$,
+>       retiro protegido con clave maestra.
+>   15. `374_vw_boveda_cuentas_security_invoker` — cierra un "Security Definer View" pre-existente en
+>       `vw_boveda_cuentas` (hallazgo real, no introducido por la Fase 5).
+>   16. `375_caja_usd_fase6_devoluciones_nc` — Fase 6/8: devoluciones/NC con soporte USD (reintegro en Caja
+>       USD, cotización de la venta original para la NC).
+>
+>   Ninguna falló — **mig 373** (la que había fallado una vez en DEV por un conflicto de constraint, ver su
+>   propia entrada en `wiki/database/migraciones.md`) aplicó limpio en PROD porque el archivo del repo ya
+>   tenía la versión corregida.
+> - **Security advisor de PROD revisado post-migración** (`get_advisors` tipo security): **0 hallazgos
+>   ERROR**, 135 WARN (baseline preexistente del proyecto, no introducidos por este deploy), y **1 hallazgo
+>   INFO nuevo esperado** — `emision_factura_locks` con RLS habilitada pero sin policies, que es
+>   intencional (deny-by-default, documentado en el comentario de la propia migración 361 — la Edge
+>   Function siempre usa `service_role`, que bypassea RLS).
+> - **PR #331** (`dev`→`main`, título "v1.176.0 — Auditoría performance/calidad + Caja USD (Fases 1-7/8)")
+>   creado y **mergeado** — merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`, confirmado con
+>   `gh pr view 331 --json state,mergedAt,mergeCommit` → `state: MERGED`, `mergedAt: 2026-08-20T04:12:29Z`.
+>   Verificado también de forma independiente por el wiki-keeper: `git fetch origin` + `git log --oneline
+>   origin/main` confirma `4dbe7fdb` (merge de PR #331) en la punta de `origin/main`, con `50f5579a` (Fase
+>   7/8, tag `v1.176.0`) como ancestro directo. `gh release view v1.176.0` confirma el release publicado
+>   (`publishedAt: 2026-08-19T16:59:23Z`, ya existía sobre `dev` antes de este merge — no se creó uno nuevo).
+> - **Vercel**: el deployment de producción (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`, target=production, commit
+>   `4dbe7fdb`) arrancó a buildear inmediatamente después del merge. **✅ CONFIRMADO READY** (`readyState:
+>   READY`, build de ~96s, `app.genesis360.pro` sirviendo el commit `4dbe7fdb`).
+> - **Verificación contra datos reales de PROD**: los 8 tenants existentes quedaron con "Caja Fuerte USD"/
+>   "Efectivo USD" sembrados por el backfill de la mig 373 (`SELECT count(*) FROM cajas WHERE moneda='USD'`
+>   → 8), y 0 ventas con `cotizacion_usd` no nulo — confirma que el deploy no cambió ningún comportamiento
+>   para tenants existentes (feature aditiva/opt-in, como estaba diseñada).
+>
+> #### Qué quedó en PROD (detalle técnico completo en los bloques históricos de abajo — este bloque no lo repite)
+>
+> - **Auditoría de performance/calidad** (migs 361-366): 2 fixes 🛑 REGLA #0 (lock anti doble-submit
+>   fiscal en `emitir-factura`, race condition de stock en reservas) + resto del top5 (índices FK, dedupe
+>   MELI, fórmula CC muerta) + cierre del antipattern RLS `auth.uid()`. Ver
+>   [[wiki/features/facturacion-afip]], [[wiki/features/inventario-stock]].
+> - **Caja en Dólares (relevamiento G5), Fases 1 a 7 de 8** (Fase 8 = C2, cotización BNA para AFIP, sigue
+>   bloqueada por confirmación de un contador real): cimientos de moneda real en caja, permisos/config,
+>   ciclo operativo, venta con pago combinado ARS+USD, Bóveda ARS/USD con conversión, devoluciones/NC con
+>   soporte USD, y Reportes/Dashboard moneda-aware. Ver [[wiki/features/caja]],
+>   [[wiki/features/reportes-metricas]], [[wiki/features/ventas-pos]], [[wiki/features/devoluciones]].
+> - **2 bugs de moneda en ficha Producto** (mig 367): tiers mayoristas ganan `tipo_valor='usd'`, costo/
+>   precio USD persisten al reabrir la ficha. Ver [[wiki/features/productos]].
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | **v1.176.0** (`gcmhzdedrkmmzfzfveig`, commit `50f5579a`) | **v1.176.0** (commit `4dbe7fdb`, PR #331 mergeado) |
+> | Migraciones aplicadas en la DB | **001-375** | **001-375** (16 nuevas: 360-375, aplicadas hoy) |
+> | Branch | `dev` = `origin/dev`, sin commits pendientes | `main` = `origin/main`, en paridad de código con `dev` |
+> | Tag / release | `v1.176.0` (ya existía, publicado el 2026-08-19 sobre `dev`) | mismo tag `v1.176.0` — ahora también ancestro de `main` |
+> | PR `dev`→`main` | — | **#331 MERGEADO** (`4dbe7fdb2c59c34a58fc6896c879f93f549178ab`, 2026-08-20T04:12:29Z) |
+> | Vercel | sin cambios | **✅ READY** (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`, `app.genesis360.pro` sirviendo `4dbe7fdb`) |
+>
+> **Con esto, el ciclo completo del deploy queda cerrado y verificado de punta a punta** (migraciones + PR +
+> merge + Vercel + datos reales). Próximo paso: a la espera de que GO decida qué sigue — Fase 8 de Caja USD
+> (C2, bloqueada por el contador) u otra tarea.
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), `wiki/business/roadmap.md` (v1.176.0 a EN PROD),
+> `wiki/database/migraciones.md` (360-375 a EN PROD), `wiki/development/reglas-negocio.md` (módulo G5),
+> [[wiki/features/caja]], [[wiki/features/reportes-metricas]], [[wiki/features/ventas-pos]],
+> [[wiki/features/devoluciones]], [[wiki/features/facturacion-afip]], [[wiki/features/inventario-stock]],
+> [[wiki/features/productos]], `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-19, cont. 17) — Fase 7/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (Reportes —
+> H1/H2, SIN migración nueva) — **COMMITEADA Y PUSHEADA a `origin/dev`** (commit `50f5579a`, tag+release
+> **`v1.176.0`** publicados el 2026-08-19 — corrige el "TODAVÍA SIN COMMITEAR" con el que se había escrito
+> originalmente este bloque) — este bloque había reemplazado al cont. 16 (Fase 6, tag `v1.175.0`) como
+> punto de entrada, y ahora queda SUPERADO por el de arriba (cont. 18: **🚀 v1.176.0 DEPLOYADO A PROD Y
+> VERIFICADO**, PR #331 mergeado a `main`, 16 migraciones 360-375 aplicadas en PROD) — su contenido
+> narrativo sigue VIGENTE (no fue revertido).
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 7/8 (Reportes) 100% COMPLETA en DEV, sin migración
 >
@@ -87,20 +521,22 @@ type: project
 > **Próximo paso: Fase 8** (C2 — bloqueada por el contador, así que probablemente la sesión que sigue haga
 > otra cosa o quede pendiente hasta que GO consiga esa confirmación).
 >
-> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 7 CONSTRUIDA, SIN COMMITEAR)
+> #### 📊 Estado DEV/PROD al cierre de esta sesión (histórico — Fase 7 COMMITEADA en la sesión, ver cont. 18
+> arriba para el estado real actual, post-deploy)
 >
 > | | DEV | PROD |
 > |---|---|---|
-> | `APP_VERSION` (código) | **v1.176.0** (bump en `brand.ts`, SIN COMMITEAR) | v1.170.0 (sin cambios) |
-> | Migraciones aplicadas en la DB | 001-375 (sin cambios — Fase 7 no agrega migración) | 001-359 (sin cambios) |
-> | Branch | `dev`, working tree con código+wiki SIN COMMITEAR | `main` (sin cambios) |
-> | Tag / release | ninguno todavía (se crea al commitear, `v1.176.0`) | `v1.170.0` (sin cambios) |
-> | PR `dev`→`main` | No abierto | — |
-> | Vercel | sin cambios (sin deploy a PROD) | sin cambios desde v1.170.0 |
+> | `APP_VERSION` (código) | **v1.176.0** (commit `50f5579a`, tag+release publicados) | v1.170.0 (al momento de escribirse este bloque — ver cont. 18 para el estado post-deploy) |
+> | Migraciones aplicadas en la DB | 001-375 (sin cambios — Fase 7 no agrega migración) | 001-359 (al momento de escribirse este bloque) |
+> | Branch | `dev`, commiteado y pusheado | `main` (al momento de escribirse este bloque) |
+> | Tag / release | `v1.176.0` publicado | `v1.170.0` (al momento de escribirse este bloque) |
+> | PR `dev`→`main` | No abierto todavía en este punto | — |
+> | Vercel | sin cambios en este punto | sin cambios en este punto |
 >
-> `ReportesPage.tsx`, `DashboardPage.tsx`, `RentabilidadPage.tsx`, UAT (`DSH-06` a `DSH-09`) y el wiki — el
-> orquestador los commitea todos juntos en un solo commit, tag+release **v1.176.0**, al cierre de esta
-> sesión. Próxima sesión (post-`/clear`): arrancar con la Fase 8 (C2, bloqueada) o lo que decida GO.
+> `ReportesPage.tsx`, `DashboardPage.tsx`, `RentabilidadPage.tsx`, UAT (`DSH-06` a `DSH-09`) y el wiki
+> quedaron commiteados juntos en el commit `50f5579a`, tag+release **v1.176.0**. Próximo paso real: ver
+> cont. 18 arriba (deploy a PROD ya ejecutado) — la Fase 8 (C2, bloqueada por confirmación de un contador
+> real) sigue siendo lo único pendiente del plan de 8 fases.
 >
 > ---
 >
@@ -108,8 +544,9 @@ type: project
 > Devoluciones/NC con soporte USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`,
 > tag+release **`v1.175.0`** publicados, verificado con `git log origin/dev..dev` vacío — una reconciliación
 > de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal) — este bloque quedó
-> SUPERADO por el de arriba (cont. 17: Fase 7/8 de Caja USD, Reportes) pero su contenido sigue VIGENTE (no
-> fue revertido). Sigue SIN PR a `main`, SIN deploy a PROD.
+> SUPERADO por el de arriba (cont. 17: Fase 7/8 de Caja USD, Reportes; y cont. 18: deploy a PROD) pero su
+> contenido sigue VIGENTE (no fue revertido). El "SIN PR/SIN deploy a PROD" con el que se escribió este
+> bloque ya no es el estado real — ver cont. 18 arriba (v1.176.0 DEPLOYADO A PROD).
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 6/8 (Devoluciones/NC) 100% COMPLETA en DEV, mig 375
 >
@@ -817,11 +1254,17 @@ type: project
 > (fase 4) es de cara al cliente final o inteligencia interna de Genesis360? **No avanzar código de esta
 > propuesta sin que GO responda.**
 >
-> **Próximo paso**: ninguno de los dos ítems avanza sin que GO decida — (1) si pide el relevamiento HTML
-> de Supervisión, y (2) las 3 preguntas de la propuesta de IA. El estado técnico real de DEV/PROD ya NO es
-> el del bloque cont. 8 de abajo — fue superado por el bloque cont. 12 más arriba (2026-08-18): DEV con
-> migs 001-370 aplicadas, TODO commiteado y pusheado a `origin/dev` (commit `310d9b3b` + `0b4d431a`, tag
-> `v1.171.0`), sin PR a `main`, sin deploy a PROD.
+> **✅ Actualización 2026-08-20 (ver cont. 19, arriba del todo)**: las 3 preguntas fueron respondidas por
+> GO — (1) Fase 1 + arrancar ya la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2) alcance Fase 2 =
+> "todo lo NO fiscal" (hoy allowlist chico y curado); (3) Fase 4 = inteligencia interna de Genesis360, sin
+> urgencia. Fase 1 quedó **COMPLETA** y Fase 2 arrancó (backend, mig 376, sin wiring todavía) — ver el
+> bloque cont. 19 arriba para el detalle completo. El ítem #1 de este bloque (extender Supervisión) sigue
+> sin relevamiento, sin cambios.
+>
+> **Próximo paso**: el ítem #1 (extender Supervisión) sigue sin avanzar, esperando que GO pida el
+> relevamiento HTML. El ítem #2 (IA) ya avanzó — ver cont. 19 arriba. El estado técnico real de DEV/PROD ya
+> NO es el del bloque cont. 8 de abajo ni el de este bloque — ver cont. 19 (arriba del todo) para el estado
+> más reciente.
 >
 > Ver `log.md` (entrada al principio, 2026-08-14).
 >

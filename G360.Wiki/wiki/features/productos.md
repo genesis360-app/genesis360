@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370]
-updated: 2026-08-18
+updated: 2026-08-20
 ---
 
 # Productos
@@ -187,8 +187,9 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | Activo / Inactivo | toggle | Inactivo bloquea ingreso de stock (soft-delete lógico) |
 | Puede cobrarse en cualquier moneda | toggle | `acepta_cualquier_moneda` (mig 370) — ver nota abajo |
 
-> [!NOTE] **Checkbox "Puede cobrarse en cualquier moneda" (mig 370, 🟡 EN DEV, COMMITEADO Y PUSHEADO a
-> `origin/dev` — commit `310d9b3b`, tag `v1.171.0`, SIN deploy a PROD, 2026-08-18).** Nuevo campo
+> [!NOTE] **Checkbox "Puede cobrarse en cualquier moneda" (mig 370, ✅ EN PROD, COMMITEADO Y PUSHEADO a
+> `origin/dev` — commit `310d9b3b`, tag `v1.171.0`, commiteado 2026-08-18, deployado a PROD 2026-08-20 —
+> PR #331, merge commit `4dbe7fdb`).** Nuevo campo
 > `productos.acepta_cualquier_moneda` (boolean, default `false`), Fase 2 del proyecto "Caja en USD"
 > (relevamiento G5, respuesta A2: cobro en USD y `moneda_venta` son independientes, pero **por producto**).
 > Es **independiente** de `moneda_venta`/`precio_usd` (Card 3) — no es una decisión que tome el cajero en

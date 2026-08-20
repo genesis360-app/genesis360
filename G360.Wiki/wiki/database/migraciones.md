@@ -3,14 +3,95 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
-# Historial de Migraciones (001-375)
+# Historial de Migraciones (001-378)
 
-**375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `e55a1009`, tag `v1.175.0`), NO en
-PROD (2026-08-19):** Fase 6 ("Devoluciones/NC con
+**378 (`378_ai_memoria_listar_rpc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
+APLICADA EN PROD, commit pendiente en esta misma sesión:** fix de un hallazgo real de `code-reviewer` sobre
+la mig 377 (abajo) — la EF `ai-assistant` pretendía inyectar la memoria del negocio en el prompt para
+CUALQUIER rol que chatee (solo la ESCRITURA está restringida a DUEÑO/ADMIN), pero lo hacía con un `SELECT`
+directo a `ai_tenant_memoria` usando la sesión real del usuario; la policy SELECT de la mig 377 solo permite
+DUEÑO/ADMIN/SUPER_USUARIO, así que para cualquier otro rol (CAJERO, DEPOSITO, SUPERVISOR...) ese `SELECT`
+devolvía `[]` en silencio — la memoria nunca se inyectaba para esos roles, pese a que el diseño es que se
+inyecte para todos. Agrega `fn_ai_memoria_listar()` (`SECURITY DEFINER`, deriva `tenant_id` del JWT, **sin
+filtro de rol** — los hechos son datos de negocio de baja sensibilidad, nunca fiscales/personales, reforzado
+en la descripción del tool y en el prompt). **✅ `supabase/functions/ai-assistant/index.ts` ya llama a
+`fn_ai_memoria_listar()` (ya no al `SELECT` directo) — redeployada a DEV y re-verificada con el e2e mutante
+134.** Verificado además con impersonación real (`SET LOCAL ROLE` + `request.jwt.claims`, dentro de un
+bloque sin commit): con la sesión de un rol no-DUEÑO/ADMIN/SUPER_USUARIO, el `SELECT` directo a la tabla
+da 0 filas (RLS bloquea, como se espera) mientras que `fn_ai_memoria_listar()` da la fila real — confirma
+que el fix cierra la brecha. Con esto, el hallazgo del `code-reviewer` quedó 100% resuelto, no solo
+reportado.
+
+**377 (`377_ai_tenant_memoria.sql`) — reportada como APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+NO APLICADA EN PROD, commit pendiente en esta misma sesión (`APP_VERSION` ya bumpeado a `v1.179.0` en el
+working tree, sin commit todavía):** Plan IA — Fase 3 (memoria persistente por tenant), continúa la Fase 2
+(mig 376). Diseño ya definido en el Artifact original del plan (2026-08-14/15): NO se guarda charla cruda —
+se guardan HECHOS DESTILADOS que la IA propone guardar, con confirmación explícita del usuario en el chat
+(mismo patrón de la Fase 2), y el tenant puede ver/borrar su propia memoria desde Configuración. Agrega:
+1. Tabla `ai_tenant_memoria` (`tenant_id`, `hecho` texto ≤300 chars, `usuario_id`, `created_at`) — RLS:
+   SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO del tenant (mismo patrón que `ai_config_audit`, mig 376);
+   sin policy de INSERT — solo escribe la RPC.
+2. RPC `fn_ai_memoria_guardar(p_hecho text)` (`SECURITY DEFINER`): deriva `tenant_id`/rol del JWT de quien
+   llama (nunca parámetro), exige DUEÑO/ADMIN, valida y trunca el hecho (máximo 300 caracteres). Tope de 20
+   hechos por tenant, podado dentro de la misma RPC en cada escritura (no hay `pg_cron` habilitado en este
+   proyecto — sweep sincrónico, no periódico) porque la lista se inyecta COMPLETA en cada system prompt
+   nuevo.
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. 2 sugerencias menores no bloqueantes ya aplicadas
+(guard NULL explícito, tiebreaker `id DESC` en el tope de 20 para evitar no-determinismo en empates de
+`created_at`). **Wiring completo (misma sesión)**: la EF `ai-assistant` y el frontend (`AiAssistant.tsx`,
+`ConfigPage.tsx`) ya invocan/muestran esta capa — tool-calling de Groq (`guardar_hecho_memoria`) arma la
+propuesta, tarjeta de confirmación en el chat (ícono `Brain`), y recién al confirmar se llama a
+`fn_ai_memoria_guardar` con la sesión del usuario; `ConfigPage.tsx` suma la sección "Memoria del Asistente
+IA" (lista/borra hechos, gateada a DUEÑO). Ver mig 378 arriba (fix, ya resuelto, de lectura para roles no
+DUEÑO/ADMIN) y [[wiki/features/asistente-ia]] → "Plan IA" → Fase 3.
+
+**376 (`376_ai_config_rpc_layer.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
+APLICADA EN PROD, ✅ COMMITEADA (commit `1b5e89aa`, tag+release `v1.177.0`):** capa de RPCs para que
+el Asistente IA pueda proponer/aplicar cambios de configuración con confirmación previa — Fase 2 del "Plan
+IA" (memoria + configuración), continúa la Fase 1 (memoria conversacional del Asistente, sin migración,
+mismo commit). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO el 2026-08-20:
+alcance de Fase 2 = "todo lo NO fiscal" (allowlist chico y curado hoy, no las ~190 columnas de `tenants` de
+una). Agrega:
+1. Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
+   DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); sin
+   policy de escritura — solo las RPCs (`SECURITY DEFINER`) insertan.
+2. 3 RPCs tipadas por dato — `fn_ai_config_set_bool`/`_int`/`_text` (evita casteos dinámicos ambiguos de
+   una única función "genérica"). Cada una deriva `tenant_id`/rol DEL JWT de quien llama
+   (`get_user_tenant_id()`/`get_user_role()` — NUNCA como parámetro, imposible apuntar a otro tenant),
+   exige rol DUEÑO o ADMIN, valida el campo contra un ALLOWLIST hardcodeado DENTRO del cuerpo de la
+   función (ampliarlo es siempre una migración nueva, auditable en git — no una tabla editable), y escribe
+   en `ai_config_audit`.
+3. **Allowlist inicial: 6 campos NO fiscales de `tenants`** que ya tienen su propio handler de 1-campo en
+   `ConfigPage.tsx` (mismo patrón replicado server-side, no abre capacidad de escritura nueva):
+   `wms_reabastecimiento_on_demand`, `wms_reabastecimiento_umbral` (boolean), `pedido_manual_habilitado`,
+   `pedido_cierre_automatico` (boolean), `repositor_etiquetas_por_hoja` (integer), `pedido_numeracion`
+   (text). Cero campos fiscales/AFIP/contables.
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. 4 notas 🟡 no bloqueantes documentadas para cuando
+se conecte la IA de verdad (Fase 3 del plan): capturar `check_violation` con un mensaje lindo en vez del
+error crudo de Postgres (ej. `repositor_etiquetas_por_hoja` fuera de {4,6,12}); TOCTOU menor entre el
+SELECT y el UPDATE (solo afectaría el campo `valor_anterior` del audit log en una carrera extrema, nunca
+el valor final escrito); falta `COMMENT ON` en tabla/funciones; falta guard explícito de `p_valor IS
+NULL`. Verificado con 4 tests reales en DEV (impersonación vía `set_config('request.jwt.claims', ...)`
+dentro de bloques `DO $$` sin COMMIT, confirmado con `SELECT` posterior que nada persistió): (1) caso feliz
+cambia el campo y devuelve valor anterior/nuevo correctos; (2) campo NO allowlisted (`cuit`) rechazado; (3)
+rol sin permiso (SUPERVISOR) rechazado aunque el campo esté permitido; (4) valor fuera de dominio
+(`repositor_etiquetas_por_hoja=7`, fuera de {4,6,12}) frenado por un `CHECK` YA EXISTENTE en la tabla
+`tenants` (no hizo falta agregar nada nuevo). **✅ Wiring completo (sesión siguiente, misma jornada
+2026-08-20, ✅ COMMITEADA `v1.178.0`, commit `3fb956f8`)**: la EF `ai-assistant` y el frontend
+(`AiAssistant.tsx`) ya invocan estas RPCs — tool-calling de Groq arma la propuesta, tarjeta de confirmación
+en el chat, y recién al confirmar se llama a la RPC real con la sesión del usuario. Continúa con la Fase 3
+(memoria persistente, migs 377-378, arriba). Ver [[wiki/features/asistente-ia]] → "Plan IA — memoria +
+configuración con confirmación".
+
+**375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), COMMITEADA Y PUSHEADA a `origin/dev` (commit
+`e55a1009`, tag `v1.175.0`), **EN PROD desde 2026-08-20** (PR #331 mergeado a `main`, merge commit
+`4dbe7fdb2c59c34a58fc6896c879f93f549178ab`):** Fase 6 ("Devoluciones/NC con
 soporte USD") del plan Caja USD (relevamiento G5). Continúa la Fase 5 (migs 373+374, ya
 commiteada/pusheada, tag `v1.174.0`). Puramente aditiva, sin funciones/triggers/vistas nuevas — los
 `caja_movimientos` que este flujo inserta ya quedan protegidos por los triggers
@@ -45,9 +126,9 @@ Código: `src/lib/ventasValidation.ts` (`elegirCotizacionReintegro`, 5 tests) + 
 comentarios). `migration-reviewer`: 3 notas menores, ninguna bloqueante. Ver [[wiki/features/devoluciones]]
 → "Caja en USD — Fase 6 de 8".
 
-**374 (`374_vw_boveda_cuentas_security_invoker.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en
-PROD (2026-08-19):** cierra un
+**374 (`374_vw_boveda_cuentas_security_invoker.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), COMMITEADA Y PUSHEADA a `origin/dev` (commit
+`28d9291e`, tag `v1.174.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** cierra un
 "Security Definer View" PRE-EXISTENTE en `vw_boveda_cuentas`, hallazgo real ocurrido al tocar esa vista
 durante la Fase 5 de Caja USD (mig 373, ver abajo). El advisor de seguridad de Supabase (`get_advisors`,
 nivel ERROR) marcó que la vista corre con los privilegios de su DUEÑO (comportamiento default de toda vista
@@ -61,8 +142,11 @@ la vista con otro `WHERE`. Fix: `ALTER VIEW public.vw_boveda_cuentas SET (securi
 verificado antes de aplicar que ambas tablas base tienen RLS habilitado con policy propia.
 `migration-reviewer`: APTA. Ver [[wiki/features/caja]] → "Caja en USD — Fase 5 de 8".
 
-**373 (`373_caja_usd_fase5_boveda.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
-COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), NO en PROD (2026-08-19):** Fase 5
+**373 (`373_caja_usd_fase5_boveda.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag `v1.174.0`), **EN
+PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`; en PROD aplicó limpio — la vez que había
+fallado por el conflicto de índice único fue en DEV, ver punto 5 abajo, y el archivo del repo ya tenía la
+versión corregida):** Fase 5
 ("Bóveda ARS/USD") del plan Caja USD
 (relevamiento G5). Continúa la Fase 4 (mig 372, ya commiteada/pusheada, tag `v1.173.0`). Con esta fase, **la
 Bóveda deja de asumir 1 sola fila por tenant** — pasa a tener 2 (ARS y USD, pestañas separadas en la UI).
@@ -136,9 +220,10 @@ el proyecto completo (Fases 1+2+3+4+5 de 8) está 100% en DEV. **Estado real: mi
 verificadas en DEV, COMMITEADAS Y PUSHEADAS a `origin/dev`** (commit `28d9291e`, tag+release `v1.174.0`
 publicados). Próximo paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios).
 
-**372 (`372_caja_usd_fase4_pago_combinado.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d`, tag `v1.173.0`),
-NO en PROD (2026-08-18):** Fase 4 ("venta con pago combinado
+**372 (`372_caja_usd_fase4_pago_combinado.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`
+(commit `d783727d`, tag `v1.173.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):**
+Fase 4 ("venta con pago combinado
 ARS+USD") del plan Caja USD (relevamiento G5). Continúa la Fase 3 (mig 371, ya commiteada/pusheada como
 tag `v1.172.0`). Agrega **2 triggers** `fn_validar_moneda_coincide_sesion` (sobre `caja_movimientos` y
 `caja_arqueos`) que rechazan cualquier movimiento/arqueo cuya `moneda` no coincida con la moneda real de
@@ -197,9 +282,10 @@ DEV, código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, tag `v1.
 **Fase 5 (Bóveda por moneda — pestañas ARS/USD, conversión USD↔$, retiro de Caja USD sin destino con clave
 maestra) ya la completa — ver migs 373+374 arriba.**
 
-**371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — 🟢 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd`, tag `v1.172.0`),
-NO en PROD (2026-08-18):** Fase 3 ("ciclo operativo") del plan
+**371 (`371_caja_usd_fase3_ciclo_operativo.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`
+(commit `010440cd`, tag `v1.172.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):**
+Fase 3 ("ciclo operativo") del plan
 Caja USD (relevamiento G5). Continúa la Fase 2 (mig 370, ya commiteada/pusheada). Agrega **2 triggers**
 (sin cambios de schema — solo funciones + triggers):
 - `fn_validar_traspaso_misma_moneda` (`BEFORE INSERT ON caja_traspasos`) — bloquea un traspaso entre 2
@@ -240,9 +326,10 @@ proyecto completo (Fases 1+2+3 de 8) está 100% en DEV. **Estado real: mig 371 C
 estado "TODAVÍA SIN COMMITEAR" con el que se documentó esta sección originalmente. Fase 4 (mig 372, ver
 arriba) ya está completa también, en una tanda posterior.
 
-**370 (`370_caja_usd_fase2_permisos_config.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
-NO en PROD (2026-08-18):** Fase 2 ("permisos y configuración") del plan Caja USD (relevamiento G5).
+**370 (`370_caja_usd_fase2_permisos_config.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`
+(commit `310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):**
+Fase 2 ("permisos y configuración") del plan Caja USD (relevamiento G5).
 Aditiva, 100% retro-compatible — solo agrega columnas de configuración, ningún comportamiento cambia salvo
 el gate de rol descripto abajo. Agrega a `tenants`: `cotizacion_usd_compra` (pata de compra que la API ya
 devolvía y se descartaba), `cotizacion_usd_casa` (qué casa blue/oficial/bolsa/cripto se usó la última
@@ -272,9 +359,10 @@ Typecheck + build + suite completa (99 archivos, 1574 tests) verdes. UAT nuevos:
 completo (Fases 1+2 de 8) está 100% en DEV. Próximo paso: Fase 3 (ciclo operativo moneda-aware en
 `CajaPage.tsx`).
 
-**369 (`369_caja_usd_fase1_es_efectivo_consumidores.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
-NO en PROD (2026-08-18):** cierra la Fase 1 de Caja USD.
+**369 (`369_caja_usd_fase1_es_efectivo_consumidores.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`
+(commit `310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):**
+cierra la Fase 1 de Caja USD.
 Cablea los 4 consumidores server-side/cliente que comparaban el string hardcodeado `'Efectivo'` a leer
 `metodos_pago.es_efectivo` (mig 368) — `fn_pedido_generar_venta`, `marcar_envios_pagados`,
 `registrar_pago_oc` (`CREATE OR REPLACE`, esta migración) + `ventasValidation.ts`/`VentasPage.tsx`/
@@ -289,9 +377,10 @@ pérdida de tildes (se verificó explícitamente después del incidente de la mi
 cotización snapshot en ventas, y "efectivo real" generalizado de extremo a extremo (frontend + backend).
 Próximo paso: Fase 2 (permisos y configuración).
 
-**368 (`368_caja_usd_fase1_cimientos.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
-NO en PROD (2026-08-18):** Fase 1 ("cimientos de datos")
+**368 (`368_caja_usd_fase1_cimientos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`
+(commit `310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):**
+Fase 1 ("cimientos de datos")
 del plan Caja USD (relevamiento G5, ver `wiki/development/reglas-negocio.md`). Solo schema, sin cablear
 todavía ninguna pantalla/RPC a comportarse distinto — aditiva y retro-compatible al 100%. (1) Agrega
 `moneda text NOT NULL DEFAULT 'ARS'` a `caja_sesiones`/`caja_movimientos`/`caja_arqueos`, denormalizado
@@ -313,9 +402,10 @@ de tenants nuevos. `migration-reviewer`: APTA, sin hallazgos bloqueantes.
 
 **✅ Consumidores cableados en la mig 369** (ver arriba) — Fase 1 completa.
 
-**367 (`367_producto_moneda_costo_y_tier_usd.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`),
-NO en PROD (2026-08-18):** fix de 2 bugs reales de
+**367 (`367_producto_moneda_costo_y_tier_usd.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`
+(commit `310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):**
+fix de 2 bugs reales de
 moneda reportados por Fede en la ficha de Producto. (1) Agrega `productos.moneda_costo`/
 `precio_costo_usd` — mismo patrón exacto que `moneda_venta`/`precio_usd` (mig 161), pero para el
 costo. Cierra un bug real de PERSISTENCIA: el toggle "Ingresar en USD" de costo/venta vivía en
@@ -333,7 +423,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-19:** 375 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-20:** 378 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
@@ -341,18 +431,31 @@ PR #328); **358 (hard delete de tenant con grace period) y 359 (NC electrónica 
 deployadas a PROD el 2026-08-13 (v1.170.0, PR #330)**, verificado con `gh release view v1.170.0` +
 migraciones 358/359 confirmadas aplicadas contra el proyecto PROD. **v1.169.0 (2026-08-13, PR #329) no
 había agregado ninguna migración nueva** — quedó entre la 357 y la 358 sin cambios de DB.
-**360-372 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad, 2 bugs de
-moneda en Producto, y Caja USD Fases 1+2+3+4) están APLICADAS Y VERIFICADAS EN DEV, y COMMITEADAS Y
-PUSHEADAS a `origin/dev`** en 3 tandas: 360-370 en commit `310d9b3b` + bump `0b4d431a` (tag+release
-`v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8` (tag+release `v1.172.0`); 372 en commit `d783727d`
-+ bump `05801eb4` (tag+release `v1.173.0`); 373-374 en commit `28d9291e` (tag+release `v1.174.0`); 375 en
-commit `e55a1009` (tag+release `v1.175.0`) — verificado con `git log origin/dev..dev` vacío (una
-reconciliación de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal). **Ninguna
-migración de 360 a 375 queda "sin commitear".** **Sigue sin
-PR `dev`→`main`, sin deploy a PROD.** El resto de este
+**🚀 360-375 (fix de sincronización Pedido↔Envío entregado, auditoría de performance/seguridad —
+361-366—, 2 bugs de moneda en Producto —367—, y Caja USD Fases 1 a 6 —368-375—) están APLICADAS Y
+VERIFICADAS TANTO EN DEV COMO EN PROD desde el 2026-08-20** — código commiteado en `dev` en 5 tandas: 360-370
+en commit `310d9b3b` + bump `0b4d431a` (tag+release `v1.171.0`); 371 en commit `010440cd` + bump `56f48fe8`
+(tag+release `v1.172.0`); 372 en commit `d783727d` + bump `05801eb4` (tag+release `v1.173.0`); 373-374 en
+commit `28d9291e` (tag+release `v1.174.0`); 375 en commit `e55a1009` (tag+release `v1.175.0`) — y las 16
+migraciones aplicadas a PROD el 2026-08-20, en orden, cada una confirmada con `apply_migration` exitoso
+(`{"success":true}`) y re-verificadas con `list_migrations` al final; ninguna falló (la 373, que en su
+momento había fallado una vez en DEV por el conflicto de índice único descrito en su propia entrada más
+abajo, aplicó limpia en PROD porque el archivo del repo ya tenía la versión corregida). Inmediatamente
+después, **PR #331** (`dev`→`main`, "v1.176.0 — Auditoría performance/calidad + Caja USD (Fases 1-7/8)") se
+mergeó a `main` — merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`, confirmado con
+`gh pr view 331 --json state,mergedAt,mergeCommit` → `state: MERGED`. **Security advisor de PROD
+post-migración** (`get_advisors` tipo security): 0 hallazgos ERROR, 135 WARN (baseline preexistente del
+proyecto, no introducidos por este deploy), y 1 hallazgo INFO nuevo esperado (`emision_factura_locks` con
+RLS habilitada pero sin policies — intencional, deny-by-default, documentado en el comentario de la propia
+migración 361: la Edge Function siempre usa `service_role`, que bypassea RLS). **Vercel**: el deployment de
+producción (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`, target=production, commit `4dbe7fdb`) **✅ CONFIRMADO READY**
+(build de ~96s, `app.genesis360.pro` sirviendo el commit actual). Verificado contra datos reales de PROD:
+8 tenants existentes con "Caja Fuerte USD"/"Efectivo USD" sembrados (backfill mig 373), 0 ventas con
+componente USD — sin cambio de comportamiento para tenants existentes. El resto de este
 bloque describe el detalle técnico de cada una, incluyendo texto histórico
-("SIN COMMITEAR") que
-reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba. **363-365
+("SIN COMMITEAR"/"NO en PROD") que
+reflejaba el estado AL MOMENTO de escribirse cada entrada — ya no es el estado actual, ver arriba (cada
+header individual de 360 a 375 ya fue corregido a "EN PROD desde 2026-08-20"). **363-365
 habían quedado escritas y revisadas pero SIN APLICAR por una desconexión del MCP de Supabase a mitad de
 una sesión anterior (bloqueante técnico real, no una decisión de diseño) — con el MCP reconectado se
 aplicaron y verificaron en esa sesión, junto con la 366 nueva.** **361 y 362 cierran 2 hallazgos 🛑
@@ -363,8 +466,10 @@ documentada o confirmados que no eran un bug — ver
 `sources/raw/project_pendientes.md` "ARRANCÁ ACÁ", cont. 8, y `log.md`)** — ver el detalle de cada una más
 abajo.
 
-**366 (`366_rls_auth_uid_select_wrap.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
-código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** cierre del resto (no-top5) de la auditoría de
+**366 (`366_rls_auth_uid_select_wrap.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), código y migración COMMITEADOS Y PUSHEADOS a `origin/dev` (commit `310d9b3b`, tag
+`v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`) — el texto "SIN COMMITEAR" de
+abajo describe el estado AL MOMENTO de escribirse esta entrada, ya superado:** cierre del resto (no-top5) de la auditoría de
 performance/calidad — antipattern de RLS documentado oficialmente por Supabase: `auth.uid()` usado
 directo en vez de `(select auth.uid())` fuerza reevaluación fila por fila del predicado en vez de una sola
 vez por query (initPlan). Único lugar del schema donde sobrevivía el patrón viejo (el resto de las ~150
@@ -376,11 +481,13 @@ mismo predicado, no cambia ningún permiso ni comportamiento. `migration-reviewe
 envuelto en `(select ...)`) + impersonación real de 2 usuarios vía `SET LOCAL ROLE` (el dueño sigue viendo
 sus 53 cupones, un usuario de otro tenant sigue viendo 0 — aislamiento intacto). De paso,
 `supabase/schema_full.sql` se regeneró completo contra DEV (estaba desactualizado desde antes de esta
-sesión, no reflejaba las migs 358-365). **Estado real: EN DEV, sin commitear, sin PR, sin deploy a PROD.**
+sesión, no reflejaba las migs 358-365). **Estado real (al 2026-08-20): COMMITEADA (commit `310d9b3b`, tag
+`v1.171.0`) y EN PROD (PR #331, merge commit `4dbe7fdb`).**
 Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
 
-**365 (`365_fix_formula_notificar_cc_vencidas.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), código SIN COMMITEAR, NO en PROD (2026-08-14):** resto del top5
+**365 (`365_fix_formula_notificar_cc_vencidas.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código COMMITEADO (commit `310d9b3b`, tag
+`v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** resto del top5
 de la auditoría de performance/calidad (backend #5). `fn_notificar_cc_vencidas` está MUERTA (ningún
 sweep la invoca — `cron-sweeps` solo llama `recalcular_intereses_cc_all`/`liberar_reservas_vencidas_all`;
 el proyecto no tiene `pg_cron` habilitado) pero calculaba la deuda de CC con la fórmula vieja `SUM(v.total
@@ -392,12 +499,14 @@ Inofensivo hoy (código inerte), pero landmine real si alguien la reactiva sin n
 propósito acotado**: SOLO se corrigió la fórmula — NO se wireó a ningún sweep/cron, esa es una decisión
 de producto (¿se quiere la feature de notificación de CC vencida?) que no correspondía tomar en una
 migración de limpieza de auditoría. **Estado real: escrita y revisada en la sesión anterior (MCP de
-Supabase desconectado a mitad de sesión, bloqueante técnico); aplicada y verificada en esta sesión** —
-`prosrc` confirma la fórmula corregida, función ejecutada sin error. Ver
+Supabase desconectado a mitad de sesión, bloqueante técnico); aplicada y verificada en esa sesión, luego
+COMMITEADA (commit `310d9b3b`, tag `v1.171.0`) y EN PROD desde 2026-08-20 (PR #331, merge commit
+`4dbe7fdb`)** — `prosrc` confirma la fórmula corregida, función ejecutada sin error. Ver
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
 
-**364 (`364_meli_stock_sync_dedupe.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV, código SIN COMMITEAR, NO en
-PROD (2026-08-14):** resto del top5 (backend #4). Dos gaps reales
+**364 (`364_meli_stock_sync_dedupe.sql`) — ✅ APLICADA Y VERIFICADA EN DEV Y PROD, código COMMITEADO (commit
+`310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** resto del
+top5 (backend #4). Dos gaps reales
 encontrados comparando `fn_enqueue_meli_stock_sync`/`trg_meli_stock_sync` contra su gemelo bien hecho
 `fn_enqueue_tn_stock_sync`/`trg_tn_stock_sync`: (1) el trigger MELI era `AFTER INSERT OR DELETE OR UPDATE`
 SIN acotar columnas — disparaba en CUALQUIER update de `inventario_lineas` (mover de ubicación, cambiar
@@ -410,12 +519,14 @@ en tenants con integración MELI activa y alto movimiento de líneas: una ráfag
 línea (sin relación con stock real) encolaba N jobs redundantes, y el worker terminaba llamando N veces a
 la API de MercadoLibre para lo mismo. Lógica de negocio preservada exacta, verificada carácter por
 carácter contra el original por el `migration-reviewer`. **Estado real: escrita y revisada en la sesión
-anterior (MCP de Supabase desconectado a mitad de sesión); aplicada y verificada en esta sesión** —
-`pg_get_triggerdef` confirma el trigger acotado, `prosrc` confirma el patrón `NOT EXISTS` real. Ver
-`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
+anterior (MCP de Supabase desconectado a mitad de sesión); aplicada y verificada en esa sesión, luego
+COMMITEADA (commit `310d9b3b`, tag `v1.171.0`) y EN PROD desde 2026-08-20 (PR #331, merge commit
+`4dbe7fdb`)** — `pg_get_triggerdef` confirma el trigger acotado, `prosrc` confirma el patrón `NOT EXISTS`
+real. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
 
-**363 (`363_indices_fk_faltantes.sql`) — 🟡 APLICADA Y VERIFICADA EN DEV, código SIN COMMITEAR, NO en
-PROD (2026-08-14):** resto del top5 (backend #3). 6 `CREATE INDEX IF NOT
+**363 (`363_indices_fk_faltantes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV Y PROD, código COMMITEADO (commit
+`310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** resto del
+top5 (backend #3). 6 `CREATE INDEX IF NOT
 EXISTS` aditivos en rutas calientes de uso diario: compuesto `(tenant_id, estado, usuario_asignado_id)`
 en `wms_tareas` y `tareas_repositor` (la query de "mis tareas" en Picking/Repositores filtra siempre por
 esas 3 columnas — `PickingPage.tsx`: tenant + `estado IN (...)` + `usuario_asignado_id IS NULL/=user.id`
@@ -425,11 +536,13 @@ tenant_id` (toda policy RLS lo filtra, no tenía índice) y `pedido_items.estado
 `estados_inventario`, modo avanzado); `zonas.tenant_id` y `zonas.sucursal_id` (no tenía NINGÚN índice más
 allá de la PK pese a 2 FKs). Sin riesgo — solo `CREATE INDEX`, nada que pueda romper una query existente.
 **Estado real: escrita y revisada en la sesión anterior (MCP de Supabase desconectado a mitad de sesión);
-aplicada y verificada en esta sesión** — `pg_indexes` confirma los 6 índices. Ver
+aplicada y verificada en esa sesión, luego COMMITEADA (commit `310d9b3b`, tag `v1.171.0`) y EN PROD desde
+2026-08-20 (PR #331, merge commit `4dbe7fdb`)** — `pg_indexes` confirma los 6 índices. Ver
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 8).
 
-**362 (`362_stock_reserva_atomica.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
-código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** 🛑 REGLA #0 (inventario) — race condition
+**362 (`362_stock_reserva_atomica.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), código y migración COMMITEADOS (commit `310d9b3b`, tag `v1.171.0`), **EN PROD
+desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** 🛑 REGLA #0 (inventario) — race condition
 real en reservas de stock, hallazgo 🛑 CRÍTICO de una auditoría de performance/calidad pedida por GO.
 6 puntos del código (`VentasPage.tsx` ×3, `tn-webhook/index.ts` ×2, `meli-webhook/index.ts` ×1)
 reservaban/liberaban `inventario_lineas.cantidad_reservada` leyendo el valor, calculando el nuevo EN
@@ -446,11 +559,13 @@ realmente, clampeado contra el estado real de la línea. Los 6 call sites migrad
 concurrentes a `fn_reservar_stock_linea` pidiendo 10 c/u (20 en total) → la primera se llevó 10, la
 segunda clampeó a 4 — total 14, nunca 20 (hubiera violado `chk_cantidad_mayor_o_igual_reservada`);
 `fn_liberar_stock_linea` clampea a 0 (verificado); dato de test restaurado después. `migration-reviewer`:
-solo mejoras sugeridas. **Estado real: EN DEV, sin commitear, sin PR, sin deploy a PROD.** Ver
+solo mejoras sugeridas. **Estado real (al 2026-08-20): COMMITEADA (commit `310d9b3b`, tag `v1.171.0`) y EN
+PROD (PR #331, merge commit `4dbe7fdb`).** Ver
 [[wiki/features/inventario-stock]] → "Reservas de stock — race condition atómica".
 
-**361 (`361_emision_factura_lock.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
-código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** 🛑 REGLA #0 (fiscal) — lock anti
+**361 (`361_emision_factura_lock.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), código y migración COMMITEADOS (commit `310d9b3b`, tag `v1.171.0`), **EN PROD
+desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** 🛑 REGLA #0 (fiscal) — lock anti
 doble-submit en `emitir-factura`, hallazgo 🛑 CRÍTICO de la misma auditoría de performance/calidad. El
 guard "¿ya tiene CAE?"/"¿ya tiene NC?" era una simple lectura sin lock — check-then-act; dos invocaciones
 casi simultáneas (doble click, timeout+reintento, dos pestañas) podían ambas pasar el guard y llamar a
@@ -477,11 +592,16 @@ simulado en cuarentena + uno viejo normal → la auto-limpieza (TTL 5 min) borr�
 el de cuarentena. **No se hizo una invocación HTTP real de punta a punta contra AFIP homologación** en
 esta sesión (para no gastar un CAE real) — EF deployada a DEV (v25, ACTIVE), 3 pasadas de code-review.
 `migration-reviewer`: faltaba `IF NOT EXISTS` + el `REVOKE` explícito, corregido. Recomendado un smoke
-test real antes de decidir el deploy a PROD. **Estado real: EN DEV, sin commitear, sin PR, sin deploy a
-PROD.** Ver [[wiki/features/facturacion-afip]] → "Lock anti doble-submit en `emitir-factura`".
+test real antes de decidir el deploy a PROD — hecho: el security advisor de PROD post-migración
+(`get_advisors` tipo security) confirmó 0 hallazgos ERROR y 1 hallazgo INFO nuevo esperado
+(`emision_factura_locks` con RLS habilitada sin policies — intencional, deny-by-default, ver comentario de
+esta misma migración: la EF usa `service_role`, que bypassea RLS). **Estado real (al 2026-08-20):
+COMMITEADA (commit `310d9b3b`, tag `v1.171.0`) y EN PROD (PR #331, merge commit `4dbe7fdb`).** Ver
+[[wiki/features/facturacion-afip]] → "Lock anti doble-submit en `emitir-factura`".
 
-**360 (`360_pedido_envio_entregado_sync.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), código y migración SIN COMMITEAR, NO en PROD (2026-08-14):** 🚚📦 Fix de
+**360 (`360_pedido_envio_entregado_sync.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código y migración COMMITEADOS (commit
+`310d9b3b`, tag `v1.171.0`), **EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`):** 🚚📦 Fix de
 sincronización Pedido↔Envío al entregar — GO notó, conversando con Claude, una contradicción real y
 visible en la ficha de venta (badge "Envío · Entregado" junto a "Pedido · Listo para entrega") cuando
 un pedido tiene envío real (courier/reparto propio). Causa: el camino "retiro en mostrador" sincroniza
@@ -502,8 +622,9 @@ real (pedido #89, tenant "Almacén Jorgito"); idempotencia (repetir la UPDATE de
 entregado, dato de prueba revertido después); y backfill puntual de un caso preexistente real del bug
 (pedido #106, `cantidad_entregada=0`/`listo_para_entrega` eterno desde meses antes de este fix — dato
 de test, no fiscal; se confirmó por query que no había más casos iguales en DEV). Typecheck/lógica
-revisada, sin cambios en build ni tests (migración pura de DB). **Estado real: EN DEV, sin commitear,
-sin PR, sin deploy a PROD.** Ver [[wiki/features/pedidos]] → sección junto a la "Cuarta barrera" y
+revisada, sin cambios en build ni tests (migración pura de DB). **Estado real (al 2026-08-20): COMMITEADA
+(commit `310d9b3b`, tag `v1.171.0`) y EN PROD (PR #331, merge commit `4dbe7fdb`).** Ver
+[[wiki/features/pedidos]] → sección junto a la "Cuarta barrera" y
 [[wiki/features/envios]] → "POD — Proof of Delivery".
 
 **359 (`359_nc_afip_pendientes.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD

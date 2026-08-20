@@ -3,31 +3,183 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.170.0 (código/Vercel, CONFIRMADO de forma independiente — PR #330 mergeado a
-`main` (`0687213b39ce7d942de8763756245016a5556cff`), tag+release `v1.170.0` publicados,
-`src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
-`dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
-completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.176.0 (Fases 1+2+3+4+5+6+7 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
-`v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; Fase 4 (mig 372,
-pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; Fase 5 (migs
-373+374, Bóveda ARS/USD) COMMITEADA Y PUSHEADA a `origin/dev` — commit `28d9291e`, tag+release `v1.174.0`
-publicados; Fase 6 (mig 375, Devoluciones/NC con soporte USD) COMMITEADA Y PUSHEADA — commit
-`e55a1009`, tag+release `v1.175.0` publicados; **Fase 7 (Reportes — H1/H2, SIN migración nueva) CONSTRUIDA Y
-VERIFICADA en DEV, TODAVÍA SIN COMMITEAR** — bump a **v1.176.0** hecho en `src/config/brand.ts`, tag+release
-pendientes de que el orquestador commitee. **SIN PR a `main`, SIN
-deploy a PROD**). **16 migraciones nuevas sobre PROD — 360 a 375 (la última migración es la 375; la Fase 7 no
-agrega migración).**  
-**Última actualización:** 19 de Agosto, 2026
+**Versión en PROD:** v1.176.0 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-20: PR #331 mergeado a
+`main` (merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`), confirmado con `gh pr view 331` →
+`state: MERGED`, tag+release `v1.176.0` ya publicados sobre el commit `50f5579a` de `dev` que ahora es
+ancestro de `main`. **16 migraciones aplicadas y verificadas en PROD: 360 a 375** (Auditoría
+performance/calidad 361-366, fixes de moneda en Producto 367, Caja USD Fases 1-6 368-375 — la Fase 7,
+Reportes, no agregó migración). Security advisor de PROD post-migración: 0 hallazgos ERROR, 135 WARN
+(baseline preexistente), 1 hallazgo INFO nuevo esperado (`emision_factura_locks`, intencional — deny-by-
+default, ver mig 361). Vercel: deploy de producción **✅ CONFIRMADO READY** (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`,
+commit `4dbe7fdb`, build de ~96s, `app.genesis360.pro` sirviendo el commit actual). Verificado contra datos
+reales de PROD: los 8 tenants existentes quedaron con "Caja Fuerte USD"/"Efectivo USD" sembrados (backfill
+mig 373), 0 ventas con componente USD — sin cambio de comportamiento para tenants existentes. Detalle completo en
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 18)  
+**Aparte (no es un deploy de código/Vercel, es infraestructura independiente):** la Edge Function
+`ai-assistant` de PROD recibió un hotfix aislado el mismo 2026-08-20 (modelos de Groq deprecados →
+`openai/gpt-oss-120b`/`20b`), deployada directo vía `supabase functions deploy` — no pasa por PR/Vercel,
+así que no mueve el número de versión de arriba. Ver sección v1.178.0 abajo.  
+**Versión en DEV:** v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100% completa en código,
+**commit pendiente en esta misma sesión** (`APP_VERSION` ya bumpeado a `v1.179.0` en el working tree, sin
+commit todavía — confirmado con `git status`/`git log`, no inventar hash ni tag). Cierra el plan de código
+de 3 fases del Asistente IA (Fase 4 queda deliberadamente diferida, sin diseño ni código — ver detalle
+abajo). Migración 377 (`ai_tenant_memoria` + `fn_ai_memoria_guardar`) y migración 378 (`fn_ai_memoria_listar`,
+fix de un hallazgo de `code-reviewer` sobre lectura de memoria para roles no DUEÑO/ADMIN) APLICADAS Y
+VERIFICADAS en DEV, wiring conectado y re-verificado con el e2e mutante 134 — ver
+`sources/raw/project_pendientes.md` (cont. 21). Antes: v1.178.0 — wiring completo de
+Fase 2 (propuesta de config con confirmación en el chat, verificado en browser real contra DEV con
+Playwright) + fix del bug crítico que rompía el Asistente IA para TODOS los usuarios (Groq descatalogó
+`llama-3.3-70b-versatile`/`llama-3.1-8b-instant` del catálogo de la cuenta; reemplazados por
+`openai/gpt-oss-120b`/`openai/gpt-oss-20b`, confirmados vigentes con un `GET /openai/v1/models` real). **El
+fix del modelo, aislado (sin el resto del wiring de Fase 2/3), sigue siendo el ÚNICO código del Plan IA
+deployado DIRECTO a la Edge Function de PROD** (`jjffnbrdjchquexdfgwq`, vía
+`supabase functions deploy --workdir <carpeta aislada>`, confirmado con `get_edge_function` que PROD quedó
+con los 2 modelos nuevos y CERO código de Fase 2/3/tool-calling) — el Asistente IA de los 8 tenants reales
+vuelve a funcionar. **El resto (Fases 1-3 completas: memoria conversacional, propuesta de config, memoria
+persistente) queda 100% en DEV, sin deploy a PROD todavía — confirmado con `gh pr list`: el último merge a
+`main` sigue siendo PR #331 (`v1.176.0`), sin ningún PR nuevo para v1.177/178/179.** Ver
+`wiki/features/asistente-ia.md` → "Plan IA" y "🐛 Modelo Groq roto", `sources/raw/project_pendientes.md`
+(cont. 21, "ARRANCÁ ACÁ").  
+Código base en paridad con PROD hasta v1.176.0 (mismo commit `50f5579a`, ahora ancestro de `main` tras el
+merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
+commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
+`v1.172.0`; Fase 4 (mig 372, pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release
+`v1.173.0`; Fase 5 (migs 373+374, Bóveda ARS/USD) commit `28d9291e`, tag+release `v1.174.0`; Fase 6 (mig
+375, Devoluciones/NC con soporte USD) commit `e55a1009`, tag+release `v1.175.0`; Fase 7 (Reportes — H1/H2,
+sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
+**Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
+bloqueante.  
+**Última actualización:** 20 de Agosto, 2026
 
 ---
 
-## v1.176.0 — 💵 Caja en Dólares (Fase 7/8: Reportes H1/H2) — 🟡 EN DEV, TODAVÍA SIN COMMITEAR (2026-08-19)
+## v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) — 100% completa en código, cierra el plan de 3 fases — commit pendiente en esta misma sesión (2026-08-20)
+
+Continúa directo la v1.178.0 (abajo), misma jornada. Diseño ya definido en el Artifact original del plan
+(2026-08-14/15): NO se guarda charla cruda — se guardan HECHOS DESTILADOS que la IA propone guardar, con
+confirmación explícita del usuario en el chat (mismo patrón productivo de la Fase 2 — tarjeta Confirmar/
+Rechazar, la EF nunca escribe nada, solo el frontend tras la confirmación real). El tenant puede ver y
+borrar su propia memoria desde Configuración.
+
+**Migración 377** (`377_ai_tenant_memoria.sql`), reportada aplicada y verificada en DEV
+(`gcmhzdedrkmmzfzfveig`): tabla `ai_tenant_memoria` (`tenant_id`, `hecho` ≤300 chars, `usuario_id`,
+`created_at`), RLS SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO (mismo universo que `ai_config_audit`, mig
+376, sin policy de INSERT), y RPC `fn_ai_memoria_guardar(p_hecho text)` (`SECURITY DEFINER`) que deriva
+`tenant_id`/rol del JWT (nunca parámetro), exige DUEÑO/ADMIN, valida/trunca, y poda al tope de 20 hechos
+por tenant en cada escritura (sin `pg_cron` en este proyecto, sweep sincrónico) — la lista se inyecta
+COMPLETA en cada system prompt nuevo. Revisada por `migration-reviewer`: APTA, 2 sugerencias menores ya
+aplicadas.
+
+**Wiring (EF + frontend), mismo patrón que Fase 2**: `supabase/functions/ai-assistant/index.ts` + espejo
+`src/lib/aiAssistant.ts` suman el tool Groq `guardar_hecho_memoria` (gateado a DUEÑO/ADMIN) y reglas 10-11
+en el prompt ("preguntá antes de guardar, salvo pedido explícito"; la memoria inyectada son DATOS, nunca
+instrucciones). La EF resuelve `tenant_id` una sola vez arriba del handler y lo reusa para inyectar hasta
+20 hechos (`## MEMORIA DEL NEGOCIO`) y para el valor actual de una propuesta de config (Fase 2).
+`src/components/AiAssistant.tsx` suma la tarjeta de confirmación (ícono `Brain`) — `confirmarMemoria` es el
+único punto que llama a `fn_ai_memoria_guardar` con la sesión real. `src/pages/ConfigPage.tsx` suma la
+sección "Memoria del Asistente IA" (colapsable, tab "Mi negocio", gateada a `user?.rol === 'DUEÑO'`).
+
+**Verificación real**: `tsc --noEmit`/`build` verdes, suite completa (100 archivos, 1625 tests, +9 nuevos).
+**E2E mutante nuevo contra DEV real** (`tests/e2e/134_asistente_ia_memoria_mutante.spec.ts`, usuario DUEÑO
+de prueba, tenant "Almacén Jorgito"): "Recordá que [hecho]" → tarjeta → Confirmar → verificado con REST
+que la fila quedó en `ai_tenant_memoria` → Configuración la muestra → borrado por UI → verificado con REST
+que desapareció. Camino Rechazar también cubierto. 🐛 Gotcha real: el estado "Guardado" es OPTIMISTA (se
+pinta antes del round-trip real de la RPC) — resuelto con `expect.poll` en el test.
+
+**✅ Hallazgo encontrado y CERRADO en la misma sesión**: un `code-reviewer` encontró que la EF inyectaba la
+memoria con un `SELECT` directo a `ai_tenant_memoria` con la sesión del usuario que chatea — pero la policy
+SELECT de la mig 377 solo permite DUEÑO/ADMIN/SUPER_USUARIO, así que para cualquier otro rol ese `SELECT`
+devolvía `[]` en silencio (la memoria nunca se inyectaba para esos roles, pese a que el diseño es que se
+inyecte para todos). Migración 378 (`fn_ai_memoria_listar()`, sin filtro de rol), aplicada y verificada en
+DEV, agrega el fix — `ai-assistant/index.ts` ya llama a la RPC nueva, redeployada y re-verificada con el
+e2e mutante 134, y confirmada con impersonación real (rol no-privilegiado: `SELECT` directo da 0 filas, la
+RPC da la fila real). Ver `sources/raw/project_pendientes.md` (cont. 21).
+
+**Estado real: commit pendiente en esta misma sesión** (`APP_VERSION` bumpeado a `v1.179.0` en el working
+tree, sin commit todavía) — con esto, las Fases 1 a 3 del "Plan IA" quedan 100% completas en código y
+verificadas (1-2 commiteadas como `v1.177.0`/`v1.178.0`). **Fase 4** (comparación entre negocios) sigue sin
+empezar — inteligencia interna de Genesis360, sin urgencia, necesita decisión de producto/legal (extender
+`tenant_consentimiento_legal`, mig 249) antes de cualquier código; no es un pendiente urgente, es una
+decisión de scope ya tomada. **Deploy a PROD**: GO ya autorizó deployar el wiring completo en esta misma
+sesión — confirmar el resultado real (`git log origin/main`) antes de asumir que ya ocurrió o que no.
+
+Detalle completo: `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md`
+(cont. 21, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (migs 377-378).
+
+---
+
+## v1.177.0 — 🤖 Plan IA: memoria conversacional (Fase 1) + capa de RPCs de config (Fase 2, backend) — ✅ COMMITEADO EN DEV (2026-08-20), sin deploy a PROD
+
+Primera vez que el "plan IA" (Artifact publicado 2026-08-14/15, ver `wiki/features/asistente-ia.md`) pasa de
+propuesta a código. Las 3 preguntas que lo bloqueaban fueron respondidas por GO hoy: arrancar Fase 1 + ya la
+capa de RPCs de Fase 2; alcance de Fase 2 "todo lo NO fiscal" (allowlist inicial chico y curado, se expande
+de a poco); Fase 4 (comparación entre negocios) es inteligencia interna, no de cara al cliente — sin código
+todavía.
+
+**Fase 1 (memoria conversacional de corto plazo) — completa.** El multi-turno ya andaba bien (el frontend ya
+mandaba el historial completo a la Edge Function, que ya lo reenviaba a Groq como mensajes de chat reales);
+el gap real era que un F5 perdía toda la conversación. Fix: `sessionStorage` en `AiAssistant.tsx`, keyed por
+usuario (PC compartida, ej. POS) — con un bug real de race entre "persistir" y "recargar" al cambiar de
+usuario, encontrado y corregido antes de terminar. Nueva regla 8 en el prompt ("PREGUNTÁ ANTES DE ASUMIR")
+en la EF `ai-assistant/index.ts` y su espejo `src/lib/aiAssistant.ts` (mantenidos idénticos). Test nuevo en
+`tests/unit/aiAssistant.test.ts`.
+
+**Fase 2 (capa de RPCs de config) — backend.** Mig 376: tabla `ai_config_audit` + 3
+RPCs tipadas (`fn_ai_config_set_bool`/`_int`/`_text`), cada una deriva tenant/rol del JWT de quien llama
+(nunca como parámetro), exige DUEÑO/ADMIN, valida contra un allowlist hardcodeado de 6 campos NO fiscales
+que ya tenían su handler de 1-campo en `ConfigPage.tsx`. Revisada por `migration-reviewer`: APTA, sin
+hallazgos bloqueantes. Verificada con tests reales en DEV (impersonación, sin persistencia).
+
+**✅ Estado real: commiteado** (commit `1b5e89aa`, tag+release `v1.177.0`, incluye el bump de versión). Mig
+376 aplicada y verificada solo en DEV, todavía sin PROD.
+
+---
+
+## v1.178.0 — 🤖 Plan IA: wiring completo de Fase 2 + 🐛 fix crítico del Asistente IA roto en PROD — ✅ COMMITEADO EN DEV, hotfix del modelo YA EN PROD (2026-08-20)
+
+Sesión siguiente, misma jornada. Conecta las 3 RPCs de la v1.177.0 con la IA real (tool-calling de Groq +
+tarjeta de confirmación en el chat — la IA propone, nunca aplica sola): `CONFIG_CAMPOS_IA` +
+`construirToolPropuestaConfig()` + `validarPropuestaConfig()` en `src/lib/aiAssistant.ts`/espejo de la EF;
+la EF solo ofrece la herramienta a DUEÑO/ADMIN, nunca aplica el cambio ella misma (lee el valor actual real
+y devuelve la propuesta); `AiAssistant.tsx` renderiza la tarjeta y `confirmarPropuesta` es el único punto
+que llama a la RPC real, con la sesión del usuario. 2 hallazgos de `code-reviewer` corregidos antes de
+verificar en browser: (1) 🔴 faltaba sincronizar el store Zustand (`setTenant`) tras confirmar — regla del
+CLAUDE.md; (2) 🟡 lectura del valor actual rota en silencio para rol ADMIN (RLS con `OR is_admin()`); (3)
+🟡 doble-submit en "Confirmar" cerrado con un lock. Verificado en un browser real contra DEV (Playwright,
+usuario DUEÑO de prueba): propuesta → confirmar → cambio real en `tenants` + fila en `ai_config_audit`;
+propuesta → rechazar → nada cambia. Suite completa 1616 tests (+10 nuevos).
+
+**🔴 De paso, hallazgo crítico no relacionado**: verificando el wiring en el browser, el Asistente IA devolvía
+error a CUALQUIER pregunta (502), para CUALQUIER usuario — Groq sacó del catálogo de esta cuenta los 2
+modelos que la EF usaba desde siempre (`llama-3.3-70b-versatile`/`llama-3.1-8b-instant`, error
+`model_not_found`, no cubierto por el fallback existente que solo reintenta 429/5xx). Fix: `MODEL` →
+`openai/gpt-oss-120b`, `MODEL_FALLBACK` → `openai/gpt-oss-20b` (catálogo actual verificado contra la cuenta
+real de Groq); label del chat corregido a "Powered by Groq". **Esto estaba roto también en PROD** (mismo
+código sin tocar hasta este fix, no se sabe hace cuánto) — GO autorizó explícitamente un deploy aislado,
+**solo el fix del modelo, sin el resto del wiring de Fase 2**. Ejecutado: se extrajo el contenido REAL que
+corría en la EF de PROD (`get_edge_function`), se parcheó ÚNICAMENTE `MODEL`/`MODEL_FALLBACK` (diff
+confirmado: exactamente esas 2 líneas, nada más), y se deployó con
+`supabase functions deploy ai-assistant --project-ref jjffnbrdjchquexdfgwq --workdir <carpeta aislada>`
+(sin tocar `main`/Vercel — las Edge Functions se deployan independientes del pipeline de frontend).
+**✅ Confirmado con `get_edge_function` que PROD quedó con los 2 modelos nuevos y CERO código de
+tool-calling/Fase 2** — el Asistente IA de los 8 tenants reales de PROD volvió a funcionar. Ver
+`wiki/features/asistente-ia.md` → "🐛 Modelo Groq roto".
+
+**Estado real: commiteado en DEV** (bump `APP_VERSION` a `v1.178.0`) — el wiring completo de Fase 2 (tool-
+calling + tarjeta de confirmación) queda SOLO en DEV a propósito, sin deploy a PROD todavía. El fix del
+modelo (aislado) SÍ está en PROD desde hoy.
+
+Detalle completo en `wiki/features/asistente-ia.md` y `sources/raw/project_pendientes.md` (bloque "ARRANCÁ
+ACÁ", cont. 20).
+
+---
+
+## v1.176.0 — 💵 Caja en Dólares (Fase 7/8: Reportes H1/H2) — ✅ EN PROD (2026-08-20)
 
 Continúa la Fase 6 (v1.175.0, abajo). **Sin migración nueva** — 100% frontend, toda la data ya existía desde
 la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de las Fases 4/6).
@@ -61,14 +213,14 @@ migración nueva en esta fase) — el plan de 8 fases NO tiene ningún punto abi
 (cotización Banco Nación para AFIP, Fase 8, bloqueada por confirmación de un contador real). Próximo paso:
 Fase 8.
 
-**Estado real: DEV en migs 001-375 (sin cambios), código completo, TODAVÍA SIN COMMITEAR** — el
-orquestador commitea código + wiki al cierre de esta sesión, con bump a **v1.176.0**. **SIN PR
-`dev`→`main`, SIN deploy a PROD.** Detalle completo: [[wiki/features/reportes-metricas]] (sección "Caja en
-USD — Fase 7 de 8"), [[wiki/features/caja]], `sources/raw/project_pendientes.md` (cont. 17).
+**Estado real: código commiteado (commit `50f5579a`, tag+release `v1.176.0`) y ✅ DEPLOYADO A PROD el
+2026-08-20** — PR #331 mergeado a `main` (merge commit `4dbe7fdb`), 16 migraciones (360-375) aplicadas y
+verificadas en PROD junto con este release. Detalle completo: [[wiki/features/reportes-metricas]] (sección
+"Caja en USD — Fase 7 de 8"), [[wiki/features/caja]], `sources/raw/project_pendientes.md` (cont. 18).
 
 ---
 
-## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — 🟡 EN DEV, commiteado y pusheado (2026-08-19)
+## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — ✅ EN PROD (commiteado 2026-08-19, deployado 2026-08-20)
 
 Continúa la Fase 5 (v1.174.0, abajo). **Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), aplicada
 y verificada en DEV — código completo, typecheck+build+suite de tests verdes, commiteado junto con el wiki
@@ -113,14 +265,14 @@ bloqueante). Código revisado por `code-reviewer` (2 hallazgos 🟡 corregidos, 
 plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación para AFIP, Fase
 8, bloqueada por confirmación de un contador real). Próximo paso: Fase 7 (Reportes).
 
-**Estado real: DEV en migs 001-375, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release
-`v1.175.0` publicados). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
-completo: [[wiki/features/devoluciones]] (sección "Caja en USD — Fase 6 de 8"), [[wiki/features/caja]],
-`wiki/database/migraciones.md` (mig 375).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0`
+publicados) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; mig 375 aplicada y
+verificada en PROD). Detalle completo: [[wiki/features/devoluciones]] (sección "Caja en USD — Fase 6 de
+8"), [[wiki/features/caja]], `wiki/database/migraciones.md` (mig 375).
 
 ---
 
-## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — ✅ EN DEV, commiteado y pusheado, sin deploy a PROD (2026-08-19)
+## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — ✅ EN PROD (commiteado 2026-08-19, deployado 2026-08-20)
 
 Continúa la Fase 4 (v1.173.0, abajo). **Migraciones 373 y 374** (`373_caja_usd_fase5_boveda.sql` +
 `374_vw_boveda_cuentas_security_invoker.sql`), aplicadas y verificadas en DEV — código completo,
@@ -154,14 +306,14 @@ nuevos: `CAJ-36` (reescrito) a `CAJ-40`.
 **Con esto, la Fase 5/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5, migs 368-374). Próximo
 paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios).
 
-**Estado real: DEV en migs 001-374, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`, tag+release
-`v1.174.0` publicados). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
-completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 5 de 8"), `wiki/database/migraciones.md`
-(migs 373-374).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`, tag+release `v1.174.0`
+publicados) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; migs 373-374
+aplicadas y verificadas en PROD). Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 5
+de 8"), `wiki/database/migraciones.md` (migs 373-374).
 
 ---
 
-## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — ✅ EN DEV, commiteado y pusheado (2026-08-18)
+## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — ✅ EN PROD (commiteado 2026-08-18, deployado 2026-08-20)
 
 Continúa la Fase 3 (v1.172.0, abajo) en una sesión posterior. **Migración 372**
 (`372_caja_usd_fase4_pago_combinado.sql`), commiteada junto con el código en `d783727d` (wiki en `7d511c5d`,
@@ -184,14 +336,14 @@ Typecheck + build + suite completa de tests verdes (13 tests nuevos en `ventasVa
 el caso 🔴 de `arsNeto` negativo). Migración 372 revisada por `migration-reviewer` (APTA, 0 filas con
 moneda inconsistente pre-existentes). UAT nuevos: `VEN-37` a `VEN-43`.
 
-**Estado real: DEV en migs 001-372, COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d` + wiki
-`7d511c5d` + bump `05801eb4`), tag+release `v1.173.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD**
-— decisión pendiente de GO. Detalle completo: [[wiki/features/ventas-pos]], [[wiki/features/caja]]
-(sección "Caja en USD — Fase 4 de 8"), `wiki/database/migraciones.md` (mig 372).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d` + wiki `7d511c5d` + bump
+`05801eb4`), tag+release `v1.173.0` publicados, y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge
+commit `4dbe7fdb`; mig 372 aplicada y verificada en PROD). Detalle completo: [[wiki/features/ventas-pos]],
+[[wiki/features/caja]] (sección "Caja en USD — Fase 4 de 8"), `wiki/database/migraciones.md` (mig 372).
 
 ---
 
-## v1.172.0 — 💵 Caja en Dólares (Fase 3/8: ciclo operativo) — ✅ EN DEV, commiteado y pusheado (2026-08-18)
+## v1.172.0 — 💵 Caja en Dólares (Fase 3/8: ciclo operativo) — ✅ EN PROD (commiteado 2026-08-18, deployado 2026-08-20)
 
 Continúa la Fase 1+2 (v1.171.0, abajo) en una tanda posterior de la misma sesión. **Migración 371**
 (`371_caja_usd_fase3_ciclo_operativo.sql`), commiteada junto con el código en `010440cd` (bump de versión
@@ -208,14 +360,14 @@ Continúa la Fase 1+2 (v1.171.0, abajo) en una tanda posterior de la misma sesi�
 Typecheck + build + suite completa de tests verdes. Migración 371 revisada por `migration-reviewer` (APTA).
 UAT nuevos: `CAJ-31` a `CAJ-36`.
 
-**Estado real: DEV en migs 001-371, COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd` + bump
-`56f48fe8`), tag+release `v1.172.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión
-pendiente de GO. Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 3 de 8"),
-`wiki/database/migraciones.md` (mig 371).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd` + bump `56f48fe8`), tag+release
+`v1.172.0` publicados, y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; mig 371
+aplicada y verificada en PROD). Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 3 de
+8"), `wiki/database/migraciones.md` (mig 371).
 
 ---
 
-## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2) + auditoría de performance/seguridad + fixes de moneda en Producto — ✅ EN DEV, commiteado y pusheado (2026-08-18)
+## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2) + auditoría de performance/seguridad + fixes de moneda en Producto — ✅ EN PROD (commiteado 2026-08-18, deployado 2026-08-20)
 
 Commit + push a `origin/dev` de TODO el trabajo acumulado de varias sesiones previas (llevaba días sin
 resguardo en git) más la Fase 2 de Caja USD construida en esta sesión — Fases 1+2 en un solo commit
@@ -243,11 +395,11 @@ Typecheck + build + suite completa de tests verdes antes de cada aplicación (ú
 archivos, 1574 tests). Todas las migraciones pasaron por `migration-reviewer` (APTA) antes de aplicarse a
 DEV; la 370 además por `code-reviewer` (OK, sin hallazgos 🔴).
 
-**Estado real: DEV en migs 001-370, COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b` + bump
-`0b4d431a`), tag+release `v1.171.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión
-pendiente de GO. Detalle completo: `sources/raw/project_pendientes.md`, `log.md`, [[wiki/features/caja]]
-(sección "Caja en USD — Fase 2 de 8"), [[wiki/features/productos]], `wiki/database/migraciones.md` (migs
-360-370).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b` + bump `0b4d431a`), tag+release
+`v1.171.0` publicados, y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; migs
+360-370 aplicadas y verificadas en PROD). Detalle completo: `sources/raw/project_pendientes.md`, `log.md`,
+[[wiki/features/caja]] (sección "Caja en USD — Fase 2 de 8"), [[wiki/features/productos]],
+`wiki/database/migraciones.md` (migs 360-370).
 
 ---
 

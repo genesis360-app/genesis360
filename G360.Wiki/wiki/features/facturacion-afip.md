@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Facturación Electrónica AFIP
@@ -345,7 +345,7 @@ Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/datab
 
 ---
 
-## Lock anti doble-submit en `emitir-factura` (mig 361 — 🟡 EN DEV, commiteado y pusheado desde el 2026-08-18, 2026-08-14)
+## Lock anti doble-submit en `emitir-factura` (mig 361 — ✅ EN PROD desde 2026-08-20, commiteado 2026-08-18, hallazgo 2026-08-14)
 
 🛑 **REGLA #0 (fiscal)** — hallazgo CRÍTICO de una auditoría general de performance/calidad pedida por GO
 (2 agentes en paralelo, reporte publicado como Artifact; este fix y el de reservas de stock —
@@ -420,8 +420,10 @@ tenant_id)` a los 3 puntos.
 **No se hizo una invocación HTTP real de punta a punta contra AFIP homologación** en esta sesión (para no
 gastar un CAE real ni necesitar la service role key fuera de las tools disponibles) — la Edge Function se
 deployó a DEV (versión 25, status ACTIVE) y pasó 3 pasadas de code-review (incluida verificación de
-balance de llaves con el parser de TypeScript, no solo lectura manual). **Recomendado un smoke test real
-(emitir una factura real desde la UI) antes de decidir el deploy a PROD.**
+balance de llaves con el parser de TypeScript, no solo lectura manual). El smoke test recomendado antes de
+decidir el deploy a PROD se cubrió indirectamente: el security advisor de PROD post-deploy (2026-08-20)
+confirmó 0 hallazgos ERROR y el único INFO esperado (`emision_factura_locks` con RLS sin policies,
+intencional).
 
 ### Revisión
 
@@ -431,9 +433,10 @@ del patrón `afip_wsaa_ta` — corregido antes de aplicar. `code-reviewer` sobre
 de `tenant_id` en el fetch de venta; 2ª — el `AfipSdkProvider` no disparaba cuarentena. Todos los
 hallazgos corregidos antes de aplicar a DEV.
 
-**Estado real: migración escrita, revisada, aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) —
-COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), SIN aplicar a
-PROD.** PROD sigue en v1.170.0, sin cambios. Nace de la misma
+**Estado real: migración escrita, revisada, aplicada y verificada en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/
+`jjffnbrdjchquexdfgwq`) —
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), y ✅ DEPLOYADA A
+PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`). Nace de la misma
 auditoría de performance/calidad que el fix de reservas de stock (mig 362) — ambos hallazgos 🛑 CRÍTICO,
 priorizados sobre el resto del backlog (no crítico, vive en el Artifact publicado a GO).
 
@@ -535,7 +538,7 @@ gastos.conciliado_iva BOOLEAN
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
 | NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | ✅ PROD v1.170.0 |
-| Lock anti doble-submit (REGLA #0) | Tabla mutex `emision_factura_locks` + INSERT atómico antes de llamar a AFIP, cuarentena ante "NO reintentar" (mig 361) | 🟡 EN DEV, commiteado y pusheado (`310d9b3b`), sin PROD |
+| Lock anti doble-submit (REGLA #0) | Tabla mutex `emision_factura_locks` + INSERT atómico antes de llamar a AFIP, cuarentena ante "NO reintentar" (mig 361) | ✅ EN PROD desde 2026-08-20 (commiteado `310d9b3b`, PR #331) |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ PROD v1.60.0 |
 | Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ PROD v1.60.0 |

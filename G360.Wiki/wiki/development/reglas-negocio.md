@@ -3,7 +3,7 @@ title: Reglas de Negocio Relevadas
 category: development
 tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd]
 sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Reglas de Negocio Relevadas
@@ -296,15 +296,18 @@ Razones:
 > parcial. Plan de 8 fases (Artifact de la sesión). **Fase 1 (cimientos, migs 368+369), Fase 2 (permisos y
 > configuración, mig 370), Fase 3 (ciclo operativo, mig 371), Fase 4 (pago combinado ARS+USD, mig 372),
 > Fase 5 (Bóveda ARS/USD, migs 373+374), Fase 6 (Devoluciones/NC con soporte USD, mig 375) y Fase 7
-> (Reportes — H1/H2, SIN migración nueva) 100% COMPLETAS en DEV** (2026-08-18/19). Fases 1+2 COMMITEADAS Y
+> (Reportes — H1/H2, SIN migración nueva) 100% COMPLETAS y ✅ EN PROD** (código+migraciones 2026-08-18/19,
+> deploy a PROD 2026-08-20). Fases 1+2 COMMITEADAS Y
 > PUSHEADAS (commit `310d9b3b`, tag `v1.171.0`); Fase 3
 > también COMMITEADA Y PUSHEADA en una tanda posterior de la misma sesión (commit `010440cd`, tag
 > `v1.172.0`); Fase 4 (mig 372) COMMITEADA Y PUSHEADA (commit `d783727d`, tag `v1.173.0`); Fase 5 (migs
 > 373+374) COMMITEADA Y PUSHEADA a `origin/dev` (commit `28d9291e`, tag+release `v1.174.0` publicados);
 > Fase 6 (mig 375) COMMITEADA Y PUSHEADA a `origin/dev` (commit `e55a1009`, tag+release `v1.175.0`
-> publicados); **Fase 7 (sin migración) CONSTRUIDA Y VERIFICADA en DEV, TODAVÍA SIN COMMITEAR** (bump a
-> `v1.176.0` hecho en `src/config/brand.ts`, pendiente de commit por el orquestador). SIN deploy a PROD en
-> ningún caso. La Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte
+> publicados); **Fase 7 (sin migración) COMMITEADA** (commit `50f5579a`, tag+release `v1.176.0`
+> publicados). **✅ Las 16 migraciones (360-375, incluye Fases 1-6 de Caja USD 368-375 + auditoría
+> performance/calidad 361-366 + fixes de Producto 367) fueron DEPLOYADAS A PROD el 2026-08-20** — PR #331
+> mergeado a `main` (merge commit `4dbe7fdb`), verificado con `apply_migration`/`list_migrations` y security
+> advisor (0 ERROR, 1 INFO esperado). La Fase 4 activó **D1/D2/D3/A2**: el cajero tipea el monto en USD y el sistema convierte
 > (D2), cada caja se contabiliza por lo efectivamente cobrado en ESA moneda — nunca el total convertido — y
 > el vuelto de un pago en USD siempre sale en pesos (D3/D1), y `productos.acepta_cualquier_moneda` (A2,
 > agregado en la Fase 2 sin usarse hasta ahora) por fin gobierna si un producto puede cobrarse en USD. La
@@ -351,11 +354,12 @@ Razones:
 > Con esto, **la Fase 6 no tenía ningún punto abierto propio** y se construyó completa (mig 375, ver
 > [[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8") — **la Fase 7 (Reportes — H1/H2) tampoco
 > tenía ningún punto abierto propio** y se construyó completa, sin migración nueva (ver
-> [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8"), CONSTRUIDA Y VERIFICADA en DEV,
-> TODAVÍA SIN COMMITEAR (bump a `v1.176.0` pendiente de commit por el orquestador) — el único punto que sigue
+> [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8"), COMMITEADA (commit `50f5579a`,
+> tag+release `v1.176.0`) y ✅ DEPLOYADA A PROD el 2026-08-20 (PR #331, merge commit `4dbe7fdb`) — el único
+> punto que sigue
 > sin cerrar en todo el plan de 8 fases es **C2** (cotización Banco Nación para AFIP, Fase 8), pendiente de
-> confirmación con un contador real, y no bloquea nada de las Fases 1-7. **Próximo paso: Fase 8** (C2,
-> bloqueada por el contador).
+> confirmación con un contador real, y no bloquea nada de las Fases 1-7 (ya EN PROD). **Próximo paso: Fase
+> 8** (C2, bloqueada por el contador).
 
 ### Decisiones cerradas
 

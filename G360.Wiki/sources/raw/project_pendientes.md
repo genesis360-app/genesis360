@@ -6,11 +6,119 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟡 ARRANCÁ ACÁ (2026-08-19, cont. 17) — Fase 7/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (Reportes —
-> H1/H2, SIN migración nueva) — **TODAVÍA SIN COMMITEAR** (el orquestador commitea código + wiki en un solo
-> commit al cierre de esta sesión, con bump a **v1.176.0**, igual que las fases anteriores) — este bloque
-> reemplaza al cont. 16 de abajo (Fase 6, tag `v1.175.0`) como punto de entrada. Sigue SIN PR a `main`, SIN
-> deploy a PROD.
+> ### 🟢 ARRANCÁ ACÁ (2026-08-20, cont. 18) — 🚀 v1.176.0 DEPLOYADO A PROD Y VERIFICADO — Auditoría
+> performance/calidad (migs 361-366) + Caja USD Fases 1-7/8 (migs 367-375), 16 migraciones nuevas (360-375)
+> aplicadas a PROD en un solo deploy — este bloque reemplaza al de abajo (cont. 17: Fase 7/8 de Caja USD,
+> tag `v1.176.0`, ya commiteada en `dev`) como punto de entrada. **No hubo código nuevo en esta tanda** —
+> el código ya estaba commiteado en `dev` desde la sesión anterior (commit `50f5579a`, tag+release
+> `v1.176.0` ya publicados); esta tanda fue PURAMENTE el deploy: 16 migraciones a PROD + PR `dev`→`main`
+> mergeado. Tampoco hay tag/release nuevo que crear — `v1.176.0` ya existía sobre el commit `50f5579a` de
+> `dev`, y ese mismo commit ahora es ancestro de `main` tras el merge.
+>
+> #### ✅ Deploy verificado de forma independiente
+>
+> - **16 migraciones aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), en orden, cada una confirmada con
+>   `apply_migration` exitoso (`{"success":true}`) y re-verificadas con `list_migrations` al final:
+>   1. `360_pedido_envio_entregado_sync` — sincroniza `pedidos.estado` cuando un envío real (no retiro en
+>      mostrador) se marca entregado.
+>   2. `361_emision_factura_lock` — lock anti doble-submit en `emitir-factura` (tabla mutex
+>      `emision_factura_locks`), evita 2 comprobantes fiscales para la misma venta/devolución.
+>   3. `362_stock_reserva_atomica` — RPCs `SECURITY INVOKER` con `SELECT ... FOR UPDATE` para reservar/
+>      liberar stock sin race condition (causa raíz de VEN-23 del UAT).
+>   4. `363_indices_fk_faltantes` — 6 índices aditivos en rutas calientes (`wms_tareas`, `tareas_repositor`,
+>      `pedido_items`, `zonas`).
+>   5. `364_meli_stock_sync_dedupe` — acota el trigger de sync de stock MELI a columnas relevantes + dedupe
+>      real vía `NOT EXISTS` (mismo patrón que TN).
+>   6. `365_fix_formula_notificar_cc_vencidas` — corrige la fórmula de deuda CC en una función hoy inerte
+>      (sin sweep que la invoque), landmine latente si se reactiva.
+>   7. `366_rls_auth_uid_select_wrap` — envuelve `auth.uid()` en `(select auth.uid())` en las 4 últimas
+>      policies que sobrevivían con el antipattern (initPlan, performance).
+>   8. `367_producto_moneda_costo_y_tier_usd` — persiste moneda/costo USD en Producto + tier mayorista
+>      `tipo_valor='usd'`.
+>   9. `368_caja_usd_fase1_cimientos` — Fase 1/8 Caja USD: `moneda` real en sesiones/movimientos/arqueos,
+>      `ventas.cotizacion_usd`, `metodos_pago.es_efectivo`.
+>   10. `369_caja_usd_fase1_es_efectivo_consumidores` — cierra la Fase 1, cablea los consumidores server-side
+>       a `es_efectivo` real.
+>   11. `370_caja_usd_fase2_permisos_config` — Fase 2/8: permisos/config de cotización y Caja USD por rol,
+>       `productos.acepta_cualquier_moneda`.
+>   12. `371_caja_usd_fase3_ciclo_operativo` — Fase 3/8: triggers de validación de moneda para el ciclo
+>       operativo de Caja USD.
+>   13. `372_caja_usd_fase4_pago_combinado` — Fase 4/8: venta con pago combinado ARS+USD, trigger
+>       `fn_validar_moneda_coincide_sesion`.
+>   14. `373_caja_usd_fase5_boveda` — Fase 5/8: Bóveda ARS/USD (2 cuentas por tenant), conversión USD↔$,
+>       retiro protegido con clave maestra.
+>   15. `374_vw_boveda_cuentas_security_invoker` — cierra un "Security Definer View" pre-existente en
+>       `vw_boveda_cuentas` (hallazgo real, no introducido por la Fase 5).
+>   16. `375_caja_usd_fase6_devoluciones_nc` — Fase 6/8: devoluciones/NC con soporte USD (reintegro en Caja
+>       USD, cotización de la venta original para la NC).
+>
+>   Ninguna falló — **mig 373** (la que había fallado una vez en DEV por un conflicto de constraint, ver su
+>   propia entrada en `wiki/database/migraciones.md`) aplicó limpio en PROD porque el archivo del repo ya
+>   tenía la versión corregida.
+> - **Security advisor de PROD revisado post-migración** (`get_advisors` tipo security): **0 hallazgos
+>   ERROR**, 135 WARN (baseline preexistente del proyecto, no introducidos por este deploy), y **1 hallazgo
+>   INFO nuevo esperado** — `emision_factura_locks` con RLS habilitada pero sin policies, que es
+>   intencional (deny-by-default, documentado en el comentario de la propia migración 361 — la Edge
+>   Function siempre usa `service_role`, que bypassea RLS).
+> - **PR #331** (`dev`→`main`, título "v1.176.0 — Auditoría performance/calidad + Caja USD (Fases 1-7/8)")
+>   creado y **mergeado** — merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`, confirmado con
+>   `gh pr view 331 --json state,mergedAt,mergeCommit` → `state: MERGED`, `mergedAt: 2026-08-20T04:12:29Z`.
+>   Verificado también de forma independiente por el wiki-keeper: `git fetch origin` + `git log --oneline
+>   origin/main` confirma `4dbe7fdb` (merge de PR #331) en la punta de `origin/main`, con `50f5579a` (Fase
+>   7/8, tag `v1.176.0`) como ancestro directo. `gh release view v1.176.0` confirma el release publicado
+>   (`publishedAt: 2026-08-19T16:59:23Z`, ya existía sobre `dev` antes de este merge — no se creó uno nuevo).
+> - **Vercel**: el deployment de producción (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`, target=production, commit
+>   `4dbe7fdb`) arrancó a buildear inmediatamente después del merge. **✅ CONFIRMADO READY** (`readyState:
+>   READY`, build de ~96s, `app.genesis360.pro` sirviendo el commit `4dbe7fdb`).
+> - **Verificación contra datos reales de PROD**: los 8 tenants existentes quedaron con "Caja Fuerte USD"/
+>   "Efectivo USD" sembrados por el backfill de la mig 373 (`SELECT count(*) FROM cajas WHERE moneda='USD'`
+>   → 8), y 0 ventas con `cotizacion_usd` no nulo — confirma que el deploy no cambió ningún comportamiento
+>   para tenants existentes (feature aditiva/opt-in, como estaba diseñada).
+>
+> #### Qué quedó en PROD (detalle técnico completo en los bloques históricos de abajo — este bloque no lo repite)
+>
+> - **Auditoría de performance/calidad** (migs 361-366): 2 fixes 🛑 REGLA #0 (lock anti doble-submit
+>   fiscal en `emitir-factura`, race condition de stock en reservas) + resto del top5 (índices FK, dedupe
+>   MELI, fórmula CC muerta) + cierre del antipattern RLS `auth.uid()`. Ver
+>   [[wiki/features/facturacion-afip]], [[wiki/features/inventario-stock]].
+> - **Caja en Dólares (relevamiento G5), Fases 1 a 7 de 8** (Fase 8 = C2, cotización BNA para AFIP, sigue
+>   bloqueada por confirmación de un contador real): cimientos de moneda real en caja, permisos/config,
+>   ciclo operativo, venta con pago combinado ARS+USD, Bóveda ARS/USD con conversión, devoluciones/NC con
+>   soporte USD, y Reportes/Dashboard moneda-aware. Ver [[wiki/features/caja]],
+>   [[wiki/features/reportes-metricas]], [[wiki/features/ventas-pos]], [[wiki/features/devoluciones]].
+> - **2 bugs de moneda en ficha Producto** (mig 367): tiers mayoristas ganan `tipo_valor='usd'`, costo/
+>   precio USD persisten al reabrir la ficha. Ver [[wiki/features/productos]].
+>
+> #### 📊 Estado DEV/PROD al cierre de esta tarea
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | **v1.176.0** (`gcmhzdedrkmmzfzfveig`, commit `50f5579a`) | **v1.176.0** (commit `4dbe7fdb`, PR #331 mergeado) |
+> | Migraciones aplicadas en la DB | **001-375** | **001-375** (16 nuevas: 360-375, aplicadas hoy) |
+> | Branch | `dev` = `origin/dev`, sin commits pendientes | `main` = `origin/main`, en paridad de código con `dev` |
+> | Tag / release | `v1.176.0` (ya existía, publicado el 2026-08-19 sobre `dev`) | mismo tag `v1.176.0` — ahora también ancestro de `main` |
+> | PR `dev`→`main` | — | **#331 MERGEADO** (`4dbe7fdb2c59c34a58fc6896c879f93f549178ab`, 2026-08-20T04:12:29Z) |
+> | Vercel | sin cambios | **✅ READY** (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`, `app.genesis360.pro` sirviendo `4dbe7fdb`) |
+>
+> **Con esto, el ciclo completo del deploy queda cerrado y verificado de punta a punta** (migraciones + PR +
+> merge + Vercel + datos reales). Próximo paso: a la espera de que GO decida qué sigue — Fase 8 de Caja USD
+> (C2, bloqueada por el contador) u otra tarea.
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), `wiki/business/roadmap.md` (v1.176.0 a EN PROD),
+> `wiki/database/migraciones.md` (360-375 a EN PROD), `wiki/development/reglas-negocio.md` (módulo G5),
+> [[wiki/features/caja]], [[wiki/features/reportes-metricas]], [[wiki/features/ventas-pos]],
+> [[wiki/features/devoluciones]], [[wiki/features/facturacion-afip]], [[wiki/features/inventario-stock]],
+> [[wiki/features/productos]], `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-19, cont. 17) — Fase 7/8 de Caja USD (G5) ✅ 100% COMPLETA en DEV (Reportes —
+> H1/H2, SIN migración nueva) — **COMMITEADA Y PUSHEADA a `origin/dev`** (commit `50f5579a`, tag+release
+> **`v1.176.0`** publicados el 2026-08-19 — corrige el "TODAVÍA SIN COMMITEAR" con el que se había escrito
+> originalmente este bloque) — este bloque había reemplazado al cont. 16 (Fase 6, tag `v1.175.0`) como
+> punto de entrada, y ahora queda SUPERADO por el de arriba (cont. 18: **🚀 v1.176.0 DEPLOYADO A PROD Y
+> VERIFICADO**, PR #331 mergeado a `main`, 16 migraciones 360-375 aplicadas en PROD) — su contenido
+> narrativo sigue VIGENTE (no fue revertido).
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 7/8 (Reportes) 100% COMPLETA en DEV, sin migración
 >
@@ -87,20 +195,22 @@ type: project
 > **Próximo paso: Fase 8** (C2 — bloqueada por el contador, así que probablemente la sesión que sigue haga
 > otra cosa o quede pendiente hasta que GO consiga esa confirmación).
 >
-> #### 📊 Estado DEV/PROD al cierre de esta sesión (Fase 7 CONSTRUIDA, SIN COMMITEAR)
+> #### 📊 Estado DEV/PROD al cierre de esta sesión (histórico — Fase 7 COMMITEADA en la sesión, ver cont. 18
+> arriba para el estado real actual, post-deploy)
 >
 > | | DEV | PROD |
 > |---|---|---|
-> | `APP_VERSION` (código) | **v1.176.0** (bump en `brand.ts`, SIN COMMITEAR) | v1.170.0 (sin cambios) |
-> | Migraciones aplicadas en la DB | 001-375 (sin cambios — Fase 7 no agrega migración) | 001-359 (sin cambios) |
-> | Branch | `dev`, working tree con código+wiki SIN COMMITEAR | `main` (sin cambios) |
-> | Tag / release | ninguno todavía (se crea al commitear, `v1.176.0`) | `v1.170.0` (sin cambios) |
-> | PR `dev`→`main` | No abierto | — |
-> | Vercel | sin cambios (sin deploy a PROD) | sin cambios desde v1.170.0 |
+> | `APP_VERSION` (código) | **v1.176.0** (commit `50f5579a`, tag+release publicados) | v1.170.0 (al momento de escribirse este bloque — ver cont. 18 para el estado post-deploy) |
+> | Migraciones aplicadas en la DB | 001-375 (sin cambios — Fase 7 no agrega migración) | 001-359 (al momento de escribirse este bloque) |
+> | Branch | `dev`, commiteado y pusheado | `main` (al momento de escribirse este bloque) |
+> | Tag / release | `v1.176.0` publicado | `v1.170.0` (al momento de escribirse este bloque) |
+> | PR `dev`→`main` | No abierto todavía en este punto | — |
+> | Vercel | sin cambios en este punto | sin cambios en este punto |
 >
-> `ReportesPage.tsx`, `DashboardPage.tsx`, `RentabilidadPage.tsx`, UAT (`DSH-06` a `DSH-09`) y el wiki — el
-> orquestador los commitea todos juntos en un solo commit, tag+release **v1.176.0**, al cierre de esta
-> sesión. Próxima sesión (post-`/clear`): arrancar con la Fase 8 (C2, bloqueada) o lo que decida GO.
+> `ReportesPage.tsx`, `DashboardPage.tsx`, `RentabilidadPage.tsx`, UAT (`DSH-06` a `DSH-09`) y el wiki
+> quedaron commiteados juntos en el commit `50f5579a`, tag+release **v1.176.0**. Próximo paso real: ver
+> cont. 18 arriba (deploy a PROD ya ejecutado) — la Fase 8 (C2, bloqueada por confirmación de un contador
+> real) sigue siendo lo único pendiente del plan de 8 fases.
 >
 > ---
 >
@@ -108,8 +218,9 @@ type: project
 > Devoluciones/NC con soporte USD) — **COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`,
 > tag+release **`v1.175.0`** publicados, verificado con `git log origin/dev..dev` vacío — una reconciliación
 > de wiki posterior sin código, commit `1f4d1b6e`, quedó encima del tag, normal) — este bloque quedó
-> SUPERADO por el de arriba (cont. 17: Fase 7/8 de Caja USD, Reportes) pero su contenido sigue VIGENTE (no
-> fue revertido). Sigue SIN PR a `main`, SIN deploy a PROD.
+> SUPERADO por el de arriba (cont. 17: Fase 7/8 de Caja USD, Reportes; y cont. 18: deploy a PROD) pero su
+> contenido sigue VIGENTE (no fue revertido). El "SIN PR/SIN deploy a PROD" con el que se escribió este
+> bloque ya no es el estado real — ver cont. 18 arriba (v1.176.0 DEPLOYADO A PROD).
 >
 > #### ✅ Relevamiento G5 (Caja USD) — Fase 6/8 (Devoluciones/NC) 100% COMPLETA en DEV, mig 375
 >

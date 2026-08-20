@@ -3,7 +3,7 @@ title: Devoluciones
 category: features
 tags: [devoluciones, stock, nota-credito, caja, serializado]
 sources: [CLAUDE.md]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Devoluciones
@@ -217,16 +217,18 @@ la devolución (A10)".
 
 ---
 
-## 💵 Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, commiteado y pusheado (2026-08-19)
+## 💵 Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — ✅ EN PROD, mig 375 (commiteada 2026-08-19, deployada 2026-08-20)
 
 Sexta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
 USD / Venta física en USD"). Continúa directo sobre la Fase 5 (migs 373+374, Bóveda ARS/USD, ya
 commiteada/pusheada como tag `v1.174.0`). Con esta fase, **la devolución en caja y la Nota de Crédito AFIP
 quedan completamente cableadas para ventas con componente USD** — hasta acá el modal de devolución de
 `VentasPage.tsx` era 100% ciego a USD, pese a que la Fase 4 ya había resuelto el mismo problema del lado de
-la venta. **Estado real: mig 375 APLICADA Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), código completo —
+la venta. **Estado real: mig 375 APLICADA Y VERIFICADA en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/
+`jjffnbrdjchquexdfgwq`), código completo —
 typecheck + build + suite completa de tests verdes —, COMMITEADO Y PUSHEADO a `origin/dev`** (commit
-`e55a1009`, tag+release `v1.175.0` publicados). SIN deploy a PROD.
+`e55a1009`, tag+release `v1.175.0` publicados) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge
+commit `4dbe7fdb`).
 
 ### G1 — reintegro en caja de una devolución cobrada en USD (configurable)
 

@@ -3,31 +3,37 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.170.0 (código/Vercel, CONFIRMADO de forma independiente — PR #330 mergeado a
-`main` (`0687213b39ce7d942de8763756245016a5556cff`), tag+release `v1.170.0` publicados,
-`src/config/brand.ts` en `origin/main` con `APP_VERSION = 'v1.170.0'`, Vercel deployment de producción
-`dpl_Gm8MyJtHx1AZqvreBavGDK2qawP6` en estado READY). **Migraciones 001-359 aplicadas en PROD.** Detalle
-completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.176.0 (Fases 1+2+3+4+5+6+7 de Caja USD — Fases 1+2 commit `0b4d431a`, tag+release
-`v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0`; Fase 4 (mig 372,
-pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release `v1.173.0`; Fase 5 (migs
-373+374, Bóveda ARS/USD) COMMITEADA Y PUSHEADA a `origin/dev` — commit `28d9291e`, tag+release `v1.174.0`
-publicados; Fase 6 (mig 375, Devoluciones/NC con soporte USD) COMMITEADA Y PUSHEADA — commit
-`e55a1009`, tag+release `v1.175.0` publicados; **Fase 7 (Reportes — H1/H2, SIN migración nueva) CONSTRUIDA Y
-VERIFICADA en DEV, TODAVÍA SIN COMMITEAR** — bump a **v1.176.0** hecho en `src/config/brand.ts`, tag+release
-pendientes de que el orquestador commitee. **SIN PR a `main`, SIN
-deploy a PROD**). **16 migraciones nuevas sobre PROD — 360 a 375 (la última migración es la 375; la Fase 7 no
-agrega migración).**  
-**Última actualización:** 19 de Agosto, 2026
+**Versión en PROD:** v1.176.0 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-20: PR #331 mergeado a
+`main` (merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`), confirmado con `gh pr view 331` →
+`state: MERGED`, tag+release `v1.176.0` ya publicados sobre el commit `50f5579a` de `dev` que ahora es
+ancestro de `main`. **16 migraciones aplicadas y verificadas en PROD: 360 a 375** (Auditoría
+performance/calidad 361-366, fixes de moneda en Producto 367, Caja USD Fases 1-6 368-375 — la Fase 7,
+Reportes, no agregó migración). Security advisor de PROD post-migración: 0 hallazgos ERROR, 135 WARN
+(baseline preexistente), 1 hallazgo INFO nuevo esperado (`emision_factura_locks`, intencional — deny-by-
+default, ver mig 361). Vercel: deploy de producción **✅ CONFIRMADO READY** (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`,
+commit `4dbe7fdb`, build de ~96s, `app.genesis360.pro` sirviendo el commit actual). Verificado contra datos
+reales de PROD: los 8 tenants existentes quedaron con "Caja Fuerte USD"/"Efectivo USD" sembrados (backfill
+mig 373), 0 ventas con componente USD — sin cambio de comportamiento para tenants existentes. Detalle completo en
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 18)  
+**Versión en DEV:** v1.176.0, en paridad de código con PROD (mismo commit `50f5579a`, ahora ancestro de
+`main` tras el merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
+commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
+`v1.172.0`; Fase 4 (mig 372, pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release
+`v1.173.0`; Fase 5 (migs 373+374, Bóveda ARS/USD) commit `28d9291e`, tag+release `v1.174.0`; Fase 6 (mig
+375, Devoluciones/NC con soporte USD) commit `e55a1009`, tag+release `v1.175.0`; Fase 7 (Reportes — H1/H2,
+sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
+**Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
+bloqueante.  
+**Última actualización:** 20 de Agosto, 2026
 
 ---
 
-## v1.176.0 — 💵 Caja en Dólares (Fase 7/8: Reportes H1/H2) — 🟡 EN DEV, TODAVÍA SIN COMMITEAR (2026-08-19)
+## v1.176.0 — 💵 Caja en Dólares (Fase 7/8: Reportes H1/H2) — ✅ EN PROD (2026-08-20)
 
 Continúa la Fase 6 (v1.175.0, abajo). **Sin migración nueva** — 100% frontend, toda la data ya existía desde
 la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de las Fases 4/6).
@@ -61,14 +67,14 @@ migración nueva en esta fase) — el plan de 8 fases NO tiene ningún punto abi
 (cotización Banco Nación para AFIP, Fase 8, bloqueada por confirmación de un contador real). Próximo paso:
 Fase 8.
 
-**Estado real: DEV en migs 001-375 (sin cambios), código completo, TODAVÍA SIN COMMITEAR** — el
-orquestador commitea código + wiki al cierre de esta sesión, con bump a **v1.176.0**. **SIN PR
-`dev`→`main`, SIN deploy a PROD.** Detalle completo: [[wiki/features/reportes-metricas]] (sección "Caja en
-USD — Fase 7 de 8"), [[wiki/features/caja]], `sources/raw/project_pendientes.md` (cont. 17).
+**Estado real: código commiteado (commit `50f5579a`, tag+release `v1.176.0`) y ✅ DEPLOYADO A PROD el
+2026-08-20** — PR #331 mergeado a `main` (merge commit `4dbe7fdb`), 16 migraciones (360-375) aplicadas y
+verificadas en PROD junto con este release. Detalle completo: [[wiki/features/reportes-metricas]] (sección
+"Caja en USD — Fase 7 de 8"), [[wiki/features/caja]], `sources/raw/project_pendientes.md` (cont. 18).
 
 ---
 
-## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — 🟡 EN DEV, commiteado y pusheado (2026-08-19)
+## v1.175.0 — 💵 Caja en Dólares (Fase 6/8: Devoluciones/NC con soporte USD) — ✅ EN PROD (commiteado 2026-08-19, deployado 2026-08-20)
 
 Continúa la Fase 5 (v1.174.0, abajo). **Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), aplicada
 y verificada en DEV — código completo, typecheck+build+suite de tests verdes, commiteado junto con el wiki
@@ -113,14 +119,14 @@ bloqueante). Código revisado por `code-reviewer` (2 hallazgos 🟡 corregidos, 
 plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación para AFIP, Fase
 8, bloqueada por confirmación de un contador real). Próximo paso: Fase 7 (Reportes).
 
-**Estado real: DEV en migs 001-375, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release
-`v1.175.0` publicados). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
-completo: [[wiki/features/devoluciones]] (sección "Caja en USD — Fase 6 de 8"), [[wiki/features/caja]],
-`wiki/database/migraciones.md` (mig 375).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0`
+publicados) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; mig 375 aplicada y
+verificada en PROD). Detalle completo: [[wiki/features/devoluciones]] (sección "Caja en USD — Fase 6 de
+8"), [[wiki/features/caja]], `wiki/database/migraciones.md` (mig 375).
 
 ---
 
-## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — ✅ EN DEV, commiteado y pusheado, sin deploy a PROD (2026-08-19)
+## v1.174.0 — 💵 Caja en Dólares (Fase 5/8: Bóveda ARS/USD) — ✅ EN PROD (commiteado 2026-08-19, deployado 2026-08-20)
 
 Continúa la Fase 4 (v1.173.0, abajo). **Migraciones 373 y 374** (`373_caja_usd_fase5_boveda.sql` +
 `374_vw_boveda_cuentas_security_invoker.sql`), aplicadas y verificadas en DEV — código completo,
@@ -154,14 +160,14 @@ nuevos: `CAJ-36` (reescrito) a `CAJ-40`.
 **Con esto, la Fase 5/8 de Caja USD queda 100% completa en DEV** (Fases 1+2+3+4+5, migs 368-374). Próximo
 paso: Fase 6 (Devoluciones/NC — sin puntos abiertos propios).
 
-**Estado real: DEV en migs 001-374, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`, tag+release
-`v1.174.0` publicados). **SIN PR `dev`→`main`, SIN deploy a PROD** — decisión pendiente de GO. Detalle
-completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 5 de 8"), `wiki/database/migraciones.md`
-(migs 373-374).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`, tag+release `v1.174.0`
+publicados) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; migs 373-374
+aplicadas y verificadas en PROD). Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 5
+de 8"), `wiki/database/migraciones.md` (migs 373-374).
 
 ---
 
-## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — ✅ EN DEV, commiteado y pusheado (2026-08-18)
+## v1.173.0 — 💵 Caja en Dólares (Fase 4/8: pago combinado ARS+USD) — ✅ EN PROD (commiteado 2026-08-18, deployado 2026-08-20)
 
 Continúa la Fase 3 (v1.172.0, abajo) en una sesión posterior. **Migración 372**
 (`372_caja_usd_fase4_pago_combinado.sql`), commiteada junto con el código en `d783727d` (wiki en `7d511c5d`,
@@ -184,14 +190,14 @@ Typecheck + build + suite completa de tests verdes (13 tests nuevos en `ventasVa
 el caso 🔴 de `arsNeto` negativo). Migración 372 revisada por `migration-reviewer` (APTA, 0 filas con
 moneda inconsistente pre-existentes). UAT nuevos: `VEN-37` a `VEN-43`.
 
-**Estado real: DEV en migs 001-372, COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d` + wiki
-`7d511c5d` + bump `05801eb4`), tag+release `v1.173.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD**
-— decisión pendiente de GO. Detalle completo: [[wiki/features/ventas-pos]], [[wiki/features/caja]]
-(sección "Caja en USD — Fase 4 de 8"), `wiki/database/migraciones.md` (mig 372).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev` (commit `d783727d` + wiki `7d511c5d` + bump
+`05801eb4`), tag+release `v1.173.0` publicados, y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge
+commit `4dbe7fdb`; mig 372 aplicada y verificada en PROD). Detalle completo: [[wiki/features/ventas-pos]],
+[[wiki/features/caja]] (sección "Caja en USD — Fase 4 de 8"), `wiki/database/migraciones.md` (mig 372).
 
 ---
 
-## v1.172.0 — 💵 Caja en Dólares (Fase 3/8: ciclo operativo) — ✅ EN DEV, commiteado y pusheado (2026-08-18)
+## v1.172.0 — 💵 Caja en Dólares (Fase 3/8: ciclo operativo) — ✅ EN PROD (commiteado 2026-08-18, deployado 2026-08-20)
 
 Continúa la Fase 1+2 (v1.171.0, abajo) en una tanda posterior de la misma sesión. **Migración 371**
 (`371_caja_usd_fase3_ciclo_operativo.sql`), commiteada junto con el código en `010440cd` (bump de versión
@@ -208,14 +214,14 @@ Continúa la Fase 1+2 (v1.171.0, abajo) en una tanda posterior de la misma sesi�
 Typecheck + build + suite completa de tests verdes. Migración 371 revisada por `migration-reviewer` (APTA).
 UAT nuevos: `CAJ-31` a `CAJ-36`.
 
-**Estado real: DEV en migs 001-371, COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd` + bump
-`56f48fe8`), tag+release `v1.172.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión
-pendiente de GO. Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 3 de 8"),
-`wiki/database/migraciones.md` (mig 371).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev` (commit `010440cd` + bump `56f48fe8`), tag+release
+`v1.172.0` publicados, y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; mig 371
+aplicada y verificada en PROD). Detalle completo: [[wiki/features/caja]] (sección "Caja en USD — Fase 3 de
+8"), `wiki/database/migraciones.md` (mig 371).
 
 ---
 
-## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2) + auditoría de performance/seguridad + fixes de moneda en Producto — ✅ EN DEV, commiteado y pusheado (2026-08-18)
+## v1.171.0 — 💵🛑🚚 Caja en Dólares (Fases 1+2) + auditoría de performance/seguridad + fixes de moneda en Producto — ✅ EN PROD (commiteado 2026-08-18, deployado 2026-08-20)
 
 Commit + push a `origin/dev` de TODO el trabajo acumulado de varias sesiones previas (llevaba días sin
 resguardo en git) más la Fase 2 de Caja USD construida en esta sesión — Fases 1+2 en un solo commit
@@ -243,11 +249,11 @@ Typecheck + build + suite completa de tests verdes antes de cada aplicación (ú
 archivos, 1574 tests). Todas las migraciones pasaron por `migration-reviewer` (APTA) antes de aplicarse a
 DEV; la 370 además por `code-reviewer` (OK, sin hallazgos 🔴).
 
-**Estado real: DEV en migs 001-370, COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b` + bump
-`0b4d431a`), tag+release `v1.171.0` publicados. SIN PR `dev`→`main`, SIN deploy a PROD** — decisión
-pendiente de GO. Detalle completo: `sources/raw/project_pendientes.md`, `log.md`, [[wiki/features/caja]]
-(sección "Caja en USD — Fase 2 de 8"), [[wiki/features/productos]], `wiki/database/migraciones.md` (migs
-360-370).
+**Estado real: COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b` + bump `0b4d431a`), tag+release
+`v1.171.0` publicados, y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`; migs
+360-370 aplicadas y verificadas en PROD). Detalle completo: `sources/raw/project_pendientes.md`, `log.md`,
+[[wiki/features/caja]] (sección "Caja en USD — Fase 2 de 8"), [[wiki/features/productos]],
+`wiki/database/migraciones.md` (migs 360-370).
 
 ---
 

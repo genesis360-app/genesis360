@@ -6,6 +6,60 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-20] deploy | 🚀 v1.176.0 a PROD — Auditoría performance/calidad + Caja USD (Fases 1-7/8), 16 migraciones (360-375)
+
+Deploy a PROD de todo el trabajo que ya estaba commiteado en `dev`. **Sin código nuevo en esta tanda** — el
+código venía commiteado de sesiones anteriores (última: commit `50f5579a`, "Fase 7/8 de Caja USD —
+Reportes/Dashboard moneda-aware", tag+release `v1.176.0` ya publicados el 2026-08-19). La entrada de abajo
+("Fase 7/8... EN DEV sin commitear") quedó desactualizada apenas se commiteó en esa misma sesión — corregido
+recién ahora, ver `sources/raw/project_pendientes.md` (cont. 17, ahora histórico). Esta tanda fue
+PURAMENTE el deploy: 16 migraciones a PROD + PR `dev`→`main` mergeado.
+
+### Qué quedó en PROD
+
+- **16 migraciones aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), en orden, cada una confirmada con
+  `apply_migration` exitoso y re-verificadas con `list_migrations` al final: `360_pedido_envio_entregado_sync`
+  (sincroniza `pedidos.estado` al entregar un envío real), `361_emision_factura_lock` (lock anti
+  doble-submit fiscal en `emitir-factura`), `362_stock_reserva_atomica` (RPCs con lock de fila para
+  reservar/liberar stock sin race condition, causa raíz de VEN-23), `363_indices_fk_faltantes` (6 índices
+  aditivos), `364_meli_stock_sync_dedupe` (dedupe real del trigger de sync MELI), `365_fix_formula_notificar_cc_vencidas`
+  (fórmula de deuda CC corregida en función hoy inerte), `366_rls_auth_uid_select_wrap` (cierra el
+  antipattern de RLS en las últimas 4 policies), `367_producto_moneda_costo_y_tier_usd` (moneda/costo USD
+  en Producto + tier `usd`), y las **Fases 1 a 6 de Caja USD** (relevamiento G5): `368_caja_usd_fase1_cimientos`,
+  `369_caja_usd_fase1_es_efectivo_consumidores`, `370_caja_usd_fase2_permisos_config`,
+  `371_caja_usd_fase3_ciclo_operativo`, `372_caja_usd_fase4_pago_combinado`, `373_caja_usd_fase5_boveda`,
+  `374_vw_boveda_cuentas_security_invoker`, `375_caja_usd_fase6_devoluciones_nc`. Ninguna falló — la mig
+  373 (que había fallado una vez en DEV por un conflicto de constraint) aplicó limpio en PROD porque el
+  archivo del repo ya tenía la versión corregida.
+- **Security advisor de PROD revisado post-migración**: 0 hallazgos ERROR, 135 WARN (baseline preexistente,
+  no introducidos por este deploy), 1 hallazgo INFO nuevo esperado (`emision_factura_locks` con RLS
+  habilitada sin policies — intencional, deny-by-default, documentado en el comentario de la mig 361: la
+  Edge Function usa `service_role`, que bypassea RLS).
+- **PR #331** (`dev`→`main`, "v1.176.0 — Auditoría performance/calidad + Caja USD (Fases 1-7/8)") creado y
+  **mergeado** — merge commit `4dbe7fdb2c59c34a58fc6896c879f93f549178ab`, confirmado con `gh pr view 331`
+  (`state: MERGED`) y de forma independiente por el wiki-keeper (`git fetch origin` + `git log
+  origin/main` confirma `4dbe7fdb` en la punta, con `50f5579a` como ancestro directo).
+- **Sin tag/release nuevo**: `v1.176.0` ya existía sobre el commit `50f5579a` de `dev`; ese mismo commit
+  ahora es ancestro de `main` tras el merge.
+- **Vercel**: deployment de producción (`dpl_EeGQQQUnbbEuCwqd5Xw8xhC8c9XM`, commit `4dbe7fdb`) arrancó a
+  buildear inmediatamente después del merge. **✅ CONFIRMADO READY** (`readyState: READY`, build de ~96s,
+  `app.genesis360.pro` sirviendo el commit `4dbe7fdb`).
+- **Verificación contra datos reales de PROD**: los 8 tenants existentes quedaron con "Caja Fuerte USD"/
+  "Efectivo USD" sembrados por el backfill de la mig 373 (`SELECT count(*) FROM cajas WHERE moneda='USD'`
+  → 8), y 0 ventas con `cotizacion_usd` no nulo — confirma que el deploy no cambió ningún comportamiento
+  para tenants existentes (feature aditiva/opt-in, como estaba diseñada).
+
+Con esto, **la Auditoría de performance/calidad (migs 361-366) y las Fases 1 a 7 de Caja USD (migs
+368-375, más la Fase 7 de Reportes sin migración) quedan 100% en PROD**. Único pendiente del plan de 8
+fases: **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real,
+no bloqueante. Detalle completo: `sources/raw/project_pendientes.md` (cont. 18, "ARRANCÁ ACÁ"),
+`wiki/business/roadmap.md` (v1.176.0 a EN PROD), `wiki/database/migraciones.md` (360-375 a EN PROD),
+[[wiki/features/caja]], [[wiki/features/reportes-metricas]], [[wiki/features/ventas-pos]],
+[[wiki/features/devoluciones]], [[wiki/features/facturacion-afip]], [[wiki/features/inventario-stock]],
+[[wiki/features/productos]], `wiki/development/reglas-negocio.md`, `index.md`.
+
+---
+
 ## [2026-08-19] update | Fase 7/8 de Caja USD (G5): Reportes (H1/H2) — sin migración, EN DEV sin commitear
 
 Continuación directa de la Fase 6 (mig 375, Devoluciones/NC con soporte USD — commit `e55a1009`, tag

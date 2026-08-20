@@ -3,7 +3,7 @@ title: Reportes y Métricas
 category: features
 tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights, caja-usd]
 sources: [CLAUDE.md, migrations 155, 351, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Reportes y Métricas
@@ -338,7 +338,7 @@ Row 2 — Sub-tabs (underline) + Filtros (derecha, solo "Todo"):
 
 ---
 
-## 💵 Caja en USD — Fase 7 de 8 (Reportes) — EN DEV, SIN migración, TODAVÍA SIN COMMITEAR (2026-08-19)
+## 💵 Caja en USD — Fase 7 de 8 (Reportes) — ✅ EN PROD, SIN migración (commiteada 2026-08-19, deployada 2026-08-20)
 
 Séptima fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
 USD / Venta física en USD"). Continúa directo sobre la Fase 6 (mig 375, Devoluciones/NC con soporte USD, ya
@@ -347,8 +347,8 @@ Implementa **H1** y **H2** de la tabla de decisiones (ver [[wiki/development/reg
 frontend, sin ninguna migración nueva**: toda la data que necesitaba ya existía desde la Fase 1
 (`ventas.cotizacion_usd`, `caja_movimientos.moneda`, `medio_pago[].monto_usd` de las Fases 4/6). **Estado
 real: código completo — typecheck + build + suite completa de tests verdes (100 archivos, 1605 tests, sin
-tests nuevos) —, TODAVÍA SIN COMMITEAR** (bump a `v1.176.0` hecho en `src/config/brand.ts`, pendiente de
-commit por el orquestador). SIN deploy a PROD.
+tests nuevos) —, COMMITEADO** (commit `50f5579a`, tag+release `v1.176.0` publicados) **y ✅ DEPLOYADO A
+PROD el 2026-08-20** (PR #331 mergeado a `main`, merge commit `4dbe7fdb`).
 
 ### H1 — Reportes: total único en pesos + desglose por moneda debajo
 

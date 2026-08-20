@@ -3,7 +3,7 @@ title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Módulo Caja
@@ -362,16 +362,20 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 > soporta un medio "Efectivo USD" (egreso real en la Caja USD elegida, cotización de hoy por default o de
 > la venta original si el tenant activa el toggle — G1) y la NC AFIP confirma que ya usaba la cotización de
 > la venta original por construcción (G2, sin cambio de código real). **Estado real: migs 368-375 APLICADAS
-> Y VERIFICADAS en DEV, código de las Fases 1-6 COMMITEADO Y PUSHEADO a `origin/dev` en 5 tandas** (368-370
-> en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en commit `d783727d`,
-> tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`; 375 en commit `e55a1009`, tag `v1.175.0`).
+> Y VERIFICADAS EN DEV Y PROD, código de las Fases 1-6 COMMITEADO Y PUSHEADO a `origin/dev` en 5 tandas**
+> (368-370 en commit `310d9b3b`, tag `v1.171.0`; 371 en commit `010440cd`, tag `v1.172.0`; 372 en commit
+> `d783727d`, tag `v1.173.0`; 373-374 en commit `28d9291e`, tag `v1.174.0`; 375 en commit `e55a1009`, tag
+> `v1.175.0`).
 > **Fase 7 de 8 completa** (Reportes — H1/H2, SIN migración nueva, ver
 > [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8" — el detalle completo vive ahí porque la
 > fase toca Dashboard/Reportes, no Caja): el reporte de Ventas desglosa el monto real en USD por método de
 > pago junto al equivalente en pesos (H1), y el Dashboard excluye las ventas con componente USD de sus
-> indicadores en pesos, mostrándolas aparte (H2) — está CONSTRUIDA Y VERIFICADA en DEV, TODAVÍA SIN
-> COMMITEAR (bump a `v1.176.0` pendiente de commit). **SIN deploy a PROD en ningún caso.** Ya hay una Caja
-> USD de prueba operando de verdad en DEV (tenant "Almacén Jorgito"). Falta solo la Fase 8: cotización
+> indicadores en pesos, mostrándolas aparte (H2) — COMMITEADA (commit `50f5579a`, tag `v1.176.0`).
+> **✅ Fases 1 a 7 de Caja USD (migs 368-375) DEPLOYADAS A PROD el 2026-08-20** — PR #331 mergeado a `main`
+> (merge commit `4dbe7fdb`), las 8 migraciones aplicadas y verificadas en PROD junto con el resto del
+> release v1.176.0. Ya hay una Caja
+> USD de prueba operando de verdad en DEV (tenant "Almacén Jorgito"); en PROD ningún tenant real la usa
+> todavía (feature disponible, sin adopción real hasta ahora). Falta solo la Fase 8: cotización
 > fiscal AFIP (C2, bloqueada por confirmación de un contador real). Ver el relevamiento completo (29
 > preguntas respondidas) en
 > [[wiki/development/reglas-negocio]] → "Caja en USD /
@@ -491,14 +495,15 @@ Indicador **Total: $X** arriba a la derecha (visible solo para DUEÑO+) sumando 
 
 ---
 
-## 🚧 Caja en USD — Fase 2 de 8 (permisos y configuración) — EN DEV, mig 370 (2026-08-18)
+## ✅ Caja en USD — Fase 2 de 8 (permisos y configuración) — EN PROD, mig 370 (commiteada 2026-08-18, deployada 2026-08-20)
 
 Segunda fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD"). La Fase 1 (migs 368/369, ver nota en "F1 · Cajas separadas por moneda"
 arriba) generalizó el dato ("efectivo real" ya no es un string hardcodeado); esta fase agrega **quién**
 puede configurar/operar cada pieza — el ciclo operativo real (que ya activa a esta Caja USD) llegó con la
-Fase 3, ver sección siguiente. **Estado real: mig 370 APLICADA Y VERIFICADA en DEV, código COMMITEADO Y
-PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`), SIN deploy a PROD.**
+Fase 3, ver sección siguiente. **Estado real: mig 370 APLICADA Y VERIFICADA en DEV Y PROD, código
+COMMITEADO Y PUSHEADO a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`), ✅ EN PROD desde 2026-08-20** (PR
+#331, merge commit `4dbe7fdb`).
 
 ### Columnas nuevas (migration 370)
 
@@ -562,16 +567,16 @@ traspasos entre cajas de distinta moneda). **Construida y cerrada el mismo día 
 
 ---
 
-## ✅ Caja en USD — Fase 3 de 8 (ciclo operativo) — EN DEV, mig 371, COMMITEADA (2026-08-18)
+## ✅ Caja en USD — Fase 3 de 8 (ciclo operativo) — EN PROD, mig 371 (commiteada 2026-08-18, deployada 2026-08-20)
 
 Tercera fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD"). Continúa directo sobre la Fase 2 (mig 370, permisos y configuración, ya
 commiteada/pusheada). Con esta fase, **el ciclo apertura→movimientos→arqueo→cierre de una Caja USD ya
 funciona de verdad** — antes de esta fase la moneda `USD` de una caja era solo una etiqueta configurable,
 sin ningún comportamiento distinto en la operación diaria. **Estado real: mig 371 APLICADA Y VERIFICADA en
-DEV (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `010440cd` + bump
-`56f48fe8`, tag+release `v1.172.0` publicados — en una tanda posterior de la misma sesión en la que se
-escribió este párrafo por primera vez, corrigiendo el "SIN COMMITEAR" original). SIN deploy a PROD.
+DEV Y PROD (`gcmhzdedrkmmzfzfveig`/`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`**
+(commit `010440cd` + bump `56f48fe8`, tag+release `v1.172.0` publicados) **y ✅ EN PROD desde 2026-08-20**
+(PR #331, merge commit `4dbe7fdb`).
 
 ### Triggers nuevos (migration 371) — defensa en profundidad server-side
 
@@ -655,15 +660,16 @@ corregidos). Escenarios agregados al UAT (`tests/specs/uat-modo-basico.md`): `CA
 
 ---
 
-## ✅ Caja en USD — Fase 4 de 8 (pago combinado ARS+USD) — EN DEV, mig 372, COMMITEADA (2026-08-18)
+## ✅ Caja en USD — Fase 4 de 8 (pago combinado ARS+USD) — EN PROD, mig 372 (commiteada 2026-08-18, deployada 2026-08-20)
 
 Cuarta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD"). Continúa directo sobre la Fase 3 (mig 371, ciclo operativo, ya
 commiteada/pusheada como tag `v1.172.0`). Con esta fase, **el POS puede cobrar una venta combinando ARS y
 USD de verdad** — antes, una Caja USD podía abrirse/operarse (Fase 3) pero ningún flujo de venta sabía
-cobrar en dólares. **Estado real: mig 372 APLICADA Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), código
-COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, bump `05801eb4`, tag+release `v1.173.0`
-publicados). SIN deploy a PROD.
+cobrar en dólares. **Estado real: mig 372 APLICADA Y VERIFICADA en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/
+`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, bump
+`05801eb4`, tag+release `v1.173.0` publicados) **y ✅ EN PROD desde 2026-08-20** (PR #331, merge commit
+`4dbe7fdb`).
 
 ### Trigger nuevo (migration 372) — defensa en profundidad server-side
 
@@ -748,7 +754,7 @@ los 2 gaps de Gastos (ya corregidos). UAT nuevos: `VEN-37` a `VEN-43` (`tests/sp
 
 ---
 
-## ✅ Caja en USD — Fase 5 de 8 (Bóveda ARS/USD) — EN DEV, migs 373+374, commiteado y pusheado (2026-08-19)
+## ✅ Caja en USD — Fase 5 de 8 (Bóveda ARS/USD) — EN PROD, migs 373+374 (commiteada 2026-08-19, deployada 2026-08-20)
 
 Quinta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD"). Continúa directo sobre la Fase 4 (mig 372, pago combinado ARS+USD, ya
@@ -757,10 +763,11 @@ fila por tenant** — hasta acá `cajaFuerte`/`fuerteSesion`/`fuerteSaldo` en `C
 una única caja `es_caja_fuerte=true` por tenant — y pasa a tener **2 filas separadas (ARS y USD)**, con
 pestañas propias en la UI, más la función **"Convertir USD↔$"** (único punto de conversión de todo el
 sistema, exclusivo del rol DUEÑO) y el retiro de Caja USD sin destino con clave maestra (F3). **Estado
-real: migs 373+374 APLICADAS Y VERIFICADAS en DEV (`gcmhzdedrkmmzfzfveig`), código completo — typecheck +
+real: migs 373+374 APLICADAS Y VERIFICADAS en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/`jjffnbrdjchquexdfgwq`),
+código completo — typecheck +
 build + suite completa de tests verdes —, COMMITEADO Y PUSHEADO a `origin/dev`** (commit `28d9291e`,
-tag+release `v1.174.0` publicados, bump de versión a `v1.174.0` en `src/config/brand.ts`). SIN deploy a
-PROD.
+tag+release `v1.174.0` publicados, bump de versión a `v1.174.0` en `src/config/brand.ts`) **y ✅ EN PROD
+desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`).
 
 ### Migración 373 (`373_caja_usd_fase5_boveda.sql`) — siembra + constraint + trigger + tabla de auditoría
 
@@ -901,7 +908,7 @@ Escenarios agregados al UAT (`tests/specs/uat-modo-basico.md`): `CAJ-36` (reescr
 
 ---
 
-## ✅ Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN DEV, mig 375, commiteado y pusheado (2026-08-19)
+## ✅ Caja en USD — Fase 6 de 8 (Devoluciones/NC con soporte USD) — EN PROD, mig 375 (commiteada 2026-08-19, deployada 2026-08-20)
 
 Sexta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
 USD / Venta física en USD"). Continúa directo sobre la Fase 5 (migs 373+374, Bóveda ARS/USD, ya
@@ -916,11 +923,13 @@ toggle nuevo `tenants.reintegro_usd_cotizacion_original` (Config → Ventas → 
 relevamiento), con su propio guard CAJ-18 (no negativo). La Nota de Crédito AFIP se confirmó que **ya**
 usaba la cotización de la venta original por construcción (**G2**, sin cambio de código real en
 `emitir-factura`, solo comentarios). **Migración 375** (`375_caja_usd_fase6_devoluciones_nc.sql`), APLICADA
-Y VERIFICADA en DEV (`gcmhzdedrkmmzfzfveig`), puramente aditiva — sin funciones/triggers/vistas nuevas
+Y VERIFICADA en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/`jjffnbrdjchquexdfgwq`), puramente aditiva — sin
+funciones/triggers/vistas nuevas
 (protegida por los triggers de moneda de las migs 372/373): `tenants.reintegro_usd_cotizacion_original` +
 `devoluciones.monto_usd`/`cotizacion_usd_usada` + `CHECK devoluciones_usd_ambos_o_ninguno`. **Estado real:
 mig 375 aplicada y verificada, código completo — typecheck+build+tests verdes (100 archivos, 1605 tests) —,
-COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0` publicados). SIN deploy a PROD.
+COMMITEADO Y PUSHEADO a `origin/dev`** (commit `e55a1009`, tag+release `v1.175.0` publicados) **y ✅
+DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`).
 
 **Con esto, la Fase 6/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5+6 completas (migs
 368-375). El plan de 8 fases NO tiene ningún punto abierto propio salvo **C2** (cotización Banco Nación
@@ -930,7 +939,7 @@ Dashboard excluye ventas USD de los totales/indicadores en pesos).
 
 ---
 
-## ✅ Caja en USD — Fase 7 de 8 (Reportes) — EN DEV, SIN migración, TODAVÍA SIN COMMITEAR (2026-08-19)
+## ✅ Caja en USD — Fase 7 de 8 (Reportes) — EN PROD, SIN migración (commiteada 2026-08-19, deployada 2026-08-20)
 
 Séptima fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja en
 USD / Venta física en USD"). Continúa directo sobre la Fase 6 (mig 375, Devoluciones/NC con soporte USD, ya
@@ -947,10 +956,12 @@ la data ya existía desde la Fase 1 (`ventas.cotizacion_usd`, `caja_movimientos.
 `medio_pago[].monto_usd` de las Fases 4/6). De paso se encontraron y corrigieron 2 bugs preexistentes (no
 introducidos por esta sesión): `costoVentas` sin filtro de `estado` de venta (inflaba el costo histórico en
 ~$3,9M sobre $31,8M reales, verificado con SQL real en DEV) e `ingresoNeto` sin filtro de `moneda` (riesgo
-latente de sumar dólares crudos dentro de un total en pesos, sin impacto real hoy porque DEV no tiene
-movimientos USD todavía). **Estado real: código completo — typecheck+build+tests verdes (100 archivos, 1605
-tests) —, TODAVÍA SIN COMMITEAR** (bump a `v1.176.0` hecho en `src/config/brand.ts`, pendiente de commit por
-el orquestador). SIN deploy a PROD.
+latente de sumar dólares crudos dentro de un total en pesos, sin impacto real en DEV ni en PROD hasta
+ahora — ningún tenant real de PROD tiene movimientos USD todavía). **Estado real: código completo —
+typecheck+build+tests verdes (100 archivos, 1605 tests) —, COMMITEADO** (commit `50f5579a`, tag+release
+`v1.176.0` publicados) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331 mergeado a `main`, merge commit
+`4dbe7fdb`; esta fase no agrega migración, así que "deployado" acá significa que el código del release ya
+está en producción).
 
 **Con esto, la Fase 7/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4+5+6+7 completas (migs
 368-375, sin migración nueva en esta fase). El plan de 8 fases NO tiene ningún punto abierto propio salvo

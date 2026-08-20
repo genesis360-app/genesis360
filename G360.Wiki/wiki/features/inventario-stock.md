@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362]
-updated: 2026-08-18
+updated: 2026-08-20
 ---
 
 # Inventario y Stock
@@ -92,7 +92,7 @@ Helper: `src/lib/rebajeSort.ts` → `getRebajeSort(reglaProducto, reglaTenant, t
 
 ---
 
-## Reservas de stock — race condition atómica (mig 362, REGLA #0 — 🟡 EN DEV, commiteado y pusheado desde el 2026-08-18, 2026-08-14)
+## Reservas de stock — race condition atómica (mig 362, REGLA #0 — ✅ EN PROD desde 2026-08-20, commiteado 2026-08-18, hallazgo 2026-08-14)
 
 🛑 **REGLA #0 (inventario)** — hallazgo CRÍTICO de una auditoría general de performance/calidad pedida
 por GO (2 agentes en paralelo, reporte publicado como Artifact; este fix y el lock anti doble-submit de
@@ -153,9 +153,11 @@ nunca 20** (lo que hubiera violado el CHECK `chk_cantidad_mayor_o_igual_reservad
 `fn_liberar_stock_linea` (clampea a 0, nunca negativo) y se restauró el dato de test a su estado
 original. `migration-reviewer`: sin hallazgos bloqueantes, solo mejoras sugeridas.
 
-**Estado real: migración escrita, revisada, aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) —
-COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), SIN aplicar a
-PROD.** PROD sigue en v1.170.0, sin cambios. Nace de la
+**Estado real: migración escrita, revisada, aplicada y verificada en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/
+`jjffnbrdjchquexdfgwq`) —
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), y ✅ DEPLOYADA A
+PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`). PROD pasó de v1.170.0 a v1.176.0 con este deploy.
+Nace de la
 misma auditoría de performance/calidad que el fix del lock anti doble-submit de `emitir-factura` (mig
 361) — ambos hallazgos 🛑 CRÍTICO, priorizados sobre el resto del backlog (no crítico, vive en el
 Artifact publicado a GO).

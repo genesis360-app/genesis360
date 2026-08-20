@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Ventas / POS
@@ -188,7 +188,8 @@ Toggle en el checkout:
   fallaron en la corrida pero se confirmó con `git stash` que la misma falla ya existía contra el
   código original (dato preexistente de corridas anteriores, no una regresión de este cambio).
 - **Estado: código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `310d9b3b`, tag `v1.171.0`,
-  2026-08-18), SIN deploy a PROD. Ver [[wiki/architecture/frontend-stack]] → nota de code-splitting
+  2026-08-18) **y ✅ DEPLOYADO A PROD el 2026-08-20** (PR #331, merge commit `4dbe7fdb`). Ver
+  [[wiki/architecture/frontend-stack]] → nota de code-splitting
   xlsx/jspdf para el otro hallazgo frontend de la misma auditoría.
 
 ---
@@ -456,11 +457,11 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 - `productos.precio_usd` + `productos.moneda_venta` (`'local'` default | `'usd'`). Se configura en el form de producto (select de moneda + input USD + preview de conversión).
 - Si `moneda_venta='usd'`, el POS **convierte a moneda local a la cotización vigente** al cargar el producto al carrito (`precio_unitario` queda fijado al cambio del momento; `precio_usd_origen` guarda el dólar original para el hint "Precio USD X · convertido a $Y").
-- Cubre el caso "producto cotizado en dólares, cobrado en pesos al cambio del día". **Venta física en USD / caja USD: ver sección "Pago combinado ARS+USD" más abajo (✅ EN DEV desde la Fase 4 del proyecto Caja USD).**
+- Cubre el caso "producto cotizado en dólares, cobrado en pesos al cambio del día". **Venta física en USD / caja USD: ver sección "Pago combinado ARS+USD" más abajo (✅ EN PROD desde la Fase 4 del proyecto Caja USD, deployada 2026-08-20).**
 
 ---
 
-## 💵 Pago combinado ARS+USD — Caja en USD Fase 4/8 (relevamiento G5, mig 372) — EN DEV, COMMITEADO (2026-08-18)
+## 💵 Pago combinado ARS+USD — Caja en USD Fase 4/8 (relevamiento G5, mig 372) — ✅ EN PROD (commiteada 2026-08-18, deployada 2026-08-20)
 
 Cuarta fase del proyecto "Caja en USD" (relevamiento G5, ver [[wiki/development/reglas-negocio]] → "Caja
 en USD / Venta física en USD" y [[wiki/features/caja]] → "Caja en USD — Fase 4 de 8" para el detalle
@@ -468,8 +469,10 @@ completo de la migración/triggers/hallazgos de Gastos). Continúa sobre la Fase
 USD, mig 371, ya commiteada/pusheada como tag `v1.172.0`). Con esta fase, **el checkout de esta página
 puede cobrar una venta combinando ARS y USD de verdad** — antes, una Caja USD podía existir y operarse
 (Fase 3), pero ningún flujo de venta sabía cobrar en dólares. **Estado real: mig 372 APLICADA Y VERIFICADA
-en DEV (`gcmhzdedrkmmzfzfveig`), código COMMITEADO Y PUSHEADO a `origin/dev`** (commit `d783727d`, bump
-`05801eb4`, tag+release `v1.173.0` publicados). SIN deploy a PROD.
+en DEV Y PROD (`gcmhzdedrkmmzfzfveig`/`jjffnbrdjchquexdfgwq`), código COMMITEADO Y PUSHEADO a
+`origin/dev`** (commit `d783727d`, bump
+`05801eb4`, tag+release `v1.173.0` publicados) **y ✅ EN PROD desde 2026-08-20** (PR #331, merge commit
+`4dbe7fdb`).
 
 ### El cajero tipea el monto en USD (D2)
 
@@ -545,11 +548,11 @@ Typecheck + build + suite completa de tests unitarios verdes (incluye los 7 test
 **Con esto, la Fase 4/8 de Caja USD queda 100% completa en DEV** — Fases 1+2+3+4 completas (migs 368-372).
 **Fase 5 (Bóveda ARS/USD, migs 373+374) también completa, sin tocar `VentasPage.tsx`** — ver
 [[wiki/features/caja]] para el estado completo del proyecto. **🆕 Fase 6/8 (Devoluciones/NC con soporte
-USD, mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`) SÍ toca esta página** — el modal/flujo de devolución
+USD, mig 375, 2026-08-19, commiteado y pusheado, tag `v1.175.0`, ✅ EN PROD desde 2026-08-20) SÍ toca esta página** — el modal/flujo de devolución
 (`abrirModalDevolucion`/`procesarDevolucion`) gana su propio selector de Caja USD, input en dólares y
 validaciones ARS/USD separadas, mismo patrón que el pago combinado de arriba. Detalle técnico completo en
-[[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" (fuente de verdad de esa fase). **🆕 Fase 7/8
-(Reportes, H1/H2, sin migración, 2026-08-19, CONSTRUIDA EN DEV, TODAVÍA SIN COMMITEAR) NO toca esta
+[[wiki/features/devoluciones]] → "Caja en USD — Fase 6 de 8" (fuente de verdad de esa fase). **Fase 7/8
+(Reportes, H1/H2, sin migración, 2026-08-19, ✅ EN PROD desde 2026-08-20) NO toca esta
 página** — toca Dashboard/Reportes, ver [[wiki/features/reportes-metricas]] → "Caja en USD — Fase 7 de 8".
 Próximo paso del proyecto: Fase 8 (C2, cotización fiscal AFIP, bloqueada por confirmación de un contador
 real).

@@ -3,7 +3,7 @@ title: Frontend Stack
 category: architecture
 tags: [react, vite, typescript, tailwind, zustand, pwa]
 sources: []
-updated: 2026-08-18
+updated: 2026-08-20
 ---
 
 # Frontend Stack
@@ -51,7 +51,7 @@ updated: 2026-08-18
 > estadoCuentaPDF, etiquetasPreciosPDF, etiquetasEnvioPDF) — tienen múltiples callers y uno genera las
 > facturas fiscales reales, mayor blast radius para un beneficio de performance menor. **Estado: código
 > COMMITEADO Y PUSHEADO a `origin/dev`** (commit `310d9b3b`, tag `v1.171.0`, 2026-08-18), verificado
-> (build + e2e), SIN deploy a PROD. Ver [[wiki/features/
+> (build + e2e), **✅ EN PROD desde 2026-08-20** (PR #331, merge commit `4dbe7fdb`). Ver [[wiki/features/
 > ventas-pos]] → "Memoización del carrito" para el otro hallazgo de performance de la misma auditoría.
 
 > [!TIP] **Cierre del resto de la auditoría de performance/calidad (2026-08-14, COMMITEADO Y PUSHEADO a

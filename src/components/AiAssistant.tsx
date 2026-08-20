@@ -26,11 +26,29 @@ const QUICK_ACTIONS = [
   { label: '¿Qué roles existen?', prompt: '¿Qué roles de usuario existen y qué puede hacer cada uno?' },
 ]
 
+// Memoria conversacional de corto plazo (G5 plan IA, Fase 1) — sobrevive a un F5/recarga de
+// página dentro de la misma pestaña (sessionStorage, no localStorage: se pierde al cerrar la
+// pestaña, a propósito — es "corto plazo", no memoria persistente entre sesiones, eso es Fase 3).
+// Keyed por usuario para no mezclar conversaciones en una PC compartida (ej. POS de mostrador
+// donde varios cajeros loguean/desloguean en el mismo navegador).
+const storageKey = (userId?: string) => `g360-ai-assistant-messages-${userId ?? 'anon'}`
+
+function cargarMensajesGuardados(userId?: string): Message[] {
+  try {
+    const raw = sessionStorage.getItem(storageKey(userId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 export function AiAssistant({ className = '', contexto }: { className?: string; contexto?: AsistenteContexto }) {
   const { user, tenant } = useAuthStore()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<Message[]>(() => cargarMensajesGuardados(user?.id))
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sendingReport, setSendingReport] = useState(false)
@@ -38,6 +56,11 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
   const ref = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // A quién pertenece el `messages` actualmente en memoria — evita que, al cambiar de usuario
+  // (login/logout en una PC compartida), el efecto de "persistir" escriba los mensajes del
+  // usuario VIEJO bajo la clave del usuario NUEVO antes de que el efecto de "recargar" alcance a
+  // reemplazarlos (ambos efectos disparan en el mismo render por depender de `user?.id`).
+  const usuarioDeMessages = useRef(user?.id)
 
   // Cerrar al hacer click fuera
   useEffect(() => {
@@ -65,6 +88,26 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100)
   }, [open])
+
+  // Persistir la conversación en sessionStorage (sobrevive a F5, no a cerrar la pestaña) — G5
+  // plan IA, Fase 1. Si vacía (recién reseteada), limpiar la clave en vez de guardar "[]". Se
+  // salta el guardado cuando `messages` todavía pertenece al usuario ANTERIOR (ver ref arriba) —
+  // ese caso lo resuelve el efecto de abajo, que reemplaza `messages` por los del usuario nuevo.
+  useEffect(() => {
+    if (usuarioDeMessages.current !== user?.id) return
+    try {
+      if (messages.length === 0) sessionStorage.removeItem(storageKey(user?.id))
+      else sessionStorage.setItem(storageKey(user?.id), JSON.stringify(messages))
+    } catch { /* storage lleno/deshabilitado — no bloquear el chat por esto */ }
+  }, [messages, user?.id])
+
+  // Cambio de usuario en la misma pestaña (login/logout en una PC compartida, ej. POS de
+  // mostrador) — recargar la conversación guardada de ESE usuario, no arrastrar la anterior.
+  useEffect(() => {
+    if (usuarioDeMessages.current === user?.id) return
+    usuarioDeMessages.current = user?.id
+    setMessages(cargarMensajesGuardados(user?.id))
+  }, [user?.id])
 
   const sendMessage = async (text: string) => {
     const content = text.trim()

@@ -6,13 +6,101 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-08-20, cont. 18) — 🚀 v1.176.0 DEPLOYADO A PROD Y VERIFICADO — Auditoría
+> ### 🟢 ARRANCÁ ACÁ (2026-08-20, cont. 19) — 🤖 Plan IA: Fase 1 (memoria conversacional) COMPLETA + arranca
+> Fase 2 (capa de RPCs de config), mig 376 — **TODAVÍA SIN COMMITEAR** — proyecto independiente y en
+> paralelo a Caja USD/Auditoría (bloque de abajo, cont. 18, SIGUE VIGENTE como estado real de DEV/PROD para
+> ESE proyecto — no queda superado, solo deja de ser el punto de entrada)
+>
+> Primera sesión de código real del "Plan IA" (Asistente IA con memoria + capacidad de proponer cambios de
+> configuración) desde que se publicó el Artifact de la propuesta (2026-08-14/15, ver bloque cont. 9 más
+> abajo). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO hoy: (1) arrancar por Fase 1 +
+> ya empezar la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2) alcance de Fase 2 = "todo lo NO
+> fiscal" (default amplio a futuro, hoy allowlist chico y curado, no se clasificaron las ~190 columnas de
+> `tenants` de una); (3) Fase 4 (comparación entre negocios) = inteligencia interna de Genesis360, no de
+> cara al cliente final — sin urgencia, sin código tocado hoy.
+>
+> #### Fase 1 — Memoria conversacional de corto plazo (✅ COMPLETA)
+>
+> Investigación primero: el multi-turno YA funcionaba bien (`AiAssistant.tsx` ya mandaba el array completo
+> de `messages` a la EF `ai-assistant`, que ya reenviaba `messages.slice(-12)` a Groq como mensajes de chat
+> reales — mejor que lo que el plan original asumía). El gap real: un F5/recarga de página perdía toda la
+> conversación (estado de React plano, sin persistencia). Cambios:
+> - `src/components/AiAssistant.tsx` — persistencia en `sessionStorage` (sobrevive a F5, se pierde al
+>   cerrar la pestaña — corto plazo a propósito, la memoria entre sesiones sigue siendo Fase 3). Keyed por
+>   `user?.id` (PC compartida, ej. POS de mostrador con varios cajeros). 🐛 Race real encontrada y
+>   corregida antes de terminar (no llegó a producción): sin un `useRef` guard, los mensajes del usuario
+>   viejo se escribían bajo la clave del usuario nuevo antes de reemplazarse, al cambiar de usuario en la
+>   misma pestaña.
+> - `supabase/functions/ai-assistant/index.ts` + espejo `src/lib/aiAssistant.ts` (verificado con `diff` que
+>   quedaron idénticos) — regla 8 nueva en el prompt: "PREGUNTÁ ANTES DE ASUMIR" (ambigüedad → pregunta
+>   corta para desambiguar, no adivinar).
+> - Test nuevo en `tests/unit/aiAssistant.test.ts` (16/16 verdes) verificando la regla 8 en el prompt.
+>
+> #### Fase 2 — Capa de RPCs para que la IA proponga/aplique config (backend arrancado, SIN wiring todavía)
+>
+> **Migración 376** (`376_ai_config_rpc_layer.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`):
+> - Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
+>   DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); SIN
+>   policy de escritura — solo las RPCs (`SECURITY DEFINER`) insertan ahí.
+> - 3 RPCs tipadas — `fn_ai_config_set_bool`/`_int`/`_text` (una por tipo de dato, evita casteos dinámicos
+>   ambiguos de una única función "genérica"). Cada una: deriva `tenant_id`/rol DEL JWT de quien llama
+>   (`get_user_tenant_id()`/`get_user_role()` — NUNCA como parámetro, imposible apuntar a otro tenant aunque
+>   el caller mienta); exige rol DUEÑO o ADMIN; valida el campo contra un ALLOWLIST hardcodeado DENTRO del
+>   cuerpo de la función (no una tabla editable — ampliarlo es siempre una migración nueva, auditable en
+>   git); escribe en `ai_config_audit`.
+> - **Allowlist inicial: 6 campos NO fiscales de `tenants`** (ya tienen su propio handler de 1-campo en
+>   `ConfigPage.tsx`, mismo patrón replicado server-side, no abre capacidad de escritura nueva):
+>   `wms_reabastecimiento_on_demand`, `wms_reabastecimiento_umbral` (boolean), `pedido_manual_habilitado`,
+>   `pedido_cierre_automatico` (boolean), `repositor_etiquetas_por_hoja` (integer), `pedido_numeracion`
+>   (text). Cero campos fiscales/AFIP/contables — ninguno toca `caja`, `stock_actual`, comprobantes ni
+>   cuenta corriente.
+> - Revisada por `migration-reviewer` ANTES de aplicar: **APTA, sin hallazgos bloqueantes**. 4 notas 🟡 no
+>   bloqueantes documentadas para cuando se conecte la IA de verdad (Fase 3 del plan): capturar
+>   `check_violation` con un mensaje lindo en vez del error crudo de Postgres (ej.
+>   `repositor_etiquetas_por_hoja` fuera de {4,6,12}); TOCTOU menor entre el SELECT y el UPDATE (solo
+>   afectaría el campo `valor_anterior` del audit log en una carrera extrema, nunca el valor final
+>   escrito); falta `COMMENT ON` en tabla/funciones; falta guard explícito de `p_valor IS NULL`.
+> - **Verificado con tests reales en DEV** (impersonación vía `set_config('request.jwt.claims', ...)`
+>   dentro de bloques `DO $$` sin COMMIT, confirmado con `SELECT` posterior que nada persistió): (1) caso
+>   feliz cambia el campo y devuelve valor anterior/nuevo correctos; (2) un campo NO allowlisted (`cuit`)
+>   es rechazado; (3) un rol sin permiso (SUPERVISOR) es rechazado aunque el campo esté permitido; (4) un
+>   valor fuera de dominio (`repositor_etiquetas_por_hoja=7`, fuera de {4,6,12}) es frenado por un `CHECK`
+>   YA EXISTENTE en la tabla `tenants` (no hizo falta agregar nada nuevo — confirmado, no es un agujero).
+>
+> **IMPORTANTE — todavía NO hay wiring**: ni la EF `ai-assistant` ni el frontend invocan estas 3 RPCs
+> todavía. Nadie puede usarlas hoy salvo llamándolas directo (y solo si es DUEÑO/ADMIN del propio tenant,
+> con el campo en el allowlist). El wiring real (tool-calling de la IA con Groq + tarjeta de confirmación
+> en el chat antes de aplicar) queda para una sesión futura, a propósito, para poder revisar esta capa de
+> forma aislada primero.
+>
+> #### 📊 Estado real
+>
+> **Todo esto está en DEV, TODAVÍA SIN COMMITEAR** (`git status`: modificados `src/components/AiAssistant.tsx`,
+> `src/lib/aiAssistant.ts`, `supabase/functions/ai-assistant/index.ts`, `tests/unit/aiAssistant.test.ts`;
+> untracked `supabase/migrations/376_ai_config_rpc_layer.sql`). `APP_VERSION` sigue en `v1.176.0` — SIN
+> bump todavía (a confirmar con GO si corresponde bump al commitear esta tanda, o si se acumula con la
+> próxima). Migración 376 aplicada y verificada solo en DEV, no en PROD. Sin PR, sin tag/release nuevo.
+>
+> **Próximo paso**: sesión futura — wiring de las RPCs (tool-calling de la IA + confirmación en el chat,
+> completa Fase 2) y/o Fase 3 (memoria persistente por tenant). No avanzar Fase 4 sin decisión de producto/
+> legal adicional (ya definida como "inteligencia interna", pero sin diseño ni código todavía).
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), [[wiki/features/asistente-ia]] (sección "Plan IA —
+> memoria + configuración con confirmación"), `wiki/database/migraciones.md` (mig 376, EN DEV), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 18) — 🚀 v1.176.0 DEPLOYADO A PROD Y VERIFICADO — Auditoría
 > performance/calidad (migs 361-366) + Caja USD Fases 1-7/8 (migs 367-375), 16 migraciones nuevas (360-375)
-> aplicadas a PROD en un solo deploy — este bloque reemplaza al de abajo (cont. 17: Fase 7/8 de Caja USD,
-> tag `v1.176.0`, ya commiteada en `dev`) como punto de entrada. **No hubo código nuevo en esta tanda** —
+> aplicadas a PROD en un solo deploy — este bloque había reemplazado al de abajo (cont. 17: Fase 7/8 de
+> Caja USD, tag `v1.176.0`, ya commiteada en `dev`) como punto de entrada, y ahora queda SUPERADO por el de
+> arriba (cont. 19: Plan IA — Fase 1 completa + arranca Fase 2, mig 376, proyecto independiente, TODAVÍA
+> SIN COMMITEAR) solo como punto de entrada — su contenido SIGUE VIGENTE, no fue revertido, describe el
+> estado real de DEV/PROD para Auditoría performance/calidad + Caja USD. **No hubo código nuevo en esa
+> tanda** —
 > el código ya estaba commiteado en `dev` desde la sesión anterior (commit `50f5579a`, tag+release
-> `v1.176.0` ya publicados); esta tanda fue PURAMENTE el deploy: 16 migraciones a PROD + PR `dev`→`main`
-> mergeado. Tampoco hay tag/release nuevo que crear — `v1.176.0` ya existía sobre el commit `50f5579a` de
+> `v1.176.0` ya publicados); esa tanda fue PURAMENTE el deploy: 16 migraciones a PROD + PR `dev`→`main`
+> mergeado. Tampoco hubo tag/release nuevo que crear — `v1.176.0` ya existía sobre el commit `50f5579a` de
 > `dev`, y ese mismo commit ahora es ancestro de `main` tras el merge.
 >
 > #### ✅ Deploy verificado de forma independiente
@@ -928,11 +1016,17 @@ type: project
 > (fase 4) es de cara al cliente final o inteligencia interna de Genesis360? **No avanzar código de esta
 > propuesta sin que GO responda.**
 >
-> **Próximo paso**: ninguno de los dos ítems avanza sin que GO decida — (1) si pide el relevamiento HTML
-> de Supervisión, y (2) las 3 preguntas de la propuesta de IA. El estado técnico real de DEV/PROD ya NO es
-> el del bloque cont. 8 de abajo — fue superado por el bloque cont. 12 más arriba (2026-08-18): DEV con
-> migs 001-370 aplicadas, TODO commiteado y pusheado a `origin/dev` (commit `310d9b3b` + `0b4d431a`, tag
-> `v1.171.0`), sin PR a `main`, sin deploy a PROD.
+> **✅ Actualización 2026-08-20 (ver cont. 19, arriba del todo)**: las 3 preguntas fueron respondidas por
+> GO — (1) Fase 1 + arrancar ya la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2) alcance Fase 2 =
+> "todo lo NO fiscal" (hoy allowlist chico y curado); (3) Fase 4 = inteligencia interna de Genesis360, sin
+> urgencia. Fase 1 quedó **COMPLETA** y Fase 2 arrancó (backend, mig 376, sin wiring todavía) — ver el
+> bloque cont. 19 arriba para el detalle completo. El ítem #1 de este bloque (extender Supervisión) sigue
+> sin relevamiento, sin cambios.
+>
+> **Próximo paso**: el ítem #1 (extender Supervisión) sigue sin avanzar, esperando que GO pida el
+> relevamiento HTML. El ítem #2 (IA) ya avanzó — ver cont. 19 arriba. El estado técnico real de DEV/PROD ya
+> NO es el del bloque cont. 8 de abajo ni el de este bloque — ver cont. 19 (arriba del todo) para el estado
+> más reciente.
 >
 > Ver `log.md` (entrada al principio, 2026-08-14).
 >

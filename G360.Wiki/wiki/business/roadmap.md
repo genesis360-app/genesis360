@@ -20,8 +20,9 @@ commit `4dbe7fdb`, build de ~96s, `app.genesis360.pro` sirviendo el commit actua
 reales de PROD: los 8 tenants existentes quedaron con "Caja Fuerte USD"/"Efectivo USD" sembrados (backfill
 mig 373), 0 ventas con componente USD — sin cambio de comportamiento para tenants existentes. Detalle completo en
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 18)  
-**Versión en DEV:** v1.176.0, en paridad de código con PROD (mismo commit `50f5579a`, ahora ancestro de
-`main` tras el merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
+**Versión en DEV:** v1.177.0 (bump pendiente de commit — Plan IA Fase 1+2, mig 376, sin deploy a PROD).
+Código base en paridad con PROD hasta v1.176.0 (mismo commit `50f5579a`, ahora ancestro de `main` tras el
+merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
 `v1.172.0`; Fase 4 (mig 372, pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release
 `v1.173.0`; Fase 5 (migs 373+374, Bóveda ARS/USD) commit `28d9291e`, tag+release `v1.174.0`; Fase 6 (mig
@@ -30,6 +31,34 @@ sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto ab
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
 **Última actualización:** 20 de Agosto, 2026
+
+---
+
+## v1.177.0 — 🤖 Plan IA: memoria conversacional (Fase 1) + capa de RPCs de config (Fase 2, backend) — 🟡 EN DEV (2026-08-20)
+
+Primera vez que el "plan IA" (Artifact publicado 2026-08-14/15, ver `wiki/features/asistente-ia.md`) pasa de
+propuesta a código. Las 3 preguntas que lo bloqueaban fueron respondidas por GO hoy: arrancar Fase 1 + ya la
+capa de RPCs de Fase 2; alcance de Fase 2 "todo lo NO fiscal" (allowlist inicial chico y curado, se expande
+de a poco); Fase 4 (comparación entre negocios) es inteligencia interna, no de cara al cliente — sin código
+todavía.
+
+**Fase 1 (memoria conversacional de corto plazo) — completa.** El multi-turno ya andaba bien (el frontend ya
+mandaba el historial completo a la Edge Function, que ya lo reenviaba a Groq como mensajes de chat reales);
+el gap real era que un F5 perdía toda la conversación. Fix: `sessionStorage` en `AiAssistant.tsx`, keyed por
+usuario (PC compartida, ej. POS) — con un bug real de race entre "persistir" y "recargar" al cambiar de
+usuario, encontrado y corregido antes de terminar. Nueva regla 8 en el prompt ("PREGUNTÁ ANTES DE ASUMIR")
+en la EF `ai-assistant/index.ts` y su espejo `src/lib/aiAssistant.ts` (mantenidos idénticos). Test nuevo en
+`tests/unit/aiAssistant.test.ts`.
+
+**Fase 2 (capa de RPCs de config) — backend arrancado, SIN wiring.** Mig 376: tabla `ai_config_audit` + 3
+RPCs tipadas (`fn_ai_config_set_bool`/`_int`/`_text`), cada una deriva tenant/rol del JWT de quien llama
+(nunca como parámetro), exige DUEÑO/ADMIN, valida contra un allowlist hardcodeado de 6 campos NO fiscales
+que ya tenían su handler de 1-campo en `ConfigPage.tsx`. Revisada por `migration-reviewer`: APTA, sin
+hallazgos bloqueantes. Verificada con tests reales en DEV (impersonación, sin persistencia). Ni la EF ni el
+frontend invocan estas RPCs todavía — wiring real queda para una sesión futura a propósito.
+
+Detalle completo en `wiki/features/asistente-ia.md` y `sources/raw/project_pendientes.md` (bloque "ARRANCÁ
+ACÁ", cont. 19). Sin deploy a PROD.
 
 ---
 

@@ -6,7 +6,44 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-20
 ---
 
-# Historial de Migraciones (001-375)
+# Historial de Migraciones (001-376)
+
+**376 (`376_ai_config_rpc_layer.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
+APLICADA EN PROD, TODAVÍA SIN COMMITEAR (working tree local, archivo untracked):** capa de RPCs para que
+el Asistente IA pueda proponer/aplicar cambios de configuración con confirmación previa — Fase 2 del "Plan
+IA" (memoria + configuración), continúa la Fase 1 (memoria conversacional del Asistente, sin migración,
+mismo working tree sin commitear). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO hoy:
+alcance de Fase 2 = "todo lo NO fiscal" (allowlist chico y curado hoy, no las ~190 columnas de `tenants` de
+una). Agrega:
+1. Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
+   DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); sin
+   policy de escritura — solo las RPCs (`SECURITY DEFINER`) insertan.
+2. 3 RPCs tipadas por dato — `fn_ai_config_set_bool`/`_int`/`_text` (evita casteos dinámicos ambiguos de
+   una única función "genérica"). Cada una deriva `tenant_id`/rol DEL JWT de quien llama
+   (`get_user_tenant_id()`/`get_user_role()` — NUNCA como parámetro, imposible apuntar a otro tenant),
+   exige rol DUEÑO o ADMIN, valida el campo contra un ALLOWLIST hardcodeado DENTRO del cuerpo de la
+   función (ampliarlo es siempre una migración nueva, auditable en git — no una tabla editable), y escribe
+   en `ai_config_audit`.
+3. **Allowlist inicial: 6 campos NO fiscales de `tenants`** que ya tienen su propio handler de 1-campo en
+   `ConfigPage.tsx` (mismo patrón replicado server-side, no abre capacidad de escritura nueva):
+   `wms_reabastecimiento_on_demand`, `wms_reabastecimiento_umbral` (boolean), `pedido_manual_habilitado`,
+   `pedido_cierre_automatico` (boolean), `repositor_etiquetas_por_hoja` (integer), `pedido_numeracion`
+   (text). Cero campos fiscales/AFIP/contables.
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. 4 notas 🟡 no bloqueantes documentadas para cuando
+se conecte la IA de verdad (Fase 3 del plan): capturar `check_violation` con un mensaje lindo en vez del
+error crudo de Postgres (ej. `repositor_etiquetas_por_hoja` fuera de {4,6,12}); TOCTOU menor entre el
+SELECT y el UPDATE (solo afectaría el campo `valor_anterior` del audit log en una carrera extrema, nunca
+el valor final escrito); falta `COMMENT ON` en tabla/funciones; falta guard explícito de `p_valor IS
+NULL`. Verificado con 4 tests reales en DEV (impersonación vía `set_config('request.jwt.claims', ...)`
+dentro de bloques `DO $$` sin COMMIT, confirmado con `SELECT` posterior que nada persistió): (1) caso feliz
+cambia el campo y devuelve valor anterior/nuevo correctos; (2) campo NO allowlisted (`cuit`) rechazado; (3)
+rol sin permiso (SUPERVISOR) rechazado aunque el campo esté permitido; (4) valor fuera de dominio
+(`repositor_etiquetas_por_hoja=7`, fuera de {4,6,12}) frenado por un `CHECK` YA EXISTENTE en la tabla
+`tenants` (no hizo falta agregar nada nuevo). **IMPORTANTE — todavía sin wiring**: ni la EF `ai-assistant`
+ni el frontend invocan estas RPCs todavía — nadie puede usarlas salvo llamándolas directo (y solo si es
+DUEÑO/ADMIN del propio tenant con el campo en el allowlist). Ver [[wiki/features/asistente-ia]] → "Plan
+IA — memoria + configuración con confirmación".
 
 **375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), COMMITEADA Y PUSHEADA a `origin/dev` (commit

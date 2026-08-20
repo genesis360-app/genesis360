@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-20] update | Plan IA: Fase 1 (memoria conversacional) completa + arranca Fase 2 (capa de RPCs de config), mig 376
+
+Primera sesión de código real del "Plan IA" (Asistente IA con memoria + capacidad de proponer cambios de
+configuración) desde el Artifact publicado el 2026-08-14/15. Las 3 preguntas que lo bloqueaban fueron
+respondidas por GO: (1) Fase 1 + arrancar ya la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2)
+alcance de Fase 2 = "todo lo NO fiscal" (hoy allowlist chico y curado, no las ~190 columnas de `tenants`
+de una); (3) Fase 4 (comparación entre negocios) = inteligencia interna de Genesis360, sin urgencia, sin
+código tocado. Proyecto independiente y en paralelo a Caja USD/Auditoría (entrada de abajo) — no reemplaza
+ese estado, solo deja de ser el punto de entrada. **Todo esto está en DEV, TODAVÍA SIN COMMITEAR.**
+
+**Fase 1 — Memoria conversacional de corto plazo (✅ COMPLETA)**: el multi-turno YA funcionaba bien
+(`AiAssistant.tsx` ya mandaba el array completo de `messages`, la EF `ai-assistant` ya reenviaba
+`messages.slice(-12)` a Groq como mensajes de chat reales). El gap real: un F5 perdía toda la conversación.
+`src/components/AiAssistant.tsx` ahora persiste en `sessionStorage` (sobrevive a F5, se pierde al cerrar la
+pestaña — memoria entre sesiones sigue siendo Fase 3 del plan), keyed por `user?.id` (PC compartida, ej.
+POS de mostrador con varios cajeros). 🐛 Race real encontrada y corregida antes de terminar (no llegó a
+producción): sin un `useRef` guard, los mensajes del usuario viejo se escribían bajo la clave del usuario
+nuevo al cambiar de usuario en la misma pestaña. `supabase/functions/ai-assistant/index.ts` + espejo
+`src/lib/aiAssistant.ts` (verificados idénticos con `diff`) suman la regla 8 al prompt: "PREGUNTÁ ANTES DE
+ASUMIR". Test nuevo en `tests/unit/aiAssistant.test.ts` (16/16 verdes).
+
+**Fase 2 — Capa de RPCs de config (backend arrancado, SIN wiring todavía)**: migración 376
+(`376_ai_config_rpc_layer.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`). Tabla
+`ai_config_audit` (auditoría de cambios, RLS solo DUEÑO/ADMIN/SUPER_USUARIO del propio tenant, sin policy
+de escritura). 3 RPCs `SECURITY DEFINER` tipadas por dato — `fn_ai_config_set_bool`/`_int`/`_text` — cada
+una deriva `tenant_id`/rol DEL JWT (nunca parámetro), exige rol DUEÑO/ADMIN, valida contra un ALLOWLIST
+hardcodeado en el cuerpo (ampliarlo = migración nueva), y escribe en `ai_config_audit`. Allowlist inicial:
+6 campos NO fiscales de `tenants` que ya tienen handler de 1-campo en `ConfigPage.tsx`:
+`wms_reabastecimiento_on_demand`, `wms_reabastecimiento_umbral`, `pedido_manual_habilitado`,
+`pedido_cierre_automatico`, `repositor_etiquetas_por_hoja`, `pedido_numeracion`. Revisada por
+`migration-reviewer`: APTA, sin hallazgos bloqueantes (4 notas 🟡 para cuando se conecte la IA en Fase 3).
+Verificada con 4 tests reales en DEV vía impersonación en bloques `DO $$` sin COMMIT: caso feliz, campo NO
+allowlisted rechazado, rol sin permiso rechazado, valor fuera de dominio frenado por un `CHECK` YA
+EXISTENTE en `tenants`. **Todavía NO hay wiring**: ni la EF `ai-assistant` ni el frontend invocan estas
+RPCs — queda para una sesión futura, a propósito.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 19, "ARRANCÁ ACÁ"),
+[[wiki/features/asistente-ia]] (sección "Plan IA — memoria + configuración con confirmación"),
+`wiki/database/migraciones.md` (mig 376, EN DEV).
+
+---
+
 ## [2026-08-20] deploy | 🚀 v1.176.0 a PROD — Auditoría performance/calidad + Caja USD (Fases 1-7/8), 16 migraciones (360-375)
 
 Deploy a PROD de todo el trabajo que ya estaba commiteado en `dev`. **Sin código nuevo en esta tanda** — el

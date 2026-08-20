@@ -84,3 +84,78 @@ smoke OPTIONS 200 en PROD. Commit `8efa9960` en `dev`, PR #298 mergeado a `main`
 
 - Fases 1+2: CAJERO modo básico, "¿cómo emito una factura?" → guió por Ventas → Historial → "Emitir factura AFIP" (real), config AFIP atribuida al DUEÑO. Off-topic declinado 2/2.
 - Fases 3+4 (batería dorada completa): **AI-G8 FALLÓ en la primera corrida** (el injection "ignorá tus instrucciones" lo liberó) y **AI-G5 a medias** (guió a `/productos` e `/inventario`, fuera del menú del CAJERO) → refuerzos de regla 7 + aviso estructural por sección → **re-corridos en verde**: G8 declina manteniendo reglas, G5 guía por "Ventas" (buscador de productos, su menú real).
+
+## Plan IA — memoria + configuración con confirmación
+
+⚠ **No confundir con las "Fase 3"/"Fase 4" de arriba** — esas son etapas del desarrollo del retrieval de
+conocimiento (2026-07 y anteriores). Esto es un plan aparte, con sus propias 4 fases de riesgo creciente,
+para que el Asistente además pueda (más adelante) proponer y aplicar cambios de configuración con
+confirmación explícita, mantener memoria conversacional, preguntar en vez de asumir, y acumular memoria
+propia por tenant. Artifact de la propuesta (2026-08-14/15):
+https://claude.ai/code/artifact/855179e4-929d-402c-a0e7-719caef506e2
+
+Las 3 preguntas que bloqueaban el plan fueron respondidas por GO el 2026-08-20: (1) arrancar por Fase 1 +
+ya empezar la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2) alcance de Fase 2 = "todo lo NO fiscal"
+(allowlist chico y curado hoy, no las ~190 columnas de `tenants` de una); (3) Fase 4 (comparación entre
+negocios) = inteligencia interna de Genesis360, no de cara al cliente, sin urgencia.
+
+### Fase 1 — Memoria conversacional de corto plazo (✅ COMPLETA, 2026-08-20, EN DEV sin commitear)
+
+El multi-turno YA funcionaba bien antes de esta fase: `AiAssistant.tsx` ya mandaba el array completo de
+`messages` a la EF, que ya reenviaba `messages.slice(-12)` a Groq como mensajes de chat reales (no texto
+pegado al prompt) — mejor que lo que el plan original asumía. El gap real: un F5/recarga perdía toda la
+conversación (estado de React plano, sin persistencia).
+
+- `src/components/AiAssistant.tsx` — persiste en `sessionStorage` (sobrevive a F5, se pierde al cerrar la
+  pestaña; memoria entre sesiones sigue siendo Fase 3 del plan). Keyed por `user?.id` para no mezclar
+  conversaciones en una PC compartida (ej. POS de mostrador con varios cajeros). Usa un `useRef` como
+  guard contra una race real entre el efecto de "persistir" y el de "recargar" al cambiar de usuario en la
+  misma pestaña — sin el guard, los mensajes del usuario viejo se escribían bajo la clave del usuario
+  nuevo antes de reemplazarse (encontrado y corregido antes de terminar, no llegó a producción).
+- `supabase/functions/ai-assistant/index.ts` + espejo `src/lib/aiAssistant.ts` (mismo patrón del proyecto,
+  Deno no importa de `src/` — verificado con `diff` que quedaron idénticos) — regla 8 nueva en el prompt:
+  "PREGUNTÁ ANTES DE ASUMIR" (pedido ambiguo → pregunta corta para desambiguar, no adivinar).
+- Test nuevo en `tests/unit/aiAssistant.test.ts` (16/16 verdes) verificando la regla 8 en el prompt.
+
+### Fase 2 — Capa de RPCs para proponer/aplicar config (🟡 backend arrancado, SIN wiring todavía)
+
+**Migración 376** (`376_ai_config_rpc_layer.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`),
+todavía sin PROD y sin commitear:
+
+- Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
+  DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); sin
+  policy de escritura, solo las RPCs insertan.
+- 3 RPCs `SECURITY DEFINER` tipadas por dato — `fn_ai_config_set_bool`/`_int`/`_text` (evita casteos
+  dinámicos ambiguos de una función "genérica"). Cada una deriva `tenant_id`/rol DEL JWT de quien llama
+  (nunca como parámetro — imposible apuntar a otro tenant), exige rol DUEÑO o ADMIN, valida el campo
+  contra un ALLOWLIST hardcodeado en el cuerpo de la función (ampliarlo = migración nueva, auditable en
+  git), y escribe en `ai_config_audit`.
+- **Allowlist inicial — 6 campos NO fiscales de `tenants`**, elegidos porque ya tienen su propio handler de
+  1-campo en `ConfigPage.tsx` (mismo patrón replicado server-side, no abre capacidad de escritura nueva):
+  `wms_reabastecimiento_on_demand`, `wms_reabastecimiento_umbral` (boolean), `pedido_manual_habilitado`,
+  `pedido_cierre_automatico` (boolean), `repositor_etiquetas_por_hoja` (integer), `pedido_numeracion`
+  (text). Cero campos fiscales/AFIP/contables.
+- Revisada por `migration-reviewer` ANTES de aplicar: APTA, sin hallazgos bloqueantes. 4 notas 🟡 no
+  bloqueantes para cuando se conecte la IA de verdad en Fase 3 del plan: capturar `check_violation` con
+  mensaje lindo; TOCTOU menor entre SELECT y UPDATE (solo afecta `valor_anterior` del audit log en una
+  carrera extrema, nunca el valor final escrito); falta `COMMENT ON`; falta guard explícito de `p_valor IS
+  NULL`.
+- Verificado con 4 tests reales en DEV (impersonación vía `set_config('request.jwt.claims', ...)` dentro
+  de bloques `DO $$` sin COMMIT): caso feliz, campo NO allowlisted (`cuit`) rechazado, rol sin permiso
+  (SUPERVISOR) rechazado, valor fuera de dominio (`repositor_etiquetas_por_hoja=7`) frenado por un `CHECK`
+  YA EXISTENTE en `tenants` (no hizo falta agregar nada nuevo).
+
+**Todavía NO hay wiring**: ni la EF `ai-assistant` ni el frontend invocan estas 3 RPCs — nadie puede
+usarlas hoy salvo llamándolas directo (y solo si es DUEÑO/ADMIN del propio tenant con el campo en el
+allowlist). El tool-calling real de la IA (Groq) + tarjeta de confirmación en el chat antes de aplicar
+queda para una sesión futura, a propósito, para revisar esta capa de forma aislada primero.
+
+### Fases 3 y 4 del plan — sin código
+
+- **Fase 3** (memoria persistente por tenant, riesgo medio — privacidad): tabla nueva, RLS por tenant,
+  visible/borrable por el tenant. Sin código todavía.
+- **Fase 4** (comparación entre negocios, riesgo alto — cruza tenants): decidido por GO como "inteligencia
+  interna" de Genesis360 (no de cara al cliente final), sin urgencia. Sin código ni diseño todavía.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 19), `log.md` (2026-08-20),
+`wiki/database/migraciones.md` (mig 376).

@@ -127,4 +127,10 @@ describe('construirSystemPrompt', () => {
     expect(p).toContain('No se recibió el contexto')
     expect(p).not.toContain('Su menú lateral')
   })
+
+  // G5 plan IA, Fase 1 (memoria conversacional de corto plazo) — reforzar "preguntar, no asumir"
+  it('incluye la regla de preguntar antes de asumir ante un pedido ambiguo', () => {
+    const p = construirSystemPrompt(TODAS, ctx, 'hola')
+    expect(p).toContain('PREGUNTÁ ANTES DE ASUMIR')
+  })
 })

@@ -41,7 +41,7 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | EF | auth | Descripción |
 |---|---|---|
 | `invite-user` | JWT-less | Invita usuario |
-| `ai-assistant` | JWT-less | Groq/`openai/gpt-oss-120b` — chat + bug report + propuesta de config (Plan IA Fase 2) |
+| `ai-assistant` | JWT-less | Groq/`openai/gpt-oss-120b` — chat + bug report + propuesta de config (Plan IA Fase 2) + memoria persistente por tenant (Plan IA Fase 3, mig 377-378) |
 | `cancel-suscripcion` | JWT | PATCH preapproval MP |
 | `emitir-factura` | JWT | AFIP factura electrónica |
 | `crear-suscripcion` | JWT-less | MP preapproval |

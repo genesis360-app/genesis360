@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, TrendingUp, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box, Recycle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, TrendingUp, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box, Recycle, Brain } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -496,6 +496,89 @@ function MarketplaceSection() {
               </button>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Memoria del Asistente IA — Plan IA, Fase 3 (mig 377) ────────────────────
+// Hechos que el Asistente IA fue guardando (con confirmación explícita en el chat) sobre el
+// negocio, para personalizar conversaciones futuras. Solo el DUEÑO puede verlos/borrarlos —
+// mismo criterio de gating que el resto de las secciones de esta pantalla (MarketplaceSection,
+// ModoOperacionSection): la RLS (mig 377) es más amplia (también ADMIN/SUPER_USUARIO) pero acá
+// se sigue el patrón local del archivo.
+interface HechoMemoria { id: string; hecho: string; created_at: string }
+
+function AiMemoriaSection() {
+  const { user, tenant } = useAuthStore()
+  const canEdit = user?.rol === 'DUEÑO'
+  const [collapsed, setCollapsed] = useState(true)
+  const [hechos, setHechos] = useState<HechoMemoria[]>([])
+  const [loading, setLoading] = useState(false)
+  const [borrandoId, setBorrandoId] = useState<string | null>(null)
+
+  if (!canEdit) return null
+
+  const cargar = async () => {
+    if (!tenant?.id) return
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('ai_tenant_memoria')
+      .select('id, hecho, created_at')
+      .eq('tenant_id', tenant.id)
+      .order('created_at', { ascending: false })
+    if (error) toast.error(error.message)
+    else setHechos(data ?? [])
+    setLoading(false)
+  }
+
+  const expandir = () => {
+    const abriendo = collapsed
+    setCollapsed(c => !c)
+    if (abriendo) cargar()
+  }
+
+  const borrar = async (id: string) => {
+    setBorrandoId(id)
+    const { error } = await supabase.from('ai_tenant_memoria').delete().eq('id', id)
+    if (error) toast.error(error.message)
+    else setHechos(prev => prev.filter(h => h.id !== id))
+    setBorrandoId(null)
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <button onClick={expandir}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+        <div className="flex items-center gap-2">
+          <Brain size={16} className="text-accent-text" />
+          <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Memoria del Asistente IA</span>
+        </div>
+        {collapsed ? <ChevronDown size={16} className="text-gray-400 dark:text-gray-500" /> : <ChevronUp size={16} className="text-gray-400 dark:text-gray-500" />}
+      </button>
+      {!collapsed && (
+        <div className="px-5 pb-5 space-y-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Hechos sobre tu negocio que el Asistente IA guardó (con tu confirmación, desde el chat) para responderte de forma más precisa en el futuro. Podés borrar cualquiera en cualquier momento.
+          </p>
+          {loading && <p className="text-sm text-gray-400 dark:text-gray-500">Cargando...</p>}
+          {!loading && hechos.length === 0 && (
+            <p className="text-sm text-gray-400 dark:text-gray-500">Todavía no hay hechos guardados.</p>
+          )}
+          {!loading && hechos.map(h => (
+            <div key={h.id} className="flex items-start justify-between gap-3 bg-gray-50 dark:bg-gray-700 rounded-xl px-3.5 py-2.5">
+              <div>
+                <p className="text-sm text-gray-700 dark:text-gray-300">{h.hecho}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{new Date(h.created_at).toLocaleDateString('es-AR')}</p>
+              </div>
+              <button onClick={() => borrar(h.id)} disabled={borrandoId === h.id}
+                title="Borrar"
+                className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 shrink-0">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -3284,6 +3367,8 @@ export default function ConfigPage() {
       {tab === 'negocio' && <ModoOperacionSection />}
 
       {tab === 'negocio' && <MarketplaceSection />}
+
+      {tab === 'negocio' && <AiMemoriaSection />}
 
 
       {/* ── VENTAS ───────────────────────────────────────────────────────────── */}

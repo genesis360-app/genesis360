@@ -6,7 +6,48 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-20
 ---
 
-# Historial de Migraciones (001-376)
+# Historial de Migraciones (001-378)
+
+**378 (`378_ai_memoria_listar_rpc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
+APLICADA EN PROD, commit pendiente en esta misma sesión:** fix de un hallazgo real de `code-reviewer` sobre
+la mig 377 (abajo) — la EF `ai-assistant` pretendía inyectar la memoria del negocio en el prompt para
+CUALQUIER rol que chatee (solo la ESCRITURA está restringida a DUEÑO/ADMIN), pero lo hacía con un `SELECT`
+directo a `ai_tenant_memoria` usando la sesión real del usuario; la policy SELECT de la mig 377 solo permite
+DUEÑO/ADMIN/SUPER_USUARIO, así que para cualquier otro rol (CAJERO, DEPOSITO, SUPERVISOR...) ese `SELECT`
+devolvía `[]` en silencio — la memoria nunca se inyectaba para esos roles, pese a que el diseño es que se
+inyecte para todos. Agrega `fn_ai_memoria_listar()` (`SECURITY DEFINER`, deriva `tenant_id` del JWT, **sin
+filtro de rol** — los hechos son datos de negocio de baja sensibilidad, nunca fiscales/personales, reforzado
+en la descripción del tool y en el prompt). **✅ `supabase/functions/ai-assistant/index.ts` ya llama a
+`fn_ai_memoria_listar()` (ya no al `SELECT` directo) — redeployada a DEV y re-verificada con el e2e mutante
+134.** Verificado además con impersonación real (`SET LOCAL ROLE` + `request.jwt.claims`, dentro de un
+bloque sin commit): con la sesión de un rol no-DUEÑO/ADMIN/SUPER_USUARIO, el `SELECT` directo a la tabla
+da 0 filas (RLS bloquea, como se espera) mientras que `fn_ai_memoria_listar()` da la fila real — confirma
+que el fix cierra la brecha. Con esto, el hallazgo del `code-reviewer` quedó 100% resuelto, no solo
+reportado.
+
+**377 (`377_ai_tenant_memoria.sql`) — reportada como APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+NO APLICADA EN PROD, commit pendiente en esta misma sesión (`APP_VERSION` ya bumpeado a `v1.179.0` en el
+working tree, sin commit todavía):** Plan IA — Fase 3 (memoria persistente por tenant), continúa la Fase 2
+(mig 376). Diseño ya definido en el Artifact original del plan (2026-08-14/15): NO se guarda charla cruda —
+se guardan HECHOS DESTILADOS que la IA propone guardar, con confirmación explícita del usuario en el chat
+(mismo patrón de la Fase 2), y el tenant puede ver/borrar su propia memoria desde Configuración. Agrega:
+1. Tabla `ai_tenant_memoria` (`tenant_id`, `hecho` texto ≤300 chars, `usuario_id`, `created_at`) — RLS:
+   SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO del tenant (mismo patrón que `ai_config_audit`, mig 376);
+   sin policy de INSERT — solo escribe la RPC.
+2. RPC `fn_ai_memoria_guardar(p_hecho text)` (`SECURITY DEFINER`): deriva `tenant_id`/rol del JWT de quien
+   llama (nunca parámetro), exige DUEÑO/ADMIN, valida y trunca el hecho (máximo 300 caracteres). Tope de 20
+   hechos por tenant, podado dentro de la misma RPC en cada escritura (no hay `pg_cron` habilitado en este
+   proyecto — sweep sincrónico, no periódico) porque la lista se inyecta COMPLETA en cada system prompt
+   nuevo.
+
+`migration-reviewer`: APTA, sin hallazgos bloqueantes. 2 sugerencias menores no bloqueantes ya aplicadas
+(guard NULL explícito, tiebreaker `id DESC` en el tope de 20 para evitar no-determinismo en empates de
+`created_at`). **Wiring completo (misma sesión)**: la EF `ai-assistant` y el frontend (`AiAssistant.tsx`,
+`ConfigPage.tsx`) ya invocan/muestran esta capa — tool-calling de Groq (`guardar_hecho_memoria`) arma la
+propuesta, tarjeta de confirmación en el chat (ícono `Brain`), y recién al confirmar se llama a
+`fn_ai_memoria_guardar` con la sesión del usuario; `ConfigPage.tsx` suma la sección "Memoria del Asistente
+IA" (lista/borra hechos, gateada a DUEÑO). Ver mig 378 arriba (fix, ya resuelto, de lectura para roles no
+DUEÑO/ADMIN) y [[wiki/features/asistente-ia]] → "Plan IA" → Fase 3.
 
 **376 (`376_ai_config_rpc_layer.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
 APLICADA EN PROD, ✅ COMMITEADA (commit `1b5e89aa`, tag+release `v1.177.0`):** capa de RPCs para que
@@ -41,10 +82,11 @@ cambia el campo y devuelve valor anterior/nuevo correctos; (2) campo NO allowlis
 rol sin permiso (SUPERVISOR) rechazado aunque el campo esté permitido; (4) valor fuera de dominio
 (`repositor_etiquetas_por_hoja=7`, fuera de {4,6,12}) frenado por un `CHECK` YA EXISTENTE en la tabla
 `tenants` (no hizo falta agregar nada nuevo). **✅ Wiring completo (sesión siguiente, misma jornada
-2026-08-20, EN DEV TODAVÍA SIN COMMITEAR)**: la EF `ai-assistant` y el frontend (`AiAssistant.tsx`) ya
-invocan estas RPCs — tool-calling de Groq arma la propuesta, tarjeta de confirmación en el chat, y recién
-al confirmar se llama a la RPC real con la sesión del usuario. Ver [[wiki/features/asistente-ia]] → "Plan
-IA — memoria + configuración con confirmación".
+2026-08-20, ✅ COMMITEADA `v1.178.0`, commit `3fb956f8`)**: la EF `ai-assistant` y el frontend
+(`AiAssistant.tsx`) ya invocan estas RPCs — tool-calling de Groq arma la propuesta, tarjeta de confirmación
+en el chat, y recién al confirmar se llama a la RPC real con la sesión del usuario. Continúa con la Fase 3
+(memoria persistente, migs 377-378, arriba). Ver [[wiki/features/asistente-ia]] → "Plan IA — memoria +
+configuración con confirmación".
 
 **375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), COMMITEADA Y PUSHEADA a `origin/dev` (commit
@@ -381,7 +423,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-20:** 376 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-20:** 378 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,

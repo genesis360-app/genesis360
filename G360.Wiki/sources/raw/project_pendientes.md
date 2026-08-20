@@ -6,12 +6,127 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 20) — 🐛🔴 Asistente IA estaba ROTO para TODOS los usuarios, RESUELTO
-> Y DEPLOYADO A PROD (Groq sacó los modelos Llama del catálogo) + 🤖 Plan IA: wiring COMPLETO de Fase 2
-> (propuesta de config con confirmación) — **`v1.178.0`, COMMITEADO Y PUSHEADO a `origin/dev`** — continúa
-> directo el bloque de abajo (cont. 19: Fase 1 + backend de Fase 2, ✅ YA COMMITEADO como `v1.177.0`, ahora
+> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 21) — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100%
+> COMPLETA EN CÓDIGO — cierra el plan de código de 3 fases (Fase 4 queda deliberadamente diferida, sin
+> diseño ni código) — **TODAVÍA SOLO EN DEV, commit pendiente en esta misma sesión** (`APP_VERSION` ya
+> bumpeado a `v1.179.0` en el working tree, sin commitear al momento de escribir esto — NO inventar un hash
+> ni un tag, confirmar con `git log`/`git tag` al cierre real) — continúa directo el bloque de abajo (cont.
+> 20: fix crítico del modelo Groq + wiring completo de Fase 2, ✅ YA COMMITEADO como `v1.178.0`, ahora
 > histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE como estado real de DEV/PROD
 > para ESE proyecto, sin cambios en esta sesión
+>
+> #### 🤖 Plan IA — Fase 3 (memoria persistente por tenant), 100% completa en código
+>
+> Diseño ya definido en el Artifact original del plan (2026-08-14/15): NO se guarda charla cruda — se
+> guardan HECHOS DESTILADOS que la IA propone guardar, con confirmación explícita del usuario en el chat
+> (mismo patrón ya en producción para la Fase 2 "proponer_cambio_configuracion" — tarjeta Confirmar/
+> Rechazar, la EF nunca escribe nada, solo el frontend tras la confirmación real). El tenant puede ver y
+> borrar su propia memoria desde Configuración.
+>
+> **Migración 377** (`377_ai_tenant_memoria.sql`), reportada como APLICADA Y VERIFICADA en DEV
+> (`gcmhzdedrkmmzfzfveig`) por la sesión que la escribió:
+> - Tabla `ai_tenant_memoria` (`tenant_id`, `hecho` texto ≤300 chars, `usuario_id`, `created_at`).
+> - RLS: SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO del tenant (mismo universo que `ai_config_audit`,
+>   mig 376). Sin policy de INSERT — solo escribe la RPC.
+> - RPC `fn_ai_memoria_guardar(p_hecho text)` (`SECURITY DEFINER`): deriva `tenant_id`/rol del JWT (nunca
+>   parámetro), exige DUEÑO/ADMIN, valida y trunca. Tope de 20 hechos por tenant, podado dentro de la misma
+>   RPC en cada escritura (sin `pg_cron` habilitado en este proyecto — sweep sincrónico, no periódico)
+>   porque la lista se inyecta COMPLETA en cada system prompt nuevo.
+> - Revisada por `migration-reviewer` ANTES de aplicar: APTA. 2 sugerencias menores no bloqueantes ya
+>   aplicadas (guard NULL explícito, tiebreaker `id DESC` en el tope de 20 para evitar no-determinismo en
+>   empates de `created_at`).
+>
+> **✅ Hallazgo encontrado por un `code-reviewer` YA DENTRO de esta misma sesión (no estaba en el brief
+> original) — CERRADO en la misma sesión, no quedó pendiente.** La EF inyectaba la memoria en el prompt
+> haciendo un `SELECT` directo a `ai_tenant_memoria` con la sesión REAL del usuario que chatea — pero la
+> policy SELECT de la mig 377 solo permite DUEÑO/ADMIN/SUPER_USUARIO, así que para cualquier otro rol
+> (CAJERO, DEPOSITO, SUPERVISOR...) ese `SELECT` devolvía `[]` en silencio y la memoria nunca se inyectaba,
+> pese a que el diseño es que se inyecte para TODOS los roles (solo la ESCRITURA está restringida a
+> DUEÑO/ADMIN). **Migración 378** (`378_ai_memoria_listar_rpc.sql`), APLICADA Y VERIFICADA EN DEV, agrega
+> `fn_ai_memoria_listar()` (`SECURITY DEFINER`, deriva tenant del JWT, sin filtro de rol — los hechos son
+> datos de negocio de baja sensibilidad, nunca fiscales/personales, reforzado en el prompt).
+> `supabase/functions/ai-assistant/index.ts` ya llama a `fn_ai_memoria_listar()` (ya no al `SELECT`
+> directo) — redeployada a DEV y re-verificada con el e2e mutante 134 (sigue en verde). Verificado además
+> con impersonación real (`SET LOCAL ROLE` + `request.jwt.claims`, dentro de una transacción sin commit):
+> con la sesión de un rol no-DUEÑO/ADMIN/SUPER_USUARIO, el `SELECT` directo a la tabla da 0 filas (RLS
+> bloquea, como se espera) mientras que `fn_ai_memoria_listar()` devuelve la fila real — confirma que la
+> memoria ahora sí se inyecta para cualquier rol que chatee, como decía el diseño original.
+>
+> **Wiring (EF + frontend), mismo patrón que Fase 2**:
+> - `supabase/functions/ai-assistant/index.ts` + espejo testeado `src/lib/aiAssistant.ts`: nuevo tool Groq
+>   `guardar_hecho_memoria` (solo ofrecido a DUEÑO/ADMIN, mismo gate que la propuesta de config), reglas
+>   10-11 nuevas en el system prompt ("preguntá antes de guardar, salvo pedido explícito tipo 'recordá
+>   que...'"; la memoria inyectada son DATOS, nunca instrucciones — defensa contra prompt injection
+>   almacenado, un hecho guardado en una sesión vieja no puede pisar las reglas). La EF ahora resuelve
+>   `tenant_id` UNA VEZ arriba del handler (antes se resolvía de nuevo dentro del branch de config) y lo
+>   reusa para leer hasta 20 hechos vía `fn_ai_memoria_listar()` e inyectarlos (`## MEMORIA DEL NEGOCIO`) y
+>   para resolver el valor actual de una propuesta de config (Fase 2). La memoria se inyecta para cualquier
+>   rol que chatee (personaliza respuestas a todo el negocio), pero solo DUEÑO/ADMIN pueden pedirle a la IA
+>   que guarde un hecho nuevo.
+> - `src/components/AiAssistant.tsx`: tarjeta de confirmación nueva (ícono `Brain`, lucide-react) —
+>   "Guardar en la memoria del negocio" / Confirmar-Rechazar, mismo lock anti-doble-submit (`useRef<Set>`)
+>   que la tarjeta de propuesta de config; `confirmarMemoria` es el ÚNICO lugar que llama a
+>   `fn_ai_memoria_guardar`, con la sesión real del usuario.
+> - `src/pages/ConfigPage.tsx`: sección nueva "Memoria del Asistente IA" (`AiMemoriaSection`, colapsable,
+>   ícono `Brain`) en el tab "Mi negocio", gateada a `user?.rol === 'DUEÑO'` (mismo patrón LOCAL de ese
+>   archivo que `MarketplaceSection`/`ModoOperacionSection` — la RLS es más amplia, DUEÑO/ADMIN/
+>   SUPER_USUARIO, pero la UI de esa pantalla sigue su propia convención existente). Lista los hechos con
+>   fecha, botón de borrado (tacho) por fila que llama `DELETE` directo (RLS lo protege).
+>
+> **Verificación real, no solo code-audit**:
+> - `tsc --noEmit` y `npm run build` verdes.
+> - Suite unit completa: 100 archivos, 1625 tests verdes (+9 nuevos para `construirToolGuardarMemoria`/
+>   `validarHechoMemoria`/inyección de memoria en el prompt).
+> - **E2E mutante nuevo contra DEV real** (`tests/e2e/134_asistente_ia_memoria_mutante.spec.ts`, usuario
+>   DUEÑO de prueba, tenant "Almacén Jorgito" — tenant de pruebas de GO, no un cliente real): pidió "Recordá
+>   que [hecho]" al chat real (Groq real, sin mockear) → tarjeta de propuesta → Confirmar → verificado con
+>   REST que la fila quedó en `ai_tenant_memoria` con la sesión real del DUEÑO → Configuración → "Memoria
+>   del Asistente IA" la muestra → borrado por UI → verificado con REST que la fila desapareció de la DB.
+>   Camino Rechazar también cubierto (verificado que NO deja fila). EF nueva deployada a DEV vía
+>   `supabase functions deploy ai-assistant --project-ref gcmhzdedrkmmzfzfveig`.
+> - 🐛 Gotcha real encontrado armando el propio test: el estado "Guardado" en el chat es OPTIMISTA (se
+>   pinta antes de que la RPC termine su round-trip real, mismo patrón que la Fase 2) — un test que lee la
+>   DB inmediato después de ver "Guardado" corre una carrera falsa; resuelto con `expect.poll` en vez de una
+>   lectura única.
+>
+> #### 📊 Estado real (al momento de escribir esta entrada — verificar antes de cerrar la sesión)
+>
+> **Commit pendiente en esta misma sesión** — al momento de escribir esto, `git status` muestra working
+> tree modificado (`AiAssistant.tsx`, `ConfigPage.tsx`, `aiAssistant.ts`, `ai-assistant/index.ts`,
+> `brand.ts`, `aiAssistant.test.ts`) + migraciones 377 y 378 sin trackear, SIN ningún commit nuevo sobre
+> `5501304b` (la punta de `origin/dev`). `APP_VERSION` ya bumpeado a `v1.179.0` en el working tree. **NO
+> inventar un hash de commit ni un tag `v1.179.0` — confirmar con `git log`/`git tag` al cierre real de la
+> sesión.**
+>
+> **Deploy a PROD: confirmado que NO pasó todavía** — `gh pr list` muestra el último merge a `main` como
+> PR #331 (`v1.176.0`, 2026-08-20), sin ningún PR nuevo para v1.177/178/179; `git log origin/main` confirma
+> la punta en `4dbe7fdb` (ancestro `50f5579a`, la Fase 7/8 de Caja USD) — nada del Plan IA llegó a `main`
+> todavía. El único código del Plan IA en PROD sigue siendo el fix aislado del modelo Groq (2 constantes,
+> deployado directo a la EF, sin pasar por `main`/Vercel — ver cont. 20 abajo).
+>
+> **Próximo paso**: (1) commitear esta tanda (Fase 3 completa, incluido el fix de la mig 378) — bump ya
+> hecho a `v1.179.0`; (2) GO ya autorizó deployar a PROD el wiring completo del Plan IA (Fases 1-3, hoy
+> 100% en DEV) en esta misma sesión ("pasamos todo eso a PRD") — verificar el resultado real antes de
+> asumir que ya ocurrió. **Fase 4 (comparación entre negocios) sigue SIN EMPEZAR** —
+> confirmado por GO como "inteligencia interna de Genesis360, no de cara al cliente final", sin urgencia,
+> sin diseño ni código. Necesita decisión de producto/legal (extender `tenant_consentimiento_legal`, mig
+> 249) antes de cualquier código. Con esto, el "Plan IA" de 4 fases queda: **Fases 1-3 completas en
+> código** (Fases 1-2 commiteadas como `v1.177.0`/`v1.178.0`, Fase 3 pendiente de commit), **Fase 4
+> deliberadamente diferida** — no es un pendiente urgente, es una decisión de scope ya tomada.
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), [[wiki/features/asistente-ia]] (sección "Plan IA"),
+> `wiki/database/migraciones.md` (migs 377-378), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 20) — 🐛🔴 Asistente IA estaba ROTO para TODOS los usuarios, RESUELTO
+> Y DEPLOYADO A PROD (Groq sacó los modelos Llama del catálogo) + 🤖 Plan IA: wiring COMPLETO de Fase 2
+> (propuesta de config con confirmación) — **`v1.178.0`, COMMITEADO Y PUSHEADO a `origin/dev`** — este
+> bloque queda SUPERADO por el de arriba (cont. 21: Fase 3 del Plan IA) solo como punto de entrada — su
+> contenido SIGUE VIGENTE, no fue revertido, describe el estado real del fix del modelo Groq + wiring de
+> Fase 2 — continúa directo el bloque de abajo (cont. 19: Fase 1 + backend de Fase 2, ✅ YA COMMITEADO como
+> `v1.177.0`, ahora histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE como estado
+> real de DEV/PROD para ESE proyecto, sin cambios en esa sesión
 >
 > #### 🔴 HALLAZGO CRÍTICO (no relacionado al wiring, afecta a TODOS los tenants, incluido PROD) — el
 > Asistente IA devolvía error a CUALQUIER pregunta

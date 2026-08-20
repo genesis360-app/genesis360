@@ -24,17 +24,27 @@ mig 373), 0 ventas con componente USD — sin cambio de comportamiento para tena
 `ai-assistant` de PROD recibió un hotfix aislado el mismo 2026-08-20 (modelos de Groq deprecados →
 `openai/gpt-oss-120b`/`20b`), deployada directo vía `supabase functions deploy` — no pasa por PR/Vercel,
 así que no mueve el número de versión de arriba. Ver sección v1.178.0 abajo.  
-**Versión en DEV:** v1.178.0 — wiring completo de Fase 2 (propuesta de config con confirmación en el chat,
-verificado en browser real contra DEV con Playwright — ver detalle abajo) + fix del bug crítico que rompía
-el Asistente IA para TODOS los usuarios (Groq descatalogó `llama-3.3-70b-versatile`/`llama-3.1-8b-instant`
-del catálogo de la cuenta; reemplazados por `openai/gpt-oss-120b`/`openai/gpt-oss-20b`, confirmados
-vigentes con un `GET /openai/v1/models` real). **El fix del modelo, aislado (sin el resto del wiring de
-Fase 2), ya se deployó DIRECTO a la Edge Function de PROD** (`jjffnbrdjchquexdfgwq`, vía
+**Versión en DEV:** v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100% completa en código,
+**commit pendiente en esta misma sesión** (`APP_VERSION` ya bumpeado a `v1.179.0` en el working tree, sin
+commit todavía — confirmado con `git status`/`git log`, no inventar hash ni tag). Cierra el plan de código
+de 3 fases del Asistente IA (Fase 4 queda deliberadamente diferida, sin diseño ni código — ver detalle
+abajo). Migración 377 (`ai_tenant_memoria` + `fn_ai_memoria_guardar`) y migración 378 (`fn_ai_memoria_listar`,
+fix de un hallazgo de `code-reviewer` sobre lectura de memoria para roles no DUEÑO/ADMIN) APLICADAS Y
+VERIFICADAS en DEV, wiring conectado y re-verificado con el e2e mutante 134 — ver
+`sources/raw/project_pendientes.md` (cont. 21). Antes: v1.178.0 — wiring completo de
+Fase 2 (propuesta de config con confirmación en el chat, verificado en browser real contra DEV con
+Playwright) + fix del bug crítico que rompía el Asistente IA para TODOS los usuarios (Groq descatalogó
+`llama-3.3-70b-versatile`/`llama-3.1-8b-instant` del catálogo de la cuenta; reemplazados por
+`openai/gpt-oss-120b`/`openai/gpt-oss-20b`, confirmados vigentes con un `GET /openai/v1/models` real). **El
+fix del modelo, aislado (sin el resto del wiring de Fase 2/3), sigue siendo el ÚNICO código del Plan IA
+deployado DIRECTO a la Edge Function de PROD** (`jjffnbrdjchquexdfgwq`, vía
 `supabase functions deploy --workdir <carpeta aislada>`, confirmado con `get_edge_function` que PROD quedó
-con los 2 modelos nuevos y CERO código de Fase 2/tool-calling) — el Asistente IA de los 8 tenants reales
-vuelve a funcionar. El resto (wiring de propuesta de config) queda en DEV a propósito, sin deploy a PROD
-todavía. Ver `wiki/features/asistente-ia.md` → "Plan IA" y "🐛 Modelo Groq roto",
-`sources/raw/project_pendientes.md` (cont. 20, "ARRANCÁ ACÁ").  
+con los 2 modelos nuevos y CERO código de Fase 2/3/tool-calling) — el Asistente IA de los 8 tenants reales
+vuelve a funcionar. **El resto (Fases 1-3 completas: memoria conversacional, propuesta de config, memoria
+persistente) queda 100% en DEV, sin deploy a PROD todavía — confirmado con `gh pr list`: el último merge a
+`main` sigue siendo PR #331 (`v1.176.0`), sin ningún PR nuevo para v1.177/178/179.** Ver
+`wiki/features/asistente-ia.md` → "Plan IA" y "🐛 Modelo Groq roto", `sources/raw/project_pendientes.md`
+(cont. 21, "ARRANCÁ ACÁ").  
 Código base en paridad con PROD hasta v1.176.0 (mismo commit `50f5579a`, ahora ancestro de `main` tras el
 merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -45,6 +55,61 @@ sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto ab
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
 **Última actualización:** 20 de Agosto, 2026
+
+---
+
+## v1.179.0 — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) — 100% completa en código, cierra el plan de 3 fases — commit pendiente en esta misma sesión (2026-08-20)
+
+Continúa directo la v1.178.0 (abajo), misma jornada. Diseño ya definido en el Artifact original del plan
+(2026-08-14/15): NO se guarda charla cruda — se guardan HECHOS DESTILADOS que la IA propone guardar, con
+confirmación explícita del usuario en el chat (mismo patrón productivo de la Fase 2 — tarjeta Confirmar/
+Rechazar, la EF nunca escribe nada, solo el frontend tras la confirmación real). El tenant puede ver y
+borrar su propia memoria desde Configuración.
+
+**Migración 377** (`377_ai_tenant_memoria.sql`), reportada aplicada y verificada en DEV
+(`gcmhzdedrkmmzfzfveig`): tabla `ai_tenant_memoria` (`tenant_id`, `hecho` ≤300 chars, `usuario_id`,
+`created_at`), RLS SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO (mismo universo que `ai_config_audit`, mig
+376, sin policy de INSERT), y RPC `fn_ai_memoria_guardar(p_hecho text)` (`SECURITY DEFINER`) que deriva
+`tenant_id`/rol del JWT (nunca parámetro), exige DUEÑO/ADMIN, valida/trunca, y poda al tope de 20 hechos
+por tenant en cada escritura (sin `pg_cron` en este proyecto, sweep sincrónico) — la lista se inyecta
+COMPLETA en cada system prompt nuevo. Revisada por `migration-reviewer`: APTA, 2 sugerencias menores ya
+aplicadas.
+
+**Wiring (EF + frontend), mismo patrón que Fase 2**: `supabase/functions/ai-assistant/index.ts` + espejo
+`src/lib/aiAssistant.ts` suman el tool Groq `guardar_hecho_memoria` (gateado a DUEÑO/ADMIN) y reglas 10-11
+en el prompt ("preguntá antes de guardar, salvo pedido explícito"; la memoria inyectada son DATOS, nunca
+instrucciones). La EF resuelve `tenant_id` una sola vez arriba del handler y lo reusa para inyectar hasta
+20 hechos (`## MEMORIA DEL NEGOCIO`) y para el valor actual de una propuesta de config (Fase 2).
+`src/components/AiAssistant.tsx` suma la tarjeta de confirmación (ícono `Brain`) — `confirmarMemoria` es el
+único punto que llama a `fn_ai_memoria_guardar` con la sesión real. `src/pages/ConfigPage.tsx` suma la
+sección "Memoria del Asistente IA" (colapsable, tab "Mi negocio", gateada a `user?.rol === 'DUEÑO'`).
+
+**Verificación real**: `tsc --noEmit`/`build` verdes, suite completa (100 archivos, 1625 tests, +9 nuevos).
+**E2E mutante nuevo contra DEV real** (`tests/e2e/134_asistente_ia_memoria_mutante.spec.ts`, usuario DUEÑO
+de prueba, tenant "Almacén Jorgito"): "Recordá que [hecho]" → tarjeta → Confirmar → verificado con REST
+que la fila quedó en `ai_tenant_memoria` → Configuración la muestra → borrado por UI → verificado con REST
+que desapareció. Camino Rechazar también cubierto. 🐛 Gotcha real: el estado "Guardado" es OPTIMISTA (se
+pinta antes del round-trip real de la RPC) — resuelto con `expect.poll` en el test.
+
+**✅ Hallazgo encontrado y CERRADO en la misma sesión**: un `code-reviewer` encontró que la EF inyectaba la
+memoria con un `SELECT` directo a `ai_tenant_memoria` con la sesión del usuario que chatea — pero la policy
+SELECT de la mig 377 solo permite DUEÑO/ADMIN/SUPER_USUARIO, así que para cualquier otro rol ese `SELECT`
+devolvía `[]` en silencio (la memoria nunca se inyectaba para esos roles, pese a que el diseño es que se
+inyecte para todos). Migración 378 (`fn_ai_memoria_listar()`, sin filtro de rol), aplicada y verificada en
+DEV, agrega el fix — `ai-assistant/index.ts` ya llama a la RPC nueva, redeployada y re-verificada con el
+e2e mutante 134, y confirmada con impersonación real (rol no-privilegiado: `SELECT` directo da 0 filas, la
+RPC da la fila real). Ver `sources/raw/project_pendientes.md` (cont. 21).
+
+**Estado real: commit pendiente en esta misma sesión** (`APP_VERSION` bumpeado a `v1.179.0` en el working
+tree, sin commit todavía) — con esto, las Fases 1 a 3 del "Plan IA" quedan 100% completas en código y
+verificadas (1-2 commiteadas como `v1.177.0`/`v1.178.0`). **Fase 4** (comparación entre negocios) sigue sin
+empezar — inteligencia interna de Genesis360, sin urgencia, necesita decisión de producto/legal (extender
+`tenant_consentimiento_legal`, mig 249) antes de cualquier código; no es un pendiente urgente, es una
+decisión de scope ya tomada. **Deploy a PROD**: GO ya autorizó deployar el wiring completo en esta misma
+sesión — confirmar el resultado real (`git log origin/main`) antes de asumir que ya ocurrió o que no.
+
+Detalle completo: `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md`
+(cont. 21, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (migs 377-378).
 
 ---
 

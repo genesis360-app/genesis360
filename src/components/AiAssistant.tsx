@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bot, X, Send, AlertCircle, RotateCcw, CheckCircle, Settings2, Check, XCircle } from 'lucide-react'
+import { Bot, X, Send, AlertCircle, RotateCcw, CheckCircle, Settings2, Check, XCircle, Brain } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 
@@ -17,10 +17,20 @@ interface PropuestaConfig {
   error?: string
 }
 
+// Plan IA, Fase 3 (memoria persistente por tenant) — propuesta de guardar un hecho en la
+// memoria del negocio, que la EF arma cuando el modelo usa la herramienta
+// "guardar_hecho_memoria" (nunca guarda nada por sí sola).
+interface PropuestaMemoria {
+  hecho: string
+  estado: 'pendiente' | 'confirmada' | 'rechazada' | 'error'
+  error?: string
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
   propuesta?: PropuestaConfig
+  propuestaMemoria?: PropuestaMemoria
 }
 
 const RPC_POR_TIPO: Record<PropuestaConfig['tipo'], string> = {
@@ -174,6 +184,15 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
           content: `Propuesta: cambiar "${p.descripcion}" de ${formatValorConfig(p.valorActual)} a ${formatValorConfig(p.valorPropuesto)}. Razón: ${p.razon}`,
           propuesta: { ...p, estado: 'pendiente' },
         }])
+      } else if (data.propuestaMemoria) {
+        // Plan IA, Fase 3 (wiring) — la EF NUNCA guarda nada, solo arma la propuesta acá; el
+        // usuario confirma o rechaza con la misma mecánica que la propuesta de config.
+        const p = data.propuestaMemoria
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Propuesta: guardar en la memoria del negocio — "${p.hecho}"`,
+          propuestaMemoria: { hecho: p.hecho, estado: 'pendiente' },
+        }])
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? data.error ?? 'Error al responder.' }])
       }
@@ -206,6 +225,25 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
 
   const rechazarPropuesta = (idx: number) => {
     setMessages(prev => prev.map((m, i) => i === idx && m.propuesta ? { ...m, propuesta: { ...m.propuesta, estado: 'rechazada' } } : m))
+  }
+
+  // Plan IA, Fase 3 (wiring) — recién ACÁ se llama a la RPC (mig 377), con la sesión REAL del
+  // usuario — misma mecánica que confirmarPropuesta: la EF nunca guardó nada, solo propuso.
+  const confirmarMemoria = async (idx: number) => {
+    const p = messages[idx]?.propuestaMemoria
+    if (!p || p.estado !== 'pendiente') return
+    if (propuestasEnCurso.current.has(idx)) return // doble click antes del re-render
+    propuestasEnCurso.current.add(idx)
+    setMessages(prev => prev.map((m, i) => i === idx && m.propuestaMemoria ? { ...m, propuestaMemoria: { ...m.propuestaMemoria, estado: 'confirmada' } } : m))
+    const { error } = await supabase.rpc('fn_ai_memoria_guardar', { p_hecho: p.hecho })
+    if (error) {
+      setMessages(prev => prev.map((m, i) => i === idx && m.propuestaMemoria ? { ...m, propuestaMemoria: { ...m.propuestaMemoria, estado: 'error', error: error.message } } : m))
+    }
+    propuestasEnCurso.current.delete(idx)
+  }
+
+  const rechazarMemoria = (idx: number) => {
+    setMessages(prev => prev.map((m, i) => i === idx && m.propuestaMemoria ? { ...m, propuestaMemoria: { ...m.propuestaMemoria, estado: 'rechazada' } } : m))
   }
 
   const sendReport = async () => {
@@ -356,6 +394,41 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
                     {m.propuesta.estado === 'error' && (
                       <div className="flex items-center gap-1.5 mt-2 text-xs text-red-500">
                         <AlertCircle size={13} /> No se pudo aplicar: {m.propuesta.error ?? 'error desconocido'}
+                      </div>
+                    )}
+                  </div>
+                ) : m.propuestaMemoria ? (
+                  // Plan IA, Fase 3 (wiring) — tarjeta de confirmación: la IA NUNCA guardó nada
+                  // todavía, solo propuso. Confirmar recién ahí llama a la RPC (mig 377).
+                  <div className="max-w-[90%] w-full rounded-2xl rounded-bl-sm border border-accent/30 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 text-sm">
+                    <div className="flex items-center gap-1.5 text-accent-text font-medium mb-1.5">
+                      <Brain size={14} /> Guardar en la memoria del negocio
+                    </div>
+                    <p className="text-gray-700 dark:text-gray-300">"{m.propuestaMemoria.hecho}"</p>
+
+                    {m.propuestaMemoria.estado === 'pendiente' && (
+                      <div className="flex gap-2 mt-2.5">
+                        <button onClick={() => confirmarMemoria(i)}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors">
+                          <Check size={13} /> Confirmar
+                        </button>
+                        <button onClick={() => rechazarMemoria(i)}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                          <XCircle size={13} /> Rechazar
+                        </button>
+                      </div>
+                    )}
+                    {m.propuestaMemoria.estado === 'confirmada' && (
+                      <div className="flex items-center gap-1.5 mt-2 text-xs text-green-600 dark:text-green-400">
+                        <CheckCircle size={13} /> Guardado
+                      </div>
+                    )}
+                    {m.propuestaMemoria.estado === 'rechazada' && (
+                      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Rechazada — sin guardar.</p>
+                    )}
+                    {m.propuestaMemoria.estado === 'error' && (
+                      <div className="flex items-center gap-1.5 mt-2 text-xs text-red-500">
+                        <AlertCircle size={13} /> No se pudo guardar: {m.propuestaMemoria.error ?? 'error desconocido'}
                       </div>
                     )}
                   </div>

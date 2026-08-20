@@ -82,7 +82,7 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
   - **Sin selector** (Sucursales, Usuarios).
   - Usuarios sin `puedeVerTodas`: ven siempre un label fijo con su sucursal asignada (sin dropdown).
 - **Refresh manual**: recarga datos de la página actual sin recargar la SPA
-- **Asistente IA** (ícono chat): panel flotante de chat con Groq/Llama 3.3 70B. Su conocimiento se genera desde ESTE documento (`npm run ai:knowledge`) y recibe el contexto real del usuario (rol, modo, menú visible, pantalla actual) para no indicar UI inexistente — detalle en `wiki/features/asistente-ia.md`. Tiene flujo de bug report que envía la conversación a soporte por email.
+- **Asistente IA** (ícono chat): panel flotante de chat con Groq (`openai/gpt-oss-120b`, ver "🐛 Modelo Groq roto" en `wiki/features/asistente-ia.md` — hasta el 2026-08-20 usaba `llama-3.3-70b-versatile`, descatalogado por Groq). Su conocimiento se genera desde ESTE documento (`npm run ai:knowledge`) y recibe el contexto real del usuario (rol, modo, menú visible, pantalla actual) para no indicar UI inexistente — detalle en `wiki/features/asistente-ia.md`. Tiene flujo de bug report que envía la conversación a soporte por email.
 - **Campana de notificaciones**: muestra alertas de stock crítico y cuotas de CC vencidas. Badge con contador de no leídas.
 - **Dark/Light mode**
 - **Botón ayuda** (ícono `?`): abre `/ayuda`

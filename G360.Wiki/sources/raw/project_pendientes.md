@@ -6,10 +6,133 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-08-20, cont. 19) — 🤖 Plan IA: Fase 1 (memoria conversacional) COMPLETA + arranca
-> Fase 2 (capa de RPCs de config), mig 376 — **TODAVÍA SIN COMMITEAR** — proyecto independiente y en
-> paralelo a Caja USD/Auditoría (bloque de abajo, cont. 18, SIGUE VIGENTE como estado real de DEV/PROD para
-> ESE proyecto — no queda superado, solo deja de ser el punto de entrada)
+> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 20) — 🐛🔴 Asistente IA estaba ROTO para TODOS los usuarios, RESUELTO
+> Y DEPLOYADO A PROD (Groq sacó los modelos Llama del catálogo) + 🤖 Plan IA: wiring COMPLETO de Fase 2
+> (propuesta de config con confirmación) — **`v1.178.0`, COMMITEADO Y PUSHEADO a `origin/dev`** — continúa
+> directo el bloque de abajo (cont. 19: Fase 1 + backend de Fase 2, ✅ YA COMMITEADO como `v1.177.0`, ahora
+> histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE como estado real de DEV/PROD
+> para ESE proyecto, sin cambios en esta sesión
+>
+> #### 🔴 HALLAZGO CRÍTICO (no relacionado al wiring, afecta a TODOS los tenants, incluido PROD) — el
+> Asistente IA devolvía error a CUALQUIER pregunta
+>
+> Al verificar el wiring en un browser real, la primera corrida dio **502 en TODAS las consultas al
+> asistente** (no solo la propuesta de config nueva). Investigando `query_logs` reales de la EF
+> `ai-assistant` contra DEV (`gcmhzdedrkmmzfzfveig`): Groq sacó del catálogo de esta cuenta los 2 modelos
+> que la EF venía usando desde siempre — `llama-3.3-70b-versatile` (principal) y `llama-3.1-8b-instant`
+> (fallback) — el error real era `model_not_found`. El mecanismo de fallback (`esReintentable`, que solo
+> reintenta ante 429/5xx) **NO cubre `model_not_found`** (es un 400 `invalid_request_error`), así que el
+> asistente devolvía "Error al consultar el asistente" a CUALQUIER pregunta, de CUALQUIER usuario, desde que
+> Groq hizo ese cambio de catálogo (fecha exacta desconocida, no hay forma de saber hace cuánto — no hay
+> alertas configuradas sobre esto).
+>
+> **Se verificó la lista REAL de modelos disponibles hoy** contra la cuenta real (`GET
+> https://api.groq.com/openai/v1/models` con la `GROQ_API_KEY` real de la EF, vía un endpoint de debug
+> temporal agregado, probado y BORRADO en la misma sesión). La cuenta ya no tiene ningún modelo de la
+> familia Llama — el catálogo cambió por completo a: `openai/gpt-oss-20b`, `openai/gpt-oss-120b`,
+> `openai/gpt-oss-safeguard-20b`, `groq/compound`, `groq/compound-mini`, `qwen/qwen3.6-27b`,
+> `canopylabs/orpheus-*`, `meta-llama/llama-prompt-guard-2-*`, `whisper-large-v3*`, `allam-2-7b`.
+>
+> **Fix aplicado** (`supabase/functions/ai-assistant/index.ts`): `MODEL` → `openai/gpt-oss-120b`,
+> `MODEL_FALLBACK` → `openai/gpt-oss-20b` (mismo criterio de tamaño relativo grande/chico que antes).
+> Confirmado con tool-calling real que `openai/gpt-oss-120b` SÍ soporta `tools`/`tool_choice` (el flujo de
+> propuesta de config, abajo, funcionó de punta a punta con este modelo). El label del panel del chat
+> ("Powered by Llama 3.1", que YA estaba desactualizado incluso antes de este bug — decía 3.1 pero el código
+> corría 3.3) se cambió a **"Powered by Groq"** (genérico, para no quedar obsoleto de nuevo si Groq vuelve a
+> cambiar el catálogo).
+>
+> **⚠ Impacto real: esto estaba roto para el Asistente IA de TODOS los tenants en PROD también** — el
+> código de `MODEL`/`MODEL_FALLBACK` no se había tocado hasta este fix, era el mismo string que corría en
+> PROD. No se sabe hace cuánto estuvo roto. **✅ RESUELTO — avisado a GO explícitamente, quien autorizó un
+> deploy AISLADO solo del fix del modelo** (sin el resto del wiring de Fase 2, que queda en DEV a
+> propósito): se extrajo el contenido REAL que corría en la EF de PROD (`get_edge_function`), se parcheó
+> ÚNICAMENTE `MODEL`/`MODEL_FALLBACK` (diff confirmado: exactamente esas 2 líneas), y se deployó con
+> `supabase functions deploy ai-assistant --project-ref jjffnbrdjchquexdfgwq --workdir <carpeta aislada>`
+> (las Edge Functions se deployan independientes del pipeline de Vercel/PR — no hizo falta tocar `main`).
+> **Confirmado con `get_edge_function` que PROD quedó con los 2 modelos nuevos y CERO código de
+> tool-calling/Fase 2** — el Asistente IA de los 8 tenants reales de PROD ya funciona de nuevo.
+>
+> #### 🤖 Wiring completo de Fase 2 (propuesta de config con confirmación)
+>
+> Ya existían (cont. 19 de abajo, YA commiteado como `v1.177.0`): las 3 RPCs SQL (mig 376) con su allowlist
+> de 6 campos no fiscales, y el espejo de esas reglas en el prompt (`src/lib/aiAssistant.ts`/EF). Esta
+> sesión conectó todo:
+> - **`src/lib/aiAssistant.ts`** y su espejo **`supabase/functions/ai-assistant/index.ts`**:
+>   `CONFIG_CAMPOS_IA` (espejo del allowlist SQL), `construirToolPropuestaConfig()` (arma el tool de Groq,
+>   formato OpenAI-compatible), `validarPropuestaConfig()` (valida lo que el modelo devolvió ANTES de
+>   mostrarle nada al usuario — defensa en profundidad, la RPC sigue siendo la autoridad real). Regla nueva
+>   9 en el prompt + sección de campos proponibles, ambas condicionadas a `rol === 'DUEÑO' || rol ===
+>   'ADMIN'` (mismo gate que exige la RPC).
+> - El handler de la EF: solo manda `tools`/`tool_choice` a Groq si el rol califica; si el modelo devuelve
+>   un `tool_call`, la EF **NUNCA aplica nada** — valida, lee el valor ACTUAL real (con la sesión del
+>   usuario, tenant resuelto EXPLÍCITAMENTE vía `users.tenant_id` — no depende de RLS desnuda, que se
+>   rompía para rol ADMIN/staff porque su policy tiene `OR is_admin()` y devuelve todas las filas) y
+>   devuelve la propuesta estructurada.
+> - **`src/components/AiAssistant.tsx`**: si la respuesta trae `propuesta`, se renderiza como tarjeta
+>   (campo, valor actual → propuesto, razón, botones Confirmar/Rechazar) en vez de bubble de texto.
+>   `confirmarPropuesta` es el ÚNICO lugar de todo el flujo que llama a la RPC de verdad, con la sesión REAL
+>   del usuario (revalida rol/allowlist server-side de nuevo). `rechazarPropuesta` no llama a nada.
+>
+> **2 hallazgos reales de un `code-reviewer` corregidos ANTES de la verificación en browser**:
+> 1. 🔴 `confirmarPropuesta` no sincronizaba el store Zustand (`setTenant`) tras el UPDATE real — violaba
+>    la regla del CLAUDE.md de sincronizar el store tras un UPDATE en `tenants`. El resto de la app hubiera
+>    seguido mostrando el valor viejo hasta el próximo login. Corregido.
+> 2. 🟡 La lectura del "valor actual" en la EF (`.select(campo).maybeSingle()` sin filtro explícito) se
+>    rompía en silencio para rol ADMIN (staff) porque su policy RLS bypassea el filtro de tenant — devolvía
+>    "(sin valor)" siempre para esas cuentas. Corregido resolviendo el tenant explícitamente vía
+>    `users.tenant_id`.
+> 3. 🟡 Ventana de doble-submit en "Confirmar" (doble click antes del re-render) — agregado un lock
+>    síncrono (`useRef<Set>`).
+>
+> #### ✅ Verificación real (no solo tests unitarios)
+>
+> `tsc --noEmit` limpio, `npm run build` verde, suite completa vitest (100 archivos, **1616 tests**, +10
+> nuevos de `validarPropuestaConfig`/`construirToolPropuestaConfig`) en verde.
+>
+> **Verificado en un browser real** (Playwright, contra DEV real `gcmhzdedrkmmzfzfveig`, usuario DUEÑO real
+> de prueba — tenant "Almacén Jorgito", tenant de PRUEBAS de GO, no un cliente real):
+> 1. Pedido "Quiero habilitar los pedidos manuales" → apareció la tarjeta con descripción, "No → Sí",
+>    razón, botones. Confirmado con captura de pantalla.
+> 2. Click "Confirmar" → "Cambio aplicado". Verificado con SQL real contra DEV: `tenants.pedido_manual_habilitado`
+>    pasó de `false` a `true`, y quedó una fila en `ai_config_audit` con campo/valor_anterior/valor_nuevo/razon
+>    correctos.
+> 3. Pedido "Activá el reabastecimiento por umbral mínimo" → tarjeta apareció → click "Rechazar" →
+>    verificado con SQL que `wms_reabastecimiento_umbral` NO cambió y NO se creó ninguna fila de auditoría
+>    para ese campo.
+> 4. Revertido el valor de prueba (`pedido_manual_habilitado` de vuelta a `false`) para no dejar el tenant
+>    de pruebas en un estado distinto al que tenía antes de la verificación.
+>
+> Deploy real de la Edge Function a DEV vía `supabase functions deploy ai-assistant --project-ref
+> gcmhzdedrkmmzfzfveig` (CLI local, no Docker — funciona igual).
+>
+> #### 📊 Estado real (al cierre de esta sesión)
+>
+> **`APP_VERSION` bumpeado a `v1.178.0`** (código real nuevo: wiring completo de Fase 2 + fix crítico que
+> afectaba PROD, sobre lo ya tageado como `v1.177.0`). **Sin migración nueva** — 100% wiring de la mig 376
+> ya existente + fix de constantes de modelo. El fix del modelo YA está deployado, aislado, en la Edge
+> Function de **DEV y PROD** (`gcmhzdedrkmmzfzfveig` y `jjffnbrdjchquexdfgwq`, ambos vía
+> `supabase functions deploy`, confirmados con `get_edge_function`) — PROD solo tiene el fix puntual (2
+> constantes), NO el resto del wiring de Fase 2 (que sigue solo en DEV, a propósito). El código del wiring
+> completo (frontend + EF con tool-calling) se commitea y pushea a `origin/dev` al cierre de esta sesión,
+> junto con este wiki. Sin PR a `main`, sin deploy de FRONTEND a PROD (el hotfix de la EF es infraestructura
+> independiente del pipeline de Vercel).
+>
+> **Próximo paso**: commitear esta tanda (bump de versión a decidir), evaluar deploy urgente a PROD del fix
+> de modelo (aunque sea aislado del resto del wiring), y luego Fase 3 del plan (memoria persistente por
+> tenant). No avanzar Fase 4 sin decisión de producto/legal adicional (ya definida como "inteligencia
+> interna", pero sin diseño ni código todavía).
+>
+> Ver `log.md` (entrada al principio, 2026-08-20), [[wiki/features/asistente-ia]] (secciones "Plan IA" y
+> "🐛 Modelo Groq roto"), `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 19) — 🤖 Plan IA: Fase 1 (memoria conversacional) COMPLETA + arranca
+> Fase 2 (capa de RPCs de config), mig 376 — **✅ COMMITEADO** (commit `1b5e89aa`, tag+release `v1.177.0`,
+> incluye el bump de `v1.176.0`→`v1.177.0`) — este bloque quedó SUPERADO por el de arriba (cont. 20: wiring
+> completo de Fase 2 + 🐛 hallazgo crítico del modelo Groq roto) — Caja USD/Auditoría (bloque de abajo,
+> cont. 18, SIGUE VIGENTE como estado real de DEV/PROD para ESE proyecto — no queda superado, solo deja de
+> ser el punto de entrada)
 >
 > Primera sesión de código real del "Plan IA" (Asistente IA con memoria + capacidad de proponer cambios de
 > configuración) desde que se publicó el Artifact de la propuesta (2026-08-14/15, ver bloque cont. 9 más
@@ -73,20 +196,20 @@ type: project
 > en el chat antes de aplicar) queda para una sesión futura, a propósito, para poder revisar esta capa de
 > forma aislada primero.
 >
-> #### 📊 Estado real
+> #### 📊 Estado real (histórico — ✅ ya commiteado, ver cont. 20 arriba para el estado actual)
 >
-> **Todo esto está en DEV, TODAVÍA SIN COMMITEAR** (`git status`: modificados `src/components/AiAssistant.tsx`,
-> `src/lib/aiAssistant.ts`, `supabase/functions/ai-assistant/index.ts`, `tests/unit/aiAssistant.test.ts`;
-> untracked `supabase/migrations/376_ai_config_rpc_layer.sql`). `APP_VERSION` sigue en `v1.176.0` — SIN
-> bump todavía (a confirmar con GO si corresponde bump al commitear esta tanda, o si se acumula con la
-> próxima). Migración 376 aplicada y verificada solo en DEV, no en PROD. Sin PR, sin tag/release nuevo.
+> **✅ COMMITEADO** — commit `1b5e89aa` ("feat(ai-assistant,wiki): plan IA — Fase 1 memoria conversacional +
+> Fase 2 capa de RPCs de config"), tag+release `v1.177.0` publicados (incluye el bump `v1.176.0`→
+> `v1.177.0` en el mismo commit). Migración 376 aplicada y verificada solo en DEV, todavía NO en PROD.
 >
-> **Próximo paso**: sesión futura — wiring de las RPCs (tool-calling de la IA + confirmación en el chat,
-> completa Fase 2) y/o Fase 3 (memoria persistente por tenant). No avanzar Fase 4 sin decisión de producto/
-> legal adicional (ya definida como "inteligencia interna", pero sin diseño ni código todavía).
+> **Próximo paso (✅ YA HECHO en la sesión siguiente, ver cont. 20 arriba)**: wiring de las RPCs
+> (tool-calling de la IA + confirmación en el chat, completa Fase 2) — construido, verificado en browser
+> real y TODAVÍA SIN COMMITEAR al momento de escribir esto. Fase 3 (memoria persistente por tenant) sigue
+> sin arrancar. No avanzar Fase 4 sin decisión de producto/legal adicional (ya definida como "inteligencia
+> interna", pero sin diseño ni código todavía).
 >
-> Ver `log.md` (entrada al principio, 2026-08-20), [[wiki/features/asistente-ia]] (sección "Plan IA —
-> memoria + configuración con confirmación"), `wiki/database/migraciones.md` (mig 376, EN DEV), `index.md`.
+> Ver `log.md`, [[wiki/features/asistente-ia]] (sección "Plan IA — memoria + configuración con
+> confirmación"), `wiki/database/migraciones.md` (mig 376), `index.md`.
 >
 > ---
 >

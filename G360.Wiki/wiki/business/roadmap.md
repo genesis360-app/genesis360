@@ -20,7 +20,21 @@ commit `4dbe7fdb`, build de ~96s, `app.genesis360.pro` sirviendo el commit actua
 reales de PROD: los 8 tenants existentes quedaron con "Caja Fuerte USD"/"Efectivo USD" sembrados (backfill
 mig 373), 0 ventas con componente USD — sin cambio de comportamiento para tenants existentes. Detalle completo en
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 18)  
-**Versión en DEV:** v1.177.0 (bump pendiente de commit — Plan IA Fase 1+2, mig 376, sin deploy a PROD).
+**Aparte (no es un deploy de código/Vercel, es infraestructura independiente):** la Edge Function
+`ai-assistant` de PROD recibió un hotfix aislado el mismo 2026-08-20 (modelos de Groq deprecados →
+`openai/gpt-oss-120b`/`20b`), deployada directo vía `supabase functions deploy` — no pasa por PR/Vercel,
+así que no mueve el número de versión de arriba. Ver sección v1.178.0 abajo.  
+**Versión en DEV:** v1.178.0 — wiring completo de Fase 2 (propuesta de config con confirmación en el chat,
+verificado en browser real contra DEV con Playwright — ver detalle abajo) + fix del bug crítico que rompía
+el Asistente IA para TODOS los usuarios (Groq descatalogó `llama-3.3-70b-versatile`/`llama-3.1-8b-instant`
+del catálogo de la cuenta; reemplazados por `openai/gpt-oss-120b`/`openai/gpt-oss-20b`, confirmados
+vigentes con un `GET /openai/v1/models` real). **El fix del modelo, aislado (sin el resto del wiring de
+Fase 2), ya se deployó DIRECTO a la Edge Function de PROD** (`jjffnbrdjchquexdfgwq`, vía
+`supabase functions deploy --workdir <carpeta aislada>`, confirmado con `get_edge_function` que PROD quedó
+con los 2 modelos nuevos y CERO código de Fase 2/tool-calling) — el Asistente IA de los 8 tenants reales
+vuelve a funcionar. El resto (wiring de propuesta de config) queda en DEV a propósito, sin deploy a PROD
+todavía. Ver `wiki/features/asistente-ia.md` → "Plan IA" y "🐛 Modelo Groq roto",
+`sources/raw/project_pendientes.md` (cont. 20, "ARRANCÁ ACÁ").  
 Código base en paridad con PROD hasta v1.176.0 (mismo commit `50f5579a`, ahora ancestro de `main` tras el
 merge de PR #331). Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -34,7 +48,7 @@ bloqueante.
 
 ---
 
-## v1.177.0 — 🤖 Plan IA: memoria conversacional (Fase 1) + capa de RPCs de config (Fase 2, backend) — 🟡 EN DEV (2026-08-20)
+## v1.177.0 — 🤖 Plan IA: memoria conversacional (Fase 1) + capa de RPCs de config (Fase 2, backend) — ✅ COMMITEADO EN DEV (2026-08-20), sin deploy a PROD
 
 Primera vez que el "plan IA" (Artifact publicado 2026-08-14/15, ver `wiki/features/asistente-ia.md`) pasa de
 propuesta a código. Las 3 preguntas que lo bloqueaban fueron respondidas por GO hoy: arrancar Fase 1 + ya la
@@ -50,15 +64,53 @@ usuario, encontrado y corregido antes de terminar. Nueva regla 8 en el prompt ("
 en la EF `ai-assistant/index.ts` y su espejo `src/lib/aiAssistant.ts` (mantenidos idénticos). Test nuevo en
 `tests/unit/aiAssistant.test.ts`.
 
-**Fase 2 (capa de RPCs de config) — backend arrancado, SIN wiring.** Mig 376: tabla `ai_config_audit` + 3
+**Fase 2 (capa de RPCs de config) — backend.** Mig 376: tabla `ai_config_audit` + 3
 RPCs tipadas (`fn_ai_config_set_bool`/`_int`/`_text`), cada una deriva tenant/rol del JWT de quien llama
 (nunca como parámetro), exige DUEÑO/ADMIN, valida contra un allowlist hardcodeado de 6 campos NO fiscales
 que ya tenían su handler de 1-campo en `ConfigPage.tsx`. Revisada por `migration-reviewer`: APTA, sin
-hallazgos bloqueantes. Verificada con tests reales en DEV (impersonación, sin persistencia). Ni la EF ni el
-frontend invocan estas RPCs todavía — wiring real queda para una sesión futura a propósito.
+hallazgos bloqueantes. Verificada con tests reales en DEV (impersonación, sin persistencia).
+
+**✅ Estado real: commiteado** (commit `1b5e89aa`, tag+release `v1.177.0`, incluye el bump de versión). Mig
+376 aplicada y verificada solo en DEV, todavía sin PROD.
+
+---
+
+## v1.178.0 — 🤖 Plan IA: wiring completo de Fase 2 + 🐛 fix crítico del Asistente IA roto en PROD — ✅ COMMITEADO EN DEV, hotfix del modelo YA EN PROD (2026-08-20)
+
+Sesión siguiente, misma jornada. Conecta las 3 RPCs de la v1.177.0 con la IA real (tool-calling de Groq +
+tarjeta de confirmación en el chat — la IA propone, nunca aplica sola): `CONFIG_CAMPOS_IA` +
+`construirToolPropuestaConfig()` + `validarPropuestaConfig()` en `src/lib/aiAssistant.ts`/espejo de la EF;
+la EF solo ofrece la herramienta a DUEÑO/ADMIN, nunca aplica el cambio ella misma (lee el valor actual real
+y devuelve la propuesta); `AiAssistant.tsx` renderiza la tarjeta y `confirmarPropuesta` es el único punto
+que llama a la RPC real, con la sesión del usuario. 2 hallazgos de `code-reviewer` corregidos antes de
+verificar en browser: (1) 🔴 faltaba sincronizar el store Zustand (`setTenant`) tras confirmar — regla del
+CLAUDE.md; (2) 🟡 lectura del valor actual rota en silencio para rol ADMIN (RLS con `OR is_admin()`); (3)
+🟡 doble-submit en "Confirmar" cerrado con un lock. Verificado en un browser real contra DEV (Playwright,
+usuario DUEÑO de prueba): propuesta → confirmar → cambio real en `tenants` + fila en `ai_config_audit`;
+propuesta → rechazar → nada cambia. Suite completa 1616 tests (+10 nuevos).
+
+**🔴 De paso, hallazgo crítico no relacionado**: verificando el wiring en el browser, el Asistente IA devolvía
+error a CUALQUIER pregunta (502), para CUALQUIER usuario — Groq sacó del catálogo de esta cuenta los 2
+modelos que la EF usaba desde siempre (`llama-3.3-70b-versatile`/`llama-3.1-8b-instant`, error
+`model_not_found`, no cubierto por el fallback existente que solo reintenta 429/5xx). Fix: `MODEL` →
+`openai/gpt-oss-120b`, `MODEL_FALLBACK` → `openai/gpt-oss-20b` (catálogo actual verificado contra la cuenta
+real de Groq); label del chat corregido a "Powered by Groq". **Esto estaba roto también en PROD** (mismo
+código sin tocar hasta este fix, no se sabe hace cuánto) — GO autorizó explícitamente un deploy aislado,
+**solo el fix del modelo, sin el resto del wiring de Fase 2**. Ejecutado: se extrajo el contenido REAL que
+corría en la EF de PROD (`get_edge_function`), se parcheó ÚNICAMENTE `MODEL`/`MODEL_FALLBACK` (diff
+confirmado: exactamente esas 2 líneas, nada más), y se deployó con
+`supabase functions deploy ai-assistant --project-ref jjffnbrdjchquexdfgwq --workdir <carpeta aislada>`
+(sin tocar `main`/Vercel — las Edge Functions se deployan independientes del pipeline de frontend).
+**✅ Confirmado con `get_edge_function` que PROD quedó con los 2 modelos nuevos y CERO código de
+tool-calling/Fase 2** — el Asistente IA de los 8 tenants reales de PROD volvió a funcionar. Ver
+`wiki/features/asistente-ia.md` → "🐛 Modelo Groq roto".
+
+**Estado real: commiteado en DEV** (bump `APP_VERSION` a `v1.178.0`) — el wiring completo de Fase 2 (tool-
+calling + tarjeta de confirmación) queda SOLO en DEV a propósito, sin deploy a PROD todavía. El fix del
+modelo (aislado) SÍ está en PROD desde hoy.
 
 Detalle completo en `wiki/features/asistente-ia.md` y `sources/raw/project_pendientes.md` (bloque "ARRANCÁ
-ACÁ", cont. 19). Sin deploy a PROD.
+ACÁ", cont. 20).
 
 ---
 

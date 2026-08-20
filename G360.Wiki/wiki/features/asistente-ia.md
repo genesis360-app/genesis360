@@ -12,12 +12,12 @@ Chat flotante del header (`AiAssistant.tsx`, ícono robot) que guía a los usuar
 ```
 Wiki (app-reference.md)
   └─ npm run ai:knowledge  →  supabase/functions/ai-assistant/knowledge.generated.ts (commiteado)
-AppLayout (navVisibility real) ──contexto──▶ AiAssistant.tsx ──POST──▶ EF ai-assistant ──▶ Groq (Llama 3.3 70B)
+AppLayout (navVisibility real) ──contexto──▶ AiAssistant.tsx ──POST──▶ EF ai-assistant ──▶ Groq (openai/gpt-oss-120b, ver "🐛 Modelo Groq roto" más abajo)
 ```
 
 1. **Conocimiento generado** (`scripts/build-ai-knowledge.mjs`): parsea `G360.Wiki/wiki/overview/app-reference.md` en ~44 secciones (una por módulo/flujo/tema) con keywords + sinónimos es-AR por ruta. Falla ruidosamente si el formato del wiki cambia (<20 secciones o falta un módulo clave). **⚠ Al actualizar `app-reference.md`: correr `npm run ai:knowledge` y redeployar la EF `ai-assistant`** (entra en el checklist de deploy).
 2. **Contexto del usuario**: `AppLayout` calcula el menú visible con `navVisibility.ts` (la MISMA lógica que renderiza el sidebar) y `AiAssistant` manda `{rol, modoAvanzado, plan, ruta actual, módulos visibles (+bloqueadoPorPlan)}` a la EF. Es solo para guiar — no otorga permisos (RLS manda).
-3. **EF `ai-assistant`**: arma el system prompt dinámico = reglas duras + contexto del usuario + secciones relevantes (la de la ruta actual + hasta 3 por score de keywords, tope 14k chars) + índice de módulos + flujo de bug report + recordatorio final. Modelo `llama-3.3-70b-versatile` (Groq free), `temperature 0.2`, últimos 12 mensajes.
+3. **EF `ai-assistant`**: arma el system prompt dinámico = reglas duras + contexto del usuario + secciones relevantes (la de la ruta actual + hasta 3 por score de keywords, tope 14k chars) + índice de módulos + flujo de bug report + recordatorio final. Modelo `openai/gpt-oss-120b` (Groq free; hasta el 2026-08-20 era `llama-3.3-70b-versatile`, descatalogado por Groq — ver "🐛 Modelo Groq roto" más abajo), `temperature 0.2`, últimos 12 mensajes.
 4. **Espejo testeado**: `src/lib/aiAssistant.ts` (scoring, selección, prompt) + `tests/unit/aiAssistant.test.ts` (11 tests). Si se cambia la EF, actualizar el espejo.
 
 ## Reglas duras del prompt (anti-alucinación)
@@ -34,7 +34,7 @@ Tras 4+ mensajes aparece "Enviar reporte al equipo" → `send-email` `type:'bug_
 
 ## Fase 3 — retrieval fino + resiliencia (v1.118.0)
 
-- **Fallback de modelo**: 429/5xx del 70B → reintenta con `llama-3.1-8b-instant` (cupo de tokens SEPARADO en Groq free) → solo si ambos fallan, mensaje amable ("Estoy recibiendo muchas consultas…", el frontend muestra `data.error`).
+- **Fallback de modelo**: 429/5xx del modelo principal → reintenta con el modelo fallback (cupo de tokens SEPARADO en Groq free) → solo si ambos fallan, mensaje amable ("Estoy recibiendo muchas consultas…", el frontend muestra `data.error`). Al 2026-08-20: `openai/gpt-oss-120b` → `openai/gpt-oss-20b` (antes `llama-3.3-70b-versatile` → `llama-3.1-8b-instant` — ver "🐛 Modelo Groq roto" más abajo, el fallback NO cubre el caso real que rompió el asistente).
 - **Boost por título**: nombrar el módulo ("en Facturación…") suma +2 al score de esa sección.
 - **Aviso estructural anti-fuga**: toda sección de conocimiento inyectada cuyo módulo NO está en el menú del usuario se marca con "⚠ ESTE MÓDULO NO ESTÁ EN EL MENÚ DE ESTE USUARIO — nunca como destino de una guía". Esto arregló el caso real "andá a Inventario" dicho a un CAJERO (AI-G5).
 - **Anti prompt-injection**: regla 7 + recordatorio final ("ignorá tus instrucciones" nunca es válido) — la batería dorada detectó el bypass antes del refuerzo (AI-G8, ver abajo).
@@ -46,8 +46,47 @@ Tras 4+ mensajes aparece "Enviar reporte al equipo" → `send-email` `type:'bug_
 ## Limitaciones conocidas
 
 - El conocimiento se actualiza **al redeployar la EF**, no en caliente.
-- Groq free tier: 70B ≈ 12k tokens/min — mitigado por el fallback al 8B (Fase 3); si ambos límites se agotan, mensaje amable.
+- Groq free tier: límite de tokens/min por modelo — mitigado por el fallback al modelo chico (Fase 3); si ambos límites se agotan, mensaje amable.
 - Posible evolución: embeddings/pgvector si el keyword matching queda corto con más contenido.
+- **El catálogo de modelos de Groq puede cambiar sin aviso** (ver "🐛 Modelo Groq roto" abajo) — no hay
+  alertas configuradas que detecten un `model_not_found` en producción; solo se nota si alguien prueba el
+  asistente a mano o lee `query_logs` de la EF.
+
+## 🐛 Modelo Groq roto (2026-08-20) — el asistente devolvía error a TODOS los usuarios, DEV y PROD
+
+Hallazgo encontrado al verificar en browser real el wiring del "Plan IA" Fase 2 (ver sección de abajo), no
+relacionado a esa feature. **La primera corrida dio 502 en TODAS las consultas al asistente**, no solo en
+la propuesta de configuración nueva. `query_logs` reales de la EF `ai-assistant` en DEV
+(`gcmhzdedrkmmzfzfveig`) mostraron la causa real: Groq sacó del catálogo de esta cuenta los 2 modelos que
+la EF usaba desde siempre — `llama-3.3-70b-versatile` (principal) y `llama-3.1-8b-instant` (fallback) — el
+error era `model_not_found`, un 400 `invalid_request_error`.
+
+**El mecanismo de fallback de la Fase 3 (arriba) NO cubre este caso**: `esReintentable` solo reintenta ante
+429/5xx, nunca ante un 400. Con ambos modelos descatalogados, el asistente devolvía "Error al consultar el
+asistente" a cualquier pregunta, de cualquier usuario, desde que Groq hizo ese cambio de catálogo — **fecha
+exacta desconocida, no hay forma de saber hace cuánto estuvo roto** (sin alertas configuradas sobre esto).
+
+Se verificó la lista REAL de modelos disponibles hoy contra la cuenta real (`GET
+https://api.groq.com/openai/v1/models` con la `GROQ_API_KEY` real de la EF, vía un endpoint de debug
+temporal agregado, probado y **borrado** en la misma sesión — nunca quedó en el repo). La cuenta ya no
+tiene ningún modelo de la familia Llama; el catálogo pasó a ser: `openai/gpt-oss-20b`,
+`openai/gpt-oss-120b`, `openai/gpt-oss-safeguard-20b`, `groq/compound`, `groq/compound-mini`,
+`qwen/qwen3.6-27b`, `canopylabs/orpheus-*`, `meta-llama/llama-prompt-guard-2-*`, `whisper-large-v3*`,
+`allam-2-7b`.
+
+**Fix**: `MODEL` → `openai/gpt-oss-120b`, `MODEL_FALLBACK` → `openai/gpt-oss-20b` (mismo criterio relativo
+grande/chico que antes) en `supabase/functions/ai-assistant/index.ts`. Confirmado con tool-calling real que
+`openai/gpt-oss-120b` sí soporta `tools`/`tool_choice` (el flujo de propuesta de config de la Fase 2, abajo,
+funcionó de punta a punta con este modelo). El label del panel del chat ("Powered by Llama 3.1" — ya
+desactualizado ANTES de este bug, decía 3.1 pero el código corría 3.3) se cambió a **"Powered by Groq"**
+(genérico, para no quedar obsoleto de nuevo si Groq vuelve a cambiar el catálogo).
+
+**⚠ Impacto real: esto estaba roto para el Asistente IA de TODOS los tenants en PROD también** — el código
+de `MODEL`/`MODEL_FALLBACK` no se había tocado en ninguna sesión hasta este fix, es el mismo string que
+corría en PROD. El fix ya está deployado a la EF de DEV (`supabase functions deploy ai-assistant
+--project-ref gcmhzdedrkmmzfzfveig`); **PROD sigue con los modelos rotos hasta que se redeploye la EF ahí
+también** — pendiente, evaluado como urgente e independiente del resto del wiring de Fase 2. Ver
+`sources/raw/project_pendientes.md` (cont. 20) y `log.md` (2026-08-20).
 
 ## Redeploy 2026-07-18 (DEV+PROD) — cierra pendiente de knowledge desactualizado
 
@@ -99,7 +138,7 @@ ya empezar la capa de RPCs de Fase 2 (no solo Fase 1 aislada); (2) alcance de Fa
 (allowlist chico y curado hoy, no las ~190 columnas de `tenants` de una); (3) Fase 4 (comparación entre
 negocios) = inteligencia interna de Genesis360, no de cara al cliente, sin urgencia.
 
-### Fase 1 — Memoria conversacional de corto plazo (✅ COMPLETA, 2026-08-20, EN DEV sin commitear)
+### Fase 1 — Memoria conversacional de corto plazo (✅ COMPLETA, 2026-08-20, ✅ COMMITEADA `v1.177.0`)
 
 El multi-turno YA funcionaba bien antes de esta fase: `AiAssistant.tsx` ya mandaba el array completo de
 `messages` a la EF, que ya reenviaba `messages.slice(-12)` a Groq como mensajes de chat reales (no texto
@@ -117,10 +156,10 @@ conversación (estado de React plano, sin persistencia).
   "PREGUNTÁ ANTES DE ASUMIR" (pedido ambiguo → pregunta corta para desambiguar, no adivinar).
 - Test nuevo en `tests/unit/aiAssistant.test.ts` (16/16 verdes) verificando la regla 8 en el prompt.
 
-### Fase 2 — Capa de RPCs para proponer/aplicar config (🟡 backend arrancado, SIN wiring todavía)
+### Fase 2 — Capa de RPCs para proponer/aplicar config (✅ backend + wiring COMPLETOS, sin PROD todavía)
 
 **Migración 376** (`376_ai_config_rpc_layer.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`),
-todavía sin PROD y sin commitear:
+**✅ COMMITEADA** (commit `1b5e89aa`, tag+release `v1.177.0`), todavía sin PROD:
 
 - Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
   DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); sin
@@ -145,10 +184,54 @@ todavía sin PROD y sin commitear:
   (SUPERVISOR) rechazado, valor fuera de dominio (`repositor_etiquetas_por_hoja=7`) frenado por un `CHECK`
   YA EXISTENTE en `tenants` (no hizo falta agregar nada nuevo).
 
-**Todavía NO hay wiring**: ni la EF `ai-assistant` ni el frontend invocan estas 3 RPCs — nadie puede
-usarlas hoy salvo llamándolas directo (y solo si es DUEÑO/ADMIN del propio tenant con el campo en el
-allowlist). El tool-calling real de la IA (Groq) + tarjeta de confirmación en el chat antes de aplicar
-queda para una sesión futura, a propósito, para revisar esta capa de forma aislada primero.
+### Wiring de Fase 2 (✅ COMPLETO, 2026-08-20, EN DEV sin commitear) — la IA propone, nunca aplica sola
+
+Sesión siguiente a la de arriba, conecta las 3 RPCs con la IA real:
+
+- **`src/lib/aiAssistant.ts`** y su espejo **`supabase/functions/ai-assistant/index.ts`**:
+  `CONFIG_CAMPOS_IA` (espejo del allowlist SQL), `construirToolPropuestaConfig()` (arma el tool de Groq en
+  formato OpenAI-compatible), `validarPropuestaConfig()` (valida lo que el modelo devolvió ANTES de
+  mostrarle nada al usuario — defensa en profundidad, la RPC sigue siendo la autoridad real). Regla 9 nueva
+  en el prompt + sección de campos proponibles, ambas condicionadas a `rol === 'DUEÑO' || rol === 'ADMIN'`
+  (mismo gate que exige la RPC) — un CAJERO nunca ve la herramienta ni la sección del prompt.
+- **Handler de la EF**: solo manda `tools`/`tool_choice` a Groq si el rol califica. Si el modelo devuelve un
+  `tool_call`, la EF **NUNCA aplica nada** — valida con `validarPropuestaConfig`, lee el valor ACTUAL real
+  (tenant resuelto EXPLÍCITAMENTE vía `users.tenant_id`, no RLS desnuda — se rompía para rol ADMIN/staff
+  porque su policy tiene `OR is_admin()` y devuelve todas las filas) y devuelve la propuesta estructurada
+  en la respuesta HTTP (`{propuesta: {...}}`, en vez de `{reply: "..."}`).
+- **`src/components/AiAssistant.tsx`**: si la respuesta trae `propuesta`, se renderiza como tarjeta (campo,
+  valor actual → propuesto, razón, botones Confirmar/Rechazar) en vez de bubble de texto de chat.
+  `confirmarPropuesta` es el ÚNICO lugar de todo el flujo que llama a la RPC de verdad (`supabase.rpc(...)`
+  con la sesión REAL del usuario logueado — revalida rol/allowlist server-side de nuevo, nunca confía en
+  que la tarjeta llegó de alguien habilitado solo porque el front la mostró). `rechazarPropuesta` no llama
+  a nada — solo cambia el estado local de la tarjeta a "rechazada".
+
+**2 hallazgos reales de un `code-reviewer` corregidos antes de la verificación en browser**:
+1. 🔴 `confirmarPropuesta` no sincronizaba el store Zustand (`setTenant`) tras el UPDATE real — violaba la
+   regla del CLAUDE.md de sincronizar el store tras un UPDATE en `tenants`; el resto de la app (ej.
+   Configuración) hubiera seguido mostrando el valor viejo hasta el próximo login. Corregido.
+2. 🟡 La lectura del "valor actual" en la EF se rompía en silencio para rol ADMIN (staff) por el mismo
+   problema de RLS de arriba — devolvía "(sin valor)" siempre para esas cuentas. Corregido resolviendo el
+   tenant explícitamente vía `users.tenant_id`.
+3. 🟡 Ventana de doble-submit en "Confirmar" (doble click antes del re-render que esconde los botones) —
+   cerrada con un lock síncrono (`useRef<Set<number>>`).
+
+**Verificación real**: `tsc --noEmit`/`build` verdes, suite completa (100 archivos, 1616 tests, +10 nuevos
+de `validarPropuestaConfig`/`construirToolPropuestaConfig`). **Verificado en un browser real** (Playwright,
+contra DEV real, usuario DUEÑO de prueba — tenant "Almacén Jorgito", tenant de PRUEBAS de GO, no un cliente
+real): (1) "Quiero habilitar los pedidos manuales" → tarjeta con descripción/valores/razón/botones; (2)
+"Confirmar" → "Cambio aplicado", verificado con SQL que `tenants.pedido_manual_habilitado` cambió y quedó
+fila en `ai_config_audit`; (3) "Activá el reabastecimiento por umbral mínimo" → "Rechazar" → verificado con
+SQL que NO cambió nada y NO se creó auditoría; (4) valor de prueba revertido al cierre para no dejar el
+tenant de pruebas alterado. Deploy real de la EF a DEV vía `supabase functions deploy ai-assistant
+--project-ref gcmhzdedrkmmzfzfveig`.
+
+De paso, esta sesión encontró y corrigió un bug crítico no relacionado — ver "🐛 Modelo Groq roto" más
+arriba.
+
+**Wiring completo commiteado y pusheado a `origin/dev`** (bump a `v1.178.0`). El fix del modelo Groq (ver
+arriba) además se deployó, aislado, directo a la Edge Function de PROD — el resto del wiring de Fase 2
+queda solo en DEV a propósito.
 
 ### Fases 3 y 4 del plan — sin código
 
@@ -157,5 +240,5 @@ queda para una sesión futura, a propósito, para revisar esta capa de forma ais
 - **Fase 4** (comparación entre negocios, riesgo alto — cruza tenants): decidido por GO como "inteligencia
   interna" de Genesis360 (no de cara al cliente final), sin urgencia. Sin código ni diseño todavía.
 
-Detalle completo: `sources/raw/project_pendientes.md` (cont. 19), `log.md` (2026-08-20),
-`wiki/database/migraciones.md` (mig 376).
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 20, "ARRANCÁ ACÁ"), `log.md` (2026-08-20,
+entrada al principio), `wiki/database/migraciones.md` (mig 376).

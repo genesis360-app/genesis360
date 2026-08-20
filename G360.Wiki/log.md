@@ -6,6 +6,66 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-20] update | 🐛🔴 Asistente IA roto para TODOS (modelos Groq descatalogados) + wiring completo de Fase 2 del Plan IA
+
+Continuación directa de la entrada de abajo (Fase 1 + backend de Fase 2, mig 376 — **✅ ya commiteada como
+`v1.177.0`**, commit `1b5e89aa`; corrige acá el "TODAVÍA SIN COMMITEAR" con el que había quedado escrita
+esa entrada). Esta sesión conectó el wiring real (tool-calling de Groq + tarjeta de confirmación en el
+chat) y, de paso, encontró y corrigió un bug crítico preexistente que rompía el Asistente IA para todos los
+usuarios. **Bump a `v1.178.0`, commiteado y pusheado a `origin/dev`.**
+
+**🔴 Hallazgo crítico — el Asistente IA devolvía error a CUALQUIER consulta, para CUALQUIER usuario (DEV y
+PROD)**: al verificar el wiring en un browser real, la primera corrida dio 502 en todas las preguntas, no
+solo en la propuesta de config nueva. `query_logs` real de la EF `ai-assistant` en DEV mostró la causa:
+Groq sacó del catálogo de esta cuenta los 2 modelos que la EF usaba desde siempre —
+`llama-3.3-70b-versatile` (principal) y `llama-3.1-8b-instant` (fallback) — error `model_not_found`. El
+mecanismo de fallback existente (`esReintentable`) solo cubre 429/5xx, no este 400
+`invalid_request_error`, así que el asistente fallaba siempre. Se verificó la lista REAL de modelos
+disponibles hoy (`GET /openai/v1/models` con la `GROQ_API_KEY` real, vía un endpoint de debug temporal
+agregado, probado y borrado en la misma sesión): la cuenta ya no tiene ningún modelo Llama, el catálogo
+pasó a ser `openai/gpt-oss-20b`/`120b`/`safeguard-20b`, `groq/compound(-mini)`, `qwen/qwen3.6-27b`, etc.
+Fix: `MODEL` → `openai/gpt-oss-120b`, `MODEL_FALLBACK` → `openai/gpt-oss-20b` (mismo criterio
+grande/chico), confirmado que el 120b soporta `tools`/`tool_choice` con el flujo real de propuesta de
+config. Label del panel corregido de "Powered by Llama 3.1" (ya desactualizado antes de este bug) a
+"Powered by Groq" (genérico). **Esto estaba roto también en PROD** — el string de modelo no se había
+tocado en esta sesión hasta el fix, es el mismo que corre ahí; no se sabe hace cuánto (sin alertas
+configuradas). **✅ Avisado a GO explícitamente — autorizó un deploy AISLADO solo del fix del modelo** (sin
+el resto del wiring de Fase 2). Ejecutado: se extrajo el contenido REAL de la EF de PROD
+(`get_edge_function`), se parcheó ÚNICAMENTE `MODEL`/`MODEL_FALLBACK` (diff confirmado: exactamente esas 2
+líneas), deployado con `supabase functions deploy ai-assistant --project-ref jjffnbrdjchquexdfgwq --workdir
+<carpeta aislada>` — sin tocar `main`/Vercel (las EF se deployan independientes de ese pipeline). Confirmado
+con `get_edge_function` que PROD quedó con los modelos nuevos y CERO código de Fase 2. El Asistente IA de
+los 8 tenants reales de PROD volvió a funcionar.
+
+**🤖 Wiring completo de Fase 2 (propuesta de config con confirmación)**: `src/lib/aiAssistant.ts` + espejo
+`supabase/functions/ai-assistant/index.ts` suman `CONFIG_CAMPOS_IA` (espejo del allowlist de la mig 376),
+`construirToolPropuestaConfig()` (tool Groq formato OpenAI) y `validarPropuestaConfig()` (defensa en
+profundidad — valida antes de mostrarle nada al usuario, la RPC sigue siendo la autoridad real), más regla
+9 en el prompt, todo condicionado a `rol === 'DUEÑO' || rol === 'ADMIN'` (mismo gate que la RPC). La EF solo
+manda `tools` a Groq si el rol califica; si el modelo pide el tool, la EF nunca aplica nada — valida, lee el
+valor actual real (tenant resuelto explícitamente vía `users.tenant_id`, no RLS desnuda — se rompía para
+ADMIN/staff por su policy `OR is_admin()`) y devuelve la propuesta. `src/components/AiAssistant.tsx`
+renderiza la propuesta como tarjeta (valor actual → propuesto, razón, Confirmar/Rechazar);
+`confirmarPropuesta` es el único punto que llama a la RPC de verdad, con la sesión real del usuario
+(revalida server-side de nuevo). 2 hallazgos de un `code-reviewer` corregidos antes de la verificación en
+browser: (1) 🔴 `confirmarPropuesta` no sincronizaba el store Zustand (`setTenant`) tras el UPDATE real —
+regla del CLAUDE.md; (2) 🟡 lectura del valor actual rota en silencio para rol ADMIN (mismo problema de RLS
+de arriba); (3) 🟡 ventana de doble-submit en "Confirmar", cerrada con un lock síncrono (`useRef<Set>`).
+
+**Verificación real**: `tsc --noEmit`/`build` verdes, suite completa (100 archivos, 1616 tests, +10 nuevos).
+Verificado en un browser real (Playwright, DEV real, usuario DUEÑO de prueba, tenant "Almacén Jorgito" —
+tenant de pruebas de GO, no un cliente real): pedido de habilitar pedidos manuales → tarjeta → Confirmar →
+"Cambio aplicado", verificado con SQL que `tenants.pedido_manual_habilitado` cambió y quedó fila en
+`ai_config_audit`; pedido de activar reabastecimiento por umbral → tarjeta → Rechazar → verificado con SQL
+que NO cambió nada y NO se creó auditoría. Valor de prueba revertido al cierre. Deploy real de la EF a DEV
+vía `supabase functions deploy ai-assistant --project-ref gcmhzdedrkmmzfzfveig`.
+
+`APP_VERSION` sigue en `v1.177.0` en el código, sin bump — recomendación del wiki-keeper: `v1.178.0`, a
+decidir por GO/el orquestador al commitear. Detalle completo: `sources/raw/project_pendientes.md` (cont.
+20, "ARRANCÁ ACÁ"), [[wiki/features/asistente-ia]] (secciones "Plan IA" y "🐛 Modelo Groq roto"), `index.md`.
+
+---
+
 ## [2026-08-20] update | Plan IA: Fase 1 (memoria conversacional) completa + arranca Fase 2 (capa de RPCs de config), mig 376
 
 Primera sesión de código real del "Plan IA" (Asistente IA con memoria + capacidad de proponer cambios de

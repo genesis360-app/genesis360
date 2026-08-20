@@ -1,12 +1,38 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bot, X, Send, AlertCircle, RotateCcw, CheckCircle } from 'lucide-react'
+import { Bot, X, Send, AlertCircle, RotateCcw, CheckCircle, Settings2, Check, XCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+
+// Plan IA, Fase 2 (wiring) — propuesta de cambio de configuración que la EF arma cuando el
+// modelo usa la herramienta "proponer_cambio_configuracion" (nunca aplica nada por sí sola).
+interface PropuestaConfig {
+  campo: string
+  tipo: 'bool' | 'int' | 'text'
+  descripcion: string
+  valorActual: unknown
+  valorPropuesto: string | number | boolean
+  razon: string
+  estado: 'pendiente' | 'confirmada' | 'rechazada' | 'error'
+  error?: string
+}
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  propuesta?: PropuestaConfig
+}
+
+const RPC_POR_TIPO: Record<PropuestaConfig['tipo'], string> = {
+  bool: 'fn_ai_config_set_bool',
+  int: 'fn_ai_config_set_int',
+  text: 'fn_ai_config_set_text',
+}
+
+function formatValorConfig(v: unknown): string {
+  if (v === null || v === undefined) return '(sin valor)'
+  if (typeof v === 'boolean') return v ? 'Sí' : 'No'
+  return String(v)
 }
 
 /** Contexto real del usuario (rol/modo/menú visible) que la EF usa para no inventar UI. */
@@ -45,7 +71,7 @@ function cargarMensajesGuardados(userId?: string): Message[] {
 }
 
 export function AiAssistant({ className = '', contexto }: { className?: string; contexto?: AsistenteContexto }) {
-  const { user, tenant } = useAuthStore()
+  const { user, tenant, setTenant } = useAuthStore()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>(() => cargarMensajesGuardados(user?.id))
@@ -61,6 +87,10 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
   // usuario VIEJO bajo la clave del usuario NUEVO antes de que el efecto de "recargar" alcance a
   // reemplazarlos (ambos efectos disparan en el mismo render por depender de `user?.id`).
   const usuarioDeMessages = useRef(user?.id)
+  // Lock síncrono contra doble-submit de "Confirmar" (doble click antes del re-render que
+  // esconde los botones) — un Set en un ref se lee/escribe sincrónicamente, a diferencia de
+  // `messages`/`estado` que dependen del ciclo de render de React.
+  const propuestasEnCurso = useRef(new Set<number>())
 
   // Cerrar al hacer click fuera
   useEffect(() => {
@@ -127,17 +157,55 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
           'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
-          messages: newMessages,
+          // Solo role+content — la EF los reenvía tal cual a Groq, que no reconoce el campo
+          // `propuesta` (UI-only) que le agregamos a los mensajes guardados localmente.
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
           contexto: contexto ? { ...contexto, ruta: pathname } : undefined,
         }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? data.error ?? 'Error al responder.' }])
+      if (data.propuesta) {
+        // Plan IA, Fase 2 (wiring) — la EF NUNCA aplica el cambio, solo arma la propuesta acá;
+        // el `content` sirve de contexto para el modelo en el próximo turno, la tarjeta real
+        // se renderiza desde `propuesta`.
+        const p = data.propuesta
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Propuesta: cambiar "${p.descripcion}" de ${formatValorConfig(p.valorActual)} a ${formatValorConfig(p.valorPropuesto)}. Razón: ${p.razon}`,
+          propuesta: { ...p, estado: 'pendiente' },
+        }])
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? data.error ?? 'Error al responder.' }])
+      }
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'No pude conectarme. Revisá tu conexión e intentá de nuevo.' }])
     } finally {
       setLoading(false)
     }
+  }
+
+  // Plan IA, Fase 2 (wiring) — recién ACÁ se llama a la RPC (mig 376), con la sesión REAL del
+  // usuario (no la EF, no service_role) — el server revalida rol/allowlist de nuevo, no confía
+  // en que la tarjeta llegó de un usuario habilitado solo porque el front la mostró.
+  const confirmarPropuesta = async (idx: number) => {
+    const p = messages[idx]?.propuesta
+    if (!p || p.estado !== 'pendiente') return
+    if (propuestasEnCurso.current.has(idx)) return // doble click antes del re-render
+    propuestasEnCurso.current.add(idx)
+    setMessages(prev => prev.map((m, i) => i === idx && m.propuesta ? { ...m, propuesta: { ...m.propuesta, estado: 'confirmada' } } : m))
+    const { error } = await supabase.rpc(RPC_POR_TIPO[p.tipo], { p_campo: p.campo, p_valor: p.valorPropuesto, p_razon: p.razon })
+    if (error) {
+      setMessages(prev => prev.map((m, i) => i === idx && m.propuesta ? { ...m, propuesta: { ...m.propuesta, estado: 'error', error: error.message } } : m))
+    } else if (tenant) {
+      // Sincronizar el store — el UPDATE ya pasó server-side, sin esto el resto de la app
+      // (ej. Configuración) sigue mostrando el valor viejo hasta el próximo login/reload.
+      setTenant({ ...tenant, [p.campo]: p.valorPropuesto } as typeof tenant)
+    }
+    propuestasEnCurso.current.delete(idx)
+  }
+
+  const rechazarPropuesta = (idx: number) => {
+    setMessages(prev => prev.map((m, i) => i === idx && m.propuesta ? { ...m, propuesta: { ...m.propuesta, estado: 'rechazada' } } : m))
   }
 
   const sendReport = async () => {
@@ -215,7 +283,7 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white leading-none">Asistente Genesis360</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">Powered by Llama 3.1</p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">Powered by Groq</p>
             </div>
             <button onClick={reset} title="Nueva conversación"
               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
@@ -250,13 +318,56 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
 
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
-                  ${m.role === 'user'
-                    ? 'bg-accent text-white rounded-br-sm'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-sm'
-                  }`}>
-                  {m.content}
-                </div>
+                {m.propuesta ? (
+                  // Plan IA, Fase 2 (wiring) — tarjeta de confirmación: la IA NUNCA aplicó nada
+                  // todavía, solo propuso. Confirmar recién ahí llama a la RPC (mig 376).
+                  <div className="max-w-[90%] w-full rounded-2xl rounded-bl-sm border border-accent/30 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 text-sm">
+                    <div className="flex items-center gap-1.5 text-accent-text font-medium mb-1.5">
+                      <Settings2 size={14} /> Propuesta de configuración
+                    </div>
+                    <p className="text-gray-700 dark:text-gray-300">{m.propuesta.descripcion}</p>
+                    <div className="flex items-center gap-2 mt-1.5 text-xs">
+                      <span className="text-gray-400 dark:text-gray-500 line-through">{formatValorConfig(m.propuesta.valorActual)}</span>
+                      <span className="text-gray-400 dark:text-gray-500">→</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-100">{formatValorConfig(m.propuesta.valorPropuesto)}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">"{m.propuesta.razon}"</p>
+
+                    {m.propuesta.estado === 'pendiente' && (
+                      <div className="flex gap-2 mt-2.5">
+                        <button onClick={() => confirmarPropuesta(i)}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors">
+                          <Check size={13} /> Confirmar
+                        </button>
+                        <button onClick={() => rechazarPropuesta(i)}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                          <XCircle size={13} /> Rechazar
+                        </button>
+                      </div>
+                    )}
+                    {m.propuesta.estado === 'confirmada' && (
+                      <div className="flex items-center gap-1.5 mt-2 text-xs text-green-600 dark:text-green-400">
+                        <CheckCircle size={13} /> Cambio aplicado
+                      </div>
+                    )}
+                    {m.propuesta.estado === 'rechazada' && (
+                      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Rechazada — sin cambios.</p>
+                    )}
+                    {m.propuesta.estado === 'error' && (
+                      <div className="flex items-center gap-1.5 mt-2 text-xs text-red-500">
+                        <AlertCircle size={13} /> No se pudo aplicar: {m.propuesta.error ?? 'error desconocido'}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
+                    ${m.role === 'user'
+                      ? 'bg-accent text-white rounded-br-sm'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-sm'
+                    }`}>
+                    {m.content}
+                  </div>
+                )}
               </div>
             ))}
 

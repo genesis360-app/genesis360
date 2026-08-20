@@ -9,10 +9,10 @@ updated: 2026-08-20
 # Historial de Migraciones (001-376)
 
 **376 (`376_ai_config_rpc_layer.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`), NO
-APLICADA EN PROD, TODAVÍA SIN COMMITEAR (working tree local, archivo untracked):** capa de RPCs para que
+APLICADA EN PROD, ✅ COMMITEADA (commit `1b5e89aa`, tag+release `v1.177.0`):** capa de RPCs para que
 el Asistente IA pueda proponer/aplicar cambios de configuración con confirmación previa — Fase 2 del "Plan
 IA" (memoria + configuración), continúa la Fase 1 (memoria conversacional del Asistente, sin migración,
-mismo working tree sin commitear). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO hoy:
+mismo commit). Las 3 preguntas que bloqueaban el plan fueron respondidas por GO el 2026-08-20:
 alcance de Fase 2 = "todo lo NO fiscal" (allowlist chico y curado hoy, no las ~190 columnas de `tenants` de
 una). Agrega:
 1. Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
@@ -40,9 +40,10 @@ dentro de bloques `DO $$` sin COMMIT, confirmado con `SELECT` posterior que nada
 cambia el campo y devuelve valor anterior/nuevo correctos; (2) campo NO allowlisted (`cuit`) rechazado; (3)
 rol sin permiso (SUPERVISOR) rechazado aunque el campo esté permitido; (4) valor fuera de dominio
 (`repositor_etiquetas_por_hoja=7`, fuera de {4,6,12}) frenado por un `CHECK` YA EXISTENTE en la tabla
-`tenants` (no hizo falta agregar nada nuevo). **IMPORTANTE — todavía sin wiring**: ni la EF `ai-assistant`
-ni el frontend invocan estas RPCs todavía — nadie puede usarlas salvo llamándolas directo (y solo si es
-DUEÑO/ADMIN del propio tenant con el campo en el allowlist). Ver [[wiki/features/asistente-ia]] → "Plan
+`tenants` (no hizo falta agregar nada nuevo). **✅ Wiring completo (sesión siguiente, misma jornada
+2026-08-20, EN DEV TODAVÍA SIN COMMITEAR)**: la EF `ai-assistant` y el frontend (`AiAssistant.tsx`) ya
+invocan estas RPCs — tool-calling de Groq arma la propuesta, tarjeta de confirmación en el chat, y recién
+al confirmar se llama a la RPC real con la sesión del usuario. Ver [[wiki/features/asistente-ia]] → "Plan
 IA — memoria + configuración con confirmación".
 
 **375 (`375_caja_usd_fase6_devoluciones_nc.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
@@ -380,7 +381,7 @@ verdes. Ver `wiki/features/productos.md` y `wiki/features/precios-tiers-empaque.
 > consumidor de `precio_costo`/`precio_venta` respeta esa columna. Si algún tenant real importó
 > productos así, su margen/reportes están silenciosamente mal calculados. Pendiente decisión de GO.
 
-**Total al 2026-08-20:** 375 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-20:** 376 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión). **Migraciones 001-359 aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
 (`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,

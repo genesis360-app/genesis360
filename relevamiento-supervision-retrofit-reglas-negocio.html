@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Retrofit del patrón "Supervisión" a otros módulos · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Retrofit del patrón "Supervisión" a otros módulos</h1>
+<div class="meta">
+  Genesis360 · v1.179.0 · Fecha: 20 de agosto de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Esto NO es "¿construimos un patrón de supervisor reusable?".</strong> Esa pregunta ya se hizo y ya
+  se respondió: en <code>relevamiento_supervisor_tab_respuestas.md</code> Fede/GO decidieron construir un
+  patrón genérico, y se construyó de verdad en la mig 347 (v1.163.0, <strong>EN PROD</strong>) — tabla
+  <code>autorizaciones</code> con columna <code>modulo</code>, componente <code>SupervisionPanel</code> +
+  hook <code>useSupervisorAutorizaciones</code>, página cross-módulo <code>/supervision</code>, y un 4º
+  nivel de permiso <code>supervisa</code> en el sistema de roles (además de
+  <code>no_ver/ver/editar</code>). Todo eso funciona hoy en producción — <strong>pero SOLO para
+  Inventario</strong>. Este documento releva la <strong>continuación</strong>: qué módulos necesitan de
+  verdad este patrón, con qué alcance, en qué orden, y qué hacer con los sistemas paralelos que ya
+  existen (clave maestra de Ventas/Caja, y los dos sistemas propios de Gastos). No se pregunta "si"
+  construir el patrón — ya está construido y probado — se pregunta <strong>dónde y cómo extenderlo</strong>.
+  Las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span> (definir una regla que hoy no
+  existe en ningún lado), <span class="tag tag-existente">EXISTENTE</span> (confirmar una regla que el
+  código ya implementa, para no tener que rediseñarla) o
+  <span class="tag tag-cambio">CAMBIO</span> (el código actual contradice o tensiona con lo que ya se
+  decidió/construyó — hay que resolver la contradicción, no solo elegir una opción).
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo (verificado contra el código, no contra memoria):</strong>
+  la tabla <code>public.autorizaciones</code> tiene
+  <code>CHECK (modulo IN ('inventario'))</code> — confirmado contra <code>schema_full.sql</code>, es el
+  único valor permitido hoy, cualquier INSERT con otro <code>modulo</code> lo rechaza la base antes de
+  llegar a la UI. <code>SupervisionPage.tsx</code> (la página cross-módulo <code>/supervision</code>)
+  tiene un array <code>MODULOS</code> con un solo ítem (<code>inventario</code>) y un comentario literal
+  en el código — <em>"Extender MODULOS al retrofitear un módulo nuevo"</em> — que nunca se ejecutó. Dato
+  curioso confirmado: el diccionario <code>TIPO_LABELS</code> de esa misma página ya incluye
+  <code>kit_precio</code> ("Precio de KIT") y <code>repricing_margen</code> ("Repricing por margen") —
+  semánticamente son de <strong>Productos</strong> (precio/margen de un producto), pero
+  <code>fn_evaluar_repricing_margen</code> (mig 346/347) los inserta con <code>modulo = 'inventario'</code>
+  porque hoy no hay otro valor permitido. La capa genérica (<code>puedeSupervisarModulo</code> en
+  <code>permisosModulo.ts</code>, y <code>avisarSupervisor()</code> /
+  <code>useSupervisionBadge()</code> en <code>useSupervisorAutorizaciones.ts</code>) es <strong>100%
+  agnóstica del módulo</strong> — no valida contra ninguna lista fija de módulos, solo evalúa el string
+  que se le pasa: DUEÑO/SUPER_USUARIO/ADMIN(staff) siempre pueden supervisar cualquier módulo, SUPERVISOR
+  lo hereda salvo la lista <code>SUPERVISOR_MODULOS_PROHIBIDOS</code>
+  (configuracion/usuarios/sucursales/rrhh/facturacion/proveedores/recursos/biblioteca), y un rol custom
+  necesita <code>supervisa</code> explícito en <code>permisos_custom</code>. Esto significa que la
+  pregunta "¿quién aprueba?" ya está resuelta en general para cualquier módulo nuevo — lo que falta por
+  módulo es: (1) sumarlo al <code>CHECK</code> de <code>modulo</code>, (2) sumarlo al array
+  <code>MODULOS</code> de <code>SupervisionPage.tsx</code>, (3) decidir qué ACCIÓN puntual dispara el
+  INSERT en <code>autorizaciones</code>, y (4) montar el tab "Supervisión" reusando
+  <code>SupervisionPanel</code>. Aparte, la lista <code>MODULOS</code> de <code>UsuariosPage.tsx</code>
+  (17 entradas, gobierna qué se puede delegar vía rol custom) <strong>no incluye</strong>
+  <code>productos</code>, <code>envios</code>, <code>proveedores</code>, <code>recursos</code> ni
+  <code>pedidos</code> — hoy esos 5 módulos no se pueden delegar por rol custom en absoluto (ni
+  ver/editar, mucho menos supervisar); retrofitear supervisión ahí exige primero sumarlos a esa lista.
+  <br><br>
+  <strong>Gastos tiene DOS tablas de aprobación propias, previas al patrón genérico y sin relación con
+  él:</strong> <code>autorizaciones_gasto</code> (mig 132, v1.8.43 — crear/editar/eliminar un gasto que
+  supera <code>sucursales.umbral_gasto_supervisor</code>/<code>umbral_gasto_cajero</code>, componente
+  <code>BandejaAutorizacionesGasto.tsx</code>, aprobación con jerarquía estricta vía
+  <code>puedeAprobar()</code>: CAJERO→SUPERVISOR/ADMIN/DUEÑO, SUPERVISOR→ADMIN/DUEÑO) y
+  <code>autorizaciones_cc</code> (mig 133, v1.8.44 — override para crear una OC con cuenta corriente de un
+  PROVEEDOR bloqueada, <code>motivo_bloqueo IN ('limite_excedido','oc_vencida')</code>, componente
+  <code>BandejaAutorizacionesCC.tsx</code>, aprueba <strong>solo</strong> DUEÑO/ADMIN/SUPER_USUARIO
+  hardcodeado — ni siquiera pasa por <code>puedeAprobar()</code> ni por <code>permisos_custom</code>).
+  Ambas viven como sub-tabs dentro de <code>GastosPage.tsx</code> (<code>autSubTab === 'gastos' | 'cc'</code>)
+  aunque <code>autorizaciones_cc</code> es conceptualmente de Proveedores/Compras, no de Gastos.
+  <br><br>
+  <strong>Ventas y Caja no usan cola de aprobación en absoluto</strong> — usan
+  <code>verificar_clave_maestra</code> (RPC contra <code>tenants.clave_maestra</code>, hasheada con bcrypt
+  desde mig 233), un patrón <strong>síncrono</strong>: se tipea la clave en el momento (helper
+  <code>pedirClaveMaestra()</code>) y la acción se ejecuta al toque, sin pasar por un estado "pendiente" ni
+  notificar a nadie. En <code>VentasPage.tsx</code> gatea 4 acciones: cambiar el cliente de una venta,
+  autorizar un descuento que supera el tope del vendedor, autorizar devolución/edición de una venta ya
+  cobrada, y anular una venta despachada. En <code>CajaPage.tsx</code> gatea 2: cerrar una caja que abrió
+  otro usuario, y extraer efectivo de la Caja Fuerte <strong>en USD sin cuenta destino</strong> por encima
+  de <code>tenant.caja_usd_clave_maestra_umbral</code> (G5 Fase 5, F3). <strong>No existe hoy ningún
+  umbral ni gate para un retiro de Caja Fuerte en ARS, sea cual sea el monto</strong> — el ejemplo que dio
+  GO ("retiro de Caja &gt; $X requiere aprobación") es una regla nueva a construir de cero, no algo que ya
+  exista y haya que confirmar. Si sirve de precedente de diseño: ya existen dos patrones de "umbral
+  configurable por tenant" en el código — <code>sucursales.umbral_gasto_supervisor</code> /
+  <code>umbral_gasto_cajero</code> (Gastos) y <code>tenants.caja_usd_clave_maestra_umbral</code> (Caja
+  USD) — ninguno está hardcodeado.
+</div>
+
+<!-- ============================ A. ALCANCE POR MÓDULO ============================ -->
+<h2>A. Alcance por módulo — ¿quién necesita de verdad una cola de aprobación?</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Ventas — de las 4 acciones ya gateadas por clave maestra, ¿cuál(es) pasa(n) a cola de aprobación real? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy las 4 (cambiar cliente / autorizar descuento sobre tope / devolución-edición de venta cobrada / anular venta despachada) usan <code>pedirClaveMaestra()</code>: síncrono, sin notificar a nadie, sin quedar "pendiente". Pasar una a cola significa que deja de resolverse en el momento — alguien con <code>supervisa</code> tiene que entrar a aprobarla después.</div>
+  <ul class="opciones">
+    <li>(a) Ninguna — las 4 quedan 100% con clave maestra, tal cual están</li>
+    <li>(b) Solo "anular venta despachada" (la más grave/irreversible: ya salió mercadería)</li>
+    <li>(c) "Anular venta despachada" + "devolución/edición de venta cobrada" (las 2 que tocan plata/stock ya movido)</li>
+    <li>(d) Las 4 pasan a cola</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Caja — retiro/extracción de Caja Fuerte en ARS por encima de un monto: ¿se agrega aprobación? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ejemplo concreto que dio GO. Hoy CUALQUIER retiro en ARS (<code>boveda_retiros</code>, tipos banco/retiro_personal/gasto/inversion/pago_proveedor/otro) sale sin ningún gate, sin importar el monto — el único gate que existe hoy es para USD sin destino.</div>
+  <ul class="opciones">
+    <li>(a) Sí, cola de aprobación asíncrona tipo Inventario (queda "pendiente" hasta que alguien con <code>supervisa</code> en Caja lo apruebe)</li>
+    <li>(b) Sí, pero con clave maestra igual que ya existe para USD sin destino — mismo patrón síncrono, no cola</li>
+    <li>(c) No hace falta — bajo volumen/riesgo, se confía en quién tiene acceso a Caja</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Caja — cierre de caja ajena: ¿se mantiene clave maestra o pasa a cola? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: si <code>sesionActiva.usuario_id !== user.id</code>, la clave maestra desbloquea el cierre en el momento. Es una acción operativa del día a día (alguien cierra la caja de un compañero que ya se fue) — pasar a cola significaría que la caja queda abierta hasta que un supervisor la apruebe.</div>
+  <ul class="opciones">
+    <li>(a) Se queda como está — clave maestra, resolución inmediata (tiene sentido operativo: la caja no puede quedar "colgada")</li>
+    <li>(b) Pasa a cola de aprobación</li>
+    <li>(c) Conviven: clave maestra si hay alguien con la clave presente, cola si no (queda pendiente hasta que un supervisor la revise remoto)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    <code>kit_precio</code> / <code>repricing_margen</code> — ¿se reclasifican a <code>modulo='productos'</code>? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy ambos tipos escriben con <code>modulo='inventario'</code> porque es el único valor que el CHECK permite — pero conceptualmente son cambios de PRECIO de un producto, no de inventario físico. Si se agrega <code>'productos'</code> al CHECK el día de mañana, hay que decidir qué pasa con estos dos tipos.</div>
+  <ul class="opciones">
+    <li>(a) Se reclasifican a <code>modulo='productos'</code> — es lo semánticamente correcto</li>
+    <li>(b) Quedan en <code>'inventario'</code> — Productos e Inventario comparten mucha superficie hoy (mismo tab, mismo <code>SupervisionPanel</code> montado en <code>InventarioPage.tsx</code>), separarlos no aporta y rompe el historial ya generado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Clientes / Envíos / Proveedores / Recursos / Pedidos / RRHH — ¿alguno necesita supervisión de algo puntual? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy ninguno de estos 6 módulos tiene clave maestra NI cola de aprobación — no hay ningún precedente en el código que sugiera qué acción calificaría. No asuman que todos necesitan esto: marquen solo los que de verdad tengan una acción sensible real, y describan cuál.</div>
+  <ul class="opciones">
+    <li>☐ Clientes — acción: ____________________________</li>
+    <li>☐ Envíos — acción: ____________________________</li>
+    <li>☐ Proveedores — acción: ____________________________ (recordar: <code>autorizaciones_cc</code> ya cubre "crear OC con CC bloqueada" — ver sección C)</li>
+    <li>☐ Recursos — acción: ____________________________</li>
+    <li>☐ Pedidos — acción: ____________________________</li>
+    <li>☐ RRHH — acción: ____________________________</li>
+    <li>☐ Ninguno de estos 6 necesita supervisión por ahora</li>
+  </ul>
+</div>
+
+<!-- ============================ B. VENTAS Y CAJA: CONVIVENCIA ============================ -->
+<h2>B. Ventas y Caja — ¿migran la clave maestra a la cola, o conviven los dos patrones?</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Arquitectura general: ¿conviven clave maestra (síncrono) y cola (asíncrono), o se unifica todo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Son arquitecturas distintas con distinto costo de UX: clave maestra = "tipeá y seguís", cola = "queda pendiente hasta que alguien lo apruebe". Migrar tiene costo real: lo que hoy se resuelve en el momento pasaría a depender de que otra persona esté disponible.</div>
+  <ul class="opciones">
+    <li>(a) Conviven para siempre — clave maestra para "resolver YA" (montos chicos, urgente, la operación no puede esperar), cola para "revisar con calma" (montos grandes, no bloquea la operación) — cada acción define cuál usa según A1/A2/A3</li>
+    <li>(b) Se migra TODO Ventas/Caja a cola, se elimina clave maestra por completo</li>
+    <li>(c) Se migra SOLO lo nuevo (ej. el umbral de retiro de Caja, si A2 fue "sí, cola") y lo que ya usa clave maestra queda exactamente como está</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Si algo pasa a cola: ¿la operación queda bloqueada hasta aprobarse, o sigue y se revierte si se rechaza? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Inventario ya resolvió este problema para <code>cambio_estado</code> y <code>repricing_margen</code>: el cambio NO se aplica hasta que <code>aprobar_cambio_estado_inventario()</code> lo confirma — queda "sugerido"/"pendiente" sin efecto real hasta la aprobación. Hay que decidir si ese mismo criterio sirve para una VENTA (ej. "anular venta despachada" pendiente: ¿la venta sigue figurando activa hasta que se apruebe la anulación?).</div>
+  <ul class="opciones">
+    <li>(a) Mismo criterio que Inventario — no se aplica nada hasta aprobar; la venta/caja sigue en su estado actual mientras está pendiente</li>
+    <li>(b) Distinto — la acción se ejecuta al toque (ej. la venta se anula ya) y queda un registro "por revisar" a posteriori, sin poder de bloqueo real</li>
+    <li>(c) Depende de la acción — algunas bloquean, otras no (definir caso por caso en A1)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Si conviven ambos patrones, ¿qué decide cuál se usa? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Un monto — clave maestra si el monto es menor a $X, cola si es mayor o igual</li>
+    <li>(b) El tipo de acción — fijo en el código, no configurable (ej. "anular venta" siempre cola, "cambiar cliente" siempre clave)</li>
+    <li>(c) Configurable por tenant — cada negocio elige, por acción, qué patrón usar</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. GASTOS: CONSOLIDAR O NO ============================ -->
+<h2>C. Gastos — ¿se migran <code>autorizaciones_gasto</code>/<code>autorizaciones_cc</code> al sistema genérico?</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    <code>autorizaciones_gasto</code> → tabla genérica <code>autorizaciones</code> (<code>modulo='gastos'</code>) <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Migrar significa tocar un sistema que funciona en PROD desde v1.8.43 (mismo tipo de RENAME + columna que ya se usó para Inventario en mig 347, preservando PK/FK/RLS). No migrar significa mantener el sistema genérico y este viejo para siempre, en paralelo.</div>
+  <ul class="opciones">
+    <li>(a) Sí, migrar — mismo patrón RENAME que mig 347, la tabla vieja desaparece</li>
+    <li>(b) No, queda como está — funciona hoy, migrar es riesgo sin beneficio claro para el usuario final</li>
+    <li>(c) Se migra solo la UI (el tab de Gastos pasa a usar <code>SupervisionPanel</code>) pero la tabla de datos queda separada, con un adaptador</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    <code>autorizaciones_cc</code> (override de proveedor bloqueado) — ¿se migra, y a qué módulo? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy aprueba EXCLUSIVAMENTE DUEÑO/ADMIN/SUPER_USUARIO hardcodeado en el componente — no pasa por <code>puedeAprobar()</code> ni por <code>permisos_custom</code>/<code>supervisa</code>, es un caso especial no delegable. Además es conceptualmente de Proveedores/Compras (bloqueo de cuenta corriente de un proveedor), no de Gastos, aunque hoy vive en <code>GastosPage.tsx</code>.</div>
+  <ul class="opciones">
+    <li>(a) Migra a <code>modulo='gastos'</code> — igual que hoy, convive ahí</li>
+    <li>(b) Migra a <code>modulo='proveedores'</code> — más preciso semánticamente (requiere primero sumar <code>proveedores</code> a <code>MODULOS</code> de <code>UsuariosPage.tsx</code>, ver resumen)</li>
+    <li>(c) Queda como está — es un caso especial (solo DUEÑO, sin delegar) que no calza con el modelo <code>supervisa</code> delegable del patrón genérico</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Si ninguno de los dos se migra: ¿es aceptable sostener 3+ sistemas de aprobación en paralelo para siempre? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Genérico (<code>autorizaciones</code>), Gastos (<code>autorizaciones_gasto</code>), CC (<code>autorizaciones_cc</code>) — cada uno con su propia tabla, su propio componente Bandeja, su propia regla de "quién aprueba".</div>
+  <ul class="opciones">
+    <li>(a) Sí, es aceptable mientras cada uno resuelva bien su caso — no vale la pena el costo de unificar</li>
+    <li>(b) No — hay que consolidar en algún momento, aunque no sea ahora (queda en backlog explícito, no se resuelve solo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. UMBRAL DE CAJA ============================ -->
+<h2>D. Umbral de Caja para retiros (si A2 fue "sí")</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Monto del umbral <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Un número fijo en pesos, a definir ahora: $____________</li>
+    <li>(b) Configurable por tenant — mismo patrón que <code>umbral_gasto_supervisor</code>/<code>umbral_gasto_cajero</code></li>
+    <li>(c) Configurable por tenant Y por rol (ej. CAJERO con umbral más bajo que SUPERVISOR, como ya hace Gastos)</li>
+    <li>(d) A definir recién cuando se construya — no hace falta el número ahora</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    ¿El umbral aplica a todos los tipos de extracción, o solo a algunos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>extraerTipo</code> ya distingue banco / retiro_personal / gasto / inversion / pago_proveedor / otro — todos comparten el mismo formulario de extracción de Caja Fuerte, sin distinción de riesgo.</div>
+  <ul class="opciones">
+    <li>(a) Aplica a todos los tipos por igual</li>
+    <li>(b) Solo a "retiro_personal" (dueño se lleva plata) y "otro" — banco/gasto/inversión/pago_proveedor quedan libres porque van a un destino identificable</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    ¿Se unifica con el umbral USD que ya existe, o quedan dos mecanismos separados? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>caja_usd_clave_maestra_umbral</code> ya gatea con clave maestra la extracción USD sin destino — es un mecanismo síncrono ya construido y en uso.</div>
+  <ul class="opciones">
+    <li>(a) Se unifican — ARS y USD pasan ambos al mismo mecanismo nuevo (cola o clave maestra, lo que se decida en A2)</li>
+    <li>(b) Quedan separados — USD sigue con clave maestra tal cual está, ARS estrena el mecanismo nuevo</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. ORDEN / PRIORIDAD ============================ -->
+<h2>E. Orden y alcance de la primera fase</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Con qué módulo se arranca? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Mismo criterio que ya usó el proyecto en features grandes: no construir todo junto, elegir un primer corte acotado.</div>
+  <ul class="opciones">
+    <li>(a) Caja — retiro con umbral, el ejemplo concreto que dio GO, alcance chico y acotado</li>
+    <li>(b) Gastos — consolidar los 2 sistemas viejos en el genérico, resuelve deuda técnica real</li>
+    <li>(c) Ventas — las 4 acciones con clave maestra ya identificadas y bien entendidas</li>
+    <li>(d) Ninguno todavía — faltan cerrar las decisiones de alcance de A-D antes de codear cualquier cosa</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    ¿Un módulo por fase, o se agrupan varios porque comparten componentes ya genéricos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>SupervisionPanel</code>/<code>useSupervisorAutorizaciones</code> ya son 100% reusables — el costo de sumar un módulo nuevo es mucho más bajo que el de construir Inventario desde cero (mig 347).</div>
+  <ul class="opciones">
+    <li>(a) Un módulo por fase, con su propia release — mismo criterio que el resto del proyecto</li>
+    <li>(b) Se agrupan 2+ módulos en una sola fase si son parecidos (ej. Ventas + Caja juntos, o Gastos + CC juntos)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. NOTIFICACIÓN Y ASIGNACIÓN ============================ -->
+<h2>F. Notificación y asignación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿El permiso genérico <code>supervisa</code> alcanza, o Gastos necesita preservar su jerarquía estricta? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Confirmar una regla ya implementada en dos lugares distintos con criterios DIFERENTES: el patrón genérico (<code>puedeSupervisarModulo</code>) dice "cualquiera con <code>supervisa</code> en ese módulo puede aprobar cualquier solicitud". Gastos hoy es más estricto: <code>puedeAprobar()</code> exige jerarquía (CAJERO lo aprueba SUPERVISOR/ADMIN/DUEÑO; SUPERVISOR lo aprueba ADMIN/DUEÑO — un CAJERO con <code>supervisa</code> nunca podría aprobarle a otro CAJERO). Si Gastos migra al genérico (sección C), esta diferencia se pierde salvo que se agregue un chequeo extra.</div>
+  <ul class="opciones">
+    <li>(a) Alcanza con <code>supervisa</code> genérico — se pierde la jerarquía estricta de Gastos y no importa (en la práctica <code>supervisa</code> ya lo tienen roles por encima del solicitante)</li>
+    <li>(b) Hay que preservar la jerarquía — el hook genérico necesita un chequeo adicional (rol del solicitante vs. rol del aprobador) al menos para Gastos</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Reasignación (<code>asignado_a</code>) — ¿aplica igual a todo lo nuevo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Inventario ya permite reasignar cualquier solicitud pendiente a un usuario puntual (E1/E2 del relevamiento original). Para algo como "cierre de caja ajena" (A3), reasignar no tiene el mismo sentido: la caja tiene que resolverse YA, no quedar esperando a que una persona puntual la revise.</div>
+  <ul class="opciones">
+    <li>(a) Aplica igual a todo — cualquier solicitud pendiente en cualquier módulo se puede reasignar</li>
+    <li>(b) No aplica a acciones que necesitan resolución inmediata (ej. cierre de caja ajena, si pasara a cola) — esas no admiten reasignación, solo aprobar/rechazar rápido</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. TOP 3 / COMENTARIOS ============================ -->
+<h2>G. Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores sin bloquear el arranque.</div>
+  <ul class="opciones">
+    <li>(   ) A2/D1 — umbral de retiro de Caja: si se construye y con qué monto (el ejemplo concreto de GO)</li>
+    <li>(   ) A1/B1 — Ventas: cuáles de las 4 acciones con clave maestra migran a cola, y si conviven ambos patrones</li>
+    <li>(   ) C1/C2 — Gastos: se migran <code>autorizaciones_gasto</code>/<code>autorizaciones_cc</code> al genérico, o quedan como están</li>
+    <li>(   ) A5 — qué necesitan (si algo) Clientes/Envíos/Proveedores/Recursos/Pedidos/RRHH</li>
+    <li>(   ) E1 — con qué módulo se arranca la construcción</li>
+    <li>(   ) F1 — si Gastos migra, cómo se preserva (o no) su jerarquía estricta de aprobación</li>
+    <li>(   ) B2 — si algo pasa a cola, ¿bloquea la operación hasta aprobarse o sigue y se revierte después?</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio · Retrofit del patrón "Supervisión" a otros módulos · 2026-08-20<br>
+  Este documento es la <strong>continuación</strong> de <code>relevamiento_supervisor_tab_respuestas.md</code>
+  (que ya cerró la decisión de construir el patrón genérico y se implementó en mig 347, v1.163.0, EN PROD) —
+  no es un relevamiento desde cero. Una vez completado, devolver a Claude/GO para volcar al wiki y planificar
+  las fases de retrofit módulo por módulo.
+</div>
+
+</body>
+</html>

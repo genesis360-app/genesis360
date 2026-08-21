@@ -70,14 +70,14 @@ export function CotizacionWidget() {
               className="text-gray-900 dark:text-white text-sm font-semibold hover:text-blue-600 dark:hover:text-blue-200 transition-colors text-left truncate"
             >
               {cotizacion > 0
-                ? `$${cotizacion.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
+                ? <>{cotizacionCompra > 0 && <span className="text-blue-400 dark:text-blue-500 font-normal text-xs">Venta: </span>}${cotizacion.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</>
                 : <span className="text-blue-500 dark:text-blue-400 text-xs font-normal italic">Sin cotización</span>
               }
             </button>
           ) : (
             <span className="text-gray-900 dark:text-white text-sm font-semibold text-left truncate">
               {cotizacion > 0
-                ? `$${cotizacion.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
+                ? <>{cotizacionCompra > 0 && <span className="text-blue-400 dark:text-blue-500 font-normal text-xs">Venta: </span>}${cotizacion.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</>
                 : <span className="text-blue-500 dark:text-blue-400 text-xs font-normal italic">Sin cotización</span>
               }
             </span>

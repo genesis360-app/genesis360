@@ -6,7 +6,58 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 22) — 🚀 DEPLOY A PROD CONFIRMADO: Plan IA (Fases 1+2+3) 100% en
+> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 23) — 📋 Relevamiento retrofit Supervisión generado + 🐛💵 3
+> reportes de Fede sobre moneda USD (1 FIXED+e2e, 2 DEFERIDOS esperando que GO hable con Fede) —
+> continúa la misma sesión que el deploy a PROD del Plan IA (cont. 22, abajo, SIN cambios) — Caja
+> USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+>
+> #### 📋 Relevamiento retrofit del patrón "tab Supervisión" a otros módulos
+>
+> GO pidió retomar el pendiente [[project_supervision_tab_extension_pendiente]]. Generado
+> `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo) — inspecciona código real
+> (`SupervisionPage.tsx` MODULOS=solo 'inventario', el CHECK de `autorizaciones.modulo` en mig 347,
+> los 2 sistemas paralelos de Gastos, la "clave maestra" de Ventas/Caja). 20 preguntas en 7
+> secciones. Es CONTINUACIÓN de `relevamiento_supervisor_tab_respuestas.md` (esa ya cerró "sí,
+> construir el patrón" — esta es "a qué módulos y con qué alcance"). **GO todavía no lo respondió —
+> no arrancar diseño/código.**
+>
+> #### 🐛💵 3 reportes de Fede sobre moneda USD (Productos/Ventas), vía GO
+>
+> **1. ✅ FIXED y verificado con e2e real**: `ProductosPage.tsx` (la LISTA, no la ficha) ignoraba
+> `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el mirror en ARS con `$`, incluso
+> para productos priceados nativamente en USD. Fix: helpers `precioVentaTexto`/`precioCostoTexto`
+> (usan `formatMoneda` de `lib/formato.ts`) en los 6 call-sites (fila colapsada, fila de variante,
+> panel expandido — venta y costo). De paso, `CotizacionWidget.tsx` ahora rotula "Venta:" el número
+> principal (antes solo "Compra:" abajo tenía label). Verificado con e2e mutante nuevo
+> (`tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts`, producto USD real creado y patcheado
+> por REST, fila colapsada + panel expandido) y con screenshot real del widget. `tsc`/`build`/suite
+> unit completa verdes. **Commit pendiente** al momento de escribir esto.
+>
+> **2. ⏸️ DEFERIDO — GO habla con Fede antes de decidir alcance** (NO TOCAR hasta confirmación):
+> - **Compra vs. venta**: confirmado que `useCotizacion().cotizacion` = dólar VENTA, y esa misma
+>   variable (`cotizacionUSD` en `VentasPage.tsx`) se reusa en ~10 lugares (carrito, efectivo USD
+>   del cajero, tiers mayoristas, combos, snapshot de la venta). Fede pide compra en vez de venta,
+>   pero no está claro si es solo la conversión de producto→pesos o todo lo que comparte la variable.
+> - **"Solo dólar oficial de BNA"**: puede referirse al widget general "Cotización USD" (deja elegir
+>   Blue/Oficial/MEP/Cripto por tenant, sin tocar) o a la Fase 8/C2 del plan Caja USD (la pieza
+>   específica para AFIP, que NUNCA se construyó, sigue bloqueada por el contador) — son 2 cosas
+>   distintas, hay que confirmar cuál.
+>
+> **3. ❓ Sin resolver**: Fede describió que un producto USD "se convierte solo a pesos, sin dar
+> opción de cobrar en dólares físicos" en Ventas. El mecanismo (`carritoAceptaUsd()`, medio
+> "Efectivo USD") SÍ existe en código y debería activarse si `moneda_venta==='usd'` o
+> `acepta_cualquier_moneda`. Confirmado que el carrito convierte el precio a ARS apenas se agrega
+> el producto (por diseño) y la opción USD recién aparece en el selector de MEDIO DE PAGO al
+> cobrar — puede ser solo visibilidad, no bug. Busqué el producto de su captura ("Pistola TPR 9 -
+> Black", SKU "BER-TPR-9-BL") en PROD y en el tenant de pruebas de DEV — no existe en ninguno de
+> los dos. **Falta que GO confirme en qué entorno probó Fede** para reproducirlo de verdad.
+>
+> Detalle completo en [[project_moneda_producto_pendientes_fede]]. Ver `log.md` (entrada al
+> principio), [[wiki/features/productos]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 22) — 🚀 DEPLOY A PROD CONFIRMADO: Plan IA (Fases 1+2+3) 100% en
 > PROD — cierra el ciclo completo del "Plan IA" en producción, GO autorizó explícitamente en esta misma
 > sesión ("pasamos todo eso a PRD") — supera al bloque de abajo (cont. 21, que documentaba el estado
 > "recién commiteado, deploy todavía pendiente") — Caja USD/Auditoría (cont. 18, más abajo) SIGUE VIGENTE

@@ -6,6 +6,53 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-20] update | 📋 Relevamiento retrofit Supervisión + 🐛💵 3 reportes de Fede sobre moneda USD (1 fixed, 2 deferidos)
+
+Continúa la misma sesión que el deploy a PROD del Plan IA (entrada de abajo). Dos hilos de trabajo
+independientes:
+
+**Relevamiento retrofit "tab Supervisión"**: GO retomó [[project_supervision_tab_extension_pendiente]].
+Generado `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), inspeccionando código
+real (`SupervisionPage.tsx` — array `MODULOS` con un solo ítem 'inventario' y el comentario literal
+"Extender MODULOS al retrofitear un módulo nuevo"; `autorizaciones_modulo_check` en mig 347 acotado a
+'inventario'; los 2 sistemas paralelos de Gastos —`autorizaciones_gasto`/`autorizaciones_cc`—; la "clave
+maestra" síncrona de Ventas/Caja). 20 preguntas en 7 secciones, continuación explícita de
+`relevamiento_supervisor_tab_respuestas.md` (que ya cerró "sí, construir el patrón" — esto es "a qué
+módulos y con qué alcance"). GO todavía no lo respondió.
+
+**3 reportes de Fede sobre moneda USD** (Productos/Ventas), vía GO, con 2 capturas de pantalla:
+
+1. **✅ FIXED, verificado con e2e mutante real contra DEV**: `ProductosPage.tsx` (la lista, no la
+   ficha) ignoraba `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el mirror ARS con
+   `$`, aunque el producto estuviera priceado nativamente en USD (`precio_usd`/`precio_costo_usd`,
+   rediseño mig 367 — la ficha `ProductoFormPage.tsx` ya lo hacía bien desde ese fix anterior a
+   Fede). Fix: helpers `precioVentaTexto`/`precioCostoTexto` (`formatMoneda` de `lib/formato.ts`) en
+   los 6 call-sites. De paso, `CotizacionWidget.tsx` ahora rotula "Venta:" el número principal
+   (antes solo "Compra:" abajo tenía label) — verificado con screenshot real. Nuevo
+   `tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts` (producto USD real vía UI+REST, fila
+   colapsada + panel expandido, valores decoy en ARS para detectar una regresión). `tsc`/`build`/
+   suite unit completa (100 archivos, 1625 tests) verdes. **Commit pendiente.**
+
+2. **⏸️ DEFERIDO, GO habla con Fede antes de decidir alcance — NO TOCAR**: (a) confirmado que
+   `useCotizacion().cotizacion` = dólar VENTA, y esa variable (`cotizacionUSD` en `VentasPage.tsx`)
+   se reusa en ~10 lugares (carrito, efectivo USD del cajero, tiers mayoristas, combos, snapshot de
+   la venta) — Fede pide compra en vez de venta pero no está claro el alcance exacto; (b) "solo
+   dólar oficial de BNA" puede referirse al widget general (Blue/Oficial/MEP/Cripto, sin tocar) o a
+   la Fase 8/C2 del plan Caja USD (AFIP, nunca construida, bloqueada por el contador) — son 2 cosas
+   distintas, falta confirmar cuál.
+
+3. **❓ Sin resolver**: el mecanismo que describe Fede como faltante (opción de cobrar en USD
+   físico) SÍ existe en código (`carritoAceptaUsd()`, medio "Efectivo USD") — confirmado que el
+   carrito convierte a ARS apenas se agrega el producto (por diseño) y la opción USD aparece recién
+   en el selector de medio de pago al cobrar, no antes. Busqué el producto de su captura ("Pistola
+   TPR 9 - Black", SKU "BER-TPR-9-BL") en PROD y en el tenant de pruebas de DEV — no existe en
+   ninguno de los dos. Falta que GO confirme en qué entorno probó Fede para reproducirlo.
+
+Detalle completo: [[project_moneda_producto_pendientes_fede]] (memoria),
+`sources/raw/project_pendientes.md` (cont. 23, "ARRANCÁ ACÁ").
+
+---
+
 ## [2026-08-20] deploy | 🚀 Plan IA (Fases 1+2+3) a PROD — v1.179.0, PR #332 mergeado, migs 376-378 en PROD
 
 Deploy real a PROD del "Plan IA" completo (memoria conversacional + propuesta de config con confirmación +

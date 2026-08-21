@@ -23,15 +23,17 @@ type: project
 >
 > #### 🐛💵 3 reportes de Fede sobre moneda USD (Productos/Ventas), vía GO
 >
-> **1. ✅ FIXED y verificado con e2e real**: `ProductosPage.tsx` (la LISTA, no la ficha) ignoraba
-> `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el mirror en ARS con `$`, incluso
-> para productos priceados nativamente en USD. Fix: helpers `precioVentaTexto`/`precioCostoTexto`
-> (usan `formatMoneda` de `lib/formato.ts`) en los 6 call-sites (fila colapsada, fila de variante,
-> panel expandido — venta y costo). De paso, `CotizacionWidget.tsx` ahora rotula "Venta:" el número
-> principal (antes solo "Compra:" abajo tenía label). Verificado con e2e mutante nuevo
+> **1. ✅ FIXED, COMMITEADO Y PUSHEADO** (commit `193820df`, tag+release `v1.179.1` sobre `dev` —
+> **SOLO EN DEV, no deployado a PROD a propósito**, GO no lo pidió todavía): `ProductosPage.tsx`
+> (la LISTA, no la ficha) ignoraba `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el
+> mirror en ARS con `$`, incluso para productos priceados nativamente en USD. Fix: helpers
+> `precioVentaTexto`/`precioCostoTexto` (usan `formatMoneda` de `lib/formato.ts`) en los 6
+> call-sites (fila colapsada, fila de variante, panel expandido — venta y costo). De paso,
+> `CotizacionWidget.tsx` ahora rotula "Venta:" el número principal (antes solo "Compra:" abajo
+> tenía label). Verificado con e2e mutante nuevo
 > (`tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts`, producto USD real creado y patcheado
 > por REST, fila colapsada + panel expandido) y con screenshot real del widget. `tsc`/`build`/suite
-> unit completa verdes. **Commit pendiente** al momento de escribir esto.
+> unit completa (1625 tests) verdes.
 >
 > **2. ⏸️ DEFERIDO — GO habla con Fede antes de decidir alcance** (NO TOCAR hasta confirmación):
 > - **Compra vs. venta**: confirmado que `useCotizacion().cotizacion` = dólar VENTA, y esa misma
@@ -51,6 +53,12 @@ type: project
 > cobrar — puede ser solo visibilidad, no bug. Busqué el producto de su captura ("Pistola TPR 9 -
 > Black", SKU "BER-TPR-9-BL") en PROD y en el tenant de pruebas de DEV — no existe en ninguno de
 > los dos. **Falta que GO confirme en qué entorno probó Fede** para reproducirlo de verdad.
+>
+> **Las 3 preguntas para Fede quedaron redactadas y entregadas a GO** (para reenviarle) — texto
+> exacto en [[project_moneda_producto_pendientes_fede]]. **Próximo paso: esperar esa respuesta
+> antes de tocar los puntos 2 y 3** — no re-preguntar de cero ni asumir un alcance. Separado:
+> decidir con GO si el fix del punto 1 se deploya a PROD ahora (chico, solo visual) o se junta con
+> otra tanda.
 >
 > Detalle completo en [[project_moneda_producto_pendientes_fede]]. Ver `log.md` (entrada al
 > principio), [[wiki/features/productos]].

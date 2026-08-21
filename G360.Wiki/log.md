@@ -22,16 +22,17 @@ módulos y con qué alcance"). GO todavía no lo respondió.
 
 **3 reportes de Fede sobre moneda USD** (Productos/Ventas), vía GO, con 2 capturas de pantalla:
 
-1. **✅ FIXED, verificado con e2e mutante real contra DEV**: `ProductosPage.tsx` (la lista, no la
-   ficha) ignoraba `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el mirror ARS con
-   `$`, aunque el producto estuviera priceado nativamente en USD (`precio_usd`/`precio_costo_usd`,
-   rediseño mig 367 — la ficha `ProductoFormPage.tsx` ya lo hacía bien desde ese fix anterior a
-   Fede). Fix: helpers `precioVentaTexto`/`precioCostoTexto` (`formatMoneda` de `lib/formato.ts`) en
-   los 6 call-sites. De paso, `CotizacionWidget.tsx` ahora rotula "Venta:" el número principal
-   (antes solo "Compra:" abajo tenía label) — verificado con screenshot real. Nuevo
-   `tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts` (producto USD real vía UI+REST, fila
-   colapsada + panel expandido, valores decoy en ARS para detectar una regresión). `tsc`/`build`/
-   suite unit completa (100 archivos, 1625 tests) verdes. **Commit pendiente.**
+1. **✅ FIXED, COMMITEADO Y PUSHEADO — commit `193820df`, tag+release `v1.179.1` sobre `dev`
+   (SOLO EN DEV, no deployado a PROD todavía a propósito — GO no lo pidió)**: `ProductosPage.tsx`
+   (la lista, no la ficha) ignoraba `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el
+   mirror ARS con `$`, aunque el producto estuviera priceado nativamente en USD
+   (`precio_usd`/`precio_costo_usd`, rediseño mig 367 — la ficha `ProductoFormPage.tsx` ya lo hacía
+   bien desde ese fix anterior a Fede). Fix: helpers `precioVentaTexto`/`precioCostoTexto`
+   (`formatMoneda` de `lib/formato.ts`) en los 6 call-sites. De paso, `CotizacionWidget.tsx` ahora
+   rotula "Venta:" el número principal (antes solo "Compra:" abajo tenía label) — verificado con
+   screenshot real. Nuevo `tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts` (producto USD
+   real vía UI+REST, fila colapsada + panel expandido, valores decoy en ARS para detectar una
+   regresión). `tsc`/`build`/suite unit completa (100 archivos, 1625 tests) verdes.
 
 2. **⏸️ DEFERIDO, GO habla con Fede antes de decidir alcance — NO TOCAR**: (a) confirmado que
    `useCotizacion().cotizacion` = dólar VENTA, y esa variable (`cotizacionUSD` en `VentasPage.tsx`)
@@ -47,6 +48,10 @@ módulos y con qué alcance"). GO todavía no lo respondió.
    en el selector de medio de pago al cobrar, no antes. Busqué el producto de su captura ("Pistola
    TPR 9 - Black", SKU "BER-TPR-9-BL") en PROD y en el tenant de pruebas de DEV — no existe en
    ninguno de los dos. Falta que GO confirme en qué entorno probó Fede para reproducirlo.
+
+**Las 3 preguntas concretas para Fede quedaron redactadas y entregadas a GO** (para que se las
+reenvíe) — texto exacto en [[project_moneda_producto_pendientes_fede]]. La próxima sesión debe
+esperar la respuesta antes de tocar los puntos 2 y 3 — no asumir ni re-preguntar de cero.
 
 Detalle completo: [[project_moneda_producto_pendientes_fede]] (memoria),
 `sources/raw/project_pendientes.md` (cont. 23, "ARRANCÁ ACÁ").

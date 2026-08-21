@@ -27,9 +27,14 @@ diferida, sin diseño ni código, por decisión de producto/legal ya tomada por 
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 22).  
 Antes de este release: v1.176.0 — Auditoría performance/calidad + Caja USD Fases 1-7/8 (PR #331, merge
 commit `4dbe7fdb`, 16 migraciones 360-375). Ver detalle histórico de v1.176.0 más abajo.  
-**Versión en DEV:** v1.179.0 — igual a PROD, sin código adicional sin deployar al momento de esta
-actualización (`git log origin/main`/`git log origin/dev` en paridad tras el merge de PR #332).  
-Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 22, "ARRANCÁ
+**Versión en DEV:** v1.179.1 — un commit por delante de PROD (commit `193820df`, tag+release
+`v1.179.1`): fix de moneda USD en la lista de Productos (`ProductosPage.tsx` ignoraba
+`moneda_venta`/`moneda_costo`, reportado por Fede) + relevamiento retrofit "tab Supervisión"
+generado (sin código). Verificado con e2e mutante contra DEV real + suite unit completa (1625
+tests). **No deployado a PROD a propósito** — GO no lo pidió, es chico/solo visual. 2 hallazgos
+relacionados de moneda quedaron deliberadamente sin tocar, esperando que GO hable con Fede — ver
+`wiki/features/productos.md` y [[project_moneda_producto_pendientes_fede]] (memoria).  
+Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 23, "ARRANCÁ
 ACÁ").  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -40,6 +45,43 @@ sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto ab
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
 **Última actualización:** 20 de Agosto, 2026
+
+---
+
+## v1.179.1 — 🐛💵 Fix moneda USD en lista de Productos + relevamiento retrofit Supervisión — ✅ COMMITEADO EN DEV, sin PROD (2026-08-20)
+
+Continúa directo la v1.179.0 (abajo), misma sesión. Fede reportó 3 problemas de moneda USD en
+Productos/Ventas (vía GO, 2 capturas de pantalla):
+
+1. **✅ FIXED**: `ProductosPage.tsx` (la LISTA, no la ficha — esa ya estaba bien desde mig 367)
+   ignoraba `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el mirror ARS con `$`,
+   aunque el producto estuviera priceado nativamente en USD. Fix: helpers
+   `precioVentaTexto`/`precioCostoTexto` (`formatMoneda` de `lib/formato.ts`). De paso,
+   `CotizacionWidget.tsx` rotula "Venta:" el número principal (antes solo "Compra:" tenía label).
+   Verificado con e2e mutante nuevo (`tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts`)
+   contra DEV real y con screenshot real del widget. `tsc`/`build`/suite unit completa (1625 tests)
+   verdes.
+2. **⏸️ DEFERIDO** (GO habla con Fede antes de decidir alcance, NO TOCAR): compra vs. venta en la
+   conversión (`cotizacionUSD` se reusa en ~10 lugares de `VentasPage.tsx` — carrito, efectivo USD
+   del cajero, tiers, combos, snapshot de la venta) y a qué sistema se refiere "solo dólar oficial
+   de BNA" (el widget general o la Fase 8/C2 de AFIP, nunca construida).
+3. **❓ Sin resolver**: reproducir el flujo de cobro en USD que Fede describió como faltante —
+   el mecanismo existe en código (`carritoAceptaUsd()`), pero el producto de su captura no existe
+   ni en PROD ni en el tenant de pruebas de DEV. Falta que GO confirme el entorno.
+
+**Las 3 preguntas exactas para Fede ya están redactadas y entregadas a GO** — ver
+[[project_moneda_producto_pendientes_fede]] (memoria).
+
+De paso, generado `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo) —
+continuación de `relevamiento_supervisor_tab_respuestas.md` (ya cerrado: "sí, construir el patrón",
+mig 347) sobre a qué módulos extenderlo y qué hacer con los sistemas paralelos de Gastos/Ventas/
+Caja. 20 preguntas, sin código todavía, esperando respuesta de GO.
+
+**Commit `193820df`, tag+release `v1.179.1` sobre `dev`. NO deployado a PROD** — GO no lo pidió, es
+chico y solo visual (sin migraciones, sin tocar cálculos).
+
+Detalle completo: `wiki/features/productos.md`, `sources/raw/project_pendientes.md` (cont. 23,
+"ARRANCÁ ACÁ"), `log.md`.
 
 ---
 

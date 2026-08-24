@@ -156,10 +156,12 @@ conversación (estado de React plano, sin persistencia).
   "PREGUNTÁ ANTES DE ASUMIR" (pedido ambiguo → pregunta corta para desambiguar, no adivinar).
 - Test nuevo en `tests/unit/aiAssistant.test.ts` (16/16 verdes) verificando la regla 8 en el prompt.
 
-### Fase 2 — Capa de RPCs para proponer/aplicar config (✅ backend + wiring COMPLETOS, sin PROD todavía)
+### Fase 2 — Capa de RPCs para proponer/aplicar config (✅ backend + wiring COMPLETOS, ✅ EN PROD desde v1.179.0)
 
 **Migración 376** (`376_ai_config_rpc_layer.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`),
-**✅ COMMITEADA** (commit `1b5e89aa`, tag+release `v1.177.0`), todavía sin PROD:
+**✅ COMMITEADA** (commit `1b5e89aa`, tag+release `v1.177.0`), **✅ aplicada y verificada también en PROD**
+(`jjffnbrdjchquexdfgwq`, 2026-08-20, junto con 377/378 como parte del deploy de `v1.179.0` — era
+prerrequisito directo del wiring que llegó a PROD ese día):
 
 - Tabla `ai_config_audit` (campo, valor anterior/nuevo, razón, usuario, timestamp) — RLS: SELECT solo
   DUEÑO/ADMIN/SUPER_USUARIO del propio tenant (mismo patrón que `boveda_conversiones_usd`, mig 373); sin
@@ -230,10 +232,11 @@ De paso, esta sesión encontró y corrigió un bug crítico no relacionado — v
 arriba.
 
 **Wiring completo commiteado y pusheado a `origin/dev`** (bump a `v1.178.0`). El fix del modelo Groq (ver
-arriba) además se deployó, aislado, directo a la Edge Function de PROD — el resto del wiring de Fase 2
-queda solo en DEV a propósito.
+arriba) además se deployó, aislado, directo a la Edge Function de PROD en su momento. **✅ Actualización:
+el resto del wiring de Fase 2 llegó a PROD el 2026-08-20 como parte del release `v1.179.0`** (ver Fase 3
+abajo y `wiki/business/roadmap.md`).
 
-### Fase 3 — Memoria persistente por tenant (✅ COMPLETA EN CÓDIGO, 2026-08-20, commit pendiente en esta misma sesión) — cierra el plan de 3 fases de código
+### Fase 3 — Memoria persistente por tenant (✅ COMPLETA EN CÓDIGO, ✅ EN PROD desde v1.179.0, 2026-08-20) — cierra el plan de 3 fases de código
 
 Sesión siguiente a la de arriba, misma jornada. Diseño ya definido en el Artifact original del plan
 (2026-08-14/15): NO se guarda charla cruda — se guardan HECHOS DESTILADOS que la IA propone guardar, con
@@ -241,8 +244,8 @@ confirmación explícita del usuario en el chat (mismo patrón de la Fase 2 — 
 EF nunca escribe nada, solo el frontend tras la confirmación real). El tenant puede ver y borrar su propia
 memoria desde Configuración.
 
-**Migración 377** (`377_ai_tenant_memoria.sql`), reportada como aplicada y verificada en DEV
-(`gcmhzdedrkmmzfzfveig`):
+**Migración 377** (`377_ai_tenant_memoria.sql`), aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) y
+en PROD (`jjffnbrdjchquexdfgwq`, 2026-08-20, commit `dcccc682`, release `v1.179.0`):
 - Tabla `ai_tenant_memoria` (`tenant_id`, `hecho` texto ≤300 chars, `usuario_id`, `created_at`).
 - RLS: SELECT/DELETE para DUEÑO/ADMIN/SUPER_USUARIO del tenant (mismo universo que `ai_config_audit`, mig
   376). Sin policy de INSERT — solo escribe la RPC.
@@ -294,18 +297,17 @@ memoria nunca se inyectaba, pese a que el diseño es que se inyecte para TODOS l
 está restringida a DUEÑO/ADMIN). **Migración 378** (`378_ai_memoria_listar_rpc.sql`) agrega
 `fn_ai_memoria_listar()` (`SECURITY DEFINER`, deriva tenant del JWT, sin filtro de rol — los hechos son
 datos de negocio de baja sensibilidad, nunca fiscales/personales, reforzado en el prompt). **Aplicada y
-verificada en DEV**, `supabase/functions/ai-assistant/index.ts` ya llama a `fn_ai_memoria_listar()` (ya no
-al `SELECT` directo) — redeployada a DEV, re-verificada con el e2e mutante 134, y verificada además con
-impersonación real (rol no-privilegiado: `SELECT` directo da 0 filas, la RPC da la fila real).
+verificada en DEV y en PROD** (`jjffnbrdjchquexdfgwq`, 2026-08-20), `supabase/functions/ai-assistant/index.ts`
+ya llama a `fn_ai_memoria_listar()` (ya no al `SELECT` directo) en ambos ambientes — redeployada a DEV y a
+PROD, re-verificada con el e2e mutante 134 contra DEV, y verificada además con impersonación real (rol
+no-privilegiado: `SELECT` directo da 0 filas, la RPC da la fila real).
 
-**Estado real**: **commit pendiente en esta misma sesión** (`APP_VERSION` ya bumpeado a `v1.179.0` en el
-working tree). **Deploy a PROD confirmado que NO pasó todavía** al momento de escribir esta entrada (último
-merge a `main` era PR #331/`v1.176.0`) — el único código del Plan IA en PROD era el fix aislado del modelo
-Groq (ver arriba); el deploy completo del wiring a PROD es el paso siguiente de esta misma sesión, puede
-que ya haya ocurrido para cuando se lea esto (verificar `git log origin/main` / releases antes de asumir).
-Con esto, las Fases 1 a 3 del "Plan IA" quedan 100% completas en código y verificadas (Fases 1-2 commiteadas
-como `v1.177.0`/`v1.178.0`, Fase 3 con commit pendiente) — **cierra el plan de 3 fases de código**. Ver
-"Fase 4" abajo.
+**Estado real**: **✅ DEPLOYADO A PROD** — commit `dcccc682` (`APP_VERSION v1.179.0`) mergeado a `main` vía
+PR #332 (merge commit `7e19e7a3`, 2026-08-20), release `v1.179.0` sobre `main`, migraciones 376-378
+aplicadas y verificadas en PROD, EF `ai-assistant` redeployada en PROD con el código completo (reemplaza
+el fix aislado del modelo Groq que corría solo antes), Vercel confirmado `READY`. Con esto, las Fases 1 a
+3 del "Plan IA" quedan 100% completas en código, verificadas y **en PROD** — **cierra el plan de 3 fases
+de código**. Ver "Fase 4" abajo.
 
 ### Fase 4 del plan — inteligencia interna, deliberadamente diferida, sin código
 
@@ -314,5 +316,5 @@ interna" de Genesis360 (no de cara al cliente final), sin urgencia. Necesita dec
 (extender `tenant_consentimiento_legal`, mig 249) antes de cualquier código. No es un pendiente urgente —
 es una decisión de scope ya tomada, sin diseño ni código todavía.
 
-Detalle completo: `sources/raw/project_pendientes.md` (cont. 21, "ARRANCÁ ACÁ"), `log.md` (2026-08-20,
-entrada al principio), `wiki/database/migraciones.md` (migs 377-378).
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 22, "ARRANCÁ ACÁ"), `log.md` (2026-08-20,
+entrada al principio, tipo `deploy`), `wiki/database/migraciones.md` (migs 376-378, todas EN PROD).

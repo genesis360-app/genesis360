@@ -2577,6 +2577,21 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'ventas',
   })
 
+  // Reporte de Fede (2026-08-20): un tenant con productos en USD/multi-moneda pero sin ningún
+  // método "efectivo real en USD" nunca ve la opción de cobrar en dólares físicos en el POS —
+  // no es un bug de carritoAceptaUsd(), es que no hay ningún método así creado (paso manual).
+  const tieneMetodoUsdEfectivo = (metodosPago as any[]).some(m => m.es_efectivo && m.moneda === 'USD')
+  const { data: hayProductoUsd = false } = useQuery({
+    queryKey: ['productos_moneda_usd_check', tenant?.id],
+    queryFn: async () => {
+      const { count } = await supabase.from('productos')
+        .select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id)
+        .or('moneda_venta.eq.usd,acepta_cualquier_moneda.eq.true')
+      return (count ?? 0) > 0
+    },
+    enabled: !!tenant && tab === 'ventas' && !loadingMetodos && !tieneMetodoUsdEfectivo,
+  })
+
   const addMetodoPago = useMutation({
     mutationFn: async () => {
       if (!nuevoMetodo.nombre.trim()) throw new Error('El nombre es requerido')
@@ -6418,6 +6433,17 @@ export default function ConfigPage() {
           <p className="text-xs text-gray-400 dark:text-gray-500">
             Personalizá los métodos de cobro disponibles en ventas y caja. El color se usa en gráficos del dashboard.
           </p>
+
+          {!loadingMetodos && !tieneMetodoUsdEfectivo && hayProductoUsd && (
+            <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+              <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Tenés productos en USD o que aceptan cualquier moneda, pero ningún método de pago está marcado como
+                "efectivo real" en USD. El POS no va a ofrecer cobrar en dólares físicos hasta que agregues uno abajo
+                (ej. "Efectivo USD", moneda USD, tildá "Es efectivo real").
+              </p>
+            </div>
+          )}
 
           {loadingMetodos ? (
             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p>

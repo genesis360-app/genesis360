@@ -6,7 +6,105 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 21) — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100%
+> ### ✅ ARRANCÁ ACÁ (2026-08-20, cont. 23) — 📋 Relevamiento retrofit Supervisión generado + 🐛💵 3
+> reportes de Fede sobre moneda USD (1 FIXED+e2e, 2 DEFERIDOS esperando que GO hable con Fede) —
+> continúa la misma sesión que el deploy a PROD del Plan IA (cont. 22, abajo, SIN cambios) — Caja
+> USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+>
+> #### 📋 Relevamiento retrofit del patrón "tab Supervisión" a otros módulos
+>
+> GO pidió retomar el pendiente [[project_supervision_tab_extension_pendiente]]. Generado
+> `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo) — inspecciona código real
+> (`SupervisionPage.tsx` MODULOS=solo 'inventario', el CHECK de `autorizaciones.modulo` en mig 347,
+> los 2 sistemas paralelos de Gastos, la "clave maestra" de Ventas/Caja). 20 preguntas en 7
+> secciones. Es CONTINUACIÓN de `relevamiento_supervisor_tab_respuestas.md` (esa ya cerró "sí,
+> construir el patrón" — esta es "a qué módulos y con qué alcance"). **GO todavía no lo respondió —
+> no arrancar diseño/código.**
+>
+> #### 🐛💵 3 reportes de Fede sobre moneda USD (Productos/Ventas), vía GO
+>
+> **1. ✅ FIXED, COMMITEADO Y PUSHEADO** (commit `193820df`, tag+release `v1.179.1` sobre `dev` —
+> **SOLO EN DEV, no deployado a PROD a propósito**, GO no lo pidió todavía): `ProductosPage.tsx`
+> (la LISTA, no la ficha) ignoraba `moneda_venta`/`moneda_costo` en 6 lugares — siempre mostraba el
+> mirror en ARS con `$`, incluso para productos priceados nativamente en USD. Fix: helpers
+> `precioVentaTexto`/`precioCostoTexto` (usan `formatMoneda` de `lib/formato.ts`) en los 6
+> call-sites (fila colapsada, fila de variante, panel expandido — venta y costo). De paso,
+> `CotizacionWidget.tsx` ahora rotula "Venta:" el número principal (antes solo "Compra:" abajo
+> tenía label). Verificado con e2e mutante nuevo
+> (`tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts`, producto USD real creado y patcheado
+> por REST, fila colapsada + panel expandido) y con screenshot real del widget. `tsc`/`build`/suite
+> unit completa (1625 tests) verdes.
+>
+> **2. ⏸️ DEFERIDO — GO habla con Fede antes de decidir alcance** (NO TOCAR hasta confirmación):
+> - **Compra vs. venta**: confirmado que `useCotizacion().cotizacion` = dólar VENTA, y esa misma
+>   variable (`cotizacionUSD` en `VentasPage.tsx`) se reusa en ~10 lugares (carrito, efectivo USD
+>   del cajero, tiers mayoristas, combos, snapshot de la venta). Fede pide compra en vez de venta,
+>   pero no está claro si es solo la conversión de producto→pesos o todo lo que comparte la variable.
+> - **"Solo dólar oficial de BNA"**: puede referirse al widget general "Cotización USD" (deja elegir
+>   Blue/Oficial/MEP/Cripto por tenant, sin tocar) o a la Fase 8/C2 del plan Caja USD (la pieza
+>   específica para AFIP, que NUNCA se construyó, sigue bloqueada por el contador) — son 2 cosas
+>   distintas, hay que confirmar cuál.
+>
+> **3. ❓ Sin resolver**: Fede describió que un producto USD "se convierte solo a pesos, sin dar
+> opción de cobrar en dólares físicos" en Ventas. El mecanismo (`carritoAceptaUsd()`, medio
+> "Efectivo USD") SÍ existe en código y debería activarse si `moneda_venta==='usd'` o
+> `acepta_cualquier_moneda`. Confirmado que el carrito convierte el precio a ARS apenas se agrega
+> el producto (por diseño) y la opción USD recién aparece en el selector de MEDIO DE PAGO al
+> cobrar — puede ser solo visibilidad, no bug. Busqué el producto de su captura ("Pistola TPR 9 -
+> Black", SKU "BER-TPR-9-BL") en PROD y en el tenant de pruebas de DEV — no existe en ninguno de
+> los dos. **Falta que GO confirme en qué entorno probó Fede** para reproducirlo de verdad.
+>
+> **Las 3 preguntas para Fede quedaron redactadas y entregadas a GO** (para reenviarle) — texto
+> exacto en [[project_moneda_producto_pendientes_fede]]. **Próximo paso: esperar esa respuesta
+> antes de tocar los puntos 2 y 3** — no re-preguntar de cero ni asumir un alcance. Separado:
+> decidir con GO si el fix del punto 1 se deploya a PROD ahora (chico, solo visual) o se junta con
+> otra tanda.
+>
+> Detalle completo en [[project_moneda_producto_pendientes_fede]]. Ver `log.md` (entrada al
+> principio), [[wiki/features/productos]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 22) — 🚀 DEPLOY A PROD CONFIRMADO: Plan IA (Fases 1+2+3) 100% en
+> PROD — cierra el ciclo completo del "Plan IA" en producción, GO autorizó explícitamente en esta misma
+> sesión ("pasamos todo eso a PRD") — supera al bloque de abajo (cont. 21, que documentaba el estado
+> "recién commiteado, deploy todavía pendiente") — Caja USD/Auditoría (cont. 18, más abajo) SIGUE VIGENTE
+> como estado real de DEV/PROD para ESE proyecto, sin cambios en esta sesión
+>
+> #### 🚀 Deploy real a PROD — verificado con queries/comandos reales, no solo code-audit
+>
+> - **Migraciones aplicadas y verificadas en PROD** (`jjffnbrdjchquexdfgwq`), en orden: **376**
+>   (`376_ai_config_rpc_layer.sql`, tabla `ai_config_audit` + RPCs `fn_ai_config_set_bool/_int/_text`,
+>   Fase 2 — hallazgo real del deploy-runner: NO estaba aplicada en PROD todavía pese a ser prerrequisito
+>   directo del código de este commit, `AiAssistant.tsx` llama a esas RPCs; cerrado antes de tocar nada
+>   más), **377** (`ai_tenant_memoria` + `fn_ai_memoria_guardar`) y **378** (`fn_ai_memoria_listar`).
+>   Verificado con query real contra PROD: 5 funciones + 2 tablas + 3 policies existen, encoding de
+>   tildes/eñes intacto.
+> - **Edge Function `ai-assistant` redeployada en PROD** (`npx supabase functions deploy ai-assistant
+>   --project-ref jjffnbrdjchquexdfgwq`) — reemplaza el fix aislado (2 constantes de modelo Groq) que
+>   corría en PROD por el código completo real del repo (Fases 1+2+3). Smoke test: `POST` sin auth →
+>   `401` (esperado, `verify_jwt: true`), confirma que quedó viva.
+> - **Commit `dcccc682`** (`feat(ai-assistant,config,wiki): plan IA — Fase 3, memoria persistente por
+>   tenant (v1.179.0)`) mergeado a `main` vía **PR #332** (`dev → main`) — merge commit **`7e19e7a3`**.
+> - **Release `v1.179.0`** (el tag ya existía sobre `dev` de una tanda anterior de esta misma sesión;
+>   como el merge fue real, no squash, ese commit ya es ancestro de `main` — se actualizó el release
+>   existente a `target: main` + `--latest` en vez de crear uno nuevo) —
+>   https://github.com/genesis360-app/genesis360/releases/tag/v1.179.0
+> - **Vercel**: deployment `dpl_H3eMHxC6TKR3pNmSgR3Hkun5KzHG`, `target: production`, commit `7e19e7a3`,
+>   estado **`READY`**.
+>
+> Con esto, el "Plan IA" (Fases 1-3) queda **100% en PROD** por primera vez — hasta este deploy, PROD solo
+> tenía el fix aislado del modelo Groq (sin wiring de propuesta de config ni de memoria). **Fase 4**
+> (comparación entre negocios) sigue diferida, sin diseño ni código, por decisión de producto/legal (ver
+> cont. 21 abajo, sin cambios).
+>
+> Ver `log.md` (entrada al principio), [[wiki/features/asistente-ia]] (sección "Plan IA"),
+> `wiki/database/migraciones.md` (migs 376-378 marcadas EN PROD), `wiki/business/roadmap.md` (v1.179.0),
+> `index.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-20, cont. 21) — 🤖 Plan IA: Fase 3 (memoria persistente por tenant) 100%
 > COMPLETA EN CÓDIGO — cierra el plan de código de 3 fases (Fase 4 queda deliberadamente diferida, sin
 > diseño ni código) — **TODAVÍA SOLO EN DEV, commit pendiente en esta misma sesión** (`APP_VERSION` ya
 > bumpeado a `v1.179.0` en el working tree, sin commitear al momento de escribir esto — NO inventar un hash
@@ -103,6 +201,12 @@ type: project
 > la punta en `4dbe7fdb` (ancestro `50f5579a`, la Fase 7/8 de Caja USD) — nada del Plan IA llegó a `main`
 > todavía. El único código del Plan IA en PROD sigue siendo el fix aislado del modelo Groq (2 constantes,
 > deployado directo a la EF, sin pasar por `main`/Vercel — ver cont. 20 abajo).
+> **⚠ ACTUALIZACIÓN (cont. 22, ver arriba de todo): el párrafo de arriba quedó desactualizado — el deploy
+> a PROD SÍ se concretó en esta misma sesión.** PR #332 (`dev → main`) mergeado, merge commit `7e19e7a3`,
+> migraciones 376-378 aplicadas y verificadas en PROD, EF `ai-assistant` redeployada en PROD, release
+> `v1.179.0` sobre `main`, Vercel `READY`. Detalle completo en el bloque "cont. 22" al principio de este
+> documento.
+>
 >
 > **Próximo paso**: (1) commitear esta tanda (Fase 3 completa, incluido el fix de la mig 378) — bump ya
 > hecho a `v1.179.0`; (2) GO ya autorizó deployar a PROD el wiring completo del Plan IA (Fases 1-3, hoy

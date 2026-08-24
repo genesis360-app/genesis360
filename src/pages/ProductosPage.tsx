@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeVerCosto } from '@/lib/permisosCosto'
+import { formatMoneda, fmtPesos } from '@/lib/formato'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -33,6 +34,21 @@ import { type Combinador } from '@/lib/pildorasFiltro'
 /** 'estructura' = pestaña de EMPAQUE (árbol de presentaciones, Fase 5 mig 310). Se conserva el
  *  id de la pestaña para no romper los deep-links y los tests que ya la referencian. */
 type Tab = 'productos' | 'estructura'
+
+// 🐛 Bug real (Fede, 2026-08-20): un producto priceado en USD (moneda_venta/moneda_costo='usd',
+// rediseño mig 367 — ver ProductoFormPage.tsx) ya muestra su valor nativo en la ficha, pero esta
+// lista lo seguía convirtiendo a $ usando el mirror en ARS (precio_venta/precio_costo, que existe
+// para margen/reportes/POS, no para mostrárselo al usuario). Mostrar SIEMPRE la moneda nativa.
+function precioVentaTexto(p: { precio_venta?: number | null; precio_usd?: number | null; moneda_venta?: string | null }): string {
+  return p.moneda_venta === 'usd' && p.precio_usd != null
+    ? formatMoneda(p.precio_usd, 'USD', { decimals: 2 })
+    : fmtPesos(p.precio_venta)
+}
+function precioCostoTexto(p: { precio_costo?: number | null; precio_costo_usd?: number | null; moneda_costo?: string | null }): string {
+  return p.moneda_costo === 'usd' && p.precio_costo_usd != null
+    ? formatMoneda(p.precio_costo_usd, 'USD', { decimals: 2 })
+    : fmtPesos(p.precio_costo)
+}
 
 // ─── Helpers / tipos del formulario de estructura (niveles dinámicos, mig 282) ──
 
@@ -825,7 +841,7 @@ export default function ProductosPage() {
           )}
 
           <div className="flex gap-2 items-start">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <BuscadorPildoras
                 camposFiltro={CAMPOS_FILTRO_PRODUCTOS}
                 pildoras={pildoras}
@@ -1064,7 +1080,7 @@ export default function ProductosPage() {
                                 <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
                               </div>
                               <p className="text-sm text-gray-600 dark:text-gray-300 flex-shrink-0 hidden sm:block">
-                                ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                {precioVentaTexto(p as any)}
                               </p>
                               <span className={`flex-shrink-0 px-2 py-0.5 rounded-lg text-xs font-semibold
                                 ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
@@ -1153,7 +1169,7 @@ export default function ProductosPage() {
                                       )}
                                     </td>
                                     <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300">
-                                      ${((v as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                      {precioVentaTexto(v as any)}
                                     </td>
                                     <td className="px-4 py-2.5 text-right">
                                       <span className={`px-2 py-0.5 rounded-lg text-xs font-semibold
@@ -1292,11 +1308,11 @@ export default function ProductosPage() {
 
                         <div className="hidden sm:block text-right flex-shrink-0">
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                            {precioVentaTexto(p as any)}
                           </p>
                           {verCosto && (p as any).precio_costo > 0 && (
                             <p className="text-xs text-gray-400 dark:text-gray-500">
-                              costo ${((p as any).precio_costo ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                              costo {precioCostoTexto(p as any)}
                             </p>
                           )}
                         </div>
@@ -1354,19 +1370,27 @@ export default function ProductosPage() {
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Precio venta</p>
                               <p className="font-semibold text-gray-800 dark:text-gray-100">
-                                ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                                {precioVentaTexto(p as any)}
                               </p>
-                              {cotizacion > 0 && (p as any).precio_venta > 0 && (
-                                <p className="text-xs text-gray-400 dark:text-gray-500">
-                                  USD {((p as any).precio_venta / cotizacion).toFixed(2)}
-                                </p>
+                              {(p as any).moneda_venta === 'usd' ? (
+                                (p as any).precio_venta > 0 && (
+                                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                                    ≈ {fmtPesos((p as any).precio_venta)} ARS
+                                  </p>
+                                )
+                              ) : (
+                                cotizacion > 0 && (p as any).precio_venta > 0 && (
+                                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                                    USD {((p as any).precio_venta / cotizacion).toFixed(2)}
+                                  </p>
+                                )
                               )}
                             </div>
                             {verCosto && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Costo</p>
                               <p className="font-semibold text-gray-800 dark:text-gray-100">
-                                ${((p as any).precio_costo ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                                {precioCostoTexto(p as any)}
                               </p>
                             </div>
                             )}

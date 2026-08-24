@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Plan IA Fase 4: Inteligencia interna / comparación entre negocios · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .cita { background: #eef2f7; border-left: 3px solid #8aa8c4; padding: 6pt 10pt; margin: 8pt 0; font-style: italic; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Plan IA Fase 4: Inteligencia interna / comparación entre negocios</h1>
+<div class="meta">
+  Genesis360 · v1.179.1 · Fecha: 21 de agosto de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Esto NO es el Asistente IA que ya usan los tenants.</strong> Las Fases 1-3 del Plan IA (memoria
+  conversacional, IA propone cambios de configuración con confirmación explícita, memoria persistente por
+  tenant) están <strong>100% completas y EN PROD desde v1.179.0</strong> — corren en
+  <code>supabase/functions/ai-assistant</code>, por tenant, sobre la sesión real del usuario (RLS normal).
+  Fase 4 es una feature <strong>distinta</strong>: vive en el <strong>panel interno de staff</strong>
+  (<code>genesis360-admin</code>, ya en PROD en <code>admin.genesis360.pro</code>), corre sobre
+  agentes de <code>support_agents</code> (no sobre tenants), y su objetivo es cruzar datos
+  <strong>ANONIMIZADOS y AGREGADOS entre tenants</strong> para responder preguntas de negocio en lenguaje
+  natural (ej. "¿cuál es el margen promedio de los kioscos?"). Tres decisiones de encuadre ya las cerró GO
+  en una sesión anterior (2026-08-20) y una sesión posterior (2026-08-21) — <strong>no se repreguntan acá,
+  son la base de este documento</strong>:
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li>Es <strong>inteligencia interna de Genesis360</strong>, no una feature de cara al tenant/cliente
+    final.</li>
+    <li>Necesita <strong>decisión de producto/legal antes de cualquier código</strong> — extender el patrón
+    de opt-in explícito de <code>tenant_consentimiento_legal</code> (mig 249).</li>
+    <li>Es de riesgo alto porque <strong>cruza datos entre tenants</strong> — la IA solo puede ver agregados
+    anónimos server-side, nunca filas crudas de otro tenant.</li>
+    <li>Vive en <code>genesis360-admin</code>, consumiendo una Edge Function nueva o extendida en el repo
+    <strong>Genesis360</strong> (backend siempre ahí — regla anti-drift ya establecida en el proyecto).</li>
+    <li>Toma la forma de <strong>chat libre</strong> (no un dashboard de métricas fijas predefinidas).</li>
+  </ul>
+  Las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span> (definir una regla que hoy no existe
+  en ningún lado), <span class="tag tag-existente">EXISTENTE</span> (confirmar un mecanismo que el código ya
+  implementa y que se puede reusar tal cual) o <span class="tag tag-cambio">CAMBIO</span> (el código actual
+  tensiona o deja ambigua una pieza ya construida — hay que resolver eso, no solo elegir una opción).
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del código (verificado, no de memoria):</strong>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li><strong><code>admin-api</code> vive en el repo Genesis360</strong>
+    (<code>supabase/functions/admin-api/index.ts</code>) — confirmado con <code>Glob</code>, NO existe copia
+    en <code>genesis360-admin</code>. El propio <code>README.md</code> de ese repo lo deja explícito:
+    "el esquema (migraciones) y las Edge Functions viven en el repo de Genesis360 — fuente única de verdad
+    para evitar drift. Este repo solo consume." Cualquier función/tabla nueva para Fase 4 sigue esa misma
+    regla.</li>
+    <li><strong>El patrón de auth/autorización del panel YA está construido y es reusable tal cual:</strong>
+    <code>admin-api</code> valida JWT → agente activo en <code>support_agents</code> (mig 221) → autoriza por
+    <code>ROLE_MODULES[agent.rol]</code> contra el módulo de la <code>action</code> pedida
+    (<code>ACTION_MODULE</code>) → audita en <code>admin_audit_log</code> (append-only, sin policies de
+    escritura para el cliente — solo la EF con <code>service_role</code> escribe). Roles reales hoy (mig 222,
+    corregidos del bootstrap original <code>agent</code>/<code>supervisor</code>):
+    <code>admin</code> (todo + gestión de usuarios), <code>support</code> (Clientes+Soporte),
+    <code>marketing</code> (CRM+Analytics), <code>billing</code> (Facturación). <code>dashboard</code>
+    (con <code>metrics.overview</code>) lo ven los 4 roles.</li>
+    <li><strong>Ya existe agregación cross-tenant sin exponer filas — pero de OTRA cosa.</strong>
+    <code>DashboardPage.tsx</code> (acción <code>metrics.overview</code>) calcula MRR, clientes totales,
+    altas 30 días, tenants en trial, tickets abiertos, y conteo básico/avanzado — todo agregado
+    server-side, sin devolver ningún tenant individual. Es el precedente técnico más cercano a "agregado sin
+    filas crudas", pero son <strong>métricas del negocio SaaS de Genesis360</strong> (cuánto factura, cuántos
+    clientes tiene), no métricas de <strong>los negocios de los tenants</strong> (margen, ticket, rotación
+    de stock) que pide Fase 4 — hay que construirlo de cero.</li>
+    <li><strong>El módulo "Analytics" YA está reservado en el panel, pero apunta a otra cosa.</strong>
+    <code>nav.ts</code> y <code>permissions.ts</code> (<code>genesis360-admin</code>) ya tienen un módulo
+    <code>analytics</code> visible para <code>admin</code>+<code>marketing</code>, pero
+    <code>AnalyticsPage.tsx</code> es un placeholder literal ("Pendiente — requiere integraciones externas")
+    para CAC por canal vía Meta Pixel/GA4 — conceptualmente distinto de "comparar negocios entre sí". No hay
+    ninguna acción <code>analytics.*</code> en <code>ACTION_MODULE</code> de <code>admin-api</code> todavía
+    (el módulo existe en el front, pero no tiene ningún backend real detrás).</li>
+    <li><strong>Ya existe acceso cross-tenant en el panel, pero es lo OPUESTO de lo que pide Fase 4.</strong>
+    <code>customers.get</code>/<code>customers.list</code> exponen datos de UN tenant puntual por vez
+    (nombre, plan, usuarios, ventas totales/30d, últimas 5 ventas con número/total/estado), identificado y
+    auditado — es la forma correcta de mirar un cliente específico para soporte, pero es exactamente lo que
+    Fase 4 <strong>no puede hacer</strong>: mostrar un agregado tiene que evitar que se pueda reconstruir el
+    dato de un tenant puntual a partir de la respuesta.</li>
+    <li><strong><code>tenant_consentimiento_legal</code> (mig 249)</strong> agregó
+    <code>tenants.terminos_aceptados_at</code>/<code>terminos_version</code>/<code>marketing_consent</code>.
+    El comentario de la propia migración es explícito sobre el alcance de <code>marketing_consent</code>:
+    "opt-in SEPARADO y OPCIONAL (Ley 25.326 AR: consentimiento libre, informado y revocable)... Default
+    FALSE = sin consentimiento salvo tilde explícita" — está pensado para comunicaciones de marketing, no
+    para autorizar el uso analítico agregado de datos operativos del negocio (márgenes, stock, medios de
+    pago). Reusarlo tal cual para Fase 4 mezclaría dos finalidades distintas bajo un mismo consentimiento,
+    lo que la Ley 25.326 exige mantener separado (consentimiento específico por finalidad).</li>
+    <li><strong>Las Fases 1-3 del <code>ai-assistant</code> ya validaron en producción el patrón "tool-calling
+    con allowlist fijo, nunca SQL libre".</strong> <code>CONFIG_CAMPOS_IA</code>
+    (<code>ai-assistant/index.ts</code>) es un array hardcodeado de campos permitidos; el comentario de la
+    mig 376 lo dice explícito: "un campo que no está en la lista es RECHAZADO, punto. Ampliar la lista es
+    SIEMPRE una migración nueva (auditable en git), nunca una fila editable en una tabla." Las RPCs
+    (<code>fn_ai_config_set_*</code>, <code>fn_ai_memoria_guardar</code>) son <code>SECURITY DEFINER</code>
+    y derivan <code>tenant_id</code>/rol del JWT de quien llama, nunca de un parámetro. Es el precedente
+    técnico más sólido para diseñar Fase 4 — con una diferencia de fondo: esos patrones asumen UN tenant por
+    sesión (RLS normal); Fase 4 necesita agregar CRUZANDO tenants desde una sesión de STAFF sin tenant
+    propio, que es una superficie de código nueva, no una extensión directa.</li>
+    <li><strong><code>tenants.tipo_comercio</code> existe</strong> (mig 001, <code>TEXT</code> nullable) y es
+    obligatorio en el onboarding (<code>OnboardingPage.tsx</code>), con 24 rubros fijos +
+    "Otro" con texto libre (<code>src/config/tiposComercio.ts</code>: Almacén, Kiosco, Farmacia, Ferretería,
+    Verdulería/Frutería, etc.). Es el precedente de agrupación más obvio para "comparar por rubro", pero
+    "Otro" texto libre puede mezclar negocios heterogéneos bajo un mismo label mal definido. La tabla
+    <code>tenants</code> <strong>no tiene ninguna columna de zona/localidad/provincia</strong> (esas columnas
+    existen solo en <code>cliente_domicilios</code>, direcciones de LOS CLIENTES de cada tenant, no del
+    tenant en sí) ni ninguna columna de "tamaño" del negocio.</li>
+    <li><strong>Volumen real de tenants: un puñado, no cientos.</strong> El wiki
+    (<code>G360.Wiki/sources/raw/project_pendientes.md</code>) confirma "8 tenants reales de PROD" en varias
+    entradas recientes (agosto 2026). Con ese volumen, un agregado como "el margen promedio de los kioscos"
+    puede referirse en la práctica a 1-2 negocios — un riesgo real de de-anonimización que hay que resolver
+    antes de mostrar cualquier número (sección B).</li>
+  </ul>
+</div>
+
+<div class="alerta-critica">
+  <strong>Nota REGLA #0 (fiscal/contable/inventario — y acá también privacidad, Ley 25.326):</strong> esta
+  feature expone, aunque sea agregado, información comercial sensible de un tenant (márgenes, ventas,
+  rotación de stock) a personal que no es dueño de ese negocio. El riesgo no es solo técnico (una consulta
+  mal armada que filtre filas crudas) sino legal (usar datos de un tenant para un fin — comparación
+  interna de Genesis360 — que nunca se le explicó ni consintió). Ninguna pregunta de este documento se
+  resuelve "agregando un chat" sin más: la decisión de consentimiento (sección A) y el umbral de
+  anonimización (sección B) tienen que quedar cerrados ANTES de escribir cualquier función de agregación.
+</div>
+
+<!-- ============================ A. LEGAL ============================ -->
+<h2>A. Consentimiento y encuadre legal</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿Columna de consentimiento nueva y específica, o alcanza con <code>marketing_consent</code> existente? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">El propio comentario de mig 249 define <code>marketing_consent</code> como un opt-in
+  "SEPARADO y OPCIONAL" para comunicaciones de marketing, citando Ley 25.326 (consentimiento libre,
+  informado, revocable). Reusarlo para autorizar el uso analítico agregado de datos operativos (márgenes,
+  ventas, stock) mezclaría dos finalidades distintas bajo un mismo consentimiento — tensiona el principio
+  que la propia migración estableció.</div>
+  <ul class="opciones">
+    <li>(a) Columna nueva y específica (ej. <code>tenants.ai_comparacion_consent</code> +
+    <code>ai_comparacion_consent_at</code>), mismo patrón de mig 249, opt-in explícito y separado de
+    marketing</li>
+    <li>(b) Reusar <code>marketing_consent</code> tal cual, aceptando el riesgo legal de mezclar dos
+    finalidades bajo un mismo consentimiento</li>
+    <li>(c) No hace falta opt-in adicional — cubre con los Términos y Condiciones generales
+    (<code>terminos_aceptados_at</code>), asumiendo que un agregado anonimizado no identifica al tenant y por
+    lo tanto no requiere consentimiento granular</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Default del consentimiento — ¿ON u OFF? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>marketing_consent</code> (mig 249) se diseñó explícitamente en
+  <code>DEFAULT FALSE</code> — "sin consentimiento salvo tilde explícita" — mismo criterio que exige la Ley
+  25.326 para datos personales/comerciales.</div>
+  <ul class="opciones">
+    <li>(a) Default FALSE, igual que <code>marketing_consent</code> — el tenant tiene que optar
+    activamente</li>
+    <li>(b) Default TRUE con opt-out visible (menor fricción para juntar masa crítica de datos rápido, mayor
+    riesgo legal/reputacional)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Revocación — ¿qué pasa con lo ya mostrado en respuestas pasadas del chat? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Un tenant que revoca el consentimiento tiene que dejar de aportar datos a
+  agregados FUTUROS de inmediato — pero técnicamente no hay forma de "desmostrar" algo que un agente de
+  staff ya leyó en una respuesta anterior del chat (análogo a por qué REGLA #0 prohíbe reescribir registros
+  fiscales/contables históricos: lo pasado ya pasó).</div>
+  <ul class="opciones">
+    <li>(a) La revocación excluye al tenant de todo cálculo NUEVO a partir de ese momento; lo que ya se
+    mostró en el pasado no se puede "borrar" retroactivamente, pero queda auditado en
+    <code>admin_audit_log</code> quién lo vio y cuándo</li>
+    <li>(b) Además de (a), cualquier snapshot/caché de agregados pre-calculados se recalcula excluyendo al
+    tenant apenas revoca (si C3 se resuelve con snapshot en vez de on-the-fly)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    ¿Dónde vive el toggle y quién redacta el texto que lo explica? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El toggle tiene que vivir en la app PRINCIPAL (donde está el tenant), no en el panel
+  admin — el tenant nunca entra a <code>genesis360-admin</code>. Precedente de layout: los otros switches de
+  privacidad hoy conviven en <code>ConfigPage.tsx</code> y en el onboarding (<code>terminos_aceptados_at</code>
+  se setea en <code>OnboardingPage.tsx</code>, <code>provisionNegocio</code>).</div>
+  <ul class="opciones">
+    <li>(a) Nuevo toggle en <code>ConfigPage.tsx</code> (sección Privacidad/Legal), visible/editable para
+    DUEÑO/ADMIN — mismo universo de roles que ya ve <code>ai_config_audit</code>/<code>ai_tenant_memoria</code></li>
+    <li>(b) Se pide también en el onboarding para altas nuevas, igual que <code>terminos_aceptados_at</code>,
+    con un texto breve y claro (a redactar por GO antes de escribir código) explicando que es un uso interno,
+    agregado y anónimo, que nunca identifica al negocio</li>
+    <li>(c) Ambas — se pide en el onboarding Y queda revisable/revocable después en Config</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. ANONIMIZACIÓN ============================ -->
+<h2>B. Umbral de anonimización y agrupación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Umbral mínimo de tenants por cohorte antes de mostrar un agregado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Con "8 tenants reales de PROD" (confirmado en el wiki, agosto 2026), un agregado
+  como "el margen promedio de los kioscos" puede en la práctica referirse a 1-2 negocios si el rubro tiene
+  pocos representantes — de-anonimizando trivialmente a cualquiera que conozca el rubro/zona de un
+  competidor. Ningún mecanismo de anonimización existe hoy en el código (es una feature de cero).</div>
+  <ul class="opciones">
+    <li>(a) Mínimo 5 tenants con consentimiento en la cohorte antes de calcular cualquier agregado; si no
+    alcanza, la IA responde explícitamente que no hay suficientes datos para un agregado confiable/anónimo
+    (nunca muestra el número igual)</li>
+    <li>(b) Umbral más bajo/configurable (ej. 3), aceptando el riesgo dado el volumen actual de tenants</li>
+    <li>(c) Sin umbral por ahora — se difiere Fase 4 hasta tener más masa crítica de tenants reales (dado
+    que "sin urgencia" ya es la prioridad confirmada, ver G1)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Dimensión de agrupación — ¿rubro, tamaño, zona, o alguna combinación? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>tenants.tipo_comercio</code> (mig 001) ya existe, obligatorio desde el
+  onboarding, con 24 rubros fijos + "Otro" texto libre (<code>tiposComercio.ts</code>) — es el precedente de
+  agrupación más directo, pero "Otro" mezcla negocios heterogéneos bajo un label sin estructura. La tabla
+  <code>tenants</code> NO tiene ninguna columna de zona/provincia (esas solo existen en
+  <code>cliente_domicilios</code>, direcciones de los CLIENTES de cada tenant) ni de tamaño del negocio.</div>
+  <ul class="opciones">
+    <li>(a) Solo por <code>tipo_comercio</code>, excluyendo del agregado a los tenants con
+    <code>tipo_comercio='Otro'</code> (no hay forma confiable de agruparlos)</li>
+    <li>(b) <code>tipo_comercio</code> + algún proxy de tamaño que sí existe hoy (ej. cantidad de productos
+    activos, cantidad de sucursales, o volumen de ventas del período) — sin agregar ninguna columna nueva de
+    "tamaño declarado"</li>
+    <li>(c) Sin agrupación por ahora — un único agregado "todos los tenants con consentimiento" sin cohortes
+    (menos riesgo de-anonimización, pero menos útil para comparar "kioscos entre sí")</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    ¿La IA puede mencionar cuántos tenants componen la cohorte al responder? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Decir "esto es el promedio de 4 kioscos" ya revela información (cuán concentrado
+  está el rubro en la base de clientes) y, combinado con contexto externo que el agente ya tenga, puede
+  ayudar a identificar de cuáles tenants se trata — incluso respetando el umbral de B1.</div>
+  <ul class="opciones">
+    <li>(a) Sí, se menciona el "n" de la cohorte — es información legítima para que el staff sepa cuán
+    representativo es el número</li>
+    <li>(b) No se menciona el "n" exacto — solo un rango ("varios negocios del rubro") o directamente se
+    omite</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. DATOS DEL AGREGADO ============================ -->
+<h2>C. Qué datos concretos entran al agregado</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Set inicial de métricas — ¿márgenes, ticket promedio, rotación de stock, mix de medios de pago, todas? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El pedido original mencionó estas cuatro como ejemplo. Ninguna existe hoy como
+  función de agregación cross-tenant — hay que construirlas de cero, cada una sobre tablas operativas
+  distintas (<code>ventas</code>/<code>venta_items</code> para margen/ticket, <code>stock_actual</code>/
+  <code>movimientos_stock</code> para rotación, <code>medio_pago</code> JSON para mix de medios de pago).</div>
+  <ul class="opciones">
+    <li>(a) Las 4 mencionadas como set inicial cerrado (mismo criterio de "tools fijos" — sección D)</li>
+    <li>(b) Arrancar con 1-2 como MVP (ej. margen promedio + ticket promedio) y ampliar en una fase
+    siguiente, una vez validado el mecanismo de anonimización</li>
+    <li>(c) Un set más amplio desde el arranque (a definir cuáles)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Exclusión explícita de cualquier dato identificable <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Nombre del negocio, CUIT, dirección, teléfono, email, nombres de producto específicos
+  (SKU/descripción) — ninguno de estos puede cruzar la barrera de agregación hacia la respuesta del chat, ni
+  siquiera si el umbral de B1 se cumple.</div>
+  <ul class="opciones">
+    <li>(a) El agregado solo puede devolver números (promedios, medianas, conteos, porcentajes) — nunca
+    texto libre ni identificadores de un tenant específico</li>
+    <li>(b) Se permite mencionar nombres de PRODUCTO genéricos (ej. "los productos más vendidos en el rubro
+    Kiosco son gaseosas, golosinas y cigarrillos") si el producto aparece en 2+ tenants de la cohorte, sin
+    nunca decir de cuál tenant viene cada dato</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Cálculo on-the-fly vs. snapshot pre-calculado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">No hay <code>pg_cron</code> ni <code>pg_net</code> habilitado en este proyecto — los
+  jobs periódicos del sistema van por sweep lazy (se ejecutan cuando alguien entra a cierta pantalla), nunca
+  un cron real del lado de la base. Cualquier snapshot periódico de Fase 4 tendría que seguir ese mismo
+  patrón.</div>
+  <ul class="opciones">
+    <li>(a) On-the-fly — cada pregunta del chat dispara la función de agregación en el momento, siempre con
+    datos actuales (más simple, sin infra nueva, pero cada consulta recorre TODOS los tenants con
+    consentimiento cada vez)</li>
+    <li>(b) Snapshot pre-calculado (tabla resumen o materialized view), refrescado por un sweep lazy — más
+    rápido de responder, pero desactualizado hasta el próximo refresh</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. ARQUITECTURA ============================ -->
+<h2>D. Arquitectura del chat — alcance de la IA</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿Tools fijos de agregación, o la IA arma el SQL libremente? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Las Fases 1-3 del <code>ai-assistant</code> ya validaron en producción el patrón
+  "allowlist fijo hardcodeado, nunca SQL dinámico" (<code>CONFIG_CAMPOS_IA</code>, mig 376: "un campo que no
+  está en la lista es RECHAZADO... ampliar la lista es SIEMPRE una migración nueva, nunca una fila editable
+  en una tabla"). Dejar que un LLM redacte la consulta de agregación libremente sería más flexible para el
+  chat libre que pidió GO, pero no hay forma de garantizar que respete un filtro de anonimización que él
+  mismo escribe — un prompt adversarial, un error de razonamiento, o simplemente una consulta mal armada
+  podría filtrar datos NO agregados de un tenant puntual.</div>
+  <ul class="opciones">
+    <li>(a) <strong>RECOMENDADO</strong> — set FIJO de funciones/RPC <code>SECURITY DEFINER</code> de
+    agregación (ej. <code>fn_bi_margen_promedio_por_rubro</code>,
+    <code>fn_bi_ticket_promedio_por_rubro</code>, <code>fn_bi_rotacion_stock_por_rubro</code>...), cada una
+    aplica el umbral de anonimización (B1) y el filtro de consentimiento (A) DENTRO de la función — la IA
+    solo elige QUÉ función llamar y con qué filtros (rubro, período), nunca redacta el SQL. Mismo criterio de
+    seguridad que ya prueba el proyecto en Fases 1-3</li>
+    <li>(b) SQL libre con un modelo de datos acotado — más flexible para preguntas no anticipadas, pero sin
+    garantía de que la IA respete la anonimización en el 100% de los casos; no recomendable dado el riesgo
+    (REGLA #0)</li>
+    <li>(c) Híbrido — tools fijos para lo predecible + un modo "sandbox" de SQL de solo lectura con revisión
+    humana antes de mostrar el resultado (más trabajo de construir, valor dudoso frente a (a))</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    ¿Nueva Edge Function, o una <code>action</code> nueva dentro de <code>admin-api</code>? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>admin-api</code> ya resuelve auth + autorización por rol + auditoría con un
+  único <code>switch(action)</code> — agregar <code>bi.chat</code> (o similar) ahí reusaría ese mecanismo
+  entero sin duplicarlo. Una EF nueva separada replicaría la validación de <code>support_agents</code> desde
+  cero. En cualquiera de los dos casos, el código vive en el repo Genesis360 (regla ya establecida,
+  confirmada leyendo el <code>README.md</code> de <code>genesis360-admin</code>).</div>
+  <ul class="opciones">
+    <li>(a) Nueva <code>action</code> (ej. <code>bi.chat</code>) dentro del <code>switch</code> existente de
+    <code>admin-api</code>, reusando <code>ROLE_MODULES</code>/<code>ACTION_MODULE</code>/<code>audit()</code>
+    tal cual están hoy</li>
+    <li>(b) Edge Function nueva y separada (ej. <code>admin-ai-bi</code>), con su propia validación de
+    <code>support_agents</code> — mismo patrón, código duplicado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    El módulo "Analytics" ya existe reservado en el panel, pero apunta a otra cosa <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto"><code>ROLE_MODULES</code>/<code>nav.ts</code> (<code>genesis360-admin</code>) ya
+  tienen un módulo <code>analytics</code> visible para <code>admin</code>+<code>marketing</code>, pero
+  <code>AnalyticsPage.tsx</code> es un placeholder para CAC por canal (Meta Pixel/GA4) — conceptualmente
+  distinto de "comparar negocios de tenants entre sí". Meter Fase 4 ahí sin decidirlo mezclaría dos features
+  no relacionadas bajo el mismo nombre/rol.</div>
+  <ul class="opciones">
+    <li>(a) Fase 4 vive DENTRO del módulo <code>analytics</code> existente (una pestaña/sección nueva junto
+    a CAC), mismo par de roles (<code>admin</code>+<code>marketing</code>)</li>
+    <li>(b) Fase 4 es un módulo nuevo y separado (ej. <code>insights</code> o <code>bi</code>), con su propia
+    entrada en <code>ROLE_MODULES</code>/<code>ACTION_MODULE</code>/<code>nav.ts</code>, para no mezclarla
+    con marketing/CAC ni heredar sus roles por default</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. PERMISOS ============================ -->
+<h2>E. Permisos — quién puede usar el chat</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Qué roles del panel pueden usar el chat? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Roles reales hoy (mig 222): <code>admin</code> (todo), <code>support</code>
+  (Clientes+Soporte), <code>marketing</code> (CRM+Analytics), <code>billing</code> (Facturación) —
+  <code>dashboard</code> lo ven los 4. No existe un rol "growth" en el sistema; lo más cercano al pedido
+  original ("admin/growth, no support/billing") es <code>admin</code> + <code>marketing</code> (que además
+  ya son los dos roles que hoy ven el módulo <code>analytics</code>).</div>
+  <ul class="opciones">
+    <li>(a) <code>admin</code> + <code>marketing</code> (los dos roles que ya ven <code>analytics</code>
+    hoy) — <code>support</code> y <code>billing</code> quedan afuera</li>
+    <li>(b) Solo <code>admin</code> — más restrictivo, ni siquiera <code>marketing</code></li>
+    <li>(c) Los 4 roles — dado que <code>dashboard</code>/<code>metrics.overview</code> (agregado cross-tenant
+    sin filas crudas) ya es visible para todos, esto sería una extensión natural del mismo criterio</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Enforcement server-side — ¿mismo mecanismo de <code>admin-api</code>, o un gate adicional? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto"><code>admin-api</code> ya rechaza con 403 cualquier <code>action</code> cuyo módulo
+  no esté en <code>ROLE_MODULES[agent.rol]</code> — doble capa (el front de <code>genesis360-admin</code>
+  oculta lo no permitido por UX, la EF es la autoridad real). Fase 4 expone información comercial de TODOS
+  los tenants a la vez (no de a uno), un nivel de sensibilidad distinto al resto del panel.</div>
+  <ul class="opciones">
+    <li>(a) Mismo mecanismo exacto — agregar la nueva <code>action</code> al <code>ACTION_MODULE</code>
+    existente, sin nada adicional</li>
+    <li>(b) Además del rol, un gate más fino (ej. un flag explícito en el perfil del agente,
+    "acceso a comparaciones cross-tenant", que un <code>admin</code> tiene que habilitarle a cada persona a
+    mano) — más fricción, pero más control dado que esto agrega TODOS los tenants a la vez</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. AUDITORÍA ============================ -->
+<h2>F. Auditoría</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿Cada pregunta del chat queda en <code>admin_audit_log</code>? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Cada <code>case</code> de <code>admin-api/index.ts</code> que toca datos ya llama a
+  la función <code>audit()</code> definida en el propio archivo (inserta en <code>admin_audit_log</code>:
+  <code>agent_id</code>, <code>agent_email</code>, <code>action</code>, <code>target_tenant_id</code>,
+  <code>metadata</code> jsonb libre, <code>user_agent</code>) — es append-only, sin policies de escritura
+  para el cliente. Mismo patrón directamente reusable para el chat.</div>
+  <ul class="opciones">
+    <li>(a) Sí — cada pregunta del chat queda auditada con el mismo patrón (como mínimo: qué función/tool se
+    llamó, con qué filtros)</li>
+    <li>(b) Se audita la pregunta pero no necesariamente cada detalle de la respuesta generada (por
+    tamaño/ruido en el log)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    ¿Se guarda la conversación completa, o solo metadata resumida? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El precedente de Fase 3 (<code>ai_tenant_memoria</code>, mig 377) decidió a propósito
+  NO guardar charla cruda del TENANT — solo hechos destilados, por privacidad del cliente. Acá el "usuario"
+  del chat es el propio staff de Genesis360 (no un cliente), así que esa razón de fondo no aplica igual —
+  podría tener sentido guardar más, para poder revisar después qué le mostraron a cada agente.</div>
+  <ul class="opciones">
+    <li>(a) Se guarda la conversación completa (pregunta + respuesta) en
+    <code>admin_audit_log.metadata</code> (columna jsonb ya existente) — permite auditar exactamente qué vio
+    cada agente</li>
+    <li>(b) Solo metadata resumida (qué función/tool se llamó, con qué filtros), sin el texto libre completo
+    de pregunta/respuesta</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. PRIORIDAD ============================ -->
+<h2>G. Prioridad y alcance temporal</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Confirmar "sin urgencia" — ¿sigue así? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Fase 4 quedó diferida por decisión de scope al cerrar las Fases 1-3 (v1.179.0, EN
+  PROD). No hay código, migración ni decisión de producto todavía — este documento es el primer paso.</div>
+  <ul class="opciones">
+    <li>(a) Confirmado, sin urgencia — queda en backlog hasta que haya decisión legal (sección A) explícita
+    y GO lo priorice</li>
+    <li>(b) Cambió — ahora hay una razón concreta para acelerarlo (describir): ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. TEMAS ABIERTOS ============================ -->
+<h2>H. Temas adicionales / Top 3 / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    ¿Algo puntual que ya te gustaría preguntarle a esta IA y no está cubierto en este documento? (lista libre)
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Contexto adicional — ¿qué disparó este pedido? (algún caso puntual de Fede/GO que ayude a priorizar qué
+    construir primero)
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H3</span><span class="pregunta-titulo">
+    Prioridad relativa: si tuvieran que elegir 3 decisiones para cerrar primero, ¿cuáles?
+  </span>
+  <div class="respuesta-libre">1) ____<br/>2) ____<br/>3) ____</div>
+</div>
+
+<div class="footer">
+  Documento generado automáticamente · Genesis360 v1.179.1 · Para devolverlo: respondan con los códigos
+  (ej: "A1=a, A2=a, B1=b...") y lo cargo al wiki en <code>G360.Wiki/wiki/features/asistente-ia.md</code>
+  (sección "Plan IA") y en <code>G360.Wiki/wiki/development/reglas-negocio.md</code>.
+</div>
+
+</body>
+</html>

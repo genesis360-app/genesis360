@@ -34,8 +34,8 @@ test.describe('Aprobación de ajuste de inventario — 2 actores (mutante)', () 
     await goto(page, '/inventario')
     await waitForApp(page)
 
-    // Tab Autorizaciones (solo avanzado + DUEÑO/SUPERVISOR/ADMIN; esperar render — cold-load lento)
-    const tabAut = page.getByRole('button', { name: 'Autorizaciones' })
+    // Tab Supervisión (ex "Autorizaciones", mig 347) — solo avanzado + DUEÑO/SUPERVISOR/ADMIN; esperar render — cold-load lento)
+    const tabAut = page.getByRole('button', { name: 'Supervisión' })
     await expect(tabAut).toBeVisible({ timeout: 20000 })
     await tabAut.click()
 

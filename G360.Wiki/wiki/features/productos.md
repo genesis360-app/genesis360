@@ -248,6 +248,19 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > hoy**. Pendiente: (a) confirmar si algún tenant en PROD usó esa columna del importador, (b)
 > decidir si el importador pasa a convertir a ARS al importar (como hace el resto de la app) o si se
 > migra al patrón `precio_costo_usd`/`moneda_costo` nuevo.
+>
+> **🛑 Fix relacionado, distinto (2026-08-20, reportado por Fede): la LISTA de Productos (esta
+> ficha ya estaba bien) ignoraba `moneda_venta`/`moneda_costo`.** `ProductosPage.tsx` mostraba
+> SIEMPRE el mirror en ARS (`precio_venta`/`precio_costo`, la fuente para margen/reportes/POS) con
+> `$`, en 6 lugares (fila colapsada, fila de variante, panel expandido) — nunca miraba si el
+> producto estaba priceado nativamente en USD. Fix: helpers `precioVentaTexto`/`precioCostoTexto`
+> (usan `formatMoneda` de `lib/formato.ts`), verificados con `tests/e2e/135_producto_lista_moneda_usd_mutante.spec.ts`
+> contra DEV real. Fede pidió además auditar TODOS los lugares de la app que muestran precio/costo
+> de producto y diseñar un patrón reusable pensando en más monedas a futuro — **eso no se hizo
+> todavía**, es un alcance mayor (candidato a "features grandes": relevamiento → diseño → fases).
+> Ver [[project_moneda_producto_pendientes_fede]] (memoria) para el detalle completo, incluidos 2
+> hallazgos relacionados que quedaron DEFERIDOS a propósito (compra vs. venta en la conversión del
+> carrito, y a qué sistema se refiere "solo dólar oficial de BNA") esperando que GO hable con Fede.
 
 ### Card 4: Stock e inventario
 

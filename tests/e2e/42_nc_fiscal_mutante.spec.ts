@@ -91,7 +91,7 @@ test.describe('Nota de Crédito electrónica (mutante)', () => {
 
     // 1) Tab Historial + buscar la venta facturada por número
     await page.getByRole('button', { name: /^Historial$/ }).first().click()
-    await page.getByPlaceholder(/Buscar por N° o cliente/i).fill(VENTA_NUMERO)
+    await page.getByPlaceholder(/Buscar cliente.*N° de venta/i).fill(VENTA_NUMERO)
 
     // 2) Abrir el detalle de la venta (primera fila filtrada). El query de historial puede
     //    tardar en cargar → esperar a que la fila exista antes de clickear.

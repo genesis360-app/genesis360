@@ -32,8 +32,9 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 // cuesta nada incluirlos también, defensivo ante un futuro cambio de esos flags).
 const TODOS_LOS_MODULOS_MENOS_COMERCIAL = [
   'dashboard', 'ventas', 'gastos', 'caja', 'inventario', 'movimientos', 'clientes', 'envios',
-  'facturacion', 'proveedores', 'recursos', 'recepciones', 'picking', 'pedidos', 'biblioteca',
-  'alertas', 'rrhh', 'historial', 'reportes', 'sucursales', 'usuarios', 'configuracion', 'mi_portal',
+  'facturacion', 'proveedores', 'recursos', 'recepciones', 'picking', 'pedidos', 'repositores',
+  'biblioteca', 'alertas', 'supervision', 'rrhh', 'historial', 'reportes', 'sucursales', 'usuarios',
+  'configuracion', 'mi_portal',
 ]
 
 function decodeJwtSub(token: string): string {

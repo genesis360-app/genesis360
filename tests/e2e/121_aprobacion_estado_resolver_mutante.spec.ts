@@ -123,7 +123,7 @@ async function crearAutorizacionPendiente(
 async function irATabAutorizaciones(page: any) {
   await goto(page, '/inventario')
   await waitForApp(page)
-  await page.getByRole('button', { name: 'Autorizaciones' }).click()
+  await page.getByRole('button', { name: 'Supervisión' }).click()
   await expect(page.getByRole('button', { name: 'Pendientes' })).toBeVisible({ timeout: 8000 })
 }
 

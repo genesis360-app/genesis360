@@ -155,8 +155,8 @@ test.describe('Motor de Rotación — nombre/precio sugerido de KIT + autorizaci
     // 4) Sesión DUEÑO (page principal) — aprueba desde Inventario → Autorizaciones
     await goto(page, '/inventario')
     await waitForApp(page)
-    const tabAut = page.getByRole('button', { name: 'Autorizaciones' })
-    await expect(tabAut, '[133] DUEÑO no ve el tab Autorizaciones').toBeVisible({ timeout: 8000 })
+    const tabAut = page.getByRole('button', { name: 'Supervisión' })
+    await expect(tabAut, '[133] DUEÑO no ve el tab Supervisión').toBeVisible({ timeout: 8000 })
     await tabAut.click()
 
     const filaAut = page.locator('div').filter({ hasText: nombreSugeridoEsperado }).filter({ has: page.getByRole('button', { name: /Aprobar/i }) }).last()

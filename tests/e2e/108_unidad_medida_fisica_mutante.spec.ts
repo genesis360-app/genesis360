@@ -58,7 +58,18 @@ test.describe('Unidad de Medida física persiste al guardar (mutante)', () => {
     await waitForApp(page)
     await expect(page.getByRole('heading', { name: /Editar producto/i })).toBeVisible({ timeout: 8000 })
 
-    const udmSelect = page.locator('select').filter({ has: page.locator('option', { hasText: 'Kilogramo' }) }).first()
+    // ⚠ El locator NO puede filtrar solo por la opción "Kilogramo": desde Repositores Fase 4
+    // (mig 357) hay un 2do select en la misma ficha —"Contenido (opcional)"→ contenido_unidad_id—
+    // que reusa el mismo catálogo de unidades físicas (familias peso/volumen/longitud) y por eso
+    // TAMBIÉN tiene la opción "Kilogramo". Ese select vive antes en el DOM (card "Identificación")
+    // y queda disabled hasta cargar una cantidad de contenido, así que `.first()` sin más filtro
+    // agarraba el select equivocado (siempre disabled) y `selectOption` colgaba los 30s del timeout.
+    // El select real de "Unidad de medida" incluye además la familia 'conteo' (Unidad/Docena),
+    // que el de Contenido NO tiene — se usa "Docena" como segundo filtro para desambiguar.
+    const udmSelect = page.locator('select')
+      .filter({ has: page.locator('option', { hasText: 'Kilogramo' }) })
+      .filter({ has: page.locator('option', { hasText: 'Docena' }) })
+      .first()
     await expect(udmSelect).toBeVisible({ timeout: 8000 })
     await udmSelect.selectOption(kilo!.id)
 

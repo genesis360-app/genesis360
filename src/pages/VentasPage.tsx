@@ -6567,7 +6567,7 @@ export default function VentasPage() {
                 pildoras={pildorasHist}
                 entrada={entradaHist}
                 combinador={combinadorHist}
-                placeholder="Buscar cliente... o (Venta):2"
+                placeholder="Buscar cliente... o N° de venta"
                 onEntradaChange={setEntradaHist}
                 onCommitEntrada={() => {
                   if (!entradaHistTrim) return

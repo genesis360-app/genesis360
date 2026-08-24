@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Compras/Gastos en USD + tasa de cambio editable · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .cita { background: #eef2f7; border-left: 3px solid #8aa8c4; padding: 6pt 10pt; margin: 8pt 0; font-style: italic; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Compras/Gastos en USD + tasa de cambio editable</h1>
+<div class="meta">
+  Genesis360 · v1.179.1 · Fecha: 21 de agosto de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Esto NO es el mismo relevamiento que "Venta física en USD / Caja en USD" (G5).</strong> Ese
+  relevamiento ya está 100% respondido y construido — 8 fases, migraciones 368-375, <strong>EN PROD desde
+  v1.176.0</strong> — y cubrió el lado de <strong>VENTAS</strong>: cobrar en USD físico, Caja USD completa,
+  pago combinado ARS+USD, devoluciones/NC, reportes. Este documento es un pedido <strong>nuevo</strong> de
+  Fede (vía GO, 2026-08-21) sobre el lado de <strong>COMPRAS</strong>, que hoy no tiene ningún trabajo hecho.
+  Texto literal de Fede (traducido de su mensaje original en español informal):
+  <div class="cita">
+    "[la cotización elegida] solamente [aplica] para lo que implica la venta. Para lo que es compras y
+    cambio en bóveda se debe poder modificar al tipo de cambio que quiera. Ya que un proveedor puede tomar
+    el dólar a una cotización distinta o conseguimos cambiar los dólares a un mejor precio, etc. Y lo que se
+    gasta en dólares o lo que se recibe en dólares, queda en dólares. No es necesario cambiar todo a $ en
+    todo momento o viceversa."
+  </div>
+  Interpretación a confirmar en este documento (no cerrada al 100%): para <strong>Ventas</strong> seguir
+  igual que hoy (eso ya quedó resuelto en G5, no se toca). Para <strong>Compras/Gastos y la conversión en
+  Bóveda</strong>, la tasa de cambio necesita poder tipearse a mano en el momento de la operación — en vez de
+  depender siempre de un valor fijo — y lo gastado/recibido en USD debe quedar registrado en USD, sin forzar
+  conversión constante a pesos. Las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span>
+  (definir una regla que hoy no existe en ningún lado), <span class="tag tag-existente">EXISTENTE</span>
+  (confirmar una regla que el código ya implementa) o <span class="tag tag-cambio">CAMBIO</span> (el código
+  actual contradice, tensiona, o deja desconectada una pieza ya construida — hay que resolver eso, no solo
+  elegir una opción).
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo (verificado contra el código, no contra memoria):</strong>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li><strong>Gastos y Compras/OC: CERO soporte de moneda hoy.</strong> Sin coincidencias de
+    <code>moneda</code>/<code>cotizacion</code> en <code>GastosPage.tsx</code> ni en
+    <code>RecepcionesPage.tsx</code> más allá del formateo con <code>tenant.moneda</code> (siempre "$").
+    Confirmado también contra el esquema: <code>gastos</code>, <code>gastos_fijos</code>,
+    <code>ordenes_compra</code> y <code>orden_compra_items</code> no tienen NINGUNA columna de moneda —
+    <code>gastos.monto</code>, <code>ordenes_compra.monto_total</code> y
+    <code>orden_compra_items.precio_unitario</code> son <code>numeric</code> puros, siempre asumidos en
+    pesos. <code>ProveedoresPage.tsx</code> (donde realmente se crea una OC) solo usa
+    <code>tenant.moneda</code> para formatear — mismo diagnóstico. Es una feature nueva de punta a punta en
+    ambos módulos, no un ajuste.</li>
+    <li><strong>La Bóveda YA tiene conversión USD↔ARS, pero con tasa FIJA, no editable.</strong>
+    <code>calcularConversionUsd()</code> (<code>src/lib/cajaBoveda.ts</code>) usa siempre
+    <code>cotizacionCompra</code> para USD→ARS y <code>cotizacionVenta</code> para ARS→USD — ambos valores
+    vienen de <code>tenant.cotizacion_usd</code>/<code>cotizacion_usd_compra</code> (auto-traídos de
+    <code>dolarapi.com</code> vía <code>useCotizacion.ts</code>). El modal "Convertir USD↔$" de
+    <code>CajaPage.tsx</code> (línea ~2716) solo tiene un input de <strong>Monto</strong> — la tasa se
+    muestra de <strong>solo lectura</strong> ("cotización {tasaUsada}"), no hay ningún campo para tipearla.</li>
+    <li><strong>Esto es exactamente la decisión F2, ya CERRADA en el relevamiento G5 (respondida por Fede el
+    2026-08-18, construida en la Fase 5, mig 373, v1.174.0, EN PROD):</strong> "La conversión USD↔$ solo
+    puede hacerse desde la Bóveda, y solo la hace el DUEÑO — es el único punto de conversión de todo el
+    sistema" (<code>G360.Wiki/wiki/development/reglas-negocio.md</code>). El pedido nuevo de Fede
+    potencialmente reabre/tensiona esa decisión — no se puede asumir que "tasa editable" se pueda agregar
+    sin más sin reconfirmarlo explícitamente.</li>
+    <li><strong><code>useCotizacion.ts</code> ya permite tipear un valor manual, pero solo para VENTAS y
+    solo para la tasa de venta.</strong> La función <code>guardar(valor)</code> escribe
+    <code>tenant.cotizacion_usd</code> (afecta TODO el tenant, incluidas las ventas) y está gateada a
+    DUEÑO + roles en <code>tenant.cotizacion_usd_roles_permitidos</code> (<code>puedeElegirTipo</code>).
+    <strong><code>cotizacion_usd_compra</code> no tiene ningún setter manual hoy</strong> — solo se completa
+    vía <code>fetchDesdeApi()</code> (trae <code>data.compra</code> de la API), nunca se puede tipear a
+    mano.</li>
+    <li><strong><code>metodos_pago</code> ya tiene <code>es_efectivo</code>/<code>moneda</code></strong>
+    (mig 368, G5 Fase 1) y también <code>habilitado_gastos</code> (preexistente) — un método "Transferencia
+    USD" o "Efectivo USD" habilitado para Gastos ya es técnicamente creable desde Config → Métodos de pago,
+    y es reusable como parte de la solución.</li>
+    <li><strong><code>boveda_retiros</code> ya tiene un <code>tipo_retiro='pago_proveedor'</code>, pero es
+    un label libre sin ningún vínculo real.</strong> El INSERT real (extracción de Bóveda,
+    <code>CajaPage.tsx</code>) solo guarda <code>cuenta_origen_id</code>, <code>monto</code>,
+    <code>tipo_retiro</code>, <code>motivo</code> (texto libre) y <code>notas</code> — no hay columna
+    <code>proveedor_id</code>, <code>oc_id</code> ni <code>gasto_id</code>. Elegir "Pago a proveedor" en el
+    dropdown hoy NO actualiza <code>ordenes_compra.monto_pagado</code>/<code>estado_pago</code> ni crea una
+    fila en <code>gastos</code> — es puramente descriptivo.</li>
+    <li><strong>Caja USD ya tiene un ciclo completo operativo</strong> (apertura → cobro → arqueo → cierre,
+    Fases 1-7 de G5, EN PROD v1.176.0) — pero está pensada para <em>cobrar</em> ventas, no para
+    <em>pagar</em> proveedores. Si "pagar una compra en USD" implica sacar plata de ahí, hay que definirlo
+    explícitamente (no es automático).</li>
+    <li><strong>Fiscal ya resuelto para Gastos, sin ninguna noción de moneda extranjera:</strong>
+    <code>GastosPage.tsx</code> tiene una sección fiscal completa atada a
+    <code>tenants.condicion_iva_emisor</code> (mig 227) — tipo de comprobante, alícuota IVA, IVA crédito —
+    pero el gasto en sí nunca se declara ante AFIP (a diferencia de una venta). Este punto es análogo a C1
+    del relevamiento G5 ("la factura AFIP sigue siempre en pesos").</li>
+  </ul>
+</div>
+
+<div class="alerta-critica">
+  <strong>Nota REGLA #0 (fiscal/contable, cero errores tolerados):</strong> este módulo toca directo Gastos,
+  Órdenes de Compra, cuenta corriente de proveedores, Caja/Bóveda y medios de pago. Ninguna pregunta de este
+  documento se resuelve "agregando un input de tasa" sin más — hay que definir explícitamente: si la tasa
+  editada queda congelada (snapshot) una vez confirmada la transacción (nunca reescribir históricos), si todo
+  pago en efectivo USD se asienta en una caja real (nunca fire-and-forget), y cómo se evita mezclar/sumar
+  montos de distinta moneda en reportes y en la cuenta corriente de un proveedor.
+</div>
+
+<!-- ============================ A. ALCANCE ============================ -->
+<h2>A. Alcance del proyecto</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿Gastos, Compras/OC, o ambos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Son dos módulos de código distintos: <code>GastosPage.tsx</code> (gastos sueltos y
+  gastos fijos, tabla <code>gastos</code>/<code>gastos_fijos</code>) y
+  <code>RecepcionesPage.tsx</code>/<code>ProveedoresPage.tsx</code> (recepciones y Órdenes de Compra a
+  proveedores, tabla <code>ordenes_compra</code>/<code>orden_compra_items</code>). Ninguno de los dos tiene
+  hoy ningún soporte de moneda.</div>
+  <ul class="opciones">
+    <li>(a) Ambos — Gastos (variable y fijo) Y Compras/OC deben poder cargarse en USD</li>
+    <li>(b) Solo Compras/OC — Fede habló de "proveedor" y "cambiar dólares", el foco parece ser compras a
+    proveedores específicamente</li>
+    <li>(c) Solo Gastos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Relación con la Bóveda — ¿una sola regla transversal, o dos features independientes? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Fede mezcla "compras" y "cambio en bóveda" en la misma frase, pero son dos
+  superficies de código totalmente distintas: Compras/Gastos (sin ningún soporte de moneda hoy) vs. Bóveda
+  (ya tiene <code>calcularConversionUsd()</code> + modal "Convertir USD↔$", pero con tasa fija, sin campo
+  editable).</div>
+  <ul class="opciones">
+    <li>(a) Es UNA sola regla — "en cualquier conversión USD↔ARS del sistema (Compras, Bóveda, y donde
+    corresponda) la tasa se puede tipear a mano, no depende de un valor fijo del tenant"</li>
+    <li>(b) Son dos features independientes, con alcance/timing propio — la de Bóveda puede resolverse
+    aparte de la de Compras/Gastos</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Tensión con la decisión F2 ya cerrada del relevamiento G5 ("único punto de conversión, tasa fija") <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">La fila F2 de la tabla de decisiones cerradas
+  (<code>G360.Wiki/wiki/development/reglas-negocio.md</code>, respondida por Fede el 2026-08-18, construida
+  en la Fase 5 de G5, mig 373, v1.174.0, EN PROD) dice literalmente: "La conversión USD↔$ solo puede hacerse
+  desde la Bóveda, y solo la hace el DUEÑO — es el único punto de conversión de todo el sistema". El modal
+  "Convertir USD↔$" de <code>CajaPage.tsx</code> hoy solo permite tipear el MONTO — la tasa se muestra de
+  solo lectura. El pedido nuevo de Fede (tasa editable) potencialmente reabre esa decisión ya cerrada e
+  implementada.</div>
+  <ul class="opciones">
+    <li>(a) F2 se reabre y se actualiza — la conversión en Bóveda sigue siendo el único punto y exclusiva
+    del DUEÑO, pero la tasa usada en cada conversión puntual pasa a ser editable (en vez de tomar siempre
+    <code>cotizacion_usd</code>/<code>cotizacion_usd_compra</code> fijos)</li>
+    <li>(b) F2 no se toca — la Bóveda sigue con tasa fija tal cual está; la tasa editable es SOLO para
+    Compras/Gastos, que nunca tuvo esa regla</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. MECÁNICA DE LA TASA ============================ -->
+<h2>B. Mecánica de la tasa editable</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    ¿Se tipea en CADA transacción individual, o es un valor persistente que rige hasta que se lo cambie? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>tenant.cotizacion_usd</code> funciona como un valor único que se pisa
+  (<code>useCotizacion.ts</code>, función <code>guardar()</code>) — no existe el concepto de "tasa distinta
+  para esta operación puntual". Fede dice "un proveedor puede tomar el dólar a una cotización distinta"
+  (sugiere por transacción) pero también "conseguimos cambiar los dólares a un mejor precio" (podría ser un
+  valor que se actualiza cuando cambia la oportunidad, no necesariamente cada vez).</div>
+  <ul class="opciones">
+    <li>(a) Por transacción — cada gasto/compra/conversión de bóveda tiene su propio campo "tasa usada",
+    editable en el momento de cargarla, sin afectar ningún valor global</li>
+    <li>(b) Valor persistente tipo <code>cotizacion_usd</code> — el dueño lo actualiza cuando cambia, y rige
+    para todas las cargas hasta la próxima actualización (columna separada, solo para compras/bóveda)</li>
+    <li>(c) Combinación — sugiere el último valor cargado como default, pero se puede sobreescribir en cada
+    transacción puntual</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Al abrir el formulario, ¿aparece algún valor sugerido, o el campo arranca vacío? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Si B1 se resuelve con (a) o (c), hace falta decidir de dónde sale el valor sugerido
+  inicial — hoy la única fuente automática es <code>tenant.cotizacion_usd</code>/<code>cotizacion_usd_compra</code>
+  (vía <code>dolarapi.com</code>, pensada para Ventas).</div>
+  <ul class="opciones">
+    <li>(a) Sugiere <code>tenant.cotizacion_usd_compra</code> (la tasa de compra vigente) como punto de
+    partida, editable</li>
+    <li>(b) Sugiere la última tasa usada en la transacción anterior de ese mismo tipo (gasto/compra/conversión)</li>
+    <li>(c) Arranca vacío siempre — el usuario tiene que tipearla, sin sugerencia</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    <code>cotizacion_usd_compra</code> no tiene setter manual hoy — ¿se le agrega, o la tasa de Compras queda desacoplada? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>useCotizacion.ts</code> — <code>guardar(valor)</code> solo escribe
+  <code>tenant.cotizacion_usd</code> (venta). <code>cotizacion_usd_compra</code> únicamente se completa vía
+  <code>fetchDesdeApi()</code> (trae <code>data.compra</code> de la API); no existe hoy ningún botón/input
+  para tipearla a mano, a diferencia de <code>cotizacion_usd</code>.</div>
+  <ul class="opciones">
+    <li>(a) Se agrega un setter manual a <code>cotizacion_usd_compra</code>, análogo al que ya existe para
+    <code>cotizacion_usd</code> — sigue siendo un valor de tenant (afecta la Bóveda globalmente)</li>
+    <li>(b) No se toca <code>cotizacion_usd_compra</code> — la tasa editable de Compras vive en un campo
+    nuevo y separado, sin relación con las columnas de <code>tenants</code> que usa Ventas</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. REGISTRO EN USD ============================ -->
+<h2>C. Registro en USD y trazabilidad</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿El gasto/compra en USD guarda solo el monto en USD, o también el equivalente en pesos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Fede fue explícito: "lo que se gasta en dólares... queda en dólares. No es necesario
+  cambiar todo a $ en todo momento o viceversa." Hoy <code>gastos.monto</code> y
+  <code>ordenes_compra.monto_total</code>/<code>orden_compra_items.precio_unitario</code> son
+  <code>numeric</code> sin ninguna noción de moneda — siempre se asume pesos.</div>
+  <ul class="opciones">
+    <li>(a) Se guarda SOLO en USD (monto + tasa usada, sin persistir un equivalente en ARS calculado) — el
+    equivalente se calcula al vuelo cuando hace falta mostrarlo, nunca se guarda fijo</li>
+    <li>(b) Se guardan AMBOS — monto en USD, tasa usada, Y el equivalente en ARS ya calculado y persistido
+    (columna nueva), para no recalcular en cada reporte</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Snapshot inmutable de la tasa usada — ¿mismo criterio que <code>ventas.cotizacion_usd</code> (G5)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Cada venta en USD guarda su propia <code>cotizacion_usd</code> (columna agregada en
+  mig 368, snapshot congelado, uso interno, nunca va a AFIP). REGLA #0 del proyecto exige nunca reescribir
+  registros contables retroactivamente — si la tasa es editable ANTES de confirmar la transacción, una vez
+  guardada tendría que quedar fija para siempre, aunque después se actualice la cotización general.</div>
+  <ul class="opciones">
+    <li>(a) Sí — cada gasto/compra/conversión en USD guarda su propia tasa usada, congelada al confirmar,
+    igual que <code>ventas.cotizacion_usd</code>; nunca se recalcula después</li>
+    <li>(b) No hace falta un snapshot — alcanza con guardar el monto en USD, sin registrar qué tasa se usó
+    en el momento</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    ¿Se puede editar un gasto/compra en USD ya confirmado (cambiar monto o tasa después de guardado)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>GastosPage.tsx</code> ya bloquea la edición de <code>monto</code>/medios de
+  pago una vez que el gasto "ya fue registrado en caja" (v1.8.37, campo deshabilitado + aviso 🔒) y también
+  bloquea la edición si el gasto cae en un período contable cerrado (<code>isPeriodoCerrado</code>). El
+  mismo criterio de REGLA #0 aplicaría acá con más fuerza porque además hay una tasa de por medio.</div>
+  <ul class="opciones">
+    <li>(a) Igual que hoy — una vez que el gasto/compra en USD tiene medio de pago asignado (ya impactó en
+    caja/bóveda), monto y tasa quedan bloqueados; para corregir hace falta nota de corrección
+    (<code>gasto_padre_id</code>/<code>es_correccion</code>, ya existe)</li>
+    <li>(b) Se permite editar la tasa/monto libremente mientras el período contable no esté cerrado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. FUENTE DEL EFECTIVO ============================ -->
+<h2>D. Fuente del efectivo y vínculo con Proveedores/OC</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿De dónde sale el efectivo/saldo para pagar una compra en USD? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy existen 3 mecanismos separados y ninguno está conectado a "pagar una compra
+  específica en USD": la Caja USD operativa (ciclo completo, EN PROD desde v1.176.0, pero pensada para
+  COBRAR ventas, no para pagar proveedores), la Bóveda/Caja Fuerte USD (<code>boveda_retiros</code>, ya
+  tiene <code>tipo_retiro='pago_proveedor'</code> como categoría, ver D2), y un método de pago no-efectivo
+  (<code>metodos_pago</code> ya soporta <code>moneda</code>+<code>es_efectivo</code> desde mig 368, se
+  podría crear "Transferencia USD").</div>
+  <ul class="opciones">
+    <li>(a) Bóveda/Caja Fuerte USD — el pago sale de ahí como un retiro (extender el
+    <code>tipo_retiro='pago_proveedor'</code> existente)</li>
+    <li>(b) Caja USD operativa — si el negocio tiene una caja de ese tipo abierta</li>
+    <li>(c) Un método de pago no-efectivo en USD (transferencia, CC de proveedor en USD) — no requiere
+    efectivo físico ni bóveda</li>
+    <li>(d) Cualquiera de las tres, a elección del usuario en el momento de pagar</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    <code>boveda_retiros.tipo_retiro='pago_proveedor'</code> hoy es un label libre, sin vínculo real a nada <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">El INSERT real (extracción de Bóveda, <code>CajaPage.tsx</code>) solo guarda
+  <code>cuenta_origen_id</code>, <code>monto</code>, <code>tipo_retiro</code>, <code>motivo</code> (texto
+  libre) y <code>notas</code> — no hay columna <code>proveedor_id</code>, <code>oc_id</code> ni
+  <code>gasto_id</code>. Elegir "Pago a proveedor" en el dropdown hoy no actualiza
+  <code>ordenes_compra.monto_pagado</code>/<code>estado_pago</code> ni crea una fila en <code>gastos</code>;
+  es solo una etiqueta descriptiva.</div>
+  <ul class="opciones">
+    <li>(a) Se conecta de verdad — pagar una OC/gasto en USD desde la Bóveda actualiza
+    <code>ordenes_compra.monto_pagado</code>/<code>estado_pago</code> (o crea el <code>gasto</code>), igual
+    que ya hace <code>registrar_pago_oc()</code> en pesos</li>
+    <li>(b) Sigue siendo un label libre — el vínculo con la OC/gasto real se hace a mano por fuera del
+    sistema, no hace falta automatizarlo</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Gastos sueltos (sin proveedor/OC asociada) pagados en USD — ¿mismo mecanismo que D1? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">No todo gasto tiene un proveedor formal detrás (ej. "gasto varios", viáticos) —
+  <code>gastos.medio_pago</code> hoy es libre (JSON array de <code>{tipo, monto}</code>) y no depende de que
+  exista una OC.</div>
+  <ul class="opciones">
+    <li>(a) Sí, mismo mecanismo — cualquier medio de pago habilitado para Gastos
+    (<code>metodos_pago.habilitado_gastos</code>) que tenga <code>moneda='USD'</code> funciona igual, tenga
+    o no proveedor</li>
+    <li>(b) Los gastos sin proveedor NO pueden pagarse en USD — solo las compras/OC formales</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. PERMISOS ============================ -->
+<h2>E. Permisos — quién puede cargar/editar la tasa</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Mismo gate que hoy tiene <code>cotizacion_usd</code> (DUEÑO + roles permitidos), o cualquiera que opere Compras/Gastos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>useCotizacion.ts</code> restringe quién puede tipear la cotización
+  manualmente (<code>puedeElegirTipo</code>) al DUEÑO más los roles que el propio DUEÑO habilite en
+  <code>tenant.cotizacion_usd_roles_permitidos</code>. Si la tasa de Compras/Gastos es editable POR
+  TRANSACCIÓN (B1), extender ese mismo gate a cada carga de gasto podría ser demasiado restrictivo para el
+  uso diario (un empleado de compras necesitaría pedirle al dueño cada vez).</div>
+  <ul class="opciones">
+    <li>(a) Mismo gate — DUEÑO + roles en <code>cotizacion_usd_roles_permitidos</code> (reusar la lista
+    existente)</li>
+    <li>(b) Gate propio y más permisivo — cualquiera con acceso a Gastos/Compras puede tipear la tasa de esa
+    transacción puntual (el riesgo es menor: no afecta el resto del sistema, solo ese registro)</li>
+    <li>(c) Configurable por tenant, con una lista de roles propia para esto (nuevo campo, separado de
+    <code>cotizacion_usd_roles_permitidos</code>)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Si se habilita tasa editable en la Bóveda (A3): ¿se mantiene exclusivo DUEÑO, o se abre a más roles? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>cajaPuede(rol, 'convertir_usd_boveda')</code> es estrictamente DUEÑO
+  ("Solo el DUEÑO puede convertir USD↔$ en la Bóveda", mensaje de error literal en <code>CajaPage.tsx</code>).
+  Habilitar una tasa editable ahí no cambia necesariamente quién puede hacer la conversión.</div>
+  <ul class="opciones">
+    <li>(a) Sigue exclusivo DUEÑO — solo cambia que ahora puede tipear la tasa en vez de que sea fija, el
+    "quién" no cambia</li>
+    <li>(b) Se abre a los mismos roles que <code>cotizacion_usd_roles_permitidos</code> (unificar con E1)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. FISCAL / AFIP ============================ -->
+<h2>F. Fiscal / AFIP</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Confirmar que esto NO toca AFIP en absoluto <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto"><code>GastosPage.tsx</code> ya tiene una sección fiscal completa (mig 227) atada a
+  <code>tenants.condicion_iva_emisor</code> — tipo de comprobante, alícuota de IVA, IVA crédito — pero el
+  gasto en sí (registro contable interno) nunca se declara ante AFIP (a diferencia de una VENTA, que sí
+  emite comprobante electrónico). Análogo a C1 del relevamiento G5 ("la factura AFIP sigue siempre en
+  pesos").</div>
+  <ul class="opciones">
+    <li>(a) Confirmado — un gasto/compra en USD es 100% registro interno, nunca toca
+    <code>emitir-factura</code> ni ningún flujo de AFIP; el proveedor emite su propio comprobante (de él,
+    no nuestro)</li>
+    <li>(b) Hay un caso que sí lo toca (describir): ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Si el proveedor factura directamente en USD (ej. importación), ¿cómo se carga el gasto? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se carga el monto tal cual figura en la factura del proveedor, en USD (sin convertir), + tasa
+    usada como referencia</li>
+    <li>(b) Siempre se convierte a pesos con la tasa vigente al momento de cargar el gasto, quede o no la
+    factura en USD</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. REPORTES ============================ -->
+<h2>G. Reportes y Dashboard</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Totales de Gastos/OC — ¿desglose ARS/USD separado, o convertido a un total único? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente reciente: la Fase 7 de Caja USD (H1/H2, v1.176.0, EN PROD) resolvió el
+  mismo problema para Ventas — "total único en pesos como resumen + detalle desglosado por moneda debajo"
+  (nunca mezclar sumando peras con bananas), y el Dashboard EXCLUYE las ventas en USD de sus indicadores en
+  pesos, mostrando el componente USD aparte.</div>
+  <ul class="opciones">
+    <li>(a) Mismo criterio que Ventas (H1/H2) — desglose ARS/USD separado en la tabla de Gastos/OC, y el
+    Dashboard excluye los gastos en USD de sus indicadores en pesos (egresos del mes, posición IVA, etc.),
+    mostrándolos aparte</li>
+    <li>(b) Se convierte todo a un total único en pesos (a la tasa vigente al momento de generar el
+    reporte)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Cuenta corriente de proveedor — ¿puede tener saldo en dos monedas a la vez? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>proveedor_cc</code> (cuenta corriente) hoy asume un único saldo en pesos. Si
+  una OC se paga parcialmente en USD y parcialmente en ARS, hay que decidir cómo queda reflejado el saldo
+  pendiente.</div>
+  <ul class="opciones">
+    <li>(a) La CC del proveedor pasa a tener 2 saldos independientes (ARS y USD), sin convertir entre sí</li>
+    <li>(b) La CC sigue siendo un único saldo en pesos — todo pago en USD se convierte a pesos al momento de
+    aplicarse a la CC</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. REDONDEO ============================ -->
+<h2>H. Redondeo</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Redondeo al convertir USD↔ARS en Compras/Bóveda — ¿mismo criterio que Ventas (sin redondeo)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El relevamiento G5 cerró J1 con "ninguno — decimales exactos" para Ventas. Compras
+  podría tener el mismo criterio o uno distinto (los proveedores suelen manejar montos ya redondeados).</div>
+  <ul class="opciones">
+    <li>(a) Mismo criterio — sin redondeo, decimales exactos</li>
+    <li>(b) Redondeo a 2 decimales estándar</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. PRIORIDAD ============================ -->
+<h2>I. Prioridad y alcance temporal</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    Urgencia — ¿arranca ya o queda para una sesión dedicada más adelante? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Mismo criterio que ya usó el proyecto con otras features grandes recién relevadas
+  (Fase 4 del Plan IA quedó diferida por decisión de scope; el retrofit de Supervisión ya tiene el
+  relevamiento entregado, esperando respuesta). Este pedido llegó el mismo día en que se cerró la auditoría
+  de performance/calidad (2026-08-21), sin fecha límite explícita todavía.</div>
+  <ul class="opciones">
+    <li>(a) Arranca apenas se responda este relevamiento — es la próxima prioridad</li>
+    <li>(b) Sin apuro — queda en backlog para una sesión dedicada, no bloquea nada del roadmap actual</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. TEMAS ABIERTOS ============================ -->
+<h2>J. Temas adicionales / Top 3 / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    ¿Cómo resuelven hoy el pago en USD a un proveedor "a mano" (fuera del sistema)? Contá cómo lo hacen —
+    ayuda a diseñar el flujo real
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    ¿Algo que les gustaría que tenga y no está en este documento? (lista libre)
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J3</span><span class="pregunta-titulo">
+    Prioridad relativa: si tuvieran que elegir 3 decisiones para cerrar primero, ¿cuáles?
+  </span>
+  <div class="respuesta-libre">1) ____<br/>2) ____<br/>3) ____</div>
+</div>
+
+<div class="footer">
+  Documento generado automáticamente · Genesis360 v1.179.1 · Para devolverlo: respondan con los códigos
+  (ej: "A1=a, A2=a, B1=b...") y lo cargo al wiki en <code>G360.Wiki/wiki/development/reglas-negocio.md</code>,
+  como continuación de la sección "Módulo: Caja en USD / Venta física en USD (G5)" ya existente.
+</div>
+
+</body>
+</html>

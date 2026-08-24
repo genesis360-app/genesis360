@@ -841,7 +841,7 @@ export default function ProductosPage() {
           )}
 
           <div className="flex gap-2 items-start">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <BuscadorPildoras
                 camposFiltro={CAMPOS_FILTRO_PRODUCTOS}
                 pildoras={pildoras}

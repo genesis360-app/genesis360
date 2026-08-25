@@ -1237,6 +1237,7 @@ export default function GastosPage() {
                 monto: montoMp,
                 cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
                 usuario_id: user?.id,
+                moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
               })
               if (cajErr) toast.error(`El gasto se editó, pero el movimiento de caja de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
             }
@@ -1281,6 +1282,7 @@ export default function GastosPage() {
               monto: montoMp,
               cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
               usuario_id: user?.id,
+              moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
             })
             if (cajErr) {
               console.error('caja_movimientos gasto:', cajErr.message)
@@ -1366,6 +1368,7 @@ export default function GastosPage() {
               : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
+            moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
           })
           if (cajErr) toast.error(`El gasto se eliminó, pero la reversión de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó en caja. Registrala manualmente. (${cajErr.message})`, { duration: 12000 })
         }
@@ -1432,6 +1435,7 @@ export default function GastosPage() {
           concepto: esEfectivo ? `Pago gasto: ${pagoGastoModal.descripcion}` : `[${pagoParcialmedio}] Pago gasto: ${pagoGastoModal.descripcion}`,
           monto, cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(pagoParcialmedio),
           usuario_id: user?.id,
+          moneda: monedaDeMetodo(pagoParcialmedio),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
         })
         if (cajErr) toast.error(`El pago se registró en el gasto, pero el movimiento de caja no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
       }
@@ -1597,6 +1601,7 @@ export default function GastosPage() {
             monto: parseFloat(mp.monto),
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
+            moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
           })
           if (cajErr) {
             console.error('caja fijo:', cajErr.message)

@@ -36,6 +36,15 @@ export function CotizacionWidget() {
     if (e.key === 'Escape') setEditing(false)
   }
 
+  // Compras/Gastos en USD (relevamiento B2, 2026-08-21): "si no se actualizó ese día, debe aparecer
+  // una notificación avisando que hay que actualizarla — salvo que ya lo haya hecho otro usuario".
+  // cotizacion_usd_updated_at es UN valor por tenant (no por usuario) — si cualquiera la actualizó
+  // hoy, todos ven la misma fecha de hoy acá, así que comparar contra "hoy" ya cubre el "salvo que
+  // ya lo haya hecho otro usuario" sin necesitar tracking extra.
+  const desactualizada = cotizacion > 0 && updatedAt
+    ? new Date(updatedAt).toDateString() !== new Date().toDateString()
+    : false
+
   return (
     <div className="px-3 pt-2 pb-1">
       <div className="flex items-center gap-1.5 mb-1">
@@ -131,8 +140,9 @@ export function CotizacionWidget() {
       )}
 
       {cotizacion > 0 && updatedAt && !editing && (
-        <p className="text-blue-500 dark:text-blue-400 text-xs mt-0.5 truncate">
+        <p className={`text-xs mt-0.5 truncate ${desactualizada ? 'text-amber-500 dark:text-amber-400 font-medium' : 'text-blue-500 dark:text-blue-400'}`}>
           {new Date(updatedAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+          {desactualizada && ' · ⚠ actualizala'}
         </p>
       )}
     </div>

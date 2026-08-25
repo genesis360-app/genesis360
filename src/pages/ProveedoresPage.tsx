@@ -1279,6 +1279,7 @@ export default function ProveedoresPage() {
           tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
           concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
           usuario_id: user?.id,
+          moneda: (oc as any).moneda ?? 'ARS',  // Compras/Gastos en USD (mig 379) — el reembolso hereda la moneda de la OC devuelta
         })
       } else if (devForma === 'reposicion') {
         const { data: newOC, error: ocErr } = await supabase.from('ordenes_compra').insert({

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-14T20:59:49.722Z desde gcmhzdedrkmmzfzfveig vía API (MCP execute_sql, ensamblado local)
--- Última migración aplicada: 20260814203250 · 156 tablas
+-- Generado 2026-08-25T19:57:57.422Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260825190035 · 159 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -104,6 +104,25 @@ CREATE TABLE public.aging_profiles (
   nombre text NOT NULL,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE public.ai_config_audit (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  campo text NOT NULL,
+  valor_anterior text,
+  valor_nuevo text,
+  razon text,
+  usuario_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.ai_tenant_memoria (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  hecho text NOT NULL,
+  usuario_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.alertas (
@@ -250,6 +269,19 @@ CREATE TABLE public.boveda_arqueos (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.boveda_conversiones_usd (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  sentido text NOT NULL,
+  monto_origen numeric(14,2) NOT NULL,
+  monto_destino numeric(14,2) NOT NULL,
+  cotizacion_usada numeric(14,4) NOT NULL,
+  usuario_id uuid NOT NULL,
+  movimiento_origen_id uuid,
+  movimiento_destino_id uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.boveda_retiros (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -272,7 +304,8 @@ CREATE TABLE public.caja_arqueos (
   diferencia numeric(12,2) DEFAULT (saldo_real - saldo_calculado),
   notas text,
   usuario_id uuid,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.caja_movimientos (
@@ -284,7 +317,9 @@ CREATE TABLE public.caja_movimientos (
   monto numeric(12,2) NOT NULL,
   usuario_id uuid,
   created_at timestamp with time zone DEFAULT now(),
-  cuenta_origen_id uuid
+  cuenta_origen_id uuid,
+  moneda text NOT NULL DEFAULT 'ARS'::text,
+  cotizacion_usd numeric(14,2)
 );
 
 CREATE TABLE public.caja_sesiones (
@@ -311,7 +346,8 @@ CREATE TABLE public.caja_sesiones (
   diferencia_apertura numeric(12,2),
   abierta_por uuid,
   numero integer,
-  snapshot_totales jsonb
+  snapshot_totales jsonb,
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.caja_traspasos (
@@ -634,7 +670,9 @@ CREATE TABLE public.devoluciones (
   nc_tipo text,
   nc_punto_venta integer,
   afip_provider_usado text,
-  nc_fecha timestamp with time zone
+  nc_fecha timestamp with time zone,
+  monto_usd numeric(14,2),
+  cotizacion_usd_usada numeric(14,4)
 );
 
 CREATE TABLE public.devoluciones_proveedor (
@@ -901,7 +939,8 @@ CREATE TABLE public.gastos (
   monto_pagado numeric(12,2) NOT NULL DEFAULT 0,
   estado_pago text NOT NULL DEFAULT 'pagado'::text,
   tipo_comprobante text,
-  emisor_id uuid
+  emisor_id uuid,
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.gastos_fijos (
@@ -925,7 +964,8 @@ CREATE TABLE public.gastos_fijos (
   gasto_negocio boolean,
   categoria_id uuid,
   alicuota_iva numeric(5,2),
-  tipo_comprobante text
+  tipo_comprobante text,
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.grupo_estado_items (
@@ -1165,7 +1205,9 @@ CREATE TABLE public.metodos_pago (
   config jsonb,
   cuenta_origen_id uuid,
   habilitado_ventas boolean NOT NULL DEFAULT true,
-  habilitado_gastos boolean NOT NULL DEFAULT true
+  habilitado_gastos boolean NOT NULL DEFAULT true,
+  es_efectivo boolean NOT NULL DEFAULT false,
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.modo_credentials (
@@ -1293,7 +1335,8 @@ CREATE TABLE public.ordenes_compra (
   costo_otros numeric,
   paga_con_anticipo boolean NOT NULL DEFAULT false,
   anticipo_pct numeric,
-  pago_schedule jsonb
+  pago_schedule jsonb,
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.pedido_items (
@@ -1573,7 +1616,10 @@ END,
   precio_ajuste_meli_pct numeric(5,2),
   precio_ajuste_tn_pct numeric(5,2),
   contenido_cantidad numeric,
-  contenido_unidad_id uuid
+  contenido_unidad_id uuid,
+  moneda_costo text NOT NULL DEFAULT 'local'::text,
+  precio_costo_usd numeric(12,2),
+  acepta_cualquier_moneda boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -2332,7 +2378,15 @@ CREATE TABLE public.tenants (
   repricing_umbral_aviso_monto numeric(12,2),
   repositor_etiquetas_por_hoja integer NOT NULL DEFAULT 12,
   repositor_hora_impresion time without time zone,
-  delete_scheduled_at timestamp with time zone
+  delete_scheduled_at timestamp with time zone,
+  cotizacion_usd_compra numeric(14,2),
+  cotizacion_usd_casa text,
+  cotizacion_usd_roles_permitidos jsonb,
+  caja_usd_roles_permitidos jsonb,
+  diferencia_caja_umbral_usd numeric(14,2),
+  caja_usd_clave_maestra_umbral numeric(14,2),
+  reintegro_usd_cotizacion_original boolean NOT NULL DEFAULT false,
+  compras_cotizacion_roles_permitidos jsonb
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2585,7 +2639,8 @@ CREATE TABLE public.ventas (
   cupon_codigo_id uuid,
   cupon_monto numeric(12,2),
   impuestos_marketplace numeric(12,2),
-  tn_order_id bigint
+  tn_order_id bigint,
+  cotizacion_usd numeric(14,2)
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -2663,6 +2718,9 @@ ALTER TABLE public.afip_wsaa_ta ADD CONSTRAINT afip_wsaa_ta_pkey PRIMARY KEY (id
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_dias_check CHECK ((dias >= 0));
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_pkey PRIMARY KEY (id);
 ALTER TABLE public.aging_profiles ADD CONSTRAINT aging_profiles_pkey PRIMARY KEY (id);
+ALTER TABLE public.ai_config_audit ADD CONSTRAINT ai_config_audit_pkey PRIMARY KEY (id);
+ALTER TABLE public.ai_tenant_memoria ADD CONSTRAINT ai_tenant_memoria_hecho_no_vacio CHECK (((length(TRIM(BOTH FROM hecho)) > 0) AND (length(hecho) <= 300)));
+ALTER TABLE public.ai_tenant_memoria ADD CONSTRAINT ai_tenant_memoria_pkey PRIMARY KEY (id);
 ALTER TABLE public.alertas ADD CONSTRAINT alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.api_keys ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_pkey PRIMARY KEY (id);
@@ -2687,6 +2745,11 @@ ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_ti
 ALTER TABLE public.billing_manual_pagos ADD CONSTRAINT billing_manual_pagos_medio_check CHECK ((medio = ANY (ARRAY['transferencia'::text, 'efectivo'::text, 'tarjeta_mp'::text, 'otro'::text])));
 ALTER TABLE public.billing_manual_pagos ADD CONSTRAINT billing_manual_pagos_pkey PRIMARY KEY (id);
 ALTER TABLE public.boveda_arqueos ADD CONSTRAINT boveda_arqueos_pkey PRIMARY KEY (id);
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_cotizacion_check CHECK ((cotizacion_usada > (0)::numeric));
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_monto_destino_check CHECK ((monto_destino > (0)::numeric));
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_monto_origen_check CHECK ((monto_origen > (0)::numeric));
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_pkey PRIMARY KEY (id);
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_sentido_check CHECK ((sentido = ANY (ARRAY['usd_a_ars'::text, 'ars_a_usd'::text])));
 ALTER TABLE public.boveda_retiros ADD CONSTRAINT boveda_retiros_monto_check CHECK ((monto > (0)::numeric));
 ALTER TABLE public.boveda_retiros ADD CONSTRAINT boveda_retiros_pkey PRIMARY KEY (id);
 ALTER TABLE public.boveda_retiros ADD CONSTRAINT boveda_retiros_tipo_retiro_check CHECK ((tipo_retiro = ANY (ARRAY['banco'::text, 'retiro_personal'::text, 'gasto'::text, 'inversion'::text, 'pago_proveedor'::text, 'otro'::text])));
@@ -2740,6 +2803,7 @@ ALTER TABLE public.devolucion_proveedor_items ADD CONSTRAINT devolucion_proveedo
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_nc_tipo_check CHECK ((nc_tipo = ANY (ARRAY['NC-A'::text, 'NC-B'::text, 'NC-C'::text])));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_origen_check CHECK ((origen = ANY (ARRAY['despachada'::text, 'facturada'::text])));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_pkey PRIMARY KEY (id);
+ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_usd_ambos_o_ninguno CHECK ((((monto_usd IS NULL) AND (cotizacion_usd_usada IS NULL)) OR ((monto_usd IS NOT NULL) AND (monto_usd > (0)::numeric) AND (cotizacion_usd_usada IS NOT NULL) AND (cotizacion_usd_usada > (0)::numeric))));
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devoluciones_proveedor_pkey PRIMARY KEY (id);
 ALTER TABLE public.devoluciones_proveedor ADD CONSTRAINT devprov_forma_check CHECK ((forma = ANY (ARRAY['credito_cc'::text, 'efectivo'::text, 'reposicion'::text])));
 ALTER TABLE public.emision_factura_locks ADD CONSTRAINT emision_factura_locks_pkey PRIMARY KEY (clave);
@@ -2856,7 +2920,7 @@ ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_ma
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_precio_check CHECK ((precio >= (0)::numeric));
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_precio_pct_chk CHECK (((tipo_valor <> 'pct'::text) OR ((precio >= (0)::numeric) AND (precio <= (100)::numeric))));
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_regla_unica UNIQUE (producto_id, cantidad_minima, operador);
-ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_tipo_valor_chk CHECK ((tipo_valor = ANY (ARRAY['precio_fijo'::text, 'pct'::text])));
+ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_tipo_valor_chk CHECK ((tipo_valor = ANY (ARRAY['precio_fijo'::text, 'pct'::text, 'usd'::text])));
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_alto_cm_check CHECK (((alto_cm IS NULL) OR (alto_cm > (0)::numeric)));
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_ancho_cm_check CHECK (((ancho_cm IS NULL) OR (ancho_cm > (0)::numeric)));
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_factor_base_check CHECK ((factor_base >= 1));
@@ -3031,6 +3095,10 @@ ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_esta
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES aging_profiles(id) ON DELETE CASCADE;
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.aging_profiles ADD CONSTRAINT aging_profiles_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.ai_config_audit ADD CONSTRAINT ai_config_audit_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.ai_config_audit ADD CONSTRAINT ai_config_audit_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
+ALTER TABLE public.ai_tenant_memoria ADD CONSTRAINT ai_tenant_memoria_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.ai_tenant_memoria ADD CONSTRAINT ai_tenant_memoria_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.alertas ADD CONSTRAINT alertas_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
 ALTER TABLE public.alertas ADD CONSTRAINT alertas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.api_keys ADD CONSTRAINT api_keys_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3060,6 +3128,10 @@ ALTER TABLE public.billing_manual_pagos ADD CONSTRAINT billing_manual_pagos_tena
 ALTER TABLE public.boveda_arqueos ADD CONSTRAINT boveda_arqueos_cuenta_origen_id_fkey FOREIGN KEY (cuenta_origen_id) REFERENCES cuentas_origen(id) ON DELETE SET NULL;
 ALTER TABLE public.boveda_arqueos ADD CONSTRAINT boveda_arqueos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.boveda_arqueos ADD CONSTRAINT boveda_arqueos_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_movimiento_destino_id_fkey FOREIGN KEY (movimiento_destino_id) REFERENCES caja_movimientos(id) ON DELETE SET NULL;
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_movimiento_origen_id_fkey FOREIGN KEY (movimiento_origen_id) REFERENCES caja_movimientos(id) ON DELETE SET NULL;
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.boveda_conversiones_usd ADD CONSTRAINT boveda_conversiones_usd_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.boveda_retiros ADD CONSTRAINT boveda_retiros_cuenta_origen_id_fkey FOREIGN KEY (cuenta_origen_id) REFERENCES cuentas_origen(id) ON DELETE RESTRICT;
 ALTER TABLE public.boveda_retiros ADD CONSTRAINT boveda_retiros_movimiento_id_fkey FOREIGN KEY (movimiento_id) REFERENCES caja_movimientos(id) ON DELETE SET NULL;
 ALTER TABLE public.boveda_retiros ADD CONSTRAINT boveda_retiros_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3526,6 +3598,8 @@ CREATE INDEX idx_aging_profile_reglas_estado_id ON public.aging_profile_reglas U
 CREATE INDEX idx_aging_profile_reglas_profile_id ON public.aging_profile_reglas USING btree (profile_id);
 CREATE INDEX idx_aging_profile_reglas_tenant_id ON public.aging_profile_reglas USING btree (tenant_id);
 CREATE INDEX idx_aging_profiles_tenant_id ON public.aging_profiles USING btree (tenant_id);
+CREATE INDEX idx_ai_config_audit_tenant ON public.ai_config_audit USING btree (tenant_id, created_at DESC);
+CREATE INDEX idx_ai_tenant_memoria_tenant ON public.ai_tenant_memoria USING btree (tenant_id, created_at DESC);
 CREATE INDEX idx_alertas_producto_id ON public.alertas USING btree (producto_id);
 CREATE INDEX idx_alertas_tenant ON public.alertas USING btree (tenant_id, resuelta);
 CREATE INDEX idx_api_keys_activo ON public.api_keys USING btree (tenant_id, activo);
@@ -3556,6 +3630,10 @@ CREATE INDEX idx_billing_manual_pagos_tenant ON public.billing_manual_pagos USIN
 CREATE INDEX idx_boveda_arqueos_cuenta ON public.boveda_arqueos USING btree (cuenta_origen_id) WHERE (cuenta_origen_id IS NOT NULL);
 CREATE INDEX idx_boveda_arqueos_tenant ON public.boveda_arqueos USING btree (tenant_id, created_at DESC);
 CREATE INDEX idx_boveda_arqueos_usuario_id ON public.boveda_arqueos USING btree (usuario_id);
+CREATE INDEX idx_boveda_conversiones_usd_mov_destino ON public.boveda_conversiones_usd USING btree (movimiento_destino_id);
+CREATE INDEX idx_boveda_conversiones_usd_mov_origen ON public.boveda_conversiones_usd USING btree (movimiento_origen_id);
+CREATE INDEX idx_boveda_conversiones_usd_tenant ON public.boveda_conversiones_usd USING btree (tenant_id, created_at DESC);
+CREATE INDEX idx_boveda_conversiones_usd_usuario ON public.boveda_conversiones_usd USING btree (usuario_id);
 CREATE INDEX idx_boveda_retiros_cuenta ON public.boveda_retiros USING btree (cuenta_origen_id) WHERE (cuenta_origen_id IS NOT NULL);
 CREATE INDEX idx_boveda_retiros_movimiento_id ON public.boveda_retiros USING btree (movimiento_id);
 CREATE INDEX idx_boveda_retiros_tenant ON public.boveda_retiros USING btree (tenant_id, created_at DESC);
@@ -4025,7 +4103,7 @@ CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING
 CREATE UNIQUE INDEX uq_addon_batch_programado ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = ANY (ARRAY['programado'::text, 'esperando_cobro'::text]));
 CREATE UNIQUE INDEX uq_atributos_variante_valores_tenant_atributo_valor ON public.atributos_variante_valores USING btree (tenant_id, atributo, lower(btrim(valor)));
 CREATE UNIQUE INDEX uq_billing_manual_pagos_mp_payment ON public.billing_manual_pagos USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
-CREATE UNIQUE INDEX uq_cuentas_origen_efectivo_por_tenant ON public.cuentas_origen USING btree (tenant_id) WHERE (tipo = 'efectivo'::text);
+CREATE UNIQUE INDEX uq_cuentas_origen_efectivo_por_tenant_moneda ON public.cuentas_origen USING btree (tenant_id, moneda) WHERE (tipo = 'efectivo'::text);
 CREATE UNIQUE INDEX uq_emisores_fiscales_default ON public.emisores_fiscales USING btree (tenant_id) WHERE es_default;
 CREATE UNIQUE INDEX uq_emisores_fiscales_tenant_cuit ON public.emisores_fiscales USING btree (tenant_id, cuit);
 CREATE UNIQUE INDEX uq_nc_afip_pendientes_devolucion_activa ON public.nc_afip_pendientes USING btree (devolucion_id) WHERE (resuelto_at IS NULL);
@@ -4576,6 +4654,172 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_ai_config_set_bool(p_campo text, p_valor boolean, p_razon text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id uuid := public.get_user_tenant_id();
+  v_rol       text := public.get_user_role();
+  v_allowlist text[] := ARRAY[
+    'wms_reabastecimiento_on_demand',
+    'wms_reabastecimiento_umbral',
+    'pedido_manual_habilitado',
+    'pedido_cierre_automatico'
+  ];
+  v_anterior boolean;
+BEGIN
+  IF v_tenant_id IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  IF v_rol NOT IN ('DUEÑO', 'ADMIN') THEN
+    RAISE EXCEPTION 'No autorizado: se requiere rol DUEÑO o ADMIN' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT (p_campo = ANY(v_allowlist)) THEN
+    RAISE EXCEPTION 'Campo "%" no habilitado para que la IA lo modifique', p_campo USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  EXECUTE format('SELECT %I FROM tenants WHERE id = $1', p_campo) INTO v_anterior USING v_tenant_id;
+  EXECUTE format('UPDATE tenants SET %I = $1 WHERE id = $2', p_campo) USING p_valor, v_tenant_id;
+
+  INSERT INTO public.ai_config_audit (tenant_id, campo, valor_anterior, valor_nuevo, razon, usuario_id)
+  VALUES (v_tenant_id, p_campo, v_anterior::text, p_valor::text, p_razon, auth.uid());
+
+  RETURN jsonb_build_object('ok', true, 'campo', p_campo, 'valor_anterior', v_anterior, 'valor_nuevo', p_valor);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_ai_config_set_int(p_campo text, p_valor integer, p_razon text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id uuid := public.get_user_tenant_id();
+  v_rol       text := public.get_user_role();
+  v_allowlist text[] := ARRAY[
+    'repositor_etiquetas_por_hoja'
+  ];
+  v_anterior integer;
+BEGIN
+  IF v_tenant_id IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  IF v_rol NOT IN ('DUEÑO', 'ADMIN') THEN
+    RAISE EXCEPTION 'No autorizado: se requiere rol DUEÑO o ADMIN' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT (p_campo = ANY(v_allowlist)) THEN
+    RAISE EXCEPTION 'Campo "%" no habilitado para que la IA lo modifique', p_campo USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  EXECUTE format('SELECT %I FROM tenants WHERE id = $1', p_campo) INTO v_anterior USING v_tenant_id;
+  EXECUTE format('UPDATE tenants SET %I = $1 WHERE id = $2', p_campo) USING p_valor, v_tenant_id;
+
+  INSERT INTO public.ai_config_audit (tenant_id, campo, valor_anterior, valor_nuevo, razon, usuario_id)
+  VALUES (v_tenant_id, p_campo, v_anterior::text, p_valor::text, p_razon, auth.uid());
+
+  RETURN jsonb_build_object('ok', true, 'campo', p_campo, 'valor_anterior', v_anterior, 'valor_nuevo', p_valor);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_ai_config_set_text(p_campo text, p_valor text, p_razon text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id uuid := public.get_user_tenant_id();
+  v_rol       text := public.get_user_role();
+  v_allowlist text[] := ARRAY[
+    'pedido_numeracion'
+  ];
+  v_anterior text;
+BEGIN
+  IF v_tenant_id IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  IF v_rol NOT IN ('DUEÑO', 'ADMIN') THEN
+    RAISE EXCEPTION 'No autorizado: se requiere rol DUEÑO o ADMIN' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT (p_campo = ANY(v_allowlist)) THEN
+    RAISE EXCEPTION 'Campo "%" no habilitado para que la IA lo modifique', p_campo USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  EXECUTE format('SELECT %I FROM tenants WHERE id = $1', p_campo) INTO v_anterior USING v_tenant_id;
+  EXECUTE format('UPDATE tenants SET %I = $1 WHERE id = $2', p_campo) USING p_valor, v_tenant_id;
+
+  INSERT INTO public.ai_config_audit (tenant_id, campo, valor_anterior, valor_nuevo, razon, usuario_id)
+  VALUES (v_tenant_id, p_campo, v_anterior, p_valor, p_razon, auth.uid());
+
+  RETURN jsonb_build_object('ok', true, 'campo', p_campo, 'valor_anterior', v_anterior, 'valor_nuevo', p_valor);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_ai_memoria_guardar(p_hecho text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id uuid := public.get_user_tenant_id();
+  v_rol       text := public.get_user_role();
+  v_hecho     text := trim(p_hecho);
+  v_id        uuid;
+BEGIN
+  IF v_tenant_id IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  IF v_rol NOT IN ('DUEÑO', 'ADMIN') THEN
+    RAISE EXCEPTION 'No autorizado: se requiere rol DUEÑO o ADMIN' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF p_hecho IS NULL OR v_hecho = '' THEN
+    RAISE EXCEPTION 'El hecho a recordar no puede estar vacío';
+  END IF;
+  IF length(v_hecho) > 300 THEN
+    RAISE EXCEPTION 'El hecho a recordar es demasiado largo (máximo 300 caracteres)';
+  END IF;
+
+  INSERT INTO public.ai_tenant_memoria (tenant_id, hecho, usuario_id)
+  VALUES (v_tenant_id, v_hecho, auth.uid())
+  RETURNING id INTO v_id;
+
+  -- Tope de 20 hechos por tenant — se inyectan completos en cada prompt nuevo, así que la lista
+  -- tiene que quedar acotada. Sin pg_cron disponible, se poda acá mismo en cada escritura.
+  DELETE FROM public.ai_tenant_memoria
+  WHERE tenant_id = v_tenant_id
+    AND id NOT IN (
+      SELECT id FROM public.ai_tenant_memoria
+      WHERE tenant_id = v_tenant_id
+      ORDER BY created_at DESC, id DESC
+      LIMIT 20
+    );
+
+  RETURN jsonb_build_object('ok', true, 'id', v_id, 'hecho', v_hecho);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_ai_memoria_listar()
+ RETURNS TABLE(hecho text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id uuid := public.get_user_tenant_id();
+BEGIN
+  IF v_tenant_id IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+
+  RETURN QUERY
+  SELECT m.hecho
+  FROM public.ai_tenant_memoria m
+  WHERE m.tenant_id = v_tenant_id
+  ORDER BY m.created_at DESC, m.id DESC
+  LIMIT 20;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_aplicar_addon_batch(p_tenant_id uuid, p_change_id uuid)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -4875,8 +5119,14 @@ CREATE OR REPLACE FUNCTION public.fn_crear_caja_fuerte()
  SET search_path TO 'public'
 AS $function$
 BEGIN
-  INSERT INTO cajas (tenant_id, nombre, es_caja_fuerte, activo)
-  VALUES (NEW.id, 'Caja Fuerte / Bóveda', true, true);
+  INSERT INTO cajas (tenant_id, nombre, es_caja_fuerte, activo, moneda)
+  VALUES (NEW.id, 'Caja Fuerte / Bóveda', true, true, 'ARS')
+  ON CONFLICT DO NOTHING;
+  -- G5 Fase 5 (F2) — misma razón que "Efectivo USD" arriba: existe siempre, dormida, para que la
+  -- Bóveda tenga dónde acreditar dólares en cuanto haga falta sin un paso de alta manual.
+  INSERT INTO cajas (tenant_id, nombre, es_caja_fuerte, activo, moneda)
+  VALUES (NEW.id, 'Caja Fuerte USD', true, true, 'USD')
+  ON CONFLICT DO NOTHING;
   RETURN NEW;
 END;
 $function$
@@ -6540,8 +6790,8 @@ DECLARE
   v_total            numeric := 0;
   v_producto         RECORD;
   v_precio           numeric;
-  v_cant_sku         numeric;   -- (mig 317) total pedido del SKU, para resolver el tier
-  v_desc_monto       numeric;   -- (mig 319) descuento por estado de inventario de esta línea
+  v_cant_sku         numeric;
+  v_desc_monto       numeric;
   v_desc_pct         numeric;
   v_desc_pcts        integer;
   v_pct_linea        numeric;
@@ -6636,7 +6886,6 @@ BEGIN
 
     SELECT nombre, sku, precio_venta, precio_costo, alicuota_iva INTO v_producto
     FROM productos WHERE id = v_item.producto_id;
-    -- (mig 317) tier por volumen + redondeo, resuelto contra el TOTAL PEDIDO del SKU.
     SELECT COALESCE(SUM(pi2.cantidad), v_cant_entregar) INTO v_cant_sku
     FROM pedido_items pi2
     WHERE pi2.pedido_id = p_pedido_id AND pi2.producto_id = v_item.producto_id
@@ -6679,8 +6928,6 @@ BEGIN
       v_tomar := LEAST(v_restante, v_linea.cantidad_reservada);
       IF v_tomar <= 0 THEN CONTINUE; END IF;
 
-      -- 💵 (mig 319) Descuento por estado, prorrateado POR FUENTE: cada unidad descuenta según el
-      -- % del estado de SU línea concreta, nunca un promedio (igual que calcularDescuentoEstadoLinea).
       SELECT ei.descuento_pct INTO v_pct_linea
       FROM estados_inventario ei WHERE ei.id = v_linea.estado_id;
       IF COALESCE(v_pct_linea, 0) > 0 THEN
@@ -6720,8 +6967,6 @@ BEGIN
         v_producto.nombre, v_producto.sku, v_restante;
     END IF;
 
-    -- 💵 (mig 319) Recién acá se aplica: el precio y el venta_items se escriben ANTES de saber de
-    -- qué líneas sale el stock. Se corrige subtotal, IVA y los acumuladores de la venta.
     IF v_desc_monto > 0 THEN
       v_item_subtotal := GREATEST(v_item_subtotal - v_desc_monto, 0);
       v_iva_monto := CASE WHEN COALESCE(v_producto.alicuota_iva, 0) > 0
@@ -6754,7 +6999,6 @@ BEGIN
   LOOP
     IF (v_mp->>'tipo') IS DISTINCT FROM 'Cuenta Corriente' THEN
       v_monto_pagado := v_monto_pagado + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
-      -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
       IF EXISTS (SELECT 1 FROM metodos_pago WHERE tenant_id = v_pedido.tenant_id AND nombre = (v_mp->>'tipo') AND es_efectivo = true) THEN
         v_monto_efectivo := v_monto_efectivo + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
       END IF;
@@ -6917,6 +7161,7 @@ CREATE OR REPLACE FUNCTION public.fn_precio_venta_efectivo(p_tenant_id uuid, p_p
 AS $function$
 DECLARE
   v_precio_lista       numeric;
+  v_cotizacion         numeric;
   v_modo               text;
   v_paso               numeric;
   v_t                  RECORD;
@@ -6934,6 +7179,8 @@ BEGIN
   IF v_precio_lista IS NULL THEN RETURN 0; END IF;
 
   IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN v_precio_lista; END IF;
+
+  SELECT cotizacion_usd INTO v_cotizacion FROM tenants WHERE id = p_tenant_id;
 
   v_mejor_ligado_precio := NULL;
 
@@ -6957,8 +7204,13 @@ BEGIN
           WHEN '<=' THEN v_n_multiplos <= v_t.cantidad_minima
           ELSE false END)
     THEN
-      v_precio_u := CASE WHEN v_t.tipo_valor = 'pct'
-        THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+      v_precio_u := CASE
+        WHEN v_t.tipo_valor = 'pct'
+          THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+        WHEN v_t.tipo_valor = 'usd' AND v_cotizacion > 0
+          THEN round(v_t.precio * v_cotizacion, 2)
+        WHEN v_t.tipo_valor = 'usd'
+          THEN v_precio_lista
         ELSE v_t.precio END;
       IF v_mejor_ligado_precio IS NULL OR v_precio_u < v_mejor_ligado_precio THEN
         v_mejor_ligado_precio := v_precio_u;
@@ -6984,8 +7236,13 @@ BEGIN
             WHEN '<=' THEN p_cantidad <= v_t.cantidad_minima
             ELSE false END)
       THEN
-        v_precio_final := CASE WHEN v_t.tipo_valor = 'pct'
-          THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+        v_precio_final := CASE
+          WHEN v_t.tipo_valor = 'pct'
+            THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+          WHEN v_t.tipo_valor = 'usd' AND v_cotizacion > 0
+            THEN round(v_t.precio * v_cotizacion, 2)
+          WHEN v_t.tipo_valor = 'usd'
+            THEN v_precio_lista
           ELSE v_t.precio END;
         EXIT;
       END IF;
@@ -7007,8 +7264,13 @@ BEGIN
             WHEN '<=' THEN v_mejor_ligado_cant <= v_t.cantidad_minima
             ELSE false END)
       THEN
-        v_precio_u := CASE WHEN v_t.tipo_valor = 'pct'
-          THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+        v_precio_u := CASE
+          WHEN v_t.tipo_valor = 'pct'
+            THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+          WHEN v_t.tipo_valor = 'usd' AND v_cotizacion > 0
+            THEN round(v_t.precio * v_cotizacion, 2)
+          WHEN v_t.tipo_valor = 'usd'
+            THEN v_precio_lista
           ELSE v_t.precio END;
         IF v_precio_u < v_precio_bloque THEN v_precio_bloque := v_precio_u; END IF;
         EXIT;
@@ -7032,8 +7294,13 @@ BEGIN
               WHEN '<=' THEN v_resto <= v_t.cantidad_minima
               ELSE false END)
         THEN
-          v_precio_resto := CASE WHEN v_t.tipo_valor = 'pct'
-            THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+          v_precio_resto := CASE
+            WHEN v_t.tipo_valor = 'pct'
+              THEN round(v_precio_lista * (1 - LEAST(100, GREATEST(0, v_t.precio)) / 100), 2)
+            WHEN v_t.tipo_valor = 'usd' AND v_cotizacion > 0
+              THEN round(v_t.precio * v_cotizacion, 2)
+            WHEN v_t.tipo_valor = 'usd'
+              THEN v_precio_lista
             ELSE v_t.precio END;
           EXIT;
         END IF;
@@ -7788,6 +8055,7 @@ DECLARE
   v_efectivo_cuenta_id UUID;
 BEGIN
   v_sucursal_id := gen_random_uuid();
+
   INSERT INTO sucursales (id, tenant_id, nombre, activo)
   VALUES (v_sucursal_id, NEW.id, 'Sucursal 1', true);
 
@@ -7824,12 +8092,20 @@ BEGIN
   VALUES (NEW.id, 'Efectivo', 'efectivo', COALESCE(NEW.moneda, 'ARS'), true)
   RETURNING id INTO v_efectivo_cuenta_id;
 
-  INSERT INTO metodos_pago (tenant_id, nombre, color, orden, activo, es_sistema, cuenta_origen_id) VALUES
-    (NEW.id, 'Efectivo',           '#22c55e', 1, true, true, v_efectivo_cuenta_id),
-    (NEW.id, 'Mercado Pago',       '#06b6d4', 2, true, true, NULL),
-    (NEW.id, 'Tarjeta de débito',  '#eab308', 3, true, true, NULL),
-    (NEW.id, 'Transferencia',      '#8b5cf6', 4, true, true, NULL),
-    (NEW.id, 'Tarjeta de crédito', '#f97316', 5, true, true, NULL)
+  -- G5 Fase 5 (F2) — "Efectivo USD" se siembra SIEMPRE, igual que "Efectivo", sin importar si el
+  -- tenant termina usando Caja USD. Es la cuenta donde la Bóveda recibe dólares directo (K1: hoy
+  -- los tenants ya cobran en USD "a mano" y lo llevan a la caja fuerte). Dormida en $0 no cuesta
+  -- nada y evita un 2do seed condicional más adelante.
+  INSERT INTO cuentas_origen (tenant_id, nombre, tipo, moneda, activo)
+  VALUES (NEW.id, 'Efectivo USD', 'efectivo', 'USD', true)
+  ON CONFLICT (tenant_id, nombre) DO NOTHING;
+
+  INSERT INTO metodos_pago (tenant_id, nombre, color, orden, activo, es_sistema, cuenta_origen_id, es_efectivo, moneda) VALUES
+    (NEW.id, 'Efectivo',           '#22c55e', 1, true, true, v_efectivo_cuenta_id, true,  COALESCE(NEW.moneda, 'ARS')),
+    (NEW.id, 'Mercado Pago',       '#06b6d4', 2, true, true, NULL,                 false, COALESCE(NEW.moneda, 'ARS')),
+    (NEW.id, 'Tarjeta de débito',  '#eab308', 3, true, true, NULL,                 false, COALESCE(NEW.moneda, 'ARS')),
+    (NEW.id, 'Transferencia',      '#8b5cf6', 4, true, true, NULL,                 false, COALESCE(NEW.moneda, 'ARS')),
+    (NEW.id, 'Tarjeta de crédito', '#f97316', 5, true, true, NULL,                 false, COALESCE(NEW.moneda, 'ARS'))
   ON CONFLICT (tenant_id, nombre) DO NOTHING;
 
   RETURN NEW;
@@ -8194,6 +8470,102 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_validar_moneda_coincide_cuenta_origen()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_moneda_cuenta text;
+BEGIN
+  IF NEW.cuenta_origen_id IS NOT NULL THEN
+    SELECT moneda INTO v_moneda_cuenta FROM cuentas_origen WHERE id = NEW.cuenta_origen_id;
+    IF v_moneda_cuenta IS NOT NULL AND COALESCE(NEW.moneda, 'ARS') IS DISTINCT FROM v_moneda_cuenta THEN
+      RAISE EXCEPTION 'La moneda del movimiento (%) no coincide con la moneda de la cuenta de origen (%)', COALESCE(NEW.moneda, 'ARS'), v_moneda_cuenta;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_validar_moneda_coincide_sesion()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_moneda_sesion text;
+BEGIN
+  SELECT moneda INTO v_moneda_sesion FROM caja_sesiones WHERE id = NEW.sesion_id;
+  IF v_moneda_sesion IS NOT NULL AND COALESCE(NEW.moneda, 'ARS') IS DISTINCT FROM v_moneda_sesion THEN
+    RAISE EXCEPTION 'La moneda del movimiento (%) no coincide con la moneda de la sesión de caja (%)', COALESCE(NEW.moneda, 'ARS'), v_moneda_sesion;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_validar_rol_opera_caja_usd()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_moneda_caja text;
+  v_rol         text;
+  v_rol_custom  uuid;
+  v_roles_ok    jsonb;
+BEGIN
+  SELECT moneda INTO v_moneda_caja FROM cajas WHERE id = NEW.caja_id;
+  IF COALESCE(v_moneda_caja, 'ARS') <> 'USD' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Quien efectivamente abre la sesión (abierta_por, A2) es a quien se le exige el permiso —
+  -- mismo actor que valida el cliente con el rol logueado.
+  SELECT rol, rol_custom_id INTO v_rol, v_rol_custom
+  FROM users WHERE id = COALESCE(NEW.abierta_por, NEW.usuario_id);
+
+  IF v_rol = 'DUEÑO' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT caja_usd_roles_permitidos INTO v_roles_ok FROM tenants WHERE id = NEW.tenant_id;
+  IF v_roles_ok IS NOT NULL
+     AND (v_roles_ok ? v_rol OR (v_rol_custom IS NOT NULL AND v_roles_ok ? ('custom:' || v_rol_custom::text)))
+  THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'Tu rol no tiene permiso para operar una Caja USD';
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_validar_traspaso_misma_moneda()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_moneda_origen  text;
+  v_moneda_destino text;
+BEGIN
+  SELECT moneda INTO v_moneda_origen  FROM caja_sesiones WHERE id = NEW.sesion_origen_id;
+  SELECT moneda INTO v_moneda_destino FROM caja_sesiones WHERE id = NEW.sesion_destino_id;
+  IF COALESCE(v_moneda_origen, 'ARS') IS DISTINCT FROM COALESCE(v_moneda_destino, 'ARS') THEN
+    RAISE EXCEPTION 'No se puede traspasar entre cajas de distinta moneda (% -> %)', v_moneda_origen, v_moneda_destino;
+  END IF;
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_venta_requiere_pedido(p_venta_id uuid, p_con_envio boolean DEFAULT false)
@@ -8926,7 +9298,6 @@ BEGIN
     RAISE EXCEPTION 'Seleccioná al menos un envío';
   END IF;
 
-  -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
   SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = p_medio;
   v_es_efectivo := COALESCE(v_es_efectivo, false);
 
@@ -9560,7 +9931,7 @@ END;
 $function$
 
 
-CREATE OR REPLACE FUNCTION public.registrar_pago_oc(p_oc_id uuid, p_medios jsonb, p_descuento_monto numeric DEFAULT 0, p_clave text DEFAULT NULL::text, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_cheque jsonb DEFAULT NULL::jsonb, p_pago_dias integer DEFAULT 30, p_pago_condiciones text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.registrar_pago_oc(p_oc_id uuid, p_medios jsonb, p_descuento_monto numeric DEFAULT 0, p_clave text DEFAULT NULL::text, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_cheque jsonb DEFAULT NULL::jsonb, p_pago_dias integer DEFAULT 30, p_pago_condiciones text DEFAULT NULL::text, p_cotizacion_usd numeric DEFAULT NULL::numeric)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -9591,6 +9962,10 @@ DECLARE
   v_medios_nocc jsonb;
   v_concepto    text;
   v_es_efectivo boolean;
+  v_moneda_medio text;
+  v_moneda_oc    text;
+  v_medios_enriquecidos jsonb := '[]'::jsonb;
+  v_monto_oc     numeric;
 BEGIN
   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
   IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
@@ -9602,6 +9977,7 @@ BEGIN
   SELECT * INTO v_oc FROM public.ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant;
   IF v_oc.id IS NULL THEN RAISE EXCEPTION 'OC no encontrada en el tenant'; END IF;
   SELECT nombre INTO v_prov_nombre FROM public.proveedores WHERE id = v_oc.proveedor_id AND tenant_id = v_tenant;
+  v_moneda_oc := COALESCE(v_oc.moneda, 'ARS');
 
   v_total := v_oc.monto_total;
   IF v_total IS NULL THEN
@@ -9609,10 +9985,34 @@ BEGIN
       INTO v_total FROM public.orden_compra_items WHERE orden_compra_id = p_oc_id;
   END IF;
 
+  -- Enriquecer cada medio no-CC con su equivalente en la moneda de la OC (monto_oc). Si coincide con
+  -- la moneda de la OC, monto_oc = monto tal cual. Si no (descalce), exige p_cotizacion_usd y convierte.
+  FOR v_medio IN SELECT e FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente'
+  LOOP
+    SELECT moneda INTO v_moneda_medio FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
+    v_moneda_medio := COALESCE(v_moneda_medio, 'ARS');
+    IF v_moneda_medio = v_moneda_oc THEN
+      v_monto_oc := (v_medio->>'monto')::numeric;
+    ELSE
+      IF p_cotizacion_usd IS NULL OR p_cotizacion_usd <= 0 THEN
+        RAISE EXCEPTION 'El medio "%" está en % pero esta OC es en % — falta la cotización para convertir.',
+          v_medio->>'tipo', v_moneda_medio, v_moneda_oc USING ERRCODE = 'check_violation';
+      END IF;
+      v_monto_oc := CASE WHEN v_moneda_medio = 'ARS'
+        THEN (v_medio->>'monto')::numeric / p_cotizacion_usd
+        ELSE (v_medio->>'monto')::numeric * p_cotizacion_usd
+      END;
+    END IF;
+    v_medios_enriquecidos := v_medios_enriquecidos || jsonb_build_object(
+      'tipo', v_medio->>'tipo', 'monto', (v_medio->>'monto')::numeric, 'monto_oc', v_monto_oc,
+      'moneda', v_moneda_medio, 'cuenta_origen_id', v_medio->>'cuenta_origen_id'
+    );
+  END LOOP;
+
   SELECT COALESCE(SUM((e->>'monto')::numeric),0) INTO v_montocc
     FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' = 'Cuenta Corriente';
-  SELECT COALESCE(SUM((e->>'monto')::numeric),0) INTO v_montonocc
-    FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente';
+  SELECT COALESCE(SUM((e->>'monto_oc')::numeric),0) INTO v_montonocc
+    FROM jsonb_array_elements(v_medios_enriquecidos) e;
   SELECT COALESCE(SUM((e->>'monto')::numeric),0) INTO v_montocheque
     FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' = 'Cheque';
   v_montototal := v_montocc + v_montonocc;
@@ -9686,18 +10086,19 @@ BEGIN
 
   IF p_caja_sesion_id IS NOT NULL THEN
     v_concepto := 'Pago OC #'||v_oc.numero||' — '||COALESCE(v_prov_nombre,'');
-    FOR v_medio IN SELECT e FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente'
+    FOR v_medio IN SELECT e FROM jsonb_array_elements(v_medios_enriquecidos) e
     LOOP
       -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
       SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
       v_es_efectivo := COALESCE(v_es_efectivo, false);
-      INSERT INTO public.caja_movimientos(tenant_id, sesion_id, tipo, monto, concepto, cuenta_origen_id, usuario_id)
+      INSERT INTO public.caja_movimientos(tenant_id, sesion_id, tipo, monto, concepto, cuenta_origen_id, usuario_id, moneda, cotizacion_usd)
       VALUES (v_tenant, p_caja_sesion_id,
               CASE WHEN v_es_efectivo THEN 'egreso' ELSE 'egreso_informativo' END,
               (v_medio->>'monto')::numeric,
               CASE WHEN v_es_efectivo THEN v_concepto ELSE '['||(v_medio->>'tipo')||'] '||v_concepto END,
               CASE WHEN v_es_efectivo THEN NULL ELSE NULLIF(v_medio->>'cuenta_origen_id','')::uuid END,
-              v_user);
+              v_user, v_medio->>'moneda',
+              CASE WHEN v_medio->>'moneda' = v_moneda_oc THEN NULL ELSE p_cotizacion_usd END);
     END LOOP;
   END IF;
 
@@ -10981,9 +11382,14 @@ END;$function$
 CREATE TRIGGER trg_autorizaciones_auto_asignar BEFORE INSERT ON public.autorizaciones FOR EACH ROW EXECUTE FUNCTION fn_autorizaciones_auto_asignar();
 CREATE TRIGGER trg_updated_at_aut_inv BEFORE UPDATE ON public.autorizaciones FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_regla_enrutamiento_valida_tenant BEFORE INSERT OR UPDATE ON public.autorizaciones_reglas_enrutamiento FOR EACH ROW EXECUTE FUNCTION fn_regla_enrutamiento_valida_tenant();
+CREATE TRIGGER trg_validar_moneda_arqueo BEFORE INSERT OR UPDATE OF moneda, sesion_id ON public.caja_arqueos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_sesion();
 CREATE TRIGGER trg_caja_mov_cierre BEFORE DELETE OR UPDATE ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION trg_caja_mov_periodo_cerrado();
+CREATE TRIGGER trg_validar_moneda_cuenta_origen BEFORE INSERT OR UPDATE OF moneda, cuenta_origen_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_cuenta_origen();
+CREATE TRIGGER trg_validar_moneda_movimiento BEFORE INSERT OR UPDATE OF moneda, sesion_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_sesion();
 CREATE TRIGGER trg_caja_ses_cierre BEFORE DELETE OR UPDATE ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION trg_caja_ses_periodo_cerrado();
 CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_set_caja_sesion_numero();
+CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
+CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
@@ -11082,6 +11488,8 @@ ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.afip_wsaa_ta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aging_profile_reglas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aging_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_config_audit ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_tenant_memoria ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.alertas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.archivos_biblioteca ENABLE ROW LEVEL SECURITY;
@@ -11093,6 +11501,7 @@ ALTER TABLE public.autorizaciones_reglas_enrutamiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_cancelaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_manual_pagos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.boveda_arqueos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.boveda_conversiones_usd ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.boveda_retiros ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.caja_arqueos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;
@@ -11260,6 +11669,24 @@ CREATE POLICY aging_profiles_tenant ON public.aging_profiles AS PERMISSIVE FOR A
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY ai_config_audit_select_dueno_admin ON public.ai_config_audit AS PERMISSIVE FOR SELECT TO authenticated
+  USING (((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text])))))));
+CREATE POLICY ai_tenant_memoria_delete_dueno_admin ON public.ai_tenant_memoria AS PERMISSIVE FOR DELETE TO authenticated
+  USING (((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text])))))));
+CREATE POLICY ai_tenant_memoria_select_dueno_admin ON public.ai_tenant_memoria AS PERMISSIVE FOR SELECT TO authenticated
+  USING (((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text])))))));
 CREATE POLICY alertas_tenant ON public.alertas AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY api_keys_owner_manage ON public.api_keys AS PERMISSIVE FOR ALL TO public
@@ -11313,6 +11740,17 @@ CREATE POLICY autorizaciones_reglas_enrutamiento_write ON public.autorizaciones_
 CREATE POLICY billing_manual_pagos_select ON public.billing_manual_pagos AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) OR is_admin()));
 CREATE POLICY boveda_arqueos_solo_dueno ON public.boveda_arqueos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text])))))))
+  WITH CHECK (((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text])))))));
+CREATE POLICY boveda_conversiones_usd_solo_dueno ON public.boveda_conversiones_usd AS PERMISSIVE FOR ALL TO authenticated
   USING (((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
@@ -12089,6 +12527,10 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ag
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.aging_profiles TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.aging_profiles TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.aging_profiles TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ai_config_audit TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ai_config_audit TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ai_tenant_memoria TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ai_tenant_memoria TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.alertas TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.alertas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.alertas TO service_role;
@@ -12118,6 +12560,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.bi
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_arqueos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_arqueos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_arqueos TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_conversiones_usd TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_conversiones_usd TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_retiros TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_retiros TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.boveda_retiros TO service_role;
@@ -12568,7 +13012,7 @@ CREATE OR REPLACE VIEW public.vw_boveda_cuentas AS
         CASE
             WHEN (cm.tipo !~~ '%informativo%'::text) THEN ( SELECT e.id
                FROM cuentas_origen e
-              WHERE ((e.tenant_id = cm.tenant_id) AND (e.tipo = 'efectivo'::text))
+              WHERE ((e.tenant_id = cm.tenant_id) AND (e.tipo = 'efectivo'::text) AND (e.moneda = COALESCE(cm.moneda, 'ARS'::text)))
              LIMIT 1)
             ELSE NULL::uuid
         END) = co.id))))

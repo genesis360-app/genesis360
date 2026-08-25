@@ -250,6 +250,9 @@ export interface OrdenCompra {
   requiere_aprobacion?: boolean | null
   aprobada_por?: string | null
   aprobada_at?: string | null
+  // Compras en USD (mig 379) — moneda nativa de la OC; cotizacion_usd solo si hubo descalce
+  moneda?: string
+  cotizacion_usd?: number | null
   // joins
   proveedores?: Pick<Proveedor, 'id' | 'nombre'>
   orden_compra_items?: OrdenCompraItem[]

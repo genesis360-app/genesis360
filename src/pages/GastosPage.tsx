@@ -316,7 +316,7 @@ export default function GastosPage() {
     queryKey: ['metodos_pago_cfg', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('id, nombre, cuenta_origen_id, habilitado_gastos, es_efectivo')
+        .select('id, nombre, cuenta_origen_id, habilitado_gastos, es_efectivo, moneda')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return (data ?? []).filter((m: any) => m.habilitado_gastos !== false)
     },
@@ -339,6 +339,15 @@ export default function GastosPage() {
     const norm = normalizarNombreMetodo(nombreMetodo)
     const m = (metodosPagoCfg as any[]).find(x => normalizarNombreMetodo(x.nombre || '') === norm)
     return m?.cuenta_origen_id ?? null
+  }
+  // Compras/Gastos en USD (mig 379) — moneda real de un método de pago, para no ofrecer pagar una
+  // OC en USD con un medio en pesos (o viceversa) sin que nadie lo note. Default 'ARS' si el medio
+  // no tiene moneda cargada (mismo criterio que metodos_pago.moneda en la DB).
+  const monedaDeMetodo = (nombreMetodo: string | null | undefined): string => {
+    if (!nombreMetodo) return 'ARS'
+    const norm = normalizarNombreMetodo(nombreMetodo)
+    const m = (metodosPagoCfg as any[]).find(x => normalizarNombreMetodo(x.nombre || '') === norm)
+    return m?.moneda ?? 'ARS'
   }
 
   // G5 Fase 5 — desde mig 373 hay 2 filas es_caja_fuerte=true por tenant (ARS y USD); Gastos solo
@@ -541,7 +550,7 @@ export default function GastosPage() {
     queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, cajas(nombre, sucursal_id)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+        .select('id, cajas(nombre, sucursal_id, moneda)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
       if (!sucursalId) return data ?? []
       return (data ?? []).filter((s: any) => s.cajas?.sucursal_id === sucursalId)
     },
@@ -676,6 +685,12 @@ export default function GastosPage() {
   })
 
   const ocSeleccionada = ocs.find((o: any) => o.id === ocModalId) ?? null
+  // Compras/Gastos en USD (mig 379) — solo ofrecer cajas cuya moneda coincide con la de la OC que
+  // se está pagando (mismo criterio que sesionesOperativas para Gastos sueltos, arriba). Evita que
+  // el trigger de la DB rechace el movimiento en silencio o, peor, que quede mal contabilizado si
+  // algún día ese trigger no cubre el caso.
+  const ocMoneda = (ocSeleccionada as any)?.moneda ?? 'ARS'
+  const cajasAbiertasOCMoneda = (cajasAbiertasOC as any[]).filter(s => (s.cajas?.moneda ?? 'ARS') === ocMoneda)
 
   const ocsFiltradas = useMemo(() => {
     const hoyStr = new Date().toISOString().split('T')[0]
@@ -741,8 +756,9 @@ export default function GastosPage() {
       const saldo = total - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - descuentoNum
 
       // Usar la caja seleccionada en el modal, o la primera disponible si hay solo una
+      // Compras/Gastos en USD (mig 379) — solo cajas de la misma moneda que la OC (cajasAbiertasOCMoneda).
       const sesionId = ocCajaSeleccionadaId
-        ?? ((cajasAbiertasOC as any[]).length === 1 ? (cajasAbiertasOC as any[])[0]?.id : null)
+        ?? (cajasAbiertasOCMoneda.length === 1 ? cajasAbiertasOCMoneda[0]?.id : null)
 
       // ISS-095: CC como medio de pago parcial — unificar flujo
       const mediosValidos = ocMediosPago
@@ -750,7 +766,15 @@ export default function GastosPage() {
         .filter(m => !isNaN(m.monto) && m.monto > 0)
 
       if (!mediosValidos.length) { toast.error('Ingresá al menos un monto válido'); setOcGuardando(false); return }
-      if ((cajasAbiertasOC as any[]).length > 1 && !ocCajaSeleccionadaId && mediosValidos.some(m => m.tipo !== 'Cuenta Corriente')) {
+      // Compras/Gastos en USD (mig 379) — bloquear en el cliente un pago con moneda distinta a la
+      // de la OC (además del filtro del selector) para no depender solo de que el trigger de la DB
+      // lo rechace — acá se puede dar un mensaje claro en vez de un error genérico.
+      const medioDesajustado = mediosValidos.find(m => m.tipo !== 'Cuenta Corriente' && monedaDeMetodo(m.tipo) !== ocMoneda)
+      if (medioDesajustado) {
+        toast.error(`"${medioDesajustado.tipo}" está en ${monedaDeMetodo(medioDesajustado.tipo)}, pero esta OC es en ${ocMoneda}. Usá un medio en ${ocMoneda}.`)
+        setOcGuardando(false); return
+      }
+      if (cajasAbiertasOCMoneda.length > 1 && !ocCajaSeleccionadaId && mediosValidos.some(m => m.tipo !== 'Cuenta Corriente')) {
         toast.error('Seleccioná la caja en la que se registrará el movimiento'); setOcGuardando(false); return
       }
 
@@ -3122,9 +3146,9 @@ export default function GastosPage() {
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{oc.proveedores?.nombre ?? '—'}</p>
                         <div className="flex gap-4 mt-1 text-xs text-gray-400 flex-wrap">
-                          <span>Total: <strong className="text-gray-700 dark:text-gray-200">${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>
-                          {Number(oc.monto_pagado) > 0 && <span>Pagado: <strong className="text-green-600">${Number(oc.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>}
-                          {saldo > 0.5 && <span>Saldo: <strong className="text-red-500">${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>}
+                          <span>Total: <strong className="text-gray-700 dark:text-gray-200">{formatMonedaLib(total, (oc as any).moneda)}</strong></span>
+                          {Number(oc.monto_pagado) > 0 && <span>Pagado: <strong className="text-green-600">{formatMonedaLib(oc.monto_pagado, (oc as any).moneda)}</strong></span>}
+                          {saldo > 0.5 && <span>Saldo: <strong className="text-red-500">{formatMonedaLib(saldo, (oc as any).moneda)}</strong></span>}
                           {venc && <span className={esVencida ? 'text-red-500 font-medium' : 'text-gray-400'}>Vence: {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
                         </div>
                       </div>
@@ -3158,9 +3182,9 @@ export default function GastosPage() {
                                   <div key={idx}>
                                     <div className="flex justify-between text-gray-700 dark:text-gray-300">
                                       <span className="truncate flex-1 mr-2">{it.productos?.nombre ?? '—'}</span>
-                                      <span className="flex-shrink-0 font-semibold">${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                      <span className="flex-shrink-0 font-semibold">{formatMonedaLib(subtotal, (oc as any).moneda)}</span>
                                     </div>
-                                    <p className="text-gray-400 dark:text-gray-500">{it.cantidad} × ${Number(it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                                    <p className="text-gray-400 dark:text-gray-500">{it.cantidad} × {formatMonedaLib(it.precio_unitario, (oc as any).moneda)}</p>
                                   </div>
                                 )
                               })}
@@ -3173,12 +3197,12 @@ export default function GastosPage() {
                           {(oc as any).costo_envio > 0 && (
                             <div className="flex justify-between text-gray-500 dark:text-gray-400">
                               <span>Envío</span>
-                              <span>${Number((oc as any).costo_envio).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              <span>{formatMonedaLib((oc as any).costo_envio, (oc as any).moneda)}</span>
                             </div>
                           )}
                           <div className="flex justify-between font-bold text-gray-800 dark:text-gray-100 text-sm">
                             <span>TOTAL</span>
-                            <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                            <span>{formatMonedaLib(total, (oc as any).moneda)}</span>
                           </div>
 
                           <div className="border-t border-dashed border-gray-300 dark:border-gray-600" />
@@ -3188,13 +3212,13 @@ export default function GastosPage() {
                             {Number(oc.monto_pagado) > 0 && (
                               <div className="flex justify-between">
                                 <span>Pagado</span>
-                                <span className="text-green-600 dark:text-green-400">${Number(oc.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                <span className="text-green-600 dark:text-green-400">{formatMonedaLib(oc.monto_pagado, (oc as any).moneda)}</span>
                               </div>
                             )}
                             {saldo > 0.5 && (
                               <div className="flex justify-between text-red-500">
                                 <span>Saldo pendiente</span>
-                                <span>${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                <span>{formatMonedaLib(saldo, (oc as any).moneda)}</span>
                               </div>
                             )}
                             {oc.estado_pago === 'pagada' && (
@@ -3328,7 +3352,9 @@ export default function GastosPage() {
                             <select value={m.tipo}
                               onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
                               className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                              {MEDIOS_OC_DB.map(t => <option key={t}>{t}</option>)}
+                              {/* Compras/Gastos en USD (mig 379): solo medios en la moneda de la OC
+                                  (CC es moneda-agnóstica, siempre disponible). */}
+                              {MEDIOS_OC_DB.filter(t => t === 'Cuenta Corriente' || monedaDeMetodo(t) === ocMoneda).map(t => <option key={t}>{t}</option>)}
                             </select>
                             <input type="number" onWheel={e => e.currentTarget.blur()}
                               value={m.monto} onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
@@ -3412,14 +3438,15 @@ export default function GastosPage() {
                               <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent-text'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                             </div>
                           )}
-                          {/* Selector de caja para el movimiento */}
-                  {(cajasAbiertasOC as any[]).length > 0 && (
+                          {/* Selector de caja para el movimiento — Compras/Gastos en USD (mig 379):
+                              solo cajas de la misma moneda que la OC (cajasAbiertasOCMoneda). */}
+                  {cajasAbiertasOCMoneda.length > 0 && (
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Registrar movimiento en caja</label>
-                      {(cajasAbiertasOC as any[]).length === 1 ? (
+                      {cajasAbiertasOCMoneda.length === 1 ? (
                         <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2">
                           <span>✓</span>
-                          <span>{(cajasAbiertasOC as any[])[0]?.cajas?.nombre ?? 'Caja'}</span>
+                          <span>{cajasAbiertasOCMoneda[0]?.cajas?.nombre ?? 'Caja'}</span>
                         </div>
                       ) : (
                         <select
@@ -3427,7 +3454,7 @@ export default function GastosPage() {
                           onChange={e => setOcCajaSeleccionadaId(e.target.value || null)}
                           className="w-full px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                           <option value="">— Seleccioná una caja —</option>
-                          {(cajasAbiertasOC as any[]).map((s: any) => (
+                          {cajasAbiertasOCMoneda.map((s: any) => (
                             <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
                           ))}
                         </select>
@@ -3437,8 +3464,8 @@ export default function GastosPage() {
                       </p>
                     </div>
                   )}
-                  {ocMediosPago.some(m => mediosEfectivo.has(m.tipo)) && (cajasAbiertasOC as any[]).length === 0 && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso en efectivo no se registrará en caja.</p>
+                  {ocMediosPago.some(m => mediosEfectivo.has(m.tipo) && monedaDeMetodo(m.tipo) === ocMoneda) && cajasAbiertasOCMoneda.length === 0 && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja en {ocMoneda} abierta. El egreso en efectivo no se registrará en caja.</p>
                           )}
                         </>
                       )

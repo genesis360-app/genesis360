@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362]
-updated: 2026-08-20
+updated: 2026-08-25
 ---
 
 # Inventario y Stock
@@ -12,6 +12,16 @@ El núcleo de Genesis360. Modelo **LPN (Location/Product/Lot Number)** para trac
 
 **Página:** `src/pages/InventarioPage.tsx`  
 **Modal principal:** `src/components/LpnAccionesModal.tsx`
+
+> [!NOTE] **🐛 Overflow horizontal en mobile (375px/360px) — fix (2026-08-24/25, ✅ EN PROD desde
+> v1.179.2, PR #333).** El contenedor del buscador de `InventarioPage.tsx` no tenía `min-w-0`, así que en
+> pantallas angostas el input empujaba el layout y generaba scroll horizontal. Encontrado en una revisión
+> general de la app (unit + e2e completos); mismo fix aplicado en Productos (ver
+> [[wiki/features/productos]]).
+>
+> **✅ Verificado en la misma sesión (2026-08-24/25)**: aprobar un ajuste/conteo de inventario desde el
+> tab Supervisión efectivamente muta el `stock_actual` — era un gap de cobertura de tests real (nunca se
+> había probado end-to-end en vivo), no un bug encontrado.
 
 ---
 

@@ -3,10 +3,38 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-20
+updated: 2026-08-25
 ---
 
-# Historial de Migraciones (001-378)
+# Historial de Migraciones (001-379)
+
+**379 (`379_compras_gastos_usd_fase1_cimientos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA en `dev` local (commit `6a0f46af`), **⚠ SIN PUSHEAR a `origin/dev` ni
+deployar a PROD todavía** (`dev` local está 1 commit adelante de `origin/dev`):** Fase 1 (cimientos de
+datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
+respondido por Fede el 2026-08-21 (100% cerrado), distinto del G5 (Caja USD, que solo cubrió VENTAS): este
+cubre el lado de COMPRAS/GASTOS, feature nueva de punta a punta. Agrega:
+1. `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` en `gastos`, `gastos_fijos` y
+   `ordenes_compra` — mismo patrón que `ventas.cotizacion_usd` (mig 368, Caja USD): NULL salvo que la
+   transacción haya tenido una conversión real (solo se guarda si hay descalce de moneda entre costo y
+   pago); nunca se redondea. 100% aditivo, `DEFAULT 'ARS'` preserva el comportamiento actual al 100%.
+2. 🔴 **Fix real de REGLA #0 encontrado al diseñar esta fase**: `registrar_pago_oc()` ya insertaba egresos
+   reales en `caja_movimientos` (`egreso`/`egreso_informativo`) al pagar una OC — la Caja USD YA soportaba
+   egresos, no hacía falta construir esa capacidad de cero (respuesta a una pregunta técnica que Fede le
+   dejó a GO) — pero el INSERT nunca completaba la columna `moneda` (`caja_movimientos.moneda`, mig 368):
+   quedaba siempre en el DEFAULT `'ARS'` sin importar la moneda real del método de pago usado. Si se
+   pagara una OC en USD desde una Caja USD, el movimiento habría quedado mal etiquetado como ARS
+   (violación latente de integridad contable). Fix: se agrega `v_moneda_medio` (misma fuente que
+   `v_es_efectivo`, `metodos_pago.moneda` por nombre de medio) y se completa `moneda` en el INSERT. **Cero
+   cambio de comportamiento para pagos en ARS** (100% del volumen real hoy) — verificado con e2e real.
+
+`migration-reviewer`: **APTA**, sin hallazgos bloqueantes. Solo cimientos de datos — sin wiring de
+frontend todavía (permisos, UI de Gastos/OC en USD, reportes quedan para la Fase 2+, sin plan fijo de
+fases detallado, se decidió iterar en vez de un plan de 8 fases como G5). Ver
+[[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD", [[wiki/features/gastos]],
+[[wiki/features/clientes-proveedores]].
+
+---
 
 **Migraciones 376-378 — ✅ APLICADAS Y VERIFICADAS TAMBIÉN EN PROD (`jjffnbrdjchquexdfgwq`) el 2026-08-20**,
 como parte del deploy de `v1.179.0` (PR #332, merge commit `7e19e7a3`) — el detalle de cada una (abajo)

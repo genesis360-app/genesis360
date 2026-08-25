@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299, 370]
-updated: 2026-08-20
+updated: 2026-08-25
 ---
 
 # Módulo Configuración
@@ -123,6 +123,14 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
   "Efectivo USD" (moneda `USD`, `es_efectivo=true`) para habilitar el input de dólares del POS — ver
   [[wiki/features/ventas-pos]] → "Pago combinado ARS+USD" y [[wiki/features/caja]] → "Caja en USD — Fase 4
   de 8".
+- **🆕 Aviso "sin método USD efectivo configurado" (2026-08-24/25, ✅ EN PROD desde v1.179.2, PR #333)**:
+  reporte de Fede — un tenant con productos en USD o `acepta_cualquier_moneda=true` pero sin ningún método
+  marcado `es_efectivo=true` + `moneda='USD'` nunca ve la opción de cobrar en dólares físicos en el POS.
+  No era un bug de `carritoAceptaUsd()` (ese mecanismo ya funciona), sino que faltaba el paso manual de
+  crear el método. Ahora, en esta sub-tab, si hay algún producto USD/multi-moneda y ningún método
+  "efectivo real" en USD configurado, aparece un aviso amber señalando el paso faltante ("agregá uno
+  abajo, ej. 'Efectivo USD', moneda USD, tildá 'Es efectivo real'"). Ver [[wiki/features/productos]] y
+  [[project_moneda_producto_pendientes_fede]] (memoria, punto 3 del reporte de Fede).
 
 ### Sub-tab: Descuentos y combos
 

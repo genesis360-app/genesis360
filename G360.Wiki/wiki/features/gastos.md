@@ -1,9 +1,9 @@
 ---
 title: Módulo Gastos
 category: features
-tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador]
-sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373]
-updated: 2026-08-19
+tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379]
+updated: 2026-08-25
 ---
 
 # Módulo Gastos
@@ -508,6 +508,43 @@ El tab **Cheques** (CO6, mig 187) dejó de ser un cuaderno aparte:
 - **Pendiente menor (futuro):** cheque de tercero depositado/cobrado → impacto en cuenta de origen/bóveda (hoy solo cambia estado).
 
 > ⚙️ **Config requerida para pagar con cheque (decisión GO 2026-06-20, config opcional):** el seed de alta (`fn_seed_tenant_defaults`) crea Efectivo + 5 métodos de pago **pero NO "Cheque"**. Para que la opción "Cheque" aparezca en los modales de pago de OC/gasto, el tenant debe **agregar el método "Cheque"** en *Config → Métodos de pago* (con `habilitado_gastos`). Se decidió dejarlo como configuración opcional (no sumarlo al seed). Validado por e2e: `tests/e2e/31_cheque_gasto_rechazo_mutante.spec.ts` (gasto pagado con cheque → rechazo revierte el pago a `pendiente`).
+
+## Compras/Gastos en USD + tasa de cambio editable — Fase 1 de cimientos (mig 379, 2026-08-24/25)
+
+> Relevamiento nuevo (`relevamiento-compras-gastos-usd-reglas-negocio.html`, raíz del repo), generado y
+> **respondido por Fede 2026-08-21, 100% cerrado**, con instrucción explícita de arrancar ya (no esperar
+> sesión dedicada). Distinto del G5 ("Caja en USD", que solo cubrió el lado de **ventas** — ver
+> [[wiki/development/reglas-negocio]] → "Módulo: Caja en USD"): este plan cubre el lado de **compras/
+> gastos**, feature nueva de punta a punta (`gastos`/`gastos_fijos`/`ordenes_compra` no tenían ninguna
+> columna de moneda hasta esta migración).
+>
+> **Diseño cerrado**: 3 mecanismos de cotización independientes — sidebar/ventas (colaborativo, ya
+> existía), Bóveda (separada, exclusiva Dueño), **Compras** (100% manual por transacción, con aviso NO
+> bloqueante si la cotización tipeada se aleja 20-30% de la referencia). Solo se guarda `cotizacion_usd`
+> si hay **descalce de moneda** entre el costo del ítem y el medio de pago usado; nunca se redondea; queda
+> **congelada** al confirmar. El dinero para pagar una compra en USD sale de la **Caja USD operativa**
+> (arquitectura: Bóveda = resguardo general, Caja = capa operativa que ya soporta egresos).
+>
+> **Fase 1 (cimientos de datos) ✅ YA CONSTRUIDA Y APLICADA EN DEV** — migración **379**
+> (`379_compras_gastos_usd_fase1_cimientos.sql`, commit `6a0f46af`, **en `dev` local, SIN pushear ni
+> deployar todavía**): agrega `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` a
+> `gastos`, `gastos_fijos` y `ordenes_compra` — mismo patrón que `ventas.cotizacion_usd` (mig 368). 100%
+> aditivo, cero cambio de comportamiento para lo existente (todo sigue en ARS por default).
+>
+> 🔴 **Fix real de REGLA #0 encontrado al diseñar esta fase**: `registrar_pago_oc()` (tab "Órdenes de
+> Compra" de arriba) ya insertaba egresos reales en `caja_movimientos` al pagar una OC — la Caja USD YA
+> soportaba egresos, no hacía falta construir esa capacidad de cero — pero nunca completaba la columna
+> `moneda` de `caja_movimientos` (quedaba siempre en el DEFAULT `'ARS'` sin importar el medio de pago
+> real). Si se pagara una OC en USD desde una Caja USD, el movimiento habría quedado mal etiquetado como
+> ARS. Corregido, **cero cambio de comportamiento para pagos en ARS** (100% del volumen real hoy),
+> verificado con e2e real. `migration-reviewer`: APTA.
+>
+> **Próximo paso: Fase 2+** (wiring de frontend — permisos, UI de Gastos/OC en USD, reportes) — a
+> diferencia de las 8 fases fijas de G5, acá se decidió **iterar** en vez de fijar un plan de fases
+> detallado de antemano. Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"),
+> `wiki/database/migraciones.md` (mig 379).
+
+---
 
 ## Links relacionados
 

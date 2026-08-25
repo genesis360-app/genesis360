@@ -2,8 +2,8 @@
 title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
-sources: [CLAUDE.md, ROADMAP.md, migration 349, src/pages/ClientesPage.tsx]
-updated: 2026-08-13
+sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, src/pages/ClientesPage.tsx]
+updated: 2026-08-25
 ---
 
 # Clientes y Proveedores
@@ -237,6 +237,13 @@ Lógica pura en `src/lib/comprasReportes.ts`. Tab **Reportes** en Gastos (`src/c
 - **G2 — alerta:** "bajo mínimo sin OC pendiente" en Alertas (badge *OC en camino* / *Sin OC pendiente*). Las demás alertas de compras ya existían (anticipo CO5, cheque CO6, costo CO3).
 
 > 🎉 **Compras 2.0 (CO1-CO8) cerrado al 100%.** Sin pendientes del módulo.
+
+> 🆕 **2026-08-24/25 — "Compras/Gastos en USD" (relevamiento nuevo, respondido por Fede 2026-08-21, 100%
+> cerrado): Fase 1 (cimientos de datos) YA CONSTRUIDA en DEV**, mig 379 — agrega
+> `moneda`/`cotizacion_usd` a `ordenes_compra` (y a `gastos`/`gastos_fijos`). De paso corrige un fix real
+> de REGLA #0 en `registrar_pago_oc()` (nunca completaba la `moneda` del egreso en `caja_movimientos`).
+> Sin wiring de frontend todavía. Detalle completo (diseño, decisiones, próximos pasos) en
+> [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable".
 
 ### 🐛 Fix real de CO5 — `registrar_pago_oc` (mig 349, v1.165.0, 2026-08-11)
 

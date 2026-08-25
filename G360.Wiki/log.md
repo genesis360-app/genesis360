@@ -6,6 +6,83 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-25] deploy | 🚀 v1.179.2 a PROD — 5 bugs reales corregidos (arrastra también el fix de moneda de Productos de v1.179.1) — PR #333
+
+Revisión general de la app (unit + e2e completos, triage de fallas reales) que encontró y corrigió 5 bugs
+reales: placeholder roto en el buscador de Historial de Ventas (`"Buscar cliente... o (Venta):2"`,
+artefacto de un refactor viejo, corregido en `VentasPage.tsx`); overflow horizontal en mobile
+(375px/360px) en Productos e Inventario por falta de `min-w-0` en el contenedor del buscador
+(`ProductosPage.tsx`, `InventarioPage.tsx`); aviso nuevo en Config → Ventas → Métodos de pago cuando hay
+productos en USD sin ningún método de pago USD real configurado (reporte de Fede, `ConfigPage.tsx`); 6
+specs e2e actualizados a selectors/labels reales (tab "Autorizaciones"→"Supervisión" post mig 347, lista
+de módulos del delegado de rol custom, locator ambiguo de unidad de medida). Verificado en vivo, no solo
+code-audit: NC electrónica con CAE de AFIP homologación sigue funcionando de punta a punta; aprobar un
+ajuste/conteo de inventario efectivamente muta el stock (era un gap de cobertura real, no un bug).
+
+También se investigó a fondo la latencia de "Confirmar ingreso" en DEV (a veces >12s) — conclusión: NO es
+bug de lógica, es variabilidad de infraestructura de DEV (medido 161ms-1.46s por request trivial vs. PROD
+consistente ~150-200ms), documentado como deuda de infraestructura sin fix de código. Y se relevó (sin
+tocar) 135 funciones marcadas por el linter de seguridad de Supabase + 442 hallazgos de performance —
+deuda estable en DEV y PROD, no regresión nueva, spot-check confirmó que lo sensible (inventario/fiscal)
+está bien guardado; queda para una sesión de hardening dedicada.
+
+**Commits**: `193820df` (v1.179.1, fix moneda lista de Productos, sesión anterior) + `47b22222`
+(v1.179.2, los 5 bugs de arriba). **PR #333** (`dev→main`) mergeado — merge commit
+`f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`. **Release `v1.179.2`** publicado (`target: main`,
+`--latest`). **Vercel producción `READY`**. **Sin migraciones en este deploy.** Como el merge trae TODO
+`dev` hasta ese punto (incluido `193820df`, confirmado ancestro de `origin/main` con
+`git merge-base --is-ancestor`), **el fix de moneda de la lista de Productos (v1.179.1) queda deployado a
+PROD con esta misma tanda** — corrige el estado "solo en DEV" documentado en la entrada del 2026-08-20 de
+abajo.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"), `wiki/business/roadmap.md`,
+[[wiki/features/productos]], [[wiki/features/ventas-pos]], [[wiki/features/configuracion]].
+
+---
+
+## [2026-08-25] update | 📋 2 relevamientos RESPONDIDOS por Fede (retrofit Supervisión + Compras/Gastos en USD) + Fase 1 de Compras/Gastos USD YA CONSTRUIDA en DEV (mig 379) + incidente de infraestructura en DEV (resuelto)
+
+Continúa la misma sesión que el deploy de arriba. Tres hilos:
+
+**Retrofit del patrón "Supervisión" a más módulos** — el relevamiento generado el 2026-08-20
+(`relevamiento-supervision-retrofit-reglas-negocio.html`) fue **respondido por Fede el mismo día, 100%
+cerrado**: en Ventas solo "anular venta despachada" pasa a cola de aprobación (con regla nueva: si ya fue
+facturada, primero hay que emitir NC antes de poder eliminarla); Caja sigue con clave maestra, nunca cola;
+en Productos `kit_precio`/`repricing_margen` se reclasifican a `modulo='productos'`; Clientes/Envíos/
+Proveedores/Pedidos/RRHH quedan en 2 niveles (eliminaciones delegables, pocas acciones solo-Dueño).
+Bloqueante técnico común: `productos`/`envios`/`proveedores`/`pedidos`/`recursos` no están todavía en el
+CHECK de `autorizaciones.modulo` (mig 347) ni en `MODULOS` de `UsuariosPage.tsx`. Orden de fases a
+criterio de GO — **sin diseño ni código arrancado todavía**.
+
+**Compras/Gastos en USD + tasa de cambio editable** — el relevamiento generado el 2026-08-21
+(`relevamiento-compras-gastos-usd-reglas-negocio.html`) también fue **respondido por Fede el mismo día,
+100% cerrado**, con instrucción explícita de arrancar ya. 3 mecanismos de cotización independientes
+(sidebar/ventas colaborativo ya existente, Bóveda exclusiva Dueño, Compras 100% manual por transacción con
+aviso no bloqueante si se aleja 20-30% de referencia); solo se guarda cotización si hay descalce de moneda,
+nunca se redondea, queda congelada al confirmar; el pago de una compra en USD sale de la Caja USD
+operativa. **Fase 1 (cimientos de datos) ya construida y aplicada en DEV**: migración **379**
+(`379_compras_gastos_usd_fase1_cimientos.sql`, commit `6a0f46af`, en `dev` local, **sin pushear ni
+deployar todavía**) agrega `moneda`/`cotizacion_usd` a `gastos`, `gastos_fijos`, `ordenes_compra` (mismo
+patrón que `ventas.cotizacion_usd` de Caja USD G5). De paso, fix real de REGLA #0: `registrar_pago_oc()`
+ya insertaba egresos reales en `caja_movimientos` al pagar una OC, pero nunca completaba la columna
+`moneda` (quedaba en el DEFAULT `'ARS'` sin importar el medio real) — corregido, cero cambio de
+comportamiento para pagos en ARS, verificado con e2e real. `migration-reviewer`: APTA. Próximo paso: Fase
+2+ (wiring de frontend), iterando en vez de un plan fijo de fases.
+
+**Incidente de infraestructura en DEV (RESUELTO)** — DEV (`gcmhzdedrkmmzfzfveig`) quedó "Unhealthy"
+(Database/PostgREST/Auth/Storage caídos) varias horas por agotar el presupuesto de Disk IO del compute
+Nano (suite e2e completa corrida 2 veces + varios agentes en paralelo). Confirmado que no fue un incidente
+general de Supabase. Separado, sin resolver: la organización ("Argentum Business Group", plan Free) está
+en grace period por exceder Cached Egress del ciclo anterior — restricción real si no se regulariza antes
+del 01-sep-2026 (afecta también a PROD, misma organización), decisión de billing pendiente de GO. GO
+resolvió el problema técnico pausando y restaurando el proyecto manualmente desde el dashboard (~5 min).
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md`
+(mig 379), [[wiki/features/supervision]], [[wiki/features/gastos]], [[wiki/features/clientes-proveedores]],
+[[wiki/development/reglas-negocio]].
+
+---
+
 ## [2026-08-20] update | 📋 Relevamiento retrofit Supervisión + 🐛💵 3 reportes de Fede sobre moneda USD (1 fixed, 2 deferidos)
 
 Continúa la misma sesión que el deploy a PROD del Plan IA (entrada de abajo). Dos hilos de trabajo

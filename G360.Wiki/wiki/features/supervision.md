@@ -2,8 +2,8 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
-sources: [migration 347, migration 348, relevamiento_supervisor_tab_respuestas.md, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
-updated: 2026-08-13
+sources: [migration 347, migration 348, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
+updated: 2026-08-25
 ---
 
 # Supervisión — Patrón "Pestaña de Supervisor" reusable
@@ -195,12 +195,44 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
+## Retrofit a más módulos — relevamiento RESPONDIDO por Fede (2026-08-20), sin diseño/código todavía
+
+> Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
+> 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
+> `autorizaciones.modulo` acotado a `'inventario'` en la mig 347, los 2 sistemas paralelos de Gastos —
+> `autorizaciones_gasto`/`autorizaciones_cc`—, la "clave maestra" síncrona de Ventas/Caja). **Respondido
+> por Fede el mismo día, 100% CERRADO** — continuación directa de
+> `relevamiento_supervisor_tab_respuestas.md` (esa ya había cerrado "sí, construir el patrón"; esta
+> responde "a qué módulos y con qué alcance").
+>
+> **Decisiones cerradas:**
+> - **Ventas**: solo "anular venta despachada" pasa a cola de aprobación de Supervisión — con una regla
+>   nueva: si la venta ya fue facturada, primero hay que emitir NC antes de poder eliminarla.
+> - **Caja**: sigue con clave maestra síncrona, **nunca** pasa a cola de aprobación asincrónica.
+> - **Productos**: `kit_precio`/`repricing_margen` (hoy viven en el tab de Inventario, ver arriba) se
+>   reclasifican a `modulo='productos'`.
+> - **Clientes / Envíos / Proveedores / Pedidos / RRHH**: 2 niveles de sensibilidad — eliminaciones
+>   delegables a supervisores vía el patrón, y un puñado de acciones más sensibles que quedan solo-Dueño
+>   (sin pasar por cola).
+>
+> **Bloqueante técnico común, todavía sin resolver**: `productos`, `envios`, `proveedores`, `pedidos` y
+> `recursos` no están hoy en el CHECK `autorizaciones.modulo` (mig 347) ni en la lista `MODULOS` de
+> `UsuariosPage.tsx` (la pantalla de permisos por rol) — hay que sumarlos ahí antes de poder delegar
+> cualquier acción de esos módulos.
+>
+> **Orden de fases: a criterio de GO, sin definir todavía. Sin diseño técnico ni código arrancado.**
+> Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"),
+> [[project_supervision_tab_extension_pendiente]] (memoria).
+
 ## Pendiente real
 
-Ningún otro módulo usa el patrón todavía — Pedidos/WMS sigue con su propia UI de asignación de tareas
-(`wms_tareas.usuario_asignado_id`, construida en v1.161.0/v1.162.0), un concepto distinto (tareas
-operativas, no solicitudes de aprobación) que no se unificó a propósito en esta tanda (fuera del
-alcance de D1, que solo pedía retrofitear Inventario).
+Ningún otro módulo usa el patrón todavía (más allá de Repositores, que reusó el mismo diseño de reparto/
+reasignación sin integrarse a la tabla `autorizaciones` en sí — ver abajo) — Pedidos/WMS sigue con su
+propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`, construida en v1.161.0/v1.162.0), un
+concepto distinto (tareas operativas, no solicitudes de aprobación) que no se unificó a propósito en esa
+tanda (fuera del alcance de D1, que solo pedía retrofitear Inventario). El retrofit a
+Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH (sección de arriba) ya tiene las decisiones de
+negocio cerradas, pero **todavía no arrancó** el diseño técnico ni el código.
 
 **Actualización 2026-08-11 — el módulo Repositores en sí ya se construyó (Fase 1, mig 352+353, y Fase
 2, mig 354)**: el criterio de reparto por carga/reasignación de este patrón (`fn_autorizaciones_auto_asignar`/

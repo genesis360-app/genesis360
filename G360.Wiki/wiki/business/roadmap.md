@@ -3,38 +3,40 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-20
+updated: 2026-08-25
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.179.0 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-20: PR #332 mergeado a
-`main` (merge commit `7e19e7a3a11fba24389153f0c02dc56f70ddce11`), confirmado con `gh pr view 332` →
-`state: MERGED`, release `v1.179.0` actualizado a `target: main` + `--latest` (el tag ya existía sobre
-`dev` de una tanda anterior de la misma sesión; el merge fue real, no squash, así que ese commit ya era
-ancestro de `main`). **3 migraciones aplicadas y verificadas en PROD: 376-378** — 376 (`ai_config_rpc_layer`
-— tabla `ai_config_audit` + RPCs `fn_ai_config_set_bool/_int/_text`, Fase 2, hallazgo del deploy-runner: no
-estaba aplicada en PROD todavía pese a ser prerrequisito directo del código de este commit), 377
-(`ai_tenant_memoria` + `fn_ai_memoria_guardar`, Fase 3) y 378 (`fn_ai_memoria_listar`, Fase 3). Verificado
-con query real contra PROD: 5 funciones + 2 tablas + 3 policies existen, encoding de tildes/eñes intacto.
-Edge Function `ai-assistant` redeployada en PROD con el código completo (Fases 1+2+3), reemplazando el fix
-aislado del modelo Groq que corría antes — smoke test `POST` sin auth → `401` (esperado). Vercel: deploy
-de producción **✅ CONFIRMADO READY** (`dpl_H3eMHxC6TKR3pNmSgR3Hkun5KzHG`, commit `7e19e7a3`). Con esto el
-"Plan IA" (Fases 1-3: memoria conversacional, propuesta de config con confirmación, memoria persistente
-por tenant) queda **100% en PROD** por primera vez — hasta este deploy, PROD solo tenía el fix aislado del
-modelo Groq (2 constantes, sin wiring de config ni de memoria). Fase 4 (comparación entre negocios) sigue
-diferida, sin diseño ni código, por decisión de producto/legal ya tomada por GO. Detalle completo en
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 22).  
-Antes de este release: v1.176.0 — Auditoría performance/calidad + Caja USD Fases 1-7/8 (PR #331, merge
-commit `4dbe7fdb`, 16 migraciones 360-375). Ver detalle histórico de v1.176.0 más abajo.  
-**Versión en DEV:** v1.179.1 — un commit por delante de PROD (commit `193820df`, tag+release
-`v1.179.1`): fix de moneda USD en la lista de Productos (`ProductosPage.tsx` ignoraba
-`moneda_venta`/`moneda_costo`, reportado por Fede) + relevamiento retrofit "tab Supervisión"
-generado (sin código). Verificado con e2e mutante contra DEV real + suite unit completa (1625
-tests). **No deployado a PROD a propósito** — GO no lo pidió, es chico/solo visual. 2 hallazgos
-relacionados de moneda quedaron deliberadamente sin tocar, esperando que GO hable con Fede — ver
-`wiki/features/productos.md` y [[project_moneda_producto_pendientes_fede]] (memoria).  
-Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 23, "ARRANCÁ
+**Versión en PROD:** v1.179.2 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-24/25: PR #333 mergeado a
+`main` (merge commit `f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`, `mergedAt: 2026-08-24T23:02:37Z`),
+confirmado con `gh pr view 333` → `state: MERGED`, release `v1.179.2` publicado (`target: main`,
+`--latest`, `publishedAt: 2026-08-24T23:02:54Z`). **Sin migraciones en este deploy** (100% frontend/tests).
+Revisión general de la app (unit + e2e completos) encontró y corrigió **5 bugs reales**: placeholder roto
+en el buscador de Historial de Ventas, overflow horizontal en mobile en Productos/Inventario (falta de
+`min-w-0`), aviso nuevo en Config→Ventas→Métodos de pago cuando hay productos USD sin método de pago USD
+configurado, y 6 specs e2e desactualizados corregidos. Verificado en vivo: NC electrónica AFIP y
+aprobación de ajustes de inventario siguen mutando el stock de punta a punta. Vercel: deploy de producción
+**READY**. **Como el merge trae todo `dev` hasta ese commit (confirmado con
+`git merge-base --is-ancestor`), el fix de moneda USD en la lista de Productos de v1.179.1 (commit
+`193820df`, abajo) queda TAMBIÉN deployado a PROD con esta tanda** — corrige el estado "solo en DEV" que
+tenía esa versión hasta ahora. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente
+de verdad, bloque "ARRANCÁ ACÁ", cont. 24).  
+Antes de este release: v1.179.0 — Plan IA Fases 1+2+3 100% en PROD (PR #332, merge commit `7e19e7a3`, 3
+migraciones 376-378). Ver detalle histórico más abajo.  
+**Versión en DEV:** un commit por delante de PROD (commit `6a0f46af`, **sin tag/push todavía — `dev` local
+está 1 commit adelante de `origin/dev`**): **migración 379** (`379_compras_gastos_usd_fase1_cimientos.sql`)
+— Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" (relevamiento
+nuevo, respondido por Fede 2026-08-21). Agrega `moneda`/`cotizacion_usd` a `gastos`, `gastos_fijos`,
+`ordenes_compra`; de paso corrige un fix real de REGLA #0 en `registrar_pago_oc()` (nunca completaba la
+columna `moneda` de `caja_movimientos`). `migration-reviewer`: APTA. Ver `wiki/database/migraciones.md`
+(mig 379) y `wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en USD".  
+**2 relevamientos nuevos, ambos 100% RESPONDIDOS por Fede en esta misma sesión (2026-08-24/25)**: (a)
+retrofit del patrón "tab Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH —
+decisiones cerradas, sin diseño/código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fase 1 YA
+CONSTRUIDA, resto a iterar. Ver `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"),
+`wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
+Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ
 ACÁ").  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -44,11 +46,44 @@ commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + 
 sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
-**Última actualización:** 20 de Agosto, 2026
+**Última actualización:** 25 de Agosto, 2026
 
 ---
 
-## v1.179.1 — 🐛💵 Fix moneda USD en lista de Productos + relevamiento retrofit Supervisión — ✅ COMMITEADO EN DEV, sin PROD (2026-08-20)
+## v1.179.2 — 🚀 Revisión general: 5 bugs reales corregidos + fix moneda USD en Productos arrastrado — ✅ EN PROD (PR #333, merge `f36ff2f4`, 2026-08-24/25)
+
+Continúa directo la v1.179.1 (abajo), misma sesión larga. Revisión general de la app (unit + e2e
+completos, triage de fallas reales): **placeholder roto** en el buscador de Historial de Ventas
+(`"Buscar cliente... o (Venta):2"`, artefacto de un refactor viejo, commit `a209abaf`) corregido en
+`VentasPage.tsx`; **overflow horizontal en mobile** (375px/360px) en Productos e Inventario por falta de
+`min-w-0` en el contenedor del buscador (`ProductosPage.tsx`, `InventarioPage.tsx`); **aviso nuevo** en
+Config→Ventas→Métodos de pago cuando hay productos en USD sin ningún método de pago USD real configurado
+(reporte de Fede, `ConfigPage.tsx`); **6 specs e2e actualizados** a selectors/labels reales (tab
+"Autorizaciones"→"Supervisión" post mig 347, lista de módulos del delegado de rol custom, locator ambiguo
+de unidad de medida). Verificado en vivo, no solo code-audit: NC electrónica con CAE de AFIP homologación
+sigue funcionando de punta a punta; aprobar un ajuste/conteo de inventario efectivamente muta el stock
+(era un gap de cobertura real, no un bug).
+
+También se investigó a fondo la latencia de "Confirmar ingreso" en DEV (a veces >12s) — conclusión: NO es
+bug de lógica (triggers livianos, botón ya protegido con `disabled` contra doble-click), es variabilidad
+de infraestructura de DEV (medido 161ms-1.46s por request trivial vs. PROD consistente ~150-200ms) — sin
+fix de código, deuda de infraestructura documentada. Y se relevó (sin tocar) 135 funciones marcadas por el
+linter de seguridad de Supabase + 442 hallazgos de performance (RLS overlap, índices sin uso) — deuda
+estable en DEV y PROD, no regresión nueva; spot-check confirmó que lo sensible (inventario/fiscal) está
+bien guardado; queda para una sesión de hardening dedicada.
+
+**Commits `193820df` + `47b22222`, PR #333 (`dev→main`) mergeado — merge commit
+`f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`. Release `v1.179.2` publicado (`target: main`, `--latest`).
+Vercel producción READY. Sin migraciones.** Con esto, el fix de moneda de la lista de Productos (v1.179.1,
+punto 1 de abajo) queda deployado a PROD — corrige el estado "solo en DEV" documentado en la entrada de
+abajo.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"), `log.md`,
+`wiki/features/productos.md`, `wiki/features/ventas-pos.md`, `wiki/features/configuracion.md`.
+
+---
+
+## v1.179.1 — 🐛💵 Fix moneda USD en lista de Productos + relevamiento retrofit Supervisión — commiteado 2026-08-20, ✅ EN PROD desde v1.179.2 (2026-08-24/25)
 
 Continúa directo la v1.179.0 (abajo), misma sesión. Fede reportó 3 problemas de moneda USD en
 Productos/Ventas (vía GO, 2 capturas de pantalla):
@@ -77,10 +112,11 @@ continuación de `relevamiento_supervisor_tab_respuestas.md` (ya cerrado: "sí, 
 mig 347) sobre a qué módulos extenderlo y qué hacer con los sistemas paralelos de Gastos/Ventas/
 Caja. 20 preguntas, sin código todavía, esperando respuesta de GO.
 
-**Commit `193820df`, tag+release `v1.179.1` sobre `dev`. NO deployado a PROD** — GO no lo pidió, es
-chico y solo visual (sin migraciones, sin tocar cálculos).
+**Commit `193820df`, tag+release `v1.179.1` sobre `dev`.** ~~NO deployado a PROD — GO no lo pidió, es
+chico y solo visual~~ **✅ ACTUALIZACIÓN 2026-08-24/25: SÍ quedó deployado a PROD**, arrastrado por el
+merge de v1.179.2 (PR #333, `193820df` es ancestro directo de `47b22222`) — ver v1.179.2 arriba.
 
-Detalle completo: `wiki/features/productos.md`, `sources/raw/project_pendientes.md` (cont. 23,
+Detalle completo: `wiki/features/productos.md`, `sources/raw/project_pendientes.md` (cont. 24,
 "ARRANCÁ ACÁ"), `log.md`.
 
 ---

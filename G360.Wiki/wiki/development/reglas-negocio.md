@@ -1,9 +1,9 @@
 ---
 title: Reglas de Negocio Relevadas
 category: development
-tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd]
-sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
-updated: 2026-08-20
+tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd, compras-usd, supervision]
+sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html, relevamiento-compras-gastos-usd-reglas-negocio.html, relevamiento-supervision-retrofit-reglas-negocio.html]
+updated: 2026-08-25
 ---
 
 # Reglas de Negocio Relevadas
@@ -404,6 +404,61 @@ moneda), `tenants` (permisos de quién elige tipo de dólar, umbrales USD), repo
 USD/ARS separado). Backend: `abrirCaja`/`cerrarCaja`/`calcularVuelto`/`registrarVenta`/
 `devolver_saldo_a_favor` pasan a ser moneda-aware. No toca `emitir-factura` salvo la fuente de cotización
 del C2 (pendiente contador).
+
+---
+
+## Módulo: Compras/Gastos en USD + tasa de cambio editable (relevado 2026-08-21)
+
+> Relevamiento `relevamiento-compras-gastos-usd-reglas-negocio.html` (raíz del repo). **Respondido por
+> Fede 2026-08-21, 100% CERRADO**, con instrucción explícita de arrancar ya (no esperar sesión dedicada).
+> Distinto de G5 (arriba), que solo cubrió el lado de **ventas** — este cubre **compras/gastos**, feature
+> nueva de punta a punta. **Fase 1 (cimientos de datos) ✅ YA CONSTRUIDA Y APLICADA EN DEV** (mig 379,
+> commit `6a0f46af`, sin pushear/deployar todavía). Detalle técnico completo: [[wiki/features/gastos]] →
+> "Compras/Gastos en USD + tasa de cambio editable", [[wiki/features/clientes-proveedores]],
+> `wiki/database/migraciones.md` (mig 379).
+
+### Decisiones cerradas
+
+| # | Decisión |
+|---|---|
+| — | **3 mecanismos de cotización independientes**: sidebar/ventas (colaborativo, ya existía, ver G5 arriba), Bóveda (separada, exclusiva DUEÑO, ver F2/F3 de G5), Compras (**100% manual por transacción** — el usuario tipea la cotización al confirmar el pago/costo) |
+| C1 | Solo se guarda `cotizacion_usd` si hay **descalce de moneda** entre el costo del ítem y el medio de pago usado — si costo y pago coinciden en moneda, queda NULL (sin conversión que registrar) |
+| — | Aviso **NO bloqueante** si la cotización tipeada manualmente se aleja **20-30%** de una referencia (no impide confirmar, solo advierte) |
+| H1 | **Nunca se redondea** — mismo criterio que G5 (`numeric(14,2)` preserva decimales exactos) |
+| — | La cotización usada queda **congelada** al confirmar la transacción (snapshot, no recalculable después) |
+| D1 (técnica) | El dinero para pagar una compra en USD sale de la **Caja USD operativa** (no directo de la Bóveda) — arquitectura: Bóveda = resguardo general, Caja = capa operativa. Confirmado que `registrar_pago_oc()` YA soporta egresos reales en `caja_movimientos` — no hacía falta construir esa capacidad de cero (solo faltaba que completara la columna `moneda`, fix de mig 379) |
+
+### Alcance real (Fase 1, ya construida)
+
+Toca: `gastos`/`gastos_fijos`/`ordenes_compra` (columnas `moneda`/`cotizacion_usd` nuevas, mismo patrón
+que `ventas.cotizacion_usd` de G5) y `registrar_pago_oc()` (fix de la columna `moneda` en el INSERT a
+`caja_movimientos`). **Sin wiring de frontend todavía** — permisos, UI de Gastos/OC en USD y reportes
+quedan para la Fase 2+, sin un plan de fases fijo detallado de antemano (a diferencia de las 8 fases de
+G5): se decidió iterar.
+
+---
+
+## Módulo: Supervisión — retrofit a más módulos (relevado 2026-08-20)
+
+> Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), continuación de
+> `relevamiento_supervisor_tab_respuestas.md` (esa ya cerró "sí, construir el patrón" — este responde "a
+> qué módulos y con qué alcance"). **Respondido por Fede 2026-08-20, 100% CERRADO.** Detalle técnico
+> completo, incluido el bloqueante técnico común y el estado real: [[wiki/features/supervision]] →
+> "Retrofit a más módulos".
+
+### Decisiones cerradas
+
+| # | Módulo | Decisión |
+|---|---|---|
+| — | Ventas | Solo "anular venta despachada" pasa a cola de aprobación de Supervisión. Regla nueva: si la venta ya fue facturada, primero hay que emitir NC antes de poder eliminarla |
+| — | Caja | Sigue con clave maestra síncrona — **nunca** pasa a cola de aprobación asincrónica |
+| — | Productos | `kit_precio`/`repricing_margen` (hoy en el tab de Inventario) se reclasifican a `modulo='productos'` |
+| — | Clientes / Envíos / Proveedores / Pedidos / RRHH | 2 niveles: eliminaciones delegables a supervisores vía el patrón; un puñado de acciones más sensibles quedan solo-Dueño |
+
+**Bloqueante técnico común, sin resolver todavía**: `productos`, `envios`, `proveedores`, `pedidos` y
+`recursos` no están hoy en el CHECK `autorizaciones.modulo` (mig 347) ni en la lista `MODULOS` de
+`UsuariosPage.tsx` — hay que sumarlos antes de delegar nada de esos módulos. **Orden de fases: a criterio
+de GO, sin definir. Sin diseño técnico ni código arrancado.**
 
 ---
 

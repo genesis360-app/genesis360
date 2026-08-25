@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   capacidadCrearOC, ocRequiereAprobacion, puedeAprobarOC,
   puedeEnviarOC, puedeRegistrarPagoOC, requiereDobleFirmaPago,
+  puedeCargarCotizacionCompras,
 } from '@/lib/comprasPermisos'
 
 // Compras CO1 — gobierno de OC (permisos + aprobación)
@@ -78,5 +79,25 @@ describe('requiereDobleFirmaPago (D5)', () => {
   it('con umbral → solo si lo supera (borde incluido)', () => {
     expect(requiereDobleFirmaPago(50000, { umbral: 50000 })).toBe(true)
     expect(requiereDobleFirmaPago(49999, { umbral: 50000 })).toBe(false)
+  })
+})
+
+// Compras/Gastos en USD (mig 380) — E1: quién puede cargar la cotización manual de una compra
+describe('puedeCargarCotizacionCompras (E1, mig 380)', () => {
+  it('DUEÑO siempre puede, sea cual sea la lista guardada', () => {
+    expect(puedeCargarCotizacionCompras('DUEÑO', null, null)).toBe(true)
+    expect(puedeCargarCotizacionCompras('DUEÑO', null, [])).toBe(true)
+  })
+  it('otros roles: NULL/[] (default) → nadie más que DUEÑO', () => {
+    expect(puedeCargarCotizacionCompras('SUPERVISOR', null, null)).toBe(false)
+    expect(puedeCargarCotizacionCompras('SUPERVISOR', null, [])).toBe(false)
+  })
+  it('rol base habilitado explícitamente en la lista → puede', () => {
+    expect(puedeCargarCotizacionCompras('SUPERVISOR', null, ['SUPERVISOR'])).toBe(true)
+    expect(puedeCargarCotizacionCompras('CAJERO', null, ['SUPERVISOR'])).toBe(false)
+  })
+  it('rol custom habilitado vía "custom:{id}" → puede', () => {
+    expect(puedeCargarCotizacionCompras('CAJERO', 'rol-finanzas-123', ['custom:rol-finanzas-123'])).toBe(true)
+    expect(puedeCargarCotizacionCompras('CAJERO', 'otro-rol', ['custom:rol-finanzas-123'])).toBe(false)
   })
 })

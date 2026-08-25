@@ -12,8 +12,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { saldoEfectivoSesion } from '@/lib/cajaSaldo'
-import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
-import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule } from '@/lib/comprasPago'
+import { puedeRegistrarPagoOC, requiereDobleFirmaPago, puedeCargarCotizacionCompras } from '@/lib/comprasPermisos'
+import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule, convertirMontoAMonedaOC, desvioCotizacionFuerte } from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { logActividad } from '@/lib/actividadLog'
@@ -268,6 +268,7 @@ export default function GastosPage() {
   const [ocDescuentoTipo, setOcDescuentoTipo]       = useState<'monto' | 'pct'>('monto')
   const [ocCajaSeleccionadaId, setOcCajaSeleccionadaId] = useState<string | null>(null)
   const [ocClaveMaestra, setOcClaveMaestra]         = useState('')  // D5 — doble firma de pago por umbral
+  const [ocCotizacionDescalce, setOcCotizacionDescalce] = useState('')  // Compras/Gastos USD (mig 381, B3) — cotización manual si algún medio está en otra moneda que la OC
   // Auditoría #5 — pagar con medio "Cheque" crea el cheque vinculado (datos del cheque)
   const [ocChequeNro, setOcChequeNro]               = useState('')
   const [ocChequeBanco, setOcChequeBanco]           = useState('')
@@ -685,12 +686,22 @@ export default function GastosPage() {
   })
 
   const ocSeleccionada = ocs.find((o: any) => o.id === ocModalId) ?? null
-  // Compras/Gastos en USD (mig 379) — solo ofrecer cajas cuya moneda coincide con la de la OC que
-  // se está pagando (mismo criterio que sesionesOperativas para Gastos sueltos, arriba). Evita que
-  // el trigger de la DB rechace el movimiento en silencio o, peor, que quede mal contabilizado si
-  // algún día ese trigger no cubre el caso.
   const ocMoneda = (ocSeleccionada as any)?.moneda ?? 'ARS'
-  const cajasAbiertasOCMoneda = (cajasAbiertasOC as any[]).filter(s => (s.cajas?.moneda ?? 'ARS') === ocMoneda)
+  // Compras/Gastos en USD (mig 381) — la caja que recibe el movimiento tiene que ser de la moneda
+  // REAL del medio que se está pagando, no la de la OC — con descalce (B3) son distintas (ej. OC en
+  // USD pagada con un medio en ARS: el efectivo físico entra a una Caja en ARS). Asume que todos los
+  // medios no-CC de un mismo pago comparten moneda (mezclar 2 monedas de medios en un solo pago no
+  // está soportado — el RPC solo acepta una sesión de caja por pago). Sin descalce, da lo mismo que
+  // antes (medio y OC coinciden), cero cambio de comportamiento para el caso ARS de siempre.
+  const primerMedioConMonto = ocMediosPago.find(m => m.tipo !== 'Cuenta Corriente' && (parseFloat(m.monto.replace(',', '.')) || 0) > 0)
+  const monedaPagoUI = primerMedioConMonto ? monedaDeMetodo(primerMedioConMonto.tipo) : ocMoneda
+  const cajasAbiertasOCMoneda = (cajasAbiertasOC as any[]).filter(s => (s.cajas?.moneda ?? 'ARS') === monedaPagoUI)
+  // Compras/Gastos en USD (mig 381, B3) — para mostrar el input de cotización manual en el modal.
+  const hayDescalceUI = ocMediosPago.some(m =>
+    m.tipo !== 'Cuenta Corriente' && (parseFloat(m.monto.replace(',', '.')) || 0) > 0 && monedaDeMetodo(m.tipo) !== ocMoneda)
+  const puedeCotizacionCompras = puedeCargarCotizacionCompras(user?.rol, (user as any)?.rol_custom_id, (tenant as any)?.compras_cotizacion_roles_permitidos)
+  const cotizacionDescalceNumUI = parseFloat(ocCotizacionDescalce.replace(',', '.'))
+  const cotizacionReferenciaUI = (tenant as any)?.cotizacion_usd_compra || (tenant as any)?.cotizacion_usd || null
 
   const ocsFiltradas = useMemo(() => {
     const hoyStr = new Date().toISOString().split('T')[0]
@@ -766,21 +777,31 @@ export default function GastosPage() {
         .filter(m => !isNaN(m.monto) && m.monto > 0)
 
       if (!mediosValidos.length) { toast.error('Ingresá al menos un monto válido'); setOcGuardando(false); return }
-      // Compras/Gastos en USD (mig 379) — bloquear en el cliente un pago con moneda distinta a la
-      // de la OC (además del filtro del selector) para no depender solo de que el trigger de la DB
-      // lo rechace — acá se puede dar un mensaje claro en vez de un error genérico.
-      const medioDesajustado = mediosValidos.find(m => m.tipo !== 'Cuenta Corriente' && monedaDeMetodo(m.tipo) !== ocMoneda)
-      if (medioDesajustado) {
-        toast.error(`"${medioDesajustado.tipo}" está en ${monedaDeMetodo(medioDesajustado.tipo)}, pero esta OC es en ${ocMoneda}. Usá un medio en ${ocMoneda}.`)
-        setOcGuardando(false); return
+      // Compras/Gastos en USD (mig 381, B3/C1): un medio en moneda distinta a la de la OC
+      // (descalce) ya NO se bloquea de plano — se convierte con una cotización manual, gateada por
+      // permiso (E1, mig 380). El pre-check acá espeja EXACTO la conversión que hace
+      // registrar_pago_oc server-side (mismo helper puro) — el RPC sigue siendo la autoridad real.
+      const hayDescalce = mediosValidos.some(m => m.tipo !== 'Cuenta Corriente' && monedaDeMetodo(m.tipo) !== ocMoneda)
+      const cotizacionDescalceNum = parseFloat(ocCotizacionDescalce.replace(',', '.'))
+      if (hayDescalce) {
+        if (!puedeCargarCotizacionCompras(user?.rol, (user as any)?.rol_custom_id, (tenant as any)?.compras_cotizacion_roles_permitidos)) {
+          toast.error(`Tu rol no puede cargar la cotización manual de una compra — pedile al Dueño (o a un rol habilitado) que la cargue, o pagá con un medio en ${ocMoneda}.`)
+          setOcGuardando(false); return
+        }
+        if (!(cotizacionDescalceNum > 0)) {
+          toast.error('Ingresá la cotización usada para convertir el pago (hay un medio en moneda distinta a la de esta OC).')
+          setOcGuardando(false); return
+        }
       }
       if (cajasAbiertasOCMoneda.length > 1 && !ocCajaSeleccionadaId && mediosValidos.some(m => m.tipo !== 'Cuenta Corriente')) {
         toast.error('Seleccioná la caja en la que se registrará el movimiento'); setOcGuardando(false); return
       }
 
       const montoCC = mediosValidos.filter(m => m.tipo === 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
-      const montoNoCc = mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
-      const montoTotalMedios = montoCC + montoNoCc
+      const montoNoCcConvertido = mediosValidos
+        .filter(m => m.tipo !== 'Cuenta Corriente')
+        .reduce((s, m) => s + convertirMontoAMonedaOC(m.monto, monedaDeMetodo(m.tipo), ocMoneda, cotizacionDescalceNum), 0)
+      const montoTotalMedios = montoCC + montoNoCcConvertido
 
       // D5 — permisos de pago de OC (pre-check de UX; el RPC registrar_pago_oc los re-valida server-side).
       if (!puedeRegistrarPagoOC(user?.rol)) { toast.error('El CONTADOR tiene acceso de solo lectura — no puede registrar pagos.'); setOcGuardando(false); return }
@@ -844,6 +865,7 @@ export default function GastosPage() {
         p_cheque: chequeObj,
         p_pago_dias: parseInt(ocPagoDias) || 30,
         p_pago_condiciones: ocPagoCondiciones || null,
+        p_cotizacion_usd: hayDescalce ? cotizacionDescalceNum : null,  // Compras/Gastos USD (mig 381)
       })
       if (pagoErr) throw pagoErr
       if (montoCheque > 0) toast(`Cheque por $${montoCheque.toLocaleString('es-AR', { maximumFractionDigits: 0 })} registrado en Gastos → Cheques`, { icon: '🧾' })
@@ -858,6 +880,7 @@ export default function GastosPage() {
       setOcModalId(null)
       setOcClaveMaestra('')
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
+      setOcCotizacionDescalce('')
       setOcChequeNro(''); setOcChequeBanco(''); setOcChequeFechaCobro('')
       setOcPagoCondiciones('')
       setOcDescuento('0'); setOcDescuentoTipo('monto')
@@ -3158,7 +3181,7 @@ export default function GastosPage() {
                         </div>
                       </div>
                       {oc.estado_pago !== 'pagada' && (
-                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0'); setOcDescuentoTipo('monto'); setOcCajaSeleccionadaId(null) }}
+                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0'); setOcDescuentoTipo('monto'); setOcCajaSeleccionadaId(null); setOcCotizacionDescalce('') }}
                           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/90 transition-all">
                           <DollarSign size={12} /> Pagar / CC
                         </button>
@@ -3357,9 +3380,12 @@ export default function GastosPage() {
                             <select value={m.tipo}
                               onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
                               className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                              {/* Compras/Gastos en USD (mig 379): solo medios en la moneda de la OC
-                                  (CC es moneda-agnóstica, siempre disponible). */}
-                              {MEDIOS_OC_DB.filter(t => t === 'Cuenta Corriente' || monedaDeMetodo(t) === ocMoneda).map(t => <option key={t}>{t}</option>)}
+                              {/* Compras/Gastos en USD (mig 381): se ofrecen TODOS los medios — uno
+                                  en otra moneda que la OC es un pago con descalce válido (B3), no
+                                  se bloquea, pero exige cargar la cotización manual más abajo. */}
+                              {MEDIOS_OC_DB.map(t => (
+                                <option key={t} value={t}>{t}{t !== 'Cuenta Corriente' && monedaDeMetodo(t) !== ocMoneda ? ` (${monedaDeMetodo(t)})` : ''}</option>
+                              ))}
                             </select>
                             <input type="number" onWheel={e => e.currentTarget.blur()}
                               value={m.monto} onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
@@ -3376,6 +3402,34 @@ export default function GastosPage() {
                         className="mt-2 flex items-center gap-1 text-xs text-accent-text hover:underline">
                         <Plus size={12} /> Agregar medio
                       </button>
+
+                      {/* Compras/Gastos en USD (mig 381, B3) — cotización manual si hay descalce */}
+                      {hayDescalceUI && (
+                        !puedeCotizacionCompras ? (
+                          <p className="mt-2 text-xs text-red-500 dark:text-red-400">
+                            ⚠ Hay un medio en otra moneda que esta OC ({ocMoneda}). Tu rol no puede cargar la
+                            cotización manual — pedile al Dueño (o a un rol habilitado) que registre este pago.
+                          </p>
+                        ) : (
+                          <div className="mt-2 p-2.5 border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                            <label className="block text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">
+                              Cotización usada para convertir (1 USD = $...)
+                            </label>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                              value={ocCotizacionDescalce}
+                              onChange={e => setOcCotizacionDescalce(e.target.value)}
+                              placeholder={cotizacionReferenciaUI ? String(cotizacionReferenciaUI) : 'ej: 1450'}
+                              className="w-32 px-2 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            {cotizacionDescalceNumUI > 0 && desvioCotizacionFuerte(cotizacionDescalceNumUI, cotizacionReferenciaUI) && (
+                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                                ⚠ Se aleja {Math.round(Math.abs(cotizacionDescalceNumUI - cotizacionReferenciaUI!) / cotizacionReferenciaUI! * 100)}%
+                                de la cotización de referencia (${cotizacionReferenciaUI?.toLocaleString('es-AR')}). Puede ser un
+                                error de tipeo, o el proveedor legítimamente tiene otro tipo de cambio — confirmá antes de pagar.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      )}
                       {/* CO5/D3 — comprobante de transferencia adjunto a la OC */}
                       {ocMediosPago.some(m => m.tipo === 'Transferencia' && parseFloat(m.monto.replace(',', '.')) > 0) && (
                         <div className="mt-2">
@@ -3433,14 +3487,22 @@ export default function GastosPage() {
                       </div>
                     )}
                     {(() => {
-                      const totalMedios = ocMediosPago.reduce((s, m) => s + (parseFloat(m.monto.replace(',', '.')) || 0), 0)
+                      // Compras/Gastos en USD (mig 381) — mismo criterio de conversión que el pre-check
+                      // real (en registrarPagoOC) y que el RPC: un medio en otra moneda se convierte con
+                      // la cotización cargada antes de comparar contra el saldo (en moneda de la OC).
+                      const totalMedios = ocMediosPago.reduce((s, m) => {
+                        const monto = parseFloat(m.monto.replace(',', '.')) || 0
+                        if (m.tipo === 'Cuenta Corriente' || monto <= 0) return s + monto
+                        const convertido = convertirMontoAMonedaOC(monto, monedaDeMetodo(m.tipo), ocMoneda, cotizacionDescalceNumUI)
+                        return s + (isNaN(convertido) ? 0 : convertido)
+                      }, 0)
                       const saldo = calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)
                       return (
                         <>
                           {totalMedios > 0 && (
                             <div className="flex justify-between text-sm font-semibold">
                               <span className="text-gray-600 dark:text-gray-400">Total asignado</span>
-                              <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent-text'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent-text'}>{formatMonedaLib(totalMedios, ocMoneda)}</span>
                             </div>
                           )}
                           {/* Selector de caja para el movimiento — Compras/Gastos en USD (mig 379):
@@ -3469,17 +3531,25 @@ export default function GastosPage() {
                       </p>
                     </div>
                   )}
-                  {ocMediosPago.some(m => mediosEfectivo.has(m.tipo) && monedaDeMetodo(m.tipo) === ocMoneda) && cajasAbiertasOCMoneda.length === 0 && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja en {ocMoneda} abierta. El egreso en efectivo no se registrará en caja.</p>
+                  {ocMediosPago.some(m => mediosEfectivo.has(m.tipo) && (parseFloat(m.monto.replace(',', '.')) || 0) > 0) && cajasAbiertasOCMoneda.length === 0 && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja en {monedaPagoUI} abierta. El egreso en efectivo no se registrará en caja.</p>
                           )}
                         </>
                       )
                     })()}
                   </div>
                 </div>
-                {/* D5 — doble firma: clave maestra si el pago supera el umbral configurado */}
+                {/* D5 — doble firma: clave maestra si el pago supera el umbral configurado.
+                    Compras/Gastos en USD (mig 381): mismo criterio de conversión que el resto —
+                    el umbral está pensado en pesos, así que un pago en USD sin descalce (sin
+                    cotización cargada) no lo dispara. Limitación conocida, no resuelta a propósito. */}
                 {(() => {
-                  const totalPago = ocMediosPago.reduce((s, m) => s + (parseFloat(m.monto.replace(',', '.')) || 0), 0)
+                  const totalPago = ocMediosPago.reduce((s, m) => {
+                    const monto = parseFloat(m.monto.replace(',', '.')) || 0
+                    if (m.tipo === 'Cuenta Corriente' || monto <= 0) return s + monto
+                    const convertido = convertirMontoAMonedaOC(monto, monedaDeMetodo(m.tipo), ocMoneda, cotizacionDescalceNumUI)
+                    return s + (isNaN(convertido) ? 0 : convertido)
+                  }, 0)
                   if (!(tenant as any)?.clave_maestra) return null
                   if (!requiereDobleFirmaPago(totalPago, { umbral: (tenant as any)?.oc_pago_doble_firma_umbral })) return null
                   return (
@@ -3495,7 +3565,8 @@ export default function GastosPage() {
                 <div className="flex gap-2 px-5 pb-5">
                   <button onClick={() => { setOcModalId(null); setOcClaveMaestra('') }} className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
                   <button onClick={registrarPagoOC}
-                    disabled={ocGuardando || !ocMediosPago.some(m => parseFloat(m.monto.replace(',','.')) > 0)}
+                    disabled={ocGuardando || !ocMediosPago.some(m => parseFloat(m.monto.replace(',','.')) > 0)
+                      || (hayDescalceUI && (!puedeCotizacionCompras || !(cotizacionDescalceNumUI > 0)))}
                     className="flex-1 py-2.5 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50">
                     {ocGuardando ? 'Guardando…' : 'Confirmar pago'}
                   </button>

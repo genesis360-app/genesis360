@@ -55,3 +55,21 @@ export function requiereDobleFirmaPago(
 ): boolean {
   return cfg.umbral != null && cfg.umbral > 0 && monto >= cfg.umbral
 }
+
+/**
+ * E1 (Compras/Gastos USD, mig 380) — ¿puede este usuario cargar/editar la cotización manual de
+ * una compra con descalce de moneda? DUEÑO siempre; el resto solo si su rol (o rol custom) está en
+ * tenants.compras_cotizacion_roles_permitidos. Mismo shape que cotizacion_usd_roles_permitidos
+ * (G5) — reusa el criterio, no la función (esa vive en cajaPermisos.ts, this stays self-contained).
+ */
+export function puedeCargarCotizacionCompras(
+  rol: RolUsuario | null | undefined,
+  rolCustomId: string | null | undefined,
+  rolesPermitidos: string[] | null | undefined,
+): boolean {
+  if (rol === 'DUEÑO') return true
+  const lista = rolesPermitidos ?? []
+  if (rol && lista.includes(rol)) return true
+  if (rolCustomId && lista.includes(`custom:${rolCustomId}`)) return true
+  return false
+}

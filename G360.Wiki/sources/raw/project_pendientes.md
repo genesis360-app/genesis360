@@ -6,11 +6,25 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-25, cont. 25) — 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS,
+> ### ✅ ARRANCÁ ACÁ (2026-08-25/26, cont. 25) — 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS,
 > COMMITEADAS Y PUSHEADAS a `origin/dev` (migs 380+381), tag+release **`v1.180.0`** publicados — pago de
-> OC con descalce de moneda funcionando end-to-end en DEV, **SIN deploy a PROD todavía** — continúa la
-> misma sesión que cont. 24 (abajo, ahora histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía)
-> SIGUE VIGENTE, sin cambios
+> OC con descalce de moneda funcionando end-to-end en DEV, **SIN deploy a PROD todavía** — + 📋 propuesta
+> NUEVA de Fede (Asistente de WhatsApp con IA + Portal de Proveedores) REVISADA por Claude, **SIN diseño
+> ni código arrancado** — + 🔴 hallazgo de seguridad RECURRENTE (el `SUPABASE_ACCESS_TOKEN` filtrado
+> SIGUE sin rotar de verdad, van ya varias sesiones) — continúa la misma sesión que cont. 24 (abajo, ahora
+> histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+>
+> **⚠ ÉSTA ES LA ÚLTIMA ENTRADA DE ESTA SESIÓN ANTES DEL `/clear`.**
+>
+> #### 🛑 2 PREGUNTAS ABIERTAS PARA GO — leer ANTES de arrancar la próxima sesión
+>
+> 1. **¿Por dónde arrancar** de la propuesta de Fede: el **Asistente de WhatsApp con IA** (reusa el motor
+>    de tool-calling + confirmación humana ya probado del "Plan IA", menor riesgo) **o primero un
+>    relevamiento técnico dedicado del Portal de Proveedores** (hay un problema arquitectónico de
+>    cross-tenant sin resolver, ver abajo)?
+> 2. **¿GO rotó de verdad el `SUPABASE_ACCESS_TOKEN`** filtrado (`sbp_60df…`) esta vez, sí o no? Se lo
+>    avisamos explícitamente en esta sesión y quedó sin confirmar antes de cambiar de tema — es la
+>    enésima vez que este hallazgo se re-flagea sin resolverse (ver detalle abajo).
 >
 > #### 💵 Fase 2 — permisos (migración 380, commit `cce107c8`)
 >
@@ -90,6 +104,76 @@ type: project
 > Ver `log.md` (entrada al principio), [[wiki/features/gastos]] (sección "Compras/Gastos en USD" extendida
 > a Fases 2-3), [[wiki/development/reglas-negocio]] (nota de progreso), `wiki/database/migraciones.md`
 > (migs 380+381, título a 001-381), `wiki/business/roadmap.md` ("Versión en DEV" actualizada).
+>
+> #### 📋 Propuesta nueva de Fede (25/8/2026): Asistente de WhatsApp con IA + Portal de Proveedores — REVISADA, SIN diseño ni código arrancado
+>
+> Fede le mandó a GO un documento grande (secciones A-M) proponiendo un alcance nuevo para Genesis360. GO
+> se lo pasó a Claude para revisar y armar plan de acción — **solo conversación en esta sesión, nada
+> construido todavía**. Resumen completo en la memoria del proyecto
+> (`project_whatsapp_ia_portal_proveedores.md`); acá el resumen corto para retomar.
+>
+> **Qué propone Fede:**
+> - **Asistente de WhatsApp con IA para el DUEÑO** de cada negocio (clientes finales del negocio, todavía
+>   no): consultar stock/cargar gastos con fotos/audio, integración directa con Meta Cloud API, "cerebro"
+>   con la API de Claude (Sonnet 5) + tool-calling sobre la base real de Genesis360. Cada negocio con su
+>   propio número (fase actual: número NUEVO dedicado, no el personal del dueño). **Fase futura (no
+>   ahora, pero la arquitectura debe dejar lugar):** un 2do agente para CLIENTES FINALES del negocio,
+>   solo-lectura de stock/precio, nunca aplica cambios — un negocio podría tener 2+ números/agentes a
+>   futuro.
+> - Confirmación humana SIEMPRE antes de guardar cualquier dato cargado por el bot (mismo criterio de
+>   REGLA #0 ya usado en el resto del sistema).
+> - Notificaciones proactivas: briefing diario (apertura/cierre) SOLO al dueño, por plantilla
+>   pre-aprobada de Meta.
+> - Transcripción de audio: WhatsApp entrega OGG/Opus → se manda a un Speech-to-Text separado (Whisper
+>   API de OpenAI sugerido) → el texto va al mismo pipeline de herramientas.
+> - Sistema de medición de uso y facturación nuevo (por tenant, por tipo de costo: tokens, imagen, audio,
+>   conversación de WhatsApp) — mismo patrón de tiers que ya usan para comprobantes.
+> - **Portal de Proveedores**: tipo de usuario nuevo (no el sistema de roles existente), acceso limitado
+>   a sus propios presupuestos. El proveedor carga presupuestos con CAMPOS ESTRUCTURADOS (no fotos —
+>   evita que una IA "interprete mal" un papel borroso sin darse cuenta). Sigue el flujo YA EXISTENTE de
+>   Órdenes de Compra (pagada antes de pasar a Recepción). Gratis para el proveedor por ahora (funnel de
+>   ventas). **Confirmado por Fede: una sola cuenta de proveedor, usable en varios negocios clientes
+>   distintos.**
+> - ⚠ Timing: desde el 1° de octubre de 2026 Meta cobra TODO mensaje saliente por API (hoy la ventana de
+>   24hs de respuesta es gratis) — a tener en cuenta en el diseño de costos.
+> - Legal: el DPA pendiente con el abogado (Lucas) para "datos de terceros" ahora también debe cubrir a
+>   los PROVEEDORES de los negocios clientes, no solo a los clientes finales.
+>
+> **2 hallazgos de la revisión de Claude que Fede/GO no tenían:**
+> 1. Gran parte de esto YA EXISTE: el "Plan IA" (Fases 1-3, EN PROD desde v1.179.0 — ver
+>    [[wiki/features/asistente-ia]] sección "Plan IA") ya construyó exactamente el patrón de agente con
+>    tool-calling + confirmación humana antes de escribir que pide esta propuesta. La diferencia real es
+>    el canal (WhatsApp en vez de chat web) y el modelo (Claude en vez de Groq gratis).
+> 2. 🔴 **Problema arquitectónico real, sin resolver** (verificado contra `supabase/schema_full.sql`): la
+>    tabla `users` tiene `tenant_id` como columna ÚNICA — todo el sistema asume que un usuario pertenece a
+>    EXACTAMENTE un tenant. La decisión de negocio de "una sola cuenta de proveedor usable en varios
+>    negocios" rompe ese supuesto de raíz — necesita un modelo de identidad cross-tenant nuevo (distinto
+>    del panel `genesis360-admin`, que es para staff interno, no para un actor externo como un
+>    proveedor). **Sin diseñar todavía.**
+>
+> **Plan de acción propuesto por Claude, SIN confirmar por GO:** no construir las 3 piezas en paralelo —
+> (1) Asistente WhatsApp primero (reusa el motor ya probado, menor riesgo — e iniciar YA el trámite de
+> verificación de Meta Business en paralelo al diseño, por el tiempo de espera real); (2) medición de
+> uso/facturación en paralelo al final de (1); (3) Portal de Proveedores aparte, con su propio
+> relevamiento técnico por el problema cross-tenant. Diferido (marcado así por el propio Fede): agente
+> para clientes finales, app propia en vez de WhatsApp.
+>
+> **Estado real: revisado, SIN empezar diseño ni código.** Ver las 2 preguntas abiertas para GO al
+> principio de este bloque.
+>
+> #### 🔴 Hallazgo de seguridad RECURRENTE (van ya varias veces): `SUPABASE_ACCESS_TOKEN` filtrado SIGUE sin rotar
+>
+> GO le pasó a Claude un `SUPABASE_ACCESS_TOKEN` para regenerar `schema_full.sql` (ver Fase 2/3 arriba,
+> commit `3279b381`). Ese token es el MISMO documentado en `reference_seguridad.md` como filtrado desde
+> el 2026-07-09 y NUNCA rotado de verdad (se había verificado el 2026-07-28 que el token "rotado" seguía
+> funcionando) — y este mismo hallazgo ya se había re-flageado en varias sesiones anteriores sin
+> resolverse (ver más abajo en este mismo archivo: bloque histórico 2026-07-28 "Rotar el
+> `SUPABASE_ACCESS_TOKEN`" y la nota "🔐 Seguridad" del rediseño UoM del 2026-07-27). Claude se lo avisó a
+> GO explícitamente en el momento; **GO no llegó a confirmar si lo rotó o no antes de que la sesión
+> pasara a otro tema. Sigue sin resolver.** Ver pregunta abierta #2 al principio de este bloque.
+>
+> Detalle: `reference_seguridad.md` (tabla "API keys rotadas en 2026-03", fila "Supabase Access Token",
+> actualizada con esta re-verificación).
 >
 > ---
 >

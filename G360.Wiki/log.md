@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-26] update | 📋 Propuesta nueva de Fede (Asistente WhatsApp con IA + Portal de Proveedores) REVISADA sin diseño ni código + 🔴 hallazgo de seguridad recurrente: token de Supabase SIGUE sin rotar
+
+Continúa la misma sesión que la entrada de abajo (Compras/Gastos en USD, migs 380+381, v1.180.0). **Ésta
+es la última entrada de la sesión antes del `/clear`.** Dos hilos, sin código nuevo:
+
+**Propuesta de Fede (25/8/2026) — Asistente de WhatsApp con IA + Portal de Proveedores**: Fede le mandó a
+GO un documento grande (secciones A-M) con un alcance nuevo. GO se lo pasó a Claude para revisar y armar
+plan de acción — **solo conversación, sin empezar diseño ni código**. Propone un asistente de WhatsApp
+para el DUEÑO de cada negocio (Meta Cloud API + Claude Sonnet 5 con tool-calling sobre la base real,
+confirmación humana siempre antes de guardar, briefing diario, transcripción de audio vía Whisper,
+medición de uso/facturación nueva) y un Portal de Proveedores (usuario nuevo, presupuestos con campos
+estructurados, reusa el flujo ya existente de Órdenes de Compra, gratis por ahora). Revisión de Claude
+encontró 2 cosas: (1) gran parte YA EXISTE — el "Plan IA" (Fases 1-3, EN PROD desde v1.179.0) ya construyó
+el mismo patrón de agente con tool-calling + confirmación humana, la diferencia real es el canal y el
+modelo; (2) 🔴 problema arquitectónico real sin resolver — `users.tenant_id` es columna ÚNICA en todo el
+sistema, y la decisión de negocio de "una sola cuenta de proveedor usable en varios negocios" rompe ese
+supuesto de raíz, necesita un modelo de identidad cross-tenant nuevo. Plan de acción propuesto por Claude
+(sin confirmar por GO): Asistente WhatsApp primero (reusa motor ya probado), medición de uso en paralelo
+al final, Portal de Proveedores aparte con relevamiento técnico propio por el problema cross-tenant.
+**2 preguntas quedan abiertas para GO**: por dónde arrancar, y si rotó o no el token (ver abajo).
+
+**🔴 Hallazgo de seguridad recurrente**: al regenerar `schema_full.sql` en esta misma sesión, el
+`SUPABASE_ACCESS_TOKEN` que pasó GO resultó ser el MISMO `sbp_60df…` documentado en
+`reference_seguridad.md` como filtrado desde el 2026-07-09 y NUNCA rotado de verdad — ya re-flageado sin
+resolverse en varias sesiones anteriores (2026-07-27, 2026-07-28 y ahora de nuevo). Claude avisó a GO en
+el momento; **GO no llegó a confirmar si lo rotó antes de que la sesión cambiara de tema. Sigue sin
+resolver.**
+
+Sin código de producto — no se creó página nueva en `wiki/features/` (nada construido todavía; se crea
+cuando haya diseño real). `index.md` sin cambios.
+
+Detalle completo: `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" al principio, con las 2
+preguntas abiertas destacadas arriba de todo), `sources/raw/reference_seguridad.md` (tabla "API keys
+rotadas", fila "Supabase Access Token").
+
+---
+
 ## [2026-08-25] update | 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS, COMMITEADAS Y PUSHEADAS a `origin/dev` (migs 380+381), tag+release v1.180.0 — pago de OC con descalce de moneda, sin deploy a PROD
 
 Continúa la misma sesión que la entrada de abajo (Fase 1, mig 379). **Fase 2 — permisos** (migración

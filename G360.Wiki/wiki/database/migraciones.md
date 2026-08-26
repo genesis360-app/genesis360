@@ -6,18 +6,78 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-25
 ---
 
-# Historial de Migraciones (001-379)
+# Historial de Migraciones (001-381)
+
+**381 (`381_compras_gastos_usd_fase3_descalce.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **⚠ código
+`v1.180.0`, SIN deployar a PROD todavía**:** Fase 3 (pago con descalce de moneda) del plan "Compras/Gastos en USD + tasa
+de cambio editable" (continúa las migs 379 y 380, abajo). Dos partes:
+1. 🔴 **Corrección de diseño encontrada ANTES de que importara** (REGLA #0): la mig 379 había puesto
+   `cotizacion_usd` como una columna ÚNICA en `ordenes_compra`/`gastos`/`gastos_fijos` — pero una OC/
+   gasto se puede pagar en varias cuotas a lo largo del tiempo, así que una sola columna no aguanta más
+   de una cotización sin pisar la anterior. Verificado con query real que 0 filas la usaban (ninguna
+   OC/gasto en USD existía todavía) antes de corregir. **`ordenes_compra`/`gastos`/`gastos_fijos` pierden
+   la columna `cotizacion_usd`** (se movió) — `caja_movimientos` la gana (`numeric(14,2)`, nullable): una
+   fila por movimiento real de pago, exactamente el mismo patrón que `ventas.cotizacion_usd` (mig 368,
+   G5). Las columnas `moneda` (moneda nativa, fija) de las 3 tablas quedan sin cambios.
+2. **`registrar_pago_oc()` gana el parámetro `p_cotizacion_usd`** (nullable, al final, compatible con
+   cualquier llamador viejo): si algún medio no-CC está en moneda distinta a la de la OC (descalce),
+   exige `p_cotizacion_usd` y convierte **server-side** (1 USD = `p_cotizacion_usd` ARS, nunca confía en
+   la aritmética del cliente). El monto ORIGINAL (moneda real del medio) es lo que sale físicamente de
+   esa caja; el equivalente convertido cubre `monto_pagado`/saldo (siempre en la moneda nativa de la OC).
+   Cuenta Corriente queda excluida de la conversión (moneda-agnóstica por diseño). Sin redondeo (H1).
+
+🔴 **2 hallazgos de seguridad reales, corregidos ANTES de aplicar**: (1) cambiar la CANTIDAD de
+parámetros de una función existente NO es reemplazable con un simple `CREATE OR REPLACE` — Postgres
+identifica una función por `(nombre, tipos de argumentos)`, así que sin un `DROP FUNCTION IF EXISTS`
+explícito con la firma vieja de 8 args esto crea un OVERLOAD nuevo dejando viva la función anterior — el
+único caller real (`GastosPage.tsx`) seguía llamando con 8 args nombrados, así que Postgres habría
+resuelto siempre hacia la vieja y toda la migración habría quedado código muerto (mismo patrón de fix ya
+usado en mig 190/248). (2) al verificar ese fix, se encontró que la función NUEVA (firma de 9 args) NO
+hereda los GRANT/REVOKE puntuales de la vieja — Postgres otorga EXECUTE a `PUBLIC` por default en todo
+`CREATE FUNCTION` nuevo, así que `anon` seguía pudiendo ejecutar el RPC vía ese grant heredado pese al
+`REVOKE FROM anon` explícito (`REVOKE FROM anon` no alcanza cuando `PUBLIC` también tiene EXECUTE).
+Cerrado con `REVOKE EXECUTE ... FROM PUBLIC, anon` explícito + `GRANT ... TO authenticated, service_role`
+para la firma nueva, reverificado con `has_function_privilege()` real (no alcanza con mirar el nombre en
+`information_schema.routine_privileges`).
+
+**Wiring de frontend** (`GastosPage.tsx`, commit `90976a33`, mismo commit que agrega las funciones puras
+`convertirMontoAMonedaOC`/`desvioCotizacionFuerte` en `src/lib/comprasPago.ts` y
+`puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`, con 20 tests unit nuevos): el modal de
+pago de OC ya no bloquea de plano un medio en otra moneda — exige la cotización manual (gateada por el
+permiso de la mig 380) y avisa (NO bloqueante) si se aleja ≥20% de la referencia del sidebar; la caja que
+recibe el movimiento usa la moneda REAL del medio pagado, no la de la OC.
+
+`migration-reviewer`: **APTA** tras corregir los 2 hallazgos de arriba. Verificado: `tsc`/`build` limpios,
+4 e2e reales de pago en ARS (`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`,
+`31_cheque_gasto_rechazo_mutante`, `27_gasto_efectivo_mutante`) siguen en verde — cero regresión. Ver
+[[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD", [[wiki/features/gastos]].
+
+---
+
+**380 (`380_compras_gastos_usd_fase2_permisos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `cce107c8`), **⚠ código `v1.180.0`,
+SIN deployar a PROD todavía**:** Fase 2 (permisos) del plan "Compras/Gastos en USD + tasa de cambio editable". Agrega
+`tenants.compras_cotizacion_roles_permitidos jsonb` — mismo patrón que `cotizacion_usd_roles_permitidos`
+de la Caja USD G5 (mig 370): NULL/[] = solo DUEÑO puede cargar/editar la cotización manual de una compra
+con descalce de moneda; roles adicionales (base o `custom:{id}`) configurables aparte. Solo cimiento de
+configuración — 100% aditivo, sin cambio de comportamiento hasta que la Fase 3 (mig 381, arriba) la
+consume. Ver [[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD".
+
+---
 
 **379 (`379_compras_gastos_usd_fase1_cimientos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA en `dev` local (commit `6a0f46af`), **⚠ SIN PUSHEAR a `origin/dev` ni
-deployar a PROD todavía** (`dev` local está 1 commit adelante de `origin/dev`):** Fase 1 (cimientos de
-datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `6a0f46af`), **⚠ código `v1.180.0`,
+SIN deployar a PROD todavía**:** Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
 respondido por Fede el 2026-08-21 (100% cerrado), distinto del G5 (Caja USD, que solo cubrió VENTAS): este
 cubre el lado de COMPRAS/GASTOS, feature nueva de punta a punta. Agrega:
 1. `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` en `gastos`, `gastos_fijos` y
    `ordenes_compra` — mismo patrón que `ventas.cotizacion_usd` (mig 368, Caja USD): NULL salvo que la
    transacción haya tenido una conversión real (solo se guarda si hay descalce de moneda entre costo y
    pago); nunca se redondea. 100% aditivo, `DEFAULT 'ARS'` preserva el comportamiento actual al 100%.
+   **⚠ Corregido por la mig 381 (arriba)**: la columna `cotizacion_usd` de estas 3 tablas fue eliminada y
+   movida a `caja_movimientos.cotizacion_usd` (no aguantaba más de un pago por cuota) — `moneda` en las 3
+   tablas queda sin cambios.
 2. 🔴 **Fix real de REGLA #0 encontrado al diseñar esta fase**: `registrar_pago_oc()` ya insertaba egresos
    reales en `caja_movimientos` (`egreso`/`egreso_informativo`) al pagar una OC — la Caja USD YA soportaba
    egresos, no hacía falta construir esa capacidad de cero (respuesta a una pregunta técnica que Fede le

@@ -412,10 +412,13 @@ del C2 (pendiente contador).
 > Relevamiento `relevamiento-compras-gastos-usd-reglas-negocio.html` (raíz del repo). **Respondido por
 > Fede 2026-08-21, 100% CERRADO**, con instrucción explícita de arrancar ya (no esperar sesión dedicada).
 > Distinto de G5 (arriba), que solo cubrió el lado de **ventas** — este cubre **compras/gastos**, feature
-> nueva de punta a punta. **Fase 1 (cimientos de datos) ✅ YA CONSTRUIDA Y APLICADA EN DEV** (mig 379,
-> commit `6a0f46af`, sin pushear/deployar todavía). Detalle técnico completo: [[wiki/features/gastos]] →
-> "Compras/Gastos en USD + tasa de cambio editable", [[wiki/features/clientes-proveedores]],
-> `wiki/database/migraciones.md` (mig 379).
+> nueva de punta a punta. **Fases 1, 2 y 3 (de las ~4-5 fases estimadas del plan) ✅ CONSTRUIDAS,
+> COMMITEADAS Y PUSHEADAS a `origin/dev` como `v1.180.0`** (migs 379, 380 y 381, commit `ac1a5c84`,
+> tag+release publicados — **sin deploy a PROD todavía, sin PR a `main`**): cimientos de datos + permisos
+> de cotización manual + pago de OC con descalce de moneda (conversión server-side,
+> `caja_movimientos.cotizacion_usd`). Detalle técnico completo:
+> [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable", [[wiki/features/clientes-proveedores]],
+> `wiki/database/migraciones.md` (migs 379-381).
 
 ### Decisiones cerradas
 
@@ -428,13 +431,21 @@ del C2 (pendiente contador).
 | — | La cotización usada queda **congelada** al confirmar la transacción (snapshot, no recalculable después) |
 | D1 (técnica) | El dinero para pagar una compra en USD sale de la **Caja USD operativa** (no directo de la Bóveda) — arquitectura: Bóveda = resguardo general, Caja = capa operativa. Confirmado que `registrar_pago_oc()` YA soporta egresos reales en `caja_movimientos` — no hacía falta construir esa capacidad de cero (solo faltaba que completara la columna `moneda`, fix de mig 379) |
 
-### Alcance real (Fase 1, ya construida)
+### Alcance real (Fases 1-3, ya construidas)
 
-Toca: `gastos`/`gastos_fijos`/`ordenes_compra` (columnas `moneda`/`cotizacion_usd` nuevas, mismo patrón
-que `ventas.cotizacion_usd` de G5) y `registrar_pago_oc()` (fix de la columna `moneda` en el INSERT a
-`caja_movimientos`). **Sin wiring de frontend todavía** — permisos, UI de Gastos/OC en USD y reportes
-quedan para la Fase 2+, sin un plan de fases fijo detallado de antemano (a diferencia de las 8 fases de
-G5): se decidió iterar.
+**Fase 1** (mig 379): `gastos`/`gastos_fijos`/`ordenes_compra` ganan `moneda`/`cotizacion_usd`, mismo
+patrón que `ventas.cotizacion_usd` de G5; fix de la columna `moneda` en el INSERT a `caja_movimientos`
+de `registrar_pago_oc()`. **Fase 2** (mig 380): `tenants.compras_cotizacion_roles_permitidos` — permiso
+de quién puede cargar la cotización manual (DUEÑO siempre + roles adicionales configurables). **Fase 3**
+(mig 381): `cotizacion_usd` se mueve de columna única a `caja_movimientos.cotizacion_usd` (una fila por
+pago, no aguanta más de un pago con descalce por columna única); `registrar_pago_oc()` gana
+`p_cotizacion_usd` y convierte server-side; wiring completo del modal de pago de OC en `GastosPage.tsx`
+(exige cotización si hay descalce, avisa si se aleja ≥20% de la referencia). **Sin plan de fases fijo
+detallado de antemano** (a diferencia de las 8 fases de G5): se decidió iterar, se estima el plan
+completo en ~4-5 fases totales. **Sin deploy a PROD todavía** (todo COMMITEADO Y PUSHEADO a `origin/dev`,
+sin PR a `main`). Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor,
+confirmar C2/C3 con GO, reportes G1/G2 (ARS/USD). Detalle completo: [[wiki/features/gastos]] →
+"Compras/Gastos en USD + tasa de cambio editable".
 
 ---
 

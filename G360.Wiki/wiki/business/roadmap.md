@@ -24,19 +24,19 @@ tenía esa versión hasta ahora. Detalle completo en `G360.Wiki/sources/raw/proj
 de verdad, bloque "ARRANCÁ ACÁ", cont. 24).  
 Antes de este release: v1.179.0 — Plan IA Fases 1+2+3 100% en PROD (PR #332, merge commit `7e19e7a3`, 3
 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** un commit por delante de PROD (commit `6a0f46af`, **sin tag/push todavía — `dev` local
-está 1 commit adelante de `origin/dev`**): **migración 379** (`379_compras_gastos_usd_fase1_cimientos.sql`)
-— Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" (relevamiento
-nuevo, respondido por Fede 2026-08-21). Agrega `moneda`/`cotizacion_usd` a `gastos`, `gastos_fijos`,
-`ordenes_compra`; de paso corrige un fix real de REGLA #0 en `registrar_pago_oc()` (nunca completaba la
-columna `moneda` de `caja_movimientos`). `migration-reviewer`: APTA. Ver `wiki/database/migraciones.md`
-(mig 379) y `wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en USD".  
+**Versión en DEV:** **v1.180.0** (commit `ac1a5c84`, tag+release publicados, `publishedAt:
+2026-08-25T20:02:11Z`) — **COMMITEADA Y PUSHEADA a `origin/dev`** (HEAD real `ac1a5c84`, confirmado con
+`git log origin/dev --oneline`), **sin PR a `main` todavía, sin deploy a PROD**: **migraciones
+379+380+381** — Fases 1, 2 y 3 del plan "Compras/Gastos en USD + tasa de cambio editable" (relevamiento
+nuevo, respondido por Fede 2026-08-21). Ver detalle en la sección `v1.180.0` más abajo. Ver
+`wiki/database/migraciones.md` (migs 379-381, título a 001-381) y `wiki/development/reglas-negocio.md` →
+"Módulo: Compras/Gastos en USD".  
 **2 relevamientos nuevos, ambos 100% RESPONDIDOS por Fede en esta misma sesión (2026-08-24/25)**: (a)
 retrofit del patrón "tab Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH —
-decisiones cerradas, sin diseño/código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fase 1 YA
-CONSTRUIDA, resto a iterar. Ver `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"),
+decisiones cerradas, sin diseño/código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fases 1-3
+YA CONSTRUIDAS, resto a iterar. Ver `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"),
 `wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
-Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ
+Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ
 ACÁ").  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -47,6 +47,57 @@ sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto ab
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
 **Última actualización:** 25 de Agosto, 2026
+
+---
+
+## v1.180.0 — 💵 Compras/Gastos en USD: Fases 1-3 (cimientos, permisos, pago con descalce de moneda) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+
+Continúa directo la v1.179.2 (abajo), misma sesión larga. Relevamiento "Compras/Gastos en USD + tasa de
+cambio editable" (respondido por Fede 2026-08-21, 100% cerrado) — distinto de la Caja USD (G5, que cubrió
+solo Ventas), este cubre el lado de Compras/Gastos, feature nueva de punta a punta.
+
+**Fase 1 — cimientos de datos** (mig 379, commit `6a0f46af`): `moneda`/`cotizacion_usd` en
+`gastos`/`gastos_fijos`/`ordenes_compra`. Fix real de REGLA #0: `registrar_pago_oc()` no completaba la
+columna `moneda` en `caja_movimientos` (quedaba siempre en ARS por default sin importar el medio real
+usado).
+
+**Fase 2 — permisos** (mig 380, commit `cce107c8`): `tenants.compras_cotizacion_roles_permitidos` —
+quién puede cargar la cotización manual de una compra (DUEÑO siempre + roles habilitados, mismo patrón
+que `cotizacion_usd_roles_permitidos` de la Caja USD G5).
+
+**Fase 3 — pago con descalce de moneda** (mig 381, commits `2476a3e4` + `90976a33`): 🔴 corrección de
+diseño encontrada antes de que importara — `cotizacion_usd` pasó de una columna única por OC/gasto (no
+aguanta pagos parciales múltiples) a `caja_movimientos.cotizacion_usd` (una fila por movimiento real de
+pago, verificado con query real que 0 filas usaban la columna vieja antes de moverla). `registrar_pago_oc()`
+gana `p_cotizacion_usd` y convierte server-side cuando un medio está en moneda distinta a la de la OC —
+nunca confía en la aritmética del cliente. **2 hallazgos de seguridad reales cerrados antes de aplicar**:
+(1) cambiar la cantidad de parámetros de una función existente crea un OVERLOAD en vez de reemplazarla —
+sin `DROP FUNCTION IF EXISTS` con la firma vieja, la lógica nueva hubiera quedado código muerto (mismo
+patrón de mig 190/248); (2) `anon` podía ejecutar el RPC vía el grant de `PUBLIC` pese al `REVOKE FROM
+anon` explícito — cerrado con `REVOKE FROM PUBLIC` + reverificado con `has_function_privilege()` real. De
+paso se re-verificó una nota vieja de memoria (56 días) sobre esta misma función expuesta a `anon` —
+comprobado contra PROD real que ya no es así, nota corregida. Frontend (`GastosPage.tsx`): input de
+cotización manual gateado por el permiso de la Fase 2, aviso NO bloqueante de desvío ≥20% de la
+referencia del sidebar, selector de caja corregido a la moneda real del medio pagado. Lógica de
+conversión extraída a funciones puras testeadas (`convertirMontoAMonedaOC`, `desvioCotizacionFuerte` en
+`src/lib/comprasPago.ts`; `puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`) — 20 tests unit
+nuevos.
+
+**Verificación**: suite unit completa (100 archivos, 1637 tests) en verde; 4 e2e reales de pago en ARS
+(`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`, `31_cheque_gasto_rechazo_mutante`,
+`27_gasto_efectivo_mutante`) en verde — cero regresión confirmada para el 100% del volumen real de hoy.
+`schema_full.sql` regenerado (commit `3279b381`, 13 migraciones de drift acumulado desde la Caja USD).
+
+**Estado real: `APP_VERSION` bumpeado a `v1.180.0`** (commit `ac1a5c84`), **tag + GitHub release
+publicados** sobre `dev` (`publishedAt: 2026-08-25T20:02:11Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`,
+SIN PR a `main`, SIN deploy a PROD**. Se estima el plan completo en ~4-5 fases; falta: sugerir la última
+cotización usada con ese proveedor específico (B3), Gastos sueltos con UI de moneda propia (hoy solo se
+cableó el pago de OC), confirmar C2/C3 (trazabilidad/freeze, ya cubiertos de hecho por el diseño) con GO,
+y reportes G1/G2 (desglose ARS/USD, sin empezar).
+
+Ver `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (migs
+379-381), [[wiki/features/gastos]], `wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en
+USD".
 
 ---
 

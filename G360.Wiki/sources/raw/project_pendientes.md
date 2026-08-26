@@ -6,11 +6,100 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-24/25, cont. 24) — 🚀 DEPLOY A PROD v1.179.2 (5 bugs reales; incluye de
+> ### ✅ ARRANCÁ ACÁ (2026-08-25, cont. 25) — 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS,
+> COMMITEADAS Y PUSHEADAS a `origin/dev` (migs 380+381), tag+release **`v1.180.0`** publicados — pago de
+> OC con descalce de moneda funcionando end-to-end en DEV, **SIN deploy a PROD todavía** — continúa la
+> misma sesión que cont. 24 (abajo, ahora histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía)
+> SIGUE VIGENTE, sin cambios
+>
+> #### 💵 Fase 2 — permisos (migración 380, commit `cce107c8`)
+>
+> `tenants += compras_cotizacion_roles_permitidos jsonb` — mismo patrón que
+> `cotizacion_usd_roles_permitidos` de la Caja USD G5 (mig 370): NULL/[] = solo DUEÑO puede cargar la
+> cotización manual de una compra con descalce; roles adicionales configurables (reusa el helper
+> `rolEnLista()`). Solo cimiento de configuración — sin UI todavía en este commit puntual (la consume la
+> Fase 3, abajo).
+>
+> #### 💵 Fase 3 — pago con descalce de moneda (migración 381, commits `2476a3e4` + `90976a33`)
+>
+> 🔴 **Corrección de diseño encontrada ANTES de que importara** (REGLA #0): la Fase 1 (mig 379) había
+> puesto `cotizacion_usd` como columna única en `ordenes_compra`/`gastos`/`gastos_fijos` — pero una OC/
+> gasto se puede pagar en varias cuotas a lo largo del tiempo, y una sola columna no aguanta más de una
+> cotización sin pisar la anterior. Verificado con query real que 0 filas la usaban (nadie había pagado
+> nada en USD todavía) antes de corregir. Se movió a **`caja_movimientos.cotizacion_usd`** (una fila por
+> movimiento real de pago), exactamente el mismo patrón que ya usa `ventas.cotizacion_usd` (mig 368, G5).
+> `gastos.moneda`/`ordenes_compra.moneda` (moneda nativa, fija) quedan sin cambios.
+>
+> `registrar_pago_oc()` ganó el parámetro `p_cotizacion_usd`: si un medio de pago está en moneda distinta
+> a la de la OC (descalce — ej. pagar en pesos una OC pactada en dólares), exige la cotización manual y
+> **convierte server-side** (nunca confía en la aritmética del cliente para esto). El monto físico que
+> sale de la caja queda en su moneda real; el equivalente convertido es lo que cubre la deuda de la OC.
+>
+> **2 hallazgos de seguridad reales, corregidos ANTES de aplicar**: (1) cambiar la cantidad de parámetros
+> de una función existente crea un OVERLOAD en vez de reemplazarla — sin un `DROP FUNCTION IF EXISTS`
+> explícito con la firma vieja, la función anterior seguía viva y la lógica de conversión nunca se hubiera
+> activado (código muerto) — fix con el mismo patrón ya usado en mig 190/248; (2) al verificar ese fix, se
+> encontró que `anon` (usuario sin sesión) igual podía ejecutar el RPC de plata — el `REVOKE FROM anon` no
+> alcanza cuando `PUBLIC` también tiene EXECUTE (Postgres se lo da por default a cualquier función nueva).
+> Cerrado con `REVOKE FROM PUBLIC` explícito + reverificado con `has_function_privilege()` real (no
+> alcanza con mirar el nombre en la lista de grants de `information_schema.routine_privileges`). **De
+> paso se re-verificó una nota vieja de la memoria del proyecto que decía que esta misma función seguía
+> expuesta a `anon` desde hace 56 días** — se comprobó contra PROD real que NO es así (`anon_puede=false`),
+> la nota vieja quedó corregida.
+>
+> **Wiring de frontend** (`GastosPage.tsx`, modal de pago de OC, commit `90976a33`): ya no bloquea de
+> plano un medio en otra moneda — ahora exige la cotización manual (gateada por el permiso de la Fase 2) y
+> un aviso NO bloqueante si la cotización cargada se aleja ≥20% de la cotización de referencia del
+> sidebar. Fix adicional encontrado al cablear: la caja que recibe el movimiento tiene que ser de la
+> moneda REAL del medio pagado, no la de la OC (con descalce son distintas). Lógica de conversión extraída
+> a funciones puras testeadas (`convertirMontoAMonedaOC`, `desvioCotizacionFuerte` en
+> `src/lib/comprasPago.ts`; `puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`) — 20 tests
+> unit nuevos.
+>
+> **Verificación real en cada paso**: `tsc`/`build` limpios en las 3 fases; 4 tests e2e reales que pagan
+> una OC/gasto en pesos (`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`,
+> `31_cheque_gasto_rechazo_mutante`, `27_gasto_efectivo_mutante`) siguen en verde en cada incremento —
+> cero regresión confirmada para el 100% del volumen real de hoy (todo en ARS).
+>
+> **`schema_full.sql` regenerado** (commit `3279b381`) — estaba desactualizado desde la migración 368 (13
+> migraciones de drift acumulado: Caja USD G5 completa + Plan IA + Compras/Gastos USD Fases 1-3), vía
+> Management API sin Docker (159 tablas, 195 funciones, 99 triggers, 179 policies, 8 vistas).
+>
+> **`APP_VERSION` bumpeado a `v1.180.0`** (commit `ac1a5c84`, `chore: bump APP_VERSION a v1.180.0` —
+> mensaje explícito: "Compras/Gastos en USD — Fases 1-3, solo en dev, sin deploy a PROD todavía"). **Tag +
+> GitHub release `v1.180.0`** publicados sobre `dev` (`gh release view v1.180.0`: `publishedAt:
+> 2026-08-25T20:02:11Z`, título "v1.180.0 — Compras/Gastos en USD (Fases 1-3)"). **Todo COMMITEADO Y
+> PUSHEADO a `origin/dev`** — confirmado con `git log origin/dev --oneline`: HEAD real `ac1a5c84` (mismo
+> commit que `dev` local, sin divergencia). **NADA de esto se deployó a PROD todavía** — sigue solo en
+> DEV, sin PR a `main`. Verificación adicional del release: suite unit completa (100 archivos, 1637 tests)
+> en verde.
+>
+> #### Qué falta del plan "Compras/Gastos en USD"
+>
+> - Sugerir la última cotización usada con ESE proveedor específico (segunda sugerencia de B3 del
+>   relevamiento — hoy el input de cotización arranca vacío/con la referencia general del sidebar, sin
+>   tracking por-proveedor).
+> - Gastos en USD con UI propia — la Fase 3 solo cableó el modal de pago de OC; un "gasto suelto" en
+>   `GastosPage.tsx` todavía no tiene selector de moneda en su formulario de creación, aunque
+>   `gastos.moneda` ya existe desde la Fase 1.
+> - C2/C3 (trazabilidad/freeze) — cubiertos de hecho por el diseño actual (`caja_movimientos.cotizacion_usd`
+>   queda congelado al insertar, el mecanismo de "nota de corrección" ya existente cubre errores) pero sin
+>   confirmar explícitamente con GO.
+> - G1/G2 (reportes/dashboard con desglose ARS/USD) — sin empezar.
+>
+> Ver `log.md` (entrada al principio), [[wiki/features/gastos]] (sección "Compras/Gastos en USD" extendida
+> a Fases 2-3), [[wiki/development/reglas-negocio]] (nota de progreso), `wiki/database/migraciones.md`
+> (migs 380+381, título a 001-381), `wiki/business/roadmap.md` ("Versión en DEV" actualizada).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-24/25, cont. 24) — 🚀 DEPLOY A PROD v1.179.2 (5 bugs reales; incluye de
 > arrastre el fix de moneda de Productos de v1.179.1) + 📋 2 relevamientos nuevos RESPONDIDOS por Fede
 > (retrofit Supervisión 100% cerrado; Compras/Gastos en USD 100% cerrado, Fase 1 YA CONSTRUIDA en DEV —
-> mig 379) + 🩹 incidente de infraestructura en DEV (RESUELTO) — continúa la misma sesión que cont. 23
-> (abajo, ahora histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+> mig 379) + 🩹 incidente de infraestructura en DEV (RESUELTO) — este bloque quedó SUPERADO por el de
+> arriba (cont. 25): Compras/Gastos en USD avanzó a las Fases 2+3 (migs 380+381), COMMITEADO Y PUSHEADO a
+> `origin/dev` — continúa la misma sesión que cont. 23 (abajo, ahora histórico) — Caja USD/Auditoría
+> (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
 >
 > #### 🚀 Deploy real a PROD — v1.179.2 (verificado con `git`/`gh` reales, no solo lo reportado)
 >

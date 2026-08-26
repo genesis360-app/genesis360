@@ -6,6 +6,59 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-25] update | 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS, COMMITEADAS Y PUSHEADAS a `origin/dev` (migs 380+381), tag+release v1.180.0 — pago de OC con descalce de moneda, sin deploy a PROD
+
+Continúa la misma sesión que la entrada de abajo (Fase 1, mig 379). **Fase 2 — permisos** (migración
+**380**, commit `cce107c8`): `tenants += compras_cotizacion_roles_permitidos jsonb`, mismo patrón que
+`cotizacion_usd_roles_permitidos` de la Caja USD G5 — NULL/[] = solo DUEÑO puede cargar la cotización
+manual de una compra, roles adicionales configurables. Solo cimiento, sin UI todavía en ese commit.
+
+**Fase 3 — pago con descalce de moneda** (migración **381**, commits `2476a3e4` + `90976a33`): 🔴
+corrección de diseño encontrada ANTES de que importara (REGLA #0) — la Fase 1 había puesto
+`cotizacion_usd` como columna única en `ordenes_compra`/`gastos`/`gastos_fijos`, pero una OC/gasto se
+paga en varias cuotas y una sola columna no aguanta más de una cotización sin pisar la anterior.
+Verificado que 0 filas la usaban antes de corregir. Se movió a **`caja_movimientos.cotizacion_usd`** (una
+fila por movimiento real de pago), mismo patrón que `ventas.cotizacion_usd`. `registrar_pago_oc()` ganó
+`p_cotizacion_usd`: si un medio de pago está en moneda distinta a la de la OC, exige la cotización y
+**convierte server-side** (nunca confía en la aritmética del cliente). **2 hallazgos de seguridad reales
+corregidos antes de aplicar**: (1) cambiar la cantidad de parámetros de una función existente crea un
+OVERLOAD en vez de reemplazarla — sin `DROP FUNCTION IF EXISTS` con la firma vieja, la función anterior
+seguía viva y la conversión nunca se hubiera activado; (2) al verificar ese fix, `anon` igual podía
+ejecutar el RPC — `REVOKE FROM anon` no alcanza cuando `PUBLIC` también tiene EXECUTE (default de
+Postgres en toda función nueva); cerrado con `REVOKE FROM PUBLIC` explícito + reverificado con
+`has_function_privilege()` real. De paso se re-verificó una nota vieja de memoria (56 días) que decía que
+esta función seguía expuesta a `anon` — comprobado contra PROD real que NO es así, nota corregida.
+
+**Wiring de frontend** (`GastosPage.tsx`, modal de pago de OC, commit `90976a33`): ya no bloquea de plano
+un medio en otra moneda — exige la cotización manual (gateada por el permiso de la Fase 2) y avisa (NO
+bloqueante) si se aleja ≥20% de la referencia del sidebar. Fix adicional al cablear: la caja que recibe
+el movimiento tiene que ser de la moneda REAL del medio pagado, no la de la OC. Lógica de conversión
+extraída a funciones puras testeadas (`convertirMontoAMonedaOC`, `desvioCotizacionFuerte` en
+`src/lib/comprasPago.ts`; `puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`) — 20 tests unit
+nuevos.
+
+**Verificado en cada paso**: `tsc`/`build` limpios; 4 e2e reales que pagan una OC/gasto en pesos
+(`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`, `31_cheque_gasto_rechazo_mutante`,
+`27_gasto_efectivo_mutante`) siguen en verde en cada incremento — cero regresión para el 100% del volumen
+real de hoy (ARS). **`schema_full.sql` regenerado** (commit `3279b381`, estaba desactualizado desde la
+mig 368, 13 migraciones de drift).
+
+**`APP_VERSION` bumpeado a `v1.180.0`** (commit `ac1a5c84`) con **tag + GitHub release `v1.180.0`**
+publicados sobre `dev` (`publishedAt: 2026-08-25T20:02:11Z`, título "v1.180.0 — Compras/Gastos en USD
+(Fases 1-3)"; release confirma además suite unit completa —100 archivos, 1637 tests— en verde). **Todo
+COMMITEADO Y PUSHEADO a `origin/dev`** (confirmado con `git log origin/dev`, HEAD `ac1a5c84`) — **sin
+deploy a PROD todavía, sin PR a `main`**.
+
+Falta del plan: sugerir la última cotización usada con ese proveedor específico (B3), Gastos en USD con
+UI propia (hoy solo se cableó el pago de OC), confirmar C2/C3 (trazabilidad/freeze, ya cubiertos de hecho
+por el diseño) con GO, y G1/G2 (reportes/dashboard ARS/USD, sin empezar).
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"),
+[[wiki/features/gastos]], [[wiki/development/reglas-negocio]], `wiki/database/migraciones.md` (migs
+380-381), `wiki/business/roadmap.md`.
+
+---
+
 ## [2026-08-25] deploy | 🚀 v1.179.2 a PROD — 5 bugs reales corregidos (arrastra también el fix de moneda de Productos de v1.179.1) — PR #333
 
 Revisión general de la app (unit + e2e completos, triage de fallas reales) que encontró y corrigió 5 bugs

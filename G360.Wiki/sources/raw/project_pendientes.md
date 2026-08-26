@@ -6,15 +6,97 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-25/26, cont. 25) — 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS,
+> ### ✅ ARRANCÁ ACÁ (2026-08-26, cont. 26) — 📱 Asistente de WhatsApp con IA: Fase 1 (cimientos) CONSTRUIDA
+> Y VERIFICADA EN DEV (mig 382, EF `wa-webhook`), **SIN deploy a PROD todavía** — GO respondió la pregunta 1
+> de cont. 25 (abajo, ahora histórico): arrancar por acá y no por el Portal de Proveedores — continúa la
+> MISMA sesión que cont. 25 (**no hubo `/clear`**, pese a que esa entrada decía que sería la última antes de
+> uno) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+>
+> #### 📱 Fase 1 — cimientos (migración 382, EF `wa-webhook`)
+>
+> GO eligió arrancar la propuesta de Fede (25/8) por el **Asistente de WhatsApp** (reusa el motor de
+> tool-calling ya probado, menor riesgo que el Portal de Proveedores). Se armó un plan técnico (modo plan de
+> Claude Code) antes de escribir código.
+>
+> **Migración 382** (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+> (`gcmhzdedrkmmzfzfveig`), **código sin commitear/bumpear todavía**: 2 tablas nuevas.
+> - `whatsapp_credentials` — mapeo `phone_number_id` de Meta → `tenant_id`. **Sin `sucursal_id` a
+>   propósito**: el número de WhatsApp representa al negocio completo, no una sucursal puntual (⚠ distinto
+>   del diseño original apuntado en `wiki/integrations/roadmap-apis.md` §6.2, que asumía el patrón genérico
+>   `(tenant_id, sucursal_id)` UNIQUE de las demás tablas `*_credentials` — corregido en ese doc).
+> - `whatsapp_mensajes_log` — idempotencia por `message_id` de Meta (evita reprocesar un webhook reentregado)
+>   + tokens in/out por mensaje, instrumentado desde el día 1 para no reconstruirlo cuando llegue la Sección
+>   G (medición de uso/facturación) de la propuesta de Fede.
+>
+> RLS en ambas tablas; `whatsapp_mensajes_log` sin policies de usuario, solo `service_role` (la EF es la
+> única que escribe). `migration-reviewer`: **APTA**, sin hallazgos bloqueantes — 1 nota 🟡 no bloqueante y
+> **heredada** (no nueva de esta migración): las 4 tablas `*_credentials` del proyecto (TN/MP/MELI/WhatsApp)
+> no restringen por rol quién puede leer el `access_token` guardado, pendiente de hardening transversal a
+> futuro.
+>
+> **Edge Function nueva `wa-webhook`** (deployada a DEV, `--no-verify-jwt`): recibe el webhook de WhatsApp
+> Cloud API (Meta), valida `X-Hub-Signature-256` de forma **BLOQUEANTE desde el día 1** (a diferencia del
+> modo log-only actual de `mp-webhook`), resuelve el tenant por `phone_number_id`, y responde consultas de
+> stock/precio usando **Claude Sonnet 5** (Groq descartado a propósito — ver el incidente ya conocido de
+> Groq sacando modelos del catálogo y rompiendo `ai-assistant` en PROD; este es un canal pago de cara a
+> clientes reales) con una tool de solo lectura (`consultar_stock_precio` sobre `productos`).
+>
+> **Decisión de diseño importante**: no se tocó ni se comparte código con `supabase/functions/ai-assistant`
+> (el motor del chat web del "Plan IA", que sigue en PROD sin cambios) — el prompt es distinto (Q&A de
+> stock, no navegación de la app) y el modelo de auth es distinto (WhatsApp no manda JWT de Supabase Auth).
+> La reutilización del Plan IA es de PATRÓN (tool-calling + arquitectura defensiva), no de código literal.
+>
+> `ANTHROPIC_API_KEY` ya existía como secret (la usan `scan-product`/`scan-ticket`), no hubo que darla de
+> alta. Se generaron y cargaron en DEV `META_VERIFY_TOKEN` (handshake del webhook) y un `META_APP_SECRET`
+> TEMPORAL (para poder probar antes de que GO tenga el valor real de Meta — hay que reemplazarlo).
+>
+> **Verificado end-to-end en DEV** con credenciales de prueba (tenant "Familia Otranto De Porto", fila
+> ficticia en `whatsapp_credentials`): un payload sintético de WhatsApp firmado con HMAC real → 200 OK → la
+> tool se ejecutó → Claude respondió correctamente con datos reales de un producto de prueba (coincidió
+> exacto con precio/stock real de la DB). Reenviar el mismo mensaje (mismo `message_id`) NO se reprocesó
+> (idempotencia OK). Firma inválida o ausente → 403 (rechazado). Handshake GET de verificación de Meta con
+> token correcto → 200 + eco del challenge; con token incorrecto → 403. **Los 4 checks de seguridad
+> pasaron.**
+>
+> **Alcance de esta Fase 1: SOLO LECTURA** (consultas de stock/precio del dueño por WhatsApp). Fuera de
+> alcance (fases futuras ya conversadas, no empezadas): Fase 2 = cargar gastos con confirmación; Fase 3 =
+> fotos/audio; Fase 4 = briefing diario proactivo; medición/facturación completa (Sección G de la propuesta
+> de Fede). El **Portal de Proveedores** sigue sin empezar — proyecto aparte, con el problema arquitectónico
+> cross-tenant sin resolver ya documentado en cont. 25 (abajo).
+>
+> #### 🛑 Pendiente de GO para continuar (3 cosas, bloqueantes para pasar de pruebas a real)
+>
+> 1. Completar el trámite de Meta Business Verification + alta de WABA + número dedicado + System User
+>    token (Claude ya compartió la guía paso a paso en esta sesión). Cuando lo tenga: pasar
+>    `phone_number_id`, `waba_id`, `numero_whatsapp`, el access token del system user, y el **App Secret**
+>    real de la app de Meta (Settings → Basic) para reemplazar el `META_APP_SECRET` temporal.
+> 2. Conectar el webhook real en el dashboard de Meta (se hace en conjunto con Claude una vez haya
+>    credenciales reales) usando el `META_VERIFY_TOKEN` ya cargado en DEV.
+> 3. 🔴 **Sigue sin resolver** (recurrente hace varias sesiones, la pregunta 2 de cont. 25 abajo): rotar el
+>    `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, documentado desde 2026-07-09). Bloqueó de paso el
+>    `npm run schema:dump` de esta sesión (necesita `SUPABASE_ACCESS_TOKEN` vía Management API, no seteado
+>    en este entorno) — **`schema_full.sql` quedó DESACTUALIZADO, no incluye la migración 382 todavía**
+>    (sigue en 001-381). No se le volvió a pedir a GO el mismo token filtrado sin resolver esto primero —
+>    queda señalado como pendiente real, sin regenerarlo ni pedir el token de nuevo.
+>
+> Detalle completo: `log.md` (entrada al principio), [[wiki/features/asistente-whatsapp]] (página nueva),
+> `wiki/database/migraciones.md` (mig 382), `wiki/integrations/roadmap-apis.md` (§6.2 corregida).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-25/26, cont. 25) — 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS,
 > COMMITEADAS Y PUSHEADAS a `origin/dev` (migs 380+381), tag+release **`v1.180.0`** publicados — pago de
 > OC con descalce de moneda funcionando end-to-end en DEV, **SIN deploy a PROD todavía** — + 📋 propuesta
 > NUEVA de Fede (Asistente de WhatsApp con IA + Portal de Proveedores) REVISADA por Claude, **SIN diseño
 > ni código arrancado** — + 🔴 hallazgo de seguridad RECURRENTE (el `SUPABASE_ACCESS_TOKEN` filtrado
-> SIGUE sin rotar de verdad, van ya varias sesiones) — continúa la misma sesión que cont. 24 (abajo, ahora
-> histórico) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+> SIGUE sin rotar de verdad, van ya varias sesiones) — este bloque quedó SUPERADO por el de arriba
+> (cont. 26): la pregunta 1 (por dónde arrancar) fue respondida por GO — el Asistente de WhatsApp — y su
+> Fase 1 ya está construida y verificada en DEV; la pregunta 2 (rotar el token) **SIGUE sin resolver**. La
+> nota "⚠ ÉSTA ES LA ÚLTIMA ENTRADA DE ESTA SESIÓN ANTES DEL `/clear`" de abajo quedó desmentida — la sesión
+> continuó sin `/clear` — continúa la misma sesión que cont. 24 (abajo, ahora histórico) — Caja USD/
+> Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
 >
-> **⚠ ÉSTA ES LA ÚLTIMA ENTRADA DE ESTA SESIÓN ANTES DEL `/clear`.**
+> **(histórico) ⚠ ÉSTA ES LA ÚLTIMA ENTRADA DE ESTA SESIÓN ANTES DEL `/clear`.** — ver corrección arriba.
 >
 > #### 🛑 2 PREGUNTAS ABIERTAS PARA GO — leer ANTES de arrancar la próxima sesión
 >

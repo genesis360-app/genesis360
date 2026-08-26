@@ -3,10 +3,47 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
-# Historial de Migraciones (001-381)
+# Historial de Migraciones (001-382)
+
+**382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), **código sin commitear/bumpear todavía, SIN deploy a PROD**:** Fase 1 (cimientos)
+del "Asistente de WhatsApp con IA" — GO eligió arrancar por acá la propuesta de Fede del 2026-08-25 (no por
+el Portal de Proveedores, ver [[wiki/features/asistente-whatsapp]]). Agrega 2 tablas nuevas:
+1. `whatsapp_credentials` — mapeo `phone_number_id` (Meta) → `tenant_id`. **Sin `sucursal_id` a
+   propósito**: el número de WhatsApp representa al negocio completo, no una sucursal puntual (⚠ distinto
+   del patrón genérico `(tenant_id, sucursal_id)` UNIQUE que usan las demás tablas `*_credentials` del
+   proyecto, y distinto del diseño que había quedado apuntado en `wiki/integrations/roadmap-apis.md` §6.2
+   — corregido en ese doc).
+2. `whatsapp_mensajes_log` — idempotencia por `message_id` de Meta (evita reprocesar un webhook
+   reentregado) + tokens in/out por mensaje, instrumentado desde el día 1 para no reconstruirlo cuando
+   llegue la Sección G (medición de uso/facturación) de la propuesta de Fede.
+
+RLS en ambas tablas; `whatsapp_mensajes_log` sin policies de usuario (solo `service_role`, la Edge Function
+`wa-webhook` es la única que escribe). `migration-reviewer`: **APTA**, sin hallazgos bloqueantes — 1 nota
+🟡 no bloqueante y **heredada** (no nueva de esta migración): las 4 tablas `*_credentials` del proyecto
+(TN/MP/MELI/WhatsApp) no restringen por rol quién puede leer el `access_token` guardado, pendiente de
+hardening transversal a futuro.
+
+**Edge Function nueva `wa-webhook`** (deployada a DEV, `--no-verify-jwt`): valida `X-Hub-Signature-256` de
+forma BLOQUEANTE desde el día 1 (a diferencia del log-only actual de `mp-webhook`), resuelve el tenant por
+`phone_number_id`, responde con **Claude Sonnet 5** (no Groq — canal pago de cara a clientes reales, ver
+incidente de catálogo de Groq en asistente-ia) vía tool de solo lectura `consultar_stock_precio`. No
+comparte código con `supabase/functions/ai-assistant` (motor del Plan IA) — prompt y modelo de auth
+distintos, la reutilización es de patrón, no de código literal.
+
+**Verificado end-to-end en DEV**: payload sintético firmado con HMAC real → 200 OK → tool ejecutada →
+respuesta correcta con datos reales de un producto de prueba; reenvío del mismo `message_id` NO se
+reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Meta con token correcto → 200 +
+eco del challenge, con token incorrecto → 403. Ver [[wiki/features/asistente-whatsapp]],
+`sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ").
+
+**🔴 `schema_full.sql` quedó DESACTUALIZADO** — no incluye esta migración (sigue reflejando hasta la 381),
+bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (ver `reference_seguridad.md`).
+
+---
 
 **381 (`381_compras_gastos_usd_fase3_descalce.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **⚠ código

@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-04-30
+updated: 2026-08-26
 ---
 
 # Edge Functions (28 funciones Deno)
@@ -34,7 +34,8 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
 | `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
-| *(~9 más)* | Monitoreo, aging de stock, workers, etc. |
+| `wa-webhook` | 🆕 2026-08-26, **solo DEV, sin deploy a PROD** — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (tool-calling). Ver [[wiki/features/asistente-whatsapp]] |
+| *(~8 más)* | Monitoreo, aging de stock, workers, etc. |
 
 ### EFs activas DEV+PROD
 
@@ -92,7 +93,9 @@ Esta función usa **Claude Haiku** para detectar barcodes a partir de imágenes 
 3. Claude extrae el código de barras de la imagen
 4. Se retorna el código al frontend para buscar el producto
 
-> [!NOTE] Esta es la única función que usa la API de Anthropic directamente.
+> [!NOTE] Junto con `scan-ticket` (Claude Sonnet 4.6 vision) y `wa-webhook` (Claude Sonnet 5, 🆕
+> 2026-08-26, solo DEV — ver [[wiki/features/asistente-whatsapp]]), son las funciones que usan la API de
+> Anthropic directamente — el asistente del header (`ai-assistant`) usa Groq, no Anthropic.
 
 ---
 

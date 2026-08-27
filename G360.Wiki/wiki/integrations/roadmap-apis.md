@@ -2,7 +2,7 @@
 title: Roadmap de Integraciones API
 category: integrations
 tags: [apis, roadmap, killer-features, meli, tiendanube, mercadopago, logistica, ads, whatsapp]
-updated: 2026-08-08
+updated: 2026-08-27
 ---
 
 # Roadmap de Integraciones API
@@ -41,7 +41,7 @@ tenant real a MELI/TN en PROD, sigue sin ninguno.** El resto de las fases (1.3/1
 | Logística (Andreani/OCA) | — | Rate shopping, RMA | ❌ todo |
 | PagoNube | — | — | ❌ todo |
 | EnvíoNube | — | — | ❌ todo |
-| WhatsApp Cloud API | — | Carritos, B2B | ❌ (espera WABA account) |
+| WhatsApp Cloud API | — | Carritos, B2B | 🟡 Fases 1-3 (asistente IA de consultas + carga de gastos por texto/foto/audio) construidas en DEV, 2026-08-27 (Fase 3 verificada solo parcialmente) — ver §6.2 |
 | Email marketing (Brevo/Klaviyo) | — | RFM sync | ❌ todo |
 | Meta Ads | — | POAS, CAPI | ❌ todo |
 | Google Ads / GA4 | — | Atribución UTM | ❌ todo |
@@ -267,11 +267,33 @@ modo_credentials(
 - Webhook reverso: cuando Brevo envía email → actualizar `cliente_notas` en G360
 
 ### 6.2 WhatsApp Cloud API (cuando haya WABA account)
-- Tabla `whatsapp_credentials` (phone_number_id, waba_token por tenant)
+
+> ⚠ **Actualización 2026-08-27**: la propuesta de abajo (notificaciones/carritos/B2B) es la visión
+> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — **LAS 4 FASES** de la
+> propuesta de Fede (25/8/2026): 1 (consultas), 2 (cargar gastos como borrador), 3 (fotos y audio,
+> verificada solo PARCIALMENTE) y 4 (briefing diario proactivo apertura/cierre por plantilla pre-aprobada
+> de Meta, verificada solo PARCIALMENTE — falta la aprobación de Meta), COMMITEADAS/PUSHEADAS
+> (v1.181.0/v1.182.0/v1.183.0/v1.184.0), sin deploy a PROD — es una feature DISTINTA y más chica que la
+> visión de abajo: un **Asistente de WhatsApp con IA** de consultas de stock/precio, carga de gastos y
+> briefing diario para el DUEÑO, ver [[wiki/features/asistente-whatsapp]]. GO conectó de verdad el trámite
+> de Meta (número de prueba) el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por
+> falta de un chip dedicado, sin afectar el desarrollo (ver esa página); no aplica a la Fase 4, que es 100%
+> saliente (business-initiated, vía EF `wa-briefing-sweep` + GitHub Actions, no webhook de Meta). Ese mismo
+> chip sigue siendo lo único que falta para verificar de punta a punta el happy path real de la Fase 3
+> (audio/foto).
+> La tabla real `whatsapp_credentials` (migración 382) **NO sigue el patrón `(tenant_id, sucursal_id)`
+> UNIQUE** apuntado abajo en "Credenciales por integración" — quedó **sin `sucursal_id` a propósito**,
+> porque un número de WhatsApp representa al negocio completo, no una sucursal puntual. Si se retoma esta
+> visión original (notificaciones/carritos/B2B) más adelante, reusar esa misma tabla en vez de crear una
+> nueva.
+
+- Tabla `whatsapp_credentials` (phone_number_id, waba_token por tenant) — ✅ existe desde la mig 382 (sin
+  `sucursal_id`, ver nota de arriba), aunque construida para el asistente de consultas, no para lo de abajo
 - Notificaciones básicas: pedido enviado, CC vencida, stock crítico
 - Recuperación de carritos TiendaNube: webhook carrito abandonado → WA a los 30min con link PagoNube/MP
 - Pedidos B2B conversacionales: cliente escribe "repetir pedido del mes pasado" → G360 arma el presupuesto
 - CC payment reminder: automatizar el WA que hoy se lanza manualmente desde `ClientesPage`
+  (`src/lib/whatsapp.ts`, deep-link `wa.me`, sin IA — no confundir con el asistente conversacional nuevo)
 
 ---
 
@@ -291,7 +313,7 @@ modo_credentials(
 | 10 | Meta Ads + POAS | 5 | Alto | Alto |
 | 11 | GA4 UTM + Atribución | 5 | Medio | Medio |
 | 12 | Brevo/Klaviyo RFM | 6 | Medio | Medio |
-| 13 | WhatsApp Cloud API | 6 | Alto | Alto |
+| 13 | WhatsApp Cloud API | 6 | Alto | Alto — 🟡 Fases 1+2+3 (asistente IA de consultas + cargar gastos como borrador por texto/foto/audio, distinto de esta visión de notificaciones/carritos) construidas y COMMITEADAS EN DEV (2026-08-27, v1.181.0/v1.182.0/v1.183.0; Fase 3 verificada solo parcialmente), ver [[wiki/features/asistente-whatsapp]] |
 | 14 | Google Ads | 5 | Alto | Medio |
 | 15 | Shopify / WooCommerce | — | Alto | Bajo (AR) |
 

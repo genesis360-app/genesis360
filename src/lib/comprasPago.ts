@@ -85,3 +85,31 @@ export function montoCuota(total: number, pct: number): number {
   if (!pct || pct <= 0 || total <= 0) return 0
   return Math.round(total * pct / 100 * 100) / 100
 }
+
+// ── Compras/Gastos en USD (mig 381) — B3/C1: pago con descalce de moneda ────────────────────────
+// Espejo JS de la conversión que hace registrar_pago_oc server-side (mig 381) — usado en el
+// frontend SOLO para el pre-check de saldo/umbral antes de llamar al RPC (que es la autoridad
+// real). Nunca redondea (H1).
+
+/**
+ * Convierte un monto pagado en `monedaMedio` a su equivalente en `monedaOC`, con una cotización
+ * manual (interpretación "1 USD = cotizacion ARS"). Si las monedas coinciden, no convierte.
+ * Devuelve NaN si hace falta convertir y no hay cotización válida (para que el caller lo detecte).
+ */
+export function convertirMontoAMonedaOC(
+  monto: number, monedaMedio: string, monedaOC: string, cotizacion: number | null | undefined,
+): number {
+  if (monedaMedio === monedaOC) return monto
+  if (!cotizacion || cotizacion <= 0) return NaN
+  return monedaMedio === 'ARS' ? monto / cotizacion : monto * cotizacion
+}
+
+/**
+ * B3 — ¿la cotización ingresada se aleja demasiado (>=20%) de una referencia conocida? Aviso NO
+ * bloqueante (el proveedor legítimamente puede tener otro tipo de cambio) — solo una chance de
+ * confirmar antes de pagar mal por un error de tipeo.
+ */
+export function desvioCotizacionFuerte(cotizacion: number, referencia: number | null | undefined): boolean {
+  if (!referencia || referencia <= 0 || !cotizacion || cotizacion <= 0) return false
+  return Math.abs(cotizacion - referencia) / referencia >= 0.2
+}

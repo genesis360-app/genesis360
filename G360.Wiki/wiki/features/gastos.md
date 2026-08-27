@@ -1,9 +1,9 @@
 ---
 title: Módulo Gastos
 category: features
-tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador]
-sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373]
-updated: 2026-08-19
+tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381]
+updated: 2026-08-25
 ---
 
 # Módulo Gastos
@@ -508,6 +508,105 @@ El tab **Cheques** (CO6, mig 187) dejó de ser un cuaderno aparte:
 - **Pendiente menor (futuro):** cheque de tercero depositado/cobrado → impacto en cuenta de origen/bóveda (hoy solo cambia estado).
 
 > ⚙️ **Config requerida para pagar con cheque (decisión GO 2026-06-20, config opcional):** el seed de alta (`fn_seed_tenant_defaults`) crea Efectivo + 5 métodos de pago **pero NO "Cheque"**. Para que la opción "Cheque" aparezca en los modales de pago de OC/gasto, el tenant debe **agregar el método "Cheque"** en *Config → Métodos de pago* (con `habilitado_gastos`). Se decidió dejarlo como configuración opcional (no sumarlo al seed). Validado por e2e: `tests/e2e/31_cheque_gasto_rechazo_mutante.spec.ts` (gasto pagado con cheque → rechazo revierte el pago a `pendiente`).
+
+## Compras/Gastos en USD + tasa de cambio editable — Fases 1-3 (migs 379-381, v1.180.0, 2026-08-24/25)
+
+> Relevamiento nuevo (`relevamiento-compras-gastos-usd-reglas-negocio.html`, raíz del repo), generado y
+> **respondido por Fede 2026-08-21, 100% cerrado**, con instrucción explícita de arrancar ya (no esperar
+> sesión dedicada). Distinto del G5 ("Caja en USD", que solo cubrió el lado de **ventas** — ver
+> [[wiki/development/reglas-negocio]] → "Módulo: Caja en USD"): este plan cubre el lado de **compras/
+> gastos**, feature nueva de punta a punta (`gastos`/`gastos_fijos`/`ordenes_compra` no tenían ninguna
+> columna de moneda hasta la Fase 1).
+>
+> **Diseño cerrado**: 3 mecanismos de cotización independientes — sidebar/ventas (colaborativo, ya
+> existía), Bóveda (separada, exclusiva Dueño), **Compras** (100% manual por transacción, con aviso NO
+> bloqueante si la cotización tipeada se aleja ≥20% de la referencia). Solo se guarda `cotizacion_usd` si
+> hay **descalce de moneda** entre el costo del ítem y el medio de pago usado; nunca se redondea; queda
+> **congelada** al confirmar. El dinero para pagar una compra en USD sale de la **Caja USD operativa**
+> (arquitectura: Bóveda = resguardo general, Caja = capa operativa que ya soporta egresos).
+>
+> **Fases 1, 2 y 3 ✅ CONSTRUIDAS, COMMITEADAS Y PUSHEADAS a `origin/dev`** como **`v1.180.0`** (commit
+> `ac1a5c84`, tag+release publicados) — **SIN deploy a PROD todavía, sin PR a `main`**. Se estima el plan
+> completo en ~4-5 fases; falta la UI de moneda en Gastos sueltos, reportes y algún detalle de UX (ver
+> "Qué falta" más abajo).
+
+### Fase 1 — cimientos de datos (mig 379, commit `6a0f46af`)
+
+Agrega `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` a `gastos`, `gastos_fijos` y
+`ordenes_compra` — mismo patrón que `ventas.cotizacion_usd` (mig 368). 100% aditivo, cero cambio de
+comportamiento para lo existente (todo sigue en ARS por default).
+
+🔴 **Fix real de REGLA #0 encontrado al diseñar esta fase**: `registrar_pago_oc()` (tab "Órdenes de
+Compra" de arriba) ya insertaba egresos reales en `caja_movimientos` al pagar una OC — la Caja USD YA
+soportaba egresos, no hacía falta construir esa capacidad de cero — pero nunca completaba la columna
+`moneda` de `caja_movimientos` (quedaba siempre en el DEFAULT `'ARS'` sin importar el medio de pago
+real). Si se pagara una OC en USD desde una Caja USD, el movimiento habría quedado mal etiquetado como
+ARS. Corregido, cero cambio de comportamiento para pagos en ARS (100% del volumen real hoy), verificado
+con e2e real. `migration-reviewer`: APTA.
+
+### Fase 2 — permisos (mig 380, commit `cce107c8`)
+
+`tenants += compras_cotizacion_roles_permitidos jsonb` — mismo patrón que `cotizacion_usd_roles_permitidos`
+de la Caja USD G5 (mig 370): NULL/[] = solo DUEÑO puede cargar/editar la cotización manual de una compra
+con descalce; roles adicionales (base o `custom:{id}`) configurables aparte. Solo cimiento de
+configuración en este commit — la consume la Fase 3.
+
+### Fase 3 — pago con descalce de moneda (mig 381, commits `2476a3e4` + `90976a33`)
+
+🔴 **Corrección de diseño encontrada ANTES de que importara** (REGLA #0): la Fase 1 había puesto
+`cotizacion_usd` como columna única en `ordenes_compra`/`gastos`/`gastos_fijos` — pero una OC/gasto se
+puede pagar en varias cuotas a lo largo del tiempo, y una sola columna no aguanta más de una cotización
+sin pisar la anterior. Verificado con query real que 0 filas la usaban (nadie había pagado nada en USD
+todavía) antes de corregir. Se movió a **`caja_movimientos.cotizacion_usd`** (una fila por movimiento
+real de pago), el mismo patrón que ya usa `ventas.cotizacion_usd`. `moneda` de las 3 tablas de cabecera
+queda sin cambios.
+
+`registrar_pago_oc()` ganó el parámetro `p_cotizacion_usd`: si un medio de pago está en moneda distinta a
+la de la OC (descalce — ej. pagar en pesos una OC pactada en dólares), exige la cotización manual y
+**convierte server-side** (nunca confía en la aritmética del cliente para esto). El monto físico que sale
+de la caja queda en su moneda real; el equivalente convertido es lo que cubre la deuda de la OC. Cuenta
+Corriente queda excluida de la conversión (moneda-agnóstica por diseño).
+
+**2 hallazgos de seguridad reales, corregidos ANTES de aplicar**: (1) cambiar la cantidad de parámetros
+de una función existente crea un OVERLOAD en vez de reemplazarla — sin un `DROP FUNCTION IF EXISTS`
+explícito con la firma vieja, la función anterior seguía viva y la conversión nunca se hubiera activado
+(código muerto, mismo patrón de fix que mig 190/248); (2) al verificar ese fix, se encontró que `anon`
+(usuario sin sesión) igual podía ejecutar el RPC de plata — `REVOKE FROM anon` no alcanza cuando `PUBLIC`
+también tiene EXECUTE (Postgres se lo da por default a cualquier función nueva). Cerrado con `REVOKE FROM
+PUBLIC` explícito + reverificado con `has_function_privilege()` real. De paso se re-verificó una nota
+vieja de memoria del proyecto (56 días) que decía que esta función seguía expuesta a `anon` — comprobado
+contra PROD real que NO es así, nota corregida.
+
+**Wiring de frontend** (`GastosPage.tsx`, modal de pago de OC): ya no bloquea de plano un medio en otra
+moneda — exige la cotización manual (gateada por el permiso de la Fase 2) y un aviso NO bloqueante si la
+cotización cargada se aleja ≥20% de la cotización de referencia del sidebar. Fix adicional encontrado al
+cablear: la caja que recibe el movimiento tiene que ser de la moneda REAL del medio pagado, no la de la
+OC (con descalce son distintas). Lógica de conversión extraída a funciones puras testeadas
+(`convertirMontoAMonedaOC`, `desvioCotizacionFuerte` en `src/lib/comprasPago.ts`;
+`puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`) — 20 tests unit nuevos.
+
+**Verificado en cada paso**: `tsc`/`build` limpios en las 3 fases; 4 e2e reales que pagan una OC/gasto en
+pesos (`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`, `31_cheque_gasto_rechazo_mutante`,
+`27_gasto_efectivo_mutante`) siguen en verde en cada incremento — cero regresión para el 100% del volumen
+real de hoy (ARS). `schema_full.sql` regenerado (commit `3279b381`).
+
+### Qué falta del plan
+
+- Sugerir la última cotización usada con ESE proveedor específico (segunda sugerencia de B3 del
+  relevamiento — hoy el input de cotización arranca vacío/con la referencia general del sidebar, sin
+  tracking por-proveedor).
+- Gastos en USD con UI propia — la Fase 3 solo cableó el modal de pago de OC; un "gasto suelto" en
+  `GastosPage.tsx` todavía no tiene selector de moneda en su formulario de creación, aunque
+  `gastos.moneda` ya existe desde la Fase 1.
+- C2/C3 (trazabilidad/freeze) — cubiertos de hecho por el diseño actual (`caja_movimientos.cotizacion_usd`
+  queda congelado al insertar, el mecanismo de "nota de corrección" ya existente cubre errores) pero sin
+  confirmar explícitamente con GO.
+- G1/G2 (reportes/dashboard con desglose ARS/USD) — sin empezar.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"),
+`wiki/database/migraciones.md` (migs 379-381), `wiki/business/roadmap.md` (v1.180.0).
+
+---
 
 ## Links relacionados
 

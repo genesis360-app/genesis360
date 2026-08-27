@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370]
-updated: 2026-08-20
+updated: 2026-08-25
 ---
 
 # Productos
@@ -261,6 +261,17 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > Ver [[project_moneda_producto_pendientes_fede]] (memoria) para el detalle completo, incluidos 2
 > hallazgos relacionados que quedaron DEFERIDOS a propósito (compra vs. venta en la conversión del
 > carrito, y a qué sistema se refiere "solo dólar oficial de BNA") esperando que GO hable con Fede.
+>
+> **✅ ACTUALIZACIÓN 2026-08-24/25 — este fix ya está EN PROD**: commit `193820df` (tag `v1.179.1`)
+> quedó arrastrado a producción por el deploy de v1.179.2 (PR #333, merge commit `f36ff2f4`) — ver
+> `wiki/business/roadmap.md`. Los 2 hallazgos deferidos (compra vs. venta, dólar BNA) **siguen sin
+> resolver**, sin cambios en esta sesión.
+
+> [!NOTE] **🐛 Overflow horizontal en mobile (375px/360px) — fix (2026-08-24/25, ✅ EN PROD desde
+> v1.179.2, PR #333).** El contenedor del buscador de `ProductosPage.tsx` no tenía `min-w-0`, así que en
+> pantallas angostas el input empujaba el layout y generaba scroll horizontal. Encontrado en una revisión
+> general de la app (unit + e2e completos); mismo fix aplicado en Inventario (ver
+> [[wiki/features/inventario-stock]]).
 
 ### Card 4: Stock e inventario
 

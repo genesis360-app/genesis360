@@ -3,38 +3,50 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-20
+updated: 2026-08-27
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.179.0 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-20: PR #332 mergeado a
-`main` (merge commit `7e19e7a3a11fba24389153f0c02dc56f70ddce11`), confirmado con `gh pr view 332` →
-`state: MERGED`, release `v1.179.0` actualizado a `target: main` + `--latest` (el tag ya existía sobre
-`dev` de una tanda anterior de la misma sesión; el merge fue real, no squash, así que ese commit ya era
-ancestro de `main`). **3 migraciones aplicadas y verificadas en PROD: 376-378** — 376 (`ai_config_rpc_layer`
-— tabla `ai_config_audit` + RPCs `fn_ai_config_set_bool/_int/_text`, Fase 2, hallazgo del deploy-runner: no
-estaba aplicada en PROD todavía pese a ser prerrequisito directo del código de este commit), 377
-(`ai_tenant_memoria` + `fn_ai_memoria_guardar`, Fase 3) y 378 (`fn_ai_memoria_listar`, Fase 3). Verificado
-con query real contra PROD: 5 funciones + 2 tablas + 3 policies existen, encoding de tildes/eñes intacto.
-Edge Function `ai-assistant` redeployada en PROD con el código completo (Fases 1+2+3), reemplazando el fix
-aislado del modelo Groq que corría antes — smoke test `POST` sin auth → `401` (esperado). Vercel: deploy
-de producción **✅ CONFIRMADO READY** (`dpl_H3eMHxC6TKR3pNmSgR3Hkun5KzHG`, commit `7e19e7a3`). Con esto el
-"Plan IA" (Fases 1-3: memoria conversacional, propuesta de config con confirmación, memoria persistente
-por tenant) queda **100% en PROD** por primera vez — hasta este deploy, PROD solo tenía el fix aislado del
-modelo Groq (2 constantes, sin wiring de config ni de memoria). Fase 4 (comparación entre negocios) sigue
-diferida, sin diseño ni código, por decisión de producto/legal ya tomada por GO. Detalle completo en
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ", cont. 22).  
-Antes de este release: v1.176.0 — Auditoría performance/calidad + Caja USD Fases 1-7/8 (PR #331, merge
-commit `4dbe7fdb`, 16 migraciones 360-375). Ver detalle histórico de v1.176.0 más abajo.  
-**Versión en DEV:** v1.179.1 — un commit por delante de PROD (commit `193820df`, tag+release
-`v1.179.1`): fix de moneda USD en la lista de Productos (`ProductosPage.tsx` ignoraba
-`moneda_venta`/`moneda_costo`, reportado por Fede) + relevamiento retrofit "tab Supervisión"
-generado (sin código). Verificado con e2e mutante contra DEV real + suite unit completa (1625
-tests). **No deployado a PROD a propósito** — GO no lo pidió, es chico/solo visual. 2 hallazgos
-relacionados de moneda quedaron deliberadamente sin tocar, esperando que GO hable con Fede — ver
-`wiki/features/productos.md` y [[project_moneda_producto_pendientes_fede]] (memoria).  
-Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 23, "ARRANCÁ
+**Versión en PROD:** v1.179.2 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-24/25: PR #333 mergeado a
+`main` (merge commit `f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`, `mergedAt: 2026-08-24T23:02:37Z`),
+confirmado con `gh pr view 333` → `state: MERGED`, release `v1.179.2` publicado (`target: main`,
+`--latest`, `publishedAt: 2026-08-24T23:02:54Z`). **Sin migraciones en este deploy** (100% frontend/tests).
+Revisión general de la app (unit + e2e completos) encontró y corrigió **5 bugs reales**: placeholder roto
+en el buscador de Historial de Ventas, overflow horizontal en mobile en Productos/Inventario (falta de
+`min-w-0`), aviso nuevo en Config→Ventas→Métodos de pago cuando hay productos USD sin método de pago USD
+configurado, y 6 specs e2e desactualizados corregidos. Verificado en vivo: NC electrónica AFIP y
+aprobación de ajustes de inventario siguen mutando el stock de punta a punta. Vercel: deploy de producción
+**READY**. **Como el merge trae todo `dev` hasta ese commit (confirmado con
+`git merge-base --is-ancestor`), el fix de moneda USD en la lista de Productos de v1.179.1 (commit
+`193820df`, abajo) queda TAMBIÉN deployado a PROD con esta tanda** — corrige el estado "solo en DEV" que
+tenía esa versión hasta ahora. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente
+de verdad, bloque "ARRANCÁ ACÁ", cont. 24).  
+Antes de este release: v1.179.0 — Plan IA Fases 1+2+3 100% en PROD (PR #332, merge commit `7e19e7a3`, 3
+migraciones 376-378). Ver detalle histórico más abajo.  
+**Versión en DEV:** **v1.184.0** (commit `2e5fbcdb`, tag+release publicados) — **COMMITEADA Y PUSHEADA a
+`origin/dev`**, **sin PR a `main` todavía, sin deploy a PROD**: **migración 385** — Fase 4 ("briefing
+diario proactivo") del **Asistente de WhatsApp con IA**, continúa la MISMA sesión que v1.183.0 (abajo, sin
+`/clear`). **Con esta fase, las 4 fases de la propuesta de Fede (25/8/2026) quedan construidas en DEV.**
+EF nueva `wa-briefing-sweep` (GitHub Actions, cron 15 min, clon del molde de `repositores-cierre-dia-sweep`)
+manda un resumen de apertura/cierre SOLO al dueño por plantilla pre-aprobada de Meta (business-initiated,
+no comparte código con `wa-webhook`). Verificado PARCIALMENTE: todo el código confirmado correcto contra la
+API real de Meta, pero el envío real está bloqueado por la aprobación PENDIENTE de las 2 plantillas nuevas
+(Meta reclasificó automáticamente una de ellas de `UTILITY` a `MARKETING` en su revisión). Ver detalle en
+la sección `v1.184.0` más abajo. Antes de esta versión: **v1.183.0** (mig 384, Fase 3 — fotos y audio),
+**v1.182.0** (mig 383, Fase 2 — cargar gastos como borrador con doble confirmación) y **v1.181.0** (mig
+382, Fase 1 — cimientos, consultas de stock/precio por WhatsApp) — ver sus secciones dedicadas más abajo.
+Ver `wiki/database/migraciones.md` (migs 382-385, título a 001-385), [[wiki/features/asistente-whatsapp]].  
+**Versión anterior en DEV (2026-08-25, histórico):** v1.180.0 (migs 379-381) — Fases 1-3 del plan
+"Compras/Gastos en USD + tasa de cambio editable" (relevamiento respondido por Fede 2026-08-21). Ver
+detalle en la sección `v1.180.0` más abajo. Ver `wiki/database/migraciones.md` (migs 379-381) y
+`wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en USD".  
+**2 relevamientos, ambos 100% RESPONDIDOS por Fede (2026-08-24/25)**: (a) retrofit del patrón "tab
+Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, sin diseño/
+código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fases 1-3 YA CONSTRUIDAS, resto a iterar.
+Ver `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"), `wiki/features/supervision.md`,
+`wiki/development/reglas-negocio.md`.  
+Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ
 ACÁ").  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -44,11 +56,293 @@ commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + 
 sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
-**Última actualización:** 20 de Agosto, 2026
+**Última actualización:** 27 de Agosto, 2026
 
 ---
 
-## v1.179.1 — 🐛💵 Fix moneda USD en lista de Productos + relevamiento retrofit Supervisión — ✅ COMMITEADO EN DEV, sin PROD (2026-08-20)
+## v1.184.0 — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD, verificada solo PARCIALMENTE — LAS 4 FASES de la propuesta de Fede quedan construidas en DEV
+
+Continúa la MISMA sesión que v1.183.0 (abajo) — **no hubo `/clear`**. GO pidió explícitamente seguir con
+esta fase "para dejar casi todo listo" del Asistente de WhatsApp.
+
+**Contexto de negocio (Sección F de la propuesta de Fede)**: notificaciones proactivas, briefing diario de
+apertura/cierre SOLO al dueño, por plantilla pre-aprobada de Meta (categoría utilidad).
+
+**Diferencia cualitativa clave con Fases 1-3**: ahí el bot siempre RESPONDÍA dentro de una conversación
+que el usuario abría primero (texto libre, ventana de 24hs gratis de Meta). Un mensaje
+business-initiated (nadie escribió primero) exige un **message template pre-aprobado por Meta** — no se
+puede mandar texto libre. Esa aprobación es 100% externa, Genesis360 no la controla.
+
+**Investigación previa al diseño**: no hay pg_cron/pg_net habilitados en el proyecto. El patrón real y
+único del proyecto para tareas periódicas es **GitHub Actions con `schedule:`** — se clonó casi 1:1 el
+molde de `repositores-cierre-dia-sweep` (cron cada 15 min, misma `horaArgentinaActual()`). Se reusó
+`sucursales.horario_apertura`/`horario_cierre` (ya existían desde la mig 124, sin migración nueva) con
+defaults `09:00`/`21:00`.
+
+**Gap real encontrado**: no existía columna para "a qué número mandarle un mensaje proactivo" —
+`whatsapp_credentials.numero_whatsapp` (mig 382) es el número del NEGOCIO, solo informativo/UI. **Migración
+385** (`385_whatsapp_briefing_numero_notificaciones.sql`, `migration-reviewer`: APTA, 2 notas no
+bloqueantes ya aplicadas): `numero_notificaciones` (PII) en `whatsapp_credentials`. ✅ APLICADA Y
+VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP.
+
+**Código nuevo**: `supabase/functions/wa-briefing-sweep/index.ts` (EF nueva, autocontenida) — por cada
+sucursal activa con WhatsApp conectado y `numero_notificaciones` configurado, evalúa por separado apertura
+(resumen de AYER) y cierre (resumen de HOY), armados con queries directas a `ventas`/`gastos` (no las
+vistas `vw_caja_resumen_diario`, que no sirven para un corte en caliente). Función nueva
+`enviarMensajePlantillaWhatsapp()` (`type: 'template'`).
+
+**Bug de diseño encontrado y corregido EN esta sesión**: el dedupe vía `whatsapp_mensajes_log` se escribía
+originalmente ANTES del envío (mismo patrón insert-primero que usa `wa-webhook`) — un fallo transitorio
+(token vencido) dejaba la sucursal marcada como "ya procesada" sin haber mandado nada, bloqueando el
+reintento. Corregido: el registro de dedupe se escribe RECIÉN tras un envío exitoso.
+
+**GitHub Actions**: `.github/workflows/wa-briefing-sweep.yml`, clon exacto del molde de
+`repositores-cierre-dia-sweep.yml`. Como este trabajo queda en `dev`, el `schedule:` no se dispara solo
+todavía — se invocó manualmente por curl para probar en DEV.
+
+**Plantillas de Meta dadas de alta EN ESTA SESIÓN, vía API**: `briefing_apertura_dia` y
+`briefing_cierre_dia` (categoría solicitada `UTILITY`, idioma `es_AR`). **Hallazgo real, no controlado por
+nosotros**: Meta reclasificó automáticamente `briefing_cierre_dia` de `UTILITY` a `MARKETING` en su
+revisión (afecta costo/reglas de entrega, dato para la Sección G de Fede); `briefing_apertura_dia` se
+mantuvo en `UTILITY`. Ambas quedaron `PENDING` al cierre de la sesión.
+
+**🛑 Verificado solo PARCIALMENTE en DEV**: 1ª invocación manual confirmó evaluación de sucursal/horario
+correcta, pero el envío falló con 401 de Meta (token temporal vencido 8 min antes de lo esperado, GO pasó
+un token nuevo). 2ª vuelta con el token nuevo: desapareció el error de autenticación, apareció el esperado
+`(#132001) Template name does not exist in the translation` — comportamiento NORMAL de Meta para una
+plantilla `PENDING`, confirma que todo el código (token, `phone_number_id`, nombre/`language` del template,
+payload) está correcto — lo único que falta es la aprobación de Meta. Build limpio (`npm run build`); 100%
+backend/infra, sin cambios en `src/` salvo el bump de versión.
+
+**Estado real: `APP_VERSION` bumpeado a `v1.184.0`, commit `2e5fbcdb`, tag + GitHub release publicados**
+sobre `dev` ("Asistente WhatsApp IA (Fase 4, briefing diario)") — **COMMITEADO Y PUSHEADO a `origin/dev`,
+SIN PR a `main`, SIN deploy a PROD**. Las 4 fases del Asistente de WhatsApp viven solo en DEV.
+
+**Pendiente**: aprobación de Meta de las 2 plantillas (sin ETA); token de acceso permanente (System User);
+rotar `SUPABASE_ACCESS_TOKEN` filtrado (recurrente); chip prepago dedicado (Fases 1-3, no aplica acá);
+Sección G (medición/facturación de uso, sumar el hallazgo de reclasificación UTILITY→MARKETING); Embedded
+Signup y Portal de Proveedores (a decidir con GO cuál sigue, ninguno arrancado).
+
+Ver `sources/raw/project_pendientes.md` (cont. 29, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (mig
+385), [[wiki/features/asistente-whatsapp]].
+
+---
+
+## v1.183.0 — 📱📸🎙️ Asistente de WhatsApp IA: Fase 3 (fotos y audio) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD, verificada solo PARCIALMENTE
+
+Sesión nueva (2026-08-27), arrancó directo con esta fase por pedido explícito de GO al cierre de la sesión
+anterior. Fede había propuesto (25/8) que el asistente acepte fotos de comprobantes y notas de audio para
+cargar gastos, además del texto ya soportado (Fases 1-2, v1.181.0/v1.182.0, abajo).
+
+**Decisión técnica clave**: audio y fotos son solo formas NUEVAS de llegar al mismo pipeline ya construido
+y probado (`llamarClaude` + tool `proponer_gasto` + doble confirmación) — cero lógica fiscal nueva, mismo
+principio de REGLA #0 que Fases 1-2.
+
+**Audio → Groq Whisper**: se descarga el archivo real desde la API de medios de Meta y se transcribe con
+**Groq Whisper** (`whisper-large-v3-turbo`, `language: 'es'`) — reusa el secret `GROQ_API_KEY` que YA
+EXISTÍA (lo usa `ai-assistant` para chat), cero trámite nuevo. Decisión tomada con GO en esta sesión: se
+prefirió Groq (reutiliza credencial existente, radio de impacto chico si falla — solo afecta la
+transcripción, no el "cerebro") por sobre OpenAI Whisper (la sugerencia original de Fede, hubiera requerido
+dar de alta una cuenta/secret nuevo). El texto transcripto reemplaza `msg.text.body` — cero cambios en
+`llamarClaude` para este caso.
+
+**Fotos → Claude Sonnet 5 multimodal**: en vez de armar una extracción separada (como `scan-ticket`), se
+aprovechó que Claude Sonnet 5 ya es multimodal — la imagen (+ caption) se manda como bloque de contenido en
+el mismo mensaje, Claude decide si es un comprobante de gasto y llama a `proponer_gasto` con lo que pueda
+leer. Solo requirió tipar el parámetro de `llamarClaude` como `string | any[]` — mismo tool, mismo loop.
+
+**Comprobante adjunto** (migración 384, `384_whatsapp_borrador_comprobante.sql`, `migration-reviewer`:
+APTA sin correcciones): cuando la propuesta viene de una foto, esa foto se sube a Storage
+(`comprobantes-gastos`) y se linkea al borrador vía la columna nueva `comprobante_url` — el modal "Nuevo
+Gasto" la trae precargada al momento de la aprobación humana (`GastosPage.tsx` → `abrirDesdeBorrador`), sin
+romper la regla de comprobante obligatorio del tenant. Si la subida falla, nunca bloquea el borrador ya
+creado. ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP.
+
+**Código nuevo** en `supabase/functions/wa-webhook/index.ts`: `descargarMediaWhatsapp()` (helper único
+para audio e imagen), `transcribirAudioGroq()`, loop principal por `msg.type`
+(texto/audio/imagen/no-soportado, fallback ahora específico para video/documento), subida a Storage en el
+bloque de éxito de `proponer_gasto`, system prompt actualizado. Frontend: `GastosPage.tsx` precarga
+`comprobanteExistente`; `BandejaBorradoresWhatsapp.tsx` gana indicador "Ver foto".
+
+**🛑 Verificado solo PARCIALMENTE en DEV**: con requests sintéticos HMAC real y `media_id` inventados se
+confirmó (logs reales de la Edge Function) que la firma se valida, el ruteo por tipo de mensaje funciona
+para los 4 casos, y que el código llama de verdad a la API de Meta con el token real refrescado (error
+esperado "Object with ID ... does not exist", no de autenticación). **El happy path real (transcribir un
+audio real, leer una foto real) sigue sin verificarse de punta a punta** — requiere un mensaje entrante
+real de WhatsApp, bloqueado por el mismo pendiente de siempre: el número de test de Meta no está
+"registrado" para RECIBIR mensajes (falta el chip prepago dedicado). Refrescar el token de acceso (hecho en
+esta sesión) NO destraba esto — son 2 pendientes independientes. Build+typecheck limpios; suite e2e de
+Gastos sin regresión (`06_gastos.spec.ts` 4/4, `68_gasto_comprobante_obligatorio_mutante.spec.ts` 1 skip no
+relacionado).
+
+**Estado real: `APP_VERSION` bumpeado a `v1.183.0`, commit `0364447a`, tag + GitHub release publicados**
+sobre `dev` ("Asistente WhatsApp IA (Fase 3, fotos y audio)") — **COMMITEADO Y PUSHEADO a `origin/dev`, SIN
+PR a `main`, SIN deploy a PROD**. Fases 1, 2 y 3 viven solo en DEV.
+
+**Pendiente**: chip prepago dedicado (destraba el happy path real de audio/foto Y los mensajes entrantes de
+Fase 1); token de acceso permanente (System User); rotar `SUPABASE_ACCESS_TOKEN` filtrado (recurrente);
+Fase 4 (briefing diario, sin diseño); Embedded Signup y Portal de Proveedores (sin empezar).
+
+Ver `sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (mig
+384), [[wiki/features/asistente-whatsapp]].
+
+---
+
+## v1.182.0 — 📱💵 Asistente de WhatsApp IA: Fase 2 (cargar gastos como borrador) — ✅ CONSTRUIDA, VERIFICADA END-TO-END, COMMITEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+
+2026-08-26, continúa directo la v1.181.0 (abajo), misma sesión. El bot de WhatsApp NUNCA escribe en la
+tabla `gastos` — solo arma un BORRADOR (migración 383, `383_whatsapp_gastos_borrador.sql`, 4 estados:
+`pendiente_confirmacion`→`pendiente`→`aprobado`|`descartado`), con 2 confirmaciones separadas: botones
+interactivos nativos de Meta (✅/❌) del remitente, y aprobación humana desde el mismo modal "Nuevo Gasto"
+de siempre (tab nuevo "WhatsApp" en Gastos), precargado con lo que capturó el bot.
+
+**Hallazgo clave ANTES de diseñar (REGLA #0)**: crear un gasto real dispara reglas encadenadas (umbral de
+autorización por rol, CAJ-18 de saldo de caja, comprobante obligatorio, multi-CUIT, período contable
+cerrado) — reimplementarlas en el webhook sin sesión de usuario real habría sido el tipo de riesgo que la
+REGLA #0 pide evitar. `migration-reviewer`: **APTA**, con una corrección aplicada antes de aplicar
+(envolver `auth.uid()` en `(select auth.uid())`, convención ya estandarizada en migs 263/366).
+
+**Código nuevo**: `wa-webhook` gana la tool `proponer_gasto` + envío de botones interactivos + manejo de
+`interactive`/`button_reply`; `GastosPage.tsx` gana `abrirDesdeBorrador()` + tab "WhatsApp" con badge;
+componente nuevo `BandejaBorradoresWhatsapp.tsx`.
+
+**Verificado end-to-end en DEV**: por curl con HMAC real (creación de borrador, confirmar/cancelar por
+botón, idempotencia por estado) y con Playwright real contra el frontend (RLS aisló correctamente el
+borrador del tenant de testing; Aprobar → modal precargado → gasto real creado CON movimiento de caja →
+borrador linkeado y marcado `aprobado`). Suite e2e existente de Gastos sin regresión (6/6).
+
+**Estado real: `APP_VERSION` bumpeado a `v1.182.0`, commit `9029f24b`, tag + GitHub release publicados**
+sobre `dev` — **COMMITEADO Y PUSHEADO a `origin/dev`, SIN deploy a PROD**.
+
+Ver `sources/raw/project_pendientes.md` (cont. 27, histórico), `wiki/database/migraciones.md` (mig 383),
+[[wiki/features/asistente-whatsapp]].
+
+---
+
+## v1.181.0 — 📱 Asistente de WhatsApp IA: Fase 1 (cimientos, consultas de stock/precio) — ✅ CONSTRUIDA, VERIFICADA END-TO-END, COMMITEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+
+2026-08-26. GO eligió arrancar la propuesta de Fede (25/8) por el **Asistente de WhatsApp** (reusa el motor
+de tool-calling ya probado, menor riesgo que el Portal de Proveedores, la otra mitad de la propuesta).
+
+**Migración 382** (`382_whatsapp_asistente_fase1.sql`): 2 tablas nuevas — `whatsapp_credentials` (mapeo
+`phone_number_id` de Meta → tenant, **sin `sucursal_id` a propósito**: el número de WhatsApp representa al
+negocio completo) y `whatsapp_mensajes_log` (idempotencia por `message_id` + tokens in/out, instrumentado
+desde el día 1 pensando en la futura Sección G de medición/facturación de Fede). `migration-reviewer`:
+**APTA**, sin hallazgos bloqueantes.
+
+**Edge Function nueva `wa-webhook`** (`--no-verify-jwt`): valida `X-Hub-Signature-256` BLOQUEANTE desde el
+día 1, resuelve el tenant por `phone_number_id`, responde consultas de stock/precio con **Claude Sonnet 5**
+(Groq descartado a propósito para el "cerebro" — ver el incidente de catálogo de Groq en `ai-assistant`)
+vía tool de solo lectura `consultar_stock_precio`. No comparte código con `ai-assistant` — prompt y modelo
+de auth distintos, reutilización de patrón, no de código literal.
+
+**Verificado end-to-end en DEV**: payload sintético firmado con HMAC real → 200 OK → tool ejecutada →
+respuesta correcta con datos reales de un producto de prueba; reenvío del mismo `message_id` NO se
+reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Meta con token correcto → 200 +
+eco del challenge, con token incorrecto → 403. Los 4 checks de seguridad pasaron.
+
+**En la misma sesión, GO hizo el trámite real de Meta** (número de prueba, no Business Verification
+completa): credenciales reales cargadas (`phone_number_id`/`waba_id`/número de test), webhook conectado de
+verdad en el dashboard (handshake GET real verificado OK). **Bloqueador real**: el número de test solo
+puede ENVIAR hasta que se "registre" con un teléfono real — GO frenado a tiempo de usar su línea personal
+(riesgo de perder su WhatsApp de siempre), pendiente conseguir un chip prepago dedicado. **Embedded Signup
+confirmado** (docs oficiales de Meta): futuros clientes NO van a repetir este trámite manual — requiere que
+Genesis360 se verifique como plataforma ante Meta, sube el límite de onboarding de 10 a 200 negocios/semana.
+
+**Estado real: `APP_VERSION` bumpeado a `v1.181.0`, commit `8b297b32`, tag + GitHub release publicados**
+sobre `dev` (`publishedAt: 2026-08-26T06:05:21Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`, SIN deploy a
+PROD**.
+
+Ver `sources/raw/project_pendientes.md` (cont. 26, histórico), `wiki/database/migraciones.md` (mig 382),
+[[wiki/features/asistente-whatsapp]].
+
+---
+
+## v1.180.0 — 💵 Compras/Gastos en USD: Fases 1-3 (cimientos, permisos, pago con descalce de moneda) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+
+Continúa directo la v1.179.2 (abajo), misma sesión larga. Relevamiento "Compras/Gastos en USD + tasa de
+cambio editable" (respondido por Fede 2026-08-21, 100% cerrado) — distinto de la Caja USD (G5, que cubrió
+solo Ventas), este cubre el lado de Compras/Gastos, feature nueva de punta a punta.
+
+**Fase 1 — cimientos de datos** (mig 379, commit `6a0f46af`): `moneda`/`cotizacion_usd` en
+`gastos`/`gastos_fijos`/`ordenes_compra`. Fix real de REGLA #0: `registrar_pago_oc()` no completaba la
+columna `moneda` en `caja_movimientos` (quedaba siempre en ARS por default sin importar el medio real
+usado).
+
+**Fase 2 — permisos** (mig 380, commit `cce107c8`): `tenants.compras_cotizacion_roles_permitidos` —
+quién puede cargar la cotización manual de una compra (DUEÑO siempre + roles habilitados, mismo patrón
+que `cotizacion_usd_roles_permitidos` de la Caja USD G5).
+
+**Fase 3 — pago con descalce de moneda** (mig 381, commits `2476a3e4` + `90976a33`): 🔴 corrección de
+diseño encontrada antes de que importara — `cotizacion_usd` pasó de una columna única por OC/gasto (no
+aguanta pagos parciales múltiples) a `caja_movimientos.cotizacion_usd` (una fila por movimiento real de
+pago, verificado con query real que 0 filas usaban la columna vieja antes de moverla). `registrar_pago_oc()`
+gana `p_cotizacion_usd` y convierte server-side cuando un medio está en moneda distinta a la de la OC —
+nunca confía en la aritmética del cliente. **2 hallazgos de seguridad reales cerrados antes de aplicar**:
+(1) cambiar la cantidad de parámetros de una función existente crea un OVERLOAD en vez de reemplazarla —
+sin `DROP FUNCTION IF EXISTS` con la firma vieja, la lógica nueva hubiera quedado código muerto (mismo
+patrón de mig 190/248); (2) `anon` podía ejecutar el RPC vía el grant de `PUBLIC` pese al `REVOKE FROM
+anon` explícito — cerrado con `REVOKE FROM PUBLIC` + reverificado con `has_function_privilege()` real. De
+paso se re-verificó una nota vieja de memoria (56 días) sobre esta misma función expuesta a `anon` —
+comprobado contra PROD real que ya no es así, nota corregida. Frontend (`GastosPage.tsx`): input de
+cotización manual gateado por el permiso de la Fase 2, aviso NO bloqueante de desvío ≥20% de la
+referencia del sidebar, selector de caja corregido a la moneda real del medio pagado. Lógica de
+conversión extraída a funciones puras testeadas (`convertirMontoAMonedaOC`, `desvioCotizacionFuerte` en
+`src/lib/comprasPago.ts`; `puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`) — 20 tests unit
+nuevos.
+
+**Verificación**: suite unit completa (100 archivos, 1637 tests) en verde; 4 e2e reales de pago en ARS
+(`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`, `31_cheque_gasto_rechazo_mutante`,
+`27_gasto_efectivo_mutante`) en verde — cero regresión confirmada para el 100% del volumen real de hoy.
+`schema_full.sql` regenerado (commit `3279b381`, 13 migraciones de drift acumulado desde la Caja USD).
+
+**Estado real: `APP_VERSION` bumpeado a `v1.180.0`** (commit `ac1a5c84`), **tag + GitHub release
+publicados** sobre `dev` (`publishedAt: 2026-08-25T20:02:11Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`,
+SIN PR a `main`, SIN deploy a PROD**. Se estima el plan completo en ~4-5 fases; falta: sugerir la última
+cotización usada con ese proveedor específico (B3), Gastos sueltos con UI de moneda propia (hoy solo se
+cableó el pago de OC), confirmar C2/C3 (trazabilidad/freeze, ya cubiertos de hecho por el diseño) con GO,
+y reportes G1/G2 (desglose ARS/USD, sin empezar).
+
+Ver `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (migs
+379-381), [[wiki/features/gastos]], `wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en
+USD".
+
+---
+
+## v1.179.2 — 🚀 Revisión general: 5 bugs reales corregidos + fix moneda USD en Productos arrastrado — ✅ EN PROD (PR #333, merge `f36ff2f4`, 2026-08-24/25)
+
+Continúa directo la v1.179.1 (abajo), misma sesión larga. Revisión general de la app (unit + e2e
+completos, triage de fallas reales): **placeholder roto** en el buscador de Historial de Ventas
+(`"Buscar cliente... o (Venta):2"`, artefacto de un refactor viejo, commit `a209abaf`) corregido en
+`VentasPage.tsx`; **overflow horizontal en mobile** (375px/360px) en Productos e Inventario por falta de
+`min-w-0` en el contenedor del buscador (`ProductosPage.tsx`, `InventarioPage.tsx`); **aviso nuevo** en
+Config→Ventas→Métodos de pago cuando hay productos en USD sin ningún método de pago USD real configurado
+(reporte de Fede, `ConfigPage.tsx`); **6 specs e2e actualizados** a selectors/labels reales (tab
+"Autorizaciones"→"Supervisión" post mig 347, lista de módulos del delegado de rol custom, locator ambiguo
+de unidad de medida). Verificado en vivo, no solo code-audit: NC electrónica con CAE de AFIP homologación
+sigue funcionando de punta a punta; aprobar un ajuste/conteo de inventario efectivamente muta el stock
+(era un gap de cobertura real, no un bug).
+
+También se investigó a fondo la latencia de "Confirmar ingreso" en DEV (a veces >12s) — conclusión: NO es
+bug de lógica (triggers livianos, botón ya protegido con `disabled` contra doble-click), es variabilidad
+de infraestructura de DEV (medido 161ms-1.46s por request trivial vs. PROD consistente ~150-200ms) — sin
+fix de código, deuda de infraestructura documentada. Y se relevó (sin tocar) 135 funciones marcadas por el
+linter de seguridad de Supabase + 442 hallazgos de performance (RLS overlap, índices sin uso) — deuda
+estable en DEV y PROD, no regresión nueva; spot-check confirmó que lo sensible (inventario/fiscal) está
+bien guardado; queda para una sesión de hardening dedicada.
+
+**Commits `193820df` + `47b22222`, PR #333 (`dev→main`) mergeado — merge commit
+`f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`. Release `v1.179.2` publicado (`target: main`, `--latest`).
+Vercel producción READY. Sin migraciones.** Con esto, el fix de moneda de la lista de Productos (v1.179.1,
+punto 1 de abajo) queda deployado a PROD — corrige el estado "solo en DEV" documentado en la entrada de
+abajo.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"), `log.md`,
+`wiki/features/productos.md`, `wiki/features/ventas-pos.md`, `wiki/features/configuracion.md`.
+
+---
+
+## v1.179.1 — 🐛💵 Fix moneda USD en lista de Productos + relevamiento retrofit Supervisión — commiteado 2026-08-20, ✅ EN PROD desde v1.179.2 (2026-08-24/25)
 
 Continúa directo la v1.179.0 (abajo), misma sesión. Fede reportó 3 problemas de moneda USD en
 Productos/Ventas (vía GO, 2 capturas de pantalla):
@@ -77,10 +371,11 @@ continuación de `relevamiento_supervisor_tab_respuestas.md` (ya cerrado: "sí, 
 mig 347) sobre a qué módulos extenderlo y qué hacer con los sistemas paralelos de Gastos/Ventas/
 Caja. 20 preguntas, sin código todavía, esperando respuesta de GO.
 
-**Commit `193820df`, tag+release `v1.179.1` sobre `dev`. NO deployado a PROD** — GO no lo pidió, es
-chico y solo visual (sin migraciones, sin tocar cálculos).
+**Commit `193820df`, tag+release `v1.179.1` sobre `dev`.** ~~NO deployado a PROD — GO no lo pidió, es
+chico y solo visual~~ **✅ ACTUALIZACIÓN 2026-08-24/25: SÍ quedó deployado a PROD**, arrastrado por el
+merge de v1.179.2 (PR #333, `193820df` es ancestro directo de `47b22222`) — ver v1.179.2 arriba.
 
-Detalle completo: `wiki/features/productos.md`, `sources/raw/project_pendientes.md` (cont. 23,
+Detalle completo: `wiki/features/productos.md`, `sources/raw/project_pendientes.md` (cont. 24,
 "ARRANCÁ ACÁ"), `log.md`.
 
 ---

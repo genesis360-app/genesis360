@@ -250,6 +250,10 @@ export interface OrdenCompra {
   requiere_aprobacion?: boolean | null
   aprobada_por?: string | null
   aprobada_at?: string | null
+  // Compras en USD (mig 379) — moneda nativa de la OC (fija). La cotización de un pago puntual con
+  // descalce vive en caja_movimientos.cotizacion_usd (mig 381), no acá — una OC se paga en varias
+  // cuotas y cada una puede tener su propia conversión.
+  moneda?: string
   // joins
   proveedores?: Pick<Proveedor, 'id' | 'nombre'>
   orden_compra_items?: OrdenCompraItem[]

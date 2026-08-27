@@ -3,10 +3,272 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-20
+updated: 2026-08-27
 ---
 
-# Historial de Migraciones (001-378)
+# Historial de Migraciones (001-385)
+
+**385 (`385_whatsapp_briefing_numero_notificaciones.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
+`2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 4 ("briefing
+diario proactivo") del "Asistente de WhatsApp con IA" (continúa la mig 384, abajo, ver
+[[wiki/features/asistente-whatsapp]]) — con esta fase, las 4 fases de la propuesta de Fede (25/8) quedan
+construidas en DEV. Una sola columna aditiva: `ALTER TABLE whatsapp_credentials ADD COLUMN IF NOT EXISTS
+numero_notificaciones TEXT` + `COMMENT ON COLUMN` documentando que es PII (número personal del dueño, no
+debe loguearse en texto plano) — distinta de `numero_whatsapp` (el número del NEGOCIO/WABA, solo
+informativo/UI), que no servía como destinatario de un mensaje proactivo al dueño.
+
+`migration-reviewer`: **APTA**, con 2 notas no bloqueantes ya aplicadas (el `COMMENT ON COLUMN` y el
+recordatorio de correr `npm run schema:dump`, bloqueado de nuevo por el `SUPABASE_ACCESS_TOKEN` filtrado
+sin rotar).
+
+**Contexto de negocio (Sección F de Fede)**: briefing diario de apertura/cierre SOLO al dueño, por
+plantilla pre-aprobada de Meta (categoría utilidad) — a diferencia de las Fases 1-3, este es un mensaje
+**business-initiated** (nadie escribió primero), lo que exige un message template pre-aprobado por Meta en
+vez de texto libre; esa aprobación es 100% externa, fuera del control de Genesis360.
+
+**Investigación previa**: no hay pg_cron/pg_net en el proyecto — se clonó el patrón real y único para
+tareas periódicas del proyecto, **GitHub Actions con `schedule:`**, casi 1:1 del molde de
+`repositores-cierre-dia-sweep` (cron cada 15 min, misma `horaArgentinaActual()`). Se reusaron
+`sucursales.horario_apertura`/`horario_cierre` (ya existían desde la mig 124, sin migración nueva para
+esto) con defaults `09:00`/`21:00`.
+
+**Código nuevo**: `supabase/functions/wa-briefing-sweep/index.ts` (EF nueva, autocontenida) — por cada
+sucursal activa con WhatsApp conectado y `numero_notificaciones` configurado, evalúa por separado si ya
+pasó apertura (resumen de AYER) o cierre (resumen de HOY), armados con queries directas a `ventas`/`gastos`
+(NO las vistas `vw_caja_resumen_diario`, que solo se llenan al cerrar una sesión de caja). Función nueva
+`enviarMensajePlantillaWhatsapp()` (`type: 'template'`). Workflow nuevo
+`.github/workflows/wa-briefing-sweep.yml`, clon exacto del molde de `repositores-cierre-dia-sweep.yml` —
+como este trabajo queda en `dev`, el `schedule:` de GitHub Actions no se dispara solo todavía (solo corre
+sobre el branch default).
+
+**Bug de diseño encontrado y corregido EN esta sesión**: el dedupe vía `whatsapp_mensajes_log` se escribía
+originalmente ANTES del envío (mismo patrón que usa `wa-webhook` para dedupear reintentos de ENTREGA de
+Meta) — un fallo transitorio (token vencido) dejaba la sucursal marcada como "ya procesada" sin haber
+mandado nada, bloqueando el reintento. Corregido: el registro de dedupe se escribe RECIÉN tras un envío
+exitoso.
+
+**Plantillas de Meta dadas de alta vía API en esta sesión** (`briefing_apertura_dia`, `briefing_cierre_dia`,
+categoría solicitada `UTILITY`, idioma `es_AR`) — **hallazgo real, no controlado por nosotros**: Meta
+reclasificó automáticamente `briefing_cierre_dia` de `UTILITY` a `MARKETING` durante su revisión (afecta
+costo/reglas de entrega, dato a sumar en la Sección G); `briefing_apertura_dia` se mantuvo en `UTILITY`.
+Ambas quedaron `PENDING` (aprobación de Meta, sin ETA) al cierre de la sesión.
+
+**Verificado en DEV (2 vueltas)**: 1ª invocación manual confirmó evaluación de sucursal/horario correcta,
+pero el envío falló con 401 (token temporal vencido 8 min antes de lo esperado) — GO pasó un token nuevo.
+2ª vuelta con el token nuevo: error de autenticación desapareció, apareció el esperado `(#132001) Template
+name does not exist in the translation` — comportamiento NORMAL de Meta para una plantilla `PENDING`,
+confirma que todo el código (token, `phone_number_id`, nombre/`language` del template, payload) es
+correcto; solo falta la aprobación de Meta. Build limpio; 100% backend/infra, sin cambios en `src/` salvo
+el bump de versión. Ver [[wiki/features/asistente-whatsapp]], `sources/raw/project_pendientes.md` (cont.
+29, "ARRANCÁ ACÁ").
+
+---
+
+**384 (`384_whatsapp_borrador_comprobante.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
+`0364447a`, `APP_VERSION` `v1.183.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 3 ("fotos y
+audio") del "Asistente de WhatsApp con IA" (continúa la mig 383, abajo, ver
+[[wiki/features/asistente-whatsapp]]). Una sola columna aditiva: `ALTER TABLE whatsapp_gastos_borrador ADD
+COLUMN IF NOT EXISTS comprobante_url TEXT` — cuando la propuesta de gasto viene de una FOTO enviada por
+WhatsApp, esa foto se sube a Storage (`comprobantes-gastos`) y se linkea acá, para que el modal "Nuevo
+Gasto" la traiga precargada al momento de la aprobación humana.
+
+`migration-reviewer`: **APTA, sin correcciones.**
+
+**Decisión técnica clave**: audio y fotos son solo formas nuevas de llegar al mismo pipeline de las Fases
+1-2 (`llamarClaude` + `proponer_gasto` + doble confirmación) — cero lógica fiscal nueva. **Audio**: se
+descarga el media real de la API de Meta y se transcribe con **Groq Whisper** (`whisper-large-v3-turbo`,
+reusa el secret `GROQ_API_KEY` que ya existía para `ai-assistant`) — decisión tomada con GO en esta sesión
+por sobre OpenAI Whisper (la sugerencia original de Fede) para no dar de alta una cuenta/secret nuevo; el
+texto transcripto reemplaza `msg.text.body`, cero cambios en `llamarClaude`. **Fotos**: se aprovecha que
+Claude Sonnet 5 ya es multimodal — la imagen se manda como bloque de contenido en el mismo mensaje
+(`llamarClaude` pasa de tipar su parámetro `string` a `string | any[]`), mismo tool, mismo loop.
+
+**Código nuevo**: `supabase/functions/wa-webhook/index.ts` gana `descargarMediaWhatsapp()` (helper único
+para audio e imagen) y `transcribirAudioGroq()`; el loop principal switchea por `msg.type`
+(texto/audio/imagen/no-soportado); el bloque de éxito de `proponer_gasto` sube la foto a Storage cuando
+corresponde (nunca bloqueante si falla). `GastosPage.tsx` → `abrirDesdeBorrador()` precarga
+`comprobanteExistente` desde `comprobante_url`; `BandejaBorradoresWhatsapp.tsx` gana un indicador "Ver
+foto".
+
+**Verificado PARCIALMENTE en DEV**: con requests sintéticos firmados HMAC real y `media_id` inventados se
+confirmó (vía logs reales de la Edge Function) que la firma se valida, el ruteo por tipo de mensaje
+funciona para los 4 casos, y que el código llama de verdad a la API de Meta con el token real (recibiendo
+el error esperado "Object with ID ... does not exist", no uno de autenticación). **El happy path real
+(transcribir un audio real / leer una foto real) queda sin verificar de punta a punta** — requiere un
+`media_id` real, bloqueado por el mismo pendiente de siempre (chip prepago dedicado para que el número de
+test de Meta pueda RECIBIR mensajes reales). Build+typecheck limpios; suite e2e de Gastos sin regresión
+(5 passed, 1 skip no relacionado). Ver [[wiki/features/asistente-whatsapp]],
+`sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ").
+
+---
+
+**383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `9029f24b`, `APP_VERSION`
+`v1.182.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 2 ("cargar gastos como borrador") del
+"Asistente de WhatsApp con IA" (continúa la mig 382, abajo, ver [[wiki/features/asistente-whatsapp]]).
+Agrega la tabla `whatsapp_gastos_borrador`, con 4 estados: `pendiente_confirmacion` (la IA propuso el
+gasto, esperando que el remitente de WhatsApp confirme con un botón interactivo) → `pendiente` (confirmado
+por WhatsApp, visible en la bandeja de revisión de la app) → `aprobado` (un humano lo aprobó desde el
+mismo modal "Nuevo Gasto" de siempre, `gasto_id` linkeado) | `descartado` (rechazado en cualquiera de las
+2 etapas).
+
+**Decisión de diseño confirmada por GO**: el bot de WhatsApp NUNCA escribe en `gastos` directamente —
+crear un gasto real dispara reglas de negocio encadenadas (umbral de autorización por rol, CAJ-18 de saldo
+de caja, comprobante obligatorio según config del tenant, multi-CUIT, período contable cerrado) que no
+tiene sentido reimplementar sin sesión de usuario real (REGLA #0). El borrador pasa por 2 confirmaciones
+separadas: botones interactivos nativos de Meta (✅/❌, no texto libre) del remitente, y aprobación humana
+desde el modal "Nuevo Gasto" existente (precargado), que corre toda la validación real sin duplicar
+lógica.
+
+RLS con **policy real de tenant** (a diferencia de `whatsapp_mensajes_log` de la mig 382, que es solo
+`service_role` — esta tabla SÍ la toca el frontend con sesión de usuario real, bandeja de revisión +
+Aprobar/Descartar). `migration-reviewer`: **APTA**, con una corrección aplicada antes de aplicar (no
+bloqueante): envolver `auth.uid()` en `(select auth.uid())`, la convención de performance de RLS ya
+estandarizada en las migs 263 y 366, reintroducida sin querer en esta migración nueva.
+
+**Código nuevo**: `supabase/functions/wa-webhook/index.ts` gana la tool `proponer_gasto` + envío de
+mensajes interactivos (botones) + manejo de `interactive`/`button_reply` entrantes; `GastosPage.tsx` gana
+`abrirDesdeBorrador()` (calcada de `abrirCorreccion()`) + tab nuevo "WhatsApp" con badge; componente nuevo
+`BandejaBorradoresWhatsapp.tsx`.
+
+**Verificado end-to-end en DEV**: por curl con HMAC real contra `wa-webhook` (creación de borrador,
+confirmar/cancelar por botón, idempotencia por estado) y con Playwright real contra el frontend (RLS aisló
+correctamente el borrador sembrado del tenant de testing; Aprobar → modal precargado → gasto real creado
+CON movimiento de caja → borrador linkeado y marcado `aprobado`). Suite e2e existente de Gastos sin
+regresión (6/6). Ver [[wiki/features/asistente-whatsapp]], `sources/raw/project_pendientes.md` (cont. 27,
+"ARRANCÁ ACÁ").
+
+---
+
+**382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `8b297b32`, `APP_VERSION`
+`v1.181.0`, tag+release publicados), **SIN deploy a PROD** (⚠ corrige la nota anterior de esta entrada,
+que decía "código sin commitear/bumpear todavía" — quedó desactualizada apenas se escribió):** Fase 1 (cimientos)
+del "Asistente de WhatsApp con IA" — GO eligió arrancar por acá la propuesta de Fede del 2026-08-25 (no por
+el Portal de Proveedores, ver [[wiki/features/asistente-whatsapp]]). Agrega 2 tablas nuevas:
+1. `whatsapp_credentials` — mapeo `phone_number_id` (Meta) → `tenant_id`. **Sin `sucursal_id` a
+   propósito**: el número de WhatsApp representa al negocio completo, no una sucursal puntual (⚠ distinto
+   del patrón genérico `(tenant_id, sucursal_id)` UNIQUE que usan las demás tablas `*_credentials` del
+   proyecto, y distinto del diseño que había quedado apuntado en `wiki/integrations/roadmap-apis.md` §6.2
+   — corregido en ese doc).
+2. `whatsapp_mensajes_log` — idempotencia por `message_id` de Meta (evita reprocesar un webhook
+   reentregado) + tokens in/out por mensaje, instrumentado desde el día 1 para no reconstruirlo cuando
+   llegue la Sección G (medición de uso/facturación) de la propuesta de Fede.
+
+RLS en ambas tablas; `whatsapp_mensajes_log` sin policies de usuario (solo `service_role`, la Edge Function
+`wa-webhook` es la única que escribe). `migration-reviewer`: **APTA**, sin hallazgos bloqueantes — 1 nota
+🟡 no bloqueante y **heredada** (no nueva de esta migración): las 4 tablas `*_credentials` del proyecto
+(TN/MP/MELI/WhatsApp) no restringen por rol quién puede leer el `access_token` guardado, pendiente de
+hardening transversal a futuro.
+
+**Edge Function nueva `wa-webhook`** (deployada a DEV, `--no-verify-jwt`): valida `X-Hub-Signature-256` de
+forma BLOQUEANTE desde el día 1 (a diferencia del log-only actual de `mp-webhook`), resuelve el tenant por
+`phone_number_id`, responde con **Claude Sonnet 5** (no Groq — canal pago de cara a clientes reales, ver
+incidente de catálogo de Groq en asistente-ia) vía tool de solo lectura `consultar_stock_precio`. No
+comparte código con `supabase/functions/ai-assistant` (motor del Plan IA) — prompt y modelo de auth
+distintos, la reutilización es de patrón, no de código literal.
+
+**Verificado end-to-end en DEV**: payload sintético firmado con HMAC real → 200 OK → tool ejecutada →
+respuesta correcta con datos reales de un producto de prueba; reenvío del mismo `message_id` NO se
+reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Meta con token correcto → 200 +
+eco del challenge, con token incorrecto → 403. Ver [[wiki/features/asistente-whatsapp]],
+`sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ").
+
+**🔴 `schema_full.sql` sigue DESACTUALIZADO** — no incluye la 382, la 383 ni la 384 (sigue reflejando hasta
+la 381), bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (recurrente, ver
+`reference_seguridad.md`).
+
+---
+
+**381 (`381_compras_gastos_usd_fase3_descalce.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **⚠ código
+`v1.180.0`, SIN deployar a PROD todavía**:** Fase 3 (pago con descalce de moneda) del plan "Compras/Gastos en USD + tasa
+de cambio editable" (continúa las migs 379 y 380, abajo). Dos partes:
+1. 🔴 **Corrección de diseño encontrada ANTES de que importara** (REGLA #0): la mig 379 había puesto
+   `cotizacion_usd` como una columna ÚNICA en `ordenes_compra`/`gastos`/`gastos_fijos` — pero una OC/
+   gasto se puede pagar en varias cuotas a lo largo del tiempo, así que una sola columna no aguanta más
+   de una cotización sin pisar la anterior. Verificado con query real que 0 filas la usaban (ninguna
+   OC/gasto en USD existía todavía) antes de corregir. **`ordenes_compra`/`gastos`/`gastos_fijos` pierden
+   la columna `cotizacion_usd`** (se movió) — `caja_movimientos` la gana (`numeric(14,2)`, nullable): una
+   fila por movimiento real de pago, exactamente el mismo patrón que `ventas.cotizacion_usd` (mig 368,
+   G5). Las columnas `moneda` (moneda nativa, fija) de las 3 tablas quedan sin cambios.
+2. **`registrar_pago_oc()` gana el parámetro `p_cotizacion_usd`** (nullable, al final, compatible con
+   cualquier llamador viejo): si algún medio no-CC está en moneda distinta a la de la OC (descalce),
+   exige `p_cotizacion_usd` y convierte **server-side** (1 USD = `p_cotizacion_usd` ARS, nunca confía en
+   la aritmética del cliente). El monto ORIGINAL (moneda real del medio) es lo que sale físicamente de
+   esa caja; el equivalente convertido cubre `monto_pagado`/saldo (siempre en la moneda nativa de la OC).
+   Cuenta Corriente queda excluida de la conversión (moneda-agnóstica por diseño). Sin redondeo (H1).
+
+🔴 **2 hallazgos de seguridad reales, corregidos ANTES de aplicar**: (1) cambiar la CANTIDAD de
+parámetros de una función existente NO es reemplazable con un simple `CREATE OR REPLACE` — Postgres
+identifica una función por `(nombre, tipos de argumentos)`, así que sin un `DROP FUNCTION IF EXISTS`
+explícito con la firma vieja de 8 args esto crea un OVERLOAD nuevo dejando viva la función anterior — el
+único caller real (`GastosPage.tsx`) seguía llamando con 8 args nombrados, así que Postgres habría
+resuelto siempre hacia la vieja y toda la migración habría quedado código muerto (mismo patrón de fix ya
+usado en mig 190/248). (2) al verificar ese fix, se encontró que la función NUEVA (firma de 9 args) NO
+hereda los GRANT/REVOKE puntuales de la vieja — Postgres otorga EXECUTE a `PUBLIC` por default en todo
+`CREATE FUNCTION` nuevo, así que `anon` seguía pudiendo ejecutar el RPC vía ese grant heredado pese al
+`REVOKE FROM anon` explícito (`REVOKE FROM anon` no alcanza cuando `PUBLIC` también tiene EXECUTE).
+Cerrado con `REVOKE EXECUTE ... FROM PUBLIC, anon` explícito + `GRANT ... TO authenticated, service_role`
+para la firma nueva, reverificado con `has_function_privilege()` real (no alcanza con mirar el nombre en
+`information_schema.routine_privileges`).
+
+**Wiring de frontend** (`GastosPage.tsx`, commit `90976a33`, mismo commit que agrega las funciones puras
+`convertirMontoAMonedaOC`/`desvioCotizacionFuerte` en `src/lib/comprasPago.ts` y
+`puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`, con 20 tests unit nuevos): el modal de
+pago de OC ya no bloquea de plano un medio en otra moneda — exige la cotización manual (gateada por el
+permiso de la mig 380) y avisa (NO bloqueante) si se aleja ≥20% de la referencia del sidebar; la caja que
+recibe el movimiento usa la moneda REAL del medio pagado, no la de la OC.
+
+`migration-reviewer`: **APTA** tras corregir los 2 hallazgos de arriba. Verificado: `tsc`/`build` limpios,
+4 e2e reales de pago en ARS (`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`,
+`31_cheque_gasto_rechazo_mutante`, `27_gasto_efectivo_mutante`) siguen en verde — cero regresión. Ver
+[[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD", [[wiki/features/gastos]].
+
+---
+
+**380 (`380_compras_gastos_usd_fase2_permisos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `cce107c8`), **⚠ código `v1.180.0`,
+SIN deployar a PROD todavía**:** Fase 2 (permisos) del plan "Compras/Gastos en USD + tasa de cambio editable". Agrega
+`tenants.compras_cotizacion_roles_permitidos jsonb` — mismo patrón que `cotizacion_usd_roles_permitidos`
+de la Caja USD G5 (mig 370): NULL/[] = solo DUEÑO puede cargar/editar la cotización manual de una compra
+con descalce de moneda; roles adicionales (base o `custom:{id}`) configurables aparte. Solo cimiento de
+configuración — 100% aditivo, sin cambio de comportamiento hasta que la Fase 3 (mig 381, arriba) la
+consume. Ver [[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD".
+
+---
+
+**379 (`379_compras_gastos_usd_fase1_cimientos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `6a0f46af`), **⚠ código `v1.180.0`,
+SIN deployar a PROD todavía**:** Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
+respondido por Fede el 2026-08-21 (100% cerrado), distinto del G5 (Caja USD, que solo cubrió VENTAS): este
+cubre el lado de COMPRAS/GASTOS, feature nueva de punta a punta. Agrega:
+1. `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` en `gastos`, `gastos_fijos` y
+   `ordenes_compra` — mismo patrón que `ventas.cotizacion_usd` (mig 368, Caja USD): NULL salvo que la
+   transacción haya tenido una conversión real (solo se guarda si hay descalce de moneda entre costo y
+   pago); nunca se redondea. 100% aditivo, `DEFAULT 'ARS'` preserva el comportamiento actual al 100%.
+   **⚠ Corregido por la mig 381 (arriba)**: la columna `cotizacion_usd` de estas 3 tablas fue eliminada y
+   movida a `caja_movimientos.cotizacion_usd` (no aguantaba más de un pago por cuota) — `moneda` en las 3
+   tablas queda sin cambios.
+2. 🔴 **Fix real de REGLA #0 encontrado al diseñar esta fase**: `registrar_pago_oc()` ya insertaba egresos
+   reales en `caja_movimientos` (`egreso`/`egreso_informativo`) al pagar una OC — la Caja USD YA soportaba
+   egresos, no hacía falta construir esa capacidad de cero (respuesta a una pregunta técnica que Fede le
+   dejó a GO) — pero el INSERT nunca completaba la columna `moneda` (`caja_movimientos.moneda`, mig 368):
+   quedaba siempre en el DEFAULT `'ARS'` sin importar la moneda real del método de pago usado. Si se
+   pagara una OC en USD desde una Caja USD, el movimiento habría quedado mal etiquetado como ARS
+   (violación latente de integridad contable). Fix: se agrega `v_moneda_medio` (misma fuente que
+   `v_es_efectivo`, `metodos_pago.moneda` por nombre de medio) y se completa `moneda` en el INSERT. **Cero
+   cambio de comportamiento para pagos en ARS** (100% del volumen real hoy) — verificado con e2e real.
+
+`migration-reviewer`: **APTA**, sin hallazgos bloqueantes. Solo cimientos de datos — sin wiring de
+frontend todavía (permisos, UI de Gastos/OC en USD, reportes quedan para la Fase 2+, sin plan fijo de
+fases detallado, se decidió iterar en vez de un plan de 8 fases como G5). Ver
+[[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD", [[wiki/features/gastos]],
+[[wiki/features/clientes-proveedores]].
+
+---
 
 **Migraciones 376-378 — ✅ APLICADAS Y VERIFICADAS TAMBIÉN EN PROD (`jjffnbrdjchquexdfgwq`) el 2026-08-20**,
 como parte del deploy de `v1.179.0` (PR #332, merge commit `7e19e7a3`) — el detalle de cada una (abajo)

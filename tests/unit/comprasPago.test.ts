@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   labelModoPago, defaultAnticipoOC, montoAnticipo,
   totalPctSchedule, scheduleValido, montoCuota, labelBaseCuota,
+  convertirMontoAMonedaOC, desvioCotizacionFuerte,
   type CuotaSchedule,
 } from '@/lib/comprasPago'
 
@@ -90,5 +91,45 @@ describe('schedule de pago (D2)', () => {
     expect(labelBaseCuota({ base: 'confirmacion', pct: 50 })).toBe('Al confirmar la OC')
     expect(labelBaseCuota({ base: 'recepcion', pct: 50 })).toBe('Al recibir')
     expect(labelBaseCuota({ base: 'dias', dias: 45, pct: 50 })).toBe('A 45 días')
+  })
+})
+
+// Compras/Gastos en USD (mig 381) — B3/C1: pago con descalce de moneda. Espejo JS de la conversión
+// que hace registrar_pago_oc server-side — mismo escenario que verificó migration-reviewer a mano.
+describe('convertirMontoAMonedaOC (B3/C1, mig 381)', () => {
+  it('misma moneda → no convierte, cotización ni se usa', () => {
+    expect(convertirMontoAMonedaOC(1000, 'ARS', 'ARS', null)).toBe(1000)
+    expect(convertirMontoAMonedaOC(100, 'USD', 'USD', undefined)).toBe(100)
+  })
+  it('medio en ARS, OC en USD → divide por la cotización', () => {
+    expect(convertirMontoAMonedaOC(145000, 'ARS', 'USD', 1450)).toBe(100)
+  })
+  it('medio en USD, OC en ARS → multiplica por la cotización', () => {
+    expect(convertirMontoAMonedaOC(100, 'USD', 'ARS', 1450)).toBe(145000)
+  })
+  it('descalce sin cotización válida → NaN (para que el caller lo detecte y bloquee)', () => {
+    expect(convertirMontoAMonedaOC(145000, 'ARS', 'USD', null)).toBeNaN()
+    expect(convertirMontoAMonedaOC(145000, 'ARS', 'USD', 0)).toBeNaN()
+    expect(convertirMontoAMonedaOC(145000, 'ARS', 'USD', -1)).toBeNaN()
+  })
+  it('nunca redondea (H1)', () => {
+    expect(convertirMontoAMonedaOC(100, 'ARS', 'USD', 3)).toBeCloseTo(33.333333, 5)
+  })
+})
+
+describe('desvioCotizacionFuerte (B3)', () => {
+  it('sin referencia → nunca avisa (no bloqueante, no hay con qué comparar)', () => {
+    expect(desvioCotizacionFuerte(1450, null)).toBe(false)
+    expect(desvioCotizacionFuerte(1450, undefined)).toBe(false)
+    expect(desvioCotizacionFuerte(1450, 0)).toBe(false)
+  })
+  it('dentro del 20% de la referencia → no avisa', () => {
+    expect(desvioCotizacionFuerte(1450, 1400)).toBe(false)  // ~3.6%
+    expect(desvioCotizacionFuerte(1650, 1400)).toBe(false)  // ~17.9%, límite justo debajo
+  })
+  it('20% o más de la referencia → avisa (para arriba y para abajo)', () => {
+    expect(desvioCotizacionFuerte(1680, 1400)).toBe(true)   // +20%
+    expect(desvioCotizacionFuerte(1120, 1400)).toBe(true)   // -20%
+    expect(desvioCotizacionFuerte(2000, 1400)).toBe(true)
   })
 })

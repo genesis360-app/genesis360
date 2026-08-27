@@ -1,0 +1,23 @@
+name: Asistente WhatsApp — briefing diario (Fase 4)
+
+on:
+  schedule:
+    # Cada 15 minutos — el horario de apertura/cierre es configurable por sucursal
+    # (sucursales.horario_apertura/horario_cierre), así que hace falta chequear seguido para no
+    # atrasarse mucho respecto de la hora real configurada.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  wa-briefing-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call wa-briefing-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/wa-briefing-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

@@ -21,6 +21,7 @@ import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabas
 import { esDecimal } from '@/lib/ventasValidation'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
+import { InfoTip } from '@/components/InfoTip'
 // jspdf/jspdf-autotable se importan dinámicamente en descargarEstadoProveedor/descargarOCpdf
 // (auditoría perf 2026-08-14, P5).
 import toast from 'react-hot-toast'
@@ -87,6 +88,7 @@ interface FormPresupuesto {
 
 interface FormOC {
   proveedor_id: string
+  moneda: 'ARS' | 'USD'
   fecha_esperada: string
   notas: string
   tiene_envio: boolean
@@ -259,7 +261,7 @@ export default function ProveedoresPage() {
   const [ocFiltroProv, setOcFiltroProv] = useState('')
   const [showOcForm, setShowOcForm] = useState(false)
   const [editOcId, setEditOcId] = useState<string | null>(null)
-  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
@@ -1047,6 +1049,7 @@ export default function ProveedoresPage() {
         const { data, error } = await supabase.from('ordenes_compra').insert({
           tenant_id: tenant!.id,
           proveedor_id: ocForm.proveedor_id,
+          moneda: ocForm.moneda,  // Compras en USD (mig 379) — fija al crear, no editable después
           numero: 0,
           fecha_esperada: ocForm.fecha_esperada || null,
           notas: ocForm.notas.trim() || null,
@@ -1276,6 +1279,7 @@ export default function ProveedoresPage() {
           tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
           concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
           usuario_id: user?.id,
+          moneda: (oc as any).moneda ?? 'ARS',  // Compras/Gastos en USD (mig 379) — el reembolso hereda la moneda de la OC devuelta
         })
       } else if (devForma === 'reposicion') {
         const { data: newOC, error: ocErr } = await supabase.from('ordenes_compra').insert({
@@ -1368,7 +1372,7 @@ export default function ProveedoresPage() {
 
   const openNewOC = () => {
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([{ _key: ++itemKey, producto_id: '', cantidad: '', precio_unitario: '', notas: '' }])
     setShowOcForm(true)
   }
@@ -1381,6 +1385,7 @@ export default function ProveedoresPage() {
     setEditOcId(oc.id)
     setOcForm({
       proveedor_id: oc.proveedor_id,
+      moneda: ((oc as any).moneda === 'USD' ? 'USD' : 'ARS'),
       fecha_esperada: oc.fecha_esperada ?? '',
       notas: oc.notas ?? '',
       tiene_envio: (oc as any).tiene_envio ?? false,
@@ -1405,7 +1410,7 @@ export default function ProveedoresPage() {
   const closeOcForm = () => {
     setShowOcForm(false)
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([])
   }
 
@@ -2629,6 +2634,21 @@ export default function ProveedoresPage() {
                     {proveedores.filter(p => p.activo).map(p => (
                       <option key={p.id} value={p.id}>{p.nombre}</option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">
+                    Moneda
+                    <InfoTip text="En qué moneda está pactada esta OC con el proveedor. Se fija al crearla — no se puede cambiar después." />
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    value={ocForm.moneda}
+                    disabled={!!editOcId}
+                    onChange={e => setOcForm(f => ({ ...f, moneda: e.target.value as 'ARS' | 'USD' }))}
+                  >
+                    <option value="ARS">ARS — Pesos</option>
+                    <option value="USD">USD — Dólares</option>
                   </select>
                 </div>
                 <div>

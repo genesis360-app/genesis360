@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-08-20
+updated: 2026-08-25
 ---
 
 # Ventas / POS
@@ -624,6 +624,11 @@ Filtros: búsqueda libre, estado, rango de fechas.
   píldora `Venta:N` (`?busqueda=`, filtra la lista de fondo) **y** el `?id=<uuid>` preexistente (abre
   el modal de detalle encima). Detalle completo del mecanismo en [[wiki/features/filtro-pildoras]] →
   "Extensión a Pedidos y Ventas".
+- **🐛 Fix: placeholder roto del buscador (2026-08-24/25, ✅ EN PROD desde v1.179.2, PR #333)**: quedó
+  un artefacto textual del refactor de arriba (commit `a209abaf`) — el input mostraba literalmente
+  `"Buscar cliente... o (Venta):2"` en vez de una instrucción legible. Encontrado en una revisión general
+  de la app (unit + e2e completos). Corregido en `VentasPage.tsx` a **"Buscar cliente... o N° de venta"**
+  — sin cambio de comportamiento, solo el texto.
 
 ---
 

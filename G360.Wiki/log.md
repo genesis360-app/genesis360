@@ -6,6 +6,577 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-27] update | 📱🔔 Asistente WhatsApp IA — Fase 4 (briefing diario proactivo) CONSTRUIDA Y VERIFICADA PARCIALMENTE EN DEV (mig 385, EF nueva wa-briefing-sweep, v1.184.0) — LAS 4 FASES de la propuesta de Fede quedan construidas en DEV; falta la aprobación de Meta de las 2 plantillas
+
+Continúa la MISMA sesión que la entrada de abajo (Fase 3, fotos y audio) — **no hubo `/clear`**. GO pidió
+explícitamente seguir con esta fase "para dejar casi todo listo" del Asistente de WhatsApp. Con esto, las 4
+fases de la propuesta de Fede (25/8) quedan construidas en DEV.
+
+**Contexto de negocio**: sección F de la propuesta de Fede — notificaciones proactivas, briefing diario
+(apertura/cierre) SOLO al dueño, por plantilla pre-aprobada de Meta (categoría utilidad).
+
+**Diferencia cualitativa clave con Fases 1-3**: ahí el bot siempre RESPONDÍA dentro de una conversación que
+el usuario abría primero (texto libre, ventana de 24hs gratis de Meta). Un mensaje business-initiated
+(nadie escribió primero) exige un **message template pre-aprobado por Meta** — no se puede mandar texto
+libre. Esa aprobación es 100% externa, Genesis360 no la controla.
+
+**Investigación previa al diseño** (evitó reinventar nada): no hay pg_cron/pg_net habilitados en el
+proyecto (ya documentado). El patrón real y único del proyecto para tareas periódicas es **GitHub Actions
+con `schedule:`** pegándole por curl a una Edge Function — se clonó casi 1:1 el molde de
+`repositores-cierre-dia-sweep` (mismo criterio: cron cada 15 min porque el horario es configurable por
+sucursal y no hay cron por-fila, misma función `horaArgentinaActual()` con `Intl.DateTimeFormat` sobre
+`America/Argentina/Buenos_Aires`). Se reusó `sucursales.horario_apertura`/`horario_cierre` (ya existían
+desde la mig 124, sin migración nueva) con defaults `09:00`/`21:00`.
+
+**Gap real encontrado**: no existía ninguna columna para "a qué número mandarle un mensaje proactivo" —
+`whatsapp_credentials.numero_whatsapp` (mig 382) es el número del NEGOCIO (WABA), documentado
+explícitamente como "solo informativo/UI", no sirve como destinatario de un mensaje al dueño.
+
+**Migración 385** (`385_whatsapp_briefing_numero_notificaciones.sql`, ✅ APLICADA Y VERIFICADA EN DEV
+`gcmhzdedrkmmzfzfveig` vía `apply_migration` MCP): `ALTER TABLE whatsapp_credentials ADD COLUMN IF NOT
+EXISTS numero_notificaciones TEXT` + `COMMENT ON COLUMN` documentando que es PII (número personal del
+dueño) y que no debe loguearse en texto plano. `migration-reviewer`: **APTA**, con 2 notas no bloqueantes
+ya aplicadas (el `COMMENT ON COLUMN`, y recordatorio de correr `npm run schema:dump` — no se pudo correr
+esta sesión, mismo bloqueador de siempre del `SUPABASE_ACCESS_TOKEN` filtrado sin rotar, `schema_full.sql`
+sigue sin incluir las migraciones 382-385). Se cargó el número de prueba (`+56975770883`, número real de
+GO, ya verificado como destinatario de test en Meta) para el tenant "Familia Otranto De Porto".
+
+**Código nuevo**: `supabase/functions/wa-briefing-sweep/index.ts` (Edge Function nueva, autocontenida, sin
+carpeta `_shared/` — mismo criterio que el resto del proyecto). Por cada sucursal activa de un tenant con
+WhatsApp conectado y `numero_notificaciones` configurado, evalúa POR SEPARADO si ya pasó
+`horario_apertura` (manda resumen de AYER) y si ya pasó `horario_cierre` (manda resumen de HOY). El resumen
+se arma con queries directas (NO las vistas `vw_caja_resumen_diario`, que solo se llenan al cerrar una
+sesión de caja y no sirven para un corte en caliente): `ventas` con `estado IN ('despachada','facturada')`
+filtrado por sucursal y rango UTC del día Argentina, y `gastos` con `fecha = {fechaISO}` (columna DATE, sin
+necesidad de ajuste de huso horario). Función nueva `enviarMensajePlantillaWhatsapp()` (`type: 'template'`,
+distinta de las 2 que ya tenía `wa-webhook` para responder dentro de una conversación).
+
+**Decisión de diseño importante encontrada y corregida EN esta sesión (no fue el diseño original)**: el
+dedupe vía `whatsapp_mensajes_log` inicialmente se escribía ANTES de intentar el envío (mismo patrón
+"insert-primero" que usa `wa-webhook` para dedupear reintentos de ENTREGA de Meta). Se detectó como un bug
+real al testear: un fallo transitorio (token vencido) dejaba esa sucursal marcada como "ya procesada" sin
+haber mandado nada, bloqueando el reintento en las siguientes corridas del sweep ese mismo día. **Se
+corrigió**: el registro de dedupe ahora se escribe RECIÉN cuando el envío a Meta sale bien (chequeo por
+SELECT antes, INSERT después del éxito) — así un fallo transitorio permite reintentar en la corrida de 15
+minutos siguiente.
+
+**GitHub Actions**: `.github/workflows/wa-briefing-sweep.yml`, clon exacto del molde de
+`repositores-cierre-dia-sweep.yml` (`schedule: '*/15 * * * *'` + `workflow_dispatch`). Como este trabajo
+queda en `dev` (sin merge a `main`), el trigger `schedule:` de GitHub Actions NO se dispara solo todavía
+(esos triggers solo se evalúan sobre el branch default del repo) — para probar en DEV se invocó la función
+manualmente por curl, igual que se hizo con `wa-webhook` en la sesión anterior.
+
+**Plantillas de Meta dadas de alta EN ESTA SESIÓN, vía API** (no por el dashboard): usando el
+`access_token` vigente y el `waba_id` (`1778597536671078`), se creó `briefing_apertura_dia` y
+`briefing_cierre_dia` (categoría `UTILITY` en la solicitud, idioma `es_AR`) vía `POST
+/{waba_id}/message_templates`. Confirmado con `debug_token` que el token SÍ tenía permiso de gestión de
+plantillas (`whatsapp_business_management`) — GO no tuvo que tocar el dashboard de Meta para esto.
+**Hallazgo real, no controlado por nosotros**: Meta reclasificó automáticamente `briefing_cierre_dia` de
+`UTILITY` a `MARKETING` durante su revisión (el clasificador de Meta decidió que el tono/contenido —
+emojis, "¡buen descanso!" — encaja más ahí); `briefing_apertura_dia` se mantuvo en `UTILITY`. Esto no rompe
+nada funcionalmente, pero cambia el costo por conversación y las reglas de entrega — dato a sumar cuando se
+diseñe la Sección G de Fede (medición/facturación de uso). Ambas plantillas quedaron con estado `PENDING`
+al cierre de la sesión (aprobación de Meta, tiempo fuera de nuestro control).
+
+**Verificación real en DEV (2 vueltas, ambas evidencia real de que el código funciona, no solo teoría)**:
+(1) primera invocación manual: confirmó que la sucursal se evalúa bien, el horario se compara bien (hora
+Argentina real), pero el envío falló con error 401 de Meta — investigado con `debug_token`, causa real: el
+token de acceso temporal de Meta había vencido apenas 8 minutos antes (duró mucho menos que las 24hs
+esperadas); GO pasó un token nuevo. (2) con el token nuevo: el error de autenticación desapareció, pero
+apareció uno nuevo y esperado: `(#132001) Template name does not exist in the translation` — confirmado que
+este es el comportamiento NORMAL de Meta para una plantilla `PENDING` (no aprobada): la API de envío la
+trata como si no existiera hasta que Meta la aprueba. Esto confirma que TODO el código (token,
+`phone_number_id`, nombre y `language` de la plantilla, estructura del payload) está correcto — lo único
+que falta es la aprobación de Meta, fuera de nuestro control. (3) se corrigió el bug del dedupe (ver
+arriba) entre la vuelta 1 y la vuelta 2, incluyendo borrar a mano el registro de dedupe que había quedado
+mal insertado por el diseño viejo.
+
+Build limpio (`npm run build`). No se tocó nada de `src/` salvo el bump de versión — esta fase es 100%
+backend/infra (Edge Function + migración + GitHub Actions).
+
+**Commiteado y pusheado**: commit `2e5fbcdb` a `origin/dev`, `APP_VERSION` bumpeado a **v1.184.0**, tag +
+GitHub release publicados (`v1.184.0`, "Asistente WhatsApp IA (Fase 4, briefing diario)").
+
+**Sin deploy a PROD** — las 4 fases del Asistente de WhatsApp viven solo en DEV.
+
+**Pendientes reales que quedan abiertos**: (1) aprobación de Meta de las 2 plantillas
+(`briefing_apertura_dia`, `briefing_cierre_dia`) — sin ETA, no depende de nosotros; cuando se aprueben,
+re-invocar `wa-briefing-sweep` (o esperar la próxima corrida si esto llegara a estar en `main`) para
+confirmar el envío real de punta a punta; (2) token de acceso permanente (System User) de Meta — sigue
+pendiente, recurrente en las 4 fases de esta feature, el temporal actual venció y se reemplazó una vez más
+en esta sesión; (3) 🔴 rotar el `SUPABASE_ACCESS_TOKEN` filtrado sigue pendiente (recurrente hace varias
+sesiones) — bloqueó de nuevo `npm run schema:dump` esta sesión, `schema_full.sql` sigue sin incluir las
+migraciones 382-385; (4) chip prepago dedicado — sigue pendiente para poder probar mensajes ENTRANTES
+reales de punta a punta (Fases 1-3), no aplica a Fase 4, que es 100% saliente; (5) Sección G de Fede
+(medición/facturación de uso) — sin empezar, sumar el dato nuevo de esta sesión (Meta puede reclasificar
+UTILITY→MARKETING un template ya escrito, afecta el costeo); (6) con las 4 fases construidas, el próximo
+paso lógico identificado en sesiones anteriores sigue siendo Embedded Signup (escalar a futuros clientes) o
+el Portal de Proveedores — a decidir con GO, ninguno arrancado.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 29, "ARRANCÁ ACÁ"),
+[[wiki/features/asistente-whatsapp]] (actualizada), `wiki/database/migraciones.md` (mig 385, título a
+001-385), `wiki/index.md` (footer).
+
+---
+
+## [2026-08-27] update | 📱📸🎙️ Asistente WhatsApp IA — Fase 3 (fotos y audio) CONSTRUIDA Y VERIFICADA PARCIALMENTE EN DEV (mig 384, EF wa-webhook v5, v1.183.0) — happy path real de audio/foto sigue bloqueado por el mismo chip dedicado que Fase 1
+
+Sesión nueva (no continúa la de ayer), arrancó directo con la Fase 3 del Asistente de WhatsApp por pedido
+explícito de GO al cierre de la sesión anterior (ver entrada de abajo, 2026-08-26, "PRÓXIMA SESIÓN").
+Fede había propuesto (25/8) que el asistente acepte fotos de comprobantes y notas de audio para cargar
+gastos, además del texto ya soportado (Fases 1-2).
+
+**Decisión técnica clave**: audio y fotos son solo formas NUEVAS de llegar al mismo pipeline ya construido
+y probado (`llamarClaude` + tool `proponer_gasto` + doble confirmación) — cero lógica fiscal nueva, mismo
+principio de REGLA #0 que Fases 1-2.
+
+**Audio**: se descarga el archivo real desde la API de medios de Meta (`GET /{media-id}` → URL temporal →
+descarga con el mismo Bearer token) y se transcribe con **Groq Whisper** (`whisper-large-v3-turbo`,
+endpoint `https://api.groq.com/openai/v1/audio/transcriptions`) — reusa el secret `GROQ_API_KEY` que YA
+EXISTÍA en el proyecto (lo usa `ai-assistant` para chat), cero trámite nuevo. **Decisión tomada con GO en
+esta sesión**: se prefirió Groq (reutiliza credencial existente, radio de impacto chico si falla — solo
+afecta la transcripción, no el "cerebro") por sobre OpenAI Whisper (la sugerencia original de Fede, hubiera
+requerido dar de alta una cuenta/secret nuevo). El texto transcripto reemplaza a `msg.text.body` — CERO
+cambios en la función `llamarClaude` para este caso.
+
+**Fotos**: en vez de armar una extracción separada (como hace `scan-ticket`), se aprovechó que Claude
+Sonnet 5 ya es multimodal — la imagen (+ caption si tiene) se manda como bloque de contenido en el mismo
+mensaje a Claude, que decide solo si es un comprobante de gasto y llama a `proponer_gasto` con lo que pueda
+leer (descripción/monto/categoría/fecha). Esto solo requirió cambiar el tipo del parámetro de
+`llamarClaude` de `string` a `string | any[]` — mismo tool, mismo loop, cero pipeline nuevo.
+
+**Comprobante adjunto**: cuando la propuesta viene de una FOTO, esa misma foto se sube a Storage
+(`comprobantes-gastos`, mismo bucket que usa `GastosPage.tsx`) con path `{tenant_id}/wa-{borrador_id}.
+{ext}`, y se linkea al borrador vía la columna nueva `comprobante_url` (migración 384). Así, cuando un
+humano aprueba el borrador, el modal "Nuevo Gasto" ya lo trae precargado como comprobante
+(`GastosPage.tsx` → `abrirDesdeBorrador`), sin pedir la foto de nuevo — y sin romper la regla de
+"comprobante obligatorio" del tenant si aplica. Si la subida falla, nunca bloquea el borrador ya creado
+(queda NULL, se puede subir a mano después).
+
+**Migración 384** (`384_whatsapp_borrador_comprobante.sql`, ✅ APLICADA Y VERIFICADA EN DEV
+`gcmhzdedrkmmzfzfveig` vía `apply_migration` MCP, confirmado con query real de
+`information_schema.columns`): `ALTER TABLE whatsapp_gastos_borrador ADD COLUMN IF NOT EXISTS
+comprobante_url TEXT`. `migration-reviewer`: **APTA sin correcciones**.
+
+**Código nuevo** en `supabase/functions/wa-webhook/index.ts`: `descargarMediaWhatsapp(mediaId,
+accessToken)` (helper único para audio e imagen — resuelve el media_id de Meta a una URL temporal y
+descarga los bytes con el mismo token); `transcribirAudioGroq(bytes, mimeType, groqApiKey)` (Groq Whisper,
+`language: 'es'`); loop principal con switch sobre `msg.type` (texto/audio/imagen/no-soportado) que
+converge en el mismo `userContent` que alimenta a `llamarClaude` (el fallback de "no soportado" ahora es
+más específico — video/documento/etc — ya que texto+audio+foto SÍ están soportados); en el bloque de éxito
+de `proponer_gasto`, si la propuesta vino de una foto, sube el archivo a Storage y actualiza
+`comprobante_url` del borrador (nunca bloqueante si falla); system prompt actualizado (ya no dice "no puedo
+leer fotos ni audios", ahora explica que puede usar `proponer_gasto` con lo que lea de una foto de
+comprobante, y que si la foto no es un gasto debe explicar qué ve).
+
+**Frontend**: `src/pages/GastosPage.tsx` → `abrirDesdeBorrador(b)` ahora precarga `comprobanteExistente`
+desde `b.comprobante_url` (antes siempre `null`) — mismo mecanismo que ya usaba `abrirCorreccion` para
+gastos existentes. `src/components/BandejaBorradoresWhatsapp.tsx` gana un indicador "Ver foto" (ícono
+`Image` de lucide-react) cuando el borrador tiene `comprobante_url`, con signed URL — mismo patrón que
+`verComprobante()` de `GastosPage.tsx`.
+
+**Deploy y verificación en DEV**: `wa-webhook` deployado a DEV vía `deploy_edge_function` MCP (versión 5,
+`verify_jwt: false`, ACTIVE). GO refrescó el `access_token` temporal de Meta (pantalla "Pruébalo", dura
+24hs) y se cargó en `whatsapp_credentials` para el tenant de prueba ("Familia Otranto De Porto"). Verificado
+con requests sintéticos firmados con HMAC real (`X-Hub-Signature-256`) contra `wa-webhook` directo, con
+`media_id` inventados para audio/imagen: confirmado en los logs reales de la Edge Function (`query_logs`)
+que (1) la firma se validó, (2) el ruteo por tipo de mensaje funcionó correctamente para los 4 casos
+(texto/audio/imagen/video-no-soportado), (3) para audio e imagen, el código llamó de verdad a la API de
+Meta con el token fresco y recibió el error real "Object with ID ... does not exist" (NO un error de
+autenticación) — esto confirma que el token refrescado es válido y que el código arma bien la request, (4)
+el fallback de error se disparó correctamente en cada caso e intentó responder por WhatsApp (rechazado por
+Meta con "Recipient phone number not in allowed list" porque el número de prueba usado en el test sintético
+no está en la lista de destinatarios verificados — resultado esperado, no un bug).
+
+**🛑 Limitación real, IMPORTANTE para la próxima sesión**: a diferencia de Fases 1-2 (que se probaron 100%
+sintéticamente porque solo usaban texto), el "happy path" completo de audio/foto (transcripción real de un
+audio real, extracción real de un gasto desde una foto real) **no se pudo verificar de punta a punta**
+porque requiere un `media_id` REAL de Meta, que solo existe si un mensaje real llegó al número — y eso
+sigue bloqueado por el mismo motivo de siempre: el número de test de Meta no está "registrado" para RECIBIR
+mensajes (falta el chip prepago dedicado, ver pendientes ya documentados). **Refrescar el token de acceso
+NO destraba esto** — el token solo autentica lo que Genesis360 le pide a Meta (bajar medios, mandar
+mensajes), no si Meta nos entrega el webhook de un mensaje entrante real. Esta limitación quedó confirmada
+explícitamente en esta sesión (antes no estaba tan claro que fuera un bloqueador distinto del de Fase 1).
+
+Build + typecheck (`npm run build`) limpios. Suite e2e de Gastos sin regresión: `06_gastos.spec.ts` (4/4) +
+`68_gasto_comprobante_obligatorio_mutante.spec.ts` (1 skip, no relacionado a este cambio) — 5 passed, 1
+skipped.
+
+**Commiteado y pusheado**: commit `0364447a` a `origin/dev`, `APP_VERSION` bumpeado a **v1.183.0**, tag +
+GitHub release publicados (`v1.183.0`, "Asistente WhatsApp IA (Fase 3, fotos y audio)").
+
+**Sin deploy a PROD** — Fases 1, 2 y 3 viven solo en DEV.
+
+**Pendientes que siguen abiertos** (sin cambios de fondo respecto a la sesión anterior): (1) chip prepago
+dedicado para registrar el número de test y probar mensajes entrantes reales de punta a punta (incluyendo
+ahora el happy path real de audio/foto); (2) token de acceso permanente (System User) — el actual es
+temporal de 24hs, recién refrescado en esta sesión; (3) 🔴 rotar el `SUPABASE_ACCESS_TOKEN` filtrado sigue
+pendiente (recurrente hace varias sesiones) — no bloqueó esta sesión porque se usó el MCP de Supabase
+(reconectado a mitad de sesión) en vez del CLI local; (4) Fase 4 (briefing diario) sin empezar, sin diseño
+— la Sección G (medición/facturación de uso) queda sin trackear el costo de Groq por ahora (prácticamente
+gratis), decisión consciente; (5) Embedded Signup y Portal de Proveedores sin empezar, sin cambios.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ"),
+[[wiki/features/asistente-whatsapp]] (actualizada), `wiki/database/migraciones.md` (mig 384, título a
+001-384), `wiki/index.md` (footer).
+
+---
+
+## [2026-08-26] update | 📱🎉 Asistente WhatsApp IA — trámite REAL de Meta conectado (número de prueba, webhook verificado) + Fase 2 completa (cargar gastos como borrador, mig 383, v1.182.0) — bloqueador real: falta chip dedicado para mensajes entrantes + confirmado que futuros clientes NO repiten el trámite (Embedded Signup)
+
+Continúa la misma sesión que la entrada de abajo (Fase 1 del Asistente de WhatsApp, mig 382) — **no hubo
+`/clear`**. Dos bloques grandes de avance: el trámite real de Meta que hizo GO en vivo, y la Fase 2
+completa (cargar gastos como borrador).
+
+**Corrección de una nota de la entrada de abajo**: decía "código sin commitear/bumpear todavía" — quedó
+desactualizada apenas se escribió. La Fase 1 SÍ se commiteó (`8b297b32`, `APP_VERSION` `v1.181.0`) y se
+pusheó a `origin/dev` en la misma sesión, con tag + GitHub release publicados (`v1.181.0` — "Asistente
+WhatsApp IA (Fase 1, solo lectura)", 2026-08-26T06:05:21Z).
+
+**Trámite real de Meta hecho por GO**: se descartó Business Verification completa (sin documentos de
+empresa a mano) y se fue por el camino de **"número de prueba"** de Meta (gratis, sin documentos, hasta 5
+destinatarios verificados). Al crear la primera app, Meta tiró **"Business is not allowed to claim App —
+Your business is prohibited from advertising, including claiming apps"** sobre el Business Portfolio
+"Genesis360" preexistente (no verificado) — la app se creó igual pero quedó rota (sin caso de uso
+completo, "Tipo: Ninguno", WhatsApp no aparecía en su lista de productos); se resolvió DESDE el Centro de
+Seguridad del portfolio en el dashboard de Meta (GO no detalló el paso exacto que lo destrabó). **Lección
+para el futuro**: si esto vuelve a pasar, crear la app de NUEVO desde cero en vez de reciclar una que
+arrancó rota — reintentar sobre la vieja no sirvió. Con el portfolio destrabado, se creó una app nueva
+limpia y el caso de uso "Conectarte con los clientes a través de WhatsApp" se completó bien, con el número
+de prueba de Meta asignado automáticamente. **Credenciales reales cargadas** en `whatsapp_credentials`
+(tenant "Familia Otranto De Porto", el mismo de prueba de la Fase 1): `phone_number_id:
+1310489345478776`, `waba_id: 1778597536671078`, número de test `+1 555 668 2365`; el `META_APP_SECRET`
+temporal se reemplazó por el real (Configuración de la app → Básica). El **token de acceso es TEMPORAL
+(24hs)**, de la pantalla "Pruébalo" de Meta — ya venció al cierre de la sesión; para uno permanente hace
+falta un System User, no se hizo todavía. **El webhook se conectó de VERDAD** en el dashboard de Meta
+(Callback URL de `wa-webhook` + `META_VERIFY_TOKEN` ya generado) y el handshake GET real de Meta llegó y
+se verificó OK (confirmado con logs de Supabase); campo `messages` suscripto.
+
+**🛑 Bloqueador real encontrado**: GO mandó un WhatsApp real desde su celular al número de test — Meta lo
+marcó "entregado" pero `wa-webhook` nunca recibió nada (0 requests nuevos, confirmado con logs). Causa: el
+número de test de Meta, mientras no esté **"registrado"** (paso separado en el dashboard, pide un número
+de teléfono real para verificar por SMS/llamada), solo puede ENVIAR — no recibir. GO estuvo a punto de
+usar su celular personal de Chile para ese registro; **se lo frenó a tiempo** porque eso puede
+migrar/desvincular ese número de su uso normal de WhatsApp personal (riesgo real de perder chats/
+contactos). **Pendiente real: GO necesita un chip prepago barato DEDICADO** (no su línea de uso diario)
+para completar el registro y poder probar mensajes entrantes reales de punta a punta. No bloquea seguir
+construyendo — todo lo demás (incluida toda la Fase 2, abajo) se sigue verificando con payloads
+sintéticos firmados con HMAC real contra `wa-webhook` directo, sin pasar por la entrega real de Meta.
+
+**Embedded Signup — confirmado que esto NO se repite por cada cliente nuevo**: GO preguntó explícitamente
+si cada negocio nuevo que se sume a Genesis360 va a tener que repetir todo este trámite manual.
+Investigado y confirmado contra la documentación oficial de Meta (developers.facebook.com): NO — existe
+el flujo oficial **"Embedded Signup"**, diseñado para plataformas SaaS como Genesis360: el cliente conecta
+su WhatsApp desde DENTRO de la app de Genesis360 (popup de Meta embebido), sin pisar
+developers.facebook.com ni repetir nada de lo que hizo GO manualmente. Lo único que el cliente siempre va
+a necesitar (esto no lo elimina Embedded Signup, es restricción de WhatsApp en sí): un número de teléfono
+real DEDICADO — mismo motivo por el que se frenó a GO recién. Para habilitarlo, **Genesis360 como
+plataforma (una sola vez)** tiene que convertirse en **"Proveedor de tecnología"** ante Meta — esto SÍ
+exige que Genesis360 complete su propia Business Verification con documentos (el CUIT/monotributo de
+Fede, el mismo que ya usa la empresa para todo lo demás — no hace falta uno nuevo). Límite real con
+impacto de negocio: sin esa verificación de plataforma, se pueden onboardear hasta 10 negocios nuevos por
+semana; verificada, sube a 200/semana. Es trabajo NUEVO, identificado como el paso lógico después de
+terminar de validar el asistente con este primer negocio de prueba — **NO construido todavía, no bloquea
+nada de lo actual**.
+
+**Fase 2 completa: cargar gastos como BORRADOR** (migración 383, `383_whatsapp_gastos_borrador.sql`, ✅
+APLICADA Y VERIFICADA SOLO EN DEV, COMMITEADA Y PUSHEADA a `origin/dev` — commit `9029f24b`, `APP_VERSION`
+`v1.182.0`, tag+release publicados):
+
+**Hallazgo clave ANTES de diseñar** (investigación real de `src/pages/GastosPage.tsx`, evitó un error de
+REGLA #0 del CLAUDE.md del proyecto): crear un gasto real en Genesis360 no es un INSERT simple — dispara
+reglas de negocio encadenadas: autorización por umbral de rol (`evaluarUmbralGasto`, bloquea si el monto
+supera el umbral del rol sin aprobación de un rol superior), CAJ-18 (bloquea el egreso si deja la caja en
+negativo), comprobante obligatorio según 4 reglas combinables del tenant, multi-CUIT (a qué emisor fiscal
+se imputa el IVA crédito), período contable cerrado (bloquea ediciones de gastos viejos). Reimplementar
+todo esto dentro del webhook de WhatsApp habría sido reinventar lógica fiscal ya probada, en un contexto
+sin sesión de usuario real — justo el tipo de riesgo que la REGLA #0 del proyecto pide evitar.
+
+**Decisión de diseño confirmada explícitamente por GO**: el bot de WhatsApp NUNCA escribe en la tabla
+`gastos` — solo arma un BORRADOR, con 2 confirmaciones separadas: (1) el REMITENTE de WhatsApp confirma
+con botones interactivos NATIVOS de Meta (✅ Confirmar / ❌ Cancelar — no texto libre tipo "SI", para
+evitar ambigüedad de interpretación del lenguaje); (2) un humano con acceso a Genesis360 (tab nuevo
+"WhatsApp" dentro del módulo Gastos, visible solo para roles DUEÑO/ADMIN/SUPERVISOR/SUPER_USUARIO) aprueba
+el borrador desde el MISMO modal "Nuevo Gasto" de siempre — precargado con lo que capturó el bot
+(descripción/monto/categoría/fecha), pasando por el mismo botón "Guardar" de siempre. Cero duplicación de
+lógica fiscal: la validación y creación real es exactamente la de siempre, con todas sus reglas ya
+probadas.
+
+**Construido**: migración 383 crea `whatsapp_gastos_borrador` con 4 estados — `pendiente_confirmacion`
+(recién propuesto por la IA) → `pendiente` (confirmado por WhatsApp, visible para revisión humana) →
+`aprobado` (un humano lo aprobó, gasto real creado y linkeado) | `descartado` (rechazado en cualquiera de
+las 2 etapas). RLS con policy real de tenant (a diferencia de la tabla de logs de la Fase 1 que era solo
+`service_role`, esta SÍ la toca el frontend con sesión de usuario real). Revisada por `migration-reviewer`:
+**APTA**, con una corrección aplicada antes de aplicar (no bloqueante) — envolver `auth.uid()` en `(select
+auth.uid())`, la convención de performance de RLS que el proyecto ya estandarizó en 2 migraciones
+dedicadas anteriores (263 y 366) y que esta migración nueva había reintroducido sin querer.
+`supabase/functions/wa-webhook/index.ts` gana la tool de IA `proponer_gasto` (arma el borrador, nunca
+escribe `gastos`), una función nueva para mandar mensajes interactivos de WhatsApp (botones), y manejo de
+los mensajes entrantes de tipo `interactive`/`button_reply` (confirma o cancela el borrador
+correspondiente, verificando siempre que pertenezca al tenant correcto — nunca confía en el id del botón
+solo). `src/pages/GastosPage.tsx` gana la función `abrirDesdeBorrador()` (calcada de `abrirCorreccion()`,
+que ya existía para precargar el modal desde un gasto existente); al guardar con éxito se agrega un paso
+adicional (sin tocar ninguna validación existente) que linkea el borrador al gasto recién creado y lo
+marca `aprobado`; tab nuevo "WhatsApp" con badge de cantidad pendiente. Componente nuevo
+`src/components/BandejaBorradoresWhatsapp.tsx`: lista los borradores pendientes de revisión, con botones
+Aprobar (abre el modal precargado) y Descartar (rechaza directo, sin crear nada).
+
+**Verificado end-to-end en DEV**: por curl con firma HMAC real contra `wa-webhook` directo — mensaje
+sintético "gasté 5000 en nafta" → la IA (Claude Sonnet 5) parseó correctamente descripción="Nafta",
+monto=5000, categoría="Combustible" → borrador creado. Botón "Confirmar" sintético → pasó a estado
+`pendiente`. Reenviar el mismo botón → detectado correctamente como ya resuelto (idempotencia por estado
+del borrador, no solo por id de mensaje de WhatsApp). Segundo borrador + botón "Cancelar" → quedó
+`descartado`, sin crear nada. Del lado del frontend, con un test real de Playwright (no solo curl): se
+sembró un borrador para el tenant que usa la suite de tests automatizados (RLS lo aisló correctamente del
+tenant de prueba de WhatsApp — confirmación extra de que el aislamiento por tenant funciona), se abrió el
+tab "WhatsApp" nuevo, "Aprobar" abrió el modal correctamente precargado, se completó el medio de pago
+(Efectivo) y al guardar se creó el gasto real CON su movimiento de caja correspondiente (egreso $5000,
+estado de pago "pagado"), y el borrador quedó correctamente linkeado al gasto real y marcado como
+aprobado. Los datos de esa prueba se borraron después para no ensuciar el tenant compartido de testing. La
+suite de tests automatizados existente de Gastos se corrió de nuevo después del cambio y no mostró ninguna
+regresión (6 de 6 tests pasaron).
+
+**Sin deploy a PROD** — Fases 1 y 2 viven solo en DEV, igual que antes.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 27, "ARRANCÁ ACÁ"),
+[[wiki/features/asistente-whatsapp]] (actualizada), `wiki/database/migraciones.md` (mig 383, título a
+001-383), `wiki/index.md` (footer).
+
+---
+
+## [2026-08-26] update | 📱✅ Asistente WhatsApp con IA — Fase 1 (cimientos) CONSTRUIDA Y VERIFICADA EN DEV (mig 382, EF `wa-webhook`) — GO eligió arrancar por acá, consultas de stock/precio por WhatsApp con Claude Sonnet 5, SIN deploy a PROD
+
+Continúa la misma sesión que la entrada de abajo (propuesta de Fede revisada, sin diseño ni código) — **no
+hubo `/clear`** pese a que esa entrada decía que sería la última antes de uno; la sesión siguió y GO
+respondió la pregunta 1 que había quedado abierta: arrancar por el **Asistente de WhatsApp** (no por el
+Portal de Proveedores). Se armó un plan técnico (modo plan de Claude Code) antes de escribir código.
+
+**Migración 382** (`382_whatsapp_asistente_fase1.sql`, ✅ APLICADA Y VERIFICADA SOLO EN DEV): 2 tablas
+nuevas — `whatsapp_credentials` (mapeo `phone_number_id` de Meta → tenant; **sin `sucursal_id` a
+propósito**, el número de WhatsApp representa al negocio completo, no una sucursal puntual) y
+`whatsapp_mensajes_log` (idempotencia por `message_id` de Meta + tokens in/out por mensaje, instrumentado
+desde el día 1 para no tener que reconstruirlo cuando llegue la Sección G de medición/facturación de la
+propuesta de Fede). RLS en ambas; `whatsapp_mensajes_log` sin policies de usuario, solo `service_role` (la
+EF es la única que escribe). `migration-reviewer`: **APTA**, sin hallazgos bloqueantes — 1 nota 🟡 no
+bloqueante y heredada (no nueva de esta migración): las 4 tablas `*_credentials` del proyecto (TN/MP/MELI/
+WhatsApp) no restringen por rol quién puede leer el `access_token` guardado, pendiente de hardening
+transversal a futuro.
+
+**Edge Function nueva `wa-webhook`** (deployada a DEV, `--no-verify-jwt`): recibe el webhook de WhatsApp
+Cloud API (Meta), valida `X-Hub-Signature-256` de forma **BLOQUEANTE desde el día 1** (a diferencia del
+modo log-only actual de `mp-webhook`), resuelve el tenant por `phone_number_id`, y responde consultas de
+stock/precio usando **Claude Sonnet 5** (Groq descartado a propósito — ver el incidente ya conocido de
+Groq sacando modelos del catálogo y rompiendo `ai-assistant` en PROD; este es un canal pago de cara a
+clientes reales) con una tool de solo lectura (`consultar_stock_precio` sobre `productos`). **Decisión de
+diseño importante**: no se tocó ni se comparte código con `supabase/functions/ai-assistant` (motor del chat
+web del "Plan IA", sigue en PROD sin cambios) — el prompt es distinto (Q&A de stock, no navegación de la
+app) y el modelo de auth es distinto (WhatsApp no manda JWT de Supabase Auth). La reutilización del Plan IA
+es de PATRÓN (tool-calling + arquitectura defensiva), no de código literal.
+
+`ANTHROPIC_API_KEY` ya existía como secret (la usan `scan-product`/`scan-ticket`), no hubo que darla de
+alta. Se generaron y cargaron en DEV `META_VERIFY_TOKEN` (handshake del webhook) y un `META_APP_SECRET`
+TEMPORAL (para poder probar antes de que GO tenga el valor real de Meta — hay que reemplazarlo).
+
+**Verificado end-to-end en DEV** con credenciales de prueba (tenant "Familia Otranto De Porto", fila
+ficticia en `whatsapp_credentials`): un payload sintético de WhatsApp firmado con HMAC real → 200 OK → la
+tool se ejecutó → Claude respondió correctamente con datos reales de un producto de prueba (coincidió
+exacto con precio/stock real de la DB). Reenviar el mismo mensaje (mismo `message_id`) NO se reprocesó
+(idempotencia OK). Firma inválida o ausente → 403 (rechazado). Handshake GET de verificación de Meta con
+token correcto → 200 + eco del challenge; con token incorrecto → 403. Los 4 checks de seguridad pasaron.
+
+**Alcance de esta Fase 1: SOLO LECTURA** (consultas de stock/precio del dueño por WhatsApp). Fuera de
+alcance (fases futuras ya conversadas, no empezadas): Fase 2 = cargar gastos con confirmación; Fase 3 =
+fotos/audio; Fase 4 = briefing diario proactivo; medición/facturación completa (Sección G de la propuesta
+de Fede). El **Portal de Proveedores** sigue sin empezar — proyecto aparte, con un problema arquitectónico
+cross-tenant sin resolver (`users.tenant_id` es columna única y "una cuenta de proveedor para varios
+negocios" rompe ese supuesto, necesita diseño propio).
+
+**Pendiente de GO para continuar (3 cosas, bloqueantes para pasar de pruebas a real)**:
+1. Completar el trámite de Meta Business Verification + alta de WABA + número dedicado + System User token
+   (Claude ya compartió la guía paso a paso en esta sesión). Cuando lo tenga: pasar `phone_number_id`,
+   `waba_id`, `numero_whatsapp`, el access token del system user, y el **App Secret** real de la app de
+   Meta (Settings → Basic) para reemplazar el `META_APP_SECRET` temporal.
+2. Conectar el webhook real en el dashboard de Meta (se hace en conjunto con Claude una vez haya
+   credenciales reales) usando el `META_VERIFY_TOKEN` ya cargado en DEV.
+3. 🔴 Sigue sin resolver (recurrente hace varias sesiones): rotar el `SUPABASE_ACCESS_TOKEN` filtrado
+   (`sbp_60df…`, documentado desde 2026-07-09). Bloqueó de paso el `npm run schema:dump` de esta sesión
+   (necesita `SUPABASE_ACCESS_TOKEN` vía Management API, no seteado en este entorno) — **`schema_full.sql`
+   quedó DESACTUALIZADO, no incluye la migración 382 todavía.** No se le volvió a pedir a GO el mismo token
+   filtrado sin resolver esto primero — queda señalado como pendiente real, sin regenerarlo ni pedir el
+   token de nuevo.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ"),
+[[wiki/features/asistente-whatsapp]] (página nueva), `wiki/database/migraciones.md` (mig 382).
+
+---
+
+## [2026-08-26] update | 📋 Propuesta nueva de Fede (Asistente WhatsApp con IA + Portal de Proveedores) REVISADA sin diseño ni código + 🔴 hallazgo de seguridad recurrente: token de Supabase SIGUE sin rotar
+
+Continúa la misma sesión que la entrada de abajo (Compras/Gastos en USD, migs 380+381, v1.180.0). **Ésta
+es la última entrada de la sesión antes del `/clear`.** Dos hilos, sin código nuevo:
+
+**Propuesta de Fede (25/8/2026) — Asistente de WhatsApp con IA + Portal de Proveedores**: Fede le mandó a
+GO un documento grande (secciones A-M) con un alcance nuevo. GO se lo pasó a Claude para revisar y armar
+plan de acción — **solo conversación, sin empezar diseño ni código**. Propone un asistente de WhatsApp
+para el DUEÑO de cada negocio (Meta Cloud API + Claude Sonnet 5 con tool-calling sobre la base real,
+confirmación humana siempre antes de guardar, briefing diario, transcripción de audio vía Whisper,
+medición de uso/facturación nueva) y un Portal de Proveedores (usuario nuevo, presupuestos con campos
+estructurados, reusa el flujo ya existente de Órdenes de Compra, gratis por ahora). Revisión de Claude
+encontró 2 cosas: (1) gran parte YA EXISTE — el "Plan IA" (Fases 1-3, EN PROD desde v1.179.0) ya construyó
+el mismo patrón de agente con tool-calling + confirmación humana, la diferencia real es el canal y el
+modelo; (2) 🔴 problema arquitectónico real sin resolver — `users.tenant_id` es columna ÚNICA en todo el
+sistema, y la decisión de negocio de "una sola cuenta de proveedor usable en varios negocios" rompe ese
+supuesto de raíz, necesita un modelo de identidad cross-tenant nuevo. Plan de acción propuesto por Claude
+(sin confirmar por GO): Asistente WhatsApp primero (reusa motor ya probado), medición de uso en paralelo
+al final, Portal de Proveedores aparte con relevamiento técnico propio por el problema cross-tenant.
+**2 preguntas quedan abiertas para GO**: por dónde arrancar, y si rotó o no el token (ver abajo).
+
+**🔴 Hallazgo de seguridad recurrente**: al regenerar `schema_full.sql` en esta misma sesión, el
+`SUPABASE_ACCESS_TOKEN` que pasó GO resultó ser el MISMO `sbp_60df…` documentado en
+`reference_seguridad.md` como filtrado desde el 2026-07-09 y NUNCA rotado de verdad — ya re-flageado sin
+resolverse en varias sesiones anteriores (2026-07-27, 2026-07-28 y ahora de nuevo). Claude avisó a GO en
+el momento; **GO no llegó a confirmar si lo rotó antes de que la sesión cambiara de tema. Sigue sin
+resolver.**
+
+Sin código de producto — no se creó página nueva en `wiki/features/` (nada construido todavía; se crea
+cuando haya diseño real). `index.md` sin cambios.
+
+Detalle completo: `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" al principio, con las 2
+preguntas abiertas destacadas arriba de todo), `sources/raw/reference_seguridad.md` (tabla "API keys
+rotadas", fila "Supabase Access Token").
+
+---
+
+## [2026-08-25] update | 💵 Compras/Gastos en USD: Fases 2 y 3 CONSTRUIDAS, COMMITEADAS Y PUSHEADAS a `origin/dev` (migs 380+381), tag+release v1.180.0 — pago de OC con descalce de moneda, sin deploy a PROD
+
+Continúa la misma sesión que la entrada de abajo (Fase 1, mig 379). **Fase 2 — permisos** (migración
+**380**, commit `cce107c8`): `tenants += compras_cotizacion_roles_permitidos jsonb`, mismo patrón que
+`cotizacion_usd_roles_permitidos` de la Caja USD G5 — NULL/[] = solo DUEÑO puede cargar la cotización
+manual de una compra, roles adicionales configurables. Solo cimiento, sin UI todavía en ese commit.
+
+**Fase 3 — pago con descalce de moneda** (migración **381**, commits `2476a3e4` + `90976a33`): 🔴
+corrección de diseño encontrada ANTES de que importara (REGLA #0) — la Fase 1 había puesto
+`cotizacion_usd` como columna única en `ordenes_compra`/`gastos`/`gastos_fijos`, pero una OC/gasto se
+paga en varias cuotas y una sola columna no aguanta más de una cotización sin pisar la anterior.
+Verificado que 0 filas la usaban antes de corregir. Se movió a **`caja_movimientos.cotizacion_usd`** (una
+fila por movimiento real de pago), mismo patrón que `ventas.cotizacion_usd`. `registrar_pago_oc()` ganó
+`p_cotizacion_usd`: si un medio de pago está en moneda distinta a la de la OC, exige la cotización y
+**convierte server-side** (nunca confía en la aritmética del cliente). **2 hallazgos de seguridad reales
+corregidos antes de aplicar**: (1) cambiar la cantidad de parámetros de una función existente crea un
+OVERLOAD en vez de reemplazarla — sin `DROP FUNCTION IF EXISTS` con la firma vieja, la función anterior
+seguía viva y la conversión nunca se hubiera activado; (2) al verificar ese fix, `anon` igual podía
+ejecutar el RPC — `REVOKE FROM anon` no alcanza cuando `PUBLIC` también tiene EXECUTE (default de
+Postgres en toda función nueva); cerrado con `REVOKE FROM PUBLIC` explícito + reverificado con
+`has_function_privilege()` real. De paso se re-verificó una nota vieja de memoria (56 días) que decía que
+esta función seguía expuesta a `anon` — comprobado contra PROD real que NO es así, nota corregida.
+
+**Wiring de frontend** (`GastosPage.tsx`, modal de pago de OC, commit `90976a33`): ya no bloquea de plano
+un medio en otra moneda — exige la cotización manual (gateada por el permiso de la Fase 2) y avisa (NO
+bloqueante) si se aleja ≥20% de la referencia del sidebar. Fix adicional al cablear: la caja que recibe
+el movimiento tiene que ser de la moneda REAL del medio pagado, no la de la OC. Lógica de conversión
+extraída a funciones puras testeadas (`convertirMontoAMonedaOC`, `desvioCotizacionFuerte` en
+`src/lib/comprasPago.ts`; `puedeCargarCotizacionCompras` en `src/lib/comprasPermisos.ts`) — 20 tests unit
+nuevos.
+
+**Verificado en cada paso**: `tsc`/`build` limpios; 4 e2e reales que pagan una OC/gasto en pesos
+(`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`, `31_cheque_gasto_rechazo_mutante`,
+`27_gasto_efectivo_mutante`) siguen en verde en cada incremento — cero regresión para el 100% del volumen
+real de hoy (ARS). **`schema_full.sql` regenerado** (commit `3279b381`, estaba desactualizado desde la
+mig 368, 13 migraciones de drift).
+
+**`APP_VERSION` bumpeado a `v1.180.0`** (commit `ac1a5c84`) con **tag + GitHub release `v1.180.0`**
+publicados sobre `dev` (`publishedAt: 2026-08-25T20:02:11Z`, título "v1.180.0 — Compras/Gastos en USD
+(Fases 1-3)"; release confirma además suite unit completa —100 archivos, 1637 tests— en verde). **Todo
+COMMITEADO Y PUSHEADO a `origin/dev`** (confirmado con `git log origin/dev`, HEAD `ac1a5c84`) — **sin
+deploy a PROD todavía, sin PR a `main`**.
+
+Falta del plan: sugerir la última cotización usada con ese proveedor específico (B3), Gastos en USD con
+UI propia (hoy solo se cableó el pago de OC), confirmar C2/C3 (trazabilidad/freeze, ya cubiertos de hecho
+por el diseño) con GO, y G1/G2 (reportes/dashboard ARS/USD, sin empezar).
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"),
+[[wiki/features/gastos]], [[wiki/development/reglas-negocio]], `wiki/database/migraciones.md` (migs
+380-381), `wiki/business/roadmap.md`.
+
+---
+
+## [2026-08-25] deploy | 🚀 v1.179.2 a PROD — 5 bugs reales corregidos (arrastra también el fix de moneda de Productos de v1.179.1) — PR #333
+
+Revisión general de la app (unit + e2e completos, triage de fallas reales) que encontró y corrigió 5 bugs
+reales: placeholder roto en el buscador de Historial de Ventas (`"Buscar cliente... o (Venta):2"`,
+artefacto de un refactor viejo, corregido en `VentasPage.tsx`); overflow horizontal en mobile
+(375px/360px) en Productos e Inventario por falta de `min-w-0` en el contenedor del buscador
+(`ProductosPage.tsx`, `InventarioPage.tsx`); aviso nuevo en Config → Ventas → Métodos de pago cuando hay
+productos en USD sin ningún método de pago USD real configurado (reporte de Fede, `ConfigPage.tsx`); 6
+specs e2e actualizados a selectors/labels reales (tab "Autorizaciones"→"Supervisión" post mig 347, lista
+de módulos del delegado de rol custom, locator ambiguo de unidad de medida). Verificado en vivo, no solo
+code-audit: NC electrónica con CAE de AFIP homologación sigue funcionando de punta a punta; aprobar un
+ajuste/conteo de inventario efectivamente muta el stock (era un gap de cobertura real, no un bug).
+
+También se investigó a fondo la latencia de "Confirmar ingreso" en DEV (a veces >12s) — conclusión: NO es
+bug de lógica, es variabilidad de infraestructura de DEV (medido 161ms-1.46s por request trivial vs. PROD
+consistente ~150-200ms), documentado como deuda de infraestructura sin fix de código. Y se relevó (sin
+tocar) 135 funciones marcadas por el linter de seguridad de Supabase + 442 hallazgos de performance —
+deuda estable en DEV y PROD, no regresión nueva, spot-check confirmó que lo sensible (inventario/fiscal)
+está bien guardado; queda para una sesión de hardening dedicada.
+
+**Commits**: `193820df` (v1.179.1, fix moneda lista de Productos, sesión anterior) + `47b22222`
+(v1.179.2, los 5 bugs de arriba). **PR #333** (`dev→main`) mergeado — merge commit
+`f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`. **Release `v1.179.2`** publicado (`target: main`,
+`--latest`). **Vercel producción `READY`**. **Sin migraciones en este deploy.** Como el merge trae TODO
+`dev` hasta ese punto (incluido `193820df`, confirmado ancestro de `origin/main` con
+`git merge-base --is-ancestor`), **el fix de moneda de la lista de Productos (v1.179.1) queda deployado a
+PROD con esta misma tanda** — corrige el estado "solo en DEV" documentado en la entrada del 2026-08-20 de
+abajo.
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"), `wiki/business/roadmap.md`,
+[[wiki/features/productos]], [[wiki/features/ventas-pos]], [[wiki/features/configuracion]].
+
+---
+
+## [2026-08-25] update | 📋 2 relevamientos RESPONDIDOS por Fede (retrofit Supervisión + Compras/Gastos en USD) + Fase 1 de Compras/Gastos USD YA CONSTRUIDA en DEV (mig 379) + incidente de infraestructura en DEV (resuelto)
+
+Continúa la misma sesión que el deploy de arriba. Tres hilos:
+
+**Retrofit del patrón "Supervisión" a más módulos** — el relevamiento generado el 2026-08-20
+(`relevamiento-supervision-retrofit-reglas-negocio.html`) fue **respondido por Fede el mismo día, 100%
+cerrado**: en Ventas solo "anular venta despachada" pasa a cola de aprobación (con regla nueva: si ya fue
+facturada, primero hay que emitir NC antes de poder eliminarla); Caja sigue con clave maestra, nunca cola;
+en Productos `kit_precio`/`repricing_margen` se reclasifican a `modulo='productos'`; Clientes/Envíos/
+Proveedores/Pedidos/RRHH quedan en 2 niveles (eliminaciones delegables, pocas acciones solo-Dueño).
+Bloqueante técnico común: `productos`/`envios`/`proveedores`/`pedidos`/`recursos` no están todavía en el
+CHECK de `autorizaciones.modulo` (mig 347) ni en `MODULOS` de `UsuariosPage.tsx`. Orden de fases a
+criterio de GO — **sin diseño ni código arrancado todavía**.
+
+**Compras/Gastos en USD + tasa de cambio editable** — el relevamiento generado el 2026-08-21
+(`relevamiento-compras-gastos-usd-reglas-negocio.html`) también fue **respondido por Fede el mismo día,
+100% cerrado**, con instrucción explícita de arrancar ya. 3 mecanismos de cotización independientes
+(sidebar/ventas colaborativo ya existente, Bóveda exclusiva Dueño, Compras 100% manual por transacción con
+aviso no bloqueante si se aleja 20-30% de referencia); solo se guarda cotización si hay descalce de moneda,
+nunca se redondea, queda congelada al confirmar; el pago de una compra en USD sale de la Caja USD
+operativa. **Fase 1 (cimientos de datos) ya construida y aplicada en DEV**: migración **379**
+(`379_compras_gastos_usd_fase1_cimientos.sql`, commit `6a0f46af`, en `dev` local, **sin pushear ni
+deployar todavía**) agrega `moneda`/`cotizacion_usd` a `gastos`, `gastos_fijos`, `ordenes_compra` (mismo
+patrón que `ventas.cotizacion_usd` de Caja USD G5). De paso, fix real de REGLA #0: `registrar_pago_oc()`
+ya insertaba egresos reales en `caja_movimientos` al pagar una OC, pero nunca completaba la columna
+`moneda` (quedaba en el DEFAULT `'ARS'` sin importar el medio real) — corregido, cero cambio de
+comportamiento para pagos en ARS, verificado con e2e real. `migration-reviewer`: APTA. Próximo paso: Fase
+2+ (wiring de frontend), iterando en vez de un plan fijo de fases.
+
+**Incidente de infraestructura en DEV (RESUELTO)** — DEV (`gcmhzdedrkmmzfzfveig`) quedó "Unhealthy"
+(Database/PostgREST/Auth/Storage caídos) varias horas por agotar el presupuesto de Disk IO del compute
+Nano (suite e2e completa corrida 2 veces + varios agentes en paralelo). Confirmado que no fue un incidente
+general de Supabase. Separado, sin resolver: la organización ("Argentum Business Group", plan Free) está
+en grace period por exceder Cached Egress del ciclo anterior — restricción real si no se regulariza antes
+del 01-sep-2026 (afecta también a PROD, misma organización), decisión de billing pendiente de GO. GO
+resolvió el problema técnico pausando y restaurando el proyecto manualmente desde el dashboard (~5 min).
+
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md`
+(mig 379), [[wiki/features/supervision]], [[wiki/features/gastos]], [[wiki/features/clientes-proveedores]],
+[[wiki/development/reglas-negocio]].
+
+---
+
 ## [2026-08-20] update | 📋 Relevamiento retrofit Supervisión + 🐛💵 3 reportes de Fede sobre moneda USD (1 fixed, 2 deferidos)
 
 Continúa la misma sesión que el deploy a PROD del Plan IA (entrada de abajo). Dos hilos de trabajo

@@ -16,6 +16,7 @@ import { Toggle } from '@/components/Toggle'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
+import { iniciarConexionWhatsapp } from '@/lib/metaEmbeddedSignup'
 import type { TenantCertificate, UbicacionTipoLogico, UbicacionSubtipoAlmacenamiento } from '@/lib/supabase'
 import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
@@ -2790,6 +2791,61 @@ export default function ConfigPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'conectividad',
+  })
+
+  // WhatsApp Embedded Signup — a nivel tenant, sin sucursal (mig 382: el número representa al negocio
+  // entero, no una sucursal puntual).
+  const { data: waCred, isLoading: waLoading } = useQuery({
+    queryKey: ['whatsapp_credentials', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('whatsapp_credentials')
+        .select('id, numero_whatsapp, conectado, conectado_at')
+        .eq('tenant_id', tenant!.id)
+        .maybeSingle()
+      return data
+    },
+    enabled: !!tenant && tab === 'conectividad',
+  })
+
+  const [waConnecting, setWaConnecting] = useState(false)
+
+  const conectarWhatsapp = async () => {
+    const appId = import.meta.env.VITE_META_APP_ID
+    const configId = import.meta.env.VITE_META_WA_CONFIG_ID
+    if (!appId || !configId || !tenant) return
+    setWaConnecting(true)
+    try {
+      const resultado = await iniciarConexionWhatsapp(appId, configId)
+      if (!resultado.ok) {
+        if (resultado.motivo === 'error') toast.error('Meta reportó un error al conectar WhatsApp')
+        return
+      }
+      const { data, error } = await supabase.functions.invoke('wa-embedded-signup-exchange', {
+        body: { tenant_id: tenant.id, code: resultado.code, waba_id: resultado.wabaId, phone_number_id: resultado.phoneNumberId },
+      })
+      if (error) {
+        let msg = error.message
+        try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error } catch { /* */ }
+        throw new Error(msg || 'No se pudo completar la conexión con WhatsApp')
+      }
+      if (data?.error) throw new Error(data.error)
+      toast.success('WhatsApp conectado correctamente')
+      qc.invalidateQueries({ queryKey: ['whatsapp_credentials'] })
+    } catch (e) {
+      toast.error((e as Error).message || 'No se pudo conectar WhatsApp')
+    } finally {
+      setWaConnecting(false)
+    }
+  }
+
+  const desconectarWA = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('whatsapp_credentials').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('WhatsApp desconectado'); qc.invalidateQueries({ queryKey: ['whatsapp_credentials'] }) },
+    onError: () => toast.error('Error al desconectar'),
   })
 
   // ─── TN product mapping ──────────────────────────────────────────────────
@@ -7444,6 +7500,69 @@ export default function ConfigPage() {
                 <p className="text-[11px] text-gray-400 mt-1">Solo notifica a Dueño/Supervisor si la diferencia alcanza este monto.</p>
               </div>
             </div>
+          </div>
+
+          {/* ── WhatsApp (Embedded Signup) ── */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#25D366]/10 flex items-center justify-center flex-shrink-0">
+                <MessageSquare size={16} className="text-[#25D366]" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">WhatsApp</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Asistente con IA por WhatsApp — consultas de stock y carga de gastos</p>
+              </div>
+            </div>
+
+            {(!import.meta.env.VITE_META_APP_ID || !import.meta.env.VITE_META_WA_CONFIG_ID) && (
+              <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2.5">
+                <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Falta configurar <code className="bg-amber-100 dark:bg-amber-800/40 px-1 rounded">VITE_META_APP_ID</code> y <code className="bg-amber-100 dark:bg-amber-800/40 px-1 rounded">VITE_META_WA_CONFIG_ID</code> en las variables de entorno.
+                </p>
+              </div>
+            )}
+
+            {waLoading ? (
+              <p className="text-sm text-gray-400 text-center py-2">Cargando...</p>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  {waCred?.conectado && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{waCred.numero_whatsapp || 'Número conectado'}</p>
+                  )}
+                </div>
+                {waCred?.conectado ? (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                      <CheckCircle2 size={13} /> Conectada
+                    </span>
+                    <button
+                      onClick={async () => { if (await confirmar('¿Desconectar WhatsApp?', { danger: true })) desconectarWA.mutate(waCred.id) }}
+                      disabled={desconectarWA.isPending}
+                      title="Desconectar"
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                      <Unplug size={14} />
+                    </button>
+                  </div>
+                ) : import.meta.env.VITE_META_APP_ID && import.meta.env.VITE_META_WA_CONFIG_ID ? (
+                  <button onClick={conectarWhatsapp} disabled={waConnecting}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#25D366] hover:bg-[#1fb959] text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex-shrink-0">
+                    <Plug size={12} /> {waConnecting ? 'Conectando...' : 'Conectar'}
+                  </button>
+                ) : (
+                  <span className="text-xs text-gray-400 dark:text-gray-500 italic flex-shrink-0">Falta configuración</span>
+                )}
+              </div>
+            )}
+
+            {waCred?.conectado && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-2.5">
+                Recordá agregar un método de pago en{' '}
+                <a href="https://business.facebook.com/wa/manage/home/" target="_blank" rel="noreferrer" className="text-[#25D366] hover:underline">WhatsApp Manager</a>
+                {' '}— desde el 1° de octubre de 2026 Meta cobra los mensajes salientes.
+              </p>
+            )}
           </div>
 
           {/* ISS-072: MODO — cobro QR interoperable */}

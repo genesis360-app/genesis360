@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
   Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
   Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock, FileCheck, BarChart3,
+  MessageCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -27,6 +28,7 @@ import { chequearBloqueoCC, existeAutorizacionCCAprobada, type MotivoBloqueoCC }
 import SolicitarAutorizacionGastoModal from '@/components/SolicitarAutorizacionGastoModal'
 import SolicitarOverrideCCModal from '@/components/SolicitarOverrideCCModal'
 import BandejaAutorizacionesGasto from '@/components/BandejaAutorizacionesGasto'
+import BandejaBorradoresWhatsapp from '@/components/BandejaBorradoresWhatsapp'
 import BandejaAutorizacionesCC from '@/components/BandejaAutorizacionesCC'
 import CierresContablesPanel from '@/components/CierresContablesPanel'
 import ChequesPanel from '@/components/ChequesPanel'
@@ -176,7 +178,7 @@ export default function GastosPage() {
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams, setSearchParams] = useSearchParams()
-  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'cierres'] as const
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'whatsapp', 'cierres'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
   const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
@@ -207,6 +209,8 @@ export default function GastosPage() {
   // Medio de pago original al abrir el modal de edición (para detectar si se agrega pago por primera vez)
   const [originalMedioPago, setOriginalMedioPago] = useState<string | null>(null)
   const [filtroCategoria, setFiltroCategoria] = useState('')
+  // Fase 2 Asistente WhatsApp: id del borrador que se está aprobando desde este modal (si vino de ahí)
+  const [borradorAprobandoId, setBorradorAprobandoId] = useState<string | null>(null)
 
   // ── Historial — state ────────────────────────────────────────────────────
   const [histFechaDesde, setHistFechaDesde] = useState(() => {
@@ -432,6 +436,19 @@ export default function GastosPage() {
   // Cierre contable (Fase 5 — v1.9.0): roles que ven el tab + helper para bloquear edición/eliminación de gastos viejos
   const puedeCerrarPeriodo = ['DUEÑO', 'ADMIN', 'SUPERVISOR', 'CONTADOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
   const { ultimoCierre, isPeriodoCerrado } = useCierreContable()
+  // Conteo de borradores de gasto de WhatsApp esperando revisión (Fase 2 del Asistente WhatsApp)
+  const { data: borradoresWhatsappCount = 0 } = useQuery({
+    queryKey: ['whatsapp-borradores-pendientes-count', tenant?.id],
+    queryFn: async () => {
+      if (!puedeAprobarRoles) return 0
+      const { count } = await supabase.from('whatsapp_gastos_borrador')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'pendiente')
+      return count ?? 0
+    },
+    enabled: !!tenant && puedeAprobarRoles,
+  })
   const { data: autorizacionesPendientesCount = 0 } = useQuery({
     queryKey: ['autorizaciones-pendientes-count', tenant?.id, user?.rol],
     queryFn: async () => {
@@ -954,6 +971,7 @@ export default function GastosPage() {
     setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setBorradorAprobandoId(null)
     setModalAbierto(true)
   }
 
@@ -978,6 +996,31 @@ export default function GastosPage() {
     setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setBorradorAprobandoId(null)
+    setModalAbierto(true)
+  }
+
+  // Fase 2 Asistente WhatsApp: precarga el modal "Nuevo Gasto" con lo que capturó el bot por
+  // WhatsApp (borrador ya confirmado por el remitente, whatsapp_gastos_borrador.estado='pendiente').
+  // El bot NUNCA escribió en `gastos` — acá corre exactamente la misma validación/creación de
+  // siempre (umbral, CAJ-18, comprobante, multi-CUIT). Al guardar con éxito, el borrador queda
+  // linkeado (ver bloque de éxito más abajo).
+  const abrirDesdeBorrador = (b: any) => {
+    setEditandoId(null)
+    setCorreccionPadre(null)
+    setForm({
+      ...FORM_VACIO,
+      deduce_ganancias: esRI,
+      descripcion: b.descripcion,
+      monto: String(b.monto),
+      categoria: b.categoria ?? '',
+      fecha: b.fecha ?? new Date().toISOString().split('T')[0],
+      notas: `(Vía WhatsApp) ${b.notas ?? ''}`.trim(),
+    })
+    setMediosPago([{ tipo: '', monto: '' }])
+    setComprobanteFile(null); setComprobanteExistente(null)
+    setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setBorradorAprobandoId(b.id)
     setModalAbierto(true)
   }
   const abrirEdicion = (g: any) => {
@@ -997,6 +1040,7 @@ export default function GastosPage() {
     setComprobanteFile(null); setComprobanteExistente(g.comprobante_url ?? null)
     setComprobanteNombre(g.comprobante_titulo ?? '')
     setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setBorradorAprobandoId(null)
     setModalAbierto(true)
   }
   const cerrarModal = () => {
@@ -1007,6 +1051,7 @@ export default function GastosPage() {
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setCajaSeleccionadaId(null)
     setEsCuota(false); setCuotasTotal('12'); setTasaInteres('0')
+    setBorradorAprobandoId(null)
   }
   useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
 
@@ -1281,6 +1326,20 @@ export default function GastosPage() {
         if (error) throw error
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
+
+        // Fase 2 Asistente WhatsApp: si este gasto vino de aprobar un borrador, linkearlo y
+        // marcarlo aprobado — recién ACÁ, después de que el gasto real ya pasó por todas las
+        // validaciones de arriba (umbral/CAJ-18/comprobante/multi-CUIT). Aditivo, no bloquea el
+        // guardado del gasto si falla (se avisa y queda para resolver a mano).
+        if (borradorAprobandoId) {
+          const { error: borradorErr } = await supabase.from('whatsapp_gastos_borrador').update({
+            estado: 'aprobado', gasto_id: payload.id, resuelto_por: user?.id, resuelto_at: new Date().toISOString(),
+          }).eq('id', borradorAprobandoId)
+          if (borradorErr) toast.error(`El gasto se creó, pero no se pudo marcar el borrador de WhatsApp como aprobado (${borradorErr.message}).`, { duration: 10000 })
+          qc.invalidateQueries({ queryKey: ['whatsapp-borradores-pendientes-count', tenant?.id] })
+          qc.invalidateQueries({ queryKey: ['whatsapp-borradores'] })
+          setBorradorAprobandoId(null)
+        }
 
         // ISS-084: Registrar en caja — un movimiento por cada medio de pago.
         // El egreso de EFECTIVO se aguarda y se avisa si falla (antes era fire-and-forget:
@@ -1807,6 +1866,7 @@ export default function GastosPage() {
           ...(modoAvanzado ? [{ id: 'reportes-compras', label: 'Reportes', icon: BarChart3 }] : []),
           ...(modoAvanzado ? [{ id: 'recursos', label: 'Recursos', icon: Landmark }] : []),
           ...(puedeAprobarRoles ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: AlertCircle, badge: autorizacionesPendientesCount }] : []),
+          ...(puedeAprobarRoles ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, badge: borradoresWhatsappCount }] : []),
           ...(puedeCerrarPeriodo ? [{ id: 'cierres', label: 'Cierres contables', icon: Lock }] : []),
         ]}
         active={tab}
@@ -3035,6 +3095,11 @@ export default function GastosPage() {
           {autSubTab === 'gastos' && <BandejaAutorizacionesGasto />}
           {autSubTab === 'cc'     && <BandejaAutorizacionesCC />}
         </div>
+      )}
+
+      {/* ══ TAB: WHATSAPP — borradores de gasto capturados por el Asistente de WhatsApp (Fase 2) ══ */}
+      {tab === 'whatsapp' && puedeAprobarRoles && (
+        <BandejaBorradoresWhatsapp onAprobar={abrirDesdeBorrador} />
       )}
 
       {/* ══ TAB: CHEQUES (CO6) ══ */}

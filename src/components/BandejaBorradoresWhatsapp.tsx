@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, X, MessageCircle, Clock } from 'lucide-react'
+import { Check, X, MessageCircle, Clock, Image } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -55,6 +55,14 @@ export default function BandejaBorradoresWhatsapp({ onAprobar }: Props) {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 
+  // Fase 3: el borrador puede traer una foto de comprobante ya subida (comprobante_url) — se abre
+  // con signed URL, mismo patrón que verComprobante() en GastosPage.tsx.
+  const verFoto = async (path: string) => {
+    const { data } = await supabase.storage.from('comprobantes-gastos').createSignedUrl(path, 300)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+    else toast.error('No se pudo abrir la foto')
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-gray-400">
@@ -79,6 +87,11 @@ export default function BandejaBorradoresWhatsapp({ onAprobar }: Props) {
                   <span>Monto: <strong className="text-gray-700 dark:text-gray-200">{fmtMonto(b.monto)}</strong></span>
                   {b.categoria && <span>Categoría: {b.categoria}</span>}
                   <span><Clock size={11} className="inline -mt-0.5 mr-0.5" />{fmtFecha(b.created_at)}</span>
+                  {b.comprobante_url && (
+                    <button onClick={() => verFoto(b.comprobante_url)} className="flex items-center gap-1 text-accent-text hover:underline">
+                      <Image size={11} /> Ver foto
+                    </button>
+                  )}
                 </div>
               </div>
               <button onClick={() => onAprobar(b)} disabled={procesando === b.id}

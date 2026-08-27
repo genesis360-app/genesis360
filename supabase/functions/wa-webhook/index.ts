@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { encode as encodeBase64 } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
 // wa-webhook — Asistente de WhatsApp con IA (propuesta de Fede, 25/8/2026; planes técnicos acordados
 // con GO 2026-08-26/27). No comparte código con supabase/functions/ai-assistant (que sigue en PROD sin
@@ -13,10 +14,16 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // acceso a Genesis360 aprueba el borrador desde el modal "Nuevo Gasto" de siempre (GastosPage.tsx —
 // abrirDesdeBorrador), que corre TODA la lógica real. El borrador vive en `whatsapp_gastos_borrador`
 // (mig 383) con 4 estados: pendiente_confirmacion -> pendiente -> aprobado | descartado.
+// Fase 3: fotos y audio son solo formas nuevas de LLEGAR al mismo pipeline — nunca lógica fiscal
+// nueva. Audio se transcribe (Groq Whisper) y el texto reemplaza a msg.text.body sin tocar
+// llamarClaude. Una foto se manda como bloque de imagen en el mismo mensaje a Claude (ya es
+// multimodal) — si Claude reconoce un comprobante de gasto, llama a proponer_gasto igual que con
+// texto; esa foto queda linkeada al borrador (comprobante_url, mig 384) para precargarla en la
+// aprobación humana.
 //
 // Secrets requeridos: META_APP_SECRET (firma X-Hub-Signature-256), META_VERIFY_TOKEN (handshake GET
-// de suscripción del webhook). ANTHROPIC_API_KEY ya existe en el proyecto (lo usan scan-product/
-// scan-ticket), no hace falta darlo de alta de nuevo.
+// de suscripción del webhook). ANTHROPIC_API_KEY y GROQ_API_KEY ya existen en el proyecto (los usan
+// scan-product/scan-ticket y ai-assistant respectivamente), no hace falta darlos de alta de nuevo.
 //
 // Deploy con --no-verify-jwt (Meta no manda JWT de Supabase, igual que tn-webhook/meli-webhook/
 // mp-webhook/modo-webhook).
@@ -79,10 +86,51 @@ function construirSystemPrompt(nombreNegocio: string): string {
 
 Reglas:
 1. Consultas de stock y precio: usá la herramienta consultar_stock_precio. Nunca inventes números — si la herramienta no trae el dato, decilo.
-2. Si te cuentan que gastaron plata en algo, usá la herramienta proponer_gasto para armar un BORRADOR — nunca asumas que ya quedó guardado, eso lo confirma el usuario con un botón y después lo revisa un humano en la app.
-3. Si la búsqueda de stock no encuentra el producto, decilo claro y sugerí probar con otro nombre o SKU.
-4. Todavía no podés modificar nada directo, ni leer fotos o audios — si te piden eso, explicá que está en camino.
-5. Respuestas cortas y directas en español, estilo WhatsApp (sin markdown, sin listas largas).`
+2. Si te cuentan que gastaron plata en algo (por texto, por audio ya transcripto, o te mandan la FOTO de un comprobante/ticket), usá la herramienta proponer_gasto para armar un BORRADOR con lo que puedas leer (descripción, monto, categoría, fecha) — nunca asumas que ya quedó guardado, eso lo confirma el usuario con un botón y después lo revisa un humano en la app.
+3. Si te mandan una foto que NO es un comprobante o ticket de un gasto, no llames a proponer_gasto — explicá qué ves en la imagen y qué podés hacer con eso.
+4. Si la búsqueda de stock no encuentra el producto, decilo claro y sugerí probar con otro nombre o SKU.
+5. Todavía no podés modificar nada directo — si te piden eso, explicá que está en camino.
+6. Respuestas cortas y directas en español, estilo WhatsApp (sin markdown, sin listas largas).`
+}
+
+// Fase 3: helper único para audio e imagen. Meta entrega solo un media_id — hay que resolverlo a una
+// URL temporal (mismo Bearer token que el resto de la Graph API) y después descargar los bytes de esa
+// URL con el mismo token.
+async function descargarMediaWhatsapp(mediaId: string, accessToken: string): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!metaRes.ok) throw new Error(`Meta media API ${metaRes.status}: ${await metaRes.text()}`)
+  const meta = await metaRes.json()
+  const fileRes = await fetch(meta.url, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!fileRes.ok) throw new Error(`Meta media download ${fileRes.status}`)
+  const bytes = new Uint8Array(await fileRes.arrayBuffer())
+  return { bytes, mimeType: meta.mime_type ?? 'application/octet-stream' }
+}
+
+// Groq Whisper (whisper-large-v3-turbo) solo transcribe — el "cerebro" que interpreta el texto sigue
+// siendo Claude Sonnet 5 vía llamarClaude, igual que un mensaje de texto normal. Reusa GROQ_API_KEY,
+// que ya existe como secret en el proyecto (lo usa ai-assistant para chat).
+async function transcribirAudioGroq(bytes: Uint8Array, mimeType: string, groqApiKey: string): Promise<string> {
+  const form = new FormData()
+  const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mpeg') ? 'mp3' : 'ogg'
+  form.append('file', new Blob([bytes], { type: mimeType }), `audio.${ext}`)
+  form.append('model', 'whisper-large-v3-turbo')
+  form.append('language', 'es')
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${groqApiKey}` },
+    body: form,
+  })
+  if (!res.ok) throw new Error(`Groq transcription ${res.status}: ${await res.text()}`)
+  const data = await res.json()
+  return String(data.text ?? '').trim()
+}
+
+function extensionDeImagen(mimeType: string): string {
+  if (mimeType.includes('png')) return 'png'
+  if (mimeType.includes('webp')) return 'webp'
+  return 'jpg'
 }
 
 async function buscarProductos(supabase: any, tenantId: string, query: string) {
@@ -107,9 +155,9 @@ type ResultadoClaude =
   | { tipo: 'proponer_gasto'; datos: { descripcion: string; monto: number; categoria: string | null; fecha: string | null }; tokensIn: number; tokensOut: number }
 
 async function llamarClaude(
-  apiKey: string, systemPrompt: string, userText: string, supabase: any, tenantId: string,
+  apiKey: string, systemPrompt: string, userContent: string | any[], supabase: any, tenantId: string,
 ): Promise<ResultadoClaude> {
-  const messages: any[] = [{ role: 'user', content: userText }]
+  const messages: any[] = [{ role: 'user', content: userContent }]
   let tokensIn = 0
   let tokensOut = 0
 
@@ -291,7 +339,9 @@ serve(async (req) => {
             tenant_id: cred.tenant_id,
             message_id: messageId,
             direccion: 'in',
-            texto_truncado: (msg.text?.body ?? `[${msg.type}]`).slice(0, 200),
+            texto_truncado: (
+              msg.text?.body ?? (msg.type === 'image' && msg.image?.caption ? `[foto] ${msg.image.caption}` : `[${msg.type}]`)
+            ).slice(0, 200),
           })
           if (logInErr) {
             if ((logInErr as any).code === '23505') {
@@ -338,9 +388,52 @@ serve(async (req) => {
             continue
           }
 
-          if (msg.type !== 'text' || !msg.text?.body) {
+          // Fase 3: texto/audio/imagen convergen en el mismo `userContent` que alimenta a
+          // llamarClaude — audio se resuelve a texto ANTES (reemplaza a msg.text.body sin tocar el
+          // pipeline), imagen se manda como bloque multimodal (Claude ya sabe leer fotos). Si el
+          // mensaje era una foto y termina en proponer_gasto, esos bytes se suben como comprobante.
+          let userContent: string | any[]
+          let notasOrigen: string
+          let imagenParaComprobante: { bytes: Uint8Array; mimeType: string } | null = null
+
+          if (msg.type === 'text' && msg.text?.body) {
+            userContent = msg.text.body
+            notasOrigen = msg.text.body
+          } else if (msg.type === 'audio' && msg.audio?.id) {
+            try {
+              const media = await descargarMediaWhatsapp(msg.audio.id, cred.access_token)
+              const groqKey = Deno.env.get('GROQ_API_KEY')
+              if (!groqKey) throw new Error('GROQ_API_KEY no configurado')
+              const transcript = await transcribirAudioGroq(media.bytes, media.mimeType, groqKey)
+              if (!transcript) throw new Error('transcripción vacía')
+              userContent = transcript
+              notasOrigen = `(Audio transcripto) ${transcript}`
+            } catch (e: any) {
+              console.error('wa-webhook: error transcribiendo audio', e.message)
+              await enviarMensajeWhatsapp(phoneNumberId, cred.access_token, from,
+                'No pude entender ese audio, ¿me lo podés escribir? 🙂')
+              continue
+            }
+          } else if (msg.type === 'image' && msg.image?.id) {
+            try {
+              const media = await descargarMediaWhatsapp(msg.image.id, cred.access_token)
+              imagenParaComprobante = media
+              const caption = String(msg.image.caption ?? '').trim()
+              const base64 = encodeBase64(media.bytes)
+              userContent = [
+                { type: 'image', source: { type: 'base64', media_type: media.mimeType, data: base64 } },
+                { type: 'text', text: caption ? `El usuario mandó esta foto con el texto: "${caption}"` : 'El usuario mandó esta foto sin ningún texto adicional.' },
+              ]
+              notasOrigen = caption ? `(Foto) ${caption}` : '(Foto sin texto)'
+            } catch (e: any) {
+              console.error('wa-webhook: error descargando imagen', e.message)
+              await enviarMensajeWhatsapp(phoneNumberId, cred.access_token, from,
+                'No pude descargar esa foto, ¿la podés volver a mandar? 🙂')
+              continue
+            }
+          } else {
             await enviarMensajeWhatsapp(phoneNumberId, cred.access_token, from,
-              'Por ahora solo puedo leer texto — todavía no leo fotos ni audios. Escribime tu consulta 🙂')
+              'Por ahora no puedo leer este tipo de mensaje — mandame texto, un audio o una foto de un comprobante 🙂')
             continue
           }
 
@@ -355,7 +448,7 @@ serve(async (req) => {
 
           let respuesta: ResultadoClaude
           try {
-            respuesta = await llamarClaude(apiKey, systemPrompt, msg.text.body, supabase, cred.tenant_id)
+            respuesta = await llamarClaude(apiKey, systemPrompt, userContent, supabase, cred.tenant_id)
           } catch (e: any) {
             console.error('wa-webhook: error llamando a Claude', e.message)
             respuesta = { tipo: 'texto', texto: 'Tuve un problema respondiendo, probá de nuevo en un rato.', tokensIn: 0, tokensOut: 0 }
@@ -368,7 +461,7 @@ serve(async (req) => {
               monto: respuesta.datos.monto,
               categoria: respuesta.datos.categoria,
               fecha: respuesta.datos.fecha,
-              notas: msg.text.body.slice(0, 500),
+              notas: notasOrigen.slice(0, 500),
               origen_telefono: from,
               mensaje_id: messageId,
             }).select('id').single()
@@ -377,6 +470,20 @@ serve(async (req) => {
               console.error('wa-webhook: error creando borrador de gasto', borradorErr)
               await enviarMensajeWhatsapp(phoneNumberId, cred.access_token, from, 'No pude armar el borrador, probá de nuevo.')
             } else {
+              // Comprobante adjunto (Fase 3): si la propuesta vino de una foto, subirla a Storage y
+              // linkearla al borrador. Nunca bloquea el borrador ya creado si falla — el humano
+              // puede subir el comprobante a mano al aprobar, como siempre.
+              if (imagenParaComprobante) {
+                const path = `${cred.tenant_id}/wa-${borrador.id}.${extensionDeImagen(imagenParaComprobante.mimeType)}`
+                const { error: upErr } = await supabase.storage.from('comprobantes-gastos')
+                  .upload(path, imagenParaComprobante.bytes, { contentType: imagenParaComprobante.mimeType, upsert: true })
+                if (upErr) {
+                  console.error('wa-webhook: error subiendo comprobante de WhatsApp', upErr)
+                } else {
+                  await supabase.from('whatsapp_gastos_borrador').update({ comprobante_url: path }).eq('id', borrador.id)
+                }
+              }
+
               const resumen = `📝 ¿Guardo este borrador de gasto?\n\n${respuesta.datos.descripcion}\n💰 $${respuesta.datos.monto.toLocaleString('es-AR')}` +
                 (respuesta.datos.categoria ? `\n🏷️ ${respuesta.datos.categoria}` : '') +
                 `\n\nOjo: esto todavía NO es un gasto real — alguien del equipo lo revisa y lo carga después.`

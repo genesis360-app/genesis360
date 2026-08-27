@@ -1005,6 +1005,8 @@ export default function GastosPage() {
   // El bot NUNCA escribió en `gastos` — acá corre exactamente la misma validación/creación de
   // siempre (umbral, CAJ-18, comprobante, multi-CUIT). Al guardar con éxito, el borrador queda
   // linkeado (ver bloque de éxito más abajo).
+  // Fase 3: si el borrador vino de una FOTO, `comprobante_url` ya apunta a esa foto en Storage —
+  // se precarga como si el usuario ya la hubiera subido (mismo campo que usa `abrirCorreccion`).
   const abrirDesdeBorrador = (b: any) => {
     setEditandoId(null)
     setCorreccionPadre(null)
@@ -1018,8 +1020,9 @@ export default function GastosPage() {
       notas: `(Vía WhatsApp) ${b.notas ?? ''}`.trim(),
     })
     setMediosPago([{ tipo: '', monto: '' }])
-    setComprobanteFile(null); setComprobanteExistente(null)
-    setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setComprobanteFile(null); setComprobanteExistente(b.comprobante_url ?? null)
+    setComprobanteNombre(b.comprobante_url ? 'Comprobante de WhatsApp' : '')
+    setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setBorradorAprobandoId(b.id)
     setModalAbierto(true)
   }

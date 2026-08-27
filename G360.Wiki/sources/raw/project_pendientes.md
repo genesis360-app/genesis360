@@ -12,6 +12,12 @@ type: project
 > histórico; **no hubo `/clear`**) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin
 > cambios
 >
+> **👉 PRÓXIMA SESIÓN — GO confirmó explícitamente**: arrancar DIRECTO con la **Fase 3** (fotos/audio del
+> Asistente de WhatsApp) — no hace falta el chip prepago dedicado para arrancar el diseño (Fase 2 se
+> construyó y verificó por completo sin él, con payloads sintéticos firmados con HMAC real contra
+> `wa-webhook` directo). El resto de los pendientes de la lista más abajo (chip, System User, token de
+> Supabase, Embedded Signup, Portal de Proveedores) siguen abiertos pero NO son lo próximo a hacer.
+>
 > **Corrección de la entrada de abajo (cont. 26)**: decía "código sin commitear/bumpear todavía" — quedó
 > desactualizada apenas se escribió. La Fase 1 SÍ se commiteó (`8b297b32`) y se pusheó a `origin/dev` en la
 > misma sesión, `APP_VERSION` bumpeado a **`v1.181.0`**, con tag + GitHub release publicados (`gh release
@@ -146,7 +152,13 @@ type: project
 >    `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Bloqueó `npm run schema:dump` desde
 >    la sesión de la Fase 1 — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones
 >    382/383.**
-> 4. **Fase 3** (fotos/audio) y **Fase 4** (briefing diario) — sin empezar, sin diseño.
+> 4. **👉 Fase 3** (fotos/audio) — **PRÓXIMO A HACER, confirmado por GO**. Sin empezar, sin diseño todavía.
+>    Recordar de la propuesta original de Fede (sección I): WhatsApp entrega audio como OGG/Opus por media
+>    ID → hay que descargarlo de la API de medios de Meta → mandarlo a un Speech-to-Text separado (Fede
+>    sugirió Whisper de OpenAI, ~USD 0,006/min) → el texto resultante entra al mismo pipeline de
+>    herramientas + confirmación que ya existe (Fases 1/2). Para fotos, revisar el patrón ya usado en
+>    `scan-product`/`scan-ticket` (Claude Vision) antes de inventar uno nuevo. **Fase 4** (briefing diario)
+>    sigue después, sin empezar, sin diseño.
 > 5. **Embedded Signup** — próximo paso lógico para escalar a futuros clientes sin repetir el trámite
 >    manual, sin empezar (requiere Business Verification de Genesis360 como plataforma).
 > 6. **Portal de Proveedores** — sigue sin empezar (problema cross-tenant de `users.tenant_id` sin

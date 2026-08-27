@@ -414,7 +414,8 @@ del C2 (pendiente contador).
 > Distinto de G5 (arriba), que solo cubrió el lado de **ventas** — este cubre **compras/gastos**, feature
 > nueva de punta a punta. **Fases 1, 2 y 3 (de las ~4-5 fases estimadas del plan) ✅ CONSTRUIDAS,
 > COMMITEADAS Y PUSHEADAS a `origin/dev` como `v1.180.0`** (migs 379, 380 y 381, commit `ac1a5c84`,
-> tag+release publicados — **sin deploy a PROD todavía, sin PR a `main`**): cimientos de datos + permisos
+> tag+release publicados — **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA**
+> a propósito, ningún tenant de PROD tiene un método de pago USD real configurado): cimientos de datos + permisos
 > de cotización manual + pago de OC con descalce de moneda (conversión server-side,
 > `caja_movimientos.cotizacion_usd`). Detalle técnico completo:
 > [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable", [[wiki/features/clientes-proveedores]],
@@ -442,8 +443,8 @@ pago, no aguanta más de un pago con descalce por columna única); `registrar_pa
 `p_cotizacion_usd` y convierte server-side; wiring completo del modal de pago de OC en `GastosPage.tsx`
 (exige cotización si hay descalce, avisa si se aleja ≥20% de la referencia). **Sin plan de fases fijo
 detallado de antemano** (a diferencia de las 8 fases de G5): se decidió iterar, se estima el plan
-completo en ~4-5 fases totales. **Sin deploy a PROD todavía** (todo COMMITEADO Y PUSHEADO a `origin/dev`,
-sin PR a `main`). Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor,
+completo en ~4-5 fases totales. **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`),
+DORMIDA (ver arriba). Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor,
 confirmar C2/C3 con GO, reportes G1/G2 (ARS/USD). Detalle completo: [[wiki/features/gastos]] →
 "Compras/Gastos en USD + tasa de cambio editable".
 

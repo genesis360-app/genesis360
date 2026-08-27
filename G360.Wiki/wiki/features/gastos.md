@@ -3,7 +3,7 @@ title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381]
-updated: 2026-08-25
+updated: 2026-08-27
 ---
 
 # Módulo Gastos
@@ -526,9 +526,14 @@ El tab **Cheques** (CO6, mig 187) dejó de ser un cuaderno aparte:
 > (arquitectura: Bóveda = resguardo general, Caja = capa operativa que ya soporta egresos).
 >
 > **Fases 1, 2 y 3 ✅ CONSTRUIDAS, COMMITEADAS Y PUSHEADAS a `origin/dev`** como **`v1.180.0`** (commit
-> `ac1a5c84`, tag+release publicados) — **SIN deploy a PROD todavía, sin PR a `main`**. Se estima el plan
-> completo en ~4-5 fases; falta la UI de moneda en Gastos sueltos, reportes y algún detalle de UX (ver
-> "Qué falta" más abajo).
+> `ac1a5c84`, tag+release publicados) — **✅ EN PROD desde el 2026-08-27** (PR #334 "v1.184.0 — Compras/
+> Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4)", merge commit `867d651a`; migs 379-381
+> aplicadas y verificadas en PROD `jjffnbrdjchquexdfgwq`). **DORMIDA a propósito**: confirmado por query
+> real que ningún tenant de PROD tiene un método de pago USD real configurado, así que el camino nuevo
+> (pago de OC/gasto en USD) no se activa solo — el camino existente en ARS (100% del volumen real hoy) fue
+> re-verificado sin regresión antes de este deploy. Se estima el plan completo en ~4-5 fases; falta la UI
+> de moneda en Gastos sueltos, reportes y algún detalle de UX (ver "Qué falta" más abajo). Detalle del
+> deploy: `log.md` (2026-08-27, tipo `deploy`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ### Fase 1 — cimientos de datos (mig 379, commit `6a0f46af`)
 

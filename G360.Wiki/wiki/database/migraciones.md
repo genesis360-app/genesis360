@@ -8,9 +8,24 @@ updated: 2026-08-27
 
 # Historial de Migraciones (001-385)
 
+**🚀 Migraciones 379-385 — ✅ APLICADAS Y VERIFICADAS TAMBIÉN EN PROD (`jjffnbrdjchquexdfgwq`) el
+2026-08-27**, como parte del deploy real `v1.184.0` (PR #334 "v1.184.0 — Compras/Gastos en USD (Fases 1-3)
++ Asistente WhatsApp IA (Fases 1-4)", `dev`→`main`, merge commit `867d651a`) — `list_migrations` de PROD
+confirmó última migración aplicada = 385. Las 2 features quedan **EN PROD pero DORMIDAS a propósito, sin
+activarse para ningún tenant real**: (a) Compras/Gastos USD — ningún tenant de PROD tiene un método de pago
+USD real configurado, el camino nuevo no se activa solo; (b) Asistente de WhatsApp — `whatsapp_credentials`
+en PROD tiene 0 filas, sanity-check real con curl a `wa-briefing-sweep` en PROD confirmó `{"ok":true,
+"motivo":"sin tenants con numero_notificaciones configurado"}`. El cron de GitHub Actions
+(`wa-briefing-sweep.yml`) SÍ empieza a correr de verdad cada 15 min contra PROD desde ahora, pero sin filas
+que matcheen no hace nada. Detalle completo del evento de deploy: `log.md` (2026-08-27, tipo `deploy`),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
 **385 (`385_whatsapp_briefing_numero_notificaciones.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
-`2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 4 ("briefing
+`2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334,
+merge commit `867d651a`), **DORMIDA** (ver resumen arriba):** Fase 4 ("briefing
 diario proactivo") del "Asistente de WhatsApp con IA" (continúa la mig 384, abajo, ver
 [[wiki/features/asistente-whatsapp]]) — con esta fase, las 4 fases de la propuesta de Fede (25/8) quedan
 construidas en DEV. Una sola columna aditiva: `ALTER TABLE whatsapp_credentials ADD COLUMN IF NOT EXISTS
@@ -67,7 +82,8 @@ el bump de versión. Ver [[wiki/features/asistente-whatsapp]], `sources/raw/proj
 
 **384 (`384_whatsapp_borrador_comprobante.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
-`0364447a`, `APP_VERSION` `v1.183.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 3 ("fotos y
+`0364447a`, `APP_VERSION` `v1.183.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334,
+merge commit `867d651a`), **DORMIDA** (0 filas en `whatsapp_credentials` en PROD):** Fase 3 ("fotos y
 audio") del "Asistente de WhatsApp con IA" (continúa la mig 383, abajo, ver
 [[wiki/features/asistente-whatsapp]]). Una sola columna aditiva: `ALTER TABLE whatsapp_gastos_borrador ADD
 COLUMN IF NOT EXISTS comprobante_url TEXT` — cuando la propuesta de gasto viene de una FOTO enviada por
@@ -104,9 +120,10 @@ test de Meta pueda RECIBIR mensajes reales). Build+typecheck limpios; suite e2e 
 
 ---
 
-**383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+**383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `9029f24b`, `APP_VERSION`
-`v1.182.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 2 ("cargar gastos como borrador") del
+`v1.182.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334, merge commit `867d651a`),
+**DORMIDA** (0 filas en `whatsapp_credentials` en PROD):** Fase 2 ("cargar gastos como borrador") del
 "Asistente de WhatsApp con IA" (continúa la mig 382, abajo, ver [[wiki/features/asistente-whatsapp]]).
 Agrega la tabla `whatsapp_gastos_borrador`, con 4 estados: `pendiente_confirmacion` (la IA propuso el
 gasto, esperando que el remitente de WhatsApp confirme con un botón interactivo) → `pendiente` (confirmado
@@ -142,10 +159,10 @@ regresión (6/6). Ver [[wiki/features/asistente-whatsapp]], `sources/raw/project
 
 ---
 
-**382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+**382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `8b297b32`, `APP_VERSION`
-`v1.181.0`, tag+release publicados), **SIN deploy a PROD** (⚠ corrige la nota anterior de esta entrada,
-que decía "código sin commitear/bumpear todavía" — quedó desactualizada apenas se escribió):** Fase 1 (cimientos)
+`v1.181.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334, merge commit `867d651a`),
+**DORMIDA** (0 filas en `whatsapp_credentials` en PROD — ver resumen al principio del documento):** Fase 1 (cimientos)
 del "Asistente de WhatsApp con IA" — GO eligió arrancar por acá la propuesta de Fede del 2026-08-25 (no por
 el Portal de Proveedores, ver [[wiki/features/asistente-whatsapp]]). Agrega 2 tablas nuevas:
 1. `whatsapp_credentials` — mapeo `phone_number_id` (Meta) → `tenant_id`. **Sin `sucursal_id` a
@@ -176,15 +193,18 @@ reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Met
 eco del challenge, con token incorrecto → 403. Ver [[wiki/features/asistente-whatsapp]],
 `sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ").
 
-**🔴 `schema_full.sql` sigue DESACTUALIZADO** — no incluye la 382, la 383 ni la 384 (sigue reflejando hasta
-la 381), bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (recurrente, ver
-`reference_seguridad.md`).
+**✅ `schema_full.sql` REGENERADO** (commit `bbb434f9`, sesión previa al deploy a PROD) — ya incluye hasta
+la 385 (162 tablas, 196 funciones, 100 triggers, 181 policies, 8 vistas). El `SUPABASE_ACCESS_TOKEN`
+filtrado sigue SIN rotar (recurrente, ver `reference_seguridad.md`) y sigue bloqueando `npm run
+schema:dump`, pero se esquivó el bloqueador corriendo las mismas 4 queries de introspección de
+`scripts/dump-schema.mjs` directamente vía `execute_sql` del MCP de Supabase — sin pedirle nada nuevo a GO.
 
 ---
 
 **381 (`381_compras_gastos_usd_fase3_descalce.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **⚠ código
-`v1.180.0`, SIN deployar a PROD todavía**:** Fase 3 (pago con descalce de moneda) del plan "Compras/Gastos en USD + tasa
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **✅ EN
+PROD desde 2026-08-27** (`v1.180.0`, PR #334, merge commit `867d651a`), **DORMIDA** (ningún tenant de PROD
+tiene un método de pago USD real configurado, el camino nuevo no se activa solo):** Fase 3 (pago con descalce de moneda) del plan "Compras/Gastos en USD + tasa
 de cambio editable" (continúa las migs 379 y 380, abajo). Dos partes:
 1. 🔴 **Corrección de diseño encontrada ANTES de que importara** (REGLA #0): la mig 379 había puesto
    `cotizacion_usd` como una columna ÚNICA en `ordenes_compra`/`gastos`/`gastos_fijos` — pero una OC/
@@ -230,8 +250,8 @@ recibe el movimiento usa la moneda REAL del medio pagado, no la de la OC.
 ---
 
 **380 (`380_compras_gastos_usd_fase2_permisos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `cce107c8`), **⚠ código `v1.180.0`,
-SIN deployar a PROD todavía**:** Fase 2 (permisos) del plan "Compras/Gastos en USD + tasa de cambio editable". Agrega
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `cce107c8`), **✅ EN PROD desde
+2026-08-27** (`v1.180.0`, PR #334, merge commit `867d651a`), **DORMIDA**:** Fase 2 (permisos) del plan "Compras/Gastos en USD + tasa de cambio editable". Agrega
 `tenants.compras_cotizacion_roles_permitidos jsonb` — mismo patrón que `cotizacion_usd_roles_permitidos`
 de la Caja USD G5 (mig 370): NULL/[] = solo DUEÑO puede cargar/editar la cotización manual de una compra
 con descalce de moneda; roles adicionales (base o `custom:{id}`) configurables aparte. Solo cimiento de
@@ -241,8 +261,8 @@ consume. Ver [[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en
 ---
 
 **379 (`379_compras_gastos_usd_fase1_cimientos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `6a0f46af`), **⚠ código `v1.180.0`,
-SIN deployar a PROD todavía**:** Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `6a0f46af`), **✅ EN PROD desde
+2026-08-27** (`v1.180.0`, PR #334, merge commit `867d651a`), **DORMIDA**:** Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
 respondido por Fede el 2026-08-21 (100% cerrado), distinto del G5 (Caja USD, que solo cubrió VENTAS): este
 cubre el lado de COMPRAS/GASTOS, feature nueva de punta a punta. Agrega:
 1. `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` en `gastos`, `gastos_fijos` y

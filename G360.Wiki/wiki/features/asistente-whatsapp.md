@@ -1,6 +1,6 @@
 ---
 name: asistente-whatsapp
-description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas y COMMITEADAS/PUSHEADAS a origin/dev (v1.181.0/v1.182.0/v1.183.0/v1.184.0), SIN deploy a PROD. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente.
+description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas (v1.181.0/v1.182.0/v1.183.0/v1.184.0) y **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`, migs 382-385 aplicadas y verificadas en PROD), pero **DORMIDA a propósito**: `whatsapp_credentials` en PROD tiene 0 filas, ningún tenant real la tiene activada. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente. Pendiente para la próxima sesión: decidir con GO si el próximo paso es Embedded Signup o el Portal de Proveedores.
 ---
 
 # Asistente de WhatsApp con IA
@@ -18,13 +18,41 @@ motor de tool-calling ya probado del "Plan IA" y tener menor riesgo.
 > Cloud API + IA — mayormente ENTRANTE (webhook, Fases 1-3), más un mensaje SALIENTE nuevo desde la Fase 4
 > (briefing proactivo por plantilla, no un deep-link `wa.me`).
 
-## Estado (2026-08-27, cont. — Fase 4 en la misma sesión)
+## Estado (2026-08-27 — 🚀 DEPLOY REAL A PROD, sesión aparte de la que construyó las 4 fases)
+
+**✅ EN PROD desde el 2026-08-27**, DORMIDA a propósito. El deploy que promovió TODO lo acumulado en `dev`
+desde el último release real (`v1.179.2`, 2026-08-24) a `main` incluyó, entre otras cosas, las 4 fases
+completas de este Asistente: PR #334 ("v1.184.0 — Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp IA
+(Fases 1-4)"), merge commit `867d651a`, migraciones 382-385 aplicadas y verificadas en PROD
+(`jjffnbrdjchquexdfgwq`) una por una con queries reales, Edge Functions `wa-webhook` y `wa-briefing-sweep`
+deployadas a PROD (`verify_jwt: false`, mismo código exacto que DEV).
+
+**Verificado que queda DORMIDA, sin activar nada para nadie**: PROD tiene 9 tenants, todos de prueba de GO
+(confirmado por query real a `tenants` — ninguno es cliente real pagando; ⚠ "Familia Otranto De Porto" en
+PROD es OTRO tenant de prueba de GO, UUID `5f05f3eb-...`, DISTINTO del tenant de DEV con el mismo nombre,
+UUID `4cf85bbb-...` — no confundir). `whatsapp_credentials` en PROD tiene **0 filas** — sanity-check real
+con curl a `wa-briefing-sweep` en PROD confirmó `{"ok":true,"motivo":"sin tenants con numero_notificaciones
+configurado"}`. El cron de GitHub Actions (`wa-briefing-sweep.yml`, ya mergeado a `main`) **SÍ va a empezar
+a correr de verdad cada 15 min contra PROD desde ahora** (los sweeps de GitHub Actions de este proyecto
+siempre apuntan a PROD), pero sin filas que matcheen no hace nada.
+
+**Pendiente para la próxima sesión, a decidir por GO** (no resuelto acá): con las 4 fases ya en PROD, el
+próximo paso lógico es **Embedded Signup** (escalar a futuros clientes sin repetir el trámite manual) o el
+**Portal de Proveedores** (la otra mitad de la propuesta de Fede) — ver "Alcance" más abajo.
+
+Detalle completo del evento de deploy: `log.md` (2026-08-27, tipo `deploy`), `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
+## Estado de construcción (2026-08-26/27, sesiones previas al deploy)
 
 **Las 4 fases de la propuesta de Fede (25/8/2026) están construidas y COMMITEADAS Y PUSHEADAS a
 `origin/dev`** (Fase 1: commit `8b297b32`, `APP_VERSION` `v1.181.0`; Fase 2: commit `9029f24b`,
 `APP_VERSION` `v1.182.0`; Fase 3: commit `0364447a`, `APP_VERSION` `v1.183.0`; Fase 4: commit `2e5fbcdb`,
-`APP_VERSION` `v1.184.0`; tag + GitHub release publicados para las 4), **SIN deploy a PROD todavía** (sin
-PR a `main`).
+`APP_VERSION` `v1.184.0`; tag + GitHub release publicados para las 4). **✅ Ya EN PROD desde el 2026-08-27**
+(ver sección de arriba) — lo que sigue de este bloque describe el estado tal como quedó documentado
+mientras todavía vivía solo en DEV.
 
 **Fases 1 y 2 verificadas end-to-end en DEV al 100%.** La **Fase 3 (fotos/audio) está verificada solo
 PARCIALMENTE**: el ruteo por tipo de mensaje, la seguridad (firma HMAC) y la integración real con la API de
@@ -86,7 +114,8 @@ GitHub Actions (schedule: */15 * * * *) ──▶ EF wa-briefing-sweep (--no-ver
 
 ## Fase 1 — Tablas (migración 382, `382_whatsapp_asistente_fase1.sql`)
 
-Aplicada y verificada **solo en DEV** (`gcmhzdedrkmmzfzfveig`).
+Aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) primero; **✅ EN PROD desde el 2026-08-27** (PR #334,
+merge commit `867d651a`), DORMIDA (0 filas en `whatsapp_credentials` en PROD — ver "Estado" arriba).
 
 - **`whatsapp_credentials`** — mapea `phone_number_id` (el ID que Meta asigna al número del negocio) →
   `tenant_id`. **Sin `sucursal_id` a propósito**: el número de WhatsApp representa al negocio completo, no
@@ -217,8 +246,9 @@ plataformas SaaS como Genesis360.
 
 ## Fase 2 — cargar gastos como borrador (migración 383, `383_whatsapp_gastos_borrador.sql`)
 
-Aplicada y verificada **solo en DEV**. Código commiteado y pusheado (commit `9029f24b`, `APP_VERSION`
-`v1.182.0`, tag + release publicados).
+Aplicada y verificada en DEV primero. Código commiteado y pusheado (commit `9029f24b`, `APP_VERSION`
+`v1.182.0`, tag + release publicados). **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit
+`867d651a`), DORMIDA (mismo motivo que la Fase 1 — ver "Estado" arriba).
 
 ### Hallazgo clave ANTES de diseñar (evitó un error de REGLA #0)
 
@@ -515,7 +545,8 @@ con estado **`PENDING`** al cierre de la sesión (aprobación de Meta, tiempo fu
 Build limpio (`npm run build`). Esta fase es 100% backend/infra (Edge Function + migración + GitHub
 Actions) — no se tocó nada de `src/` salvo el bump de versión.
 
-**Sin deploy a PROD** — las 4 fases del Asistente de WhatsApp viven solo en DEV.
+**✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`) — DORMIDA, sin tenants configurados
+(ver "Estado" arriba para el detalle completo del deploy).
 
 ## Alcance
 
@@ -575,7 +606,10 @@ supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relev
 - [[wiki/integrations/roadmap-apis]] §6.2 — visión original de WhatsApp Cloud API (notificaciones/carritos
   abandonados/CC), corregida para reflejar el esquema real de `whatsapp_credentials`.
 - [[wiki/architecture/edge-functions]] — lista de Edge Functions, incluye `wa-webhook` y `wa-briefing-sweep`.
-- `wiki/database/migraciones.md` — migraciones 382, 383, 384 y 385.
-- `sources/raw/project_pendientes.md` (cont. 29, "ARRANCÁ ACÁ") — detalle completo de la sesión de la Fase 4.
-- `log.md` (2026-08-27) — entrada completa de la Fase 4 (arriba) y de la Fase 3 (debajo, misma sesión, sin
-  `/clear`); (2026-08-26) — Fase 1, Fase 2, trámite real de Meta y Embedded Signup.
+- `wiki/database/migraciones.md` — migraciones 382, 383, 384 y 385, marcadas EN PROD desde 2026-08-27.
+- `sources/raw/project_pendientes.md` (cont. 30, "ARRANCÁ ACÁ") — detalle completo del deploy real a PROD
+  (2026-08-27); (cont. 29) — detalle completo de la sesión de construcción de la Fase 4.
+- `log.md` (2026-08-27, tipo `deploy`) — entrada del deploy real a PROD; (2026-08-27, tipo `update`) —
+  entrada completa de la Fase 4 y de la Fase 3 (misma sesión de construcción, sin `/clear`); (2026-08-26) —
+  Fase 1, Fase 2, trámite real de Meta y Embedded Signup.
+- `wiki/business/roadmap.md` — sección del deploy real a PROD (2026-08-27).

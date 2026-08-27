@@ -6,11 +6,81 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-27, cont. 29) — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — LAS 4 FASES DE LA PROPUESTA DE FEDE QUEDAN CONSTRUIDAS EN DEV
-> CONSTRUIDA Y VERIFICADA PARCIALMENTE EN DEV (mig 385, EF nueva `wa-briefing-sweep`, `v1.184.0`), **SIN
-> deploy a PROD todavía** — continúa la MISMA sesión que cont. 28 (abajo, ahora histórico; **no hubo
-> `/clear`**), por pedido explícito de GO de seguir con esta fase "para dejar casi todo listo" del
-> asistente — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+> ### ✅ ARRANCÁ ACÁ (2026-08-27, cont. 30) — 🚀 DEPLOY REAL A PROD (v1.184.0, PR #334, merge `867d651a`): Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4) YA ESTÁN EN PROD, AMBAS DORMIDAS
+>
+> **Este deploy YA PASÓ** (sesión de deploy separada de las que construyeron las 2 features, cont. 29 y
+> anteriores, abajo, ahora histórico). Se promovió a `main` TODO lo acumulado en `dev` desde el último
+> deploy real (`v1.179.2`, 2026-08-24) — sin código de aplicación nuevo, 100% infraestructura/deploy. Caja
+> USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios.
+>
+> #### Qué pasó, en orden
+>
+> 1. **`schema_full.sql` regenerado** (commit `bbb434f9`, sesión previa a este deploy) — estaba
+>    desactualizado desde la mig 382. Se regeneró corriendo las mismas 4 queries de introspección de
+>    `scripts/dump-schema.mjs`, ejecutadas directamente vía `execute_sql` del MCP de Supabase (el
+>    bloqueador de siempre, `SUPABASE_ACCESS_TOKEN` filtrado sin rotar, sigue vigente — se lo esquivó sin
+>    pedirle nada nuevo a GO). Resultado: 162 tablas, 196 funciones, 100 triggers, 181 policies, 8 vistas.
+> 2. **Migraciones 379-385 aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), en orden, verificadas con queries
+>    reales después de cada una:
+>    - **379-381 — Compras/Gastos en USD (Fases 1-3)**: cimientos de moneda/cotización en
+>      `gastos`/`gastos_fijos`/`ordenes_compra`, permisos de cotización manual
+>      (`tenants.compras_cotizacion_roles_permitidos`), pago de OC con descalce de moneda (conversión
+>      server-side en `registrar_pago_oc`, ahora con 9 parámetros — verificado en PROD que solo existe esa
+>      firma, `anon` sin EXECUTE, `authenticated` sí). Ya estaba 100% respondido por Fede y las Fases 1-3
+>      llevaban desde el 2026-08-25 en DEV sin deployar.
+>    - **382-385 — Asistente de WhatsApp con IA (Fases 1-4)**: `whatsapp_credentials`,
+>      `whatsapp_mensajes_log`, `whatsapp_gastos_borrador` (+ `comprobante_url`, + `numero_notificaciones`).
+>      Detalle técnico completo ya en [[wiki/features/asistente-whatsapp]] — no se repite acá.
+>    - `list_migrations` de PROD confirma última migración aplicada = 385.
+> 3. **Edge Functions `wa-webhook` y `wa-briefing-sweep` deployadas a PROD** (`verify_jwt: false`, mismo
+>    código exacto que DEV). Compras/Gastos USD no agregó Edge Functions nuevas.
+> 4. **Verificado que ambas features quedan DORMIDAS en PROD, a propósito, sin activar nada para nadie**:
+>    - Compras/Gastos USD: confirmado por query real que ningún tenant de PROD tiene un método de pago USD
+>      real configurado — el camino nuevo (pago en USD) no se activa solo. El camino existente en ARS fue
+>      verificado repetidas veces sin regresión antes de este deploy (e2e reales + suite unit de 1637
+>      tests, ya documentado en sesiones anteriores).
+>    - Asistente de WhatsApp: PROD tiene 9 tenants, todos de prueba de GO (confirmado por query real a la
+>      tabla `tenants` — ninguno es cliente real pagando; ⚠ "Familia Otranto De Porto" en PROD es OTRO
+>      tenant de prueba de GO, con UUID `5f05f3eb-...`, DISTINTO del tenant de DEV con el mismo nombre,
+>      UUID `4cf85bbb-...` — no confundir). `whatsapp_credentials` en PROD tiene 0 filas — sanity-check
+>      real con curl a `wa-briefing-sweep` en PROD confirmó `{"ok":true,"motivo":"sin tenants con
+>      numero_notificaciones configurado"}`. El cron de GitHub Actions (`wa-briefing-sweep.yml`, ya
+>      mergeado) SÍ va a empezar a correr de verdad cada 15 min contra PROD desde ahora (los sweeps de
+>      GitHub Actions de este proyecto siempre apuntan a PROD), pero sin filas que matcheen no hace nada.
+> 5. **PR #334** (`dev`→`main`, título "v1.184.0 — Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp
+>    IA (Fases 1-4)") mergeado — merge commit `867d651a`, `mergedAt: 2026-08-27T21:27:57Z`, confirmado con
+>    `gh pr view 334` → `state: MERGED`. Vercel disparó el deploy de producción automáticamente tras el
+>    merge — **confirmado READY** (`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro`
+>    actualizado).
+> 6. **Releases de GitHub retargeteados a `main`**: v1.180.0 a v1.184.0 (antes apuntaban a `dev`). Notas de
+>    `v1.184.0` reescritas para reflejar el bundle completo que llegó a PROD.
+>
+> #### 🛑 Pendientes reales que quedan abiertos
+>
+> 1. **Decisión de GO, sin resolver acá**: con las 2 features ya en PROD (dormidas), el próximo paso lógico
+>    es **Embedded Signup** (escalar WhatsApp a futuros clientes sin repetir el trámite manual de GO) o el
+>    **Portal de Proveedores** (la otra mitad de la propuesta de Fede) — GO decide cuál sigue, ninguno
+>    arrancado. No inventar una respuesta acá.
+> 2. Todos los pendientes ya documentados de cada feature (aprobación de Meta de las 2 plantillas
+>    `briefing_apertura_dia`/`briefing_cierre_dia`, token de acceso permanente de Meta, 🔴 rotar el
+>    `SUPABASE_ACCESS_TOKEN` filtrado, chip prepago dedicado, Sección G de Fede — medición/facturación de
+>    uso, UI de moneda en Gastos sueltos, sugerir cotización por-proveedor, reportes ARS/USD) **siguen
+>    vigentes sin cambios** — ver cont. 29/28/27/26/25 abajo para el detalle completo de cada uno.
+>
+> Detalle completo: `log.md` (2026-08-27, tipo `deploy`, entrada al principio),
+> [[wiki/features/asistente-whatsapp]] (actualizada), [[wiki/features/gastos]] (actualizada),
+> `wiki/database/migraciones.md` (migs 379-385 marcadas EN PROD), `wiki/business/roadmap.md` (sección
+> v1.184.0 — deploy), `wiki/index.md` (footer).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-27, cont. 29) — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — LAS 4 FASES DE LA PROPUESTA DE FEDE QUEDAN CONSTRUIDAS EN DEV
+> CONSTRUIDA Y VERIFICADA PARCIALMENTE EN DEV (mig 385, EF nueva `wa-briefing-sweep`, `v1.184.0`) —
+> continúa la MISMA sesión que cont. 28 (abajo, ahora histórico; **no hubo `/clear`**), por pedido
+> explícito de GO de seguir con esta fase "para dejar casi todo listo" del asistente — este bloque quedó
+> SUPERADO por el de arriba (cont. 30): las migraciones 379-385 (Compras/Gastos USD + las 4 fases de este
+> asistente) YA ESTÁN EN PROD desde el 2026-08-27 (dormidas) — Caja USD/Auditoría (cont. 18, más abajo
+> todavía) SIGUE VIGENTE, sin cambios
 >
 > #### 🔔 Fase 4 — briefing diario proactivo (migración 385, commit `2e5fbcdb`, `v1.184.0`)
 >

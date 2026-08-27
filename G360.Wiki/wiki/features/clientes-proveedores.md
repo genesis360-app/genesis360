@@ -239,10 +239,12 @@ Lógica pura en `src/lib/comprasReportes.ts`. Tab **Reportes** en Gastos (`src/c
 > 🎉 **Compras 2.0 (CO1-CO8) cerrado al 100%.** Sin pendientes del módulo.
 
 > 🆕 **2026-08-24/25 — "Compras/Gastos en USD" (relevamiento nuevo, respondido por Fede 2026-08-21, 100%
-> cerrado): Fase 1 (cimientos de datos) YA CONSTRUIDA en DEV**, mig 379 — agrega
-> `moneda`/`cotizacion_usd` a `ordenes_compra` (y a `gastos`/`gastos_fijos`). De paso corrige un fix real
-> de REGLA #0 en `registrar_pago_oc()` (nunca completaba la `moneda` del egreso en `caja_movimientos`).
-> Sin wiring de frontend todavía. Detalle completo (diseño, decisiones, próximos pasos) en
+> cerrado): Fases 1-3 CONSTRUIDAS**, migs 379-381 — Fase 1 agrega `moneda`/`cotizacion_usd` a
+> `ordenes_compra` (y a `gastos`/`gastos_fijos`); de paso corrige un fix real de REGLA #0 en
+> `registrar_pago_oc()` (nunca completaba la `moneda` del egreso en `caja_movimientos`). El wiring de
+> frontend (modal de pago de OC con descalce de moneda) se completó en la Fase 3 (mig 381). **✅ EN PROD
+> desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA a propósito** (ningún tenant de PROD
+> tiene un método de pago USD real configurado). Detalle completo (diseño, decisiones, próximos pasos) en
 > [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable".
 
 ### 🐛 Fix real de CO5 — `registrar_pago_oc` (mig 349, v1.165.0, 2026-08-11)

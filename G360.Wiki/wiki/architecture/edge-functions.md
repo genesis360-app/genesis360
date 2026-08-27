@@ -34,7 +34,7 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
 | `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
-| `wa-webhook` | 🆕 2026-08-26, **COMMITEADA/PUSHEADA a `origin/dev` (v1.181.0/v1.182.0), solo DEV, sin deploy a PROD** — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (Fase 1, tool-calling) + arma borradores de gasto con doble confirmación (Fase 2, `proponer_gasto` + botones interactivos). Ver [[wiki/features/asistente-whatsapp]] |
+| `wa-webhook` | 🆕 2026-08-27, **COMMITEADA/PUSHEADA a `origin/dev` (v1.181.0/v1.182.0/v1.183.0), solo DEV, sin deploy a PROD** — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (Fase 1, tool-calling) + arma borradores de gasto con doble confirmación (Fase 2, `proponer_gasto` + botones interactivos) + acepta FOTOS (Claude Sonnet 5 multimodal) y AUDIO (transcripto con Groq Whisper) como formas nuevas de disparar `proponer_gasto` (Fase 3, verificada solo parcialmente — falta el happy path real, ver la página). Ver [[wiki/features/asistente-whatsapp]] |
 | *(~8 más)* | Monitoreo, aging de stock, workers, etc. |
 
 ### EFs activas DEV+PROD
@@ -95,7 +95,10 @@ Esta función usa **Claude Haiku** para detectar barcodes a partir de imágenes 
 
 > [!NOTE] Junto con `scan-ticket` (Claude Sonnet 4.6 vision) y `wa-webhook` (Claude Sonnet 5, 🆕
 > 2026-08-26, solo DEV — ver [[wiki/features/asistente-whatsapp]]), son las funciones que usan la API de
-> Anthropic directamente — el asistente del header (`ai-assistant`) usa Groq, no Anthropic.
+> Anthropic directamente — el asistente del header (`ai-assistant`) usa Groq, no Anthropic. ⚠ Desde la
+> Fase 3 (2026-08-27), `wa-webhook` TAMBIÉN llama a Groq — pero solo para transcribir audio (Whisper), no
+> para el "cerebro" (que sigue siendo Claude); es la misma `GROQ_API_KEY` que usa `ai-assistant`, radio de
+> impacto acotado si Groq fallara.
 
 ---
 

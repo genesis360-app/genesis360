@@ -41,7 +41,7 @@ tenant real a MELI/TN en PROD, sigue sin ninguno.** El resto de las fases (1.3/1
 | Logística (Andreani/OCA) | — | Rate shopping, RMA | ❌ todo |
 | PagoNube | — | — | ❌ todo |
 | EnvíoNube | — | — | ❌ todo |
-| WhatsApp Cloud API | — | Carritos, B2B | 🟡 Fase 1 (asistente IA de consultas) construida y verificada en DEV, 2026-08-26 — ver §6.2 |
+| WhatsApp Cloud API | — | Carritos, B2B | 🟡 Fases 1-3 (asistente IA de consultas + carga de gastos por texto/foto/audio) construidas en DEV, 2026-08-27 (Fase 3 verificada solo parcialmente) — ver §6.2 |
 | Email marketing (Brevo/Klaviyo) | — | RFM sync | ❌ todo |
 | Meta Ads | — | POAS, CAPI | ❌ todo |
 | Google Ads / GA4 | — | Atribución UTM | ❌ todo |
@@ -268,13 +268,15 @@ modo_credentials(
 
 ### 6.2 WhatsApp Cloud API (cuando haya WABA account)
 
-> ⚠ **Actualización 2026-08-26**: la propuesta de abajo (notificaciones/carritos/B2B) es la visión
-> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — Fases 1 (consultas) y 2 (cargar
-> gastos como borrador), verificadas en DEV, COMMITEADAS/PUSHEADAS (v1.181.0/v1.182.0), sin deploy a PROD
-> — es una feature DISTINTA y más chica: un **Asistente de WhatsApp con IA** de consultas de
-> stock/precio para el DUEÑO (propuesta de Fede del 25/8/2026), ver [[wiki/features/asistente-whatsapp]].
-> GO además conectó de verdad el trámite de Meta (número de prueba) en esta misma sesión — bloqueado para
-> mensajes entrantes reales por falta de un chip dedicado, sin afectar el desarrollo (ver esa página).
+> ⚠ **Actualización 2026-08-27**: la propuesta de abajo (notificaciones/carritos/B2B) es la visión
+> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — Fases 1 (consultas), 2 (cargar
+> gastos como borrador) y 3 (fotos y audio, verificada solo PARCIALMENTE), COMMITEADAS/PUSHEADAS
+> (v1.181.0/v1.182.0/v1.183.0), sin deploy a PROD — es una feature DISTINTA y más chica: un **Asistente de
+> WhatsApp con IA** de consultas de stock/precio y carga de gastos para el DUEÑO (propuesta de Fede del
+> 25/8/2026), ver [[wiki/features/asistente-whatsapp]]. GO conectó de verdad el trámite de Meta (número de
+> prueba) el 2026-08-26 — sigue bloqueado para mensajes entrantes reales por falta de un chip dedicado, sin
+> afectar el desarrollo (ver esa página). Ese mismo chip es ahora también lo único que falta para verificar
+> de punta a punta el happy path real de la Fase 3 (audio/foto).
 > La tabla real `whatsapp_credentials` (migración 382) **NO sigue el patrón `(tenant_id, sucursal_id)`
 > UNIQUE** apuntado abajo en "Credenciales por integración" — quedó **sin `sucursal_id` a propósito**,
 > porque un número de WhatsApp representa al negocio completo, no una sucursal puntual. Si se retoma esta
@@ -307,7 +309,7 @@ modo_credentials(
 | 10 | Meta Ads + POAS | 5 | Alto | Alto |
 | 11 | GA4 UTM + Atribución | 5 | Medio | Medio |
 | 12 | Brevo/Klaviyo RFM | 6 | Medio | Medio |
-| 13 | WhatsApp Cloud API | 6 | Alto | Alto — 🟡 Fases 1+2 (asistente IA de consultas + cargar gastos como borrador, distinto de esta visión de notificaciones/carritos) construidas, verificadas y COMMITEADAS EN DEV (2026-08-26, v1.181.0/v1.182.0), ver [[wiki/features/asistente-whatsapp]] |
+| 13 | WhatsApp Cloud API | 6 | Alto | Alto — 🟡 Fases 1+2+3 (asistente IA de consultas + cargar gastos como borrador por texto/foto/audio, distinto de esta visión de notificaciones/carritos) construidas y COMMITEADAS EN DEV (2026-08-27, v1.181.0/v1.182.0/v1.183.0; Fase 3 verificada solo parcialmente), ver [[wiki/features/asistente-whatsapp]] |
 | 14 | Google Ads | 5 | Alto | Medio |
 | 15 | Shopify / WooCommerce | — | Alto | Bajo (AR) |
 

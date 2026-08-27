@@ -1,6 +1,6 @@
 ---
 name: asistente-whatsapp
-description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación (Fase 2), vía Meta Cloud API + Claude Sonnet 5. Plan de 4 fases (propuesta de Fede, 25/8/2026). Fases 1+2 construidas, verificadas y COMMITEADAS/PUSHEADAS a origin/dev (v1.181.0/v1.182.0), SIN deploy a PROD. Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — bloqueado para mensajes ENTRANTES reales por falta de un chip dedicado para registrar el número.
+description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, ahora también por FOTO o AUDIO además de texto (Fases 2+3), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026). Fases 1+2+3 construidas y COMMITEADAS/PUSHEADAS a origin/dev (v1.181.0/v1.182.0/v1.183.0), SIN deploy a PROD. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales por falta de un chip dedicado para registrar el número.
 ---
 
 # Asistente de WhatsApp con IA
@@ -17,16 +17,22 @@ motor de tool-calling ya probado del "Plan IA" y tener menor riesgo.
 > deep-link `wa.me`, no un canal conversacional con IA. Este documento es sobre el canal ENTRANTE nuevo
 > (Meta Cloud API + webhook + IA).
 
-## Estado (2026-08-26)
+## Estado (2026-08-27)
 
-**Fases 1 (cimientos, solo lectura) y 2 (cargar gastos como borrador) construidas, verificadas en DEV,
+**Fases 1 (cimientos, solo lectura), 2 (cargar gastos como borrador) y 3 (fotos y audio) construidas y
 COMMITEADAS Y PUSHEADAS a `origin/dev`** (Fase 1: commit `8b297b32`, `APP_VERSION` `v1.181.0`; Fase 2:
-commit `9029f24b`, `APP_VERSION` `v1.182.0`; tag + GitHub release publicados para ambas), **SIN deploy a
-PROD todavía** (sin PR a `main`). Corrige una nota anterior de esta misma página que decía "código sin
-commitear/bumpear" — eso ya no es así, quedó desactualizada apenas se escribió (el commit de Fase 1 pasó
-en la misma sesión).
+commit `9029f24b`, `APP_VERSION` `v1.182.0`; Fase 3: commit `0364447a`, `APP_VERSION` `v1.183.0`; tag +
+GitHub release publicados para las 3), **SIN deploy a PROD todavía** (sin PR a `main`).
 
-Además, en esta misma sesión GO hizo el **trámite real de Meta** (número de prueba, no Business
+**Fases 1 y 2 verificadas end-to-end en DEV al 100%.** La **Fase 3 (fotos/audio) está verificada solo
+PARCIALMENTE**: el ruteo por tipo de mensaje, la seguridad (firma HMAC) y la integración real con la API de
+Meta (con el token real, solo con `media_id` sintéticos) sí se confirmaron con logs reales de la Edge
+Function — pero el "happy path" completo (transcribir un audio real, extraer un gasto de una foto real) NO
+se pudo probar de punta a punta porque requiere un mensaje entrante real de WhatsApp, y eso sigue bloqueado
+por el mismo pendiente operativo de siempre (chip prepago dedicado) — ver "Fase 3" y "Pendiente de GO" más
+abajo.
+
+Además, en la sesión del 2026-08-26 GO hizo el **trámite real de Meta** (número de prueba, no Business
 Verification completa) y conectó el webhook de verdad — ver "Trámite real de Meta" más abajo. Sigue
 bloqueado para recibir mensajes ENTRANTES reales por un pendiente operativo de GO (conseguir un chip
 prepago dedicado), no por nada de código — ver "Pendiente de GO" al final.
@@ -39,11 +45,19 @@ Meta WhatsApp Cloud API
        1. valida X-Hub-Signature-256 (BLOQUEANTE desde el día 1)
        2. resuelve tenant por phone_number_id (whatsapp_credentials)
        3. chequea idempotencia por message_id (whatsapp_mensajes_log)
-       4a. mensaje de texto → tool-calling con Claude Sonnet 5:
+       4a. mensaje de TEXTO → tool-calling con Claude Sonnet 5:
            - consultar_stock_precio (solo lectura, tabla productos) — Fase 1
            - proponer_gasto (arma BORRADOR en whatsapp_gastos_borrador, NUNCA escribe gastos) — Fase 2
-       4b. mensaje interactive/button_reply (Confirmar/Cancelar) → resuelve el borrador
+       4b. mensaje de AUDIO (Fase 3) → descargarMediaWhatsapp() + transcribirAudioGroq() (Groq Whisper)
+           → el texto transcripto reemplaza msg.text.body → mismo flujo que 4a, sin cambios en llamarClaude
+       4c. mensaje de IMAGEN (Fase 3) → descargarMediaWhatsapp() → la imagen (+ caption) se manda como
+           bloque de contenido multimodal a Claude Sonnet 5 en el mismo mensaje → mismo tool-calling que 4a
+           (Claude decide si es un comprobante de gasto y llama a proponer_gasto con lo que pueda leer) →
+           si hay proponer_gasto exitoso, la foto se sube a Storage y se linkea como comprobante_url
+       4d. mensaje interactive/button_reply (Confirmar/Cancelar) → resuelve el borrador
            correspondiente (verifica que sea del tenant correcto, nunca confía solo en el id del botón)
+       4e. video/documento/otros tipos → no soportado (mensaje explícito, distinto del anterior "no puedo
+           leer fotos ni audios" — texto+audio+foto SÍ están soportados desde la Fase 3)
        5. responde al usuario por la API de WhatsApp (texto o botones interactivos) + loguea tokens in/out
 ```
 
@@ -261,13 +275,119 @@ querer.
 - La suite de tests automatizados existente de Gastos se corrió de nuevo después del cambio y no mostró
   ninguna regresión (6 de 6 tests pasaron).
 
+## Fase 3 — fotos y audio (migración 384, `384_whatsapp_borrador_comprobante.sql`)
+
+Sesión nueva (2026-08-27), arrancó directo por pedido explícito de GO al cierre de la sesión anterior.
+Código commiteado y pusheado (commit `0364447a`, `APP_VERSION` `v1.183.0`, tag + release publicados).
+
+### Decisión técnica clave
+
+Audio y fotos son solo formas NUEVAS de llegar al **mismo pipeline** ya construido y probado en las Fases
+1-2 (`llamarClaude` + tool `proponer_gasto` + doble confirmación) — cero lógica fiscal nueva, mismo
+principio de REGLA #0.
+
+### Audio → Groq Whisper
+
+Se descarga el archivo real desde la API de medios de Meta (`GET /{media-id}` → URL temporal → descarga con
+el mismo Bearer token) y se transcribe con **Groq Whisper** (`whisper-large-v3-turbo`, endpoint
+`https://api.groq.com/openai/v1/audio/transcriptions`, `language: 'es'`) — reusa el secret `GROQ_API_KEY`
+que **ya existía** en el proyecto (lo usa `ai-assistant` para el chat web), cero trámite nuevo.
+
+**Decisión tomada con GO en esta sesión**: se prefirió Groq (reutiliza credencial existente, radio de
+impacto chico si falla — solo afecta la transcripción, no el "cerebro" que sigue siendo Claude) por sobre
+**OpenAI Whisper** (la sugerencia original de Fede del 25/8, que hubiera requerido dar de alta una
+cuenta/secret nuevo). El texto transcripto reemplaza a `msg.text.body` — **CERO cambios** en la función
+`llamarClaude` para este caso.
+
+> ⚠ Distinto del caso de Fase 1, donde Groq se había descartado A PROPÓSITO para el "cerebro" del asistente
+> (ver "Por qué Claude y no Groq" arriba, y el incidente de catálogo de Groq en [[wiki/features/asistente-ia]]).
+> Acá el uso es distinto y de menor radio de impacto: Groq solo transcribe texto, nunca decide ni ejecuta
+> tools — si Groq fallara o descatalogara el modelo, se rompe solo la transcripción de audio, no las
+> consultas de stock ni la carga de gastos por texto/foto.
+
+### Fotos → Claude Sonnet 5 multimodal (sin pipeline nuevo)
+
+En vez de armar una extracción separada (como hace `scan-ticket`), se aprovechó que Claude Sonnet 5 ya es
+multimodal — la imagen (+ caption si tiene) se manda como bloque de contenido en el **mismo mensaje** a
+Claude, que decide solo si es un comprobante de gasto y llama a `proponer_gasto` con lo que pueda leer
+(descripción/monto/categoría/fecha). Esto solo requirió cambiar el tipo del parámetro de `llamarClaude` de
+`string` a `string | any[]` — mismo tool, mismo loop, cero pipeline nuevo.
+
+### Comprobante adjunto (columna `comprobante_url`, migración 384)
+
+Cuando la propuesta viene de una FOTO, esa misma foto se sube a Storage (`comprobantes-gastos`, mismo
+bucket que usa `GastosPage.tsx`) con path `{tenant_id}/wa-{borrador_id}.{ext}`, y se linkea al borrador vía
+la columna nueva `comprobante_url`. Así, cuando un humano aprueba el borrador, el modal "Nuevo Gasto" ya lo
+trae **precargado como comprobante** (`GastosPage.tsx` → `abrirDesdeBorrador`), sin pedir la foto de nuevo —
+y sin romper la regla de "comprobante obligatorio" del tenant si aplica. Si la subida falla, **nunca
+bloquea** el borrador ya creado (queda `NULL`, se puede subir a mano después).
+
+**Migración 384**: `ALTER TABLE whatsapp_gastos_borrador ADD COLUMN IF NOT EXISTS comprobante_url TEXT`.
+`migration-reviewer`: **APTA sin correcciones**. ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
+vía `apply_migration` MCP (confirmado con query real de `information_schema.columns`).
+
+### Cambios de código
+
+- `supabase/functions/wa-webhook/index.ts`:
+  - `descargarMediaWhatsapp(mediaId, accessToken)` — helper único para audio e imagen: resuelve el
+    media_id de Meta a una URL temporal (`GET /{media-id}` con Bearer token) y descarga los bytes de esa
+    URL (mismo token).
+  - `transcribirAudioGroq(bytes, mimeType, groqApiKey)` — llama a Groq Whisper, `language: 'es'`.
+  - Loop principal: switch sobre `msg.type` (texto/audio/imagen/no-soportado) que converge en el mismo
+    `userContent` que alimenta a `llamarClaude`. El fallback de "no soportado" ahora es más específico
+    (video/documento/etc.) ya que texto+audio+foto SÍ están soportados.
+  - Bloque de éxito de `proponer_gasto`: si la propuesta vino de una foto, sube el archivo a Storage y
+    actualiza `comprobante_url` del borrador (nunca bloqueante si falla).
+  - System prompt actualizado: ya no dice "no puedo leer fotos ni audios" — ahora explica que puede usar
+    `proponer_gasto` con lo que lea de una foto de comprobante, y que si la foto no es un gasto debe
+    explicar qué ve.
+- `src/pages/GastosPage.tsx` → `abrirDesdeBorrador(b)`: ahora precarga `comprobanteExistente` desde
+  `b.comprobante_url` (antes siempre `null`) — mismo mecanismo que ya usaba `abrirCorreccion` para gastos
+  existentes.
+- `src/components/BandejaBorradoresWhatsapp.tsx`: nuevo indicador "Ver foto" (ícono `Image` de
+  lucide-react) cuando el borrador tiene `comprobante_url`, con signed URL — mismo patrón que
+  `verComprobante()` de `GastosPage.tsx`.
+
+### Deploy y verificación en DEV (PARCIAL — ver limitación abajo)
+
+`wa-webhook` deployado a DEV vía `deploy_edge_function` MCP (versión 5, `verify_jwt: false`, ACTIVE). GO
+refrescó el `access_token` temporal de Meta (pantalla "Pruébalo", dura 24hs) y se cargó en
+`whatsapp_credentials` para el tenant de prueba ("Familia Otranto De Porto").
+
+Verificado con requests sintéticos firmados con HMAC real (`X-Hub-Signature-256`) contra `wa-webhook`
+directo, con `media_id` inventados para audio/imagen: confirmado en los logs reales de la Edge Function
+(`query_logs`) que:
+1. La firma se validó.
+2. El ruteo por tipo de mensaje funcionó correctamente para los 4 casos (texto/audio/imagen/video-no-soportado).
+3. Para audio e imagen, el código llamó de verdad a la API de Meta con el token fresco y recibió el error
+   real **"Object with ID ... does not exist"** (NO un error de autenticación) — esto confirma que el
+   token refrescado es válido y que el código arma bien la request.
+4. El fallback de error se disparó correctamente en cada caso e intentó responder por WhatsApp (rechazado
+   por Meta con "Recipient phone number not in allowed list" porque el número de prueba usado en el test
+   sintético no está en la lista de destinatarios verificados — resultado esperado, no un bug).
+
+**🛑 Limitación real, IMPORTANTE para la próxima sesión**: a diferencia de Fases 1-2 (que se probaron 100%
+sintéticamente porque solo usaban texto), el "happy path" completo de audio/foto (transcripción real de un
+audio real, extracción real de un gasto desde una foto real) **no se pudo verificar de punta a punta**
+porque requiere un `media_id` REAL de Meta, que solo existe si un mensaje real llegó al número — y eso
+sigue bloqueado por el mismo motivo de siempre: el número de test de Meta no está "registrado" para RECIBIR
+mensajes (falta el chip prepago dedicado, ver "Pendiente de GO" abajo). **Refrescar el token de acceso NO
+destraba esto** — el token solo autentica lo que Genesis360 le pide a Meta (bajar medios, mandar mensajes),
+no si Meta nos entrega el webhook de un mensaje entrante real. Esta limitación quedó confirmada
+explícitamente en esta sesión (antes no estaba tan claro que fuera un bloqueador distinto del de Fase 1).
+
+Build + typecheck (`npm run build`) limpios. Suite e2e de Gastos sin regresión: `06_gastos.spec.ts` (4/4) +
+`68_gasto_comprobante_obligatorio_mutante.spec.ts` (1 skip, no relacionado a este cambio) — 5 passed, 1
+skipped.
+
 ## Alcance
 
-**Fase 1: SOLO LECTURA** (consultas de stock/precio) — ✅ construida y verificada.
-**Fase 2: cargar gastos como borrador con doble confirmación** — ✅ construida y verificada.
+**Fase 1: SOLO LECTURA** (consultas de stock/precio) — ✅ construida y verificada end-to-end.
+**Fase 2: cargar gastos como borrador con doble confirmación (texto)** — ✅ construida y verificada end-to-end.
+**Fase 3: fotos y audio** — ✅ construida, ⚠ verificada solo PARCIALMENTE (ver sección dedicada arriba —
+falta el happy path real, bloqueado por el chip prepago dedicado).
 
 Fases futuras ya conversadas con Fede pero sin empezar:
-- **Fase 3** — fotos/audio (transcripción de audio vía Speech-to-Text, ej. Whisper).
 - **Fase 4** — briefing diario proactivo (apertura/cierre) por plantilla pre-aprobada de Meta.
 - Medición de uso y facturación completa por tenant (Sección G de la propuesta de Fede) — `tokens in/out`
   ya se loguea desde la Fase 1 pensando en esto.
@@ -284,24 +404,32 @@ supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relev
 
 1. **Conseguir un chip prepago barato DEDICADO** (no la línea personal de GO) para completar el registro
    del número de test de Meta y poder probar mensajes ENTRANTES reales de punta a punta — ver "Trámite
-   real de Meta" arriba. No bloquea seguir construyendo (Fases 3/4), solo bloquea la prueba real end-to-end
-   con el celular de un usuario.
-2. **Token de acceso permanente**: el actual es TEMPORAL (24hs) y ya venció al cierre de esta sesión — hace
-   falta dar de alta un **System User** en el Business Portfolio de Meta para obtener un token permanente.
+   real de Meta" arriba. Ahora también es lo único que falta para cerrar la verificación end-to-end de la
+   **Fase 3** (audio/foto) — no bloquea seguir construyendo (Fase 4), solo bloquea la prueba real con el
+   celular de un usuario.
+2. **Token de acceso permanente**: el actual es TEMPORAL (24hs) — se refrescó de nuevo en la sesión de la
+   Fase 3 (2026-08-27) — hace falta dar de alta un **System User** en el Business Portfolio de Meta para
+   obtener un token permanente. Aclaración confirmada en la sesión de la Fase 3: refrescar el token NO
+   destraba el chip dedicado — son 2 pendientes independientes (el token autentica lo que Genesis360 le
+   pide a Meta; el chip es lo que hace falta para que Meta ACEPTE entregarnos un mensaje entrante real).
 3. 🔴 Sigue sin resolver (recurrente hace varias sesiones, no específico de esta feature): rotar el
-   `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Bloqueó `npm run schema:dump` desde la
-   sesión de la Fase 1 — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones 382/383.**
-4. **Fase 3** (fotos/audio) y **Fase 4** (briefing diario) — sin empezar, sin diseño.
+   `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Sigue bloqueando `npm run schema:dump`
+   — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones 382/383/384.**
+4. **Fase 4** (briefing diario) — sin empezar, sin diseño. Sección G (medición/facturación de uso): el
+   costo de Groq Whisper por audio queda sin trackear por ahora (prácticamente gratis), decisión consciente
+   de no sumar esa granularidad todavía.
 5. **Embedded Signup** — próximo paso lógico para escalar a futuros clientes sin repetir el trámite
    manual, sin empezar (requiere Business Verification de Genesis360 como plataforma).
 6. **Portal de Proveedores** — sigue sin empezar, ver "Alcance" arriba.
 
 ## Referencias
 
-- [[wiki/features/asistente-ia]] — motor del chat web del Plan IA (patrón reusado, código separado).
+- [[wiki/features/asistente-ia]] — motor del chat web del Plan IA (patrón reusado, código separado); usa
+  Groq para el chat (no para transcripción de audio, que es lo nuevo de la Fase 3 acá).
 - [[wiki/integrations/roadmap-apis]] §6.2 — visión original de WhatsApp Cloud API (notificaciones/carritos
   abandonados/CC), corregida para reflejar el esquema real de `whatsapp_credentials`.
 - [[wiki/architecture/edge-functions]] — lista de Edge Functions, incluye `wa-webhook`.
-- `wiki/database/migraciones.md` — migraciones 382 y 383.
-- `sources/raw/project_pendientes.md` (cont. 27, "ARRANCÁ ACÁ") — detalle completo de la sesión.
-- `log.md` (2026-08-26) — entradas completas (Fase 1 y Fase 2 + trámite real de Meta + Embedded Signup).
+- `wiki/database/migraciones.md` — migraciones 382, 383 y 384.
+- `sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ") — detalle completo de la sesión de la Fase 3.
+- `log.md` (2026-08-27) — entrada completa de la Fase 3; (2026-08-26) — Fase 1, Fase 2, trámite real de
+  Meta y Embedded Signup.

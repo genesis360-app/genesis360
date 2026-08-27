@@ -3,10 +3,49 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-26
+updated: 2026-08-27
 ---
 
-# Historial de Migraciones (001-383)
+# Historial de Migraciones (001-384)
+
+**384 (`384_whatsapp_borrador_comprobante.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
+`0364447a`, `APP_VERSION` `v1.183.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 3 ("fotos y
+audio") del "Asistente de WhatsApp con IA" (continúa la mig 383, abajo, ver
+[[wiki/features/asistente-whatsapp]]). Una sola columna aditiva: `ALTER TABLE whatsapp_gastos_borrador ADD
+COLUMN IF NOT EXISTS comprobante_url TEXT` — cuando la propuesta de gasto viene de una FOTO enviada por
+WhatsApp, esa foto se sube a Storage (`comprobantes-gastos`) y se linkea acá, para que el modal "Nuevo
+Gasto" la traiga precargada al momento de la aprobación humana.
+
+`migration-reviewer`: **APTA, sin correcciones.**
+
+**Decisión técnica clave**: audio y fotos son solo formas nuevas de llegar al mismo pipeline de las Fases
+1-2 (`llamarClaude` + `proponer_gasto` + doble confirmación) — cero lógica fiscal nueva. **Audio**: se
+descarga el media real de la API de Meta y se transcribe con **Groq Whisper** (`whisper-large-v3-turbo`,
+reusa el secret `GROQ_API_KEY` que ya existía para `ai-assistant`) — decisión tomada con GO en esta sesión
+por sobre OpenAI Whisper (la sugerencia original de Fede) para no dar de alta una cuenta/secret nuevo; el
+texto transcripto reemplaza `msg.text.body`, cero cambios en `llamarClaude`. **Fotos**: se aprovecha que
+Claude Sonnet 5 ya es multimodal — la imagen se manda como bloque de contenido en el mismo mensaje
+(`llamarClaude` pasa de tipar su parámetro `string` a `string | any[]`), mismo tool, mismo loop.
+
+**Código nuevo**: `supabase/functions/wa-webhook/index.ts` gana `descargarMediaWhatsapp()` (helper único
+para audio e imagen) y `transcribirAudioGroq()`; el loop principal switchea por `msg.type`
+(texto/audio/imagen/no-soportado); el bloque de éxito de `proponer_gasto` sube la foto a Storage cuando
+corresponde (nunca bloqueante si falla). `GastosPage.tsx` → `abrirDesdeBorrador()` precarga
+`comprobanteExistente` desde `comprobante_url`; `BandejaBorradoresWhatsapp.tsx` gana un indicador "Ver
+foto".
+
+**Verificado PARCIALMENTE en DEV**: con requests sintéticos firmados HMAC real y `media_id` inventados se
+confirmó (vía logs reales de la Edge Function) que la firma se valida, el ruteo por tipo de mensaje
+funciona para los 4 casos, y que el código llama de verdad a la API de Meta con el token real (recibiendo
+el error esperado "Object with ID ... does not exist", no uno de autenticación). **El happy path real
+(transcribir un audio real / leer una foto real) queda sin verificar de punta a punta** — requiere un
+`media_id` real, bloqueado por el mismo pendiente de siempre (chip prepago dedicado para que el número de
+test de Meta pueda RECIBIR mensajes reales). Build+typecheck limpios; suite e2e de Gastos sin regresión
+(5 passed, 1 skip no relacionado). Ver [[wiki/features/asistente-whatsapp]],
+`sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ").
+
+---
 
 **383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `9029f24b`, `APP_VERSION`
@@ -80,8 +119,8 @@ reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Met
 eco del challenge, con token incorrecto → 403. Ver [[wiki/features/asistente-whatsapp]],
 `sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ").
 
-**🔴 `schema_full.sql` sigue DESACTUALIZADO** — no incluye ni esta migración ni la 383 (sigue reflejando
-hasta la 381), bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (recurrente, ver
+**🔴 `schema_full.sql` sigue DESACTUALIZADO** — no incluye la 382, la 383 ni la 384 (sigue reflejando hasta
+la 381), bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (recurrente, ver
 `reference_seguridad.md`).
 
 ---

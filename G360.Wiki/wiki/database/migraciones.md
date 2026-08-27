@@ -6,10 +6,50 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-26
 ---
 
-# Historial de Migraciones (001-382)
+# Historial de Migraciones (001-383)
+
+**383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `9029f24b`, `APP_VERSION`
+`v1.182.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 2 ("cargar gastos como borrador") del
+"Asistente de WhatsApp con IA" (continúa la mig 382, abajo, ver [[wiki/features/asistente-whatsapp]]).
+Agrega la tabla `whatsapp_gastos_borrador`, con 4 estados: `pendiente_confirmacion` (la IA propuso el
+gasto, esperando que el remitente de WhatsApp confirme con un botón interactivo) → `pendiente` (confirmado
+por WhatsApp, visible en la bandeja de revisión de la app) → `aprobado` (un humano lo aprobó desde el
+mismo modal "Nuevo Gasto" de siempre, `gasto_id` linkeado) | `descartado` (rechazado en cualquiera de las
+2 etapas).
+
+**Decisión de diseño confirmada por GO**: el bot de WhatsApp NUNCA escribe en `gastos` directamente —
+crear un gasto real dispara reglas de negocio encadenadas (umbral de autorización por rol, CAJ-18 de saldo
+de caja, comprobante obligatorio según config del tenant, multi-CUIT, período contable cerrado) que no
+tiene sentido reimplementar sin sesión de usuario real (REGLA #0). El borrador pasa por 2 confirmaciones
+separadas: botones interactivos nativos de Meta (✅/❌, no texto libre) del remitente, y aprobación humana
+desde el modal "Nuevo Gasto" existente (precargado), que corre toda la validación real sin duplicar
+lógica.
+
+RLS con **policy real de tenant** (a diferencia de `whatsapp_mensajes_log` de la mig 382, que es solo
+`service_role` — esta tabla SÍ la toca el frontend con sesión de usuario real, bandeja de revisión +
+Aprobar/Descartar). `migration-reviewer`: **APTA**, con una corrección aplicada antes de aplicar (no
+bloqueante): envolver `auth.uid()` en `(select auth.uid())`, la convención de performance de RLS ya
+estandarizada en las migs 263 y 366, reintroducida sin querer en esta migración nueva.
+
+**Código nuevo**: `supabase/functions/wa-webhook/index.ts` gana la tool `proponer_gasto` + envío de
+mensajes interactivos (botones) + manejo de `interactive`/`button_reply` entrantes; `GastosPage.tsx` gana
+`abrirDesdeBorrador()` (calcada de `abrirCorreccion()`) + tab nuevo "WhatsApp" con badge; componente nuevo
+`BandejaBorradoresWhatsapp.tsx`.
+
+**Verificado end-to-end en DEV**: por curl con HMAC real contra `wa-webhook` (creación de borrador,
+confirmar/cancelar por botón, idempotencia por estado) y con Playwright real contra el frontend (RLS aisló
+correctamente el borrador sembrado del tenant de testing; Aprobar → modal precargado → gasto real creado
+CON movimiento de caja → borrador linkeado y marcado `aprobado`). Suite e2e existente de Gastos sin
+regresión (6/6). Ver [[wiki/features/asistente-whatsapp]], `sources/raw/project_pendientes.md` (cont. 27,
+"ARRANCÁ ACÁ").
+
+---
 
 **382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), **código sin commitear/bumpear todavía, SIN deploy a PROD**:** Fase 1 (cimientos)
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `8b297b32`, `APP_VERSION`
+`v1.181.0`, tag+release publicados), **SIN deploy a PROD** (⚠ corrige la nota anterior de esta entrada,
+que decía "código sin commitear/bumpear todavía" — quedó desactualizada apenas se escribió):** Fase 1 (cimientos)
 del "Asistente de WhatsApp con IA" — GO eligió arrancar por acá la propuesta de Fede del 2026-08-25 (no por
 el Portal de Proveedores, ver [[wiki/features/asistente-whatsapp]]). Agrega 2 tablas nuevas:
 1. `whatsapp_credentials` — mapeo `phone_number_id` (Meta) → `tenant_id`. **Sin `sucursal_id` a
@@ -40,8 +80,9 @@ reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Met
 eco del challenge, con token incorrecto → 403. Ver [[wiki/features/asistente-whatsapp]],
 `sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ").
 
-**🔴 `schema_full.sql` quedó DESACTUALIZADO** — no incluye esta migración (sigue reflejando hasta la 381),
-bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (ver `reference_seguridad.md`).
+**🔴 `schema_full.sql` sigue DESACTUALIZADO** — no incluye ni esta migración ni la 383 (sigue reflejando
+hasta la 381), bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (recurrente, ver
+`reference_seguridad.md`).
 
 ---
 

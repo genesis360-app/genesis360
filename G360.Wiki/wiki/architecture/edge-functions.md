@@ -34,7 +34,7 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
 | `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
-| `wa-webhook` | 🆕 2026-08-26, **solo DEV, sin deploy a PROD** — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (tool-calling). Ver [[wiki/features/asistente-whatsapp]] |
+| `wa-webhook` | 🆕 2026-08-26, **COMMITEADA/PUSHEADA a `origin/dev` (v1.181.0/v1.182.0), solo DEV, sin deploy a PROD** — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (Fase 1, tool-calling) + arma borradores de gasto con doble confirmación (Fase 2, `proponer_gasto` + botones interactivos). Ver [[wiki/features/asistente-whatsapp]] |
 | *(~8 más)* | Monitoreo, aging de stock, workers, etc. |
 
 ### EFs activas DEV+PROD

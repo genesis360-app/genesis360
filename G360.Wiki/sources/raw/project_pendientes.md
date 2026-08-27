@@ -6,11 +6,165 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-26, cont. 26) — 📱 Asistente de WhatsApp con IA: Fase 1 (cimientos) CONSTRUIDA
-> Y VERIFICADA EN DEV (mig 382, EF `wa-webhook`), **SIN deploy a PROD todavía** — GO respondió la pregunta 1
-> de cont. 25 (abajo, ahora histórico): arrancar por acá y no por el Portal de Proveedores — continúa la
-> MISMA sesión que cont. 25 (**no hubo `/clear`**, pese a que esa entrada decía que sería la última antes de
-> uno) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+> ### ✅ ARRANCÁ ACÁ (2026-08-26, cont. 27) — 📱🎉 Asistente de WhatsApp IA: trámite REAL de Meta conectado
+> (número de prueba, webhook verificado) + Fase 2 completa (cargar gastos como borrador, mig 383,
+> `v1.182.0`), **SIN deploy a PROD todavía** — continúa la MISMA sesión que cont. 26 (abajo, ahora
+> histórico; **no hubo `/clear`**) — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin
+> cambios
+>
+> **Corrección de la entrada de abajo (cont. 26)**: decía "código sin commitear/bumpear todavía" — quedó
+> desactualizada apenas se escribió. La Fase 1 SÍ se commiteó (`8b297b32`) y se pusheó a `origin/dev` en la
+> misma sesión, `APP_VERSION` bumpeado a **`v1.181.0`**, con tag + GitHub release publicados (`gh release
+> view v1.181.0`: `publishedAt: 2026-08-26T06:05:21Z`, título "Asistente WhatsApp IA (Fase 1, solo
+> lectura)").
+>
+> #### 🏢 Trámite real de Meta (número de prueba de WhatsApp)
+>
+> GO decidió NO ir por Business Verification completa (no tenía documentos de empresa) — se optó por el
+> camino de **"número de prueba" (test number)** de Meta: gratis, sin documentos, hasta 5 destinatarios
+> verificados.
+>
+> Al crear la primera app, Meta tiró el error **"Business is not allowed to claim App — Your business is
+> prohibited from advertising, including claiming apps"** sobre el Business Portfolio "Genesis360"
+> (preexistente, no verificado). La app se creó igual pero quedó rota (sin caso de uso completo, "Tipo:
+> Ninguno", WhatsApp no aparecía en su lista de productos). El error se resolvió DESDE el Centro de
+> Seguridad del portfolio en el dashboard de Meta (GO no detalló el paso exacto que lo destrabó). **Lección
+> para el futuro**: si esto vuelve a pasar, crear la app de NUEVO desde cero en vez de reciclar una que
+> arrancó rota — reintentar sobre la vieja no sirvió.
+>
+> Con el portfolio destrabado, se creó una app nueva limpia y el caso de uso "Conectarte con los clientes a
+> través de WhatsApp" se completó bien, con el número de prueba de Meta asignado automáticamente.
+>
+> **Credenciales REALES** cargadas en `whatsapp_credentials` (tenant "Familia Otranto De Porto", el mismo
+> de prueba de la Fase 1): `phone_number_id: 1310489345478776`, `waba_id: 1778597536671078`, número de
+> test `+1 555 668 2365`. El **App Secret real** (de `Configuración de la app → Básica`) reemplazó el
+> `META_APP_SECRET` temporal de DEV. El token de acceso es TEMPORAL (24hs, de la pantalla "Pruébalo" de
+> Meta) — ya venció al cierre de la sesión; para uno permanente hace falta un System User, no se hizo
+> todavía.
+>
+> El webhook se conectó de VERDAD en el dashboard de Meta (Callback URL de `wa-webhook` +
+> `META_VERIFY_TOKEN` ya generado) — el handshake GET real de Meta llegó y se verificó OK (confirmado con
+> logs de Supabase). Campo `messages` suscripto.
+>
+> **🛑 Bloqueador real encontrado**: GO mandó un WhatsApp real desde su celular al número de test — Meta lo
+> marcó "entregado" pero `wa-webhook` nunca recibió nada (0 requests nuevos, confirmado con logs). Causa:
+> el número de test de Meta, mientras no esté **"registrado"** (paso separado en el dashboard, pide un
+> número de teléfono real para verificar por SMS/llamada), solo puede ENVIAR — no recibir. GO estuvo a
+> punto de usar su celular personal de Chile para ese registro; se lo frenó a tiempo porque eso puede
+> migrar/desvincular ese número de su uso normal de WhatsApp personal (riesgo real de perder chats/
+> contactos). **Pendiente real: GO necesita un chip prepago barato DEDICADO** (no su línea de uso diario)
+> para completar el registro y poder probar mensajes entrantes reales de punta a punta. No bloquea seguir
+> construyendo — todo lo demás se sigue verificando con payloads sintéticos firmados con HMAC real contra
+> `wa-webhook` directo, sin pasar por la entrega real de Meta.
+>
+> #### 🔌 Embedded Signup — confirmado que esto NO se repite por cada cliente nuevo
+>
+> GO preguntó explícitamente si cada negocio nuevo que se sume a Genesis360 va a tener que repetir todo
+> este trámite manual. Investigado y confirmado contra la documentación oficial de Meta
+> (developers.facebook.com): NO — existe el flujo oficial **"Embedded Signup"**, diseñado para plataformas
+> SaaS como Genesis360:
+> - El cliente conecta su WhatsApp desde DENTRO de la app de Genesis360 (popup de Meta embebido), sin
+>   pisar developers.facebook.com ni repetir nada de lo que hizo GO manualmente.
+> - Lo único que el cliente siempre va a necesitar (esto no lo elimina Embedded Signup, es restricción de
+>   WhatsApp en sí): un número de teléfono real DEDICADO — mismo motivo por el que se frenó a GO recién.
+> - Para habilitarlo, **Genesis360 como plataforma (una sola vez)** tiene que convertirse en **"Proveedor
+>   de tecnología"** ante Meta — esto SÍ exige que Genesis360 complete su propia Business Verification con
+>   documentos (el CUIT/monotributo de Fede, el mismo que ya usa la empresa para todo lo demás — no hace
+>   falta uno nuevo).
+> - Límite real con impacto de negocio: sin esa verificación de plataforma, se pueden onboardear hasta 10
+>   negocios nuevos por semana; verificada, sube a 200/semana.
+>
+> Es trabajo NUEVO, identificado como el paso lógico después de terminar de validar el asistente con este
+> primer negocio de prueba — NO construido todavía, no bloquea nada de lo actual.
+>
+> #### 💵 Fase 2 — cargar gastos como borrador (migración 383, commit `9029f24b`, `v1.182.0`)
+>
+> ✅ APLICADA Y VERIFICADA SOLO EN DEV, COMMITEADA Y PUSHEADA a `origin/dev`, tag+release publicados
+> (`gh release view v1.182.0`: `publishedAt: 2026-08-27T01:28:35Z`, título "Asistente WhatsApp IA (Fase 2,
+> cargar gastos como borrador)").
+>
+> **Hallazgo clave ANTES de diseñar** (investigación real de `src/pages/GastosPage.tsx`, evitó un error de
+> REGLA #0 del CLAUDE.md del proyecto): crear un gasto real en Genesis360 no es un INSERT simple — dispara
+> reglas de negocio encadenadas: autorización por umbral de rol (`evaluarUmbralGasto`, bloquea si el monto
+> supera el umbral del rol sin aprobación de un rol superior), CAJ-18 (bloquea el egreso si deja la caja en
+> negativo), comprobante obligatorio según 4 reglas combinables del tenant, multi-CUIT (a qué emisor fiscal
+> se imputa el IVA crédito), período contable cerrado (bloquea ediciones de gastos viejos). Reimplementar
+> todo esto dentro del webhook de WhatsApp habría sido reinventar lógica fiscal ya probada, en un contexto
+> sin sesión de usuario real — justo el tipo de riesgo que la REGLA #0 del proyecto pide evitar.
+>
+> **Decisión de diseño confirmada explícitamente por GO**: el bot de WhatsApp NUNCA escribe en la tabla
+> `gastos` — solo arma un BORRADOR, con 2 confirmaciones separadas: (1) el REMITENTE de WhatsApp confirma
+> con botones interactivos NATIVOS de Meta (✅ Confirmar / ❌ Cancelar — no texto libre tipo "SI", para
+> evitar ambigüedad de interpretación del lenguaje); (2) un humano con acceso a Genesis360 (tab nuevo
+> "WhatsApp" dentro del módulo Gastos, visible solo para roles DUEÑO/ADMIN/SUPERVISOR/SUPER_USUARIO)
+> aprueba el borrador desde el MISMO modal "Nuevo Gasto" de siempre — precargado con lo que capturó el bot
+> (descripción/monto/categoría/fecha), pasando por el mismo botón "Guardar" de siempre. Cero duplicación de
+> lógica fiscal: la validación y creación real es exactamente la de siempre, con todas sus reglas ya
+> probadas.
+>
+> **Migración 383** (`whatsapp_gastos_borrador`): 4 estados — `pendiente_confirmacion` (recién propuesto
+> por la IA) → `pendiente` (confirmado por WhatsApp, visible para revisión humana) → `aprobado` (un humano
+> lo aprobó, gasto real creado y linkeado) | `descartado` (rechazado en cualquiera de las 2 etapas). RLS
+> con policy real de tenant (a diferencia de la tabla de logs de la Fase 1 que era solo `service_role`,
+> esta SÍ la toca el frontend con sesión de usuario real). `migration-reviewer`: **APTA**, con una
+> corrección aplicada antes de aplicar (no bloqueante) — envolver `auth.uid()` en `(select auth.uid())`, la
+> convención de performance de RLS que el proyecto ya estandarizó en 2 migraciones dedicadas anteriores
+> (263 y 366) y que esta migración nueva había reintroducido sin querer.
+>
+> **Código nuevo**: `supabase/functions/wa-webhook/index.ts` gana la tool de IA `proponer_gasto` (arma el
+> borrador, nunca escribe `gastos`), una función nueva para mandar mensajes interactivos de WhatsApp
+> (botones), y manejo de los mensajes entrantes de tipo `interactive`/`button_reply` (confirma o cancela el
+> borrador correspondiente, verificando siempre que pertenezca al tenant correcto — nunca confía en el id
+> del botón solo). `src/pages/GastosPage.tsx` gana `abrirDesdeBorrador()` (calcada de `abrirCorreccion()`,
+> que ya existía para precargar el modal desde un gasto existente); al guardar con éxito se agrega un paso
+> adicional (sin tocar ninguna validación existente) que linkea el borrador al gasto recién creado y lo
+> marca `aprobado`; tab nuevo "WhatsApp" con badge de cantidad pendiente. Componente nuevo
+> `src/components/BandejaBorradoresWhatsapp.tsx` (lista de borradores pendientes, Aprobar/Descartar).
+>
+> **Verificado end-to-end en DEV**: por curl con firma HMAC real contra `wa-webhook` directo — mensaje
+> sintético "gasté 5000 en nafta" → la IA (Claude Sonnet 5) parseó correctamente descripción="Nafta",
+> monto=5000, categoría="Combustible" → borrador creado. Botón "Confirmar" sintético → pasó a estado
+> `pendiente`. Reenviar el mismo botón → detectado correctamente como ya resuelto (idempotencia por estado
+> del borrador, no solo por id de mensaje de WhatsApp). Segundo borrador + botón "Cancelar" → quedó
+> `descartado`, sin crear nada. Con Playwright real contra el frontend: se sembró un borrador para el
+> tenant que usa la suite de tests automatizados (RLS lo aisló correctamente del tenant de prueba de
+> WhatsApp), tab "WhatsApp" → "Aprobar" abrió el modal correctamente precargado, se completó el medio de
+> pago (Efectivo) y al guardar se creó el gasto real CON su movimiento de caja correspondiente (egreso
+> $5000, "pagado"), y el borrador quedó correctamente linkeado y marcado `aprobado`. Datos de prueba
+> borrados después. Suite e2e existente de Gastos sin regresión (6/6).
+>
+> **Sin deploy a PROD** — Fases 1 y 2 viven solo en DEV, igual que antes.
+>
+> #### 🛑 Pendiente de GO para continuar
+>
+> 1. **Conseguir un chip prepago barato DEDICADO** (no la línea personal de GO) para completar el registro
+>    del número de test de Meta y poder probar mensajes ENTRANTES reales de punta a punta. No bloquea
+>    seguir construyendo (Fases 3/4), solo la prueba real end-to-end con el celular de un usuario.
+> 2. **Token de acceso permanente**: el actual es TEMPORAL (24hs) y ya venció — hace falta dar de alta un
+>    System User en el Business Portfolio de Meta.
+> 3. 🔴 Sigue sin resolver (recurrente hace varias sesiones, no específico de esta feature): rotar el
+>    `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Bloqueó `npm run schema:dump` desde
+>    la sesión de la Fase 1 — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones
+>    382/383.**
+> 4. **Fase 3** (fotos/audio) y **Fase 4** (briefing diario) — sin empezar, sin diseño.
+> 5. **Embedded Signup** — próximo paso lógico para escalar a futuros clientes sin repetir el trámite
+>    manual, sin empezar (requiere Business Verification de Genesis360 como plataforma).
+> 6. **Portal de Proveedores** — sigue sin empezar (problema cross-tenant de `users.tenant_id` sin
+>    resolver, ver cont. 25 abajo).
+>
+> Detalle completo: `log.md` (entrada al principio), [[wiki/features/asistente-whatsapp]] (actualizada),
+> `wiki/database/migraciones.md` (mig 383, título a 001-383).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-26, cont. 26) — 📱 Asistente de WhatsApp con IA: Fase 1 (cimientos) CONSTRUIDA
+> Y VERIFICADA EN DEV (mig 382, EF `wa-webhook`) — GO respondió la pregunta 1 de cont. 25 (abajo, ahora
+> histórico): arrancar por acá y no por el Portal de Proveedores — continúa la MISMA sesión que cont. 25
+> (**no hubo `/clear`**, pese a que esa entrada decía que sería la última antes de uno) — este bloque quedó
+> SUPERADO por el de arriba (cont. 27): el código de esta Fase 1 SÍ se commiteó/pusheó/taggeó en la misma
+> sesión (la nota "código sin commitear/bumpear todavía" de abajo quedó desactualizada apenas se escribió),
+> GO hizo el trámite real de Meta, y se completó la Fase 2 — Caja USD/Auditoría (cont. 18, más abajo
+> todavía) SIGUE VIGENTE, sin cambios
 >
 > #### 📱 Fase 1 — cimientos (migración 382, EF `wa-webhook`)
 >

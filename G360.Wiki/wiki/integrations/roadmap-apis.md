@@ -269,9 +269,12 @@ modo_credentials(
 ### 6.2 WhatsApp Cloud API (cuando haya WABA account)
 
 > ⚠ **Actualización 2026-08-26**: la propuesta de abajo (notificaciones/carritos/B2B) es la visión
-> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — Fase 1, verificada en DEV, sin
-> deploy a PROD — es una feature DISTINTA y más chica: un **Asistente de WhatsApp con IA** de consultas de
+> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — Fases 1 (consultas) y 2 (cargar
+> gastos como borrador), verificadas en DEV, COMMITEADAS/PUSHEADAS (v1.181.0/v1.182.0), sin deploy a PROD
+> — es una feature DISTINTA y más chica: un **Asistente de WhatsApp con IA** de consultas de
 > stock/precio para el DUEÑO (propuesta de Fede del 25/8/2026), ver [[wiki/features/asistente-whatsapp]].
+> GO además conectó de verdad el trámite de Meta (número de prueba) en esta misma sesión — bloqueado para
+> mensajes entrantes reales por falta de un chip dedicado, sin afectar el desarrollo (ver esa página).
 > La tabla real `whatsapp_credentials` (migración 382) **NO sigue el patrón `(tenant_id, sucursal_id)`
 > UNIQUE** apuntado abajo en "Credenciales por integración" — quedó **sin `sucursal_id` a propósito**,
 > porque un número de WhatsApp representa al negocio completo, no una sucursal puntual. Si se retoma esta
@@ -304,7 +307,7 @@ modo_credentials(
 | 10 | Meta Ads + POAS | 5 | Alto | Alto |
 | 11 | GA4 UTM + Atribución | 5 | Medio | Medio |
 | 12 | Brevo/Klaviyo RFM | 6 | Medio | Medio |
-| 13 | WhatsApp Cloud API | 6 | Alto | Alto — 🟡 Fase 1 (asistente IA de consultas, distinto de esta visión de notificaciones/carritos) construida y verificada en DEV (2026-08-26), ver [[wiki/features/asistente-whatsapp]] |
+| 13 | WhatsApp Cloud API | 6 | Alto | Alto — 🟡 Fases 1+2 (asistente IA de consultas + cargar gastos como borrador, distinto de esta visión de notificaciones/carritos) construidas, verificadas y COMMITEADAS EN DEV (2026-08-26, v1.181.0/v1.182.0), ver [[wiki/features/asistente-whatsapp]] |
 | 14 | Google Ads | 5 | Alto | Medio |
 | 15 | Shopify / WooCommerce | — | Alto | Bajo (AR) |
 

@@ -5,10 +5,11 @@ description: Asistente IA del header — chat de ayuda contextual con conocimien
 
 # Asistente IA (header)
 
-> ⚠ No confundir con el **Asistente de WhatsApp con IA** ([[wiki/features/asistente-whatsapp]], Fase 1
-> construida y verificada en DEV el 2026-08-26, sin deploy a PROD) — es un canal aparte (Meta WhatsApp
-> Cloud API, no el chat web del header), con su propia Edge Function (`wa-webhook`, no `ai-assistant`),
-> modelo distinto (Claude Sonnet 5, no Groq) y prompt distinto (Q&A de stock, no navegación de la app). Solo
+> ⚠ No confundir con el **Asistente de WhatsApp con IA** ([[wiki/features/asistente-whatsapp]], Fases 1
+> (consultas) y 2 (cargar gastos como borrador) construidas y verificadas en DEV el 2026-08-26, sin deploy
+> a PROD) — es un canal aparte (Meta WhatsApp Cloud API, no el chat web del header), con su propia Edge
+> Function (`wa-webhook`, no `ai-assistant`), modelo distinto (Claude Sonnet 5, no Groq) y prompt distinto
+> (Q&A de stock / propuesta de gasto, no navegación de la app). Solo
 > reusa el PATRÓN de tool-calling + confirmación humana de esta página, no su código.
 
 Chat flotante del header (`AiAssistant.tsx`, ícono robot) que guía a los usuarios por la app y canaliza reportes de problemas. **v1.117.0 lo reescribió**: antes respondía desde un prompt estático hardcodeado (desactualizado, inventaba botones y no sabía del modo básico); ahora su conocimiento se **genera desde el wiki** y recibe el **contexto real del usuario**.

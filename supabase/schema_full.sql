@@ -1,12 +1,11 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-25T19:57:57.422Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260825190035 · 159 tablas
+-- Generado 2026-08-27T21:20:39.868Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260827192743 · 162 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
 -- ============================================================
-
 -- ============================================================
 -- EXTENSIONES
 -- ============================================================
@@ -2669,6 +2668,50 @@ CREATE TABLE public.ventas_recurrentes (
   created_at timestamp with time zone DEFAULT now()
 );
 
+CREATE TABLE public.whatsapp_credentials (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  phone_number_id text NOT NULL,
+  waba_id text NOT NULL,
+  numero_whatsapp text,
+  access_token text NOT NULL,
+  conectado boolean NOT NULL DEFAULT true,
+  conectado_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  numero_notificaciones text
+);
+
+CREATE TABLE public.whatsapp_gastos_borrador (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  descripcion text NOT NULL,
+  monto numeric(12,2) NOT NULL,
+  categoria text,
+  fecha date,
+  notas text,
+  origen_telefono text,
+  mensaje_id text,
+  estado text NOT NULL DEFAULT 'pendiente_confirmacion'::text,
+  gasto_id uuid,
+  resuelto_por uuid,
+  resuelto_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  comprobante_url text
+);
+
+CREATE TABLE public.whatsapp_mensajes_log (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  message_id text NOT NULL,
+  direccion text NOT NULL,
+  texto_truncado text,
+  modelo text,
+  tokens_in integer,
+  tokens_out integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.wms_tareas (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -3079,6 +3122,14 @@ ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_pkey
 ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_tenant_id_integracion_webhook_external_key UNIQUE (tenant_id, integracion, webhook_external_id);
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_frecuencia_dias_check CHECK ((frecuencia_dias > 0));
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_pkey PRIMARY KEY (id);
+ALTER TABLE public.whatsapp_credentials ADD CONSTRAINT whatsapp_credentials_phone_number_id_key UNIQUE (phone_number_id);
+ALTER TABLE public.whatsapp_credentials ADD CONSTRAINT whatsapp_credentials_pkey PRIMARY KEY (id);
+ALTER TABLE public.whatsapp_credentials ADD CONSTRAINT whatsapp_credentials_tenant_id_key UNIQUE (tenant_id);
+ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_estado_check CHECK ((estado = ANY (ARRAY['pendiente_confirmacion'::text, 'pendiente'::text, 'aprobado'::text, 'descartado'::text])));
+ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_pkey PRIMARY KEY (id);
+ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_direccion_check CHECK ((direccion = ANY (ARRAY['in'::text, 'out'::text])));
+ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_pkey PRIMARY KEY (id);
+ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_tenant_id_message_id_direccion_key UNIQUE (tenant_id, message_id, direccion);
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_cantidad_check CHECK ((cantidad > 0));
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text, 'completada'::text, 'cancelada'::text])));
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_origen_check CHECK ((origen = ANY (ARRAY['envio'::text, 'manual'::text, 'umbral'::text, 'pedido'::text, 'marketplace'::text, 'repositor'::text])));
@@ -3563,6 +3614,11 @@ ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_vent
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_cliente_id_fkey FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL;
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.whatsapp_credentials ADD CONSTRAINT whatsapp_credentials_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_gasto_id_fkey FOREIGN KEY (gasto_id) REFERENCES gastos(id) ON DELETE SET NULL;
+ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_resuelto_por_fkey FOREIGN KEY (resuelto_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_kitting_log_id_fkey FOREIGN KEY (kitting_log_id) REFERENCES kitting_log(id) ON DELETE SET NULL;
@@ -4087,6 +4143,9 @@ CREATE INDEX idx_ventas_usuario_id ON public.ventas USING btree (usuario_id);
 CREATE INDEX idx_vid_item ON public.venta_item_despachos USING btree (venta_item_id);
 CREATE INDEX idx_vid_tenant ON public.venta_item_despachos USING btree (tenant_id);
 CREATE INDEX idx_vid_venta ON public.venta_item_despachos USING btree (venta_id);
+CREATE INDEX idx_whatsapp_creds_tenant ON public.whatsapp_credentials USING btree (tenant_id);
+CREATE INDEX idx_whatsapp_gastos_borrador_tenant_estado ON public.whatsapp_gastos_borrador USING btree (tenant_id, estado);
+CREATE INDEX idx_whatsapp_log_tenant ON public.whatsapp_mensajes_log USING btree (tenant_id, created_at);
 CREATE INDEX idx_wms_tareas_envio ON public.wms_tareas USING btree (envio_id);
 CREATE INDEX idx_wms_tareas_estado ON public.wms_tareas USING btree (estado);
 CREATE INDEX idx_wms_tareas_kitting_log ON public.wms_tareas USING btree (kitting_log_id) WHERE (kitting_log_id IS NOT NULL);
@@ -4113,8 +4172,7 @@ CREATE UNIQUE INDEX uq_tenant_addons_fijo_dim ON public.tenant_addons USING btre
 CREATE UNIQUE INDEX uq_tenant_addons_mp_payment ON public.tenant_addons USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_tenant_certificates_emisor ON public.tenant_certificates USING btree (emisor_id);
 CREATE UNIQUE INDEX uq_tenant_certificates_tenant_legacy ON public.tenant_certificates USING btree (tenant_id) WHERE (emisor_id IS NULL);
-CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));
--- ============================================================
+CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));-- ============================================================
 -- FUNCIONES
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.aprobar_cambio_estado_inventario(p_autorizacion_id uuid)
@@ -8411,6 +8469,14 @@ BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_updated_at_whatsapp_creds()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_usuarios_hacen_repositor(p_tenant_id uuid, p_sucursal_id uuid)
  RETURNS TABLE(usuario_id uuid, nombre text)
  LANGUAGE sql
@@ -9465,67 +9531,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -9600,6 +9605,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -11375,7 +11441,6 @@ DECLARE v_ok BOOLEAN; BEGIN
   END IF;
   RETURN v_ok;
 END;$function$
-
 -- ============================================================
 -- TRIGGERS
 -- ============================================================
@@ -11477,6 +11542,7 @@ CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EA
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_writeoff_rol_guard BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_writeoff_rol_guard();
 CREATE TRIGGER ventas_updated_at BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_updated_at_whatsapp_creds BEFORE UPDATE ON public.whatsapp_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_whatsapp_creds();
 CREATE TRIGGER trg_wms_tarea_asignado_valido_tenant BEFORE INSERT OR UPDATE OF usuario_asignado_id ON public.wms_tareas FOR EACH ROW EXECUTE FUNCTION fn_wms_tarea_asignado_valido_tenant();
 
 -- ============================================================
@@ -11639,6 +11705,9 @@ ALTER TABLE public.venta_series ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas_externas_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas_recurrentes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_gastos_borrador ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_mensajes_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wms_tareas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zonas ENABLE ROW LEVEL SECURITY;
 
@@ -12502,6 +12571,14 @@ CREATE POLICY ventas_rec_tenant ON public.ventas_recurrentes AS PERMISSIVE FOR A
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY whatsapp_creds_tenant ON public.whatsapp_credentials AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = auth.uid()))));
+CREATE POLICY whatsapp_gastos_borrador_tenant ON public.whatsapp_gastos_borrador AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY wms_tareas_tenant ON public.wms_tareas AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
@@ -12971,6 +13048,11 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_tareas_repositor TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_gastos_borrador TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_gastos_borrador TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_mensajes_log TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.zonas TO authenticated;

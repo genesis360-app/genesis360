@@ -3,10 +3,10 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-08-26
+updated: 2026-08-27
 ---
 
-# Edge Functions (28 funciones Deno)
+# Edge Functions (29 funciones Deno)
 
 Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican validando el JWT de Supabase en cada request.
 
@@ -35,7 +35,8 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
 | `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
 | `wa-webhook` | 🆕 2026-08-27, **COMMITEADA/PUSHEADA a `origin/dev` (v1.181.0/v1.182.0/v1.183.0), solo DEV, sin deploy a PROD** — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (Fase 1, tool-calling) + arma borradores de gasto con doble confirmación (Fase 2, `proponer_gasto` + botones interactivos) + acepta FOTOS (Claude Sonnet 5 multimodal) y AUDIO (transcripto con Groq Whisper) como formas nuevas de disparar `proponer_gasto` (Fase 3, verificada solo parcialmente — falta el happy path real, ver la página). Ver [[wiki/features/asistente-whatsapp]] |
-| *(~8 más)* | Monitoreo, aging de stock, workers, etc. |
+| `wa-briefing-sweep` | 🆕 2026-08-27, **COMMITEADA/PUSHEADA a `origin/dev` (v1.184.0), solo DEV, sin deploy a PROD** — `verify_jwt: false`, disparada por **GitHub Actions** (`.github/workflows/wa-briefing-sweep.yml`, `schedule: '*/15 * * * *'` + `workflow_dispatch`, clon del molde de `repositores-cierre-dia-sweep`), NO por HTTP directo de un cliente. Asistente de WhatsApp Fase 4 (briefing diario proactivo): por cada sucursal activa con WhatsApp conectado y `whatsapp_credentials.numero_notificaciones` configurado, evalúa horario de apertura/cierre (`sucursales.horario_apertura`/`horario_cierre`) y manda un mensaje por **plantilla pre-aprobada de Meta** (`briefing_apertura_dia`/`briefing_cierre_dia`, business-initiated, no comparte código con `wa-webhook`) con el resumen de ventas/gastos del día. Verificada solo parcialmente — todo el código confirmado correcto contra la API real de Meta, pero el envío real está bloqueado por la aprobación PENDIENTE de las 2 plantillas. Ver [[wiki/features/asistente-whatsapp]] |
+| *(~7 más)* | Monitoreo, aging de stock, workers, etc. |
 
 ### EFs activas DEV+PROD
 

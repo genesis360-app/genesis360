@@ -24,17 +24,19 @@ tenía esa versión hasta ahora. Detalle completo en `G360.Wiki/sources/raw/proj
 de verdad, bloque "ARRANCÁ ACÁ", cont. 24).  
 Antes de este release: v1.179.0 — Plan IA Fases 1+2+3 100% en PROD (PR #332, merge commit `7e19e7a3`, 3
 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.183.0** (commit `0364447a`, tag+release publicados) — **COMMITEADA Y PUSHEADA a
-`origin/dev`**, **sin PR a `main` todavía, sin deploy a PROD**: **migración 384** — Fase 3 ("fotos y
-audio") del **Asistente de WhatsApp con IA** (propuesta de Fede 25/8/2026). Audio transcripto con Groq
-Whisper (reusa `GROQ_API_KEY` existente), fotos mandadas multimodal a Claude Sonnet 5 — ambas convergen en
-el mismo pipeline `proponer_gasto` de la Fase 2, cero lógica fiscal nueva. Verificado PARCIALMENTE (ruteo/
-seguridad/llamada real a Meta sí; el happy path real de audio/foto no, bloqueado por el chip prepago
-dedicado). Ver detalle en la sección `v1.183.0` más abajo. Antes de esta versión: **v1.182.0** (mig 383,
-Fase 2 — cargar gastos como borrador con doble confirmación) y **v1.181.0** (mig 382, Fase 1 — cimientos,
-consultas de stock/precio por WhatsApp), ambas construidas y verificadas end-to-end en DEV el 2026-08-26 —
-ver sus secciones dedicadas más abajo. Ver `wiki/database/migraciones.md` (migs 382-384, título a 001-384),
-[[wiki/features/asistente-whatsapp]].  
+**Versión en DEV:** **v1.184.0** (commit `2e5fbcdb`, tag+release publicados) — **COMMITEADA Y PUSHEADA a
+`origin/dev`**, **sin PR a `main` todavía, sin deploy a PROD**: **migración 385** — Fase 4 ("briefing
+diario proactivo") del **Asistente de WhatsApp con IA**, continúa la MISMA sesión que v1.183.0 (abajo, sin
+`/clear`). **Con esta fase, las 4 fases de la propuesta de Fede (25/8/2026) quedan construidas en DEV.**
+EF nueva `wa-briefing-sweep` (GitHub Actions, cron 15 min, clon del molde de `repositores-cierre-dia-sweep`)
+manda un resumen de apertura/cierre SOLO al dueño por plantilla pre-aprobada de Meta (business-initiated,
+no comparte código con `wa-webhook`). Verificado PARCIALMENTE: todo el código confirmado correcto contra la
+API real de Meta, pero el envío real está bloqueado por la aprobación PENDIENTE de las 2 plantillas nuevas
+(Meta reclasificó automáticamente una de ellas de `UTILITY` a `MARKETING` en su revisión). Ver detalle en
+la sección `v1.184.0` más abajo. Antes de esta versión: **v1.183.0** (mig 384, Fase 3 — fotos y audio),
+**v1.182.0** (mig 383, Fase 2 — cargar gastos como borrador con doble confirmación) y **v1.181.0** (mig
+382, Fase 1 — cimientos, consultas de stock/precio por WhatsApp) — ver sus secciones dedicadas más abajo.
+Ver `wiki/database/migraciones.md` (migs 382-385, título a 001-385), [[wiki/features/asistente-whatsapp]].  
 **Versión anterior en DEV (2026-08-25, histórico):** v1.180.0 (migs 379-381) — Fases 1-3 del plan
 "Compras/Gastos en USD + tasa de cambio editable" (relevamiento respondido por Fede 2026-08-21). Ver
 detalle en la sección `v1.180.0` más abajo. Ver `wiki/database/migraciones.md` (migs 379-381) y
@@ -55,6 +57,74 @@ sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto ab
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
 **Última actualización:** 27 de Agosto, 2026
+
+---
+
+## v1.184.0 — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD, verificada solo PARCIALMENTE — LAS 4 FASES de la propuesta de Fede quedan construidas en DEV
+
+Continúa la MISMA sesión que v1.183.0 (abajo) — **no hubo `/clear`**. GO pidió explícitamente seguir con
+esta fase "para dejar casi todo listo" del Asistente de WhatsApp.
+
+**Contexto de negocio (Sección F de la propuesta de Fede)**: notificaciones proactivas, briefing diario de
+apertura/cierre SOLO al dueño, por plantilla pre-aprobada de Meta (categoría utilidad).
+
+**Diferencia cualitativa clave con Fases 1-3**: ahí el bot siempre RESPONDÍA dentro de una conversación
+que el usuario abría primero (texto libre, ventana de 24hs gratis de Meta). Un mensaje
+business-initiated (nadie escribió primero) exige un **message template pre-aprobado por Meta** — no se
+puede mandar texto libre. Esa aprobación es 100% externa, Genesis360 no la controla.
+
+**Investigación previa al diseño**: no hay pg_cron/pg_net habilitados en el proyecto. El patrón real y
+único del proyecto para tareas periódicas es **GitHub Actions con `schedule:`** — se clonó casi 1:1 el
+molde de `repositores-cierre-dia-sweep` (cron cada 15 min, misma `horaArgentinaActual()`). Se reusó
+`sucursales.horario_apertura`/`horario_cierre` (ya existían desde la mig 124, sin migración nueva) con
+defaults `09:00`/`21:00`.
+
+**Gap real encontrado**: no existía columna para "a qué número mandarle un mensaje proactivo" —
+`whatsapp_credentials.numero_whatsapp` (mig 382) es el número del NEGOCIO, solo informativo/UI. **Migración
+385** (`385_whatsapp_briefing_numero_notificaciones.sql`, `migration-reviewer`: APTA, 2 notas no
+bloqueantes ya aplicadas): `numero_notificaciones` (PII) en `whatsapp_credentials`. ✅ APLICADA Y
+VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP.
+
+**Código nuevo**: `supabase/functions/wa-briefing-sweep/index.ts` (EF nueva, autocontenida) — por cada
+sucursal activa con WhatsApp conectado y `numero_notificaciones` configurado, evalúa por separado apertura
+(resumen de AYER) y cierre (resumen de HOY), armados con queries directas a `ventas`/`gastos` (no las
+vistas `vw_caja_resumen_diario`, que no sirven para un corte en caliente). Función nueva
+`enviarMensajePlantillaWhatsapp()` (`type: 'template'`).
+
+**Bug de diseño encontrado y corregido EN esta sesión**: el dedupe vía `whatsapp_mensajes_log` se escribía
+originalmente ANTES del envío (mismo patrón insert-primero que usa `wa-webhook`) — un fallo transitorio
+(token vencido) dejaba la sucursal marcada como "ya procesada" sin haber mandado nada, bloqueando el
+reintento. Corregido: el registro de dedupe se escribe RECIÉN tras un envío exitoso.
+
+**GitHub Actions**: `.github/workflows/wa-briefing-sweep.yml`, clon exacto del molde de
+`repositores-cierre-dia-sweep.yml`. Como este trabajo queda en `dev`, el `schedule:` no se dispara solo
+todavía — se invocó manualmente por curl para probar en DEV.
+
+**Plantillas de Meta dadas de alta EN ESTA SESIÓN, vía API**: `briefing_apertura_dia` y
+`briefing_cierre_dia` (categoría solicitada `UTILITY`, idioma `es_AR`). **Hallazgo real, no controlado por
+nosotros**: Meta reclasificó automáticamente `briefing_cierre_dia` de `UTILITY` a `MARKETING` en su
+revisión (afecta costo/reglas de entrega, dato para la Sección G de Fede); `briefing_apertura_dia` se
+mantuvo en `UTILITY`. Ambas quedaron `PENDING` al cierre de la sesión.
+
+**🛑 Verificado solo PARCIALMENTE en DEV**: 1ª invocación manual confirmó evaluación de sucursal/horario
+correcta, pero el envío falló con 401 de Meta (token temporal vencido 8 min antes de lo esperado, GO pasó
+un token nuevo). 2ª vuelta con el token nuevo: desapareció el error de autenticación, apareció el esperado
+`(#132001) Template name does not exist in the translation` — comportamiento NORMAL de Meta para una
+plantilla `PENDING`, confirma que todo el código (token, `phone_number_id`, nombre/`language` del template,
+payload) está correcto — lo único que falta es la aprobación de Meta. Build limpio (`npm run build`); 100%
+backend/infra, sin cambios en `src/` salvo el bump de versión.
+
+**Estado real: `APP_VERSION` bumpeado a `v1.184.0`, commit `2e5fbcdb`, tag + GitHub release publicados**
+sobre `dev` ("Asistente WhatsApp IA (Fase 4, briefing diario)") — **COMMITEADO Y PUSHEADO a `origin/dev`,
+SIN PR a `main`, SIN deploy a PROD**. Las 4 fases del Asistente de WhatsApp viven solo en DEV.
+
+**Pendiente**: aprobación de Meta de las 2 plantillas (sin ETA); token de acceso permanente (System User);
+rotar `SUPABASE_ACCESS_TOKEN` filtrado (recurrente); chip prepago dedicado (Fases 1-3, no aplica acá);
+Sección G (medición/facturación de uso, sumar el hallazgo de reclasificación UTILITY→MARKETING); Embedded
+Signup y Portal de Proveedores (a decidir con GO cuál sigue, ninguno arrancado).
+
+Ver `sources/raw/project_pendientes.md` (cont. 29, "ARRANCÁ ACÁ"), `wiki/database/migraciones.md` (mig
+385), [[wiki/features/asistente-whatsapp]].
 
 ---
 

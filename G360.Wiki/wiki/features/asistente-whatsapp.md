@@ -1,6 +1,6 @@
 ---
 name: asistente-whatsapp
-description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, ahora también por FOTO o AUDIO además de texto (Fases 2+3), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026). Fases 1+2+3 construidas y COMMITEADAS/PUSHEADAS a origin/dev (v1.181.0/v1.182.0/v1.183.0), SIN deploy a PROD. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales por falta de un chip dedicado para registrar el número.
+description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas y COMMITEADAS/PUSHEADAS a origin/dev (v1.181.0/v1.182.0/v1.183.0/v1.184.0), SIN deploy a PROD. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente.
 ---
 
 # Asistente de WhatsApp con IA
@@ -14,15 +14,17 @@ motor de tool-calling ya probado del "Plan IA" y tener menor riesgo.
 
 > ⚠ No confundir con `src/lib/whatsapp.ts` (normalización y plantillas de link de WhatsApp SALIENTE, usado
 > hoy para mandar manualmente un recordatorio de CC o una OC desde `ClientesPage`/`GastosPage`) — eso es un
-> deep-link `wa.me`, no un canal conversacional con IA. Este documento es sobre el canal ENTRANTE nuevo
-> (Meta Cloud API + webhook + IA).
+> deep-link `wa.me`, no un canal conversacional con IA. Este documento es sobre el canal nuevo de Meta
+> Cloud API + IA — mayormente ENTRANTE (webhook, Fases 1-3), más un mensaje SALIENTE nuevo desde la Fase 4
+> (briefing proactivo por plantilla, no un deep-link `wa.me`).
 
-## Estado (2026-08-27)
+## Estado (2026-08-27, cont. — Fase 4 en la misma sesión)
 
-**Fases 1 (cimientos, solo lectura), 2 (cargar gastos como borrador) y 3 (fotos y audio) construidas y
-COMMITEADAS Y PUSHEADAS a `origin/dev`** (Fase 1: commit `8b297b32`, `APP_VERSION` `v1.181.0`; Fase 2:
-commit `9029f24b`, `APP_VERSION` `v1.182.0`; Fase 3: commit `0364447a`, `APP_VERSION` `v1.183.0`; tag +
-GitHub release publicados para las 3), **SIN deploy a PROD todavía** (sin PR a `main`).
+**Las 4 fases de la propuesta de Fede (25/8/2026) están construidas y COMMITEADAS Y PUSHEADAS a
+`origin/dev`** (Fase 1: commit `8b297b32`, `APP_VERSION` `v1.181.0`; Fase 2: commit `9029f24b`,
+`APP_VERSION` `v1.182.0`; Fase 3: commit `0364447a`, `APP_VERSION` `v1.183.0`; Fase 4: commit `2e5fbcdb`,
+`APP_VERSION` `v1.184.0`; tag + GitHub release publicados para las 4), **SIN deploy a PROD todavía** (sin
+PR a `main`).
 
 **Fases 1 y 2 verificadas end-to-end en DEV al 100%.** La **Fase 3 (fotos/audio) está verificada solo
 PARCIALMENTE**: el ruteo por tipo de mensaje, la seguridad (firma HMAC) y la integración real con la API de
@@ -32,10 +34,17 @@ se pudo probar de punta a punta porque requiere un mensaje entrante real de What
 por el mismo pendiente operativo de siempre (chip prepago dedicado) — ver "Fase 3" y "Pendiente de GO" más
 abajo.
 
+**La Fase 4 (briefing diario proactivo) también está verificada solo PARCIALMENTE**, pero por un motivo
+distinto: todo el código (evaluación de horario por sucursal, armado del resumen, autenticación con Meta,
+payload del template) se confirmó correcto contra la API real de Meta — lo único que falta es que Meta
+apruebe las 2 plantillas nuevas (`briefing_apertura_dia`, `briefing_cierre_dia`), quedaron en estado
+`PENDING` al cierre de la sesión, sin ETA — ver "Fase 4" más abajo.
+
 Además, en la sesión del 2026-08-26 GO hizo el **trámite real de Meta** (número de prueba, no Business
 Verification completa) y conectó el webhook de verdad — ver "Trámite real de Meta" más abajo. Sigue
 bloqueado para recibir mensajes ENTRANTES reales por un pendiente operativo de GO (conseguir un chip
-prepago dedicado), no por nada de código — ver "Pendiente de GO" al final.
+prepago dedicado), no por nada de código — ver "Pendiente de GO" al final. **Esto no aplica a la Fase 4**,
+que es 100% saliente (business-initiated), no depende del chip dedicado.
 
 ## Arquitectura
 
@@ -59,6 +68,20 @@ Meta WhatsApp Cloud API
        4e. video/documento/otros tipos → no soportado (mensaje explícito, distinto del anterior "no puedo
            leer fotos ni audios" — texto+audio+foto SÍ están soportados desde la Fase 3)
        5. responde al usuario por la API de WhatsApp (texto o botones interactivos) + loguea tokens in/out
+```
+
+**Camino aparte, para Fase 4 (business-initiated, sin webhook de entrada)**:
+
+```
+GitHub Actions (schedule: */15 * * * *) ──▶ EF wa-briefing-sweep (--no-verify-jwt)
+  Por cada sucursal activa de un tenant con WhatsApp conectado + numero_notificaciones configurado:
+    1. horaArgentinaActual() (mismo helper que repositores-cierre-dia-sweep)
+    2. ¿ya pasó horario_apertura? → arma resumen de AYER (ventas + gastos) → enviarMensajePlantillaWhatsapp()
+       con el template briefing_apertura_dia
+    3. ¿ya pasó horario_cierre? → arma resumen de HOY (ventas + gastos) → enviarMensajePlantillaWhatsapp()
+       con el template briefing_cierre_dia
+    4. dedupe por whatsapp_mensajes_log — se escribe SOLO después de un envío exitoso a Meta (nunca antes),
+       para que un fallo transitorio (ej. token vencido) permita reintentar en la corrida siguiente
 ```
 
 ## Fase 1 — Tablas (migración 382, `382_whatsapp_asistente_fase1.sql`)
@@ -380,20 +403,139 @@ Build + typecheck (`npm run build`) limpios. Suite e2e de Gastos sin regresión:
 `68_gasto_comprobante_obligatorio_mutante.spec.ts` (1 skip, no relacionado a este cambio) — 5 passed, 1
 skipped.
 
+## Fase 4 — briefing diario proactivo (migración 385, `385_whatsapp_briefing_numero_notificaciones.sql`)
+
+Misma sesión que la Fase 3 (2026-08-27), continuó directo por pedido explícito de GO ("dejar casi todo
+listo" del asistente). Código commiteado y pusheado (commit `2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag +
+release publicados). **Con esta fase, las 4 fases de la propuesta de Fede (25/8) quedan construidas en
+DEV.**
+
+### Contexto de negocio (Sección F de la propuesta de Fede)
+
+Notificaciones proactivas: un briefing diario de apertura y cierre, SOLO al dueño, por plantilla
+pre-aprobada de Meta (categoría utilidad) — no es un chat, es un mensaje que Genesis360 inicia sin que el
+dueño haya escrito antes.
+
+### Diferencia cualitativa clave con Fases 1-3
+
+En las Fases 1-3 el bot siempre RESPONDÍA dentro de una conversación que el usuario abría primero (texto
+libre, ventana de 24hs gratis de Meta). Un mensaje **business-initiated** (nadie escribió primero) exige un
+**message template pre-aprobado por Meta** — no se puede mandar texto libre. Esa aprobación es 100% externa
+a Genesis360; no se puede acelerar ni controlar desde el código.
+
+### Investigación previa al diseño (evitó reinventar nada)
+
+El proyecto **no tiene pg_cron ni pg_net habilitados**. El patrón real y único para tareas periódicas es
+**GitHub Actions con `schedule:`** pegándole por curl a una Edge Function — se clonó casi 1:1 el molde de
+`repositores-cierre-dia-sweep` (ver [[wiki/features/repositores]] → "Notificaciones (J)"): mismo criterio
+de **cron cada 15 minutos** (el horario es configurable por sucursal, no hay cron por-fila) y misma función
+`horaArgentinaActual()` (`Intl.DateTimeFormat` sobre `America/Argentina/Buenos_Aires`). Se reusaron las
+columnas `sucursales.horario_apertura`/`horario_cierre` (ya existían desde la mig 124, **sin migración
+nueva para esto**) con defaults `09:00`/`21:00`.
+
+### Gap real encontrado — `numero_notificaciones`
+
+No existía ninguna columna para "a qué número mandarle un mensaje proactivo": `whatsapp_credentials.
+numero_whatsapp` (mig 382) es el número del NEGOCIO (WABA), documentado explícitamente como
+"solo informativo/UI" — no sirve como destinatario de un mensaje al dueño.
+
+### Migración 385
+
+`ALTER TABLE whatsapp_credentials ADD COLUMN IF NOT EXISTS numero_notificaciones TEXT` + `COMMENT ON
+COLUMN` documentando que es **PII** (número personal del dueño) y que no debe loguearse en texto plano.
+`migration-reviewer`: **APTA**, con 2 notas no bloqueantes ya aplicadas (el `COMMENT ON COLUMN`, y
+recordatorio de correr `npm run schema:dump` — no se pudo correr esta sesión, mismo bloqueador de siempre
+del `SUPABASE_ACCESS_TOKEN` filtrado sin rotar). ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
+vía `apply_migration` MCP. Se cargó el número de prueba (`+56975770883`, número real de GO, ya verificado
+como destinatario de test en Meta) para el tenant "Familia Otranto De Porto".
+
+### Código nuevo — `supabase/functions/wa-briefing-sweep/index.ts`
+
+Edge Function nueva, autocontenida, sin carpeta `_shared/` (mismo criterio que el resto del proyecto). Por
+cada sucursal activa de un tenant con WhatsApp conectado y `numero_notificaciones` configurado, evalúa POR
+SEPARADO:
+- Si ya pasó `horario_apertura` → arma y manda el resumen de AYER (template `briefing_apertura_dia`).
+- Si ya pasó `horario_cierre` → arma y manda el resumen de HOY (template `briefing_cierre_dia`).
+
+El resumen se arma con **queries directas**, NO con las vistas `vw_caja_resumen_diario` (esas solo se
+llenan al cerrar una sesión de caja, no sirven para un corte en caliente a mitad de operación): `ventas`
+con `estado IN ('despachada','facturada')` filtrado por sucursal y rango UTC del día Argentina, y `gastos`
+con `fecha = {fechaISO}` (columna DATE, sin necesidad de ajuste de huso horario). Función nueva
+`enviarMensajePlantillaWhatsapp()` (`type: 'template'`), distinta de las 2 funciones que ya tenía
+`wa-webhook` para responder dentro de una conversación existente.
+
+### 🛑 Bug de diseño encontrado y corregido EN esta sesión (dedupe insert-primero)
+
+El dedupe vía `whatsapp_mensajes_log` inicialmente se escribía **ANTES** de intentar el envío — mismo
+patrón "insert-primero" que usa `wa-webhook` para dedupear reintentos de ENTREGA de Meta. Se detectó como
+un bug real al testear: un fallo transitorio (token vencido) dejaba esa sucursal marcada como "ya
+procesada" sin haber mandado nada, **bloqueando el reintento** en las corridas siguientes del sweep ese
+mismo día. **Corregido**: el registro de dedupe ahora se escribe RECIÉN cuando el envío a Meta sale bien
+(chequeo por `SELECT` antes, `INSERT` después del éxito) — así un fallo transitorio permite reintentar en
+la corrida de 15 minutos siguiente. El registro de dedupe mal insertado por el diseño viejo se borró a mano
+antes de la segunda vuelta de verificación (ver abajo).
+
+### GitHub Actions
+
+`.github/workflows/wa-briefing-sweep.yml`, clon exacto del molde de `repositores-cierre-dia-sweep.yml`
+(`schedule: '*/15 * * * *'` + `workflow_dispatch`). Como este trabajo queda en `dev` (sin merge a `main`),
+el trigger `schedule:` de GitHub Actions **NO se dispara solo todavía** (esos triggers solo se evalúan
+sobre el branch default del repo) — para probar en DEV se invocó la función manualmente por curl, igual
+que se hizo con `wa-webhook` en la sesión de la Fase 1.
+
+### Plantillas de Meta dadas de alta EN ESTA SESIÓN, vía API (no por el dashboard)
+
+Usando el `access_token` vigente y el `waba_id` (`1778597536671078`), se creó `briefing_apertura_dia` y
+`briefing_cierre_dia` (categoría `UTILITY` en la solicitud, idioma `es_AR`) vía `POST
+/{waba_id}/message_templates`. Confirmado con `debug_token` que el token SÍ tenía permiso de gestión de
+plantillas (`whatsapp_business_management`) — GO no tuvo que tocar el dashboard de Meta para esto.
+
+**Hallazgo real, no controlado por nosotros**: Meta **reclasificó automáticamente** `briefing_cierre_dia`
+de `UTILITY` a `MARKETING` durante su revisión (el clasificador de Meta decidió que el tono/contenido —
+emojis, "¡buen descanso!" — encaja más ahí); `briefing_apertura_dia` se mantuvo en `UTILITY`. Esto no rompe
+nada funcionalmente, pero cambia el costo por conversación y las reglas de entrega — **dato a sumar cuando
+se diseñe la Sección G** de la propuesta de Fede (medición/facturación de uso). Ambas plantillas quedaron
+con estado **`PENDING`** al cierre de la sesión (aprobación de Meta, tiempo fuera de nuestro control).
+
+### Verificación real en DEV (2 vueltas, ambas evidencia real de que el código funciona)
+
+1. **Primera invocación manual**: confirmó que la sucursal se evalúa bien y el horario se compara bien
+   (hora Argentina real), pero el envío falló con error 401 de Meta — investigado con `debug_token`, causa
+   real: el token de acceso temporal de Meta había vencido apenas 8 minutos antes (duró mucho menos que
+   las 24hs esperadas). GO pasó un token nuevo.
+2. **Con el token nuevo**: el error de autenticación desapareció, pero apareció uno nuevo y esperado —
+   `(#132001) Template name does not exist in the translation` —, confirmado que es el comportamiento
+   NORMAL de Meta para una plantilla `PENDING` (no aprobada): la API de envío la trata como si no existiera
+   hasta que Meta la aprueba. Esto confirma que TODO el código (token, `phone_number_id`, nombre y
+   `language` de la plantilla, estructura del payload) está correcto — lo único que falta es la aprobación
+   de Meta, fuera de nuestro control.
+3. El bug del dedupe (arriba) se corrigió entre la vuelta 1 y la vuelta 2, incluyendo borrar a mano el
+   registro que había quedado mal insertado por el diseño viejo.
+
+Build limpio (`npm run build`). Esta fase es 100% backend/infra (Edge Function + migración + GitHub
+Actions) — no se tocó nada de `src/` salvo el bump de versión.
+
+**Sin deploy a PROD** — las 4 fases del Asistente de WhatsApp viven solo en DEV.
+
 ## Alcance
 
 **Fase 1: SOLO LECTURA** (consultas de stock/precio) — ✅ construida y verificada end-to-end.
 **Fase 2: cargar gastos como borrador con doble confirmación (texto)** — ✅ construida y verificada end-to-end.
 **Fase 3: fotos y audio** — ✅ construida, ⚠ verificada solo PARCIALMENTE (ver sección dedicada arriba —
 falta el happy path real, bloqueado por el chip prepago dedicado).
+**Fase 4: briefing diario proactivo (apertura/cierre)** — ✅ construida, ⚠ verificada solo PARCIALMENTE (ver
+sección dedicada arriba — todo el código confirmado correcto contra la API real de Meta, falta la
+aprobación PENDIENTE de las 2 plantillas, tiempo fuera de nuestro control).
 
-Fases futuras ya conversadas con Fede pero sin empezar:
-- **Fase 4** — briefing diario proactivo (apertura/cierre) por plantilla pre-aprobada de Meta.
+**Con esto, las 4 fases de la propuesta de Fede (25/8/2026) para el Asistente de WhatsApp quedan
+construidas en DEV.** Sigue pendiente, ya conversado con Fede pero sin empezar:
 - Medición de uso y facturación completa por tenant (Sección G de la propuesta de Fede) — `tokens in/out`
-  ya se loguea desde la Fase 1 pensando en esto.
+  ya se loguea desde la Fase 1 pensando en esto; sumar el dato nuevo de la Fase 4 (Meta puede reclasificar
+  UTILITY→MARKETING un template ya escrito, afecta el costeo por conversación).
 - **Embedded Signup** para que futuros clientes conecten su WhatsApp sin repetir el trámite manual de GO
   — ver sección dedicada arriba. Requiere que Genesis360 complete su propia Business Verification como
-  plataforma. Identificado como próximo paso lógico, sin empezar.
+  plataforma. Identificado como próximo paso lógico, sin empezar — a decidir con GO si va antes o después
+  del Portal de Proveedores.
 
 **Portal de Proveedores** (la otra mitad de la propuesta de Fede) sigue sin empezar — proyecto aparte, con
 un problema arquitectónico cross-tenant real sin resolver: `users.tenant_id` es columna única en todo el
@@ -402,34 +544,38 @@ supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relev
 
 ## Pendiente de GO para continuar (bloqueante para pasar de pruebas a real)
 
-1. **Conseguir un chip prepago barato DEDICADO** (no la línea personal de GO) para completar el registro
+1. **Aprobación de Meta** de las 2 plantillas (`briefing_apertura_dia`, `briefing_cierre_dia`) — sin ETA,
+   no depende de nosotros. Cuando se aprueben, re-invocar `wa-briefing-sweep` (o esperar la próxima
+   corrida si esto llegara a estar en `main`) para confirmar el envío real de punta a punta de la Fase 4.
+2. **Conseguir un chip prepago barato DEDICADO** (no la línea personal de GO) para completar el registro
    del número de test de Meta y poder probar mensajes ENTRANTES reales de punta a punta — ver "Trámite
-   real de Meta" arriba. Ahora también es lo único que falta para cerrar la verificación end-to-end de la
-   **Fase 3** (audio/foto) — no bloquea seguir construyendo (Fase 4), solo bloquea la prueba real con el
-   celular de un usuario.
-2. **Token de acceso permanente**: el actual es TEMPORAL (24hs) — se refrescó de nuevo en la sesión de la
-   Fase 3 (2026-08-27) — hace falta dar de alta un **System User** en el Business Portfolio de Meta para
-   obtener un token permanente. Aclaración confirmada en la sesión de la Fase 3: refrescar el token NO
-   destraba el chip dedicado — son 2 pendientes independientes (el token autentica lo que Genesis360 le
-   pide a Meta; el chip es lo que hace falta para que Meta ACEPTE entregarnos un mensaje entrante real).
-3. 🔴 Sigue sin resolver (recurrente hace varias sesiones, no específico de esta feature): rotar el
+   real de Meta" arriba. Es lo único que falta para cerrar la verificación end-to-end de la **Fase 3**
+   (audio/foto) y de la Fase 1 (mensajes entrantes); **no aplica a la Fase 4**, que es 100% saliente.
+3. **Token de acceso permanente**: el actual es TEMPORAL (24hs) — se refrescó de nuevo en la sesión de la
+   Fase 4 (2026-08-27) — hace falta dar de alta un **System User** en el Business Portfolio de Meta para
+   obtener un token permanente. Recurrente en las 4 fases de esta feature.
+4. 🔴 Sigue sin resolver (recurrente hace varias sesiones, no específico de esta feature): rotar el
    `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Sigue bloqueando `npm run schema:dump`
-   — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones 382/383/384.**
-4. **Fase 4** (briefing diario) — sin empezar, sin diseño. Sección G (medición/facturación de uso): el
-   costo de Groq Whisper por audio queda sin trackear por ahora (prácticamente gratis), decisión consciente
-   de no sumar esa granularidad todavía.
-5. **Embedded Signup** — próximo paso lógico para escalar a futuros clientes sin repetir el trámite
-   manual, sin empezar (requiere Business Verification de Genesis360 como plataforma).
-6. **Portal de Proveedores** — sigue sin empezar, ver "Alcance" arriba.
+   — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones 382/383/384/385.**
+5. **Sección G** (medición/facturación de uso) — sin empezar; sumar el dato nuevo de la sesión de la Fase 4
+   (Meta puede reclasificar UTILITY→MARKETING un template ya escrito, afecta el costeo por conversación).
+   El costo de Groq Whisper por audio (Fase 3) sigue sin trackear por ahora (prácticamente gratis),
+   decisión consciente.
+6. **Con las 4 fases construidas**, el próximo paso lógico identificado en sesiones anteriores sigue
+   siendo **Embedded Signup** (escalar a futuros clientes sin repetir el trámite manual, requiere Business
+   Verification de Genesis360 como plataforma) o el **Portal de Proveedores** (ver "Alcance" arriba) — a
+   decidir con GO, ninguno arrancado.
 
 ## Referencias
 
 - [[wiki/features/asistente-ia]] — motor del chat web del Plan IA (patrón reusado, código separado); usa
   Groq para el chat (no para transcripción de audio, que es lo nuevo de la Fase 3 acá).
+- [[wiki/features/repositores]] → "Notificaciones (J)" — molde real del que se clonó `wa-briefing-sweep`
+  (`repositores-cierre-dia-sweep`, mismo patrón GitHub Actions `schedule:` cada 15 min).
 - [[wiki/integrations/roadmap-apis]] §6.2 — visión original de WhatsApp Cloud API (notificaciones/carritos
   abandonados/CC), corregida para reflejar el esquema real de `whatsapp_credentials`.
-- [[wiki/architecture/edge-functions]] — lista de Edge Functions, incluye `wa-webhook`.
-- `wiki/database/migraciones.md` — migraciones 382, 383 y 384.
-- `sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ") — detalle completo de la sesión de la Fase 3.
-- `log.md` (2026-08-27) — entrada completa de la Fase 3; (2026-08-26) — Fase 1, Fase 2, trámite real de
-  Meta y Embedded Signup.
+- [[wiki/architecture/edge-functions]] — lista de Edge Functions, incluye `wa-webhook` y `wa-briefing-sweep`.
+- `wiki/database/migraciones.md` — migraciones 382, 383, 384 y 385.
+- `sources/raw/project_pendientes.md` (cont. 29, "ARRANCÁ ACÁ") — detalle completo de la sesión de la Fase 4.
+- `log.md` (2026-08-27) — entrada completa de la Fase 4 (arriba) y de la Fase 3 (debajo, misma sesión, sin
+  `/clear`); (2026-08-26) — Fase 1, Fase 2, trámite real de Meta y Embedded Signup.

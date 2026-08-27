@@ -5,14 +5,17 @@ description: Asistente IA del header — chat de ayuda contextual con conocimien
 
 # Asistente IA (header)
 
-> ⚠ No confundir con el **Asistente de WhatsApp con IA** ([[wiki/features/asistente-whatsapp]], Fases 1
-> (consultas), 2 (cargar gastos como borrador) y 3 (fotos y audio, verificada solo parcialmente)
-> construidas en DEV — Fases 1+2 el 2026-08-26, Fase 3 el 2026-08-27 — sin deploy a PROD) — es un canal
-> aparte (Meta WhatsApp Cloud API, no el chat web del header), con su propia Edge Function (`wa-webhook`,
-> no `ai-assistant`), modelo principal distinto (Claude Sonnet 5, no Groq) y prompt distinto (Q&A de stock
-> / propuesta de gasto, no navegación de la app). ⚠ Desde la Fase 3, `wa-webhook` SÍ llama a Groq, pero
-> solo para transcribir audio (Whisper) — el "cerebro" que decide/ejecuta tools sigue siendo Claude. Solo
-> reusa el PATRÓN de tool-calling + confirmación humana de esta página, no su código.
+> ⚠ No confundir con el **Asistente de WhatsApp con IA** ([[wiki/features/asistente-whatsapp]] — LAS 4
+> FASES de la propuesta de Fede: 1 (consultas), 2 (cargar gastos como borrador), 3 (fotos y audio,
+> verificada solo parcialmente) y 4 (briefing diario proactivo, verificada solo parcialmente) construidas
+> en DEV — Fases 1+2 el 2026-08-26, Fases 3+4 el 2026-08-27, misma sesión sin `/clear` — sin deploy a PROD)
+> — es un canal aparte (Meta WhatsApp Cloud API, no el chat web del header), con su propia Edge Function
+> (`wa-webhook`, no `ai-assistant`), modelo principal distinto (Claude Sonnet 5, no Groq) y prompt distinto
+> (Q&A de stock / propuesta de gasto, no navegación de la app). ⚠ Desde la Fase 3, `wa-webhook` SÍ llama a
+> Groq, pero solo para transcribir audio (Whisper) — el "cerebro" que decide/ejecuta tools sigue siendo
+> Claude. La Fase 4 agrega una segunda Edge Function, `wa-briefing-sweep` (disparada por GitHub Actions,
+> no por webhook de Meta), para el briefing diario proactivo por plantilla pre-aprobada. Solo reusa el
+> PATRÓN de tool-calling + confirmación humana de esta página, no su código.
 
 Chat flotante del header (`AiAssistant.tsx`, ícono robot) que guía a los usuarios por la app y canaliza reportes de problemas. **v1.117.0 lo reescribió**: antes respondía desde un prompt estático hardcodeado (desactualizado, inventaba botones y no sabía del modo básico); ahora su conocimiento se **genera desde el wiki** y recibe el **contexto real del usuario**.
 

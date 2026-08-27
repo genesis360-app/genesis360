@@ -6,7 +6,64 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-27
 ---
 
-# Historial de Migraciones (001-384)
+# Historial de Migraciones (001-385)
+
+**385 (`385_whatsapp_briefing_numero_notificaciones.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
+`2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 4 ("briefing
+diario proactivo") del "Asistente de WhatsApp con IA" (continúa la mig 384, abajo, ver
+[[wiki/features/asistente-whatsapp]]) — con esta fase, las 4 fases de la propuesta de Fede (25/8) quedan
+construidas en DEV. Una sola columna aditiva: `ALTER TABLE whatsapp_credentials ADD COLUMN IF NOT EXISTS
+numero_notificaciones TEXT` + `COMMENT ON COLUMN` documentando que es PII (número personal del dueño, no
+debe loguearse en texto plano) — distinta de `numero_whatsapp` (el número del NEGOCIO/WABA, solo
+informativo/UI), que no servía como destinatario de un mensaje proactivo al dueño.
+
+`migration-reviewer`: **APTA**, con 2 notas no bloqueantes ya aplicadas (el `COMMENT ON COLUMN` y el
+recordatorio de correr `npm run schema:dump`, bloqueado de nuevo por el `SUPABASE_ACCESS_TOKEN` filtrado
+sin rotar).
+
+**Contexto de negocio (Sección F de Fede)**: briefing diario de apertura/cierre SOLO al dueño, por
+plantilla pre-aprobada de Meta (categoría utilidad) — a diferencia de las Fases 1-3, este es un mensaje
+**business-initiated** (nadie escribió primero), lo que exige un message template pre-aprobado por Meta en
+vez de texto libre; esa aprobación es 100% externa, fuera del control de Genesis360.
+
+**Investigación previa**: no hay pg_cron/pg_net en el proyecto — se clonó el patrón real y único para
+tareas periódicas del proyecto, **GitHub Actions con `schedule:`**, casi 1:1 del molde de
+`repositores-cierre-dia-sweep` (cron cada 15 min, misma `horaArgentinaActual()`). Se reusaron
+`sucursales.horario_apertura`/`horario_cierre` (ya existían desde la mig 124, sin migración nueva para
+esto) con defaults `09:00`/`21:00`.
+
+**Código nuevo**: `supabase/functions/wa-briefing-sweep/index.ts` (EF nueva, autocontenida) — por cada
+sucursal activa con WhatsApp conectado y `numero_notificaciones` configurado, evalúa por separado si ya
+pasó apertura (resumen de AYER) o cierre (resumen de HOY), armados con queries directas a `ventas`/`gastos`
+(NO las vistas `vw_caja_resumen_diario`, que solo se llenan al cerrar una sesión de caja). Función nueva
+`enviarMensajePlantillaWhatsapp()` (`type: 'template'`). Workflow nuevo
+`.github/workflows/wa-briefing-sweep.yml`, clon exacto del molde de `repositores-cierre-dia-sweep.yml` —
+como este trabajo queda en `dev`, el `schedule:` de GitHub Actions no se dispara solo todavía (solo corre
+sobre el branch default).
+
+**Bug de diseño encontrado y corregido EN esta sesión**: el dedupe vía `whatsapp_mensajes_log` se escribía
+originalmente ANTES del envío (mismo patrón que usa `wa-webhook` para dedupear reintentos de ENTREGA de
+Meta) — un fallo transitorio (token vencido) dejaba la sucursal marcada como "ya procesada" sin haber
+mandado nada, bloqueando el reintento. Corregido: el registro de dedupe se escribe RECIÉN tras un envío
+exitoso.
+
+**Plantillas de Meta dadas de alta vía API en esta sesión** (`briefing_apertura_dia`, `briefing_cierre_dia`,
+categoría solicitada `UTILITY`, idioma `es_AR`) — **hallazgo real, no controlado por nosotros**: Meta
+reclasificó automáticamente `briefing_cierre_dia` de `UTILITY` a `MARKETING` durante su revisión (afecta
+costo/reglas de entrega, dato a sumar en la Sección G); `briefing_apertura_dia` se mantuvo en `UTILITY`.
+Ambas quedaron `PENDING` (aprobación de Meta, sin ETA) al cierre de la sesión.
+
+**Verificado en DEV (2 vueltas)**: 1ª invocación manual confirmó evaluación de sucursal/horario correcta,
+pero el envío falló con 401 (token temporal vencido 8 min antes de lo esperado) — GO pasó un token nuevo.
+2ª vuelta con el token nuevo: error de autenticación desapareció, apareció el esperado `(#132001) Template
+name does not exist in the translation` — comportamiento NORMAL de Meta para una plantilla `PENDING`,
+confirma que todo el código (token, `phone_number_id`, nombre/`language` del template, payload) es
+correcto; solo falta la aprobación de Meta. Build limpio; 100% backend/infra, sin cambios en `src/` salvo
+el bump de versión. Ver [[wiki/features/asistente-whatsapp]], `sources/raw/project_pendientes.md` (cont.
+29, "ARRANCÁ ACÁ").
+
+---
 
 **384 (`384_whatsapp_borrador_comprobante.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit

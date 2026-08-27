@@ -2,7 +2,7 @@
 title: Roadmap de Integraciones API
 category: integrations
 tags: [apis, roadmap, killer-features, meli, tiendanube, mercadopago, logistica, ads, whatsapp]
-updated: 2026-08-26
+updated: 2026-08-27
 ---
 
 # Roadmap de Integraciones API
@@ -269,14 +269,18 @@ modo_credentials(
 ### 6.2 WhatsApp Cloud API (cuando haya WABA account)
 
 > ⚠ **Actualización 2026-08-27**: la propuesta de abajo (notificaciones/carritos/B2B) es la visión
-> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — Fases 1 (consultas), 2 (cargar
-> gastos como borrador) y 3 (fotos y audio, verificada solo PARCIALMENTE), COMMITEADAS/PUSHEADAS
-> (v1.181.0/v1.182.0/v1.183.0), sin deploy a PROD — es una feature DISTINTA y más chica: un **Asistente de
-> WhatsApp con IA** de consultas de stock/precio y carga de gastos para el DUEÑO (propuesta de Fede del
-> 25/8/2026), ver [[wiki/features/asistente-whatsapp]]. GO conectó de verdad el trámite de Meta (número de
-> prueba) el 2026-08-26 — sigue bloqueado para mensajes entrantes reales por falta de un chip dedicado, sin
-> afectar el desarrollo (ver esa página). Ese mismo chip es ahora también lo único que falta para verificar
-> de punta a punta el happy path real de la Fase 3 (audio/foto).
+> ORIGINAL de este roadmap, todavía sin construir. Lo que sí se construyó — **LAS 4 FASES** de la
+> propuesta de Fede (25/8/2026): 1 (consultas), 2 (cargar gastos como borrador), 3 (fotos y audio,
+> verificada solo PARCIALMENTE) y 4 (briefing diario proactivo apertura/cierre por plantilla pre-aprobada
+> de Meta, verificada solo PARCIALMENTE — falta la aprobación de Meta), COMMITEADAS/PUSHEADAS
+> (v1.181.0/v1.182.0/v1.183.0/v1.184.0), sin deploy a PROD — es una feature DISTINTA y más chica que la
+> visión de abajo: un **Asistente de WhatsApp con IA** de consultas de stock/precio, carga de gastos y
+> briefing diario para el DUEÑO, ver [[wiki/features/asistente-whatsapp]]. GO conectó de verdad el trámite
+> de Meta (número de prueba) el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por
+> falta de un chip dedicado, sin afectar el desarrollo (ver esa página); no aplica a la Fase 4, que es 100%
+> saliente (business-initiated, vía EF `wa-briefing-sweep` + GitHub Actions, no webhook de Meta). Ese mismo
+> chip sigue siendo lo único que falta para verificar de punta a punta el happy path real de la Fase 3
+> (audio/foto).
 > La tabla real `whatsapp_credentials` (migración 382) **NO sigue el patrón `(tenant_id, sucursal_id)`
 > UNIQUE** apuntado abajo en "Credenciales por integración" — quedó **sin `sucursal_id` a propósito**,
 > porque un número de WhatsApp representa al negocio completo, no una sucursal puntual. Si se retoma esta

@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Roadmap y Versiones
@@ -31,17 +31,23 @@ Trae **2 features nuevas, ambas EN PROD pero DORMIDAS a propósito, sin activars
    sin filas que matcheen no hace nada. Ver [[wiki/features/asistente-whatsapp]].
 
 **Vercel: deploy de producción disparado automáticamente tras el merge — confirmado READY**
-(`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro` actualizado). Pendiente real para la
-próxima sesión, a decidir por GO (no resuelto acá): con las 2
-features ya en PROD, el próximo paso es **Embedded Signup** (escalar WhatsApp a futuros clientes) o el
-**Portal de Proveedores** (la otra mitad de la propuesta de Fede). Detalle completo:
+(`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro` actualizado). **Con las 2 features ya en
+PROD, GO eligió como próximo paso Embedded Signup** (escalar WhatsApp a futuros clientes, ver "Versión en
+DEV" abajo — construido en DEV en una sesión nueva, sin deploy a PROD todavía); el **Portal de Proveedores**
+(la otra mitad de la propuesta de Fede) sigue sin empezar. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ"), `log.md`
 (2026-08-27, tipo `deploy`).  
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** igual que PROD — **v1.184.0**, sin commits nuevos en `dev` desde el merge del PR #334.
-Nada pendiente de mergear.  
+**Versión en DEV:** **v1.186.0** (`7e564c5e`, misma conversación que v1.185.0, sin `/clear`, 2026-08-28) —
+Embedded Signup de Meta: **CÓDIGO VALIDADO end-to-end** (EF `wa-embedded-signup-exchange` + card "WhatsApp"
+self-service en ConfigPage), confirmado correcto con datos reales de Meta (App ID, `config_id`) por 3
+caminos de prueba distintos. **🛑 En desarrollo, BLOQUEADO por verificación externa**: Meta exige completar
+la **Verificación del Negocio** (documentos CUIT/RUT AFIP + comprobante de domicilio, a cargo de Fede) antes
+de poder registrar un WABA real — corrige lo que se pensaba el día anterior (que era diferible). **NO
+deployado a PROD.** Ver [[wiki/features/asistente-whatsapp]] → "Embedded Signup", `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ", cont. 32).  
 **2 relevamientos, ambos 100% RESPONDIDOS por Fede (2026-08-24/25)**: (a) retrofit del patrón "tab
 Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, sin diseño/
 código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fases 1-3 YA CONSTRUIDAS Y EN PROD, resto a
@@ -56,7 +62,7 @@ commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + 
 sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
-**Última actualización:** 27 de Agosto, 2026
+**Última actualización:** 28 de Agosto, 2026
 
 ---
 

@@ -6,6 +6,141 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-28] update | 📱🔌 Embedded Signup validado end-to-end (v1.186.0) — el CÓDIGO está correcto, el bloqueo real es la Verificación del Negocio de Meta (trámite externo de Fede), corrige una afirmación incorrecta de la sesión anterior
+
+Continuación DIRECTA de la misma conversación de la entrada de abajo (sin `/clear`) — GO trajo los datos
+reales de Meta y se probó en vivo durante horas, con screenshots ida y vuelta.
+
+**Setup real armado en el dashboard de Meta, guiado paso a paso**: App ID `1059640186689341`. Se creó una
+Configuration de Facebook Login for Business con la plantilla **"Configuración de registro insertado de
+WhatsApp con un token que caduca en 60 días"** — la única que ofrece "Cuentas de WhatsApp" como activo (el
+wizard en blanco NO lo ofrece). `config_id`: `1359336659241551`. **Esto fuerza el token a 60 días** — NO
+existe "Nunca expira" para el sabor WhatsApp de Configuration (sí existe para el genérico, que no sirve
+porque no ofrece WhatsApp). Cuando esto funcione, va a hacer falta el mismo patrón UI que ya usa
+MercadoLibre ("Token vencido — reconectá") en vez de un refresh silencioso. Se configuraron dominios de la
+app + SDK de JavaScript + redirect URI con el dominio del preview de Vercel y `app.genesis360.pro`.
+
+**Hallazgo #1 (pista falsa, DESCARTADA)**: en Chrome, FedCM (Federated Credential Management, mecanismo
+nuevo del navegador) interceptaba el popup de `FB.login()` ANTES de que llegara a Meta, pisando `config_id`
+y produciendo un error de permiso `openid` engañoso. Confirmado que NO era el problema real probando en
+Microsoft Edge: ahí la URL del popup traía todos los parámetros correctos — el código de Genesis360 estaba
+bien. Pendiente real para producción (la mayoría de usuarios va a estar en Chrome), sin investigar a fondo
+hoy.
+
+**Hallazgo #2 (LA CAUSA RAÍZ REAL, confirmada por triplicado)**: en Edge, el login llegaba hasta el diálogo
+real de Meta pero mostraba "Genesis360 no puede registrar clientes en este momento" — idéntico probando por
+3 caminos distintos (popup de nuestro código, link "Registro insertado alojado por Meta", con y sin "Editar
+configuración"). Causa raíz literal, en el panel "Estado del negocio y la app" de Meta: **Verificación del
+Negocio incompleta — "You will not be able to onboard users until you complete business verification."**
+Documentos que pide Meta para Argentina: Constancia de Inscripción Fiscal (CUIT/RUT AFIP) + comprobante de
+domicilio del negocio. El panel dice literalmente "Verificar Federico Messina" — el Business Portfolio de
+Genesis360 en Meta está atado al nombre de **Fede**, no al de GO. **100% trámite EXTERNO, depende de que
+Fede aporte esos documentos.**
+
+**🔁 Esto corrige explícitamente una afirmación incorrecta de la entrada de abajo (cont. 31 de
+`project_pendientes.md`)**: ahí se documentó "Business Verification diferido, no bloquea probar en
+Development Mode" — probado en la práctica que es **falso**: SÍ bloquea completamente el registro real de
+un WABA, incluso con la propia cuenta admin de GO.
+
+**Código: sin bugs, un fix defensivo agregado.** El código (EF + frontend) funcionó igual en los 3 caminos
+de prueba. Se agregó un timeout de 3 minutos en `iniciarConexionWhatsapp`
+(`src/lib/metaEmbeddedSignup.ts`): sin Verificación del Negocio, Meta le da a `FB.login()` un `code` válido
+pero JAMÁS manda el postMessage `WA_EMBEDDED_SIGNUP` — antes de este fix el botón quedaba colgado
+"Conectando..." para siempre sin ningún error. Ahora libera con un toast explicando la causa probable.
+
+**Otros hallazgos operativos**: la PWA cachea agresivamente el JS con el Service Worker (fix real: DevTools
+→ Application → Storage → "Clear site data"); y se descubrió que **`npm run lint` está roto en TODO el
+repo** — no existe archivo de configuración de ESLint pese a tener las dependencias instaladas, preexistente
+(no roto hoy), nadie lo había notado porque corridas previas estaban filtradas con grep y ocultaban el
+fallo. El gate real que sí funciona es `npm run build`.
+
+**Estado**: commits `395bcde7` → `999dabdd` → `7e564c5e`, `origin/dev`, `APP_VERSION` `v1.186.0`, tag+release
+publicados, deployado a Supabase Edge Functions de DEV. Build/typecheck verdes. **Sin deploy a PROD.**
+
+**Pendiente real y bloqueante**: (1) Fede tiene que aportar CUIT/monotributo + comprobante de domicilio —
+100% externo; (2) después, probablemente falte también "Revisión de la app" (App Review) antes de producción
+real, sin confirmar si bloquea también las pruebas con la cuenta admin; (3) fix de Chrome/FedCM sigue sin
+resolver; (4) `npm run lint` roto, no bloqueante.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 32),
+[[wiki/features/asistente-whatsapp]] (sección "Embedded Signup" reconciliada), `wiki/index.md` (fila +
+footer), `wiki/business/roadmap.md` (mención breve).
+
+---
+
+## [2026-08-27] update | 📱🔌 Embedded Signup de Meta CONSTRUIDO EN DEV (v1.185.0, commit `7c1e1a45`) — WhatsApp deja de depender del trámite manual de GO, bloqueado para probar hasta que GO complete 5 pasos en el dashboard de Meta
+
+Sesión NUEVA (post-`/clear`), separada de la sesión de deploy a PROD de la entrada de abajo (v1.184.0, PR
+#334). Con las 4 fases del Asistente de WhatsApp ya EN PROD (dormidas), el próximo paso decidido fue
+**Embedded Signup**: el flujo oficial de Meta para que cada dueño de negocio conecte SU propio WhatsApp
+desde un popup embebido dentro de Genesis360, sin repetir el trámite manual que hizo GO a mano (número de
+prueba, ver [[wiki/features/asistente-whatsapp]] → "Trámite real de Meta"). Esto no escala a clientes
+nuevos tal como estaba — Embedded Signup es el mecanismo pensado justo para eso.
+
+**Hallazgo importante ANTES de codear** (verificado contra la documentación OFICIAL vigente de Meta,
+developers.facebook.com, vía WebFetch — no de memoria), que cambió el diseño esperado:
+- El token que se guarda por tenant en `whatsapp_credentials.access_token` es un token **PROPIO de cada
+  cliente** ("Business Integration System User access token", scoped a SU WABA) — **NO** un token único de
+  plataforma compartido entre todos los tenants, como se había especulado en la sesión anterior. Encaja
+  perfecto con el schema existente, **sin migración nueva**. Puede quedar **NO-expirante** si, al crear la
+  Configuration de "Facebook Login for Business" en el dashboard de Meta, se elige "Token Expiration: Never
+  expire" en vez del default de 60 días — resuelve de una vez el pendiente recurrente de "token permanente
+  de Meta" arrastrado desde la Fase 1 del asistente.
+- Genesis360, al ser "Tech Provider" (no "Solution Partner"), **NO factura centralizado** el consumo de
+  Meta de sus clientes — cada cliente conectado debe agregar su propio método de pago en WhatsApp Manager
+  (`business.facebook.com/wa/manage/home/`) después de conectar. Importa antes del **1° de octubre de
+  2026**, cuando Meta empieza a cobrar todo mensaje saliente. Quedó como nota fija en la UI tras conectar
+  (Meta no lo expone por API, no se puede automatizar).
+
+**Código nuevo** (commit `7c1e1a45`, `origin/dev`, `APP_VERSION` `v1.185.0`, tag+release publicados,
+deployado a Supabase DEV `gcmhzdedrkmmzfzfveig` — NO a PROD):
+1. `supabase/functions/wa-embedded-signup-exchange/index.ts` (EF nueva, `verify_jwt: true` — a diferencia
+   de `wa-webhook`, que no lleva JWT porque la invoca Meta; esta la invoca un usuario logueado de Genesis360
+   desde el frontend). Guard de identidad: JWT → `auth.getUser` → verifica que el usuario pertenece al
+   `tenant_id` recibido (mismo patrón que `generar-csr`). Recibe `{tenant_id, code, waba_id,
+   phone_number_id}` del popup de Meta y hace: (a) intercambia el `code` por el token propio de ESE cliente
+   vía `GET /oauth/access_token`, (b) `POST /{phone_number_id}/register` con un PIN random de 6 dígitos
+   (tolera "ya registrado" como éxito, para reconexiones), (c) `POST /{waba_id}/subscribed_apps` para que
+   `wa-webhook` reciba los mensajes de ese WABA, (d) upsert en `whatsapp_credentials` (mig 382,
+   `onConflict: tenant_id`) con ese token — sin migración nueva, el schema ya alcanzaba.
+2. `src/lib/metaEmbeddedSignup.ts` (helper nuevo): carga perezosa del JS SDK de Facebook + `FB.init` +
+   `FB.login()` con `config_id`. Combina 2 fuentes async que Meta no garantiza en el mismo tick: el `code`
+   (callback de `FB.login`) y `waba_id`/`phone_number_id` (evento `FINISH` de un postMessage
+   `WA_EMBEDDED_SIGNUP`).
+3. Card "WhatsApp" nueva en `src/pages/ConfigPage.tsx` (tab Conectividad → Integraciones, mismo estilo que
+   las cards de TiendaNube/MercadoLibre) — a diferencia de esas 2 (por sucursal), esta es ÚNICA por tenant
+   sin loop de sucursales, porque `whatsapp_credentials` es a nivel negocio completo (mig 382). 2 env vars
+   nuevas del frontend: `VITE_META_APP_ID` y `VITE_META_WA_CONFIG_ID` (mismo aviso ámbar "falta configurar"
+   que ya usa TiendaNube). Botón Desconectar hace DELETE de la fila (mismo patrón que TiendaNube) — no hizo
+   falta tocar `wa-webhook`/`wa-briefing-sweep`, ya filtran `conectado=true`.
+
+**🛑 Pendiente real, bloqueante para probar esto** (tarea de GO en el dashboard de Meta, sobre la MISMA Meta
+App que ya usa `wa-webhook`):
+1. Agregar el producto "Facebook Login for Business" a la app.
+2. Facebook Login for Business → Configurations → Create configuration → tipo WhatsApp Embedded Signup,
+   Business = el Business Portfolio de Genesis360, **Token Expiration → "Never expire"** (crítico). Copiar
+   el `config_id` resultante.
+3. Copiar el App ID (dato público, visible en el dashboard).
+4. En esa Configuration → Settings → "Allowed Domains for the JavaScript SDK": agregar `localhost` (DEV) +
+   el dominio de producción/Vercel. No hace falta un OAuth Redirect URI clásico — es un flujo de popup vía
+   JS SDK, no un redirect de página completa como usan TiendaNube/MercadoLibre.
+5. GO le pasa a Claude el `config_id` + App ID cuando los tenga, para cargarlos como
+   `VITE_META_APP_ID`/`VITE_META_WA_CONFIG_ID` (Vercel env vars) y `META_APP_ID` (secret nuevo en Supabase,
+   junto al `META_APP_SECRET` que ya existe de la Fase 1).
+6. Diferido, no bloquea probar en Development Mode: convertirse en "Tech Provider" ante Meta (Business
+   Verification con documentos) — solo hace falta para onboardear clientes REALES ajenos a la propia cuenta
+   de Meta de GO; para probar el flujo alcanza con Development Mode + ser admin/tester de la app.
+
+**Estado**: typecheck + build + lint verdes. Código commiteado y pusheado a `origin/dev`, deployado a
+Supabase Edge Functions de DEV, pero **sin probar end-to-end todavía** (no hay `config_id`/App ID reales
+cargados aún). **No deployado a PROD.**
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 31),
+[[wiki/features/asistente-whatsapp]] (sección "Embedded Signup" reescrita), [[wiki/architecture/edge-functions]]
+(EF nueva), `wiki/index.md` (fila + footer).
+
+---
+
 ## [2026-08-27] deploy | 🚀 DEPLOY REAL A PROD (v1.184.0, PR #334, merge `867d651a`) — Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4) llegan a PROD, AMBAS DORMIDAS a propósito
 
 Sesión de deploy, separada de las sesiones que construyeron las 2 features (2026-08-24 a 27, entradas de

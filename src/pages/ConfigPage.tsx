@@ -2816,14 +2816,18 @@ export default function ConfigPage() {
     if (!appId || !configId || !tenant) return
     setWaConnecting(true)
     try {
+      console.log('[WA-DEBUG] iniciando popup...')
       const resultado = await iniciarConexionWhatsapp(appId, configId)
+      console.log('[WA-DEBUG] iniciarConexionWhatsapp resolvió', resultado)
       if (!resultado.ok) {
         if (resultado.motivo === 'error') toast.error('Meta reportó un error al conectar WhatsApp')
         return
       }
+      console.log('[WA-DEBUG] llamando a wa-embedded-signup-exchange...')
       const { data, error } = await supabase.functions.invoke('wa-embedded-signup-exchange', {
         body: { tenant_id: tenant.id, code: resultado.code, waba_id: resultado.wabaId, phone_number_id: resultado.phoneNumberId },
       })
+      console.log('[WA-DEBUG] respuesta de wa-embedded-signup-exchange', { data, error })
       if (error) {
         let msg = error.message
         try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error } catch { /* */ }
@@ -2833,8 +2837,10 @@ export default function ConfigPage() {
       toast.success('WhatsApp conectado correctamente')
       qc.invalidateQueries({ queryKey: ['whatsapp_credentials'] })
     } catch (e) {
+      console.log('[WA-DEBUG] excepción capturada', e)
       toast.error((e as Error).message || 'No se pudo conectar WhatsApp')
     } finally {
+      console.log('[WA-DEBUG] finally, apagando waConnecting')
       setWaConnecting(false)
     }
   }

@@ -62,6 +62,8 @@ export async function iniciarConexionWhatsapp(appId: string, configId: string): 
     }
 
     const onMessage = (event: MessageEvent) => {
+      // eslint-disable-next-line no-console
+      console.log('[WA-DEBUG] message event', { origin: event.origin, data: event.data })
       if (typeof event.origin !== 'string' || !event.origin.endsWith('facebook.com')) return
       let data: any
       try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
@@ -70,18 +72,28 @@ export async function iniciarConexionWhatsapp(appId: string, configId: string): 
       if (data.event === 'FINISH' || data.event === 'FINISH_ONLY_WABA') {
         wabaId = data.data?.waba_id ?? null
         phoneNumberId = data.data?.phone_number_id ?? null
+        // eslint-disable-next-line no-console
+        console.log('[WA-DEBUG] FINISH recibido', { wabaId, phoneNumberId })
         intentarCompletar()
       } else if (data.event === 'CANCEL') {
+        // eslint-disable-next-line no-console
+        console.log('[WA-DEBUG] CANCEL recibido', data.data)
         finalizar({ ok: false, motivo: data.data?.error_code ? 'error' : 'cancelado' })
       }
     }
     window.addEventListener('message', onMessage)
 
     window.FB.login((response: any) => {
+      // eslint-disable-next-line no-console
+      console.log('[WA-DEBUG] FB.login callback', response)
       if (response?.authResponse?.code) {
         code = response.authResponse.code
+        // eslint-disable-next-line no-console
+        console.log('[WA-DEBUG] code recibido, esperando waba/phone si faltan', { tieneWaba: !!wabaId, tienePhone: !!phoneNumberId })
         intentarCompletar()
       } else {
+        // eslint-disable-next-line no-console
+        console.log('[WA-DEBUG] FB.login sin code, cancelando')
         finalizar({ ok: false, motivo: 'cancelado' })
       }
     }, {

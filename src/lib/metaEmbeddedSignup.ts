@@ -6,9 +6,15 @@
  * FB.login() vive ~30 segundos, y los IDs del WABA/número llegan por un postMessage aparte
  * (`WA_EMBEDDED_SIGNUP`) que no está garantizado que llegue en el mismo tick — hay que combinar ambas
  * fuentes antes de mandar algo al backend (ver supabase/functions/wa-embedded-signup-exchange).
+ *
+ * Watchdog de 3 minutos: si Meta bloquea el flujo antes de completar la selección de WABA (ej. falta
+ * Business Verification del lado de la plataforma), FB.login() igual puede devolver `code` con
+ * status:'connected', pero el postMessage de FINISH nunca llega — sin este timeout, el botón "Conectar"
+ * queda colgado para siempre (comportamiento real observado y reproducido, no hipotético).
  */
 
 const GRAPH_API_VERSION = 'v23.0'
+const TIMEOUT_MS = 3 * 60 * 1000
 
 declare global {
   interface Window {
@@ -38,9 +44,9 @@ function cargarSdkFacebook(appId: string): Promise<void> {
 
 export type ResultadoEmbeddedSignup =
   | { ok: true; code: string; wabaId: string; phoneNumberId: string }
-  | { ok: false; motivo: 'cancelado' | 'error' }
+  | { ok: false; motivo: 'cancelado' | 'error' | 'timeout' }
 
-/** Abre el popup de Meta y resuelve cuando el usuario termina, cancela, o falla. */
+/** Abre el popup de Meta y resuelve cuando el usuario termina, cancela, falla, o pasa el timeout. */
 export async function iniciarConexionWhatsapp(appId: string, configId: string): Promise<ResultadoEmbeddedSignup> {
   await cargarSdkFacebook(appId)
 
@@ -50,9 +56,12 @@ export async function iniciarConexionWhatsapp(appId: string, configId: string): 
     let phoneNumberId: string | null = null
     let resuelto = false
 
+    const timeoutId = setTimeout(() => finalizar({ ok: false, motivo: 'timeout' }), TIMEOUT_MS)
+
     const finalizar = (resultado: ResultadoEmbeddedSignup) => {
       if (resuelto) return
       resuelto = true
+      clearTimeout(timeoutId)
       window.removeEventListener('message', onMessage)
       resolve(resultado)
     }
@@ -62,8 +71,6 @@ export async function iniciarConexionWhatsapp(appId: string, configId: string): 
     }
 
     const onMessage = (event: MessageEvent) => {
-      // eslint-disable-next-line no-console
-      console.log('[WA-DEBUG] message event', { origin: event.origin, data: event.data })
       if (typeof event.origin !== 'string' || !event.origin.endsWith('facebook.com')) return
       let data: any
       try { data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
@@ -72,28 +79,18 @@ export async function iniciarConexionWhatsapp(appId: string, configId: string): 
       if (data.event === 'FINISH' || data.event === 'FINISH_ONLY_WABA') {
         wabaId = data.data?.waba_id ?? null
         phoneNumberId = data.data?.phone_number_id ?? null
-        // eslint-disable-next-line no-console
-        console.log('[WA-DEBUG] FINISH recibido', { wabaId, phoneNumberId })
         intentarCompletar()
       } else if (data.event === 'CANCEL') {
-        // eslint-disable-next-line no-console
-        console.log('[WA-DEBUG] CANCEL recibido', data.data)
         finalizar({ ok: false, motivo: data.data?.error_code ? 'error' : 'cancelado' })
       }
     }
     window.addEventListener('message', onMessage)
 
     window.FB.login((response: any) => {
-      // eslint-disable-next-line no-console
-      console.log('[WA-DEBUG] FB.login callback', response)
       if (response?.authResponse?.code) {
         code = response.authResponse.code
-        // eslint-disable-next-line no-console
-        console.log('[WA-DEBUG] code recibido, esperando waba/phone si faltan', { tieneWaba: !!wabaId, tienePhone: !!phoneNumberId })
         intentarCompletar()
       } else {
-        // eslint-disable-next-line no-console
-        console.log('[WA-DEBUG] FB.login sin code, cancelando')
         finalizar({ ok: false, motivo: 'cancelado' })
       }
     }, {

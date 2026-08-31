@@ -1,6 +1,6 @@
 ---
 name: asistente-whatsapp
-description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas (v1.181.0/v1.182.0/v1.183.0/v1.184.0) y **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`, migs 382-385 aplicadas y verificadas en PROD), pero **DORMIDA a propósito**: `whatsapp_credentials` en PROD tiene 0 filas, ningún tenant real la tiene activada. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente. **🆕 2026-08-27 (sesión nueva, post-deploy): Embedded Signup de Meta CONSTRUIDO Y COMMITEADO EN DEV (v1.185.0, commit `7c1e1a45`, SOLO DEV, sin deploy a PROD)** — EF nueva `wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage, para que cada cliente conecte su propio WhatsApp sin repetir el trámite manual de GO; el token guardado es PROPIO de cada tenant (no compartido, corrige una especulación de la sesión anterior). **🆕 2026-08-28 (misma conversación, sin `/clear`, v1.186.0): CÓDIGO VALIDADO end-to-end con datos reales de Meta (App ID `1059640186689341`, `config_id` `1359336659241551`) — confirmado por 3 caminos distintos que el bloqueo es 100% de Meta: falta la Verificación del Negocio (documentos de Fede: CUIT + comprobante de domicilio), un trámite EXTERNO, NO diferible como se había documentado el 2026-08-27** (corrección explícita de esa entrada). De paso: la Configuration de Meta fuerza el token a 60 días (no existe "Nunca expira" para WhatsApp Embedded Signup), fix defensivo de timeout 3min agregado, y hallazgo de que Chrome bloquea el flujo por FedCM (pendiente, no investigado a fondo — se probó en Edge). Portal de Proveedores sigue sin empezar.
+description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas (v1.181.0/v1.182.0/v1.183.0/v1.184.0) y **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`, migs 382-385 aplicadas y verificadas en PROD), pero **DORMIDA a propósito**: `whatsapp_credentials` en PROD tiene 0 filas, ningún tenant real la tiene activada. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente. **🆕 2026-08-27 (sesión nueva, post-deploy): Embedded Signup de Meta CONSTRUIDO Y COMMITEADO EN DEV (v1.185.0, commit `7c1e1a45`, SOLO DEV, sin deploy a PROD)** — EF nueva `wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage, para que cada cliente conecte su propio WhatsApp sin repetir el trámite manual de GO; el token guardado es PROPIO de cada tenant (no compartido, corrige una especulación de la sesión anterior). **🆕 2026-08-28 (misma conversación, sin `/clear`, v1.186.0): CÓDIGO VALIDADO end-to-end con datos reales de Meta (App ID `1059640186689341`, `config_id` `1359336659241551`) — confirmado por 3 caminos distintos que el bloqueo es 100% de Meta: falta la Verificación del Negocio (documentos de Fede: CUIT + comprobante de domicilio), un trámite EXTERNO, NO diferible como se había documentado el 2026-08-27** (corrección explícita de esa entrada). De paso: la Configuration de Meta fuerza el token a 60 días (no existe "Nunca expira" para WhatsApp Embedded Signup), fix defensivo de timeout 3min agregado, y hallazgo de que Chrome bloquea el flujo por FedCM. **🆕 2026-08-31 (v1.187.0 + v1.188.0): Chrome/FedCM investigado a fondo, SIN fix de código posible de nuestro lado** (documentado como comentario en el código, sin workaround especulativo — pendiente que GO reporte el bug a Meta); **Portal de Proveedores arranca con su prerequisito de identidad cross-tenant construido y aplicado en DEV** (`proveedor_accounts`/`proveedor_account_tenants`, migs 387/387b/387c, replica el patrón de `support_agents`) — todavía sin flujo de invitación ni policies de `ordenes_compra`. De paso, prerequisito técnico de Supervisión (mig 386, ver [[wiki/features/supervision]]) y fix de `npm run lint` (roto en todo el repo, 4 bugs reales corregidos al activarlo) en la misma sesión, sin relación directa con WhatsApp.
 ---
 
 # Asistente de WhatsApp con IA
@@ -17,6 +17,61 @@ motor de tool-calling ya probado del "Plan IA" y tener menor riesgo.
 > deep-link `wa.me`, no un canal conversacional con IA. Este documento es sobre el canal nuevo de Meta
 > Cloud API + IA — mayormente ENTRANTE (webhook, Fases 1-3), más un mensaje SALIENTE nuevo desde la Fase 4
 > (briefing proactivo por plantilla, no un deep-link `wa.me`).
+
+## Estado (2026-08-31) — 🔴 Chrome/FedCM investigado a fondo, SIN fix de código posible · 🆕 Portal de Proveedores arranca (identidad cross-tenant construida en DEV)
+
+Sesión que se reinició a mitad de tarea (el proceso de Claude Code se cortó) y se retomó con todo el
+contexto. Continuación de la sesión de fix de `npm run lint` (`v1.187.0`, ver
+[[wiki/development/convenciones-codigo]]) — sin relación directa con WhatsApp esa parte.
+
+**Chrome/FedCM (Hallazgo #1 de la sección de abajo) — investigado a fondo (commit `529a0ea8`)**: confirmado
+que Chrome intercepta el popup de `FB.login({config_id, response_type:'code', ...})` vía **FedCM**
+(Federated Credential Management) — Meta le pisa `config_id`/`response_type`/
+`override_default_response_type` DENTRO del propio popup, del lado de `facebook.com`; en Edge la misma
+llamada sí llega con los parámetros correctos. Coincide en el tiempo con que Meta lanzó **"Login with
+Facebook" en open beta** (modo one-tap basado en FedCM) el 27/8/2026, 4 días antes de este hallazgo —
+sospechoso como causa, pero **sin fuente PRIMARIA de Meta confirmada** (solo 2 medios secundarios citando un
+post de developers.meta.com que no se pudo verificar de forma directa). Este código **nunca seteó
+`fedCM: true`** ni ningún flag relacionado — la intercepción no depende de nada que Genesis360 controle, y
+**no existe (a la fecha) ningún parámetro documentado de `FB.init`/`FB.login` ni un `Permissions-Policy` del
+lado del sitio que la evite**. Por eso **no se aplicó ningún workaround especulativo sobre código de
+autenticación real** — queda documentado como comentario extenso en `src/lib/metaEmbeddedSignup.ts`, con las
+fuentes citadas y la aclaración de que no están confirmadas de forma directa. **🛑 Pendiente real, a cargo de
+GO**: reportar el bug a `developers.facebook.com/support/bugs/` (evidencia Chrome vs Edge ya reunida) y
+reintentar en Chrome cuando Meta cierre el open beta.
+
+**Portal de Proveedores — arranca con su prerequisito de identidad (migs 387/387b/387c, APLICADAS Y
+VERIFICADAS EN DEV, commit `deef2fc2`, `v1.188.0`)**: GO confirmó la decisión de negocio pendiente desde que
+se escribió la sección "Alcance" (abajo) — una cuenta de proveedor puede vincularse a **VARIOS negocios
+(tenants) distintos**, lo que rompe el supuesto de raíz de `public.users` (relación 1:1 con `tenant_id`).
+Se comparó con GO 2 opciones y se eligió **replicar el patrón YA EXISTENTE de identidad cross-tenant del
+proyecto** (`support_agents`, usado por el panel genesis360-admin) en vez de forzar el modelo de `users`:
+- `proveedor_accounts` (identidad, FK física a `auth.users`, email único case-insensitive) +
+  `proveedor_account_tenants` (tabla puente, FK **compuesto** `tenant_id+proveedor_id` contra
+  `proveedores(tenant_id, id)` — blinda a nivel DB que el proveedor vinculado pertenece de verdad a ese
+  tenant).
+- RLS: el proveedor solo ve/edita su propia identidad y sus propios vínculos — **sin INSERT/DELETE de
+  cliente** (el alta real es un flujo de invitación server-side `SECURITY DEFINER` de una fase futura, sin
+  construir todavía).
+- `migration-reviewer` encontró **4 hallazgos bloqueantes reales** en la 1ª pasada de la 387 (FK física
+  faltante a `auth.users`, no idempotente, policy de INSERT con squatting de email, `GRANT` a `anon` en vez
+  de `REVOKE`) — corregidos y re-verificada APTA en la 2ª pasada.
+- **Alcance explícitamente NO incluido todavía**: el flujo de invitación/alta de cuentas, ni las policies
+  sobre `ordenes_compra`/presupuestos que le darían al proveedor acceso a sus cotizaciones reales (depende
+  de diseñar la integración al state machine real de OC — Fede: "sigue el flujo YA EXISTENTE de OC",
+  revisar `ordenes_compra` en detalle en una fase siguiente).
+
+De paso, migración **386** (prerequisito técnico de **Supervisión**, no de WhatsApp) también quedó aplicada
+en DEV en la misma sesión — ver [[wiki/features/supervision]] → "Retrofit a más módulos".
+
+**Estado**: commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados
+(https://github.com/genesis360-app/genesis360/releases/tag/v1.188.0). Build verde. **Sin deploy a PROD** —
+PROD sigue en migraciones 001-385; DEV en 001-387c.
+
+Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio), `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34), `wiki/database/migraciones.md` (386-387c).
+
+---
 
 ## Estado (2026-08-28, MISMA conversación que la sesión de abajo, sin `/clear`) — 🛑 Embedded Signup: CÓDIGO VALIDADO, bloqueado por Verificación del Negocio de Meta (trámite EXTERNO de Fede)
 
@@ -78,9 +133,11 @@ Build/typecheck verdes. **Sin deploy a PROD.**
 2. Probablemente también haga falta "Revisión de la app" (App Review, video de evidencia) antes de
    producción real con clientes ajenos — sin confirmar si bloquea también las pruebas con la cuenta admin
    una vez resuelto el punto 1.
-3. Fix de Chrome/FedCM (Hallazgo #1) sigue sin resolver.
-4. `npm run lint` roto (sin archivo de configuración) — no bloqueante, pendiente de arreglar cuando haya
-   tiempo.
+3. ~~Fix de Chrome/FedCM (Hallazgo #1) sigue sin resolver.~~ **Investigado a fondo el 2026-08-31 (ver
+   sección "Estado (2026-08-31...)" al principio de la página) — sin fix de código posible de nuestro
+   lado, pendiente que GO reporte el bug a Meta.**
+4. ~~`npm run lint` roto (sin archivo de configuración) — no bloqueante, pendiente de arreglar cuando haya
+   tiempo.~~ **✅ Resuelto 2026-08-31 (v1.187.0) — ver [[wiki/development/convenciones-codigo]].**
 
 Detalle completo: `log.md` (2026-08-28, tipo `update`, entrada al principio), `sources/raw/
 project_pendientes.md` ("ARRANCÁ ACÁ", cont. 32), `wiki/index.md` (fila + footer), `wiki/business/
@@ -750,10 +807,15 @@ construidas en DEV.** Sigue pendiente, ya conversado con Fede pero sin empezar:
   bloqueo actual) — depende de que Fede aporte CUIT/monotributo + comprobante de domicilio, 100% trámite
   externo.
 
-**Portal de Proveedores** (la otra mitad de la propuesta de Fede) sigue sin empezar — proyecto aparte, con
-un problema arquitectónico cross-tenant real sin resolver: `users.tenant_id` es columna única en todo el
-sistema, y la decisión de negocio de "una sola cuenta de proveedor usable en varios negocios" rompe ese
-supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relevamiento técnico propio.
+**Portal de Proveedores** (la otra mitad de la propuesta de Fede) — **🆕 2026-08-31: arranca con su
+prerequisito de identidad construido y APLICADO EN DEV** (migs 387/387b/387c, `v1.188.0`, ver "Estado
+(2026-08-31...)" al principio de la página). GO confirmó la decisión de negocio: una cuenta de proveedor
+puede vincularse a VARIOS negocios (tenants) distintos — rompía el supuesto de raíz de `public.users`
+(`tenant_id` único por fila); resuelto replicando el patrón YA EXISTENTE de identidad cross-tenant del
+proyecto (`support_agents`) en vez de forzar el modelo de `users`: `proveedor_accounts` +
+`proveedor_account_tenants`. **Todavía sin construir**: el flujo de invitación/alta de cuentas (Edge
+Function `SECURITY DEFINER`) y las policies de `ordenes_compra`/presupuestos que le darían al proveedor
+acceso a sus cotizaciones reales.
 
 ## Pendiente de GO para continuar (bloqueante para pasar de pruebas a real)
 
@@ -771,8 +833,10 @@ supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relev
    "Setup pendiente en el dashboard de Meta" arriba. Para el tenant de prueba actual (fuera de Embedded
    Signup) sigue haciendo falta un **System User** si se lo quiere mantener sin refrescar a mano.
 4. 🔴 Sigue sin resolver (recurrente hace varias sesiones, no específico de esta feature): rotar el
-   `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Sigue bloqueando `npm run schema:dump`
-   — **`schema_full.sql` sigue DESACTUALIZADO, no incluye las migraciones 382/383/384/385.**
+   `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Sigue bloqueando el modo API de `npm
+   run schema:dump` — **el archivo en sí SÍ está actualizado** (regenerado a mano vía MCP `execute_sql` en
+   partes, última vez el 2026-08-31, incluye hasta la migración 387c), solo el comando automatizado sigue
+   sin poder correr de punta a punta hasta que se rote el token.
 5. **Sección G** (medición/facturación de uso) — sin empezar; sumar el dato nuevo de la sesión de la Fase 4
    (Meta puede reclasificar UTILITY→MARKETING un template ya escrito, afecta el costeo por conversación).
    El costo de Groq Whisper por audio (Fase 3) sigue sin trackear por ahora (prácticamente gratis),
@@ -781,10 +845,12 @@ supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relev
    setup en el dashboard de Meta con datos reales (App ID `1059640186689341`, `config_id`
    `1359336659241551`); el código funciona correcto (confirmado por 3 caminos de prueba distintos). **🛑
    Bloqueante real y actual: la Verificación del Negocio de Meta**, 100% a cargo de Fede (CUIT/monotributo +
-   comprobante de domicilio) — sin esto no se puede seguir probando el registro real de un WABA. Además:
-   fix de Chrome/FedCM pendiente (se probó en Edge), y posible "Revisión de la app" (App Review) todavía
-   sin confirmar tras resolver la Verificación del Negocio. Ver "Estado (2026-08-28...)" al principio de la
-   página. El **Portal de Proveedores** (ver "Alcance" arriba) sigue sin empezar.
+   comprobante de domicilio) — sin esto no se puede seguir probando el registro real de un WABA. ~~Además:
+   fix de Chrome/FedCM pendiente (se probó en Edge)~~ **investigado a fondo el 2026-08-31, sin fix de código
+   posible — ver "Estado (2026-08-31...)" al principio de la página**; y posible "Revisión de la app" (App
+   Review) todavía sin confirmar tras resolver la Verificación del Negocio. El **Portal de Proveedores**
+   (ver "Alcance" arriba) **arrancó el 2026-08-31** con su prerequisito de identidad construido en DEV
+   (migs 387/387b/387c) — todavía sin flujo de invitación ni policies de `ordenes_compra`.
 
 ## Referencias
 
@@ -792,22 +858,29 @@ supuesto de raíz. Necesita un modelo de identidad cross-tenant nuevo y un relev
   Groq para el chat (no para transcripción de audio, que es lo nuevo de la Fase 3 acá).
 - [[wiki/features/repositores]] → "Notificaciones (J)" — molde real del que se clonó `wa-briefing-sweep`
   (`repositores-cierre-dia-sweep`, mismo patrón GitHub Actions `schedule:` cada 15 min).
+- [[wiki/features/supervision]] → "Retrofit a más módulos" — mig 386 (prerequisito técnico, no
+  relacionado con WhatsApp, aplicado en DEV la misma sesión del 2026-08-31 que el Portal de Proveedores).
 - [[wiki/integrations/roadmap-apis]] §6.2 — visión original de WhatsApp Cloud API (notificaciones/carritos
   abandonados/CC), corregida para reflejar el esquema real de `whatsapp_credentials`.
 - [[wiki/architecture/edge-functions]] — lista de Edge Functions, incluye `wa-webhook`, `wa-briefing-sweep`
   y `wa-embedded-signup-exchange` (nueva, 2026-08-27, solo DEV).
-- `wiki/database/migraciones.md` — migraciones 382, 383, 384 y 385, marcadas EN PROD desde 2026-08-27. Sin
-  migración nueva para Embedded Signup (el schema de la mig 382 ya alcanzaba).
-- `sources/raw/project_pendientes.md` (cont. 32, "ARRANCÁ ACÁ") — detalle completo de la validación
-  end-to-end de Embedded Signup y del bloqueo real por Verificación del Negocio (2026-08-28); (cont. 31,
-  histórico, con corrección inline) — construcción del código (2026-08-27); (cont. 30, histórico) — detalle
-  completo del deploy real a PROD (2026-08-27); (cont. 29) — detalle completo de la sesión de construcción
-  de la Fase 4.
-- `log.md` (2026-08-28, tipo `update`, entrada al principio) — Embedded Signup validado end-to-end,
-  bloqueo real por Verificación del Negocio; (2026-08-27, tipo `update`) — Embedded Signup CONSTRUIDO EN
-  DEV; (2026-08-27, tipo `deploy`) — deploy real a PROD de las 4 fases; (2026-08-27, tipo `update`
-  anterior) — entrada completa de la Fase 4 y de la Fase 3 (misma sesión de construcción, sin `/clear`);
-  (2026-08-26) — Fase 1, Fase 2, trámite real de Meta y el hallazgo original de Embedded Signup
-  (parcialmente corregido el 2026-08-27, y corregido del todo el 2026-08-28).
-- `wiki/business/roadmap.md` — sección del deploy real a PROD (2026-08-27); footer actualizado con
-  Embedded Signup validado (bloqueado por Meta, v1.186.0).
+- `wiki/database/migraciones.md` — migraciones 382-385 EN PROD desde 2026-08-27; **386-387c APLICADAS Y
+  VERIFICADAS EN DEV desde el 2026-08-31 (prerequisito de Supervisión + identidad del Portal de
+  Proveedores), sin aplicar a PROD todavía**.
+- `sources/raw/project_pendientes.md` (cont. 34, "ARRANCÁ ACÁ") — Chrome/FedCM investigado a fondo +
+  identidad del Portal de Proveedores + prerequisito de Supervisión (2026-08-31); (cont. 33, histórico) —
+  fix de `npm run lint` (v1.187.0, sin relación directa con WhatsApp); (cont. 32, histórico) — detalle
+  completo de la validación end-to-end de Embedded Signup y del bloqueo real por Verificación del Negocio
+  (2026-08-28); (cont. 31, histórico, con corrección inline) — construcción del código (2026-08-27); (cont.
+  30, histórico) — detalle completo del deploy real a PROD (2026-08-27); (cont. 29) — detalle completo de
+  la sesión de construcción de la Fase 4.
+- `log.md` (2026-08-31, tipo `update`, entrada al principio) — Chrome/FedCM investigado + Portal de
+  Proveedores + prerequisito de Supervisión; (2026-08-31, tipo `lint`) — fix de `npm run lint`; (2026-08-28,
+  tipo `update`) — Embedded Signup validado end-to-end, bloqueo real por Verificación del Negocio;
+  (2026-08-27, tipo `update`) — Embedded Signup CONSTRUIDO EN DEV; (2026-08-27, tipo `deploy`) — deploy real
+  a PROD de las 4 fases; (2026-08-27, tipo `update` anterior) — entrada completa de la Fase 4 y de la Fase 3
+  (misma sesión de construcción, sin `/clear`); (2026-08-26) — Fase 1, Fase 2, trámite real de Meta y el
+  hallazgo original de Embedded Signup (parcialmente corregido el 2026-08-27, y corregido del todo el
+  2026-08-28).
+- `wiki/business/roadmap.md` — sección del deploy real a PROD (2026-08-27); footer actualizado con Chrome/
+  FedCM investigado + Portal de Proveedores + prerequisito de Supervisión (v1.188.0).

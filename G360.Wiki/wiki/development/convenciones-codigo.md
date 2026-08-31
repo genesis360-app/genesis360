@@ -3,7 +3,7 @@ title: Convenciones de Código
 category: development
 tags: [convenciones, typescript, naming, patterns, reglas]
 sources: [CLAUDE.md]
-updated: 2026-08-11
+updated: 2026-08-31
 ---
 
 # Convenciones de Código
@@ -54,7 +54,23 @@ import { supabase } from '../../../lib/supabase'
 - **Strict mode** habilitado — sin `any` implícito
 - Target: ES2020
 - Todas las interfaces de DB en `src/lib/supabase.ts`
-- ESLint: max 0 warnings (`npm run lint`)
+- **ESLint (2026-08-31, v1.187.0): `npm run lint` es un gate REAL** —
+  `eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 161`. Hasta esta fecha el
+  comando estaba roto en TODO el repo (no existía `.eslintrc*` ni `eslint.config.*` pese a tener las
+  dependencias instaladas) y nadie lo había notado porque corridas previas quedaban filtradas con grep,
+  ocultando el fallo — se llegó a reportar "lint limpio" cuando el comando nunca corrió de verdad. Se creó
+  `.eslintrc.cjs` (config clásica, ESLint 8.56, `@typescript-eslint/parser` + plugins
+  `@typescript-eslint`/`react-hooks`, `extends: ['eslint:recommended', 'plugin:@typescript-eslint/
+  recommended']`). Al activarlo por primera vez salieron 228 problemas (67 errores, 161 warnings) — **4 de
+  los errores eran bugs REALES, no solo estilo**: hooks llamados después de un early return condicional en
+  `AdminPage.tsx` (viola la regla de arriba "Early returns SIEMPRE después de todos los hooks") y en
+  `EnviosPage.tsx` (hook dentro de una IIFE condicional en un `.map()`), y un `switch` con fallthrough
+  silencioso en `DashGastosArea.tsx`/`DashVentasArea.tsx`. `--max-warnings` quedó en **161** (baseline real
+  de warnings preexistentes, no en 0) para que el gate sea funcional hoy sin exigir una limpieza masiva no
+  pedida — sigue siendo deuda pendiente de limpieza gradual, no bloqueante. `@typescript-eslint/
+  no-explicit-any` y `@typescript-eslint/no-unused-expressions` están `off` a propósito (el 2º porque el
+  patrón "ternario como statement" se usa intencionalmente en ~7 lugares del código existente). Ver `log.md`
+  (2026-08-31, tipo `lint`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 33, histórico).
 
 ---
 

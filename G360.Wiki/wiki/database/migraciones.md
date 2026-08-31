@@ -3,10 +3,36 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-27
+updated: 2026-08-31
 ---
 
-# Historial de Migraciones (001-385)
+# Historial de Migraciones (001-387, + correctivos 387b/387c)
+
+**🏗️ Migraciones 386-387c — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`) el 2026-08-31**,
+commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados. **SIN aplicar a PROD**
+(`jjffnbrdjchquexdfgwq` sigue en 001-385) — sin código de aplicación nuevo todavía, solo cimientos de DB
+para 2 features en diseño:
+- **386** (`386_autorizaciones_modulos_extendidos.sql`): prerequisito técnico para extender el patrón de
+  "cola de aprobación" de Supervisión a más módulos — amplía el CHECK `autorizaciones.modulo` (antes fijo a
+  `'inventario'`) a `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, elimina el CHECK rígido de
+  `tipo` (se valida en la app). 100% aditivo. Ver [[wiki/features/supervision]] → "Retrofit a más módulos".
+- **387/387b/387c** (`387_portal_proveedores_identidad.sql` + 2 correctivos): modelo de identidad para el
+  futuro **Portal de Proveedores** — tablas nuevas `proveedor_accounts` (identidad, FK física a
+  `auth.users`) + `proveedor_account_tenants` (tabla puente, FK compuesto `tenant_id+proveedor_id` contra
+  `proveedores`), replicando el patrón ya usado por `support_agents` para identidades cross-tenant (una
+  cuenta de proveedor puede vincularse a varios negocios). RLS: el proveedor solo ve/edita su propia
+  identidad y sus vínculos, sin auto-alta (INSERT/DELETE reservados a un flujo de invitación
+  `SECURITY DEFINER` de una fase futura). `migration-reviewer`: 1ª pasada de la 387 encontró 4 hallazgos
+  bloqueantes reales (FK física faltante a `auth.users`, no idempotente, policy de INSERT con squatting de
+  email, GRANT a `anon` en vez de `REVOKE`) — corregidos y re-verificada APTA en la 2ª pasada. 387b
+  corrige `search_path` mutable (advisor); 387c deja explícito un `REVOKE ALL FROM authenticated` que
+  faltaba antes del `GRANT`. Ver [[wiki/features/asistente-whatsapp]] → "Portal de Proveedores".
+`schema_full.sql` regenerado y verificado contra la DB real (164 tablas) a mano vía MCP `execute_sql`
+(el modo API de `npm run schema:dump` sigue bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar).
+Detalle completo: `log.md` (2026-08-31, tipo `update`), `sources/raw/project_pendientes.md` ("ARRANCÁ
+ACÁ", cont. 34).
+
+---
 
 **🚀 Migraciones 379-385 — ✅ APLICADAS Y VERIFICADAS TAMBIÉN EN PROD (`jjffnbrdjchquexdfgwq`) el
 2026-08-27**, como parte del deploy real `v1.184.0` (PR #334 "v1.184.0 — Compras/Gastos en USD (Fases 1-3)
@@ -19,6 +45,63 @@ en PROD tiene 0 filas, sanity-check real con curl a `wa-briefing-sweep` en PROD 
 (`wa-briefing-sweep.yml`) SÍ empieza a correr de verdad cada 15 min contra PROD desde ahora, pero sin filas
 que matcheen no hace nada. Detalle completo del evento de deploy: `log.md` (2026-08-27, tipo `deploy`),
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
+**387c (`387c_fix_grants_proveedor_accounts.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `deef2fc2`, `APP_VERSION` `v1.188.0`, tag+release
+publicados), SIN aplicar a PROD:** correctivo — `proveedor_accounts` nunca tuvo `REVOKE ALL FROM
+authenticated` antes de otorgar `SELECT`/`UPDATE` (a diferencia de `proveedor_account_tenants`, que sí lo
+tenía). Sin impacto real de permisos (RLS ya bloqueaba INSERT/DELETE de `authenticated` al no existir
+policy para esos comandos), pero deja explícito que el estado de GRANTs no contradiga lo que las policies
+permiten.
+
+**387b (`387b_fix_search_path_fn_updated_at_proveedor_accounts.sql`) — ✅ APLICADA Y VERIFICADA EN DEV,
+COMMITEADA (commit `deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** fix del advisor
+`function_search_path_mutable` sobre `fn_updated_at_proveedor_accounts()` (creada en la 387) — agrega
+`SET search_path = public`, mismo patrón que el resto de las funciones `SECURITY DEFINER`/trigger del
+proyecto.
+
+**387 (`387_portal_proveedores_identidad.sql`) — ✅ APLICADA Y VERIFICADA EN DEV, COMMITEADA (commit
+`deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** modelo de identidad para el futuro **Portal de Proveedores**
+(propuesta de Fede — ver [[wiki/features/asistente-whatsapp]] → "Portal de Proveedores"). Decisión de
+negocio confirmada por GO: una cuenta de proveedor puede vincularse a VARIOS negocios (tenants) distintos —
+rompe el supuesto de raíz de `public.users` (`users.id` tiene exactamente una fila con un `tenant_id`, y
+toda la RLS de la app asume esa relación 1:1). En vez de forzar ese modelo a soportar multi-tenant (alto
+radio de impacto sobre RLS usada en toda la app), replica el patrón YA EXISTENTE de identidad cross-tenant
+del proyecto (`support_agents`, usado por el panel genesis360-admin): identidad completamente separada de
+`users`, con FK física a `auth.users`, vinculada a cada tenant vía tabla puente explícita.
+- `proveedor_accounts`: `id` = FK a `auth.users(id)` ON DELETE CASCADE, email único case-insensitive
+  (`idx_proveedor_accounts_email_lower`), `activo`, trigger `updated_at`.
+- `proveedor_account_tenants` (tabla puente): FK **compuesto** `(tenant_id, proveedor_id)` contra
+  `proveedores(tenant_id, id)` — agrega `UNIQUE(tenant_id, id)` a `proveedores` como paso previo — para que
+  la DB garantice que el proveedor vinculado pertenece de verdad a ese tenant, no 2 FKs sueltas.
+  `UNIQUE(tenant_id, proveedor_id)` + `UNIQUE(proveedor_account_id, tenant_id)`.
+- RLS: el proveedor solo ve/edita su propia identidad (`SELECT`/`UPDATE` con `id = (select auth.uid())`) y
+  solo ve sus propios vínculos — **sin policy de INSERT/DELETE de cliente a propósito** (evita auto-alta
+  con un email arbitrario/squatting sobre el UNIQUE de email); el alta real será un flujo de invitación
+  server-side `SECURITY DEFINER` de una fase futura (bypassea RLS, no necesita policy de INSERT).
+- Alcance explícitamente NO incluido: las policies sobre `ordenes_compra`/presupuestos que le darían al
+  proveedor acceso a sus cotizaciones reales (depende de diseñar la integración al state machine real de
+  OC), ni el flujo de invitación/alta de cuentas.
+
+`migration-reviewer`: **1ª pasada encontró 4 hallazgos bloqueantes reales** — faltaba la FK física a
+`auth.users`, la migración no era idempotente, la policy de INSERT permitía auto-alta con un email ajeno, y
+había un `GRANT` a `anon` en vez de un `REVOKE` — los 4 corregidos y **re-verificada APTA en la 2ª pasada**
+(387b/387c, arriba, son correctivos post-verificación contra la DB real, no parte de esta 1ª/2ª pasada).
+
+**386 (`386_autorizaciones_modulos_extendidos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV, COMMITEADA (commit
+`deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** prerequisito técnico para extender el patrón de "cola de
+aprobación" de Supervisión a más módulos (relevamiento `relevamiento-supervision-retrofit-reglas-negocio.
+html`, 100% respondido por Fede el 2026-08-20) — ver [[wiki/features/supervision]] → "Retrofit a más
+módulos". Amplía el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`) para admitir también
+`productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, y elimina el CHECK rígido de `tipo` (se valida
+en la app — mismo criterio ya usado en el proyecto para enums que crecen por módulo, ver
+`reference_check_constraint_vs_configurable`). 100% aditivo — ningún código hoy inserta un `modulo`
+distinto de `'inventario'`, sin cambio de comportamiento. **NO incluye** reclasificar
+`kit_precio`/`repricing_margen` a `modulo='productos'` (A4) ni migrar `autorizaciones_gasto` a esta tabla
+genérica (C1) — ambas quedan para fases dedicadas futuras. `migration-reviewer`: APTA, sin hallazgos
+bloqueantes. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34).
 
 ---
 

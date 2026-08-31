@@ -3,7 +3,7 @@ title: Workflow Git y Releases
 category: development
 tags: [git, workflow, deploy, releases, versioning]
 sources: []
-updated: 2026-04-30
+updated: 2026-08-31
 ---
 
 # Workflow Git y Releases
@@ -69,7 +69,9 @@ Co-Authored-By: GNO <gaston.otranto@gmail.com>
 - [ ] `APP_VERSION` bumpeada en `brand.ts`
 - [ ] Todas las migrations aplicadas en DEV y testeadas
 - [ ] TypeScript compila sin errores (`npm run build`)
-- [ ] ESLint sin warnings (`npm run lint`)
+- [ ] ESLint pasa (`npm run lint`) — gate real desde 2026-08-31 (v1.187.0, ver
+      [[wiki/development/convenciones-codigo]]); baseline de 161 warnings preexistentes tolerado
+      (`--max-warnings 161`), 0 errores exigido
 - [ ] Tests unitarios pasando (`npm run test:unit`)
 - [ ] PR aprobado y mergeado a `main`
 - [ ] GitHub release creado con tag

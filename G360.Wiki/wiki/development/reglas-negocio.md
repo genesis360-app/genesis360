@@ -3,7 +3,7 @@ title: Reglas de Negocio Relevadas
 category: development
 tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd, compras-usd, supervision]
 sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html, relevamiento-compras-gastos-usd-reglas-negocio.html, relevamiento-supervision-retrofit-reglas-negocio.html]
-updated: 2026-08-25
+updated: 2026-08-31
 ---
 
 # Reglas de Negocio Relevadas
@@ -467,10 +467,13 @@ confirmar C2/C3 con GO, reportes G1/G2 (ARS/USD). Detalle completo: [[wiki/featu
 | — | Productos | `kit_precio`/`repricing_margen` (hoy en el tab de Inventario) se reclasifican a `modulo='productos'` |
 | — | Clientes / Envíos / Proveedores / Pedidos / RRHH | 2 niveles: eliminaciones delegables a supervisores vía el patrón; un puñado de acciones más sensibles quedan solo-Dueño |
 
-**Bloqueante técnico común, sin resolver todavía**: `productos`, `envios`, `proveedores`, `pedidos` y
-`recursos` no están hoy en el CHECK `autorizaciones.modulo` (mig 347) ni en la lista `MODULOS` de
-`UsuariosPage.tsx` — hay que sumarlos antes de delegar nada de esos módulos. **Orden de fases: a criterio
-de GO, sin definir. Sin diseño técnico ni código arrancado.**
+**Bloqueante técnico común**: `productos`, `envios`, `proveedores`, `pedidos` y `recursos` no están hoy en
+la lista `MODULOS` de `UsuariosPage.tsx` — hay que sumarlos antes de delegar nada de esos módulos. **✅
+2026-08-31 (mig 386, APLICADA Y VERIFICADA EN DEV, `v1.188.0`): el CHECK `autorizaciones.modulo` (antes fijo
+a `'inventario'`, mig 347) ya admite los 7 módulos** y se eliminó el CHECK rígido de `tipo` — prerequisito
+de schema despejado, sin código de UI/negocio para ningún módulo nuevo todavía (A4/C1 quedan como fases
+dedicadas futuras, más grandes de lo que parecían al relevar). **Orden de fases: a criterio de GO, sin
+definir.** Detalle: [[wiki/features/supervision]] → "Retrofit a más módulos".
 
 ---
 

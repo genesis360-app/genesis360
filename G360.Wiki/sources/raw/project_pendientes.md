@@ -6,7 +6,156 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-08-28, cont. 32) — 📱🔌 Embedded Signup: CÓDIGO VALIDADO end-to-end (3 caminos
+> ### 🛑 ARRANCÁ ACÁ (2026-08-31, cont. 34) — 🏗️🔌 Prerequisito técnico de Supervisión (mig 386) +
+> identidad del Portal de Proveedores (migs 387/387b/387c) APLICADAS EN DEV (v1.188.0) — Chrome/FedCM en
+> Embedded Signup queda investigado a fondo, SIN fix de código posible de nuestro lado
+>
+> Sesión que se reinició a mitad de tarea (el proceso de Claude Code se cortó) y se retomó con todo el
+> contexto — continuación de la misma sesión de cont. 33 (fix de lint, `v1.187.0`, histórico abajo). Dos
+> frentes de trabajo distintos, ambos SOLO EN DEV, ningún deploy a PROD.
+>
+> #### 1) Chrome/FedCM en Embedded Signup — investigado a fondo, SIN fix de código posible (commit `529a0ea8`)
+>
+> Confirmado (WebSearch/WebFetch a fuentes de Chrome/Meta) que Chrome intercepta el popup de
+> `FB.login({config_id, response_type:'code', ...})` vía **FedCM** (Federated Credential Management): Meta
+> le pisa `config_id`/`response_type`/`override_default_response_type` DENTRO del propio popup, del lado de
+> `facebook.com` — en Microsoft Edge la misma llamada sí llega con los parámetros correctos. Coincide en el
+> tiempo con que Meta lanzó **"Login with Facebook" en open beta** (modo one-tap basado en FedCM) el
+> 27/8/2026, apenas 4 días antes de este hallazgo — sospechoso como causa, pero **sin fuente PRIMARIA de
+> Meta confirmada** (solo 2 medios secundarios —ppc.land, socialmediatoday.com— citando un post del blog de
+> developers.meta.com que no se pudo verificar de forma directa). Este código **NUNCA seteó `fedCM: true`**
+> ni ningún flag relacionado, así que la intercepción no depende de nada que Genesis360 controle — **no
+> existe (a la fecha) ningún parámetro documentado de `FB.init`/`FB.login` ni un `Permissions-Policy` del
+> lado del sitio que la evite**. Por eso, **no se aplicó ningún workaround especulativo sobre código de
+> autenticación real** — el hallazgo queda documentado como comentario extenso en
+> `src/lib/metaEmbeddedSignup.ts` (con las fuentes citadas y la aclaración de que no están confirmadas de
+> forma directa).
+>
+> **🛑 Pendiente real, a cargo de GO**: reportar el bug a `developers.facebook.com/support/bugs/` (con la
+> evidencia Chrome vs Edge ya reunida) y reintentar en Chrome cuando Meta cierre el open beta — puede ser un
+> problema temporal del rollout, no hay forma de confirmarlo sin esperar.
+>
+> #### 2) Prerequisito técnico de Supervisión — migración 386 APLICADA Y VERIFICADA EN DEV
+>
+> `386_autorizaciones_modulos_extendidos.sql`: amplía el CHECK `autorizaciones.modulo` (antes fijo a
+> `'inventario'`) para admitir también `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, y
+> elimina el CHECK rígido de `tipo` (se valida en la app — mismo criterio ya usado en el proyecto para enums
+> que crecen por módulo, ver `reference_check_constraint_vs_configurable`). 100% aditivo — ningún código hoy
+> inserta un `modulo` distinto de `'inventario'`, sin cambio de comportamiento. Es el prerequisito técnico
+> para el relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (100% respondido por Fede el
+> 2026-08-20, ver cont. 24 histórico). **NO incluye todavía**: **A4** (reclasificar
+> `kit_precio`/`repricing_margen` a `modulo='productos'`, implica mover UI real de `InventarioPage.tsx` a
+> `ProductosPage.tsx` — hoy toda la UI de aprobación vive en Inventario aunque el tipo sea de producto) ni
+> **C1** (migrar `autorizaciones_gasto` a esta tabla genérica, implica repuntar el flujo de aprobación de
+> Gastos que hoy usa una tabla separada) — ambas quedan como fases dedicadas futuras, confirmado que son más
+> grandes de lo que parecían al relevar.
+>
+> #### 3) Identidad del Portal de Proveedores — migraciones 387/387b/387c APLICADAS Y VERIFICADAS EN DEV
+>
+> Propuesta de Fede, la otra mitad del proyecto de WhatsApp/Portal (ver
+> `project_whatsapp_ia_portal_proveedores`, memoria). **GO confirmó la decisión de negocio**: una cuenta de
+> proveedor puede vincularse a **VARIOS negocios (tenants) distintos** — esto rompe el supuesto de raíz de
+> `public.users` (`users.id` = `auth.users.id` tiene EXACTAMENTE una fila con UN `tenant_id`, y toda la RLS
+> de la app asume esa relación 1:1). En vez de forzar ese modelo a soportar multi-tenant (alto radio de
+> impacto: tocaría RLS usada en toda la app), se comparó con GO 2 opciones y se eligió **replicar el patrón
+> YA EXISTENTE en el proyecto** para identidades cross-tenant: `support_agents` (usado por el panel
+> genesis360-admin) — identidad completamente separada de `users`, con FK física a `auth.users`, vinculada a
+> cada tenant vía una tabla puente explícita.
+>
+> - **`proveedor_accounts`** (identidad): `id` = FK a `auth.users(id)` ON DELETE CASCADE, email único
+>   case-insensitive (`idx_proveedor_accounts_email_lower`), `activo`, trigger `updated_at`.
+> - **`proveedor_account_tenants`** (tabla puente): FK **compuesto** `(tenant_id, proveedor_id)` contra
+>   `proveedores(tenant_id, id)` — requirió agregar `UNIQUE(tenant_id, id)` a `proveedores` primero — para
+>   que la DB garantice que el proveedor vinculado pertenece de verdad a ese tenant (no confiar en 2 FKs
+>   sueltas). `UNIQUE(tenant_id, proveedor_id)` (un proveedor solo vinculado a una cuenta) +
+>   `UNIQUE(proveedor_account_id, tenant_id)` (una cuenta no se vincula 2 veces al mismo tenant).
+> - **RLS**: el proveedor solo ve/edita su propia fila de identidad (`SELECT`/`UPDATE` con
+>   `id = (select auth.uid())`) y solo ve sus propios vínculos (`SELECT` en la tabla puente) — **sin
+>   INSERT/DELETE de cliente a propósito** (evita auto-alta con un email arbitrario / squatting sobre el
+>   UNIQUE de email); el alta real va a ser un flujo de invitación server-side `SECURITY DEFINER` de una
+>   fase futura, que bypassea RLS y no necesita policy de INSERT para funcionar.
+> - **387b**: fix de `search_path` mutable (advisor) en la función del trigger `updated_at`.
+> - **387c**: `proveedor_accounts` nunca tuvo `REVOKE ALL FROM authenticated` antes de otorgar
+>   `SELECT`/`UPDATE` (a diferencia de la tabla puente, que sí lo tenía) — sin impacto real (RLS ya
+>   bloqueaba INSERT/DELETE al no haber policy para esos comandos), pero se dejó explícito.
+> - **Alcance explícitamente NO incluido en esta sesión**: las policies sobre `ordenes_compra`/presupuestos
+>   que le darían al proveedor acceso a sus cotizaciones reales (depende de diseñar cómo se integra al state
+>   machine real de OC — Fede: "sigue el flujo YA EXISTENTE de OC" — revisar `ordenes_compra` en detalle en
+>   una fase siguiente), ni el flujo de invitación/alta de cuentas.
+>
+> `migration-reviewer` revisó la 387 **dos veces**: la primera pasada encontró **4 hallazgos bloqueantes
+> reales** — faltaba la FK física a `auth.users`, la migración no era idempotente, la policy de INSERT
+> permitía auto-alta con un email ajeno (squatting), y había un `GRANT` a `anon` en vez de un `REVOKE` — los
+> 4 corregidos y re-verificados **APTA** en la segunda pasada.
+>
+> `schema_full.sql` regenerado y verificado contra la DB real (164 tablas) a mano vía MCP `execute_sql` en
+> partes — el modo API de `npm run schema:dump` sigue bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin
+> rotar (recurrente, ver `reference_supabase_token_filtrado_sin_rotar`) y el modo PG sigue fallando por el
+> bug conocido del pooler de Supavisor (`reference_supabase_pooler_auth_bug`).
+>
+> #### Estado del deploy
+>
+> Commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, **tag + GitHub release ya publicados**
+> (`v1.188.0`, `publishedAt: 2026-08-31T06:36:47Z`) — entre medio, el commit `529a0ea8` (punto 1, Chrome/
+> FedCM) quedó sin bump de versión propio, incluido en el mismo release. Build verde. **Sin deploy a PROD**
+> — `main` sigue en el merge de `v1.184.0` (`867d651a`), PROD sigue en migraciones **001-385**. DEV:
+> migraciones **001-387c**, código en `v1.188.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    (`developers.facebook.com/support/bugs/`) y reintentar en Chrome cuando Meta cierre el open beta.
+> 2. **Construir las fases reales del retrofit de Supervisión módulo por módulo** (Ventas/Productos/
+>    Clientes/Envíos/Proveedores/Pedidos/RRHH) — el prerequisito técnico (mig 386) ya está, falta el diseño/
+>    código de cada módulo. Orden de fases a criterio de GO, sin definir todavía.
+> 3. **Diseñar el flujo de invitación de cuentas de proveedor** (Edge Function `SECURITY DEFINER`) y
+>    **revisar `ordenes_compra` en detalle** para diseñar las policies de presupuestos del Portal de
+>    Proveedores.
+> 4. Heredado, sin cambios esta sesión (cont. 32, histórico abajo): **Fede tiene que aportar CUIT/
+>    monotributo + comprobante de domicilio** para completar la Verificación del Negocio de Meta —
+>    bloqueante real y externo para el registro real de un WABA vía Embedded Signup.
+> 5. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos"),
+> [[wiki/features/asistente-whatsapp]] (secciones Embedded Signup + Portal de Proveedores),
+> `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (Versión en DEV), `wiki/database/
+> migraciones.md` (386-387c, título a 001-387).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 33) — 🧹 `npm run lint` roto en TODO el repo pasa a ser un gate real
+> — 4 bugs reales corregidos al activarlo (`v1.187.0`)
+>
+> Se creó `.eslintrc.cjs` (config clásica ESLint 8.56, TS + `react-hooks`) — no existía ningún archivo de
+> configuración de ESLint pese a tener las dependencias instaladas, hallazgo de la sesión anterior (cont.
+> 32, abajo). Primera corrida real: **228 problemas (67 errores, 161 warnings)**.
+>
+> **4 bugs REALES corregidos al activar el lint** (no solo estilo):
+> - `src/pages/AdminPage.tsx`: `useQuery`/`useMutation` llamados DESPUÉS de un early return condicional
+>   (`react-hooks/rules-of-hooks`) — viola la regla explícita del propio CLAUDE.md. Fix: early return movido
+>   después de todos los hooks.
+> - `src/pages/EnviosPage.tsx`: `useState` dentro de una IIFE invocada condicionalmente en un `.map()`
+>   (edición inline de domicilio) — hooks condicionales. Fix: extraído a componente propio
+>   `EditarDomicilioInline`.
+> - `src/components/DashGastosArea.tsx`/`DashVentasArea.tsx`: `switch` de rango de fechas con `case
+>   'custom'` sin `return`/`break` final — fallthrough silencioso al `default` si `custom` era falsy. Fix:
+>   fallback explícito dentro del propio case.
+> - `src/components/DashProductosArea.tsx`: línea muerta self-assign, eliminada.
+>
+> Resto (estilo): tabs/espacios mezclados en `authStore.ts` (de paso, 3 `console.log` de debug con datos de
+> usuario/tenant sacados), escapes de regex innecesarios, `eslint-disable` obsoletos, `prefer-const`,
+> `no-self-assign`. `--max-warnings` del script `lint` bajado de 0 a **161** (baseline real preexistente,
+> deuda pendiente de limpieza gradual, no bloqueante). Build + `test:unit` verdes, sin regresión.
+>
+> Commit `33c03b46`, `origin/dev`, `APP_VERSION` `v1.187.0`, tag+release publicados. **Sin deploy a PROD,
+> sin migraciones.** Detalle completo: `log.md` (2026-08-31, tipo `lint`), [[wiki/development/
+> convenciones-codigo]], [[wiki/development/workflow-git]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-28, cont. 32) — 📱🔌 Embedded Signup: CÓDIGO VALIDADO end-to-end (3 caminos
 > distintos, evidencia real) — el bloqueo es 100% de Meta: falta la Verificación del Negocio, y ES un
 > trámite EXTERNO a cargo de Fede (CUIT + comprobante de domicilio), no algo diferible como se había
 > documentado antes

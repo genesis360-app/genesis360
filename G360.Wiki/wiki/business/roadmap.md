@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-28
+updated: 2026-08-31
 ---
 
 # Roadmap y Versiones
@@ -34,25 +34,49 @@ Trae **2 features nuevas, ambas EN PROD pero DORMIDAS a propósito, sin activars
 (`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro` actualizado). **Con las 2 features ya en
 PROD, GO eligió como próximo paso Embedded Signup** (escalar WhatsApp a futuros clientes, ver "Versión en
 DEV" abajo — construido en DEV en una sesión nueva, sin deploy a PROD todavía); el **Portal de Proveedores**
-(la otra mitad de la propuesta de Fede) sigue sin empezar. Detalle completo:
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ"), `log.md`
-(2026-08-27, tipo `deploy`).  
+(la otra mitad de la propuesta de Fede) arrancó su prerequisito técnico el 2026-08-31 (ver "Versión en DEV"
+abajo). Detalle completo: `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ
+ACÁ"), `log.md` (2026-08-27, tipo `deploy`).  
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.186.0** (`7e564c5e`, misma conversación que v1.185.0, sin `/clear`, 2026-08-28) —
-Embedded Signup de Meta: **CÓDIGO VALIDADO end-to-end** (EF `wa-embedded-signup-exchange` + card "WhatsApp"
-self-service en ConfigPage), confirmado correcto con datos reales de Meta (App ID, `config_id`) por 3
-caminos de prueba distintos. **🛑 En desarrollo, BLOQUEADO por verificación externa**: Meta exige completar
-la **Verificación del Negocio** (documentos CUIT/RUT AFIP + comprobante de domicilio, a cargo de Fede) antes
-de poder registrar un WABA real — corrige lo que se pensaba el día anterior (que era diferible). **NO
-deployado a PROD.** Ver [[wiki/features/asistente-whatsapp]] → "Embedded Signup", `sources/raw/
-project_pendientes.md` ("ARRANCÁ ACÁ", cont. 32).  
+**Versión en DEV:** **v1.188.0** (`deef2fc2`, 2026-08-31, misma sesión que v1.187.0 abajo, se reinició a
+mitad de tarea y se retomó con todo el contexto) — 2 frentes:
+1. **Chrome/FedCM en Embedded Signup, investigado a fondo, SIN fix de código posible** (commit `529a0ea8`):
+   confirmado que Chrome intercepta el popup de `FB.login()` vía FedCM del lado de `facebook.com`, sin
+   ningún flag que Genesis360 controle — coincide con el open beta de "Login with Facebook" que Meta lanzó
+   el 27/8/2026, pero sin fuente primaria confirmada. **Pendiente de GO**: reportar el bug a Meta y
+   reintentar cuando cierre el open beta.
+2. **Prerequisito técnico de Supervisión (mig 386) + identidad del Portal de Proveedores (migs 387/387b/
+   387c), APLICADAS Y VERIFICADAS EN DEV**: (a) el CHECK `autorizaciones.modulo` ya admite
+   productos/ventas/clientes/envíos/proveedores/pedidos/rrhh (antes solo `'inventario'`) — despeja el
+   bloqueante técnico para el retrofit de Supervisión, sin código de UI/negocio todavía; (b) tablas nuevas
+   `proveedor_accounts`/`proveedor_account_tenants` — GO confirmó que una cuenta de proveedor puede
+   vincularse a varios negocios, se replicó el patrón de identidad cross-tenant ya usado por
+   `support_agents` en vez de forzar el modelo de `users`. Sin flujo de invitación ni policies de
+   `ordenes_compra` todavía.
+
+**NO deployado a PROD** — PROD sigue en migraciones 001-385; DEV en 001-387c. Ver
+[[wiki/features/asistente-whatsapp]] → "Embedded Signup" y "Portal de Proveedores",
+[[wiki/features/supervision]] → "Retrofit a más módulos", `sources/raw/project_pendientes.md` ("ARRANCÁ
+ACÁ", cont. 34).  
+**Antes (misma sesión, v1.187.0, commit `33c03b46`): `npm run lint` deja de estar roto en TODO el repo** —
+se creó `.eslintrc.cjs` (no existía ningún archivo de configuración de ESLint pese a tener las dependencias
+instaladas); al activarlo salieron **4 bugs REALES** (no solo estilo): hooks llamados después de un early
+return condicional en `AdminPage.tsx` y dentro de una IIFE condicional en `EnviosPage.tsx`, y un `switch`
+con fallthrough silencioso en `DashGastosArea.tsx`/`DashVentasArea.tsx`. `--max-warnings` bajado de 0 a 161
+(baseline real preexistente, deuda pendiente no bloqueante). Ver [[wiki/development/convenciones-codigo]],
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 33, histórico).  
+**Antes (2026-08-28, v1.186.0): Embedded Signup de Meta CÓDIGO VALIDADO end-to-end** (EF
+`wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage), confirmado correcto con datos
+reales de Meta (App ID, `config_id`) por 3 caminos de prueba distintos — en ese momento **BLOQUEADO por
+verificación externa** (Meta exige completar la Verificación del Negocio, documentos a cargo de Fede);
+sigue igual, sin novedades de Fede todavía.  
 **2 relevamientos, ambos 100% RESPONDIDOS por Fede (2026-08-24/25)**: (a) retrofit del patrón "tab
-Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, sin diseño/
-código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fases 1-3 YA CONSTRUIDAS Y EN PROD, resto a
-iterar. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `wiki/features/supervision.md`,
-`wiki/development/reglas-negocio.md`.  
+Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, prerequisito
+técnico (mig 386) ya aplicado en DEV desde 2026-08-31, resto del diseño/código sin arrancar todavía; (b)
+Compras/Gastos en USD (arriba) — Fases 1-3 YA CONSTRUIDAS Y EN PROD, resto a iterar. Ver `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ"), `wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
 Ver `wiki/features/asistente-ia.md` → "Plan IA".  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
@@ -62,7 +86,7 @@ commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + 
 sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
-**Última actualización:** 28 de Agosto, 2026
+**Última actualización:** 31 de Agosto, 2026
 
 ---
 

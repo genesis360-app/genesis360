@@ -2,8 +2,8 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
-sources: [migration 347, migration 348, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
-updated: 2026-08-25
+sources: [migration 347, migration 348, migration 386, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
+updated: 2026-08-31
 ---
 
 # Supervisión — Patrón "Pestaña de Supervisor" reusable
@@ -215,13 +215,23 @@ paginación de arriba).
 >   delegables a supervisores vía el patrón, y un puñado de acciones más sensibles que quedan solo-Dueño
 >   (sin pasar por cola).
 >
-> **Bloqueante técnico común, todavía sin resolver**: `productos`, `envios`, `proveedores`, `pedidos` y
-> `recursos` no están hoy en el CHECK `autorizaciones.modulo` (mig 347) ni en la lista `MODULOS` de
-> `UsuariosPage.tsx` (la pantalla de permisos por rol) — hay que sumarlos ahí antes de poder delegar
-> cualquier acción de esos módulos.
+> **Bloqueante técnico común**: `productos`, `envios`, `proveedores`, `pedidos` y `recursos` no están hoy en
+> la lista `MODULOS` de `UsuariosPage.tsx` (la pantalla de permisos por rol) — hay que sumarlos ahí antes de
+> poder delegar cualquier acción de esos módulos. **✅ 2026-08-31 (mig 386, APLICADA Y VERIFICADA EN DEV,
+> commit `deef2fc2`, `v1.188.0`): el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`) ya admite
+> `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`**, y se eliminó el CHECK rígido de `tipo` (se
+> valida en la app) — prerequisito técnico despejado. `migration-reviewer`: APTA (2ª pasada, la 1ª de la
+> migración hermana 387 —Portal de Proveedores, no relacionada con esta tabla— encontró 4 hallazgos
+> bloqueantes reales, corregidos). **Esto NO resuelve todavía**: **A4** (reclasificar
+> `kit_precio`/`repricing_margen` a `modulo='productos'` — implica mover UI real de `InventarioPage.tsx` a
+> `ProductosPage.tsx`, hoy toda la UI de aprobación vive en Inventario aunque el tipo sea de producto) ni
+> **C1** (migrar `autorizaciones_gasto` a esta tabla genérica — implica repuntar el flujo de aprobación de
+> Gastos que hoy usa una tabla separada) — confirmado que ambas son más grandes de lo que parecían al
+> relevar, quedan como fases dedicadas futuras. Tampoco se construyó código de UI/negocio para ningún módulo
+> nuevo todavía — la migración solo despeja el bloqueante de schema.
 >
-> **Orden de fases: a criterio de GO, sin definir todavía. Sin diseño técnico ni código arrancado.**
-> Detalle completo: `sources/raw/project_pendientes.md` (cont. 24, "ARRANCÁ ACÁ"),
+> **Orden de fases: a criterio de GO, sin definir todavía.**
+> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34),
 > [[project_supervision_tab_extension_pendiente]] (memoria).
 
 ## Pendiente real

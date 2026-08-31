@@ -11,7 +11,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode } from 'lucide-react'
+import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode, ClipboardList, CheckCircle2, UserCog } from 'lucide-react'
 import toast from 'react-hot-toast'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportarExcel/exportarPDF
 // (auditoría perf 2026-08-14, P5).
@@ -32,6 +32,9 @@ import { motivoNoLanzarPedido } from '@/lib/pedidoVenta'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { esDecimal } from '@/lib/ventasValidation'
 import { useConfirm } from '@/hooks/useConfirm'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   borrador:            { label: 'Borrador',            cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
@@ -70,7 +73,7 @@ export default function PedidosPage() {
   // ciclo de vida de la preparación/despacho, tiene más sentido gestionar la cola acá que en
   // Inventario. Misma fuente y RPCs que /picking (mobile); acá es la vista de gestión de
   // escritorio, con asignación manual a un operario.
-  const [tab, setTab] = useState<'pedidos' | 'wms'>('pedidos')
+  const [tab, setTab] = useState<'pedidos' | 'wms' | 'autorizaciones'>('pedidos')
   const puedeAsignarTareas = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   const [showNuevo, setShowNuevo] = useState(false)
@@ -724,21 +727,33 @@ export default function PedidosPage() {
   })
 
   // ── Cancelar (PED5): cualquier estado no terminal — libera reservas si ya se lanzó ──
+  // A5 Nivel 1 (relevamiento Supervisión, Fede 2026-08-20) — cancelar un pedido ya NO se ejecuta
+  // directo: queda pendiente de aprobación de un supervisor. La lógica real de negocio (liberar
+  // reservas de stock, solo si nada se pickeó todavía) sigue viviendo 100% en el RPC
+  // `fn_cancelar_pedido` — acá solo se difiere CUÁNDO se llama, nunca se reimplementa.
   const cancelarPedido = useMutation({
     mutationFn: async (pedido: any) => {
-      const { error } = await supabase.rpc('fn_cancelar_pedido', { p_pedido_id: pedido.id })
-      if (error) throw error
-      logActividad({
-        entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
-        accion: 'cambio_estado', campo: 'estado', valor_anterior: pedido.estado, valor_nuevo: 'cancelado', pagina: '/pedidos',
-        venta_id: pedido.venta_origen_id ?? null,
+      const { error } = await supabase.from('autorizaciones').insert({
+        tenant_id: tenant!.id,
+        modulo: 'pedidos',
+        tipo: 'eliminar',
+        datos_cambio: { pedido_id: pedido.id, pedido_numero: pedido.numero, venta_id: pedido.venta_origen_id ?? null },
+        estado: 'pendiente',
+        solicitado_por: user?.id,
       })
+      if (error) throw error
+      try {
+        await avisarSupervisor(tenant!.id, 'pedidos', user?.id,
+          'Cancelación de pedido pendiente de aprobar',
+          `${user?.nombre_display ?? 'Un usuario'} pidió cancelar el pedido #${pedido.numero} — requiere tu aprobación.`,
+          '/pedidos?tab=autorizaciones')
+      } catch { /* la notificación no bloquea el flujo */ }
       return pedido.numero
     },
     onSuccess: (numero) => {
-      toast.success(`Pedido #${numero} cancelado`)
-      qc.invalidateQueries({ queryKey: ['pedidos'] })
-      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+      toast.success(`Solicitud enviada — cancelación del pedido #${numero} pendiente de aprobación`)
+      qc.invalidateQueries({ queryKey: ['autorizaciones', 'pedidos'] })
+      qc.invalidateQueries({ queryKey: ['supervision-badge'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -763,6 +778,57 @@ export default function PedidosPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en pedidos) ──────────
+  const puedeVerAutorizacionesPedidos = puedeSupervisarModulo(user, 'pedidos')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones('pedidos', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesPedidos ? ['pedidos'] : [])
+
+  const resumenDeAutorizacionPedido = (aut: any) => `Cancelar pedido — #${aut.datos_cambio?.pedido_numero ?? '—'}`
+
+  const aprobarAutorizacionPedido = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const { pedido_id, pedido_numero } = aut.datos_cambio ?? {}
+      const { error } = await supabase.rpc('fn_cancelar_pedido', { p_pedido_id: pedido_id })
+      if (error) throw error
+      await marcarAprobada(aut.id)
+      logActividad({ entidad: 'pedido', entidad_id: pedido_id, entidad_nombre: `Pedido #${pedido_numero ?? ''}`, accion: 'aprobar', campo: 'estado', valor_nuevo: 'cancelado', pagina: '/pedidos' })
+      toast.success('Cancelación aprobada y ejecutada')
+      qc.invalidateQueries({ queryKey: ['pedidos'] })
+      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo aprobar')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
+  const rechazarAutorizacionPedido = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo rechazar')
+    }
+  }
+
+  const reasignarAutorizacionPedido = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-8">
@@ -785,15 +851,100 @@ export default function PedidosPage() {
         )}
       </div>
 
-      {modoAvanzado && (
+      {(modoAvanzado || puedeVerAutorizacionesPedidos) && (
         <PageTabs
           tabs={[
             { id: 'pedidos', label: 'Pedidos', icon: Package },
-            { id: 'wms', label: 'Tareas WMS', icon: ScanBarcode },
+            ...(modoAvanzado ? [{ id: 'wms', label: 'Tareas WMS', icon: ScanBarcode }] : []),
+            ...(puedeVerAutorizacionesPedidos ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
           ]}
           active={tab}
-          onChange={(id) => setTab(id as 'pedidos' | 'wms')}
+          onChange={(id) => setTab(id as 'pedidos' | 'wms' | 'autorizaciones')}
         />
+      )}
+
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión) ═══════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizacionesPedidos && (
+        <SupervisionPanel
+          modulo="pedidos"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionPedido}
+          resumenDe={resumenDeAutorizacionPedido}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => (
+                <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Cancelar pedido</span>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">#{aut.datos_cambio?.pedido_numero ?? '—'}</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                        <p>Solicitado por: {aut.solicitante?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                      </div>
+                    </div>
+                    {autEstado === 'pendiente' && (
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={async () => { if (await confirmar(`¿Aprobar la cancelación del pedido #${aut.datos_cambio?.pedido_numero}? Se liberan las reservas de stock (solo si nada se pickeó todavía).`, { danger: true })) aprobarAutorizacionPedido(aut) }}
+                          disabled={autAprobandoId === aut.id}
+                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                          <CheckCircle2 size={13} /> Aprobar
+                        </button>
+                        {autRechazoId === aut.id ? (
+                          <div className="space-y-1.5">
+                            <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                              placeholder="Motivo de rechazo..."
+                              className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                            <div className="flex gap-1">
+                              <button onClick={() => rechazarAutorizacionPedido(aut.id, autMotivoRechazo, resumenDeAutorizacionPedido(aut))}
+                                disabled={!autMotivoRechazo.trim()}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                Confirmar
+                              </button>
+                              <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAutRechazoId(aut.id)}
+                            className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <X size={13} /> Rechazar
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SupervisionPanel>
       )}
 
       {tab === 'pedidos' && (

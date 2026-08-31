@@ -11,6 +11,25 @@
  * Business Verification del lado de la plataforma), FB.login() igual puede devolver `code` con
  * status:'connected', pero el postMessage de FINISH nunca llega — sin este timeout, el botón "Conectar"
  * queda colgado para siempre (comportamiento real observado y reproducido, no hipotético).
+ *
+ * ⚠ BUG CONOCIDO — Google Chrome intercepta el popup vía FedCM (investigado 2026-08-31, NO es un bug
+ * nuestro): en Chrome, el popup que abre `FB.login({config_id, response_type:'code', ...})` puede
+ * terminar en una URL de Meta con `dialog_source=fedcm&scope=openid&response_type=token` — Meta le pisa
+ * `config_id`/`response_type=code`/`override_default_response_type` y el login falla con "esta app
+ * necesita al menos un supported permission" (la app de Facebook Login for Business no tiene el permiso
+ * `openid`, porque nunca lo necesitó). En Edge, la misma llamada sí llega a Meta con los parámetros
+ * correctos. Coincide en el tiempo con que Meta puso "Login with Facebook" en open beta el 27/8/2026 con
+ * un nuevo modo one-tap basado en FedCM, opt-in vía `FB.init({ fedCM: true })` (fuentes secundarias:
+ * ppc.land/facebook-login-gains-one-tap-sign-on-on-android-and-web-in-open-beta,
+ * socialmediatoday.com/news/meta-updates-login-with-facebook/829135 — ambas citan un post del blog de
+ * developers.meta.com que no pudo confirmarse de forma directa). Este código NUNCA seteó `fedCM: true`
+ * ni ningún flag de FedCM, así que la intercepción no depende de nada que hagamos acá — ocurre del lado
+ * de la página de facebook.com dentro del popup. No existe (a la fecha) un parámetro documentado de
+ * `FB.init`/`FB.login` ni un `Permissions-Policy` del lado del sitio que la evite, por eso NO se aplicó
+ * ningún workaround especulativo en este archivo. Acción pendiente de GO: reportar el bug a
+ * developers.facebook.com/support/bugs/ (con la evidencia Chrome vs Edge) y volver a probar en Chrome
+ * cuando Meta cierre el open beta — puede ser un problema temporal del rollout. Ver
+ * G360.Wiki/wiki/features/asistente-whatsapp.md (sección "Embedded Signup") para el detalle completo.
  */
 
 const GRAPH_API_VERSION = 'v23.0'

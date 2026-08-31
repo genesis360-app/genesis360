@@ -5686,7 +5686,7 @@ export default function InventarioPage() {
                     </div>
                     <div className="p-5 space-y-3">
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {!!(tenant as any)?.clave_maestra
+                        {(tenant as any)?.clave_maestra
                           ? 'Hay diferencias que superan el umbral de discrepancia. Para finalizar sin recontar, ingresá la clave maestra (SUPERVISOR/DUEÑO).'
                           : 'Hay diferencias que superan el umbral de discrepancia. Sin clave maestra configurada, saltar el reconteo queda autorizado solo por tu rol (podés exigir un 2º factor configurándola en Configuración → Negocio).'}
                       </p>

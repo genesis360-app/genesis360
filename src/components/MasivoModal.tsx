@@ -774,7 +774,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                         const pref = it.lpnPreferido.trim()
                         const seleccionAtributo = { talle: it.talle || undefined, color: it.color || undefined, encaje: it.encaje || undefined, formato: it.formato || undefined, sabor_aroma: it.saborAroma || undefined }
                         const filtradas = filtrarLineasPorAtributo(lineasCache[it.productoId], seleccionAtributo)
-                        let ordenadas = pref
+                        const ordenadas = pref
                           ? [
                               ...filtradas.filter(l => l.lpn === pref || l.lote === pref),
                               ...filtradas.filter(l => l.lpn !== pref && l.lote !== pref),

@@ -63,9 +63,12 @@ function getVentasFechasPrev(p: VentasPeriodo, custom?: { desde: string; hasta: 
     case 'año': {
       return { desde: new Date(hoy.getFullYear() - 1, 0, 1).toISOString(), hasta: new Date(hoy.getFullYear() - 1, 11, 31, 23, 59, 59).toISOString() }
     }
-    case 'custom': if (custom) {
-      const ms = new Date(custom.hasta).getTime() - new Date(custom.desde).getTime()
-      return { desde: new Date(new Date(custom.desde).getTime() - ms).toISOString(), hasta: new Date(new Date(custom.desde).getTime() - 1).toISOString() }
+    case 'custom': {
+      if (custom) {
+        const ms = new Date(custom.hasta).getTime() - new Date(custom.desde).getTime()
+        return { desde: new Date(new Date(custom.desde).getTime() - ms).toISOString(), hasta: new Date(new Date(custom.desde).getTime() - 1).toISOString() }
+      }
+      return { desde: new Date().toISOString(), hasta: new Date().toISOString() }
     }
     default: return { desde: new Date().toISOString(), hasta: new Date().toISOString() }
   }

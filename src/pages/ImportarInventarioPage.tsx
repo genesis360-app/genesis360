@@ -21,7 +21,7 @@ function parseFecha(val: any, xlsxMod: typeof import('xlsx')): string | undefine
   if (val instanceof Date) return val.toISOString().slice(0, 10)
   const s = String(val).trim()
   if (!s) return undefined
-  const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/)
+  const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
   return s

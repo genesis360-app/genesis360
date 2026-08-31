@@ -99,6 +99,32 @@ const FORM_VACIO: FormEnvio = {
   recurso_id: '', km_recorridos: '',
 }
 
+function EditarDomicilioInline({ domicilio: d, onCancel, onSave, saving }: {
+  domicilio: any
+  onCancel: () => void
+  onSave: (data: { nombre: string; calle: string; numero: string; piso_depto: string; ciudad: string; provincia: string; codigo_postal: string }) => void
+  saving: boolean
+}) {
+  const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
+  return (
+    <div className="mt-1 mb-1 border border-accent-text/30 rounded-xl p-3 bg-accent/5 space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
+        <button type="button" onClick={() => onSave(localDom)} disabled={!localDom.calle || saving} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar'}</button>
+      </div>
+    </div>
+  )
+}
+
 export default function EnviosPage() {
   const { tenant, user } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
@@ -2219,26 +2245,14 @@ export default function EnviosPage() {
                         </button>
                       </label>
                       {/* Formulario inline de edición */}
-                      {editandoDomId === d.id && (() => {
-                        const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
-                        return (
-                          <div className="mt-1 mb-1 border border-accent-text/30 rounded-xl p-3 bg-accent/5 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                            </div>
-                            <div className="flex gap-2 justify-end">
-                              <button type="button" onClick={() => setEditandoDomId(null)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
-                              <button type="button" onClick={() => saveDomicilio.mutate({ id: d.id, data: localDom })} disabled={!localDom.calle || saveDomicilio.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saveDomicilio.isPending ? 'Guardando…' : 'Guardar'}</button>
-                            </div>
-                          </div>
-                        )
-                      })()}
+                      {editandoDomId === d.id && (
+                        <EditarDomicilioInline
+                          domicilio={d}
+                          onCancel={() => setEditandoDomId(null)}
+                          onSave={data => saveDomicilio.mutate({ id: d.id, data })}
+                          saving={saveDomicilio.isPending}
+                        />
+                      )}
                     </div>
                   ))}
 

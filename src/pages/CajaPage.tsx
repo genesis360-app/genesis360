@@ -147,7 +147,7 @@ export default function CajaPage() {
   const [notasCierre, setNotasCierre] = useState('')
   const [montoRealCierre, setMontoRealCierre] = useState('')
   // Caja solo registra ingresos manuales — los egresos van por Gastos (relevamiento G2)
-  const movTipo: 'ingreso' = 'ingreso'
+  const movTipo = 'ingreso' as const
   const [movConcepto, setMovConcepto] = useState('')
   const [movMonto, setMovMonto] = useState('')
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('')
@@ -1442,7 +1442,6 @@ export default function CajaPage() {
     // G5 Fase 3 (E1) — `sesion` puede ser de OTRA caja/moneda que la seleccionada ahora mismo
     // (viene del historial). Shadowea el formatMoneda del componente para que todo este PDF use
     // la moneda de ESA sesión (`caja_sesiones.moneda`, mig 368), nunca la de la caja actual.
-    // eslint-disable-next-line no-shadow
     const formatMoneda = (v: number) => formatMonedaLib(v, sesion.moneda || (tenant as any)?.moneda || 'ARS')
     // Si la sesión tiene snapshot_totales (K2), lo usamos. Si no, fallback a campos legacy.
     const snap = sesion.snapshot_totales || null

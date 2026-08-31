@@ -72,7 +72,7 @@ const FORM_VACIO: ClienteForm = {
 }
 
 function validarDNI(valor: string): string | null {
-  const d = valor.replace(/[\.\-\s]/g, '')
+  const d = valor.replace(/[.\-\s]/g, '')
   if (!d) return null
   if (!/^\d+$/.test(d)) return 'Solo se permiten números'
   if (d.length < 7 || d.length > 8) return 'El DNI debe tener 7 u 8 dígitos'
@@ -81,7 +81,7 @@ function validarDNI(valor: string): string | null {
 
 function validarTelefono(valor: string): string | null {
   if (!valor) return null
-  let d = valor.replace(/[\s\-\(\)\.]/g, '')
+  let d = valor.replace(/[\s\-().]/g, '')
   if (d.startsWith('+549')) d = d.slice(4)
   else if (d.startsWith('+54')) d = d.slice(3)
   else if (d.startsWith('549')) d = d.slice(3)

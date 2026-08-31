@@ -356,7 +356,7 @@ export default function DashboardPage() {
       const { data: ventas } = await q
       const ranking: Record<string, { nombre: string; cantidad: number }> = {}
       ;(ventas ?? []).forEach((v: any) => {
-        ;(v.venta_items ?? []).forEach((item: any) => {
+        (v.venta_items ?? []).forEach((item: any) => {
           const nombre = item.productos?.nombre ?? ''
           if (!ranking[nombre]) ranking[nombre] = { nombre, cantidad: 0 }
           ranking[nombre].cantidad += item.cantidad ?? 0

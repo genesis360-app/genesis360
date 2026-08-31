@@ -195,7 +195,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   // Productos más vendidos — total es subtotal con IVA; ivaMonto acumula el IVA para extraer el neto
   const rankingProductos: Record<string, { nombre: string; sku: string; cantidad: number; total: number; ivaMonto: number; costoTotal: number; categoria_id: string | null }> = {}
   ventasPeriodo.forEach((v: any) => {
-    ;(v.venta_items ?? []).forEach((item: any) => {
+    (v.venta_items ?? []).forEach((item: any) => {
       const pid = item.producto_id ?? item.productos?.sku
       if (!pid) return
       if (!rankingProductos[pid]) {

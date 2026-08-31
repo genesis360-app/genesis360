@@ -62,9 +62,12 @@ function getGastosFechasPrev(p: GastosPeriodo, custom?: { desde: string; hasta: 
         hasta: new Date(hoy.getFullYear() - 1, 11, 31, 23, 59, 59).toISOString(),
       }
     }
-    case 'custom': if (custom) {
-      const ms = new Date(custom.hasta).getTime() - new Date(custom.desde).getTime()
-      return { desde: new Date(new Date(custom.desde).getTime() - ms).toISOString(), hasta: new Date(new Date(custom.desde).getTime() - 1).toISOString() }
+    case 'custom': {
+      if (custom) {
+        const ms = new Date(custom.hasta).getTime() - new Date(custom.desde).getTime()
+        return { desde: new Date(new Date(custom.desde).getTime() - ms).toISOString(), hasta: new Date(new Date(custom.desde).getTime() - 1).toISOString() }
+      }
+      return { desde: new Date().toISOString(), hasta: new Date().toISOString() }
     }
     default: return { desde: new Date().toISOString(), hasta: new Date().toISOString() }
   }

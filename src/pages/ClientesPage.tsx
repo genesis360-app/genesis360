@@ -6,10 +6,12 @@ import {
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
   Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
   Tag, Calendar, StickyNote, CreditCard, AlertCircle, MessageCircle, DollarSign,
-  UserX, RotateCcw,
+  UserX, RotateCcw, ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import { agruparAgingCC } from '@/lib/ccLogic'
@@ -20,7 +22,7 @@ import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
 // descargar la librería (7.8MB) al entrar a la página si el usuario nunca exporta/importa.
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { moduloSoloLectura } from '@/lib/permisosModulo'
+import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
 import { ListaConteoFooter } from '@/components/ListaConteoFooter'
@@ -119,9 +121,9 @@ export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   // Deep-link desde AlertasPage ("Ver todos" de Clientes con saldo pendiente) — la pestaña Cuenta
   // Corriente ya lista exactamente eso, solo faltaba poder aterrizar ahí directo (GO, 2026-08-12).
-  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes'>(() => {
+  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes' | 'autorizaciones'>(() => {
     const t = searchParams.get('tab')
-    return (t === 'cc' || t === 'reportes') ? t : 'lista'
+    return (t === 'cc' || t === 'reportes' || t === 'autorizaciones') ? t : 'lista'
   })
   const [search, setSearch] = useState('')
   // C6 — segmentación de clientes para marketing (filtros + export)
@@ -686,22 +688,35 @@ export default function ClientesPage() {
     setLinkCuenta({ nombre: c.nombre, url: `${base}/cuenta/${token}` })
   }
 
-  // A6 — Baja = soft delete (conserva historial). El modal pide la razón.
+  // A6/A5 (relevamiento Supervisión, Fede 2026-08-20) — la baja de cliente (soft delete, conserva
+  // historial) ya NO se ejecuta directo: siempre queda pendiente de aprobación de un supervisor
+  // ("toda eliminación permanente necesita aprobación" — evita que un empleado que se va borre
+  // clientes por su cuenta). Mismo patrón genérico que ya usa Inventario (mig 386 amplió el CHECK
+  // de `autorizaciones.modulo` para admitir 'clientes').
   const confirmarBaja = async () => {
     if (!bajaCliente) return
     setSavingBaja(true)
-    const { error } = await supabase.from('clientes').update({
-      activo: false,
-      motivo_baja: bajaMotivo.trim() || null,
-      baja_at: new Date().toISOString(),
-      baja_por: user?.id ?? null,
-    }).eq('id', bajaCliente.id)
+    const { error } = await supabase.from('autorizaciones').insert({
+      tenant_id: tenant!.id,
+      modulo: 'clientes',
+      tipo: 'eliminar',
+      datos_cambio: { cliente_id: bajaCliente.id, cliente_nombre: bajaCliente.nombre, motivo: bajaMotivo.trim() || null },
+      estado: 'pendiente',
+      solicitado_por: user?.id,
+      notas: bajaMotivo.trim() || null,
+    })
     setSavingBaja(false)
-    if (error) { toast.error('No se pudo dar de baja: ' + error.message); return }
-    toast.success('Cliente dado de baja')
+    if (error) { toast.error('No se pudo enviar la solicitud: ' + error.message); return }
+    try {
+      await avisarSupervisor(tenant!.id, 'clientes', user?.id,
+        'Baja de cliente pendiente de aprobar',
+        `${user?.nombre_display ?? 'Un usuario'} pidió dar de baja a "${bajaCliente.nombre}" — requiere tu aprobación.`,
+        '/clientes?tab=autorizaciones')
+    } catch { /* la notificación no bloquea el flujo */ }
+    toast.success('Solicitud enviada — pendiente de aprobación de un supervisor')
     setBajaCliente(null); setBajaMotivo('')
-    qc.invalidateQueries({ queryKey: ['clientes'] })
-    qc.invalidateQueries({ queryKey: ['clientes-stats'] })
+    qc.invalidateQueries({ queryKey: ['autorizaciones', 'clientes'] })
+    qc.invalidateQueries({ queryKey: ['supervision-badge'] })
   }
 
   const reactivar = async (id: string) => {
@@ -711,6 +726,62 @@ export default function ClientesPage() {
     if (error) { toast.error('No se pudo reactivar: ' + error.message); return }
     toast.success('Cliente reactivado')
     qc.invalidateQueries({ queryKey: ['clientes'] })
+  }
+
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en clientes) ────────
+  const puedeVerAutorizacionesClientes = puedeSupervisarModulo(user, 'clientes')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones('clientes', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesClientes ? ['clientes'] : [])
+
+  const resumenDeAutorizacionCliente = (aut: any) => `Baja de cliente — ${aut.datos_cambio?.cliente_nombre ?? '—'}`
+
+  const aprobarAutorizacionCliente = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const { cliente_id, motivo } = aut.datos_cambio ?? {}
+      const { error } = await supabase.from('clientes').update({
+        activo: false,
+        motivo_baja: motivo ?? null,
+        baja_at: new Date().toISOString(),
+        baja_por: aut.solicitado_por ?? null,
+      }).eq('id', cliente_id)
+      if (error) throw error
+      await marcarAprobada(aut.id)
+      logActividad({ entidad: 'cliente', entidad_id: cliente_id, entidad_nombre: aut.datos_cambio?.cliente_nombre, accion: 'aprobar', campo: 'estado', valor_nuevo: 'baja', pagina: '/clientes' })
+      toast.success('Baja aprobada y ejecutada')
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['clientes-stats'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo aprobar')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
+  const rechazarAutorizacionCliente = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo rechazar')
+    }
+  }
+
+  const reasignarAutorizacionCliente = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
   }
 
   // ── Importación masiva ───────────────────────────────────────────────────
@@ -880,10 +951,96 @@ export default function ClientesPage() {
           { id: 'lista', label: 'Clientes', icon: Users },
           { id: 'cc', label: 'Cuenta Corriente', icon: CreditCard },
           { id: 'reportes', label: 'Reportes', icon: TrendingUp },
+          ...(puedeVerAutorizacionesClientes ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
         ]}
         active={pageTab}
         onChange={(id) => setPageTab(id as any)}
       />
+
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión) ═══════════════ */}
+      {pageTab === 'autorizaciones' && puedeVerAutorizacionesClientes && (
+        <SupervisionPanel
+          modulo="clientes"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionCliente}
+          resumenDe={resumenDeAutorizacionCliente}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => (
+                <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Baja de cliente</span>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{aut.datos_cambio?.cliente_nombre ?? '—'}</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                        {aut.datos_cambio?.motivo && <p>Motivo: {aut.datos_cambio.motivo}</p>}
+                        <p>Solicitado por: {aut.solicitante?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                      </div>
+                    </div>
+                    {autEstado === 'pendiente' && (
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={async () => { if (await confirmar(`¿Aprobar la baja de "${aut.datos_cambio?.cliente_nombre}"?`)) aprobarAutorizacionCliente(aut) }}
+                          disabled={autAprobandoId === aut.id}
+                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                          <CheckCircle2 size={13} /> Aprobar
+                        </button>
+                        {autRechazoId === aut.id ? (
+                          <div className="space-y-1.5">
+                            <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                              placeholder="Motivo de rechazo..."
+                              className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                            <div className="flex gap-1">
+                              <button onClick={() => rechazarAutorizacionCliente(aut.id, autMotivoRechazo, resumenDeAutorizacionCliente(aut))}
+                                disabled={!autMotivoRechazo.trim()}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                Confirmar
+                              </button>
+                              <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAutRechazoId(aut.id)}
+                            className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <X size={13} /> Rechazar
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SupervisionPanel>
+      )}
 
       {/* ═══════════════ TAB CUENTA CORRIENTE ═══════════════ */}
       {pageTab === 'cc' && (() => {

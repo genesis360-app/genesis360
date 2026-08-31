@@ -2,7 +2,7 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
-sources: [migration 347, migration 348, migration 386, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
+sources: [migration 347, migration 348, migration 386, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/components/AvisarSupervisorButton.tsx]
 updated: 2026-08-31
 ---
 
@@ -195,7 +195,7 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
-## Retrofit a más módulos — relevamiento RESPONDIDO por Fede (2026-08-20), sin diseño/código todavía
+## Retrofit a más módulos — relevamiento RESPONDIDO por Fede (2026-08-20); Clientes ✅ PRIMER módulo construido (v1.189.0)
 
 > Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
 > 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
@@ -227,22 +227,68 @@ paginación de arriba).
 > `ProductosPage.tsx`, hoy toda la UI de aprobación vive en Inventario aunque el tipo sea de producto) ni
 > **C1** (migrar `autorizaciones_gasto` a esta tabla genérica — implica repuntar el flujo de aprobación de
 > Gastos que hoy usa una tabla separada) — confirmado que ambas son más grandes de lo que parecían al
-> relevar, quedan como fases dedicadas futuras. Tampoco se construyó código de UI/negocio para ningún módulo
-> nuevo todavía — la migración solo despeja el bloqueante de schema.
+> relevar, quedan como fases dedicadas futuras.
 >
-> **Orden de fases: a criterio de GO, sin definir todavía.**
-> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34),
+> ### ✅ Clientes — PRIMER módulo real retrofiteado (2026-08-31, commit `27d740e8`, `v1.189.0`)
+>
+> Decisión A5 Nivel 1 de la tabla de arriba ("eliminaciones delegables a supervisores vía el patrón")
+> construida de punta a punta para Clientes — **es la PRIMERA vez que un segundo módulo consume el patrón
+> genérico** además de Inventario, sin migración nueva (usa el CHECK ya ampliado por la mig 386). Sirve de
+> **plantilla real** para retrofitear Envíos/Proveedores/Pedidos/RRHH (mismo nivel de sensibilidad) más
+> adelante.
+>
+> **Qué cambia**: la baja de cliente (soft-delete, `activo=false`, ya existía como feature) ya NO se ejecuta
+> directo — `confirmarBaja()` en `ClientesPage.tsx` ahora hace un `INSERT` en `autorizaciones`
+> (`modulo='clientes'`, `tipo='eliminar'`, `datos_cambio: {cliente_id, cliente_nombre, motivo}`,
+> `estado='pendiente'`) + `avisarSupervisor(...)`, en vez de tocar `clientes` directo. Cualquiera con
+> permiso `supervisa` en Clientes (DUEÑO/SUPER_USUARIO/ADMIN siempre; SUPERVISOR por herencia; rol custom
+> con `'supervisa'` explícito vía `puedeSupervisarModulo(user, 'clientes')`) ve un tab nuevo
+> **"Autorizaciones"** en `ClientesPage.tsx` (mismo componente `SupervisionPanel` que usa Inventario,
+> badge de pendientes vía `useSupervisionBadge`). Al aprobar, recién ahí se ejecuta el `UPDATE` real
+> (`activo=false`, `motivo_baja`, `baja_at`, `baja_por`) y se llama `marcarAprobada()`.
+>
+> **Patrón reusable para los próximos módulos** (Envíos/Proveedores/Pedidos/RRHH): (1) en el flujo que hoy
+> ejecuta la acción sensible directo, reemplazarlo por un `INSERT` en `autorizaciones` con
+> `modulo='<módulo>'`, `tipo='eliminar'` (o el que corresponda) y `datos_cambio` con lo mínimo necesario
+> para reconstruir la acción al aprobar; (2) sumar un tab "Autorizaciones" gateado por
+> `puedeSupervisarModulo(user, '<módulo>')`, reusando `useSupervisorAutorizaciones('<módulo>', selectExtra,
+> autEstado)` + `<SupervisionPanel>`; (3) la función de aprobación ejecuta la acción real diferida y llama
+> `marcarAprobada`; (4) sumar `'<módulo>'` a la lista `MODULOS` de `UsuariosPage.tsx` si ese módulo no
+> estaba ahí todavía.
+>
+> **2 bugs REALES encontrados y corregidos al verificar end-to-end contra DEV** (no solo "el test pasó" —
+> beneficia a los módulos futuros que reusen el mismo hook):
+> 1. `src/hooks/useSupervisorAutorizaciones.ts`: el `.select()` de PostgREST interpolaba `selectExtra` sin
+>    filtrar — con `selectExtra=''` (caso de Clientes, que no necesita ningún join extra) quedaba una coma
+>    doble inválida (`"*, , solicitante:..."`) que PostgREST rechazaba, y el error quedaba **silenciado**
+>    por el fallback `data ?? []` (la UI mostraba "no hay solicitudes pendientes" en vez de un error real).
+>    Fix genérico: `['*', selectExtra, ...].filter(Boolean).join(', ')` — no-op matemático para cualquier
+>    `selectExtra` no vacío (sin regresión en Inventario). De paso se expone `isError` del hook.
+> 2. `ClientesPage.tsx`: `confirmarBaja` invalidaba `['supervision-badge']` pero no
+>    `['autorizaciones','clientes']` — la lista del tab Autorizaciones seguía sirviendo caché de ANTES de
+>    crear la solicitud hasta el próximo refetch espontáneo.
+>
+> **Verificación real**: Playwright contra DEV real (no mockeado) — crear cliente → dar de baja (confirmado
+> por SQL directo: sigue `activo=true`, aparece la fila `pendiente`) → aprobar desde el tab → confirmado por
+> SQL directo: `estado='aprobada'`, `activo=false`. Test permanente en `tests/e2e/08_clientes.spec.ts`.
+> Suite de regresión de Inventario (7 specs de autorizaciones) sin regresión.
+>
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.189.0`.
+>
+> **Orden de las fases restantes: a criterio de GO, sin definir todavía.**
+> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 35),
 > [[project_supervision_tab_extension_pendiente]] (memoria).
 
 ## Pendiente real
 
-Ningún otro módulo usa el patrón todavía (más allá de Repositores, que reusó el mismo diseño de reparto/
-reasignación sin integrarse a la tabla `autorizaciones` en sí — ver abajo) — Pedidos/WMS sigue con su
-propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`, construida en v1.161.0/v1.162.0), un
-concepto distinto (tareas operativas, no solicitudes de aprobación) que no se unificó a propósito en esa
-tanda (fuera del alcance de D1, que solo pedía retrofitear Inventario). El retrofit a
-Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH (sección de arriba) ya tiene las decisiones de
-negocio cerradas, pero **todavía no arrancó** el diseño técnico ni el código.
+**✅ 2026-08-31 (v1.189.0): Clientes ya usa el patrón genérico de verdad** (ver "Retrofit a más módulos" →
+"Clientes" arriba) — es el primer módulo además de Inventario. Envíos/Proveedores/Pedidos/RRHH (mismo nivel
+de sensibilidad que Clientes) y Ventas (con su regla adicional de NC-antes-de-eliminar) todavía no arrancaron
+— la plantilla real (código + los 2 bugs ya corregidos en el hook compartido) está lista para reusar.
+Repositores reusó el mismo diseño de reparto/reasignación sin integrarse a la tabla `autorizaciones` en sí
+(ver abajo) — Pedidos/WMS sigue con su propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`,
+construida en v1.161.0/v1.162.0), un concepto distinto (tareas operativas, no solicitudes de aprobación)
+que no se unificó a propósito en esa tanda (fuera del alcance de D1, que solo pedía retrofitear Inventario).
 
 **Actualización 2026-08-11 — el módulo Repositores en sí ya se construyó (Fase 1, mig 352+353, y Fase
 2, mig 354)**: el criterio de reparto por carga/reasignación de este patrón (`fn_autorizaciones_auto_asignar`/

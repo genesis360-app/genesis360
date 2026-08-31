@@ -2,8 +2,8 @@
 title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
-sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, src/pages/ClientesPage.tsx]
-updated: 2026-08-25
+sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, src/pages/ClientesPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
+updated: 2026-08-31
 ---
 
 # Clientes y Proveedores
@@ -351,7 +351,7 @@ Botón CreditCard por proveedor → modal con:
 Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_respuestas.md`). **Las 6 fases deployadas a PROD**: v1.19.0 (CL1+CL2), v1.20.0 (CL3), v1.23.0 (CL4+CL5+CL6).
 
 ### CL1 — Fundación de datos + permisos (mig 171)
-- **Baja = soft delete (A6):** botón "Dar de baja" + modal con razón (`clientes.motivo_baja/baja_at/baja_por`). Badge "Baja" en la card, toggle "Ver inactivos", botón reactivar. Conserva historial. (Antes había un hard-delete que era código muerto.)
+- **Baja = soft delete (A6):** botón "Dar de baja" + modal con razón (`clientes.motivo_baja/baja_at/baja_por`). Badge "Baja" en la card, toggle "Ver inactivos", botón reactivar. Conserva historial. (Antes había un hard-delete que era código muerto.) **🎯 2026-08-31 (v1.189.0, commit `27d740e8`): ya NO se ejecuta directo** — el botón "Dar de baja" ahora crea una fila `pendiente` en `autorizaciones` (`modulo='clientes'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde un tab nuevo "Autorizaciones" en esta misma página; el `UPDATE` real (`activo=false`/`motivo_baja`/`baja_at`/`baja_por`) recién se ejecuta al aprobar. Primer módulo (además de Inventario) que usa el patrón genérico de Supervisión — ver [[wiki/features/supervision]] → "Retrofit a más módulos" → "Clientes" para el detalle completo (incluye 2 bugs reales corregidos en el hook compartido `useSupervisorAutorizaciones`).
 - **Alerta de duplicado (A2):** al crear, avisa por DNI/teléfono/nombre similar (no traba). El DNI idéntico lo sigue bloqueando el índice único.
 - **Import 3 modos (A5):** detecta duplicados contra toda la base (DNI/tel/nombre) + ignorar existentes / ignorar nuevos / procesar todos (UPDATE de existentes). Columna `etiquetas` en la plantilla.
 - **Catálogo de etiquetas (F1):** autocomplete (`<datalist>`) = `tenants.cliente_etiquetas_catalogo` ∪ etiquetas usadas.

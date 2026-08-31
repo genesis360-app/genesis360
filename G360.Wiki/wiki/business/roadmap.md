@@ -40,8 +40,23 @@ ACÁ"), `log.md` (2026-08-27, tipo `deploy`).
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.188.0** (`deef2fc2`, 2026-08-31, misma sesión que v1.187.0 abajo, se reinició a
-mitad de tarea y se retomó con todo el contexto) — 2 frentes:
+**Versión en DEV:** **v1.189.0** (`27d740e8`, 2026-08-31, continuación directa de v1.188.0 abajo) — 🎯👥
+**Supervisión: PRIMER módulo real retrofiteado, Clientes.** La baja de cliente (soft-delete) ya no se
+ejecuta directo — crea una fila pendiente en `autorizaciones` (`modulo='clientes'`, `tipo='eliminar'`) que
+un supervisor aprueba/rechaza desde un tab nuevo "Autorizaciones" en `ClientesPage.tsx`, reusando el 100%
+de la infraestructura genérica que ya tenía Inventario (`useSupervisorAutorizaciones`, `SupervisionPanel`,
+`avisarSupervisor`) — es la primera vez que un segundo módulo consume el patrón, sin migración nueva (usa
+el CHECK ya ampliado por la mig 386). **2 bugs reales corregidos al verificar end-to-end contra DEV**: el
+hook compartido `useSupervisorAutorizaciones.ts` interpolaba `selectExtra` sin filtrar (coma doble inválida
+para PostgREST cuando un módulo no necesita join extra, silenciada por el fallback `data ?? []` — ahora
+también expone `isError`); `confirmarBaja` no invalidaba la query de la lista de Autorizaciones. Verificado
+con Playwright real contra DEV (crear → dar de baja → aprobar, confirmado por SQL directo en cada paso) +
+test permanente nuevo en `tests/e2e/08_clientes.spec.ts` + suite de regresión de Inventario sin regresión.
+**Queda como plantilla real** para retrofitear Envíos/Proveedores/Pedidos/RRHH (mismo nivel de
+sensibilidad); Ventas queda aparte (regla adicional de NC-antes-de-eliminar, sin diseñar). **NO deployado a
+PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos" → "Clientes", `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ", cont. 35).  
+**Antes (2026-08-31, v1.188.0, commit `deef2fc2`)** — 2 frentes:
 1. **Chrome/FedCM en Embedded Signup, investigado a fondo, SIN fix de código posible** (commit `529a0ea8`):
    confirmado que Chrome intercepta el popup de `FB.login()` vía FedCM del lado de `facebook.com`, sin
    ningún flag que Genesis360 controle — coincide con el open beta de "Login with Facebook" que Meta lanzó
@@ -50,23 +65,23 @@ mitad de tarea y se retomó con todo el contexto) — 2 frentes:
 2. **Prerequisito técnico de Supervisión (mig 386) + identidad del Portal de Proveedores (migs 387/387b/
    387c), APLICADAS Y VERIFICADAS EN DEV**: (a) el CHECK `autorizaciones.modulo` ya admite
    productos/ventas/clientes/envíos/proveedores/pedidos/rrhh (antes solo `'inventario'`) — despeja el
-   bloqueante técnico para el retrofit de Supervisión, sin código de UI/negocio todavía; (b) tablas nuevas
-   `proveedor_accounts`/`proveedor_account_tenants` — GO confirmó que una cuenta de proveedor puede
-   vincularse a varios negocios, se replicó el patrón de identidad cross-tenant ya usado por
-   `support_agents` en vez de forzar el modelo de `users`. Sin flujo de invitación ni policies de
-   `ordenes_compra` todavía.
+   bloqueante técnico para el retrofit de Supervisión, sin código de UI/negocio todavía (resuelto arriba
+   para Clientes); (b) tablas nuevas `proveedor_accounts`/`proveedor_account_tenants` — GO confirmó que una
+   cuenta de proveedor puede vincularse a varios negocios, se replicó el patrón de identidad cross-tenant
+   ya usado por `support_agents` en vez de forzar el modelo de `users`. Sin flujo de invitación ni policies
+   de `ordenes_compra` todavía.
 
-**NO deployado a PROD** — PROD sigue en migraciones 001-385; DEV en 001-387c. Ver
-[[wiki/features/asistente-whatsapp]] → "Embedded Signup" y "Portal de Proveedores",
-[[wiki/features/supervision]] → "Retrofit a más módulos", `sources/raw/project_pendientes.md` ("ARRANCÁ
-ACÁ", cont. 34).  
-**Antes (misma sesión, v1.187.0, commit `33c03b46`): `npm run lint` deja de estar roto en TODO el repo** —
-se creó `.eslintrc.cjs` (no existía ningún archivo de configuración de ESLint pese a tener las dependencias
-instaladas); al activarlo salieron **4 bugs REALES** (no solo estilo): hooks llamados después de un early
-return condicional en `AdminPage.tsx` y dentro de una IIFE condicional en `EnviosPage.tsx`, y un `switch`
-con fallthrough silencioso en `DashGastosArea.tsx`/`DashVentasArea.tsx`. `--max-warnings` bajado de 0 a 161
-(baseline real preexistente, deuda pendiente no bloqueante). Ver [[wiki/development/convenciones-codigo]],
-`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 33, histórico).  
+**NO deployado a PROD** — PROD sigue en migraciones 001-385; DEV en 001-387c, sin migración nueva en
+v1.189.0. Ver [[wiki/features/asistente-whatsapp]] → "Embedded Signup" y "Portal de Proveedores",
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34, histórico).  
+**Antes (misma sesión que v1.188.0, v1.187.0, commit `33c03b46`): `npm run lint` deja de estar roto en TODO
+el repo** — se creó `.eslintrc.cjs` (no existía ningún archivo de configuración de ESLint pese a tener las
+dependencias instaladas); al activarlo salieron **4 bugs REALES** (no solo estilo): hooks llamados después
+de un early return condicional en `AdminPage.tsx` y dentro de una IIFE condicional en `EnviosPage.tsx`, y un
+`switch` con fallthrough silencioso en `DashGastosArea.tsx`/`DashVentasArea.tsx`. `--max-warnings` bajado de
+0 a 161 (baseline real preexistente, deuda pendiente no bloqueante). Ver
+[[wiki/development/convenciones-codigo]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 33,
+histórico).  
 **Antes (2026-08-28, v1.186.0): Embedded Signup de Meta CÓDIGO VALIDADO end-to-end** (EF
 `wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage), confirmado correcto con datos
 reales de Meta (App ID, `config_id`) por 3 caminos de prueba distintos — en ese momento **BLOQUEADO por
@@ -74,9 +89,10 @@ verificación externa** (Meta exige completar la Verificación del Negocio, docu
 sigue igual, sin novedades de Fede todavía.  
 **2 relevamientos, ambos 100% RESPONDIDOS por Fede (2026-08-24/25)**: (a) retrofit del patrón "tab
 Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, prerequisito
-técnico (mig 386) ya aplicado en DEV desde 2026-08-31, resto del diseño/código sin arrancar todavía; (b)
-Compras/Gastos en USD (arriba) — Fases 1-3 YA CONSTRUIDAS Y EN PROD, resto a iterar. Ver `sources/raw/
-project_pendientes.md` ("ARRANCÁ ACÁ"), `wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
+técnico (mig 386) aplicado en DEV desde 2026-08-31 y **Clientes ya construido (v1.189.0, arriba)**, resto
+(Envíos/Proveedores/Pedidos/RRHH/Ventas) sin arrancar todavía; (b) Compras/Gastos en USD (arriba) — Fases
+1-3 YA CONSTRUIDAS Y EN PROD, resto a iterar. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"),
+`wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
 Ver `wiki/features/asistente-ia.md` → "Plan IA".  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release

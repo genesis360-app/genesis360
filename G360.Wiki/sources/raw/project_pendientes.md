@@ -6,7 +6,81 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-08-31, cont. 34) — 🏗️🔌 Prerequisito técnico de Supervisión (mig 386) +
+> ### 🛑 ARRANCÁ ACÁ (2026-08-31, cont. 35) — 🎯👥 Supervisión: PRIMER módulo real retrofiteado — Clientes
+> (baja de cliente pasa por cola de aprobación, `v1.189.0`) — 2 bugs reales corregidos al verificar
+> end-to-end contra DEV
+>
+> Continuación directa de cont. 34 (prerequisito técnico mig 386, `v1.188.0`, histórico abajo) — primer
+> módulo real construido sobre ese prerequisito, respondiendo al pendiente "B" que había quedado anotado.
+> Relevamiento de Fede 2026-08-20, decisión A5 Nivel 1: "toda eliminación permanente necesita aprobación".
+>
+> #### Qué se construyó
+>
+> La baja de cliente (soft-delete, `activo=false`, ya existía como feature) ya NO se ejecuta directo —
+> siempre crea una fila pendiente en `autorizaciones` (`modulo='clientes'`, `tipo='eliminar'`) que cualquiera
+> con permiso `supervisa` en Clientes (DUEÑO/SUPER_USUARIO/ADMIN siempre, SUPERVISOR por herencia, rol
+> custom con `'supervisa'` explícito) aprueba o rechaza desde un tab nuevo "Autorizaciones" en
+> `ClientesPage.tsx`. **Es la PRIMERA vez que un segundo módulo consume el patrón genérico de Supervisión**
+> — reusa el 100% de la infraestructura que ya existía para Inventario (`useSupervisorAutorizaciones`,
+> `SupervisionPanel`, `avisarSupervisor`), **sin migración nueva** (usa el CHECK ya ampliado por la mig 386).
+>
+> #### 2 bugs REALES encontrados y corregidos al verificar end-to-end contra la DB real de DEV (no solo "el test pasó")
+>
+> 1. `src/hooks/useSupervisorAutorizaciones.ts`: el `.select()` de PostgREST interpolaba `selectExtra` sin
+>    filtrar — cuando un módulo (Clientes) no necesita ningún join extra y pasa `''`, quedaba una coma doble
+>    inválida (`"*, , solicitante:..."`) que PostgREST rechazaba, y el error quedaba **silenciado** por el
+>    fallback `data ?? []` (la UI mostraba "no hay solicitudes pendientes" en vez de un error real). Fix
+>    genérico en el hook compartido (`['*', selectExtra, ...].filter(Boolean).join(', ')`) — beneficia a
+>    cualquier módulo futuro (Envíos/Proveedores/Pedidos/RRHH) que no necesite `selectExtra`;
+>    matemáticamente un no-op para cualquier `selectExtra` no vacío (sin regresión en Inventario). De paso
+>    se expone `isError` del hook — antes ningún consumidor podía distinguir "sin resultados" de "la query
+>    falló".
+> 2. `ClientesPage.tsx`: `confirmarBaja` invalidaba la query `['supervision-badge']` pero no
+>    `['autorizaciones','clientes']` — la lista del tab Autorizaciones seguía sirviendo caché de ANTES de
+>    crear la solicitud hasta el próximo refetch espontáneo (bug de invalidación, no de RLS/query).
+>
+> #### Verificación real
+>
+> Playwright contra DEV real (no mockeado) — crear cliente → dar de baja (confirmado por SQL directo:
+> cliente sigue `activo=true`, aparece la fila `pendiente` en `autorizaciones`) → ir al tab Autorizaciones →
+> aprobar → confirmado por SQL directo: `estado='aprobada'`, cliente pasa a `activo=false`. Agregado como
+> **test permanente** en `tests/e2e/08_clientes.spec.ts` (no un test descartable). Suite de regresión de
+> Inventario (7 specs de autorizaciones) corrida completa — sin regresión (2 fallas fueron flakiness ya
+> documentada del suite, confirmado re-corriendo en aislamiento, ambas pasaron).
+>
+> #### Estado del deploy
+>
+> Commit `27d740e8`, `origin/dev`, `APP_VERSION` `v1.189.0`, **tag + GitHub release ya publicados**
+> (`v1.189.0`, `publishedAt: 2026-08-31T07:14:36Z`). Sin migración nueva. **Sin deploy a PROD** — PROD sigue
+> en migraciones 001-385; DEV en 001-387c, código en `v1.189.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Clientes queda como plantilla real** — repetir el mismo patrón para **Envíos, Proveedores, Pedidos y
+>    RRHH** (2 niveles de sensibilidad por relevamiento: eliminaciones delegables vía cola, un puñado de
+>    acciones más sensibles quedan solo-Dueño sin pasar por cola). Orden a criterio de GO.
+> 2. **Ventas queda aparte, es más compleja**: "anular venta despachada" pasa a cola, pero con una regla
+>    nueva (si ya fue facturada, primero hay que emitir NC antes de poder eliminarla) que todavía no se
+>    diseñó.
+> 3. **A4** (reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'`, mover UI de
+>    `InventarioPage.tsx` a `ProductosPage.tsx`) y **C1** (migrar `autorizaciones_gasto` a la tabla
+>    genérica) siguen sin arrancar — fases dedicadas futuras.
+> 4. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 5. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 6. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 7. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — Clientes como primer módulo + patrón
+> plantilla), `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.189.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 34) — 🏗️🔌 Prerequisito técnico de Supervisión (mig 386) +
 > identidad del Portal de Proveedores (migs 387/387b/387c) APLICADAS EN DEV (v1.188.0) — Chrome/FedCM en
 > Embedded Signup queda investigado a fondo, SIN fix de código posible de nuestro lado
 >

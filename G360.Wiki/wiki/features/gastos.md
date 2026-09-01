@@ -2,8 +2,8 @@
 title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
-sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381]
-updated: 2026-08-27
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381, migration 389, src/components/SolicitarAutorizacionGastoModal.tsx, src/components/BandejaAutorizacionesGasto.tsx]
+updated: 2026-09-01
 ---
 
 # Módulo Gastos
@@ -344,7 +344,7 @@ No sobrescribe selección manual. El usuario siempre puede ajustar.
 
 ---
 
-## Umbrales y Autorizaciones (v1.8.43 · migration 132)
+## Umbrales y Autorizaciones (v1.8.43 · migration 132) — 🎯 tabla migrada a la genérica `autorizaciones` (C1, mig 389, v1.193.0, 2026-09-01)
 
 ### Umbrales por sucursal
 - `sucursales.umbral_gasto_supervisor`: monto máximo de gasto que un SUPERVISOR puede crear/editar/eliminar sin pedir autorización del DUEÑO. `NULL = sin restricción`.
@@ -363,25 +363,59 @@ Configurables en **SucursalesPage** → bloque "Umbrales de autorización de gas
 
 Aplica tanto al **crear** como al **editar** un gasto.
 
-### Tabla `autorizaciones_gasto`
-- `tipo`: `crear | editar | eliminar`
-- `monto`, `descripcion`, `motivo`
-- `payload JSONB`: snapshot del gasto a aplicar cuando se aprueba
-- `solicitante_id`, `solicitante_rol`
-- `estado`: `pendiente | aprobada | rechazada | cancelada`
-- `aprobador_id`, `aprobador_rol`, `resolved_at`, `motivo_rechazo`
-- Helper SQL `puede_aprobar_autorizacion_gasto(solic_rol, aprob_rol)`: CAJERO → SUPERVISOR+ · SUPERVISOR → ADMIN/DUEÑO
+### Tabla — 🎯 migrada a `autorizaciones` genérica (C1 del relevamiento de Supervisión de Fede, mig 389, `v1.193.0`)
+
+> ⚠ **Histórico (hasta el 2026-09-01)**: existía una tabla propia `autorizaciones_gasto` con columnas
+> dedicadas (`monto`, `descripcion`, `payload`, `solicitante_rol`, `aprobador_rol`, `resolved_at`, etc.).
+> **Eliminada** por la mig 389 (`DROP TABLE`, confirmado 0 filas reales en DEV dos veces antes de aplicar,
+> `migration-reviewer` pidió `IF EXISTS` en el DROP + esa confirmación independiente en la 1ª pasada —
+> ambos resueltos, APTA en la 2ª). Gastos ahora usa la tabla genérica `autorizaciones` (`modulo='gastos'`),
+> la misma que ya usan Inventario/Clientes/Envíos/Proveedores/Pedidos/RRHH/Productos — consolida TODAS las
+> colas de aprobación del proyecto en un solo lugar.
+>
+> **Pero Gastos sigue siendo distinto de esos 7 módulos a propósito**: no se migró a
+> `useSupervisorAutorizaciones`/`SupervisionPanel` (el hook/componente genérico que asume el permiso fijo
+> `supervisa`) porque Gastos usa **jerarquía de ROL relativa** (CAJERO→SUPERVISOR/DUEÑO/ADMIN;
+> SUPERVISOR→DUEÑO/ADMIN, función `puedeAprobar()` de abajo) — un modelo distinto que ese hook no soporta.
+> Gastos conserva sus componentes propios (`SolicitarAutorizacionGastoModal.tsx`,
+> `BandejaAutorizacionesGasto.tsx`, con su propio tab "Autorizaciones" ya existente en `GastosPage.tsx`) —
+> **solo cambia la tabla destino**.
+>
+> Mapeo de columnas: `monto`/`descripcion`/`payload`/`sucursal_id`/`gasto_id`/`solicitante_rol` pasan a
+> vivir dentro de `datos_cambio` jsonb (mismo criterio ya usado para Clientes/Envíos/Proveedores/Pedidos/
+> RRHH); `motivo`→`notas` y `motivo_rechazo` se reusan tal cual (ya eran columnas de primer nivel de
+> `autorizaciones`); `aprobador_rol`/`resolved_at` no hacían falta como columnas propias — el rol del
+> aprobador se lee en vivo del JOIN a `users` (`aprobado_por`), y `updated_at` (ya con trigger) cumple el
+> rol de `resolved_at` (una fila solo se actualiza una vez, al resolverse). `tipo`: sigue siendo
+> `crear | editar | eliminar`. `estado`: `pendiente | aprobada | rechazada | cancelada`.
+>
+> **🐛 Hallazgo real de esta sesión (documentado, NO un bug arreglado — decisión de producto existente,
+> no de código)**: `/gastos` **NO está en `CAJERO_ALLOWED`** (`AppLayout.tsx`) — un CAJERO real que navega
+> ahí es redirigido a `/ventas` antes de poder cargar nada. Esto significa que **TODO el código de
+> `esCajero`/umbral-para-CAJERO en `GastosPage.tsx` (filtrado de "mis gastos", chequeo de
+> `umbral_gasto_cajero`) es HOY código muerto en producción** — nunca se ejecuta porque CAJERO nunca llega
+> a esa página. No se cambió (es una decisión de acceso existente, no algo a decidir sin más) — la
+> verificación de esta migración usó SUPERVISOR→DUEÑO en su lugar, que sí es un camino real y ejercita
+> exactamente el mismo código migrado.
 
 ### Flujo en GastosPage
 1. Al guardar un gasto, después de armar el `payload`, se llama a `evaluarUmbralGasto`
 2. Si supera el umbral → se abre `SolicitarAutorizacionGastoModal` con el `payload` completo (NO se inserta el gasto)
-3. El usuario completa motivo y envía la solicitud → fila en `autorizaciones_gasto` con estado `pendiente`
+3. El usuario completa motivo y envía la solicitud → fila nueva en `autorizaciones` (`modulo='gastos'`,
+   `datos_cambio` con el payload) con estado `pendiente` — **antes del 2026-09-01, en `autorizaciones_gasto`**
 4. SUPERVISOR/ADMIN/DUEÑO ven el nuevo tab **"Autorizaciones"** con badge amber de pendientes (refetch 30s)
 5. Al aprobar: se ejecuta INSERT/UPDATE/DELETE en `gastos` según `tipo` + se marca `aprobada`
 6. Al rechazar: se requiere motivo, se marca `rechazada`
 
+**Verificación (mig 389)**: Playwright real contra DEV (spec 136 nuevo) — solicitud sembrada con el TOKEN
+REAL de SUPERVISOR (mismo shape exacto que inserta el modal real, RLS real, no simulado) → confirmado que
+el gasto NO existe todavía → DUEÑO aprueba desde Gastos→Autorizaciones con un click real → gasto creado de
+verdad + autorización `aprobada` con `datos_cambio.gasto_id` apuntando al gasto real. Suite de regresión de
+Gastos (3 specs: efectivo/caja, cheque/rechazo, comprobante obligatorio) sin regresión. Ver
+[[wiki/features/supervision]] → "Retrofit a más módulos" → "Gastos (C1)".
+
 ### Restricciones de rol
-- **CAJERO**: las queries de `gastos` y `historial` filtran por `usuario_id = user.id` — solo ve sus propios gastos
+- **CAJERO**: las queries de `gastos` y `historial` filtran por `usuario_id = user.id` — solo ve sus propios gastos. **⚠ Nota 2026-09-01: en la práctica esto es código muerto** — `/gastos` no está en `CAJERO_ALLOWED`, un CAJERO real nunca llega a cargar esta página (ver hallazgo arriba).
 - **CONTADOR**: botón "Nuevo gasto" oculto · aviso visible 📊 en modal de edición · input de `monto` deshabilitado
 
 ### Componentes nuevos

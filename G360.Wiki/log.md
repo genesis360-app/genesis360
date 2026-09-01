@@ -6,6 +6,60 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-01] update | 🎯✅ Supervisión: C1 (migrar `autorizaciones_gasto` a la genérica) CIERRA TODO el relevamiento de Fede de verdad (v1.193.0) — corrige el título de la entrada de abajo, que decía "CIERRA el relevamiento ENTERO" contando A4 pero todavía faltaba C1
+
+Continuación directa de la entrada de abajo (A4/Productos, v1.192.0) — última pieza pendiente. **🔁
+Reconciliación**: el título de esa entrada decía "CIERRA el relevamiento ENTERO de Fede" — en rigor faltaba
+todavía C1 (Gastos); con esta pieza construida, ahora sí queda completo.
+
+**Qué se construyó**: `autorizaciones_gasto` (tabla separada desde v1.8.43, **0 filas reales en DEV —
+confirmado dos veces con queries directas antes de un `DROP TABLE`**) se elimina. Gastos ahora usa la
+tabla genérica `autorizaciones` (`modulo='gastos'`), PERO a propósito **NO** usa
+`useSupervisorAutorizaciones`/`SupervisionPanel` (el patrón de los otros 7 módulos) — Gastos tiene su
+PROPIO modelo de jerarquía de rol (CAJERO→SUPERVISOR/DUEÑO/ADMIN; SUPERVISOR→DUEÑO/ADMIN, función
+`puedeAprobar()` en `umbralGasto.ts`), completamente distinto del permiso `supervisa` fijo. Se conservan
+los componentes propios de Gastos (`SolicitarAutorizacionGastoModal.tsx`, `BandejaAutorizacionesGasto.tsx`,
+con su tab "Autorizaciones" ya existente) — solo cambia la tabla destino. Los campos específicos (monto,
+descripción, payload, sucursal_id, gasto_id, solicitante_rol) pasan a `datos_cambio` jsonb; `motivo`→
+`notas` y `motivo_rechazo` se reusan tal cual (ya eran columnas de la tabla genérica).
+
+**🐛 Hallazgo real de esta sesión (documentado, NO un bug que se arregló — es una decisión de producto
+existente, descubierta al escribir el test)**: `/gastos` **NO está en `CAJERO_ALLOWED`** (`AppLayout.tsx`)
+— un CAJERO real que navega ahí es redirigido a `/ventas` antes de poder cargar nada. Esto significa que
+**TODO el código de `esCajero`/umbral-para-CAJERO en `GastosPage.tsx`** (filtrado de "mis gastos", chequeo
+de `umbral_gasto_cajero`) **es HOY código muerto en producción** — nunca se ejecuta porque CAJERO nunca
+llega a esa página. No se cambió (es una decisión de acceso, no algo que corresponda decidir solo) — se
+usó SUPERVISOR→DUEÑO en el test en su lugar, que sí es un camino real y ejercita exactamente el mismo
+código migrado.
+
+**Verificación**: Playwright real contra DEV (spec 136 nuevo) — solicitud sembrada con el TOKEN REAL de
+SUPERVISOR (mismo shape exacto que inserta el modal real, pasando por RLS real, no simulado) →
+confirmado que el gasto NO existe todavía → DUEÑO aprueba desde Gastos→Autorizaciones→Gastos con un click
+real en la UI → gasto creado de verdad + autorización queda aprobada con `datos_cambio.gasto_id` apuntando
+al gasto real. La migración pasó por `migration-reviewer` **dos rondas** (la 1ª pidió agregar `IF EXISTS`
+al `DROP` y que se confirmara independientemente el conteo de 0 filas antes de aplicar — ambos resueltos).
+Suite de regresión de Gastos (3 specs: efectivo/caja, cheque/rechazo, comprobante obligatorio) sin
+regresión.
+
+**Estado**: commit `2c4470c1`, `origin/dev`, `APP_VERSION` `v1.193.0`, tag+release ya publicados
+(https://github.com/genesis360-app/genesis360/releases/tag/v1.193.0, `publishedAt: 2026-09-01T07:22:04Z`).
+Migración 389 aplicada y verificada en DEV. **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV
+en 001-389, código en `v1.193.0`.
+
+**✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido: Nivel 1 completo
+(Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos).** Ya no queda nada del
+relevamiento en sí sin construir. Lo que sigue pendiente es aparte, explícitamente diferido desde el
+origen: **Ventas (A1)** — la lógica NC-antes-de-eliminar, fiscal, sin diseñar todavía; y **Nivel 2** (sin
+delegar, solo Dueño — Clientes→límite CC/habilitar CC/perdonar deuda, RRHH→cambio de sueldo/licencias con
+goce), que YA funciona con clave maestra síncrona y no necesita cola.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 39),
+[[wiki/features/supervision]] (sección "Retrofit a más módulos" — TODO cerrado), [[wiki/features/gastos]]
+(sección "Umbrales y Autorizaciones"), `wiki/index.md` (filas + footer), `wiki/business/roadmap.md`
+(v1.193.0).
+
+---
+
 ## [2026-09-01] update | 🎯💲 Supervisión: A4 (kit_precio/repricing_margen → Productos) CIERRA el relevamiento ENTERO de Fede (v1.192.0) — de paso, 2 gaps reales de la sesión anterior corregidos (roles custom sin `productos/envios/proveedores/pedidos`, badge de nav y `/supervision` nunca actualizados a los 5 módulos de Nivel 1)
 
 Continuación directa de la entrada de abajo (RRHH, v1.191.0) — último ítem pendiente del relevamiento

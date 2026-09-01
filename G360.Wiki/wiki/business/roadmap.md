@@ -40,22 +40,33 @@ ACÁ"), `log.md` (2026-08-27, tipo `deploy`).
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.192.0** (`0e2bb29d`, 2026-09-01, continuación directa de v1.191.0 abajo) — 🎯💲
-**Supervisión: A4 (kit_precio/repricing_margen → Productos) CIERRA el relevamiento ENTERO de Fede.** Último
-ítem pendiente: `kit_precio` (Motor de Rotación) y `repricing_margen` (D3, sweep automático) estaban mal
-clasificados en `modulo='inventario'` pese a ser cambios de PRECIO de producto. **Migración 388** (APTA)
-reclasifica las filas existentes (2 pendientes reales + 6 aprobadas) a `modulo='productos'` y actualiza
-`fn_evaluar_repricing_margen`; se sacó la lógica de aprobación de `InventarioPage.tsx` y se agregó tab
-"Autorizaciones" nueva en `ProductosPage.tsx`. **De paso, 2 gaps reales de la sesión anterior corregidos**:
-`UsuariosPage.tsx` (roles custom) nunca tenía `productos/envios/proveedores/pedidos` en su lista de
-módulos — un rol custom jamás podía recibir `supervisa` en esos módulos; y el badge de nav global +
-`/supervision` (`AppLayout.tsx`/`SupervisionPage.tsx`) seguían hardcodeados a `['inventario']` — nunca se
-habían actualizado al construir los 5 módulos de Nivel 1. Verificado end-to-end con Playwright real contra
-DEV + suite de regresión de Inventario sin regresión. **Con esto se completa el relevamiento ENTERO de
-retrofit de Supervisión de Fede (A1-A5, Nivel 1 + A4)** — quedan solo diferidos: C1 (migrar
-`autorizaciones_gasto`), NC-antes-de-eliminar de Ventas (A1), y Nivel 2 (sin delegar, solo Dueño). **NO
+**Versión en DEV:** **v1.193.0** (`2c4470c1`, 2026-09-01, continuación directa de v1.192.0 abajo) — 🎯✅
+**Supervisión: C1 (migrar `autorizaciones_gasto` a la genérica) CIERRA TODO el relevamiento de Fede de
+verdad** (corrige la entrada de abajo, que decía "CIERRA el relevamiento ENTERO" contando A4 pero todavía
+faltaba C1). `autorizaciones_gasto` (0 filas reales en DEV, confirmado dos veces antes del `DROP TABLE`)
+se elimina — Gastos ahora usa la tabla genérica `autorizaciones` (`modulo='gastos'`), pero a propósito
+**NO** usa `useSupervisorAutorizaciones`/`SupervisionPanel` (Gastos tiene su propio modelo de **jerarquía
+de rol** — CAJERO→SUPERVISOR/DUEÑO/ADMIN, `puedeAprobar()` — distinto del permiso `supervisa` fijo);
+conserva sus componentes propios (`SolicitarAutorizacionGastoModal.tsx`, `BandejaAutorizacionesGasto.tsx`),
+solo cambia la tabla destino. **🐛 Hallazgo real (no un bug arreglado)**: `/gastos` no está en
+`CAJERO_ALLOWED` (`AppLayout.tsx`) — un CAJERO real nunca llega a esa página, así que todo el código
+`esCajero`/umbral-CAJERO de `GastosPage.tsx` es código muerto hoy; se verificó con SUPERVISOR→DUEÑO en su
+lugar. Verificado con Playwright real contra DEV (spec 136) + suite de regresión de Gastos (3 specs) sin
+regresión; `migration-reviewer` 2 rondas (1ª pidió `IF EXISTS` + confirmación de 0 filas). **Con esto,
+TODO el relevamiento de Supervisión de Fede queda construido: Nivel 1 completo
+(Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos).** Queda solo diferido desde el
+origen: Ventas (A1, NC-antes-de-eliminar) y Nivel 2 (sin delegar, ya funciona con clave maestra). **NO
 deployado a PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos",
-[[wiki/features/productos]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 38).  
+[[wiki/features/gastos]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 39).  
+**Antes (2026-09-01, v1.192.0, commit `0e2bb29d`): A4 (kit_precio/repricing_margen → Productos).**
+`kit_precio` (Motor de Rotación) y `repricing_margen` (D3) estaban mal clasificados en
+`modulo='inventario'` pese a ser cambios de PRECIO de producto. Migración 388 (APTA) reclasificó las filas
+existentes (2 pendientes reales + 6 aprobadas) a `modulo='productos'`; se sacó la lógica de aprobación de
+`InventarioPage.tsx` y se agregó tab "Autorizaciones" nueva en `ProductosPage.tsx`. De paso, 2 gaps reales
+de la sesión anterior corregidos: `UsuariosPage.tsx` (roles custom) sin `productos/envios/proveedores/
+pedidos`; badge de nav global + `/supervision` (`AppLayout.tsx`/`SupervisionPage.tsx`) hardcodeados a
+`['inventario']`, nunca actualizados al construir los 5 módulos de Nivel 1. Ver `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ", cont. 38, histórico).  
 **Antes (2026-08-31, v1.191.0, commit `f337ca62`): Supervisión — Nivel 1 COMPLETO, RRHH cierra los 5
 módulos.** Último módulo de Nivel 1 del relevamiento de Fede: "RRHH→cualquier eliminación". `RrhhPage.tsx`
 tiene 9 acciones de "eliminar" distintas — decisión de scope: se acotó a la baja de empleado (soft-delete,

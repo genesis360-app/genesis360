@@ -2,7 +2,7 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
-sources: [migration 347, migration 348, migration 386, migration 388, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/pages/EnviosPage.tsx, src/pages/ProveedoresPage.tsx, src/pages/PedidosPage.tsx, src/pages/RrhhPage.tsx, src/pages/ProductosPage.tsx, src/pages/InventarioPage.tsx, src/pages/UsuariosPage.tsx, src/components/layout/AppLayout.tsx, src/components/AvisarSupervisorButton.tsx]
+sources: [migration 347, migration 348, migration 386, migration 388, migration 389, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/pages/EnviosPage.tsx, src/pages/ProveedoresPage.tsx, src/pages/PedidosPage.tsx, src/pages/RrhhPage.tsx, src/pages/ProductosPage.tsx, src/pages/InventarioPage.tsx, src/pages/UsuariosPage.tsx, src/pages/GastosPage.tsx, src/components/layout/AppLayout.tsx, src/components/AvisarSupervisorButton.tsx, src/components/SolicitarAutorizacionGastoModal.tsx, src/components/BandejaAutorizacionesGasto.tsx]
 updated: 2026-09-01
 ---
 
@@ -197,7 +197,7 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
-## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ ENTERO CERRADO (A1-A5, Nivel 1 + A4, v1.189.0-v1.192.0) salvo diferidos (C1, NC-antes-de-eliminar de Ventas, Nivel 2)
+## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ TODO CONSTRUIDO (Nivel 1 completo + A4 + C1, v1.189.0-v1.193.0) — solo quedan diferidos explícitos (NC-antes-de-eliminar de Ventas/A1, Nivel 2 sin delegar)
 
 > Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
 > 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
@@ -234,9 +234,8 @@ paginación de arriba).
 > `UsuariosPage.tsx` (la UI de permisos por rol, el bloqueante literal descripto arriba) **siguió sin
 > `productos`/`envios`/`proveedores`/`pedidos` hasta el 2026-09-01 (v1.192.0)** — un gap real que sobrevivió
 > sin detectarse durante toda la construcción de Envíos/Proveedores/Pedidos/RRHH (ver sección A4 abajo,
-> "2 gaps reales"). **Ya NO resuelve más**: solo **C1** (migrar `autorizaciones_gasto` a esta tabla
-> genérica — implica repuntar el flujo de aprobación de Gastos que hoy usa una tabla separada) — confirmado
-> que es más grande de lo que parecía al relevar, queda como fase dedicada futura.
+> "2 gaps reales"). **✅ C1 (migrar `autorizaciones_gasto` a esta tabla genérica) también CONSTRUIDO —
+> ver sección "Gastos (C1)" más abajo (2026-09-01, `v1.193.0`), cierra TODO el relevamiento.**
 >
 > ### ✅ Clientes — PRIMER módulo real retrofiteado (2026-08-31, commit `27d740e8`, `v1.189.0`)
 >
@@ -392,31 +391,76 @@ paginación de arriba).
 >
 > **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.192.0`.
 >
-> **✅ Con esto se completa el relevamiento ENTERO de retrofit de Supervisión de Fede (A1-A5, Nivel 1 +
-> A4).** Quedan solo las piezas explícitamente diferidas, ninguna es "delegable genérico simple":
-> - **C1** — migrar `autorizaciones_gasto` (tabla separada de Gastos) a la tabla genérica.
+> ### ✅ Gastos (C1) — ÚLTIMA pieza, cierra TODO el relevamiento de Supervisión (2026-09-01, commit `2c4470c1`, `v1.193.0`)
+>
+> `autorizaciones_gasto` (tabla separada, propia de Gastos desde v1.8.43, **0 filas reales en DEV —
+> confirmado dos veces con queries directas antes del `DROP TABLE`**) se elimina. Gastos ahora usa la
+> tabla genérica `autorizaciones` (`modulo='gastos'`, ya admitido por el CHECK — se amplía una vez más
+> para incluir `'gastos'`), consolidando TODAS las colas de aprobación del proyecto en un solo lugar.
+>
+> **Pero Gastos NO se migró al patrón genérico completo** (`useSupervisorAutorizaciones`/
+> `SupervisionPanel`, el que sí usan los otros 7 módulos) — a propósito: Gastos tiene su PROPIO modelo de
+> **jerarquía de ROL** (CAJERO→SUPERVISOR/DUEÑO/ADMIN; SUPERVISOR→DUEÑO/ADMIN, función `puedeAprobar()` en
+> `umbralGasto.ts`), completamente distinto del permiso `supervisa` fijo que asume ese hook. Se conservan
+> los componentes propios de Gastos (`SolicitarAutorizacionGastoModal.tsx`,
+> `BandejaAutorizacionesGasto.tsx`, con su tab "Autorizaciones" ya existente) — **solo cambia la tabla
+> destino**. Los campos específicos (`monto`, `descripcion`, `payload`, `sucursal_id`, `gasto_id`,
+> `solicitante_rol`) pasan a `datos_cambio` jsonb (mismo criterio que Clientes/Envíos/Proveedores/Pedidos/
+> RRHH); `motivo`→`notas` y `motivo_rechazo` se reusan tal cual (ya eran columnas de la tabla genérica).
+> Detalle completo de columnas y flujo: [[wiki/features/gastos]] → "Umbrales y Autorizaciones".
+>
+> **🐛 Hallazgo real de esta sesión (documentado, NO un bug arreglado — es una decisión de producto
+> existente, no de código, descubierta al escribir el test)**: `/gastos` **NO está en `CAJERO_ALLOWED`**
+> (`AppLayout.tsx`) — un CAJERO real que navega ahí es redirigido a `/ventas` antes de poder cargar nada.
+> Esto significa que **TODO el código de `esCajero`/umbral-para-CAJERO en `GastosPage.tsx`** (filtrado de
+> "mis gastos", chequeo de `umbral_gasto_cajero`) **es HOY código muerto en producción** — nunca se
+> ejecuta porque CAJERO nunca llega a esa página. No se cambió (es una decisión de acceso existente, no
+> algo a decidir sin más) — la verificación usó SUPERVISOR→DUEÑO en su lugar, que sí es un camino real y
+> ejercita exactamente el mismo código migrado.
+>
+> **Verificación**: Playwright real contra DEV (spec 136 nuevo) — solicitud sembrada con el TOKEN REAL de
+> SUPERVISOR (mismo shape exacto que inserta el modal real, pasando por RLS real, no simulado) →
+> confirmado que el gasto NO existe todavía → DUEÑO aprueba desde Gastos→Autorizaciones con un click real
+> en la UI → gasto creado de verdad + autorización queda aprobada con `datos_cambio.gasto_id` apuntando al
+> gasto real. La migración pasó por `migration-reviewer` **dos rondas** (la 1ª pidió `IF EXISTS` en el
+> `DROP` y confirmación independiente del conteo de 0 filas antes de aplicar — ambos resueltos, APTA en la
+> 2ª). Suite de regresión de Gastos (3 specs: efectivo/caja, cheque/rechazo, comprobante obligatorio) sin
+> regresión.
+>
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.193.0`.
+>
+> **✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido: Nivel 1 completo
+> (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos).** Ya no queda nada del
+> relevamiento de Supervisión en sí sin construir. Lo que sigue pendiente es aparte, explícitamente
+> diferido desde el origen (no es "trabajo que falta del retrofit", son piezas que el propio relevamiento
+> definió con otro mecanismo o sin diseñar):
 > - **Ventas (A1)** — la lógica NC-antes-de-eliminar (si la venta ya fue facturada, primero emitir NC antes
->   de poder eliminarla) sin diseñar todavía.
+>   de poder eliminarla) sin diseñar todavía — es fiscal, necesita cuidado extra (REGLA #0).
 > - **Nivel 2** (sin delegar, solo Dueño, fuera del modelo genérico — mismo criterio que
 >   `autorizaciones_cc`): Clientes→modificar límite de CC/habilitar CC/perdonar deuda; RRHH→cambio de
->   sueldo/aprobación de licencias con goce de sueldo.
+>   sueldo/aprobación de licencias con goce de sueldo. **Estos YA funcionan con clave maestra síncrona —
+>   no necesitan cola, no es trabajo pendiente de construir, es la decisión de diseño final.**
+> - **Caja** — decisión cerrada, sigue con clave maestra síncrona para siempre, nunca pasa a cola.
 >
-> **Orden de las fases restantes: a criterio de GO, sin definir todavía.**
-> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 38),
-> [[project_supervision_tab_extension_pendiente]] (memoria), [[wiki/features/productos]].
+> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 39),
+> [[project_supervision_tab_extension_pendiente]] (memoria), [[wiki/features/gastos]].
 
 ## Pendiente real
 
-**✅ 2026-09-01: relevamiento ENTERO de Supervisión CERRADO (A1-A5, Nivel 1 + A4)** — Clientes (v1.189.0),
-Envíos/Proveedores/Pedidos (v1.190.0), RRHH (v1.191.0) y Productos/A4 (v1.192.0) ya usan el patrón genérico
-de verdad (ver "Retrofit a más módulos" arriba), **los 5 módulos de Nivel 1 + la reclasificación de A4**,
-además de Inventario. De paso se corrigieron 2 gaps reales que habían sobrevivido desde Envíos/Proveedores/
-Pedidos: `UsuariosPage.tsx` sin esos 4 módulos en la lista de roles custom, y el badge de nav +
-`/supervision` sin actualizar a los 5 módulos de Nivel 1. La ambigüedad de naming `'recursos'` vs `'rrhh'`
-quedó **resuelta** (no era real — `'recursos'` es una tabla de flota/vehículos sin relación). Quedan como
-**piezas diferidas, sin arrancar**: **Ventas** (regla adicional NC-antes-de-eliminar, A1), **Gastos**
-(migrar `autorizaciones_gasto` a la tabla genérica, C1) y **Nivel 2** (sin delegar, solo Dueño) — ninguno
-es un simple `INSERT` en cola, cada uno necesita diseño propio. Repositores
+**✅✅ 2026-09-01: TODO el relevamiento de Supervisión de Fede queda construido** — Clientes (v1.189.0),
+Envíos/Proveedores/Pedidos (v1.190.0), RRHH (v1.191.0), Productos/A4 (v1.192.0) y Gastos/C1 (v1.193.0) ya
+usan la tabla genérica `autorizaciones` (ver "Retrofit a más módulos" arriba) — **Nivel 1 completo (5
+módulos) + A4 + C1**, además de Inventario. Gastos es un caso especial a propósito: usa la tabla genérica
+pero NO el hook/componente genérico (`useSupervisorAutorizaciones`/`SupervisionPanel`), porque su modelo es
+jerarquía de rol relativa, no el permiso `supervisa` fijo — conserva sus componentes propios. De paso se
+corrigieron 2 gaps reales que habían sobrevivido desde Envíos/Proveedores/Pedidos: `UsuariosPage.tsx` sin
+esos 4 módulos en la lista de roles custom, y el badge de nav + `/supervision` sin actualizar a los 5
+módulos de Nivel 1. La ambigüedad de naming `'recursos'` vs `'rrhh'` quedó **resuelta** (no era real —
+`'recursos'` es una tabla de flota/vehículos sin relación). También se documentó un hallazgo real (no un
+bug corregido): `/gastos` no está en `CAJERO_ALLOWED`, así que la rama CAJERO de la jerarquía de Gastos es
+código muerto hoy. **Ya no queda nada del relevamiento en sí sin construir** — solo diferido desde el
+origen: **Ventas** (regla adicional NC-antes-de-eliminar, A1, fiscal) y **Nivel 2** (sin delegar, solo
+Dueño — ya funciona con clave maestra, no necesita cola). Repositores
 reusó el mismo diseño de reparto/reasignación sin integrarse a la tabla `autorizaciones` en sí (ver abajo) —
 Pedidos/WMS sigue con su propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`, construida en
 v1.161.0/v1.162.0), un concepto distinto (tareas operativas, no solicitudes de aprobación) que no se

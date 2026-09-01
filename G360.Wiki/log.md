@@ -6,6 +6,58 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-01] deploy | 🚀 v1.195.0 A PROD (PR #335) — Embedded Signup, ESLint, Supervisión completa (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2
+
+**PR #335** ("v1.195.0 — Embedded Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores
+Fase 2") mergeado `dev`→`main` (merge commit `2a8ebbf4`) el 2026-09-01. Este deploy promovió a PROD
+(`jjffnbrdjchquexdfgwq`) TODO lo acumulado en `dev` desde el último deploy real (`v1.184.0`, PR #334,
+2026-08-27, migración tope 385).
+
+**Migraciones aplicadas y verificadas en PROD** (constraint, tablas, funciones y columnas confirmadas
+post-aplicación, una por una): `386_autorizaciones_modulos_extendidos`, `387_portal_proveedores_identidad`
+(+ correctivos `387b`/`387c` de `search_path`/grants), `388_reclasificar_kit_precio_repricing_a_productos`,
+`389_migrar_autorizaciones_gasto_a_generica` (`DROP TABLE` de la legacy `autorizaciones_gasto`, verificado
+0 filas reales antes del drop), `390_portal_proveedores_oc_acceso`. `list_migrations` de PROD confirma
+última migración = 390.
+
+**Edge Functions deployadas a PROD**: `invitar-proveedor` (nueva) y `send-email` (con el template
+`invitacion_proveedor` agregado).
+
+**Qué llega a producción con este deploy**:
+1. **Supervisión — relevamiento de Fede CERRADO 100%, sin ninguna excepción**: Nivel 1 completo
+   (Clientes+Envíos+Proveedores+Pedidos+RRHH, v1.189.0-v1.191.0) + A4 (Productos, v1.192.0) + C1 (Gastos,
+   v1.193.0) + **A1 (Ventas, v1.194.0)** — anular una venta ya despachada/facturada ahora pasa por la cola
+   de Supervisión en vez de anularse directo (protección fiscal: nunca se pierde la trazabilidad
+   NC-antes-de-eliminar; con CAE, aprobar abre "Devolver" precargada a devolución total y el supervisor
+   elige el reembolso, la NC automática A10 sale sola al confirmar).
+2. **Portal de Proveedores — Fase 2 completa** (mig 390): invitación real por email (link mágico vía
+   Supabase Auth + Resend), portal público en `/portal-proveedores`, el proveedor propone precio por ítem
+   de una Orden de Compra, el staff (nunca automático) revisa y aplica el precio a mano. 5 funciones RPC
+   `SECURITY DEFINER` angostas, sin RLS ancha sobre `tenants`/`ordenes_compra`/`productos`.
+3. Embedded Signup de Meta para WhatsApp (v1.185.0) — código ya en PROD, sigue **bloqueado por
+   Verificación del Negocio ante Meta** (no por código, pendiente de que Fede aporte documentación).
+4. Fix de ESLint (v1.187.0) — `.eslintrc.cjs` creado, `npm run lint` funciona de verdad en todo el repo.
+5. Reclasificación `kit_precio`/`repricing_margen` a Productos (A4) y migración de `autorizaciones_gasto` a
+   la tabla genérica (C1).
+
+**Verificación previa al deploy**: Advisors de seguridad de PROD revisados post-migración — 0 hallazgos
+ERROR/CRITICAL nuevos relevantes en las tablas tocadas. Vercel: deployment `dpl_3dL71Rg1KkKtnAn3qo6nPqgnjUUB`
+en estado READY, alias `app.genesis360.pro`/`genesis360.pro` sirviendo el commit `2a8ebbf4`. Releases de
+GitHub v1.185.0 a v1.195.0 retargeteados a `main` (`targetCommitish`), v1.195.0 marcado `latest`.
+
+**🛑 Pendiente real, manual — GO/Fede**: agregar `https://genesis360.pro/portal-proveedores` a
+**Authentication → URL Configuration → Redirect URLs** en el proyecto PROD (`jjffnbrdjchquexdfgwq`) del
+Dashboard de Supabase, y el equivalente en DEV (`gcmhzdedrkmmzfzfveig`) si no está ya — sin este paso, un
+link mágico real recibido por email por un proveedor invitado puede fallar o redirigir mal (la sesión que
+construyó el Portal solo verificó el flujo con login por contraseña, nunca un click real de link mágico de
+punta a punta).
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `wiki/business/roadmap.md`
+(v1.195.0), [[wiki/features/supervision]], [[wiki/features/portal-proveedores]], [[wiki/features/ventas-pos]]
+§ VF6.
+
+---
+
 ## [2026-09-01] update | 🗂️✅ Portal de Proveedores — Fase 2: invitación real + acceso a OC + UI del portal (mig 390, v1.195.0)
 
 GO: "creo q quedaba otro pendiente, lo de proveedores" — retomó la Fase 2 del Portal de Proveedores (Fase 1,

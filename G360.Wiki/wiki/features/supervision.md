@@ -197,7 +197,7 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
-## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ TODO CONSTRUIDO, INCLUIDO A1 (Nivel 1 completo + A4 + C1 + A1, v1.189.0-v1.194.0) — solo queda diferido Nivel 2 (sin delegar, a propósito)
+## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ TODO CONSTRUIDO, INCLUIDO A1, 🚀 EN PROD desde v1.195.0 (2026-09-01, PR #335) (Nivel 1 completo + A4 + C1 + A1, v1.189.0-v1.194.0) — solo queda diferido Nivel 2 (sin delegar, a propósito)
 
 > Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
 > 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
@@ -282,7 +282,7 @@ paginación de arriba).
 > SQL directo: `estado='aprobada'`, `activo=false`. Test permanente en `tests/e2e/08_clientes.spec.ts`.
 > Suite de regresión de Inventario (7 specs de autorizaciones) sin regresión.
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código.
+> **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, `v1.195.0`).
 >
 > ### ✅ Envíos + Proveedores + Pedidos — resto de Nivel 1 completado (2026-08-31, commit `452f3c93`, `v1.190.0`)
 >
@@ -314,7 +314,7 @@ paginación de arriba).
 > invalidación de caché (los 2 bugs reales de arriba) ya quedaron probados y corregidos con Clientes — acá
 > es un mirror exacto del mismo código ya validado, no lógica nueva.
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.190.0`.
+> **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, `v1.195.0`).
 >
 > ### ✅ RRHH — 5to y ÚLTIMO módulo de Nivel 1, CIERRA el Nivel 1 completo (2026-08-31, commit `f337ca62`, `v1.191.0`)
 >
@@ -348,7 +348,7 @@ paginación de arriba).
 > `autorizaciones` probado con impersonación real de rol contra DEV (confirma el CHECK ampliado en la mig
 > 386 + RLS genérica); sin test e2e nuevo de Playwright (mirror del patrón ya probado con Clientes).
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.191.0`.
+> **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, `v1.195.0`).
 >
 > ### ✅ Productos (A4) — CIERRA el relevamiento ENTERO de Supervisión (2026-09-01, commit `0e2bb29d`, `v1.192.0`)
 >
@@ -390,7 +390,7 @@ paginación de arriba).
 > Suite de regresión de autorizaciones de Inventario (5 specs) sin regresión. `schema_full.sql` parcheado a
 > mano (solo cambió 1 función, no ameritó regeneración completa).
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.192.0`.
+> **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, `v1.195.0`, mig 388).
 >
 > ### ✅ Gastos (C1) — ÚLTIMA pieza, cierra TODO el relevamiento de Supervisión (2026-09-01, commit `2c4470c1`, `v1.193.0`)
 >
@@ -428,7 +428,7 @@ paginación de arriba).
 > 2ª). Suite de regresión de Gastos (3 specs: efectivo/caja, cheque/rechazo, comprobante obligatorio) sin
 > regresión.
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.193.0`.
+> **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, `v1.195.0`, mig 389).
 >
 > Con esto quedaba construido todo salvo Ventas (A1) — ver sección siguiente, que lo cierra.
 >
@@ -470,7 +470,7 @@ paginación de arriba).
 > mostraron fallas cruzadas por la conocida no-determinismo de la suite compartiendo el tenant DEV (ver
 > [[reference_e2e_suite_no_deterministica]]), pero cada spec en AISLAMIENTO pasó 100% limpio.
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en `v1.194.0`.
+> **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, `v1.195.0`).
 >
 > **✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido de verdad: Nivel 1
 > completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + A1 (Ventas).** Ya no

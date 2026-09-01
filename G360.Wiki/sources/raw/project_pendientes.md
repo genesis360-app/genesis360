@@ -6,8 +6,72 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 41) — 🗂️✅ Portal de Proveedores — Fase 2: invitación real +
-> acceso a OC + UI del portal (mig 390, `v1.195.0`)
+> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 42) — 🚀✅ DEPLOY REAL A PROD: v1.195.0 (PR #335) — Embedded
+> Signup, ESLint, Supervisión completa (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2
+>
+> Se deployó a PROD **TODO** lo acumulado en `dev` desde el último deploy real (`v1.184.0`, PR #334,
+> 2026-08-27, migración tope 385) — incluye las dos piezas grandes cerradas en la sesión anterior
+> (Ventas A1 y Portal de Proveedores Fase 2, ver el bloque cont. 41 más abajo, ahora histórico) más todo
+> lo que venía de antes sin deployar (Nivel 1 de Supervisión, A4, C1, ESLint, Embedded Signup).
+>
+> #### Detalle del deploy
+>
+> - **PR**: https://github.com/genesis360-app/genesis360/pull/335 — "v1.195.0 — Embedded Signup, ESLint,
+>   Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" — mergeado `dev`→`main` (merge commit
+>   `2a8ebbf4`) el 2026-09-01.
+> - **Migraciones aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), verificadas una por una post-aplicación
+>   (constraint, tablas, funciones, columnas): `386_autorizaciones_modulos_extendidos`,
+>   `387_portal_proveedores_identidad` (+ `387b`/`387c`, fixes de `search_path`/grants),
+>   `388_reclasificar_kit_precio_repricing_a_productos`, `389_migrar_autorizaciones_gasto_a_generica`
+>   (`DROP TABLE` de la legacy `autorizaciones_gasto`, verificado 0 filas reales antes del drop),
+>   `390_portal_proveedores_oc_acceso`. `list_migrations` de PROD confirma última migración = 390.
+> - **Edge Functions deployadas a PROD**: `invitar-proveedor` (nueva) y `send-email` (con el template
+>   `invitacion_proveedor` agregado).
+> - **Advisors de seguridad de PROD** revisados post-migración: 0 hallazgos ERROR/CRITICAL nuevos
+>   relevantes en las tablas tocadas.
+> - **Vercel**: deployment `dpl_3dL71Rg1KkKtnAn3qo6nPqgnjUUB` en estado READY, alias
+>   `app.genesis360.pro`/`genesis360.pro` sirviendo el commit `2a8ebbf4`.
+> - **Releases de GitHub** v1.185.0 a v1.195.0 retargeteados a `main` (`targetCommitish`), v1.195.0
+>   marcado `latest`.
+> - **Versión anterior en PROD**: v1.184.0 (PR #334, migración tope 385). **Versión actual en PROD**:
+>   v1.195.0 (migración tope 390).
+>
+> #### Qué llega a PROD con este deploy
+>
+> 1. **Supervisión — relevamiento de Fede CERRADO 100%, sin ninguna excepción**: Nivel 1 completo
+>    (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + **A1 (Ventas)** — anular
+>    una venta ya despachada/facturada pasa por la cola de Supervisión en vez de anularse directo.
+> 2. **Portal de Proveedores — Fase 2 completa**: invitación real por email (link mágico), portal público
+>    en `/portal-proveedores`, el proveedor propone precio por ítem de una OC, el staff aplica a mano.
+> 3. Embedded Signup de Meta (código en PROD, sigue bloqueado por Verificación del Negocio ante Meta).
+> 4. Fix de ESLint (`npm run lint` funciona de verdad en todo el repo).
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Manual de GO/Fede, en el Dashboard de Supabase (no configurable por SQL/migración)**: agregar
+>    `https://genesis360.pro/portal-proveedores` a **Authentication → URL Configuration → Redirect URLs**
+>    en el proyecto **PROD** (`jjffnbrdjchquexdfgwq`), y el equivalente en **DEV**
+>    (`gcmhzdedrkmmzfzfveig`) si no está ya — sin este paso, un link mágico real recibido por email por un
+>    proveedor invitado puede fallar o redirigir mal (la sesión que construyó el Portal solo verificó el
+>    flujo con login por contraseña, nunca un click real de link mágico de punta a punta).
+> 2. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a
+>    Meta y reintente cuando cierre el open beta.
+> 3. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 4. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+> 5. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no
+>    necesita cola; es la decisión de diseño final, sin pendiente real.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `deploy`, entrada al principio), `wiki/business/roadmap.md`
+> (v1.195.0), [[wiki/features/supervision]], [[wiki/features/portal-proveedores]],
+> [[wiki/features/ventas-pos]] § VF6.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 41) — 🗂️✅ Portal de Proveedores — Fase 2: invitación real +
+> acceso a OC + UI del portal (mig 390, `v1.195.0`) — 🚀 DEPLOYADO A PROD el 2026-09-01 (ver bloque
+> cont. 42 arriba)
 >
 > GO: "creo q quedaba otro pendiente, lo de proveedores" — retomó la Fase 2 (la Fase 1, identidad
 > cross-tenant, ya estaba construida desde el 2026-08-31, mig 387).
@@ -81,7 +145,8 @@ type: project
 >
 > #### Estado del deploy
 >
-> `APP_VERSION` `v1.195.0`. **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-390.
+> `APP_VERSION` `v1.195.0`. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba) —
+> migración 390 aplicada y verificada también en PROD.
 >
 > #### 🛑 Pendiente real para la próxima sesión
 >
@@ -90,8 +155,8 @@ type: project
 >    Configuration → Redirect URLs** de cada proyecto — sin esto, un link mágico real que reciba un
 >    proveedor por email puede ser rechazado o redirigir mal (esta sesión probó el login con contraseña,
 >    nunca clickeó un link mágico real de punta a punta).
-> 2. **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 (Supervisión completa + Portal de
->    Proveedores Fase 2) — sigue sin salir de DEV, candidato natural para la próxima sesión.
+> 2. ✅ **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 — HECHO el 2026-09-01 (PR #335, ver
+>    bloque cont. 42 arriba).
 > 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
 >    GO reporte el bug a Meta y reintente cuando cierre el open beta.
 > 4. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
@@ -161,8 +226,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `5a941bc0`, `origin/dev`, `APP_VERSION` `v1.194.0`, **tag + GitHub release ya publicados**
-> (https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **Sin deploy a PROD** — PROD sigue
-> en migraciones 001-385; DEV sin migración nueva (no hizo falta ninguna).
+> (https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### ✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido, sin excepción alguna
 >
@@ -237,8 +302,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `2c4470c1`, `origin/dev`, `APP_VERSION` `v1.193.0`, **tag + GitHub release ya publicados**
-> (`v1.193.0`, `publishedAt: 2026-09-01T07:22:04Z`). Migración 389 aplicada y verificada en DEV. **Sin
-> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-389, código en `v1.193.0`.
+> (`v1.193.0`, `publishedAt: 2026-09-01T07:22:04Z`). Migración 389 aplicada y verificada en DEV, y luego
+> también en PROD. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### ✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido
 >
@@ -320,8 +385,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `0e2bb29d`, `origin/dev`, `APP_VERSION` `v1.192.0`, **tag + GitHub release ya publicados**
-> (`v1.192.0`, `publishedAt: 2026-09-01T04:45:51Z`). Migración 388 aplicada y verificada en DEV. **Sin
-> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-388, código en `v1.192.0`.
+> (`v1.192.0`, `publishedAt: 2026-09-01T04:45:51Z`). Migración 388 aplicada y verificada en DEV, y luego
+> también en PROD. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### ✅ Con esto se completa el relevamiento ENTERO de retrofit de Supervisión de Fede (A1-A5, Nivel 1 + A4)
 >
@@ -393,8 +458,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `f337ca62`, `origin/dev`, `APP_VERSION` `v1.191.0`, **tag + GitHub release ya publicados**
-> (`v1.191.0`, `publishedAt: 2026-08-31T22:12:43Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
-> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.191.0`.
+> (`v1.191.0`, `publishedAt: 2026-08-31T22:12:43Z`). Sin migración nueva. **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### 🛑 Pendiente real para la próxima sesión — Nivel 2 y módulos complejos de Supervisión
 >
@@ -454,8 +519,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `452f3c93`, `origin/dev`, `APP_VERSION` `v1.190.0`, **tag + GitHub release ya publicados**
-> (`v1.190.0`, `publishedAt: 2026-08-31T17:39:10Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
-> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.190.0`.
+> (`v1.190.0`, `publishedAt: 2026-08-31T17:39:10Z`). Sin migración nueva. **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### 🛑 Pendiente real para la próxima sesión — lo que queda de Supervisión, confirmado que sigue vigente
 >
@@ -529,8 +594,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `27d740e8`, `origin/dev`, `APP_VERSION` `v1.189.0`, **tag + GitHub release ya publicados**
-> (`v1.189.0`, `publishedAt: 2026-08-31T07:14:36Z`). Sin migración nueva. **Sin deploy a PROD** — PROD sigue
-> en migraciones 001-385; DEV en 001-387c, código en `v1.189.0`.
+> (`v1.189.0`, `publishedAt: 2026-08-31T07:14:36Z`). Sin migración nueva. **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### 🛑 Pendiente real para la próxima sesión
 >
@@ -649,9 +714,9 @@ type: project
 >
 > Commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, **tag + GitHub release ya publicados**
 > (`v1.188.0`, `publishedAt: 2026-08-31T06:36:47Z`) — entre medio, el commit `529a0ea8` (punto 1, Chrome/
-> FedCM) quedó sin bump de versión propio, incluido en el mismo release. Build verde. **Sin deploy a PROD**
-> — `main` sigue en el merge de `v1.184.0` (`867d651a`), PROD sigue en migraciones **001-385**. DEV:
-> migraciones **001-387c**, código en `v1.188.0`.
+> FedCM) quedó sin bump de versión propio, incluido en el mismo release. Build verde. Las migraciones
+> **386-387c** de este bloque **🚀 quedaron DEPLOYADAS A PROD el 2026-09-01** (PR #335, ver bloque cont. 42
+> arriba) — el punto 1 (Chrome/FedCM) sigue sin fix de código posible, ver pendientes.
 >
 > #### 🛑 Pendiente real para la próxima sesión
 >
@@ -701,9 +766,9 @@ type: project
 > `no-self-assign`. `--max-warnings` del script `lint` bajado de 0 a **161** (baseline real preexistente,
 > deuda pendiente de limpieza gradual, no bloqueante). Build + `test:unit` verdes, sin regresión.
 >
-> Commit `33c03b46`, `origin/dev`, `APP_VERSION` `v1.187.0`, tag+release publicados. **Sin deploy a PROD,
-> sin migraciones.** Detalle completo: `log.md` (2026-08-31, tipo `lint`), [[wiki/development/
-> convenciones-codigo]], [[wiki/development/workflow-git]].
+> Commit `33c03b46`, `origin/dev`, `APP_VERSION` `v1.187.0`, tag+release publicados. Sin migraciones. **🚀
+> DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba). Detalle completo: `log.md`
+> (2026-08-31, tipo `lint`), [[wiki/development/convenciones-codigo]], [[wiki/development/workflow-git]].
 >
 > ---
 >

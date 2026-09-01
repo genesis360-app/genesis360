@@ -65,8 +65,9 @@ De paso, migración **386** (prerequisito técnico de **Supervisión**, no de Wh
 en DEV en la misma sesión — ver [[wiki/features/supervision]] → "Retrofit a más módulos".
 
 **Estado**: commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados
-(https://github.com/genesis360-app/genesis360/releases/tag/v1.188.0). Build verde. **Sin deploy a PROD** —
-PROD sigue en migraciones 001-385; DEV en 001-387c.
+(https://github.com/genesis360-app/genesis360/releases/tag/v1.188.0). Build verde. La migración 386 (y
+387/387b/387c) **🚀 quedó APLICADA TAMBIÉN EN PROD el 2026-09-01** (PR #335, `v1.195.0`) — ver
+`wiki/database/migraciones.md`.
 
 > **🆕 2026-09-01 (v1.195.0): Portal de Proveedores se movió a su propia página** —
 > [[wiki/features/portal-proveedores]] — al construirse la Fase 2 (invitación real + acceso a OC + UI del

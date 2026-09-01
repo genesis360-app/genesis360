@@ -154,4 +154,8 @@ negocio" y podría crear un tenant nuevo con esa misma identidad, mezclando role
    bloqueante) — si alguna vez se usa para apuntes internos del staff no pensados para el proveedor, revisar
    antes de tener usuarios reales.
 
-**Sin deploy a PROD** — todo vive en DEV (`APP_VERSION` `v1.195.0`).
+**🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, mig 390 aplicada y verificada también en PROD;
+`APP_VERSION` `v1.195.0`). **Pendiente real, manual**: GO/Fede deben agregar
+`https://genesis360.pro/portal-proveedores` a Authentication → URL Configuration → Redirect URLs de
+Supabase Auth (PROD y DEV) antes de que un link mágico real funcione — esta sesión solo verificó el flujo
+con login por contraseña.

@@ -8,7 +8,46 @@ updated: 2026-09-01
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.184.0 (código — 🚀 DEPLOYADO A PROD el 2026-08-27: PR #334 "v1.184.0 — Compras/
+**Versión en PROD:** v1.195.0 (código — 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
+Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" mergeado `dev`→`main` (merge
+commit `2a8ebbf4`), confirmado con `gh pr view 335` → `state: MERGED`. **Este deploy promovió TODO lo
+acumulado en `dev` desde el último deploy real (`v1.184.0`, 2026-08-27)** — migraciones 386 a 390
+aplicadas y verificadas en PROD (`jjffnbrdjchquexdfgwq`) una por una con queries reales (constraint,
+tablas, funciones, columnas): `386_autorizaciones_modulos_extendidos`, `387_portal_proveedores_identidad`
+(+ `387b`/`387c`, fixes de `search_path`/grants), `388_reclasificar_kit_precio_repricing_a_productos`,
+`389_migrar_autorizaciones_gasto_a_generica` (`DROP TABLE` de la legacy `autorizaciones_gasto`, verificado
+0 filas antes), `390_portal_proveedores_oc_acceso`; `list_migrations` de PROD confirma última migración =
+390. Edge Functions `invitar-proveedor` (nueva) y `send-email` (con el template `invitacion_proveedor`
+agregado) deployadas a PROD. Advisors de seguridad de PROD revisados post-migración: 0 hallazgos
+ERROR/CRITICAL. **Releases de GitHub v1.185.0 a v1.195.0 retargeteados a `main`**, v1.195.0 marcado
+`latest`.
+
+Trae a PROD, todas ya verificadas en DEV antes del deploy:
+1. **Supervisión — relevamiento de Fede CERRADO 100%, sin ninguna excepción**: Nivel 1 completo
+   (Clientes+Envíos+Proveedores+Pedidos+RRHH, v1.189.0-v1.191.0) + A4 (Productos, v1.192.0) + C1 (Gastos,
+   v1.193.0) + **A1 (Ventas, v1.194.0)** — "Anular venta despachada/facturada" pasa por la cola de
+   Supervisión en vez de anularse directo (protección fiscal, nunca se pierde la trazabilidad
+   NC-antes-de-eliminar). Ver [[wiki/features/supervision]], [[wiki/features/ventas-pos]] § VF6.
+2. **Portal de Proveedores — Fase 2 completa** (mig 390): invitación real por email (link mágico vía
+   Supabase Auth + Resend), portal público en `/portal-proveedores`, el proveedor propone precio por ítem
+   de una OC, el staff (nunca automático) revisa y aplica el precio a mano. Ver
+   [[wiki/features/portal-proveedores]].
+3. Embedded Signup de Meta para WhatsApp (v1.185.0) — código ya en PROD, sigue **bloqueado por
+   Verificación del Negocio ante Meta** (no por código, pendiente de Fede).
+4. Fix de ESLint (v1.187.0) — `npm run lint` funciona de verdad en todo el repo.
+
+**🛑 Pendiente real, manual, no migrable — GO/Fede**: agregar `https://genesis360.pro/portal-proveedores`
+a **Authentication → URL Configuration → Redirect URLs** en el proyecto PROD (`jjffnbrdjchquexdfgwq`) del
+Dashboard de Supabase, y el equivalente en DEV (`gcmhzdedrkmmzfzfveig`) si no está ya — sin este paso, un
+link mágico real recibido por email por un proveedor invitado puede fallar o redirigir mal (esta sesión
+solo verificó el flujo con login por contraseña, nunca un click real de link mágico de punta a punta).
+
+**Vercel**: deployment `dpl_3dL71Rg1KkKtnAn3qo6nPqgnjUUB` en estado READY, alias
+`app.genesis360.pro`/`genesis360.pro` sirviendo el commit `2a8ebbf4`. Detalle completo:
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ"), `log.md`
+(2026-09-01, tipo `deploy`).
+
+**Antes de este release (2026-08-27, v1.184.0):** 🚀 DEPLOYADO A PROD: PR #334 "v1.184.0 — Compras/
 Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4)" mergeado `dev`→`main` (merge commit
 `867d651a619fbf72f5521955a58c07a8f0a915e6`, `mergedAt: 2026-08-27T21:27:57Z`), confirmado con `gh pr view
 334` → `state: MERGED`. **Este deploy promovió TODO lo acumulado en `dev` desde el último deploy real
@@ -32,15 +71,15 @@ Trae **2 features nuevas, ambas EN PROD pero DORMIDAS a propósito, sin activars
 
 **Vercel: deploy de producción disparado automáticamente tras el merge — confirmado READY**
 (`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro` actualizado). **Con las 2 features ya en
-PROD, GO eligió como próximo paso Embedded Signup** (escalar WhatsApp a futuros clientes, ver "Versión en
-DEV" abajo — construido en DEV en una sesión nueva, sin deploy a PROD todavía); el **Portal de Proveedores**
-(la otra mitad de la propuesta de Fede) arrancó su prerequisito técnico el 2026-08-31 (ver "Versión en DEV"
-abajo). Detalle completo: `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ
-ACÁ"), `log.md` (2026-08-27, tipo `deploy`).  
+PROD, GO eligió como próximo paso Embedded Signup** (escalar WhatsApp a futuros clientes, construido en DEV
+en una sesión nueva — todo este trabajo, junto con el Portal de Proveedores que arrancó su prerequisito
+técnico el 2026-08-31, quedó 🚀 EN PROD desde v1.195.0, ver arriba y el detalle más abajo). Detalle
+completo: `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ"), `log.md`
+(2026-08-27, tipo `deploy`).  
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.195.0** (2026-09-01, continuación directa de v1.194.0 abajo) — 🗂️✅ **Portal de
+**Detalle (2026-09-01, v1.195.0 — ya 🚀 EN PROD, ver arriba):** 🗂️✅ **Portal de
 Proveedores — Fase 2 completa: invitación real + acceso a OC + UI del portal.** 5 RPC `SECURITY DEFINER`
 angostas (mig 390) — se descartó a propósito RLS ancha sobre `ordenes_compra`/`tenants`/`productos`
 (`tenants` tiene columnas muy sensibles: `clave_maestra`, `afipsdk_token`, `cbu`) — `fn_portal_proveedor_
@@ -52,10 +91,11 @@ lectura para que el staff supiera si un proveedor ya estaba vinculado). Edge Fun
 (`admin.generateLink(magiclink)`) + portal real (`/portal-proveedores`, autocontenido fuera de AuthGuard) +
 UI de "aplicar propuesta" en `ProveedoresPage.tsx`. Verificado con Playwright real contra DEV (specs
 138/139: invitación real, login real con contraseña, propuesta guardada sin tocar `precio_unitario`, staff
-la aplica) + build/1637 tests unitarios verdes + sin regresión en Compras/OC. **NO deployado a PROD** —
-pendiente real: GO/Fede deben agregar la URL del portal a Redirect URLs de Supabase Auth (Dashboard, no
-migrable) antes de que un link mágico real funcione. Ver [[wiki/features/portal-proveedores]] (página
-nueva), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 41).  
+la aplica) + build/1637 tests unitarios verdes + sin regresión en Compras/OC. **🚀 DEPLOYADO A PROD el
+2026-09-01** (PR #335, mig 390 aplicada y verificada en PROD). **Pendiente real, manual**: GO/Fede deben
+agregar la URL del portal a Redirect URLs de Supabase Auth (Dashboard, PROD y DEV) antes de que un link
+mágico real funcione. Ver [[wiki/features/portal-proveedores]] (página nueva),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").  
 **Antes (2026-09-01, v1.194.0): Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de Fede de verdad, sin
 ninguna excepción.** Única
 pieza que quedaba "sin diseñar todavía": "Anular venta despachada" migra a cola de Supervisión
@@ -66,7 +106,7 @@ el supervisor elige el reembolso (nunca se automatiza), y al confirmar la NC aut
 sola; la autorización queda `aprobada` recién al cerrar al 100%. Sin migración nueva (la mig 386 ya
 incluía `'ventas'`). Verificado con Playwright real contra DEV (spec 137, 2 escenarios, con CAE
 sintético — sin llamar a AFIP real) + suite de regresión de Ventas sin regresión + build/1637 tests
-unitarios verdes. **NO deployado a PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos" §
+unitarios verdes. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335). Ver [[wiki/features/supervision]] → "Retrofit a más módulos" §
 "Ventas (A1)", [[wiki/features/ventas-pos]] § VF6, `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ",
 cont. 40).  
 **Antes (2026-09-01, v1.193.0): C1 (migrar `autorizaciones_gasto` a la genérica) CIERRA TODO el
@@ -81,7 +121,7 @@ distinto del permiso `supervisa` fijo); conserva sus componentes propios
 CAJERO real nunca llega a esa página, así que todo el código `esCajero`/umbral-CAJERO de `GastosPage.tsx`
 es código muerto hoy; se verificó con SUPERVISOR→DUEÑO en su lugar. Verificado con Playwright real contra
 DEV (spec 136) + suite de regresión de Gastos (3 specs) sin regresión; `migration-reviewer` 2 rondas (1ª
-pidió `IF EXISTS` + confirmación de 0 filas). **NO deployado a PROD.**  
+pidió `IF EXISTS` + confirmación de 0 filas). **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, mig 389).  
 **Antes (2026-09-01, v1.192.0, commit `0e2bb29d`): A4 (kit_precio/repricing_margen → Productos).**
 `kit_precio` (Motor de Rotación) y `repricing_margen` (D3) estaban mal clasificados en
 `modulo='inventario'` pese a ser cambios de PRECIO de producto. Migración 388 (APTA) reclasificó las filas
@@ -136,8 +176,8 @@ permanente en `tests/e2e/08_clientes.spec.ts` + suite de regresión de Inventari
    ya usado por `support_agents` en vez de forzar el modelo de `users`. Sin flujo de invitación ni policies
    de `ordenes_compra` todavía.
 
-**NO deployado a PROD** — PROD sigue en migraciones 001-385; DEV en 001-387c, sin migración nueva en
-v1.189.0. Ver [[wiki/features/asistente-whatsapp]] → "Embedded Signup" y "Portal de Proveedores",
+**🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, junto con todo lo acumulado hasta v1.195.0). Ver
+[[wiki/features/asistente-whatsapp]] → "Embedded Signup" y "Portal de Proveedores",
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34, histórico).  
 **Antes (misma sesión que v1.188.0, v1.187.0, commit `33c03b46`): `npm run lint` deja de estar roto en TODO
 el repo** — se creó `.eslintrc.cjs` (no existía ningún archivo de configuración de ESLint pese a tener las
@@ -153,10 +193,11 @@ reales de Meta (App ID, `config_id`) por 3 caminos de prueba distintos — en es
 verificación externa** (Meta exige completar la Verificación del Negocio, documentos a cargo de Fede);
 sigue igual, sin novedades de Fede todavía.  
 **2 relevamientos, ambos 100% RESPONDIDOS por Fede (2026-08-24/25)**: (a) retrofit del patrón "tab
-Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, prerequisito
-técnico (mig 386) aplicado en DEV desde 2026-08-31 y **Clientes ya construido (v1.189.0, arriba)**, resto
-(Envíos/Proveedores/Pedidos/RRHH/Ventas) sin arrancar todavía; (b) Compras/Gastos en USD (arriba) — Fases
-1-3 YA CONSTRUIDAS Y EN PROD, resto a iterar. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"),
+Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — **✅ CERRADO 100%, sin ninguna
+excepción, y ya 🚀 EN PROD desde v1.195.0** (Clientes v1.189.0, Envíos/Proveedores/Pedidos v1.190.0, RRHH
+v1.191.0, Productos/A4 v1.192.0, Gastos/C1 v1.193.0, Ventas/A1 v1.194.0); (b) Compras/Gastos en USD
+(arriba) — Fases 1-3 YA CONSTRUIDAS Y EN PROD, resto a iterar. Ver `sources/raw/project_pendientes.md`
+("ARRANCÁ ACÁ"),
 `wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
 Ver `wiki/features/asistente-ia.md` → "Plan IA".  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2

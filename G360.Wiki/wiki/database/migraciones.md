@@ -9,7 +9,8 @@ updated: 2026-09-01
 # Historial de Migraciones (001-390, + correctivos 387b/387c)
 
 **🗂️ Migración 390 (`390_portal_proveedores_oc_acceso.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`) el 2026-09-01, `APP_VERSION` `v1.195.0`, SIN aplicar a PROD:** Fase 2 del Portal de
+(`gcmhzdedrkmmzfzfveig`) el 2026-09-01, `APP_VERSION` `v1.195.0`, **✅ EN PROD desde 2026-09-01** (PR #335,
+merge commit `2a8ebbf4`):** Fase 2 del Portal de
 Proveedores (la Fase 1, identidad, fue la 387/387b/387c de abajo) — acceso real a `ordenes_compra`. Agrega
 `orden_compra_items.precio_propuesto_proveedor`/`respondido_at` (propuesta del proveedor, nunca pisa
 `precio_unitario` — el staff la "aplica" a mano, REGLA #0) + **5 funciones `SECURITY DEFINER` angostas**
@@ -26,14 +27,18 @@ ronda sobre el rediseño → APTA. Detalle completo: [[wiki/features/portal-prov
 **⚠ Nota**: este archivo no llegó a documentar las migraciones **388** (`reclasificar_kit_precio_
 repricing_a_productos`, v1.192.0) ni **389** (`migrar_autorizaciones_gasto_a_generica`, v1.193.0) cuando se
 aplicaron — están documentadas en [[wiki/features/supervision]] y `wiki/business/roadmap.md`, no en este
-archivo. Gap heredado, no corregido acá para no desviarse del alcance de esta sesión.
+archivo. Gap heredado, no corregido acá para no desviarse del alcance de esta sesión. **Ambas — junto con
+386, 387/387b/387c y 390 — quedaron 🚀 APLICADAS Y VERIFICADAS TAMBIÉN EN PROD el 2026-09-01**, como parte
+del deploy real `v1.195.0` (PR #335, merge commit `2a8ebbf4`); `list_migrations` de PROD confirma última
+migración = 390. Detalle completo: `log.md` (2026-09-01, tipo `deploy`), `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 
 **🏗️ Migraciones 386-387c — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`) el 2026-08-31**,
-commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados. **SIN aplicar a PROD**
-(`jjffnbrdjchquexdfgwq` sigue en 001-385) — sin código de aplicación nuevo todavía, solo cimientos de DB
-para 2 features en diseño:
+commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados. **🚀 APLICADAS TAMBIÉN
+EN PROD (`jjffnbrdjchquexdfgwq`) el 2026-09-01** (PR #335, `v1.195.0`) — en aquel momento eran solo
+cimientos de DB para 2 features en diseño, hoy ambas ya construidas y deployadas (ver arriba):
 - **386** (`386_autorizaciones_modulos_extendidos.sql`): prerequisito técnico para extender el patrón de
   "cola de aprobación" de Supervisión a más módulos — amplía el CHECK `autorizaciones.modulo` (antes fijo a
   `'inventario'`) a `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, elimina el CHECK rígido de
@@ -72,20 +77,21 @@ que matcheen no hace nada. Detalle completo del evento de deploy: `log.md` (2026
 
 **387c (`387c_fix_grants_proveedor_accounts.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
 COMMITEADA Y PUSHEADA a `origin/dev` (commit `deef2fc2`, `APP_VERSION` `v1.188.0`, tag+release
-publicados), SIN aplicar a PROD:** correctivo — `proveedor_accounts` nunca tuvo `REVOKE ALL FROM
+publicados), **✅ EN PROD desde 2026-09-01** (PR #335):** correctivo — `proveedor_accounts` nunca tuvo `REVOKE ALL FROM
 authenticated` antes de otorgar `SELECT`/`UPDATE` (a diferencia de `proveedor_account_tenants`, que sí lo
 tenía). Sin impacto real de permisos (RLS ya bloqueaba INSERT/DELETE de `authenticated` al no existir
 policy para esos comandos), pero deja explícito que el estado de GRANTs no contradiga lo que las policies
 permiten.
 
 **387b (`387b_fix_search_path_fn_updated_at_proveedor_accounts.sql`) — ✅ APLICADA Y VERIFICADA EN DEV,
-COMMITEADA (commit `deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** fix del advisor
+COMMITEADA (commit `deef2fc2`, `v1.188.0`), **✅ EN PROD desde 2026-09-01** (PR #335):** fix del advisor
 `function_search_path_mutable` sobre `fn_updated_at_proveedor_accounts()` (creada en la 387) — agrega
 `SET search_path = public`, mismo patrón que el resto de las funciones `SECURITY DEFINER`/trigger del
 proyecto.
 
 **387 (`387_portal_proveedores_identidad.sql`) — ✅ APLICADA Y VERIFICADA EN DEV, COMMITEADA (commit
-`deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** modelo de identidad para el futuro **Portal de Proveedores**
+`deef2fc2`, `v1.188.0`), **✅ EN PROD desde 2026-09-01** (PR #335):** modelo de identidad para el **Portal
+de Proveedores** (ya con Fase 2/mig 390 completa y en PROD — ver arriba)
 (propuesta de Fede — ver [[wiki/features/asistente-whatsapp]] → "Portal de Proveedores"). Decisión de
 negocio confirmada por GO: una cuenta de proveedor puede vincularse a VARIOS negocios (tenants) distintos —
 rompe el supuesto de raíz de `public.users` (`users.id` tiene exactamente una fila con un `tenant_id`, y
@@ -113,7 +119,7 @@ había un `GRANT` a `anon` en vez de un `REVOKE` — los 4 corregidos y **re-ver
 (387b/387c, arriba, son correctivos post-verificación contra la DB real, no parte de esta 1ª/2ª pasada).
 
 **386 (`386_autorizaciones_modulos_extendidos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV, COMMITEADA (commit
-`deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** prerequisito técnico para extender el patrón de "cola de
+`deef2fc2`, `v1.188.0`), **✅ EN PROD desde 2026-09-01** (PR #335):** prerequisito técnico para extender el patrón de "cola de
 aprobación" de Supervisión a más módulos (relevamiento `relevamiento-supervision-retrofit-reglas-negocio.
 html`, 100% respondido por Fede el 2026-08-20) — ver [[wiki/features/supervision]] → "Retrofit a más
 módulos". Amplía el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`) para admitir también
@@ -121,9 +127,10 @@ módulos". Amplía el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`
 en la app — mismo criterio ya usado en el proyecto para enums que crecen por módulo, ver
 `reference_check_constraint_vs_configurable`). 100% aditivo — ningún código hoy inserta un `modulo`
 distinto de `'inventario'`, sin cambio de comportamiento. **NO incluye** reclasificar
-`kit_precio`/`repricing_margen` a `modulo='productos'` (A4) ni migrar `autorizaciones_gasto` a esta tabla
-genérica (C1) — ambas quedan para fases dedicadas futuras. `migration-reviewer`: APTA, sin hallazgos
-bloqueantes. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34).
+`kit_precio`/`repricing_margen` a `modulo='productos'` (A4, mig 388) ni migrar `autorizaciones_gasto` a
+esta tabla genérica (C1, mig 389) — ambas se construyeron en fases dedicadas después (ver "⚠ Nota" al
+principio de este archivo), ya deployadas a PROD junto con esta. `migration-reviewer`: APTA, sin hallazgos
+bloqueantes. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 

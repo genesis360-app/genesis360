@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-01] update | 🗂️✅ Portal de Proveedores — Fase 2: invitación real + acceso a OC + UI del portal (mig 390, v1.195.0)
+
+GO: "creo q quedaba otro pendiente, lo de proveedores" — retomó la Fase 2 del Portal de Proveedores (Fase 1,
+identidad cross-tenant, ya construida el 2026-08-31, mig 387). El ciclo de vida real de `ordenes_compra`
+(CO1-CO8, ✅ PROD) es borrador→enviada→confirmada→cancelada→recibida_parcial→recibida — sin inventar un
+estado nuevo, el proveedor solo interactúa mientras la OC está `enviada`.
+
+**Decisiones confirmadas con GO antes de codear**: (1) la respuesta del proveedor NUNCA confirma la OC
+sola — el staff revisa y "aplica" el precio propuesto a mano (REGLA #0); (2) invitación por email con link
+mágico (Edge Function), no un código manual.
+
+**Qué se construyó** (mig 390): 5 funciones `SECURITY DEFINER` angostas — se descartó a propósito RLS
+ancha sobre `ordenes_compra`/`tenants`/`productos` (`tenants` tiene columnas muy sensibles como
+`clave_maestra`/`afipsdk_token`/`cbu`) — `fn_portal_proveedor_negocios`, `_ocs`, `_oc_items`,
+`_responder_item` (único camino de escritura del proveedor, UPDATE atómico que solo toca
+`precio_propuesto_proveedor`/`respondido_at`, nunca `precio_unitario`/`cantidad`/`estado` reales) y
+`fn_proveedor_portal_vinculo` (lado STAFF — hallazgo real: la Fase 1 no dejaba ningún camino de lectura
+para que el staff supiera si un proveedor ya estaba vinculado). Edge Function `invitar-proveedor`
+(`admin.generateLink(magiclink)`, no `invite` — una cuenta vinculada a varios negocios es el caso normal).
+Portal real (`/portal-proveedores`, autocontenido fuera de AuthGuard) + UI de "aplicar propuesta" en
+`ProveedoresPage.tsx`. Hardening de paso: `REVOKE ALL ... FROM anon` en `ordenes_compra`/
+`orden_compra_items` (privilegios default nunca revocados, hallazgo preexistente).
+
+**Verificación**: Playwright real contra DEV (specs 138/139) — invitación real (Edge Function deployada,
+DB verificada vía la RPC nueva), CAJERO rechazado 403 por el guard de rol server-side, proveedor logueado
+con contraseña real (fijada por SQL solo para poder probar sin bandeja de email) viendo su OC y proponiendo
+precio sin tocar `precio_unitario`, staff viendo la propuesta y aplicándola. 2 gaps reales encontrados y
+corregidos en el camino: la RPC de lectura faltante para el staff, y que `browser.newContext()` de
+Playwright hereda el `storageState` del proyecto (sesión del OWNER) si no se pasa
+`storageState:{cookies:[],origins:[]}` explícito. `migration-reviewer` 2 rondas (corrigió el diseño
+original de RLS ancha a las RPC angostas actuales). `npm run build` + 1637 tests unitarios verdes, sin
+regresión en Compras/OC.
+
+**Estado**: `APP_VERSION` `v1.195.0`. **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en
+001-390. **Pendiente real**: GO/Fede deben agregar la URL del portal a Redirect URLs de Supabase Auth
+(Dashboard, DEV y PROD — no configurable por migración) antes de que un link mágico real funcione.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), [[wiki/features/portal-proveedores]]
+(página nueva dedicada), [[wiki/features/asistente-whatsapp]] (referencia actualizada),
+`wiki/business/roadmap.md` (v1.195.0).
+
+---
+
 ## [2026-09-01] update | 🎯✅ Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de Fede de verdad, sin ninguna excepción (v1.194.0)
 
 Continuación directa de la entrada de abajo (C1/Gastos, v1.193.0) — última pieza pendiente, la única que

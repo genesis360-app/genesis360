@@ -40,8 +40,24 @@ ACÁ"), `log.md` (2026-08-27, tipo `deploy`).
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.194.0** (2026-09-01, continuación directa de v1.193.0 abajo) — 🎯✅✅✅
-**Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de Fede de verdad, sin ninguna excepción.** Única
+**Versión en DEV:** **v1.195.0** (2026-09-01, continuación directa de v1.194.0 abajo) — 🗂️✅ **Portal de
+Proveedores — Fase 2 completa: invitación real + acceso a OC + UI del portal.** 5 RPC `SECURITY DEFINER`
+angostas (mig 390) — se descartó a propósito RLS ancha sobre `ordenes_compra`/`tenants`/`productos`
+(`tenants` tiene columnas muy sensibles: `clave_maestra`, `afipsdk_token`, `cbu`) — `fn_portal_proveedor_
+negocios/_ocs/_oc_items` (lectura) + `_responder_item` (único camino de escritura del proveedor, UPDATE
+atómico que solo toca `precio_propuesto_proveedor`/`respondido_at`, NUNCA `precio_unitario` real — REGLA
+#0: la respuesta de un tercero externo nunca confirma la OC sola, el staff "aplica" a mano) +
+`fn_proveedor_portal_vinculo` (lado staff, hallazgo real: la Fase 1/mig 387 no dejaba ningún camino de
+lectura para que el staff supiera si un proveedor ya estaba vinculado). Edge Function `invitar-proveedor`
+(`admin.generateLink(magiclink)`) + portal real (`/portal-proveedores`, autocontenido fuera de AuthGuard) +
+UI de "aplicar propuesta" en `ProveedoresPage.tsx`. Verificado con Playwright real contra DEV (specs
+138/139: invitación real, login real con contraseña, propuesta guardada sin tocar `precio_unitario`, staff
+la aplica) + build/1637 tests unitarios verdes + sin regresión en Compras/OC. **NO deployado a PROD** —
+pendiente real: GO/Fede deben agregar la URL del portal a Redirect URLs de Supabase Auth (Dashboard, no
+migrable) antes de que un link mágico real funcione. Ver [[wiki/features/portal-proveedores]] (página
+nueva), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 41).  
+**Antes (2026-09-01, v1.194.0): Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de Fede de verdad, sin
+ninguna excepción.** Única
 pieza que quedaba "sin diseñar todavía": "Anular venta despachada" migra a cola de Supervisión
 ("Solicitar anulación", tab "Autorizaciones" nuevo en `VentasPage.tsx`, mismo patrón genérico). Al
 **aprobar**: **sin CAE** → mismo `cambiarEstado→'cancelada'` de siempre, directo (reincorpora stock +

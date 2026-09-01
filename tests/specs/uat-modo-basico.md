@@ -291,6 +291,8 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | PROV-04 | Tab OC y "comparar presupuestos" ocultos | Ver Proveedores en básico | No aparecen (avanzado) | B | 🟢 | ⬜ | |
 | PROV-05 | Sub-toolbar Servicios (ActionMenu) | Toolbar | "⋯ Acciones" colapsa secundarias (no hover roto) | 🟢 | 🟢 | ⬜ | |
 | PROV-06 | Pagar a proveedor (CC proveedor) | Registrar pago | Baja deuda CC proveedor | H | 🔴 | ⬜ | |
+| PROV-07 | **Portal de Proveedores — invitar** (mig 390, 2026-09-01) | Ficha del proveedor → "Portal de Proveedores" → cargar email → Invitar | Edge Function `invitar-proveedor` crea/vincula la cuenta de verdad (email con link mágico vía Resend); la ficha pasa a mostrar "Vinculado — {email}"; un rol sin permiso (ej. CAJERO) recibe 403 del guard server-side, no solo bloqueo de UI | E | 🔴 | ✅ | *E2E real 2026-09-01 contra DEV (spec 138): invitación real + CAJERO rechazado con 403* |
+| PROV-08 | **Portal de Proveedores — responder precio y aplicar** (mig 390, 2026-09-01) | Proveedor entra a `/portal-proveedores`, ve una OC `enviada`, propone precio → staff ve "Propuesto: $X" en el detalle de la OC y clickea "Aplicar" | El proveedor NUNCA pisa `precio_unitario` solo (queda en `precio_propuesto_proveedor`); recién al "Aplicar" el staff actualiza el precio real; fuera de estado `enviada` la propuesta se rechaza (`fn_portal_proveedor_responder_item`) | E | 🔴 | ✅ | *E2E real 2026-09-01 contra DEV (spec 139): login real con contraseña, propuesta guardada, staff la aplica* |
 
 ---
 

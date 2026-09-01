@@ -3,10 +3,32 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-31
+updated: 2026-09-01
 ---
 
-# Historial de Migraciones (001-387, + correctivos 387b/387c)
+# Historial de Migraciones (001-390, + correctivos 387b/387c)
+
+**🗂️ Migración 390 (`390_portal_proveedores_oc_acceso.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) el 2026-09-01, `APP_VERSION` `v1.195.0`, SIN aplicar a PROD:** Fase 2 del Portal de
+Proveedores (la Fase 1, identidad, fue la 387/387b/387c de abajo) — acceso real a `ordenes_compra`. Agrega
+`orden_compra_items.precio_propuesto_proveedor`/`respondido_at` (propuesta del proveedor, nunca pisa
+`precio_unitario` — el staff la "aplica" a mano, REGLA #0) + **5 funciones `SECURITY DEFINER` angostas**
+(`fn_portal_proveedor_negocios`/`_ocs`/`_oc_items`/`_responder_item` + `fn_proveedor_portal_vinculo` del
+lado staff) en vez de RLS ancha sobre `ordenes_compra`/`tenants`/`productos` — se descartó RLS directa
+sobre `tenants` a propósito por sus columnas sensibles (`clave_maestra`, `afipsdk_token`, `cbu`). De paso,
+`REVOKE ALL ... FROM anon` en `ordenes_compra`/`orden_compra_items` (privilegios default nunca revocados,
+hallazgo preexistente). `migration-reviewer` 2 rondas: la 1ª revisó un diseño con RLS ancha + trigger guard
+(2 hallazgos: trigger no cubría la PK `id`, policies sin chequear `proveedor_account_tenants.activo`) — en
+vez de parchear, se **rediseñó por completo** a las 5 RPC actuales (resuelve ambos por construcción); la 2ª
+ronda sobre el rediseño → APTA. Detalle completo: [[wiki/features/portal-proveedores]] (página nueva),
+`log.md` (2026-09-01), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 41).
+
+**⚠ Nota**: este archivo no llegó a documentar las migraciones **388** (`reclasificar_kit_precio_
+repricing_a_productos`, v1.192.0) ni **389** (`migrar_autorizaciones_gasto_a_generica`, v1.193.0) cuando se
+aplicaron — están documentadas en [[wiki/features/supervision]] y `wiki/business/roadmap.md`, no en este
+archivo. Gap heredado, no corregido acá para no desviarse del alcance de esta sesión.
+
+---
 
 **🏗️ Migraciones 386-387c — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`) el 2026-08-31**,
 commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados. **SIN aplicar a PROD**

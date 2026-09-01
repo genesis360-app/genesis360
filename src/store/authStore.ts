@@ -53,7 +53,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       ])
 
       if (!userData) {
-        set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: true })
+        // Portal de Proveedores (mig 387/390): una cuenta de proveedor es un auth.users SEPARADO,
+        // sin fila en `users` — si esta sesión es la suya, NO es "necesita onboarding" (eso
+        // dejaría crear un tenant/users nuevo con su misma identidad, mezclando roles). Se
+        // resuelve fuera de este store: PortalProveedoresPage valida su propia sesión.
+        const { data: cuentaProveedor } = await supabase.from('proveedor_accounts')
+          .select('id').eq('id', authUserId).maybeSingle()
+        set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: !cuentaProveedor })
         return
       }
 

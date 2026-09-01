@@ -284,6 +284,9 @@ export interface OrdenCompraItem {
   cantidad: number
   precio_unitario?: number | null
   notas?: string | null
+  // Portal de Proveedores (mig 390) — propuesta del proveedor, nunca pisa precio_unitario sola.
+  precio_propuesto_proveedor?: number | null
+  respondido_at?: string | null
   // joins
   productos?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida' | 'precio_costo'>
 }

@@ -68,6 +68,13 @@ en DEV en la misma sesión — ver [[wiki/features/supervision]] → "Retrofit a
 (https://github.com/genesis360-app/genesis360/releases/tag/v1.188.0). Build verde. **Sin deploy a PROD** —
 PROD sigue en migraciones 001-385; DEV en 001-387c.
 
+> **🆕 2026-09-01 (v1.195.0): Portal de Proveedores se movió a su propia página** —
+> [[wiki/features/portal-proveedores]] — al construirse la Fase 2 (invitación real + acceso a OC + UI del
+> portal + UI de "aplicar propuesta" del lado staff, mig 390) el tema ya no es "un prerequisito de
+> WhatsApp", es una feature completa con entidad propia. Este documento conserva el origen compartido
+> (propuesta de Fede) y el historial de la Fase 1 (identidad, mig 387) tal cual — el detalle técnico nuevo
+> vive en la página dedicada.
+
 Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio), `sources/raw/
 project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34), `wiki/database/migraciones.md` (386-387c).
 

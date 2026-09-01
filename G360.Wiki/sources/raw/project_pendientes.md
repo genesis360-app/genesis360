@@ -6,7 +6,106 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 40) — 🎯✅ Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de
+> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 41) — 🗂️✅ Portal de Proveedores — Fase 2: invitación real +
+> acceso a OC + UI del portal (mig 390, `v1.195.0`)
+>
+> GO: "creo q quedaba otro pendiente, lo de proveedores" — retomó la Fase 2 (la Fase 1, identidad
+> cross-tenant, ya estaba construida desde el 2026-08-31, mig 387).
+>
+> #### Investigación ANTES de diseñar (REGLA #0)
+>
+> El ciclo de vida real de `ordenes_compra` (CO1-CO8, ✅ PROD) es
+> borrador→enviada→confirmada→cancelada→recibida_parcial→recibida — sin inventar un estado nuevo, el
+> proveedor solo interactúa mientras la OC está `enviada`.
+>
+> #### Decisiones confirmadas con GO antes de codear
+>
+> 1. La respuesta del proveedor **NUNCA** confirma la OC sola — el staff revisa y "aplica" el precio
+>    propuesto a mano (un tercero externo no puede disparar un compromiso de pago, REGLA #0).
+> 2. Invitación por **email con link mágico** (Edge Function `invitar-proveedor`), no un código manual.
+>
+> #### Qué se construyó (mig 390)
+>
+> 5 funciones `SECURITY DEFINER` angostas — se descartó a propósito RLS ancha sobre
+> `ordenes_compra`/`tenants`/`productos` (`tenants` tiene columnas muy sensibles: `clave_maestra`,
+> `afipsdk_token`, `cuit`, `cbu`, `fichado_token`, `mp_subscription_id`):
+> - `fn_portal_proveedor_negocios` / `_ocs` / `_oc_items` — lectura, todas validan `auth.uid()` contra
+>   `proveedor_account_tenants`, ninguna confía en los parámetros del caller.
+> - `fn_portal_proveedor_responder_item` — **único camino de escritura** del proveedor: un `UPDATE`
+>   atómico (chequeo de pertenencia + `estado='enviada'` en el propio `WHERE`, evita ventana TOCTOU) que
+>   solo puede tocar `precio_propuesto_proveedor`/`respondido_at` — nunca `precio_unitario`/`cantidad`/
+>   `estado` reales.
+> - `fn_proveedor_portal_vinculo` — lado **STAFF**: hallazgo real encontrado con el e2e antes de aplicar
+>   la migración — la Fase 1 (mig 387) solo dejaba policies de "el proveedor ve su propia fila", el staff
+>   (quien invita y necesita confirmar "¿ya está vinculado, a qué email?") no tenía NINGÚN camino de
+>   lectura, ni indirecto.
+>
+> Edge Function `invitar-proveedor` (guard de identidad + rol DUEÑO/SUPERVISOR/ADMIN/SUPER_USUARIO,
+> `admin.generateLink({type:'magiclink'})` — no `'invite'`, porque una cuenta vinculada a varios negocios
+> es el caso NORMAL, no un error — envía el link por `send-email`/Resend propio, template
+> `invitacion_proveedor`, nunca el email default de Supabase). Portal real (`src/pages/PortalProveedoresPage.tsx`,
+> ruta pública `/portal-proveedores`, autocontenida fuera de `AuthGuard` — una cuenta de proveedor es un
+> `auth.users` separado, sin fila en `users`). UI de "aplicar propuesta" nueva en `ProveedoresPage.tsx`
+> (detalle de OC). Safety net en `authStore.ts`: una sesión de proveedor que llegue a tocar el resto de la
+> app ya no cae en el wizard de onboarding (chequea `proveedor_accounts` antes de `needsOnboarding=true`).
+>
+> De paso, hardening no relacionado: `REVOKE ALL ... FROM anon` en `ordenes_compra`/`orden_compra_items`
+> (privilegios default nunca revocados — hallazgo preexistente, no explotable, ver
+> `reference_revoke_public_no_anon`).
+>
+> #### Verificación
+>
+> Playwright real contra DEV (specs 138/139): DUEÑO invita a un proveedor real desde su ficha → cuenta +
+> vínculo creados de verdad (verificado vía `fn_proveedor_portal_vinculo`, NO por REST directo — esas
+> tablas no tienen policy de lectura para staff); idempotencia real (reinvitar no duplica); CAJERO recibe
+> 403 del guard de rol server-side. Proveedor logueado con contraseña real (fijada por SQL/pgcrypto SOLO
+> para poder probar sin bandeja de email — la cuenta nació sin contraseña, nunca se tocó una cuenta real)
+> ve su OC `enviada` y propone un precio → verificado que `precio_propuesto_proveedor` se guardó y
+> `precio_unitario` NUNCA se tocó solo. Staff ve la propuesta en `ProveedoresPage.tsx` y la aplica →
+> recién ahí `precio_unitario` cambia.
+>
+> **2 gaps reales encontrados y corregidos en el camino** (documentarlos, no son bugs de la feature en sí):
+> 1. La RPC `fn_proveedor_portal_vinculo` (arriba) — sin ella el staff nunca podía confirmar un vínculo.
+> 2. `browser.newContext()` de Playwright **hereda el `storageState` configurado a nivel de PROYECTO**
+>    (`playwright.config.ts`, la sesión del OWNER) si no se le pasa `storageState:{cookies:[],origins:[]}`
+>    explícito — un contexto "nuevo" para simular al proveedor arrancaba YA logueado como el staff. Útil
+>    de recordar para cualquier spec futuro que necesite una sesión realmente vacía.
+>
+> `migration-reviewer` **2 rondas**: la 1ª revisó un diseño con RLS ancha + trigger guard sobre
+> `ordenes_compra`/`orden_compra_items`/`productos` (encontró 2 hallazgos: trigger no cubría la PK `id`,
+> policies sin chequear `proveedor_account_tenants.activo`) — en vez de parchear ESE diseño, se
+> **rediseñó por completo** a las 5 RPC angostas actuales (resuelve ambos hallazgos por construcción, ya
+> que no queda ningún camino de acceso directo a las tablas); la 2ª ronda revisó el rediseño completo →
+> APTA. `npm run build` (tsc+vite) y 1637 tests unitarios verdes. Suite de regresión de Compras/OC
+> (specs 29, 33, 34, 35, 77, 78, 80) sin regresión.
+>
+> #### Estado del deploy
+>
+> `APP_VERSION` `v1.195.0`. **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-390.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Manual de GO/Fede, en el Dashboard de Supabase (no configurable por SQL/migración)**: agregar
+>    `https://genesis360.pro/portal-proveedores` (PROD) y el equivalente de DEV a **Authentication → URL
+>    Configuration → Redirect URLs** de cada proyecto — sin esto, un link mágico real que reciba un
+>    proveedor por email puede ser rechazado o redirigir mal (esta sesión probó el login con contraseña,
+>    nunca clickeó un link mágico real de punta a punta).
+> 2. **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 (Supervisión completa + Portal de
+>    Proveedores Fase 2) — sigue sin salir de DEV, candidato natural para la próxima sesión.
+> 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 5. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/portal-proveedores]] (página nueva dedicada), [[wiki/features/asistente-whatsapp]]
+> (referencia actualizada), `wiki/index.md`, `wiki/business/roadmap.md` (v1.195.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 40) — 🎯✅ Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de
 > Fede de verdad, sin ninguna excepción (`v1.194.0`)
 >
 > Continuación directa de cont. 39 (Gastos/C1, `v1.193.0`, histórico abajo) — última pieza pendiente, la

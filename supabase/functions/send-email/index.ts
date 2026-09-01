@@ -211,6 +211,19 @@ function ocTemplate(data: {
   }
 }
 
+function invitacionProveedorTemplate(data: { negocio: string; actionLink: string }) {
+  return {
+    subject: `${data.negocio} te invitó al Portal de Proveedores`,
+    html: templateBase(`
+      <p>Hola,</p>
+      <p><strong>${data.negocio}</strong> te invitó a usar el Portal de Proveedores de ${BRAND} — ahí vas a poder ver sus órdenes de compra y cargar tu presupuesto directo, sin ida y vuelta por WhatsApp o email.</p>
+      <a href="${data.actionLink}" class="btn">Entrar al portal →</a>
+      <hr class="divider">
+      <p style="font-size:13px;color:#6b7280">Si ya tenés cuenta (trabajás con otro negocio en ${BRAND}), este link te va a llevar directo — vas a ver ambos negocios desde el mismo lugar.</p>
+    `),
+  }
+}
+
 function bugReportTemplate(data: { usuario: string; tenant: string; resumen: string }) {
   return {
     subject: `🐛 Bug Report — ${data.tenant} (${data.usuario})`,
@@ -267,6 +280,8 @@ serve(async (req) => {
       ;({ subject, html } = ocTemplate(data))
     } else if (type === 'bug_report') {
       ;({ subject, html } = bugReportTemplate(data))
+    } else if (type === 'invitacion_proveedor') {
+      ;({ subject, html } = invitacionProveedorTemplate(data))
     } else {
       throw new Error(`Tipo de email desconocido: ${type}`)
     }

@@ -197,7 +197,7 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
-## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ TODO CONSTRUIDO (Nivel 1 completo + A4 + C1, v1.189.0-v1.193.0) — solo quedan diferidos explícitos (NC-antes-de-eliminar de Ventas/A1, Nivel 2 sin delegar)
+## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ TODO CONSTRUIDO, INCLUIDO A1 (Nivel 1 completo + A4 + C1 + A1, v1.189.0-v1.194.0) — solo queda diferido Nivel 2 (sin delegar, a propósito)
 
 > Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
 > 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
@@ -209,8 +209,9 @@ paginación de arriba).
 >
 > **Decisiones cerradas:**
 > - **Ventas**: solo "anular venta despachada" pasa a cola de aprobación de Supervisión — con una regla
->   nueva: si la venta ya fue facturada, primero hay que emitir NC antes de poder eliminarla. **Diferido,
->   sin diseñar todavía** (ver estado real al final de esta sección).
+>   nueva: si la venta ya fue facturada, primero hay que emitir NC antes de poder eliminarla. **✅
+>   CONSTRUIDO 2026-09-01 (sin migración nueva, `v1.194.0`) — ver sección "Ventas (A1)" más abajo y
+>   [[wiki/features/ventas-pos]] § VF6.**
 > - **Caja**: sigue con clave maestra síncrona, **nunca** pasa a cola de aprobación asincrónica.
 > - **Productos**: `kit_precio`/`repricing_margen` (vivían en el tab de Inventario) se reclasifican a
 >   `modulo='productos'`. **✅ CONSTRUIDO 2026-09-01 (mig 388, v1.192.0) — ver sección dedicada abajo.**
@@ -429,38 +430,77 @@ paginación de arriba).
 >
 > **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.193.0`.
 >
-> **✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido: Nivel 1 completo
-> (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos).** Ya no queda nada del
-> relevamiento de Supervisión en sí sin construir. Lo que sigue pendiente es aparte, explícitamente
-> diferido desde el origen (no es "trabajo que falta del retrofit", son piezas que el propio relevamiento
-> definió con otro mecanismo o sin diseñar):
-> - **Ventas (A1)** — la lógica NC-antes-de-eliminar (si la venta ya fue facturada, primero emitir NC antes
->   de poder eliminarla) sin diseñar todavía — es fiscal, necesita cuidado extra (REGLA #0).
-> - **Nivel 2** (sin delegar, solo Dueño, fuera del modelo genérico — mismo criterio que
->   `autorizaciones_cc`): Clientes→modificar límite de CC/habilitar CC/perdonar deuda; RRHH→cambio de
->   sueldo/aprobación de licencias con goce de sueldo. **Estos YA funcionan con clave maestra síncrona —
->   no necesitan cola, no es trabajo pendiente de construir, es la decisión de diseño final.**
-> - **Caja** — decisión cerrada, sigue con clave maestra síncrona para siempre, nunca pasa a cola.
+> Con esto quedaba construido todo salvo Ventas (A1) — ver sección siguiente, que lo cierra.
 >
 > Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 39),
 > [[project_supervision_tab_extension_pendiente]] (memoria), [[wiki/features/gastos]].
+>
+> ### ✅ Ventas (A1) — ÚLTIMA pieza real, cierra TODO el relevamiento de Supervisión de verdad (2026-09-01, `v1.194.0`)
+>
+> Continuación directa de la sesión de Gastos/C1 (arriba) — quedaba solo A1, la única pieza "sin diseñar
+> todavía" del relevamiento. Se investigó el código real ANTES de diseñar nada (REGLA #0): hoy existían
+> **2 mecanismos separados** que ya hacían todo lo que A1 necesitaba, para casos distintos —
+> `cambiarEstado→'cancelada'` (venta sin CAE: reincorpora stock + revierte caja, automático) y "Devolver"
+> con devolución completa (venta con CAE: reincorpora stock + revierte caja + **emite la NC automática ya
+> existente, A10** — pero el reembolso lo elige un humano en un modal). El botón "Anular" viejo ni se
+> ofrecía si había CAE (mandaba a usar "Devolver" a mano).
+>
+> **Decisión de diseño confirmada con GO** (única pregunta real abierta: quién elige el medio de reembolso
+> de una venta facturada al aprobar la anulación): el supervisor lo elige al aprobar, abriendo "Devolver"
+> ya precargada — nunca se automatiza un reembolso fiscal sin intervención humana.
+>
+> **Qué se construyó** (sin migración nueva — `autorizaciones.modulo` ya incluía `'ventas'` desde la mig
+> 386, que además ya anticipaba el `tipo='eliminar_venta_despachada'` en su propio comentario):
+> "Solicitar anulación" (tab "Autorizaciones" nuevo en `VentasPage`, mismo patrón genérico que los otros 7
+> módulos) reemplaza al botón "Anular" con clave maestra. Al **aprobar**, dos ramas según el estado FRESCO
+> de la venta (nunca el de cuando se pidió): **sin CAE** → mismo `cambiarEstado→'cancelada'` de siempre,
+> directo; **con CAE** → abre "Devolver" precargada a devolución TOTAL (`abrirModalDevolucion(venta,
+> {anulacionTotal:true})`, 2º parámetro opcional nuevo, sin tocar los 2 call-sites existentes) — el
+> supervisor elige el reembolso, y al confirmar la NC automática (A10) sale sola. La autorización queda
+> `aprobada` recién cuando la devolución cierra al 100%, nunca antes.
+>
+> **Verificación**: Playwright real contra DEV (spec 137, 2 escenarios, ambos con datos propios —
+> producto/venta creados por el propio test, verificados por REST en cada paso, no solo por el toast). Sin
+> CAE: stock restaurado exacto + caja revertida por el monto exacto cobrado. Con CAE (**sintético — sin
+> llamar a AFIP real**, mismo criterio defensivo que el spec 22 ya usa para el "happy path monetario" de
+> devoluciones): confirmado que la solicitud ahora SÍ se ofrece (antes bloqueaba del todo), que "Cambiar
+> cliente" sigue oculto, que la precarga es total (cantidad = máximo, total = el de la venta), y que
+> cancelar sin confirmar deja la autorización `pendiente` y la venta sin cambios. Suite de regresión de
+> Ventas (04, 19_flujo_venta, 22_devolución) sin regresión — corridas en paralelo con este spec nuevo
+> mostraron fallas cruzadas por la conocida no-determinismo de la suite compartiendo el tenant DEV (ver
+> [[reference_e2e_suite_no_deterministica]]), pero cada spec en AISLAMIENTO pasó 100% limpio.
+>
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en `v1.194.0`.
+>
+> **✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido de verdad: Nivel 1
+> completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + A1 (Ventas).** Ya no
+> queda NADA del relevamiento en sí sin construir. Lo único que sigue pendiente es aparte, explícitamente
+> diferido desde el origen (no es "trabajo que falta", es la decisión de diseño final):
+> - **Nivel 2** (sin delegar, solo Dueño, fuera del modelo genérico — mismo criterio que
+>   `autorizaciones_cc`): Clientes→modificar límite de CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>   sueldo/aprobación de licencias con goce de sueldo. **Ya funcionan con clave maestra síncrona — no
+>   necesitan cola, no es trabajo pendiente de construir.**
+> - **Caja** — decisión cerrada, sigue con clave maestra síncrona para siempre, nunca pasa a cola.
+>
+> Detalle completo: `G360.Wiki/log.md` (2026-09-01), [[wiki/features/ventas-pos]] § VF6,
+> [[project_nc_afip_automatica]] (A10, reusada sin cambios), [[tests/specs/uat-modo-basico]] VEN-24/VEN-49.
 
 ## Pendiente real
 
-**✅✅ 2026-09-01: TODO el relevamiento de Supervisión de Fede queda construido** — Clientes (v1.189.0),
-Envíos/Proveedores/Pedidos (v1.190.0), RRHH (v1.191.0), Productos/A4 (v1.192.0) y Gastos/C1 (v1.193.0) ya
-usan la tabla genérica `autorizaciones` (ver "Retrofit a más módulos" arriba) — **Nivel 1 completo (5
-módulos) + A4 + C1**, además de Inventario. Gastos es un caso especial a propósito: usa la tabla genérica
-pero NO el hook/componente genérico (`useSupervisorAutorizaciones`/`SupervisionPanel`), porque su modelo es
-jerarquía de rol relativa, no el permiso `supervisa` fijo — conserva sus componentes propios. De paso se
-corrigieron 2 gaps reales que habían sobrevivido desde Envíos/Proveedores/Pedidos: `UsuariosPage.tsx` sin
-esos 4 módulos en la lista de roles custom, y el badge de nav + `/supervision` sin actualizar a los 5
-módulos de Nivel 1. La ambigüedad de naming `'recursos'` vs `'rrhh'` quedó **resuelta** (no era real —
-`'recursos'` es una tabla de flota/vehículos sin relación). También se documentó un hallazgo real (no un
-bug corregido): `/gastos` no está en `CAJERO_ALLOWED`, así que la rama CAJERO de la jerarquía de Gastos es
-código muerto hoy. **Ya no queda nada del relevamiento en sí sin construir** — solo diferido desde el
-origen: **Ventas** (regla adicional NC-antes-de-eliminar, A1, fiscal) y **Nivel 2** (sin delegar, solo
-Dueño — ya funciona con clave maestra, no necesita cola). Repositores
+**✅✅✅ 2026-09-01: TODO el relevamiento de Supervisión de Fede queda construido, sin excepción** —
+Clientes (v1.189.0), Envíos/Proveedores/Pedidos (v1.190.0), RRHH (v1.191.0), Productos/A4 (v1.192.0),
+Gastos/C1 (v1.193.0) y Ventas/A1 (v1.194.0) ya usan la tabla genérica `autorizaciones` (ver "Retrofit a
+más módulos" arriba) — **Nivel 1 completo (5 módulos) + A4 + C1 + A1**, además de Inventario. Gastos es un
+caso especial a propósito: usa la tabla genérica pero NO el hook/componente genérico
+(`useSupervisorAutorizaciones`/`SupervisionPanel`), porque su modelo es jerarquía de rol relativa, no el
+permiso `supervisa` fijo — conserva sus componentes propios. De paso se corrigieron 2 gaps reales que
+habían sobrevivido desde Envíos/Proveedores/Pedidos: `UsuariosPage.tsx` sin esos 4 módulos en la lista de
+roles custom, y el badge de nav + `/supervision` sin actualizar a los 5 módulos de Nivel 1. La ambigüedad
+de naming `'recursos'` vs `'rrhh'` quedó **resuelta** (no era real — `'recursos'` es una tabla de
+flota/vehículos sin relación). También se documentó un hallazgo real (no un bug corregido): `/gastos` no
+está en `CAJERO_ALLOWED`, así que la rama CAJERO de la jerarquía de Gastos es código muerto hoy. **Ya no
+queda NADA del relevamiento en sí sin construir** — solo diferido desde el origen, a propósito: **Nivel 2**
+(sin delegar, solo Dueño — ya funciona con clave maestra, no necesita cola). Repositores
 reusó el mismo diseño de reparto/reasignación sin integrarse a la tabla `autorizaciones` en sí (ver abajo) —
 Pedidos/WMS sigue con su propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`, construida en
 v1.161.0/v1.162.0), un concepto distinto (tareas operativas, no solicitudes de aprobación) que no se

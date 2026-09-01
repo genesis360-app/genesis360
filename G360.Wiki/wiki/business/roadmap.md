@@ -40,24 +40,32 @@ ACÁ"), `log.md` (2026-08-27, tipo `deploy`).
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.193.0** (`2c4470c1`, 2026-09-01, continuación directa de v1.192.0 abajo) — 🎯✅
-**Supervisión: C1 (migrar `autorizaciones_gasto` a la genérica) CIERRA TODO el relevamiento de Fede de
-verdad** (corrige la entrada de abajo, que decía "CIERRA el relevamiento ENTERO" contando A4 pero todavía
-faltaba C1). `autorizaciones_gasto` (0 filas reales en DEV, confirmado dos veces antes del `DROP TABLE`)
-se elimina — Gastos ahora usa la tabla genérica `autorizaciones` (`modulo='gastos'`), pero a propósito
-**NO** usa `useSupervisorAutorizaciones`/`SupervisionPanel` (Gastos tiene su propio modelo de **jerarquía
-de rol** — CAJERO→SUPERVISOR/DUEÑO/ADMIN, `puedeAprobar()` — distinto del permiso `supervisa` fijo);
-conserva sus componentes propios (`SolicitarAutorizacionGastoModal.tsx`, `BandejaAutorizacionesGasto.tsx`),
-solo cambia la tabla destino. **🐛 Hallazgo real (no un bug arreglado)**: `/gastos` no está en
-`CAJERO_ALLOWED` (`AppLayout.tsx`) — un CAJERO real nunca llega a esa página, así que todo el código
-`esCajero`/umbral-CAJERO de `GastosPage.tsx` es código muerto hoy; se verificó con SUPERVISOR→DUEÑO en su
-lugar. Verificado con Playwright real contra DEV (spec 136) + suite de regresión de Gastos (3 specs) sin
-regresión; `migration-reviewer` 2 rondas (1ª pidió `IF EXISTS` + confirmación de 0 filas). **Con esto,
-TODO el relevamiento de Supervisión de Fede queda construido: Nivel 1 completo
-(Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos).** Queda solo diferido desde el
-origen: Ventas (A1, NC-antes-de-eliminar) y Nivel 2 (sin delegar, ya funciona con clave maestra). **NO
-deployado a PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos",
-[[wiki/features/gastos]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 39).  
+**Versión en DEV:** **v1.194.0** (2026-09-01, continuación directa de v1.193.0 abajo) — 🎯✅✅✅
+**Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de Fede de verdad, sin ninguna excepción.** Única
+pieza que quedaba "sin diseñar todavía": "Anular venta despachada" migra a cola de Supervisión
+("Solicitar anulación", tab "Autorizaciones" nuevo en `VentasPage.tsx`, mismo patrón genérico). Al
+**aprobar**: **sin CAE** → mismo `cambiarEstado→'cancelada'` de siempre, directo (reincorpora stock +
+revierte caja); **con CAE** (antes bloqueado del todo) → abre "Devolver" precargada a devolución TOTAL —
+el supervisor elige el reembolso (nunca se automatiza), y al confirmar la NC automática (**A10**) sale
+sola; la autorización queda `aprobada` recién al cerrar al 100%. Sin migración nueva (la mig 386 ya
+incluía `'ventas'`). Verificado con Playwright real contra DEV (spec 137, 2 escenarios, con CAE
+sintético — sin llamar a AFIP real) + suite de regresión de Ventas sin regresión + build/1637 tests
+unitarios verdes. **NO deployado a PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos" §
+"Ventas (A1)", [[wiki/features/ventas-pos]] § VF6, `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ",
+cont. 40).  
+**Antes (2026-09-01, v1.193.0): C1 (migrar `autorizaciones_gasto` a la genérica) CIERRA TODO el
+relevamiento de Fede de verdad** (corrige la entrada de abajo, que decía "CIERRA el relevamiento ENTERO"
+contando A4 pero todavía faltaba C1). `autorizaciones_gasto` (0 filas reales en DEV, confirmado dos veces
+antes del `DROP TABLE`) se elimina — Gastos ahora usa la tabla genérica `autorizaciones`
+(`modulo='gastos'`), pero a propósito **NO** usa `useSupervisorAutorizaciones`/`SupervisionPanel` (Gastos
+tiene su propio modelo de **jerarquía de rol** — CAJERO→SUPERVISOR/DUEÑO/ADMIN, `puedeAprobar()` —
+distinto del permiso `supervisa` fijo); conserva sus componentes propios
+(`SolicitarAutorizacionGastoModal.tsx`, `BandejaAutorizacionesGasto.tsx`), solo cambia la tabla destino.
+**🐛 Hallazgo real (no un bug arreglado)**: `/gastos` no está en `CAJERO_ALLOWED` (`AppLayout.tsx`) — un
+CAJERO real nunca llega a esa página, así que todo el código `esCajero`/umbral-CAJERO de `GastosPage.tsx`
+es código muerto hoy; se verificó con SUPERVISOR→DUEÑO en su lugar. Verificado con Playwright real contra
+DEV (spec 136) + suite de regresión de Gastos (3 specs) sin regresión; `migration-reviewer` 2 rondas (1ª
+pidió `IF EXISTS` + confirmación de 0 filas). **NO deployado a PROD.**  
 **Antes (2026-09-01, v1.192.0, commit `0e2bb29d`): A4 (kit_precio/repricing_margen → Productos).**
 `kit_precio` (Motor de Rotación) y `repricing_margen` (D3) estaban mal clasificados en
 `modulo='inventario'` pese a ser cambios de PRECIO de producto. Migración 388 (APTA) reclasificó las filas

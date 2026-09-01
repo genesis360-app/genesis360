@@ -16,7 +16,7 @@ import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 
 // Módulos que hoy participan del patrón de Supervisor (mig 347) — extender acá el día que se
 // retrofitee un módulo nuevo (mismo criterio que el CHECK de `autorizaciones.modulo`).
-const MODULOS_SUPERVISION = ['inventario', 'productos', 'clientes', 'envios', 'proveedores', 'pedidos', 'rrhh']
+const MODULOS_SUPERVISION = ['inventario', 'productos', 'clientes', 'envios', 'proveedores', 'pedidos', 'rrhh', 'ventas']
 import { CotizacionWidget } from '@/components/CotizacionWidget'
 import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
@@ -26,7 +26,9 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
-import { moduloSoloLectura } from '@/lib/permisosModulo'
+import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { useSupervisorAutorizaciones, avisarSupervisor, useSupervisionBadge, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -57,7 +59,7 @@ import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from
 import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
-type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos'
+type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos' | 'autorizaciones'
 type DescTipo = 'pct' | 'monto'
 
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
@@ -385,7 +387,7 @@ export default function VentasPage() {
   // venta, así que se entrega acá y no allá. `?id=` sigue abriendo el detalle en Historial.
   const [tab, setTab] = useState<Tab>(() => {
     const t = searchParams.get('tab')
-    if (t && ['nueva', 'historial', 'pedidos', 'canales'].includes(t)) return t as Tab
+    if (t && ['nueva', 'historial', 'pedidos', 'canales', 'autorizaciones'].includes(t)) return t as Tab
     return searchParams.get('id') ? 'historial' : 'nueva'
   })
   // J3: CONTADOR es read-only → siempre en el historial, sin acceso al POS
@@ -843,6 +845,16 @@ export default function VentasPage() {
   })
   const [filterCategoria, setFilterCategoria] = useState<string>('')
   const [ventaDetalle, setVentaDetalle] = useState<any | null>(null)
+  // A1 (relevamiento Supervisión, Fede 2026-08-20) — "anular venta despachada" ya NO se ejecuta
+  // directo (clave maestra): pasa a cola de aprobación de un supervisor, mismo patrón que
+  // Clientes/Envíos/Proveedores/Pedidos/RRHH (mig 386). Con CAE, aprobar abre "Devolver" precargada
+  // a devolución completa (dispara la NC automática A10) — el supervisor elige el reembolso ahí
+  // mismo, nunca se automatiza un reembolso fiscal sin intervención humana (REGLA #0).
+  const [anularSolicitud, setAnularSolicitud] = useState<{ venta: any; motivo: string } | null>(null)
+  const [anularSaving, setAnularSaving] = useState(false)
+  // Si la aprobación de una venta FACTURADA abrió "Devolver": qué autorización marcar 'aprobada'
+  // cuando esa devolución cierre al 100% (ver procesarDevolucion). Se limpia al cerrar el modal.
+  const [autorizacionAnulacionId, setAutorizacionAnulacionId] = useState<string | null>(null)
   const [ventasLimit, setVentasLimit] = useState(50)
   // Resetear paginación cuando cambian los filtros
   useEffect(() => { setVentasLimit(50) }, [filterEstado, sucursalId])
@@ -1078,7 +1090,7 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
   // Modales que se apilan sobre el detalle de venta — la NC va encima de la devolución.
-  useModalKeyboard({ isOpen: devolucionVenta !== null && ncModal === null, onClose: () => setDevolucionVenta(null) })
+  useModalKeyboard({ isOpen: devolucionVenta !== null && ncModal === null, onClose: () => { setDevolucionVenta(null); setAutorizacionAnulacionId(null) } })
   useModalKeyboard({ isOpen: ncModal !== null, onClose: () => setNcModal(null) })
   useModalKeyboard({ isOpen: cancelReservaModal !== null, onClose: () => setCancelReservaModal(null) })
   useModalKeyboard({ isOpen: cambiarClienteVenta !== null, onClose: () => setCambiarClienteVenta(null) })
@@ -3976,7 +3988,7 @@ export default function VentasPage() {
     }
   }
 
-  const abrirModalDevolucion = (venta: any) => {
+  const abrirModalDevolucion = (venta: any, opts?: { anulacionTotal?: boolean }) => {
     if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
     // VF2/I2: plazo de devolución según la clasificación del canal de la venta
     const reglaDev = reglaDe(venta.origen)
@@ -4042,22 +4054,35 @@ export default function VentasPage() {
         deuda = Number((ccData?.[0] as any)?.deuda_total ?? 0)
       }
       setDevDeudaCliente(deuda)
-      setDevItems(items)
-      setDevMotivo('')
+      // A1 — anulación total aprobada desde Supervisión: preselecciona TODO lo devolvible,
+      // incluidas las series (el resto de items no-serie ya defaultea al remanente completo
+      // arriba, `cantidad_devolver: maxLinea`). El supervisor sigue eligiendo el reembolso.
+      setDevItems(opts?.anulacionTotal
+        ? items.map((it: any) => it.tiene_series ? { ...it, series_seleccionadas: it.venta_series.map((vs: any) => vs.serie_id) } : it)
+        : items)
+      setDevMotivo(opts?.anulacionTotal ? 'Anulación de venta aprobada por Supervisión' : '')
       setDevMediosPago([{ tipo: '', monto: '' }])
       setDevCajaSesionId(sesionesArs.length === 1 ? (sesionesArs[0] as any).id : '')
       setDevCajaSesionUsdId(sesionesUsd.length === 1 ? (sesionesUsd[0] as any).id : '')
       setDevDestinoStock('dev')
       setDevolucionVenta(venta)
     }
+    // A1 — al aprobar desde Supervisión ya se pasó el gate de `puedeSupervisarModulo`, más
+    // estricto que `rolesAutorizan` (también admite un rol custom con 'supervisa' en ventas):
+    // no repetir clave maestra encima de una aprobación que ya es un permiso de supervisor.
     const rolesAutorizan = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
-    if (rolesAutorizan.includes(user?.rol ?? '')) { void abrir(); return }
+    if (opts?.anulacionTotal || rolesAutorizan.includes(user?.rol ?? '')) { void abrir(); return }
     if (!claveMaestraConfigurada) {
       toast.error('Solo DUEÑO/SUPERVISOR/ADMIN pueden devolver o editar una venta cobrada. Configurá una clave maestra para autorizar a otros roles.')
       return
     }
     pedirClaveMaestra('Autorizar devolución/edición de una venta cobrada', abrir)
   }
+
+  // A1 — cerrar "Devolver" sin confirmar (Escape/X/Cancelar): si venía de aprobar una anulación
+  // de Supervisión, la solicitud queda 'pendiente' tal cual estaba (nunca se marca aprobada sin
+  // que el efecto real haya ocurrido) — el supervisor puede reintentarla luego.
+  const cerrarModalDevolucion = () => { setDevolucionVenta(null); setAutorizacionAnulacionId(null) }
 
   // ── Canales de ventas ──────────────────────────────────────────────────────
   const { data: canalStats = [] } = useQuery({
@@ -4618,6 +4643,19 @@ export default function VentasPage() {
         await supabase.from('ventas').update({ estado: 'devuelta' }).eq('id', devolucionVenta.id)
       }
 
+      // A1 — si esta devolución vino de aprobar una anulación de Supervisión: la autorización
+      // queda 'aprobada' recién ACÁ, solo si cubrió el 100% (nunca antes de que el efecto real
+      // haya ocurrido). Si fue parcial, la solicitud sigue 'pendiente' — no cumplió lo pedido.
+      if (autorizacionAnulacionId) {
+        if (totalDevuelto >= Number(devolucionVenta.total) - 0.5) {
+          await marcarAprobadaVenta(autorizacionAnulacionId)
+          logVentaAuditoria(devolucionVenta.id, 'anulacion', { via: 'devolucion_total', autorizacion_id: autorizacionAnulacionId, total: devolucionVenta.total })
+        } else {
+          toast('La devolución fue parcial — la solicitud de anulación sigue pendiente hasta devolver el 100%.', { icon: 'ℹ️', duration: 8000 })
+        }
+        setAutorizacionAnulacionId(null)
+      }
+
       toast.success(`Devolución procesada${numero_nc ? ` · ${numero_nc}` : ''}`)
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -4677,7 +4715,11 @@ export default function VentasPage() {
 
   const cambiarEstado = useMutation({
     mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null; motivo?: string; observacion?: string } }) => {
+      // A1 — aprobar una anulación desde Supervisión puede apuntar a una venta que hoy no está en
+      // el listado cargado del Historial (filtro de fecha/sucursal distinto) — fallback a traerla
+      // directo de la DB en vez de fallar con "Venta no encontrada" pese a existir de verdad.
       const venta = ventas.find((v: any) => v.id === ventaId)
+        ?? (await supabase.from('ventas').select('*').eq('id', ventaId).single()).data
       if (!venta) throw new Error('Venta no encontrada')
 
       if (nuevoEstado === 'despachada' || nuevoEstado === 'reservada') {
@@ -5223,6 +5265,102 @@ export default function VentasPage() {
     },
   })
 
+  // ── Supervisión / Autorizaciones (A1) — lazy, quien tenga permiso 'supervisa' en ventas ─────
+  const puedeVerAutorizacionesVentas = puedeSupervisarModulo(user, 'ventas')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada: marcarAprobadaVenta, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionVenta,
+  } = useSupervisorAutorizaciones('ventas', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesVentas ? ['ventas'] : [])
+
+  const resumenDeAutorizacionVenta = (aut: any) =>
+    `Anular venta ${aut.datos_cambio?.venta_numero ? `#${aut.datos_cambio.venta_numero}` : ''} — ${aut.datos_cambio?.cliente_nombre ?? 'Consumidor Final'}`
+
+  const rechazarAutorizacionVenta = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) { toast.error(e?.message ?? 'No se pudo rechazar') }
+  }
+
+  // A1 — solicitar la anulación de una venta despachada/facturada: NO ejecuta nada, solo encola
+  // (mismo patrón que la baja de cliente). El motivo es opcional (auditoría), no bloqueante.
+  const enviarSolicitudAnulacion = async () => {
+    if (!anularSolicitud) return
+    setAnularSaving(true)
+    try {
+      const v = anularSolicitud.venta
+      const { error } = await supabase.from('autorizaciones').insert({
+        tenant_id: tenant!.id,
+        modulo: 'ventas',
+        tipo: 'eliminar_venta_despachada',
+        datos_cambio: {
+          venta_id: v.id, venta_numero: v.numero, total: v.total, estado: v.estado,
+          cliente_nombre: v.cliente_nombre ?? null, motivo: anularSolicitud.motivo.trim() || null,
+        },
+        estado: 'pendiente',
+        solicitado_por: user?.id,
+        notas: anularSolicitud.motivo.trim() || null,
+      })
+      if (error) throw error
+      try {
+        await avisarSupervisor(tenant!.id, 'ventas', user?.id,
+          'Anulación de venta pendiente de aprobar',
+          `${user?.nombre_display ?? 'Un usuario'} pidió anular la venta #${v.numero} — requiere tu aprobación.`,
+          '/ventas?tab=autorizaciones')
+      } catch { /* la notificación no bloquea el flujo */ }
+      logVentaAuditoria(v.id, 'solicitud_anulacion', { estado: v.estado, total: v.total, motivo: anularSolicitud.motivo.trim() || null })
+      toast.success('Solicitud de anulación enviada — pendiente de aprobación de un supervisor')
+      setAnularSolicitud(null)
+      setVentaDetalle(null)
+      qc.invalidateQueries({ queryKey: ['autorizaciones', 'ventas'] })
+      qc.invalidateQueries({ queryKey: ['supervision-badge'] })
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo enviar la solicitud')
+    } finally {
+      setAnularSaving(false)
+    }
+  }
+
+  // A1 — aprobar una anulación. Rama SIN CAE: mismo efecto que el viejo botón "Anular"
+  // (cambiarEstado→'cancelada'), ya reincorpora stock + revierte caja proporcional a los medios
+  // originales — no hace falta elegir nada, se ejecuta directo (mismo criterio que Clientes). Rama
+  // FACTURADA (con CAE real): NUNCA se automatiza el reembolso — abre "Devolver" precargada a
+  // devolución completa; la autorización queda 'aprobada' recién cuando esa devolución cierra al
+  // 100% (ver el bloque agregado en procesarDevolucion), nunca antes del efecto real.
+  const aprobarAutorizacionVenta = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const ventaId = aut.datos_cambio?.venta_id
+      const { data: ventaFresca, error: fetchErr } = await supabase.from('ventas')
+        .select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
+        .eq('id', ventaId).single()
+      if (fetchErr || !ventaFresca) throw new Error('No se pudo abrir la venta — puede que ya no exista')
+      if (!['despachada', 'facturada'].includes(ventaFresca.estado)) {
+        throw new Error(`Esta venta ya no está en un estado anulable (estado actual: ${ventaFresca.estado}). Rechazá la solicitud si ya no corresponde.`)
+      }
+      if (ventaFresca.cae) {
+        setAutorizacionAnulacionId(aut.id)
+        abrirModalDevolucion(ventaFresca, { anulacionTotal: true })
+        toast('Completá la devolución total para terminar de aprobar (elegí el reembolso)', { icon: '📋', duration: 6000 })
+      } else {
+        await cambiarEstado.mutateAsync({ ventaId, nuevoEstado: 'cancelada' })
+        await marcarAprobadaVenta(aut.id)
+        logVentaAuditoria(ventaId, 'anulacion', { estado_previo: ventaFresca.estado, total: ventaFresca.total, autorizacion_id: aut.id })
+        toast.success('Anulación aprobada y ejecutada')
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo aprobar la anulación')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
   const filteredVentas = ventas.filter((v: any) => {
     if (!evaluarPildorasVenta({ numero: v.numero ?? null, clienteNombre: v.cliente_nombre ?? null }, pildorasEfectivasHist, combinadorHist)) return false
     if (filterCategoria) {
@@ -5258,11 +5396,103 @@ export default function VentasPage() {
           ? [{ id: 'historial', label: 'Historial', icon: FileText }]
           : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText },
              { id: 'pedidos', label: pedidosMostrador.length > 0 ? `Retiro (${pedidosMostrador.length})` : 'Retiro', icon: PackageCheck },
-             { id: 'canales', label: 'Canales', icon: Layers }]}
+             { id: 'canales', label: 'Canales', icon: Layers },
+             ...(puedeVerAutorizacionesVentas ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : [])]}
         active={tab}
         onChange={(id) => setTab(id as Tab)}
         className="-mb-2"
       />
+
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión, A1) ═══════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizacionesVentas && (
+        <SupervisionPanel
+          modulo="ventas"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionVenta}
+          resumenDe={resumenDeAutorizacionVenta}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => (
+                <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Anular venta</span>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                          {aut.datos_cambio?.venta_numero ? `#${aut.datos_cambio.venta_numero}` : ''} — {aut.datos_cambio?.cliente_nombre ?? 'Consumidor Final'}
+                        </span>
+                        {aut.datos_cambio?.estado === 'facturada' && (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Facturada — requiere NC</span>
+                        )}
+                      </div>
+                      <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                        {aut.datos_cambio?.total != null && <p>Total: ${Number(aut.datos_cambio.total).toLocaleString('es-AR')}</p>}
+                        {aut.datos_cambio?.motivo && <p>Motivo: {aut.datos_cambio.motivo}</p>}
+                        <p>Solicitado por: {aut.solicitante?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                      </div>
+                    </div>
+                    {autEstado === 'pendiente' && (
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={async () => { if (await confirmar(`¿Aprobar la anulación de la venta #${aut.datos_cambio?.venta_numero}?${aut.datos_cambio?.estado === 'facturada' ? ' Se abrirá "Devolver" para completar la NC.' : ''}`)) aprobarAutorizacionVenta(aut) }}
+                          disabled={autAprobandoId === aut.id}
+                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                          <CheckCircle2 size={13} /> Aprobar
+                        </button>
+                        {autRechazoId === aut.id ? (
+                          <div className="space-y-1.5">
+                            <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                              placeholder="Motivo de rechazo..."
+                              className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                            <div className="flex gap-1">
+                              <button onClick={() => rechazarAutorizacionVenta(aut.id, autMotivoRechazo, resumenDeAutorizacionVenta(aut))}
+                                disabled={!autMotivoRechazo.trim()}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                Confirmar
+                              </button>
+                              <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAutRechazoId(aut.id)}
+                            className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <X size={13} /> Rechazar
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SupervisionPanel>
+      )}
 
       {/* ── NUEVA VENTA ── */}
       {tab === 'nueva' && sesionesAbiertas.length === 0 && (
@@ -7154,26 +7384,31 @@ export default function VentasPage() {
                   <RotateCcw size={15} /> Devolver
                 </button>
               )}
-              {/* J2 — acciones con clave maestra (anular despachada / cambiar cliente) */}
-              {/* Anular + Cambiar cliente: NO se ofrecen si la venta tiene factura electrónica (CAE).
-                  Con CAE la factura ya está en AFIP a nombre de un cliente fijo → anularla la dejaría
-                  viva en AFIP y cambiar el cliente descuadraría el comprobante. La reversión correcta
-                  es "Devolver" → emitir NC. Ventas sin CAE (despachada o marcada facturada) sí se pueden. */}
-              {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && !ventaDetalle.cae && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => pedirClaveMaestra('Anular venta despachada', () => {
-                    logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
-                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
-                  })}
-                    disabled={cambiarEstado.isPending}
-                    className="flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
-                    <X size={15} /> Anular
+              {/* A1 (relevamiento Supervisión, Fede 2026-08-20) — "Anular" ya NO se ejecuta directo
+                  con clave maestra: pasa a cola de aprobación (mismo patrón que Clientes/Envíos/
+                  Proveedores/Pedidos/RRHH). Con CAE la solicitud SÍ se ofrece ahora (antes se
+                  bloqueaba del todo) — la resuelve un supervisor emitiendo la NC primero (Devolver).
+                  "Cambiar cliente" sigue con clave maestra sin cambio, solo si NO hay CAE (con CAE
+                  la factura ya está en AFIP a nombre de un cliente fijo → cambiar el cliente
+                  descuadraría el comprobante). */}
+              {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && (
+                ventaDetalle.cae ? (
+                  <button onClick={() => setAnularSolicitud({ venta: ventaDetalle, motivo: '' })}
+                    className="w-full flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
+                    <X size={15} /> Solicitar anulación
                   </button>
-                  <button onClick={() => { setCambiarClienteVenta(ventaDetalle); setClienteSearch('') }}
-                    className="flex items-center justify-center gap-1.5 border-2 border-blue-200 text-blue-600 dark:text-blue-400 font-semibold py-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm">
-                    <User size={15} /> Cambiar cliente
-                  </button>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => setAnularSolicitud({ venta: ventaDetalle, motivo: '' })}
+                      className="flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
+                      <X size={15} /> Solicitar anulación
+                    </button>
+                    <button onClick={() => { setCambiarClienteVenta(ventaDetalle); setClienteSearch('') }}
+                      className="flex items-center justify-center gap-1.5 border-2 border-blue-200 text-blue-600 dark:text-blue-400 font-semibold py-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm">
+                      <User size={15} /> Cambiar cliente
+                    </button>
+                  </div>
+                )
               )}
               {ventaDetalle.estado === 'reservada' && (
                 <button onClick={modificarReserva} disabled={cambiarEstado.isPending}
@@ -7247,7 +7482,7 @@ export default function VentasPage() {
                 <h2 className="text-lg font-bold text-primary flex items-center gap-2"><RotateCcw size={18} className="text-orange-500" /> Procesar devolución</h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Venta #{devolucionVenta.numero} · {devolucionVenta.estado === 'facturada' ? 'Se generará nota de crédito' : 'Registra devolución sin NC'}</p>
               </div>
-              <button onClick={() => setDevolucionVenta(null)} title="Cerrar" className="text-gray-400 hover:text-gray-600 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={cerrarModalDevolucion} title="Cerrar" className="text-gray-400 hover:text-gray-600 dark:text-gray-500"><X size={20} /></button>
             </div>
 
             <div className="p-5 space-y-4">
@@ -7468,7 +7703,7 @@ export default function VentasPage() {
             </div>
 
             <div className="px-5 pb-5 flex gap-3">
-              <button onClick={() => setDevolucionVenta(null)}
+              <button onClick={cerrarModalDevolucion}
                 className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
                 Cancelar
               </button>
@@ -7584,6 +7819,41 @@ export default function VentasPage() {
             </div>
             <button onClick={() => { setCambiarClienteVenta(null); setClienteSearch('') }}
               className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm">Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL SOLICITAR ANULACIÓN (A1) ═══════════════ */}
+      {anularSolicitud && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !anularSaving && setAnularSolicitud(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <X size={18} className="text-red-500" />
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Solicitar anulación — Venta {formatTicket(anularSolicitud.venta)}</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {anularSolicitud.venta.cae
+                  ? 'Esta venta está facturada electrónicamente (CAE). Un supervisor deberá aprobar y completar la devolución total, que emite la nota de crédito automáticamente.'
+                  : 'Queda pendiente de aprobación de un supervisor — no se anula todavía.'}
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo (opcional)</label>
+                <textarea value={anularSolicitud.motivo} onChange={e => setAnularSolicitud(s => s && { ...s, motivo: e.target.value })}
+                  rows={3} placeholder="¿Por qué se anula esta venta?"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+              <button onClick={() => setAnularSolicitud(null)} disabled={anularSaving}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={enviarSolicitudAnulacion} disabled={anularSaving}
+                className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-xl text-sm disabled:opacity-50">
+                {anularSaving ? 'Enviando…' : 'Enviar solicitud'}
+              </button>
+            </div>
           </div>
         </div>
       )}

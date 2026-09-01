@@ -6,7 +6,93 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 39) — 🎯✅ Supervisión: C1 (migrar `autorizaciones_gasto` a la
+> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 40) — 🎯✅ Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de
+> Fede de verdad, sin ninguna excepción (`v1.194.0`)
+>
+> Continuación directa de cont. 39 (Gastos/C1, `v1.193.0`, histórico abajo) — última pieza pendiente, la
+> única que quedaba "sin diseñar todavía".
+>
+> #### Investigación de código real ANTES de diseñar (REGLA #0 — fiscal)
+>
+> Ya existían 2 mecanismos separados para lo que A1 necesitaba: `cambiarEstado→'cancelada'` (venta
+> **despachada sin CAE**: reincorpora stock + revierte caja, automático) y "Devolver" con devolución
+> completa (venta **facturada con CAE**: reincorpora stock + revierte caja + emite la NC automática ya
+> existente, A10 — pero el reembolso lo elige un humano en un modal). El botón "Anular" viejo ni se
+> ofrecía si había CAE (mandaba a usar "Devolver" a mano).
+>
+> #### Única decisión de diseño abierta — confirmada con GO antes de codear
+>
+> Para una venta ya facturada, ¿quién elige el medio de reembolso que dispara la NC automática al aprobar
+> la anulación? **Se eligió: el supervisor lo elige al aprobar** (la aprobación abre "Devolver" ya
+> precargada a devolución total) — nunca se automatiza un reembolso fiscal sin intervención humana.
+>
+> #### Qué se construyó
+>
+> Sin migración nueva — `autorizaciones.modulo` ya incluía `'ventas'` desde la mig 386, que además ya
+> anticipaba el `tipo='eliminar_venta_despachada'` en su propio comentario. "Solicitar anulación" (tab
+> "Autorizaciones" nuevo en `VentasPage.tsx`, mismo patrón genérico `useSupervisorAutorizaciones`/
+> `SupervisionPanel` que los otros 7 módulos) reemplaza al botón "Anular" con clave maestra. Al **aprobar**,
+> dos ramas según el estado FRESCO de la venta (siempre re-fetcheado, nunca el de cuando se pidió):
+> - **Sin CAE** (`despachada`) → mismo `cambiarEstado→'cancelada'` de siempre, directo, sin pedir nada
+>   nuevo (reincorpora stock + revierte caja proporcional a los medios originales).
+> - **Con CAE** (`facturada`) → abre "Devolver" precargada a devolución TOTAL
+>   (`abrirModalDevolucion(venta, {anulacionTotal:true})`, 2º parámetro opcional nuevo — no toca los 2
+>   call-sites existentes) con todos los ítems/series al máximo. El supervisor elige el reembolso, y al
+>   confirmar la NC automática (A10) sale sola, sin cambios en su lógica. La autorización queda `aprobada`
+>   recién cuando la devolución cierra al 100% (mismo chequeo que ya usaba `procesarDevolucion` para marcar
+>   `estado='devuelta'`) — si es parcial o se cancela el modal, sigue `pendiente`.
+>
+> "Cambiar cliente" **no cambió**: sigue con clave maestra, sigue oculto con CAE (mismo motivo de siempre).
+>
+> #### Verificación
+>
+> Playwright real contra DEV (spec 137 nuevo, 2 escenarios, ambos con producto/venta propios del test,
+> verificados por REST en cada paso — no solo por el toast). **Sin CAE**: stock restaurado exacto + caja
+> revertida (`egreso_devolucion_sena`) por el monto exacto cobrado, autorización `aprobada`. **Con CAE
+> sintético** (venta marcada `facturada`+CAE de prueba por REST, **sin llamar a AFIP real** — mismo
+> criterio defensivo que el spec 22 ya usa para el "happy path monetario" de devoluciones): confirmado que
+> la solicitud ahora SÍ se ofrece (antes bloqueaba del todo), que "Cambiar cliente" sigue oculto, que la
+> precarga es total (cantidad = máximo, total = el de la venta), y que cancelar sin confirmar deja la
+> autorización `pendiente` y la venta sin cambios (nunca se marca aprobada antes del efecto real). Suite
+> de regresión de Ventas (04_ventas, 19_flujo_venta, 22_devolución) sin regresión — corrida junto al spec
+> nuevo mostró fallas cruzadas por el no-determinismo ya documentado de la suite (tenant DEV compartido,
+> ver `reference_e2e_suite_no_deterministica`), pero cada spec **en aislamiento** pasó 100% limpio.
+> `npm run build` (tsc+vite) y 1637 tests unitarios verdes.
+>
+> #### Estado del deploy
+>
+> `APP_VERSION` `v1.194.0`. Commit/push/tag/release **pendientes de crear** al cierre de esta sesión. **Sin
+> deploy a PROD** — PROD sigue en migraciones 001-385; DEV sin migración nueva (no hizo falta ninguna).
+>
+> #### ✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido, sin excepción alguna
+>
+> Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + A1 (Ventas).
+> Ya no queda NADA del relevamiento en sí sin construir.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 (5+ sesiones de trabajo: Nivel 1 + A4 +
+>    C1 + A1) — sigue sin salir de DEV, es candidato natural para la próxima sesión.
+> 2. **Nivel 2** (sin delegar, solo Dueño): Clientes→límite CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>    sueldo/licencias con goce — **YA funcionan con clave maestra síncrona, no necesitan cola, no es
+>    trabajo pendiente de construir, es la decisión de diseño final.**
+> 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 5. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 6. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — TODO cerrado, sección "Ventas (A1)"),
+> [[wiki/features/ventas-pos]] (sección VF6), `wiki/index.md` (filas + footer),
+> `wiki/business/roadmap.md` (v1.194.0), `tests/specs/uat-modo-basico.md` (VEN-24/VEN-49).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 39) — 🎯✅ Supervisión: C1 (migrar `autorizaciones_gasto` a la
 > genérica) CIERRA TODO el relevamiento de Fede de verdad (`v1.193.0`) — corrige cont. 38, que decía
 > "CIERRA el relevamiento ENTERO" contando A4 pero todavía faltaba C1
 >

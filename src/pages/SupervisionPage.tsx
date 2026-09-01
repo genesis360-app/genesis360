@@ -17,6 +17,7 @@ const MODULOS: { key: string; label: string; ruta: string }[] = [
   { key: 'proveedores', label: 'Proveedores', ruta: '/proveedores?tab=autorizaciones' },
   { key: 'pedidos', label: 'Pedidos', ruta: '/pedidos?tab=autorizaciones' },
   { key: 'rrhh', label: 'RRHH', ruta: '/rrhh?tab=autorizaciones' },
+  { key: 'ventas', label: 'Ventas', ruta: '/ventas?tab=autorizaciones' },
 ]
 
 // GO (2026-08-12): la lista cruda de 5 solicitudes al azar ("¿por qué esas 5?") no agregaba valor —
@@ -33,6 +34,7 @@ const TIPO_LABELS: Record<string, string> = {
   repricing_margen:  'Repricing por margen',
   eliminar_lpn:      'Eliminar LPN',
   eliminar:          'Eliminar', // genérico: Clientes/Envíos/Proveedores/Pedidos/RRHH (mig 386, Nivel 1)
+  eliminar_venta_despachada: 'Anular venta despachada', // Ventas (A1, mig 386)
 }
 
 export default function SupervisionPage() {

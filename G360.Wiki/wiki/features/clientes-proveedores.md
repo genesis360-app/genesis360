@@ -2,7 +2,7 @@
 title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
-sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, src/pages/ClientesPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
+sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
 updated: 2026-08-31
 ---
 
@@ -109,6 +109,15 @@ etiquetas TEXT[]   ← v1.3.0
 1. **Proveedores** — CRUD con modal form 12+ campos, toggle activo
 2. **Órdenes de Compra** — lifecycle completo
 3. **Servicios** (v1.3.0) — tipo='servicio', gestión completa
+4. **🎯 Autorizaciones** (v1.190.0, commit `452f3c93`, condicional a `puedeSupervisarModulo(user,
+   'proveedores')`) — retrofit del patrón de Supervisión (ver [[wiki/features/supervision]] → "Retrofit a
+   más módulos"): "Eliminar proveedor/servicio" (hard delete real, misma tabla `proveedores` para ambos
+   tipos) ya NO se ejecuta directo, crea una fila `pendiente` en `autorizaciones`
+   (`modulo='proveedores'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde este tab —
+   `deleteProveedor.mutate` cambió su firma de `id` a `{id, nombre}` (necesita el nombre para el snapshot
+   en `datos_cambio`, mismo criterio que `cliente_nombre` en el retrofit de Clientes). Verificación: build
+   +typecheck+lint limpios + INSERT a `autorizaciones` probado con impersonación real de rol contra DEV
+   (sin test e2e nuevo — mirror del código ya validado con Clientes v1.189.0).
 
 ---
 

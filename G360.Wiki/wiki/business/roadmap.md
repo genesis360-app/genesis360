@@ -40,22 +40,40 @@ ACÁ"), `log.md` (2026-08-27, tipo `deploy`).
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.189.0** (`27d740e8`, 2026-08-31, continuación directa de v1.188.0 abajo) — 🎯👥
-**Supervisión: PRIMER módulo real retrofiteado, Clientes.** La baja de cliente (soft-delete) ya no se
-ejecuta directo — crea una fila pendiente en `autorizaciones` (`modulo='clientes'`, `tipo='eliminar'`) que
-un supervisor aprueba/rechaza desde un tab nuevo "Autorizaciones" en `ClientesPage.tsx`, reusando el 100%
-de la infraestructura genérica que ya tenía Inventario (`useSupervisorAutorizaciones`, `SupervisionPanel`,
-`avisarSupervisor`) — es la primera vez que un segundo módulo consume el patrón, sin migración nueva (usa
-el CHECK ya ampliado por la mig 386). **2 bugs reales corregidos al verificar end-to-end contra DEV**: el
-hook compartido `useSupervisorAutorizaciones.ts` interpolaba `selectExtra` sin filtrar (coma doble inválida
-para PostgREST cuando un módulo no necesita join extra, silenciada por el fallback `data ?? []` — ahora
-también expone `isError`); `confirmarBaja` no invalidaba la query de la lista de Autorizaciones. Verificado
-con Playwright real contra DEV (crear → dar de baja → aprobar, confirmado por SQL directo en cada paso) +
-test permanente nuevo en `tests/e2e/08_clientes.spec.ts` + suite de regresión de Inventario sin regresión.
-**Queda como plantilla real** para retrofitear Envíos/Proveedores/Pedidos/RRHH (mismo nivel de
-sensibilidad); Ventas queda aparte (regla adicional de NC-antes-de-eliminar, sin diseñar). **NO deployado a
-PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos" → "Clientes", `sources/raw/
-project_pendientes.md` ("ARRANCÁ ACÁ", cont. 35).  
+**Versión en DEV:** **v1.191.0** (`f337ca62`, 2026-08-31, continuación directa de v1.190.0 abajo) — 🎯👥
+**Supervisión: Nivel 1 COMPLETO — RRHH cierra los 5 módulos.** Último módulo de Nivel 1 del relevamiento de
+Fede: "RRHH→cualquier eliminación". `RrhhPage.tsx` tiene **9 acciones de "eliminar" distintas** — **decisión
+de scope**: se acotó a la **baja de empleado** (soft-delete, único registro central de PERSONA, mismo
+criterio que Clientes); las otras 8 son registros administrativos, quedan sin gatear a propósito. **Se
+resuelve la ambigüedad de naming `'recursos'` vs `'rrhh'`** (no era real: el código ya usaba `'rrhh'`
+consistentemente en todos lados; `'recursos'` es una tabla distinta de flota/vehículos). Reutiliza
+`toggleEmpleadoActivo` para el efecto real al aprobar; reactivar sigue siendo directo. Verificación: mismo
+nivel que Envíos/Proveedores/Pedidos (sin e2e nuevo, impersonación de rol real contra DEV). **Con esto, el
+Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) queda 100% CERRADO** — corrige la entrada de
+abajo, que contaba Nivel 1 con solo 4 módulos. Sin migración nueva. **NO deployado a PROD.** Ver
+[[wiki/features/supervision]] → "Retrofit a más módulos", `sources/raw/project_pendientes.md` ("ARRANCÁ
+ACÁ", cont. 37).  
+**Antes (2026-08-31, v1.190.0, commit `452f3c93`): Envíos, Proveedores y Pedidos retrofiteados**, mismo
+patrón exacto de Clientes — **Envíos** ("Eliminar envío", hard delete real), **Proveedores** ("Eliminar
+proveedor/servicio", hard delete, `deleteProveedor.mutate` cambió de firma `id`→`{id, nombre}`) y
+**Pedidos** ("Cancelar pedido" — la lógica real de stock sigue 100% en `fn_cancelar_pedido` sin tocar, la
+aprobación solo difiere CUÁNDO se llama, REGLA #0; el tab bar de Pedidos ahora también aparece en modo
+básico si el usuario puede supervisar) ya pasan por cola de aprobación con tab "Autorizaciones" propio.
+Verificación distinta a la de Clientes, a propósito: sin test e2e nuevo por módulo — build+typecheck+lint
+limpios + los 3 `INSERT` a `autorizaciones` probados con impersonación real de rol contra DEV. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 36, histórico).  
+**Antes (2026-08-31, v1.189.0, commit `27d740e8`): Supervisión — PRIMER módulo real retrofiteado, Clientes.**
+La baja de cliente (soft-delete) dejó de ejecutarse directo — crea una fila pendiente en `autorizaciones`
+(`modulo='clientes'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde un tab nuevo
+"Autorizaciones" en `ClientesPage.tsx`, reusando el 100% de la infraestructura genérica que ya tenía
+Inventario (`useSupervisorAutorizaciones`, `SupervisionPanel`, `avisarSupervisor`) — primera vez que un
+segundo módulo consume el patrón, sin migración nueva (usa el CHECK ya ampliado por la mig 386). **2 bugs
+reales corregidos al verificar end-to-end contra DEV**: el hook compartido `useSupervisorAutorizaciones.ts`
+interpolaba `selectExtra` sin filtrar (coma doble inválida para PostgREST cuando un módulo no necesita join
+extra, silenciada por el fallback `data ?? []` — ahora también expone `isError`); `confirmarBaja` no
+invalidaba la query de la lista de Autorizaciones. Verificado con Playwright real contra DEV + test
+permanente en `tests/e2e/08_clientes.spec.ts` + suite de regresión de Inventario sin regresión. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 35, histórico).  
 **Antes (2026-08-31, v1.188.0, commit `deef2fc2`)** — 2 frentes:
 1. **Chrome/FedCM en Embedded Signup, investigado a fondo, SIN fix de código posible** (commit `529a0ea8`):
    confirmado que Chrome intercepta el popup de `FB.login()` vía FedCM del lado de `facebook.com`, sin

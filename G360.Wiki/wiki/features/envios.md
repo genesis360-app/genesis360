@@ -2,8 +2,8 @@
 title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360]
-updated: 2026-08-18
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360, 386, src/pages/EnviosPage.tsx]
+updated: 2026-08-31
 ---
 
 # Módulo Envíos
@@ -101,6 +101,14 @@ Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 1. **Envíos** — lista principal con filtros, expandible
 2. **Pagos Courier** (v1.8.40) — pagos pendientes al courier con selección múltiple
+3. **🎯 Autorizaciones** (v1.190.0, commit `452f3c93`, condicional a `puedeSupervisarModulo(user, 'envios')`)
+   — retrofit del patrón de Supervisión (ver [[wiki/features/supervision]] → "Retrofit a más módulos"):
+   "Eliminar envío" (hard delete real, no soft-delete) ya NO se ejecuta directo, crea una fila `pendiente`
+   en `autorizaciones` (`modulo='envios'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde este
+   tab nuevo — reusa el mismo componente `SupervisionPanel`/hook `useSupervisorAutorizaciones` ya probado
+   con Clientes (v1.189.0). Verificación: build+typecheck+lint limpios + INSERT a `autorizaciones` probado
+   con impersonación real de rol contra DEV (sin test e2e nuevo por módulo — mirror exacto del código ya
+   validado con Clientes, ver [[wiki/features/supervision]] para el detalle de por qué alcanza).
 
 ---
 

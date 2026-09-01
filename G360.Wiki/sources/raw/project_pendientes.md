@@ -6,9 +6,145 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-08-31, cont. 35) — 🎯👥 Supervisión: PRIMER módulo real retrofiteado — Clientes
+> ### 🛑 ARRANCÁ ACÁ (2026-08-31, cont. 37) — 🎯👥 Supervisión: RRHH cierra el Nivel 1 COMPLETO (5 módulos,
+> `v1.191.0`) — se resuelve la ambigüedad de naming 'recursos' vs 'rrhh' (no era real)
+>
+> Continuación directa de cont. 36 (Envíos/Proveedores/Pedidos, `v1.190.0`, histórico abajo) — último
+> módulo de Nivel 1 del relevamiento de Fede (2026-08-20): "RRHH→cualquier eliminación". **🔁
+> Reconciliación**: cont. 36 decía "Nivel 1 100% CERRADO" contando 4 módulos
+> (Clientes+Envíos+Proveedores+Pedidos); el relevamiento original en realidad clasificó **5** módulos en
+> ese nivel ("Clientes / Envíos / Proveedores / Pedidos / RRHH: 2 niveles de sensibilidad...") — con RRHH
+> construido ahora, Nivel 1 queda recién **realmente** 100% completo.
+>
+> #### Investigación de alcance ANTES de codear (importante, documentar explícito)
+>
+> `RrhhPage.tsx` tiene **9 acciones de "eliminar" distintas** (empleados, puestos, departamentos,
+> `salario_items`, `vacaciones_solicitud`, asistencia, feriados, documentos, capacitaciones). **Decisión de
+> scope**: se acotó el retrofit **solo a la baja de empleado** (soft-delete, `activo=false`) — es el único
+> registro central de PERSONA, mismo criterio que "eliminar cliente". Las otras 8 son registros
+> administrativos/de configuración, no lo que motiva la regla del relevamiento ("evita que un empleado que
+> se va borre cosas [de otros]") — quedan **sin gatear a propósito**, no es un olvido.
+>
+> #### Ambigüedad de naming 'recursos' vs 'rrhh' — RESUELTA (no era real)
+>
+> Investigado a fondo: `permisosModulo.ts` (`SUPERVISOR_MODULOS_PROHIBIDOS`) y `UsuariosPage.tsx`
+> (`MODULOS`) ya usan `'rrhh'` **consistentemente en todos lados**. `'recursos'` resultó ser una tabla
+> completamente DISTINTA (flota/vehículos, usada en Gastos/Envíos) sin ninguna relación con RRHH. **No
+> hizo falta ningún cambio de naming en el código.**
+>
+> #### Detalle técnico
+>
+> Reutiliza la mutación ya existente `toggleEmpleadoActivo` para el efecto real al aprobar (nunca
+> reimplementa la lógica de baja). Reactivar un empleado (`activo:false→true`) sigue siendo directo — no es
+> una eliminación, el relevamiento no lo pide.
+>
+> #### Verificación
+>
+> Mismo nivel que Envíos/Proveedores/Pedidos — build/typecheck/lint limpios, `INSERT` a `autorizaciones`
+> probado con impersonación real de rol contra DEV (confirma el CHECK ampliado en la mig 386 + RLS
+> genérica); sin test e2e nuevo de Playwright (mirror del patrón ya probado con Clientes).
+>
+> **Con esto, el Nivel 1 completo del relevamiento de Supervisión queda 100% CERRADO**: Clientes, Envíos,
+> Proveedores, Pedidos, RRHH — los 5 módulos "delegable a cualquiera con `supervisa`, modelo genérico
+> estándar".
+>
+> #### Estado del deploy
+>
+> Commit `f337ca62`, `origin/dev`, `APP_VERSION` `v1.191.0`, **tag + GitHub release ya publicados**
+> (`v1.191.0`, `publishedAt: 2026-08-31T22:12:43Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
+> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.191.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión — Nivel 2 y módulos complejos de Supervisión
+>
+> 1. **Ventas** — necesita el chequeo NC-antes-de-eliminar (más complejo que un simple `INSERT` en cola,
+>    sin diseñar todavía).
+> 2. **Gastos** — migrar `autorizaciones_gasto` (tabla separada) a la genérica (**C1**).
+> 3. **Productos** — reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'` (**A4**), requiere
+>    mover UI real de `InventarioPage.tsx` a `ProductosPage.tsx`.
+> 4. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 5. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 6. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 7. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — Nivel 1 100% completo, 5 módulos),
+> [[wiki/features/rrhh]], `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.191.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 36) — 🎯👥 Supervisión: Nivel 1 100% CERRADO — Envíos, Proveedores
+> y Pedidos retrofiteados (`v1.190.0`), mismo patrón que Clientes
+>
+> Continuación directa de cont. 35 (Clientes, `v1.189.0`, histórico abajo) — se replicó el mismo patrón
+> exacto a los 3 módulos restantes de Nivel 1 del relevamiento de Fede (2026-08-20): los 4 módulos
+> "delegable a cualquiera con `supervisa`, modelo genérico estándar" (Clientes+Envíos+Proveedores+Pedidos)
+> quedan **100% CERRADOS**. Sin migración nueva (usa el mismo CHECK de la mig 386).
+>
+> #### Qué se construyó
+>
+> - **Envíos**: "Eliminar envío" (**hard delete real**, no soft-delete como Clientes) ya no se ejecuta
+>   directo — pasa por cola de aprobación. Tab "Autorizaciones" nuevo en `EnviosPage.tsx`.
+> - **Proveedores**: "Eliminar proveedor/servicio" (hard delete, misma tabla `proveedores` para ambos
+>   tipos) ídem. Tab nuevo en `ProveedoresPage.tsx`; `deleteProveedor.mutate` cambió de firma `id` →
+>   `{id, nombre}` (necesita el nombre para el snapshot en `datos_cambio`).
+> - **Pedidos**: "Cancelar pedido" pasa por cola de aprobación. **Importante**: la lógica real de negocio
+>   (liberar reservas de stock, solo si nada se pickeó todavía) sigue viviendo 100% en el RPC
+>   `fn_cancelar_pedido` ya existente, sin tocar — la aprobación solo difiere CUÁNDO se llama, nunca
+>   reimplementa lógica de stock (REGLA #0). El tab bar de Pedidos (antes gateado solo por `modoAvanzado`)
+>   ahora también aparece en modo básico si el usuario puede supervisar Pedidos, porque Supervisión no es
+>   una feature exclusiva de WMS.
+>
+> #### Nivel de verificación — distinto al de Clientes, a propósito
+>
+> NO se agregó un test e2e de Playwright nuevo por cada uno de estos 3 módulos (Clientes sí tuvo
+> verificación end-to-end completa con navegador real). Acá: build+typecheck+lint limpios en los 3
+> archivos, y los 3 `INSERT` a `autorizaciones` (uno por módulo) probados con **impersonación real de rol**
+> (`SET LOCAL ROLE authenticated` + JWT claims del usuario de prueba) contra la DB real de DEV — confirma
+> que el CHECK ampliado en la mig 386 y la RLS genérica aceptan los 3 módulos nuevos sin error.
+> Justificación de por qué alcanza este nivel: el hook compartido y el patrón de invalidación de caché (los
+> 2 bugs reales que se encontraron y corrigieron con Clientes) ya quedaron probados y corregidos ahí — acá
+> es un mirror exacto del mismo código ya validado, no lógica nueva.
+>
+> #### Estado del deploy
+>
+> Commit `452f3c93`, `origin/dev`, `APP_VERSION` `v1.190.0`, **tag + GitHub release ya publicados**
+> (`v1.190.0`, `publishedAt: 2026-08-31T17:39:10Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
+> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.190.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión — lo que queda de Supervisión, confirmado que sigue vigente
+>
+> 1. **RRHH** — con la ambigüedad de naming `'recursos'` vs `'rrhh'` sin resolver (el CHECK de la mig 386
+>    usa `'rrhh'`, pero el módulo/tabla de la app se llaman "Recursos" en varios lugares) — hay que
+>    resolver esa ambigüedad antes de construir.
+> 2. **Ventas** — necesita el chequeo NC-antes-de-eliminar (más complejo que un simple `INSERT` en cola,
+>    sin diseñar todavía).
+> 3. **Gastos** — migrar `autorizaciones_gasto` (tabla separada) a la genérica (**C1**).
+> 4. **Productos** — reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'` (**A4**), requiere
+>    mover UI real de `InventarioPage.tsx` a `ProductosPage.tsx`.
+> 5. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 6. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 7. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 8. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — Nivel 1 100% completo),
+> [[wiki/features/envios]], [[wiki/features/clientes-proveedores]], [[wiki/features/pedidos]],
+> `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.190.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 35) — 🎯👥 Supervisión: PRIMER módulo real retrofiteado — Clientes
 > (baja de cliente pasa por cola de aprobación, `v1.189.0`) — 2 bugs reales corregidos al verificar
 > end-to-end contra DEV
+>
 >
 > Continuación directa de cont. 34 (prerequisito técnico mig 386, `v1.188.0`, histórico abajo) — primer
 > módulo real construido sobre ese prerequisito, respondiendo al pendiente "B" que había quedado anotado.

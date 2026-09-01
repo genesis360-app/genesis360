@@ -2,7 +2,7 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
-sources: [migration 347, migration 348, migration 386, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/components/AvisarSupervisorButton.tsx]
+sources: [migration 347, migration 348, migration 386, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/pages/EnviosPage.tsx, src/pages/ProveedoresPage.tsx, src/pages/PedidosPage.tsx, src/pages/RrhhPage.tsx, src/components/AvisarSupervisorButton.tsx]
 updated: 2026-08-31
 ---
 
@@ -195,7 +195,7 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
-## Retrofit a más módulos — relevamiento RESPONDIDO por Fede (2026-08-20); Clientes ✅ PRIMER módulo construido (v1.189.0)
+## Retrofit a más módulos — relevamiento RESPONDIDO por Fede (2026-08-20); Nivel 1 ✅ 100% COMPLETO — los 5 módulos (Clientes+Envíos+Proveedores+Pedidos+RRHH, v1.189.0-v1.191.0)
 
 > Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
 > 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
@@ -215,9 +215,12 @@ paginación de arriba).
 >   delegables a supervisores vía el patrón, y un puñado de acciones más sensibles que quedan solo-Dueño
 >   (sin pasar por cola).
 >
-> **Bloqueante técnico común**: `productos`, `envios`, `proveedores`, `pedidos` y `recursos` no están hoy en
-> la lista `MODULOS` de `UsuariosPage.tsx` (la pantalla de permisos por rol) — hay que sumarlos ahí antes de
-> poder delegar cualquier acción de esos módulos. **✅ 2026-08-31 (mig 386, APLICADA Y VERIFICADA EN DEV,
+> **Bloqueante técnico común**: `productos`, `envios`, `proveedores`, `pedidos` y `rrhh` (el relevamiento
+> original de esta fecha lo escribía como "`recursos`" — **resuelto el 2026-08-31, ver sección RRHH abajo:
+> era una falsa ambigüedad, el código siempre usó `'rrhh'` consistentemente, `'recursos'` es una tabla
+> distinta de flota/vehículos**) no están hoy en la lista `MODULOS` de `UsuariosPage.tsx` (la pantalla de
+> permisos por rol) — hay que sumarlos ahí antes de poder delegar cualquier acción de esos módulos. **✅
+> 2026-08-31 (mig 386, APLICADA Y VERIFICADA EN DEV,
 > commit `deef2fc2`, `v1.188.0`): el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`) ya admite
 > `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`**, y se eliminó el CHECK rígido de `tipo` (se
 > valida en la app) — prerequisito técnico despejado. `migration-reviewer`: APTA (2ª pasada, la 1ª de la
@@ -247,10 +250,10 @@ paginación de arriba).
 > badge de pendientes vía `useSupervisionBadge`). Al aprobar, recién ahí se ejecuta el `UPDATE` real
 > (`activo=false`, `motivo_baja`, `baja_at`, `baja_por`) y se llama `marcarAprobada()`.
 >
-> **Patrón reusable para los próximos módulos** (Envíos/Proveedores/Pedidos/RRHH): (1) en el flujo que hoy
-> ejecuta la acción sensible directo, reemplazarlo por un `INSERT` en `autorizaciones` con
-> `modulo='<módulo>'`, `tipo='eliminar'` (o el que corresponda) y `datos_cambio` con lo mínimo necesario
-> para reconstruir la acción al aprobar; (2) sumar un tab "Autorizaciones" gateado por
+> **Patrón reusable para los próximos módulos** (usado tal cual para Envíos/Proveedores/Pedidos, ver abajo):
+> (1) en el flujo que hoy ejecuta la acción sensible directo, reemplazarlo por un `INSERT` en
+> `autorizaciones` con `modulo='<módulo>'`, `tipo='eliminar'` (o el que corresponda) y `datos_cambio` con
+> lo mínimo necesario para reconstruir la acción al aprobar; (2) sumar un tab "Autorizaciones" gateado por
 > `puedeSupervisarModulo(user, '<módulo>')`, reusando `useSupervisorAutorizaciones('<módulo>', selectExtra,
 > autEstado)` + `<SupervisionPanel>`; (3) la función de aprobación ejecuta la acción real diferida y llama
 > `marcarAprobada`; (4) sumar `'<módulo>'` a la lista `MODULOS` de `UsuariosPage.tsx` si ese módulo no
@@ -273,22 +276,99 @@ paginación de arriba).
 > SQL directo: `estado='aprobada'`, `activo=false`. Test permanente en `tests/e2e/08_clientes.spec.ts`.
 > Suite de regresión de Inventario (7 specs de autorizaciones) sin regresión.
 >
-> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.189.0`.
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código.
+>
+> ### ✅ Envíos + Proveedores + Pedidos — resto de Nivel 1 completado (2026-08-31, commit `452f3c93`, `v1.190.0`)
+>
+> Mismo patrón exacto de Clientes (arriba), replicado a los 3 módulos restantes que el relevamiento
+> clasificó "delegable a cualquiera con `supervisa`, modelo genérico estándar" (Nivel 1) — **con esto los 4
+> módulos de Nivel 1 (Clientes+Envíos+Proveedores+Pedidos) quedan 100% CERRADOS**. Sin migración nueva (usa
+> el mismo CHECK de la mig 386).
+>
+> - **Envíos**: "Eliminar envío" (**hard delete real**, a diferencia del soft-delete de Clientes) pasa por
+>   cola de aprobación. Tab "Autorizaciones" nuevo en `EnviosPage.tsx`. Ver [[wiki/features/envios]] →
+>   "Pestañas".
+> - **Proveedores**: "Eliminar proveedor/servicio" (hard delete, misma tabla `proveedores` para ambos
+>   tipos) ídem. `deleteProveedor.mutate` cambió de firma `id` → `{id, nombre}` (necesita el nombre para el
+>   snapshot en `datos_cambio`, mismo criterio que `cliente_nombre` en Clientes). Ver
+>   [[wiki/features/clientes-proveedores]] → "Módulo Proveedores" → "Tabs".
+> - **Pedidos**: "Cancelar pedido" pasa por cola de aprobación. **Importante**: la lógica real de negocio
+>   (liberar reservas de stock, solo si nada se pickeó todavía) sigue viviendo 100% en el RPC
+>   `fn_cancelar_pedido` ya existente, sin tocar — la aprobación solo difiere CUÁNDO se llama, nunca
+>   reimplementa lógica de stock (REGLA #0). El tab bar de Pedidos (antes gateado solo por `modoAvanzado`)
+>   ahora también aparece en modo básico si el usuario puede supervisar Pedidos — Supervisión no es una
+>   feature exclusiva de WMS. Ver [[wiki/features/pedidos]].
+>
+> **Nivel de verificación — distinto al de Clientes, a propósito**: NO se agregó un test e2e de Playwright
+> nuevo por cada uno de estos 3 módulos (Clientes sí tuvo verificación end-to-end completa con navegador
+> real). Acá: build+typecheck+lint limpios en los 3 archivos, y los 3 `INSERT` a `autorizaciones` (uno por
+> módulo) probados con **impersonación real de rol** (`SET LOCAL ROLE authenticated` + JWT claims del
+> usuario de prueba) contra la DB real de DEV — confirma que el CHECK ampliado en la mig 386 y la RLS
+> genérica aceptan los 3 módulos nuevos sin error. Justificación: el hook compartido y el patrón de
+> invalidación de caché (los 2 bugs reales de arriba) ya quedaron probados y corregidos con Clientes — acá
+> es un mirror exacto del mismo código ya validado, no lógica nueva.
+>
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.190.0`.
+>
+> ### ✅ RRHH — 5to y ÚLTIMO módulo de Nivel 1, CIERRA el Nivel 1 completo (2026-08-31, commit `f337ca62`, `v1.191.0`)
+>
+> **🔁 Resuelve la ambigüedad de naming `'recursos'` vs `'rrhh'`** que había quedado anotada como pendiente
+> (ver versión anterior de esta sección, y la memoria `project_supervision_tab_extension_pendiente`):
+> investigado a fondo, `permisosModulo.ts` (`SUPERVISOR_MODULOS_PROHIBIDOS`) y `UsuariosPage.tsx`
+> (`MODULOS`) ya usan `'rrhh'` **consistentemente en todos lados** — no había ningún lugar usando
+> `'recursos'` para este módulo. `'recursos'` resultó ser una tabla completamente DISTINTA (flota/
+> vehículos, usada en Gastos/Envíos, ver [[wiki/features/recursos]]) sin ninguna relación con RRHH. **La
+> ambigüedad no era real** — no hizo falta ningún cambio de naming en el código.
+>
+> **Decisión de scope, importante — investigada ANTES de codear**: `RrhhPage.tsx` tiene **9 acciones de
+> "eliminar" distintas** (empleados, puestos, departamentos, `salario_items`, `vacaciones_solicitud`,
+> asistencia, feriados, documentos, capacitaciones). Se acotó el retrofit **solo a la baja de empleado**
+> (soft-delete, `activo=false`) — es el único registro central de PERSONA, mismo criterio que "eliminar
+> cliente". Las otras 8 son registros administrativos/de configuración, no lo que motiva la regla del
+> relevamiento ("evita que un empleado que se va borre cosas [de otros]") — **quedan sin gatear a
+> propósito**, no son un olvido.
+>
+> **Qué cambia**: la baja de empleado (modal de baja: motivo de egreso → `toggleEmpleadoActivo`,
+> `activo=false`, ya existía como RH1) ya NO se ejecuta directo — mismo patrón que los 4 módulos
+> anteriores: `INSERT` en `autorizaciones` (`modulo='rrhh'`, `tipo='eliminar'`), tab nuevo "Autorizaciones"
+> en `RrhhPage.tsx`. Al aprobar, se reutiliza la mutación `toggleEmpleadoActivo` ya existente — nunca
+> reimplementa la lógica de baja. **Reactivar un empleado sigue siendo directo** (activo:false→true no es
+> una eliminación, el relevamiento no lo pide).
+>
+> **Con esto, TODOS los módulos de Nivel 1 del relevamiento quedan construidos: Clientes (v1.189.0), Envíos
+> + Proveedores + Pedidos (v1.190.0), RRHH (v1.191.0) — Nivel 1 100% CERRADO.**
+>
+> **Verificación**: mismo nivel que Envíos/Proveedores/Pedidos — build/typecheck/lint limpios, `INSERT` a
+> `autorizaciones` probado con impersonación real de rol contra DEV (confirma el CHECK ampliado en la mig
+> 386 + RLS genérica); sin test e2e nuevo de Playwright (mirror del patrón ya probado con Clientes).
+>
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.191.0`.
+>
+> **Lo que queda de Supervisión — Nivel 2 y módulos complejos** (ninguno es "delegable genérico simple"
+> como los 5 de Nivel 1, cada uno necesita diseño propio):
+> - **Ventas** — necesita el chequeo NC-antes-de-eliminar (más complejo que un simple `INSERT` en cola).
+> - **Gastos** — migrar `autorizaciones_gasto` (tabla separada) a la genérica (**C1**).
+> - **Productos** — reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'` (**A4**), requiere
+>   mover UI real de `InventarioPage.tsx` a `ProductosPage.tsx`.
 >
 > **Orden de las fases restantes: a criterio de GO, sin definir todavía.**
-> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 35),
+> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 37),
 > [[project_supervision_tab_extension_pendiente]] (memoria).
 
 ## Pendiente real
 
-**✅ 2026-08-31 (v1.189.0): Clientes ya usa el patrón genérico de verdad** (ver "Retrofit a más módulos" →
-"Clientes" arriba) — es el primer módulo además de Inventario. Envíos/Proveedores/Pedidos/RRHH (mismo nivel
-de sensibilidad que Clientes) y Ventas (con su regla adicional de NC-antes-de-eliminar) todavía no arrancaron
-— la plantilla real (código + los 2 bugs ya corregidos en el hook compartido) está lista para reusar.
-Repositores reusó el mismo diseño de reparto/reasignación sin integrarse a la tabla `autorizaciones` en sí
-(ver abajo) — Pedidos/WMS sigue con su propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`,
-construida en v1.161.0/v1.162.0), un concepto distinto (tareas operativas, no solicitudes de aprobación)
-que no se unificó a propósito en esa tanda (fuera del alcance de D1, que solo pedía retrofitear Inventario).
+**✅ 2026-08-31: Nivel 1 del retrofit 100% CERRADO — Clientes (v1.189.0) + Envíos/Proveedores/Pedidos
+(v1.190.0) + RRHH (v1.191.0)** ya usan el patrón genérico de verdad (ver "Retrofit a más módulos" arriba) —
+**los 5 módulos "delegable a cualquiera con `supervisa`, modelo genérico estándar"**, además de Inventario.
+La ambigüedad de naming `'recursos'` vs `'rrhh'` quedó **resuelta** (no era real — `'recursos'` es una
+tabla de flota/vehículos sin relación). Quedan como **Nivel 2 / módulos complejos**, sin arrancar: **Ventas**
+(regla adicional NC-antes-de-eliminar), **Gastos** (migrar `autorizaciones_gasto` a la tabla genérica, C1) y
+**Productos** (reclasificar `kit_precio`/`repricing_margen`, A4, mueve UI de `InventarioPage.tsx` a
+`ProductosPage.tsx`) — ninguno es un simple `INSERT` en cola, cada uno necesita diseño propio. Repositores
+reusó el mismo diseño de reparto/reasignación sin integrarse a la tabla `autorizaciones` en sí (ver abajo) —
+Pedidos/WMS sigue con su propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`, construida en
+v1.161.0/v1.162.0), un concepto distinto (tareas operativas, no solicitudes de aprobación) que no se
+unificó a propósito en esa tanda (fuera del alcance de D1, que solo pedía retrofitear Inventario).
 
 **Actualización 2026-08-11 — el módulo Repositores en sí ya se construyó (Fase 1, mig 352+353, y Fase
 2, mig 354)**: el criterio de reparto por carga/reasignación de este patrón (`fn_autorizaciones_auto_asignar`/

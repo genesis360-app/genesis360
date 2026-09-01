@@ -41,7 +41,7 @@ Suite de regresión de Ventas sin regresión en aislamiento (la corrida combinad
 fallas cruzadas por el no-determinismo ya documentado de la suite, tenant DEV compartido — no por este
 cambio). `npm run build` (tsc+vite) y 1637 tests unitarios verdes.
 
-**Estado**: `APP_VERSION` `v1.194.0`. Commit/push/tag/release pendientes de crear al cierre de esta sesión.
+**Estado**: commit `5a941bc0`, `dev` (local, sin push todavía), `APP_VERSION` `v1.194.0`.
 **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV sin migración nueva (no hizo falta).
 
 **✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido, sin ninguna excepción**:

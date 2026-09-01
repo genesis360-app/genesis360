@@ -61,8 +61,9 @@ type: project
 >
 > #### Estado del deploy
 >
-> `APP_VERSION` `v1.194.0`. Commit/push/tag/release **pendientes de crear** al cierre de esta sesión. **Sin
-> deploy a PROD** — PROD sigue en migraciones 001-385; DEV sin migración nueva (no hizo falta ninguna).
+> Commit `5a941bc0`, `origin/dev`, `APP_VERSION` `v1.194.0`, **tag + GitHub release ya publicados**
+> (https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **Sin deploy a PROD** — PROD sigue
+> en migraciones 001-385; DEV sin migración nueva (no hizo falta ninguna).
 >
 > #### ✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido, sin excepción alguna
 >

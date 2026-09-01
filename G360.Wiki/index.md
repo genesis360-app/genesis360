@@ -281,7 +281,8 @@ Ventas (04, 19_flujo_venta, 22_devolución) sin regresión en aislamiento — co
 mostraron fallas cruzadas por el no-determinismo ya documentado de la suite (tenant DEV compartido), no
 por este cambio. `npm run build` (tsc+vite) y 1637 tests unitarios verdes.
 
-Commit pendiente de crear, `origin/dev`, `APP_VERSION` `v1.194.0`. **Sin deploy a PROD** — PROD sigue en
+Commit `5a941bc0`, `origin/dev`, `APP_VERSION` `v1.194.0`, tag+release ya publicados
+(https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **Sin deploy a PROD** — PROD sigue en
 migraciones 001-385; DEV sin migración nueva (no hizo falta).
 
 **Con esto, TODO el relevamiento de Supervisión de Fede queda construido de verdad, sin ninguna excepción**:

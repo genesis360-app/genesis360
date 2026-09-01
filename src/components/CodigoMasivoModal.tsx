@@ -103,7 +103,7 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
         .nombre { font-size: 11px; color: #374151; margin: 2px 0 0; text-align: center; }
       </style></head><body>
         <div class="grid">${cards}</div>
-        <script>window.onload = () => { window.print(); window.close(); }<\/script>
+        <script>window.onload = () => { window.print(); window.close(); }</script>
       </body></html>`)
     win.document.close()
   }

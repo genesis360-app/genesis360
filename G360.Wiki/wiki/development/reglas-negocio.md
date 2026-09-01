@@ -3,7 +3,7 @@ title: Reglas de Negocio Relevadas
 category: development
 tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd, compras-usd, supervision]
 sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html, relevamiento-compras-gastos-usd-reglas-negocio.html, relevamiento-supervision-retrofit-reglas-negocio.html]
-updated: 2026-08-25
+updated: 2026-08-31
 ---
 
 # Reglas de Negocio Relevadas
@@ -414,7 +414,8 @@ del C2 (pendiente contador).
 > Distinto de G5 (arriba), que solo cubrió el lado de **ventas** — este cubre **compras/gastos**, feature
 > nueva de punta a punta. **Fases 1, 2 y 3 (de las ~4-5 fases estimadas del plan) ✅ CONSTRUIDAS,
 > COMMITEADAS Y PUSHEADAS a `origin/dev` como `v1.180.0`** (migs 379, 380 y 381, commit `ac1a5c84`,
-> tag+release publicados — **sin deploy a PROD todavía, sin PR a `main`**): cimientos de datos + permisos
+> tag+release publicados — **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA**
+> a propósito, ningún tenant de PROD tiene un método de pago USD real configurado): cimientos de datos + permisos
 > de cotización manual + pago de OC con descalce de moneda (conversión server-side,
 > `caja_movimientos.cotizacion_usd`). Detalle técnico completo:
 > [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable", [[wiki/features/clientes-proveedores]],
@@ -442,8 +443,8 @@ pago, no aguanta más de un pago con descalce por columna única); `registrar_pa
 `p_cotizacion_usd` y convierte server-side; wiring completo del modal de pago de OC en `GastosPage.tsx`
 (exige cotización si hay descalce, avisa si se aleja ≥20% de la referencia). **Sin plan de fases fijo
 detallado de antemano** (a diferencia de las 8 fases de G5): se decidió iterar, se estima el plan
-completo en ~4-5 fases totales. **Sin deploy a PROD todavía** (todo COMMITEADO Y PUSHEADO a `origin/dev`,
-sin PR a `main`). Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor,
+completo en ~4-5 fases totales. **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`),
+DORMIDA (ver arriba). Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor,
 confirmar C2/C3 con GO, reportes G1/G2 (ARS/USD). Detalle completo: [[wiki/features/gastos]] →
 "Compras/Gastos en USD + tasa de cambio editable".
 
@@ -466,10 +467,13 @@ confirmar C2/C3 con GO, reportes G1/G2 (ARS/USD). Detalle completo: [[wiki/featu
 | — | Productos | `kit_precio`/`repricing_margen` (hoy en el tab de Inventario) se reclasifican a `modulo='productos'` |
 | — | Clientes / Envíos / Proveedores / Pedidos / RRHH | 2 niveles: eliminaciones delegables a supervisores vía el patrón; un puñado de acciones más sensibles quedan solo-Dueño |
 
-**Bloqueante técnico común, sin resolver todavía**: `productos`, `envios`, `proveedores`, `pedidos` y
-`recursos` no están hoy en el CHECK `autorizaciones.modulo` (mig 347) ni en la lista `MODULOS` de
-`UsuariosPage.tsx` — hay que sumarlos antes de delegar nada de esos módulos. **Orden de fases: a criterio
-de GO, sin definir. Sin diseño técnico ni código arrancado.**
+**Bloqueante técnico común**: `productos`, `envios`, `proveedores`, `pedidos` y `recursos` no están hoy en
+la lista `MODULOS` de `UsuariosPage.tsx` — hay que sumarlos antes de delegar nada de esos módulos. **✅
+2026-08-31 (mig 386, APLICADA Y VERIFICADA EN DEV, `v1.188.0`): el CHECK `autorizaciones.modulo` (antes fijo
+a `'inventario'`, mig 347) ya admite los 7 módulos** y se eliminó el CHECK rígido de `tipo` — prerequisito
+de schema despejado, sin código de UI/negocio para ningún módulo nuevo todavía (A4/C1 quedan como fases
+dedicadas futuras, más grandes de lo que parecían al relevar). **Orden de fases: a criterio de GO, sin
+definir.** Detalle: [[wiki/features/supervision]] → "Retrofit a más módulos".
 
 ---
 

@@ -100,7 +100,7 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
       // Ganancia neta total
       let gananciaNeta = 0
       let totalVentas = 0
-      let clientesNuevosEstim = 0
+      const clientesNuevosEstim = 0
       for (const v of ventas ?? []) {
         const neto = netoMap[v.id] ?? (v.total ?? 0)
         const costo = costoMap[v.id] ?? 0

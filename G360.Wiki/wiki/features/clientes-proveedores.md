@@ -2,8 +2,8 @@
 title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
-sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, src/pages/ClientesPage.tsx]
-updated: 2026-08-25
+sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
+updated: 2026-08-31
 ---
 
 # Clientes y Proveedores
@@ -109,6 +109,15 @@ etiquetas TEXT[]   ← v1.3.0
 1. **Proveedores** — CRUD con modal form 12+ campos, toggle activo
 2. **Órdenes de Compra** — lifecycle completo
 3. **Servicios** (v1.3.0) — tipo='servicio', gestión completa
+4. **🎯 Autorizaciones** (v1.190.0, commit `452f3c93`, condicional a `puedeSupervisarModulo(user,
+   'proveedores')`) — retrofit del patrón de Supervisión (ver [[wiki/features/supervision]] → "Retrofit a
+   más módulos"): "Eliminar proveedor/servicio" (hard delete real, misma tabla `proveedores` para ambos
+   tipos) ya NO se ejecuta directo, crea una fila `pendiente` en `autorizaciones`
+   (`modulo='proveedores'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde este tab —
+   `deleteProveedor.mutate` cambió su firma de `id` a `{id, nombre}` (necesita el nombre para el snapshot
+   en `datos_cambio`, mismo criterio que `cliente_nombre` en el retrofit de Clientes). Verificación: build
+   +typecheck+lint limpios + INSERT a `autorizaciones` probado con impersonación real de rol contra DEV
+   (sin test e2e nuevo — mirror del código ya validado con Clientes v1.189.0).
 
 ---
 
@@ -239,10 +248,12 @@ Lógica pura en `src/lib/comprasReportes.ts`. Tab **Reportes** en Gastos (`src/c
 > 🎉 **Compras 2.0 (CO1-CO8) cerrado al 100%.** Sin pendientes del módulo.
 
 > 🆕 **2026-08-24/25 — "Compras/Gastos en USD" (relevamiento nuevo, respondido por Fede 2026-08-21, 100%
-> cerrado): Fase 1 (cimientos de datos) YA CONSTRUIDA en DEV**, mig 379 — agrega
-> `moneda`/`cotizacion_usd` a `ordenes_compra` (y a `gastos`/`gastos_fijos`). De paso corrige un fix real
-> de REGLA #0 en `registrar_pago_oc()` (nunca completaba la `moneda` del egreso en `caja_movimientos`).
-> Sin wiring de frontend todavía. Detalle completo (diseño, decisiones, próximos pasos) en
+> cerrado): Fases 1-3 CONSTRUIDAS**, migs 379-381 — Fase 1 agrega `moneda`/`cotizacion_usd` a
+> `ordenes_compra` (y a `gastos`/`gastos_fijos`); de paso corrige un fix real de REGLA #0 en
+> `registrar_pago_oc()` (nunca completaba la `moneda` del egreso en `caja_movimientos`). El wiring de
+> frontend (modal de pago de OC con descalce de moneda) se completó en la Fase 3 (mig 381). **✅ EN PROD
+> desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA a propósito** (ningún tenant de PROD
+> tiene un método de pago USD real configurado). Detalle completo (diseño, decisiones, próximos pasos) en
 > [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable".
 
 ### 🐛 Fix real de CO5 — `registrar_pago_oc` (mig 349, v1.165.0, 2026-08-11)
@@ -349,7 +360,7 @@ Botón CreditCard por proveedor → modal con:
 Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_respuestas.md`). **Las 6 fases deployadas a PROD**: v1.19.0 (CL1+CL2), v1.20.0 (CL3), v1.23.0 (CL4+CL5+CL6).
 
 ### CL1 — Fundación de datos + permisos (mig 171)
-- **Baja = soft delete (A6):** botón "Dar de baja" + modal con razón (`clientes.motivo_baja/baja_at/baja_por`). Badge "Baja" en la card, toggle "Ver inactivos", botón reactivar. Conserva historial. (Antes había un hard-delete que era código muerto.)
+- **Baja = soft delete (A6):** botón "Dar de baja" + modal con razón (`clientes.motivo_baja/baja_at/baja_por`). Badge "Baja" en la card, toggle "Ver inactivos", botón reactivar. Conserva historial. (Antes había un hard-delete que era código muerto.) **🎯 2026-08-31 (v1.189.0, commit `27d740e8`): ya NO se ejecuta directo** — el botón "Dar de baja" ahora crea una fila `pendiente` en `autorizaciones` (`modulo='clientes'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde un tab nuevo "Autorizaciones" en esta misma página; el `UPDATE` real (`activo=false`/`motivo_baja`/`baja_at`/`baja_por`) recién se ejecuta al aprobar. Primer módulo (además de Inventario) que usa el patrón genérico de Supervisión — ver [[wiki/features/supervision]] → "Retrofit a más módulos" → "Clientes" para el detalle completo (incluye 2 bugs reales corregidos en el hook compartido `useSupervisorAutorizaciones`).
 - **Alerta de duplicado (A2):** al crear, avisa por DNI/teléfono/nombre similar (no traba). El DNI idéntico lo sigue bloqueando el índice único.
 - **Import 3 modos (A5):** detecta duplicados contra toda la base (DNI/tel/nombre) + ignorar existentes / ignorar nuevos / procesar todos (UPDATE de existentes). Columna `etiquetas` en la plantilla.
 - **Catálogo de etiquetas (F1):** autocomplete (`<datalist>`) = `tenants.cliente_etiquetas_catalogo` ∪ etiquetas usadas.

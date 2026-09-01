@@ -1,11 +1,14 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-27T21:20:39.868Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260827192743 · 162 tablas
+-- Generado 2026-08-31T06:32:55.930Z desde gcmhzdedrkmmzfzfveig vía MCP (execute_sql en partes, sin CLI)
+-- Última migración aplicada: 20260901065114 · 163 tablas (parcheado a mano tras migs 388/389 —
+-- 388 solo cambió fn_evaluar_repricing_margen; 389 amplió el CHECK de modulo y eliminó
+-- autorizaciones_gasto (164→163 tablas); ninguna ameritó full regen)
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
 -- ============================================================
+
 -- ============================================================
 -- EXTENSIONES
 -- ============================================================
@@ -194,26 +197,6 @@ CREATE TABLE public.autorizaciones_cc (
   motivo_bloqueo text NOT NULL,
   monto numeric(12,2),
   motivo text,
-  solicitante_id uuid NOT NULL,
-  solicitante_rol text NOT NULL,
-  estado text NOT NULL DEFAULT 'pendiente'::text,
-  aprobador_id uuid,
-  aprobador_rol text,
-  resolved_at timestamp with time zone,
-  motivo_rechazo text,
-  created_at timestamp with time zone NOT NULL DEFAULT now()
-);
-
-CREATE TABLE public.autorizaciones_gasto (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  sucursal_id uuid,
-  gasto_id uuid,
-  tipo text NOT NULL,
-  monto numeric(12,2),
-  descripcion text,
-  motivo text,
-  payload jsonb,
   solicitante_id uuid NOT NULL,
   solicitante_rol text NOT NULL,
   estado text NOT NULL DEFAULT 'pendiente'::text,
@@ -1621,6 +1604,24 @@ END,
   acepta_cualquier_moneda boolean NOT NULL DEFAULT false
 );
 
+CREATE TABLE public.proveedor_account_tenants (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  proveedor_account_id uuid NOT NULL,
+  tenant_id uuid NOT NULL,
+  proveedor_id uuid NOT NULL,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.proveedor_accounts (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  nombre text,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.proveedor_cc_movimientos (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -2747,6 +2748,7 @@ CREATE TABLE public.zonas (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
+
 -- ============================================================
 -- CONSTRAINTS (PK / UNIQUE / CHECK / FK)
 -- ============================================================
@@ -2773,14 +2775,10 @@ ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_
 ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_valor_check CHECK ((btrim(valor) <> ''::text));
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text])));
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_pkey PRIMARY KEY (id);
-ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_tipo_check CHECK ((tipo = ANY (ARRAY['ajuste_cantidad'::text, 'eliminar_serie'::text, 'eliminar_lpn'::text, 'bulk_edit'::text, 'ajuste_conteo'::text, 'cambio_estado'::text, 'kit_precio'::text, 'repricing_margen'::text])));
-ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_modulo_check CHECK ((modulo = 'inventario'::text));
+ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_modulo_check CHECK ((modulo = ANY (ARRAY['inventario'::text, 'productos'::text, 'ventas'::text, 'clientes'::text, 'envios'::text, 'proveedores'::text, 'pedidos'::text, 'rrhh'::text, 'gastos'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_motivo_bloqueo_check CHECK ((motivo_bloqueo = ANY (ARRAY['limite_excedido'::text, 'oc_vencida'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_pkey PRIMARY KEY (id);
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text])));
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_pkey PRIMARY KEY (id);
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_tipo_check CHECK ((tipo = ANY (ARRAY['crear'::text, 'editar'::text, 'eliminar'::text])));
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_pkey PRIMARY KEY (id);
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_tenant_id_modulo_tipo_key UNIQUE (tenant_id, modulo, tipo);
 ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_pkey PRIMARY KEY (id);
@@ -2989,6 +2987,10 @@ ALTER TABLE public.productos ADD CONSTRAINT productos_hijo_tiene_diferenciador C
 ALTER TABLE public.productos ADD CONSTRAINT productos_padre_no_self CHECK (((producto_padre_id IS NULL) OR (producto_padre_id <> id)));
 ALTER TABLE public.productos ADD CONSTRAINT productos_pkey PRIMARY KEY (id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_sku_key UNIQUE (tenant_id, sku);
+ALTER TABLE public.proveedor_account_tenants ADD CONSTRAINT proveedor_account_tenants_pkey PRIMARY KEY (id);
+ALTER TABLE public.proveedor_account_tenants ADD CONSTRAINT proveedor_account_tenants_proveedor_account_id_tenant_id_key UNIQUE (proveedor_account_id, tenant_id);
+ALTER TABLE public.proveedor_account_tenants ADD CONSTRAINT proveedor_account_tenants_tenant_id_proveedor_id_key UNIQUE (tenant_id, proveedor_id);
+ALTER TABLE public.proveedor_accounts ADD CONSTRAINT proveedor_accounts_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_tipo_check CHECK ((tipo = ANY (ARRAY['oc'::text, 'pago'::text, 'nota_credito'::text, 'ajuste'::text])));
 ALTER TABLE public.proveedor_contactos ADD CONSTRAINT proveedor_contactos_pkey PRIMARY KEY (id);
@@ -2998,6 +3000,7 @@ ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_provee
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_condicion_iva_check CHECK ((condicion_iva = ANY (ARRAY['responsable_inscripto'::text, 'monotributo'::text, 'exento'::text, 'consumidor_final'::text])));
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_modo_pago_check CHECK ((modo_pago = ANY (ARRAY['contado'::text, 'anticipo'::text, 'contra_entrega'::text, 'cuenta_corriente'::text])));
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_pkey PRIMARY KEY (id);
+ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tenant_id_id_key UNIQUE (tenant_id, id);
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tipo_check CHECK ((tipo = ANY (ARRAY['proveedor'::text, 'servicio'::text])));
 ALTER TABLE public.puntos_venta_afip ADD CONSTRAINT puntos_venta_afip_pkey PRIMARY KEY (id);
 ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_pkey PRIMARY KEY (id);
@@ -3166,11 +3169,6 @@ ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_oc_id_fkey
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_solicitante_id_fkey FOREIGN KEY (solicitante_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_aprobador_id_fkey FOREIGN KEY (aprobador_id) REFERENCES users(id);
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_gasto_id_fkey FOREIGN KEY (gasto_id) REFERENCES gastos(id) ON DELETE SET NULL;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_solicitante_id_fkey FOREIGN KEY (solicitante_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3446,6 +3444,10 @@ ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_fkey FOREIGN KEY
 ALTER TABLE public.productos ADD CONSTRAINT productos_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_ubicacion_kit_default_id_fkey FOREIGN KEY (ubicacion_kit_default_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.productos ADD CONSTRAINT productos_unidad_medida_base_id_fkey FOREIGN KEY (unidad_medida_base_id) REFERENCES unidades_medida_fisicas(id) ON DELETE SET NULL;
+ALTER TABLE public.proveedor_account_tenants ADD CONSTRAINT proveedor_account_tenants_proveedor_account_id_fkey FOREIGN KEY (proveedor_account_id) REFERENCES proveedor_accounts(id) ON DELETE CASCADE;
+ALTER TABLE public.proveedor_account_tenants ADD CONSTRAINT proveedor_account_tenants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.proveedor_account_tenants ADD CONSTRAINT proveedor_account_tenants_tenant_id_proveedor_id_fkey FOREIGN KEY (tenant_id, proveedor_id) REFERENCES proveedores(tenant_id, id) ON DELETE CASCADE;
+ALTER TABLE public.proveedor_accounts ADD CONSTRAINT proveedor_accounts_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_caja_sesion_id_fkey FOREIGN KEY (caja_sesion_id) REFERENCES caja_sesiones(id) ON DELETE SET NULL;
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_oc_id_fkey FOREIGN KEY (oc_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL;
@@ -3634,6 +3636,7 @@ ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_usuario_asignado_id_fkey
 ALTER TABLE public.zonas ADD CONSTRAINT zonas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.zonas ADD CONSTRAINT zonas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 
+
 -- ============================================================
 -- ÍNDICES
 -- ============================================================
@@ -3667,15 +3670,10 @@ CREATE INDEX idx_atributos_variante_valores_tenant_atributo ON public.atributos_
 CREATE INDEX idx_aut_inv_tenant_estado ON public.autorizaciones USING btree (tenant_id, estado);
 CREATE INDEX idx_autoriz_cc_proveedor ON public.autorizaciones_cc USING btree (proveedor_id, estado);
 CREATE INDEX idx_autoriz_cc_tenant_estado ON public.autorizaciones_cc USING btree (tenant_id, estado);
-CREATE INDEX idx_autoriz_gasto_gasto ON public.autorizaciones_gasto USING btree (gasto_id) WHERE (gasto_id IS NOT NULL);
-CREATE INDEX idx_autoriz_gasto_solicitante ON public.autorizaciones_gasto USING btree (solicitante_id);
-CREATE INDEX idx_autoriz_gasto_tenant_estado ON public.autorizaciones_gasto USING btree (tenant_id, estado);
 CREATE INDEX idx_autorizaciones_asignado_a ON public.autorizaciones USING btree (asignado_a);
 CREATE INDEX idx_autorizaciones_cc_aprobador_id ON public.autorizaciones_cc USING btree (aprobador_id);
 CREATE INDEX idx_autorizaciones_cc_oc_id ON public.autorizaciones_cc USING btree (oc_id);
 CREATE INDEX idx_autorizaciones_cc_solicitante_id ON public.autorizaciones_cc USING btree (solicitante_id);
-CREATE INDEX idx_autorizaciones_gasto_aprobador_id ON public.autorizaciones_gasto USING btree (aprobador_id);
-CREATE INDEX idx_autorizaciones_gasto_sucursal_id ON public.autorizaciones_gasto USING btree (sucursal_id);
 CREATE INDEX idx_autorizaciones_inventario_aprobado_por ON public.autorizaciones USING btree (aprobado_por);
 CREATE INDEX idx_autorizaciones_inventario_linea_id ON public.autorizaciones USING btree (linea_id);
 CREATE INDEX idx_autorizaciones_inventario_solicitado_por ON public.autorizaciones USING btree (solicitado_por);
@@ -3968,6 +3966,7 @@ CREATE UNIQUE INDEX idx_productos_variante_unica ON public.productos USING btree
 CREATE INDEX idx_prov_cuentas_proveedor ON public.proveedor_cuentas_bancarias USING btree (proveedor_id);
 CREATE INDEX idx_prov_prod_proveedor ON public.proveedor_productos USING btree (proveedor_id);
 CREATE INDEX idx_prov_prod_tenant ON public.proveedor_productos USING btree (tenant_id);
+CREATE UNIQUE INDEX idx_proveedor_accounts_email_lower ON public.proveedor_accounts USING btree (lower(email));
 CREATE INDEX idx_proveedor_cc_movimientos_caja_sesion_id ON public.proveedor_cc_movimientos USING btree (caja_sesion_id);
 CREATE INDEX idx_proveedor_cc_movimientos_created_by ON public.proveedor_cc_movimientos USING btree (created_by);
 CREATE INDEX idx_proveedor_cc_movimientos_proveedor_id ON public.proveedor_cc_movimientos USING btree (proveedor_id);
@@ -4172,7 +4171,12 @@ CREATE UNIQUE INDEX uq_tenant_addons_fijo_dim ON public.tenant_addons USING btre
 CREATE UNIQUE INDEX uq_tenant_addons_mp_payment ON public.tenant_addons USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_tenant_certificates_emisor ON public.tenant_certificates USING btree (emisor_id);
 CREATE UNIQUE INDEX uq_tenant_certificates_tenant_legacy ON public.tenant_certificates USING btree (tenant_id) WHERE (emisor_id IS NULL);
-CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));-- ============================================================
+CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));
+
+
+
+
+-- ============================================================
 -- FUNCIONES
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.aprobar_cambio_estado_inventario(p_autorizacion_id uuid)
@@ -5622,7 +5626,7 @@ BEGIN
       RETURN NEXT;
     ELSE
       INSERT INTO autorizaciones (tenant_id, modulo, tipo, datos_cambio, estado, solicitado_por, notas)
-      VALUES (p_tenant_id, 'inventario', 'repricing_margen',
+      VALUES (p_tenant_id, 'productos', 'repricing_margen',
               jsonb_build_object('producto_id', rec.id, 'producto_nombre', rec.nombre,
                                   'precio_anterior', rec.precio_venta, 'precio_nuevo', v_sugerido,
                                   'margen_objetivo', rec.margen_objetivo),
@@ -5634,7 +5638,7 @@ BEGIN
         SELECT p_tenant_id, u.id, 'repricing_sugerido',
                'Sugerencia de ajuste de precio por margen objetivo',
                rec.nombre || ': $' || rec.precio_venta || ' → $' || v_sugerido || ' — requiere tu aprobación.',
-               '/inventario?tab=autorizaciones'
+               '/productos?tab=autorizaciones'
         FROM users u WHERE u.tenant_id = p_tenant_id AND u.rol IN ('DUEÑO','SUPERVISOR','SUPER_USUARIO') AND u.activo = true;
       END IF;
 
@@ -8460,6 +8464,15 @@ BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_updated_at_proveedor_accounts()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_updated_at_tn_creds()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -9531,6 +9544,67 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -9605,67 +9679,6 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -11441,6 +11454,9 @@ DECLARE v_ok BOOLEAN; BEGIN
   END IF;
   RETURN v_ok;
 END;$function$
+
+
+
 -- ============================================================
 -- TRIGGERS
 -- ============================================================
@@ -11502,6 +11518,7 @@ CREATE TRIGGER trg_productos_propagar_nombre AFTER UPDATE OF nombre ON public.pr
 CREATE TRIGGER trg_productos_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_productos_udm_familia BEFORE UPDATE OF unidad_medida_base_id ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_udm_cambio_familia();
 CREATE TRIGGER trg_productos_variante_atributos BEFORE INSERT OR UPDATE OF producto_padre_id, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_atributos_incompatibles();
+CREATE TRIGGER trg_updated_at_proveedor_accounts BEFORE UPDATE ON public.proveedor_accounts FOR EACH ROW EXECUTE FUNCTION fn_updated_at_proveedor_accounts();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
 CREATE TRIGGER trg_updated_at_recepcion BEFORE UPDATE ON public.recepciones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_recursos_updated_at BEFORE UPDATE ON public.recursos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -11545,6 +11562,7 @@ CREATE TRIGGER ventas_updated_at BEFORE UPDATE ON public.ventas FOR EACH ROW EXE
 CREATE TRIGGER trg_updated_at_whatsapp_creds BEFORE UPDATE ON public.whatsapp_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_whatsapp_creds();
 CREATE TRIGGER trg_wms_tarea_asignado_valido_tenant BEFORE INSERT OR UPDATE OF usuario_asignado_id ON public.wms_tareas FOR EACH ROW EXECUTE FUNCTION fn_wms_tarea_asignado_valido_tenant();
 
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
@@ -11562,7 +11580,6 @@ ALTER TABLE public.archivos_biblioteca ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.atributos_variante_valores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_cc ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.autorizaciones_gasto ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_cancelaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_manual_pagos ENABLE ROW LEVEL SECURITY;
@@ -11649,6 +11666,8 @@ ALTER TABLE public.producto_stock_minimo_sucursal ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_ubicacion_sucursal ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_ubicacion_umbrales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.productos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proveedor_account_tenants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proveedor_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_cc_movimientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_contactos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_cuentas_bancarias ENABLE ROW LEVEL SECURITY;
@@ -11782,13 +11801,6 @@ CREATE POLICY aut_inv_tenant ON public.autorizaciones AS PERMISSIVE FOR ALL TO p
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY autoriz_cc_tenant ON public.autorizaciones_cc AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY autoriz_gasto_tenant ON public.autorizaciones_gasto AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))))
@@ -12261,6 +12273,13 @@ CREATE POLICY productos_update_tenant ON public.productos AS PERMISSIVE FOR UPDA
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY proveedor_account_tenants_self_select ON public.proveedor_account_tenants AS PERMISSIVE FOR SELECT TO public
+  USING ((proveedor_account_id = ( SELECT auth.uid() AS uid)));
+CREATE POLICY proveedor_accounts_self ON public.proveedor_accounts AS PERMISSIVE FOR SELECT TO public
+  USING ((id = ( SELECT auth.uid() AS uid)));
+CREATE POLICY proveedor_accounts_self_update ON public.proveedor_accounts AS PERMISSIVE FOR UPDATE TO public
+  USING ((id = ( SELECT auth.uid() AS uid)))
+  WITH CHECK ((id = ( SELECT auth.uid() AS uid)));
 CREATE POLICY pcc_tenant ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12625,9 +12644,6 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.au
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_gasto TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_gasto TO authenticated;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_gasto TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO service_role;
@@ -12862,6 +12878,10 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pr
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.productos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.productos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.productos TO service_role;
+GRANT SELECT ON public.proveedor_account_tenants TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_account_tenants TO service_role;
+GRANT SELECT, UPDATE ON public.proveedor_accounts TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_accounts TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO service_role;

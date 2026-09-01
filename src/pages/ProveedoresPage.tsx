@@ -31,11 +31,14 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown, RotateCcw,
-  MessageCircle, Repeat, BarChart3,
+  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
 import { useConfirm } from '@/hooks/useConfirm'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 
-type Tab = 'proveedores' | 'servicios' | 'ordenes'
+type Tab = 'proveedores' | 'servicios' | 'ordenes' | 'autorizaciones'
 type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
 
 interface FormProv {
@@ -628,6 +631,33 @@ export default function ProveedoresPage() {
     enabled: !!expandedProvId,
   })
 
+  // Portal de Proveedores (mig 387/390) — ¿este proveedor ya tiene una cuenta vinculada acá?
+  // Vía RPC (fn_proveedor_portal_vinculo), no `.from()` directo: mig 387 solo dejó policies de
+  // "el proveedor ve su propia fila" — el staff no tiene ningún camino de lectura RLS ahí.
+  const { data: provPortalVinculo } = useQuery({
+    queryKey: ['proveedor-portal-vinculo', expandedProvId, tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('fn_proveedor_portal_vinculo', { p_proveedor_id: expandedProvId! })
+      return (data as any[])?.[0]?.email ?? null
+    },
+    enabled: !!expandedProvId && !!tenant,
+  })
+  const [provInviteEmail, setProvInviteEmail] = useState<Record<string, string>>({})
+  const invitarPortal = useMutation({
+    mutationFn: async (p: { proveedorId: string; email: string }) => {
+      const { data, error } = await supabase.functions.invoke('invitar-proveedor', {
+        body: { tenant_id: tenant!.id, proveedor_id: p.proveedorId, email: p.email },
+      })
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'error desconocido')
+      return data
+    },
+    onSuccess: (data) => {
+      toast.success(data?.ya_vinculado ? 'Este proveedor ya tenía cuenta — se le avisó por email' : 'Invitación enviada por email')
+      qc.invalidateQueries({ queryKey: ['proveedor-portal-vinculo'] })
+    },
+    onError: (e: any) => toast.error(e?.message ?? 'No se pudo invitar al proveedor'),
+  })
+
   const { data: servicioItems = [] } = useQuery({
     queryKey: ['servicio-items', expandedServId],
     queryFn: async () => {
@@ -778,17 +808,84 @@ export default function ProveedoresPage() {
     onError: (e: any) => toast.error(e.message),
   })
 
+  // A5 Nivel 1 (relevamiento Supervisión, Fede 2026-08-20) — eliminar un proveedor es un hard
+  // delete irreversible, así que ya NO se ejecuta directo: queda pendiente de aprobación de un
+  // supervisor. Mismo patrón que Clientes/Envíos.
   const deleteProveedor = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('proveedores').delete().eq('id', id)
+    mutationFn: async ({ id, nombre }: { id: string; nombre: string }) => {
+      const { error } = await supabase.from('autorizaciones').insert({
+        tenant_id: tenant!.id,
+        modulo: 'proveedores',
+        tipo: 'eliminar',
+        datos_cambio: { proveedor_id: id, proveedor_nombre: nombre },
+        estado: 'pendiente',
+        solicitado_por: user?.id,
+      })
       if (error) throw error
+      try {
+        await avisarSupervisor(tenant!.id, 'proveedores', user?.id,
+          'Eliminación de proveedor pendiente de aprobar',
+          `${user?.nombre_display ?? 'Un usuario'} pidió eliminar a "${nombre}" — requiere tu aprobación.`,
+          '/proveedores?tab=autorizaciones')
+      } catch { /* la notificación no bloquea el flujo */ }
     },
     onSuccess: () => {
-      toast.success('Proveedor eliminado')
-      qc.invalidateQueries({ queryKey: ['proveedores'] })
+      toast.success('Solicitud enviada — pendiente de aprobación de un supervisor')
+      qc.invalidateQueries({ queryKey: ['autorizaciones', 'proveedores'] })
+      qc.invalidateQueries({ queryKey: ['supervision-badge'] })
     },
-    onError: () => toast.error('No se puede eliminar — tiene productos o movimientos asociados'),
+    onError: (e: any) => toast.error(e.message ?? 'No se pudo enviar la solicitud'),
   })
+
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en proveedores) ──────
+  const puedeVerAutorizacionesProveedores = puedeSupervisarModulo(user, 'proveedores')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones('proveedores', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesProveedores ? ['proveedores'] : [])
+
+  const resumenDeAutorizacionProveedor = (aut: any) => `Eliminar proveedor — ${aut.datos_cambio?.proveedor_nombre ?? '—'}`
+
+  const aprobarAutorizacionProveedor = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const { proveedor_id, proveedor_nombre } = aut.datos_cambio ?? {}
+      const { error } = await supabase.from('proveedores').delete().eq('id', proveedor_id)
+      if (error) throw error
+      await marcarAprobada(aut.id)
+      logActividad({ entidad: 'proveedor', entidad_id: proveedor_id, entidad_nombre: proveedor_nombre, accion: 'aprobar', campo: 'estado', valor_nuevo: 'eliminado', pagina: '/proveedores' })
+      toast.success('Eliminación aprobada y ejecutada')
+      qc.invalidateQueries({ queryKey: ['proveedores'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo aprobar — puede tener productos o movimientos asociados')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
+  const rechazarAutorizacionProveedor = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo rechazar')
+    }
+  }
+
+  const reasignarAutorizacionProveedor = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
+  }
 
   // ── Proveedor productos mutations ──────────────────────────────────────────
   const saveProdProv = useMutation({
@@ -1141,6 +1238,22 @@ export default function ProveedoresPage() {
     onError: (e: any) => toast.error(e.message ?? 'Error al crear OC derivada'),
   })
 
+  // Portal de Proveedores (mig 390) — "Aplicar" copia la propuesta del proveedor a precio_unitario.
+  // Nunca automático: el staff revisa el número y decide acá (REGLA #0 — un tercero externo nunca
+  // pisa el precio real solo).
+  const aplicarPropuestaProveedor = useMutation({
+    mutationFn: async (item: OrdenCompraItem) => {
+      const { error } = await supabase.from('orden_compra_items')
+        .update({ precio_unitario: item.precio_propuesto_proveedor }).eq('id', item.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Precio aplicado')
+      qc.invalidateQueries({ queryKey: ['oc-items', showOcDetail?.id] })
+    },
+    onError: (e: any) => toast.error(e.message ?? 'No se pudo aplicar el precio'),
+  })
+
   const cambiarEstadoOC = useMutation({
     mutationFn: async ({ id, estado }: { id: string; estado: EstadoOC }) => {
       const { error } = await supabase.from('ordenes_compra').update({ estado }).eq('id', id)
@@ -1464,6 +1577,7 @@ export default function ProveedoresPage() {
     { id: 'proveedores' as Tab, label: 'Proveedores', icon: Truck },
     { id: 'servicios' as Tab,   label: 'Servicios', icon: Wrench },
     { id: 'ordenes' as Tab, label: 'Órdenes de compra', icon: FileText },
+    ...(puedeVerAutorizacionesProveedores ? [{ id: 'autorizaciones' as Tab, label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
   ]
 
   const exportarProveedores = (format: 'json' | 'csv') => {
@@ -1534,6 +1648,90 @@ export default function ProveedoresPage() {
       {/* Tab bar */}
       <PageTabs tabs={tabs} active={tab} onChange={(id) => setTab(id as Tab)} />
 
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión) ═══════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizacionesProveedores && (
+        <SupervisionPanel
+          modulo="proveedores"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionProveedor}
+          resumenDe={resumenDeAutorizacionProveedor}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => (
+                <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Eliminar proveedor</span>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{aut.datos_cambio?.proveedor_nombre ?? '—'}</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                        <p>Solicitado por: {aut.solicitante?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                      </div>
+                    </div>
+                    {autEstado === 'pendiente' && (
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={async () => { if (await confirmar(`¿Aprobar la eliminación de "${aut.datos_cambio?.proveedor_nombre}"?`, { danger: true })) aprobarAutorizacionProveedor(aut) }}
+                          disabled={autAprobandoId === aut.id}
+                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                          <CheckCircle2 size={13} /> Aprobar
+                        </button>
+                        {autRechazoId === aut.id ? (
+                          <div className="space-y-1.5">
+                            <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                              placeholder="Motivo de rechazo..."
+                              className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                            <div className="flex gap-1">
+                              <button onClick={() => rechazarAutorizacionProveedor(aut.id, autMotivoRechazo, resumenDeAutorizacionProveedor(aut))}
+                                disabled={!autMotivoRechazo.trim()}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                Confirmar
+                              </button>
+                              <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAutRechazoId(aut.id)}
+                            className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <X size={13} /> Rechazar
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SupervisionPanel>
+      )}
+
       {/* ── Tab Proveedores ─────────────────────────────────────────────────── */}
       {tab === 'proveedores' && (
         <div className="space-y-4">
@@ -1602,7 +1800,7 @@ export default function ProveedoresPage() {
                       <button onClick={() => openEditProv(p)} className="p-1.5 rounded text-muted hover:text-primary" title="Editar">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={async () => { if (await confirmar('¿Eliminar este proveedor?', { danger: true })) deleteProveedor.mutate(p.id) }}
+                      <button onClick={async () => { if (await confirmar('¿Eliminar este proveedor?', { danger: true })) deleteProveedor.mutate({ id: p.id, nombre: p.nombre }) }}
                         className="p-1.5 rounded text-muted hover:text-red-500" title="Eliminar">
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1696,6 +1894,36 @@ export default function ProveedoresPage() {
                           ))}
                         </div>
                       )}
+
+                      {/* Portal de Proveedores (mig 387/390) — invitación */}
+                      <div className="border-t border-border-ds pt-3">
+                        <p className="text-sm font-semibold text-primary flex items-center gap-1.5 mb-2">
+                          <Send className="w-4 h-4 text-accent-text" /> Portal de Proveedores
+                        </p>
+                        {provPortalVinculo ? (
+                          <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Vinculado — {provPortalVinculo}
+                          </p>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <input type="email" value={provInviteEmail[p.id] ?? p.email ?? ''}
+                              onChange={e => setProvInviteEmail(m => ({ ...m, [p.id]: e.target.value }))}
+                              placeholder="Email del proveedor"
+                              className="flex-1 border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
+                            <button
+                              onClick={() => {
+                                const email = (provInviteEmail[p.id] ?? p.email ?? '').trim()
+                                if (!email) { toast.error('Ingresá un email'); return }
+                                invitarPortal.mutate({ proveedorId: p.id, email })
+                              }}
+                              disabled={invitarPortal.isPending}
+                              className="flex items-center gap-1 bg-accent hover:bg-accent/90 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50 flex-shrink-0">
+                              <Send className="w-3 h-3" /> Invitar
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted mt-1">Le va a llegar un link para ver sus órdenes de compra y proponer precio por ítem.</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1911,7 +2139,7 @@ export default function ProveedoresPage() {
                       <button onClick={() => openEditProv(s)} className="p-1.5 rounded text-muted hover:text-primary" title="Editar">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={async () => { if (await confirmar('¿Eliminar?', { danger: true })) deleteProveedor.mutate(s.id) }}
+                      <button onClick={async () => { if (await confirmar('¿Eliminar?', { danger: true })) deleteProveedor.mutate({ id: s.id, nombre: s.nombre }) }}
                         className="p-1.5 rounded text-muted hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
@@ -3130,6 +3358,14 @@ export default function ProveedoresPage() {
                         <td className="px-3 py-2 text-primary">
                           <div>{(it as any).productos?.nombre}</div>
                           <div className="text-xs text-muted">{(it as any).productos?.sku}</div>
+                          {/* Portal de Proveedores (mig 390) — el proveedor propuso un precio distinto */}
+                          {it.precio_propuesto_proveedor != null && it.precio_propuesto_proveedor !== it.precio_unitario && (
+                            <div className="flex items-center gap-1.5 mt-0.5 text-xs">
+                              <span className="text-accent-text">Propuesto: ${it.precio_propuesto_proveedor.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                              <button onClick={() => aplicarPropuestaProveedor.mutate(it)} disabled={aplicarPropuestaProveedor.isPending}
+                                className="text-accent-text underline hover:no-underline disabled:opacity-50">Aplicar</button>
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right text-primary">
                           {it.cantidad} {(it as any).productos?.unidad_medida}

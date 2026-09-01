@@ -37,9 +37,15 @@ export function useSupervisorAutorizaciones(modulo: string, selectExtra: string,
   const query = useQuery({
     queryKey,
     queryFn: async () => {
+      // selectExtra es opcional (módulos que no necesitan ningún join extra, ej. Clientes, guardan
+      // todo lo necesario en datos_cambio) — sin el `.filter(Boolean)` una selectExtra vacía deja
+      // una coma doble ("*, , solicitante:...") que PostgREST rechaza con error, silenciado como
+      // "0 resultados" por el fallback `data ?? []` (bug real encontrado al retrofitear Clientes).
+      const campos = ['*', selectExtra, 'solicitante:users!solicitado_por(nombre_display)', 'asignado:users!asignado_a(nombre_display)']
+        .filter(Boolean).join(', ')
       const { data, error, count } = await supabase
         .from('autorizaciones')
-        .select(`*, ${selectExtra}, solicitante:users!solicitado_por(nombre_display), asignado:users!asignado_a(nombre_display)`, { count: 'exact' })
+        .select(campos, { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .eq('modulo', modulo)
         .eq('estado', autEstado)
@@ -80,6 +86,7 @@ export function useSupervisorAutorizaciones(modulo: string, selectExtra: string,
     totalCount: query.data?.total ?? 0,
     page, pageSize, setPage, setPageSize,
     isLoading: query.isLoading,
+    isError: query.isError,
     marcarAprobada, rechazar, reasignar,
   }
 }

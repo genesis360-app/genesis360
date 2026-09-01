@@ -309,7 +309,7 @@ export default function ReportesPage() {
     rotacion: (() => {
       const ventasPorProducto: Record<string, { nombre: string; sku: string; cantidad: number; total: number }> = {}
       ventas.forEach((v: any) => {
-        ;(v.venta_items ?? []).forEach((item: any) => {
+        (v.venta_items ?? []).forEach((item: any) => {
           const pid = item.producto_id
           if (!ventasPorProducto[pid]) {
             ventasPorProducto[pid] = { nombre: item.productos?.nombre ?? '', sku: item.productos?.sku ?? '', cantidad: 0, total: 0 }

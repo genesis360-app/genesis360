@@ -117,7 +117,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
         <p class="lpn">${lpn}</p>
         <p class="nombre">${productoNombre}</p>
         <p class="sku">${sku}</p>
-        <script>window.onload = () => { window.print(); window.close(); }<\/script>
+        <script>window.onload = () => { window.print(); window.close(); }</script>
       </body></html>
     `)
     win.document.close()

@@ -3,7 +3,7 @@ title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging, pildoras, buscador]
 sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, 360, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
-updated: 2026-08-18
+updated: 2026-08-31
 ---
 
 # Módulo Pedidos
@@ -194,7 +194,13 @@ generar tareas WMS reales — "lanzar" — es la Fase PED3, todavía no existe e
   - **Aviso NO bloqueante de stock** al guardar si la cantidad supera el disponible de hoy (H2 del
     relevamiento) — el bloqueo en firme sigue siendo al Lanzar (server-side).
 - **Confirmar** (borrador→confirmado) y **Cancelar** (con `window.confirm`) — ambas mutaciones
-  `logActividad` con `accion: 'cambio_estado'`.
+  `logActividad` con `accion: 'cambio_estado'`. **🎯 2026-08-31 (v1.190.0, commit `452f3c93`): "Cancelar"
+  ya NO ejecuta `fn_cancelar_pedido` directo** — retrofit del patrón de Supervisión (ver
+  [[wiki/features/supervision]] → "Retrofit a más módulos"): crea una fila `pendiente` en `autorizaciones`
+  (`modulo='pedidos'`, `tipo='eliminar'`) y un supervisor la aprueba/rechaza desde un tab nuevo
+  "Autorizaciones" en `PedidosPage.tsx`; recién al aprobar se llama al RPC real. La lógica de negocio
+  (liberar reservas de stock, solo si nada se pickeó todavía) sigue viviendo 100% en `fn_cancelar_pedido`
+  sin tocar — la aprobación solo difiere CUÁNDO se llama, nunca reimplementa la lógica de stock (REGLA #0).
 
 **Probado en vivo** contra el navegador real (Playwright): un pedido real creado y confirmado en el
 tenant "Almacén Jorgito" (DEV), datos de prueba limpiados después.
@@ -407,11 +413,15 @@ deshacer un picking (des-pickeo) no necesita revertir nada en `pedido_items`, so
 `inventario_lineas` y la propia `wms_tareas`.
 
 **UI (`PedidosPage.tsx`):** botón "Deshacer lanzamiento" para `en_preparacion`; botón "Cancelar" para
-cualquier estado no terminal salvo `cancelado`; en el detalle expandido de un pedido lanzado, cada
+cualquier estado no terminal salvo `cancelado` (**desde v1.190.0 dispara una solicitud de aprobación, ver
+arriba** — no cancela directo); en el detalle expandido de un pedido lanzado, cada
 tarea de picking `completada` (directa **o** encadenada a un reabastecimiento, desde la mig 300 —
 ver "Correcciones post-relevamiento" más abajo) tiene un link "Deshacer" que abre un modal para
 elegir la ubicación destino. Ambos botones, además, respetan el editor de roles por transición
-(E3, PED7) — no se muestran si el rol del usuario no tiene permiso para esa transición.
+(E3, PED7) — no se muestran si el rol del usuario no tiene permiso para esa transición. **🆕 v1.190.0: el
+tab bar de Pedidos (antes gateado solo por `modoAvanzado`) ahora también aparece en modo básico si el
+usuario puede supervisar Pedidos** (`puedeSupervisarModulo(user, 'pedidos')`) — Supervisión no es una
+feature exclusiva de WMS; el tab "Tareas WMS" en sí sigue gateado solo por `modoAvanzado`.
 
 ---
 

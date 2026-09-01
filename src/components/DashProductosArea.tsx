@@ -171,7 +171,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       if (ventaIds.length > 0) {
         const CHUNK = 200
         for (let i = 0; i < ventaIds.length; i += CHUNK) {
-          let q = supabase.from('venta_items')
+          const q = supabase.from('venta_items')
             .select('producto_id, cantidad, precio_unitario, subtotal, iva_monto, precio_costo_historico, venta_id, productos(nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo)')
             .in('venta_id', ventaIds.slice(i, i + CHUNK))
           const { data } = await q
@@ -180,7 +180,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       }
 
       // 3. Todos los productos activos (para capital dormido)
-      let qProds = supabase.from('productos')
+      const qProds = supabase.from('productos')
         .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, activo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       const { data: todosProductos = [] } = await qProds
@@ -195,7 +195,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       qVentasRecientes90 = dashFilter(qVentasRecientes90)
       const { data: ventasRecientes90 = [] } = await qVentasRecientes90
       const ventaIds90 = (ventasRecientes90 ?? []).map((v: any) => v.id)
-      let conVentas90 = new Set<string>()
+      const conVentas90 = new Set<string>()
       if (ventaIds90.length > 0) {
         const { data: items90 } = await supabase.from('venta_items')
           .select('producto_id')
@@ -427,7 +427,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
     if (margenMin > 0) data = data.filter(p => p.avg_margen >= margenMin)
     if (cicloVida === 'estrella') data = data.filter(p => p.quadrant === 'estrella')
     if (cicloVida === 'estancado') data = data.filter(p => p.total_cantidad === 0)
-    if (cicloVida === 'sin_stock') data = data // handled at product level
+    // 'sin_stock' se maneja a nivel de producto, no acá
     return data
   }, [pData, margenMin, cicloVida])
 

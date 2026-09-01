@@ -240,11 +240,14 @@ detalle completo en `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.
   `tenants.repricing_modo` (configurable en Config → Integraciones → card "Repricing automático por
   margen": automático siempre / alerta para aprobar / automático desde un monto en $, con
   `repricing_tope_pct` y `repricing_umbral_aviso_monto` opcionales): aplica el precio directo
-  (notificando a DUEÑO/SUPERVISOR/SUPER_USUARIO) o genera una fila en `autorizaciones_inventario`
-  (nuevo tipo `'repricing_margen'` — **reusa la pantalla de Autorizaciones YA EXISTENTE**, mismo
+  (notificando a DUEÑO/SUPERVISOR/SUPER_USUARIO) o genera una fila en `autorizaciones`
+  (tipo `'repricing_margen'` — **reusa la pantalla de Autorizaciones YA EXISTENTE**, mismo
   patrón que `'kit_precio'` de la mig 343) sin duplicar sugerencias pendientes entre corridas.
   Disparado por **Edge Function `repricing-sweep`** + GitHub Action `repricing-sweep.yml` cada 6
-  horas (no hay pg_cron habilitado).
+  horas (no hay pg_cron habilitado). **🎯 2026-09-01 (mig 388, v1.192.0): reclasificado de
+  `modulo='inventario'` a `modulo='productos'`** (era un cambio de PRECIO de producto, no de
+  inventario) — la aprobación ahora se resuelve desde Productos→Autorizaciones. Ver
+  [[wiki/features/supervision]] → "Retrofit a más módulos" → "Productos (A4)".
 - **RPC `fn_ultima_comision_meli(producto_id)`** — de solo lectura, comisión + precio de la venta MELI
   más reciente de ese SKU, informativa en la ficha del producto — **nunca se usa como dato certero
   para fijar un precio** (B4 del relevamiento).

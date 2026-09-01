@@ -152,11 +152,13 @@ test.describe('Motor de Rotación — nombre/precio sugerido de KIT + autorizaci
     expect(aut.datos_cambio.precio_nuevo, '[133] la autorización debe pedir el precio sugerido exacto').toBe(PRECIO_SUGERIDO)
     expect(aut.datos_cambio.kit_nombre, '[133] la autorización debe llevar el nombre del KIT').toBe(nombreSugeridoEsperado)
 
-    // 4) Sesión DUEÑO (page principal) — aprueba desde Inventario → Autorizaciones
-    await goto(page, '/inventario')
+    // 4) Sesión DUEÑO (page principal) — aprueba desde Productos → Autorizaciones. Desde v1.191.0
+    // (A4, mig 388) kit_precio/repricing_margen viven en modulo='productos', no 'inventario' — se
+    // aprueban en ProductosPage, no en InventarioPage.
+    await goto(page, '/productos')
     await waitForApp(page)
-    const tabAut = page.getByRole('button', { name: 'Supervisión' })
-    await expect(tabAut, '[133] DUEÑO no ve el tab Supervisión').toBeVisible({ timeout: 8000 })
+    const tabAut = page.getByRole('button', { name: 'Autorizaciones' })
+    await expect(tabAut, '[133] DUEÑO no ve el tab Autorizaciones en Productos').toBeVisible({ timeout: 8000 })
     await tabAut.click()
 
     const filaAut = page.locator('div').filter({ hasText: nombreSugeridoEsperado }).filter({ has: page.getByRole('button', { name: /Aprobar/i }) }).last()
@@ -167,7 +169,7 @@ test.describe('Motor de Rotación — nombre/precio sugerido de KIT + autorizaci
     const confirmarAprobar = page.getByRole('alertdialog').getByRole('button', { name: /^Confirmar$/i })
     await expect(confirmarAprobar, '[133] no apareció el diálogo de confirmación al aprobar').toBeVisible({ timeout: 5000 })
     await confirmarAprobar.click()
-    await expect(page.getByText(/Autorización aprobada y ejecutada/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Cambio de precio aprobado y ejecutado/i)).toBeVisible({ timeout: 10000 })
 
     // 5) POSITIVO final en DB: el precio del KIT quedó en el valor sugerido, y la autorización
     //    pasó a aprobada.

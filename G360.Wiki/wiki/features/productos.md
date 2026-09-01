@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370]
-updated: 2026-08-25
+sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, src/pages/ProductosPage.tsx]
+updated: 2026-09-01
 ---
 
 # Productos
@@ -41,6 +41,17 @@ tenant:
 
 Reusado también en Inventario (tab Inventario), Clientes y Envíos — ver
 [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]], [[wiki/features/envios]].
+
+### 🎯 Tab "Autorizaciones" (2026-09-01, mig 388, v1.192.0, commit `0e2bb29d`)
+
+Retrofit del patrón de Supervisión (A4 del relevamiento de Fede, ver [[wiki/features/supervision]] →
+"Retrofit a más módulos" → "Productos (A4)" para el detalle completo). `kit_precio` (Motor de Rotación,
+ver [[wiki/features/precios-tiers-empaque]] → "Opción 3") y `repricing_margen` (D3, sweep automático de
+[[wiki/integrations/mercado-libre]]) estaban mal clasificados en `modulo='inventario'` pese a ser cambios
+de PRECIO de producto — la mig 388 reclasifica las filas existentes a `modulo='productos'` y esta tab
+nueva (condicional a `puedeSupervisarModulo(user, 'productos')`) las aprueba/rechaza con el mismo hook
+genérico `useSupervisorAutorizaciones` que ya usan Inventario/Clientes/Envíos/Proveedores/Pedidos/RRHH.
+**Estos 2 tipos ya NO aparecen en el tab de Supervisión de Inventario.**
 
 ### Vista plana (default)
 

@@ -52,17 +52,6 @@ export default function AdminPage() {
   const [editTenant, setEditTenant] = useState<TenantRow | null>(null)
   const [editForm, setEditForm] = useState({ subscription_status: '' as SubscriptionStatus, max_users: 0, trial_days: 0 })
 
-  // Solo ADMIN puede ver esto
-  if (user?.rol !== 'ADMIN') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <Shield size={48} className="text-red-400" />
-        <h1 className="text-xl font-bold text-gray-700 dark:text-gray-300">Acceso denegado</h1>
-        <p className="text-gray-400 dark:text-gray-500">Esta sección es solo para administradores de {BRAND.name}.</p>
-      </div>
-    )
-  }
-
   const { data: tenants = [], isLoading, refetch } = useQuery({
     queryKey: ['admin-tenants'],
     queryFn: async () => {
@@ -127,6 +116,17 @@ export default function AdminPage() {
     },
     onError: (e: any) => toast.error(e?.message ?? 'Error al actualizar'),
   })
+
+  // Solo ADMIN puede ver esto — el guard va DESPUÉS de todos los hooks (rules-of-hooks)
+  if (user?.rol !== 'ADMIN') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <Shield size={48} className="text-red-400" />
+        <h1 className="text-xl font-bold text-gray-700 dark:text-gray-300">Acceso denegado</h1>
+        <p className="text-gray-400 dark:text-gray-500">Esta sección es solo para administradores de {BRAND.name}.</p>
+      </div>
+    )
+  }
 
   const openEdit = (t: TenantRow) => {
     setEditTenant(t)

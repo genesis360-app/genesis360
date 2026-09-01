@@ -45,74 +45,75 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ sucursalId: id })
   },
 
-	loadUserData: async (authUserId: string) => {
-	  console.log('loadUserData llamado con:', authUserId)
-	  try {
-		const [{ data: userData, error: userError }, { data: authData }] = await Promise.all([
-		  supabase.from('users').select('*').eq('id', authUserId).single(),
-		  supabase.auth.getUser(),
-		])
+  loadUserData: async (authUserId: string) => {
+    try {
+      const [{ data: userData }, { data: authData }] = await Promise.all([
+        supabase.from('users').select('*').eq('id', authUserId).single(),
+        supabase.auth.getUser(),
+      ])
 
-		console.log('userData:', userData, 'error:', userError)
+      if (!userData) {
+        // Portal de Proveedores (mig 387/390): una cuenta de proveedor es un auth.users SEPARADO,
+        // sin fila en `users` — si esta sesión es la suya, NO es "necesita onboarding" (eso
+        // dejaría crear un tenant/users nuevo con su misma identidad, mezclando roles). Se
+        // resuelve fuera de este store: PortalProveedoresPage valida su propia sesión.
+        const { data: cuentaProveedor } = await supabase.from('proveedor_accounts')
+          .select('id').eq('id', authUserId).maybeSingle()
+        set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: !cuentaProveedor })
+        return
+      }
 
-		if (!userData) {
-		  set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: true })
-		  return
-		}
+      // Resolver avatar: Google OAuth tiene avatar en user_metadata; email/password usa el subido por el usuario
+      const googleAvatar = authData?.user?.user_metadata?.avatar_url ?? null
+      const resolvedAvatar = userData.avatar_url ?? googleAvatar
 
-		// Resolver avatar: Google OAuth tiene avatar en user_metadata; email/password usa el subido por el usuario
-		const googleAvatar = authData?.user?.user_metadata?.avatar_url ?? null
-		const resolvedAvatar = userData.avatar_url ?? googleAvatar
+      const [{ data: tenantData }, { data: sucursalesData }, { data: rolCustomData }] = await Promise.all([
+        supabase.from('tenants').select('*').eq('id', userData.tenant_id).single(),
+        supabase.from('sucursales').select('*').eq('tenant_id', userData.tenant_id).eq('activo', true).order('created_at'),
+        userData.rol_custom_id
+          ? supabase.from('roles_custom').select('permisos').eq('id', userData.rol_custom_id).eq('activo', true).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
 
-		const [{ data: tenantData, error: tenantError }, { data: sucursalesData }, { data: rolCustomData }] = await Promise.all([
-		  supabase.from('tenants').select('*').eq('id', userData.tenant_id).single(),
-		  supabase.from('sucursales').select('*').eq('tenant_id', userData.tenant_id).eq('activo', true).order('created_at'),
-		  userData.rol_custom_id
-		    ? supabase.from('roles_custom').select('permisos').eq('id', userData.rol_custom_id).eq('activo', true).maybeSingle()
-		    : Promise.resolve({ data: null }),
-		])
+      // Validar/resolver sucursal activa:
+      // '__global__'  → explícitamente eligió "Todas" → null
+      // id válido     → usar ese id
+      // null (nunca eligió) y hay sucursales → auto-seleccionar la más antigua (primera)
+      // id inválido (borrada) → auto-seleccionar la primera disponible
+      const savedRaw = typeof window !== 'undefined' ? localStorage.getItem('sucursal-id') : null
+      const ids = (sucursalesData ?? []).map((s: Sucursal) => s.id)
+      const validSucursalId = savedRaw === '__global__' ? null
+        : savedRaw && ids.includes(savedRaw) ? savedRaw
+        : ids.length > 0 ? ids[0]
+        : null
 
-		console.log('tenantData:', tenantData, 'error:', tenantError)
+      // DUEÑO: siempre global (hardcoded)
+      // SUPERVISOR/SUPER_USUARIO: global por defecto, restringible con puede_ver_todas=false en DB
+      // Resto: solo si puede_ver_todas=true explícito en DB
+      const puedeVerTodas =
+        ROLES_SIEMPRE_GLOBALES.includes(userData.rol) ||
+        (ROLES_GLOBAL_POR_DEFECTO.includes(userData.rol) && userData.puede_ver_todas !== false) ||
+        !!userData.puede_ver_todas
 
-		// Validar/resolver sucursal activa:
-		// '__global__'  → explícitamente eligió "Todas" → null
-		// id válido     → usar ese id
-		// null (nunca eligió) y hay sucursales → auto-seleccionar la más antigua (primera)
-		// id inválido (borrada) → auto-seleccionar la primera disponible
-		const savedRaw = typeof window !== 'undefined' ? localStorage.getItem('sucursal-id') : null
-		const ids = (sucursalesData ?? []).map((s: Sucursal) => s.id)
-		const validSucursalId = savedRaw === '__global__' ? null
-		  : savedRaw && ids.includes(savedRaw) ? savedRaw
-		  : ids.length > 0 ? ids[0]
-		  : null
+      // Usuarios sin vista global quedan bloqueados a su sucursal asignada (ignora localStorage)
+      const effectiveSucursalId = puedeVerTodas ? validSucursalId : (userData.sucursal_id ?? null)
 
-		// DUEÑO: siempre global (hardcoded)
-		// SUPERVISOR/SUPER_USUARIO: global por defecto, restringible con puede_ver_todas=false en DB
-		// Resto: solo si puede_ver_todas=true explícito en DB
-		const puedeVerTodas =
-		  ROLES_SIEMPRE_GLOBALES.includes(userData.rol) ||
-		  (ROLES_GLOBAL_POR_DEFECTO.includes(userData.rol) && userData.puede_ver_todas !== false) ||
-		  !!userData.puede_ver_todas
+      const permisosCustom = (rolCustomData?.permisos ?? null) as Record<string, 'no_ver' | 'ver' | 'editar'> | null
 
-		// Usuarios sin vista global quedan bloqueados a su sucursal asignada (ignora localStorage)
-		const effectiveSucursalId = puedeVerTodas ? validSucursalId : (userData.sucursal_id ?? null)
-
-		const permisosCustom = (rolCustomData?.permisos ?? null) as Record<string, 'no_ver' | 'ver' | 'editar'> | null
-
-		set({
-		  user: { ...userData, avatar_url: resolvedAvatar, permisos_custom: permisosCustom },
-		  tenant: tenantData,
-		  sucursales: sucursalesData ?? [],
-		  sucursalId: effectiveSucursalId,
-		  puedeVerTodas,
-		  loading: false,
-		  initialized: true,
-		})
-	  } catch (err) {
-		console.error('Error en loadUserData:', err)
-		set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: false })
-	  }
-	},
+      set({
+        user: { ...userData, avatar_url: resolvedAvatar, permisos_custom: permisosCustom },
+        tenant: tenantData,
+        sucursales: sucursalesData ?? [],
+        sucursalId: effectiveSucursalId,
+        puedeVerTodas,
+        loading: false,
+        initialized: true,
+      })
+    } catch (err) {
+      console.error('Error en loadUserData:', err)
+      set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: false })
+    }
+  },
 
   signOut: async () => {
     await supabase.auth.signOut()

@@ -8,7 +8,7 @@ import {
   DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
   Plane, ClipboardList, Check, X, LayoutDashboard, FileSpreadsheet,
   UserCheck, UserX, TrendingUp, Download, Paperclip, FolderOpen, File,
-  BookOpen, Award, Network, FileText, Star, QrCode, Copy,
+  BookOpen, Award, Network, FileText, Star, QrCode, Copy, CheckCircle2, UserCog,
 } from 'lucide-react'
 // xlsx se importa dinámicamente en exportAsistenciaMes/exportNominaHistorica (auditoría perf
 // 2026-08-14, P5).
@@ -29,8 +29,11 @@ import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useConfirm, usePrompt } from '@/hooks/useConfirm'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 
-type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo' | 'reportes'
+type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo' | 'reportes' | 'autorizaciones'
 type FormMode = 'crear' | 'editar' | null
 
 // Metadata de cada tab (label + icono) para la barra de tabs — una sola fila scrolleable.
@@ -47,6 +50,7 @@ const TAB_META: Record<Tab, { label: string; icon: typeof Users2 }> = {
   capacitaciones: { label: 'Capacitaciones', icon: BookOpen },
   reportes:       { label: 'Reportes',       icon: TrendingUp },
   equipo:         { label: 'Mi Equipo',      icon: Network },
+  autorizaciones: { label: 'Autorizaciones', icon: UserCog },
 }
 
 interface Concepto {
@@ -749,6 +753,81 @@ export default function RrhhPage() {
     },
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
+
+  // A5 Nivel 1 (relevamiento Supervisión, Fede 2026-08-20) — "RRHH→cualquier eliminación": la
+  // baja de un empleado (soft delete) ya NO se ejecuta directo, queda pendiente de aprobación.
+  // Reutiliza `toggleEmpleadoActivo` para el efecto real al aprobar — nunca reimplementa la
+  // lógica. Solo la BAJA pasa por la cola; reactivar (activo:false→true) sigue directo, no es
+  // una eliminación.
+  const confirmarBajaEmpleado = async () => {
+    if (!bajaEmpleado) return
+    const { error } = await supabase.from('autorizaciones').insert({
+      tenant_id: tenant!.id,
+      modulo: 'rrhh',
+      tipo: 'eliminar',
+      datos_cambio: { emp_id: bajaEmpleado.id, emp_nombre: bajaEmpleado.nombre, motivo: bajaEmpleado.motivo, fecha: bajaEmpleado.fecha },
+      estado: 'pendiente',
+      solicitado_por: user?.id,
+    })
+    if (error) { toast.error('No se pudo enviar la solicitud: ' + error.message); return }
+    try {
+      await avisarSupervisor(tenant!.id, 'rrhh', user?.id,
+        'Baja de empleado pendiente de aprobar',
+        `${user?.nombre_display ?? 'Un usuario'} pidió dar de baja a "${bajaEmpleado.nombre}" — requiere tu aprobación.`,
+        '/rrhh?tab=autorizaciones')
+    } catch { /* la notificación no bloquea el flujo */ }
+    toast.success('Solicitud enviada — pendiente de aprobación de un supervisor')
+    setBajaEmpleado(null)
+    qc.invalidateQueries({ queryKey: ['autorizaciones', 'rrhh'] })
+    qc.invalidateQueries({ queryKey: ['supervision-badge'] })
+  }
+
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en rrhh) ─────────────
+  const puedeVerAutorizacionesRrhh = puedeSupervisarModulo(user, 'rrhh')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones('rrhh', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesRrhh ? ['rrhh'] : [])
+
+  const resumenDeAutorizacionRrhh = (aut: any) => `Baja de empleado — ${aut.datos_cambio?.emp_nombre ?? '—'}`
+
+  const aprobarAutorizacionRrhh = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const { emp_id, motivo, fecha } = aut.datos_cambio ?? {}
+      await toggleEmpleadoActivo.mutateAsync({ empId: emp_id, motivo, fecha })
+      await marcarAprobada(aut.id)
+      toast.success('Baja aprobada y ejecutada')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo aprobar')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
+  const rechazarAutorizacionRrhh = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo rechazar')
+    }
+  }
+
+  const reasignarAutorizacionRrhh = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
+  }
 
   const savePuesto = useMutation({
     mutationFn: async (data: Partial<Puesto>) => {
@@ -1974,11 +2053,97 @@ export default function RrhhPage() {
       <PageTabs
         tabs={(esSupervisor
           ? (['equipo', 'asistencia', 'vacaciones', 'cumpleanos'] as Tab[])
-          : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'reportes', 'equipo'] as Tab[])
-        ).map((t) => ({ id: t, label: TAB_META[t].label, icon: TAB_META[t].icon }))}
+          : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'reportes', 'equipo',
+              ...(puedeVerAutorizacionesRrhh ? ['autorizaciones' as Tab] : [])] as Tab[])
+        ).map((t) => ({ id: t, label: TAB_META[t].label, icon: TAB_META[t].icon, badge: t === 'autorizaciones' ? autPendientesBadge : undefined }))}
         active={activeTab}
         onChange={(id) => { setActiveTab(id as Tab); resetForm() }}
       />
+
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión) ═══════════════ */}
+      {activeTab === 'autorizaciones' && puedeVerAutorizacionesRrhh && (
+        <SupervisionPanel
+          modulo="rrhh"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionRrhh}
+          resumenDe={resumenDeAutorizacionRrhh}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => (
+                <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Baja de empleado</span>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{aut.datos_cambio?.emp_nombre ?? '—'}</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                        {aut.datos_cambio?.motivo && <p>Motivo: {aut.datos_cambio.motivo}</p>}
+                        <p>Solicitado por: {aut.solicitante?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                      </div>
+                    </div>
+                    {autEstado === 'pendiente' && (
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={async () => { if (await confirmar(`¿Aprobar la baja de "${aut.datos_cambio?.emp_nombre}"?`, { danger: true })) aprobarAutorizacionRrhh(aut) }}
+                          disabled={autAprobandoId === aut.id}
+                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                          <CheckCircle2 size={13} /> Aprobar
+                        </button>
+                        {autRechazoId === aut.id ? (
+                          <div className="space-y-1.5">
+                            <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                              placeholder="Motivo de rechazo..."
+                              className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                            <div className="flex gap-1">
+                              <button onClick={() => rechazarAutorizacionRrhh(aut.id, autMotivoRechazo, resumenDeAutorizacionRrhh(aut))}
+                                disabled={!autMotivoRechazo.trim()}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                Confirmar
+                              </button>
+                              <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAutRechazoId(aut.id)}
+                            className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <X size={13} /> Rechazar
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SupervisionPanel>
+      )}
 
       {/* RH8 — REPORTES TAB (+ RH7 F4 evaluaciones + F2/F3 config) */}
       {activeTab === 'reportes' && (
@@ -2506,11 +2671,11 @@ export default function RrhhPage() {
                   <input type="date" value={bajaEmpleado.fecha} onChange={e => setBajaEmpleado({ ...bajaEmpleado, fecha: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
-                <p className="text-[11px] text-gray-400">El empleado queda inactivo (soft delete). Se puede reactivar después. La liquidación final se calcula en Reportes (RH8).</p>
+                <p className="text-[11px] text-gray-400">Queda pendiente de aprobación de un supervisor — recién ahí el empleado pasa a inactivo (soft delete, se puede reactivar después). La liquidación final se calcula en Reportes (RH8).</p>
                 <div className="flex gap-3">
                   <button onClick={() => setBajaEmpleado(null)}
                     className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300 text-sm">Cancelar</button>
-                  <button onClick={() => { toggleEmpleadoActivo.mutate({ empId: bajaEmpleado.id, motivo: bajaEmpleado.motivo, fecha: bajaEmpleado.fecha }); setBajaEmpleado(null) }}
+                  <button onClick={confirmarBajaEmpleado}
                     className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium">Dar de baja</button>
                 </div>
               </div>

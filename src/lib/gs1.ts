@@ -115,7 +115,7 @@ export function looksLikeGS1(rawInput: string): boolean {
 export function parseGS1(rawInput: string): GS1Fields {
   const out: GS1Fields = {}
   const desconocidos: Record<string, string> = {}
-  let raw = stripSymbology(rawInput ?? '')
+  const raw = stripSymbology(rawInput ?? '')
   let i = 0
 
   const readVar = (from: number): { value: string; next: number } => {
@@ -127,7 +127,7 @@ export function parseGS1(rawInput: string): GS1Fields {
   while (i < raw.length) {
     if (raw[i] === GS) { i++; continue }
     // AI de 2 dígitos base
-    let ai = raw.slice(i, i + 2)
+    const ai = raw.slice(i, i + 2)
     if (!/^\d{2}$/.test(ai)) break
 
     // Precio: AI de 4 dígitos 392x / 393x (4º dígito = decimales)

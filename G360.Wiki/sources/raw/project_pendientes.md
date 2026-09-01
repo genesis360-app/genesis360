@@ -6,11 +6,997 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-27, cont. 29) — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — LAS 4 FASES DE LA PROPUESTA DE FEDE QUEDAN CONSTRUIDAS EN DEV
-> CONSTRUIDA Y VERIFICADA PARCIALMENTE EN DEV (mig 385, EF nueva `wa-briefing-sweep`, `v1.184.0`), **SIN
-> deploy a PROD todavía** — continúa la MISMA sesión que cont. 28 (abajo, ahora histórico; **no hubo
-> `/clear`**), por pedido explícito de GO de seguir con esta fase "para dejar casi todo listo" del
-> asistente — Caja USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios
+> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 41) — 🗂️✅ Portal de Proveedores — Fase 2: invitación real +
+> acceso a OC + UI del portal (mig 390, `v1.195.0`)
+>
+> GO: "creo q quedaba otro pendiente, lo de proveedores" — retomó la Fase 2 (la Fase 1, identidad
+> cross-tenant, ya estaba construida desde el 2026-08-31, mig 387).
+>
+> #### Investigación ANTES de diseñar (REGLA #0)
+>
+> El ciclo de vida real de `ordenes_compra` (CO1-CO8, ✅ PROD) es
+> borrador→enviada→confirmada→cancelada→recibida_parcial→recibida — sin inventar un estado nuevo, el
+> proveedor solo interactúa mientras la OC está `enviada`.
+>
+> #### Decisiones confirmadas con GO antes de codear
+>
+> 1. La respuesta del proveedor **NUNCA** confirma la OC sola — el staff revisa y "aplica" el precio
+>    propuesto a mano (un tercero externo no puede disparar un compromiso de pago, REGLA #0).
+> 2. Invitación por **email con link mágico** (Edge Function `invitar-proveedor`), no un código manual.
+>
+> #### Qué se construyó (mig 390)
+>
+> 5 funciones `SECURITY DEFINER` angostas — se descartó a propósito RLS ancha sobre
+> `ordenes_compra`/`tenants`/`productos` (`tenants` tiene columnas muy sensibles: `clave_maestra`,
+> `afipsdk_token`, `cuit`, `cbu`, `fichado_token`, `mp_subscription_id`):
+> - `fn_portal_proveedor_negocios` / `_ocs` / `_oc_items` — lectura, todas validan `auth.uid()` contra
+>   `proveedor_account_tenants`, ninguna confía en los parámetros del caller.
+> - `fn_portal_proveedor_responder_item` — **único camino de escritura** del proveedor: un `UPDATE`
+>   atómico (chequeo de pertenencia + `estado='enviada'` en el propio `WHERE`, evita ventana TOCTOU) que
+>   solo puede tocar `precio_propuesto_proveedor`/`respondido_at` — nunca `precio_unitario`/`cantidad`/
+>   `estado` reales.
+> - `fn_proveedor_portal_vinculo` — lado **STAFF**: hallazgo real encontrado con el e2e antes de aplicar
+>   la migración — la Fase 1 (mig 387) solo dejaba policies de "el proveedor ve su propia fila", el staff
+>   (quien invita y necesita confirmar "¿ya está vinculado, a qué email?") no tenía NINGÚN camino de
+>   lectura, ni indirecto.
+>
+> Edge Function `invitar-proveedor` (guard de identidad + rol DUEÑO/SUPERVISOR/ADMIN/SUPER_USUARIO,
+> `admin.generateLink({type:'magiclink'})` — no `'invite'`, porque una cuenta vinculada a varios negocios
+> es el caso NORMAL, no un error — envía el link por `send-email`/Resend propio, template
+> `invitacion_proveedor`, nunca el email default de Supabase). Portal real (`src/pages/PortalProveedoresPage.tsx`,
+> ruta pública `/portal-proveedores`, autocontenida fuera de `AuthGuard` — una cuenta de proveedor es un
+> `auth.users` separado, sin fila en `users`). UI de "aplicar propuesta" nueva en `ProveedoresPage.tsx`
+> (detalle de OC). Safety net en `authStore.ts`: una sesión de proveedor que llegue a tocar el resto de la
+> app ya no cae en el wizard de onboarding (chequea `proveedor_accounts` antes de `needsOnboarding=true`).
+>
+> De paso, hardening no relacionado: `REVOKE ALL ... FROM anon` en `ordenes_compra`/`orden_compra_items`
+> (privilegios default nunca revocados — hallazgo preexistente, no explotable, ver
+> `reference_revoke_public_no_anon`).
+>
+> #### Verificación
+>
+> Playwright real contra DEV (specs 138/139): DUEÑO invita a un proveedor real desde su ficha → cuenta +
+> vínculo creados de verdad (verificado vía `fn_proveedor_portal_vinculo`, NO por REST directo — esas
+> tablas no tienen policy de lectura para staff); idempotencia real (reinvitar no duplica); CAJERO recibe
+> 403 del guard de rol server-side. Proveedor logueado con contraseña real (fijada por SQL/pgcrypto SOLO
+> para poder probar sin bandeja de email — la cuenta nació sin contraseña, nunca se tocó una cuenta real)
+> ve su OC `enviada` y propone un precio → verificado que `precio_propuesto_proveedor` se guardó y
+> `precio_unitario` NUNCA se tocó solo. Staff ve la propuesta en `ProveedoresPage.tsx` y la aplica →
+> recién ahí `precio_unitario` cambia.
+>
+> **2 gaps reales encontrados y corregidos en el camino** (documentarlos, no son bugs de la feature en sí):
+> 1. La RPC `fn_proveedor_portal_vinculo` (arriba) — sin ella el staff nunca podía confirmar un vínculo.
+> 2. `browser.newContext()` de Playwright **hereda el `storageState` configurado a nivel de PROYECTO**
+>    (`playwright.config.ts`, la sesión del OWNER) si no se le pasa `storageState:{cookies:[],origins:[]}`
+>    explícito — un contexto "nuevo" para simular al proveedor arrancaba YA logueado como el staff. Útil
+>    de recordar para cualquier spec futuro que necesite una sesión realmente vacía.
+>
+> `migration-reviewer` **2 rondas**: la 1ª revisó un diseño con RLS ancha + trigger guard sobre
+> `ordenes_compra`/`orden_compra_items`/`productos` (encontró 2 hallazgos: trigger no cubría la PK `id`,
+> policies sin chequear `proveedor_account_tenants.activo`) — en vez de parchear ESE diseño, se
+> **rediseñó por completo** a las 5 RPC angostas actuales (resuelve ambos hallazgos por construcción, ya
+> que no queda ningún camino de acceso directo a las tablas); la 2ª ronda revisó el rediseño completo →
+> APTA. `npm run build` (tsc+vite) y 1637 tests unitarios verdes. Suite de regresión de Compras/OC
+> (specs 29, 33, 34, 35, 77, 78, 80) sin regresión.
+>
+> #### Estado del deploy
+>
+> `APP_VERSION` `v1.195.0`. **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-390.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Manual de GO/Fede, en el Dashboard de Supabase (no configurable por SQL/migración)**: agregar
+>    `https://genesis360.pro/portal-proveedores` (PROD) y el equivalente de DEV a **Authentication → URL
+>    Configuration → Redirect URLs** de cada proyecto — sin esto, un link mágico real que reciba un
+>    proveedor por email puede ser rechazado o redirigir mal (esta sesión probó el login con contraseña,
+>    nunca clickeó un link mágico real de punta a punta).
+> 2. **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 (Supervisión completa + Portal de
+>    Proveedores Fase 2) — sigue sin salir de DEV, candidato natural para la próxima sesión.
+> 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 5. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/portal-proveedores]] (página nueva dedicada), [[wiki/features/asistente-whatsapp]]
+> (referencia actualizada), `wiki/index.md`, `wiki/business/roadmap.md` (v1.195.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 40) — 🎯✅ Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de
+> Fede de verdad, sin ninguna excepción (`v1.194.0`)
+>
+> Continuación directa de cont. 39 (Gastos/C1, `v1.193.0`, histórico abajo) — última pieza pendiente, la
+> única que quedaba "sin diseñar todavía".
+>
+> #### Investigación de código real ANTES de diseñar (REGLA #0 — fiscal)
+>
+> Ya existían 2 mecanismos separados para lo que A1 necesitaba: `cambiarEstado→'cancelada'` (venta
+> **despachada sin CAE**: reincorpora stock + revierte caja, automático) y "Devolver" con devolución
+> completa (venta **facturada con CAE**: reincorpora stock + revierte caja + emite la NC automática ya
+> existente, A10 — pero el reembolso lo elige un humano en un modal). El botón "Anular" viejo ni se
+> ofrecía si había CAE (mandaba a usar "Devolver" a mano).
+>
+> #### Única decisión de diseño abierta — confirmada con GO antes de codear
+>
+> Para una venta ya facturada, ¿quién elige el medio de reembolso que dispara la NC automática al aprobar
+> la anulación? **Se eligió: el supervisor lo elige al aprobar** (la aprobación abre "Devolver" ya
+> precargada a devolución total) — nunca se automatiza un reembolso fiscal sin intervención humana.
+>
+> #### Qué se construyó
+>
+> Sin migración nueva — `autorizaciones.modulo` ya incluía `'ventas'` desde la mig 386, que además ya
+> anticipaba el `tipo='eliminar_venta_despachada'` en su propio comentario. "Solicitar anulación" (tab
+> "Autorizaciones" nuevo en `VentasPage.tsx`, mismo patrón genérico `useSupervisorAutorizaciones`/
+> `SupervisionPanel` que los otros 7 módulos) reemplaza al botón "Anular" con clave maestra. Al **aprobar**,
+> dos ramas según el estado FRESCO de la venta (siempre re-fetcheado, nunca el de cuando se pidió):
+> - **Sin CAE** (`despachada`) → mismo `cambiarEstado→'cancelada'` de siempre, directo, sin pedir nada
+>   nuevo (reincorpora stock + revierte caja proporcional a los medios originales).
+> - **Con CAE** (`facturada`) → abre "Devolver" precargada a devolución TOTAL
+>   (`abrirModalDevolucion(venta, {anulacionTotal:true})`, 2º parámetro opcional nuevo — no toca los 2
+>   call-sites existentes) con todos los ítems/series al máximo. El supervisor elige el reembolso, y al
+>   confirmar la NC automática (A10) sale sola, sin cambios en su lógica. La autorización queda `aprobada`
+>   recién cuando la devolución cierra al 100% (mismo chequeo que ya usaba `procesarDevolucion` para marcar
+>   `estado='devuelta'`) — si es parcial o se cancela el modal, sigue `pendiente`.
+>
+> "Cambiar cliente" **no cambió**: sigue con clave maestra, sigue oculto con CAE (mismo motivo de siempre).
+>
+> #### Verificación
+>
+> Playwright real contra DEV (spec 137 nuevo, 2 escenarios, ambos con producto/venta propios del test,
+> verificados por REST en cada paso — no solo por el toast). **Sin CAE**: stock restaurado exacto + caja
+> revertida (`egreso_devolucion_sena`) por el monto exacto cobrado, autorización `aprobada`. **Con CAE
+> sintético** (venta marcada `facturada`+CAE de prueba por REST, **sin llamar a AFIP real** — mismo
+> criterio defensivo que el spec 22 ya usa para el "happy path monetario" de devoluciones): confirmado que
+> la solicitud ahora SÍ se ofrece (antes bloqueaba del todo), que "Cambiar cliente" sigue oculto, que la
+> precarga es total (cantidad = máximo, total = el de la venta), y que cancelar sin confirmar deja la
+> autorización `pendiente` y la venta sin cambios (nunca se marca aprobada antes del efecto real). Suite
+> de regresión de Ventas (04_ventas, 19_flujo_venta, 22_devolución) sin regresión — corrida junto al spec
+> nuevo mostró fallas cruzadas por el no-determinismo ya documentado de la suite (tenant DEV compartido,
+> ver `reference_e2e_suite_no_deterministica`), pero cada spec **en aislamiento** pasó 100% limpio.
+> `npm run build` (tsc+vite) y 1637 tests unitarios verdes.
+>
+> #### Estado del deploy
+>
+> Commit `5a941bc0`, `origin/dev`, `APP_VERSION` `v1.194.0`, **tag + GitHub release ya publicados**
+> (https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **Sin deploy a PROD** — PROD sigue
+> en migraciones 001-385; DEV sin migración nueva (no hizo falta ninguna).
+>
+> #### ✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido, sin excepción alguna
+>
+> Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + A1 (Ventas).
+> Ya no queda NADA del relevamiento en sí sin construir.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 (5+ sesiones de trabajo: Nivel 1 + A4 +
+>    C1 + A1) — sigue sin salir de DEV, es candidato natural para la próxima sesión.
+> 2. **Nivel 2** (sin delegar, solo Dueño): Clientes→límite CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>    sueldo/licencias con goce — **YA funcionan con clave maestra síncrona, no necesitan cola, no es
+>    trabajo pendiente de construir, es la decisión de diseño final.**
+> 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 5. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 6. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — TODO cerrado, sección "Ventas (A1)"),
+> [[wiki/features/ventas-pos]] (sección VF6), `wiki/index.md` (filas + footer),
+> `wiki/business/roadmap.md` (v1.194.0), `tests/specs/uat-modo-basico.md` (VEN-24/VEN-49).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 39) — 🎯✅ Supervisión: C1 (migrar `autorizaciones_gasto` a la
+> genérica) CIERRA TODO el relevamiento de Fede de verdad (`v1.193.0`) — corrige cont. 38, que decía
+> "CIERRA el relevamiento ENTERO" contando A4 pero todavía faltaba C1
+>
+> Continuación directa de cont. 38 (A4/Productos, `v1.192.0`, histórico abajo) — última pieza pendiente.
+> **🔁 Reconciliación**: el título de cont. 38 decía "CIERRA el relevamiento ENTERO de Fede" — en rigor
+> faltaba todavía C1 (Gastos); con esta pieza construida, ahora sí queda completo.
+>
+> #### Qué se construyó
+>
+> `autorizaciones_gasto` (tabla separada desde v1.8.43, **0 filas reales en DEV — confirmado dos veces con
+> queries directas antes de un `DROP TABLE`**) se elimina. Gastos ahora usa la tabla genérica
+> `autorizaciones` (`modulo='gastos'`), PERO a propósito **NO** usa
+> `useSupervisorAutorizaciones`/`SupervisionPanel` (el patrón de los otros 7 módulos) — Gastos tiene su
+> PROPIO modelo de jerarquía de rol (CAJERO→SUPERVISOR/DUEÑO/ADMIN; SUPERVISOR→DUEÑO/ADMIN, función
+> `puedeAprobar()` en `umbralGasto.ts`), completamente distinto del permiso `supervisa` fijo. Se conservan
+> los componentes propios de Gastos (`SolicitarAutorizacionGastoModal.tsx`,
+> `BandejaAutorizacionesGasto.tsx`, con su tab "Autorizaciones" ya existente) — solo cambia la tabla
+> destino. Los campos específicos (monto, descripción, payload, sucursal_id, gasto_id, solicitante_rol)
+> pasan a `datos_cambio` jsonb; `motivo`→`notas` y `motivo_rechazo` se reusan tal cual (ya eran columnas de
+> la tabla genérica).
+>
+> #### 🐛 Hallazgo real de esta sesión (documentado, NO un bug arreglado — decisión de producto existente)
+>
+> `/gastos` **NO está en `CAJERO_ALLOWED`** (`AppLayout.tsx`) — un CAJERO real que navega ahí es
+> redirigido a `/ventas` antes de poder cargar nada. Esto significa que **TODO el código de
+> `esCajero`/umbral-para-CAJERO en `GastosPage.tsx`** (filtrado de "mis gastos", chequeo de
+> `umbral_gasto_cajero`) **es HOY código muerto en producción** — nunca se ejecuta porque CAJERO nunca
+> llega a esa página. No se cambió (es una decisión de acceso, no algo que corresponda decidir solo) — se
+> usó SUPERVISOR→DUEÑO en el test en su lugar, que sí es un camino real y ejercita exactamente el mismo
+> código migrado.
+>
+> #### Verificación
+>
+> Playwright real contra DEV (spec 136 nuevo) — solicitud sembrada con el TOKEN REAL de SUPERVISOR (mismo
+> shape exacto que inserta el modal real, pasando por RLS real, no simulado) → confirmado que el gasto NO
+> existe todavía → DUEÑO aprueba desde Gastos→Autorizaciones→Gastos con un click real en la UI → gasto
+> creado de verdad + autorización queda aprobada con `datos_cambio.gasto_id` apuntando al gasto real. La
+> migración pasó por `migration-reviewer` **dos rondas** (la 1ª pidió agregar `IF EXISTS` al `DROP` y que
+> se confirmara independientemente el conteo de 0 filas antes de aplicar — ambos resueltos). Suite de
+> regresión de Gastos (3 specs: efectivo/caja, cheque/rechazo, comprobante obligatorio) sin regresión.
+>
+> #### Estado del deploy
+>
+> Commit `2c4470c1`, `origin/dev`, `APP_VERSION` `v1.193.0`, **tag + GitHub release ya publicados**
+> (`v1.193.0`, `publishedAt: 2026-09-01T07:22:04Z`). Migración 389 aplicada y verificada en DEV. **Sin
+> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-389, código en `v1.193.0`.
+>
+> #### ✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido
+>
+> Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos). Ya no queda
+> nada del relevamiento en sí sin construir.
+>
+> #### 🛑 Pendiente real para la próxima sesión — ya NO es "retrofit de Supervisión", son piezas aparte
+>
+> 1. **Ventas (A1)** — la lógica NC-antes-de-eliminar (si la venta ya fue facturada, primero emitir NC
+>    antes de poder eliminarla), fiscal, sin diseñar todavía.
+> 2. **Nivel 2** (sin delegar, solo Dueño): Clientes→límite CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>    sueldo/licencias con goce — **YA funcionan con clave maestra síncrona, no necesitan cola, no es
+>    trabajo pendiente de construir, es la decisión de diseño final.**
+> 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 5. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 6. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — TODO cerrado), [[wiki/features/gastos]]
+> (sección "Umbrales y Autorizaciones"), `wiki/index.md` (filas + footer), `wiki/business/roadmap.md`
+> (v1.193.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 38) — 🎯💲 Supervisión: A4 (kit_precio/repricing_margen →
+> Productos) CIERRA el relevamiento ENTERO de Fede (`v1.192.0`) — de paso, 2 gaps reales de la sesión
+> anterior corregidos (roles custom sin `productos/envios/proveedores/pedidos`, badge de nav y
+> `/supervision` nunca actualizados a los 5 módulos de Nivel 1)
+>
+> Continuación directa de cont. 37 (RRHH, `v1.191.0`, histórico abajo) — último ítem pendiente del
+> relevamiento completo: **A4**. `kit_precio` (Motor de Rotación, `InventarioPage.tsx`) y
+> `repricing_margen` (D3, sweep automático `fn_evaluar_repricing_margen`) estaban mal clasificados en
+> `modulo='inventario'` pese a ser cambios de PRECIO de producto, no de inventario.
+>
+> #### Qué se construyó
+>
+> Migración **388** (revisada por `migration-reviewer`, APTA — diff línea por línea de
+> `fn_evaluar_repricing_margen` contra la función original confirmado, sin efectos colaterales de
+> triggers) reclasifica las filas EXISTENTES de `autorizaciones` (`modulo='inventario'` AND `tipo IN
+> ('kit_precio','repricing_margen')`) a `modulo='productos'` — **2 pendientes REALES en DEV** (no datos de
+> prueba) más 6 aprobadas históricas — y actualiza `fn_evaluar_repricing_margen` para insertar ahí en vez
+> de en `'inventario'` (mismo cuerpo, solo cambia el `modulo` del `INSERT` y la `action_url` de la
+> notificación, de `/inventario` a `/productos`). Se sacó la lógica de aprobación/render de estos 2 tipos
+> de `InventarioPage.tsx` (nunca más van a matchear `modulo==='inventario'`; `aplicarPrecioSugeridoKit`
+> ahora inserta con `modulo:'productos'`) y se agregó una tab "Autorizaciones" nueva en `ProductosPage.tsx`
+> con el mismo hook genérico `useSupervisorAutorizaciones` que ya usaban Inventario/Clientes/Envíos/
+> Proveedores/Pedidos/RRHH.
+>
+> #### 🐛 2 gaps REALES encontrados y corregidos, de la propia sesión anterior (Envíos/Proveedores/Pedidos)
+>
+> Importante documentarlos porque afectaban a los módulos ya construidos, no solo a Productos:
+> 1. `UsuariosPage.tsx` (la lista `MODULOS` de módulos asignables a roles custom en la pantalla de
+>    permisos) nunca tenía `'productos'`, `'envios'`, `'proveedores'` ni `'pedidos'` — un tenant con roles
+>    custom **JAMÁS podía otorgar el permiso `supervisa`** en esos módulos (solo funcionaba para DUEÑO/
+>    SUPER_USUARIO/ADMIN, y donde no está prohibido, SUPERVISOR). Agregados los 4 (`'clientes'` y `'rrhh'`
+>    ya estaban en la lista de antes).
+> 2. El badge de navegación global "Supervisión" (`AppLayout.tsx`, `MODULOS_SUPERVISION`) y la vista
+>    agregada cross-módulo (`SupervisionPage.tsx`, constante `MODULOS`) seguían hardcodeados a
+>    `['inventario']` — **nunca se habían actualizado al construir Clientes/Envíos/Proveedores/Pedidos/
+>    RRHH** en la sesión anterior. El badge del nav y la página `/supervision` **nunca mostraron nada de
+>    esos 5 módulos hasta ahora**, pese a que sus tabs "Autorizaciones" individuales sí funcionaban.
+>    Agregados los 6 módulos nuevos (incluido `productos`) en ambos lugares.
+>
+> #### Verificación
+>
+> End-to-end real con Playwright contra DEV (spec 133, ya existente de antes de esta sesión, actualizado
+> para navegar a Productos en vez de Inventario y ajustar el texto del toast): crear KIT → DEPOSITO pide
+> cambio de precio → queda pendiente en `modulo='productos'` (confirmado por REST, no solo por el test) →
+> DUEÑO aprueba desde Productos→Autorizaciones → `precio_venta` se actualiza + autorización queda
+> `aprobada` (confirmado por REST). Suite de regresión de autorizaciones de Inventario (5 specs:
+> `ajuste_cantidad`, `cambio_estado` batch/single/rechazo, dueño-bypass) sin regresión. `schema_full.sql`
+> parcheado a mano (solo cambió 1 función, no ameritó regeneración completa).
+>
+> #### Estado del deploy
+>
+> Commit `0e2bb29d`, `origin/dev`, `APP_VERSION` `v1.192.0`, **tag + GitHub release ya publicados**
+> (`v1.192.0`, `publishedAt: 2026-09-01T04:45:51Z`). Migración 388 aplicada y verificada en DEV. **Sin
+> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-388, código en `v1.192.0`.
+>
+> #### ✅ Con esto se completa el relevamiento ENTERO de retrofit de Supervisión de Fede (A1-A5, Nivel 1 + A4)
+>
+> Quedan solo las piezas explícitamente diferidas, ninguna es "delegable genérico simple":
+>
+> 1. **C1** — migrar `autorizaciones_gasto` (tabla separada de Gastos) a la tabla genérica.
+> 2. **Ventas (A1)** — la lógica NC-antes-de-eliminar (si la venta ya fue facturada, primero emitir NC
+>    antes de poder eliminarla) sin diseñar todavía.
+> 3. **Nivel 2** (sin delegar, solo Dueño, fuera del modelo genérico — mismo criterio que
+>    `autorizaciones_cc`): Clientes→modificar límite de CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>    sueldo/aprobación de licencias con goce de sueldo.
+> 4. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 5. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 6. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 7. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — A4 + los 2 gaps de nav/badge),
+> [[wiki/features/productos]], `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.192.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 37) — 🎯👥 Supervisión: RRHH cierra el Nivel 1 COMPLETO (5 módulos,
+> `v1.191.0`) — se resuelve la ambigüedad de naming 'recursos' vs 'rrhh' (no era real)
+>
+> Continuación directa de cont. 36 (Envíos/Proveedores/Pedidos, `v1.190.0`, histórico abajo) — último
+> módulo de Nivel 1 del relevamiento de Fede (2026-08-20): "RRHH→cualquier eliminación". **🔁
+> Reconciliación**: cont. 36 decía "Nivel 1 100% CERRADO" contando 4 módulos
+> (Clientes+Envíos+Proveedores+Pedidos); el relevamiento original en realidad clasificó **5** módulos en
+> ese nivel ("Clientes / Envíos / Proveedores / Pedidos / RRHH: 2 niveles de sensibilidad...") — con RRHH
+> construido ahora, Nivel 1 queda recién **realmente** 100% completo.
+>
+> #### Investigación de alcance ANTES de codear (importante, documentar explícito)
+>
+> `RrhhPage.tsx` tiene **9 acciones de "eliminar" distintas** (empleados, puestos, departamentos,
+> `salario_items`, `vacaciones_solicitud`, asistencia, feriados, documentos, capacitaciones). **Decisión de
+> scope**: se acotó el retrofit **solo a la baja de empleado** (soft-delete, `activo=false`) — es el único
+> registro central de PERSONA, mismo criterio que "eliminar cliente". Las otras 8 son registros
+> administrativos/de configuración, no lo que motiva la regla del relevamiento ("evita que un empleado que
+> se va borre cosas [de otros]") — quedan **sin gatear a propósito**, no es un olvido.
+>
+> #### Ambigüedad de naming 'recursos' vs 'rrhh' — RESUELTA (no era real)
+>
+> Investigado a fondo: `permisosModulo.ts` (`SUPERVISOR_MODULOS_PROHIBIDOS`) y `UsuariosPage.tsx`
+> (`MODULOS`) ya usan `'rrhh'` **consistentemente en todos lados**. `'recursos'` resultó ser una tabla
+> completamente DISTINTA (flota/vehículos, usada en Gastos/Envíos) sin ninguna relación con RRHH. **No
+> hizo falta ningún cambio de naming en el código.**
+>
+> #### Detalle técnico
+>
+> Reutiliza la mutación ya existente `toggleEmpleadoActivo` para el efecto real al aprobar (nunca
+> reimplementa la lógica de baja). Reactivar un empleado (`activo:false→true`) sigue siendo directo — no es
+> una eliminación, el relevamiento no lo pide.
+>
+> #### Verificación
+>
+> Mismo nivel que Envíos/Proveedores/Pedidos — build/typecheck/lint limpios, `INSERT` a `autorizaciones`
+> probado con impersonación real de rol contra DEV (confirma el CHECK ampliado en la mig 386 + RLS
+> genérica); sin test e2e nuevo de Playwright (mirror del patrón ya probado con Clientes).
+>
+> **Con esto, el Nivel 1 completo del relevamiento de Supervisión queda 100% CERRADO**: Clientes, Envíos,
+> Proveedores, Pedidos, RRHH — los 5 módulos "delegable a cualquiera con `supervisa`, modelo genérico
+> estándar".
+>
+> #### Estado del deploy
+>
+> Commit `f337ca62`, `origin/dev`, `APP_VERSION` `v1.191.0`, **tag + GitHub release ya publicados**
+> (`v1.191.0`, `publishedAt: 2026-08-31T22:12:43Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
+> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.191.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión — Nivel 2 y módulos complejos de Supervisión
+>
+> 1. **Ventas** — necesita el chequeo NC-antes-de-eliminar (más complejo que un simple `INSERT` en cola,
+>    sin diseñar todavía).
+> 2. **Gastos** — migrar `autorizaciones_gasto` (tabla separada) a la genérica (**C1**).
+> 3. **Productos** — reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'` (**A4**), requiere
+>    mover UI real de `InventarioPage.tsx` a `ProductosPage.tsx`.
+> 4. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 5. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 6. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 7. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — Nivel 1 100% completo, 5 módulos),
+> [[wiki/features/rrhh]], `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.191.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 36) — 🎯👥 Supervisión: Nivel 1 100% CERRADO — Envíos, Proveedores
+> y Pedidos retrofiteados (`v1.190.0`), mismo patrón que Clientes
+>
+> Continuación directa de cont. 35 (Clientes, `v1.189.0`, histórico abajo) — se replicó el mismo patrón
+> exacto a los 3 módulos restantes de Nivel 1 del relevamiento de Fede (2026-08-20): los 4 módulos
+> "delegable a cualquiera con `supervisa`, modelo genérico estándar" (Clientes+Envíos+Proveedores+Pedidos)
+> quedan **100% CERRADOS**. Sin migración nueva (usa el mismo CHECK de la mig 386).
+>
+> #### Qué se construyó
+>
+> - **Envíos**: "Eliminar envío" (**hard delete real**, no soft-delete como Clientes) ya no se ejecuta
+>   directo — pasa por cola de aprobación. Tab "Autorizaciones" nuevo en `EnviosPage.tsx`.
+> - **Proveedores**: "Eliminar proveedor/servicio" (hard delete, misma tabla `proveedores` para ambos
+>   tipos) ídem. Tab nuevo en `ProveedoresPage.tsx`; `deleteProveedor.mutate` cambió de firma `id` →
+>   `{id, nombre}` (necesita el nombre para el snapshot en `datos_cambio`).
+> - **Pedidos**: "Cancelar pedido" pasa por cola de aprobación. **Importante**: la lógica real de negocio
+>   (liberar reservas de stock, solo si nada se pickeó todavía) sigue viviendo 100% en el RPC
+>   `fn_cancelar_pedido` ya existente, sin tocar — la aprobación solo difiere CUÁNDO se llama, nunca
+>   reimplementa lógica de stock (REGLA #0). El tab bar de Pedidos (antes gateado solo por `modoAvanzado`)
+>   ahora también aparece en modo básico si el usuario puede supervisar Pedidos, porque Supervisión no es
+>   una feature exclusiva de WMS.
+>
+> #### Nivel de verificación — distinto al de Clientes, a propósito
+>
+> NO se agregó un test e2e de Playwright nuevo por cada uno de estos 3 módulos (Clientes sí tuvo
+> verificación end-to-end completa con navegador real). Acá: build+typecheck+lint limpios en los 3
+> archivos, y los 3 `INSERT` a `autorizaciones` (uno por módulo) probados con **impersonación real de rol**
+> (`SET LOCAL ROLE authenticated` + JWT claims del usuario de prueba) contra la DB real de DEV — confirma
+> que el CHECK ampliado en la mig 386 y la RLS genérica aceptan los 3 módulos nuevos sin error.
+> Justificación de por qué alcanza este nivel: el hook compartido y el patrón de invalidación de caché (los
+> 2 bugs reales que se encontraron y corrigieron con Clientes) ya quedaron probados y corregidos ahí — acá
+> es un mirror exacto del mismo código ya validado, no lógica nueva.
+>
+> #### Estado del deploy
+>
+> Commit `452f3c93`, `origin/dev`, `APP_VERSION` `v1.190.0`, **tag + GitHub release ya publicados**
+> (`v1.190.0`, `publishedAt: 2026-08-31T17:39:10Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
+> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.190.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión — lo que queda de Supervisión, confirmado que sigue vigente
+>
+> 1. **RRHH** — con la ambigüedad de naming `'recursos'` vs `'rrhh'` sin resolver (el CHECK de la mig 386
+>    usa `'rrhh'`, pero el módulo/tabla de la app se llaman "Recursos" en varios lugares) — hay que
+>    resolver esa ambigüedad antes de construir.
+> 2. **Ventas** — necesita el chequeo NC-antes-de-eliminar (más complejo que un simple `INSERT` en cola,
+>    sin diseñar todavía).
+> 3. **Gastos** — migrar `autorizaciones_gasto` (tabla separada) a la genérica (**C1**).
+> 4. **Productos** — reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'` (**A4**), requiere
+>    mover UI real de `InventarioPage.tsx` a `ProductosPage.tsx`.
+> 5. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 6. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 7. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 8. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — Nivel 1 100% completo),
+> [[wiki/features/envios]], [[wiki/features/clientes-proveedores]], [[wiki/features/pedidos]],
+> `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.190.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 35) — 🎯👥 Supervisión: PRIMER módulo real retrofiteado — Clientes
+> (baja de cliente pasa por cola de aprobación, `v1.189.0`) — 2 bugs reales corregidos al verificar
+> end-to-end contra DEV
+>
+>
+> Continuación directa de cont. 34 (prerequisito técnico mig 386, `v1.188.0`, histórico abajo) — primer
+> módulo real construido sobre ese prerequisito, respondiendo al pendiente "B" que había quedado anotado.
+> Relevamiento de Fede 2026-08-20, decisión A5 Nivel 1: "toda eliminación permanente necesita aprobación".
+>
+> #### Qué se construyó
+>
+> La baja de cliente (soft-delete, `activo=false`, ya existía como feature) ya NO se ejecuta directo —
+> siempre crea una fila pendiente en `autorizaciones` (`modulo='clientes'`, `tipo='eliminar'`) que cualquiera
+> con permiso `supervisa` en Clientes (DUEÑO/SUPER_USUARIO/ADMIN siempre, SUPERVISOR por herencia, rol
+> custom con `'supervisa'` explícito) aprueba o rechaza desde un tab nuevo "Autorizaciones" en
+> `ClientesPage.tsx`. **Es la PRIMERA vez que un segundo módulo consume el patrón genérico de Supervisión**
+> — reusa el 100% de la infraestructura que ya existía para Inventario (`useSupervisorAutorizaciones`,
+> `SupervisionPanel`, `avisarSupervisor`), **sin migración nueva** (usa el CHECK ya ampliado por la mig 386).
+>
+> #### 2 bugs REALES encontrados y corregidos al verificar end-to-end contra la DB real de DEV (no solo "el test pasó")
+>
+> 1. `src/hooks/useSupervisorAutorizaciones.ts`: el `.select()` de PostgREST interpolaba `selectExtra` sin
+>    filtrar — cuando un módulo (Clientes) no necesita ningún join extra y pasa `''`, quedaba una coma doble
+>    inválida (`"*, , solicitante:..."`) que PostgREST rechazaba, y el error quedaba **silenciado** por el
+>    fallback `data ?? []` (la UI mostraba "no hay solicitudes pendientes" en vez de un error real). Fix
+>    genérico en el hook compartido (`['*', selectExtra, ...].filter(Boolean).join(', ')`) — beneficia a
+>    cualquier módulo futuro (Envíos/Proveedores/Pedidos/RRHH) que no necesite `selectExtra`;
+>    matemáticamente un no-op para cualquier `selectExtra` no vacío (sin regresión en Inventario). De paso
+>    se expone `isError` del hook — antes ningún consumidor podía distinguir "sin resultados" de "la query
+>    falló".
+> 2. `ClientesPage.tsx`: `confirmarBaja` invalidaba la query `['supervision-badge']` pero no
+>    `['autorizaciones','clientes']` — la lista del tab Autorizaciones seguía sirviendo caché de ANTES de
+>    crear la solicitud hasta el próximo refetch espontáneo (bug de invalidación, no de RLS/query).
+>
+> #### Verificación real
+>
+> Playwright contra DEV real (no mockeado) — crear cliente → dar de baja (confirmado por SQL directo:
+> cliente sigue `activo=true`, aparece la fila `pendiente` en `autorizaciones`) → ir al tab Autorizaciones →
+> aprobar → confirmado por SQL directo: `estado='aprobada'`, cliente pasa a `activo=false`. Agregado como
+> **test permanente** en `tests/e2e/08_clientes.spec.ts` (no un test descartable). Suite de regresión de
+> Inventario (7 specs de autorizaciones) corrida completa — sin regresión (2 fallas fueron flakiness ya
+> documentada del suite, confirmado re-corriendo en aislamiento, ambas pasaron).
+>
+> #### Estado del deploy
+>
+> Commit `27d740e8`, `origin/dev`, `APP_VERSION` `v1.189.0`, **tag + GitHub release ya publicados**
+> (`v1.189.0`, `publishedAt: 2026-08-31T07:14:36Z`). Sin migración nueva. **Sin deploy a PROD** — PROD sigue
+> en migraciones 001-385; DEV en 001-387c, código en `v1.189.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Clientes queda como plantilla real** — repetir el mismo patrón para **Envíos, Proveedores, Pedidos y
+>    RRHH** (2 niveles de sensibilidad por relevamiento: eliminaciones delegables vía cola, un puñado de
+>    acciones más sensibles quedan solo-Dueño sin pasar por cola). Orden a criterio de GO.
+> 2. **Ventas queda aparte, es más compleja**: "anular venta despachada" pasa a cola, pero con una regla
+>    nueva (si ya fue facturada, primero hay que emitir NC antes de poder eliminarla) que todavía no se
+>    diseñó.
+> 3. **A4** (reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'`, mover UI de
+>    `InventarioPage.tsx` a `ProductosPage.tsx`) y **C1** (migrar `autorizaciones_gasto` a la tabla
+>    genérica) siguen sin arrancar — fases dedicadas futuras.
+> 4. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 5. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 6. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 7. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — Clientes como primer módulo + patrón
+> plantilla), `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.189.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 34) — 🏗️🔌 Prerequisito técnico de Supervisión (mig 386) +
+> identidad del Portal de Proveedores (migs 387/387b/387c) APLICADAS EN DEV (v1.188.0) — Chrome/FedCM en
+> Embedded Signup queda investigado a fondo, SIN fix de código posible de nuestro lado
+>
+> Sesión que se reinició a mitad de tarea (el proceso de Claude Code se cortó) y se retomó con todo el
+> contexto — continuación de la misma sesión de cont. 33 (fix de lint, `v1.187.0`, histórico abajo). Dos
+> frentes de trabajo distintos, ambos SOLO EN DEV, ningún deploy a PROD.
+>
+> #### 1) Chrome/FedCM en Embedded Signup — investigado a fondo, SIN fix de código posible (commit `529a0ea8`)
+>
+> Confirmado (WebSearch/WebFetch a fuentes de Chrome/Meta) que Chrome intercepta el popup de
+> `FB.login({config_id, response_type:'code', ...})` vía **FedCM** (Federated Credential Management): Meta
+> le pisa `config_id`/`response_type`/`override_default_response_type` DENTRO del propio popup, del lado de
+> `facebook.com` — en Microsoft Edge la misma llamada sí llega con los parámetros correctos. Coincide en el
+> tiempo con que Meta lanzó **"Login with Facebook" en open beta** (modo one-tap basado en FedCM) el
+> 27/8/2026, apenas 4 días antes de este hallazgo — sospechoso como causa, pero **sin fuente PRIMARIA de
+> Meta confirmada** (solo 2 medios secundarios —ppc.land, socialmediatoday.com— citando un post del blog de
+> developers.meta.com que no se pudo verificar de forma directa). Este código **NUNCA seteó `fedCM: true`**
+> ni ningún flag relacionado, así que la intercepción no depende de nada que Genesis360 controle — **no
+> existe (a la fecha) ningún parámetro documentado de `FB.init`/`FB.login` ni un `Permissions-Policy` del
+> lado del sitio que la evite**. Por eso, **no se aplicó ningún workaround especulativo sobre código de
+> autenticación real** — el hallazgo queda documentado como comentario extenso en
+> `src/lib/metaEmbeddedSignup.ts` (con las fuentes citadas y la aclaración de que no están confirmadas de
+> forma directa).
+>
+> **🛑 Pendiente real, a cargo de GO**: reportar el bug a `developers.facebook.com/support/bugs/` (con la
+> evidencia Chrome vs Edge ya reunida) y reintentar en Chrome cuando Meta cierre el open beta — puede ser un
+> problema temporal del rollout, no hay forma de confirmarlo sin esperar.
+>
+> #### 2) Prerequisito técnico de Supervisión — migración 386 APLICADA Y VERIFICADA EN DEV
+>
+> `386_autorizaciones_modulos_extendidos.sql`: amplía el CHECK `autorizaciones.modulo` (antes fijo a
+> `'inventario'`) para admitir también `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, y
+> elimina el CHECK rígido de `tipo` (se valida en la app — mismo criterio ya usado en el proyecto para enums
+> que crecen por módulo, ver `reference_check_constraint_vs_configurable`). 100% aditivo — ningún código hoy
+> inserta un `modulo` distinto de `'inventario'`, sin cambio de comportamiento. Es el prerequisito técnico
+> para el relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (100% respondido por Fede el
+> 2026-08-20, ver cont. 24 histórico). **NO incluye todavía**: **A4** (reclasificar
+> `kit_precio`/`repricing_margen` a `modulo='productos'`, implica mover UI real de `InventarioPage.tsx` a
+> `ProductosPage.tsx` — hoy toda la UI de aprobación vive en Inventario aunque el tipo sea de producto) ni
+> **C1** (migrar `autorizaciones_gasto` a esta tabla genérica, implica repuntar el flujo de aprobación de
+> Gastos que hoy usa una tabla separada) — ambas quedan como fases dedicadas futuras, confirmado que son más
+> grandes de lo que parecían al relevar.
+>
+> #### 3) Identidad del Portal de Proveedores — migraciones 387/387b/387c APLICADAS Y VERIFICADAS EN DEV
+>
+> Propuesta de Fede, la otra mitad del proyecto de WhatsApp/Portal (ver
+> `project_whatsapp_ia_portal_proveedores`, memoria). **GO confirmó la decisión de negocio**: una cuenta de
+> proveedor puede vincularse a **VARIOS negocios (tenants) distintos** — esto rompe el supuesto de raíz de
+> `public.users` (`users.id` = `auth.users.id` tiene EXACTAMENTE una fila con UN `tenant_id`, y toda la RLS
+> de la app asume esa relación 1:1). En vez de forzar ese modelo a soportar multi-tenant (alto radio de
+> impacto: tocaría RLS usada en toda la app), se comparó con GO 2 opciones y se eligió **replicar el patrón
+> YA EXISTENTE en el proyecto** para identidades cross-tenant: `support_agents` (usado por el panel
+> genesis360-admin) — identidad completamente separada de `users`, con FK física a `auth.users`, vinculada a
+> cada tenant vía una tabla puente explícita.
+>
+> - **`proveedor_accounts`** (identidad): `id` = FK a `auth.users(id)` ON DELETE CASCADE, email único
+>   case-insensitive (`idx_proveedor_accounts_email_lower`), `activo`, trigger `updated_at`.
+> - **`proveedor_account_tenants`** (tabla puente): FK **compuesto** `(tenant_id, proveedor_id)` contra
+>   `proveedores(tenant_id, id)` — requirió agregar `UNIQUE(tenant_id, id)` a `proveedores` primero — para
+>   que la DB garantice que el proveedor vinculado pertenece de verdad a ese tenant (no confiar en 2 FKs
+>   sueltas). `UNIQUE(tenant_id, proveedor_id)` (un proveedor solo vinculado a una cuenta) +
+>   `UNIQUE(proveedor_account_id, tenant_id)` (una cuenta no se vincula 2 veces al mismo tenant).
+> - **RLS**: el proveedor solo ve/edita su propia fila de identidad (`SELECT`/`UPDATE` con
+>   `id = (select auth.uid())`) y solo ve sus propios vínculos (`SELECT` en la tabla puente) — **sin
+>   INSERT/DELETE de cliente a propósito** (evita auto-alta con un email arbitrario / squatting sobre el
+>   UNIQUE de email); el alta real va a ser un flujo de invitación server-side `SECURITY DEFINER` de una
+>   fase futura, que bypassea RLS y no necesita policy de INSERT para funcionar.
+> - **387b**: fix de `search_path` mutable (advisor) en la función del trigger `updated_at`.
+> - **387c**: `proveedor_accounts` nunca tuvo `REVOKE ALL FROM authenticated` antes de otorgar
+>   `SELECT`/`UPDATE` (a diferencia de la tabla puente, que sí lo tenía) — sin impacto real (RLS ya
+>   bloqueaba INSERT/DELETE al no haber policy para esos comandos), pero se dejó explícito.
+> - **Alcance explícitamente NO incluido en esta sesión**: las policies sobre `ordenes_compra`/presupuestos
+>   que le darían al proveedor acceso a sus cotizaciones reales (depende de diseñar cómo se integra al state
+>   machine real de OC — Fede: "sigue el flujo YA EXISTENTE de OC" — revisar `ordenes_compra` en detalle en
+>   una fase siguiente), ni el flujo de invitación/alta de cuentas.
+>
+> `migration-reviewer` revisó la 387 **dos veces**: la primera pasada encontró **4 hallazgos bloqueantes
+> reales** — faltaba la FK física a `auth.users`, la migración no era idempotente, la policy de INSERT
+> permitía auto-alta con un email ajeno (squatting), y había un `GRANT` a `anon` en vez de un `REVOKE` — los
+> 4 corregidos y re-verificados **APTA** en la segunda pasada.
+>
+> `schema_full.sql` regenerado y verificado contra la DB real (164 tablas) a mano vía MCP `execute_sql` en
+> partes — el modo API de `npm run schema:dump` sigue bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin
+> rotar (recurrente, ver `reference_supabase_token_filtrado_sin_rotar`) y el modo PG sigue fallando por el
+> bug conocido del pooler de Supavisor (`reference_supabase_pooler_auth_bug`).
+>
+> #### Estado del deploy
+>
+> Commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, **tag + GitHub release ya publicados**
+> (`v1.188.0`, `publishedAt: 2026-08-31T06:36:47Z`) — entre medio, el commit `529a0ea8` (punto 1, Chrome/
+> FedCM) quedó sin bump de versión propio, incluido en el mismo release. Build verde. **Sin deploy a PROD**
+> — `main` sigue en el merge de `v1.184.0` (`867d651a`), PROD sigue en migraciones **001-385**. DEV:
+> migraciones **001-387c**, código en `v1.188.0`.
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    (`developers.facebook.com/support/bugs/`) y reintentar en Chrome cuando Meta cierre el open beta.
+> 2. **Construir las fases reales del retrofit de Supervisión módulo por módulo** (Ventas/Productos/
+>    Clientes/Envíos/Proveedores/Pedidos/RRHH) — el prerequisito técnico (mig 386) ya está, falta el diseño/
+>    código de cada módulo. Orden de fases a criterio de GO, sin definir todavía.
+> 3. **Diseñar el flujo de invitación de cuentas de proveedor** (Edge Function `SECURITY DEFINER`) y
+>    **revisar `ordenes_compra` en detalle** para diseñar las policies de presupuestos del Portal de
+>    Proveedores.
+> 4. Heredado, sin cambios esta sesión (cont. 32, histórico abajo): **Fede tiene que aportar CUIT/
+>    monotributo + comprobante de domicilio** para completar la Verificación del Negocio de Meta —
+>    bloqueante real y externo para el registro real de un WABA vía Embedded Signup.
+> 5. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-08-31, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos"),
+> [[wiki/features/asistente-whatsapp]] (secciones Embedded Signup + Portal de Proveedores),
+> `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (Versión en DEV), `wiki/database/
+> migraciones.md` (386-387c, título a 001-387).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 33) — 🧹 `npm run lint` roto en TODO el repo pasa a ser un gate real
+> — 4 bugs reales corregidos al activarlo (`v1.187.0`)
+>
+> Se creó `.eslintrc.cjs` (config clásica ESLint 8.56, TS + `react-hooks`) — no existía ningún archivo de
+> configuración de ESLint pese a tener las dependencias instaladas, hallazgo de la sesión anterior (cont.
+> 32, abajo). Primera corrida real: **228 problemas (67 errores, 161 warnings)**.
+>
+> **4 bugs REALES corregidos al activar el lint** (no solo estilo):
+> - `src/pages/AdminPage.tsx`: `useQuery`/`useMutation` llamados DESPUÉS de un early return condicional
+>   (`react-hooks/rules-of-hooks`) — viola la regla explícita del propio CLAUDE.md. Fix: early return movido
+>   después de todos los hooks.
+> - `src/pages/EnviosPage.tsx`: `useState` dentro de una IIFE invocada condicionalmente en un `.map()`
+>   (edición inline de domicilio) — hooks condicionales. Fix: extraído a componente propio
+>   `EditarDomicilioInline`.
+> - `src/components/DashGastosArea.tsx`/`DashVentasArea.tsx`: `switch` de rango de fechas con `case
+>   'custom'` sin `return`/`break` final — fallthrough silencioso al `default` si `custom` era falsy. Fix:
+>   fallback explícito dentro del propio case.
+> - `src/components/DashProductosArea.tsx`: línea muerta self-assign, eliminada.
+>
+> Resto (estilo): tabs/espacios mezclados en `authStore.ts` (de paso, 3 `console.log` de debug con datos de
+> usuario/tenant sacados), escapes de regex innecesarios, `eslint-disable` obsoletos, `prefer-const`,
+> `no-self-assign`. `--max-warnings` del script `lint` bajado de 0 a **161** (baseline real preexistente,
+> deuda pendiente de limpieza gradual, no bloqueante). Build + `test:unit` verdes, sin regresión.
+>
+> Commit `33c03b46`, `origin/dev`, `APP_VERSION` `v1.187.0`, tag+release publicados. **Sin deploy a PROD,
+> sin migraciones.** Detalle completo: `log.md` (2026-08-31, tipo `lint`), [[wiki/development/
+> convenciones-codigo]], [[wiki/development/workflow-git]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-28, cont. 32) — 📱🔌 Embedded Signup: CÓDIGO VALIDADO end-to-end (3 caminos
+> distintos, evidencia real) — el bloqueo es 100% de Meta: falta la Verificación del Negocio, y ES un
+> trámite EXTERNO a cargo de Fede (CUIT + comprobante de domicilio), no algo diferible como se había
+> documentado antes
+>
+> **Continuación DIRECTA de la misma conversación de cont. 31 (sin `/clear`)** — GO trajo los datos reales de
+> Meta (App ID, `config_id`) y se probó en vivo, con screenshots ida y vuelta durante horas. Corrige
+> explícitamente una afirmación de cont. 31 (ver "🔁 Reconciliación" más abajo) — no es solo información
+> nueva agregada, es una corrección real de algo que se había documentado mal.
+>
+> #### Qué se armó en el dashboard de Meta (guiado paso a paso, en vivo con GO)
+>
+> - **App ID**: `1059640186689341`.
+> - Se creó una "Configuration" de Facebook Login for Business usando la plantilla **"Configuración de
+>   registro insertado de WhatsApp con un token que caduca en 60 días"** — es la ÚNICA plantilla que ofrece
+>   "Cuentas de WhatsApp" como activo; el wizard manual/en blanco NO lo ofrece. **`config_id`:
+>   `1359336659241551`.**
+> - **🔁 Esto corrige lo que cont. 31 daba como posible**: esta plantilla fuerza el token a **60 días** — NO
+>   existe la opción "Nunca expira" para el sabor WhatsApp específico de Configuration (sí existe para el
+>   Facebook Login for Business genérico, pero ese no sirve porque no ofrece WhatsApp como activo).
+>   Implicancia real: el token de cada tenant conectado va a expirar cada 60 días — falta aplicar el mismo
+>   patrón UI que ya usa MercadoLibre en `ConfigPage.tsx` ("Token vencido — reconectá", 1 click), no un
+>   refresh silencioso (Meta no lo documenta como posible). Pendiente de código, no bloqueante hoy.
+> - Se configuraron "Dominios de la app" (Configuración básica) + "Dominios permitidos para el SDK de
+>   JavaScript" + "Iniciar sesión con el SDK de JavaScript" = Sí, con el dominio del preview de Vercel
+>   (`genesis360-git-dev-tongas86s-projects.vercel.app`) y `app.genesis360.pro` (para cuando llegue a PROD).
+>   Se agregó también la URL exacta a "URI de redireccionamiento de OAuth válidos" (el modo estricto de
+>   redirección viene forzado en "Sí", no se puede desactivar).
+>
+> #### Hallazgo #1 (pista falsa, DESCARTADA con evidencia real — no es el problema)
+>
+> En Chrome, el popup de `FB.login()` con `config_id` terminaba yendo a una URL con
+> `dialog_source=fedcm&scope=openid&response_type=token` — Chrome interceptaba el login vía **FedCM**
+> (Federated Credential Management, mecanismo nuevo del navegador) ANTES de que llegara a Meta, pisando
+> todos los parámetros (`config_id` desaparecía por completo). Producía el error "Esta app necesita al
+> menos un supported permission" (la app nunca tuvo el permiso `openid`, no lo necesita). **Confirmado que
+> NO era el problema real**: probando el mismo flujo en Microsoft Edge, la URL del popup SÍ traía
+> `config_id`, `response_type=code`, `override_default_response_type=true` y `extras` correctos — el código
+> de Genesis360 estaba bien. **Pendiente real para producción** (la mayoría de usuarios van a estar en
+> Chrome): investigar un fix permanente para Chrome — no se investigó a fondo hoy porque no bloqueaba seguir
+> probando en Edge.
+>
+> #### Hallazgo #2 (LA CAUSA RAÍZ REAL, confirmada por triplicado)
+>
+> Ya en Edge (sin el problema de Chrome), el login llegaba hasta el diálogo real de Meta pero mostraba:
+> **"Genesis360 no puede registrar clientes en este momento"** (con una opción de "compartir tu información
+> de contacto" que es solo una lista de espera). Confirmado 100% real y del lado de Meta, **idéntico
+> probando por 3 caminos distintos**: (a) el popup de nuestro código (JS SDK), (b) el link "Registro
+> insertado alojado por Meta" (página hosteada por Meta que hace el mismo flujo sin código nuestro — se
+> genera en Casos de uso → Conectar en WhatsApp → Conviértete en socio → Conviértete en proveedor de
+> tecnología → Administrador de registro insertado), y en ambos casos probando tanto "Continuar como
+> [usuario]" como "Editar configuración" cuando Meta pregunta "¿Quieres continuar con tu configuración
+> anterior?".
+>
+> **Causa raíz literal**, encontrada en el panel "Estado del negocio y la app" de Meta: **"Verificación del
+> negocio: Complete business verification to get started. You will not be able to onboard users until you
+> complete business verification."**
+>
+> Documentos que Meta pide para Argentina (confirmado vía la ayuda oficial de Meta Business): **Constancia
+> de Inscripción Fiscal (CUIT/RUT) de AFIP actualizada** + un **comprobante de domicilio del negocio**
+> (factura de servicios o extracto bancario reciente con nombre y dirección). Documentos que no estén en
+> español/inglés necesitan traducción con sello de traductor oficial. El panel de verificación de Meta dice
+> literalmente **"Verificar Federico Messina"** — confirma que el Business Portfolio de Genesis360 en Meta
+> está atado al nombre de **Fede**, no al de GO. **Esto es 100% un trámite EXTERNO que depende de que Fede
+> aporte esos documentos — no se resuelve con código ni en esta sesión.**
+>
+> #### 🔁 Reconciliación explícita con cont. 31 (histórico, abajo)
+>
+> El punto 6 de "Pendiente REAL, bloqueante" de cont. 31 decía: *"Diferido, no bloquea probar en Development
+> Mode: convertirse en 'Tech Provider' ante Meta (Business Verification con documentos) — para probar el
+> flujo alcanza con Development Mode + ser admin/tester de la app."* **Esto era INCORRECTO** — comprobado en
+> la práctica hoy: la Verificación del Negocio SÍ bloquea completamente el registro real de un WABA, incluso
+> probando con la propia cuenta admin de la app (GO). El límite real que cont. 31 documentaba bien (10
+> negocios/semana sin verificar → 200/semana verificada) sigue siendo cierto como dato adicional, pero no es
+> lo que bloquea HOY — hoy bloquea directamente probar, punto.
+>
+> #### Código: sin bugs, un fix defensivo real agregado
+>
+> El código (Edge Function + frontend) quedó demostrado CORRECTO — funcionó igual en los 3 caminos de
+> prueba del Hallazgo #2. Se agregó un **timeout de 3 minutos** en `iniciarConexionWhatsapp`
+> (`src/lib/metaEmbeddedSignup.ts`): sin Verificación del Negocio, Meta le da a `FB.login()` un `code`
+> válido (`status:'connected'`) pero JAMÁS manda el postMessage `WA_EMBEDDED_SIGNUP` con el
+> `waba_id`/`phone_number_id` — antes de este fix, el botón "Conectando..." de la card de WhatsApp quedaba
+> colgado para siempre sin ningún mensaje de error (reproducido y confirmado con logs de diagnóstico
+> temporales, agregados y luego sacados). Ahora se libera solo con un toast: "Meta no completó la conexión —
+> probablemente falta la Verificación del Negocio en el dashboard de Meta".
+>
+> #### Otros hallazgos operativos (para no repetir la excavación)
+>
+> - **PWA + Service Worker cachea agresivamente el JS**: durante el debug, GO no veía logs nuevos porque el
+>   navegador seguía sirviendo el bundle viejo pese a recargar (F5). Fix real: DevTools → "Application" →
+>   "Storage" → botón "Clear site data", recién ahí recargar.
+> - **`npm run lint` está roto en TODO el repo** (no solo el código de esta sesión) — no existe ningún
+>   archivo de configuración de ESLint (ni `.eslintrc*` ni `eslint.config.*`) pese a que las dependencias
+>   están instaladas en `package.json`. Preexistente, no se rompió hoy; nadie lo había notado porque
+>   intentos previos de correr lint estaban filtrados con grep y el fallo quedaba oculto (se llegó a
+>   reportar "lint limpio" en una sesión anterior cuando el comando nunca corrió de verdad). El gate de
+>   calidad real que SÍ funciona es `npm run build` (`tsc` + `vite build`) — corrió verde varias veces en
+>   ambas sesiones.
+>
+> #### Estado del deploy
+>
+> Commits de esta sesión: `395bcde7` (logs de debug temporales) → `999dabdd` (limpieza + timeout de 3 min)
+> → `7e564c5e` (bump de versión). `origin/dev`, `APP_VERSION` `v1.186.0`, **tag + GitHub release ya
+> publicados** (`v1.186.0`, `publishedAt: 2026-08-28T05:34:20Z`). Deployado a Supabase Edge Functions de DEV
+> (`gcmhzdedrkmmzfzfveig`). Build/typecheck verdes en toda la sesión. **Sin deploy a PROD.**
+>
+> #### 🛑 Pendiente real y bloqueante
+>
+> 1. **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la Verificación
+>    del Negocio en Meta. Sin esto no se puede seguir probando el registro real de un WABA — 100% externo,
+>    ya se agotó lo que se podía diagnosticar/codear de nuestro lado.
+> 2. Después de la Verificación del Negocio, probablemente también haga falta completar "Revisión de la
+>    app" (App Review de Meta, con video de evidencia de que la app puede mandar mensajes/administrar
+>    plantillas) antes de usar esto en producción real con clientes ajenos — no confirmado con certeza si
+>    bloquea también las pruebas con la propia cuenta admin una vez resuelto el punto 1; se sabrá recién
+>    cuando se resuelva.
+> 3. **Fix de Chrome/FedCM (Hallazgo #1) sigue sin resolver** — no bloqueó hoy porque se probó en Edge, pero
+>    si no se arregla, el botón "Conectar" no va a funcionar para la mayoría de usuarios reales (Chrome)
+>    cuando esto salga a producción.
+> 4. `npm run lint` roto (sin archivo de configuración) — hallazgo nuevo, no bloqueante, pendiente de
+>    arreglar cuando haya tiempo.
+>
+> Detalle completo: `log.md` (2026-08-28, tipo `update`, entrada al principio),
+> [[wiki/features/asistente-whatsapp]] (sección "Embedded Signup" reconciliada), `wiki/index.md` (fila +
+> footer), `wiki/business/roadmap.md` (mención breve, sigue en DEV).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-27, cont. 31) — 📱🔌 Embedded Signup de Meta CONSTRUIDO EN DEV (v1.185.0, commit
+> `7c1e1a45`) — cada dueño de negocio va a poder conectar SU WhatsApp desde un popup embebido dentro de
+> Genesis360, sin repetir el trámite manual que hizo GO; BLOQUEADO para probar hasta que GO complete 5 pasos
+> en el dashboard de Meta — **⚠ el punto 6 de abajo (Business Verification "diferido, no bloquea") quedó
+> CORREGIDO por la sesión siguiente (cont. 32, arriba): SÍ bloquea, es la causa raíz real**
+>
+> Sesión NUEVA (post-`/clear`), separada de la sesión de deploy de abajo (cont. 30, ahora histórico). Con
+> las 4 fases del Asistente de WhatsApp ya EN PROD (dormidas, ver cont. 30), este es el mecanismo pensado
+> justo para destrabar esa siesta: **Embedded Signup**, el flujo oficial de Meta para que cada cliente
+> conecte su propio WhatsApp sin pisar developers.facebook.com ni repetir el trámite manual de GO — ver
+> "Trámite real de Meta hecho por GO" en [[wiki/features/asistente-whatsapp]].
+>
+> #### 🔍 Hallazgo importante ANTES de codear (corrigió la especulación de la sesión anterior)
+>
+> Se verificó el flujo contra la documentación OFICIAL vigente de Meta (developers.facebook.com, vía
+> WebFetch — no de memoria) y salieron 2 cosas que no eran obvias:
+> - El token que se guarda por tenant en `whatsapp_credentials.access_token` es un token **PROPIO de cada
+>   cliente** (un "Business Integration System User access token", scoped a SU WABA) — **NO** un token
+>   único de plataforma compartido entre todos los tenants, como se había especulado en la sesión anterior
+>   (la sección "Embedded Signup — esto NO se repite por cada cliente nuevo" de
+>   [[wiki/features/asistente-whatsapp]] quedó corregida). Buena noticia: encaja perfecto con el schema
+>   existente, **sin migración nueva**. Este token puede quedar **NO-expirante** si, al crear la
+>   Configuration de "Facebook Login for Business" en el dashboard de Meta, se elige "Token Expiration:
+>   Never expire" en vez del default de 60 días — esto resuelve de una vez el pendiente recurrente de
+>   "token permanente de Meta" que venía arrastrándose desde la Fase 1 del asistente.
+> - Genesis360, al ser "Tech Provider" (no "Solution Partner"), **NO factura centralizado** el consumo de
+>   Meta de sus clientes — cada cliente conectado debe agregar su propio método de pago en WhatsApp Manager
+>   (`business.facebook.com/wa/manage/home/`) después de conectar. Importa antes del **1° de octubre de
+>   2026**, cuando Meta empieza a cobrar todo mensaje saliente. Quedó como nota fija en la UI tras conectar
+>   (no se puede automatizar, Meta no lo expone por API).
+>
+> #### Código nuevo (commit `7c1e1a45`, `origin/dev`, `APP_VERSION` `v1.185.0`, tag+release publicados, deployado a Supabase DEV `gcmhzdedrkmmzfzfveig` — NO a PROD)
+>
+> 1. **`supabase/functions/wa-embedded-signup-exchange/index.ts`** (EF nueva, `verify_jwt: true` — a
+>    diferencia de `wa-webhook`, que no lleva JWT porque la invoca Meta; esta la invoca un usuario logueado
+>    de Genesis360 desde el frontend). Guard de identidad: JWT → `auth.getUser` → verifica que el usuario
+>    pertenece al `tenant_id` recibido (mismo patrón que `generar-csr`). Recibe `{tenant_id, code, waba_id,
+>    phone_number_id}` del popup de Meta y hace: (a) intercambia el `code` por el token propio de ESE
+>    cliente vía `GET /oauth/access_token`, (b) `POST /{phone_number_id}/register` con un PIN random de 6
+>    dígitos (tolera "ya registrado" como éxito, para reconexiones), (c) `POST /{waba_id}/subscribed_apps`
+>    para que `wa-webhook` reciba los mensajes de ese WABA, (d) upsert en `whatsapp_credentials` (mig 382,
+>    `onConflict: tenant_id`) con ese token — **SIN migración nueva**, el schema ya alcanzaba.
+> 2. **`src/lib/metaEmbeddedSignup.ts`** (helper nuevo): carga perezosa del JS SDK de Facebook + `FB.init` +
+>    `FB.login()` con `config_id`. Combina 2 fuentes async que Meta no garantiza en el mismo tick: el
+>    `code` (callback de `FB.login`) y `waba_id`/`phone_number_id` (evento `FINISH` de un postMessage
+>    `WA_EMBEDDED_SIGNUP`).
+> 3. **Card "WhatsApp" nueva en `src/pages/ConfigPage.tsx`** (tab Conectividad → Integraciones, mismo estilo
+>    que las cards de TiendaNube/MercadoLibre que ya existían ahí) — a diferencia de esas 2 (que son por
+>    sucursal), esta es **ÚNICA por tenant** sin loop de sucursales, porque `whatsapp_credentials` es a
+>    nivel negocio completo (mig 382). 2 env vars nuevas del frontend: `VITE_META_APP_ID` y
+>    `VITE_META_WA_CONFIG_ID` (mismo aviso ámbar "falta configurar" que ya usa TiendaNube cuando falta su
+>    App ID). Botón Desconectar hace DELETE de la fila (mismo patrón que TiendaNube) — no hizo falta tocar
+>    `wa-webhook`/`wa-briefing-sweep`, ya filtran `conectado=true`.
+>
+> #### 🛑 Pendiente REAL, bloqueante para poder probar esto (tarea de GO en el dashboard de Meta, sobre la MISMA Meta App que ya usa `wa-webhook`)
+>
+> 1. Agregar el producto "Facebook Login for Business" a la app.
+> 2. Facebook Login for Business → Configurations → Create configuration → tipo WhatsApp Embedded Signup,
+>    Business = el Business Portfolio de Genesis360, **Token Expiration → "Never expire"** (crítico, no
+>    dejar el default de 60 días). Copiar el `config_id` resultante.
+> 3. Copiar el App ID (dato público, visible en el dashboard).
+> 4. En esa Configuration → Settings → "Allowed Domains for the JavaScript SDK": agregar `localhost` (para
+>    probar en DEV) + el dominio de producción/Vercel. No hace falta un OAuth Redirect URI clásico — es un
+>    flujo de popup vía JS SDK, no un redirect de página completa como usan TiendaNube/MercadoLibre.
+> 5. GO le pasa a Claude el `config_id` + App ID cuando los tenga, para cargarlos como
+>    `VITE_META_APP_ID`/`VITE_META_WA_CONFIG_ID` (frontend, Vercel env vars) y `META_APP_ID` (secret nuevo
+>    en Supabase, junto al `META_APP_SECRET` que ya existe de la Fase 1).
+> 6. ~~Diferido, no bloquea probar en Development Mode: convertirse en "Tech Provider" ante Meta (Business
+>    Verification con documentos) — solo hace falta para onboardear clientes REALES ajenos a la propia
+>    cuenta de Meta de GO; para probar el flujo alcanza con Development Mode + ser admin/tester de la
+>    app.~~ **🔴 INCORRECTO, corregido en cont. 32 (arriba)**: probado en la práctica que SÍ bloquea
+>    completamente el registro real de un WABA, incluso con la propia cuenta admin de GO — es la causa raíz
+>    real encontrada en la sesión siguiente, no un diferido.
+>
+> **Estado**: typecheck + build + lint verdes (⚠ el "lint verde" de esta entrada quedó cuestionado en cont.
+> 32: `npm run lint` no tiene archivo de configuración en TODO el repo, el comando nunca corrió de verdad —
+> el gate real que sí corrió es `npm run build`). Código commiteado y pusheado a `origin/dev`, deployado a
+> Supabase Edge Functions de DEV, **PERO sin probar end-to-end todavía** (no hay `config_id`/App ID reales
+> cargados aún). **No deployado a PROD.**
+>
+> Detalle completo: `log.md` (2026-08-27, tipo `update`, entrada al principio),
+> [[wiki/features/asistente-whatsapp]] (sección "Embedded Signup" reescrita),
+> [[wiki/architecture/edge-functions]] (EF nueva agregada), `wiki/index.md` (fila + footer).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-27, cont. 30) — 🚀 DEPLOY REAL A PROD (v1.184.0, PR #334, merge `867d651a`): Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4) YA ESTÁN EN PROD, AMBAS DORMIDAS
+>
+> **Este deploy YA PASÓ** (sesión de deploy separada de las que construyeron las 2 features, cont. 29 y
+> anteriores, abajo, ahora histórico). Se promovió a `main` TODO lo acumulado en `dev` desde el último
+> deploy real (`v1.179.2`, 2026-08-24) — sin código de aplicación nuevo, 100% infraestructura/deploy. Caja
+> USD/Auditoría (cont. 18, más abajo todavía) SIGUE VIGENTE, sin cambios.
+>
+> #### Qué pasó, en orden
+>
+> 1. **`schema_full.sql` regenerado** (commit `bbb434f9`, sesión previa a este deploy) — estaba
+>    desactualizado desde la mig 382. Se regeneró corriendo las mismas 4 queries de introspección de
+>    `scripts/dump-schema.mjs`, ejecutadas directamente vía `execute_sql` del MCP de Supabase (el
+>    bloqueador de siempre, `SUPABASE_ACCESS_TOKEN` filtrado sin rotar, sigue vigente — se lo esquivó sin
+>    pedirle nada nuevo a GO). Resultado: 162 tablas, 196 funciones, 100 triggers, 181 policies, 8 vistas.
+> 2. **Migraciones 379-385 aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), en orden, verificadas con queries
+>    reales después de cada una:
+>    - **379-381 — Compras/Gastos en USD (Fases 1-3)**: cimientos de moneda/cotización en
+>      `gastos`/`gastos_fijos`/`ordenes_compra`, permisos de cotización manual
+>      (`tenants.compras_cotizacion_roles_permitidos`), pago de OC con descalce de moneda (conversión
+>      server-side en `registrar_pago_oc`, ahora con 9 parámetros — verificado en PROD que solo existe esa
+>      firma, `anon` sin EXECUTE, `authenticated` sí). Ya estaba 100% respondido por Fede y las Fases 1-3
+>      llevaban desde el 2026-08-25 en DEV sin deployar.
+>    - **382-385 — Asistente de WhatsApp con IA (Fases 1-4)**: `whatsapp_credentials`,
+>      `whatsapp_mensajes_log`, `whatsapp_gastos_borrador` (+ `comprobante_url`, + `numero_notificaciones`).
+>      Detalle técnico completo ya en [[wiki/features/asistente-whatsapp]] — no se repite acá.
+>    - `list_migrations` de PROD confirma última migración aplicada = 385.
+> 3. **Edge Functions `wa-webhook` y `wa-briefing-sweep` deployadas a PROD** (`verify_jwt: false`, mismo
+>    código exacto que DEV). Compras/Gastos USD no agregó Edge Functions nuevas.
+> 4. **Verificado que ambas features quedan DORMIDAS en PROD, a propósito, sin activar nada para nadie**:
+>    - Compras/Gastos USD: confirmado por query real que ningún tenant de PROD tiene un método de pago USD
+>      real configurado — el camino nuevo (pago en USD) no se activa solo. El camino existente en ARS fue
+>      verificado repetidas veces sin regresión antes de este deploy (e2e reales + suite unit de 1637
+>      tests, ya documentado en sesiones anteriores).
+>    - Asistente de WhatsApp: PROD tiene 9 tenants, todos de prueba de GO (confirmado por query real a la
+>      tabla `tenants` — ninguno es cliente real pagando; ⚠ "Familia Otranto De Porto" en PROD es OTRO
+>      tenant de prueba de GO, con UUID `5f05f3eb-...`, DISTINTO del tenant de DEV con el mismo nombre,
+>      UUID `4cf85bbb-...` — no confundir). `whatsapp_credentials` en PROD tiene 0 filas — sanity-check
+>      real con curl a `wa-briefing-sweep` en PROD confirmó `{"ok":true,"motivo":"sin tenants con
+>      numero_notificaciones configurado"}`. El cron de GitHub Actions (`wa-briefing-sweep.yml`, ya
+>      mergeado) SÍ va a empezar a correr de verdad cada 15 min contra PROD desde ahora (los sweeps de
+>      GitHub Actions de este proyecto siempre apuntan a PROD), pero sin filas que matcheen no hace nada.
+> 5. **PR #334** (`dev`→`main`, título "v1.184.0 — Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp
+>    IA (Fases 1-4)") mergeado — merge commit `867d651a`, `mergedAt: 2026-08-27T21:27:57Z`, confirmado con
+>    `gh pr view 334` → `state: MERGED`. Vercel disparó el deploy de producción automáticamente tras el
+>    merge — **confirmado READY** (`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro`
+>    actualizado).
+> 6. **Releases de GitHub retargeteados a `main`**: v1.180.0 a v1.184.0 (antes apuntaban a `dev`). Notas de
+>    `v1.184.0` reescritas para reflejar el bundle completo que llegó a PROD.
+>
+> #### 🛑 Pendientes reales que quedan abiertos
+>
+> 1. **Decisión de GO, sin resolver acá**: con las 2 features ya en PROD (dormidas), el próximo paso lógico
+>    es **Embedded Signup** (escalar WhatsApp a futuros clientes sin repetir el trámite manual de GO) o el
+>    **Portal de Proveedores** (la otra mitad de la propuesta de Fede) — GO decide cuál sigue, ninguno
+>    arrancado. No inventar una respuesta acá.
+> 2. Todos los pendientes ya documentados de cada feature (aprobación de Meta de las 2 plantillas
+>    `briefing_apertura_dia`/`briefing_cierre_dia`, token de acceso permanente de Meta, 🔴 rotar el
+>    `SUPABASE_ACCESS_TOKEN` filtrado, chip prepago dedicado, Sección G de Fede — medición/facturación de
+>    uso, UI de moneda en Gastos sueltos, sugerir cotización por-proveedor, reportes ARS/USD) **siguen
+>    vigentes sin cambios** — ver cont. 29/28/27/26/25 abajo para el detalle completo de cada uno.
+>
+> Detalle completo: `log.md` (2026-08-27, tipo `deploy`, entrada al principio),
+> [[wiki/features/asistente-whatsapp]] (actualizada), [[wiki/features/gastos]] (actualizada),
+> `wiki/database/migraciones.md` (migs 379-385 marcadas EN PROD), `wiki/business/roadmap.md` (sección
+> v1.184.0 — deploy), `wiki/index.md` (footer).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-27, cont. 29) — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — LAS 4 FASES DE LA PROPUESTA DE FEDE QUEDAN CONSTRUIDAS EN DEV
+> CONSTRUIDA Y VERIFICADA PARCIALMENTE EN DEV (mig 385, EF nueva `wa-briefing-sweep`, `v1.184.0`) —
+> continúa la MISMA sesión que cont. 28 (abajo, ahora histórico; **no hubo `/clear`**), por pedido
+> explícito de GO de seguir con esta fase "para dejar casi todo listo" del asistente — este bloque quedó
+> SUPERADO por el de arriba (cont. 30): las migraciones 379-385 (Compras/Gastos USD + las 4 fases de este
+> asistente) YA ESTÁN EN PROD desde el 2026-08-27 (dormidas) — Caja USD/Auditoría (cont. 18, más abajo
+> todavía) SIGUE VIGENTE, sin cambios
 >
 > #### 🔔 Fase 4 — briefing diario proactivo (migración 385, commit `2e5fbcdb`, `v1.184.0`)
 >

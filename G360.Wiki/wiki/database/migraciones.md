@@ -3,14 +3,134 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-27
+updated: 2026-09-01
 ---
 
-# Historial de Migraciones (001-385)
+# Historial de Migraciones (001-390, + correctivos 387b/387c)
+
+**🗂️ Migración 390 (`390_portal_proveedores_oc_acceso.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) el 2026-09-01, `APP_VERSION` `v1.195.0`, SIN aplicar a PROD:** Fase 2 del Portal de
+Proveedores (la Fase 1, identidad, fue la 387/387b/387c de abajo) — acceso real a `ordenes_compra`. Agrega
+`orden_compra_items.precio_propuesto_proveedor`/`respondido_at` (propuesta del proveedor, nunca pisa
+`precio_unitario` — el staff la "aplica" a mano, REGLA #0) + **5 funciones `SECURITY DEFINER` angostas**
+(`fn_portal_proveedor_negocios`/`_ocs`/`_oc_items`/`_responder_item` + `fn_proveedor_portal_vinculo` del
+lado staff) en vez de RLS ancha sobre `ordenes_compra`/`tenants`/`productos` — se descartó RLS directa
+sobre `tenants` a propósito por sus columnas sensibles (`clave_maestra`, `afipsdk_token`, `cbu`). De paso,
+`REVOKE ALL ... FROM anon` en `ordenes_compra`/`orden_compra_items` (privilegios default nunca revocados,
+hallazgo preexistente). `migration-reviewer` 2 rondas: la 1ª revisó un diseño con RLS ancha + trigger guard
+(2 hallazgos: trigger no cubría la PK `id`, policies sin chequear `proveedor_account_tenants.activo`) — en
+vez de parchear, se **rediseñó por completo** a las 5 RPC actuales (resuelve ambos por construcción); la 2ª
+ronda sobre el rediseño → APTA. Detalle completo: [[wiki/features/portal-proveedores]] (página nueva),
+`log.md` (2026-09-01), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 41).
+
+**⚠ Nota**: este archivo no llegó a documentar las migraciones **388** (`reclasificar_kit_precio_
+repricing_a_productos`, v1.192.0) ni **389** (`migrar_autorizaciones_gasto_a_generica`, v1.193.0) cuando se
+aplicaron — están documentadas en [[wiki/features/supervision]] y `wiki/business/roadmap.md`, no en este
+archivo. Gap heredado, no corregido acá para no desviarse del alcance de esta sesión.
+
+---
+
+**🏗️ Migraciones 386-387c — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`) el 2026-08-31**,
+commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados. **SIN aplicar a PROD**
+(`jjffnbrdjchquexdfgwq` sigue en 001-385) — sin código de aplicación nuevo todavía, solo cimientos de DB
+para 2 features en diseño:
+- **386** (`386_autorizaciones_modulos_extendidos.sql`): prerequisito técnico para extender el patrón de
+  "cola de aprobación" de Supervisión a más módulos — amplía el CHECK `autorizaciones.modulo` (antes fijo a
+  `'inventario'`) a `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, elimina el CHECK rígido de
+  `tipo` (se valida en la app). 100% aditivo. Ver [[wiki/features/supervision]] → "Retrofit a más módulos".
+- **387/387b/387c** (`387_portal_proveedores_identidad.sql` + 2 correctivos): modelo de identidad para el
+  futuro **Portal de Proveedores** — tablas nuevas `proveedor_accounts` (identidad, FK física a
+  `auth.users`) + `proveedor_account_tenants` (tabla puente, FK compuesto `tenant_id+proveedor_id` contra
+  `proveedores`), replicando el patrón ya usado por `support_agents` para identidades cross-tenant (una
+  cuenta de proveedor puede vincularse a varios negocios). RLS: el proveedor solo ve/edita su propia
+  identidad y sus vínculos, sin auto-alta (INSERT/DELETE reservados a un flujo de invitación
+  `SECURITY DEFINER` de una fase futura). `migration-reviewer`: 1ª pasada de la 387 encontró 4 hallazgos
+  bloqueantes reales (FK física faltante a `auth.users`, no idempotente, policy de INSERT con squatting de
+  email, GRANT a `anon` en vez de `REVOKE`) — corregidos y re-verificada APTA en la 2ª pasada. 387b
+  corrige `search_path` mutable (advisor); 387c deja explícito un `REVOKE ALL FROM authenticated` que
+  faltaba antes del `GRANT`. Ver [[wiki/features/asistente-whatsapp]] → "Portal de Proveedores".
+`schema_full.sql` regenerado y verificado contra la DB real (164 tablas) a mano vía MCP `execute_sql`
+(el modo API de `npm run schema:dump` sigue bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar).
+Detalle completo: `log.md` (2026-08-31, tipo `update`), `sources/raw/project_pendientes.md` ("ARRANCÁ
+ACÁ", cont. 34).
+
+---
+
+**🚀 Migraciones 379-385 — ✅ APLICADAS Y VERIFICADAS TAMBIÉN EN PROD (`jjffnbrdjchquexdfgwq`) el
+2026-08-27**, como parte del deploy real `v1.184.0` (PR #334 "v1.184.0 — Compras/Gastos en USD (Fases 1-3)
++ Asistente WhatsApp IA (Fases 1-4)", `dev`→`main`, merge commit `867d651a`) — `list_migrations` de PROD
+confirmó última migración aplicada = 385. Las 2 features quedan **EN PROD pero DORMIDAS a propósito, sin
+activarse para ningún tenant real**: (a) Compras/Gastos USD — ningún tenant de PROD tiene un método de pago
+USD real configurado, el camino nuevo no se activa solo; (b) Asistente de WhatsApp — `whatsapp_credentials`
+en PROD tiene 0 filas, sanity-check real con curl a `wa-briefing-sweep` en PROD confirmó `{"ok":true,
+"motivo":"sin tenants con numero_notificaciones configurado"}`. El cron de GitHub Actions
+(`wa-briefing-sweep.yml`) SÍ empieza a correr de verdad cada 15 min contra PROD desde ahora, pero sin filas
+que matcheen no hace nada. Detalle completo del evento de deploy: `log.md` (2026-08-27, tipo `deploy`),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
+**387c (`387c_fix_grants_proveedor_accounts.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`),
+COMMITEADA Y PUSHEADA a `origin/dev` (commit `deef2fc2`, `APP_VERSION` `v1.188.0`, tag+release
+publicados), SIN aplicar a PROD:** correctivo — `proveedor_accounts` nunca tuvo `REVOKE ALL FROM
+authenticated` antes de otorgar `SELECT`/`UPDATE` (a diferencia de `proveedor_account_tenants`, que sí lo
+tenía). Sin impacto real de permisos (RLS ya bloqueaba INSERT/DELETE de `authenticated` al no existir
+policy para esos comandos), pero deja explícito que el estado de GRANTs no contradiga lo que las policies
+permiten.
+
+**387b (`387b_fix_search_path_fn_updated_at_proveedor_accounts.sql`) — ✅ APLICADA Y VERIFICADA EN DEV,
+COMMITEADA (commit `deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** fix del advisor
+`function_search_path_mutable` sobre `fn_updated_at_proveedor_accounts()` (creada en la 387) — agrega
+`SET search_path = public`, mismo patrón que el resto de las funciones `SECURITY DEFINER`/trigger del
+proyecto.
+
+**387 (`387_portal_proveedores_identidad.sql`) — ✅ APLICADA Y VERIFICADA EN DEV, COMMITEADA (commit
+`deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** modelo de identidad para el futuro **Portal de Proveedores**
+(propuesta de Fede — ver [[wiki/features/asistente-whatsapp]] → "Portal de Proveedores"). Decisión de
+negocio confirmada por GO: una cuenta de proveedor puede vincularse a VARIOS negocios (tenants) distintos —
+rompe el supuesto de raíz de `public.users` (`users.id` tiene exactamente una fila con un `tenant_id`, y
+toda la RLS de la app asume esa relación 1:1). En vez de forzar ese modelo a soportar multi-tenant (alto
+radio de impacto sobre RLS usada en toda la app), replica el patrón YA EXISTENTE de identidad cross-tenant
+del proyecto (`support_agents`, usado por el panel genesis360-admin): identidad completamente separada de
+`users`, con FK física a `auth.users`, vinculada a cada tenant vía tabla puente explícita.
+- `proveedor_accounts`: `id` = FK a `auth.users(id)` ON DELETE CASCADE, email único case-insensitive
+  (`idx_proveedor_accounts_email_lower`), `activo`, trigger `updated_at`.
+- `proveedor_account_tenants` (tabla puente): FK **compuesto** `(tenant_id, proveedor_id)` contra
+  `proveedores(tenant_id, id)` — agrega `UNIQUE(tenant_id, id)` a `proveedores` como paso previo — para que
+  la DB garantice que el proveedor vinculado pertenece de verdad a ese tenant, no 2 FKs sueltas.
+  `UNIQUE(tenant_id, proveedor_id)` + `UNIQUE(proveedor_account_id, tenant_id)`.
+- RLS: el proveedor solo ve/edita su propia identidad (`SELECT`/`UPDATE` con `id = (select auth.uid())`) y
+  solo ve sus propios vínculos — **sin policy de INSERT/DELETE de cliente a propósito** (evita auto-alta
+  con un email arbitrario/squatting sobre el UNIQUE de email); el alta real será un flujo de invitación
+  server-side `SECURITY DEFINER` de una fase futura (bypassea RLS, no necesita policy de INSERT).
+- Alcance explícitamente NO incluido: las policies sobre `ordenes_compra`/presupuestos que le darían al
+  proveedor acceso a sus cotizaciones reales (depende de diseñar la integración al state machine real de
+  OC), ni el flujo de invitación/alta de cuentas.
+
+`migration-reviewer`: **1ª pasada encontró 4 hallazgos bloqueantes reales** — faltaba la FK física a
+`auth.users`, la migración no era idempotente, la policy de INSERT permitía auto-alta con un email ajeno, y
+había un `GRANT` a `anon` en vez de un `REVOKE` — los 4 corregidos y **re-verificada APTA en la 2ª pasada**
+(387b/387c, arriba, son correctivos post-verificación contra la DB real, no parte de esta 1ª/2ª pasada).
+
+**386 (`386_autorizaciones_modulos_extendidos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV, COMMITEADA (commit
+`deef2fc2`, `v1.188.0`), SIN aplicar a PROD:** prerequisito técnico para extender el patrón de "cola de
+aprobación" de Supervisión a más módulos (relevamiento `relevamiento-supervision-retrofit-reglas-negocio.
+html`, 100% respondido por Fede el 2026-08-20) — ver [[wiki/features/supervision]] → "Retrofit a más
+módulos". Amplía el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`) para admitir también
+`productos/ventas/clientes/envios/proveedores/pedidos/rrhh`, y elimina el CHECK rígido de `tipo` (se valida
+en la app — mismo criterio ya usado en el proyecto para enums que crecen por módulo, ver
+`reference_check_constraint_vs_configurable`). 100% aditivo — ningún código hoy inserta un `modulo`
+distinto de `'inventario'`, sin cambio de comportamiento. **NO incluye** reclasificar
+`kit_precio`/`repricing_margen` a `modulo='productos'` (A4) ni migrar `autorizaciones_gasto` a esta tabla
+genérica (C1) — ambas quedan para fases dedicadas futuras. `migration-reviewer`: APTA, sin hallazgos
+bloqueantes. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34).
+
+---
 
 **385 (`385_whatsapp_briefing_numero_notificaciones.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
-`2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 4 ("briefing
+`2e5fbcdb`, `APP_VERSION` `v1.184.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334,
+merge commit `867d651a`), **DORMIDA** (ver resumen arriba):** Fase 4 ("briefing
 diario proactivo") del "Asistente de WhatsApp con IA" (continúa la mig 384, abajo, ver
 [[wiki/features/asistente-whatsapp]]) — con esta fase, las 4 fases de la propuesta de Fede (25/8) quedan
 construidas en DEV. Una sola columna aditiva: `ALTER TABLE whatsapp_credentials ADD COLUMN IF NOT EXISTS
@@ -67,7 +187,8 @@ el bump de versión. Ver [[wiki/features/asistente-whatsapp]], `sources/raw/proj
 
 **384 (`384_whatsapp_borrador_comprobante.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) vía `apply_migration` MCP, COMMITEADA Y PUSHEADA a `origin/dev` (commit
-`0364447a`, `APP_VERSION` `v1.183.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 3 ("fotos y
+`0364447a`, `APP_VERSION` `v1.183.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334,
+merge commit `867d651a`), **DORMIDA** (0 filas en `whatsapp_credentials` en PROD):** Fase 3 ("fotos y
 audio") del "Asistente de WhatsApp con IA" (continúa la mig 383, abajo, ver
 [[wiki/features/asistente-whatsapp]]). Una sola columna aditiva: `ALTER TABLE whatsapp_gastos_borrador ADD
 COLUMN IF NOT EXISTS comprobante_url TEXT` — cuando la propuesta de gasto viene de una FOTO enviada por
@@ -104,9 +225,10 @@ test de Meta pueda RECIBIR mensajes reales). Build+typecheck limpios; suite e2e 
 
 ---
 
-**383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+**383 (`383_whatsapp_gastos_borrador.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `9029f24b`, `APP_VERSION`
-`v1.182.0`, tag+release publicados), **SIN deploy a PROD**:** Fase 2 ("cargar gastos como borrador") del
+`v1.182.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334, merge commit `867d651a`),
+**DORMIDA** (0 filas en `whatsapp_credentials` en PROD):** Fase 2 ("cargar gastos como borrador") del
 "Asistente de WhatsApp con IA" (continúa la mig 382, abajo, ver [[wiki/features/asistente-whatsapp]]).
 Agrega la tabla `whatsapp_gastos_borrador`, con 4 estados: `pendiente_confirmacion` (la IA propuso el
 gasto, esperando que el remitente de WhatsApp confirme con un botón interactivo) → `pendiente` (confirmado
@@ -142,10 +264,10 @@ regresión (6/6). Ver [[wiki/features/asistente-whatsapp]], `sources/raw/project
 
 ---
 
-**382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA SOLO EN DEV
+**382 (`382_whatsapp_asistente_fase1.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `8b297b32`, `APP_VERSION`
-`v1.181.0`, tag+release publicados), **SIN deploy a PROD** (⚠ corrige la nota anterior de esta entrada,
-que decía "código sin commitear/bumpear todavía" — quedó desactualizada apenas se escribió):** Fase 1 (cimientos)
+`v1.181.0`, tag+release publicados), **✅ EN PROD desde 2026-08-27** (PR #334, merge commit `867d651a`),
+**DORMIDA** (0 filas en `whatsapp_credentials` en PROD — ver resumen al principio del documento):** Fase 1 (cimientos)
 del "Asistente de WhatsApp con IA" — GO eligió arrancar por acá la propuesta de Fede del 2026-08-25 (no por
 el Portal de Proveedores, ver [[wiki/features/asistente-whatsapp]]). Agrega 2 tablas nuevas:
 1. `whatsapp_credentials` — mapeo `phone_number_id` (Meta) → `tenant_id`. **Sin `sucursal_id` a
@@ -176,15 +298,18 @@ reprocesó (idempotencia); firma inválida/ausente → 403; handshake GET de Met
 eco del challenge, con token incorrecto → 403. Ver [[wiki/features/asistente-whatsapp]],
 `sources/raw/project_pendientes.md` (cont. 26, "ARRANCÁ ACÁ").
 
-**🔴 `schema_full.sql` sigue DESACTUALIZADO** — no incluye la 382, la 383 ni la 384 (sigue reflejando hasta
-la 381), bloqueado por el `SUPABASE_ACCESS_TOKEN` filtrado sin rotar (recurrente, ver
-`reference_seguridad.md`).
+**✅ `schema_full.sql` REGENERADO** (commit `bbb434f9`, sesión previa al deploy a PROD) — ya incluye hasta
+la 385 (162 tablas, 196 funciones, 100 triggers, 181 policies, 8 vistas). El `SUPABASE_ACCESS_TOKEN`
+filtrado sigue SIN rotar (recurrente, ver `reference_seguridad.md`) y sigue bloqueando `npm run
+schema:dump`, pero se esquivó el bloqueador corriendo las mismas 4 queries de introspección de
+`scripts/dump-schema.mjs` directamente vía `execute_sql` del MCP de Supabase — sin pedirle nada nuevo a GO.
 
 ---
 
 **381 (`381_compras_gastos_usd_fase3_descalce.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **⚠ código
-`v1.180.0`, SIN deployar a PROD todavía**:** Fase 3 (pago con descalce de moneda) del plan "Compras/Gastos en USD + tasa
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commits `2476a3e4` + `90976a33`), **✅ EN
+PROD desde 2026-08-27** (`v1.180.0`, PR #334, merge commit `867d651a`), **DORMIDA** (ningún tenant de PROD
+tiene un método de pago USD real configurado, el camino nuevo no se activa solo):** Fase 3 (pago con descalce de moneda) del plan "Compras/Gastos en USD + tasa
 de cambio editable" (continúa las migs 379 y 380, abajo). Dos partes:
 1. 🔴 **Corrección de diseño encontrada ANTES de que importara** (REGLA #0): la mig 379 había puesto
    `cotizacion_usd` como una columna ÚNICA en `ordenes_compra`/`gastos`/`gastos_fijos` — pero una OC/
@@ -230,8 +355,8 @@ recibe el movimiento usa la moneda REAL del medio pagado, no la de la OC.
 ---
 
 **380 (`380_compras_gastos_usd_fase2_permisos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `cce107c8`), **⚠ código `v1.180.0`,
-SIN deployar a PROD todavía**:** Fase 2 (permisos) del plan "Compras/Gastos en USD + tasa de cambio editable". Agrega
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `cce107c8`), **✅ EN PROD desde
+2026-08-27** (`v1.180.0`, PR #334, merge commit `867d651a`), **DORMIDA**:** Fase 2 (permisos) del plan "Compras/Gastos en USD + tasa de cambio editable". Agrega
 `tenants.compras_cotizacion_roles_permitidos jsonb` — mismo patrón que `cotizacion_usd_roles_permitidos`
 de la Caja USD G5 (mig 370): NULL/[] = solo DUEÑO puede cargar/editar la cotización manual de una compra
 con descalce de moneda; roles adicionales (base o `custom:{id}`) configurables aparte. Solo cimiento de
@@ -241,8 +366,8 @@ consume. Ver [[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en
 ---
 
 **379 (`379_compras_gastos_usd_fase1_cimientos.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `6a0f46af`), **⚠ código `v1.180.0`,
-SIN deployar a PROD todavía**:** Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
+(`gcmhzdedrkmmzfzfveig`), COMMITEADA Y PUSHEADA a `origin/dev` (commit `6a0f46af`), **✅ EN PROD desde
+2026-08-27** (`v1.180.0`, PR #334, merge commit `867d651a`), **DORMIDA**:** Fase 1 (cimientos de datos) del plan "Compras/Gastos en USD + tasa de cambio editable" — relevamiento nuevo, generado y
 respondido por Fede el 2026-08-21 (100% cerrado), distinto del G5 (Caja USD, que solo cubrió VENTAS): este
 cubre el lado de COMPRAS/GASTOS, feature nueva de punta a punta. Agrega:
 1. `moneda text NOT NULL DEFAULT 'ARS'` + `cotizacion_usd numeric(14,2)` en `gastos`, `gastos_fijos` y

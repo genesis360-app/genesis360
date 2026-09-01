@@ -7,9 +7,13 @@ import {
   AlertTriangle, Send, Scale, Ruler, ChevronDown, Pencil, Trash2,
   FileText, RefreshCw, Navigation, Loader2, Warehouse, ClipboardCheck, Upload, User as UserIcon,
   Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag, BarChart3, Fuel, Car,
+  ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { PageTabs } from '@/components/PageTabs'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 import PodFotosManager from '@/components/PodFotosManager'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 // jspdf/jspdf-autotable se importan dinámicamente en generarHojaRutaPDF/generarRemito
@@ -38,7 +42,7 @@ import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
-type TabEnvio = 'envios' | 'pagos' | 'facturas' | 'reparto' | 'reportes'
+type TabEnvio = 'envios' | 'pagos' | 'facturas' | 'reparto' | 'reportes' | 'autorizaciones'
 
 const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
@@ -97,6 +101,32 @@ const FORM_VACIO: FormEnvio = {
   rango_horario_idx: '', repartidor_id: '',
   tipo: 'venta', motivo: '', sucursal_destino_id: '',
   recurso_id: '', km_recorridos: '',
+}
+
+function EditarDomicilioInline({ domicilio: d, onCancel, onSave, saving }: {
+  domicilio: any
+  onCancel: () => void
+  onSave: (data: { nombre: string; calle: string; numero: string; piso_depto: string; ciudad: string; provincia: string; codigo_postal: string }) => void
+  saving: boolean
+}) {
+  const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
+  return (
+    <div className="mt-1 mb-1 border border-accent-text/30 rounded-xl p-3 bg-accent/5 space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+        <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
+        <button type="button" onClick={() => onSave(localDom)} disabled={!localDom.calle || saving} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar'}</button>
+      </div>
+    </div>
+  )
 }
 
 export default function EnviosPage() {
@@ -689,18 +719,85 @@ export default function EnviosPage() {
     onError: (e: any) => { if (e.message !== 'pago_pendiente') toast.error(e.message) },
   })
 
+  // A5 Nivel 1 (relevamiento Supervisión, Fede 2026-08-20) — eliminar un envío es un hard delete
+  // irreversible, así que ya NO se ejecuta directo: siempre queda pendiente de aprobación de un
+  // supervisor ("toda eliminación permanente necesita aprobación"). Mismo patrón que Clientes
+  // (primer módulo retrofiteado) — reusa `useSupervisorAutorizaciones`/`SupervisionPanel`.
   const eliminarEnvio = useMutation({
     mutationFn: async (envio: any) => {
-      const { error } = await supabase.from('envios').delete().eq('id', envio.id)
-      if (error) throw error
-      logActividad({
-        entidad: 'envio', entidad_id: envio.id, entidad_nombre: `Envío #${envio.numero ?? ''}`,
-        accion: 'eliminar', pagina: '/envios', venta_id: envio.venta_id ?? null,
+      const { error } = await supabase.from('autorizaciones').insert({
+        tenant_id: tenant!.id,
+        modulo: 'envios',
+        tipo: 'eliminar',
+        datos_cambio: { envio_id: envio.id, envio_numero: envio.numero ?? null, venta_id: envio.venta_id ?? null },
+        estado: 'pendiente',
+        solicitado_por: user?.id,
       })
+      if (error) throw error
+      try {
+        await avisarSupervisor(tenant!.id, 'envios', user?.id,
+          'Eliminación de envío pendiente de aprobar',
+          `${user?.nombre_display ?? 'Un usuario'} pidió eliminar el envío #${envio.numero ?? ''} — requiere tu aprobación.`,
+          '/envios?tab=autorizaciones')
+      } catch { /* la notificación no bloquea el flujo */ }
     },
-    onSuccess: () => { toast.success('Envío eliminado'); qc.invalidateQueries({ queryKey: ['envios'] }) },
+    onSuccess: () => {
+      toast.success('Solicitud enviada — pendiente de aprobación de un supervisor')
+      qc.invalidateQueries({ queryKey: ['autorizaciones', 'envios'] })
+      qc.invalidateQueries({ queryKey: ['supervision-badge'] })
+    },
     onError: (e: any) => toast.error(e.message),
   })
+
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en envios) ──────────
+  const puedeVerAutorizacionesEnvios = puedeSupervisarModulo(user, 'envios')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones('envios', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesEnvios ? ['envios'] : [])
+
+  const resumenDeAutorizacionEnvio = (aut: any) => `Eliminar envío — #${aut.datos_cambio?.envio_numero ?? '—'}`
+
+  const aprobarAutorizacionEnvio = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const { envio_id, envio_numero, venta_id } = aut.datos_cambio ?? {}
+      const { error } = await supabase.from('envios').delete().eq('id', envio_id)
+      if (error) throw error
+      await marcarAprobada(aut.id)
+      logActividad({ entidad: 'envio', entidad_id: envio_id, entidad_nombre: `Envío #${envio_numero ?? ''}`, accion: 'aprobar', campo: 'estado', valor_nuevo: 'eliminado', pagina: '/envios', venta_id: venta_id ?? null })
+      toast.success('Eliminación aprobada y ejecutada')
+      qc.invalidateQueries({ queryKey: ['envios'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo aprobar')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
+  const rechazarAutorizacionEnvio = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo rechazar')
+    }
+  }
+
+  const reasignarAutorizacionEnvio = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
+  }
 
   // Guardar domicilio (nuevo o edición)
   const saveDomicilio = useMutation({
@@ -1282,10 +1379,95 @@ export default function EnviosPage() {
           { id: 'facturas', label: 'Facturas Courier', icon: FileText },
           { id: 'reparto', label: 'Reparto', icon: Navigation },
           { id: 'reportes', label: 'Reportes', icon: BarChart3 },
+          ...(puedeVerAutorizacionesEnvios ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
         ]}
         active={tab}
         onChange={(id) => setTab(id as any)}
       />
+
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión) ═══════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizacionesEnvios && (
+        <SupervisionPanel
+          modulo="envios"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionEnvio}
+          resumenDe={resumenDeAutorizacionEnvio}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => (
+                <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Eliminar envío</span>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">#{aut.datos_cambio?.envio_numero ?? '—'}</span>
+                      </div>
+                      <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                        <p>Solicitado por: {aut.solicitante?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                      </div>
+                    </div>
+                    {autEstado === 'pendiente' && (
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button onClick={async () => { if (await confirmar(`¿Aprobar la eliminación del envío #${aut.datos_cambio?.envio_numero}?`, { danger: true })) aprobarAutorizacionEnvio(aut) }}
+                          disabled={autAprobandoId === aut.id}
+                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                          <CheckCircle2 size={13} /> Aprobar
+                        </button>
+                        {autRechazoId === aut.id ? (
+                          <div className="space-y-1.5">
+                            <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                              placeholder="Motivo de rechazo..."
+                              className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                            <div className="flex gap-1">
+                              <button onClick={() => rechazarAutorizacionEnvio(aut.id, autMotivoRechazo, resumenDeAutorizacionEnvio(aut))}
+                                disabled={!autMotivoRechazo.trim()}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                Confirmar
+                              </button>
+                              <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setAutRechazoId(aut.id)}
+                            className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <X size={13} /> Rechazar
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SupervisionPanel>
+      )}
 
       {/* ══ TAB: ENVÍOS ══ */}
       {tab === 'envios' && (
@@ -2219,26 +2401,14 @@ export default function EnviosPage() {
                         </button>
                       </label>
                       {/* Formulario inline de edición */}
-                      {editandoDomId === d.id && (() => {
-                        const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
-                        return (
-                          <div className="mt-1 mb-1 border border-accent-text/30 rounded-xl p-3 bg-accent/5 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                            </div>
-                            <div className="flex gap-2 justify-end">
-                              <button type="button" onClick={() => setEditandoDomId(null)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
-                              <button type="button" onClick={() => saveDomicilio.mutate({ id: d.id, data: localDom })} disabled={!localDom.calle || saveDomicilio.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saveDomicilio.isPending ? 'Guardando…' : 'Guardar'}</button>
-                            </div>
-                          </div>
-                        )
-                      })()}
+                      {editandoDomId === d.id && (
+                        <EditarDomicilioInline
+                          domicilio={d}
+                          onCancel={() => setEditandoDomId(null)}
+                          onSave={data => saveDomicilio.mutate({ id: d.id, data })}
+                          saving={saveDomicilio.isPending}
+                        />
+                      )}
                     </div>
                   ))}
 

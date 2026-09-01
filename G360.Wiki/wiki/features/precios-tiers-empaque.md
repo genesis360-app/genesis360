@@ -394,7 +394,11 @@ propias respuestas antes de codear (mismo criterio de "features grandes por fase
        tipo `kit_precio` nuevo, mismo flujo de aprobar/rechazar existente). **✅ VERIFICADO end-to-end
        en la sesión de deploy (2026-08-07, mismo día)** con el test e2e permanente
        `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts` — rol DEPOSITO pide el cambio de
-       precio, DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso.
+       precio, DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso. **🎯 2026-09-01
+       (mig 388, v1.192.0): `kit_precio` se reclasificó de `modulo='inventario'` a `modulo='productos'`**
+       (era un cambio de PRECIO de producto, no de inventario) — la aprobación ahora se resuelve desde
+       Productos→Autorizaciones, no desde Inventario; el spec 133 se actualizó para navegar ahí. Ver
+       [[wiki/features/supervision]] → "Retrofit a más módulos" → "Productos (A4)".
      - **E5** (desarmado de kit devuelve componentes al mismo estado de descuento) y lo que depende de
        la Pestaña de supervisor (disparo automático) **siguen sin arrancar, a propósito.**
    ✅ **Las 3 Opciones del Motor de Rotación quedan COMPLETAS, verificadas end-to-end y EN PROD desde

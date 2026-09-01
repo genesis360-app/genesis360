@@ -11,6 +11,13 @@ import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 // cada módulo — esta página solo agrega y linkea. Extender MODULOS al retrofitear un módulo nuevo.
 const MODULOS: { key: string; label: string; ruta: string }[] = [
   { key: 'inventario', label: 'Inventario', ruta: '/inventario?tab=autorizaciones' },
+  { key: 'productos', label: 'Productos', ruta: '/productos?tab=autorizaciones' },
+  { key: 'clientes', label: 'Clientes', ruta: '/clientes?tab=autorizaciones' },
+  { key: 'envios', label: 'Envíos', ruta: '/envios?tab=autorizaciones' },
+  { key: 'proveedores', label: 'Proveedores', ruta: '/proveedores?tab=autorizaciones' },
+  { key: 'pedidos', label: 'Pedidos', ruta: '/pedidos?tab=autorizaciones' },
+  { key: 'rrhh', label: 'RRHH', ruta: '/rrhh?tab=autorizaciones' },
+  { key: 'ventas', label: 'Ventas', ruta: '/ventas?tab=autorizaciones' },
 ]
 
 // GO (2026-08-12): la lista cruda de 5 solicitudes al azar ("¿por qué esas 5?") no agregaba valor —
@@ -26,6 +33,8 @@ const TIPO_LABELS: Record<string, string> = {
   kit_precio:        'Precio de KIT',
   repricing_margen:  'Repricing por margen',
   eliminar_lpn:      'Eliminar LPN',
+  eliminar:          'Eliminar', // genérico: Clientes/Envíos/Proveedores/Pedidos/RRHH (mig 386, Nivel 1)
+  eliminar_venta_despachada: 'Anular venta despachada', // Ventas (A1, mig 386)
 }
 
 export default function SupervisionPage() {

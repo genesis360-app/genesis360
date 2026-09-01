@@ -38,17 +38,17 @@ export default function SolicitarAutorizacionGastoModal({
   const submit = async () => {
     if (!motivo.trim()) return toast.error('Ingresá un motivo para la solicitud')
     setSubmitting(true)
-    const { data, error } = await supabase.from('autorizaciones_gasto').insert({
-      tenant_id:       tenant!.id,
-      sucursal_id:     sucursalId ?? null,
-      gasto_id:        gastoId ?? null,
+    // C1 (Supervisión, mig 389): vive en la tabla genérica `autorizaciones` (modulo='gastos'),
+    // no en `autorizaciones_gasto` (eliminada). Jerarquía de aprobación propia de Gastos
+    // (puedeAprobar() en umbralGasto.ts) — NO usa el patrón `supervisa` genérico.
+    const { data, error } = await supabase.from('autorizaciones').insert({
+      tenant_id:      tenant!.id,
+      modulo:         'gastos',
       tipo,
-      monto,
-      descripcion,
-      motivo:          motivo.trim(),
-      payload,
-      solicitante_id:  user!.id,
-      solicitante_rol: user!.rol,
+      datos_cambio:   { sucursal_id: sucursalId ?? null, gasto_id: gastoId ?? null, monto, descripcion, payload, solicitante_rol: user!.rol },
+      estado:         'pendiente',
+      solicitado_por: user!.id,
+      notas:          motivo.trim(),
     }).select('id').single()
     setSubmitting(false)
     if (error) return toast.error(error.message)

@@ -69,11 +69,8 @@ function uno<T>(v: T | T[] | null | undefined): T | null {
  * y `ventas(clientes(nombre))` embebidos) a una NcEmitida. Mismo mapeo de ítems que hace la
  * EF al emitir la NC: subtotal = precio_unitario × cantidad, alícuota del producto.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapDevolucionNc(d: any): NcEmitida {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const venta = uno<any>(d.ventas)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cliente = uno<any>(venta?.clientes)
   return {
     id: String(d.id),
@@ -82,7 +79,6 @@ export function mapDevolucionNc(d: any): NcEmitida {
     nc_cae: d.nc_cae ?? null,
     fecha: String(d.nc_fecha ?? d.created_at ?? '').split('T')[0],
     cliente: cliente?.nombre ?? null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     items: ((d.devolucion_items ?? []) as any[]).map((di) => ({
       cantidad: Number(di.cantidad),
       precio_unitario: Number(di.precio_unitario),

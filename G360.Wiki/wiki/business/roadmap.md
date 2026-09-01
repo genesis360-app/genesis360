@@ -3,51 +3,162 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-27
+updated: 2026-09-01
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.179.2 (código/Vercel — 🚀 DEPLOYADO A PROD el 2026-08-24/25: PR #333 mergeado a
-`main` (merge commit `f36ff2f4b3f7e6ecb18c14f1385203b663a21dbd`, `mergedAt: 2026-08-24T23:02:37Z`),
-confirmado con `gh pr view 333` → `state: MERGED`, release `v1.179.2` publicado (`target: main`,
-`--latest`, `publishedAt: 2026-08-24T23:02:54Z`). **Sin migraciones en este deploy** (100% frontend/tests).
-Revisión general de la app (unit + e2e completos) encontró y corrigió **5 bugs reales**: placeholder roto
-en el buscador de Historial de Ventas, overflow horizontal en mobile en Productos/Inventario (falta de
-`min-w-0`), aviso nuevo en Config→Ventas→Métodos de pago cuando hay productos USD sin método de pago USD
-configurado, y 6 specs e2e desactualizados corregidos. Verificado en vivo: NC electrónica AFIP y
-aprobación de ajustes de inventario siguen mutando el stock de punta a punta. Vercel: deploy de producción
-**READY**. **Como el merge trae todo `dev` hasta ese commit (confirmado con
-`git merge-base --is-ancestor`), el fix de moneda USD en la lista de Productos de v1.179.1 (commit
-`193820df`, abajo) queda TAMBIÉN deployado a PROD con esta tanda** — corrige el estado "solo en DEV" que
-tenía esa versión hasta ahora. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente
-de verdad, bloque "ARRANCÁ ACÁ", cont. 24).  
-Antes de este release: v1.179.0 — Plan IA Fases 1+2+3 100% en PROD (PR #332, merge commit `7e19e7a3`, 3
-migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.184.0** (commit `2e5fbcdb`, tag+release publicados) — **COMMITEADA Y PUSHEADA a
-`origin/dev`**, **sin PR a `main` todavía, sin deploy a PROD**: **migración 385** — Fase 4 ("briefing
-diario proactivo") del **Asistente de WhatsApp con IA**, continúa la MISMA sesión que v1.183.0 (abajo, sin
-`/clear`). **Con esta fase, las 4 fases de la propuesta de Fede (25/8/2026) quedan construidas en DEV.**
-EF nueva `wa-briefing-sweep` (GitHub Actions, cron 15 min, clon del molde de `repositores-cierre-dia-sweep`)
-manda un resumen de apertura/cierre SOLO al dueño por plantilla pre-aprobada de Meta (business-initiated,
-no comparte código con `wa-webhook`). Verificado PARCIALMENTE: todo el código confirmado correcto contra la
-API real de Meta, pero el envío real está bloqueado por la aprobación PENDIENTE de las 2 plantillas nuevas
-(Meta reclasificó automáticamente una de ellas de `UTILITY` a `MARKETING` en su revisión). Ver detalle en
-la sección `v1.184.0` más abajo. Antes de esta versión: **v1.183.0** (mig 384, Fase 3 — fotos y audio),
-**v1.182.0** (mig 383, Fase 2 — cargar gastos como borrador con doble confirmación) y **v1.181.0** (mig
-382, Fase 1 — cimientos, consultas de stock/precio por WhatsApp) — ver sus secciones dedicadas más abajo.
-Ver `wiki/database/migraciones.md` (migs 382-385, título a 001-385), [[wiki/features/asistente-whatsapp]].  
-**Versión anterior en DEV (2026-08-25, histórico):** v1.180.0 (migs 379-381) — Fases 1-3 del plan
-"Compras/Gastos en USD + tasa de cambio editable" (relevamiento respondido por Fede 2026-08-21). Ver
-detalle en la sección `v1.180.0` más abajo. Ver `wiki/database/migraciones.md` (migs 379-381) y
-`wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en USD".  
+**Versión en PROD:** v1.184.0 (código — 🚀 DEPLOYADO A PROD el 2026-08-27: PR #334 "v1.184.0 — Compras/
+Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4)" mergeado `dev`→`main` (merge commit
+`867d651a619fbf72f5521955a58c07a8f0a915e6`, `mergedAt: 2026-08-27T21:27:57Z`), confirmado con `gh pr view
+334` → `state: MERGED`. **Este deploy promovió TODO lo acumulado en `dev` desde el último deploy real
+(`v1.179.2`, 2026-08-24)** — migraciones 379 a 385 aplicadas y verificadas en PROD
+(`jjffnbrdjchquexdfgwq`) una por una con queries reales, `list_migrations` de PROD confirma última
+migración = 385; Edge Functions `wa-webhook` y `wa-briefing-sweep` deployadas a PROD (`verify_jwt: false`,
+mismo código exacto que DEV). **Releases de GitHub v1.180.0 a v1.184.0 retargeteados a `main`** (antes
+apuntaban a `dev`), notas de `v1.184.0` reescritas para reflejar el bundle completo que llegó a PROD.
+Trae **2 features nuevas, ambas EN PROD pero DORMIDAS a propósito, sin activarse para ningún tenant real**:
+1. **Compras/Gastos en USD (Fases 1-3, migs 379-381)** — confirmado por query real que ningún tenant de
+   PROD tiene un método de pago USD real configurado, el camino nuevo (pago en USD) no se activa solo; el
+   camino existente en ARS fue re-verificado sin regresión antes de este deploy (e2e reales + suite unit de
+   1637 tests). Ver [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable".
+2. **Asistente de WhatsApp IA (Fases 1-4, migs 382-385)** — PROD tiene 9 tenants, todos de prueba de GO
+   (confirmado por query real, ninguno es cliente real pagando; ⚠ "Familia Otranto De Porto" en PROD es
+   OTRO tenant de prueba, UUID `5f05f3eb-...`, distinto del de DEV, UUID `4cf85bbb-...`).
+   `whatsapp_credentials` en PROD tiene 0 filas; sanity-check real con curl a `wa-briefing-sweep` en PROD
+   confirmó `{"ok":true,"motivo":"sin tenants con numero_notificaciones configurado"}`. El cron de GitHub
+   Actions (`wa-briefing-sweep.yml`) SÍ empieza a correr de verdad cada 15 min contra PROD desde ahora, pero
+   sin filas que matcheen no hace nada. Ver [[wiki/features/asistente-whatsapp]].
+
+**Vercel: deploy de producción disparado automáticamente tras el merge — confirmado READY**
+(`dpl_B7ah9QxMoWRdnfNZQuwLJr1TaUDo`, alias `app.genesis360.pro` actualizado). **Con las 2 features ya en
+PROD, GO eligió como próximo paso Embedded Signup** (escalar WhatsApp a futuros clientes, ver "Versión en
+DEV" abajo — construido en DEV en una sesión nueva, sin deploy a PROD todavía); el **Portal de Proveedores**
+(la otra mitad de la propuesta de Fede) arrancó su prerequisito técnico el 2026-08-31 (ver "Versión en DEV"
+abajo). Detalle completo: `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ
+ACÁ"), `log.md` (2026-08-27, tipo `deploy`).  
+Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
+bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
+100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
+**Versión en DEV:** **v1.195.0** (2026-09-01, continuación directa de v1.194.0 abajo) — 🗂️✅ **Portal de
+Proveedores — Fase 2 completa: invitación real + acceso a OC + UI del portal.** 5 RPC `SECURITY DEFINER`
+angostas (mig 390) — se descartó a propósito RLS ancha sobre `ordenes_compra`/`tenants`/`productos`
+(`tenants` tiene columnas muy sensibles: `clave_maestra`, `afipsdk_token`, `cbu`) — `fn_portal_proveedor_
+negocios/_ocs/_oc_items` (lectura) + `_responder_item` (único camino de escritura del proveedor, UPDATE
+atómico que solo toca `precio_propuesto_proveedor`/`respondido_at`, NUNCA `precio_unitario` real — REGLA
+#0: la respuesta de un tercero externo nunca confirma la OC sola, el staff "aplica" a mano) +
+`fn_proveedor_portal_vinculo` (lado staff, hallazgo real: la Fase 1/mig 387 no dejaba ningún camino de
+lectura para que el staff supiera si un proveedor ya estaba vinculado). Edge Function `invitar-proveedor`
+(`admin.generateLink(magiclink)`) + portal real (`/portal-proveedores`, autocontenido fuera de AuthGuard) +
+UI de "aplicar propuesta" en `ProveedoresPage.tsx`. Verificado con Playwright real contra DEV (specs
+138/139: invitación real, login real con contraseña, propuesta guardada sin tocar `precio_unitario`, staff
+la aplica) + build/1637 tests unitarios verdes + sin regresión en Compras/OC. **NO deployado a PROD** —
+pendiente real: GO/Fede deben agregar la URL del portal a Redirect URLs de Supabase Auth (Dashboard, no
+migrable) antes de que un link mágico real funcione. Ver [[wiki/features/portal-proveedores]] (página
+nueva), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 41).  
+**Antes (2026-09-01, v1.194.0): Supervisión: A1 (Ventas) CIERRA TODO el relevamiento de Fede de verdad, sin
+ninguna excepción.** Única
+pieza que quedaba "sin diseñar todavía": "Anular venta despachada" migra a cola de Supervisión
+("Solicitar anulación", tab "Autorizaciones" nuevo en `VentasPage.tsx`, mismo patrón genérico). Al
+**aprobar**: **sin CAE** → mismo `cambiarEstado→'cancelada'` de siempre, directo (reincorpora stock +
+revierte caja); **con CAE** (antes bloqueado del todo) → abre "Devolver" precargada a devolución TOTAL —
+el supervisor elige el reembolso (nunca se automatiza), y al confirmar la NC automática (**A10**) sale
+sola; la autorización queda `aprobada` recién al cerrar al 100%. Sin migración nueva (la mig 386 ya
+incluía `'ventas'`). Verificado con Playwright real contra DEV (spec 137, 2 escenarios, con CAE
+sintético — sin llamar a AFIP real) + suite de regresión de Ventas sin regresión + build/1637 tests
+unitarios verdes. **NO deployado a PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos" §
+"Ventas (A1)", [[wiki/features/ventas-pos]] § VF6, `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ",
+cont. 40).  
+**Antes (2026-09-01, v1.193.0): C1 (migrar `autorizaciones_gasto` a la genérica) CIERRA TODO el
+relevamiento de Fede de verdad** (corrige la entrada de abajo, que decía "CIERRA el relevamiento ENTERO"
+contando A4 pero todavía faltaba C1). `autorizaciones_gasto` (0 filas reales en DEV, confirmado dos veces
+antes del `DROP TABLE`) se elimina — Gastos ahora usa la tabla genérica `autorizaciones`
+(`modulo='gastos'`), pero a propósito **NO** usa `useSupervisorAutorizaciones`/`SupervisionPanel` (Gastos
+tiene su propio modelo de **jerarquía de rol** — CAJERO→SUPERVISOR/DUEÑO/ADMIN, `puedeAprobar()` —
+distinto del permiso `supervisa` fijo); conserva sus componentes propios
+(`SolicitarAutorizacionGastoModal.tsx`, `BandejaAutorizacionesGasto.tsx`), solo cambia la tabla destino.
+**🐛 Hallazgo real (no un bug arreglado)**: `/gastos` no está en `CAJERO_ALLOWED` (`AppLayout.tsx`) — un
+CAJERO real nunca llega a esa página, así que todo el código `esCajero`/umbral-CAJERO de `GastosPage.tsx`
+es código muerto hoy; se verificó con SUPERVISOR→DUEÑO en su lugar. Verificado con Playwright real contra
+DEV (spec 136) + suite de regresión de Gastos (3 specs) sin regresión; `migration-reviewer` 2 rondas (1ª
+pidió `IF EXISTS` + confirmación de 0 filas). **NO deployado a PROD.**  
+**Antes (2026-09-01, v1.192.0, commit `0e2bb29d`): A4 (kit_precio/repricing_margen → Productos).**
+`kit_precio` (Motor de Rotación) y `repricing_margen` (D3) estaban mal clasificados en
+`modulo='inventario'` pese a ser cambios de PRECIO de producto. Migración 388 (APTA) reclasificó las filas
+existentes (2 pendientes reales + 6 aprobadas) a `modulo='productos'`; se sacó la lógica de aprobación de
+`InventarioPage.tsx` y se agregó tab "Autorizaciones" nueva en `ProductosPage.tsx`. De paso, 2 gaps reales
+de la sesión anterior corregidos: `UsuariosPage.tsx` (roles custom) sin `productos/envios/proveedores/
+pedidos`; badge de nav global + `/supervision` (`AppLayout.tsx`/`SupervisionPage.tsx`) hardcodeados a
+`['inventario']`, nunca actualizados al construir los 5 módulos de Nivel 1. Ver `sources/raw/
+project_pendientes.md` ("ARRANCÁ ACÁ", cont. 38, histórico).  
+**Antes (2026-08-31, v1.191.0, commit `f337ca62`): Supervisión — Nivel 1 COMPLETO, RRHH cierra los 5
+módulos.** Último módulo de Nivel 1 del relevamiento de Fede: "RRHH→cualquier eliminación". `RrhhPage.tsx`
+tiene 9 acciones de "eliminar" distintas — decisión de scope: se acotó a la baja de empleado (soft-delete,
+único registro central de PERSONA, mismo criterio que Clientes); las otras 8 son registros administrativos,
+quedan sin gatear a propósito. Se resolvió la ambigüedad de naming `'recursos'` vs `'rrhh'` (no era real:
+el código ya usaba `'rrhh'` consistentemente en todos lados; `'recursos'` es una tabla distinta de flota/
+vehículos). Reutiliza `toggleEmpleadoActivo` para el efecto real al aprobar; reactivar sigue siendo
+directo. Con esto, el Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) quedó 100% cerrado — sin
+migración nueva. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 37, histórico).  
+**Antes (2026-08-31, v1.190.0, commit `452f3c93`): Envíos, Proveedores y Pedidos retrofiteados**, mismo
+patrón exacto de Clientes — **Envíos** ("Eliminar envío", hard delete real), **Proveedores** ("Eliminar
+proveedor/servicio", hard delete, `deleteProveedor.mutate` cambió de firma `id`→`{id, nombre}`) y
+**Pedidos** ("Cancelar pedido" — la lógica real de stock sigue 100% en `fn_cancelar_pedido` sin tocar, la
+aprobación solo difiere CUÁNDO se llama, REGLA #0; el tab bar de Pedidos ahora también aparece en modo
+básico si el usuario puede supervisar) ya pasan por cola de aprobación con tab "Autorizaciones" propio.
+Verificación distinta a la de Clientes, a propósito: sin test e2e nuevo por módulo — build+typecheck+lint
+limpios + los 3 `INSERT` a `autorizaciones` probados con impersonación real de rol contra DEV. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 36, histórico).  
+**Antes (2026-08-31, v1.189.0, commit `27d740e8`): Supervisión — PRIMER módulo real retrofiteado, Clientes.**
+La baja de cliente (soft-delete) dejó de ejecutarse directo — crea una fila pendiente en `autorizaciones`
+(`modulo='clientes'`, `tipo='eliminar'`) que un supervisor aprueba/rechaza desde un tab nuevo
+"Autorizaciones" en `ClientesPage.tsx`, reusando el 100% de la infraestructura genérica que ya tenía
+Inventario (`useSupervisorAutorizaciones`, `SupervisionPanel`, `avisarSupervisor`) — primera vez que un
+segundo módulo consume el patrón, sin migración nueva (usa el CHECK ya ampliado por la mig 386). **2 bugs
+reales corregidos al verificar end-to-end contra DEV**: el hook compartido `useSupervisorAutorizaciones.ts`
+interpolaba `selectExtra` sin filtrar (coma doble inválida para PostgREST cuando un módulo no necesita join
+extra, silenciada por el fallback `data ?? []` — ahora también expone `isError`); `confirmarBaja` no
+invalidaba la query de la lista de Autorizaciones. Verificado con Playwright real contra DEV + test
+permanente en `tests/e2e/08_clientes.spec.ts` + suite de regresión de Inventario sin regresión. Ver
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 35, histórico).  
+**Antes (2026-08-31, v1.188.0, commit `deef2fc2`)** — 2 frentes:
+1. **Chrome/FedCM en Embedded Signup, investigado a fondo, SIN fix de código posible** (commit `529a0ea8`):
+   confirmado que Chrome intercepta el popup de `FB.login()` vía FedCM del lado de `facebook.com`, sin
+   ningún flag que Genesis360 controle — coincide con el open beta de "Login with Facebook" que Meta lanzó
+   el 27/8/2026, pero sin fuente primaria confirmada. **Pendiente de GO**: reportar el bug a Meta y
+   reintentar cuando cierre el open beta.
+2. **Prerequisito técnico de Supervisión (mig 386) + identidad del Portal de Proveedores (migs 387/387b/
+   387c), APLICADAS Y VERIFICADAS EN DEV**: (a) el CHECK `autorizaciones.modulo` ya admite
+   productos/ventas/clientes/envíos/proveedores/pedidos/rrhh (antes solo `'inventario'`) — despeja el
+   bloqueante técnico para el retrofit de Supervisión, sin código de UI/negocio todavía (resuelto arriba
+   para Clientes); (b) tablas nuevas `proveedor_accounts`/`proveedor_account_tenants` — GO confirmó que una
+   cuenta de proveedor puede vincularse a varios negocios, se replicó el patrón de identidad cross-tenant
+   ya usado por `support_agents` en vez de forzar el modelo de `users`. Sin flujo de invitación ni policies
+   de `ordenes_compra` todavía.
+
+**NO deployado a PROD** — PROD sigue en migraciones 001-385; DEV en 001-387c, sin migración nueva en
+v1.189.0. Ver [[wiki/features/asistente-whatsapp]] → "Embedded Signup" y "Portal de Proveedores",
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 34, histórico).  
+**Antes (misma sesión que v1.188.0, v1.187.0, commit `33c03b46`): `npm run lint` deja de estar roto en TODO
+el repo** — se creó `.eslintrc.cjs` (no existía ningún archivo de configuración de ESLint pese a tener las
+dependencias instaladas); al activarlo salieron **4 bugs REALES** (no solo estilo): hooks llamados después
+de un early return condicional en `AdminPage.tsx` y dentro de una IIFE condicional en `EnviosPage.tsx`, y un
+`switch` con fallthrough silencioso en `DashGastosArea.tsx`/`DashVentasArea.tsx`. `--max-warnings` bajado de
+0 a 161 (baseline real preexistente, deuda pendiente no bloqueante). Ver
+[[wiki/development/convenciones-codigo]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 33,
+histórico).  
+**Antes (2026-08-28, v1.186.0): Embedded Signup de Meta CÓDIGO VALIDADO end-to-end** (EF
+`wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage), confirmado correcto con datos
+reales de Meta (App ID, `config_id`) por 3 caminos de prueba distintos — en ese momento **BLOQUEADO por
+verificación externa** (Meta exige completar la Verificación del Negocio, documentos a cargo de Fede);
+sigue igual, sin novedades de Fede todavía.  
 **2 relevamientos, ambos 100% RESPONDIDOS por Fede (2026-08-24/25)**: (a) retrofit del patrón "tab
-Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, sin diseño/
-código arrancado todavía; (b) Compras/Gastos en USD (arriba) — Fases 1-3 YA CONSTRUIDAS, resto a iterar.
-Ver `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"), `wiki/features/supervision.md`,
-`wiki/development/reglas-negocio.md`.  
-Ver `wiki/features/asistente-ia.md` → "Plan IA", `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ
-ACÁ").  
+Supervisión" a Ventas/Productos/Clientes/Envíos/Proveedores/Pedidos/RRHH — decisiones cerradas, prerequisito
+técnico (mig 386) aplicado en DEV desde 2026-08-31 y **Clientes ya construido (v1.189.0, arriba)**, resto
+(Envíos/Proveedores/Pedidos/RRHH/Ventas) sin arrancar todavía; (b) Compras/Gastos en USD (arriba) — Fases
+1-3 YA CONSTRUIDAS Y EN PROD, resto a iterar. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"),
+`wiki/features/supervision.md`, `wiki/development/reglas-negocio.md`.  
+Ver `wiki/features/asistente-ia.md` → "Plan IA".  
 Fases 1 a 7 de Caja USD (relevamiento G5) 100% completas y en PROD desde v1.176.0 — Fases 1+2
 commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + bump `56f48fe8`, tag+release
 `v1.172.0`; Fase 4 (mig 372, pago combinado ARS+USD) commit `d783727d` + bump `05801eb4`, tag+release
@@ -56,11 +167,61 @@ commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + 
 sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
-**Última actualización:** 27 de Agosto, 2026
+**Última actualización:** 1 de Septiembre, 2026
 
 ---
 
-## v1.184.0 — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD, verificada solo PARCIALMENTE — LAS 4 FASES de la propuesta de Fede quedan construidas en DEV
+## v1.184.0 — 🚀 DEPLOYADO A PROD: Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases 1-4) — ✅ EN PROD (PR #334, merge `867d651a`, 2026-08-27), AMBAS FEATURES DORMIDAS
+
+Sesión nueva, separada de la que construyó las 4 fases del Asistente de WhatsApp (2026-08-26/27, sección de
+abajo). Deploy real a PROD que promovió **TODO lo acumulado en `dev` desde el último deploy real**
+(`v1.179.2`, 2026-08-24) — sin código nuevo de aplicación, 100% trabajo de infraestructura/deploy.
+
+**Orden de la sesión**:
+1. **`schema_full.sql` regenerado** (commit `bbb434f9`, sesión previa a este deploy) — estaba desactualizado
+   desde la mig 382. Se corrieron las mismas 4 queries de introspección de `scripts/dump-schema.mjs`
+   directamente vía `execute_sql` del MCP de Supabase (el bloqueador de siempre, `SUPABASE_ACCESS_TOKEN`
+   filtrado sin rotar, sigue vigente — se lo esquivó sin pedirle nada nuevo a GO). Resultado: 162 tablas,
+   196 funciones, 100 triggers, 181 policies, 8 vistas.
+2. **Migraciones 379-385 aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), en orden, verificadas con queries
+   reales después de cada una — `list_migrations` de PROD confirma última migración = 385.
+   - **379-381 — Compras/Gastos en USD (Fases 1-3)**: cimientos de moneda/cotización en
+     `gastos`/`gastos_fijos`/`ordenes_compra`, permisos de cotización manual
+     (`tenants.compras_cotizacion_roles_permitidos`), pago de OC con descalce de moneda (conversión
+     server-side en `registrar_pago_oc`, ahora con 9 parámetros — verificado en PROD que solo existe esa
+     firma, `anon` sin EXECUTE, `authenticated` sí).
+   - **382-385 — Asistente de WhatsApp con IA (Fases 1-4)**: `whatsapp_credentials`,
+     `whatsapp_mensajes_log`, `whatsapp_gastos_borrador` (+ `comprobante_url`, + `numero_notificaciones`).
+3. **Edge Functions `wa-webhook` y `wa-briefing-sweep` deployadas a PROD** (`verify_jwt: false`, mismo
+   código exacto que DEV). Compras/Gastos USD no agregó Edge Functions nuevas.
+4. **Verificado que ambas features quedan DORMIDAS en PROD, a propósito, sin activar nada para nadie**:
+   - Compras/Gastos USD: ningún tenant de PROD tiene un método de pago USD real configurado (query real) —
+     el camino nuevo (pago en USD) no se activa solo. El camino existente en ARS fue re-verificado sin
+     regresión antes de este deploy (e2e reales + suite unit de 1637 tests).
+   - Asistente de WhatsApp: PROD tiene 9 tenants, todos de prueba de GO (query real a `tenants` — ninguno
+     es cliente real pagando; ⚠ "Familia Otranto De Porto" en PROD es OTRO tenant de prueba, UUID
+     `5f05f3eb-...`, distinto del de DEV, UUID `4cf85bbb-...` — no confundir).
+     `whatsapp_credentials` en PROD tiene 0 filas — sanity-check real con curl a `wa-briefing-sweep` en
+     PROD confirmó `{"ok":true,"motivo":"sin tenants con numero_notificaciones configurado"}`. El cron de
+     GitHub Actions (`wa-briefing-sweep.yml`, ya mergeado) SÍ empieza a correr de verdad cada 15 min contra
+     PROD desde ahora, pero sin filas que matcheen no hace nada.
+5. **PR #334** (`dev`→`main`, "v1.184.0 — Compras/Gastos en USD (Fases 1-3) + Asistente WhatsApp IA (Fases
+   1-4)") mergeado — merge commit `867d651a`. Vercel disparó el deploy de producción automáticamente tras
+   el merge — **confirmado READY** (alias `app.genesis360.pro` actualizado).
+6. **Releases de GitHub v1.180.0 a v1.184.0 retargeteados a `main`** (antes apuntaban a `dev`), notas de
+   `v1.184.0` reescritas para reflejar el bundle completo que llegó a PROD.
+
+**Pendiente real para la próxima sesión, a decidir por GO**: con ambas features ya en PROD, el próximo paso
+es **Embedded Signup** (escalar WhatsApp a futuros clientes) o el **Portal de Proveedores** — ninguno
+arrancado, decisión de GO.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md` (2026-08-27, tipo `deploy`),
+`wiki/database/migraciones.md` (migs 379-385 marcadas EN PROD), [[wiki/features/asistente-whatsapp]],
+[[wiki/features/gastos]].
+
+---
+
+## v1.184.0 — 📱🔔 Asistente de WhatsApp IA: Fase 4 (briefing diario proactivo) — ✅ CONSTRUIDA EN DEV, LUEGO PROMOVIDA A PROD (ver sección de arriba) — verificada solo PARCIALMENTE — LAS 4 FASES de la propuesta de Fede quedan construidas
 
 Continúa la MISMA sesión que v1.183.0 (abajo) — **no hubo `/clear`**. GO pidió explícitamente seguir con
 esta fase "para dejar casi todo listo" del Asistente de WhatsApp.
@@ -115,8 +276,9 @@ payload) está correcto — lo único que falta es la aprobación de Meta. Build
 backend/infra, sin cambios en `src/` salvo el bump de versión.
 
 **Estado real: `APP_VERSION` bumpeado a `v1.184.0`, commit `2e5fbcdb`, tag + GitHub release publicados**
-sobre `dev` ("Asistente WhatsApp IA (Fase 4, briefing diario)") — **COMMITEADO Y PUSHEADO a `origin/dev`,
-SIN PR a `main`, SIN deploy a PROD**. Las 4 fases del Asistente de WhatsApp viven solo en DEV.
+sobre `dev` ("Asistente WhatsApp IA (Fase 4, briefing diario)") — **COMMITEADO Y PUSHEADO a `origin/dev`**.
+**✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a` — ver sección de arriba), **DORMIDA**
+(0 filas en `whatsapp_credentials` en PROD).
 
 **Pendiente**: aprobación de Meta de las 2 plantillas (sin ETA); token de acceso permanente (System User);
 rotar `SUPABASE_ACCESS_TOKEN` filtrado (recurrente); chip prepago dedicado (Fases 1-3, no aplica acá);
@@ -128,7 +290,7 @@ Ver `sources/raw/project_pendientes.md` (cont. 29, "ARRANCÁ ACÁ"), `wiki/datab
 
 ---
 
-## v1.183.0 — 📱📸🎙️ Asistente de WhatsApp IA: Fase 3 (fotos y audio) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD, verificada solo PARCIALMENTE
+## v1.183.0 — 📱📸🎙️ Asistente de WhatsApp IA: Fase 3 (fotos y audio) — ✅ CONSTRUIDA EN DEV, LUEGO PROMOVIDA A PROD (2026-08-27, ver v1.184.0 arriba), verificada solo PARCIALMENTE
 
 Sesión nueva (2026-08-27), arrancó directo con esta fase por pedido explícito de GO al cierre de la sesión
 anterior. Fede había propuesto (25/8) que el asistente acepte fotos de comprobantes y notas de audio para
@@ -176,8 +338,8 @@ Gastos sin regresión (`06_gastos.spec.ts` 4/4, `68_gasto_comprobante_obligatori
 relacionado).
 
 **Estado real: `APP_VERSION` bumpeado a `v1.183.0`, commit `0364447a`, tag + GitHub release publicados**
-sobre `dev` ("Asistente WhatsApp IA (Fase 3, fotos y audio)") — **COMMITEADO Y PUSHEADO a `origin/dev`, SIN
-PR a `main`, SIN deploy a PROD**. Fases 1, 2 y 3 viven solo en DEV.
+sobre `dev` ("Asistente WhatsApp IA (Fase 3, fotos y audio)") — **COMMITEADO Y PUSHEADO a `origin/dev`**.
+**✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA**.
 
 **Pendiente**: chip prepago dedicado (destraba el happy path real de audio/foto Y los mensajes entrantes de
 Fase 1); token de acceso permanente (System User); rotar `SUPABASE_ACCESS_TOKEN` filtrado (recurrente);
@@ -188,7 +350,7 @@ Ver `sources/raw/project_pendientes.md` (cont. 28, "ARRANCÁ ACÁ"), `wiki/datab
 
 ---
 
-## v1.182.0 — 📱💵 Asistente de WhatsApp IA: Fase 2 (cargar gastos como borrador) — ✅ CONSTRUIDA, VERIFICADA END-TO-END, COMMITEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+## v1.182.0 — 📱💵 Asistente de WhatsApp IA: Fase 2 (cargar gastos como borrador) — ✅ CONSTRUIDA, VERIFICADA END-TO-END, LUEGO PROMOVIDA A PROD (2026-08-27, ver v1.184.0 arriba)
 
 2026-08-26, continúa directo la v1.181.0 (abajo), misma sesión. El bot de WhatsApp NUNCA escribe en la
 tabla `gastos` — solo arma un BORRADOR (migración 383, `383_whatsapp_gastos_borrador.sql`, 4 estados:
@@ -212,14 +374,15 @@ borrador del tenant de testing; Aprobar → modal precargado → gasto real crea
 borrador linkeado y marcado `aprobado`). Suite e2e existente de Gastos sin regresión (6/6).
 
 **Estado real: `APP_VERSION` bumpeado a `v1.182.0`, commit `9029f24b`, tag + GitHub release publicados**
-sobre `dev` — **COMMITEADO Y PUSHEADO a `origin/dev`, SIN deploy a PROD**.
+sobre `dev` — **COMMITEADO Y PUSHEADO a `origin/dev`**. **✅ EN PROD desde el 2026-08-27** (PR #334, merge
+commit `867d651a`), **DORMIDA**.
 
 Ver `sources/raw/project_pendientes.md` (cont. 27, histórico), `wiki/database/migraciones.md` (mig 383),
 [[wiki/features/asistente-whatsapp]].
 
 ---
 
-## v1.181.0 — 📱 Asistente de WhatsApp IA: Fase 1 (cimientos, consultas de stock/precio) — ✅ CONSTRUIDA, VERIFICADA END-TO-END, COMMITEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+## v1.181.0 — 📱 Asistente de WhatsApp IA: Fase 1 (cimientos, consultas de stock/precio) — ✅ CONSTRUIDA, VERIFICADA END-TO-END, LUEGO PROMOVIDA A PROD (2026-08-27, ver v1.184.0 arriba)
 
 2026-08-26. GO eligió arrancar la propuesta de Fede (25/8) por el **Asistente de WhatsApp** (reusa el motor
 de tool-calling ya probado, menor riesgo que el Portal de Proveedores, la otra mitad de la propuesta).
@@ -250,15 +413,15 @@ confirmado** (docs oficiales de Meta): futuros clientes NO van a repetir este tr
 Genesis360 se verifique como plataforma ante Meta, sube el límite de onboarding de 10 a 200 negocios/semana.
 
 **Estado real: `APP_VERSION` bumpeado a `v1.181.0`, commit `8b297b32`, tag + GitHub release publicados**
-sobre `dev` (`publishedAt: 2026-08-26T06:05:21Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`, SIN deploy a
-PROD**.
+sobre `dev` (`publishedAt: 2026-08-26T06:05:21Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`**. **✅ EN PROD
+desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA**.
 
 Ver `sources/raw/project_pendientes.md` (cont. 26, histórico), `wiki/database/migraciones.md` (mig 382),
 [[wiki/features/asistente-whatsapp]].
 
 ---
 
-## v1.180.0 — 💵 Compras/Gastos en USD: Fases 1-3 (cimientos, permisos, pago con descalce de moneda) — ✅ COMMITEADA, TAGUEADA Y PUSHEADA A `origin/dev` — SIN deploy a PROD
+## v1.180.0 — 💵 Compras/Gastos en USD: Fases 1-3 (cimientos, permisos, pago con descalce de moneda) — ✅ CONSTRUIDA, LUEGO PROMOVIDA A PROD (2026-08-27, ver v1.184.0 arriba)
 
 Continúa directo la v1.179.2 (abajo), misma sesión larga. Relevamiento "Compras/Gastos en USD + tasa de
 cambio editable" (respondido por Fede 2026-08-21, 100% cerrado) — distinto de la Caja USD (G5, que cubrió
@@ -297,8 +460,9 @@ nuevos.
 `schema_full.sql` regenerado (commit `3279b381`, 13 migraciones de drift acumulado desde la Caja USD).
 
 **Estado real: `APP_VERSION` bumpeado a `v1.180.0`** (commit `ac1a5c84`), **tag + GitHub release
-publicados** sobre `dev` (`publishedAt: 2026-08-25T20:02:11Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`,
-SIN PR a `main`, SIN deploy a PROD**. Se estima el plan completo en ~4-5 fases; falta: sugerir la última
+publicados** sobre `dev` (`publishedAt: 2026-08-25T20:02:11Z`) — **COMMITEADO Y PUSHEADO a `origin/dev`**.
+**✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA** (ningún tenant de PROD
+tiene un método de pago USD real configurado). Se estima el plan completo en ~4-5 fases; falta: sugerir la última
 cotización usada con ese proveedor específico (B3), Gastos sueltos con UI de moneda propia (hoy solo se
 cableó el pago de OC), confirmar C2/C3 (trazabilidad/freeze, ya cubiertos de hecho por el diseño) con GO,
 y reportes G1/G2 (desglose ARS/USD, sin empezar).

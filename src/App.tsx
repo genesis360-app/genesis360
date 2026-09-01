@@ -58,6 +58,7 @@ const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
 const TransportistePage   = lazy(() => import('@/pages/TransportistePage'))
 const HojaRutaPage        = lazy(() => import('@/pages/HojaRutaPage'))
 const CuentaClientePage   = lazy(() => import('@/pages/CuentaClientePage'))
+const PortalProveedoresPage = lazy(() => import('@/pages/PortalProveedoresPage'))
 
 // app.genesis360.pro → directo al login/dashboard (sin landing)
 // www.genesis360.pro  → muestra la landing
@@ -143,6 +144,9 @@ function App() {
             <Route path="/cuenta/:token" element={<CuentaClientePage />} />
             {/* RH6 — Fichado por QR público (kiosco) — sin auth */}
             <Route path="/fichar/:token" element={<FicharPage />} />
+            {/* Portal de Proveedores — identidad separada (proveedor_accounts, mig 387/390), fuera
+                de AuthGuard a propósito: no tiene fila en `users`, valida su propia sesión adentro */}
+            <Route path="/portal-proveedores" element={<PortalProveedoresPage />} />
 
             {/* Rutas protegidas */}
             <Route element={<AuthGuard />}>

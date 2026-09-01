@@ -6,7 +6,87 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-08-31, cont. 37) — 🎯👥 Supervisión: RRHH cierra el Nivel 1 COMPLETO (5 módulos,
+> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 38) — 🎯💲 Supervisión: A4 (kit_precio/repricing_margen →
+> Productos) CIERRA el relevamiento ENTERO de Fede (`v1.192.0`) — de paso, 2 gaps reales de la sesión
+> anterior corregidos (roles custom sin `productos/envios/proveedores/pedidos`, badge de nav y
+> `/supervision` nunca actualizados a los 5 módulos de Nivel 1)
+>
+> Continuación directa de cont. 37 (RRHH, `v1.191.0`, histórico abajo) — último ítem pendiente del
+> relevamiento completo: **A4**. `kit_precio` (Motor de Rotación, `InventarioPage.tsx`) y
+> `repricing_margen` (D3, sweep automático `fn_evaluar_repricing_margen`) estaban mal clasificados en
+> `modulo='inventario'` pese a ser cambios de PRECIO de producto, no de inventario.
+>
+> #### Qué se construyó
+>
+> Migración **388** (revisada por `migration-reviewer`, APTA — diff línea por línea de
+> `fn_evaluar_repricing_margen` contra la función original confirmado, sin efectos colaterales de
+> triggers) reclasifica las filas EXISTENTES de `autorizaciones` (`modulo='inventario'` AND `tipo IN
+> ('kit_precio','repricing_margen')`) a `modulo='productos'` — **2 pendientes REALES en DEV** (no datos de
+> prueba) más 6 aprobadas históricas — y actualiza `fn_evaluar_repricing_margen` para insertar ahí en vez
+> de en `'inventario'` (mismo cuerpo, solo cambia el `modulo` del `INSERT` y la `action_url` de la
+> notificación, de `/inventario` a `/productos`). Se sacó la lógica de aprobación/render de estos 2 tipos
+> de `InventarioPage.tsx` (nunca más van a matchear `modulo==='inventario'`; `aplicarPrecioSugeridoKit`
+> ahora inserta con `modulo:'productos'`) y se agregó una tab "Autorizaciones" nueva en `ProductosPage.tsx`
+> con el mismo hook genérico `useSupervisorAutorizaciones` que ya usaban Inventario/Clientes/Envíos/
+> Proveedores/Pedidos/RRHH.
+>
+> #### 🐛 2 gaps REALES encontrados y corregidos, de la propia sesión anterior (Envíos/Proveedores/Pedidos)
+>
+> Importante documentarlos porque afectaban a los módulos ya construidos, no solo a Productos:
+> 1. `UsuariosPage.tsx` (la lista `MODULOS` de módulos asignables a roles custom en la pantalla de
+>    permisos) nunca tenía `'productos'`, `'envios'`, `'proveedores'` ni `'pedidos'` — un tenant con roles
+>    custom **JAMÁS podía otorgar el permiso `supervisa`** en esos módulos (solo funcionaba para DUEÑO/
+>    SUPER_USUARIO/ADMIN, y donde no está prohibido, SUPERVISOR). Agregados los 4 (`'clientes'` y `'rrhh'`
+>    ya estaban en la lista de antes).
+> 2. El badge de navegación global "Supervisión" (`AppLayout.tsx`, `MODULOS_SUPERVISION`) y la vista
+>    agregada cross-módulo (`SupervisionPage.tsx`, constante `MODULOS`) seguían hardcodeados a
+>    `['inventario']` — **nunca se habían actualizado al construir Clientes/Envíos/Proveedores/Pedidos/
+>    RRHH** en la sesión anterior. El badge del nav y la página `/supervision` **nunca mostraron nada de
+>    esos 5 módulos hasta ahora**, pese a que sus tabs "Autorizaciones" individuales sí funcionaban.
+>    Agregados los 6 módulos nuevos (incluido `productos`) en ambos lugares.
+>
+> #### Verificación
+>
+> End-to-end real con Playwright contra DEV (spec 133, ya existente de antes de esta sesión, actualizado
+> para navegar a Productos en vez de Inventario y ajustar el texto del toast): crear KIT → DEPOSITO pide
+> cambio de precio → queda pendiente en `modulo='productos'` (confirmado por REST, no solo por el test) →
+> DUEÑO aprueba desde Productos→Autorizaciones → `precio_venta` se actualiza + autorización queda
+> `aprobada` (confirmado por REST). Suite de regresión de autorizaciones de Inventario (5 specs:
+> `ajuste_cantidad`, `cambio_estado` batch/single/rechazo, dueño-bypass) sin regresión. `schema_full.sql`
+> parcheado a mano (solo cambió 1 función, no ameritó regeneración completa).
+>
+> #### Estado del deploy
+>
+> Commit `0e2bb29d`, `origin/dev`, `APP_VERSION` `v1.192.0`, **tag + GitHub release ya publicados**
+> (`v1.192.0`, `publishedAt: 2026-09-01T04:45:51Z`). Migración 388 aplicada y verificada en DEV. **Sin
+> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-388, código en `v1.192.0`.
+>
+> #### ✅ Con esto se completa el relevamiento ENTERO de retrofit de Supervisión de Fede (A1-A5, Nivel 1 + A4)
+>
+> Quedan solo las piezas explícitamente diferidas, ninguna es "delegable genérico simple":
+>
+> 1. **C1** — migrar `autorizaciones_gasto` (tabla separada de Gastos) a la tabla genérica.
+> 2. **Ventas (A1)** — la lógica NC-antes-de-eliminar (si la venta ya fue facturada, primero emitir NC
+>    antes de poder eliminarla) sin diseñar todavía.
+> 3. **Nivel 2** (sin delegar, solo Dueño, fuera del modelo genérico — mismo criterio que
+>    `autorizaciones_cc`): Clientes→modificar límite de CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>    sueldo/aprobación de licencias con goce de sueldo.
+> 4. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
+>    GO reporte el bug a Meta y reintente cuando cierre el open beta.
+> 5. Heredado: **diseñar el flujo de invitación de cuentas de proveedor** + **revisar `ordenes_compra` en
+>    detalle** para las policies de presupuestos del Portal de Proveedores.
+> 6. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
+>    Verificación del Negocio de Meta (Embedded Signup).
+> 7. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
+>    bloqueante.
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `update`, entrada al principio),
+> [[wiki/features/supervision]] (sección "Retrofit a más módulos" — A4 + los 2 gaps de nav/badge),
+> [[wiki/features/productos]], `wiki/index.md` (filas + footer), `wiki/business/roadmap.md` (v1.192.0).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-31, cont. 37) — 🎯👥 Supervisión: RRHH cierra el Nivel 1 COMPLETO (5 módulos,
 > `v1.191.0`) — se resuelve la ambigüedad de naming 'recursos' vs 'rrhh' (no era real)
 >
 > Continuación directa de cont. 36 (Envíos/Proveedores/Pedidos, `v1.190.0`, histórico abajo) — último

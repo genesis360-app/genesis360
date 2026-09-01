@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-31
+updated: 2026-09-01
 ---
 
 # Roadmap y Versiones
@@ -40,19 +40,31 @@ ACÁ"), `log.md` (2026-08-27, tipo `deploy`).
 Antes de este release: v1.179.2 — 🚀 EN PROD desde el 2026-08-24/25 (PR #333, merge commit `f36ff2f4`): 5
 bugs reales corregidos + fix de moneda USD en Productos arrastrado. Antes: v1.179.0 — Plan IA Fases 1+2+3
 100% en PROD (PR #332, merge commit `7e19e7a3`, 3 migraciones 376-378). Ver detalle histórico más abajo.  
-**Versión en DEV:** **v1.191.0** (`f337ca62`, 2026-08-31, continuación directa de v1.190.0 abajo) — 🎯👥
-**Supervisión: Nivel 1 COMPLETO — RRHH cierra los 5 módulos.** Último módulo de Nivel 1 del relevamiento de
-Fede: "RRHH→cualquier eliminación". `RrhhPage.tsx` tiene **9 acciones de "eliminar" distintas** — **decisión
-de scope**: se acotó a la **baja de empleado** (soft-delete, único registro central de PERSONA, mismo
-criterio que Clientes); las otras 8 son registros administrativos, quedan sin gatear a propósito. **Se
-resuelve la ambigüedad de naming `'recursos'` vs `'rrhh'`** (no era real: el código ya usaba `'rrhh'`
-consistentemente en todos lados; `'recursos'` es una tabla distinta de flota/vehículos). Reutiliza
-`toggleEmpleadoActivo` para el efecto real al aprobar; reactivar sigue siendo directo. Verificación: mismo
-nivel que Envíos/Proveedores/Pedidos (sin e2e nuevo, impersonación de rol real contra DEV). **Con esto, el
-Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) queda 100% CERRADO** — corrige la entrada de
-abajo, que contaba Nivel 1 con solo 4 módulos. Sin migración nueva. **NO deployado a PROD.** Ver
-[[wiki/features/supervision]] → "Retrofit a más módulos", `sources/raw/project_pendientes.md` ("ARRANCÁ
-ACÁ", cont. 37).  
+**Versión en DEV:** **v1.192.0** (`0e2bb29d`, 2026-09-01, continuación directa de v1.191.0 abajo) — 🎯💲
+**Supervisión: A4 (kit_precio/repricing_margen → Productos) CIERRA el relevamiento ENTERO de Fede.** Último
+ítem pendiente: `kit_precio` (Motor de Rotación) y `repricing_margen` (D3, sweep automático) estaban mal
+clasificados en `modulo='inventario'` pese a ser cambios de PRECIO de producto. **Migración 388** (APTA)
+reclasifica las filas existentes (2 pendientes reales + 6 aprobadas) a `modulo='productos'` y actualiza
+`fn_evaluar_repricing_margen`; se sacó la lógica de aprobación de `InventarioPage.tsx` y se agregó tab
+"Autorizaciones" nueva en `ProductosPage.tsx`. **De paso, 2 gaps reales de la sesión anterior corregidos**:
+`UsuariosPage.tsx` (roles custom) nunca tenía `productos/envios/proveedores/pedidos` en su lista de
+módulos — un rol custom jamás podía recibir `supervisa` en esos módulos; y el badge de nav global +
+`/supervision` (`AppLayout.tsx`/`SupervisionPage.tsx`) seguían hardcodeados a `['inventario']` — nunca se
+habían actualizado al construir los 5 módulos de Nivel 1. Verificado end-to-end con Playwright real contra
+DEV + suite de regresión de Inventario sin regresión. **Con esto se completa el relevamiento ENTERO de
+retrofit de Supervisión de Fede (A1-A5, Nivel 1 + A4)** — quedan solo diferidos: C1 (migrar
+`autorizaciones_gasto`), NC-antes-de-eliminar de Ventas (A1), y Nivel 2 (sin delegar, solo Dueño). **NO
+deployado a PROD.** Ver [[wiki/features/supervision]] → "Retrofit a más módulos",
+[[wiki/features/productos]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 38).  
+**Antes (2026-08-31, v1.191.0, commit `f337ca62`): Supervisión — Nivel 1 COMPLETO, RRHH cierra los 5
+módulos.** Último módulo de Nivel 1 del relevamiento de Fede: "RRHH→cualquier eliminación". `RrhhPage.tsx`
+tiene 9 acciones de "eliminar" distintas — decisión de scope: se acotó a la baja de empleado (soft-delete,
+único registro central de PERSONA, mismo criterio que Clientes); las otras 8 son registros administrativos,
+quedan sin gatear a propósito. Se resolvió la ambigüedad de naming `'recursos'` vs `'rrhh'` (no era real:
+el código ya usaba `'rrhh'` consistentemente en todos lados; `'recursos'` es una tabla distinta de flota/
+vehículos). Reutiliza `toggleEmpleadoActivo` para el efecto real al aprobar; reactivar sigue siendo
+directo. Con esto, el Nivel 1 completo (Clientes+Envíos+Proveedores+Pedidos+RRHH) quedó 100% cerrado — sin
+migración nueva. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 37, histórico).  
 **Antes (2026-08-31, v1.190.0, commit `452f3c93`): Envíos, Proveedores y Pedidos retrofiteados**, mismo
 patrón exacto de Clientes — **Envíos** ("Eliminar envío", hard delete real), **Proveedores** ("Eliminar
 proveedor/servicio", hard delete, `deleteProveedor.mutate` cambió de firma `id`→`{id, nombre}`) y
@@ -120,7 +132,7 @@ commit `0b4d431a`, tag+release `v1.171.0`; Fase 3 (mig 371) commit `010440cd` + 
 sin migración nueva) commit `50f5579a`, tag+release `v1.176.0`. Único punto abierto del plan de 8 fases:
 **Fase 8 (C2, cotización Banco Nación para AFIP)**, bloqueada por confirmación de un contador real, no
 bloqueante.  
-**Última actualización:** 31 de Agosto, 2026
+**Última actualización:** 1 de Septiembre, 2026
 
 ---
 

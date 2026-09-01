@@ -2,8 +2,8 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores, paginacion]
-sources: [migration 347, migration 348, migration 386, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/pages/EnviosPage.tsx, src/pages/ProveedoresPage.tsx, src/pages/PedidosPage.tsx, src/pages/RrhhPage.tsx, src/components/AvisarSupervisorButton.tsx]
-updated: 2026-08-31
+sources: [migration 347, migration 348, migration 386, migration 388, relevamiento_supervisor_tab_respuestas.md, relevamiento-supervision-retrofit-reglas-negocio.html, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/pages/ClientesPage.tsx, src/pages/EnviosPage.tsx, src/pages/ProveedoresPage.tsx, src/pages/PedidosPage.tsx, src/pages/RrhhPage.tsx, src/pages/ProductosPage.tsx, src/pages/InventarioPage.tsx, src/pages/UsuariosPage.tsx, src/components/layout/AppLayout.tsx, src/components/AvisarSupervisorButton.tsx]
+updated: 2026-09-01
 ---
 
 # Supervisión — Patrón "Pestaña de Supervisor" reusable
@@ -51,11 +51,13 @@ Helper: `puedeSupervisarModulo(user, modulo)` en `src/lib/permisosModulo.ts`.
 
 ## UI — patrón híbrido (decisión B1)
 
-1. **Tab "Supervisión" dentro de cada módulo** (contextual) — hoy solo Inventario (reemplazó al tab
-   "Autorizaciones"), con 4 sub-secciones:
-   - **Aprobaciones**: la lista de siempre (aprobar/rechazar), contenido específico de cada módulo —
-     en Inventario cubre `ajuste_cantidad`, `eliminar_serie`, `eliminar_lpn`, `bulk_edit`,
-     `ajuste_conteo`, `cambio_estado`, `kit_precio`, `repricing_margen`.
+1. **Tab "Supervisión" dentro de cada módulo** (contextual) — originalmente solo Inventario (reemplazó al
+   tab "Autorizaciones"); **desde 2026-08-31/2026-09-01 también Clientes/Envíos/Proveedores/Pedidos/RRHH/
+   Productos** (ver "Retrofit a más módulos" más abajo para el detalle de cada uno), con 4 sub-secciones:
+   - **Aprobaciones**: la lista de siempre (aprobar/rechazar), contenido específico de cada módulo — en
+     Inventario cubre `ajuste_cantidad`, `eliminar_serie`, `eliminar_lpn`, `bulk_edit`, `ajuste_conteo`,
+     `cambio_estado` (`kit_precio`/`repricing_margen` vivieron acá hasta el 2026-09-01, mig 388 — ver
+     "Retrofit a más módulos" → "Productos (A4)" — ahora viven en `modulo='productos'`).
    - **Reasignar**: genérico, cualquier fila pendiente puede asignarse a un usuario puntual
      (`asignado_a`) o dejarse "disponible para cualquiera".
    - **Trazabilidad**: filtra `actividad_log` por `entidad='autorizacion'` — sin tabla nueva (decisión
@@ -195,7 +197,7 @@ tenant real "Almacén Jorgito" en DEV. Sin errores de consola nuevos.
 **Estado real: ✅ EN PROD desde v1.169.0** (deploy real 2026-08-13, PR #329; mismo commit que la
 paginación de arriba).
 
-## Retrofit a más módulos — relevamiento RESPONDIDO por Fede (2026-08-20); Nivel 1 ✅ 100% COMPLETO — los 5 módulos (Clientes+Envíos+Proveedores+Pedidos+RRHH, v1.189.0-v1.191.0)
+## Retrofit a más módulos — relevamiento de Fede (2026-08-20) ✅ ENTERO CERRADO (A1-A5, Nivel 1 + A4, v1.189.0-v1.192.0) salvo diferidos (C1, NC-antes-de-eliminar de Ventas, Nivel 2)
 
 > Relevamiento `relevamiento-supervision-retrofit-reglas-negocio.html` (raíz del repo), generado
 > 2026-08-20 sobre código real (`SupervisionPage.tsx` con `MODULOS=['inventario']` solamente, el CHECK de
@@ -207,13 +209,15 @@ paginación de arriba).
 >
 > **Decisiones cerradas:**
 > - **Ventas**: solo "anular venta despachada" pasa a cola de aprobación de Supervisión — con una regla
->   nueva: si la venta ya fue facturada, primero hay que emitir NC antes de poder eliminarla.
+>   nueva: si la venta ya fue facturada, primero hay que emitir NC antes de poder eliminarla. **Diferido,
+>   sin diseñar todavía** (ver estado real al final de esta sección).
 > - **Caja**: sigue con clave maestra síncrona, **nunca** pasa a cola de aprobación asincrónica.
-> - **Productos**: `kit_precio`/`repricing_margen` (hoy viven en el tab de Inventario, ver arriba) se
->   reclasifican a `modulo='productos'`.
+> - **Productos**: `kit_precio`/`repricing_margen` (vivían en el tab de Inventario) se reclasifican a
+>   `modulo='productos'`. **✅ CONSTRUIDO 2026-09-01 (mig 388, v1.192.0) — ver sección dedicada abajo.**
 > - **Clientes / Envíos / Proveedores / Pedidos / RRHH**: 2 niveles de sensibilidad — eliminaciones
->   delegables a supervisores vía el patrón, y un puñado de acciones más sensibles que quedan solo-Dueño
->   (sin pasar por cola).
+>   delegables a supervisores vía el patrón (Nivel 1, **✅ los 5 CONSTRUIDOS**, ver secciones abajo), y un
+>   puñado de acciones más sensibles que quedan solo-Dueño sin pasar por cola (Nivel 2, **diferido, sin
+>   arrancar**).
 >
 > **Bloqueante técnico común**: `productos`, `envios`, `proveedores`, `pedidos` y `rrhh` (el relevamiento
 > original de esta fecha lo escribía como "`recursos`" — **resuelto el 2026-08-31, ver sección RRHH abajo:
@@ -223,14 +227,16 @@ paginación de arriba).
 > 2026-08-31 (mig 386, APLICADA Y VERIFICADA EN DEV,
 > commit `deef2fc2`, `v1.188.0`): el CHECK `autorizaciones.modulo` (antes fijo a `'inventario'`) ya admite
 > `productos/ventas/clientes/envios/proveedores/pedidos/rrhh`**, y se eliminó el CHECK rígido de `tipo` (se
-> valida en la app) — prerequisito técnico despejado. `migration-reviewer`: APTA (2ª pasada, la 1ª de la
-> migración hermana 387 —Portal de Proveedores, no relacionada con esta tabla— encontró 4 hallazgos
-> bloqueantes reales, corregidos). **Esto NO resuelve todavía**: **A4** (reclasificar
-> `kit_precio`/`repricing_margen` a `modulo='productos'` — implica mover UI real de `InventarioPage.tsx` a
-> `ProductosPage.tsx`, hoy toda la UI de aprobación vive en Inventario aunque el tipo sea de producto) ni
-> **C1** (migrar `autorizaciones_gasto` a esta tabla genérica — implica repuntar el flujo de aprobación de
-> Gastos que hoy usa una tabla separada) — confirmado que ambas son más grandes de lo que parecían al
-> relevar, quedan como fases dedicadas futuras.
+> valida en la app) — prerequisito técnico de SCHEMA despejado. `migration-reviewer`: APTA (2ª pasada, la
+> 1ª de la migración hermana 387 —Portal de Proveedores, no relacionada con esta tabla— encontró 4
+> hallazgos bloqueantes reales, corregidos). **🔁 Corrección (2026-09-01)**: esto NO alcanzaba para
+> resolver el bloqueante completo — la mig 386 solo amplió el CHECK de la DB, pero la lista `MODULOS` de
+> `UsuariosPage.tsx` (la UI de permisos por rol, el bloqueante literal descripto arriba) **siguió sin
+> `productos`/`envios`/`proveedores`/`pedidos` hasta el 2026-09-01 (v1.192.0)** — un gap real que sobrevivió
+> sin detectarse durante toda la construcción de Envíos/Proveedores/Pedidos/RRHH (ver sección A4 abajo,
+> "2 gaps reales"). **Ya NO resuelve más**: solo **C1** (migrar `autorizaciones_gasto` a esta tabla
+> genérica — implica repuntar el flujo de aprobación de Gastos que hoy usa una tabla separada) — confirmado
+> que es más grande de lo que parecía al relevar, queda como fase dedicada futura.
 >
 > ### ✅ Clientes — PRIMER módulo real retrofiteado (2026-08-31, commit `27d740e8`, `v1.189.0`)
 >
@@ -344,27 +350,73 @@ paginación de arriba).
 >
 > **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.191.0`.
 >
-> **Lo que queda de Supervisión — Nivel 2 y módulos complejos** (ninguno es "delegable genérico simple"
-> como los 5 de Nivel 1, cada uno necesita diseño propio):
-> - **Ventas** — necesita el chequeo NC-antes-de-eliminar (más complejo que un simple `INSERT` en cola).
-> - **Gastos** — migrar `autorizaciones_gasto` (tabla separada) a la genérica (**C1**).
-> - **Productos** — reclasificar `kit_precio`/`repricing_margen` a `modulo='productos'` (**A4**), requiere
->   mover UI real de `InventarioPage.tsx` a `ProductosPage.tsx`.
+> ### ✅ Productos (A4) — CIERRA el relevamiento ENTERO de Supervisión (2026-09-01, commit `0e2bb29d`, `v1.192.0`)
+>
+> Último ítem pendiente del relevamiento completo. `kit_precio` (Motor de Rotación, `InventarioPage.tsx`) y
+> `repricing_margen` (D3, sweep automático `fn_evaluar_repricing_margen`, mig 346) estaban mal clasificados
+> en `modulo='inventario'` pese a ser cambios de PRECIO de producto, no de inventario.
+>
+> **Qué cambia**: migración **388** (`migration-reviewer`: APTA — diff línea por línea de
+> `fn_evaluar_repricing_margen` contra la función original confirmado, sin efectos colaterales de
+> triggers) reclasifica las filas EXISTENTES (`UPDATE autorizaciones SET modulo='productos' WHERE
+> modulo='inventario' AND tipo IN ('kit_precio','repricing_margen')`) — **2 pendientes REALES en DEV** (no
+> datos de prueba) más 6 aprobadas históricas — y actualiza `fn_evaluar_repricing_margen` para insertar ahí
+> en vez de en `'inventario'` (mismo cuerpo, solo cambia el `modulo` del `INSERT` y la `action_url` de la
+> notificación, de `/inventario` a `/productos`). Se sacó la lógica de aprobación/render de estos 2 tipos
+> de `InventarioPage.tsx` (nunca más van a matchear `modulo==='inventario'`; `aplicarPrecioSugeridoKit`
+> ahora inserta con `modulo:'productos'`) y se agregó una tab "Autorizaciones" nueva en `ProductosPage.tsx`
+> con el mismo hook genérico `useSupervisorAutorizaciones`.
+>
+> **🐛 2 gaps REALES encontrados y corregidos, de la propia sesión anterior (Envíos/Proveedores/Pedidos,
+> v1.190.0)** — afectaban a los módulos YA construidos, no solo a Productos:
+> 1. `UsuariosPage.tsx` (la lista `MODULOS` de módulos asignables a roles custom en la pantalla de
+>    permisos) nunca tenía `'productos'`, `'envios'`, `'proveedores'` ni `'pedidos'` — un tenant con roles
+>    custom **JAMÁS podía otorgar el permiso `supervisa`** en esos módulos (solo funcionaba para DUEÑO/
+>    SUPER_USUARIO/ADMIN, y donde no está prohibido, SUPERVISOR). Agregados los 4 (`'clientes'` y `'rrhh'`
+>    ya estaban en la lista de antes).
+> 2. El badge de navegación global "Supervisión" (`AppLayout.tsx`, `MODULOS_SUPERVISION`) y la vista
+>    agregada cross-módulo (`SupervisionPage.tsx`, constante `MODULOS`) seguían hardcodeados a
+>    `['inventario']` — **nunca se habían actualizado al construir Clientes/Envíos/Proveedores/Pedidos/
+>    RRHH**. El badge del nav y la página `/supervision` **nunca mostraron nada de esos 5 módulos hasta
+>    ahora**, pese a que sus tabs "Autorizaciones" individuales sí funcionaban. Agregados los 6 módulos
+>    nuevos (incluido `productos`) en ambos lugares — `SupervisionPage.tsx` también ganó una ruta
+>    `/productos?tab=autorizaciones` en su tabla de módulos y el label genérico `'eliminar': 'Eliminar'`
+>    para los tipos de Nivel 1 (antes solo tenía labels de `kit_precio`/`repricing_margen`/`eliminar_lpn`).
+>
+> **Verificación end-to-end real** con Playwright contra DEV (spec 133, ya existente de antes, actualizado
+> para navegar a Productos en vez de Inventario y ajustar el texto del toast): crear KIT → DEPOSITO pide
+> cambio de precio → pendiente en `modulo='productos'` (confirmado por REST) → DUEÑO aprueba desde
+> Productos→Autorizaciones → `precio_venta` actualizado + autorización `aprobada` (confirmado por REST).
+> Suite de regresión de autorizaciones de Inventario (5 specs) sin regresión. `schema_full.sql` parcheado a
+> mano (solo cambió 1 función, no ameritó regeneración completa).
+>
+> **Sin deploy a PROD** — PROD sigue en migraciones 001-385 sin este código; DEV en `v1.192.0`.
+>
+> **✅ Con esto se completa el relevamiento ENTERO de retrofit de Supervisión de Fede (A1-A5, Nivel 1 +
+> A4).** Quedan solo las piezas explícitamente diferidas, ninguna es "delegable genérico simple":
+> - **C1** — migrar `autorizaciones_gasto` (tabla separada de Gastos) a la tabla genérica.
+> - **Ventas (A1)** — la lógica NC-antes-de-eliminar (si la venta ya fue facturada, primero emitir NC antes
+>   de poder eliminarla) sin diseñar todavía.
+> - **Nivel 2** (sin delegar, solo Dueño, fuera del modelo genérico — mismo criterio que
+>   `autorizaciones_cc`): Clientes→modificar límite de CC/habilitar CC/perdonar deuda; RRHH→cambio de
+>   sueldo/aprobación de licencias con goce de sueldo.
 >
 > **Orden de las fases restantes: a criterio de GO, sin definir todavía.**
-> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 37),
-> [[project_supervision_tab_extension_pendiente]] (memoria).
+> Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 38),
+> [[project_supervision_tab_extension_pendiente]] (memoria), [[wiki/features/productos]].
 
 ## Pendiente real
 
-**✅ 2026-08-31: Nivel 1 del retrofit 100% CERRADO — Clientes (v1.189.0) + Envíos/Proveedores/Pedidos
-(v1.190.0) + RRHH (v1.191.0)** ya usan el patrón genérico de verdad (ver "Retrofit a más módulos" arriba) —
-**los 5 módulos "delegable a cualquiera con `supervisa`, modelo genérico estándar"**, además de Inventario.
-La ambigüedad de naming `'recursos'` vs `'rrhh'` quedó **resuelta** (no era real — `'recursos'` es una
-tabla de flota/vehículos sin relación). Quedan como **Nivel 2 / módulos complejos**, sin arrancar: **Ventas**
-(regla adicional NC-antes-de-eliminar), **Gastos** (migrar `autorizaciones_gasto` a la tabla genérica, C1) y
-**Productos** (reclasificar `kit_precio`/`repricing_margen`, A4, mueve UI de `InventarioPage.tsx` a
-`ProductosPage.tsx`) — ninguno es un simple `INSERT` en cola, cada uno necesita diseño propio. Repositores
+**✅ 2026-09-01: relevamiento ENTERO de Supervisión CERRADO (A1-A5, Nivel 1 + A4)** — Clientes (v1.189.0),
+Envíos/Proveedores/Pedidos (v1.190.0), RRHH (v1.191.0) y Productos/A4 (v1.192.0) ya usan el patrón genérico
+de verdad (ver "Retrofit a más módulos" arriba), **los 5 módulos de Nivel 1 + la reclasificación de A4**,
+además de Inventario. De paso se corrigieron 2 gaps reales que habían sobrevivido desde Envíos/Proveedores/
+Pedidos: `UsuariosPage.tsx` sin esos 4 módulos en la lista de roles custom, y el badge de nav +
+`/supervision` sin actualizar a los 5 módulos de Nivel 1. La ambigüedad de naming `'recursos'` vs `'rrhh'`
+quedó **resuelta** (no era real — `'recursos'` es una tabla de flota/vehículos sin relación). Quedan como
+**piezas diferidas, sin arrancar**: **Ventas** (regla adicional NC-antes-de-eliminar, A1), **Gastos**
+(migrar `autorizaciones_gasto` a la tabla genérica, C1) y **Nivel 2** (sin delegar, solo Dueño) — ninguno
+es un simple `INSERT` en cola, cada uno necesita diseño propio. Repositores
 reusó el mismo diseño de reparto/reasignación sin integrarse a la tabla `autorizaciones` en sí (ver abajo) —
 Pedidos/WMS sigue con su propia UI de asignación de tareas (`wms_tareas.usuario_asignado_id`, construida en
 v1.161.0/v1.162.0), un concepto distinto (tareas operativas, no solicitudes de aprobación) que no se

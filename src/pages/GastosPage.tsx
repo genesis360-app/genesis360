@@ -453,14 +453,19 @@ export default function GastosPage() {
     queryKey: ['autorizaciones-pendientes-count', tenant?.id, user?.rol],
     queryFn: async () => {
       if (!puedeAprobarRoles) return 0
-      let q = supabase.from('autorizaciones_gasto')
-        .select('id, solicitante_rol', { count: 'exact', head: true })
+      // C1 (Supervisión, mig 389): tabla genérica `autorizaciones` (modulo='gastos') —
+      // solicitante_rol vive en datos_cambio jsonb, no es columna de primer nivel; se filtra
+      // client-side (mismo criterio que el filtro `visibles` de BandejaAutorizacionesGasto.tsx).
+      const { data } = await supabase.from('autorizaciones')
+        .select('id, datos_cambio')
         .eq('tenant_id', tenant!.id)
+        .eq('modulo', 'gastos')
         .eq('estado', 'pendiente')
+      const rows = data ?? []
       // SUPERVISOR ve sólo solicitudes de CAJERO
-      if (user?.rol === 'SUPERVISOR') q = q.eq('solicitante_rol', 'CAJERO')
-      const { count } = await q
-      return count ?? 0
+      return user?.rol === 'SUPERVISOR'
+        ? rows.filter((r: any) => r.datos_cambio?.solicitante_rol === 'CAJERO').length
+        : rows.length
     },
     enabled: !!tenant && puedeAprobarRoles,
     refetchInterval: 30000,

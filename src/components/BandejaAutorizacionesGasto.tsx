@@ -10,7 +10,7 @@ import { puedeAprobar } from '@/lib/umbralGasto'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
-type Estado = 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+type Estado = 'pendiente' | 'aprobada' | 'rechazada'
 
 export default function BandejaAutorizacionesGasto() {
   const { tenant, user } = useAuthStore()
@@ -20,12 +20,19 @@ export default function BandejaAutorizacionesGasto() {
   const [motivoRechazo, setMotivoRechazo] = useState<Record<string, string>>({})
   const [procesando, setProcesando] = useState<string | null>(null)
 
+  // C1 (Supervisión, mig 389): vive en la tabla genérica `autorizaciones` (modulo='gastos'), no
+  // en `autorizaciones_gasto` (eliminada) — monto/descripcion/payload/sucursal_id/gasto_id/
+  // solicitante_rol quedan dentro de `datos_cambio` jsonb. Jerarquía de aprobación propia de
+  // Gastos (puedeAprobar()) — a propósito NO usa `useSupervisorAutorizaciones`/
+  // `SupervisionPanel` (esos asumen el permiso `supervisa` fijo, no una jerarquía relativa
+  // solicitante-vs-aprobador).
   const { data: autorizaciones = [], isLoading } = useQuery({
     queryKey: ['autorizaciones-gasto', tenant?.id, filtroEstado],
     queryFn: async () => {
-      const { data } = await supabase.from('autorizaciones_gasto')
-        .select('*, solicitante:users!autorizaciones_gasto_solicitante_id_fkey(nombre_display, rol), aprobador:users!autorizaciones_gasto_aprobador_id_fkey(nombre_display, rol)')
+      const { data } = await supabase.from('autorizaciones')
+        .select('*, solicitante:users!solicitado_por(nombre_display, rol), aprobador:users!aprobado_por(nombre_display, rol)')
         .eq('tenant_id', tenant!.id)
+        .eq('modulo', 'gastos')
         .eq('estado', filtroEstado)
         .order('created_at', { ascending: false })
       return data ?? []
@@ -37,38 +44,37 @@ export default function BandejaAutorizacionesGasto() {
   const visibles = (autorizaciones as any[]).filter((a: any) => {
     if (!user) return false
     if (filtroEstado !== 'pendiente') return true // historial: todos ven todo
-    return puedeAprobar(a.solicitante_rol, user.rol)
+    return puedeAprobar(a.datos_cambio?.solicitante_rol, user.rol)
   })
 
   const aprobar = async (auth: any) => {
-    if (!puedeAprobar(auth.solicitante_rol, user!.rol)) return toast.error('Tu rol no puede aprobar esta solicitud')
+    if (!puedeAprobar(auth.datos_cambio?.solicitante_rol, user!.rol)) return toast.error('Tu rol no puede aprobar esta solicitud')
     setProcesando(auth.id)
     try {
-      const p = auth.payload ?? {}
-      let resultGastoId: string | null = auth.gasto_id ?? null
+      const p = auth.datos_cambio?.payload ?? {}
+      const gastoId: string | null = auth.datos_cambio?.gasto_id ?? null
+      let resultGastoId: string | null = gastoId
 
       if (auth.tipo === 'crear') {
         const { data: ins, error } = await supabase.from('gastos').insert(p).select('id').single()
         if (error) throw error
         resultGastoId = ins.id
-      } else if (auth.tipo === 'editar' && auth.gasto_id) {
-        const { error } = await supabase.from('gastos').update(p).eq('id', auth.gasto_id)
+      } else if (auth.tipo === 'editar' && gastoId) {
+        const { error } = await supabase.from('gastos').update(p).eq('id', gastoId)
         if (error) throw error
-      } else if (auth.tipo === 'eliminar' && auth.gasto_id) {
-        const { error } = await supabase.from('gastos').delete().eq('id', auth.gasto_id)
+      } else if (auth.tipo === 'eliminar' && gastoId) {
+        const { error } = await supabase.from('gastos').delete().eq('id', gastoId)
         if (error) throw error
       }
 
-      const { error: updErr } = await supabase.from('autorizaciones_gasto').update({
+      const { error: updErr } = await supabase.from('autorizaciones').update({
         estado: 'aprobada',
-        aprobador_id: user!.id,
-        aprobador_rol: user!.rol,
-        resolved_at: new Date().toISOString(),
-        gasto_id: resultGastoId,
+        aprobado_por: user!.id,
+        datos_cambio: { ...auth.datos_cambio, gasto_id: resultGastoId },
       }).eq('id', auth.id)
       if (updErr) throw updErr
 
-      logActividad({ entidad: 'autorizacion_gasto', entidad_id: auth.id, entidad_nombre: auth.descripcion, accion: 'aprobar', pagina: '/gastos' })
+      logActividad({ entidad: 'autorizacion_gasto', entidad_id: auth.id, entidad_nombre: auth.datos_cambio?.descripcion, accion: 'aprobar', pagina: '/gastos' })
       toast.success(`Solicitud aprobada · ${auth.tipo} ejecutado`)
       qc.invalidateQueries({ queryKey: ['autorizaciones-gasto'] })
       qc.invalidateQueries({ queryKey: ['gastos'] })
@@ -80,20 +86,18 @@ export default function BandejaAutorizacionesGasto() {
   }
 
   const rechazar = async (auth: any) => {
-    if (!puedeAprobar(auth.solicitante_rol, user!.rol)) return toast.error('Tu rol no puede rechazar esta solicitud')
+    if (!puedeAprobar(auth.datos_cambio?.solicitante_rol, user!.rol)) return toast.error('Tu rol no puede rechazar esta solicitud')
     const motivo = (motivoRechazo[auth.id] ?? '').trim()
     if (!motivo) return toast.error('Ingresá un motivo del rechazo')
     setProcesando(auth.id)
     try {
-      const { error } = await supabase.from('autorizaciones_gasto').update({
+      const { error } = await supabase.from('autorizaciones').update({
         estado: 'rechazada',
-        aprobador_id: user!.id,
-        aprobador_rol: user!.rol,
-        resolved_at: new Date().toISOString(),
+        aprobado_por: user!.id,
         motivo_rechazo: motivo,
       }).eq('id', auth.id)
       if (error) throw error
-      logActividad({ entidad: 'autorizacion_gasto', entidad_id: auth.id, entidad_nombre: auth.descripcion, accion: 'rechazar', valor_nuevo: motivo, pagina: '/gastos' })
+      logActividad({ entidad: 'autorizacion_gasto', entidad_id: auth.id, entidad_nombre: auth.datos_cambio?.descripcion, accion: 'rechazar', valor_nuevo: motivo, pagina: '/gastos' })
       toast.success('Solicitud rechazada')
       qc.invalidateQueries({ queryKey: ['autorizaciones-gasto'] })
     } catch (e: any) {
@@ -115,7 +119,6 @@ export default function BandejaAutorizacionesGasto() {
     pendiente:  'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
     aprobada:   'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
     rechazada:  'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
-    cancelada:  'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
   }
 
   return (
@@ -147,7 +150,7 @@ export default function BandejaAutorizacionesGasto() {
         <div className="space-y-2">
           {visibles.map((a: any) => {
             const expanded = expandedId === a.id
-            const puedeYo = puedeAprobar(a.solicitante_rol, user?.rol ?? '')
+            const puedeYo = puedeAprobar(a.datos_cambio?.solicitante_rol, user?.rol ?? '')
             return (
               <div key={a.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3 px-4 py-3">
@@ -160,11 +163,11 @@ export default function BandejaAutorizacionesGasto() {
                       <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">{labelTipo[a.tipo] ?? a.tipo}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${estadoCls[a.estado as Estado]}`}>{a.estado}</span>
                       <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{a.solicitante_rol}: {a.solicitante?.nombre_display ?? '—'}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{a.datos_cambio?.solicitante_rol}: {a.solicitante?.nombre_display ?? '—'}</span>
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-200 mt-0.5 truncate">{a.descripcion}</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-200 mt-0.5 truncate">{a.datos_cambio?.descripcion}</p>
                     <div className="flex gap-4 mt-1 text-xs text-gray-400 flex-wrap">
-                      <span>Monto: <strong className="text-gray-700 dark:text-gray-200">{fmtMonto(a.monto)}</strong></span>
+                      <span>Monto: <strong className="text-gray-700 dark:text-gray-200">{fmtMonto(a.datos_cambio?.monto)}</strong></span>
                       <span><Clock size={11} className="inline -mt-0.5 mr-0.5" />{fmtFecha(a.created_at)}</span>
                     </div>
                   </div>
@@ -181,10 +184,10 @@ export default function BandejaAutorizacionesGasto() {
 
                 {expanded && (
                   <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 space-y-3">
-                    {a.motivo && (
+                    {a.notas && (
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Motivo de la solicitud</p>
-                        <p className="text-sm text-gray-700 dark:text-gray-200">{a.motivo}</p>
+                        <p className="text-sm text-gray-700 dark:text-gray-200">{a.notas}</p>
                       </div>
                     )}
                     {a.motivo_rechazo && (
@@ -195,13 +198,13 @@ export default function BandejaAutorizacionesGasto() {
                     )}
                     {a.aprobador && (
                       <p className="text-xs text-gray-400">
-                        Resuelto por <strong>{a.aprobador.nombre_display}</strong> ({a.aprobador_rol}) — {a.resolved_at ? fmtFecha(a.resolved_at) : ''}
+                        Resuelto por <strong>{a.aprobador.nombre_display}</strong> ({a.aprobador.rol}) — {a.updated_at ? fmtFecha(a.updated_at) : ''}
                       </p>
                     )}
-                    {a.payload && (
+                    {a.datos_cambio?.payload && (
                       <details className="text-xs text-gray-400">
                         <summary className="cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">Ver payload completo</summary>
-                        <pre className="mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg overflow-x-auto font-mono text-[10px]">{JSON.stringify(a.payload, null, 2)}</pre>
+                        <pre className="mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg overflow-x-auto font-mono text-[10px]">{JSON.stringify(a.datos_cambio.payload, null, 2)}</pre>
                       </details>
                     )}
                     {a.estado === 'pendiente' && puedeYo && (

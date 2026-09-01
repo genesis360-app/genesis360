@@ -1,8 +1,9 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
 -- Generado 2026-08-31T06:32:55.930Z desde gcmhzdedrkmmzfzfveig vía MCP (execute_sql en partes, sin CLI)
--- Última migración aplicada: 20260901043419 · 164 tablas (parcheado a mano tras mig 388 — solo
--- cambió fn_evaluar_repricing_margen, sin tablas/policies nuevas; no ameritó full regen)
+-- Última migración aplicada: 20260901065114 · 163 tablas (parcheado a mano tras migs 388/389 —
+-- 388 solo cambió fn_evaluar_repricing_margen; 389 amplió el CHECK de modulo y eliminó
+-- autorizaciones_gasto (164→163 tablas); ninguna ameritó full regen)
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -196,26 +197,6 @@ CREATE TABLE public.autorizaciones_cc (
   motivo_bloqueo text NOT NULL,
   monto numeric(12,2),
   motivo text,
-  solicitante_id uuid NOT NULL,
-  solicitante_rol text NOT NULL,
-  estado text NOT NULL DEFAULT 'pendiente'::text,
-  aprobador_id uuid,
-  aprobador_rol text,
-  resolved_at timestamp with time zone,
-  motivo_rechazo text,
-  created_at timestamp with time zone NOT NULL DEFAULT now()
-);
-
-CREATE TABLE public.autorizaciones_gasto (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  sucursal_id uuid,
-  gasto_id uuid,
-  tipo text NOT NULL,
-  monto numeric(12,2),
-  descripcion text,
-  motivo text,
-  payload jsonb,
   solicitante_id uuid NOT NULL,
   solicitante_rol text NOT NULL,
   estado text NOT NULL DEFAULT 'pendiente'::text,
@@ -2794,13 +2775,10 @@ ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_
 ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_valor_check CHECK ((btrim(valor) <> ''::text));
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text])));
 ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_inventario_pkey PRIMARY KEY (id);
-ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_modulo_check CHECK ((modulo = ANY (ARRAY['inventario'::text, 'productos'::text, 'ventas'::text, 'clientes'::text, 'envios'::text, 'proveedores'::text, 'pedidos'::text, 'rrhh'::text])));
+ALTER TABLE public.autorizaciones ADD CONSTRAINT autorizaciones_modulo_check CHECK ((modulo = ANY (ARRAY['inventario'::text, 'productos'::text, 'ventas'::text, 'clientes'::text, 'envios'::text, 'proveedores'::text, 'pedidos'::text, 'rrhh'::text, 'gastos'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_motivo_bloqueo_check CHECK ((motivo_bloqueo = ANY (ARRAY['limite_excedido'::text, 'oc_vencida'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_pkey PRIMARY KEY (id);
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text])));
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_pkey PRIMARY KEY (id);
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_tipo_check CHECK ((tipo = ANY (ARRAY['crear'::text, 'editar'::text, 'eliminar'::text])));
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_pkey PRIMARY KEY (id);
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_tenant_id_modulo_tipo_key UNIQUE (tenant_id, modulo, tipo);
 ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_pkey PRIMARY KEY (id);
@@ -3191,11 +3169,6 @@ ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_oc_id_fkey
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_solicitante_id_fkey FOREIGN KEY (solicitante_id) REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_aprobador_id_fkey FOREIGN KEY (aprobador_id) REFERENCES users(id);
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_gasto_id_fkey FOREIGN KEY (gasto_id) REFERENCES gastos(id) ON DELETE SET NULL;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_solicitante_id_fkey FOREIGN KEY (solicitante_id) REFERENCES users(id) ON DELETE CASCADE;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
-ALTER TABLE public.autorizaciones_gasto ADD CONSTRAINT autorizaciones_gasto_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3697,15 +3670,10 @@ CREATE INDEX idx_atributos_variante_valores_tenant_atributo ON public.atributos_
 CREATE INDEX idx_aut_inv_tenant_estado ON public.autorizaciones USING btree (tenant_id, estado);
 CREATE INDEX idx_autoriz_cc_proveedor ON public.autorizaciones_cc USING btree (proveedor_id, estado);
 CREATE INDEX idx_autoriz_cc_tenant_estado ON public.autorizaciones_cc USING btree (tenant_id, estado);
-CREATE INDEX idx_autoriz_gasto_gasto ON public.autorizaciones_gasto USING btree (gasto_id) WHERE (gasto_id IS NOT NULL);
-CREATE INDEX idx_autoriz_gasto_solicitante ON public.autorizaciones_gasto USING btree (solicitante_id);
-CREATE INDEX idx_autoriz_gasto_tenant_estado ON public.autorizaciones_gasto USING btree (tenant_id, estado);
 CREATE INDEX idx_autorizaciones_asignado_a ON public.autorizaciones USING btree (asignado_a);
 CREATE INDEX idx_autorizaciones_cc_aprobador_id ON public.autorizaciones_cc USING btree (aprobador_id);
 CREATE INDEX idx_autorizaciones_cc_oc_id ON public.autorizaciones_cc USING btree (oc_id);
 CREATE INDEX idx_autorizaciones_cc_solicitante_id ON public.autorizaciones_cc USING btree (solicitante_id);
-CREATE INDEX idx_autorizaciones_gasto_aprobador_id ON public.autorizaciones_gasto USING btree (aprobador_id);
-CREATE INDEX idx_autorizaciones_gasto_sucursal_id ON public.autorizaciones_gasto USING btree (sucursal_id);
 CREATE INDEX idx_autorizaciones_inventario_aprobado_por ON public.autorizaciones USING btree (aprobado_por);
 CREATE INDEX idx_autorizaciones_inventario_linea_id ON public.autorizaciones USING btree (linea_id);
 CREATE INDEX idx_autorizaciones_inventario_solicitado_por ON public.autorizaciones USING btree (solicitado_por);
@@ -11612,7 +11580,6 @@ ALTER TABLE public.archivos_biblioteca ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.atributos_variante_valores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_cc ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.autorizaciones_gasto ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_cancelaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_manual_pagos ENABLE ROW LEVEL SECURITY;
@@ -11834,13 +11801,6 @@ CREATE POLICY aut_inv_tenant ON public.autorizaciones AS PERMISSIVE FOR ALL TO p
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY autoriz_cc_tenant ON public.autorizaciones_cc AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY autoriz_gasto_tenant ON public.autorizaciones_gasto AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))))
@@ -12684,9 +12644,6 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.au
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_gasto TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_gasto TO authenticated;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_gasto TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO service_role;

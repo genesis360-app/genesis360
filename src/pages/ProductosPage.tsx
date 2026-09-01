@@ -5,10 +5,15 @@ import {
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
   DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
-  SlidersHorizontal,
+  SlidersHorizontal, ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { useSupervisorAutorizaciones, useSupervisionBadge, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { useConfirm } from '@/hooks/useConfirm'
+import { logActividad } from '@/lib/actividadLog'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -33,7 +38,7 @@ import { type Combinador } from '@/lib/pildorasFiltro'
 
 /** 'estructura' = pestaña de EMPAQUE (árbol de presentaciones, Fase 5 mig 310). Se conserva el
  *  id de la pestaña para no romper los deep-links y los tests que ya la referencian. */
-type Tab = 'productos' | 'estructura'
+type Tab = 'productos' | 'estructura' | 'autorizaciones'
 
 // 🐛 Bug real (Fede, 2026-08-20): un producto priceado en USD (moneda_venta/moneda_costo='usd',
 // rediseño mig 367 — ver ProductoFormPage.tsx) ya muestra su valor nativo en la ficha, pero esta
@@ -96,6 +101,71 @@ export default function ProductosPage() {
   const { applyFilter, sucursalId } = useSucursalFilter()
 
   const [tab, setTab] = useState<Tab>('productos')
+  const confirmar = useConfirm()
+
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en productos) ────────
+  // A4 (relevamiento Supervisión, Fede 2026-08-20 + mig 386): kit_precio (Motor de Rotación) y
+  // repricing_margen (D3, fn_evaluar_repricing_margen) viven acá — antes vivían mal clasificadas
+  // en modulo='inventario'. La solicitud se crea en InventarioPage.tsx (Motor de Rotación) o en el
+  // sweep de repricing (fn_evaluar_repricing_margen); acá solo se aprueba/rechaza/reasigna.
+  const puedeVerAutorizacionesProductos = puedeSupervisarModulo(user, 'productos')
+  const [autEstado, setAutEstado] = useState<EstadoAutorizacion>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+  const [autAprobandoId, setAutAprobandoId] = useState<string | null>(null)
+  const {
+    autorizaciones, totalCount: autTotalCount, page: autPage, pageSize: autPageSize, setPage: setAutPage, setPageSize: setAutPageSize,
+    isLoading: autLoading, isError: autError, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones('productos', '', autEstado)
+  const { count: autPendientesBadge } = useSupervisionBadge(puedeVerAutorizacionesProductos ? ['productos'] : [])
+
+  const resumenDeAutorizacionProducto = (aut: any) => {
+    const tipoLabel = aut.tipo === 'kit_precio' ? 'Precio de KIT' : 'Repricing por margen'
+    const nombre = aut.datos_cambio?.kit_nombre ?? aut.datos_cambio?.producto_nombre ?? '—'
+    return `${tipoLabel} — ${nombre}`
+  }
+
+  const aprobarAutorizacionProducto = async (aut: any) => {
+    setAutAprobandoId(aut.id)
+    try {
+      const { producto_id, precio_nuevo } = aut.datos_cambio ?? {}
+      const { error } = await supabase.from('productos').update({ precio_venta: precio_nuevo }).eq('id', producto_id)
+      if (error) throw error
+      await marcarAprobada(aut.id)
+      logActividad({
+        entidad: 'producto', entidad_id: producto_id, entidad_nombre: resumenDeAutorizacionProducto(aut),
+        accion: 'editar', campo: aut.tipo,
+        valor_anterior: String(aut.datos_cambio?.precio_anterior ?? ''), valor_nuevo: String(precio_nuevo ?? ''),
+        pagina: '/productos',
+      })
+      toast.success('Cambio de precio aprobado y ejecutado')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo aprobar')
+    } finally {
+      setAutAprobandoId(null)
+    }
+  }
+
+  const rechazarAutorizacionProducto = async (id: string, motivo: string, entidadNombre: string) => {
+    try {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
+      toast.success('Solicitud rechazada')
+      setAutRechazoId(null); setAutMotivoRechazo('')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo rechazar')
+    }
+  }
+
+  const reasignarAutorizacionProducto = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
+  }
 
   // Tab Productos
   // Buscador por píldoras (mismo mecanismo que /picking, ver `productosFiltro.ts`): "entrada"
@@ -721,10 +791,111 @@ export default function ProductosPage() {
           { id: 'productos', label: 'Productos', icon: Package },
           // Estructura (empaque unidad/caja/pallet) = WMS → solo modo avanzado
           ...(modoAvanzado ? [{ id: 'estructura', label: 'Estructura', icon: Layers }] : []),
+          ...(puedeVerAutorizacionesProductos ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
         ]}
         active={tab}
         onChange={(id) => setTab(id as Tab)}
       />
+
+      {/* ═══════════════ TAB AUTORIZACIONES (Supervisión) ═══════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizacionesProductos && (
+        <SupervisionPanel
+          modulo="productos"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacionProducto}
+          resumenDe={resumenDeAutorizacionProducto}
+          totalCount={autTotalCount}
+          page={autPage}
+          pageSize={autPageSize}
+          setPage={setAutPage}
+          setPageSize={setAutPageSize}
+        >
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-12 text-center text-red-500 dark:text-red-400">
+              <p>No se pudieron cargar las solicitudes — probá recargar la página</p>
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => {
+                const tipoLabel = aut.tipo === 'kit_precio' ? 'Precio de KIT' : 'Repricing por margen'
+                const tipoColor = aut.tipo === 'kit_precio'
+                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400'
+                  : 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400'
+                const nombre = aut.datos_cambio?.kit_nombre ?? aut.datos_cambio?.producto_nombre ?? '—'
+                return (
+                  <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tipoColor}`}>{tipoLabel}</span>
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{nombre}</span>
+                        </div>
+                        <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                          <p>
+                            Precio: <span className="line-through">${Number(aut.datos_cambio?.precio_anterior ?? 0).toLocaleString('es-AR')}</span>
+                            {' → '}
+                            <span className={`font-semibold ${aut.tipo === 'kit_precio' ? 'text-violet-600 dark:text-violet-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                              ${Number(aut.datos_cambio?.precio_nuevo ?? 0).toLocaleString('es-AR')}
+                            </span>
+                            {aut.tipo === 'repricing_margen' && <> (margen objetivo {aut.datos_cambio?.margen_objetivo}%)</>}
+                          </p>
+                          <p>Solicitado por: {aut.solicitante?.nombre_display ?? (aut.solicitado_por ? '—' : 'Sistema (sweep automático)')} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                          {aut.notas && <p>Notas: {aut.notas}</p>}
+                          {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                        </div>
+                      </div>
+                      {autEstado === 'pendiente' && (
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                          <button onClick={async () => { if (await confirmar(`¿Aprobar y ejecutar: ${tipoLabel} en ${nombre}?`)) aprobarAutorizacionProducto(aut) }}
+                            disabled={autAprobandoId === aut.id}
+                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                            <CheckCircle2 size={13} /> Aprobar
+                          </button>
+                          {autRechazoId === aut.id ? (
+                            <div className="space-y-1.5">
+                              <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                                placeholder="Motivo de rechazo..."
+                                className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                              <div className="flex gap-1">
+                                <button onClick={() => rechazarAutorizacionProducto(aut.id, autMotivoRechazo, resumenDeAutorizacionProducto(aut))}
+                                  disabled={!autMotivoRechazo.trim()}
+                                  className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                  Confirmar
+                                </button>
+                                <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                  className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => setAutRechazoId(aut.id)}
+                              className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                              <X size={13} /> Rechazar
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </SupervisionPanel>
+      )}
 
       {/* ════════════════════ TAB ESTRUCTURA ════════════════════ */}
       {tab === 'estructura' ? (

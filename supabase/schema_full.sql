@@ -1,7 +1,8 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
 -- Generado 2026-08-31T06:32:55.930Z desde gcmhzdedrkmmzfzfveig vía MCP (execute_sql en partes, sin CLI)
--- Última migración aplicada: 20260831062504 · 164 tablas
+-- Última migración aplicada: 20260901043419 · 164 tablas (parcheado a mano tras mig 388 — solo
+-- cambió fn_evaluar_repricing_margen, sin tablas/policies nuevas; no ameritó full regen)
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -5657,7 +5658,7 @@ BEGIN
       RETURN NEXT;
     ELSE
       INSERT INTO autorizaciones (tenant_id, modulo, tipo, datos_cambio, estado, solicitado_por, notas)
-      VALUES (p_tenant_id, 'inventario', 'repricing_margen',
+      VALUES (p_tenant_id, 'productos', 'repricing_margen',
               jsonb_build_object('producto_id', rec.id, 'producto_nombre', rec.nombre,
                                   'precio_anterior', rec.precio_venta, 'precio_nuevo', v_sugerido,
                                   'margen_objetivo', rec.margen_objetivo),
@@ -5669,7 +5670,7 @@ BEGIN
         SELECT p_tenant_id, u.id, 'repricing_sugerido',
                'Sugerencia de ajuste de precio por margen objetivo',
                rec.nombre || ': $' || rec.precio_venta || ' → $' || v_sugerido || ' — requiere tu aprobación.',
-               '/inventario?tab=autorizaciones'
+               '/productos?tab=autorizaciones'
         FROM users u WHERE u.tenant_id = p_tenant_id AND u.rol IN ('DUEÑO','SUPERVISOR','SUPER_USUARIO') AND u.activo = true;
       END IF;
 

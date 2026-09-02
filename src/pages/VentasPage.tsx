@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
@@ -436,7 +436,7 @@ export default function VentasPage() {
     if (canalesActivos.length > 0 && !canalesActivos.some(c => c.nombre === canalPOS)) {
       setCanalPOS(canalesActivos[0].nombre)
     }
-  }, [canalesActivos])
+  }, [canalesActivos, canalPOS])
   // ISS-086: cuotas por banco en tarjeta de crédito
   const [cuotasSeleccion, setCuotasSeleccion] = useState<Record<number, { banco: string; cuotas: number; interes: number; sinInteres: boolean }>>({})
   const cuotasBancos: { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }[] =
@@ -653,7 +653,7 @@ export default function VentasPage() {
       }
     }, 4000)
     return () => clearInterval(interval)
-  }, [modoModal, preVentaId])
+  }, [modoModal, preVentaId, tenant])
 
   // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago.
   // Chequea tanto la venta (reservas) como ventas_externas_logs (ventas directas con pre-UUID).
@@ -689,7 +689,12 @@ export default function VentasPage() {
       }
     }, 4000)
     return () => clearInterval(interval)
-  }, [mpLinkModal])
+    // `ventaDetalle` se declara más abajo en el componente (useState, sin hoisting) — agregarla
+    // acá rompería en tiempo de render (temporal dead zone). Solo decide si parchear el detalle
+    // YA ABIERTO con el pago confirmado; si el usuario cambió de venta mientras tanto, como
+    // mucho no actualiza esa vista puntual (no afecta el registro real del pago).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mpLinkModal, tenant])
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -778,13 +783,14 @@ export default function VentasPage() {
   // tocar cada uso) quedan ESCOPEADOS a sesionesArs — es el selector de "a qué caja va la parte
   // en pesos" (efectivo ARS + medios no-efectivo informativos). Para todo tenant sin Caja USD
   // sesionesArs === sesionesAbiertas → cero cambio de comportamiento.
+  const userCajaPreferidaId = (user as any)?.caja_preferida_id
   const cajaPreferidaSesionId = useMemo<string | null>(() => {
     if (sesionesArs.length === 0) return null
-    const cajaPrefId = (user as any)?.caja_preferida_id ?? (cajaPrefKey ? localStorage.getItem(cajaPrefKey) : null)
+    const cajaPrefId = userCajaPreferidaId ?? (cajaPrefKey ? localStorage.getItem(cajaPrefKey) : null)
     if (!cajaPrefId) return null
     const sesion = sesionesArs.find(s => s.caja_id === cajaPrefId)
     return sesion?.id ?? null
-  }, [sesionesArs, cajaPrefKey, (user as any)?.caja_preferida_id])
+  }, [sesionesArs, cajaPrefKey, userCajaPreferidaId])
 
   // sesión efectiva: selección explícita del user > caja preferida > única abierta
   const sesionCajaId = cajaSeleccionadaId
@@ -862,7 +868,7 @@ export default function VentasPage() {
         qc.invalidateQueries({ queryKey: ['productos'] })
       }
     })
-  }, [tenant?.id])
+  }, [tenant, qc])
 
   // E2 — saldo a favor del cliente seleccionado (cliente_creditos)
   useEffect(() => {
@@ -882,12 +888,12 @@ export default function VentasPage() {
   }, [clienteId, tenant?.id])
 
   // B5 — deuda CC del cliente seleccionado (para mostrar "Cobrar deuda" en el POS)
-  const fetchClienteCCDeuda = async () => {
+  const fetchClienteCCDeuda = useCallback(async () => {
     if (!clienteId) { setClienteCCDeuda(0); return }
     const { data } = await supabase.rpc('cliente_cc_estado', { p_cliente: clienteId })
     setClienteCCDeuda(Number(data?.[0]?.deuda_total ?? 0))
-  }
-  useEffect(() => { fetchClienteCCDeuda() }, [clienteId])
+  }, [clienteId])
+  useEffect(() => { fetchClienteCCDeuda() }, [clienteId, fetchClienteCCDeuda])
 
   const registrarCobranzaCC = async () => {
     const monto = parseFloat(cobrarCCMonto)
@@ -925,7 +931,7 @@ export default function VentasPage() {
       const calc = parseFloat(envioKmVenta) * parseFloat(precioPorKmVenta)
       if (!isNaN(calc) && calc > 0) setCostoEnvioVenta(calc.toFixed(2))
     }
-  }, [envioKmVenta, precioPorKmVenta, envioTipoVenta])
+  }, [envioKmVenta, precioPorKmVenta, envioTipoVenta, envioGratisAplicado])
 
   // ISS-162/163: pre-llenar origen (sucursal) y $/km (Config) al activar envío
   useEffect(() => {
@@ -963,6 +969,13 @@ export default function VentasPage() {
           .catch(() => setEnvioDestinoGeoError(true))
       }, 600)
     }
+    // Pre-llenado de origen/destino UNA SOLA VEZ al activar envío (transición false→true).
+    // Agregar `envioDestinoVenta`/`envioDestinoCoords` re-disparía el geocoding de Nominatim en
+    // cada tecleo del usuario sobre el campo de destino (el guard `!envioDestinoCoords` no
+    // alcanza a frenarlo mientras la geocodificación anterior sigue resolviendo) — riesgo real
+    // de spamear la API pública. `sucursales`/`sucursalId`/`tenant`/`domiciliosFormateadosVenta`
+    // se leen con su valor más fresco en el momento en que SÍ corre (al activar envío).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requiereEnvio])
 
   // Calcular cuando ambos coords están disponibles (se dispara ante cualquier cambio de coords o modo)
@@ -1558,6 +1571,11 @@ export default function VentasPage() {
       if (devolver) abrirModalDevolucion(venta)
       else setVentaDetalle(venta)
     }
+    // `abrirModalDevolucion` se define más abajo en el componente (const, sin hoisting) —
+    // agregarla al array rompería en tiempo de render (temporal dead zone), no en tiempo de
+    // efecto. Se ejecuta sobre la venta recién resuelta del deep-link, no necesita re-disparar
+    // por cambios de esa función.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ventas, loadingVentas, searchParams, setSearchParams])
 
   /** Cuántas unidades de un producto hay en el carrito (suma TODAS sus líneas: el mismo
@@ -2907,8 +2925,13 @@ export default function VentasPage() {
   // Punto 3 Fede/GO — descuento automático por estado de inventario (ver descuentoEstado.ts).
   // Ya está restado en `subtotal` (vía getItemSubtotal) — este detalle combinado es solo para
   // mostrarlo en el resumen del ticket y trazarlo en ventas.descuento_estado (mig 285).
+  // `descEstadoDe` no está memoizada (depende de `precioTierEfectivo`/`precioTierBase`, el
+  // motor de precios del carrito) — envolverla en useCallback solo para este resumen de
+  // DISPLAY arriesgaría una dependencia faltante en el cálculo real de precios. La plata ya
+  // sale de `getItemSubtotal` (no memoizado, siempre fresco); esto es solo el detalle del ticket.
   const descuentoEstadoAplicado = useMemo(
     () => combinarDetalleDescuentoEstado(cart.map(i => descEstadoDe(i).detalle)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [cart],
   )
 

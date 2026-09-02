@@ -91,6 +91,9 @@ export default function OnboardingPage() {
       })
       setStep('business')
     })
+    // Chequeo único al montar: si se re-disparara mientras `provisionNegocio` de la
+    // primera corrida sigue en vuelo, se crearía un tenant duplicado para el mismo usuario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleAccountSubmit = (e: React.FormEvent) => {

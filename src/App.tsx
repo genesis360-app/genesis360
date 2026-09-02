@@ -98,6 +98,10 @@ function App() {
     })
 
     return () => subscription.unsubscribe()
+    // Bootstrap de auth: se suscribe UNA sola vez al montar. Agregar `loadUserData`/`setUser`
+    // reabriría/cerraría la suscripción a onAuthStateChange en cada render — riesgo real para
+    // el flujo de login de toda la app, sin beneficio (son acciones estables de Zustand).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (!initialized) {

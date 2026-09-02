@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -153,7 +153,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
   const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
   const sym = monedaEff === 'USD' ? 'U$D ' : '$'
-  const fmt = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  const fmt = useCallback((v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`, [sym, conv])
   const fmtCorto = (v: number) => {
     const val = v / conv
     if (val >= 1_000_000) return `${sym}${(val / 1_000_000).toFixed(1)}M`

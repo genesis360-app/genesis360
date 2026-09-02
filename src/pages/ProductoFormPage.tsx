@@ -428,7 +428,7 @@ export default function ProductoFormPage() {
       setVarianteDiferenciador((productoData as any).variante_diferenciador ?? '')
       setLoaded(true)
     }
-  }, [productoData])
+  }, [productoData, loaded])
 
   // SKU uniqueness check (debounced, excludes current product when editing)
   useEffect(() => {

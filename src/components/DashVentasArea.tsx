@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import {
@@ -249,7 +249,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
   const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
   const sym = monedaEff === 'USD' ? 'U$D ' : '$'
-  const fmt = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  const fmt = useCallback((v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`, [sym, conv])
   const fmtPct = (v: number) => `${v.toFixed(1)}%`
 
   const customRange = { desde: customDesde, hasta: customHasta }

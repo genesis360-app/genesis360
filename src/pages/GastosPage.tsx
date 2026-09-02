@@ -148,6 +148,9 @@ function formatFecha(f: string) {
   return new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+const TAB_VALIDOS = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'whatsapp', 'cierres'] as const
+type TabGastos = typeof TAB_VALIDOS[number]
+
 export default function GastosPage() {
   const { tenant, user } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -178,12 +181,10 @@ export default function GastosPage() {
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
-  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'whatsapp', 'cierres'] as const
-  type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
-  const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
+  const [tab, setTab] = useState<TabGastos>(TAB_VALIDOS.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
   useEffect(() => {
-    if (tabFromUrl && tabValidos.includes(tabFromUrl as TabGastos)) setTab(tabFromUrl as TabGastos)
+    if (tabFromUrl && TAB_VALIDOS.includes(tabFromUrl as TabGastos)) setTab(tabFromUrl as TabGastos)
   }, [tabFromUrl])
   // OC, Reportes de compras y Recursos son del modo avanzado: en básico volver a Gastos
   useEffect(() => {

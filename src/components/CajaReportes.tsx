@@ -16,6 +16,19 @@ import { Calendar, FileSpreadsheet, FileText, Download, Building2, Users, BarCha
 
 type SubTab = 'diario_caja' | 'consolidado' | 'mensual' | 'cajero'
 
+const COLS_MONETARIAS = new Set([
+  'total_apertura','total_ingresos','total_egresos','total_ventas','saldo_sistema','conteo_real',
+  'diferencia_total','diferencia_absoluta','ingresos','egresos','ventas','diferencia',
+  'diferencia_neta_acumulada','diferencia_absoluta_acumulada','diferencia_maxima',
+])
+
+// Columnas de SALDO puntual / máximo: NO son aditivas entre filas (días, cajeros).
+// Sumarlas en la fila "Totales" daría un número sin sentido (p.ej. sumar el cierre
+// de cada día no es "el efectivo total"). Se muestran en cada fila pero no se totalizan.
+const COLS_NO_ADITIVAS = new Set([
+  'total_apertura','saldo_sistema','conteo_real','diferencia_maxima',
+])
+
 export default function CajaReportes() {
   const { tenant } = useAuthStore()
   const { sucursales, sucursalId } = useSucursalFilter()
@@ -146,19 +159,6 @@ export default function CajaReportes() {
     diferencia_neta_acumulada: 'Neto 30d', diferencia_absoluta_acumulada: 'Absoluto 30d',
     diferencia_maxima: 'Máx individual',
   }
-
-  const COLS_MONETARIAS = new Set([
-    'total_apertura','total_ingresos','total_egresos','total_ventas','saldo_sistema','conteo_real',
-    'diferencia_total','diferencia_absoluta','ingresos','egresos','ventas','diferencia',
-    'diferencia_neta_acumulada','diferencia_absoluta_acumulada','diferencia_maxima',
-  ])
-
-  // Columnas de SALDO puntual / máximo: NO son aditivas entre filas (días, cajeros).
-  // Sumarlas en la fila "Totales" daría un número sin sentido (p.ej. sumar el cierre
-  // de cada día no es "el efectivo total"). Se muestran en cada fila pero no se totalizan.
-  const COLS_NO_ADITIVAS = new Set([
-    'total_apertura','saldo_sistema','conteo_real','diferencia_maxima',
-  ])
 
   const fmtCell = (val: any, col: string) => {
     if (val == null) return '—'

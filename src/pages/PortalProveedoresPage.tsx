@@ -70,6 +70,8 @@ export default function PortalProveedoresPage() {
     void cargarNegocios()
   }
 
+  // Chequeo de sesión único al montar el portal — `cargarSesion` no está memoizada.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void cargarSesion() }, [])
 
   const cargarNegocios = async () => {

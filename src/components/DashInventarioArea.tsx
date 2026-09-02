@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -163,7 +163,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
     return () => document.removeEventListener('mousedown', handler)
   }, [filterOpen])
 
-  const fmt = (v: number) => formatMoneda(v)
+  const fmt = useCallback((v: number) => formatMoneda(v), [])
   const fmtCorto = (v: number) => {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
     if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`

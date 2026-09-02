@@ -167,7 +167,7 @@ export default function InventarioPage() {
       setPildorasInv([{ id: crypto.randomUUID(), campo: 'libre', operador: 'contiene', valor: s }])
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete('search'); return p }, { replace: true })
     }
-  }, [])
+  }, [searchParams, setSearchParams])
 
   // Pre-selecciona el tab desde ?tab= (ej. "Ver y resolver en Inventario" de SupervisionPage apunta
   // a /inventario?tab=autorizaciones) — sin esto `tab` siempre arrancaba en 'inventario' ignorando
@@ -179,7 +179,7 @@ export default function InventarioPage() {
       setTab(t as Tab)
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete('tab'); return p }, { replace: true })
     }
-  }, [])
+  }, [searchParams, setSearchParams])
 
   // Deep-links desde AlertasPage ("Ver todo" de una sección) hacia los filtros REALES del tab
   // Inventario — antes esos links caían siempre en /inventario a secas, sin filtrar nada (GO,
@@ -200,7 +200,7 @@ export default function InventarioPage() {
         return p
       }, { replace: true })
     }
-  }, [])
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     if (!filterPanelOpen) return
@@ -1489,7 +1489,7 @@ export default function InventarioPage() {
     directoFiredRef.current = true
     setPendingDirectoIngreso(false)
     ingresoMutation.mutate()
-  }, [pendingDirectoIngreso, selectedProduct, form.cantidad, form.ubicacionId])
+  }, [pendingDirectoIngreso, selectedProduct, form.cantidad, form.ubicacionId, ingresoMutation])
 
   // ── Kit mutations ──────────────────────────────────────────────────────────
   const agregarReceta = useMutation({
@@ -2231,8 +2231,14 @@ export default function InventarioPage() {
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
+    // `abrirNuevoConteo`/`cargarLineasParaConteo` son funciones grandes con ~15 dependencias
+    // propias (conteo wall-to-wall bloqueante, sucursal, tenant, etc.) — memoizarlas para
+    // satisfacer el lint acá arriesgaría una dependencia faltante en lógica de ajuste de
+    // inventario. El listener ya se re-registra con cada cambio real de estado del flujo de
+    // conteo (deps de abajo); alcanza para no dejar closures desactualizados en la práctica.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, modal, lpnAcciones, movDetalle, showConteoForm, conteoRows.length, conteoRefId,
-      conteoLoading, finalizarConteoYAplicar.isPending])
+      conteoLoading, finalizarConteoYAplicar])
 
   // F2b — mantener el ref espejo al día para el scan-to-count
   useEffect(() => { conteoRowsRef.current = conteoRows }, [conteoRows])

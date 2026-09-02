@@ -62,7 +62,7 @@ export function AvatarDropdown({ className = '' }: AvatarDropdownProps) {
       })
     }
     setSavedAccounts(loadSavedAccounts())
-  }, [open])
+  }, [open, authEmail, user, tenant])
 
   useEffect(() => {
     if (!open) return

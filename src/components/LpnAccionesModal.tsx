@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
@@ -354,7 +354,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
   // Fede 25/7, punto 2: "el sistema le avisa antes de confirmar que se va a enviar una
   // notificación de validación al supervisor" — el aviso previo vive acá, afuera de la mutation.
-  const intentarGuardarEdicion = async () => {
+  const intentarGuardarEdicion = useCallback(async () => {
     if (guardarEdicion.isPending) return
     if (estadoRequiereAprobacion) {
       const ok = await confirmar(
@@ -363,7 +363,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!ok) return
     }
     guardarEdicion.mutate()
-  }
+  }, [guardarEdicion, estadoRequiereAprobacion, estadoDestino?.nombre, confirmar])
 
   // ── Mover stock parcial ──────────────────────────────────────────────────────
   const moverStock = useMutation({
@@ -630,8 +630,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [showQR, tab, cantMover, ubicDestino,
-      guardarEdicion.isPending, moverStock.isPending])
+  }, [showQR, showCodigo, tab, cantMover, ubicDestino,
+      guardarEdicion.isPending, moverStock, intentarGuardarEdicion, onClose])
 
   const TABS: { id: AccionTab; label: string; icon: any }[] = tieneReservas
     ? [{ id: 'mover', label: 'Mover', icon: ArrowRightLeft }]

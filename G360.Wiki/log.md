@@ -6,6 +6,47 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-01] fix | 🧹 Limpieza de deuda ESLint (161→41 warnings) + fix de moneda en recibo de sueldo PDF
+
+Commit `785fbc4c` en `dev`, pusheado a `origin/dev`, **sin deploy a PROD** (queda para el próximo ciclo
+de release — no bumpeó `APP_VERSION`, es debt cleanup interno sin feature visible).
+
+**Qué se hizo**: el wiki traía documentada como pendiente la deuda heredada de 161 warnings de
+`npm run lint` (baseline tolerado desde el fix de ESLint de v1.187.0). Se resolvieron los **121 warnings
+de `@typescript-eslint/no-unused-vars`** (imports/variables/parámetros muertos en 41 archivos —
+componentes, páginas, libs, tests e2e/unit). El script `lint` de `package.json` bajó su ratchet
+`--max-warnings` de 161 a 41 (mismo patrón de ratchet ya usado en este repo).
+
+Quedan **41 warnings de `react-hooks/exhaustive-deps`**, dejados a propósito sin tocar: agregar la
+dependencia que pide el warning puede cambiar cuándo se re-ejecuta un efecto y causar loops/refetches no
+deseados — no es un fix mecánico seguro, sobre todo en páginas fiscales como `VentasPage.tsx`.
+
+Verificado: `npm run build` (tsc + vite) verde, 1637 tests unitarios (100 archivos) sin regresiones, `tsc`
+ad-hoc sobre los 8 archivos de test tocados sin errores.
+
+**🐛 Hallazgo real corregido de paso** (no era código muerto): en `src/lib/reciboSueldoPDF.ts`, la
+función interna `fmt()` recibía el parámetro `moneda` pero nunca lo usaba en el cuerpo — el recibo de
+sueldo en PDF siempre mostraba el símbolo `$`, sin importar si el tenant opera en USD (`tenant.moneda`).
+Corregido para respetar el mismo patrón ya usado en `DashboardPage.tsx`/`facturasPDF.ts`
+(`moneda === 'USD' ? 'U$D ' : '$'`). Es un bug de visualización en el PDF de RRHH — no afecta ningún
+cálculo real de nómina ni mueve plata, solo el símbolo mostrado.
+
+**📝 2 hallazgos de código incompleto, documentados sin corregir** (renombrados con prefijo `_` para
+silenciar el lint, lógica preservada intacta por si están pensados para completarse después — a criterio
+de GO):
+1. `InventarioPage.tsx`: el estado `searchFocused` se lee (habilitaría la búsqueda de productos al hacer
+   foco en el input, incluso sin escribir nada) pero su setter (`_setSearchFocused`) nunca se llama desde
+   ningún `onFocus` — la función no está activa hoy.
+2. `UsuariosPage.tsx`: la mutación `_assignRolCustom` (asignar un rol personalizado YA EXISTENTE a otro
+   usuario, con logging de actividad incluido) nunca se llama desde ningún botón. La UI de "Roles
+   personalizados" sugiere textualmente que se pueden asignar como capa adicional sobre el rol base, pero
+   en la práctica solo se puede crear un rol nuevo por usuario (`saveUserPermisos`).
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", ítem 4), [[wiki/features/rrhh]] §
+RH3.
+
+---
+
 ## [2026-09-01] deploy | 🚀 v1.195.0 A PROD (PR #335) — Embedded Signup, ESLint, Supervisión completa (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2
 
 **PR #335** ("v1.195.0 — Embedded Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores

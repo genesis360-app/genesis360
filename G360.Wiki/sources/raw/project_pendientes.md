@@ -58,8 +58,27 @@ type: project
 >    Meta y reintente cuando cierre el open beta.
 > 3. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
 >    Verificación del Negocio de Meta (Embedded Signup).
-> 4. Heredado: deuda de **161 warnings** de `npm run lint` (baseline tolerado) — limpieza gradual, no
->    bloqueante.
+> 4. Heredado: deuda de lint — **bajada de 161 a 41 warnings** (`npm run lint`) el 2026-09-01 (commit
+>    `785fbc4c`, en `dev`, **sin deploy a PROD todavía** — queda para el próximo ciclo de release). Se
+>    resolvieron los 121 warnings de `@typescript-eslint/no-unused-vars` (imports/variables/parámetros
+>    muertos en 41 archivos); `package.json` bajó su ratchet `--max-warnings` de 161 a 41. Quedan **41
+>    warnings de `react-hooks/exhaustive-deps`, dejados A PROPÓSITO sin tocar** (agregar la dependencia
+>    que pide el warning puede cambiar cuándo se re-ejecuta un efecto y causar loops/refetches no
+>    deseados — no es un fix mecánico seguro, sobre todo en páginas fiscales como `VentasPage.tsx`).
+>    Verificado con `npm run build` verde + 1637 tests unitarios sin regresiones.
+>    - 🐛 **Hallazgo real, CORREGIDO de paso**: `src/lib/reciboSueldoPDF.ts` — la función interna `fmt()`
+>      recibía el parámetro `moneda` pero nunca lo usaba; el recibo de sueldo en PDF siempre mostraba `$`
+>      sin importar `tenant.moneda`. Ahora respeta el mismo patrón de `DashboardPage.tsx`/`facturasPDF.ts`
+>      (`moneda === 'USD' ? 'U$D ' : '$'`). Bug de visualización en el PDF de RRHH, no afecta ningún
+>      cálculo real de nómina. Ver [[wiki/features/rrhh]] § RH3.
+>    - 📝 **2 gaps de código incompleto documentados, NO corregidos** (renombrados con prefijo `_` para
+>      silenciar el lint, lógica preservada, a criterio de GO si se completan después): (1)
+>      `InventarioPage.tsx` — el estado `searchFocused` se lee pero su setter (`_setSearchFocused`) nunca
+>      se llama desde ningún `onFocus`, por lo que la búsqueda de productos no se activa hoy solo con
+>      hacer foco en el input. (2) `UsuariosPage.tsx` — la mutación `_assignRolCustom` (asignar un rol
+>      personalizado YA EXISTENTE a otro usuario, con logging de actividad incluido) nunca se llama desde
+>      ningún botón; la UI de "Roles personalizados" sugiere textualmente que se pueden asignar como capa
+>      adicional, pero en la práctica solo se puede crear un rol nuevo por usuario (`saveUserPermisos`).
 > 5. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no
 >    necesita cola; es la decisión de diseño final, sin pendiente real.
 >

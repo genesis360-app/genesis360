@@ -6,6 +6,55 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-02] fix | 🧹✅ Limpieza de deuda ESLint CERRADA 100% (161→0 warnings)
+
+Commits `af778349` + `76e91867` en `dev`, pusheados a `origin/dev`, **sin deploy a PROD todavía** (mismo
+criterio que el tramo anterior — debt cleanup interno, no bumpea `APP_VERSION`, no toca `roadmap.md`).
+Cierra el pendiente heredado del 2026-09-01 (ver entrada de abajo): los 41 warnings restantes de
+`react-hooks/exhaustive-deps` que se habían dejado a propósito sin tocar.
+
+**Qué se hizo**: 21 archivos, cada warning revisado individualmente (no un fix mecánico ciego):
+- Deps genuinamente faltantes y seguras agregadas: `fmt`/`cfg` memoizados en 5 componentes de Dashboard +
+  `EnviosReportesPanel.tsx`, restricciones de rol/sucursal en `AppLayout.tsx`, polling de MercadoPago/MODO
+  en `VentasPage.tsx` — y un **bug real corregido de paso**: los deep-links de `InventarioPage.tsx` no
+  reaccionaban a un segundo link mientras el componente seguía montado.
+- Constantes puras que se redefinían en cada render, hoisteadas a nivel de módulo (`RUTAS_AVANZADO`,
+  `tabValidos`, `COLS_MONETARIAS`/`COLS_NO_ADITIVAS`).
+- Funciones envueltas en `useCallback` donde hacía falta memoización real (`intentarGuardarEdicion` en
+  `LpnAccionesModal.tsx`, `fetchClienteCCDeuda` en `VentasPage.tsx`).
+- **6 casos donde agregar la dependencia sugerida por ESLint habría introducido un bug real**, dejados con
+  `eslint-disable-next-line` + comentario explicando por qué: mount-once de auth/sesión en `App.tsx` y
+  `PortalProveedoresPage.tsx` (agregar la dep reabriría/duplicaría la suscripción a `onAuthStateChange` o
+  el chequeo de sesión); `OnboardingPage.tsx` (riesgo de tenant duplicado si `provisionNegocio` seguía en
+  curso); `RecepcionesPage.tsx` (pisaría cantidades/lotes ya editados por el usuario ante un cambio de
+  sucursal no relacionado en el header — pérdida de datos real evitada); `VentasPage.tsx` — pre-llenado de
+  envío (spam a la API pública de Nominatim/OpenStreetMap en cada tecla del campo de destino) y
+  `descuentoEstadoAplicado` (arrastraría el motor de precios del carrito sin necesidad, para un summary de
+  solo display). De paso, uno de los casos de `VentasPage.tsx` destapó y corrigió un **error real de
+  TypeScript** (temporal dead zone: `abrirModalDevolucion`/`ventaDetalle` están declaradas más abajo en el
+  componente, agregarlas al array de deps rompía en render).
+
+`package.json` bajó el ratchet `--max-warnings` de 41 a **0**: cualquier warning nuevo rompe
+`npm run lint` de ahora en más.
+
+**Verificación**: `npm run build` (tsc + vite) verde; **1637 tests unitarios (100 archivos) sin
+regresiones**, corrido 3 veces a lo largo del trabajo; `npm run lint` → 0 problemas.
+
+**Verificación e2e cruzada** (investigada activamente, no ignorada): al aplicar los cambios, una corrida
+de 9 specs e2e (~101 tests, roles + Ventas + LpnAccionesModal) mostró 18 fallos con el mismo patrón
+(`page.waitForLoadState('networkidle')` timeout). En vez de asumir regresión de este cambio, se hizo
+`git stash` de todo el código tocado y se corrió el MISMO batch contra el baseline sin modificar → 15
+fallos con el mismo patrón, en specs distintas cada vez. Confirma que es el flake no determinístico YA
+CONOCIDO del suite e2e (ver `reference_e2e_suite_no_deterministica` en memoria del asistente), no una
+regresión introducida por esta limpieza. Se restauraron los cambios (`git stash pop`) tras confirmar.
+
+Los 2 gaps de código incompleto documentados en el tramo anterior (`InventarioPage.tsx` § `searchFocused`,
+`UsuariosPage.tsx` § `_assignRolCustom`) siguen igual, sin cambios — quedan a criterio de GO.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", ítem 4).
+
+---
+
 ## [2026-09-01] fix | 🧹 Limpieza de deuda ESLint (161→41 warnings) + fix de moneda en recibo de sueldo PDF
 
 Commit `785fbc4c` en `dev`, pusheado a `origin/dev`, **sin deploy a PROD** (queda para el próximo ciclo

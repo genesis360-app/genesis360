@@ -127,7 +127,7 @@ export default function InventarioPage() {
   const [rebajeSearch, setRebajeSearch] = useState('')
   const [rebajeGrupoId, setRebajeGrupoId] = useState<string | null>(null)
   const [movDetalle, setMovDetalle] = useState<any | null>(null)
-  const [searchFocused, _setSearchFocused] = useState(false)
+  const [searchFocused, setSearchFocused] = useState(false)
   const [ingresoMotivoSelect, setIngresoMotivoSelect] = useState('')
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
@@ -3432,6 +3432,7 @@ export default function InventarioPage() {
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                       <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                        onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
                         placeholder="Buscar por nombre, SKU o código..."
                         className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <button type="button" onClick={() => setMovScannerOpen(true)}
@@ -3848,6 +3849,7 @@ export default function InventarioPage() {
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                       <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                        onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
                         placeholder="Buscar por nombre, SKU o código..."
                         className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <button type="button" onClick={() => setMovScannerOpen(true)}

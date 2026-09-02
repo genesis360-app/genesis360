@@ -1,8 +1,8 @@
 ---
 name: portal-proveedores
-description: Portal externo para que un PROVEEDOR (identidad separada de `users`, puede vincularse a varios negocios) vea las Órdenes de Compra que un negocio le mandó y proponga precio por ítem — el staff revisa y "aplica" a mano, nunca se automatiza un compromiso de pago (REGLA #0). Identidad (mig 387, v1.188.0) + acceso real a OC/invitación/UI (mig 390, v1.195.0) — 2ª mitad de la propuesta de Fede del 25/8/2026, la otra mitad fue el Asistente de WhatsApp (ver [[wiki/features/asistente-whatsapp]]). CONSTRUIDO Y VERIFICADO end-to-end en DEV, sin deploy a PROD.
+description: Portal externo para que un PROVEEDOR (identidad separada de `users`, puede vincularse a varios negocios) vea las Órdenes de Compra que un negocio le mandó y proponga precio por ítem — el staff revisa y "aplica" a mano, nunca se automatiza un compromiso de pago (REGLA #0). Identidad (mig 387, v1.188.0) + acceso real a OC/invitación/UI (mig 390, v1.195.0) — 2ª mitad de la propuesta de Fede del 25/8/2026, la otra mitad fue el Asistente de WhatsApp (ver [[wiki/features/asistente-whatsapp]]). ✅ EN PROD desde el 2026-09-01 (PR #335); Redirect URLs de Supabase Auth ya configuradas (2026-09-02); queda pendiente 1 bug real de `APP_URL` hardcodeada en `invitar-proveedor` (bajo impacto hoy, ver más abajo).
 sources: [migration 387, migration 387b, migration 387c, migration 390, supabase/functions/invitar-proveedor, supabase/functions/send-email, src/pages/PortalProveedoresPage.tsx, src/pages/ProveedoresPage.tsx, src/store/authStore.ts, src/App.tsx, tests/e2e/138_portal_proveedores_invitacion_mutante.spec.ts, tests/e2e/139_portal_proveedores_respuesta_precio_mutante.spec.ts]
-updated: 2026-09-01
+updated: 2026-09-02
 ---
 
 # Portal de Proveedores
@@ -137,13 +137,29 @@ negocio" y podría crear un tenant nuevo con esa misma identidad, mezclando role
 - `npm run build` (tsc+vite) y 1637 tests unitarios verdes. Sin regresión en la suite de Compras/OC
   (specs 29, 33, 34, 35, 77, 78, 80).
 
+## ✅ Redirect URLs de Supabase Auth — CERRADO (2026-09-02)
+
+GO configuró **Authentication → URL Configuration → Redirect URLs** en ambos proyectos del Dashboard de
+Supabase (confirmado con capturas de pantalla): **PROD** (`jjffnbrdjchquexdfgwq`) tiene 5 URLs, incluyendo
+`https://genesis360.pro/portal-proveedores`; **DEV** (`gcmhzdedrkmmzfzfveig`) tiene 3 URLs, incluyendo esa
+MISMA URL de producción — correcto a propósito, no un error (ver el bug de `APP_URL` hardcodeado justo
+abajo, que explica por qué el link mágico apunta siempre a PROD hoy). Ya no es un pendiente.
+
+## 🐛 Bug real encontrado 2026-09-02, SIN arreglar — `APP_URL` hardcodeado en `invitar-proveedor`
+
+`supabase/functions/invitar-proveedor/index.ts` línea 25: `const APP_URL = 'https://genesis360.pro'` está
+**hardcodeado**, sin lógica condicional por ambiente (a diferencia de otras Edge Functions del proyecto).
+Efecto real: un magic link de invitación a un proveedor generado desde un tenant de **DEV** redirige igual
+al frontend de **PRODUCCIÓN** — que habla con el proyecto de Supabase de PROD (JWT de firma distinta al de
+DEV) — la sesión del proveedor fallaría al intentar establecerse. **Impacto hoy: bajo** — ningún magic link
+real se probó de punta a punta todavía (la verificación de abajo usó login por contraseña fijada por SQL),
+y las invitaciones reales a proveedores solo van a importar en PROD. Pendiente técnico real, no corregido
+esta sesión — arreglarlo (resolver `APP_URL` según el proyecto/ambiente) antes de invitar a un proveedor
+real desde un tenant de DEV, o documentar explícitamente que la invitación real solo se prueba en PROD.
+
 ## 🛑 Pendiente real antes de que un proveedor externo pueda usarlo de verdad
 
-1. **Manual de GO/Fede, en el Dashboard de Supabase (no configurable por SQL/migración)**: agregar
-   `https://genesis360.pro/portal-proveedores` (PROD) y el equivalente de DEV a **Authentication → URL
-   Configuration → Redirect URLs** de cada proyecto — sin esto, Supabase puede rechazar o redirigir mal el
-   link mágico real que recibe un proveedor por email (esta sesión probó el login con contraseña, nunca
-   clickeó un link mágico real de punta a punta).
+1. **El bug de `APP_URL` hardcodeado de arriba** — sin arreglar.
 2. La UI del portal es MVP a propósito: sin recuperación de contraseña self-service (si la olvida, el
    negocio la vuelve a invitar y le llega un link nuevo), sin historial más allá de la lista de OC.
 3. `orden_compra_items` expone la fila completa de `productos` (incl. `precio_costo`/`stock_actual`) para
@@ -155,7 +171,5 @@ negocio" y podría crear un tenant nuevo con esa misma identidad, mezclando role
    antes de tener usuarios reales.
 
 **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, mig 390 aplicada y verificada también en PROD;
-`APP_VERSION` `v1.195.0`). **Pendiente real, manual**: GO/Fede deben agregar
-`https://genesis360.pro/portal-proveedores` a Authentication → URL Configuration → Redirect URLs de
-Supabase Auth (PROD y DEV) antes de que un link mágico real funcione — esta sesión solo verificó el flujo
-con login por contraseña.
+`APP_VERSION` `v1.195.0`). Redirect URLs de Supabase Auth ya configuradas (arriba). Único pendiente real
+restante: el bug de `APP_URL` hardcodeado.

@@ -3,10 +3,21 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-01
+updated: 2026-09-02
 ---
 
 # Roadmap y Versiones
+
+**Versión en DEV (tag, sin deploy a PROD):** v1.195.1 — release de **mantenimiento interno**, publicado
+2026-09-02 (commit `1be9e697`, tag+release `targetCommitish: dev`, marcado `latest`). Cierra bajo una sola
+versión 3 piezas hechas en `dev` desde el deploy real de v1.195.0: **ESLint 100% (161→0 warnings)** — 121
+`no-unused-vars` + 41 `react-hooks/exhaustive-deps` revisados uno por uno, `--max-warnings` en 0; **2
+features de UX** — búsqueda con foco en Inventario, asignar rol personalizado existente en Usuarios; y
+**dependencias vulnerables (12/14 resueltas)** — 6 PRs de Dependabot + `npm audit fix`, quedan
+`react-router`/`react-router-dom` (v6→v7, decisión pendiente de GO). Ningún cambio de este release tocó
+PROD — no hay migración nueva ni feature visible para el usuario final. Detalle: [[wiki/features/rrhh]] §
+RH3 (bug de moneda en recibo de sueldo, corregido de paso), `log.md` (2026-09-02, 3 entradas `fix`),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 **Versión en PROD:** v1.195.0 (código — 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
 Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" mergeado `dev`→`main` (merge
@@ -36,11 +47,11 @@ Trae a PROD, todas ya verificadas en DEV antes del deploy:
    Verificación del Negocio ante Meta** (no por código, pendiente de Fede).
 4. Fix de ESLint (v1.187.0) — `npm run lint` funciona de verdad en todo el repo.
 
-**🛑 Pendiente real, manual, no migrable — GO/Fede**: agregar `https://genesis360.pro/portal-proveedores`
-a **Authentication → URL Configuration → Redirect URLs** en el proyecto PROD (`jjffnbrdjchquexdfgwq`) del
-Dashboard de Supabase, y el equivalente en DEV (`gcmhzdedrkmmzfzfveig`) si no está ya — sin este paso, un
-link mágico real recibido por email por un proveedor invitado puede fallar o redirigir mal (esta sesión
-solo verificó el flujo con login por contraseña, nunca un click real de link mágico de punta a punta).
+**✅ Redirect URLs de Supabase Auth — CERRADO (2026-09-02)**: GO ya las configuró en ambos proyectos
+(confirmado con capturas) — PROD (`jjffnbrdjchquexdfgwq`) con 5 URLs incluyendo
+`https://genesis360.pro/portal-proveedores`, DEV (`gcmhzdedrkmmzfzfveig`) con 3 URLs incluyendo esa misma
+URL de PROD (correcto a propósito, ver [[wiki/features/portal-proveedores]] sobre el bug de `APP_URL`
+hardcodeado que explica por qué). Ya no es un pendiente.
 
 **Vercel**: deployment `dpl_3dL71Rg1KkKtnAn3qo6nPqgnjUUB` en estado READY, alias
 `app.genesis360.pro`/`genesis360.pro` sirviendo el commit `2a8ebbf4`. Detalle completo:

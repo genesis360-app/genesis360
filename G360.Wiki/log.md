@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-02] fix | 🏷️ Bump + tag + release `v1.195.1` — cierra la tanda de mantenimiento (ESLint+UX+deps), SIN deploy a PROD; Redirect URLs de Supabase confirmadas por GO; bug nuevo sin arreglar
+
+`APP_VERSION` bumpeado de `v1.195.0` a **`v1.195.1`** (commit `1be9e697`, `dev`), tag `v1.195.1` y GitHub
+release publicados (`targetCommitish: dev`, `publishedAt: 2026-09-02T18:57:55Z`, marcado `latest`, título
+"v1.195.1 — Mantenimiento: lint, UX, dependencias"). Cierra formalmente, bajo una sola versión, las 3
+piezas de mantenimiento hechas en `dev` desde el deploy real de v1.195.0 (2026-09-01): limpieza de ESLint
+100% (161→0 warnings, ver entrada de abajo), 2 features de UX (Inventario+Usuarios, ver entrada de abajo),
+y limpieza de dependencias vulnerables (12/14, ver entrada de abajo). **PROD sigue en `v1.195.0`** — este
+release no deployó nada nuevo a producción, no hay migración pendiente ni checklist de deploy que correr.
+
+**Redirect URLs de Supabase Auth — pendiente CERRADO**: GO confirmó (con capturas de pantalla) que ya
+agregó las URLs necesarias en Authentication → URL Configuration → Redirect URLs de ambos proyectos. PROD
+(`jjffnbrdjchquexdfgwq`) tiene 5 URLs, incluyendo `https://genesis360.pro/portal-proveedores`. DEV
+(`gcmhzdedrkmmzfzfveig`) tiene 3 URLs, incluyendo esa MISMA URL de producción — correcto a propósito, no
+un error: el magic link de invitación a proveedores redirige siempre al frontend de PROD (ver el bug
+nuevo abajo). Este pendiente, anotado en `project_pendientes.md` y `wiki/features/portal-proveedores.md`
+desde el 2026-09-01, queda cerrado.
+
+**🐛 Bug real encontrado de paso, SIN arreglar**: `supabase/functions/invitar-proveedor/index.ts` línea 25
+tiene `const APP_URL = 'https://genesis360.pro'` hardcodeado, sin lógica condicional por ambiente. Un
+magic link de invitación a un proveedor generado desde un tenant de **DEV** redirige igual al frontend de
+**PRODUCCIÓN** (que habla con el proyecto de Supabase de PROD, JWT de firma distinta) — la sesión del
+proveedor fallaría al establecerse. Impacto hoy bajo (ningún magic link real se probó de punta a punta
+todavía, las invitaciones reales solo importan en PROD), pero es un bug de diseño real que queda como
+pendiente técnico, no corregido esta sesión. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y
+[[wiki/features/portal-proveedores]].
+
+**📱 Guía de WhatsApp para Fede — entregada 2026-09-02**: se armó y publicó una página HTML (Claude
+Artifact) "Conectar WhatsApp Genesis360" con las 2 partes pendientes de Fede para destrabar el Embedded
+Signup: (a) Verificación del Negocio ante Meta (CUIT/monotributo + comprobante de domicilio, a nombre de
+Fede — el Business Portfolio está atado a su identidad); (b) preparar el número dedicado que GO ya compró
+(`11 7822-6038`) — sin WhatsApp personal activo, con capacidad de recibir SMS/llamada para el código de
+verificación de Meta. Sigue siendo 100% trámite externo, sin confirmación de que Fede lo haya completado.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `wiki/business/roadmap.md`
+(v1.195.1), [[wiki/features/portal-proveedores]], [[wiki/features/asistente-whatsapp]].
+
+---
+
 ## [2026-09-02] fix | ✅ 2 gaps de UX completados (Inventario+Usuarios) + limpieza de dependencias vulnerables (12/14)
 
 Dos piezas de trabajo independientes, ambas en `dev`, pusheadas a `origin/dev`, **sin deploy a PROD

@@ -6,13 +6,122 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 42) — 🚀✅ DEPLOY REAL A PROD: v1.195.0 (PR #335) — Embedded
+> ### 🛑 ARRANCÁ ACÁ (2026-09-02, cont. 43) — 🏷️ Tanda de mantenimiento cerrada bajo `v1.195.1` (tag +
+> release en `dev`, SIN deploy a PROD) — ESLint 100%, 2 features UX, dependencias; Redirect URLs de
+> Supabase YA CONFIGURADAS por GO; 1 bug nuevo encontrado sin arreglar
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios** desde el deploy real del
+>   2026-09-01 (ver bloque histórico cont. 42 más abajo). Nada de lo de esta entrada llegó a PROD todavía.
+> - **DEV / tag**: `v1.195.1` (commit `1be9e697`, tag+release publicados el 2026-09-02T18:57:55Z,
+>   `targetCommitish: dev`, marcado `latest` en GitHub, título "v1.195.1 — Mantenimiento: lint, UX,
+>   dependencias") — cierra formalmente, bajo una sola versión, TODA la tanda de mantenimiento acumulada
+>   en `dev` desde el deploy de v1.195.0: limpieza de ESLint, 2 features de UX chicas, limpieza de
+>   dependencias vulnerables. Es mantenimiento interno, no trae feature nueva visible al usuario final —
+>   no requiere el checklist de deploy a PROD del CLAUDE.md (no hay migración nueva, no toca PROD).
+>
+> #### Qué se hizo en esta tanda (todo en `dev`, detalle completo en `log.md` — 3 entradas tipo `fix`,
+> 2026-09-01/02)
+>
+> 1. **ESLint: deuda CERRADA 100% (161→0 warnings)**. Primer tramo (commit `785fbc4c`, 2026-09-01): 121
+>    warnings de `no-unused-vars` en 41 archivos, ratchet `--max-warnings` 161→41. Segundo tramo (commits
+>    `af778349`+`76e91867`, 2026-09-02): los 41 warnings de `react-hooks/exhaustive-deps` restantes,
+>    revisados UNO POR UNO (no un fix mecánico ciego) — deps genuinamente faltantes agregadas donde era
+>    seguro, y un **bug real corregido de paso**: los deep-links de `InventarioPage.tsx` no reaccionaban a
+>    un segundo link mientras el componente seguía montado. 6 casos donde seguir la sugerencia de ESLint
+>    habría introducido un bug real quedaron con `eslint-disable-next-line` + comentario explicando por qué
+>    (mount-once de auth/sesión, pérdida de datos editados por el usuario en `RecepcionesPage.tsx`, spam a
+>    la API pública de Nominatim en `VentasPage.tsx`, entre otros — detalle completo en `log.md`).
+>    `package.json` bajó `--max-warnings` de 41 a **0**: cualquier warning nuevo rompe `npm run lint` de
+>    ahora en más. 🐛 De paso (primer tramo), hallazgo real corregido: `src/lib/reciboSueldoPDF.ts` ignoraba
+>    `tenant.moneda`, el recibo de sueldo en PDF siempre mostraba `$` sin importar la moneda del tenant —
+>    ver [[wiki/features/rrhh]] § RH3.
+> 2. **2 features de UX completadas** (commit `db09f74e`, 2026-09-02, con visto bueno explícito de GO —
+>    "avanza con los 2 temas de UX para corregir"): (1) `InventarioPage.tsx` — la búsqueda de productos en
+>    los modales de Ingreso/Rebaje ahora muestra 5 sugerencias al hacer foco en el campo, antes de escribir
+>    nada. (2) `UsuariosPage.tsx` — nuevo `<select>` junto a "Editar permisos" para asignar a un usuario un
+>    rol personalizado YA EXISTENTE (antes solo se podía crear uno nuevo por usuario; la mutación
+>    `assignRolCustom` ya existía, solo estaba desconectada de cualquier control). Ambas verificadas con
+>    Playwright ad-hoc contra DEV real (no solo tsc/build), round-trip UI→mutación→DB→re-render confirmado.
+> 3. **Dependencias vulnerables: 12/14 resueltas** (2026-09-02). Los 6 PRs de Dependabot apuntaban a `main`
+>    — se retargetearon a `dev` (`gh pr edit --base dev`) antes de mergear, para no saltear el flujo de
+>    deploy: postcss-selector-parser, browserslist, dompurify, js-yaml, fast-uri, undici. Después
+>    `npm audit fix` (commit `72031706`) resolvió 2 más (fast-uri completo, nanoid). Quedan **2 sin
+>    resolver, a propósito**: `react-router`/`react-router-dom` necesita v6.21→v7.18+ (breaking change real
+>    en el router, requiere migración planificada + regresión completa de routing) — **decisión pendiente
+>    de GO**, no aplicado. El contador de "14 vulnerabilidades" de GitHub baja recién cuando `dev` se
+>    mergee a `main` (se calcula sobre el default branch).
+> 4. Verificado en cada paso: `npm run build` (tsc+vite) + `npm run lint` (0 warnings) + 1637 tests
+>    unitarios (100 archivos) sin regresiones + regresión e2e cruzada investigada activamente (18 fallos de
+>    una corrida de 9 specs resultaron ser el flake no determinístico ya conocido del suite —
+>    `reference_e2e_suite_no_deterministica` — confirmado corriendo el mismo batch contra el baseline con
+>    `git stash`, no una regresión de esta limpieza).
+> 5. **Bump + tag + release**: `APP_VERSION` → `v1.195.1` (commit `1be9e697`), tag y release de GitHub
+>    publicados sobre `dev` (no PROD) — cierra formalmente la tanda bajo una versión, ver arriba.
+>
+> #### ✅ Cerrado en esta sesión — YA NO es pendiente
+>
+> **Redirect URLs de Supabase Auth — GO ya las configuró**, confirmado con capturas de pantalla: **PROD**
+> (`jjffnbrdjchquexdfgwq`) tiene 5 URLs en Authentication → URL Configuration → Redirect URLs, incluyendo
+> `https://genesis360.pro/portal-proveedores`; **DEV** (`gcmhzdedrkmmzfzfveig`) tiene 3 URLs, incluyendo
+> esa MISMA url de producción — **eso es correcto, no un error de GO** (el magic link de invitación a
+> proveedores manda siempre al frontend de producción hoy mismo, ver el bug nuevo justo abajo, que explica
+> por qué eso hace falta así). El pendiente anotado en las 2 entradas históricas de abajo (cont. 41 y
+> cont. 42) y en [[wiki/features/portal-proveedores]] queda CERRADO — no repetirlo como pendiente.
+>
+> #### 🐛 Bug real encontrado de paso, SIN arreglar — pendiente técnico nuevo
+>
+> `supabase/functions/invitar-proveedor/index.ts` línea 25: `const APP_URL = 'https://genesis360.pro'`
+> está **hardcodeado**, sin lógica condicional por ambiente (a diferencia de otras Edge Functions del
+> proyecto que sí resuelven la URL según dónde corren). Efecto real: un magic link de invitación a un
+> proveedor generado desde el tenant de **DEV** redirige igual al frontend de **PRODUCCIÓN** — que habla
+> con el proyecto de Supabase de PROD (JWT de firma distinta al de DEV) — la sesión del proveedor fallaría
+> al intentar establecerse. **Impacto hoy: bajo** — ningún magic link real se probó de punta a punta
+> todavía (la verificación de la Fase 2 usó login por contraseña fijada por SQL, ver
+> [[wiki/features/portal-proveedores]] § Verificación), y las invitaciones reales a proveedores solo van a
+> importar en PROD. Pero es un bug de diseño real, **no arreglado esta sesión** — arreglarlo (o decidir
+> explícitamente que "invitar proveedores de verdad solo se prueba en PROD") antes de invitar a un
+> proveedor real desde un tenant de DEV. Anotado también en [[wiki/features/portal-proveedores]].
+>
+> #### 📱 Guía de WhatsApp para Fede — entregada 2026-09-02, sigue 100% pendiente de Fede
+>
+> Se armó y publicó una página HTML (Claude Artifact) "Conectar WhatsApp Genesis360" con las 2 partes que
+> Fede tiene que completar para destrabar el Embedded Signup (bloqueo ya documentado en
+> [[wiki/features/asistente-whatsapp]] § "Estado 2026-08-28"): (a) **Verificación del Negocio ante Meta**
+> — subir Constancia de Inscripción Fiscal (CUIT/monotributo) + comprobante de domicilio, a nombre de
+> **Fede** (el Business Portfolio de Genesis360 en Meta está atado a SU identidad, no a la de GO); (b)
+> **preparar el número dedicado que GO ya compró, `11 7822-6038`** — no debe tener WhatsApp personal
+> activo, y tiene que poder recibir SMS o llamada para el código de verificación de Meta. Sigue siendo
+> 100% trámite externo, sin novedad de que Fede lo haya completado — la próxima sesión debería preguntar
+> "¿Fede ya lo hizo?" en vez de repetir la explicación desde cero.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **NUEVO — bug de `APP_URL` hardcodeado en `invitar-proveedor`** (arriba) — sin arreglar.
+> 2. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02 (arriba), sin confirmación todavía de que Fede la haya completado.
+> 3. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a
+>    Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **`react-router` v6→v7** — decisión de GO, no aplicado (detalle arriba).
+> 5. Decidir si/cuándo deployar `v1.195.1` a PROD — es debt cleanup + 2 features chicas, sin apuro fiscal
+>    ni migración pendiente.
+> 6. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no
+>    necesita cola; es la decisión de diseño final, sin pendiente real (recordatorio, no una tarea).
+>
+> Detalle completo: `log.md` (2026-09-02, 3 entradas tipo `fix`; 2026-09-01, tipo `deploy`),
+> `wiki/business/roadmap.md` (v1.195.1), [[wiki/features/portal-proveedores]],
+> [[wiki/features/asistente-whatsapp]], [[wiki/features/rrhh]] § RH3.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 42) — 🚀✅ DEPLOY REAL A PROD: v1.195.0 (PR #335) — Embedded
 > Signup, ESLint, Supervisión completa (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2
 >
 > Se deployó a PROD **TODO** lo acumulado en `dev` desde el último deploy real (`v1.184.0`, PR #334,
 > 2026-08-27, migración tope 385) — incluye las dos piezas grandes cerradas en la sesión anterior
-> (Ventas A1 y Portal de Proveedores Fase 2, ver el bloque cont. 41 más abajo, ahora histórico) más todo
-> lo que venía de antes sin deployar (Nivel 1 de Supervisión, A4, C1, ESLint, Embedded Signup).
+> (Ventas A1 y Portal de Proveedores Fase 2, ver el bloque cont. 41 más abajo) más todo lo que venía de
+> antes sin deployar (Nivel 1 de Supervisión, A4, C1, ESLint, Embedded Signup).
 >
 > #### Detalle del deploy
 >
@@ -32,11 +141,12 @@ type: project
 > - **Vercel**: deployment `dpl_3dL71Rg1KkKtnAn3qo6nPqgnjUUB` en estado READY, alias
 >   `app.genesis360.pro`/`genesis360.pro` sirviendo el commit `2a8ebbf4`.
 > - **Releases de GitHub** v1.185.0 a v1.195.0 retargeteados a `main` (`targetCommitish`), v1.195.0
->   marcado `latest`.
-> - **Versión anterior en PROD**: v1.184.0 (PR #334, migración tope 385). **Versión actual en PROD**:
->   v1.195.0 (migración tope 390).
+>   marcado `latest` (hasta que `v1.195.1` lo reemplazó como `latest` el 2026-09-02, ver bloque cont. 43
+>   arriba — `v1.195.1` es solo tag/release sobre `dev`, no cambia qué versión corre en PROD).
+> - **Versión anterior en PROD**: v1.184.0 (PR #334, migración tope 385). **Versión en PROD desde acá**:
+>   v1.195.0 (migración tope 390) — sigue así, ver bloque cont. 43 arriba.
 >
-> #### Qué llega a PROD con este deploy
+> #### Qué llegó a PROD con este deploy
 >
 > 1. **Supervisión — relevamiento de Fede CERRADO 100%, sin ninguna excepción**: Nivel 1 completo
 >    (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + **A1 (Ventas)** — anular
@@ -46,88 +156,8 @@ type: project
 > 3. Embedded Signup de Meta (código en PROD, sigue bloqueado por Verificación del Negocio ante Meta).
 > 4. Fix de ESLint (`npm run lint` funciona de verdad en todo el repo).
 >
-> #### 🛑 Pendiente real para la próxima sesión
->
-> 1. **Manual de GO/Fede, en el Dashboard de Supabase (no configurable por SQL/migración)**: agregar
->    `https://genesis360.pro/portal-proveedores` a **Authentication → URL Configuration → Redirect URLs**
->    en el proyecto **PROD** (`jjffnbrdjchquexdfgwq`), y el equivalente en **DEV**
->    (`gcmhzdedrkmmzfzfveig`) si no está ya — sin este paso, un link mágico real recibido por email por un
->    proveedor invitado puede fallar o redirigir mal (la sesión que construyó el Portal solo verificó el
->    flujo con login por contraseña, nunca un click real de link mágico de punta a punta).
-> 2. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a
->    Meta y reintente cuando cierre el open beta.
-> 3. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
->    Verificación del Negocio de Meta (Embedded Signup).
-> 4. Heredado: deuda de lint — **CERRADA 100% (161→0 warnings)**, en `dev`, **sin deploy a PROD todavía**
->    (queda para el próximo ciclo de release, no bumpeó `APP_VERSION`, es debt cleanup interno sin feature
->    visible). Primer tramo el 2026-09-01 (commit `785fbc4c`): 121 warnings de
->    `@typescript-eslint/no-unused-vars` (imports/variables/parámetros muertos en 41 archivos) resueltos,
->    ratchet `--max-warnings` de `package.json` 161→41. Segundo tramo el 2026-09-02 (commits `af778349` +
->    `76e91867`): los 41 warnings restantes de `react-hooks/exhaustive-deps` (21 archivos) se revisaron
->    UNO POR UNO, no un fix mecánico ciego — deps genuinamente faltantes agregadas donde era seguro (`fmt`/
->    `cfg` memoizados en 5 componentes de Dashboard + `EnviosReportesPanel.tsx`, restricciones de rol/
->    sucursal en `AppLayout.tsx`, polling de MercadoPago/MODO en `VentasPage.tsx`, y un **bug real
->    corregido de paso**: los deep-links de `InventarioPage.tsx` no reaccionaban a un segundo link
->    mientras el componente seguía montado), constantes puras hoisteadas a nivel de módulo
->    (`RUTAS_AVANZADO`, `tabValidos`, `COLS_MONETARIAS`/`COLS_NO_ADITIVAS`), funciones memoizadas con
->    `useCallback` donde hacía falta (`intentarGuardarEdicion` en `LpnAccionesModal.tsx`,
->    `fetchClienteCCDeuda` en `VentasPage.tsx`). **6 casos donde seguir la sugerencia de ESLint habría
->    introducido un bug real** quedaron con `eslint-disable-next-line` + comentario explicando por qué, en
->    vez de aplicarse ciegamente: mount-once de auth/sesión (`App.tsx`, `PortalProveedoresPage.tsx`,
->    riesgo de tenant duplicado en `OnboardingPage.tsx`), pérdida de datos editados por el usuario
->    (cantidades/lotes) en `RecepcionesPage.tsx` al cambiar de sucursal en el header, spam a la API pública
->    de Nominatim/OpenStreetMap en `VentasPage.tsx` en cada tecla del campo de destino, y 2 casos más en
->    `VentasPage.tsx` (uno de ellos, de paso, destapó y corrigió un error real de TypeScript por temporal
->    dead zone: `abrirModalDevolucion`/`ventaDetalle` están declaradas más abajo en el componente).
->    `package.json` bajó el ratchet `--max-warnings` de 41 a **0** — cualquier warning nuevo rompe
->    `npm run lint` de ahora en más.
->    - **Verificación e2e cruzada** (no se ignoraron fallos, se investigaron activamente): al aplicar los
->      cambios, una corrida de 9 specs (~101 tests, roles + Ventas + LpnAccionesModal) mostró 18 fallos con
->      patrón `waitForLoadState('networkidle')` timeout. En vez de asumir regresión, se hizo `git stash`
->      del código tocado y se corrió el MISMO batch contra el baseline sin modificar → 15 fallos con el
->      mismo patrón, en specs distintas cada vez. Confirma que es el flake no determinístico YA CONOCIDO
->      del suite (ver `reference_e2e_suite_no_deterministica`), no una regresión de esta limpieza; se
->      restauraron los cambios (`git stash pop`) tras confirmar.
->    - Verificado con `npm run build` (tsc + vite) verde + **1637 tests unitarios (100 archivos) sin
->      regresiones** (corrido 3 veces a lo largo del trabajo) + `npm run lint` → 0 problemas.
->    - 🐛 **Hallazgo real, CORREGIDO de paso (2026-09-01, primer tramo)**: `src/lib/reciboSueldoPDF.ts` —
->      la función interna `fmt()` recibía el parámetro `moneda` pero nunca lo usaba; el recibo de sueldo en
->      PDF siempre mostraba `$` sin importar `tenant.moneda`. Ahora respeta el mismo patrón de
->      `DashboardPage.tsx`/`facturasPDF.ts` (`moneda === 'USD' ? 'U$D ' : '$'`). Bug de visualización en
->      el PDF de RRHH, no afecta ningún cálculo real de nómina. Ver [[wiki/features/rrhh]] § RH3.
->    - ✅ **2 gaps de código incompleto → CERRADOS el 2026-09-02** (commit `db09f74e` en `dev`, sin deploy a
->      PROD todavía): (1) `InventarioPage.tsx` — la búsqueda de productos (modales de Ingreso y Rebaje) ahora
->      muestra 5 sugerencias (alfabético) al hacer foco en el input, antes de escribir nada — se agregó
->      `onFocus`/`onBlur` en los 2 inputs que faltaban llamar al setter de `searchFocused`. (2)
->      `UsuariosPage.tsx` — nuevo `<select>` junto a "Editar permisos" en cada fila para asignar a ese
->      usuario un rol personalizado YA EXISTENTE (antes solo se podía crear uno nuevo por usuario); la
->      mutación `assignRolCustom` (con logging de actividad) ya existía, solo estaba desconectada de
->      cualquier control. Verificado con Playwright ad-hoc contra DEV real (no solo tsc/build): foco sin
->      escribir → 5 sugerencias; asignar rol (`rrhh1` → `GO_Cajero`) → badge actualizado de inmediato
->      (round-trip UI→mutación→DB→re-render), asignación de prueba revertida después. tsc + build + lint (0
->      warnings) + 1637 tests unitarios verdes.
-> 5. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no
->    necesita cola; es la decisión de diseño final, sin pendiente real.
-> 6. **Limpieza de dependencias vulnerables (2026-09-02, en `dev`, sin deploy a PROD)**: de las 14
->    vulnerabilidades que Dependabot reportaba, **12/14 resueltas**. Los 6 PRs de Dependabot abiertos
->    apuntaban a `main` (no a `dev`) — se retargetearon a `dev` (`gh pr edit --base dev`) antes de mergear,
->    para no saltear el flujo `dev → PR → main` ni disparar un deploy a PROD sin querer. Mergeados (todos
->    transitivos, herramientas de build/dev — no runtime de la app): postcss-selector-parser (6.1.2→6.1.4),
->    browserslist (4.28.1→4.28.8), dompurify (3.4.12→3.4.13), js-yaml (4.3.0→4.3.1), fast-uri (3.1.4→3.1.5),
->    undici (7.28.0→7.29.0) — 6 merge commits de GitHub. Después `npm audit fix` (sin `--force`, commit
->    `72031706`, solo `package-lock.json`) resolvió `fast-uri` (más allá de 3.1.5) + `nanoid` (transitivo de
->    `postcss`). **Quedan 2 sin resolver, a propósito**: `react-router`/`react-router-dom` (severidad
->    moderada — open redirect + un problema de SSR hydration que probablemente no aplica, la app es SPA
->    client-side sin SSR). El fix real es v6.21.0→v7.18+, versión MAYOR con breaking changes reales en el
->    router — requiere planificar la migración y regresión completa de routing (`App.tsx`, `AppLayout.tsx`,
->    páginas con `useNavigate`/`Link`/`useParams`) antes de tocarlo. **Decisión pendiente de GO**, no
->    aplicado. El contador de "14 vulnerabilidades" de GitHub en cada push sigue así porque se calcula sobre
->    `main` (default branch), no sobre `dev` — bajará recién cuando `dev` se mergee a `main`. Verificado:
->    tsc + build + lint (0 warnings) + 1637 tests unitarios verdes después de cada bump.
->
-> Detalle completo: `log.md` (2026-09-02, tipo `fix`, entrada al principio; y 2026-09-01, tipo `deploy`),
-> `wiki/business/roadmap.md` (v1.195.0), [[wiki/features/supervision]], [[wiki/features/portal-proveedores]],
-> [[wiki/features/ventas-pos]] § VF6.
+> Detalle completo: `log.md` (2026-09-01, tipo `deploy`), `wiki/business/roadmap.md` (v1.195.0),
+> [[wiki/features/supervision]], [[wiki/features/portal-proveedores]], [[wiki/features/ventas-pos]] § VF6.
 >
 > ---
 >

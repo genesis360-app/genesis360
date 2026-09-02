@@ -71,7 +71,6 @@ export default function CajaPage() {
   const rol = user?.rol as any
   const puedeExtraerBoveda    = cajaPuede(rol, 'extraer_boveda')
   const puedeAbrirAjena       = cajaPuede(rol, 'abrir_ajena')           // A2
-  const puedeOperarCaja       = cajaPuede(rol, 'ingreso_manual')        // CONTADOR no puede
   const puedeReimprimirTicket = cajaPuede(rol, 'reimprimir_ticket_cierre')
   const puedeEditarMovimiento = cajaPuede(rol, 'editar_movimiento', configCaja)
   const esSoloLectura         = user?.rol === 'CONTADOR'                // J1 — read-only
@@ -147,7 +146,6 @@ export default function CajaPage() {
   const [notasCierre, setNotasCierre] = useState('')
   const [montoRealCierre, setMontoRealCierre] = useState('')
   // Caja solo registra ingresos manuales — los egresos van por Gastos (relevamiento G2)
-  const movTipo = 'ingreso' as const
   const [movConcepto, setMovConcepto] = useState('')
   const [movMonto, setMovMonto] = useState('')
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('')

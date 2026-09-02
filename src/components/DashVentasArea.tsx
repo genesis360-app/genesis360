@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import {
-  SlidersHorizontal, X, ChevronRight, ShoppingCart, Users, BarChart2,
-  TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, Zap,
+  SlidersHorizontal, X, ShoppingCart, Users, BarChart2,
+  TrendingUp, AlertTriangle, CheckCircle, Clock, Zap,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -11,7 +11,6 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
-import { Link } from 'react-router-dom'
 import type { DashSection } from '@/components/dashAreaSection'
 import { getFechasDashboard, getFechasAnteriores, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
 

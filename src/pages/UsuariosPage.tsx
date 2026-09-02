@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  UserPlus, Trash2, Shield, User, Mail, AlertTriangle,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Building2, Lock,
+  UserPlus, Trash2, Shield, User, Mail,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -196,7 +196,7 @@ export default function UsuariosPage() {
     onError: () => toast.error('Error al actualizar permisos'),
   })
 
-  const assignRolCustom = useMutation({
+  const _assignRolCustom = useMutation({
     mutationFn: async ({ userId, rolCustomId, nombreUsuario }: { userId: string; rolCustomId: string | null; nombreUsuario?: string }) => {
       const { error } = await supabase.from('users').update({ rol_custom_id: rolCustomId }).eq('id', userId)
       if (error) throw error

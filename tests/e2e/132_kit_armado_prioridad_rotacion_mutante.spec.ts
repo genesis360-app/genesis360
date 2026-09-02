@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, ingresoRealPorUI, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, ingresoRealPorUI } from './helpers/fixtures'
 
 test.describe('Motor de Rotación — armado de KIT prioriza el lote en descuento (mutante)', () => {
   test('iniciar armado reserva del lote de Rotación antes que del lote viejo normal', async ({ page, request }) => {

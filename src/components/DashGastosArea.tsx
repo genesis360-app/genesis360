@@ -15,7 +15,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
-import { getFechasDashboard, getFechasAnteriores, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
+import { getFechasDashboard, getFechasAnteriores, type PeriodoDash } from '@/components/FilterBar'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -165,7 +165,6 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   const gRange = { desde: gCustomDesde ?? customDesde, hasta: gCustomHasta ?? customHasta }
   const { desde, hasta } = embedded ? getFechasDashboard(gPeriodo ?? 'mes', gRange) : getGastosFechas(periodo, customRange)
   const { desde: desdePrev, hasta: hastaPrev } = embedded ? getFechasAnteriores(gPeriodo ?? 'mes', gRange) : getGastosFechasPrev(periodo, customRange)
-  const periodoLabel = embedded ? labelPeriodo(gPeriodo ?? 'mes') : PERIODO_LABELS[periodo]
   const desdeDate = desde.split('T')[0]
   const hastaDate = hasta.split('T')[0]
   const desdePrevDate = desdePrev.split('T')[0]

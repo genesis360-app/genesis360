@@ -57,7 +57,7 @@ export default function PedidosPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { tenant, user } = useAuthStore()
-  const { sucursalId, puedeVerTodas } = useSucursalFilter()
+  const { sucursalId } = useSucursalFilter()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const qc = useQueryClient()
   const confirmar = useConfirm()

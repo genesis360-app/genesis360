@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Receipt, BarChart2, BookOpen, Scale, Plus, Send, CheckCircle,
-  AlertTriangle, Download, X, ChevronDown, Filter, RefreshCw,
-  FileText, ExternalLink, Info, Building, Calendar, Printer,
+  Receipt, BarChart2, BookOpen, Scale, Send, CheckCircle,
+  AlertTriangle, Download, X, ChevronDown, RefreshCw,
+  Info, Building, Calendar, Printer,
 } from 'lucide-react'
 // xlsx se importa dinámicamente en exportarLibroIVA (auditoría perf 2026-08-14, P5).
 import QRCode from 'qrcode'
@@ -39,10 +39,10 @@ function mesLabel(m: string) {
 const DISCLAIMER = `Los valores de IVA mostrados son de carácter estimado, basados en los datos ingresados por el usuario. Genesis360 no reemplaza la labor de un profesional contable matriculado ni constituye representación contable legal ante ARCA/AFIP. La emisión de comprobantes depende de la disponibilidad de los servicios de ARCA y del proveedor del SDK.`
 
 export default function FacturacionPage() {
-  const { tenant, user } = useAuthStore()
+  const { tenant } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId } = useSucursalFilter()
-  const { limits } = usePlanLimits()
+  usePlanLimits()
   const qc = useQueryClient()
 
   const [tab, setTab]               = useState<Tab>('panel')

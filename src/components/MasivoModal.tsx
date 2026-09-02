@@ -141,7 +141,6 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
   const [prodSearch, setProdSearch] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
   const dropRef = useRef<HTMLDivElement>(null)
 
   // Cerrar dropdown al click fuera
@@ -192,15 +191,6 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     queryKey: ['proveedores', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('proveedores').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
-      return data ?? []
-    },
-    enabled: !!tenant,
-  })
-
-  const { data: motivos = [] } = useQuery({
-    queryKey: ['motivos', tenant?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('motivos_movimiento').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
     enabled: !!tenant,

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, AreaChart, Area, CartesianGrid,
+  PieChart, Pie,
 } from 'recharts'
 import { SlidersHorizontal, X, Shield, AlertTriangle, CheckCircle, Clock, BarChart2, Zap, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'

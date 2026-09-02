@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
@@ -379,7 +379,7 @@ export default function VentasPage() {
     })
   }
   const qc = useQueryClient()
-  const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
+  const { grupos, grupoDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -562,7 +562,6 @@ export default function VentasPage() {
   // ISS-072: MODO link + QR
   const [modoModal, setModoModal] = useState<{ qrDataUrl: string; deepLink: string; paymentId: string } | null>(null)
   const [generandoModo, setGenerandoModo] = useState(false)
-  const [modoConectado, setModoConectado] = useState<boolean | null>(null)
   const [preVentaId, setPreVentaId] = useState<string | null>(null)
   const [mpPagoRecibido, setMpPagoRecibido] = useState(false)
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
@@ -620,16 +619,6 @@ export default function VentasPage() {
       setModoModal({ qrDataUrl, deepLink: json.deep_link, paymentId: json.payment_id })
     } catch (e: any) { toast.error(e.message ?? 'Error al conectar con MODO') }
     finally { setGenerandoModo(false) }
-  }
-
-  // Verificar si MODO está conectado (lazy, solo cuando se necesita)
-  const checkModoConectado = async () => {
-    if (modoConectado !== null) return modoConectado
-    const { data } = await supabase.from('modo_credentials')
-      .select('conectado').eq('tenant_id', tenant!.id).maybeSingle()
-    const conectado = data?.conectado ?? false
-    setModoConectado(conectado)
-    return conectado
   }
 
   // ISS-072: Polling MODO — detecta pago mientras el QR está visible
@@ -3068,9 +3057,6 @@ export default function VentasPage() {
     return raw
   }
 
-  const totalAsignado = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
-  const totalFaltante = total - totalAsignado
-
   // ISS-090: CC como método de pago parcial (derivado de mediosPago)
   const montoCC = mediosPago.filter(m => m.tipo === 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const modoCC = montoCC > 0
@@ -4271,7 +4257,6 @@ export default function VentasPage() {
     // "Efectivo USD") ahora sí genera su egreso de caja en vez de perderse sin rastro.
     const hayEfectivoArs = mediosValidos.some(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo))
     const hayEfectivoUsd = mediosValidos.some(m => mediosEfectivoUsd.has(m.tipo))
-    const hayEfectivo = hayEfectivoArs || hayEfectivoUsd
 
     if (aplicarADeuda > 0 && montoARefundir <= 0.5 && totalMedios > 0.5) {
       toast.error(`Este cliente tiene deuda de ${fmt0(deudaActual)}: la devolución de ${fmt0(montoTotal)} se aplica completa a su deuda. No corresponde devolución monetaria — quitá los medios.`)

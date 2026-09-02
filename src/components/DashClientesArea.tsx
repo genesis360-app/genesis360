@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, ComposedChart, Line,
 } from 'recharts'
 import {
   SlidersHorizontal, X, Users, TrendingUp, TrendingDown, AlertTriangle,
@@ -24,16 +23,6 @@ function fmtCorto(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
   return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-}
-
-function CohortTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg px-3 py-2 text-xs">
-      <p className="font-semibold text-gray-800 dark:text-gray-100">{label}</p>
-      <p className="text-accent-text">{payload[0]?.value ?? 0}% retención</p>
-    </div>
-  )
 }
 
 export function DashClientesArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
@@ -62,7 +51,6 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
     queryFn: async () => {
       const hoy = new Date()
       const hace90  = new Date(Date.now() - 90  * 86400000).toISOString()
-      const hace180 = new Date(Date.now() - 180 * 86400000).toISOString()
       const hace365 = new Date(Date.now() - 365 * 86400000).toISOString()
       const hace12m_start = new Date(hoy.getFullYear() - 1, hoy.getMonth(), 1).toISOString()
       const hace6m_start  = new Date(hoy.getFullYear(), hoy.getMonth() - 6, 1).toISOString()

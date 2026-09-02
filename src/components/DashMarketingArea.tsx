@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, ComposedChart, Line, ScatterChart, Scatter, CartesianGrid, ReferenceLine,
+  PieChart, Pie, ComposedChart, Line, ReferenceLine,
 } from 'recharts'
 import { SlidersHorizontal, X, TrendingUp, TrendingDown, Zap, AlertTriangle, CheckCircle, Clock, BarChart2, Target } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -100,7 +100,6 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
       // Ganancia neta total
       let gananciaNeta = 0
       let totalVentas = 0
-      const clientesNuevosEstim = 0
       for (const v of ventas ?? []) {
         const neto = netoMap[v.id] ?? (v.total ?? 0)
         const costo = costoMap[v.id] ?? 0
@@ -126,7 +125,6 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
 
       // ── KPI: CAC ────────────────────────────────────────────────────────
       // Nuevos clientes en el mes (primera compra)
-      const hace30 = new Date(Date.now() - 30 * 86400000).toISOString()
       const clientesMes = new Set((ventas ?? []).filter((v: any) => v.cliente_id).map((v: any) => v.cliente_id))
       const { data: historial = [] } = await supabase.from('ventas')
         .select('cliente_id').eq('tenant_id', tenant!.id)

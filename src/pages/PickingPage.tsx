@@ -11,7 +11,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { useConfirm } from '@/hooks/useConfirm'
 import {
   parsearPildora, evaluarPildora, evaluarPildoras, CAMPOS_FILTRO, esCampoNumerico,
-  type Pildora, type CampoFiltro, type OperadorFiltro, type Combinador,
+  type Pildora, type Combinador,
 } from '@/lib/pickingFiltro'
 import toast from 'react-hot-toast'
 

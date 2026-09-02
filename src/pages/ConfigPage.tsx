@@ -5,8 +5,7 @@ import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, Mess
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
-import { estadoVigenciaCombo, hoyLocalISO } from '@/lib/ventasValidation'
-import { descuentoDeConfig, etiquetaPromo, DIAS_SEMANA_CORTOS, type DescuentoMetodoPago } from '@/lib/promosPago'
+import { descuentoDeConfig, etiquetaPromo, DIAS_SEMANA_CORTOS } from '@/lib/promosPago'
 import { normalizarReglasGratis, describirReglaGratis, type ReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, enumLegacyDeCampos } from '@/lib/clienteCampos'
 import { supabase } from '@/lib/supabase'
@@ -30,7 +29,7 @@ import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
-import { useConfirm, usePrompt } from '@/hooks/useConfirm'
+import { useConfirm } from '@/hooks/useConfirm'
 import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion, FACTOR_APROVECHAMIENTO_DEFAULT } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import { breadcrumbUbicacion, descendientesDeUbicacion, ordenarArbolUbicaciones } from '@/lib/ubicacionesArbol'
@@ -719,7 +718,6 @@ export default function ConfigPage() {
   const { tenant, user, setTenant, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const confirmar = useConfirm()
-  const preguntar = usePrompt()
   const canEdit = user?.rol === 'DUEÑO'
   const { avanzado: modoAvanzado } = useModoOperacion()
 
@@ -8395,7 +8393,6 @@ function ApiTab({ tenantId, isOwner }: { tenantId: string; isOwner: boolean }) {
     onSuccess: () => { toast.success('Key revocada'); qc.invalidateQueries({ queryKey: ['api_keys', tenantId] }) },
   })
 
-  const DEV_URL  = 'https://gcmhzdedrkmmzfzfveig.supabase.co/functions/v1/data-api'
   const PROD_URL = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/data-api'
 
   return (

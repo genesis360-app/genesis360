@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import {
-  cantidadDe, totalAsignado, restanteDeLinea, totalAMover,
+  restanteDeLinea, totalAMover,
   construirAsignaciones, validarBorrador, repartirEnPartesIguales,
   construirAsignacionesSeries, validarBorradorSeries, totalSeriesAsignadas,
   seriesAsignadasDeLinea,

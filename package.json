@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 161",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 41",
     "ai:knowledge": "node scripts/build-ai-knowledge.mjs",
     "ai:smoke": "node scripts/smoke-ai-assistant.mjs",
     "schema:dump": "node scripts/dump-schema.mjs",

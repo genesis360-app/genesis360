@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
-  Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
+  Plus, Search, Package, AlertTriangle, Camera, ChevronDown,
+  Edit2, Layers, X, Trash2, ChevronUp, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
   DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
   SlidersHorizontal, ClipboardList, CheckCircle2, UserCog,

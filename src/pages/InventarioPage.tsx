@@ -22,7 +22,6 @@ import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
-import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
@@ -34,7 +33,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
-import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
+import type { Producto, KitReceta, InventarioConteo } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
@@ -43,7 +42,7 @@ import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
 import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentaciones'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
-import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
+import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
 import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
 import { ListaConteoFooter } from '@/components/ListaConteoFooter'
@@ -99,7 +98,6 @@ export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
@@ -118,7 +116,6 @@ export default function InventarioPage() {
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
   const [form, setForm] = useState(emptyIngreso)
   const [series, setSeries] = useState<string[]>([''])
-  const [rebajeLpn, setRebajeLpn] = useState('')
   const [rebajeLinea, setRebajeLinea] = useState<any | null>(null)
   // ISS-127 F3d: pendientes tras escanear un código compuesto
   const [pendingRebaje, setPendingRebaje] = useState<{ lote?: string; cantidad?: number } | null>(null)
@@ -130,7 +127,7 @@ export default function InventarioPage() {
   const [rebajeSearch, setRebajeSearch] = useState('')
   const [rebajeGrupoId, setRebajeGrupoId] = useState<string | null>(null)
   const [movDetalle, setMovDetalle] = useState<any | null>(null)
-  const [searchFocused, setSearchFocused] = useState(false)
+  const [searchFocused, _setSearchFocused] = useState(false)
   const [ingresoMotivoSelect, setIngresoMotivoSelect] = useState('')
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
@@ -1201,15 +1198,6 @@ export default function InventarioPage() {
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  const cambiarEstadoLinea = useMutation({
-    mutationFn: async ({ lineaId, estadoId }: { lineaId: string; estadoId: string }) => {
-      const { error } = await supabase.from('inventario_lineas').update({ estado_id: estadoId || null }).eq('id', lineaId)
-      if (error) throw error
-    },
-    onSuccess: () => { toast.success('Estado actualizado'); qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] }) },
-    onError: () => toast.error('Error al actualizar'),
-  })
-
   const ingresoMutation = useMutation({
     mutationFn: async () => {
       if (moduloSoloLectura(user, 'movimientos')) throw new Error('Tu rol tiene acceso de solo lectura en Inventario.')
@@ -2180,7 +2168,7 @@ export default function InventarioPage() {
   const closeModal = () => {
     setModal(null); setSelectedProduct(null)
     setForm(emptyIngreso); setSeries([''])
-    setRebajeLpn(''); setRebajeLinea(null)
+    setRebajeLinea(null)
     setRebajeCantidad(''); setRebajeMotivo(''); setRebajeSeries([])
     setRebajeSearch(''); setRebajeGrupoId(null)
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
@@ -2724,7 +2712,6 @@ export default function InventarioPage() {
 
   const tieneSeries = selectedProduct && (selectedProduct as any).tiene_series
   const limiteAlcanzado = limits ? !limits.puede_crear_movimiento : false
-  const limiteWarning = limits && limits.max_movimientos !== -1 && limits.pct_movimientos >= 80
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

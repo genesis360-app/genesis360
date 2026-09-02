@@ -4,8 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X, Search,
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
-  Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
-  Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock, FileCheck, BarChart3,
+  Info, ChevronRight, Bell, History, ShoppingCart, AlertCircle,
+  Clock, CreditCard, DollarSign, Landmark, Lock, FileCheck, BarChart3,
   MessageCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -177,7 +177,7 @@ export default function GastosPage() {
     : ['Factura B', 'Factura C', 'Ticket']
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'whatsapp', 'cierres'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
@@ -263,7 +263,6 @@ export default function GastosPage() {
   const [ocBusqueda, setOcBusqueda] = useState(() => searchParams.get('oc') ?? '')
   const [ocModalId, setOcModalId]                   = useState<string | null>(null)
   const [ocMediosPago, setOcMediosPago]             = useState<{tipo: string; monto: string}[]>([{tipo: 'Transferencia', monto: ''}])
-  const [ocPagoTipo, setOcPagoTipo]                 = useState<'pago' | 'cc'>('pago')
   const [ocPagoDias, setOcPagoDias]                 = useState('30')
   const [ocPagoCondiciones, setOcPagoCondiciones]   = useState('')
   const [ocGuardando, setOcGuardando]               = useState(false)
@@ -544,7 +543,7 @@ export default function GastosPage() {
   })
 
   // ── Tab OC — queries ─────────────────────────────────────────────────────
-  const { data: ocs = [], isLoading: loadingOcs, refetch: refetchOcs } = useQuery({
+  const { data: ocs = [], isLoading: loadingOcs } = useQuery({
     queryKey: ['oc-gastos', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await applyFilter(
@@ -625,7 +624,7 @@ export default function GastosPage() {
   })
 
   // ── Tab Recursos — gastos vinculados a recursos ───────────────────────────
-  const { data: gastosRecursos = [], refetch: refetchGastosRecursos } = useQuery({
+  const { data: gastosRecursos = [] } = useQuery({
     queryKey: ['gastos-recursos', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await applyFilter(

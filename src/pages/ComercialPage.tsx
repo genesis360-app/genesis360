@@ -14,7 +14,7 @@
  * mismo patrón que ya usa la app para restringir cualquier otro módulo.
  */
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Gift, Tag, Plus, X, Trash2, ChevronDown, ChevronUp, Copy, ToggleLeft, ToggleRight, Percent,
 } from 'lucide-react'

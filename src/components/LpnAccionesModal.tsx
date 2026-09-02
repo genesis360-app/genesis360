@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
-  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers, ClipboardList, ScanBarcode
+  MapPin, Tag, Package, AlertTriangle, Save, QrCode, ClipboardList, ScanBarcode
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'

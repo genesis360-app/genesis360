@@ -95,20 +95,38 @@ type: project
 >      PDF siempre mostraba `$` sin importar `tenant.moneda`. Ahora respeta el mismo patrón de
 >      `DashboardPage.tsx`/`facturasPDF.ts` (`moneda === 'USD' ? 'U$D ' : '$'`). Bug de visualización en
 >      el PDF de RRHH, no afecta ningún cálculo real de nómina. Ver [[wiki/features/rrhh]] § RH3.
->    - 📝 **2 gaps de código incompleto documentados, NO corregidos** (sin cambios en este segundo tramo,
->      renombrados con prefijo `_` para silenciar el lint, lógica preservada, a criterio de GO si se
->      completan después): (1) `InventarioPage.tsx` — el estado `searchFocused` se lee pero su setter
->      (`_setSearchFocused`) nunca se llama desde ningún `onFocus`, por lo que la búsqueda de productos no
->      se activa hoy solo con hacer foco en el input. (2) `UsuariosPage.tsx` — la mutación
->      `_assignRolCustom` (asignar un rol personalizado YA EXISTENTE a otro usuario, con logging de
->      actividad incluido) nunca se llama desde ningún botón; la UI de "Roles personalizados" sugiere
->      textualmente que se pueden asignar como capa adicional, pero en la práctica solo se puede crear un
->      rol nuevo por usuario (`saveUserPermisos`).
+>    - ✅ **2 gaps de código incompleto → CERRADOS el 2026-09-02** (commit `db09f74e` en `dev`, sin deploy a
+>      PROD todavía): (1) `InventarioPage.tsx` — la búsqueda de productos (modales de Ingreso y Rebaje) ahora
+>      muestra 5 sugerencias (alfabético) al hacer foco en el input, antes de escribir nada — se agregó
+>      `onFocus`/`onBlur` en los 2 inputs que faltaban llamar al setter de `searchFocused`. (2)
+>      `UsuariosPage.tsx` — nuevo `<select>` junto a "Editar permisos" en cada fila para asignar a ese
+>      usuario un rol personalizado YA EXISTENTE (antes solo se podía crear uno nuevo por usuario); la
+>      mutación `assignRolCustom` (con logging de actividad) ya existía, solo estaba desconectada de
+>      cualquier control. Verificado con Playwright ad-hoc contra DEV real (no solo tsc/build): foco sin
+>      escribir → 5 sugerencias; asignar rol (`rrhh1` → `GO_Cajero`) → badge actualizado de inmediato
+>      (round-trip UI→mutación→DB→re-render), asignación de prueba revertida después. tsc + build + lint (0
+>      warnings) + 1637 tests unitarios verdes.
 > 5. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no
 >    necesita cola; es la decisión de diseño final, sin pendiente real.
+> 6. **Limpieza de dependencias vulnerables (2026-09-02, en `dev`, sin deploy a PROD)**: de las 14
+>    vulnerabilidades que Dependabot reportaba, **12/14 resueltas**. Los 6 PRs de Dependabot abiertos
+>    apuntaban a `main` (no a `dev`) — se retargetearon a `dev` (`gh pr edit --base dev`) antes de mergear,
+>    para no saltear el flujo `dev → PR → main` ni disparar un deploy a PROD sin querer. Mergeados (todos
+>    transitivos, herramientas de build/dev — no runtime de la app): postcss-selector-parser (6.1.2→6.1.4),
+>    browserslist (4.28.1→4.28.8), dompurify (3.4.12→3.4.13), js-yaml (4.3.0→4.3.1), fast-uri (3.1.4→3.1.5),
+>    undici (7.28.0→7.29.0) — 6 merge commits de GitHub. Después `npm audit fix` (sin `--force`, commit
+>    `72031706`, solo `package-lock.json`) resolvió `fast-uri` (más allá de 3.1.5) + `nanoid` (transitivo de
+>    `postcss`). **Quedan 2 sin resolver, a propósito**: `react-router`/`react-router-dom` (severidad
+>    moderada — open redirect + un problema de SSR hydration que probablemente no aplica, la app es SPA
+>    client-side sin SSR). El fix real es v6.21.0→v7.18+, versión MAYOR con breaking changes reales en el
+>    router — requiere planificar la migración y regresión completa de routing (`App.tsx`, `AppLayout.tsx`,
+>    páginas con `useNavigate`/`Link`/`useParams`) antes de tocarlo. **Decisión pendiente de GO**, no
+>    aplicado. El contador de "14 vulnerabilidades" de GitHub en cada push sigue así porque se calcula sobre
+>    `main` (default branch), no sobre `dev` — bajará recién cuando `dev` se mergee a `main`. Verificado:
+>    tsc + build + lint (0 warnings) + 1637 tests unitarios verdes después de cada bump.
 >
-> Detalle completo: `log.md` (2026-09-01, tipo `deploy`, entrada al principio), `wiki/business/roadmap.md`
-> (v1.195.0), [[wiki/features/supervision]], [[wiki/features/portal-proveedores]],
+> Detalle completo: `log.md` (2026-09-02, tipo `fix`, entrada al principio; y 2026-09-01, tipo `deploy`),
+> `wiki/business/roadmap.md` (v1.195.0), [[wiki/features/supervision]], [[wiki/features/portal-proveedores]],
 > [[wiki/features/ventas-pos]] § VF6.
 >
 > ---

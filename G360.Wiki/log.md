@@ -6,6 +6,57 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-02] fix | ✅ 2 gaps de UX completados (Inventario+Usuarios) + limpieza de dependencias vulnerables (12/14)
+
+Dos piezas de trabajo independientes, ambas en `dev`, pusheadas a `origin/dev`, **sin deploy a PROD
+todavía**.
+
+**Pieza 1 — Los 2 gaps de UX documentados el 2026-09-01/02 (commit `db09f74e`)**: GO dio el visto bueno
+explícito ("avanza con los 2 temas de UX para corregir"). (1) `InventarioPage.tsx` — la búsqueda de
+productos en los modales de Ingreso y Rebaje de stock ahora muestra 5 sugerencias (alfabético) al hacer
+foco en el campo, antes de escribir nada: el estado `searchFocused` y la query `productos-busqueda` ya lo
+soportaban vía `enabled`, pero ningún `<input>` llamaba a su setter — se agregó `onFocus`/`onBlur` en los 2
+inputs. (2) `UsuariosPage.tsx` — nuevo `<select>` junto al botón "Editar permisos" de cada fila de usuario
+para asignarle un **rol personalizado YA EXISTENTE** (antes solo se podía crear uno nuevo por usuario desde
+el editor de permisos, pese a que la sección "Roles personalizados" prometía en su copy "asignálos a
+usuarios"). La mutación `assignRolCustom` (con logging de actividad) ya existía, solo estaba desconectada
+de cualquier control — se renombró de `_assignRolCustom` a su nombre real y se conectó al `<select>` nuevo.
+
+**Verificado en navegador real contra DEV** (no solo tsc/build): Playwright ad-hoc confirmó que enfocar el
+buscador de Inventario muestra 5 sugerencias sin escribir nada, y que asignar un rol personalizado
+existente a un usuario (`rrhh1` → `GO_Cajero`) actualiza el badge de inmediato (round-trip
+UI→mutación→DB→re-render) — la asignación de prueba se revirtió después para no dejar datos de test en el
+tenant. tsc + build + lint (0 warnings) + 1637 tests unitarios verdes.
+
+**Pieza 2 — Limpieza de dependencias vulnerables (14 reportadas por Dependabot)**: GO pidió seguir con "lo
+de github". Los 6 PRs de Dependabot ya abiertos apuntaban a `main` (default branch), no a `dev` —
+mergearlos directo hubiera saltado el flujo `dev → PR → main` (con su checklist de deploy) y disparado un
+deploy a PROD vía Vercel sin pasar por `dev`. Se retargetearon los 6 a `dev` (`gh pr edit --base dev`)
+antes de mergear: postcss-selector-parser (6.1.2→6.1.4), browserslist (4.28.1→4.28.8), dompurify
+(3.4.12→3.4.13), js-yaml (4.3.0→4.3.1), fast-uri (3.1.4→3.1.5), undici (7.28.0→7.29.0) — 6 merge commits de
+GitHub (de `db09f74e` en adelante hasta `ef248b17`), todos transitivos (herramientas de build/dev, no
+runtime de la app), CI verde. Después `npm audit fix` (sin `--force`, commit `72031706`, solo toca
+`package-lock.json`) resolvió 2 más: `fast-uri` (necesitaba ir más allá de 3.1.5) y `nanoid` (transitivo de
+`postcss`).
+
+**Total: 12 de 14 vulnerabilidades resueltas.** Quedan **2 sin resolver, a propósito**:
+`react-router`/`react-router-dom` (severidad moderada — open redirect + un problema de SSR hydration que
+probablemente no aplica, porque esta app es una SPA client-side sin SSR). El fix real exige pasar de
+v6.21.0 a v7.18+ — versión MAYOR con breaking changes reales en la librería de ruteo, no un patch
+automático — requiere planificar la migración y correr regresión completa sobre todo el routing
+(`App.tsx`, `AppLayout.tsx`, cualquier página con `useNavigate`/`Link`/`useParams`) antes de tocarlo.
+**Queda como decisión pendiente de GO**, no aplicado.
+
+Verificado: tsc + build + lint (0 warnings) + 1637 tests unitarios verdes después de cada bump.
+
+**Nota**: el contador de "14 vulnerabilidades" que GitHub sigue mostrando en cada `git push` se calcula
+sobre `main` (default branch), no sobre `dev` — va a bajar recién cuando `dev` se mergee a `main` en el
+próximo deploy. Es esperado, no un error.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", ítems 4 y 6).
+
+---
+
 ## [2026-09-02] fix | 🧹✅ Limpieza de deuda ESLint CERRADA 100% (161→0 warnings)
 
 Commits `af778349` + `76e91867` en `dev`, pusheados a `origin/dev`, **sin deploy a PROD todavía** (mismo

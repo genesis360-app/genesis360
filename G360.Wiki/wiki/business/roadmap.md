@@ -8,16 +8,30 @@ updated: 2026-09-02
 
 # Roadmap y Versiones
 
-**Versión en DEV (tag, sin deploy a PROD):** v1.195.1 — release de **mantenimiento interno**, publicado
-2026-09-02 (commit `1be9e697`, tag+release `targetCommitish: dev`, marcado `latest`). Cierra bajo una sola
-versión 3 piezas hechas en `dev` desde el deploy real de v1.195.0: **ESLint 100% (161→0 warnings)** — 121
-`no-unused-vars` + 41 `react-hooks/exhaustive-deps` revisados uno por uno, `--max-warnings` en 0; **2
-features de UX** — búsqueda con foco en Inventario, asignar rol personalizado existente en Usuarios; y
-**dependencias vulnerables (12/14 resueltas)** — 6 PRs de Dependabot + `npm audit fix`, quedan
-`react-router`/`react-router-dom` (v6→v7, decisión pendiente de GO). Ningún cambio de este release tocó
-PROD — no hay migración nueva ni feature visible para el usuario final. Detalle: [[wiki/features/rrhh]] §
-RH3 (bug de moneda en recibo de sueldo, corregido de paso), `log.md` (2026-09-02, 3 entradas `fix`),
-`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+**Versión en DEV (tag, sin deploy a PROD):** v1.195.2 — publicado 2026-09-02 (commit `6dc9ff8c`,
+tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.2 — Fix APP_URL en
+invitar-proveedor"). Reemplaza a v1.195.1 (commit `1be9e697`, mismo día) como último tag de `dev`. Cambio:
+`supabase/functions/invitar-proveedor/index.ts` (commit `899fa10b`) pasó `APP_URL` de hardcode puro a
+`Deno.env.get('APP_URL') ?? 'https://genesis360.pro'` (mismo patrón que el resto de las Edge Functions del
+proyecto) + un `console.warn` no bloqueante cuando la función corre en DEV. **No es un fix completo**: se
+confirmó (vía `mcp__claude_ai_Vercel__get_project`) que no existe NINGÚN frontend público que hable con el
+proyecto de Supabase de DEV — todos los dominios de Vercel (`app.genesis360.pro`, `www.genesis360.pro`,
+`genesis360.pro`) apuntan al deployment de PROD. El problema de fondo (JWT firmado por DEV, verificado por
+un frontend que inicializa su cliente contra PROD) sigue sin resolver — requeriría un frontend público
+nuevo para DEV, fuera de alcance de esta sesión. Deployado a la Edge Function de DEV
+(`gcmhzdedrkmmzfzfveig`, versión 2, `ACTIVE`) — **NO a la de PROD**. Ningún cambio de este release tocó
+PROD — no hay migración nueva. Detalle: `log.md` (2026-09-02, tipo `fix`),
+[[wiki/features/portal-proveedores]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 44).
+
+Anterior en la misma tanda de mantenimiento — **v1.195.1** (commit `1be9e697`, 2026-09-02, sin deploy a
+PROD): release de mantenimiento interno que cierra bajo una sola versión 3 piezas hechas en `dev` desde el
+deploy real de v1.195.0: **ESLint 100% (161→0 warnings)** — 121 `no-unused-vars` + 41
+`react-hooks/exhaustive-deps` revisados uno por uno, `--max-warnings` en 0; **2 features de UX** — búsqueda
+con foco en Inventario, asignar rol personalizado existente en Usuarios; y **dependencias vulnerables
+(12/14 resueltas)** — 6 PRs de Dependabot + `npm audit fix`, quedan `react-router`/`react-router-dom`
+(v6→v7, decisión pendiente de GO). Ningún cambio de esta pieza tocó PROD — no hay migración nueva ni
+feature visible para el usuario final. Detalle: [[wiki/features/rrhh]] § RH3 (bug de moneda en recibo de
+sueldo, corregido de paso), `log.md` (2026-09-02, 3 entradas `fix`).
 
 **Versión en PROD:** v1.195.0 (código — 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
 Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" mergeado `dev`→`main` (merge

@@ -6,9 +6,92 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-02, cont. 43) — 🏷️ Tanda de mantenimiento cerrada bajo `v1.195.1` (tag +
+> ### 🛑 ARRANCÁ ACÁ (2026-09-02, cont. 44) — 🩹 Fix PARCIAL de `APP_URL` en `invitar-proveedor` (v1.195.2,
+> tag+release en `dev`, SIN deploy a PROD) — el problema de fondo (sin frontend público de DEV) sigue sin
+> resolver
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios**, sigue igual que en los bloques
+>   cont. 43/42 de abajo. Nada de esta entrada llegó a PROD todavía.
+> - **DEV / tag**: `v1.195.2` (commit `6dc9ff8c`, tag+release publicados el 2026-09-02, `targetCommitish:
+>   dev`, marcado `latest`, título "v1.195.2 — Fix APP_URL en invitar-proveedor") — reemplaza a `v1.195.1`
+>   (commit `1be9e697`, mismo día, ver bloque cont. 43 abajo) como último tag de `dev`. Sin migración nueva,
+>   sin deploy a PROD.
+>
+> #### Qué se investigó ANTES de tocar código
+>
+> Se retomó el pendiente #1 de este archivo (heredado de cont. 43): el bug de `APP_URL` hardcodeado en
+> `supabase/functions/invitar-proveedor/index.ts` línea 25. La investigación mostró que el problema es MÁS
+> PROFUNDO que un hardcode: **no existe NINGÚN frontend público que hable con el proyecto de Supabase de
+> DEV** (`gcmhzdedrkmmzfzfveig`) — solo `localhost:5173` vía `.env.local`. Verificado contra Vercel
+> (`mcp__claude_ai_Vercel__get_project`, proyecto `genesis360`, `prj_P3wFYxAVTWMuKsXA04oR7g3V8495`): los
+> únicos dominios configurados (`app.genesis360.pro`, `www.genesis360.pro`, `genesis360.pro`, alias de
+> `main`) apuntan TODOS al mismo deployment de PROD — no hay un dominio de `dev` alcanzable.
+>
+> **Conclusión real**: el bug NO es "la URL de redirect está mal" — es que `admin.generateLink()` firma el
+> JWT con la clave del proyecto de Supabase donde corre la función (DEV), pero el único destino público
+> alcanzable (`genesis360.pro`) inicializa su cliente de Supabase contra PROD. La verificación de firma del
+> JWT falla en el primer request real después del magic link, la sesión del proveedor se rompe SIEMPRE que
+> la invitación se genere desde una función corriendo en DEV, sin importar qué URL de redirect se use.
+> Cambiar solo la URL no resuelve el problema de fondo — el fix completo real requeriría desplegar un
+> frontend público que hable con DEV (infra nueva, fuera de alcance de esta sesión).
+>
+> #### Qué se hizo (fix de código real, no un fix completo — commit `899fa10b`, `dev`)
+>
+> 1. `APP_URL` pasó de `const APP_URL = 'https://genesis360.pro'` (hardcode puro) a
+>    `Deno.env.get('APP_URL') ?? 'https://genesis360.pro'` — mismo patrón que ya usan `mp-oauth-callback`,
+>    `tn-oauth-callback`, `mp-crear-link-pago`, `mp-addon`, `modo-crear-pago`, `billing-manual-pagar` en el
+>    mismo repo. Lo hace configurable (útil el día que exista un frontend de DEV real) y consistente con el
+>    resto del código — el fallback sigue siendo `genesis360.pro` (no `app.genesis360.pro`, que es el
+>    dominio efectivamente registrado en el Redirect URL allowlist de Supabase Auth para
+>    `/portal-proveedores`, ver bloque cont. 43 sobre las Redirect URLs).
+> 2. Constante nueva `ES_DEV` (detecta si `SUPABASE_URL` contiene el ref del proyecto de DEV) +
+>    `console.warn` NO bloqueante que se dispara cuando `invitar-proveedor` corre en DEV, explicando en el
+>    log por qué la sesión del proveedor va a fallar. Antes esto fallaba en silencio (sin rastro en logs).
+> 3. Deployado a la Edge Function de **DEV** (`gcmhzdedrkmmzfzfveig`) vía MCP — versión 2, status `ACTIVE`,
+>    verificado que compila y corre en el runtime real de Deno de Supabase. **NO deployado a PROD** (eso
+>    requiere pasar por el flujo normal de PR `dev→main` + checklist de deploy).
+> 4. Verificado: `npm run build` (tsc+vite) verde después del cambio.
+> 5. **Bump + tag + release**: `APP_VERSION` → `v1.195.2` (commit `6dc9ff8c`), tag y release de GitHub
+>    publicados sobre `dev` (`--target dev --latest`, título "v1.195.2 — Fix APP_URL en invitar-proveedor").
+>    **PROD sigue en `v1.195.0`** — ni `v1.195.1` ni `v1.195.2` llegaron a PROD todavía, son tags/releases
+>    sobre `dev` que cierran unidades de trabajo (mismo criterio que la sesión anterior).
+>
+> #### 🛑 Sigue SIN resolver — no marcar como cerrado
+>
+> El problema de fondo (no hay frontend de DEV público) sigue existiendo. Lo que se resolvió es la deuda de
+> código (hardcode → configurable) y el fallo silencioso (ahora hay warning en logs) — **no** el bug de
+> fondo. **Invitar a un proveedor real desde un tenant de DEV va a seguir fallando al establecer la sesión
+> del proveedor** hasta que exista un frontend público que hable con el proyecto de DEV, o se decida
+> explícitamente que esta feature solo se prueba de punta a punta en PROD (que es la situación de facto
+> hoy). No bloqueante: ningún proveedor real existe en DEV (tenant de prueba), y las invitaciones reales
+> solo van a importar en PROD.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **Bug de `APP_URL` — PARCIALMENTE arreglado** (arriba): código prolijo + warning en logs, pero el
+>    problema de fondo de infra (sin frontend público de DEV) sigue igual. Sigue en la lista hasta que se
+>    resuelva de raíz o se decida explícitamente que el flujo solo se prueba en PROD.
+> 2. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02, sin confirmación todavía de que Fede la haya completado.
+> 3. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    y reintente cuando cierre el open beta.
+> 4. Heredado: **`react-router` v6→v7** — decisión de GO, no aplicado.
+> 5. Decidir si/cuándo deployar `v1.195.1`/`v1.195.2` a PROD — debt cleanup + fix parcial, sin apuro fiscal
+>    ni migración pendiente.
+> 6. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no necesita
+>    cola; recordatorio, no una tarea.
+>
+> Detalle completo: `log.md` (2026-09-02, tipo `fix`), `wiki/business/roadmap.md` (v1.195.2),
+> [[wiki/features/portal-proveedores]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-02, cont. 43) — 🏷️ Tanda de mantenimiento cerrada bajo `v1.195.1` (tag +
 > release en `dev`, SIN deploy a PROD) — ESLint 100%, 2 features UX, dependencias; Redirect URLs de
-> Supabase YA CONFIGURADAS por GO; 1 bug nuevo encontrado sin arreglar
+> Supabase YA CONFIGURADAS por GO; 1 bug nuevo encontrado sin arreglar — este bloque quedó SUPERADO por el
+> de arriba (cont. 44): bug de `APP_URL` parcialmente arreglado
 >
 > #### Versión actual — PROD vs. DEV, no confundir
 >

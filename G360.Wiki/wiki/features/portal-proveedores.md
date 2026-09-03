@@ -1,6 +1,6 @@
 ---
 name: portal-proveedores
-description: Portal externo para que un PROVEEDOR (identidad separada de `users`, puede vincularse a varios negocios) vea las Órdenes de Compra que un negocio le mandó y proponga precio por ítem — el staff revisa y "aplica" a mano, nunca se automatiza un compromiso de pago (REGLA #0). Identidad (mig 387, v1.188.0) + acceso real a OC/invitación/UI (mig 390, v1.195.0) — 2ª mitad de la propuesta de Fede del 25/8/2026, la otra mitad fue el Asistente de WhatsApp (ver [[wiki/features/asistente-whatsapp]]). ✅ EN PROD desde el 2026-09-01 (PR #335); Redirect URLs de Supabase Auth ya configuradas (2026-09-02); queda pendiente 1 bug real de `APP_URL` hardcodeada en `invitar-proveedor` (bajo impacto hoy, ver más abajo).
+description: Portal externo para que un PROVEEDOR (identidad separada de `users`, puede vincularse a varios negocios) vea las Órdenes de Compra que un negocio le mandó y proponga precio por ítem — el staff revisa y "aplica" a mano, nunca se automatiza un compromiso de pago (REGLA #0). Identidad (mig 387, v1.188.0) + acceso real a OC/invitación/UI (mig 390, v1.195.0) — 2ª mitad de la propuesta de Fede del 25/8/2026, la otra mitad fue el Asistente de WhatsApp (ver [[wiki/features/asistente-whatsapp]]). ✅ EN PROD desde el 2026-09-01 (PR #335); Redirect URLs de Supabase Auth ya configuradas (2026-09-02). `APP_URL` hardcodeada en `invitar-proveedor` PARCIALMENTE arreglada (v1.195.2, 2026-09-02, código configurable + warning en logs), pero el problema de fondo (no hay frontend público de DEV) sigue sin resolver — ver más abajo.
 sources: [migration 387, migration 387b, migration 387c, migration 390, supabase/functions/invitar-proveedor, supabase/functions/send-email, src/pages/PortalProveedoresPage.tsx, src/pages/ProveedoresPage.tsx, src/store/authStore.ts, src/App.tsx, tests/e2e/138_portal_proveedores_invitacion_mutante.spec.ts, tests/e2e/139_portal_proveedores_respuesta_precio_mutante.spec.ts]
 updated: 2026-09-02
 ---
@@ -145,21 +145,45 @@ Supabase (confirmado con capturas de pantalla): **PROD** (`jjffnbrdjchquexdfgwq`
 MISMA URL de producción — correcto a propósito, no un error (ver el bug de `APP_URL` hardcodeado justo
 abajo, que explica por qué el link mágico apunta siempre a PROD hoy). Ya no es un pendiente.
 
-## 🐛 Bug real encontrado 2026-09-02, SIN arreglar — `APP_URL` hardcodeado en `invitar-proveedor`
+## 🩹 `APP_URL` hardcodeado en `invitar-proveedor` — PARCIALMENTE arreglado (v1.195.2, 2026-09-02)
 
-`supabase/functions/invitar-proveedor/index.ts` línea 25: `const APP_URL = 'https://genesis360.pro'` está
+Bug original (encontrado 2026-09-02, ver `log.md` para el detalle completo de ambas sesiones):
+`supabase/functions/invitar-proveedor/index.ts` línea 25 tenía `const APP_URL = 'https://genesis360.pro'`
 **hardcodeado**, sin lógica condicional por ambiente (a diferencia de otras Edge Functions del proyecto).
-Efecto real: un magic link de invitación a un proveedor generado desde un tenant de **DEV** redirige igual
-al frontend de **PRODUCCIÓN** — que habla con el proyecto de Supabase de PROD (JWT de firma distinta al de
-DEV) — la sesión del proveedor fallaría al intentar establecerse. **Impacto hoy: bajo** — ningún magic link
-real se probó de punta a punta todavía (la verificación de abajo usó login por contraseña fijada por SQL),
-y las invitaciones reales a proveedores solo van a importar en PROD. Pendiente técnico real, no corregido
-esta sesión — arreglarlo (resolver `APP_URL` según el proyecto/ambiente) antes de invitar a un proveedor
-real desde un tenant de DEV, o documentar explícitamente que la invitación real solo se prueba en PROD.
+
+**Investigación (misma sesión del fix)**: el problema es MÁS PROFUNDO que el hardcode. No existe NINGÚN
+frontend público que hable con el proyecto de Supabase de **DEV** (`gcmhzdedrkmmzfzfveig`) — solo
+`localhost:5173` vía `.env.local`. Verificado contra Vercel (proyecto `genesis360`,
+`prj_P3wFYxAVTWMuKsXA04oR7g3V8495`): los únicos dominios configurados (`app.genesis360.pro`,
+`www.genesis360.pro`, `genesis360.pro`, alias de `main`) apuntan TODOS al deployment de PROD. La causa real
+no es "la URL de redirect está mal" — es que `admin.generateLink()` firma el JWT con la clave del proyecto
+de Supabase donde corre la función (DEV), pero el único destino público alcanzable (`genesis360.pro`)
+inicializa su cliente de Supabase contra PROD. La verificación de firma del JWT falla en el primer request
+real después del magic link, la sesión del proveedor se rompe SIEMPRE que la invitación se genere desde una
+función corriendo en DEV — sin importar qué URL de redirect se use. **Cambiar solo la URL no resuelve el
+problema de fondo**; el fix completo real requeriría desplegar un frontend público que hable con DEV (infra
+nueva, fuera de alcance).
+
+**Qué se arregló (commit `899fa10b`, `dev`, v1.195.2)**:
+1. `APP_URL` pasó a `Deno.env.get('APP_URL') ?? 'https://genesis360.pro'` — mismo patrón que
+   `mp-oauth-callback`/`tn-oauth-callback`/`mp-crear-link-pago`/`mp-addon`/`modo-crear-pago`/
+   `billing-manual-pagar`. Configurable y consistente con el resto del código; el fallback sigue siendo
+   `genesis360.pro`.
+2. `console.warn` NO bloqueante (constante `ES_DEV`) cuando la función corre en DEV, explicando en el log
+   por qué la sesión del proveedor va a fallar — antes fallaba en silencio, sin rastro en logs.
+3. Deployado a la Edge Function de **DEV** (versión 2, `ACTIVE`). **NO deployado a PROD** todavía (pasa por
+   el flujo normal de PR `dev→main`).
+
+**Sigue SIN resolver**: el problema de fondo (no hay frontend público de DEV) sigue igual. Invitar a un
+proveedor real desde un tenant de DEV va a seguir fallando al establecer la sesión del proveedor hasta que
+exista un frontend público que hable con el proyecto de DEV, o se decida explícitamente que esta feature
+solo se prueba de punta a punta en PROD (situación de facto hoy). **Impacto: bajo/no bloqueante** — ningún
+proveedor real existe en DEV (tenant de prueba), y las invitaciones reales solo van a importar en PROD.
 
 ## 🛑 Pendiente real antes de que un proveedor externo pueda usarlo de verdad
 
-1. **El bug de `APP_URL` hardcodeado de arriba** — sin arreglar.
+1. **El bug de `APP_URL` de arriba — PARCIALMENTE arreglado**: código prolijo + warning en logs, pero el
+   problema de fondo de infra (sin frontend público de DEV) sigue igual.
 2. La UI del portal es MVP a propósito: sin recuperación de contraseña self-service (si la olvida, el
    negocio la vuelve a invitar y le llega un link nuevo), sin historial más allá de la lista de OC.
 3. `orden_compra_items` expone la fila completa de `productos` (incl. `precio_costo`/`stock_actual`) para
@@ -171,5 +195,6 @@ real desde un tenant de DEV, o documentar explícitamente que la invitación rea
    antes de tener usuarios reales.
 
 **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, mig 390 aplicada y verificada también en PROD;
-`APP_VERSION` `v1.195.0`). Redirect URLs de Supabase Auth ya configuradas (arriba). Único pendiente real
-restante: el bug de `APP_URL` hardcodeado.
+`APP_VERSION` `v1.195.0`). Redirect URLs de Supabase Auth ya configuradas (arriba). El fix de `APP_URL`
+(v1.195.2) solo está en `dev`, sin deploy a PROD todavía — sin impacto real porque PROD no tiene el bug
+(siempre habló consigo mismo).

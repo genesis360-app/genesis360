@@ -6,6 +6,61 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-02] fix | 🩹 Fix PARCIAL de `APP_URL` hardcodeado en `invitar-proveedor` — v1.195.2 (tag+release en `dev`, SIN deploy a PROD); el problema de fondo (sin frontend público de DEV) sigue sin resolver
+
+Se retomó el pendiente #1 anotado en `project_pendientes.md` ("ARRANCÁ ACÁ", cont. 43): el bug de `APP_URL`
+hardcodeado en `supabase/functions/invitar-proveedor/index.ts` línea 25, documentado la sesión anterior como
+"bug real encontrado de paso, sin arreglar".
+
+**Investigación ANTES de tocar código**: el problema resultó más profundo que un simple hardcode. No existe
+NINGÚN frontend público que hable con el proyecto de Supabase de **DEV** (`gcmhzdedrkmmzfzfveig`) — solo
+`localhost:5173` vía `.env.local`. Se verificó contra Vercel (`mcp__claude_ai_Vercel__get_project`, proyecto
+`genesis360`, `prj_P3wFYxAVTWMuKsXA04oR7g3V8495`): los únicos dominios configurados
+(`app.genesis360.pro`, `www.genesis360.pro`, `genesis360.pro`, alias de `main`) apuntan TODOS al mismo
+deployment de PROD — no hay un dominio de `dev` alcanzable. Conclusión real: el bug no es "la URL de
+redirect está mal" — es que `admin.generateLink()` firma el JWT con la clave del proyecto de Supabase donde
+corre la función (DEV), pero el único destino público alcanzable (`genesis360.pro`) inicializa su cliente de
+Supabase contra PROD. La verificación de firma del JWT falla en el primer request real después del magic
+link, así que la sesión del proveedor se rompe SIEMPRE que la invitación se genere desde una función
+corriendo en DEV, sin importar qué URL de redirect se use. Cambiar solo la URL no resuelve el problema de
+fondo; el fix completo real requeriría desplegar un frontend público que hable con DEV (infra nueva, fuera
+de alcance de esta sesión).
+
+**Qué se hizo (fix aplicado, no un fix completo — commit `899fa10b`, `dev`)**:
+1. `APP_URL` pasó de `const APP_URL = 'https://genesis360.pro'` (hardcode puro) a
+   `Deno.env.get('APP_URL') ?? 'https://genesis360.pro'` — mismo patrón que ya usan `mp-oauth-callback`,
+   `tn-oauth-callback`, `mp-crear-link-pago`, `mp-addon`, `modo-crear-pago`, `billing-manual-pagar` en el
+   mismo repo. Lo hace configurable (útil el día que exista un frontend de DEV real) y consistente con el
+   resto del código, pero el valor de fallback sigue siendo el mismo (`genesis360.pro`, no
+   `app.genesis360.pro` — el dominio efectivamente registrado en el Redirect URL allowlist de Supabase Auth
+   para `/portal-proveedores`, confirmado en la entrada de log del 2026-09-02 sobre las Redirect URLs).
+2. Constante nueva `ES_DEV` (detecta si `SUPABASE_URL` contiene el ref del proyecto de DEV) + un
+   `console.warn` NO bloqueante que se dispara cuando `invitar-proveedor` corre en DEV, explicando en el log
+   exactamente por qué la sesión del proveedor va a fallar. Antes esto fallaba en silencio (ningún rastro en
+   logs); ahora al menos queda una advertencia clara para quien esté probando desde DEV.
+3. Deployado a la Edge Function de **DEV** (`gcmhzdedrkmmzfzfveig`) vía MCP — versión 2, status `ACTIVE`,
+   verificado que compila y corre en el runtime real de Deno de Supabase. **NO deployado a PROD** (eso
+   requiere pasar por el flujo normal de PR `dev→main` + checklist de deploy).
+4. Verificado: `npm run build` (tsc+vite) verde después del cambio.
+5. **Bump + tag + release**: `APP_VERSION` → `v1.195.2` (commit `6dc9ff8c`, `dev`), tag y GitHub release
+   publicados sobre `dev` (`--target dev --latest`, título "v1.195.2 — Fix APP_URL en invitar-proveedor").
+   **PROD sigue en `v1.195.0`** (el deploy real más reciente) — ni `v1.195.1` ni `v1.195.2` llegaron a PROD
+   todavía, son solo tags/releases sobre `dev` que cierran unidades de trabajo, mismo criterio que la sesión
+   anterior.
+
+**Pendiente que queda, sin cerrar del todo**: el problema de fondo (no hay frontend de DEV público) sigue
+existiendo. Lo que se resolvió es la deuda de código (hardcode → configurable) y el fallo silencioso (ahora
+hay warning en logs). Invitar a un proveedor real desde un tenant de DEV va a seguir fallando al establecer
+la sesión del proveedor hasta que exista un frontend público que hable con el proyecto de DEV, o se decida
+explícitamente que esta feature solo se prueba de punta a punta en PROD (que es la situación de facto hoy).
+No bloqueante: ningún proveedor real existe en DEV (tenant de prueba), y las invitaciones reales solo van a
+importar en PROD.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 44), `wiki/business/roadmap.md`
+(v1.195.2), [[wiki/features/portal-proveedores]].
+
+---
+
 ## [2026-09-02] fix | 🏷️ Bump + tag + release `v1.195.1` — cierra la tanda de mantenimiento (ESLint+UX+deps), SIN deploy a PROD; Redirect URLs de Supabase confirmadas por GO; bug nuevo sin arreglar
 
 `APP_VERSION` bumpeado de `v1.195.0` a **`v1.195.1`** (commit `1be9e697`, `dev`), tag `v1.195.1` y GitHub

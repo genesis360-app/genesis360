@@ -3,12 +3,34 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-02
+updated: 2026-09-03
 ---
 
 # Roadmap y Versiones
 
-**Versión en DEV (tag, sin deploy a PROD):** v1.195.2 — publicado 2026-09-02 (commit `6dc9ff8c`,
+**Versión en DEV (tag, sin deploy a PROD):** v1.195.3 — publicado 2026-09-03 (commit `d8b10904`,
+tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.3 — react-router-dom v7"). Reemplaza a
+v1.195.2 (commit `6dc9ff8c`, 2026-09-02) como último tag de `dev`. Cambio: migración de `react-router-dom`
+de `6.21.0` a `7.18.3` (`npm install react-router-dom@7.18.3`), 100% frontend/dependencias, sin migración de
+DB. Cierra el pendiente heredado de la limpieza de dependencias del 2026-09-02 (2 CVEs moderados dejados a
+propósito sin resolver por ser salto de versión MAYOR): **GHSA-wrjc-x8rr-h8h6** (open redirect vía backslash
+en `<Link>`/`useNavigate`) y **GHSA-337j-9hxr-rhxg** (inyección de constructor en SSR hydration, no aplica —
+Genesis360 es SPA client-side sin SSR). Investigación previa (un subagente Explore auditó ~32 `navigate()` +
+~30 `<Link to=>` de `src/`) confirmó que no existe vector de open-redirect explotable hoy — todo destino
+dinámico es un prefijo de ruta fijo + ID interno/valor propio con `encodeURIComponent`, coincidiendo con la
+auditoría de seguridad previa (2026-07-30). Riesgo técnico bajo: la app usa el modo "library" clásico del
+router (`BrowserRouter`/`Routes`/`Route`), sin ninguna API de "data router" (donde concentran los breaking
+changes de v7). `npm run build` + `npm run lint` limpios sin cambio de código adicional. Verificación e2e
+ruidosa esta sesión resultó ser un problema del ambiente (Supabase DEV/máquina local bajo carga), confirmado
+con comparación A/B contra el baseline v6.21.0 (mismas fallas revirtiendo el bump) — checks manuales
+dirigidos (login/guards de rol/deep-links/catch-all) confirmaron comportamiento correcto. De paso, hallazgo
+real sin relación con el router: condición de carrera preexistente entre `React.StrictMode` (dev-only) y el
+bootstrap de auth de GoTrue ante `page.reload()` inmediato post-login — autocurativa, no afecta producción,
+documentada como fragilidad latente. Ningún cambio de este release tocó PROD — no hay migración nueva.
+Detalle: `log.md` (2026-09-03, tipo `fix`), [[wiki/architecture/frontend-stack]],
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 45).
+
+Anterior en la misma tanda de mantenimiento — **v1.195.2** — publicado 2026-09-02 (commit `6dc9ff8c`,
 tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.2 — Fix APP_URL en
 invitar-proveedor"). Reemplaza a v1.195.1 (commit `1be9e697`, mismo día) como último tag de `dev`. Cambio:
 `supabase/functions/invitar-proveedor/index.ts` (commit `899fa10b`) pasó `APP_URL` de hardcode puro a

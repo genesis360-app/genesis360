@@ -6,9 +6,139 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-02, cont. 44) — 🩹 Fix PARCIAL de `APP_URL` en `invitar-proveedor` (v1.195.2,
+> ### 🛑 ARRANCÁ ACÁ (2026-09-03, cont. 45) — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 CERRADA
+> (v1.195.3, tag+release en `dev`, SIN deploy a PROD) — 2 CVEs moderados resueltos, sin regresión
+> atribuible al router
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios**, sigue igual que en los bloques
+>   cont. 44/43/42 de abajo. Nada de esta entrada llegó a PROD todavía.
+> - **DEV / tag**: `v1.195.3` (commit `d8b10904`, tag+release publicados el 2026-09-03, `targetCommitish:
+>   dev`, marcado `latest`, título "v1.195.3 — react-router-dom v7") — reemplaza a `v1.195.2` (commit
+>   `6dc9ff8c`, 2026-09-02, ver bloque cont. 44 abajo) como último tag de `dev`. Sin migración de DB (cambio
+>   100% frontend/dependencias, no toca `supabase/`).
+>
+> #### Motivación — pendiente heredado, GO dio luz verde condicional
+>
+> Pendiente heredado de la sesión anterior (cont. 44, ítem 4: "`react-router` v6→v7 — decisión de GO, no
+> aplicado"), a su vez heredado de la limpieza de dependencias del 2026-09-02 (`log.md`, "Dependencias
+> vulnerables: 12/14 resueltas") que dejó 2 CVEs sin resolver a propósito por ser un salto de versión MAYOR.
+> GO pidió explícitamente priorizar "que nunca nos pase nada malo en la app ni en la confidencialidad de
+> cada tenant" y dio luz verde a migrar SI la investigación mostraba que convenía.
+>
+> #### Investigación de las CVEs (ANTES de tocar nada)
+>
+> `npm audit` señalaba 2 CVEs moderados en `react-router` (del que depende `react-router-dom` v6.21.0):
+> 1. **GHSA-wrjc-x8rr-h8h6** — open redirect vía backslash en `<Link>`/`useNavigate` (CWE-601), rango
+>    `>=6.0.0 <7.18.0`.
+> 2. **GHSA-337j-9hxr-rhxg** — inyección de constructor en SSR hydration (CWE-470, CVSS 6.1), rango
+>    `>=6.4.0 <7.18.0` — NO aplica a Genesis360 (SPA client-side, sin SSR).
+>
+> Un subagente Explore auditó TODOS los ~32 `navigate()` y ~30 `<Link to=>` de `src/`: **no existe vector
+> real explotable hoy** — todo destino dinámico es un prefijo de ruta fijo en el código + un ID interno de
+> la DB o un valor propio con `encodeURIComponent` (nunca el string completo viene de afuera/query
+> param/webhook sin validar). El único sink alimentado por una columna de DB (`notificaciones.action_url`)
+> tiene ~12 puntos de escritura, todos literales hardcodeados — coincide con la auditoría de seguridad
+> previa ya documentada (`log.md`, 2026-07-30) que llegó a la misma conclusión. Riesgo técnico de la
+> migración en sí evaluado como bajo: la app usa el modo "library" clásico (`BrowserRouter`/`Routes`/
+> `Route` en `App.tsx` + `useNavigate`/`useParams`/`useSearchParams`/`Link`/`Outlet`/`NavLink`/
+> `useLocation`), SIN ninguna API de "data router" (`createBrowserRouter`, `useLoaderData`, loaders/
+> actions) — el terreno donde concentran los breaking changes reales de v7. Sin rutas anidadas con paths
+> relativos riesgosos (solo un catch-all simple `<Route path="*">`). React 18.2 ya cumple el mínimo de v7.
+> Con esto se decidió proceder.
+>
+> #### La migración
+>
+> `npm install react-router-dom@7.18.3` (última estable, la misma que exige el fix del CVE). `npm run
+> build` (tsc+vite) y `npm run lint` quedaron limpios sin ningún cambio de código además del bump de
+> versión — cero errores de tipos, cero imports rotos.
+>
+> #### Verificación — ruidosa, investigada a fondo en vez de descartada como flake
+>
+> La suite e2e (Playwright) fue muy ruidosa esta sesión: batches de specs de roles (13/15/16/17/18+01+12+
+> 127) mostraron entre 53 y 64 fallos de ~119 tests, todos con el patrón
+> `page.waitForLoadState('networkidle')` timeout. Se investigó en serio (no se asumió directo el flake ya
+> conocido de `reference_e2e_suite_no_deterministica`) porque el cambio tocaba justo routing/guards de rol
+> y la confidencialidad por tenant era prioridad máxima:
+> - Descartada caché vieja de Vite (clean rebuild, mismo resultado).
+> - **Comparación A/B contra baseline real**: revirtiendo a `react-router-dom@6.21.0` y repitiendo el
+>   MISMO batch, las fallas persistieron igual de graves (13 de 19 en un solo spec incluso con
+>   `--workers=1` en serie, incluyendo un caso de usuario autenticado redirigido inesperadamente a
+>   `/login`). Prueba que el ruido de la suite e2e es un problema del AMBIENTE (Supabase DEV y/o la máquina
+>   local bajo la carga de ~4h de tests pesados en la misma sesión), no del bump de router.
+> - Checks manuales dirigidos con `waitForURL` (scripts Playwright ad-hoc, no comiteados, borrados al
+>   final, en vez de `networkidle`): no autenticado → `/login` OK; CAJERO en ruta restringida → `/ventas`
+>   OK; CAJERO en `/caja` (permitida) → accesible OK; deep-link con query param preservado OK; ruta
+>   inexistente → catch-all a `/` OK; SUPERVISOR en `/configuracion` (owner-only, guard en
+>   `AppLayout.tsx` ~línea 296, un `useEffect` que compara `pathname` contra `SUPERVISOR_FORBIDDEN`) →
+>   redirige a `/dashboard`, confirmado correcto en una corrida limpia.
+> - 🐛 **Hallazgo real, pero NO relacionado con el router — fragilidad latente, documentar, no
+>   bloqueante**: `page.reload()` justo después del login dispara en la consola del navegador
+>   `@supabase/gotrue-js: Lock "lock:sb-...-auth-token" was not released within 5000ms...` seguido de
+>   `Error en loadUserData: AbortError: Lock broken by another request with the 'steal' option`. Causa raíz
+>   real (código leído, no asumida): `src/App.tsx` líneas 79-105 tiene un único `useEffect` que llama
+>   `supabase.auth.getSession()` Y se suscribe a `supabase.auth.onAuthStateChange(...)` — ninguna de las
+>   dos usa ninguna API de react-router. `src/main.tsx` línea 67 tiene `<React.StrictMode>` activo, que en
+>   DESARROLLO duplica intencionalmente el montaje de efectos (comportamiento de diseño de React, no un
+>   bug) — exactamente lo que el propio mensaje de GoTrue describe como causa ("orphaned lock from
+>   component unmount, e.g. React Strict Mode"). Es una condición de carrera preexistente entre StrictMode
+>   y el bootstrap de auth, activada por un patrón de recarga agresiva de página, **que no depende del
+>   router en absoluto**, **no afecta producción** (StrictMode no duplica efectos en el build de
+>   producción) y es **autocurativa** (la propia librería ya se recupera sola, de ahí el "forcefully
+>   acquiring to recover"). Queda anotado como fragilidad latente de bajo impacto — útil si en el futuro se
+>   investiga session flakiness reportada por usuarios reales que refrescan la página en mal momento — pero
+>   NO bloqueó ni afectó la decisión de la migración.
+> - Además, sin querer en paralelo a todo esto (artefacto de background), corrió la suite e2e COMPLETA
+>   (`npm run test` → vitest + los 141 specs de Playwright), que tardó 3.2 horas y terminó con "112 passed,
+>   32 skipped, 0 failed" — pero como el código fue cambiando de v6 a v7 y de vuelta varias veces DURANTE
+>   esa corrida tan larga, ese resultado específico no es válido como evidencia científica de nada puntual,
+>   solo se registra como dato de contexto.
+>
+> #### Cierre
+>
+> `npm audit` local confirmó "found 0 vulnerabilities" apenas se instaló 7.18.3 (el intento posterior de
+> correr `npm audit` de nuevo colgó por red, sin relación con el cambio). **Bump + tag + release**:
+> `APP_VERSION` → `v1.195.3` (commit `d8b10904`, `dev`), tag y GitHub release publicados sobre `dev`
+> (`--target dev --latest`). **PROD sigue en `v1.195.0`** — ninguna de las versiones `v1.195.1`, `v1.195.2`
+> ni `v1.195.3` llegó a PROD todavía; son tags/releases sobre `dev` que cierran unidades de trabajo
+> sucesivas de la misma sesión de mantenimiento, mismo criterio que las 2 anteriores.
+>
+> #### ✅ Cerrado en esta sesión — YA NO es pendiente
+>
+> **`react-router` v6→v7** (ítem 4 heredado de cont. 44/43): migrado a `react-router-dom@7.18.3`,
+> verificado con investigación real de las 2 CVEs + comparación A/B contra baseline pre-migración, sin
+> regresión atribuible al router. Ya no es una decisión pendiente de GO — CERRADO.
+>
+> #### 🆕 Dato de contexto nuevo — no bloqueante, no urgente
+>
+> Lock de GoTrue/StrictMode ante `page.reload()` inmediato post-login (detalle arriba) — fragilidad latente
+> documentada por si en el futuro aparecen reportes reales de usuarios con sesión rota tras un refresh en
+> mal momento. No requiere acción ahora.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **Bug de `APP_URL` — PARCIALMENTE arreglado** (heredado cont. 44): código prolijo + warning en logs,
+>    pero el problema de fondo de infra (sin frontend público de DEV) sigue igual. Sigue en la lista hasta
+>    que se resuelva de raíz o se decida explícitamente que el flujo solo se prueba en PROD.
+> 2. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02, sin confirmación todavía de que Fede la haya completado.
+> 3. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    y reintente cuando cierre el open beta.
+> 4. Decidir si/cuándo deployar `v1.195.1`/`v1.195.2`/`v1.195.3` a PROD — debt cleanup + fix parcial +
+>    migración de router, sin apuro fiscal ni migración de DB pendiente.
+> 5. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no necesita
+>    cola; recordatorio, no una tarea.
+>
+> Detalle completo: `log.md` (2026-09-03, tipo `fix`), `wiki/business/roadmap.md` (v1.195.3),
+> [[wiki/architecture/frontend-stack]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-02, cont. 44) — 🩹 Fix PARCIAL de `APP_URL` en `invitar-proveedor` (v1.195.2,
 > tag+release en `dev`, SIN deploy a PROD) — el problema de fondo (sin frontend público de DEV) sigue sin
-> resolver
+> resolver — este bloque quedó SUPERADO por el de arriba (cont. 45): migración de `react-router-dom` v6→v7
+> CERRADA
 >
 > #### Versión actual — PROD vs. DEV, no confundir
 >

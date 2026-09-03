@@ -85,7 +85,7 @@ Supervisión efectivamente muta `stock_actual` (gap de cobertura de tests, no bu
 
 | Página | Descripción | Estado |
 |--------|-------------|--------|
-| [[wiki/architecture/frontend-stack]] | React 18, Vite, TypeScript, Tailwind, Zustand, React Query · **✅ PROD (v1.135.0, 2026-07-19): token `accent-text` (contraste dark mode de texto/borde/ring) + gotcha `tailwind.config.js` sin hot-reload** · **🆕 2026-08-14 (auditoría de performance, EN DEV working tree, SIN COMMITEAR): `xlsx`/`jspdf`/`jspdf-autotable` pasan a dynamic import en 19 páginas/componentes** (antes estáticos al tope del archivo pese a usarse solo en handlers de exportar/importar) — confirmado con el build que quedan como chunks separados · **🎉 2026-08-14 (cierre completo de la auditoría, EN DEV working tree, SIN COMMITEAR): `CajaPage.tsx` — 6 `refetchInterval` recalibrados** (saldo en vivo 10s→30s, decorativos 10-15s→60-120s) **+ `toLocaleString`→`formatMoneda()` en 9 archivos** + **tipado `Database` genérico DIFERIDO** (probado empíricamente: `tsc --noEmit` 0→152 errores, revertido) + extracción de `ConfigPage.tsx` DIFERIDA (state bag compartido) | ✅ |
+| [[wiki/architecture/frontend-stack]] | React 18, Vite, TypeScript, Tailwind, Zustand, React Query · **✅ PROD (v1.135.0, 2026-07-19): token `accent-text` (contraste dark mode de texto/borde/ring) + gotcha `tailwind.config.js` sin hot-reload** · **🆕 2026-08-14 (auditoría de performance, EN DEV working tree, SIN COMMITEAR): `xlsx`/`jspdf`/`jspdf-autotable` pasan a dynamic import en 19 páginas/componentes** (antes estáticos al tope del archivo pese a usarse solo en handlers de exportar/importar) — confirmado con el build que quedan como chunks separados · **🎉 2026-08-14 (cierre completo de la auditoría, EN DEV working tree, SIN COMMITEAR): `CajaPage.tsx` — 6 `refetchInterval` recalibrados** (saldo en vivo 10s→30s, decorativos 10-15s→60-120s) **+ `toLocaleString`→`formatMoneda()` en 9 archivos** + **tipado `Database` genérico DIFERIDO** (probado empíricamente: `tsc --noEmit` 0→152 errores, revertido) + extracción de `ConfigPage.tsx` DIFERIDA (state bag compartido) · **🔒 2026-09-03 (`v1.195.3`, tag+release en `dev`, SIN deploy a PROD): `react-router-dom` migrado de `6.21.0` a `7.18.3`** — cierra 2 CVEs moderados (open redirect + SSR hydration, este último no aplica por ser SPA sin SSR), sin vector real explotable confirmado por auditoría de código, sin cambio de código adicional al bump | ✅ |
 | [[wiki/architecture/backend-supabase]] | PostgreSQL, Auth, RLS, Storage, Edge Functions, proyectos | ✅ |
 | [[wiki/architecture/multi-tenant-rls]] | Modelo multi-tenant, RLS, roles, onboarding | ✅ |
 | [[wiki/architecture/estado-global]] | authStore Zustand, usePlanLimits, useSucursalFilter, hooks | ✅ |
@@ -248,7 +248,24 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-02 — 🩹 Fix PARCIAL de `APP_URL` hardcodeado en `invitar-proveedor` —
+*Última actualización: 2026-09-03 — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 — `v1.195.3`
+(tag+release en `dev`, SIN deploy a PROD — PROD sigue en v1.195.0). Cierra el pendiente heredado de la
+limpieza de dependencias del 2026-09-02, que había dejado 2 CVEs moderados sin resolver a propósito por ser
+un salto de versión MAYOR: GHSA-wrjc-x8rr-h8h6 (open redirect, `<Link>`/`useNavigate`) y GHSA-337j-9hxr-rhxg
+(inyección de constructor en SSR hydration, no aplica — SPA client-side sin SSR). Antes de tocar código, un
+subagente Explore auditó los ~32 `navigate()` + ~30 `<Link to=>` de `src/`: no existe vector de open-redirect
+explotable hoy. `npm install react-router-dom@7.18.3` — `npm run build`/`npm run lint` limpios sin cambio de
+código adicional (la app usa el modo "library" clásico del router, sin ninguna API de "data router"). La
+suite e2e fue muy ruidosa esta sesión; se investigó a fondo (no se asumió flake) con una comparación A/B
+contra el baseline v6.21.0, que reprodujo las mismas fallas — confirma que el ruido es del ambiente
+(Supabase DEV/máquina local), no del bump. Checks manuales dirigidos de routing/guards de rol, todos OK. De
+paso, hallazgo real sin relación con el router: condición de carrera preexistente entre `React.StrictMode`
+(dev-only) y el bootstrap de auth de GoTrue ante `page.reload()` inmediato post-login — autocurativa, no
+afecta producción, documentada como fragilidad latente para el futuro. Ver `log.md` (2026-09-03, tipo
+`fix`), `wiki/business/roadmap.md` (v1.195.3) y [[wiki/architecture/frontend-stack]] para el detalle
+completo.
+
+Antes: *Última actualización: 2026-09-02 — 🩹 Fix PARCIAL de `APP_URL` hardcodeado en `invitar-proveedor` —
 `v1.195.2` (tag+release en `dev`, SIN deploy a PROD — PROD sigue en v1.195.0). Investigación previa mostró
 que el problema es más profundo que el hardcode: no existe NINGÚN frontend público que hable con el
 proyecto de Supabase de DEV (confirmado contra Vercel — todos los dominios apuntan al deployment de PROD).

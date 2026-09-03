@@ -3,7 +3,7 @@ title: Frontend Stack
 category: architecture
 tags: [react, vite, typescript, tailwind, zustand, pwa]
 sources: []
-updated: 2026-08-20
+updated: 2026-09-03
 ---
 
 # Frontend Stack
@@ -16,12 +16,26 @@ updated: 2026-08-20
 | Vite | 5.0.12 | Build tool + dev server |
 | TypeScript | 5.3.3 | Type safety (strict mode) |
 | Tailwind CSS | 3.4.1 | Styling + design system |
-| React Router DOM | 6.21.0 | Routing (35+ rutas, lazy-loaded) |
+| React Router DOM | 7.18.3 | Routing (35+ rutas, lazy-loaded) |
 | Zustand | 4.4.7 | Estado global (auth, tenant) |
 | TanStack React Query | 5.17.0 | Server state + caching |
 | React Hot Toast | 2.4.1 | Notificaciones |
 | Lucide React | 0.309.0 | Iconos |
 | Recharts | 3.8.0 | Gráficos del dashboard |
+
+> [!TIP] **Migración `react-router-dom` v6.21.0→v7.18.3 (2026-09-03, `v1.195.3`, tag+release en `dev`, SIN
+> deploy a PROD)**: cerraba 2 CVEs moderados de `npm audit` — GHSA-wrjc-x8rr-h8h6 (open redirect vía
+> backslash en `<Link>`/`useNavigate`, rango `>=6.0.0 <7.18.0`) y GHSA-337j-9hxr-rhxg (inyección de
+> constructor en SSR hydration, no aplica — Genesis360 es SPA client-side sin SSR). Auditoría de código real
+> (~32 `navigate()` + ~30 `<Link to=>` en `src/`) confirmó que no hay vector de open-redirect explotable hoy
+> (todo destino dinámico es un prefijo fijo + ID interno/valor con `encodeURIComponent`). Migración de bajo
+> riesgo porque la app usa el modo "library" clásico del router (`BrowserRouter`/`Routes`/`Route` +
+> `useNavigate`/`useParams`/`useSearchParams`/`Link`/`Outlet`/`NavLink`/`useLocation`), sin ninguna API de
+> "data router" (`createBrowserRouter`, loaders/actions) — donde concentran los breaking changes reales de
+> v7. `npm run build`/`npm run lint` limpios sin cambio de código adicional al bump. Verificado con
+> comparación A/B contra el baseline v6.21.0 (la suite e2e ruidosa de la sesión resultó ser un problema del
+> ambiente, no del bump) + checks manuales dirigidos de routing/guards de rol. Ver `log.md` (2026-09-03,
+> tipo `fix`) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 45) para el detalle completo.
 
 ## Librerías de dominio
 

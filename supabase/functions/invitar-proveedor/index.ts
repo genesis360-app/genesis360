@@ -22,8 +22,15 @@ const corsHeaders = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-const APP_URL = 'https://genesis360.pro'
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://genesis360.pro'
 const ROLES_PERMITIDOS = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
+
+// No existe un frontend público que hable con el proyecto de DEV (`gcmhzdedrkmmzfzfveig`) — solo
+// `localhost`. Si esta función corre en DEV, `admin.generateLink` firma el JWT con la clave de DEV,
+// pero el único destino público (APP_URL, PROD) inicializa su cliente contra el proyecto de PROD:
+// la sesión del proveedor va a fallar al primer request real (firma inválida). Cambiar solo la URL
+// de redirect NO alcanza para resolver esto — avisar en los logs en vez de fallar en silencio.
+const ES_DEV = (Deno.env.get('SUPABASE_URL') ?? '').includes('gcmhzdedrkmmzfzfveig')
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -68,6 +75,13 @@ Deno.serve(async (req) => {
     })
     if (linkGenErr || !linkData?.user) {
       return json({ error: `No se pudo generar el acceso: ${linkGenErr?.message ?? 'error desconocido'}` }, 500)
+    }
+    if (ES_DEV) {
+      console.warn(
+        `invitar-proveedor: invocada en DEV para ${emailNorm} — el magic link va a redirigir a ` +
+        `${APP_URL} (frontend de PROD), pero el JWT está firmado por DEV. La sesión del proveedor va ` +
+        'a fallar al establecerse. Esta feature solo funciona de punta a punta invocada desde PROD.',
+      )
     }
     const accountId = linkData.user.id
     const actionLink = linkData.properties?.action_link ?? null

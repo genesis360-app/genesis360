@@ -18,6 +18,31 @@ motor de tool-calling ya probado del "Plan IA" y tener menor riesgo.
 > Cloud API + IA — mayormente ENTRANTE (webhook, Fases 1-3), más un mensaje SALIENTE nuevo desde la Fase 4
 > (briefing proactivo por plantilla, no un deep-link `wa.me`).
 
+## Estado (2026-09-04) — 💡 Analizada alternativa "app propia + Share Sheet nativo" en vez de WhatsApp — SOLO análisis, sin decisión ni código
+
+GO retomó la idea que Fede ya había dejado diferida (sección C/M de la propuesta original): en vez de
+integrar con la API de WhatsApp de Meta, construir una app propia que aparezca en el menú "Compartir"
+del celular (como Google Drive), para mandar una foto/comprobante directo a Genesis360.
+
+**Hallazgo técnico clave**: es el mecanismo de *Share Target* del sistema operativo. Android se podría
+lograr con la PWA existente (Web Share Target API). **iOS no tiene ningún equivalente — exige
+obligatoriamente una app nativa** con Share Extension propia, sin atajo web posible. El "cerebro" de
+IA (Fases 2/3 de este mismo asistente: leer una foto, proponer un gasto, doble confirmación) sería
+100% reusable — solo cambiaría la puerta de entrada. Limitación real de este enfoque: es de ida
+solamente, no da chat conversacional como sí da WhatsApp hoy (no se puede preguntar "¿cuánto vendí
+hoy?" y recibir respuesta ahí).
+
+**Comparación dada a GO**: WhatsApp (este documento) ya tiene todo construido y validado, solo falta
+que Fede suba 2 documentos a Meta (trámite administrativo). La app propia es un proyecto de
+ingeniería nuevo (cuentas de developer, código nativo, revisión de tiendas, mantenimiento en 2
+stores) sin dependencia de Meta ni costo por conversación, pero sin el canal conversacional.
+**Recomendación: no son excluyentes** — insistir con Fede para destrabar lo ya construido, y evaluar
+la app propia como proyecto aparte con su propio relevamiento si se busca independencia de Meta a
+mediano plazo. Sin decisión tomada. Detalle completo en la memoria del asistente
+(`project_whatsapp_ia_portal_proveedores.md`).
+
+---
+
 ## Estado (2026-08-31) — 🔴 Chrome/FedCM investigado a fondo, SIN fix de código posible · 🆕 Portal de Proveedores arranca (identidad cross-tenant construida en DEV)
 
 Sesión que se reinició a mitad de tarea (el proceso de Claude Code se cortó) y se retomó con todo el

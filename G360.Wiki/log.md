@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-04] query | 💡 Analizada propuesta de app propia con Share Sheet nativo, alternativa a WhatsApp/Meta — sin decisión, sin código
+
+GO retomó una idea que Fede ya había dejado diferida (sección C/M del relevamiento de WhatsApp): en
+vez de integrar con la API de WhatsApp de Meta, construir algo propio que aparezca en el menú
+"Compartir" del celular (como Google Drive), para que el dueño comparta una foto/comprobante directo
+a Genesis360 desde WhatsApp o cualquier app.
+
+Investigación técnica (sin tocar código): es el mecanismo de Share Target del sistema operativo.
+**Android** se podría lograr con la PWA existente (Web Share Target API). **iOS no tiene equivalente
+— es obligatorio una app nativa** con Share Extension propia, sin atajo web posible. El "cerebro" de
+IA (Fases 2/3 del asistente de WhatsApp: leer una foto, proponer un gasto, doble confirmación) ya
+está construido y sería 100% reusable — solo cambiaría la puerta de entrada. Limitación real: un
+share es de ida solamente, no da chat bidireccional como sí da WhatsApp hoy.
+
+Se armó una comparación de pros/contras y qué necesita cada camino (WhatsApp: solo falta que Fede
+suba 2 documentos a Meta, trámite administrativo no técnico; app propia: proyecto de ingeniería
+nuevo, cuentas de desarrollador + código nativo + revisión de tiendas + mantenimiento). Recomendación
+dada: no son excluyentes, cada uno resuelve algo distinto — insistir con Fede para destrabar lo ya
+construido, y considerar la app propia como proyecto aparte con su propio relevamiento si GO quiere
+independencia de Meta a mediano plazo. **Sin decisión tomada, sin código escrito** — detalle completo
+en la memoria del asistente (`project_whatsapp_ia_portal_proveedores.md`).
+
+---
+
 ## [2026-09-04] fix | 💱 Cotización BNA-only construida (sin deploy) + plan del modo "real" del Dashboard listo para otra sesión
 
 Fede confirmó las 2 últimas dudas de USD. **(1) Cotización BNA-only**: el widget general debe dejar de

@@ -45,13 +45,25 @@ type: project
 > re-investigar desde cero. Sin pendientes de diseño, solo falta la etiqueta exacta del botón y si
 > Productos entra en el alcance (decidible al arrancar).
 >
+> #### 💡 Analizada alternativa "app propia + Share Sheet" en vez de WhatsApp/Meta — sin decisión
+>
+> GO retomó la idea diferida de Fede (sección C/M): compartir fotos/comprobantes a Genesis360 desde el
+> menú "Compartir" del celular en vez de integrar con la API de WhatsApp. Investigado: Android se
+> podría lograr con la PWA existente, **iOS exige obligatoriamente una app nativa** (Share Extension,
+> sin atajo web). El "cerebro" de IA de las Fases 2/3 del asistente de WhatsApp sería 100% reusable —
+> solo cambia la puerta de entrada — pero se pierde el chat conversacional bidireccional que sí da
+> WhatsApp. Comparación completa de pros/contras y requisitos de cada camino dada a GO — **sin decisión
+> tomada, sin código escrito**. Detalle en [[wiki/features/asistente-whatsapp]] y la memoria del
+> asistente `project_whatsapp_ia_portal_proveedores.md`. Retomar solo si GO pide profundizar (relevamiento
+> técnico propio: Capacitor vs. nativo puro, multi-dispositivo por dueño, etc.).
+>
 > #### 🛑 Pendiente real para la próxima sesión
 >
 > 1. Decidir cuándo deployar la cotización BNA-only a PROD (bajo riesgo, ya verificada) — sola o junto
 >    con el modo "real" del Dashboard cuando esté listo.
 > 2. Construir el modo "real" del Dashboard (G1) — plan completo arriba, sesión dedicada.
 > 3. Heredado: WhatsApp/Meta (Fede: CUIT/monotributo + comprobante de domicilio; GO: reportar bug de
->    Chrome/FedCM a Meta).
+>    Chrome/FedCM a Meta) — o evaluar la alternativa de app propia de arriba si GO prefiere no esperar más a Meta.
 > 4. Heredado: relevamiento Plan IA Fase 4 (panel admin, chat cross-tenant) — sigue sin respuesta.
 > 5. Backlog no bloqueante de Compras/Gastos USD: gastos sueltos en USD (sin UI), reportes G1/G2 (además
 >    del modo real), B3 (aviso de desvío de cotización + sugerir última cotización por proveedor).

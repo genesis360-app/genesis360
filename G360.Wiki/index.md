@@ -248,7 +248,16 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-04 — 💱 Cotización BNA-only construida (sin deploy) + plan del modo
+*Última actualización: 2026-09-04 — 💡 Analizada alternativa "app propia + Share Sheet" en vez de
+WhatsApp/Meta* — GO retomó una idea diferida de Fede: compartir fotos/comprobantes a Genesis360 desde
+el menú "Compartir" del celular, sin pasar por la API de WhatsApp. Investigación técnica: Android se
+podría lograr con la PWA existente, **iOS exige obligatoriamente una app nativa** (sin atajo web). El
+"cerebro" de IA de las Fases 2/3 del asistente de WhatsApp sería 100% reusable, solo cambiaría la
+puerta de entrada — pero pierde el chat conversacional que sí da WhatsApp. Comparación de pros/contras
+dada a GO, **sin decisión tomada, sin código escrito**. Ver `log.md` (2026-09-04, tipo `query`),
+[[wiki/features/asistente-whatsapp]], memoria del asistente `project_whatsapp_ia_portal_proveedores.md`.
+
+Antes: *Última actualización: 2026-09-04 — 💱 Cotización BNA-only construida (sin deploy) + plan del modo
 "real" del Dashboard listo* — Fede confirmó las 2 últimas dudas del relevamiento de Compras/Gastos USD.
 (1) El widget de cotización ya no ofrece Blue/MEP/Cripto, siempre Oficial BNA (`useCotizacion.ts` +
 `CotizacionWidget.tsx`, commit `e7db934b`, `dev`, sin deploy a PROD) — verificado sin impacto en datos

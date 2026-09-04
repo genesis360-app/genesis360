@@ -2118,11 +2118,19 @@ type: project
 > la sesión — causa real: el compute Nano agotó su presupuesto de Disk IO por la revisión pesada de hoy
 > (suite e2e completa corrida 2 veces, ~80 min de Playwright + varios agentes en paralelo contra DEV).
 > Confirmado que NO fue un incidente general de Supabase (status page revisada, `sa-east-1` sin
-> incidentes). **Separado, sin resolver**: la organización ("Argentum Business Group", plan Free) está en
-> "grace period" por haber excedido Cached Egress en el ciclo de billing ANTERIOR — restricción real si no
-> se regulariza antes del **01-sep-2026** (afectaría también a PROD, misma organización) — **decisión de
-> billing pendiente de GO, no resoluble desde código**. GO resolvió el problema técnico inmediato pausando
-> y restaurando el proyecto manualmente desde el dashboard (~5 min) — DEV volvió a responder normal.
+> incidentes). **Separado, sin resolver** (al momento de este bloque): la organización ("Argentum Business
+> Group", plan Free) está en "grace period" por haber excedido Cached Egress en el ciclo de billing ANTERIOR
+> — restricción real si no se regulariza antes del **01-sep-2026** (afectaría también a PROD, misma
+> organización) — **decisión de billing pendiente de GO, no resoluble desde código**. GO resolvió el
+> problema técnico inmediato pausando y restaurando el proyecto manualmente desde el dashboard (~5 min) —
+> DEV volvió a responder normal.
+>
+> **✅ CERRADO 2026-09-04**: el plazo venció el 2026-09-01 sin regularizar y causó inestabilidad real y
+> confusa en DEV durante la sesión del 2026-09-03/04 (logins colgados 15-30+ seg, requests sin respuesta,
+> resultados e2e contradictorios entre corridas idénticas) hasta que se identificó la Fair Use Policy activa
+> como causa raíz de fondo. GO upgradeó la organización a **Pro Plan** (USD 25/mes + IVA) el 2026-09-04 —
+> cupo muchísimo mayor en las 9 métricas medidas, en 0% de consumo post-upgrade. Ver `log.md` (2026-09-04,
+> tipo `update`) y [[wiki/development/supabase-dev-vs-prod]] (sección "Organización y plan de facturación").
 >
 > Ver `log.md` (entradas al principio), [[wiki/features/supervision]], [[wiki/features/gastos]],
 > [[wiki/features/clientes-proveedores]], [[wiki/features/productos]], [[wiki/features/ventas-pos]],
@@ -6500,7 +6508,9 @@ type: project
 >    Opción 3 con E3 verificado y E2/E4 construidos).
 > 4. **QA manual del thumbnail** y **prueba del fix de `sucursal_id` MELI contra un pedido real** —
 >    pendientes heredados de sesiones anteriores, sin cambios.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. **E5 (desarmado de kit devuelve componentes al mismo estado de descuento)** y lo que depende de la
 >    Pestaña de supervisor (disparo automático de la Opción 3) siguen sin arrancar, a propósito — GO
 >    scopeó explícitamente E3+E2/E4 como lo independiente de eso.
@@ -6609,7 +6619,9 @@ type: project
 >    real corregido, más el fix de fragilidad del arnés de test).
 > 4. **QA manual del thumbnail** y **prueba del fix de `sucursal_id` MELI contra un pedido real** —
 >    pendientes heredados de sesiones anteriores, sin cambios.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) y terminar el #3 (Rotación —
@@ -6749,7 +6761,9 @@ type: project
 >    `sucursal_id` MELI, thumbnail de imagen, fix de flake e2e).
 > 4. **QA manual del thumbnail** y **prueba del fix de `sucursal_id` MELI contra un pedido real** —
 >    pendientes heredados de la sesión anterior, sin cambios.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) y terminar el #3 (Rotación,
@@ -6793,12 +6807,16 @@ type: project
 > - **⚠ NO probado con un usuario real subiendo una imagen nueva en el navegador** — sí se verificó el
 >   mecanismo por code review y tipos (queda como pendiente de QA manual antes de commitear).
 >
-> **⚠ Pendiente operativo de GO (decisión de negocio, no de código):** el proyecto **Genesis360-DEV**
-> vive en la MISMA organización de Supabase ("Argentum Business Group", **plan Free**) que
-> **Genesis360-PRD** — si la cuota no se regulariza antes del **2026-09-01**, la Fair Use Policy de
-> Supabase podría empezar a devolver 402 en **AMBOS** proyectos (DEV y PROD comparten cuota de
+> **⚠ Pendiente operativo de GO (decisión de negocio, no de código)** (al momento de este bloque): el
+> proyecto **Genesis360-DEV** vive en la MISMA organización de Supabase ("Argentum Business Group", **plan
+> Free**) que **Genesis360-PRD** — si la cuota no se regulariza antes del **2026-09-01**, la Fair Use Policy
+> de Supabase podría empezar a devolver 402 en **AMBOS** proyectos (DEV y PROD comparten cuota de
 > organización). El fix de arriba baja el consumo pero no resuelve la causa de fondo — el upgrade a un
 > plan pago (Pro) es una decisión de negocio de GO, no algo que se resuelva con código.
+>
+> **✅ CERRADO 2026-09-04**: el plazo venció sin regularizar (causó inestabilidad real en DEV el
+> 2026-09-03/04 hasta identificar la Fair Use Policy como causa raíz) — GO upgradeó la organización a
+> **Pro Plan**. Ver `log.md` (2026-09-04, tipo `update`) y [[wiki/development/supabase-dev-vs-prod]].
 >
 > **3. Migración 341 — esquema de CONFIGURACIÓN del Motor de Rotación de productos con descuento (sin
 > ejecución todavía).** Fede respondió el relevamiento (`relevamiento-rotacion-descuento-reglas-
@@ -6889,7 +6907,9 @@ type: project
 >    `imagen_thumb_url` queda bien poblada y se ve correcta en las 3 pantallas.
 > 4. **Probar el fix de `sucursal_id` MELI contra un pedido real** cuando haya uno nuevo en la cuenta
 >    de test conectada.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) y cerrar los gaps del #3

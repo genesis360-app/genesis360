@@ -248,7 +248,24 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-03 — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 — `v1.195.3`
+*Última actualización: 2026-09-04 — 🔴✅ Incidente de infraestructura CERRADO: organización Supabase
+("Argentum Business Group", contiene DEV `gcmhzdedrkmmzfzfveig` y PROD `jjffnbrdjchquexdfgwq`, comparten
+cuota) upgradeada de plan **Free** a **Pro** (USD 25/mes + IVA). **Sin cambio de código ni migración —
+`APP_VERSION` sigue en `v1.195.3` (DEV) / `v1.195.0` (PROD), sin cambios.** El plazo de regularización
+avisado desde el 2026-08-07 (grace period por exceso de Cached Egress) venció el 2026-09-01 sin
+resolverse, y causó inestabilidad amplia y confusa en DEV durante la sesión del 2026-09-03/04 (logins
+colgados 15-30+ seg, requests sin respuesta, e2e contradictorios entre corridas idénticas) — investigado a
+fondo asumiendo primero causas de código (bump de `react-router`, StrictMode/GoTrue, contención local)
+antes de identificar la causa raíz real: Fair Use Policy activa por cuota de organización excedida (ambos
+proyectos seguían en `ACTIVE_HEALTHY`, consistente con throttling condicional, no una caída dura). Como
+DEV y PROD comparten cuota, un cliente real en PROD corría el mismo riesgo de 402/cuelgue. GO upgradeó de
+inmediato a Pro Plan — verificado en Usage: ciclo **04-Sep-2026 a 04-Oct-2026**, las 9 métricas en 0% de
+un cupo muchísimo mayor (Egress/Cached Egress 250GB c/u, MAU 100.000, Storage 100GB, Realtime 500
+conexiones/5M mensajes, Edge Functions 2M invocaciones). Ver `log.md` (2026-09-04, tipo `update`),
+`sources/raw/project_pendientes.md` (bloques históricos 2026-08-07/24, anotados como CERRADOS) y
+[[wiki/development/supabase-dev-vs-prod]] (sección "Organización y plan de facturación", nueva).
+
+Antes: *Última actualización: 2026-09-03 — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 — `v1.195.3`
 (tag+release en `dev`, SIN deploy a PROD — PROD sigue en v1.195.0). Cierra el pendiente heredado de la
 limpieza de dependencias del 2026-09-02, que había dejado 2 CVEs moderados sin resolver a propósito por ser
 un salto de versión MAYOR: GHSA-wrjc-x8rr-h8h6 (open redirect, `<Link>`/`useNavigate`) y GHSA-337j-9hxr-rhxg

@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-04] update | 🔴✅ Incidente de infraestructura CERRADO — organización Supabase upgradeada de Free a Pro Plan (afectaba DEV y PROD por igual, sin cambio de código ni migración)
+
+**No es un cambio de código.** Resolución de un riesgo de infraestructura/billing que llevaba semanas anotado como pendiente abierto (ver `log.md` 2026-08-25 y bloques históricos de `project_pendientes.md` del 2026-08-07 y 2026-08-24).
+
+**Antecedente**: la única organización de Supabase, "Argentum Business Group" (`pcxmmhuauoervlbflygs`) — contiene tanto `Genesis360-DEV` (`gcmhzdedrkmmzfzfveig`) como `Genesis360-PRD` (`jjffnbrdjchquexdfgwq`), que **comparten la misma cuota de organización** — estaba en plan **Free** y ya había entrado en "grace period" por exceder Cached Egress, con aviso de que la Fair Use Policy podía empezar a devolver 402 (o degradar/colgar requests) en ambos proyectos si no se regularizaba antes del **2026-09-01**.
+
+**Qué pasó**: el plazo venció sin regularizar. Durante la sesión del 2026-09-03/04 (trabajando en la migración de `react-router-dom` y luego en Compras/Gastos en USD) apareció una inestabilidad muy amplia y confusa en DEV: logins colgando 15-30+ segundos o sin resolver nunca, requests a Supabase sin respuesta, resultados de e2e contradictorios entre corridas idénticas del mismo código. Se investigó a fondo asumiendo causas de código primero (bump de react-router, contención de CPU local, sesiones de auth vencidas, una race de React StrictMode con el bootstrap de auth de GoTrue) — pistas reales pero secundarias. La causa raíz de fondo, encontrada recién al final (GO vio el aviso "Your grace period is over" en el dashboard de Billing y lo compartió), era el plan Free ya excedido con la Fair Use Policy activa. `get_project` de ambos proyectos seguía devolviendo `ACTIVE_HEALTHY` (no un pause total), consistente con throttling condicional por cuota excedida en vez de una caída dura — explica por qué algunas operaciones pasaban bien (un e2e nuevo de pago de OC en USD corrió limpio una vez, con verificación real contra la base) y otras no, de forma aparentemente aleatoria.
+
+**Por qué era urgente**: como DEV y PROD comparten la misma cuota de organización, un cliente real probando la app en PROD en ese momento corría el mismo riesgo de sufrir un 402 o un cuelgue que se veía en DEV.
+
+**Resolución**: GO upgradeó de inmediato la organización a **Pro Plan** (USD 25/mes + IVA, ~USD 29.75 el primer cargo, confirmado desde el dashboard de Billing). Verificado en la pantalla de Usage post-upgrade: ciclo de facturación **04-Sep-2026 a 04-Oct-2026**, organización "on the Pro Plan", TODAS las métricas en 0 de su nuevo cupo (Egress 250GB, Cached Egress 250GB, Monthly Active Users 100.000, Monthly Active SSO Users 50.000, Monthly Active Third-Party Users 100.000, Storage Size 100GB, Storage Image Transformations 100, Realtime Concurrent Peak Connections 500, Realtime Messages 5.000.000, Edge Function Invocations 2.000.000) — muchísimo margen por encima de lo que se pisaba en Free. El propio aviso de Supabase indica que el refresh completo de cuota puede tardar hasta 1 hora en aplicar.
+
+**Sin cambio de código, sin migración, sin commit** — 100% un cambio de plan de facturación hecho por GO manualmente desde el dashboard de Supabase.
+
+Detalle: `sources/raw/project_pendientes.md` (bloques históricos 2026-08-07 y 2026-08-24, anotados como CERRADOS), [[wiki/development/supabase-dev-vs-prod]] (sección "Organización y plan de facturación", nueva), `index.md`.
+
+---
+
 ## [2026-09-03] fix | 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 — v1.195.3 (tag+release en `dev`, SIN deploy a PROD); 2 CVEs moderados resueltos, sin regresión atribuible al router
 
 Se retomó el pendiente heredado de la sesión anterior (`project_pendientes.md`, "ARRANCÁ ACÁ", cont. 44,

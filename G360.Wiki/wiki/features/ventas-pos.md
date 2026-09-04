@@ -903,7 +903,7 @@ Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento
 - **H1a — autorización post-cobro**: quitar/editar ítems de una venta cobrada (vía **Devolver**) requiere rol DUEÑO/SUPERVISOR/ADMIN; otros roles (CAJERO) necesitan la **clave maestra** de un autorizado (`pedirClaveMaestra` en `abrirModalDevolucion`). Sin clave configurada, se bloquea.
 - **H1b — NC interna**: si la venta era **facturada**, el comprobante de devolución se rotula **"NOTA DE CRÉDITO INTERNA · NO FISCAL"** (no reemplaza la NC electrónica AFIP — feature aparte). Se registra en `venta_auditoria` (acción `nc_interna` con `numero_nc` + monto + motivo + ítems); las devoluciones de despachadas se loguean como `devolucion`. El timeline del detalle (J1) muestra N° de NC + monto. Sin migración (reusa `devoluciones` + `venta_auditoria`).
 
-### VF6 — Anular venta despachada vía Supervisión, con NC-antes-de-eliminar si ya facturó (A1, v1.194.0, 2026-09-01)
+### VF6 — Anular venta despachada vía Supervisión, con NC-antes-de-eliminar si ya facturó (A1, v1.194.0, 2026-09-01) — 🚀 EN PROD desde v1.195.0 (2026-09-01, PR #335)
 
 Última pieza diferida del retrofit de Supervisión de Fede (ver [[wiki/features/supervision]] § "Retrofit a más módulos") — cierra A1. **"Solicitar anulación"** reemplaza al viejo botón "Anular" con clave maestra: inserta en `autorizaciones` (`modulo='ventas'`, `tipo='eliminar_venta_despachada'`, mig 386 ya la tenía prevista) y notifica a quien pueda supervisar `ventas` (`puedeSupervisarModulo`, sin cambios — `SUPERVISOR` ya podía). Tab **"Autorizaciones"** nuevo en `VentasPage` (mismo `useSupervisorAutorizaciones`/`SupervisionPanel` genérico que Clientes/Envíos/Proveedores/Pedidos/RRHH/Productos).
 
@@ -915,4 +915,4 @@ Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento
 
 Verificado E2E real contra DEV (spec 137, 2 escenarios, ambos con datos propios verificados por REST en cada paso — no solo por el toast): sin CAE, stock/caja exactos tras aprobar; con CAE sintético (sin llamar a AFIP — mismo criterio defensivo que el spec 22 ya usaba para el "happy path monetario" de devoluciones), precarga total confirmada y la autorización NUNCA queda aprobada si se cancela sin confirmar la devolución. Ver [[tests/specs/uat-modo-basico]] VEN-24/VEN-49.
 
-**Sin migración nueva** — `autorizaciones.modulo` ya incluía `'ventas'` desde la mig 386 (anticipaba justo este `tipo`).
+**Sin migración nueva** — `autorizaciones.modulo` ya incluía `'ventas'` desde la mig 386 (anticipaba justo este `tipo`). Deployado a PROD el 2026-09-01 junto con el resto de v1.195.0 (PR #335).

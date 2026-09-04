@@ -17,6 +17,11 @@ import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 // Módulos que hoy participan del patrón de Supervisor (mig 347) — extender acá el día que se
 // retrofitee un módulo nuevo (mismo criterio que el CHECK de `autorizaciones.modulo`).
 const MODULOS_SUPERVISION = ['inventario', 'productos', 'clientes', 'envios', 'proveedores', 'pedidos', 'rrhh', 'ventas']
+
+// Rutas que solo existen en modo avanzado (WMS) — en básico se redirige.
+const RUTAS_AVANZADO = ['/recepciones', '/envios', '/historial', '/recursos', '/biblioteca']
+// Módulos que requieren exactamente una sucursal (sin opción "Todas").
+const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
 import { CotizacionWidget } from '@/components/CotizacionWidget'
 import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'
@@ -273,15 +278,13 @@ export function AppLayout() {
   const { limits } = usePlanLimits()
   const { avanzado: modoAvanzado } = useModoOperacion()
 
-  // Rutas que solo existen en modo avanzado (WMS) — en básico se redirige
-  const RUTAS_AVANZADO = ['/recepciones', '/envios', '/historial', '/recursos', '/biblioteca']
   useEffect(() => {
     if (!tenant || modoAvanzado) return
     if (RUTAS_AVANZADO.some(r => pathname.startsWith(r))) {
       toast('Esta sección es del modo avanzado. Podés activarlo en Configuración.', { icon: '🔒' })
       navigate('/dashboard', { replace: true })
     }
-  }, [pathname, modoAvanzado, tenant?.id])
+  }, [pathname, modoAvanzado, tenant, navigate])
 
   // Restricciones de rutas por rol
   useEffect(() => {
@@ -303,7 +306,7 @@ export function AppLayout() {
         navigate(firstAllowed?.to ?? '/dashboard', { replace: true })
       }
     }
-  }, [pathname, user?.rol, user?.permisos_custom])
+  }, [pathname, user, navigate])
 
   const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
 
@@ -342,8 +345,6 @@ export function AppLayout() {
     setSucursal(newId)
   }
 
-  // Módulos que requieren exactamente una sucursal (sin opción "Todas")
-  const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
   const enRutaSoloSucursal = RUTAS_SOLO_SUCURSAL.some(r => pathname.startsWith(r))
 
   // Issue #10 — Modo básico con UNA sola sucursal = "sucursal default oculta": se fija como
@@ -377,26 +378,26 @@ export function AppLayout() {
     if (puedeVerTodas && sucursales.length > 0 && !sucursalId && saved !== '__global__') {
       setSucursal(sucursales[0].id)
     }
-  }, [sucursales.length, puedeVerTodas])
+  }, [sucursales, puedeVerTodas, sucursalId, setSucursal])
 
   // En módulos operativos (solo sucursal) forzar selección si está en vista global
   useEffect(() => {
     if (puedeVerTodas && enRutaSoloSucursal && !sucursalId && sucursales.length > 0) {
       setSucursal(sucursales[0].id)
     }
-  }, [pathname, sucursalId, sucursales.length, puedeVerTodas])
+  }, [pathname, sucursalId, sucursales, puedeVerTodas, enRutaSoloSucursal, setSucursal])
 
   // Básico 1 sucursal: pinear esa sucursal (incluye salir de "Todas" si el DUEÑO la había elegido).
   useEffect(() => {
     if (sucursalUnicaBasico && puedeVerTodas && sucursalId !== sucursales[0].id) {
       setSucursal(sucursales[0].id)
     }
-  }, [sucursalUnicaBasico, puedeVerTodas, sucursalId, sucursales])
+  }, [sucursalUnicaBasico, puedeVerTodas, sucursalId, sucursales, setSucursal])
 
   // Abrir walkthrough la primera vez
   useEffect(() => {
     if (!visto) setWalkthroughOpen(true)
-  }, [])
+  }, [visto])
 
   const { data: cajaAbierta = false } = useQuery({
     queryKey: ['caja-status', tenant?.id],

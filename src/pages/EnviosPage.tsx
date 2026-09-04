@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -6,7 +6,7 @@ import {
   ExternalLink, MapPin, Truck, Clock, CheckCircle, RotateCcw,
   AlertTriangle, Send, Scale, Ruler, ChevronDown, Pencil, Trash2,
   FileText, RefreshCw, Navigation, Loader2, Warehouse, ClipboardCheck, Upload, User as UserIcon,
-  Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag, BarChart3, Fuel, Car,
+  CreditCard, DollarSign, PackageCheck, Tag, BarChart3, Fuel, Car,
   ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
@@ -147,14 +147,12 @@ export default function EnviosPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const etiquetaRef = useRef<HTMLInputElement>(null)
 
   const [tab, setTab]               = useState<TabEnvio>('envios')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showModal, setShowModal]   = useState(false)
   const [editId, setEditId]         = useState<string | null>(null)
   const [form, setForm]             = useState<FormEnvio>(FORM_VACIO)
-  const [saving, setSaving]         = useState(false)
   const [tipoEnvio, setTipoEnvio]   = useState<'propio' | 'tercero'>('tercero')
   const [distanciaKm, setDistanciaKm] = useState<number | null>(null)
   // ISS-174 F2 — cotización por API de courier

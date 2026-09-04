@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Star, StarOff, Layers } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, Star, StarOff, Layers } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toggle } from '@/components/Toggle'

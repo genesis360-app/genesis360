@@ -24,7 +24,6 @@ export interface OCItemReporte {
 }
 
 const ESTADOS_RECIBIDA = ['recibida']
-const ESTADOS_ACTIVA = ['borrador', 'enviada', 'confirmada', 'recibida', 'recibida_parcial']
 
 export function saldoOC(oc: OCReporte): number {
   return Math.max(0, (Number(oc.monto_total) || 0) - (Number(oc.monto_pagado) || 0) - (Number(oc.monto_descuento) || 0))

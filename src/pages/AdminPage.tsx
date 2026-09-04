@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
 import {
-  Users, Package, Building2, TrendingUp, AlertTriangle,
+  Building2, AlertTriangle,
   CheckCircle, XCircle, Clock, Search, RefreshCw, Shield,
-  ChevronDown, X, Edit2
+  X, Edit2
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'

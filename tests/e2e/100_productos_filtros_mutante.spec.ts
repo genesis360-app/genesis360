@@ -12,7 +12,6 @@
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
 import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, sembrarPresentaciones } from './helpers/fixtures'
-import { randomUUID } from 'node:crypto'
 
 test.describe('ProductosPage → botón Filtros (mutante)', () => {
   test('estructura con/sin · atributos OR por combobox · activos/inactivos', async ({ page, request }) => {

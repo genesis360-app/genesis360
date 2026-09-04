@@ -114,7 +114,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 export default function ClientesPage() {
   const { tenant, user } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
-  const { sucursalId, applyFilter } = useSucursalFilter()
+  const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const navigate = useNavigate()

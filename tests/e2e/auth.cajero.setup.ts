@@ -3,7 +3,7 @@
  * Autenticación para tests de rol CAJERO.
  * Requiere: E2E_CAJERO_EMAIL + E2E_CAJERO_PASSWORD en .env.test.local
  */
-import { test as setup, expect } from '@playwright/test'
+import { test as setup } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'

@@ -258,6 +258,9 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
       cancelAnimationFrame(rafRef.current)
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
+    // Inicializa la cámara una sola vez al montar — `initCamera` no está memoizada y
+    // agregarla reiniciaría el stream de video en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

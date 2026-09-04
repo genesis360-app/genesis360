@@ -10,7 +10,7 @@ interface Props {
   onClose: () => void
 }
 
-export function ProductoQR({ productoId, nombre, sku, onClose }: Props) {
+export function ProductoQR({ nombre, sku, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [dataUrl, setDataUrl] = useState<string | null>(null)
 

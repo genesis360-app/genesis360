@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import {
-  SlidersHorizontal, X, ChevronRight, ShoppingCart, Users, BarChart2,
-  TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, Zap,
+  SlidersHorizontal, X, ShoppingCart, Users, BarChart2,
+  TrendingUp, AlertTriangle, CheckCircle, Clock, Zap,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -11,7 +11,6 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
-import { Link } from 'react-router-dom'
 import type { DashSection } from '@/components/dashAreaSection'
 import { getFechasDashboard, getFechasAnteriores, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
 
@@ -250,7 +249,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
   const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
   const sym = monedaEff === 'USD' ? 'U$D ' : '$'
-  const fmt = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  const fmt = useCallback((v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`, [sym, conv])
   const fmtPct = (v: number) => `${v.toFixed(1)}%`
 
   const customRange = { desde: customDesde, hasta: customHasta }

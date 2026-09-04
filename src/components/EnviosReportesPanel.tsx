@@ -99,12 +99,12 @@ export default function EnviosReportesPanel({ tenant, sucursalId }: { tenant: an
     return m
   }, [repartidores])
 
-  const cfg = {
+  const cfg = useMemo(() => ({
     sinDespachoHoras: Number((tenant as any)?.envio_alerta_sin_despacho_horas ?? 24),
     podPendienteDias: Number((tenant as any)?.envio_alerta_pod_pendiente_dias ?? 3),
     pagoCourierDias: Number((tenant as any)?.envio_alerta_pago_courier_dias ?? 7),
     diferenciaPct: Number((tenant as any)?.envio_alerta_diferencia_pct ?? 15),
-  }
+  }), [tenant])
 
   const pend = useMemo(() => pendientesAtrasados(envios, cfg.sinDespachoHoras), [envios, cfg.sinDespachoHoras])
   const couriers = useMemo(() => cumplimientoPorCourier(envios), [envios])

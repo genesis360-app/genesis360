@@ -22,7 +22,6 @@ import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
-import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
@@ -34,7 +33,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
-import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
+import type { Producto, KitReceta, InventarioConteo } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
@@ -43,7 +42,7 @@ import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
 import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentaciones'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
-import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
+import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
 import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
 import { ListaConteoFooter } from '@/components/ListaConteoFooter'
@@ -99,7 +98,6 @@ export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
@@ -118,7 +116,6 @@ export default function InventarioPage() {
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
   const [form, setForm] = useState(emptyIngreso)
   const [series, setSeries] = useState<string[]>([''])
-  const [rebajeLpn, setRebajeLpn] = useState('')
   const [rebajeLinea, setRebajeLinea] = useState<any | null>(null)
   // ISS-127 F3d: pendientes tras escanear un código compuesto
   const [pendingRebaje, setPendingRebaje] = useState<{ lote?: string; cantidad?: number } | null>(null)
@@ -170,7 +167,7 @@ export default function InventarioPage() {
       setPildorasInv([{ id: crypto.randomUUID(), campo: 'libre', operador: 'contiene', valor: s }])
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete('search'); return p }, { replace: true })
     }
-  }, [])
+  }, [searchParams, setSearchParams])
 
   // Pre-selecciona el tab desde ?tab= (ej. "Ver y resolver en Inventario" de SupervisionPage apunta
   // a /inventario?tab=autorizaciones) — sin esto `tab` siempre arrancaba en 'inventario' ignorando
@@ -182,7 +179,7 @@ export default function InventarioPage() {
       setTab(t as Tab)
       setSearchParams(prev => { const p = new URLSearchParams(prev); p.delete('tab'); return p }, { replace: true })
     }
-  }, [])
+  }, [searchParams, setSearchParams])
 
   // Deep-links desde AlertasPage ("Ver todo" de una sección) hacia los filtros REALES del tab
   // Inventario — antes esos links caían siempre en /inventario a secas, sin filtrar nada (GO,
@@ -203,7 +200,7 @@ export default function InventarioPage() {
         return p
       }, { replace: true })
     }
-  }, [])
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     if (!filterPanelOpen) return
@@ -1201,15 +1198,6 @@ export default function InventarioPage() {
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  const cambiarEstadoLinea = useMutation({
-    mutationFn: async ({ lineaId, estadoId }: { lineaId: string; estadoId: string }) => {
-      const { error } = await supabase.from('inventario_lineas').update({ estado_id: estadoId || null }).eq('id', lineaId)
-      if (error) throw error
-    },
-    onSuccess: () => { toast.success('Estado actualizado'); qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] }) },
-    onError: () => toast.error('Error al actualizar'),
-  })
-
   const ingresoMutation = useMutation({
     mutationFn: async () => {
       if (moduloSoloLectura(user, 'movimientos')) throw new Error('Tu rol tiene acceso de solo lectura en Inventario.')
@@ -1501,7 +1489,7 @@ export default function InventarioPage() {
     directoFiredRef.current = true
     setPendingDirectoIngreso(false)
     ingresoMutation.mutate()
-  }, [pendingDirectoIngreso, selectedProduct, form.cantidad, form.ubicacionId])
+  }, [pendingDirectoIngreso, selectedProduct, form.cantidad, form.ubicacionId, ingresoMutation])
 
   // ── Kit mutations ──────────────────────────────────────────────────────────
   const agregarReceta = useMutation({
@@ -2180,7 +2168,7 @@ export default function InventarioPage() {
   const closeModal = () => {
     setModal(null); setSelectedProduct(null)
     setForm(emptyIngreso); setSeries([''])
-    setRebajeLpn(''); setRebajeLinea(null)
+    setRebajeLinea(null)
     setRebajeCantidad(''); setRebajeMotivo(''); setRebajeSeries([])
     setRebajeSearch(''); setRebajeGrupoId(null)
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
@@ -2243,8 +2231,14 @@ export default function InventarioPage() {
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
+    // `abrirNuevoConteo`/`cargarLineasParaConteo` son funciones grandes con ~15 dependencias
+    // propias (conteo wall-to-wall bloqueante, sucursal, tenant, etc.) — memoizarlas para
+    // satisfacer el lint acá arriesgaría una dependencia faltante en lógica de ajuste de
+    // inventario. El listener ya se re-registra con cada cambio real de estado del flujo de
+    // conteo (deps de abajo); alcanza para no dejar closures desactualizados en la práctica.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, modal, lpnAcciones, movDetalle, showConteoForm, conteoRows.length, conteoRefId,
-      conteoLoading, finalizarConteoYAplicar.isPending])
+      conteoLoading, finalizarConteoYAplicar])
 
   // F2b — mantener el ref espejo al día para el scan-to-count
   useEffect(() => { conteoRowsRef.current = conteoRows }, [conteoRows])
@@ -2724,7 +2718,6 @@ export default function InventarioPage() {
 
   const tieneSeries = selectedProduct && (selectedProduct as any).tiene_series
   const limiteAlcanzado = limits ? !limits.puede_crear_movimiento : false
-  const limiteWarning = limits && limits.max_movimientos !== -1 && limits.pct_movimientos >= 80
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -3439,6 +3432,7 @@ export default function InventarioPage() {
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                       <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                        onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
                         placeholder="Buscar por nombre, SKU o código..."
                         className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <button type="button" onClick={() => setMovScannerOpen(true)}
@@ -3855,6 +3849,7 @@ export default function InventarioPage() {
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                       <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                        onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)}
                         placeholder="Buscar por nombre, SKU o código..."
                         className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <button type="button" onClick={() => setMovScannerOpen(true)}

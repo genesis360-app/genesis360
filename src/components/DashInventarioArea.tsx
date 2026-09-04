@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -30,12 +30,6 @@ const C_YELLOW  = '#F59E0B'
 const C_ORANGE  = '#F97316'
 const C_RED     = '#EF4444'
 
-const ESTADO_REC_COLORS: Record<string, string> = {
-  activo: C_GREEN,
-  en_reparacion: C_ORANGE,
-  dado_de_baja: C_RED,
-  pendiente_adquisicion: C_YELLOW,
-}
 
 const AGING_COLORS = ['#7B00FF', '#F59E0B', '#EF4444']  // 0-30, 31-90, +90
 
@@ -169,7 +163,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
     return () => document.removeEventListener('mousedown', handler)
   }, [filterOpen])
 
-  const fmt = (v: number) => formatMoneda(v)
+  const fmt = useCallback((v: number) => formatMoneda(v), [])
   const fmtCorto = (v: number) => {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
     if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
@@ -247,7 +241,6 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
 
       // ── KPI 3: Índice de Rotación (anual) ─────────────────────────────────
       const totalCostoVendido365 = (movs365 ?? []).reduce((a: number, m: any) => a + (m.cantidad ?? 0), 0)
-      const rotacion = capitalTrabajo > 0 ? totalCostoVendido365 / (capitalTrabajo / (productos ?? []).filter((p: any) => !p.es_kit && (p.precio_costo ?? 0) > 0).length || 1) : null
 
       // Rotación: unidades vendidas en el año / unidades en stock actual.
       const stockTotal = (productos ?? []).filter((p: any) => !p.es_kit).reduce((a: number, p: any) => a + (p.stock_actual ?? 0), 0)

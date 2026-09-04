@@ -54,8 +54,6 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     })
 
     // 2) Estructura Unidad → Caja ×12 con precio propio
-    const udmUnidadRes = await request.get(`${SUPABASE_URL}/rest/v1/unidades_medida?nombre=eq.Unidad&select=id`, { headers })
-    const [udmUnidad] = (await udmUnidadRes.json()) as Array<{ id: string }>
     const udmCajaRes = await request.get(`${SUPABASE_URL}/rest/v1/unidades_medida?nombre=eq.Caja&select=id`, { headers })
     const [udmCaja] = (await udmCajaRes.json()) as Array<{ id: string }>
     await sembrarPresentaciones(request, token, prod.id, 'unidad', [

@@ -8,7 +8,7 @@
  *   E2E_EMAIL    — email del usuario de prueba en DEV
  *   E2E_PASSWORD — contraseña del usuario de prueba
  */
-import { test as setup, expect } from '@playwright/test'
+import { test as setup } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'

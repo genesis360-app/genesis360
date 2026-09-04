@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parsearPildora, evaluarPildoraVenta, evaluarPildorasVenta, operadoresValidosParaCampo,
+  parsearPildora, evaluarPildoraVenta, evaluarPildorasVenta,
   type VentaFiltrable,
 } from '@/lib/ventasFiltro'
 

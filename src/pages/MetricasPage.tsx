@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  TrendingUp, TrendingDown, ShoppingCart, Package,
-  DollarSign, BarChart2, Clock, AlertTriangle, Award, Minus, Filter,
+  TrendingUp, TrendingDown, ShoppingCart,
+  DollarSign, Clock, AlertTriangle, Award, Minus, Filter,
   Target, ArrowUpDown, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'

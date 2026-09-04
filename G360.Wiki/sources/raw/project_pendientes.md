@@ -6,8 +6,506 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-01, cont. 41) — 🗂️✅ Portal de Proveedores — Fase 2: invitación real +
-> acceso a OC + UI del portal (mig 390, `v1.195.0`)
+> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 46) — 💵 Compras/Gastos en USD: aclarado que el relevamiento YA
+> estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + 🧪 test e2e real
+> de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios**, sigue igual que en los bloques
+>   cont. 45/44/43/42 de abajo. Nada de esta entrada ni de las 3 anteriores (`v1.195.1`-`v1.195.3`) llegó a
+>   PROD todavía.
+> - **DEV / tag**: `v1.195.4` (commit `4f991613`, tag+release publicados el 2026-09-04, `targetCommitish:
+>   dev`, marcado `latest`, título "v1.195.4 — e2e OC-USD real + incidente Supabase resuelto") — reemplaza a
+>   `v1.195.3` (commit `d8b10904`, 2026-09-03, ver bloque cont. 45 abajo) como último tag de `dev`. **Sin
+>   migración de DB nueva** (el fixture de datos sembrado en DEV es un INSERT de datos de prueba —
+>   `metodos_pago` nuevo "Efectivo USD" — no un cambio de esquema).
+>
+> #### 1) Aclaración: el relevamiento de Compras/Gastos USD NO estaba pendiente — gap de memoria del
+> asistente
+>
+> GO preguntó por qué el asistente no tenía ya las respuestas de Fede al relevamiento
+> `relevamiento-compras-gastos-usd-reglas-negocio.html` (23 preguntas, generado 2026-08-21) — "ya te lo
+> había pasado esto". Investigado a fondo: SÍ estaba respondido — Fede contestó completo el 2026-08-21 — y
+> las **Fases 1-3 YA estaban construidas y en PROD desde el 2026-08-27** (PR #334, mismo deploy que trajo
+> el Asistente WhatsApp IA Fases 1-4). Nada de esto era un pendiente real; fue un gap de memoria del
+> asistente (nunca se había persistido bien la primera vez), no del proyecto. Confirmado también contra
+> `wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en USD" (sección ya existente, marcada
+> "100% CERRADO") y `wiki/features/gastos.md` → "Compras/Gastos en USD + tasa de cambio editable — Fases
+> 1-3" — ambas páginas ya tenían el resumen correcto, solo hacía falta releerlas antes de decir que faltaba
+> algo.
+>
+> Dentro de las respuestas de Fede había 2 preguntas técnicas dirigidas explícitamente a "Tonga" (=GO, ver
+> [[reference_tonga_es_go]]), no a Fede:
+> - **D1** ("¿la Caja USD ya soporta egresos, o hay que construirlo?") — confirmado que YA estaba resuelto
+>   desde una sesión anterior (2026-08-24): la capacidad ya existía vía `registrar_pago_oc()` (solo faltaba
+>   completar la columna `moneda`, fix de mig 379 — ya documentado en `wiki/features/gastos.md`). **Cerrado,
+>   sin acción nueva.**
+> - **G1** ("¿existe el modo dashboard 'real' sin convertir, mezclando ARS y USD tal cual?") — verificado
+>   contra el código real (`src/pages/DashboardPage.tsx`, `DashVentasArea.tsx`, `DashGastosArea.tsx`,
+>   `FilterBar.tsx`): **NO existe hoy**. El dashboard solo tiene un toggle ARS/USD mutuamente excluyente (se
+>   ve todo en pesos O todo en dólares convertido, nunca mezclado sin convertir). Si lo quieren, es una
+>   **tercera opción nueva a construir**, no algo que ya esté ahí.
+>
+> Se armó y se le pasó a GO (para reenviarle a Fede) un mensaje corto con las 2 preguntas que SÍ siguen
+> genuinamente sin responder:
+> 1. Si "solo dólar oficial de Banco Nación" (mencionado por Fede hace semanas) se refiere al widget
+>    general de cotización (sidebar/ventas) o a la Fase 8/AFIP (C2 de la Caja USD G5, todavía bloqueada por
+>    confirmación de un contador real — sin relación con este tema, ver
+>    [[wiki/development/reglas-negocio]] → fila C2).
+> 2. Si confirma que quiere que se construya el modo dashboard "real" (G1, arriba).
+>
+> **Sigue esperando la respuesta de Fede** — la próxima sesión debería preguntar primero si ya contestó, en
+> vez de re-explicar todo este contexto desde cero.
+>
+> #### 2) ✅ Test e2e real de pago de OC en USD — cierra un gap real de verificación
+>
+> Hasta esta sesión, NINGÚN tenant (ni DEV ni PROD) tenía un método de pago "Efectivo USD" real
+> configurado — el camino de pago de Compras/Gastos en USD (código ya en PROD desde v1.184.0) nunca se
+> había ejercitado con datos reales, solo revisión estática de código.
+>
+> **Fixture de datos sembrado en DEV** (tenant "Almacén Jorgito", `3769b1db-10f4-46a6-bc7f-eb669307730d`):
+> `metodos_pago` nuevo "Efectivo USD" (`es_efectivo=true`, `moneda='USD'`, `habilitado_gastos=true`,
+> `habilitado_ventas=true` — esto de paso también destraba poder probar la Caja USD de venta física en USD,
+> G5, que tampoco tenía nunca un método real). Apunta a la `cuenta_origen` "Efectivo USD" que ya existía
+> sin usar. La caja operativa "Caja USD" y "Caja Fuerte USD" ya existían en DEV. Es un INSERT de datos de
+> prueba, no una migración de esquema.
+>
+> **Test nuevo permanente**: `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (commit `8deb6a13`, `dev`,
+> sin bump de versión propio) — crea una Orden de Compra en USD por UI, la paga con "Efectivo USD" desde la
+> Caja USD operativa, y verifica el flujo por UI (toast de éxito). Siguiendo la metodología del proyecto
+> (nunca confiar solo en el toast, ver [[reference_e2e_validation_capability]]), se verificó la mutación
+> DIRECTO contra la base de datos real:
+> - `caja_movimientos` quedó con `tipo='egreso'` y `moneda='USD'` correctos (antes de la Fase 1 original,
+>   mig 379, esa columna quedaba siempre en el default `'ARS'` sin importar la moneda real del medio de
+>   pago usado — ese era justo el bug/gap que se estaba verificando que ya no existe), `cotizacion_usd=null`
+>   (correcto, no había descalce de moneda).
+> - `ordenes_compra.estado_pago` pasó a `'pagada'`, `monto_pagado=100.00`.
+>
+> **Confirma que las Fases 1-3 de Compras/Gastos en USD funcionan de verdad con datos reales**, no solo en
+> revisión estática de código. `npm run build` (tsc+vite) y `npm run lint` (0 warnings) verdes antes del
+> bump de versión.
+>
+> #### 🆕 Backlog nuevo, NO bloqueante — queda de Compras/Gastos en USD (sin empezar)
+>
+> 1. **Gastos sueltos en USD**: el formulario de alta de un gasto suelto (`GastosPage.tsx`, tab Gastos)
+>    todavía no tiene selector de moneda, aunque `gastos.moneda` y el guardado correcto en
+>    `caja_movimientos.moneda` ya existen desde la Fase 1 (2026-08-25). Solo se cableó el pago de OC
+>    (compras), no gastos sueltos.
+> 2. **Reportes G1/G2**: desglose ARS/USD en la lista de Gastos/OC (G1 base, sin el modo "real" que depende
+>    de la respuesta de Fede de arriba) y que la cuenta corriente de un proveedor pueda tener saldo en 2
+>    monedas independientes sin convertir entre sí (G2).
+> 3. **B3 (menor, UX)**: aviso no bloqueante si la cotización manual cargada en una compra se aleja 20-30%
+>    de la cotización de referencia YA EXISTE; falta sugerir como default la última cotización usada CON
+>    ESE proveedor específico (no una genérica).
+>
+> #### Bump + tag + release de cierre
+>
+> `APP_VERSION` → `v1.195.4` (commit `4f991613`, `dev`), tag y GitHub release publicados sobre `dev`
+> (`--target dev --latest`, título "v1.195.4 — e2e OC-USD real + incidente Supabase resuelto"). Cierra
+> formalmente, bajo una versión, todo lo de los puntos 1-2 de arriba (más el incidente de infraestructura de
+> Supabase ya documentado en `log.md` 2026-09-04 tipo `update`). **PROD sigue en `v1.195.0`** — nada de esta
+> sesión llegó a PROD todavía.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **Compras/Gastos en USD — esperando 2 respuestas de Fede** (reenviadas por GO): (a) si "solo dólar
+>    oficial de Banco Nación" es el widget general o la Fase 8/AFIP; (b) si confirma el modo dashboard
+>    "real" (G1). Preguntar primero si ya contestó antes de re-explicar el contexto.
+> 2. **Backlog no bloqueante de Compras/Gastos en USD** (arriba): gastos sueltos en USD sin selector de
+>    moneda, reportes G1/G2, B3 (sugerir última cotización por proveedor).
+> 3. **Bug de `APP_URL` — PARCIALMENTE arreglado** (heredado cont. 44/45, sin cambios): código prolijo +
+>    warning en logs, pero el problema de fondo de infra (sin frontend público de DEV) sigue igual.
+> 4. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02, sin confirmación todavía de que Fede la haya completado.
+> 5. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    y reintente cuando cierre el open beta.
+> 6. Decidir si/cuándo deployar `v1.195.1`-`v1.195.4` a PROD — debt cleanup + fix parcial + migración de
+>    router + verificación e2e, sin apuro fiscal ni migración de DB pendiente.
+> 7. Heredado: **relevamiento Plan IA Fase 4** (panel `genesis360-admin`, chat sobre agregados cross-tenant)
+>    sigue sin respuesta de GO/Fede.
+> 8. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no necesita
+>    cola; recordatorio, no una tarea.
+>
+> Detalle completo: `log.md` (2026-09-04, tipo `fix`), `wiki/development/reglas-negocio.md` → "Módulo:
+> Compras/Gastos en USD", `wiki/features/gastos.md` → "Compras/Gastos en USD + tasa de cambio editable",
+> `wiki/business/roadmap.md` (v1.195.4).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-03, cont. 45) — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 CERRADA
+> (v1.195.3, tag+release en `dev`, SIN deploy a PROD) — 2 CVEs moderados resueltos, sin regresión
+> atribuible al router — este bloque quedó SUPERADO por el de arriba (cont. 46): aclaración relevamiento
+> Compras/Gastos USD (ya estaba 100% respondido y construido) + test e2e real de pago de OC en USD —
+> v1.195.4
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios**, sigue igual que en los bloques
+>   cont. 44/43/42 de abajo. Nada de esta entrada llegó a PROD todavía.
+> - **DEV / tag**: `v1.195.3` (commit `d8b10904`, tag+release publicados el 2026-09-03, `targetCommitish:
+>   dev`, marcado `latest`, título "v1.195.3 — react-router-dom v7") — reemplaza a `v1.195.2` (commit
+>   `6dc9ff8c`, 2026-09-02, ver bloque cont. 44 abajo) como último tag de `dev`. Sin migración de DB (cambio
+>   100% frontend/dependencias, no toca `supabase/`).
+>
+> #### Motivación — pendiente heredado, GO dio luz verde condicional
+>
+> Pendiente heredado de la sesión anterior (cont. 44, ítem 4: "`react-router` v6→v7 — decisión de GO, no
+> aplicado"), a su vez heredado de la limpieza de dependencias del 2026-09-02 (`log.md`, "Dependencias
+> vulnerables: 12/14 resueltas") que dejó 2 CVEs sin resolver a propósito por ser un salto de versión MAYOR.
+> GO pidió explícitamente priorizar "que nunca nos pase nada malo en la app ni en la confidencialidad de
+> cada tenant" y dio luz verde a migrar SI la investigación mostraba que convenía.
+>
+> #### Investigación de las CVEs (ANTES de tocar nada)
+>
+> `npm audit` señalaba 2 CVEs moderados en `react-router` (del que depende `react-router-dom` v6.21.0):
+> 1. **GHSA-wrjc-x8rr-h8h6** — open redirect vía backslash en `<Link>`/`useNavigate` (CWE-601), rango
+>    `>=6.0.0 <7.18.0`.
+> 2. **GHSA-337j-9hxr-rhxg** — inyección de constructor en SSR hydration (CWE-470, CVSS 6.1), rango
+>    `>=6.4.0 <7.18.0` — NO aplica a Genesis360 (SPA client-side, sin SSR).
+>
+> Un subagente Explore auditó TODOS los ~32 `navigate()` y ~30 `<Link to=>` de `src/`: **no existe vector
+> real explotable hoy** — todo destino dinámico es un prefijo de ruta fijo en el código + un ID interno de
+> la DB o un valor propio con `encodeURIComponent` (nunca el string completo viene de afuera/query
+> param/webhook sin validar). El único sink alimentado por una columna de DB (`notificaciones.action_url`)
+> tiene ~12 puntos de escritura, todos literales hardcodeados — coincide con la auditoría de seguridad
+> previa ya documentada (`log.md`, 2026-07-30) que llegó a la misma conclusión. Riesgo técnico de la
+> migración en sí evaluado como bajo: la app usa el modo "library" clásico (`BrowserRouter`/`Routes`/
+> `Route` en `App.tsx` + `useNavigate`/`useParams`/`useSearchParams`/`Link`/`Outlet`/`NavLink`/
+> `useLocation`), SIN ninguna API de "data router" (`createBrowserRouter`, `useLoaderData`, loaders/
+> actions) — el terreno donde concentran los breaking changes reales de v7. Sin rutas anidadas con paths
+> relativos riesgosos (solo un catch-all simple `<Route path="*">`). React 18.2 ya cumple el mínimo de v7.
+> Con esto se decidió proceder.
+>
+> #### La migración
+>
+> `npm install react-router-dom@7.18.3` (última estable, la misma que exige el fix del CVE). `npm run
+> build` (tsc+vite) y `npm run lint` quedaron limpios sin ningún cambio de código además del bump de
+> versión — cero errores de tipos, cero imports rotos.
+>
+> #### Verificación — ruidosa, investigada a fondo en vez de descartada como flake
+>
+> La suite e2e (Playwright) fue muy ruidosa esta sesión: batches de specs de roles (13/15/16/17/18+01+12+
+> 127) mostraron entre 53 y 64 fallos de ~119 tests, todos con el patrón
+> `page.waitForLoadState('networkidle')` timeout. Se investigó en serio (no se asumió directo el flake ya
+> conocido de `reference_e2e_suite_no_deterministica`) porque el cambio tocaba justo routing/guards de rol
+> y la confidencialidad por tenant era prioridad máxima:
+> - Descartada caché vieja de Vite (clean rebuild, mismo resultado).
+> - **Comparación A/B contra baseline real**: revirtiendo a `react-router-dom@6.21.0` y repitiendo el
+>   MISMO batch, las fallas persistieron igual de graves (13 de 19 en un solo spec incluso con
+>   `--workers=1` en serie, incluyendo un caso de usuario autenticado redirigido inesperadamente a
+>   `/login`). Prueba que el ruido de la suite e2e es un problema del AMBIENTE (Supabase DEV y/o la máquina
+>   local bajo la carga de ~4h de tests pesados en la misma sesión), no del bump de router.
+> - Checks manuales dirigidos con `waitForURL` (scripts Playwright ad-hoc, no comiteados, borrados al
+>   final, en vez de `networkidle`): no autenticado → `/login` OK; CAJERO en ruta restringida → `/ventas`
+>   OK; CAJERO en `/caja` (permitida) → accesible OK; deep-link con query param preservado OK; ruta
+>   inexistente → catch-all a `/` OK; SUPERVISOR en `/configuracion` (owner-only, guard en
+>   `AppLayout.tsx` ~línea 296, un `useEffect` que compara `pathname` contra `SUPERVISOR_FORBIDDEN`) →
+>   redirige a `/dashboard`, confirmado correcto en una corrida limpia.
+> - 🐛 **Hallazgo real, pero NO relacionado con el router — fragilidad latente, documentar, no
+>   bloqueante**: `page.reload()` justo después del login dispara en la consola del navegador
+>   `@supabase/gotrue-js: Lock "lock:sb-...-auth-token" was not released within 5000ms...` seguido de
+>   `Error en loadUserData: AbortError: Lock broken by another request with the 'steal' option`. Causa raíz
+>   real (código leído, no asumida): `src/App.tsx` líneas 79-105 tiene un único `useEffect` que llama
+>   `supabase.auth.getSession()` Y se suscribe a `supabase.auth.onAuthStateChange(...)` — ninguna de las
+>   dos usa ninguna API de react-router. `src/main.tsx` línea 67 tiene `<React.StrictMode>` activo, que en
+>   DESARROLLO duplica intencionalmente el montaje de efectos (comportamiento de diseño de React, no un
+>   bug) — exactamente lo que el propio mensaje de GoTrue describe como causa ("orphaned lock from
+>   component unmount, e.g. React Strict Mode"). Es una condición de carrera preexistente entre StrictMode
+>   y el bootstrap de auth, activada por un patrón de recarga agresiva de página, **que no depende del
+>   router en absoluto**, **no afecta producción** (StrictMode no duplica efectos en el build de
+>   producción) y es **autocurativa** (la propia librería ya se recupera sola, de ahí el "forcefully
+>   acquiring to recover"). Queda anotado como fragilidad latente de bajo impacto — útil si en el futuro se
+>   investiga session flakiness reportada por usuarios reales que refrescan la página en mal momento — pero
+>   NO bloqueó ni afectó la decisión de la migración.
+> - Además, sin querer en paralelo a todo esto (artefacto de background), corrió la suite e2e COMPLETA
+>   (`npm run test` → vitest + los 141 specs de Playwright), que tardó 3.2 horas y terminó con "112 passed,
+>   32 skipped, 0 failed" — pero como el código fue cambiando de v6 a v7 y de vuelta varias veces DURANTE
+>   esa corrida tan larga, ese resultado específico no es válido como evidencia científica de nada puntual,
+>   solo se registra como dato de contexto.
+>
+> #### Cierre
+>
+> `npm audit` local confirmó "found 0 vulnerabilities" apenas se instaló 7.18.3 (el intento posterior de
+> correr `npm audit` de nuevo colgó por red, sin relación con el cambio). **Bump + tag + release**:
+> `APP_VERSION` → `v1.195.3` (commit `d8b10904`, `dev`), tag y GitHub release publicados sobre `dev`
+> (`--target dev --latest`). **PROD sigue en `v1.195.0`** — ninguna de las versiones `v1.195.1`, `v1.195.2`
+> ni `v1.195.3` llegó a PROD todavía; son tags/releases sobre `dev` que cierran unidades de trabajo
+> sucesivas de la misma sesión de mantenimiento, mismo criterio que las 2 anteriores.
+>
+> #### ✅ Cerrado en esta sesión — YA NO es pendiente
+>
+> **`react-router` v6→v7** (ítem 4 heredado de cont. 44/43): migrado a `react-router-dom@7.18.3`,
+> verificado con investigación real de las 2 CVEs + comparación A/B contra baseline pre-migración, sin
+> regresión atribuible al router. Ya no es una decisión pendiente de GO — CERRADO.
+>
+> #### 🆕 Dato de contexto nuevo — no bloqueante, no urgente
+>
+> Lock de GoTrue/StrictMode ante `page.reload()` inmediato post-login (detalle arriba) — fragilidad latente
+> documentada por si en el futuro aparecen reportes reales de usuarios con sesión rota tras un refresh en
+> mal momento. No requiere acción ahora.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **Bug de `APP_URL` — PARCIALMENTE arreglado** (heredado cont. 44): código prolijo + warning en logs,
+>    pero el problema de fondo de infra (sin frontend público de DEV) sigue igual. Sigue en la lista hasta
+>    que se resuelva de raíz o se decida explícitamente que el flujo solo se prueba en PROD.
+> 2. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02, sin confirmación todavía de que Fede la haya completado.
+> 3. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    y reintente cuando cierre el open beta.
+> 4. Decidir si/cuándo deployar `v1.195.1`/`v1.195.2`/`v1.195.3` a PROD — debt cleanup + fix parcial +
+>    migración de router, sin apuro fiscal ni migración de DB pendiente.
+> 5. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no necesita
+>    cola; recordatorio, no una tarea.
+>
+> Detalle completo: `log.md` (2026-09-03, tipo `fix`), `wiki/business/roadmap.md` (v1.195.3),
+> [[wiki/architecture/frontend-stack]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-02, cont. 44) — 🩹 Fix PARCIAL de `APP_URL` en `invitar-proveedor` (v1.195.2,
+> tag+release en `dev`, SIN deploy a PROD) — el problema de fondo (sin frontend público de DEV) sigue sin
+> resolver — este bloque quedó SUPERADO por el de arriba (cont. 45): migración de `react-router-dom` v6→v7
+> CERRADA
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios**, sigue igual que en los bloques
+>   cont. 43/42 de abajo. Nada de esta entrada llegó a PROD todavía.
+> - **DEV / tag**: `v1.195.2` (commit `6dc9ff8c`, tag+release publicados el 2026-09-02, `targetCommitish:
+>   dev`, marcado `latest`, título "v1.195.2 — Fix APP_URL en invitar-proveedor") — reemplaza a `v1.195.1`
+>   (commit `1be9e697`, mismo día, ver bloque cont. 43 abajo) como último tag de `dev`. Sin migración nueva,
+>   sin deploy a PROD.
+>
+> #### Qué se investigó ANTES de tocar código
+>
+> Se retomó el pendiente #1 de este archivo (heredado de cont. 43): el bug de `APP_URL` hardcodeado en
+> `supabase/functions/invitar-proveedor/index.ts` línea 25. La investigación mostró que el problema es MÁS
+> PROFUNDO que un hardcode: **no existe NINGÚN frontend público que hable con el proyecto de Supabase de
+> DEV** (`gcmhzdedrkmmzfzfveig`) — solo `localhost:5173` vía `.env.local`. Verificado contra Vercel
+> (`mcp__claude_ai_Vercel__get_project`, proyecto `genesis360`, `prj_P3wFYxAVTWMuKsXA04oR7g3V8495`): los
+> únicos dominios configurados (`app.genesis360.pro`, `www.genesis360.pro`, `genesis360.pro`, alias de
+> `main`) apuntan TODOS al mismo deployment de PROD — no hay un dominio de `dev` alcanzable.
+>
+> **Conclusión real**: el bug NO es "la URL de redirect está mal" — es que `admin.generateLink()` firma el
+> JWT con la clave del proyecto de Supabase donde corre la función (DEV), pero el único destino público
+> alcanzable (`genesis360.pro`) inicializa su cliente de Supabase contra PROD. La verificación de firma del
+> JWT falla en el primer request real después del magic link, la sesión del proveedor se rompe SIEMPRE que
+> la invitación se genere desde una función corriendo en DEV, sin importar qué URL de redirect se use.
+> Cambiar solo la URL no resuelve el problema de fondo — el fix completo real requeriría desplegar un
+> frontend público que hable con DEV (infra nueva, fuera de alcance de esta sesión).
+>
+> #### Qué se hizo (fix de código real, no un fix completo — commit `899fa10b`, `dev`)
+>
+> 1. `APP_URL` pasó de `const APP_URL = 'https://genesis360.pro'` (hardcode puro) a
+>    `Deno.env.get('APP_URL') ?? 'https://genesis360.pro'` — mismo patrón que ya usan `mp-oauth-callback`,
+>    `tn-oauth-callback`, `mp-crear-link-pago`, `mp-addon`, `modo-crear-pago`, `billing-manual-pagar` en el
+>    mismo repo. Lo hace configurable (útil el día que exista un frontend de DEV real) y consistente con el
+>    resto del código — el fallback sigue siendo `genesis360.pro` (no `app.genesis360.pro`, que es el
+>    dominio efectivamente registrado en el Redirect URL allowlist de Supabase Auth para
+>    `/portal-proveedores`, ver bloque cont. 43 sobre las Redirect URLs).
+> 2. Constante nueva `ES_DEV` (detecta si `SUPABASE_URL` contiene el ref del proyecto de DEV) +
+>    `console.warn` NO bloqueante que se dispara cuando `invitar-proveedor` corre en DEV, explicando en el
+>    log por qué la sesión del proveedor va a fallar. Antes esto fallaba en silencio (sin rastro en logs).
+> 3. Deployado a la Edge Function de **DEV** (`gcmhzdedrkmmzfzfveig`) vía MCP — versión 2, status `ACTIVE`,
+>    verificado que compila y corre en el runtime real de Deno de Supabase. **NO deployado a PROD** (eso
+>    requiere pasar por el flujo normal de PR `dev→main` + checklist de deploy).
+> 4. Verificado: `npm run build` (tsc+vite) verde después del cambio.
+> 5. **Bump + tag + release**: `APP_VERSION` → `v1.195.2` (commit `6dc9ff8c`), tag y release de GitHub
+>    publicados sobre `dev` (`--target dev --latest`, título "v1.195.2 — Fix APP_URL en invitar-proveedor").
+>    **PROD sigue en `v1.195.0`** — ni `v1.195.1` ni `v1.195.2` llegaron a PROD todavía, son tags/releases
+>    sobre `dev` que cierran unidades de trabajo (mismo criterio que la sesión anterior).
+>
+> #### 🛑 Sigue SIN resolver — no marcar como cerrado
+>
+> El problema de fondo (no hay frontend de DEV público) sigue existiendo. Lo que se resolvió es la deuda de
+> código (hardcode → configurable) y el fallo silencioso (ahora hay warning en logs) — **no** el bug de
+> fondo. **Invitar a un proveedor real desde un tenant de DEV va a seguir fallando al establecer la sesión
+> del proveedor** hasta que exista un frontend público que hable con el proyecto de DEV, o se decida
+> explícitamente que esta feature solo se prueba de punta a punta en PROD (que es la situación de facto
+> hoy). No bloqueante: ningún proveedor real existe en DEV (tenant de prueba), y las invitaciones reales
+> solo van a importar en PROD.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **Bug de `APP_URL` — PARCIALMENTE arreglado** (arriba): código prolijo + warning en logs, pero el
+>    problema de fondo de infra (sin frontend público de DEV) sigue igual. Sigue en la lista hasta que se
+>    resuelva de raíz o se decida explícitamente que el flujo solo se prueba en PROD.
+> 2. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02, sin confirmación todavía de que Fede la haya completado.
+> 3. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    y reintente cuando cierre el open beta.
+> 4. Heredado: **`react-router` v6→v7** — decisión de GO, no aplicado.
+> 5. Decidir si/cuándo deployar `v1.195.1`/`v1.195.2` a PROD — debt cleanup + fix parcial, sin apuro fiscal
+>    ni migración pendiente.
+> 6. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no necesita
+>    cola; recordatorio, no una tarea.
+>
+> Detalle completo: `log.md` (2026-09-02, tipo `fix`), `wiki/business/roadmap.md` (v1.195.2),
+> [[wiki/features/portal-proveedores]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-02, cont. 43) — 🏷️ Tanda de mantenimiento cerrada bajo `v1.195.1` (tag +
+> release en `dev`, SIN deploy a PROD) — ESLint 100%, 2 features UX, dependencias; Redirect URLs de
+> Supabase YA CONFIGURADAS por GO; 1 bug nuevo encontrado sin arreglar — este bloque quedó SUPERADO por el
+> de arriba (cont. 44): bug de `APP_URL` parcialmente arreglado
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios** desde el deploy real del
+>   2026-09-01 (ver bloque histórico cont. 42 más abajo). Nada de lo de esta entrada llegó a PROD todavía.
+> - **DEV / tag**: `v1.195.1` (commit `1be9e697`, tag+release publicados el 2026-09-02T18:57:55Z,
+>   `targetCommitish: dev`, marcado `latest` en GitHub, título "v1.195.1 — Mantenimiento: lint, UX,
+>   dependencias") — cierra formalmente, bajo una sola versión, TODA la tanda de mantenimiento acumulada
+>   en `dev` desde el deploy de v1.195.0: limpieza de ESLint, 2 features de UX chicas, limpieza de
+>   dependencias vulnerables. Es mantenimiento interno, no trae feature nueva visible al usuario final —
+>   no requiere el checklist de deploy a PROD del CLAUDE.md (no hay migración nueva, no toca PROD).
+>
+> #### Qué se hizo en esta tanda (todo en `dev`, detalle completo en `log.md` — 3 entradas tipo `fix`,
+> 2026-09-01/02)
+>
+> 1. **ESLint: deuda CERRADA 100% (161→0 warnings)**. Primer tramo (commit `785fbc4c`, 2026-09-01): 121
+>    warnings de `no-unused-vars` en 41 archivos, ratchet `--max-warnings` 161→41. Segundo tramo (commits
+>    `af778349`+`76e91867`, 2026-09-02): los 41 warnings de `react-hooks/exhaustive-deps` restantes,
+>    revisados UNO POR UNO (no un fix mecánico ciego) — deps genuinamente faltantes agregadas donde era
+>    seguro, y un **bug real corregido de paso**: los deep-links de `InventarioPage.tsx` no reaccionaban a
+>    un segundo link mientras el componente seguía montado. 6 casos donde seguir la sugerencia de ESLint
+>    habría introducido un bug real quedaron con `eslint-disable-next-line` + comentario explicando por qué
+>    (mount-once de auth/sesión, pérdida de datos editados por el usuario en `RecepcionesPage.tsx`, spam a
+>    la API pública de Nominatim en `VentasPage.tsx`, entre otros — detalle completo en `log.md`).
+>    `package.json` bajó `--max-warnings` de 41 a **0**: cualquier warning nuevo rompe `npm run lint` de
+>    ahora en más. 🐛 De paso (primer tramo), hallazgo real corregido: `src/lib/reciboSueldoPDF.ts` ignoraba
+>    `tenant.moneda`, el recibo de sueldo en PDF siempre mostraba `$` sin importar la moneda del tenant —
+>    ver [[wiki/features/rrhh]] § RH3.
+> 2. **2 features de UX completadas** (commit `db09f74e`, 2026-09-02, con visto bueno explícito de GO —
+>    "avanza con los 2 temas de UX para corregir"): (1) `InventarioPage.tsx` — la búsqueda de productos en
+>    los modales de Ingreso/Rebaje ahora muestra 5 sugerencias al hacer foco en el campo, antes de escribir
+>    nada. (2) `UsuariosPage.tsx` — nuevo `<select>` junto a "Editar permisos" para asignar a un usuario un
+>    rol personalizado YA EXISTENTE (antes solo se podía crear uno nuevo por usuario; la mutación
+>    `assignRolCustom` ya existía, solo estaba desconectada de cualquier control). Ambas verificadas con
+>    Playwright ad-hoc contra DEV real (no solo tsc/build), round-trip UI→mutación→DB→re-render confirmado.
+> 3. **Dependencias vulnerables: 12/14 resueltas** (2026-09-02). Los 6 PRs de Dependabot apuntaban a `main`
+>    — se retargetearon a `dev` (`gh pr edit --base dev`) antes de mergear, para no saltear el flujo de
+>    deploy: postcss-selector-parser, browserslist, dompurify, js-yaml, fast-uri, undici. Después
+>    `npm audit fix` (commit `72031706`) resolvió 2 más (fast-uri completo, nanoid). Quedan **2 sin
+>    resolver, a propósito**: `react-router`/`react-router-dom` necesita v6.21→v7.18+ (breaking change real
+>    en el router, requiere migración planificada + regresión completa de routing) — **decisión pendiente
+>    de GO**, no aplicado. El contador de "14 vulnerabilidades" de GitHub baja recién cuando `dev` se
+>    mergee a `main` (se calcula sobre el default branch).
+> 4. Verificado en cada paso: `npm run build` (tsc+vite) + `npm run lint` (0 warnings) + 1637 tests
+>    unitarios (100 archivos) sin regresiones + regresión e2e cruzada investigada activamente (18 fallos de
+>    una corrida de 9 specs resultaron ser el flake no determinístico ya conocido del suite —
+>    `reference_e2e_suite_no_deterministica` — confirmado corriendo el mismo batch contra el baseline con
+>    `git stash`, no una regresión de esta limpieza).
+> 5. **Bump + tag + release**: `APP_VERSION` → `v1.195.1` (commit `1be9e697`), tag y release de GitHub
+>    publicados sobre `dev` (no PROD) — cierra formalmente la tanda bajo una versión, ver arriba.
+>
+> #### ✅ Cerrado en esta sesión — YA NO es pendiente
+>
+> **Redirect URLs de Supabase Auth — GO ya las configuró**, confirmado con capturas de pantalla: **PROD**
+> (`jjffnbrdjchquexdfgwq`) tiene 5 URLs en Authentication → URL Configuration → Redirect URLs, incluyendo
+> `https://genesis360.pro/portal-proveedores`; **DEV** (`gcmhzdedrkmmzfzfveig`) tiene 3 URLs, incluyendo
+> esa MISMA url de producción — **eso es correcto, no un error de GO** (el magic link de invitación a
+> proveedores manda siempre al frontend de producción hoy mismo, ver el bug nuevo justo abajo, que explica
+> por qué eso hace falta así). El pendiente anotado en las 2 entradas históricas de abajo (cont. 41 y
+> cont. 42) y en [[wiki/features/portal-proveedores]] queda CERRADO — no repetirlo como pendiente.
+>
+> #### 🐛 Bug real encontrado de paso, SIN arreglar — pendiente técnico nuevo
+>
+> `supabase/functions/invitar-proveedor/index.ts` línea 25: `const APP_URL = 'https://genesis360.pro'`
+> está **hardcodeado**, sin lógica condicional por ambiente (a diferencia de otras Edge Functions del
+> proyecto que sí resuelven la URL según dónde corren). Efecto real: un magic link de invitación a un
+> proveedor generado desde el tenant de **DEV** redirige igual al frontend de **PRODUCCIÓN** — que habla
+> con el proyecto de Supabase de PROD (JWT de firma distinta al de DEV) — la sesión del proveedor fallaría
+> al intentar establecerse. **Impacto hoy: bajo** — ningún magic link real se probó de punta a punta
+> todavía (la verificación de la Fase 2 usó login por contraseña fijada por SQL, ver
+> [[wiki/features/portal-proveedores]] § Verificación), y las invitaciones reales a proveedores solo van a
+> importar en PROD. Pero es un bug de diseño real, **no arreglado esta sesión** — arreglarlo (o decidir
+> explícitamente que "invitar proveedores de verdad solo se prueba en PROD") antes de invitar a un
+> proveedor real desde un tenant de DEV. Anotado también en [[wiki/features/portal-proveedores]].
+>
+> #### 📱 Guía de WhatsApp para Fede — entregada 2026-09-02, sigue 100% pendiente de Fede
+>
+> Se armó y publicó una página HTML (Claude Artifact) "Conectar WhatsApp Genesis360" con las 2 partes que
+> Fede tiene que completar para destrabar el Embedded Signup (bloqueo ya documentado en
+> [[wiki/features/asistente-whatsapp]] § "Estado 2026-08-28"): (a) **Verificación del Negocio ante Meta**
+> — subir Constancia de Inscripción Fiscal (CUIT/monotributo) + comprobante de domicilio, a nombre de
+> **Fede** (el Business Portfolio de Genesis360 en Meta está atado a SU identidad, no a la de GO); (b)
+> **preparar el número dedicado que GO ya compró, `11 7822-6038`** — no debe tener WhatsApp personal
+> activo, y tiene que poder recibir SMS o llamada para el código de verificación de Meta. Sigue siendo
+> 100% trámite externo, sin novedad de que Fede lo haya completado — la próxima sesión debería preguntar
+> "¿Fede ya lo hizo?" en vez de repetir la explicación desde cero.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **NUEVO — bug de `APP_URL` hardcodeado en `invitar-proveedor`** (arriba) — sin arreglar.
+> 2. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02 (arriba), sin confirmación todavía de que Fede la haya completado.
+> 3. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a
+>    Meta y reintente cuando cierre el open beta.
+> 4. Heredado: **`react-router` v6→v7** — decisión de GO, no aplicado (detalle arriba).
+> 5. Decidir si/cuándo deployar `v1.195.1` a PROD — es debt cleanup + 2 features chicas, sin apuro fiscal
+>    ni migración pendiente.
+> 6. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no
+>    necesita cola; es la decisión de diseño final, sin pendiente real (recordatorio, no una tarea).
+>
+> Detalle completo: `log.md` (2026-09-02, 3 entradas tipo `fix`; 2026-09-01, tipo `deploy`),
+> `wiki/business/roadmap.md` (v1.195.1), [[wiki/features/portal-proveedores]],
+> [[wiki/features/asistente-whatsapp]], [[wiki/features/rrhh]] § RH3.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 42) — 🚀✅ DEPLOY REAL A PROD: v1.195.0 (PR #335) — Embedded
+> Signup, ESLint, Supervisión completa (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2
+>
+> Se deployó a PROD **TODO** lo acumulado en `dev` desde el último deploy real (`v1.184.0`, PR #334,
+> 2026-08-27, migración tope 385) — incluye las dos piezas grandes cerradas en la sesión anterior
+> (Ventas A1 y Portal de Proveedores Fase 2, ver el bloque cont. 41 más abajo) más todo lo que venía de
+> antes sin deployar (Nivel 1 de Supervisión, A4, C1, ESLint, Embedded Signup).
+>
+> #### Detalle del deploy
+>
+> - **PR**: https://github.com/genesis360-app/genesis360/pull/335 — "v1.195.0 — Embedded Signup, ESLint,
+>   Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" — mergeado `dev`→`main` (merge commit
+>   `2a8ebbf4`) el 2026-09-01.
+> - **Migraciones aplicadas a PROD** (`jjffnbrdjchquexdfgwq`), verificadas una por una post-aplicación
+>   (constraint, tablas, funciones, columnas): `386_autorizaciones_modulos_extendidos`,
+>   `387_portal_proveedores_identidad` (+ `387b`/`387c`, fixes de `search_path`/grants),
+>   `388_reclasificar_kit_precio_repricing_a_productos`, `389_migrar_autorizaciones_gasto_a_generica`
+>   (`DROP TABLE` de la legacy `autorizaciones_gasto`, verificado 0 filas reales antes del drop),
+>   `390_portal_proveedores_oc_acceso`. `list_migrations` de PROD confirma última migración = 390.
+> - **Edge Functions deployadas a PROD**: `invitar-proveedor` (nueva) y `send-email` (con el template
+>   `invitacion_proveedor` agregado).
+> - **Advisors de seguridad de PROD** revisados post-migración: 0 hallazgos ERROR/CRITICAL nuevos
+>   relevantes en las tablas tocadas.
+> - **Vercel**: deployment `dpl_3dL71Rg1KkKtnAn3qo6nPqgnjUUB` en estado READY, alias
+>   `app.genesis360.pro`/`genesis360.pro` sirviendo el commit `2a8ebbf4`.
+> - **Releases de GitHub** v1.185.0 a v1.195.0 retargeteados a `main` (`targetCommitish`), v1.195.0
+>   marcado `latest` (hasta que `v1.195.1` lo reemplazó como `latest` el 2026-09-02, ver bloque cont. 43
+>   arriba — `v1.195.1` es solo tag/release sobre `dev`, no cambia qué versión corre en PROD).
+> - **Versión anterior en PROD**: v1.184.0 (PR #334, migración tope 385). **Versión en PROD desde acá**:
+>   v1.195.0 (migración tope 390) — sigue así, ver bloque cont. 43 arriba.
+>
+> #### Qué llegó a PROD con este deploy
+>
+> 1. **Supervisión — relevamiento de Fede CERRADO 100%, sin ninguna excepción**: Nivel 1 completo
+>    (Clientes+Envíos+Proveedores+Pedidos+RRHH) + A4 (Productos) + C1 (Gastos) + **A1 (Ventas)** — anular
+>    una venta ya despachada/facturada pasa por la cola de Supervisión en vez de anularse directo.
+> 2. **Portal de Proveedores — Fase 2 completa**: invitación real por email (link mágico), portal público
+>    en `/portal-proveedores`, el proveedor propone precio por ítem de una OC, el staff aplica a mano.
+> 3. Embedded Signup de Meta (código en PROD, sigue bloqueado por Verificación del Negocio ante Meta).
+> 4. Fix de ESLint (`npm run lint` funciona de verdad en todo el repo).
+>
+> Detalle completo: `log.md` (2026-09-01, tipo `deploy`), `wiki/business/roadmap.md` (v1.195.0),
+> [[wiki/features/supervision]], [[wiki/features/portal-proveedores]], [[wiki/features/ventas-pos]] § VF6.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-01, cont. 41) — 🗂️✅ Portal de Proveedores — Fase 2: invitación real +
+> acceso a OC + UI del portal (mig 390, `v1.195.0`) — 🚀 DEPLOYADO A PROD el 2026-09-01 (ver bloque
+> cont. 42 arriba)
 >
 > GO: "creo q quedaba otro pendiente, lo de proveedores" — retomó la Fase 2 (la Fase 1, identidad
 > cross-tenant, ya estaba construida desde el 2026-08-31, mig 387).
@@ -81,7 +579,8 @@ type: project
 >
 > #### Estado del deploy
 >
-> `APP_VERSION` `v1.195.0`. **Sin deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-390.
+> `APP_VERSION` `v1.195.0`. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba) —
+> migración 390 aplicada y verificada también en PROD.
 >
 > #### 🛑 Pendiente real para la próxima sesión
 >
@@ -90,8 +589,8 @@ type: project
 >    Configuration → Redirect URLs** de cada proyecto — sin esto, un link mágico real que reciba un
 >    proveedor por email puede ser rechazado o redirigir mal (esta sesión probó el login con contraseña,
 >    nunca clickeó un link mágico real de punta a punta).
-> 2. **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 (Supervisión completa + Portal de
->    Proveedores Fase 2) — sigue sin salir de DEV, candidato natural para la próxima sesión.
+> 2. ✅ **Deploy a PROD** de todo lo acumulado en DEV desde v1.189.0 — HECHO el 2026-09-01 (PR #335, ver
+>    bloque cont. 42 arriba).
 > 3. Heredado, sin cambios esta sesión: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que
 >    GO reporte el bug a Meta y reintente cuando cierre el open beta.
 > 4. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la
@@ -161,8 +660,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `5a941bc0`, `origin/dev`, `APP_VERSION` `v1.194.0`, **tag + GitHub release ya publicados**
-> (https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **Sin deploy a PROD** — PROD sigue
-> en migraciones 001-385; DEV sin migración nueva (no hizo falta ninguna).
+> (https://github.com/genesis360-app/genesis360/releases/tag/v1.194.0). **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### ✅✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido, sin excepción alguna
 >
@@ -237,8 +736,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `2c4470c1`, `origin/dev`, `APP_VERSION` `v1.193.0`, **tag + GitHub release ya publicados**
-> (`v1.193.0`, `publishedAt: 2026-09-01T07:22:04Z`). Migración 389 aplicada y verificada en DEV. **Sin
-> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-389, código en `v1.193.0`.
+> (`v1.193.0`, `publishedAt: 2026-09-01T07:22:04Z`). Migración 389 aplicada y verificada en DEV, y luego
+> también en PROD. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### ✅✅ Con esto, TODO el relevamiento de Supervisión de Fede queda construido
 >
@@ -320,8 +819,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `0e2bb29d`, `origin/dev`, `APP_VERSION` `v1.192.0`, **tag + GitHub release ya publicados**
-> (`v1.192.0`, `publishedAt: 2026-09-01T04:45:51Z`). Migración 388 aplicada y verificada en DEV. **Sin
-> deploy a PROD** — PROD sigue en migraciones 001-385; DEV en 001-388, código en `v1.192.0`.
+> (`v1.192.0`, `publishedAt: 2026-09-01T04:45:51Z`). Migración 388 aplicada y verificada en DEV, y luego
+> también en PROD. **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### ✅ Con esto se completa el relevamiento ENTERO de retrofit de Supervisión de Fede (A1-A5, Nivel 1 + A4)
 >
@@ -393,8 +892,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `f337ca62`, `origin/dev`, `APP_VERSION` `v1.191.0`, **tag + GitHub release ya publicados**
-> (`v1.191.0`, `publishedAt: 2026-08-31T22:12:43Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
-> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.191.0`.
+> (`v1.191.0`, `publishedAt: 2026-08-31T22:12:43Z`). Sin migración nueva. **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### 🛑 Pendiente real para la próxima sesión — Nivel 2 y módulos complejos de Supervisión
 >
@@ -454,8 +953,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `452f3c93`, `origin/dev`, `APP_VERSION` `v1.190.0`, **tag + GitHub release ya publicados**
-> (`v1.190.0`, `publishedAt: 2026-08-31T17:39:10Z`). Sin migración nueva. **Sin deploy a PROD** — PROD
-> sigue en migraciones 001-385; DEV en 001-387c, código en `v1.190.0`.
+> (`v1.190.0`, `publishedAt: 2026-08-31T17:39:10Z`). Sin migración nueva. **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### 🛑 Pendiente real para la próxima sesión — lo que queda de Supervisión, confirmado que sigue vigente
 >
@@ -529,8 +1028,8 @@ type: project
 > #### Estado del deploy
 >
 > Commit `27d740e8`, `origin/dev`, `APP_VERSION` `v1.189.0`, **tag + GitHub release ya publicados**
-> (`v1.189.0`, `publishedAt: 2026-08-31T07:14:36Z`). Sin migración nueva. **Sin deploy a PROD** — PROD sigue
-> en migraciones 001-385; DEV en 001-387c, código en `v1.189.0`.
+> (`v1.189.0`, `publishedAt: 2026-08-31T07:14:36Z`). Sin migración nueva. **🚀 DEPLOYADO A PROD el
+> 2026-09-01** (PR #335, ver bloque cont. 42 arriba).
 >
 > #### 🛑 Pendiente real para la próxima sesión
 >
@@ -649,9 +1148,9 @@ type: project
 >
 > Commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, **tag + GitHub release ya publicados**
 > (`v1.188.0`, `publishedAt: 2026-08-31T06:36:47Z`) — entre medio, el commit `529a0ea8` (punto 1, Chrome/
-> FedCM) quedó sin bump de versión propio, incluido en el mismo release. Build verde. **Sin deploy a PROD**
-> — `main` sigue en el merge de `v1.184.0` (`867d651a`), PROD sigue en migraciones **001-385**. DEV:
-> migraciones **001-387c**, código en `v1.188.0`.
+> FedCM) quedó sin bump de versión propio, incluido en el mismo release. Build verde. Las migraciones
+> **386-387c** de este bloque **🚀 quedaron DEPLOYADAS A PROD el 2026-09-01** (PR #335, ver bloque cont. 42
+> arriba) — el punto 1 (Chrome/FedCM) sigue sin fix de código posible, ver pendientes.
 >
 > #### 🛑 Pendiente real para la próxima sesión
 >
@@ -701,9 +1200,9 @@ type: project
 > `no-self-assign`. `--max-warnings` del script `lint` bajado de 0 a **161** (baseline real preexistente,
 > deuda pendiente de limpieza gradual, no bloqueante). Build + `test:unit` verdes, sin regresión.
 >
-> Commit `33c03b46`, `origin/dev`, `APP_VERSION` `v1.187.0`, tag+release publicados. **Sin deploy a PROD,
-> sin migraciones.** Detalle completo: `log.md` (2026-08-31, tipo `lint`), [[wiki/development/
-> convenciones-codigo]], [[wiki/development/workflow-git]].
+> Commit `33c03b46`, `origin/dev`, `APP_VERSION` `v1.187.0`, tag+release publicados. Sin migraciones. **🚀
+> DEPLOYADO A PROD el 2026-09-01** (PR #335, ver bloque cont. 42 arriba). Detalle completo: `log.md`
+> (2026-08-31, tipo `lint`), [[wiki/development/convenciones-codigo]], [[wiki/development/workflow-git]].
 >
 > ---
 >
@@ -1748,11 +2247,19 @@ type: project
 > la sesión — causa real: el compute Nano agotó su presupuesto de Disk IO por la revisión pesada de hoy
 > (suite e2e completa corrida 2 veces, ~80 min de Playwright + varios agentes en paralelo contra DEV).
 > Confirmado que NO fue un incidente general de Supabase (status page revisada, `sa-east-1` sin
-> incidentes). **Separado, sin resolver**: la organización ("Argentum Business Group", plan Free) está en
-> "grace period" por haber excedido Cached Egress en el ciclo de billing ANTERIOR — restricción real si no
-> se regulariza antes del **01-sep-2026** (afectaría también a PROD, misma organización) — **decisión de
-> billing pendiente de GO, no resoluble desde código**. GO resolvió el problema técnico inmediato pausando
-> y restaurando el proyecto manualmente desde el dashboard (~5 min) — DEV volvió a responder normal.
+> incidentes). **Separado, sin resolver** (al momento de este bloque): la organización ("Argentum Business
+> Group", plan Free) está en "grace period" por haber excedido Cached Egress en el ciclo de billing ANTERIOR
+> — restricción real si no se regulariza antes del **01-sep-2026** (afectaría también a PROD, misma
+> organización) — **decisión de billing pendiente de GO, no resoluble desde código**. GO resolvió el
+> problema técnico inmediato pausando y restaurando el proyecto manualmente desde el dashboard (~5 min) —
+> DEV volvió a responder normal.
+>
+> **✅ CERRADO 2026-09-04**: el plazo venció el 2026-09-01 sin regularizar y causó inestabilidad real y
+> confusa en DEV durante la sesión del 2026-09-03/04 (logins colgados 15-30+ seg, requests sin respuesta,
+> resultados e2e contradictorios entre corridas idénticas) hasta que se identificó la Fair Use Policy activa
+> como causa raíz de fondo. GO upgradeó la organización a **Pro Plan** (USD 25/mes + IVA) el 2026-09-04 —
+> cupo muchísimo mayor en las 9 métricas medidas, en 0% de consumo post-upgrade. Ver `log.md` (2026-09-04,
+> tipo `update`) y [[wiki/development/supabase-dev-vs-prod]] (sección "Organización y plan de facturación").
 >
 > Ver `log.md` (entradas al principio), [[wiki/features/supervision]], [[wiki/features/gastos]],
 > [[wiki/features/clientes-proveedores]], [[wiki/features/productos]], [[wiki/features/ventas-pos]],
@@ -6130,7 +6637,9 @@ type: project
 >    Opción 3 con E3 verificado y E2/E4 construidos).
 > 4. **QA manual del thumbnail** y **prueba del fix de `sucursal_id` MELI contra un pedido real** —
 >    pendientes heredados de sesiones anteriores, sin cambios.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. **E5 (desarmado de kit devuelve componentes al mismo estado de descuento)** y lo que depende de la
 >    Pestaña de supervisor (disparo automático de la Opción 3) siguen sin arrancar, a propósito — GO
 >    scopeó explícitamente E3+E2/E4 como lo independiente de eso.
@@ -6239,7 +6748,9 @@ type: project
 >    real corregido, más el fix de fragilidad del arnés de test).
 > 4. **QA manual del thumbnail** y **prueba del fix de `sucursal_id` MELI contra un pedido real** —
 >    pendientes heredados de sesiones anteriores, sin cambios.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) y terminar el #3 (Rotación —
@@ -6379,7 +6890,9 @@ type: project
 >    `sucursal_id` MELI, thumbnail de imagen, fix de flake e2e).
 > 4. **QA manual del thumbnail** y **prueba del fix de `sucursal_id` MELI contra un pedido real** —
 >    pendientes heredados de la sesión anterior, sin cambios.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) y terminar el #3 (Rotación,
@@ -6423,12 +6936,16 @@ type: project
 > - **⚠ NO probado con un usuario real subiendo una imagen nueva en el navegador** — sí se verificó el
 >   mecanismo por code review y tipos (queda como pendiente de QA manual antes de commitear).
 >
-> **⚠ Pendiente operativo de GO (decisión de negocio, no de código):** el proyecto **Genesis360-DEV**
-> vive en la MISMA organización de Supabase ("Argentum Business Group", **plan Free**) que
-> **Genesis360-PRD** — si la cuota no se regulariza antes del **2026-09-01**, la Fair Use Policy de
-> Supabase podría empezar a devolver 402 en **AMBOS** proyectos (DEV y PROD comparten cuota de
+> **⚠ Pendiente operativo de GO (decisión de negocio, no de código)** (al momento de este bloque): el
+> proyecto **Genesis360-DEV** vive en la MISMA organización de Supabase ("Argentum Business Group", **plan
+> Free**) que **Genesis360-PRD** — si la cuota no se regulariza antes del **2026-09-01**, la Fair Use Policy
+> de Supabase podría empezar a devolver 402 en **AMBOS** proyectos (DEV y PROD comparten cuota de
 > organización). El fix de arriba baja el consumo pero no resuelve la causa de fondo — el upgrade a un
 > plan pago (Pro) es una decisión de negocio de GO, no algo que se resuelva con código.
+>
+> **✅ CERRADO 2026-09-04**: el plazo venció sin regularizar (causó inestabilidad real en DEV el
+> 2026-09-03/04 hasta identificar la Fair Use Policy como causa raíz) — GO upgradeó la organización a
+> **Pro Plan**. Ver `log.md` (2026-09-04, tipo `update`) y [[wiki/development/supabase-dev-vs-prod]].
 >
 > **3. Migración 341 — esquema de CONFIGURACIÓN del Motor de Rotación de productos con descuento (sin
 > ejecución todavía).** Fede respondió el relevamiento (`relevamiento-rotacion-descuento-reglas-
@@ -6519,7 +7036,9 @@ type: project
 >    `imagen_thumb_url` queda bien poblada y se ve correcta en las 3 pantallas.
 > 4. **Probar el fix de `sucursal_id` MELI contra un pedido real** cuando haya uno nuevo en la cuenta
 >    de test conectada.
-> 5. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).
+> 5. ~~**Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no).~~ — ✅
+>    **CERRADO 2026-09-04**: GO upgradeó la organización a Pro Plan (ver `log.md` 2026-09-04,
+>    [[wiki/development/supabase-dev-vs-prod]]).
 > 6. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) y cerrar los gaps del #3

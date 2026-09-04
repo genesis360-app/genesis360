@@ -15,7 +15,6 @@
  * usuario OWNER (proyecto chromium) contra el tenant de prueba DEV (Almacén Jorgito, avanzado).
  */
 import { test, expect } from '@playwright/test'
-import { goto, waitForApp } from './helpers/navigation'
 import { garantizarCajaAbierta } from './helpers/fixtures'
 
 test.describe('Depósito a Caja Fuerte (mutante)', () => {

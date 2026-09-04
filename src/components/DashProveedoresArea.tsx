@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, LineChart, Line, CartesianGrid,
+  PieChart, Pie,
 } from 'recharts'
 import {
   SlidersHorizontal, X, Truck, AlertTriangle, CheckCircle, Clock,

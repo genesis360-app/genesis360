@@ -86,7 +86,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
     } catch (e: any) {
       setError(traducirError(e))
     }
-  }, [elementString, perfil.simbologia])
+  }, [elementString, perfil.simbologia, perfil.ais, fields.gtin])
 
   const descargar = () => {
     if (!dataUrl) return

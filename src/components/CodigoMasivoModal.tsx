@@ -21,6 +21,11 @@ interface Props {
 
 interface Etiqueta { lpn: string; nombre: string; dataUrl: string | null; error?: string }
 
+// Referencia estable — evita recrear el objeto/array en cada render mientras no hay
+// perfiles cargados (o el tenant no configuró ninguno), lo que rompería la memoización
+// del efecto de generación de etiquetas de abajo.
+const DEFAULT_PERFIL = { simbologia: 'gs1_128' as const, ais: ['01', '10', '17', '30'] }
+
 export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
   const [cargando, setCargando] = useState(true)
   const [perfiles, setPerfiles] = useState<any[]>([])
@@ -43,9 +48,12 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
       setPerfilId(perfs && perfs.length ? perfs[0].id : '__default')
       setCargando(false)
     })()
+    // Carga única al montar el modal con las líneas/tenant de esa apertura — no debe
+    // re-disparar si el padre re-renderiza con una nueva referencia de `lineas`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const perfil = perfiles.find(p => p.id === perfilId) ?? { simbologia: 'gs1_128', ais: ['01', '10', '17', '30'] }
+  const perfil = perfiles.find(p => p.id === perfilId) ?? DEFAULT_PERFIL
 
   // Generar todas las etiquetas al canvas (offscreen) → dataURL
   useEffect(() => {
@@ -77,7 +85,7 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
       }
     }
     setEtiquetas(out)
-  }, [cargando, perfilId, productos])
+  }, [cargando, perfilId, productos, lineas, perfil.ais, perfil.simbologia])
 
   const ok = etiquetas.filter(e => e.dataUrl)
   const fallidas = etiquetas.length - ok.length

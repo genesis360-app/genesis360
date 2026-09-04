@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -15,7 +15,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
-import { getFechasDashboard, getFechasAnteriores, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
+import { getFechasDashboard, getFechasAnteriores, type PeriodoDash } from '@/components/FilterBar'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
   const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
   const sym = monedaEff === 'USD' ? 'U$D ' : '$'
-  const fmt = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  const fmt = useCallback((v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`, [sym, conv])
   const fmtCorto = (v: number) => {
     const val = v / conv
     if (val >= 1_000_000) return `${sym}${(val / 1_000_000).toFixed(1)}M`
@@ -165,7 +165,6 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   const gRange = { desde: gCustomDesde ?? customDesde, hasta: gCustomHasta ?? customHasta }
   const { desde, hasta } = embedded ? getFechasDashboard(gPeriodo ?? 'mes', gRange) : getGastosFechas(periodo, customRange)
   const { desde: desdePrev, hasta: hastaPrev } = embedded ? getFechasAnteriores(gPeriodo ?? 'mes', gRange) : getGastosFechasPrev(periodo, customRange)
-  const periodoLabel = embedded ? labelPeriodo(gPeriodo ?? 'mes') : PERIODO_LABELS[periodo]
   const desdeDate = desde.split('T')[0]
   const hastaDate = hasta.split('T')[0]
   const desdePrevDate = desdePrev.split('T')[0]

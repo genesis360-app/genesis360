@@ -25,7 +25,7 @@ export interface ReciboSueldoData {
 }
 
 const fmt = (n: number, moneda = 'ARS') =>
-  `$${Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  `${moneda === 'USD' ? 'U$D ' : '$'}${Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 function periodoLabel(periodo: string): string {
   const d = new Date(periodo + 'T00:00:00')

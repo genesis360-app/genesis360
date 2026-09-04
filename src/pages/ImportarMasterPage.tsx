@@ -130,8 +130,6 @@ export default function ImportarMasterPage() {
           const extra: Record<string, string> = {}
           cfg.extraCols.forEach(c => { extra[c] = String((row as any)[c] || '').trim() })
 
-          // Para aging: dedup por nombre_perfil (puede haber múltiples filas del mismo perfil)
-          const keyParaDedup = tipo === 'aging' ? nombre : nombre
           const estado = errores.length > 0 ? 'error'
             : (tipo !== 'aging' && existentesMap[nombre.toLowerCase()]) ? 'existente'
             : 'nuevo'

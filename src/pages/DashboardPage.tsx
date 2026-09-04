@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
+  Package, AlertTriangle, TrendingUp,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
   ChevronDown, ChevronUp, Truck, Hourglass, Lock,
   Wallet, Flame, Calculator, Activity, SlidersHorizontal, X, LayoutDashboard,
@@ -80,13 +80,6 @@ const INSIGHT_ICONS: Record<InsightTipo, React.ElementType> = {
   warning: Clock,
   success: CheckCircle,
   info:    BarChart2,
-}
-
-const SEMAFORO_COLOR: Record<string, string> = {
-  ok:      'bg-green-400',
-  danger:  'bg-red-400',
-  warning: 'bg-amber-400',
-  neutral: 'bg-gray-300',
 }
 
 type AreaId = 'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios' | 'marketing'
@@ -674,23 +667,6 @@ export default function DashboardPage() {
 
     return list
   }, [stats])
-
-  // ─── Semáforos ───────────────────────────────────────────────────────────────
-  const sem = useMemo(() => {
-    if (!stats) return { alertas: 'neutral', stock: 'neutral', ventas: 'neutral' }
-    const pctV = stats.totalVentasMesAnt > 0
-      ? (stats.totalVentasMes - stats.totalVentasMesAnt) / stats.totalVentasMesAnt * 100
-      : 0
-    return {
-      alertas: stats.alertasActivas > 0 ? 'danger' : 'ok',
-      stock:   stats.stockCritico > stats.totalProductos * 0.15 ? 'danger' : stats.stockCritico > 0 ? 'warning' : 'ok',
-      ventas:  stats.totalVentasMesAnt === 0 ? 'neutral' : pctV > 5 ? 'ok' : pctV < -10 ? 'danger' : 'warning',
-    }
-  }, [stats])
-
-  const trendVentas = stats && stats.totalVentasMesAnt > 0
-    ? (stats.totalVentasMes - stats.totalVentasMesAnt) / stats.totalVentasMesAnt * 100
-    : null
 
   // ─── Helpers de formato ──────────────────────────────────────────────────────
   const conv   = moneda === 'USD' && cotizacion > 0 ? cotizacion : 1

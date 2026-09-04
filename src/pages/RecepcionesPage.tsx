@@ -298,6 +298,10 @@ export default function RecepcionesPage() {
       }
     }
     cargarOC()
+    // Solo debe recargar los items cuando cambia la OC elegida. Si se agregara `sucursalId`,
+    // cambiar de sucursal en el header mientras el usuario ya editó cantidades/lotes de esta
+    // recepción pisaría `items` entero con `setItems(itemsRecepcion)` — pérdida de datos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fOcId])
 
   // ── Agregar producto a items ───────────────────────────────────────────────

@@ -65,8 +65,9 @@ De paso, migración **386** (prerequisito técnico de **Supervisión**, no de Wh
 en DEV en la misma sesión — ver [[wiki/features/supervision]] → "Retrofit a más módulos".
 
 **Estado**: commit `deef2fc2`, `origin/dev`, `APP_VERSION` `v1.188.0`, tag+release publicados
-(https://github.com/genesis360-app/genesis360/releases/tag/v1.188.0). Build verde. **Sin deploy a PROD** —
-PROD sigue en migraciones 001-385; DEV en 001-387c.
+(https://github.com/genesis360-app/genesis360/releases/tag/v1.188.0). Build verde. La migración 386 (y
+387/387b/387c) **🚀 quedó APLICADA TAMBIÉN EN PROD el 2026-09-01** (PR #335, `v1.195.0`) — ver
+`wiki/database/migraciones.md`.
 
 > **🆕 2026-09-01 (v1.195.0): Portal de Proveedores se movió a su propia página** —
 > [[wiki/features/portal-proveedores]] — al construirse la Fase 2 (invitación real + acceso a OC + UI del
@@ -137,6 +138,14 @@ Build/typecheck verdes. **Sin deploy a PROD.**
 **🛑 Pendiente real y bloqueante**:
 1. **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para completar la Verificación
    del Negocio en Meta — 100% externo, ya se agotó lo que se podía diagnosticar/codear de nuestro lado.
+   **🆕 2026-09-02: guía entregada** — se armó y publicó una página HTML (Claude Artifact) "Conectar
+   WhatsApp Genesis360" con las 2 partes que Fede tiene que completar: (a) subir la Constancia de
+   Inscripción Fiscal (CUIT/monotributo) + comprobante de domicilio a nombre de Fede (el Business
+   Portfolio de Genesis360 en Meta está atado a su identidad, no a la de GO); (b) preparar el número
+   dedicado que GO ya compró, **`11 7822-6038`** — no debe tener WhatsApp personal activo, y tiene que
+   poder recibir SMS o llamada para el código de verificación de Meta. Sigue 100% pendiente de Fede, sin
+   confirmación todavía de que lo haya hecho — la próxima sesión debería preguntar "¿Fede ya lo hizo?" en
+   vez de repetir la explicación desde cero.
 2. Probablemente también haga falta "Revisión de la app" (App Review, video de evidencia) antes de
    producción real con clientes ajenos — sin confirmar si bloquea también las pruebas con la cuenta admin
    una vez resuelto el punto 1.

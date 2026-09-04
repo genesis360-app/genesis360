@@ -22,7 +22,6 @@ export interface EnvioReporte {
 }
 
 const ENTREGADO = 'entregado'
-const CERRADOS = ['entregado', 'devolucion', 'cancelado']
 const ABIERTOS_AVANZADOS = ['despachado', 'en_camino', 'en_bodega']
 
 function round2(n: number): number {

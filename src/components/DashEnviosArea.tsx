@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, ScatterChart, Scatter, CartesianGrid, ReferenceLine,
+  ScatterChart, Scatter, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { SlidersHorizontal, X, Send, AlertTriangle, CheckCircle, Clock, BarChart2, Zap, TrendingDown, Package } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -12,11 +12,6 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
 
-const COURIER_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#6B7280']
-const ESTADO_COLORS: Record<string, string> = {
-  entregado: '#22C55E', en_camino: '#7B00FF', en_bodega: '#A855F7',
-  despachado: '#06B6D4', pendiente: '#9CA3AF', devolucion: '#EF4444', cancelado: '#6B7280',
-}
 
 function fmt(v: number) { return formatMoneda(v) }
 function fmtCorto(v: number) {
@@ -136,7 +131,6 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
       // No tenemos fecha_entrega_real en schema, approximation: use fecha_entrega_acordada
       const entregadosArr = (envios ?? []).filter((e: any) => e.estado === 'entregado')
       // No direct fecha_entrega_real - use proxy days from created to "now" for pending
-      const tiempoMedioHs: number | null = null // would need delivery timestamp field
 
       // ── KPI 6: En Tránsito (incluye en_bodega = paquete en depósito del courier) ──
       const enTransito = (envios ?? []).filter((e: any) => ['despachado','en_camino','en_bodega'].includes(e.estado)).length
@@ -220,7 +214,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
     if (eData.enTransito > 20) list.push({ tipo: 'info', titulo: `${eData.enTransito} paquetes actualmente en tránsito`, impacto: 'Alto volumen en tránsito. Asegurate de tener capacidad para gestionar posibles reclamos.', accion: 'Ver envíos', link: '/envios' })
     if ((eData.cancelados ?? 0) > 0) list.push({ tipo: 'warning', titulo: `${eData.cancelados} envío${eData.cancelados!==1?'s':''} cancelado${eData.cancelados!==1?'s':''} este mes`, impacto: 'Revisá los motivos de cancelación para reducir pérdidas operativas.', accion: 'Ver envíos', link: '/envios' })
     return list.slice(0, 4)
-  }, [eData, fmt])
+  }, [eData])
 
   const INSIGHT_ICONS = { danger: AlertTriangle, warning: Clock, success: CheckCircle, info: BarChart2 }
 

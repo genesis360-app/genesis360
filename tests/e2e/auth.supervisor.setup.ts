@@ -3,7 +3,7 @@
  * Autenticación para tests de rol SUPERVISOR.
  * Requiere: E2E_SUPERVISOR_EMAIL + E2E_SUPERVISOR_PASSWORD en .env.test.local
  */
-import { test as setup, expect } from '@playwright/test'
+import { test as setup } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'

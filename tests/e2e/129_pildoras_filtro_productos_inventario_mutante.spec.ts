@@ -13,7 +13,7 @@
  * Corre con el usuario OWNER (proyecto chromium) contra el tenant de prueba DEV.
  */
 import { test, expect } from '@playwright/test'
-import { goto, waitForApp, uniqueName } from './helpers/navigation'
+import { goto, waitForApp } from './helpers/navigation'
 import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
 
 test.describe('Buscador de píldoras — Productos e Inventario (mutante)', () => {

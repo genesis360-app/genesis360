@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  UserPlus, Trash2, Shield, User, Mail, AlertTriangle,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Building2, Lock,
+  UserPlus, Trash2, Shield, User, Mail,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -551,7 +551,17 @@ export default function UsuariosPage() {
                         </div>
                       )}
 
-                      <button onClick={() => openUserPermisos(u)} title="Editar permisos del módulo por usuario"
+                      {rolesCustom.length > 0 && (
+                        <select value={u.rol_custom_id ?? ''} title="Asignar un rol personalizado ya creado"
+                          onChange={e => assignRolCustom.mutate({ userId: u.id, rolCustomId: e.target.value || null, nombreUsuario: u.nombre_display })}
+                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white max-w-[140px]">
+                          <option value="">Sin rol personalizado</option>
+                          {rolesCustom.map((r: any) => (
+                            <option key={r.id} value={r.id}>{r.nombre}</option>
+                          ))}
+                        </select>
+                      )}
+                      <button onClick={() => openUserPermisos(u)} title="Crear/editar permisos a medida para este usuario"
                         className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                         <Sliders size={15} />
                       </button>

@@ -2,7 +2,7 @@ import { BRAND, LEGAL_VERSION } from '@/config/brand'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, Building2, Globe, Phone, Mail, Lock, LogOut } from 'lucide-react'
+import { Building2, Globe, Phone, Mail, Lock, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -91,6 +91,9 @@ export default function OnboardingPage() {
       })
       setStep('business')
     })
+    // Chequeo único al montar: si se re-disparara mientras `provisionNegocio` de la
+    // primera corrida sigue en vuelo, se crearía un tenant duplicado para el mismo usuario.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleAccountSubmit = (e: React.FormEvent) => {

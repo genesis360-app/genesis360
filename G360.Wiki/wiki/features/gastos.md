@@ -3,7 +3,7 @@ title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381, migration 389, src/components/SolicitarAutorizacionGastoModal.tsx, src/components/BandejaAutorizacionesGasto.tsx]
-updated: 2026-09-01
+updated: 2026-09-04
 ---
 
 # Módulo Gastos
@@ -545,6 +545,15 @@ El tab **Cheques** (CO6, mig 187) dejó de ser un cuaderno aparte:
 
 ## Compras/Gastos en USD + tasa de cambio editable — Fases 1-3 (migs 379-381, v1.180.0, 2026-08-24/25)
 
+> **✅ 2026-09-04: verificado con un test e2e real de punta a punta**, no solo revisión estática de código
+> — ver "Verificado con test e2e real (2026-09-04)" más abajo. De paso se aclaró un gap de memoria del
+> asistente (no del proyecto): el relevamiento de 23 preguntas de este módulo YA estaba 100% respondido por
+> Fede desde el 2026-08-21, con las Fases 1-3 ya en PROD desde el 2026-08-27 — nada de esto era un
+> pendiente real. Quedan 2 preguntas técnicas dirigidas a GO ("Tonga") resueltas (D1: Caja USD ya soportaba
+> egresos, cerrado; G1: NO existe hoy un modo dashboard "real" ARS+USD sin convertir, sería nuevo si se
+> confirma) y 2 preguntas reenviadas a Fede sin responder todavía — ver
+> [[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD" (filas D1/G1).
+
 > Relevamiento nuevo (`relevamiento-compras-gastos-usd-reglas-negocio.html`, raíz del repo), generado y
 > **respondido por Fede 2026-08-21, 100% cerrado**, con instrucción explícita de arrancar ya (no esperar
 > sesión dedicada). Distinto del G5 ("Caja en USD", que solo cubrió el lado de **ventas** — ver
@@ -629,6 +638,27 @@ pesos (`80_cheque_rechazo_oc_revierte_mutante`, `28_cobranza_cc_mutante`, `31_ch
 `27_gasto_efectivo_mutante`) siguen en verde en cada incremento — cero regresión para el 100% del volumen
 real de hoy (ARS). `schema_full.sql` regenerado (commit `3279b381`).
 
+### Verificado con test e2e real (2026-09-04)
+
+Hasta esta fecha, NINGÚN tenant (DEV ni PROD) tenía un método de pago "Efectivo USD" real configurado, así
+que el camino de pago en USD (código en PROD desde v1.184.0/2026-08-27) nunca se había ejercitado con datos
+reales, solo revisión estática de código.
+
+**Fixture sembrado en DEV** (tenant "Almacén Jorgito", `3769b1db-10f4-46a6-bc7f-eb669307730d`):
+`metodos_pago` nuevo "Efectivo USD" (`es_efectivo=true`, `moneda='USD'`, `habilitado_gastos=true`,
+`habilitado_ventas=true` — esto también destraba probar la Caja USD de venta física, G5, que tampoco tenía
+nunca un método real). Apunta a la `cuenta_origen` "Efectivo USD" ya existente sin usar; "Caja USD" y "Caja
+Fuerte USD" ya existían en DEV. Es un INSERT de datos de prueba, no una migración de esquema.
+
+**Test nuevo permanente**: `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (commit `8deb6a13`, `dev`) —
+crea una OC en USD por UI, la paga con "Efectivo USD" desde la Caja USD operativa, verifica el toast de
+éxito Y (siguiendo la metodología del proyecto de no confiar solo en el toast) la mutación DIRECTO contra
+la base real: `caja_movimientos` con `tipo='egreso'`/`moneda='USD'` correctos (antes de la Fase 1, esa
+columna quedaba siempre en el default `'ARS'` sin importar la moneda real del medio de pago usado — el
+bug/gap que se verificó que ya no existe), `cotizacion_usd=null` (correcto, sin descalce de moneda);
+`ordenes_compra.estado_pago='pagada'`, `monto_pagado=100.00`. **Confirma que las Fases 1-3 funcionan de
+verdad con datos reales**, no solo en revisión estática de código.
+
 ### Qué falta del plan
 
 - Sugerir la última cotización usada con ESE proveedor específico (segunda sugerencia de B3 del
@@ -640,10 +670,13 @@ real de hoy (ARS). `schema_full.sql` regenerado (commit `3279b381`).
 - C2/C3 (trazabilidad/freeze) — cubiertos de hecho por el diseño actual (`caja_movimientos.cotizacion_usd`
   queda congelado al insertar, el mecanismo de "nota de corrección" ya existente cubre errores) pero sin
   confirmar explícitamente con GO.
-- G1/G2 (reportes/dashboard con desglose ARS/USD) — sin empezar.
+- G1/G2 (reportes/dashboard con desglose ARS/USD) — sin empezar. **2026-09-04: G1 verificado contra código
+  real que NO existe hoy un modo dashboard "real" ARS+USD sin convertir** (sería nuevo a construir) —
+  pregunta reenviada a Fede junto con la duda de a qué se refiere "solo dólar oficial de Banco Nación",
+  sigue sin responder. Ver [[wiki/development/reglas-negocio]] → "Módulo: Compras/Gastos en USD" (fila G1).
 
-Detalle completo: `sources/raw/project_pendientes.md` (cont. 25, "ARRANCÁ ACÁ"),
-`wiki/database/migraciones.md` (migs 379-381), `wiki/business/roadmap.md` (v1.180.0).
+Detalle completo: `sources/raw/project_pendientes.md` (cont. 46, "ARRANCÁ ACÁ"),
+`wiki/database/migraciones.md` (migs 379-381), `wiki/business/roadmap.md` (v1.180.0, v1.195.4).
 
 ---
 

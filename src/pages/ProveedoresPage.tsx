@@ -30,7 +30,7 @@ import {
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
-  Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown, RotateCcw,
+  Download, DollarSign, AlertCircle, FileDown, RotateCcw,
   MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -236,7 +236,6 @@ export default function ProveedoresPage() {
   type ContactoForm = { id?: string; nombre: string; puesto: string; email: string; telefono: string }
   const CONTACTO_VACIO: ContactoForm = { nombre: '', puesto: '', email: '', telefono: '' }
   const [contactos, setContactos] = useState<ContactoForm[]>([])
-  const [contactoEditIdx, setContactoEditIdx] = useState<number | null>(null)
 
   // ── Servicios state ────────────────────────────────────────────────────────
   const [serviciosSearch, setServiciosSearch] = useState('')
@@ -1075,7 +1074,7 @@ export default function ProveedoresPage() {
       if (pErr) throw pErr
       return gasto.id
     },
-    onSuccess: (gastoId) => {
+    onSuccess: () => {
       toast.success('Presupuesto aprobado — gasto creado')
       qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] })
       qc.invalidateQueries({ queryKey: ['gastos'] })

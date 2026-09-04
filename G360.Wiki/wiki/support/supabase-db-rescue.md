@@ -2,7 +2,7 @@
 title: Supabase — Soporte y rescate de la DB
 category: support
 tags: [supabase, database, soporte, emergencia, pool, conexiones]
-updated: 2026-05-13
+updated: 2026-09-04
 ---
 
 # Supabase — Soporte y rescate de la DB
@@ -26,6 +26,15 @@ Referencia rápida para diagnosticar y resolver problemas de base de datos en pr
 
 Dashboard Supabase → indicador de salud → debe decir **"Healthy"**.  
 Si dice **"Unhealthy"** o hay un banner de recursos agotados → hay un problema activo.
+
+> ⚠ **El proyecto puede seguir en `ACTIVE_HEALTHY`/"Healthy" y aun así fallar de forma intermitente**: si
+> la cuota de la **organización** está excedida (Fair Use Policy, plan Free), Supabase puede aplicar
+> throttling condicional (timeouts, hangs, 402 esporádicos) SIN marcar el proyecto como caído. Si los
+> síntomas son amplios y confusos (logins colgados, requests sin respuesta, resultados inconsistentes entre
+> corridas idénticas) y no se explican por `pg_stat_activity` ni por el código, revisar también
+> **Billing → Usage** de la organización — no solo el estado del proyecto individual. Ver
+> [[wiki/development/supabase-dev-vs-prod]] ("Organización y plan de facturación") — incidente real
+> 2026-08-07 a 2026-09-04, cerrado con upgrade a Pro Plan.
 
 ### Ver logs de errores
 

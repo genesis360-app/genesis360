@@ -6,7 +6,59 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 47) — 🚀 DEPLOY A PROD: v1.195.0 → v1.195.4, verificado real
+> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 48) — 💱 Fede confirmó las 2 últimas dudas de USD: cotización
+> BNA-only YA CONSTRUIDA (sin deployar a PROD) + plan del modo "real" del Dashboard LISTO para
+> construir en sesión dedicada
+>
+> Continuación directa del deploy de arriba (cont. 47). Fede respondió (vía GO) las 2 preguntas que
+> quedaban del relevamiento de Compras/Gastos USD:
+>
+> 1. **"Solo dólar oficial BNA"** → se refiere al widget general de cotización (Caja/Ventas/Dashboard):
+>    tiene que dejar de ofrecer Blue/MEP/Cripto y traer SIEMPRE compra/venta del Oficial de Banco Nación.
+>    La parte de AFIP (Fase 8/C2) se revisa aparte, sigue bloqueada por un contador.
+> 2. **Modo "real" del Dashboard (G1)** → confirmado que sí lo quiere, sumado como 3ª opción junto a
+>    "todo en pesos"/"todo en dólares".
+>
+> #### ✅ 1) Cotización BNA-only — CONSTRUIDO, VERIFICADO EN NAVEGADOR, commiteado en `dev` (commit
+> `e7db934b`), **sin deploy a PROD todavía**
+>
+> `src/hooks/useCotizacion.ts` + `src/components/CotizacionWidget.tsx`: se eliminó `TIPOS_DOLAR`
+> (Blue/Oficial/MEP/Cripto) y el menú desplegable para elegirlo — ahora un solo botón de refresco para
+> cualquier rol, siempre trae `dolarapi.com/v1/dolares/oficial`. Verificado con query real que NINGÚN
+> tenant (ni DEV ni PROD) tenía configurado Blue/MEP/Cripto — cambio sin impacto en datos existentes.
+> Probado en navegador real (Playwright ad-hoc): el widget refresca y muestra Venta/Compra reales de
+> BNA, timestamp actualizado, sin el dropdown viejo. `npm run build`/`lint` verdes.
+>
+> #### 📋 2) Modo "real" del Dashboard (G1) — PLAN LISTO, sin construir todavía, para sesión dedicada
+>
+> GO pidió armar el alcance para retomarlo en otra sesión (no se construyó código). Hallazgo clave: **el
+> patrón que pide Fede YA EXISTE** para un solo KPI — "Ingreso Neto de Caja" (área "Todo" del Dashboard,
+> `DashboardPage.tsx`) separa `caja_movimientos` por su columna `moneda` en dos acumuladores (ARS
+> principal + USD como leyenda aparte, "Efectivo este mes · +US$450"), sin convertir ni mezclar — mismo
+> criterio que ya usa el KPI "Margen de Contribución" (excluye ventas con `cotizacion_usd IS NOT NULL`).
+> El gap real: `DashVentasArea.tsx` y `DashGastosArea.tsx` NO usan este patrón — su toggle ARS/USD hoy es
+> una conversión ficticia (divide el mismo total por la cotización, no separa por moneda real). Plan
+> completo, con la lista de archivos a tocar y el criterio de distinción ARS/USD por tabla
+> (`ventas.cotizacion_usd`, `gastos.moneda`, `caja_movimientos.moneda`), en la memoria del asistente
+> `project_dashboard_modo_real_usd_plan.md` — **leerla primero** al arrancar esa sesión, no
+> re-investigar desde cero. Sin pendientes de diseño, solo falta la etiqueta exacta del botón y si
+> Productos entra en el alcance (decidible al arrancar).
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. Decidir cuándo deployar la cotización BNA-only a PROD (bajo riesgo, ya verificada) — sola o junto
+>    con el modo "real" del Dashboard cuando esté listo.
+> 2. Construir el modo "real" del Dashboard (G1) — plan completo arriba, sesión dedicada.
+> 3. Heredado: WhatsApp/Meta (Fede: CUIT/monotributo + comprobante de domicilio; GO: reportar bug de
+>    Chrome/FedCM a Meta).
+> 4. Heredado: relevamiento Plan IA Fase 4 (panel admin, chat cross-tenant) — sigue sin respuesta.
+> 5. Backlog no bloqueante de Compras/Gastos USD: gastos sueltos en USD (sin UI), reportes G1/G2 (además
+>    del modo real), B3 (aviso de desvío de cotización + sugerir última cotización por proveedor).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-04, cont. 47) — 🚀 DEPLOY A PROD: v1.195.0 → v1.195.4, verificado real —
+> este bloque quedó SUPERADO por el de arriba (cont. 48)
 >
 > GO autorizó explícitamente ("podés pasar todo a PRD"). Se deployó TODO lo acumulado en `dev` desde el
 > último deploy real (v1.195.0, PR #335, 2026-09-01) — las tandas de mantenimiento cont. 43/44/45/46 de

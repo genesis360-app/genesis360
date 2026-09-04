@@ -6,6 +6,28 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-04] fix | 💱 Cotización BNA-only construida (sin deploy) + plan del modo "real" del Dashboard listo para otra sesión
+
+Fede confirmó las 2 últimas dudas de USD. **(1) Cotización BNA-only**: el widget general debe dejar de
+ofrecer Blue/MEP/Cripto y traer siempre Oficial de Banco Nación. Implementado en
+`src/hooks/useCotizacion.ts` + `src/components/CotizacionWidget.tsx` (commit `e7db934b`, `dev`, sin
+deploy a PROD): se eliminó el menú desplegable de tipos de dólar, un solo botón de refresco para
+cualquier rol. Verificado con query real que ningún tenant (DEV/PROD) usaba Blue/MEP/Cripto — cambio
+sin impacto en datos existentes — y probado en navegador real (Playwright ad-hoc): trae el valor
+correcto de `dolarapi.com/v1/dolares/oficial`, timestamp actualizado. `npm run build`/`lint` verdes.
+
+**(2) Modo "real" del Dashboard (G1)**: confirmado que Fede lo quiere, pero se armó el PLAN en vez de
+construirlo ahora (GO pidió dejarlo para una sesión dedicada — toca reportes de plata, REGLA #0).
+Hallazgo clave: el patrón ya existe para el KPI "Ingreso Neto de Caja" (separa `caja_movimientos` por
+`moneda` en dos acumuladores, sin convertir) — falta extenderlo a `DashVentasArea.tsx`/
+`DashGastosArea.tsx`, que hoy solo hacen una conversión ficticia (dividir por cotización). Plan
+detallado, con archivos y criterio de distinción ARS/USD por tabla, en la memoria del asistente
+`project_dashboard_modo_real_usd_plan.md`.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 48).
+
+---
+
 ## [2026-09-04] deploy | 🚀 PROD v1.195.0 → v1.195.4 — ESLint 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor
 
 GO autorizó explícitamente ("podés pasar todo a PRD"). Deploy de TODO lo acumulado en `dev` desde el

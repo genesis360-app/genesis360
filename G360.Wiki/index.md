@@ -248,7 +248,17 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-04 — 🚀 DEPLOY REAL A PROD: v1.195.0 → v1.195.4 (PR #340, merge
+*Última actualización: 2026-09-04 — 💱 Cotización BNA-only construida (sin deploy) + plan del modo
+"real" del Dashboard listo* — Fede confirmó las 2 últimas dudas del relevamiento de Compras/Gastos USD.
+(1) El widget de cotización ya no ofrece Blue/MEP/Cripto, siempre Oficial BNA (`useCotizacion.ts` +
+`CotizacionWidget.tsx`, commit `e7db934b`, `dev`, sin deploy a PROD) — verificado sin impacto en datos
+reales y probado en navegador. (2) El modo "real" del Dashboard (G1) se planificó pero no se construyó
+(GO pidió sesión dedicada, toca reportes de plata) — el patrón ya existe para un KPI ("Ingreso Neto de
+Caja"), falta extenderlo a Ventas/Gastos; plan completo en la memoria del asistente
+`project_dashboard_modo_real_usd_plan.md`. Ver `log.md` (2026-09-04, tipo `fix`),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 48).
+
+Antes: *Última actualización: 2026-09-04 — 🚀 DEPLOY REAL A PROD: v1.195.0 → v1.195.4 (PR #340, merge
 `a37e6e6c`)* — GO autorizó explícitamente. Promovió TODO lo acumulado en `dev` desde el último deploy real
 (v1.195.0, PR #335, 2026-09-01): limpieza de ESLint 100% (161→0 warnings), 2 features UX chicas (búsqueda
 por foco en Inventario, asignar rol personalizado desde Usuarios), 6 PRs de Dependabot + `npm audit fix` +

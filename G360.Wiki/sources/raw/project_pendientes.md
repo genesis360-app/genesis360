@@ -10,8 +10,9 @@ type: project
 > BNA-only YA CONSTRUIDA (sin deployar a PROD) + plan del modo "real" del Dashboard LISTO para
 > construir en sesión dedicada
 >
-> Continuación directa del deploy de arriba (cont. 47). Fede respondió (vía GO) las 2 preguntas que
-> quedaban del relevamiento de Compras/Gastos USD:
+> Continuación directa del deploy de arriba (cont. 47). **DEV avanzó a `v1.195.5`** (commit `01c15d56`,
+> tag+release publicados sobre `dev`, **sin deploy a PROD** — PROD sigue en `v1.195.4`). Fede respondió
+> (vía GO) las 2 preguntas que quedaban del relevamiento de Compras/Gastos USD:
 >
 > 1. **"Solo dólar oficial BNA"** → se refiere al widget general de cotización (Caja/Ventas/Dashboard):
 >    tiene que dejar de ofrecer Blue/MEP/Cripto y traer SIEMPRE compra/venta del Oficial de Banco Nación.

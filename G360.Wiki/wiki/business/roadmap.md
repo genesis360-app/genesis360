@@ -37,6 +37,17 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.195.5` (commit `01c15d56`, tag+release publicados sobre `dev`, **sin deploy a
+PROD todavía** — PROD sigue en `v1.195.4`). Cambio: **cotización BNA-only** — el widget general de
+cotización (Caja/Ventas/Dashboard) dejó de ofrecer Blue/MEP/Cripto, ahora trae siempre compra/venta del
+Oficial de Banco Nación (pedido de Fede, `src/hooks/useCotizacion.ts` + `src/components/
+CotizacionWidget.tsx`, commit `e7db934b`). Verificado que ningún tenant real (DEV ni PROD) usaba los
+tipos eliminados — sin impacto en datos existentes — y probado en navegador real contra
+`dolarapi.com/v1/dolares/oficial`. Sin migración de DB nueva. De paso se armó el **plan completo del
+modo "real" del Dashboard (G1)** — Fede confirmó que lo quiere, pero se dejó para una sesión dedicada
+sin construir código (toca reportes de plata) — ver [[wiki/development/reglas-negocio]] y la memoria del
+asistente `project_dashboard_modo_real_usd_plan.md`.
+
 **Detalle de v1.195.4** (ya 🚀 EN PROD, ver arriba) — tag+release publicado originalmente 2026-09-04 (commit
 `4f991613`, retargeteado de `dev` a `main` el 2026-09-04 tras el deploy, marcado `latest`, título
 "v1.195.4 — e2e OC-USD real + incidente Supabase resuelto"). Reemplaza a v1.195.3 (commit `d8b10904`, 2026-09-03) como último tag de `dev`. Sin

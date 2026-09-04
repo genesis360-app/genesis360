@@ -252,7 +252,8 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 "real" del Dashboard listo* — Fede confirmó las 2 últimas dudas del relevamiento de Compras/Gastos USD.
 (1) El widget de cotización ya no ofrece Blue/MEP/Cripto, siempre Oficial BNA (`useCotizacion.ts` +
 `CotizacionWidget.tsx`, commit `e7db934b`, `dev`, sin deploy a PROD) — verificado sin impacto en datos
-reales y probado en navegador. (2) El modo "real" del Dashboard (G1) se planificó pero no se construyó
+reales y probado en navegador. `APP_VERSION` → `v1.195.5` (commit `01c15d56`, tag+release sobre `dev`,
+PROD sigue en `v1.195.4`). (2) El modo "real" del Dashboard (G1) se planificó pero no se construyó
 (GO pidió sesión dedicada, toca reportes de plata) — el patrón ya existe para un KPI ("Ingreso Neto de
 Caja"), falta extenderlo a Ventas/Gastos; plan completo en la memoria del asistente
 `project_dashboard_modo_real_usd_plan.md`. Ver `log.md` (2026-09-04, tipo `fix`),

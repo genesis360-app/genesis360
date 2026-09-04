@@ -14,7 +14,8 @@ ofrecer Blue/MEP/Cripto y traer siempre Oficial de Banco Nación. Implementado e
 deploy a PROD): se eliminó el menú desplegable de tipos de dólar, un solo botón de refresco para
 cualquier rol. Verificado con query real que ningún tenant (DEV/PROD) usaba Blue/MEP/Cripto — cambio
 sin impacto en datos existentes — y probado en navegador real (Playwright ad-hoc): trae el valor
-correcto de `dolarapi.com/v1/dolares/oficial`, timestamp actualizado. `npm run build`/`lint` verdes.
+correcto de `dolarapi.com/v1/dolares/oficial`, timestamp actualizado. `npm run build`/`lint` verdes. `APP_VERSION`
+bumpeado a `v1.195.5` (commit `01c15d56`), tag+release publicados sobre `dev` — PROD sigue en `v1.195.4`.
 
 **(2) Modo "real" del Dashboard (G1)**: confirmado que Fede lo quiere, pero se armó el PLAN en vez de
 construirlo ahora (GO pidió dejarlo para una sesión dedicada — toca reportes de plata, REGLA #0).

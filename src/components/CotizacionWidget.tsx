@@ -1,23 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
-import { DollarSign, RefreshCw, Check, X, ChevronDown } from 'lucide-react'
-import { useCotizacion, TIPOS_DOLAR } from '@/hooks/useCotizacion'
+import { useState } from 'react'
+import { DollarSign, RefreshCw, Check, X } from 'lucide-react'
+import { useCotizacion } from '@/hooks/useCotizacion'
 
 export function CotizacionWidget() {
   const { cotizacion, cotizacionCompra, updatedAt, puedeElegirTipo, guardar, fetchDesdeApi, loadingApi } = useCotizacion()
   const [editing, setEditing]     = useState(false)
   const [inputVal, setInputVal]   = useState('')
-  const [showMenu, setShowMenu]   = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  // Cerrar menú al hacer click fuera
-  useEffect(() => {
-    if (!showMenu) return
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showMenu])
 
   const startEdit = () => {
     setInputVal(cotizacion > 0 ? cotizacion.toString() : '')
@@ -92,44 +80,16 @@ export function CotizacionWidget() {
             </span>
           )}
 
-          {puedeElegirTipo ? (
-            <div className="relative flex-shrink-0" ref={menuRef}>
-              <button
-                onClick={() => setShowMenu(v => !v)}
-                disabled={loadingApi}
-                title="Actualizar desde API"
-                className="flex items-center gap-0.5 text-blue-500 dark:text-blue-300 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={loadingApi ? 'animate-spin' : ''} />
-                <ChevronDown size={10} />
-              </button>
-
-              {showMenu && (
-                <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 py-1 z-[60] w-36">
-                  <p className="text-xs text-gray-400 dark:text-gray-500 px-3 py-1">Obtener automático:</p>
-                  {TIPOS_DOLAR.map(t => (
-                    <button
-                      key={t.casa}
-                      onClick={() => { fetchDesdeApi(t.casa); setShowMenu(false) }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            // G5 Fase 2 — rol sin permiso de elegir tipo: solo puede refrescar con la última casa usada.
-            <button
-              onClick={() => fetchDesdeApi()}
-              disabled={loadingApi}
-              title="Actualizar cotización"
-              className="flex-shrink-0 text-blue-500 dark:text-blue-300 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={loadingApi ? 'animate-spin' : ''} />
-            </button>
-          )}
+          {/* Fede 2026-09-04: ya no hay tipo de dólar para elegir (siempre Oficial BNA) — un único
+              botón de refresco para cualquier rol, ya no hace falta el menú desplegable. */}
+          <button
+            onClick={() => fetchDesdeApi()}
+            disabled={loadingApi}
+            title="Actualizar cotización (Oficial BNA)"
+            className="flex-shrink-0 text-blue-500 dark:text-blue-300 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loadingApi ? 'animate-spin' : ''} />
+          </button>
         </div>
       )}
 

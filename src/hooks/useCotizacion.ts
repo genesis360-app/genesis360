@@ -4,16 +4,15 @@ import { useAuthStore } from '@/store/authStore'
 import { rolEnLista } from '@/lib/cajaPermisos'
 import toast from 'react-hot-toast'
 
-export const TIPOS_DOLAR = [
-  { casa: 'blue',    label: 'Dólar Blue' },
-  { casa: 'oficial', label: 'Dólar Oficial' },
-  { casa: 'bolsa',   label: 'MEP / Bolsa' },
-  { casa: 'cripto',  label: 'Cripto' },
-]
+// Pedido de Fede (relevamiento Compras/Gastos USD, 2026-09-04): dejar de ofrecer Blue/MEP/Cripto
+// como referencia — el sistema usa SIEMPRE el dólar Oficial de Banco Nación (compra y venta), sin
+// elección posible. Se mantiene la columna `tenants.cotizacion_usd_casa` en el schema (guarda
+// siempre 'oficial' de ahora en más) para no forzar una migración sobre datos históricos.
+const CASA_UNICA = 'oficial'
 
-// G5 Fase 2 — antes cualquier usuario con sidebar podía elegir/editar la cotización. Ahora solo el
-// DUEÑO (siempre) + los roles habilitados en tenants.cotizacion_usd_roles_permitidos pueden elegir
-// tipo de dólar o cargar un valor manual; el resto solo puede "refrescar" repitiendo la última casa.
+// G5 Fase 2 — antes cualquier usuario con sidebar podía editar la cotización manualmente. Ahora solo
+// el DUEÑO (siempre) + los roles habilitados en tenants.cotizacion_usd_roles_permitidos pueden cargar
+// un valor manual; el resto solo puede "refrescar" desde la API (siempre Oficial BNA).
 export function useCotizacion() {
   const { tenant, user, setTenant } = useAuthStore()
   const [loadingApi, setLoadingApi] = useState(false)
@@ -21,7 +20,6 @@ export function useCotizacion() {
   const cotizacion         = tenant?.cotizacion_usd ?? 0
   const cotizacionCompra   = (tenant as any)?.cotizacion_usd_compra ?? 0
   const updatedAt          = tenant?.cotizacion_usd_updated_at
-  const casaActual         = (tenant as any)?.cotizacion_usd_casa || 'blue'
   // DUEÑO siempre puede elegir, sea cual sea lo guardado — cotizacion_usd_roles_permitidos son roles
   // ADICIONALES (nunca reemplaza a DUEÑO), a diferencia de accedeABoveda donde la lista es completa.
   const puedeElegirTipo    = user?.rol === 'DUEÑO' || rolEnLista(
@@ -43,14 +41,11 @@ export function useCotizacion() {
     return true
   }
 
-  // `casa` solo se respeta si el rol puede elegir tipo — de lo contrario siempre refresca con la
-  // última casa usada (o 'blue' si el tenant nunca eligió una), nunca con la que pase el caller.
-  const fetchDesdeApi = async (casa: string = 'blue') => {
+  const fetchDesdeApi = async () => {
     if (!tenant) return
-    const casaEfectiva = puedeElegirTipo ? casa : casaActual
     setLoadingApi(true)
     try {
-      const res = await fetch(`https://dolarapi.com/v1/dolares/${casaEfectiva}`)
+      const res = await fetch(`https://dolarapi.com/v1/dolares/${CASA_UNICA}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       if (!data?.venta) throw new Error()
@@ -59,14 +54,14 @@ export function useCotizacion() {
         .update({
           cotizacion_usd: data.venta,
           cotizacion_usd_compra: data.compra ?? null,
-          cotizacion_usd_casa: casaEfectiva,
+          cotizacion_usd_casa: CASA_UNICA,
           cotizacion_usd_updated_at: new Date().toISOString(),
         })
         .eq('id', tenant.id)
         .select().single()
       if (error || !updated) throw error ?? new Error()
       setTenant(updated)
-      toast.success(`Cotización ${TIPOS_DOLAR.find(t => t.casa === casaEfectiva)?.label ?? casaEfectiva}: $${data.venta.toLocaleString('es-AR')}`)
+      toast.success(`Cotización Oficial BNA: $${data.venta.toLocaleString('es-AR')}`)
     } catch {
       toast.error('No se pudo obtener la cotización. Ingresala manualmente.')
     } finally {
@@ -74,5 +69,5 @@ export function useCotizacion() {
     }
   }
 
-  return { cotizacion, cotizacionCompra, updatedAt, casaActual, puedeElegirTipo, guardar, fetchDesdeApi, loadingApi }
+  return { cotizacion, cotizacionCompra, updatedAt, puedeElegirTipo, guardar, fetchDesdeApi, loadingApi }
 }

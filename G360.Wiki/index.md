@@ -248,7 +248,20 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-04 — 💵🧪 Compras/Gastos en USD: aclarado que el relevamiento de 23
+*Última actualización: 2026-09-04 — 🚀 DEPLOY REAL A PROD: v1.195.0 → v1.195.4 (PR #340, merge
+`a37e6e6c`)* — GO autorizó explícitamente. Promovió TODO lo acumulado en `dev` desde el último deploy real
+(v1.195.0, PR #335, 2026-09-01): limpieza de ESLint 100% (161→0 warnings), 2 features UX chicas (búsqueda
+por foco en Inventario, asignar rol personalizado desde Usuarios), 6 PRs de Dependabot + `npm audit fix` +
+migración de `react-router-dom` v6.21.0→v7.18.3 (2 CVEs moderados resueltos), fix parcial de `APP_URL` en
+Edge Function `invitar-proveedor` (redeployada a PROD — el problema de fondo, sin frontend público de DEV,
+sigue pendiente), y el test e2e permanente `140_compra_pago_oc_usd_mutante.spec.ts`. **Sin migraciones
+nuevas** (tope 390 confirmado igual en DEV y PROD). Release `v1.195.4` retargeteado de `dev` a `main`.
+Vercel verificado `READY` en `target: production` (`dpl_87HQR74KMvf2njwUQ9A76XZK3r9r`) Y con `curl` real
+contra `https://www.genesis360.pro/` (bundle `assets/index-DZyAUxNg.js` contiene `v1.195.4`). Ver `log.md`
+(2026-09-04, tipo `deploy`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 47),
+`wiki/business/roadmap.md`.
+
+Antes: *Última actualización: 2026-09-04 — 💵🧪 Compras/Gastos en USD: aclarado que el relevamiento de 23
 preguntas (`relevamiento-compras-gastos-usd-reglas-negocio.html`, generado 2026-08-21) YA estaba 100%
 respondido por Fede y las Fases 1-3 ya construidas y en PROD desde el 2026-08-27 (PR #334) — no era un
 pendiente real, fue un gap de memoria del asistente. De las 2 preguntas técnicas dirigidas a GO ("Tonga"):
@@ -261,8 +274,9 @@ cualquier tenant) y verificado que el pago de una OC en USD funciona de punta a 
 confirmada DIRECTO contra la base (`caja_movimientos.tipo='egreso'`/`moneda='USD'` correctos,
 `ordenes_compra.estado_pago='pagada'`) — cierra el gap de que las Fases 1-3 (código en PROD desde v1.184.0)
 nunca se habían ejercitado con datos reales. **Bump + tag + release**: `APP_VERSION` → `v1.195.4` (commit
-`4f991613`, `dev`, `--target dev --latest`), cierra formalmente esta unidad de trabajo. **PROD sigue en
-`v1.195.0`** — nada de esta sesión llegó a PROD todavía. Ver `log.md` (2026-09-04, tipo `fix`),
+`4f991613`, `dev`, `--target dev --latest`), cierra formalmente esta unidad de trabajo. **ACTUALIZACIÓN
+2026-09-04: este código llegó a PROD en el deploy `v1.195.4` (PR #340), ver la entrada de arriba** — al
+momento de escribir este párrafo original, PROD seguía en `v1.195.0`. Ver `log.md` (2026-09-04, tipo `fix`),
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 46), [[wiki/development/reglas-negocio]] →
 "Módulo: Compras/Gastos en USD", [[wiki/features/gastos]] (sección dedicada), `wiki/business/roadmap.md`
 (v1.195.4).

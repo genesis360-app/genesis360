@@ -6,9 +6,59 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 46) — 💵 Compras/Gastos en USD: aclarado que el relevamiento YA
+> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 47) — 🚀 DEPLOY A PROD: v1.195.0 → v1.195.4, verificado real
+>
+> GO autorizó explícitamente ("podés pasar todo a PRD"). Se deployó TODO lo acumulado en `dev` desde el
+> último deploy real (v1.195.0, PR #335, 2026-09-01) — las tandas de mantenimiento cont. 43/44/45/46 de
+> abajo (v1.195.1 a v1.195.4), ~32 commits.
+>
+> #### Versión actual — PROD y DEV ya alineadas
+>
+> - **PROD**: `v1.195.4` (antes `v1.195.0`) — PR #340 "v1.195.4 — ESLint 100% + UX chicas + deps
+>   (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
+>   `a37e6e6c2e1a80cbd522823784555e1a63dc16fd`), confirmado con `gh pr view 340` → `state: MERGED`.
+> - **DEV**: `v1.195.4` (sin cambios, ya estaba acá desde cont. 46).
+> - **Migraciones**: **NINGUNA nueva** — tope confirmado en 390 en ambos proyectos (`list_migrations` de
+>   PROD `jjffnbrdjchquexdfgwq` y DEV `gcmhzdedrkmmzfzfveig`, misma última migración
+>   `390_portal_proveedores_oc_acceso` en los dos). Esta tanda es 100% código.
+>
+> #### Qué se hizo, en orden
+>
+> 1. `npm run build` verde (tsc + vite) antes de tocar nada.
+> 2. `dev` ya estaba pusheado y limpio (working tree sin cambios relevantes).
+> 3. PR #340 `dev`→`main` creado, checks de CI (Unit Tests Vitest, Vercel preview) verdes, mergeado con
+>    `gh pr merge 340 --merge`.
+> 4. Release `v1.195.4` (ya existía apuntando a `dev`) retargeteado a `main` con
+>    `gh release edit v1.195.4 --target main --latest` — confirmado `targetCommitish: main`.
+> 5. Edge Function `invitar-proveedor` redeployada a PROD (`supabase functions deploy invitar-proveedor
+>    --project-ref jjffnbrdjchquexdfgwq`) — mismo código que DEV, `verify_jwt: true` (no hay
+>    `supabase/config.toml` en el repo, así que usa el default de la CLI).
+> 6. Vercel: deployment `dpl_87HQR74KMvf2njwUQ9A76XZK3r9r` (`target: production`, commit `a37e6e6c`)
+>    confirmado `READY`. Verificado ADEMÁS con `curl` real contra `https://www.genesis360.pro/` (no solo
+>    el dashboard): el bundle servido `assets/index-DZyAUxNg.js` contiene el string `v1.195.4` (HTTP 200).
+>
+> #### Qué llegó a PROD (detalle completo en los bloques históricos cont. 43-46 de abajo)
+>
+> 1. Limpieza de ESLint 100% (161→0 warnings).
+> 2. 2 features UX chicas: búsqueda por foco en modales de Ingreso/Rebaje de Inventario, asignar rol
+>    personalizado existente a un usuario desde Usuarios.
+> 3. Dependencias: 6 PRs de Dependabot + `npm audit fix` + migración de `react-router-dom` v6.21.0→v7.18.3
+>    (2 CVEs moderados resueltos, guards de rol re-verificados post-bump).
+> 4. Fix parcial de `APP_URL` en Edge Function `invitar-proveedor` (configurable vía env var + warning en
+>    DEV) — **el problema de fondo sigue pendiente**: no existe frontend público de DEV, así que un magic
+>    link generado desde ahí sigue sin destino alcanzable. Ver [[wiki/features/portal-proveedores]].
+> 5. Test e2e permanente nuevo `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts`.
+>
+> #### Sin pendientes bloqueantes de este deploy
+>
+> El pendiente conocido de `invitar-proveedor` (bug de fondo, no el fix parcial) sigue igual que antes del
+> deploy — no es una regresión nueva, es un gap de infraestructura ya documentado (falta un frontend
+> público para DEV). No hay nada más pendiente de esta tanda.
+
+> ### ✅ (histórico, 2026-09-04, cont. 46) — 💵 Compras/Gastos en USD: aclarado que el relevamiento YA
 > estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + 🧪 test e2e real
-> de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
+> de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD) — este bloque quedó
+> SUPERADO por el de arriba (cont. 47): DEPLOY A PROD de v1.195.4
 >
 > #### Versión actual — PROD vs. DEV, no confundir
 >

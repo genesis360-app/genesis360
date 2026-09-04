@@ -8,9 +8,38 @@ updated: 2026-09-04
 
 # Roadmap y Versiones
 
-**Versión en DEV (tag, sin deploy a PROD):** v1.195.4 — publicado 2026-09-04 (commit `4f991613`,
-tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.4 — e2e OC-USD real + incidente
-Supabase resuelto"). Reemplaza a v1.195.3 (commit `d8b10904`, 2026-09-03) como último tag de `dev`. Sin
+**Versión en PROD:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
+100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
+`a37e6e6c2e1a80cbd522823784555e1a63dc16fd`), confirmado con `gh pr view 340` → `state: MERGED`. **Este
+deploy promovió TODO lo acumulado en `dev` desde el último deploy real (`v1.195.0`, PR #335, 2026-09-01)**
+— **SIN migraciones nuevas**: tope de migraciones confirmado en 390 tanto en DEV como en PROD
+(`list_migrations`), misma última migración `390_portal_proveedores_oc_acceso` en ambos lados. Edge
+Function `invitar-proveedor` redeployada a PROD (mismo código que DEV, `verify_jwt: true`). **Release de
+GitHub `v1.195.4` retargeteado de `dev` a `main`** (`targetCommitish: main`), marcado `latest`.
+
+Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamiento fiscal/contable:
+1. **Limpieza de ESLint 100%** (161→0 warnings, detalle abajo) — deuda técnica, sin cambio de
+   comportamiento.
+2. **2 features UX chicas**: búsqueda por foco en modales de Ingreso/Rebaje de Inventario, y asignar un rol
+   personalizado ya existente a un usuario desde Usuarios.
+3. **Dependencias**: 6 PRs de Dependabot + `npm audit fix` + **migración de `react-router-dom` v6.21.0 →
+   v7.18.3** (resuelve 2 CVEs moderados, detalle abajo). Guards de rol (`AuthGuard`, restricciones por rol
+   en `AppLayout`) verificados funcionando contra DEV real tras el bump.
+4. **Fix parcial en Edge Function `invitar-proveedor`**: `APP_URL` pasa de hardcode puro a
+   `Deno.env.get('APP_URL')` con el mismo valor como fallback + `console.warn` no bloqueante cuando corre
+   contra DEV. **No resuelve el problema de fondo** (no existe frontend público de DEV) — sigue pendiente,
+   ver [[wiki/features/portal-proveedores]].
+5. Nuevo test e2e permanente `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (no afecta el build de
+   producción).
+
+**Vercel: confirmado READY** (`dpl_87HQR74KMvf2njwUQ9A76XZK3r9r`, `target: production`, commit
+`a37e6e6c`). Verificado además por `curl` contra `https://www.genesis360.pro/` (no solo el dashboard): el
+bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
+`G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
+
+**Detalle de v1.195.4** (ya 🚀 EN PROD, ver arriba) — tag+release publicado originalmente 2026-09-04 (commit
+`4f991613`, retargeteado de `dev` a `main` el 2026-09-04 tras el deploy, marcado `latest`, título
+"v1.195.4 — e2e OC-USD real + incidente Supabase resuelto"). Reemplaza a v1.195.3 (commit `d8b10904`, 2026-09-03) como último tag de `dev`. Sin
 migración de DB nueva (fixture de datos de prueba en DEV — `metodos_pago` "Efectivo USD" — no un cambio de
 esquema). Cambio: (1) aclarado que el relevamiento de Compras/Gastos en USD
 (`relevamiento-compras-gastos-usd-reglas-negocio.html`, 23 preguntas, generado 2026-08-21) YA estaba 100%
@@ -69,8 +98,8 @@ nuevo para DEV, fuera de alcance de esta sesión. Deployado a la Edge Function d
 PROD — no hay migración nueva. Detalle: `log.md` (2026-09-02, tipo `fix`),
 [[wiki/features/portal-proveedores]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 44).
 
-Anterior en la misma tanda de mantenimiento — **v1.195.1** (commit `1be9e697`, 2026-09-02, sin deploy a
-PROD): release de mantenimiento interno que cierra bajo una sola versión 3 piezas hechas en `dev` desde el
+Anterior en la misma tanda de mantenimiento — **v1.195.1** (commit `1be9e697`, 2026-09-02): release de
+mantenimiento interno que cierra bajo una sola versión 3 piezas hechas en `dev` desde el
 deploy real de v1.195.0: **ESLint 100% (161→0 warnings)** — 121 `no-unused-vars` + 41
 `react-hooks/exhaustive-deps` revisados uno por uno, `--max-warnings` en 0; **2 features de UX** — búsqueda
 con foco en Inventario, asignar rol personalizado existente en Usuarios; y **dependencias vulnerables
@@ -79,7 +108,7 @@ con foco en Inventario, asignar rol personalizado existente en Usuarios; y **dep
 feature visible para el usuario final. Detalle: [[wiki/features/rrhh]] § RH3 (bug de moneda en recibo de
 sueldo, corregido de paso), `log.md` (2026-09-02, 3 entradas `fix`).
 
-**Versión en PROD:** v1.195.0 (código — 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
+**Antes de este release (2026-09-01, v1.195.0):** 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
 Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" mergeado `dev`→`main` (merge
 commit `2a8ebbf4`), confirmado con `gh pr view 335` → `state: MERGED`. **Este deploy promovió TODO lo
 acumulado en `dev` desde el último deploy real (`v1.184.0`, 2026-08-27)** — migraciones 386 a 390

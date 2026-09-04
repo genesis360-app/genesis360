@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-04] deploy | 🚀 PROD v1.195.0 → v1.195.4 — ESLint 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor
+
+GO autorizó explícitamente ("podés pasar todo a PRD"). Deploy de TODO lo acumulado en `dev` desde el
+último deploy real (v1.195.0, PR #335, 2026-09-01) — las 4 tandas de mantenimiento intermedias
+(v1.195.1-v1.195.4, ~32 commits) llegan a PROD juntas en este release.
+
+**Sin migraciones nuevas**: tope de migraciones confirmado en 390 tanto en DEV (`gcmhzdedrkmmzfzfveig`)
+como en PROD (`jjffnbrdjchquexdfgwq`) vía `list_migrations`, misma última migración
+`390_portal_proveedores_oc_acceso` en ambos lados. Esta tanda es 100% código.
+
+**Flujo ejecutado:**
+1. `npm run build` verde (tsc + vite).
+2. PR #340 `dev`→`main` (título "v1.195.4 — ESLint 100% + UX chicas + deps (react-router v7) + fix
+   invitar-proveedor"), checks de CI verdes (Unit Tests Vitest, Vercel preview), mergeado con
+   `gh pr merge 340 --merge` → merge commit `a37e6e6c2e1a80cbd522823784555e1a63dc16fd`.
+3. Release `v1.195.4` (existente, apuntaba a `dev`) retargeteado a `main` (`gh release edit v1.195.4
+   --target main --latest`) — confirmado `targetCommitish: main`.
+4. Edge Function `invitar-proveedor` redeployada a PROD (`supabase functions deploy invitar-proveedor
+   --project-ref jjffnbrdjchquexdfgwq`), mismo código que DEV.
+5. Vercel: deployment `dpl_87HQR74KMvf2njwUQ9A76XZK3r9r` (`target: production`, commit `a37e6e6c`)
+   confirmado `READY`. Verificación real (no solo dashboard): `curl` contra `https://www.genesis360.pro/`
+   confirma que el bundle servido `assets/index-DZyAUxNg.js` contiene el string `v1.195.4` (HTTP 200).
+
+**Qué llegó a PROD** (detalle completo en las entradas `fix`/`chore` del 2026-09-02/03/04 de este mismo
+log):
+1. Limpieza de ESLint 100% (161→0 warnings) — deuda técnica, sin cambio de comportamiento.
+2. 2 features UX chicas: búsqueda por foco en modales de Ingreso/Rebaje de Inventario, asignar rol
+   personalizado ya existente a un usuario desde Usuarios.
+3. Dependencias: 6 PRs de Dependabot + `npm audit fix` + migración de `react-router-dom` v6.21.0→v7.18.3
+   (resuelve 2 CVEs moderados GHSA-wrjc-x8rr-h8h6/GHSA-337j-9hxr-rhxg; guards de rol re-verificados
+   funcionando contra DEV real tras el bump).
+4. Fix parcial en Edge Function `invitar-proveedor`: `APP_URL` configurable vía `Deno.env.get('APP_URL')`
+   con el mismo valor como fallback + `console.warn` no bloqueante en DEV. **No resuelve el problema de
+   fondo** (no existe frontend público de DEV) — sigue documentado como pendiente en
+   [[wiki/features/portal-proveedores]].
+5. Nuevo test e2e permanente `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts`.
+
+**Sin pendientes bloqueantes de este deploy.** Detalle completo: `sources/raw/project_pendientes.md`
+(bloque "ARRANCÁ ACÁ", cont. 47), `wiki/business/roadmap.md`.
+
+---
+
 ## [2026-09-04] fix | 💵🧪 Compras/Gastos en USD: aclarado que el relevamiento YA estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + test e2e real de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
 
 Cierre del último tramo de una sesión larga: retoma Compras/Gastos en USD (código ya en PROD desde

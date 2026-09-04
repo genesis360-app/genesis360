@@ -3,12 +3,36 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-03
+updated: 2026-09-04
 ---
 
 # Roadmap y Versiones
 
-**Versión en DEV (tag, sin deploy a PROD):** v1.195.3 — publicado 2026-09-03 (commit `d8b10904`,
+**Versión en DEV (tag, sin deploy a PROD):** v1.195.4 — publicado 2026-09-04 (commit `4f991613`,
+tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.4 — e2e OC-USD real + incidente
+Supabase resuelto"). Reemplaza a v1.195.3 (commit `d8b10904`, 2026-09-03) como último tag de `dev`. Sin
+migración de DB nueva (fixture de datos de prueba en DEV — `metodos_pago` "Efectivo USD" — no un cambio de
+esquema). Cambio: (1) aclarado que el relevamiento de Compras/Gastos en USD
+(`relevamiento-compras-gastos-usd-reglas-negocio.html`, 23 preguntas, generado 2026-08-21) YA estaba 100%
+respondido por Fede y las Fases 1-3 ya construidas y en PROD desde el 2026-08-27 (PR #334) — no era un
+pendiente real, fue un gap de memoria del asistente. De las 2 preguntas técnicas dirigidas a GO ("Tonga"),
+D1 (Caja USD ya soporta egresos) se confirmó cerrado desde el 2026-08-24, y G1 (¿existe un modo dashboard
+"real" que mezcle ARS/USD sin convertir?) se verificó contra el código real que NO existe hoy — sería una
+tercera opción nueva a construir. Quedan 2 preguntas genuinamente sin responder, reenviadas a Fede vía GO
+(referencia de "solo dólar Banco Nación": widget general vs. Fase 8/AFIP; confirmación de si se quiere
+construir el modo dashboard "real"). (2) Test e2e permanente nuevo
+`tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (commit `8deb6a13`) que paga una Orden de Compra en USD
+por UI usando un fixture de datos sembrado en DEV (tenant "Almacén Jorgito", método de pago nuevo "Efectivo
+USD") y verifica la mutación DIRECTO contra la base real (`caja_movimientos.tipo='egreso'`/`moneda='USD'`
+correctos, `cotizacion_usd=null`; `ordenes_compra.estado_pago='pagada'`, `monto_pagado=100.00`) — cierra el
+gap de que, hasta esta sesión, ningún tenant (DEV ni PROD) tenía un método de pago USD real configurado, así
+que las Fases 1-3 (código en PROD desde v1.184.0) nunca se habían ejercitado con datos reales. `npm run
+build` + `npm run lint` (0 warnings) limpios antes del bump. Ningún cambio de este release tocó PROD — no
+hay migración nueva. Detalle: `log.md` (2026-09-04, tipo `fix`), [[wiki/development/reglas-negocio]] →
+"Módulo: Compras/Gastos en USD", [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio
+editable", `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 46).
+
+Anterior en la misma tanda de mantenimiento — **v1.195.3** — publicado 2026-09-03 (commit `d8b10904`,
 tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.3 — react-router-dom v7"). Reemplaza a
 v1.195.2 (commit `6dc9ff8c`, 2026-09-02) como último tag de `dev`. Cambio: migración de `react-router-dom`
 de `6.21.0` a `7.18.3` (`npm install react-router-dom@7.18.3`), 100% frontend/dependencias, sin migración de

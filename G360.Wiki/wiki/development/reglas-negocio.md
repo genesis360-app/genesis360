@@ -3,7 +3,7 @@ title: Reglas de Negocio Relevadas
 category: development
 tags: [reglas-negocio, caja, ventas, inventario, clientes, gastos, uat, caja-usd, compras-usd, supervision]
 sources: [reglas_negocio.md, uat.md, relevamiento-venta-usd-caja-usd-reglas-negocio.html, relevamiento-compras-gastos-usd-reglas-negocio.html, relevamiento-supervision-retrofit-reglas-negocio.html]
-updated: 2026-08-31
+updated: 2026-09-04
 ---
 
 # Reglas de Negocio Relevadas
@@ -417,7 +417,10 @@ del C2 (pendiente contador).
 > tag+release publicados — **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`), **DORMIDA**
 > a propósito, ningún tenant de PROD tiene un método de pago USD real configurado): cimientos de datos + permisos
 > de cotización manual + pago de OC con descalce de moneda (conversión server-side,
-> `caja_movimientos.cotizacion_usd`). Detalle técnico completo:
+> `caja_movimientos.cotizacion_usd`). **✅ 2026-09-04: verificado con un test e2e real contra datos reales**
+> (`tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts`, commit `8deb6a13`), primer método de pago USD
+> sembrado en DEV (tenant "Almacén Jorgito") — confirma que las Fases 1-3 funcionan de verdad, no solo en
+> revisión estática de código; detalle en [[wiki/features/gastos]]. Detalle técnico completo:
 > [[wiki/features/gastos]] → "Compras/Gastos en USD + tasa de cambio editable", [[wiki/features/clientes-proveedores]],
 > `wiki/database/migraciones.md` (migs 379-381).
 
@@ -430,7 +433,8 @@ del C2 (pendiente contador).
 | — | Aviso **NO bloqueante** si la cotización tipeada manualmente se aleja **20-30%** de una referencia (no impide confirmar, solo advierte) |
 | H1 | **Nunca se redondea** — mismo criterio que G5 (`numeric(14,2)` preserva decimales exactos) |
 | — | La cotización usada queda **congelada** al confirmar la transacción (snapshot, no recalculable después) |
-| D1 (técnica) | El dinero para pagar una compra en USD sale de la **Caja USD operativa** (no directo de la Bóveda) — arquitectura: Bóveda = resguardo general, Caja = capa operativa. Confirmado que `registrar_pago_oc()` YA soporta egresos reales en `caja_movimientos` — no hacía falta construir esa capacidad de cero (solo faltaba que completara la columna `moneda`, fix de mig 379) |
+| D1 (técnica) | El dinero para pagar una compra en USD sale de la **Caja USD operativa** (no directo de la Bóveda) — arquitectura: Bóveda = resguardo general, Caja = capa operativa. Confirmado que `registrar_pago_oc()` YA soporta egresos reales en `caja_movimientos` — no hacía falta construir esa capacidad de cero (solo faltaba que completara la columna `moneda`, fix de mig 379). **Reconfirmado con verificación e2e real 2026-09-04** (ver "Alcance real" abajo) |
+| G1 (técnica) | 🟡 **Pendiente de respuesta de Fede.** ¿Existe/hace falta un modo dashboard "real" que mezcle ARS y USD sin convertir (no el toggle actual, que los excluye mutuamente)? Verificado 2026-09-04 contra el código real (`DashboardPage.tsx`, `DashVentasArea.tsx`, `DashGastosArea.tsx`, `FilterBar.tsx`): **HOY no existe** — solo un toggle ARS/USD mutuamente excluyente. Sería una tercera opción nueva a construir si Fede lo confirma. Mensaje reenviado a GO 2026-09-04 para pasarle a Fede junto con la aclaración de a qué se refiere "solo dólar oficial de Banco Nación" (¿widget general de cotización o Fase 8/AFIP, C2 arriba?) |
 
 ### Alcance real (Fases 1-3, ya construidas)
 
@@ -444,8 +448,20 @@ pago, no aguanta más de un pago con descalce por columna única); `registrar_pa
 (exige cotización si hay descalce, avisa si se aleja ≥20% de la referencia). **Sin plan de fases fijo
 detallado de antemano** (a diferencia de las 8 fases de G5): se decidió iterar, se estima el plan
 completo en ~4-5 fases totales. **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`),
-DORMIDA (ver arriba). Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor,
-confirmar C2/C3 con GO, reportes G1/G2 (ARS/USD). Detalle completo: [[wiki/features/gastos]] →
+DORMIDA (ver arriba).
+
+**✅ 2026-09-04: verificado con un test e2e real de punta a punta**, no solo revisión estática de código.
+Hasta esa sesión, ningún tenant (DEV ni PROD) tenía un método de pago "Efectivo USD" real, así que el
+camino nunca se había ejercitado con datos reales. Se sembró un fixture en DEV (tenant "Almacén Jorgito",
+`3769b1db-10f4-46a6-bc7f-eb669307730d`: `metodos_pago` "Efectivo USD" nuevo; `cuenta_origen`/Caja USD/Caja
+Fuerte USD ya existían) y se agregó `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (commit `8deb6a13`):
+paga una OC en USD por UI y confirma la mutación DIRECTO en la base (`caja_movimientos.tipo='egreso'`/
+`moneda='USD'` correctos, `cotizacion_usd=null`; `ordenes_compra.estado_pago='pagada'`,
+`monto_pagado=100.00`).
+
+Falta: Gastos sueltos con UI de moneda propia, sugerir última cotización por proveedor (B3), confirmar
+C2/C3 con GO, reportes G1/G2 (ARS/USD) — este último a la espera de que Fede confirme si además quiere el
+modo dashboard "real" (fila G1 de la tabla arriba). Detalle completo: [[wiki/features/gastos]] →
 "Compras/Gastos en USD + tasa de cambio editable".
 
 ---

@@ -6,6 +6,82 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-04] fix | 💵🧪 Compras/Gastos en USD: aclarado que el relevamiento YA estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + test e2e real de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
+
+Cierre del último tramo de una sesión larga: retoma Compras/Gastos en USD (código ya en PROD desde
+v1.184.0, 2026-08-27) para verificarlo con datos reales por primera vez, y aclara un malentendido de
+memoria sobre si el relevamiento de negocio seguía pendiente.
+
+**1) Aclaración: el relevamiento NO estaba pendiente.** GO preguntó por qué el asistente no tenía ya las
+respuestas de Fede al relevamiento `relevamiento-compras-gastos-usd-reglas-negocio.html` (23 preguntas,
+generado 2026-08-21) — "ya te lo había pasado esto". Investigado a fondo: SÍ estaba respondido — Fede
+contestó completo el 2026-08-21 — y las **Fases 1-3 YA estaban construidas y en PROD desde el 2026-08-27**
+(PR #334). Nada de esto era un pendiente real; fue un gap de memoria del asistente (nunca se había
+persistido bien la primera vez), no del proyecto. Confirmado contra `wiki/development/reglas-negocio.md` →
+"Módulo: Compras/Gastos en USD" y `wiki/features/gastos.md` → "Compras/Gastos en USD + tasa de cambio
+editable — Fases 1-3": ambas páginas ya tenían el resumen correcto marcado "100% CERRADO", solo hacía
+falta releerlas.
+
+Dentro de las respuestas de Fede había 2 preguntas técnicas dirigidas explícitamente a "Tonga" (=GO, ver
+[[reference_tonga_es_go]]), no a Fede:
+- **D1** ("¿la Caja USD ya soporta egresos, o hay que construirlo?") — confirmado que YA estaba resuelto
+  desde una sesión anterior (2026-08-24): la capacidad ya existía vía `registrar_pago_oc()` (solo faltaba
+  completar la columna `moneda`, fix de mig 379). Cerrado, sin acción nueva.
+- **G1** ("¿existe el modo dashboard 'real' sin convertir, mezclando ARS y USD tal cual?") — verificado
+  contra el código real (`DashboardPage.tsx`, `DashVentasArea.tsx`, `DashGastosArea.tsx`, `FilterBar.tsx`):
+  **NO existe hoy**. El dashboard solo tiene un toggle ARS/USD mutuamente excluyente (todo en pesos O todo
+  en dólares convertido, nunca mezclado sin convertir). Si lo quieren, es una **tercera opción nueva a
+  construir**.
+
+Se armó y se le pasó a GO (para reenviarle a Fede) un mensaje corto con las 2 preguntas que SÍ siguen
+genuinamente sin responder: (1) si "solo dólar oficial de Banco Nación" (mencionado por Fede hace semanas)
+se refiere al widget general de cotización o a la Fase 8/AFIP (C2 de la Caja USD G5, todavía bloqueada por
+confirmación de un contador real, sin relación con este tema); (2) si confirma que quiere que se construya
+el modo dashboard "real" (G1). **Sigue esperando la respuesta de Fede** — la próxima sesión debería
+preguntar primero si ya contestó, en vez de re-explicar el contexto desde cero.
+
+**2) ✅ Test e2e real de pago de OC en USD — cierra un gap real de verificación.** Hasta esta sesión, NINGÚN
+tenant (ni DEV ni PROD) tenía un método de pago "Efectivo USD" real configurado, así que el camino de pago
+de Compras/Gastos en USD nunca se había ejercitado con datos reales, solo revisión estática de código.
+
+Se sembró un fixture de datos de prueba en DEV (tenant "Almacén Jorgito",
+`3769b1db-10f4-46a6-bc7f-eb669307730d`): `metodos_pago` nuevo "Efectivo USD" (`es_efectivo=true`,
+`moneda='USD'`, `habilitado_gastos=true`, `habilitado_ventas=true` — esto de paso también destraba poder
+probar la Caja USD de venta física en USD, G5, que tampoco tenía nunca un método real). Apunta a la
+`cuenta_origen` "Efectivo USD" que ya existía sin usar. La caja operativa "Caja USD" y "Caja Fuerte USD" ya
+existían en DEV. Es un INSERT de datos, no una migración de esquema.
+
+Test nuevo permanente: `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (commit `8deb6a13`, `dev`, sin
+bump de versión propio) — crea una Orden de Compra en USD por UI, la paga con "Efectivo USD" desde la Caja
+USD operativa, y verifica el flujo por UI (toast de éxito). Siguiendo la metodología del proyecto (nunca
+confiar solo en el toast, ver [[reference_e2e_validation_capability]]), se verificó la mutación DIRECTO
+contra la base de datos real: `caja_movimientos` quedó con `tipo='egreso'` y `moneda='USD'` correctos
+(antes de la Fase 1 original, mig 379, esa columna quedaba siempre en el default `'ARS'` sin importar la
+moneda real del medio de pago usado — ese era justo el bug/gap que se estaba verificando que ya no existe),
+`cotizacion_usd=null` (correcto, no había descalce de moneda); `ordenes_compra.estado_pago` pasó a
+`'pagada'`, `monto_pagado=100.00`. **Confirma que las Fases 1-3 de Compras/Gastos en USD funcionan de
+verdad con datos reales, no solo en revisión estática de código.**
+
+**🆕 Backlog nuevo, NO bloqueante, queda sin empezar**: (1) Gastos sueltos en USD — el formulario de alta
+de un gasto suelto (`GastosPage.tsx`, tab Gastos) todavía no tiene selector de moneda, aunque
+`gastos.moneda` y el guardado correcto en `caja_movimientos.moneda` ya existen desde la Fase 1; (2)
+Reportes G1/G2 — desglose ARS/USD en la lista de Gastos/OC y que la CC de un proveedor tenga saldo en 2
+monedas independientes sin convertir; (3) B3 (menor, UX) — el aviso de desvío 20-30% ya existe, falta
+sugerir como default la última cotización usada CON ESE proveedor específico.
+
+**Cierre**: `npm run build` (tsc+vite) y `npm run lint` (0 warnings) verdes antes del bump. **Bump + tag +
+release**: `APP_VERSION` → `v1.195.4` (commit `4f991613`, `dev`), tag y GitHub release publicados sobre
+`dev` (`--target dev --latest`, título "v1.195.4 — e2e OC-USD real + incidente Supabase resuelto"). Cierra
+formalmente, bajo una versión, todo lo de arriba (más el incidente de infraestructura de Supabase, ya
+documentado en la entrada de abajo). **PROD sigue en `v1.195.0`** — nada de esta sesión llegó a PROD
+todavía.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 46), `wiki/development/reglas-negocio.md`
+→ "Módulo: Compras/Gastos en USD", `wiki/features/gastos.md` → "Compras/Gastos en USD + tasa de cambio
+editable", `wiki/business/roadmap.md` (v1.195.4).
+
+---
+
 ## [2026-09-04] update | 🔴✅ Incidente de infraestructura CERRADO — organización Supabase upgradeada de Free a Pro Plan (afectaba DEV y PROD por igual, sin cambio de código ni migración)
 
 **No es un cambio de código.** Resolución de un riesgo de infraestructura/billing que llevaba semanas anotado como pendiente abierto (ver `log.md` 2026-08-25 y bloques históricos de `project_pendientes.md` del 2026-08-07 y 2026-08-24).

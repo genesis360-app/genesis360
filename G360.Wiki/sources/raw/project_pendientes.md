@@ -6,9 +6,138 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-03, cont. 45) — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 CERRADA
+> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 46) — 💵 Compras/Gastos en USD: aclarado que el relevamiento YA
+> estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + 🧪 test e2e real
+> de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
+>
+> #### Versión actual — PROD vs. DEV, no confundir
+>
+> - **PROD**: `v1.195.0` (PR #335, migración tope 390) — **sin cambios**, sigue igual que en los bloques
+>   cont. 45/44/43/42 de abajo. Nada de esta entrada ni de las 3 anteriores (`v1.195.1`-`v1.195.3`) llegó a
+>   PROD todavía.
+> - **DEV / tag**: `v1.195.4` (commit `4f991613`, tag+release publicados el 2026-09-04, `targetCommitish:
+>   dev`, marcado `latest`, título "v1.195.4 — e2e OC-USD real + incidente Supabase resuelto") — reemplaza a
+>   `v1.195.3` (commit `d8b10904`, 2026-09-03, ver bloque cont. 45 abajo) como último tag de `dev`. **Sin
+>   migración de DB nueva** (el fixture de datos sembrado en DEV es un INSERT de datos de prueba —
+>   `metodos_pago` nuevo "Efectivo USD" — no un cambio de esquema).
+>
+> #### 1) Aclaración: el relevamiento de Compras/Gastos USD NO estaba pendiente — gap de memoria del
+> asistente
+>
+> GO preguntó por qué el asistente no tenía ya las respuestas de Fede al relevamiento
+> `relevamiento-compras-gastos-usd-reglas-negocio.html` (23 preguntas, generado 2026-08-21) — "ya te lo
+> había pasado esto". Investigado a fondo: SÍ estaba respondido — Fede contestó completo el 2026-08-21 — y
+> las **Fases 1-3 YA estaban construidas y en PROD desde el 2026-08-27** (PR #334, mismo deploy que trajo
+> el Asistente WhatsApp IA Fases 1-4). Nada de esto era un pendiente real; fue un gap de memoria del
+> asistente (nunca se había persistido bien la primera vez), no del proyecto. Confirmado también contra
+> `wiki/development/reglas-negocio.md` → "Módulo: Compras/Gastos en USD" (sección ya existente, marcada
+> "100% CERRADO") y `wiki/features/gastos.md` → "Compras/Gastos en USD + tasa de cambio editable — Fases
+> 1-3" — ambas páginas ya tenían el resumen correcto, solo hacía falta releerlas antes de decir que faltaba
+> algo.
+>
+> Dentro de las respuestas de Fede había 2 preguntas técnicas dirigidas explícitamente a "Tonga" (=GO, ver
+> [[reference_tonga_es_go]]), no a Fede:
+> - **D1** ("¿la Caja USD ya soporta egresos, o hay que construirlo?") — confirmado que YA estaba resuelto
+>   desde una sesión anterior (2026-08-24): la capacidad ya existía vía `registrar_pago_oc()` (solo faltaba
+>   completar la columna `moneda`, fix de mig 379 — ya documentado en `wiki/features/gastos.md`). **Cerrado,
+>   sin acción nueva.**
+> - **G1** ("¿existe el modo dashboard 'real' sin convertir, mezclando ARS y USD tal cual?") — verificado
+>   contra el código real (`src/pages/DashboardPage.tsx`, `DashVentasArea.tsx`, `DashGastosArea.tsx`,
+>   `FilterBar.tsx`): **NO existe hoy**. El dashboard solo tiene un toggle ARS/USD mutuamente excluyente (se
+>   ve todo en pesos O todo en dólares convertido, nunca mezclado sin convertir). Si lo quieren, es una
+>   **tercera opción nueva a construir**, no algo que ya esté ahí.
+>
+> Se armó y se le pasó a GO (para reenviarle a Fede) un mensaje corto con las 2 preguntas que SÍ siguen
+> genuinamente sin responder:
+> 1. Si "solo dólar oficial de Banco Nación" (mencionado por Fede hace semanas) se refiere al widget
+>    general de cotización (sidebar/ventas) o a la Fase 8/AFIP (C2 de la Caja USD G5, todavía bloqueada por
+>    confirmación de un contador real — sin relación con este tema, ver
+>    [[wiki/development/reglas-negocio]] → fila C2).
+> 2. Si confirma que quiere que se construya el modo dashboard "real" (G1, arriba).
+>
+> **Sigue esperando la respuesta de Fede** — la próxima sesión debería preguntar primero si ya contestó, en
+> vez de re-explicar todo este contexto desde cero.
+>
+> #### 2) ✅ Test e2e real de pago de OC en USD — cierra un gap real de verificación
+>
+> Hasta esta sesión, NINGÚN tenant (ni DEV ni PROD) tenía un método de pago "Efectivo USD" real
+> configurado — el camino de pago de Compras/Gastos en USD (código ya en PROD desde v1.184.0) nunca se
+> había ejercitado con datos reales, solo revisión estática de código.
+>
+> **Fixture de datos sembrado en DEV** (tenant "Almacén Jorgito", `3769b1db-10f4-46a6-bc7f-eb669307730d`):
+> `metodos_pago` nuevo "Efectivo USD" (`es_efectivo=true`, `moneda='USD'`, `habilitado_gastos=true`,
+> `habilitado_ventas=true` — esto de paso también destraba poder probar la Caja USD de venta física en USD,
+> G5, que tampoco tenía nunca un método real). Apunta a la `cuenta_origen` "Efectivo USD" que ya existía
+> sin usar. La caja operativa "Caja USD" y "Caja Fuerte USD" ya existían en DEV. Es un INSERT de datos de
+> prueba, no una migración de esquema.
+>
+> **Test nuevo permanente**: `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (commit `8deb6a13`, `dev`,
+> sin bump de versión propio) — crea una Orden de Compra en USD por UI, la paga con "Efectivo USD" desde la
+> Caja USD operativa, y verifica el flujo por UI (toast de éxito). Siguiendo la metodología del proyecto
+> (nunca confiar solo en el toast, ver [[reference_e2e_validation_capability]]), se verificó la mutación
+> DIRECTO contra la base de datos real:
+> - `caja_movimientos` quedó con `tipo='egreso'` y `moneda='USD'` correctos (antes de la Fase 1 original,
+>   mig 379, esa columna quedaba siempre en el default `'ARS'` sin importar la moneda real del medio de
+>   pago usado — ese era justo el bug/gap que se estaba verificando que ya no existe), `cotizacion_usd=null`
+>   (correcto, no había descalce de moneda).
+> - `ordenes_compra.estado_pago` pasó a `'pagada'`, `monto_pagado=100.00`.
+>
+> **Confirma que las Fases 1-3 de Compras/Gastos en USD funcionan de verdad con datos reales**, no solo en
+> revisión estática de código. `npm run build` (tsc+vite) y `npm run lint` (0 warnings) verdes antes del
+> bump de versión.
+>
+> #### 🆕 Backlog nuevo, NO bloqueante — queda de Compras/Gastos en USD (sin empezar)
+>
+> 1. **Gastos sueltos en USD**: el formulario de alta de un gasto suelto (`GastosPage.tsx`, tab Gastos)
+>    todavía no tiene selector de moneda, aunque `gastos.moneda` y el guardado correcto en
+>    `caja_movimientos.moneda` ya existen desde la Fase 1 (2026-08-25). Solo se cableó el pago de OC
+>    (compras), no gastos sueltos.
+> 2. **Reportes G1/G2**: desglose ARS/USD en la lista de Gastos/OC (G1 base, sin el modo "real" que depende
+>    de la respuesta de Fede de arriba) y que la cuenta corriente de un proveedor pueda tener saldo en 2
+>    monedas independientes sin convertir entre sí (G2).
+> 3. **B3 (menor, UX)**: aviso no bloqueante si la cotización manual cargada en una compra se aleja 20-30%
+>    de la cotización de referencia YA EXISTE; falta sugerir como default la última cotización usada CON
+>    ESE proveedor específico (no una genérica).
+>
+> #### Bump + tag + release de cierre
+>
+> `APP_VERSION` → `v1.195.4` (commit `4f991613`, `dev`), tag y GitHub release publicados sobre `dev`
+> (`--target dev --latest`, título "v1.195.4 — e2e OC-USD real + incidente Supabase resuelto"). Cierra
+> formalmente, bajo una versión, todo lo de los puntos 1-2 de arriba (más el incidente de infraestructura de
+> Supabase ya documentado en `log.md` 2026-09-04 tipo `update`). **PROD sigue en `v1.195.0`** — nada de esta
+> sesión llegó a PROD todavía.
+>
+> #### 🛑 Pendiente real para la próxima sesión (lista final, sin duplicados)
+>
+> 1. **Compras/Gastos en USD — esperando 2 respuestas de Fede** (reenviadas por GO): (a) si "solo dólar
+>    oficial de Banco Nación" es el widget general o la Fase 8/AFIP; (b) si confirma el modo dashboard
+>    "real" (G1). Preguntar primero si ya contestó antes de re-explicar el contexto.
+> 2. **Backlog no bloqueante de Compras/Gastos en USD** (arriba): gastos sueltos en USD sin selector de
+>    moneda, reportes G1/G2, B3 (sugerir última cotización por proveedor).
+> 3. **Bug de `APP_URL` — PARCIALMENTE arreglado** (heredado cont. 44/45, sin cambios): código prolijo +
+>    warning en logs, pero el problema de fondo de infra (sin frontend público de DEV) sigue igual.
+> 4. Heredado: **Fede tiene que aportar CUIT/monotributo + comprobante de domicilio** para Meta — guía
+>    entregada 2026-09-02, sin confirmación todavía de que Fede la haya completado.
+> 5. Heredado: **Chrome/FedCM sigue sin resolver de nuestro lado** — esperar a que GO reporte el bug a Meta
+>    y reintente cuando cierre el open beta.
+> 6. Decidir si/cuándo deployar `v1.195.1`-`v1.195.4` a PROD — debt cleanup + fix parcial + migración de
+>    router + verificación e2e, sin apuro fiscal ni migración de DB pendiente.
+> 7. Heredado: **relevamiento Plan IA Fase 4** (panel `genesis360-admin`, chat sobre agregados cross-tenant)
+>    sigue sin respuesta de GO/Fede.
+> 8. Nivel 2 de Supervisión (sin delegar, solo Dueño) — ya funciona con clave maestra síncrona, no necesita
+>    cola; recordatorio, no una tarea.
+>
+> Detalle completo: `log.md` (2026-09-04, tipo `fix`), `wiki/development/reglas-negocio.md` → "Módulo:
+> Compras/Gastos en USD", `wiki/features/gastos.md` → "Compras/Gastos en USD + tasa de cambio editable",
+> `wiki/business/roadmap.md` (v1.195.4).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-03, cont. 45) — 🔒 Migración `react-router-dom` v6.21.0→v7.18.3 CERRADA
 > (v1.195.3, tag+release en `dev`, SIN deploy a PROD) — 2 CVEs moderados resueltos, sin regresión
-> atribuible al router
+> atribuible al router — este bloque quedó SUPERADO por el de arriba (cont. 46): aclaración relevamiento
+> Compras/Gastos USD (ya estaba 100% respondido y construido) + test e2e real de pago de OC en USD —
+> v1.195.4
 >
 > #### Versión actual — PROD vs. DEV, no confundir
 >

@@ -450,8 +450,14 @@ respecto de lo que esta sección decía antes:
 2. **Genesis360 NO factura centralizado el consumo de Meta de sus clientes.** Al ser "Tech Provider" (no
    "Solution Partner"), cada cliente conectado debe agregar su propio método de pago en WhatsApp Manager
    (`business.facebook.com/wa/manage/home/`) después de conectar — Meta no lo expone por API, no se puede
-   automatizar. Importa antes del **1° de octubre de 2026**, cuando Meta empieza a cobrar todo mensaje
-   saliente. Quedó como nota fija en la UI de la card "WhatsApp" tras conectar.
+   automatizar. Quedó como nota fija en la UI de la card "WhatsApp" tras conectar. ~~Importa antes del
+   1° de octubre de 2026, cuando Meta empieza a cobrar todo mensaje saliente.~~ **🔴 INCORRECTO —
+   corregido 2026-09-04**: verificado contra `developers.facebook.com/documentation/business-messaging/
+   whatsapp/pricing` que el cobro por mensaje ya rige desde el 1° de julio de 2025 (no es una fecha
+   futura), y que el 1° de octubre de 2026 en el calendario oficial de Meta es solo un ajuste de
+   tarifas regionales para 9 países que NO incluyen Argentina — no hay ninguna fecha anunciada en la
+   que los mensajes de servicio/respuestas libres dentro de la ventana de 24hs (hoy gratis) pasen a
+   cobrarse.
 3. ~~**La "Proveedor de tecnología" (Business Verification) NO bloquea probar el flujo** — para probar en
    Development Mode alcanza con ser admin/tester de la Meta App existente, no hace falta Business
    Verification; diferido, no bloqueante ahora.~~ **🔴 INCORRECTO — corregido el 2026-08-28 (sesión

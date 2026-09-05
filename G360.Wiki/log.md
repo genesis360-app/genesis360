@@ -6,6 +6,34 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-04] query | 🛑✅ Corregido dato incorrecto: Meta NO cobra "todo mensaje" desde octubre 2026
+
+Dato que venía arrastrándose desde el relevamiento original de Fede (25/8/2026, sección K), nunca antes
+verificado contra la fuente oficial: "desde el 1° de octubre de 2026, Meta cobra TODO mensaje saliente
+(hoy la ventana de 24hs es gratis)". GO pidió revisarlo antes de usarlo como argumento en la comparación
+WhatsApp vs. app propia del día.
+
+**Verificado contra `developers.facebook.com/documentation/business-messaging/whatsapp/pricing` (3
+consultas distintas) — el dato es incorrecto**:
+- El cobro por mensaje (en vez de por conversación de 24hs) **ya rige desde el 1° de julio de 2025**,
+  no es un cambio futuro.
+- Los mensajes de servicio y las respuestas libres dentro de la ventana de 24hs **siguen siendo gratis
+  hoy**, sin ninguna fecha anunciada para que cambie (textual: "Effective November 1, 2024 — Service
+  conversations are now free for all businesses").
+- El 1° de octubre de 2026 SÍ existe en el calendario oficial de Meta, pero es un ajuste de tarifas
+  regionales para 9 países (Bangladesh, Irak, Nepal, Sri Lanka, Kazajistán, Kuwait, Marruecos, Omán,
+  Ucrania) — **Argentina no está incluida** — mismo tipo de ajuste trimestral rutinario que Meta hace
+  desde hace años (hay entradas equivalentes en oct 2025, ene/abr/jul 2026 para otros países).
+
+**Implicancia**: no hay una fecha límite de costos inminente presionando a migrar de WhatsApp a una app
+propia — el modelo de costos actual es estable y conocido desde mediados de 2025. Corregido en
+[[wiki/features/asistente-whatsapp]] (con tachado + nota, sin borrar el dato original) y en la memoria
+del asistente (`project_whatsapp_ia_portal_proveedores.md`). Las 2 apariciones históricas del dato
+incorrecto en `log.md`/`project_pendientes.md` se dejaron intactas (registro append-only del estado en
+ese momento) — esta entrada es la corrección vigente.
+
+---
+
 ## [2026-09-04] query | 💡 Analizada propuesta de app propia con Share Sheet nativo, alternativa a WhatsApp/Meta — sin decisión, sin código
 
 GO retomó una idea que Fede ya había dejado diferida (sección C/M del relevamiento de WhatsApp): en

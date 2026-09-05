@@ -248,7 +248,22 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-04 — 💡 Analizada alternativa "app propia + Share Sheet" en vez de
+*Última actualización: 2026-09-05 — 🎉 WhatsApp: primera conversación REAL end-to-end; el bloqueador del
+"chip" era un diagnóstico equivocado* — Fede creó un Business Portfolio nuevo y sumó a GO como admin, lo que
+permitió generar el **token permanente de System User** pendiente desde la Fase 1 (`expires_at: 0`) y
+diagnosticar por API en vez de por capturas. **Causa raíz real del bloqueo de mensajes entrantes: la app de
+Genesis360 nunca estuvo suscripta al WABA** (`POST /{waba_id}/subscribed_apps`) — el número de test estaba
+`CONNECTED` desde siempre y el chip prepago nunca fue el problema. Verificado con `wamid` real de Meta:
+*"Tenes mantecol?"* → respuesta con stock y precio reales en 5 segundos. Las 2 plantillas del briefing
+quedaron `APPROVED`; se creó `briefing_cierre_dia_v2` (UTILITY, `PENDING`) porque la de cierre quedó
+MARKETING y cuesta 2,4x. Bug corregido en `wa-webhook` v7: el bot anunciaba *"te armo el borrador"* sin
+llamar la herramienta. Embedded Signup sigue bloqueado, pero el gate duro es el **App Review con Advanced
+Access**, no la Verificación del Negocio. De paso: Pixel de Meta en `index.html` y
+[guía de onboarding para clientes](https://claude.ai/code/artifact/db31003d-0d47-43d8-9b83-1729656e5aa8)
+publicada (con aviso de "no compartir todavía"). Ver `log.md` (2026-09-05, tipo `update`),
+[[wiki/features/asistente-whatsapp]] (sección 2026-09-05), `sources/raw/project_pendientes.md` (cont. 49).
+
+Antes: *Última actualización: 2026-09-04 — 💡 Analizada alternativa "app propia + Share Sheet" en vez de
 WhatsApp/Meta* — GO retomó una idea diferida de Fede: compartir fotos/comprobantes a Genesis360 desde
 el menú "Compartir" del celular, sin pasar por la API de WhatsApp. Investigación técnica: Android se
 podría lograr con la PWA existente, **iOS exige obligatoriamente una app nativa** (sin atajo web). El

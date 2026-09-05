@@ -76,6 +76,7 @@ const TOOL_PROPONER_GASTO = {
       monto: { type: 'number', description: 'Monto del gasto en pesos, solo el número' },
       categoria: { type: 'string', description: 'Categoría del gasto si se puede inferir (ej: "Combustible", "Insumos") — opcional' },
       fecha: { type: 'string', description: 'Fecha del gasto en formato YYYY-MM-DD, SOLO si el usuario la menciona explícitamente (ej: "ayer", "el lunes") — si no dice nada, dejar vacío' },
+      advertencia: { type: 'string', description: 'Discrepancia a avisarle al usuario antes de que confirme (ej: la foto del comprobante dice otro monto o comercio que lo que él escribió). NO se guarda en el gasto, solo se le muestra en el mensaje. Dejar vacío si no hay nada raro.' },
     },
     required: ['descripcion', 'monto'],
   },
@@ -88,9 +89,11 @@ Reglas:
 1. Consultas de stock y precio: usá la herramienta consultar_stock_precio. Nunca inventes números — si la herramienta no trae el dato, decilo.
 2. Si te cuentan que gastaron plata en algo (por texto, por audio ya transcripto, o te mandan la FOTO de un comprobante/ticket), usá la herramienta proponer_gasto para armar un BORRADOR con lo que puedas leer (descripción, monto, categoría, fecha) — nunca asumas que ya quedó guardado, eso lo confirma el usuario con un botón y después lo revisa un humano en la app.
 3. Si te mandan una foto que NO es un comprobante o ticket de un gasto, no llames a proponer_gasto — explicá qué ves en la imagen y qué podés hacer con eso.
-4. Si la búsqueda de stock no encuentra el producto, decilo claro y sugerí probar con otro nombre o SKU.
-5. Todavía no podés modificar nada directo — si te piden eso, explicá que está en camino.
-6. Respuestas cortas y directas en español, estilo WhatsApp (sin markdown, sin listas largas).`
+4. Si la foto SÍ es un comprobante pero NO coincide con lo que te escribieron (otro monto, otro comercio, otro concepto), igual llamá a proponer_gasto, pero usá SIEMPRE los datos que leíste en el comprobante — nunca los del texto — y explicá la discrepancia en el campo advertencia. El usuario decide con los botones; vos no elegís por él ni descartás el gasto por tu cuenta.
+5. NUNCA anuncies una acción que no ejecutás en el mismo turno. Está prohibido responder cosas como "te armo el borrador" o "ya lo cargo" sin llamar a proponer_gasto en esa misma respuesta: o llamás la herramienta, o preguntás qué querés que haga. Nunca las dos cosas por separado.
+6. Si la búsqueda de stock no encuentra el producto, decilo claro y sugerí probar con otro nombre o SKU.
+7. Todavía no podés modificar nada directo — si te piden eso, explicá que está en camino.
+8. Respuestas cortas y directas en español, estilo WhatsApp (sin markdown, sin listas largas).`
 }
 
 // Fase 3: helper único para audio e imagen. Meta entrega solo un media_id — hay que resolverlo a una
@@ -152,7 +155,7 @@ async function buscarProductos(supabase: any, tenantId: string, query: string) {
 
 type ResultadoClaude =
   | { tipo: 'texto'; texto: string; tokensIn: number; tokensOut: number }
-  | { tipo: 'proponer_gasto'; datos: { descripcion: string; monto: number; categoria: string | null; fecha: string | null }; tokensIn: number; tokensOut: number }
+  | { tipo: 'proponer_gasto'; datos: { descripcion: string; monto: number; categoria: string | null; fecha: string | null; advertencia: string | null }; tokensIn: number; tokensOut: number }
 
 async function llamarClaude(
   apiKey: string, systemPrompt: string, userContent: string | any[], supabase: any, tenantId: string,
@@ -207,6 +210,9 @@ async function llamarClaude(
           monto,
           categoria: toolUse.input?.categoria ? String(toolUse.input.categoria).trim() || null : null,
           fecha: toolUse.input?.fecha ? String(toolUse.input.fecha).trim() || null : null,
+          // Solo se le muestra al usuario en el mensaje de confirmación — nunca se guarda en el
+          // borrador ni termina en la descripción del gasto real (no ensuciar el registro contable).
+          advertencia: toolUse.input?.advertencia ? String(toolUse.input.advertencia).trim() || null : null,
         },
         tokensIn, tokensOut,
       }
@@ -486,6 +492,7 @@ serve(async (req) => {
 
               const resumen = `📝 ¿Guardo este borrador de gasto?\n\n${respuesta.datos.descripcion}\n💰 $${respuesta.datos.monto.toLocaleString('es-AR')}` +
                 (respuesta.datos.categoria ? `\n🏷️ ${respuesta.datos.categoria}` : '') +
+                (respuesta.datos.advertencia ? `\n\n⚠️ ${respuesta.datos.advertencia}` : '') +
                 `\n\nOjo: esto todavía NO es un gasto real — alguien del equipo lo revisa y lo carga después.`
               await enviarMensajeInteractivoWhatsapp(phoneNumberId, cred.access_token, from, resumen, [
                 { id: `confirmar:${borrador.id}`, title: '✅ Confirmar' },

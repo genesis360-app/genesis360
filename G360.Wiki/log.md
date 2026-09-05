@@ -6,6 +6,93 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-05] update | 🎉 Primera conversación REAL de WhatsApp end-to-end + causa raíz del bloqueo (no era el chip) + Pixel de Meta
+
+Sesión larga y pivote para el Asistente de WhatsApp. GO obtuvo acceso admin al Business Portfolio de Meta
+(Fede creó uno nuevo, `28370543342633394`) y generó el **token permanente de System User** que faltaba desde
+la Fase 1 — el primero con permisos reales de management, lo que permitió diagnosticar **por API** lo que
+hasta ahora solo se había inferido de capturas.
+
+**🔴 El hallazgo principal: el diagnóstico de agosto estaba equivocado.** `GET /{waba_id}/subscribed_apps`
+mostró una sola app suscripta al WABA — `WA DevX Webhook Events 1P App`, interna de Meta — y **NO la de
+Genesis360** (`1059640186689341`). El webhook estaba configurado a nivel *app* (por eso el handshake GET
+verificaba OK), pero faltaba el paso separado `POST /{waba_id}/subscribed_apps` que le dice a Meta a qué app
+entregar los eventos de ese WABA. Un solo request lo resolvió. **El "chip prepago dedicado" que figuraba como
+bloqueador desde el 26/8 nunca fue el problema**: el número de test estaba `status: CONNECTED` todo el tiempo,
+y el `code_verification_status: NOT_VERIFIED` que se interpretó como "falta registrar" es normal en números
+de test de Meta. Lección: un bloqueo externo diagnosticado sin poder interrogar al sistema externo es una
+hipótesis, no una causa — marcarlo como tal.
+
+**✅ Verificado real** (`whatsapp_mensajes_log`, tenant "Familia Otranto De Porto", wamid REAL de Meta y no
+`wamid.test.*`): `"Tenes mantecol?"` → *"Sí! Mantecol Clásico 111g, tenemos 2 unidades en stock a $1500 c/u."*
+en 5 segundos, coincidiendo exacto con la DB. También el circuito completo de Fase 2 (texto → botones nativos
+→ Confirmar → borrador `pendiente`) y el envío saliente de Fase 4 al celular de GO.
+
+**Otros cierres**: token `expires_at: 0` (no vence nunca) cargado en `whatsapp_credentials` de DEV; las 2
+plantillas del briefing pasaron de `PENDING` a `APPROVED`.
+
+**🐛 Bug real corregido (`wa-webhook` v7 en DEV)**: ante una foto de comprobante que NO coincidía con el texto
+del usuario, el bot detectaba bien la discrepancia y la avisaba, pero respondía *"te armo el borrador"* y
+**nunca llamaba a `proponer_gasto`** — narraba una acción que no ejecutaba. Tres cambios: regla anti-narración
+(o llama la herramienta o pregunta, nunca anuncia sin hacer), regla de discrepancia (usar SIEMPRE los datos
+del comprobante, nunca los del texto), y campo `advertencia` nuevo que se muestra con ⚠️ en la confirmación
+pero **nunca se persiste** en el borrador ni en la descripción del gasto (no ensuciar el registro contable).
+
+**💰 Hallazgo de costos**: `briefing_cierre_dia` quedó definitivamente en MARKETING ($89,5620 ARS) vs UTILITY
+($37,6798) — 2,4x, ~$3.800/mes extra por negocio solo por el tono del texto. La categoría de una plantilla
+aprobada **no se puede editar** (`error_subcode 3835031`), así que se creó `briefing_cierre_dia_v2` con texto
+neutro solicitada como UTILITY, `PENDING` al cierre. Cuando se apruebe, cambiar el nombre en
+`wa-briefing-sweep/index.ts`.
+
+**🔄 Corrección sobre el gate de Embedded Signup**: contra la doc oficial, la Verificación del Negocio NO es
+el prerequisito duro (solo sube el límite de 10 a 200 negocios/7 días) — el que bloquea es el **App Review con
+Advanced Access** sobre los 2 permisos de WhatsApp. Estado por API: `business_verification_status:
+pending_submission`, `account_review_status: APPROVED`.
+
+**📌 Pixel de Meta** agregado a `index.html` (id `1044399641905959`, pedido de Fede) — dispara `PageView` en
+la carga inicial; no hay CSP que lo bloquee. Para medir conversión del funnel harían falta eventos custom
+(`Lead`, `CompleteRegistration`), no pedidos todavía.
+
+**📄 Guía de onboarding para clientes** publicada como artifact
+(https://claude.ai/code/artifact/db31003d-0d47-43d8-9b83-1729656e5aa8) — 5 requisitos previos, 7 pasos,
+precios reales de Meta en ARS, problemas conocidos. Lleva banda roja de "no compartir todavía" porque el
+onboarding self-service sigue bloqueado por App Review.
+
+Actualizado en [[wiki/features/asistente-whatsapp]] (sección nueva 2026-09-05 + corrección de los pendientes
+1/2/3/6) y en la memoria del proyecto.
+
+---
+
+## [2026-09-05] query | 🔴🔁 Re-corrección: el dato de octubre 2026 SÍ era correcto — Meta cobra mensajes de servicio desde esa fecha
+
+GO trajo un rate card oficial de Meta en ARS para Argentina (categorías Marketing/Utilidad/
+Autenticación/Servicio) y pidió re-verificar el dato "corregido" ayer antes de seguir usándolo.
+Resultado: **la corrección del 2026-09-04 estaba mal** — la verificación de esa sesión miró solo la
+página general `developers.facebook.com/documentation/business-messaging/whatsapp/pricing`, que
+documenta el cambio histórico de cobro por conversación → por mensaje (jul/2025) pero no menciona el
+cambio de mensajes "Service". Existe una sub-página dedicada,
+`.../whatsapp/pricing/non-template-messages`, no consultada esa vez, que confirma textual:
+*"Effective October 1, 2026, Meta will charge on a per-message basis for service messages"*, a la
+misma tarifa que utilidad/autenticación en cada mercado. Confirmado con 2 fetches independientes a esa
+URL.
+
+**Estado real**: el dato original de Fede (sección K, 25/8/2026 — "desde el 1° de octubre de 2026,
+Meta cobra los mensajes salientes dentro de la ventana de 24hs, hoy gratis") era correcto. Argentina
+tiene rate card propio en ARS (Marketing $89,5620 · Utilidad/Autenticación $37,6798, coincide con los
+USD 0,0618/0,0260 ya usados en el diseño) — la columna "Servicio" todavía no está publicada en el rate
+card al 2026-09-05, pese a que Meta había dicho que la publicaría antes del 1/sep/2026.
+
+**Implicancia real para Sección G** (medición/facturación del asistente de WhatsApp, sin construir
+todavía): las respuestas del bot dentro de la ventana de 24hs (100% de lo que hacen hoy las Fases 1-3
+en DEV) dejan de ser gratis desde el 1/oct/2026 — el diseño de costeo debe contemplarlo desde el
+arranque. Corregido en [[wiki/features/asistente-whatsapp]] (segunda pasada de tachado + nota, sin
+borrar ninguna versión anterior) y en la memoria del asistente
+(`project_whatsapp_ia_portal_proveedores.md`). **Lección de proceso**: verificar 2-3 veces contra la
+misma página no alcanza si es la página equivocada — para un cambio de pricing específico, buscar
+también las sub-páginas dedicadas (`/pricing/<tema>`), no solo la página general.
+
+---
+
 ## [2026-09-04] query | 🛑✅ Corregido dato incorrecto: Meta NO cobra "todo mensaje" desde octubre 2026
 
 Dato que venía arrastrándose desde el relevamiento original de Fede (25/8/2026, sección K), nunca antes

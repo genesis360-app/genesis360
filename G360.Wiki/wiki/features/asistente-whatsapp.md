@@ -1,6 +1,6 @@
 ---
 name: asistente-whatsapp
-description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas (v1.181.0/v1.182.0/v1.183.0/v1.184.0) y **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`, migs 382-385 aplicadas y verificadas en PROD), pero **DORMIDA a propósito**: `whatsapp_credentials` en PROD tiene 0 filas, ningún tenant real la tiene activada. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente. **🆕 2026-08-27 (sesión nueva, post-deploy): Embedded Signup de Meta CONSTRUIDO Y COMMITEADO EN DEV (v1.185.0, commit `7c1e1a45`, SOLO DEV, sin deploy a PROD)** — EF nueva `wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage, para que cada cliente conecte su propio WhatsApp sin repetir el trámite manual de GO; el token guardado es PROPIO de cada tenant (no compartido, corrige una especulación de la sesión anterior). **🆕 2026-08-28 (misma conversación, sin `/clear`, v1.186.0): CÓDIGO VALIDADO end-to-end con datos reales de Meta (App ID `1059640186689341`, `config_id` `1359336659241551`) — confirmado por 3 caminos distintos que el bloqueo es 100% de Meta: falta la Verificación del Negocio (documentos de Fede: CUIT + comprobante de domicilio), un trámite EXTERNO, NO diferible como se había documentado el 2026-08-27** (corrección explícita de esa entrada). De paso: la Configuration de Meta fuerza el token a 60 días (no existe "Nunca expira" para WhatsApp Embedded Signup), fix defensivo de timeout 3min agregado, y hallazgo de que Chrome bloquea el flujo por FedCM. **🆕 2026-08-31 (v1.187.0 + v1.188.0): Chrome/FedCM investigado a fondo, SIN fix de código posible de nuestro lado** (documentado como comentario en el código, sin workaround especulativo — pendiente que GO reporte el bug a Meta); **Portal de Proveedores arranca con su prerequisito de identidad cross-tenant construido y aplicado en DEV** (`proveedor_accounts`/`proveedor_account_tenants`, migs 387/387b/387c, replica el patrón de `support_agents`) — todavía sin flujo de invitación ni policies de `ordenes_compra`. De paso, prerequisito técnico de Supervisión (mig 386, ver [[wiki/features/supervision]]) y fix de `npm run lint` (roto en todo el repo, 4 bugs reales corregidos al activarlo) en la misma sesión, sin relación directa con WhatsApp.
+description: Asistente de WhatsApp con IA para el DUEÑO de cada negocio — consultas de stock/precio (Fase 1) + carga de gastos como borrador con doble confirmación, también por FOTO o AUDIO además de texto (Fases 2+3), + briefing diario proactivo de apertura/cierre por plantilla pre-aprobada de Meta (Fase 4), vía Meta Cloud API + Claude Sonnet 5 (+ Groq Whisper para audio). Plan de 4 fases (propuesta de Fede, 25/8/2026) — LAS 4 FASES construidas (v1.181.0/v1.182.0/v1.183.0/v1.184.0) y **✅ EN PROD desde el 2026-08-27** (PR #334, merge commit `867d651a`, migs 382-385 aplicadas y verificadas en PROD), pero **DORMIDA a propósito**: `whatsapp_credentials` en PROD tiene 0 filas, ningún tenant real la tiene activada. Fase 3 verificada solo PARCIALMENTE en DEV (el ruteo/seguridad sí, el happy path real de audio/foto todavía no — requiere un mensaje entrante real). Fase 4 verificada solo PARCIALMENTE en DEV (todo el código confirmado correcto salvo el envío real, bloqueado por la aprobación PENDIENTE de Meta de las 2 plantillas). Trámite real de Meta (número de prueba) conectado por GO el 2026-08-26 — sigue bloqueado para mensajes ENTRANTES reales (Fases 1-3) por falta de un chip dedicado para registrar el número; no aplica a Fase 4, que es 100% saliente. **🆕 2026-08-27 (sesión nueva, post-deploy): Embedded Signup de Meta CONSTRUIDO Y COMMITEADO EN DEV (v1.185.0, commit `7c1e1a45`, SOLO DEV, sin deploy a PROD)** — EF nueva `wa-embedded-signup-exchange` + card "WhatsApp" self-service en ConfigPage, para que cada cliente conecte su propio WhatsApp sin repetir el trámite manual de GO; el token guardado es PROPIO de cada tenant (no compartido, corrige una especulación de la sesión anterior). **🆕 2026-08-28 (misma conversación, sin `/clear`, v1.186.0): CÓDIGO VALIDADO end-to-end con datos reales de Meta (App ID `1059640186689341`, `config_id` `1359336659241551`) — confirmado por 3 caminos distintos que el bloqueo es 100% de Meta: falta la Verificación del Negocio (documentos de Fede: CUIT + comprobante de domicilio), un trámite EXTERNO, NO diferible como se había documentado el 2026-08-27** (corrección explícita de esa entrada). De paso: la Configuration de Meta fuerza el token a 60 días (no existe "Nunca expira" para WhatsApp Embedded Signup), fix defensivo de timeout 3min agregado, y hallazgo de que Chrome bloquea el flujo por FedCM. **🆕 2026-08-31 (v1.187.0 + v1.188.0): Chrome/FedCM investigado a fondo, SIN fix de código posible de nuestro lado** (documentado como comentario en el código, sin workaround especulativo — pendiente que GO reporte el bug a Meta); **Portal de Proveedores arranca con su prerequisito de identidad cross-tenant construido y aplicado en DEV** (`proveedor_accounts`/`proveedor_account_tenants`, migs 387/387b/387c, replica el patrón de `support_agents`) — todavía sin flujo de invitación ni policies de `ordenes_compra`. De paso, prerequisito técnico de Supervisión (mig 386, ver [[wiki/features/supervision]]) y fix de `npm run lint` (roto en todo el repo, 4 bugs reales corregidos al activarlo) en la misma sesión, sin relación directa con WhatsApp. **🆕🎉 2026-09-05: PRIMERA CONVERSACIÓN REAL END-TO-END** (mensaje entrante real de Meta, no sintético) — se resolvieron de una tres pendientes viejos: token permanente de System User (`expires_at: 0`, nunca vence), las 2 plantillas del briefing APROBADAS por Meta, y **la causa raíz REAL del bloqueo de mensajes entrantes: nuestra app nunca estuvo suscripta al WABA** (`POST /{waba_id}/subscribed_apps`) — **el "chip prepago dedicado" que figuraba como bloqueador desde el 26/8 era un DIAGNÓSTICO EQUIVOCADO**, el número de test estaba `status: CONNECTED` todo el tiempo. Además: bug real corregido en el prompt (el bot anunciaba "te armo el borrador" sin llamar la herramienta) y hallazgo de costos (`briefing_cierre_dia` quedó MARKETING = 2,4x más caro que UTILITY).
 ---
 
 # Asistente de WhatsApp con IA
@@ -17,6 +17,122 @@ motor de tool-calling ya probado del "Plan IA" y tener menor riesgo.
 > deep-link `wa.me`, no un canal conversacional con IA. Este documento es sobre el canal nuevo de Meta
 > Cloud API + IA — mayormente ENTRANTE (webhook, Fases 1-3), más un mensaje SALIENTE nuevo desde la Fase 4
 > (briefing proactivo por plantilla, no un deep-link `wa.me`).
+
+## 🎉 2026-09-05 — Primera conversación REAL end-to-end + la causa raíz del bloqueo (que no era el chip)
+
+Sesión pivote. GO consiguió acceso de administrador al Business Portfolio y generó el **token permanente de
+System User** que faltaba desde la Fase 1. Con ese token —el primero con permisos reales de
+`whatsapp_business_management`— se pudo diagnosticar por API lo que hasta ahora solo se había inferido de
+capturas de pantalla, y **el diagnóstico que estaba documentado hace dos semanas resultó equivocado**.
+
+### 🔴 La causa raíz real: la app nunca estuvo suscripta al WABA
+
+Consultando `GET /{waba_id}/subscribed_apps` apareció **una sola app: `WA DevX Webhook Events 1P App`
+(`2202427980234937`), una app interna de Meta — la nuestra (`1059640186689341`) NO estaba en la lista.**
+
+Eso explica exactamente el misterio del 26/8 (GO mandó un WhatsApp real, Meta lo marcó entregado,
+`wa-webhook` nunca recibió nada): el webhook estaba configurado a nivel **app** (por eso el handshake GET
+funcionaba y se verificó OK), pero nadie ejecutó el paso separado que le dice a Meta *"los eventos de ESTE
+WABA entregalos a ESA app"*. Los mensajes entrantes no tenían destino.
+
+Se arregló con un `POST /{waba_id}/subscribed_apps` (un solo request, `{"success":true}`) y los mensajes
+entrantes empezaron a llegar en el acto.
+
+**~~El chip prepago dedicado era el bloqueador de las Fases 1-3~~ 🔴 INCORRECTO, corregido 2026-09-05**:
+el número de test estaba `status: CONNECTED` desde siempre. El `code_verification_status: NOT_VERIFIED` que
+se veía —y que en agosto se interpretó como "falta registrar el número"— es **normal en los números de test
+de Meta** (Meta no los verifica por SMS porque son suyos) y **no bloquea recibir**. GO nunca necesitó el chip
+para probar las Fases 1-3.
+
+> **Lección de proceso**: el diagnóstico de agosto se armó por inferencia desde la UI de Meta y desde la
+> ausencia de logs, sin poder consultar la API (el token temporal no tenía permisos de management). Cuando
+> un bloqueo externo se diagnostica sin poder interrogar al sistema externo, el diagnóstico vale lo que vale
+> una hipótesis — conviene marcarlo como tal y no como causa confirmada. Dos semanas de "pendiente
+> operativo" fueron en realidad un request faltante.
+
+### ✅ Verificación real (evidencia en `whatsapp_mensajes_log`, tenant "Familia Otranto De Porto")
+
+```
+04:03:28  in   "Tenes mantecol?"          wamid.HBgLNTY5NzU3NzA4ODM...  ← wamid REAL de Meta
+04:03:33  out  "Sí! Mantecol Clásico 111g, tenemos 2 unidades en stock a $1500 c/u."
+               claude-sonnet-5 · 2908 tokens in / 97 out
+```
+
+5 segundos punta a punta, contrastado contra la DB (`Mantecol Clasico 111g`, SKU-00006, `stock_actual: 2`,
+`precio_venta: 1500`) — coincidencia exacta. Todas las pruebas previas usaban `wamid.test.*` sintéticos.
+También se verificó el circuito completo de la Fase 2 con mensajes reales (texto → propuesta con botones
+nativos → Confirmar → borrador `pendiente`) y el envío saliente de la Fase 4 (plantilla real entregada al
+celular de GO). **El webhook apunta a DEV**, confirmado empíricamente.
+
+### 🔑 Token permanente — pendiente cerrado (abierto desde el 26/8)
+
+System User creado en el portfolio con la app y el WABA como activos asignados. `debug_token` confirma:
+`type: SYSTEM_USER`, `expires_at: 0` (**no vence nunca**), scopes `whatsapp_business_management` +
+`whatsapp_business_messaging`. Cargado en `whatsapp_credentials` de DEV. Nota: `business_management` no
+aparece en la lista de permisos porque esa app tiene solo el caso de uso de WhatsApp configurado — sin él no
+se puede consultar `verification_status` del portfolio por API (se sigue leyendo de la UI).
+
+### 📋 Plantillas del briefing — aprobadas, y un hallazgo de costos
+
+Las 2 plantillas que quedaron `PENDING` el 27/8 están **APPROVED**. Pero `briefing_cierre_dia` quedó
+definitivamente en **MARKETING** (la reclasificación que Meta hizo por los emojis y el tono festivo se
+consolidó), y con el rate card oficial de Argentina eso cuesta **2,4x más**:
+
+| Plantilla | Categoría | Precio (ARS) |
+|---|---|---|
+| `briefing_apertura_dia` | UTILITY | $37,6798 |
+| `briefing_cierre_dia` | **MARKETING** | **$89,5620** |
+
+Son ~$3.800/mes extra por negocio, solo por el tono del texto. **La categoría de una plantilla aprobada no se
+puede editar** (`error_subcode 3835031`: *"No puedes actualizar una categoría de plantilla aprobada"*), así
+que se creó **`briefing_cierre_dia_v2`** (id `1635194775061886`) con texto neutro, sin emojis ni despedidas,
+solicitada como UTILITY — **`PENDING` al cierre de la sesión**. Cuando Meta la apruebe hay que cambiar el
+nombre de la plantilla en `wa-briefing-sweep/index.ts` (línea del evento `cierre`).
+
+### 🐛 Bug real del prompt corregido (`wa-webhook` v7 en DEV)
+
+GO mandó una foto de un comprobante de Transbank ("Imax Estoril Spa", $7.500) con el texto *"gasté 3500 de
+nafta"*. El bot **detectó correctamente la discrepancia y la avisó** (comportamiento deseado, REGLA #0), pero
+respondió *"Te armo el borrador con los datos reales del ticket"* y **nunca llamó a `proponer_gasto`** —
+narró una acción que no ejecutó, dejando al usuario creyendo que había un borrador esperando. Confirmado
+contra la DB: no se creó ningún borrador.
+
+Tres cambios:
+1. **Regla nueva anti-narración**: prohibido anunciar una acción que no se ejecuta en el mismo turno — o
+   llama la herramienta, o pregunta.
+2. **Regla nueva de discrepancia**: si la foto es un comprobante pero no coincide con el texto, igual llama a
+   `proponer_gasto`, pero usando **siempre los datos del comprobante, nunca los del texto** (el papel es la
+   evidencia), y explicando la diferencia.
+3. **Campo `advertencia`** en el schema de `proponer_gasto`: se muestra con ⚠️ en el mensaje de confirmación
+   pero **nunca se persiste** en el borrador ni en la descripción del gasto real — el registro contable no se
+   ensucia con notas de conversación.
+
+### 📄 Guía de onboarding para clientes (artifact)
+
+Se publicó una guía paso a paso para que un cliente conecte su WhatsApp:
+https://claude.ai/code/artifact/db31003d-0d47-43d8-9b83-1729656e5aa8 — con los 5 requisitos previos, los 7
+pasos, los precios reales de Meta en ARS y los problemas conocidos. **Lleva una banda roja arriba de todo
+("No disponible todavía · no compartir con clientes")** porque el onboarding self-service sigue bloqueado
+(ver abajo).
+
+### 🛑 Lo que SIGUE bloqueado (y lo que ya no)
+
+| Tema | Estado real al 2026-09-05 |
+|---|---|
+| Mensajes entrantes (Fases 1-3) | ✅ **DESBLOQUEADO** — funcionando con el número de test |
+| Token permanente | ✅ **RESUELTO** — no vence nunca |
+| Plantillas del briefing | ✅ **APROBADAS** (v2 de cierre en revisión) |
+| ~~Chip prepago dedicado~~ | ❌ **No era un bloqueador** — diagnóstico equivocado |
+| Embedded Signup (clientes reales) | 🛑 **App Review / Advanced Access sin hacer** — es el gate duro real, según la doc oficial |
+| Verificación del Negocio | 🛑 `business_verification_status: pending_submission` (documentos de Fede) |
+| Chrome / FedCM | 🛑 sin resolver — el popup de conexión falla, hay que usar Edge/Firefox |
+
+**Corrección importante sobre el gate de Embedded Signup**: la doc oficial dice que la Verificación del
+Negocio **no** es el prerequisito duro (solo sube el límite de 10 a 200 negocios por semana) — el que
+bloquea de verdad es el **App Review con Advanced Access** sobre `whatsapp_business_management` y
+`whatsapp_business_messaging`: *"You will not be able to onboard business customers until your app has been
+approved for advanced access for each of the permissions it requires"*. La Verificación aparecía en el panel
+porque es un paso **dentro** de ese trámite.
 
 ## Estado (2026-09-04) — 💡 Analizada alternativa "app propia + Share Sheet nativo" en vez de WhatsApp — SOLO análisis, sin decisión ni código
 
@@ -450,14 +566,33 @@ respecto de lo que esta sección decía antes:
 2. **Genesis360 NO factura centralizado el consumo de Meta de sus clientes.** Al ser "Tech Provider" (no
    "Solution Partner"), cada cliente conectado debe agregar su propio método de pago en WhatsApp Manager
    (`business.facebook.com/wa/manage/home/`) después de conectar — Meta no lo expone por API, no se puede
-   automatizar. Quedó como nota fija en la UI de la card "WhatsApp" tras conectar. ~~Importa antes del
-   1° de octubre de 2026, cuando Meta empieza a cobrar todo mensaje saliente.~~ **🔴 INCORRECTO —
-   corregido 2026-09-04**: verificado contra `developers.facebook.com/documentation/business-messaging/
-   whatsapp/pricing` que el cobro por mensaje ya rige desde el 1° de julio de 2025 (no es una fecha
-   futura), y que el 1° de octubre de 2026 en el calendario oficial de Meta es solo un ajuste de
-   tarifas regionales para 9 países que NO incluyen Argentina — no hay ninguna fecha anunciada en la
-   que los mensajes de servicio/respuestas libres dentro de la ventana de 24hs (hoy gratis) pasen a
-   cobrarse.
+   automatizar. Quedó como nota fija en la UI de la card "WhatsApp" tras conectar. Importa antes del
+   1° de octubre de 2026, cuando Meta empieza a cobrar los mensajes de servicio dentro de la ventana de
+   24hs. ~~**🔴 INCORRECTO — corregido 2026-09-04**: verificado contra `developers.facebook.com/
+   documentation/business-messaging/whatsapp/pricing` que el cobro por mensaje ya rige desde el 1° de
+   julio de 2025 (no es una fecha futura), y que el 1° de octubre de 2026 en el calendario oficial de
+   Meta es solo un ajuste de tarifas regionales para 9 países que NO incluyen Argentina — no hay
+   ninguna fecha anunciada en la que los mensajes de servicio/respuestas libres dentro de la ventana de
+   24hs (hoy gratis) pasen a cobrarse.~~ **🔴🔁 RE-CORREGIDO 2026-09-05 — la corrección de ayer estaba
+   mal, el dato original de Fede era el correcto**: la verificación del 09-04 miró solo la página
+   general de precios (`.../whatsapp/pricing`), que documenta el cambio histórico de "por conversación"
+   a "por mensaje" (jul/2025) pero no menciona el cambio de "Service" (mensajes dentro de la ventana de
+   24hs). Existe una sub-página dedicada, `.../whatsapp/pricing/non-template-messages`, que se saltó esa
+   vez y que dice textual: *"Effective October 1, 2026, Meta will charge on a per-message basis for
+   service messages... rates for service messages are the same as the rates for utility and
+   authentication messages"* por mercado. Confirmado con 2 fetches independientes a esa sub-página +
+   coincide con un tercero de Meta re: publicación de tarifas por país antes del 1/sep/2026. Tarifas
+   Argentina (rate card oficial en ARS, descargable desde la página general de precios): Marketing
+   $89,5620 · Utilidad/Autenticación $37,6798 (coincide con los USD 0,0618/0,0260 ya usados en el
+   diseño de Sección G) — la columna "Servicio" del rate card en ARS todavía figura como no publicada
+   al 2026-09-05 (Meta dijo que la publicaría para el 1/sep/2026; puede estar publicada solo en otro
+   formato o con demora). **Implicancia real para Sección G (medición/facturación, sin construir
+   todavía)**: a partir del 1/oct/2026 las respuestas del asistente dentro de la ventana de 24hs
+   (Fases 1-3 actuales, 100% de lo construido hasta ahora) dejan de ser gratis — el diseño de costeo
+   tiene que contemplar esto desde el arranque, no como ajuste posterior. Volver a chequear el rate
+   card de Argentina cerca de esa fecha para la tarifa "Servicio" exacta. No usar como fuente los
+   blogs de terceros (chatmaxima/ominiflow/sendpulse/etc.) que circulan cifras muy específicas de
+   memoria/SEO — sólo el rate card CSV/PDF oficial descargable desde la página de Meta.
 3. ~~**La "Proveedor de tecnología" (Business Verification) NO bloquea probar el flujo** — para probar en
    Development Mode alcanza con ser admin/tester de la Meta App existente, no hace falta Business
    Verification; diferido, no bloqueante ahora.~~ **🔴 INCORRECTO — corregido el 2026-08-28 (sesión
@@ -866,19 +1001,23 @@ acceso a sus cotizaciones reales.
 
 ## Pendiente de GO para continuar (bloqueante para pasar de pruebas a real)
 
-1. **Aprobación de Meta** de las 2 plantillas (`briefing_apertura_dia`, `briefing_cierre_dia`) — sin ETA,
-   no depende de nosotros. Cuando se aprueben, re-invocar `wa-briefing-sweep` (o esperar la próxima
-   corrida si esto llegara a estar en `main`) para confirmar el envío real de punta a punta de la Fase 4.
-2. **Conseguir un chip prepago barato DEDICADO** (no la línea personal de GO) para completar el registro
-   del número de test de Meta y poder probar mensajes ENTRANTES reales de punta a punta — ver "Trámite
-   real de Meta" arriba. Es lo único que falta para cerrar la verificación end-to-end de la **Fase 3**
-   (audio/foto) y de la Fase 1 (mensajes entrantes); **no aplica a la Fase 4**, que es 100% saliente.
-3. **Token de acceso permanente**: el actual (tenant de prueba, Fases 1-4) es TEMPORAL (24hs) — se
-   refrescó de nuevo en la sesión de la Fase 4 (2026-08-27). **Vía Embedded Signup (arriba) esto queda
-   resuelto de raíz para clientes futuros**: cada cliente conectado por ese flujo obtiene su propio token,
-   NO-expirante si la Configuration de Meta se crea con "Token Expiration: Never expire" — ver pasos 1-5 de
-   "Setup pendiente en el dashboard de Meta" arriba. Para el tenant de prueba actual (fuera de Embedded
-   Signup) sigue haciendo falta un **System User** si se lo quiere mantener sin refrescar a mano.
+1. ~~**Aprobación de Meta** de las 2 plantillas~~ ✅ **RESUELTO 2026-09-05**: las dos quedaron `APPROVED` y
+   el envío real de la Fase 4 se verificó de punta a punta (plantilla entregada al celular de GO). Queda
+   como sub-pendiente menor: **`briefing_cierre_dia_v2`** (solicitada como UTILITY para bajar el costo 2,4x)
+   está `PENDING` — cuando Meta la apruebe, cambiar el nombre de la plantilla del evento `cierre` en
+   `wa-briefing-sweep/index.ts`.
+2. ~~**Conseguir un chip prepago barato DEDICADO** para poder probar mensajes ENTRANTES reales~~
+   🔴 **DIAGNÓSTICO EQUIVOCADO, corregido 2026-09-05 — el chip nunca fue el bloqueador.** La causa real era
+   que la app de Genesis360 no estaba suscripta al WABA (`POST /{waba_id}/subscribed_apps`, un solo request
+   que faltaba). El número de test estaba `status: CONNECTED` desde el principio. **Fases 1-3 verificadas
+   end-to-end con mensajes reales el 2026-09-05** — ver la sección de esa fecha al principio de la página.
+   El chip/número real sigue siendo necesario para SALIR a producción con un negocio de verdad, pero no
+   para probar.
+3. ~~**Token de acceso permanente**~~ ✅ **RESUELTO 2026-09-05**: GO obtuvo acceso admin al Business
+   Portfolio y creó un **System User** con la app y el WABA como activos. `debug_token` confirma
+   `expires_at: 0` (no vence nunca), scopes `whatsapp_business_management` + `whatsapp_business_messaging`.
+   Cargado en `whatsapp_credentials` de DEV. Para clientes futuros el token sigue viniendo por Embedded
+   Signup (uno propio por tenant, 60 días, con reconexión de 1 click).
 4. 🔴 Sigue sin resolver (recurrente hace varias sesiones, no específico de esta feature): rotar el
    `SUPABASE_ACCESS_TOKEN` filtrado (`sbp_60df…`, desde 2026-07-09). Sigue bloqueando el modo API de `npm
    run schema:dump` — **el archivo en sí SÍ está actualizado** (regenerado a mano vía MCP `execute_sql` en
@@ -890,9 +1029,17 @@ acceso a sus cotizaciones reales.
    decisión consciente.
 6. **Embedded Signup: código validado end-to-end (2026-08-28, v1.186.0)** — GO ya completó los 5 pasos del
    setup en el dashboard de Meta con datos reales (App ID `1059640186689341`, `config_id`
-   `1359336659241551`); el código funciona correcto (confirmado por 3 caminos de prueba distintos). **🛑
+   `1359336659241551`); el código funciona correcto (confirmado por 3 caminos de prueba distintos). ~~**🛑
    Bloqueante real y actual: la Verificación del Negocio de Meta**, 100% a cargo de Fede (CUIT/monotributo +
-   comprobante de domicilio) — sin esto no se puede seguir probando el registro real de un WABA. ~~Además:
+   comprobante de domicilio) — sin esto no se puede seguir probando el registro real de un WABA.~~
+   **🔄 MATIZADO 2026-09-05 contra la doc oficial de Embedded Signup**: el gate DURO no es la Verificación
+   del Negocio sino el **App Review con Advanced Access** sobre `whatsapp_business_management` y
+   `whatsapp_business_messaging` (*"You will not be able to onboard business customers until your app has
+   been approved for advanced access for each of the permissions it requires"*). La Verificación del Negocio
+   **sube el límite de 10 a 200 negocios nuevos por ventana de 7 días** y es un paso DENTRO de ese trámite
+   (por eso aparecía en el panel), pero por sí sola no habilita el onboarding. Estado real por API al
+   2026-09-05: `business_verification_status: pending_submission`, `account_review_status: APPROVED`.
+   Sigue dependiendo de Fede (documentos argentinos; GO está en Chile y no puede aportarlos). ~~Además:
    fix de Chrome/FedCM pendiente (se probó en Edge)~~ **investigado a fondo el 2026-08-31, sin fix de código
    posible — ver "Estado (2026-08-31...)" al principio de la página**; y posible "Revisión de la app" (App
    Review) todavía sin confirmar tras resolver la Verificación del Negocio. El **Portal de Proveedores**

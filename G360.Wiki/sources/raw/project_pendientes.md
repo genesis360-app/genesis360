@@ -6,6 +6,72 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-05, cont. 49) — 🎉 WhatsApp: PRIMERA CONVERSACIÓN REAL end-to-end. El
+> bloqueador del "chip" era un diagnóstico EQUIVOCADO. Token permanente resuelto. Plantillas aprobadas.
+>
+> Sesión pivote del Asistente de WhatsApp. Fede creó un Business Portfolio nuevo (`28370543342633394`) y
+> sumó a GO como admin; con eso GO generó el **token permanente de System User** que faltaba desde la
+> Fase 1 (26/8). Ese token —el primero con permisos reales de management— permitió diagnosticar **por
+> API** lo que hasta ahora solo se había inferido de capturas de pantalla.
+>
+> #### 🔴 Lo más importante: el bloqueador documentado hace 2 semanas no existía
+>
+> `GET /{waba_id}/subscribed_apps` mostró **una sola app suscripta al WABA** (`WA DevX Webhook Events 1P
+> App`, interna de Meta) y **NO la de Genesis360** (`1059640186689341`). El webhook estaba configurado a
+> nivel *app* (por eso el handshake GET verificaba OK en agosto), pero faltaba el paso separado
+> `POST /{waba_id}/subscribed_apps`, que es el que le dice a Meta a qué app entregar los eventos de ese
+> WABA. **Un solo request lo destrabó.** El "chip prepago dedicado" **nunca fue el problema**: el número
+> de test estaba `status: CONNECTED` desde siempre, y el `code_verification_status: NOT_VERIFIED` que se
+> leyó como "falta registrar el número" es normal en números de test de Meta. Nota: el código de
+> `wa-embedded-signup-exchange` **ya hace ese paso** para clientes futuros — el bug era solo de este WABA
+> armado a mano.
+>
+> #### ✅ Verificado con mensajes REALES (no sintéticos)
+>
+> `whatsapp_mensajes_log`, tenant "Familia Otranto De Porto", con `wamid` real de Meta (antes todo era
+> `wamid.test.*`): `"Tenes mantecol?"` → *"Sí! Mantecol Clásico 111g, tenemos 2 unidades en stock a $1500
+> c/u."* en 5 segundos, coincidiendo exacto con la DB. También el circuito completo de la Fase 2 (texto →
+> botones nativos → Confirmar → borrador `pendiente`) y el envío saliente de la Fase 4 al celular de GO.
+> **El webhook apunta a DEV**, confirmado empíricamente.
+>
+> #### Pendientes cerrados y abiertos
+>
+> - ✅ **Token permanente**: System User, `expires_at: 0` (no vence nunca), cargado en
+>   `whatsapp_credentials` de DEV. Cierra un pendiente abierto desde la Fase 1.
+> - ✅ **Plantillas del briefing**: las 2 pasaron a `APPROVED`.
+> - 🔜 **`briefing_cierre_dia_v2`** (`PENDING`): `briefing_cierre_dia` quedó en MARKETING ($89,5620 ARS)
+>   vs UTILITY ($37,6798) — 2,4x más caro, ~$3.800/mes por negocio solo por el tono del texto. La
+>   categoría de una plantilla aprobada NO se puede editar (`error_subcode 3835031`), así que se creó una
+>   v2 con texto neutro. **Cuando Meta la apruebe: cambiar el nombre de la plantilla del evento `cierre`
+>   en `wa-briefing-sweep/index.ts`.**
+> - 🐛 **Bug corregido (`wa-webhook` v7 en DEV)**: ante una foto de comprobante que NO coincidía con el
+>   texto del usuario, el bot avisaba bien la discrepancia pero respondía *"te armo el borrador"* y
+>   **nunca llamaba a `proponer_gasto`** — narraba una acción que no ejecutaba. Se agregaron 2 reglas al
+>   prompt (anti-narración; usar SIEMPRE los datos del comprobante y nunca los del texto) y un campo
+>   `advertencia` que se muestra con ⚠️ en la confirmación pero **nunca se persiste** (no ensuciar el
+>   registro contable).
+> - 🛑 **Embedded Signup sigue bloqueado, pero por otra razón de la documentada**: contra la doc oficial,
+>   el gate duro NO es la Verificación del Negocio (esa solo sube el límite de 10 a 200 negocios/7 días)
+>   sino el **App Review con Advanced Access** sobre `whatsapp_business_management` y
+>   `whatsapp_business_messaging`. Estado por API: `business_verification_status: pending_submission`,
+>   `account_review_status: APPROVED`. Sigue dependiendo de Fede (documentos argentinos; GO está en Chile).
+> - 🛑 **Chrome/FedCM** sin cambios — el popup de conexión falla, hay que usar Edge/Firefox.
+>
+> #### De paso
+>
+> - **Pixel de Meta** agregado a `index.html` (id `1044399641905959`, pedido de Fede). Dispara `PageView`
+>   en la carga inicial; no hay CSP que lo bloquee. Para medir conversión del funnel harían falta eventos
+>   custom (`Lead`, `CompleteRegistration`) — no pedidos todavía.
+> - **Guía de onboarding para clientes** publicada como artifact:
+>   https://claude.ai/code/artifact/db31003d-0d47-43d8-9b83-1729656e5aa8 — 5 requisitos previos, 7 pasos,
+>   precios reales en ARS, problemas conocidos. **Lleva banda roja de "no compartir todavía"** porque el
+>   self-service sigue bloqueado por App Review.
+> - Se **re-corrigió** el dato de pricing de Meta (ver la entrada `query` de esta misma fecha en
+>   `log.md`): los mensajes de servicio SÍ pasan a cobrarse el 1/10/2026 — el dato original de Fede era
+>   correcto y la "corrección" del 2026-09-04 estaba mal.
+>
+> Ver [[wiki/features/asistente-whatsapp]] (sección 2026-09-05) y `log.md`.
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 48) — 💱 Fede confirmó las 2 últimas dudas de USD: cotización
 > BNA-only YA CONSTRUIDA (sin deployar a PROD) + plan del modo "real" del Dashboard LISTO para
 > construir en sesión dedicada

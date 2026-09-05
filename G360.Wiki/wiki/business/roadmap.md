@@ -37,8 +37,22 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.195.5` (commit `01c15d56`, tag+release publicados sobre `dev`, **sin deploy a
-PROD todavía** — PROD sigue en `v1.195.4`). Cambio: **cotización BNA-only** — el widget general de
+**Versión en DEV:** `v1.196.0` (commit `66409d10`, tag+release publicados sobre `dev`, **sin deploy a
+PROD todavía** — PROD sigue en `v1.195.4`). Cambio: **🎉 primera conversación REAL end-to-end del Asistente
+de WhatsApp**. Con el token permanente de System User (`expires_at: 0`) se pudo diagnosticar por API y
+apareció la causa raíz del bloqueo de mensajes entrantes: **la app nunca estuvo suscripta al WABA**
+(`POST /{waba_id}/subscribed_apps`) — el "chip prepago dedicado" documentado como bloqueador desde el 26/8
+era un **diagnóstico equivocado**. Verificado con `wamid` real de Meta: consulta de stock respondida en 5
+segundos con datos reales de la DB, más el circuito completo de Fase 2 (botones nativos) y el envío
+saliente de Fase 4. Cerrados de paso: token permanente (pendiente desde la Fase 1) y las 2 plantillas del
+briefing (`APPROVED`). **Bug corregido en `wa-webhook` v7**: el bot anunciaba *"te armo el borrador"* sin
+llamar la herramienta — se agregaron reglas anti-narración y de discrepancia (usar siempre los datos del
+comprobante, nunca los del texto) más un campo `advertencia` que se muestra pero **nunca se persiste** en el
+registro contable. También: **Pixel de Meta** en `index.html` (`1044399641905959`, pedido de Fede) y
+`briefing_cierre_dia_v2` creada como UTILITY (`PENDING`) porque la de cierre quedó MARKETING y cuesta 2,4x.
+Sin migración de DB nueva. Ver [[wiki/features/asistente-whatsapp]] (sección 2026-09-05).
+
+**Detalle de v1.195.5** — tag+release publicados sobre `dev` (commit `01c15d56`). Cambio: **cotización BNA-only** — el widget general de
 cotización (Caja/Ventas/Dashboard) dejó de ofrecer Blue/MEP/Cripto, ahora trae siempre compra/venta del
 Oficial de Banco Nación (pedido de Fede, `src/hooks/useCotizacion.ts` + `src/components/
 CotizacionWidget.tsx`, commit `e7db934b`). Verificado que ningún tenant real (DEV ni PROD) usaba los

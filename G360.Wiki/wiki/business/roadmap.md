@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-04
+updated: 2026-09-06
 ---
 
 # Roadmap y Versiones
@@ -37,8 +37,23 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.196.0` (commit `66409d10`, tag+release publicados sobre `dev`, **sin deploy a
-PROD todavía** — PROD sigue en `v1.195.4`). Cambio: **🎉 primera conversación REAL end-to-end del Asistente
+**Versión en DEV:** `v1.197.0` (tag+release publicados sobre `dev`, **sin deploy a PROD todavía** — PROD
+sigue en `v1.195.4`). Cambio principal: **✅ D1 — cortacircuitos del refresco de sesión**. El cliente de
+Supabase reintentaba `POST /auth/v1/token?grant_type=refresh_token` **sin techo global** y amplificaba
+cualquier caída del backend. Confirmado con SQL contra los logs de edge de DEV: **595 requests en 24 h**,
+563 con 5xx de Cloudflare (452×522, 49×504, 45×521, 16×524, 1×525) y solo **32 con 200**, sosteniendo
+**~65/hora durante 5 horas seguidas** el 5/9. Causa raíz en auth-js 2.98 (ticker de 30 s que nunca se
+detiene, ~7 reintentos por tick, **cero contador de fallos entre ticks**). Fix: cortacircuitos sobre
+`global.fetch` con backoff exponencial + jitter que se rinde tras 10 fallos —
+**600 requests → 10**. Devuelve 503 a propósito (único código que no le hace borrar la sesión a auth-js:
+un cajero no puede quedar deslogueado por un blip). 19 unit tests nuevos, incluida la regresión de la
+caída de 5 h. Sin migración de DB nueva. Ver [[wiki/architecture/resiliencia]].
+
+Esta versión también promueve lo acumulado en `dev` desde `v1.196.0` y que no tenía tag: **Sección G fase 1**
+(ledger de medición de consumo por tenant, **migs 391 y 393**), **lista de números autorizados de WhatsApp**
+(**mig 392**, corta el gasto antes de llamar a Claude) y la documentación de las Tandas D/E/F de testing.
+
+**Detalle de v1.196.0** — tag+release sobre `dev` (commit `66409d10`). Cambio: **🎉 primera conversación REAL end-to-end del Asistente
 de WhatsApp**. Con el token permanente de System User (`expires_at: 0`) se pudo diagnosticar por API y
 apareció la causa raíz del bloqueo de mensajes entrantes: **la app nunca estuvo suscripta al WABA**
 (`POST /{waba_id}/subscribed_apps`) — el "chip prepago dedicado" documentado como bloqueador desde el 26/8

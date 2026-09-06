@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-06
 ---
 
-# Historial de Migraciones (001-395, + correctivos 387b/387c)
+# Historial de Migraciones (001-399, + correctivos 387b/387c)
 
-**🗂️ Migraciones 391-395 — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`), ⏳ NINGUNA EN PROD**
+**🗂️ Migraciones 391-399 — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`), ⏳ NINGUNA EN PROD**
 (PROD sigue en `v1.195.4`, última migración aplicada allá = 390):
 
 | # | Archivo | Qué hace |
@@ -18,7 +18,10 @@ updated: 2026-09-06
 | 393 | `393_fix_consumo_vista_null_facturable.sql` | Fix: `costo_facturable` devolvía NULL en vez de 0 (`SUM(...) FILTER` sin filas). |
 | 394 | `394_cierres_contables_solo_rpc.sql` | 🟥 **Tanda F, F1-h1.** `cierres_contables` pasa a **solo lectura** vía RLS: se escribe únicamente por `cerrar_periodo()`/`reabrir_periodo()` (SECURITY DEFINER, ya validan rol). Antes cualquier rol podía `POST` directo y **congelar un mes contable entero salteando el guard**. Ver [[wiki/architecture/guards-server-side]]. |
 | 395 | `395_indices_listados_recientes.sql` | **Tanda E, E4-h1.** Índices compuestos `(tenant_id, created_at DESC)` en `ventas` y `movimientos_stock`. Sin esto el `LIMIT 20` leía las 662 ventas del tenant y ordenaba después: **17 ms → 1,14 ms**. Aditivo puro. Ver [[wiki/architecture/resiliencia]]. |
-
+| 396 | `396_guards_rol_server_side.sql` | 🟥 **Tanda F, huecos F1-h2 a h6.** Helper `auth_puede_editar_modulo()` (espeja `permisosModulo.ts`) + trigger de PRECIOS en `productos` + trigger de **umbral del cajero** en `gastos` + RLS de `metodos_pago` y **`roles_custom`** (esta última primero: era escribible por cualquier usuario del tenant → auto-escalada de permisos). Triggers por COLUMNA para no romper el `stock_actual` que `VentasPage` escribe desde el cliente. |
+| 397 | `397_venta_items_rls_covering_index.sql` | ⚠ **Hipótesis DESCARTADA, se deja como registro.** Índice de cobertura sobre `ventas` para el subplan de la RLS de `venta_items`: medido, **empeoraba** (48 → 107 ms). La 398 lo borra. |
+| 398 | `398_venta_items_sucursal_denormalizada.sql` | **Tanda E, E4-h2.** `venta_items.sucursal_id` denormalizada + backfill + triggers de sincronía y propagación. La RLS deja de materializar todas las ventas del tenant. |
+| 399 | `399_venta_items_policy_sin_subplan.sql` | Cierra E4-h2: saca el `EXISTS` residual que las ventas GLOBALES seguían disparando. **48,0 → 4,62 ms**; con 20 sesiones concurrentes, p95 1.461 → 193 ms. |
 ---
 
 

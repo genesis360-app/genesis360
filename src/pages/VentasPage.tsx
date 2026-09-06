@@ -5050,9 +5050,12 @@ export default function VentasPage() {
         // (b) venta despachada con seña/pago efectivo → si NO hay caja abierta, bloquear y sugerir devolución/NC
         // (c) periodo contable cerrado → el trigger BD bloquea con SQLSTATE P0001
         if (venta.estado === 'despachada' && (venta.monto_pagado ?? 0) > 0) {
-          const hayCajaAbierta = sesionesAbiertas.length > 0
-          if (!hayCajaAbierta) {
-            throw new Error('Esta venta fue despachada con cobro efectivo. Para anularla necesitás:\n• Abrir una caja para registrar el egreso de devolución, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito')
+          // 🛑 REGLA #0: el reintegro se asienta en PESOS, así que lo que hace falta es una caja
+          // en PESOS — no "cualquier caja abierta". Con solo una Caja USD abierta este guard
+          // pasaba y después el egreso no se podía asentar (ver el bloque de reintegro más abajo).
+          const hayCajaArs = sesionesArs.length > 0
+          if (!hayCajaArs) {
+            throw new Error('Esta venta fue despachada con cobro efectivo. Para anularla necesitás:\n• Abrir una caja EN PESOS para registrar el egreso de devolución, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito')
           }
         }
         // Liberar reservas
@@ -5201,12 +5204,34 @@ export default function VentasPage() {
             })
           } else if (aDevolver > 0.01) {
             // Destino "devolución": egreso en caja por el monto a devolver (escala efectivo/no-cash).
-            const cancelSesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
-            if (cancelSesionId) {
-              try {
-                const prevArr = venta.medio_pago ? JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[] : []
-                const efectivoCobrado = prevArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0) * ratio
-                if (efectivoCobrado > 0.01) {
+            //
+            // 🛑 BUG REGLA #0 CORREGIDO (2026-09-06). Antes era:
+            //     sesionCajaId ?? (sesionesAbiertas.length > 0 ? sesionesAbiertas[0].id : null)
+            // `sesionesAbiertas` mezcla monedas y su query NO tiene ORDER BY, así que `[0]` podía
+            // ser la sesión de la **Caja USD** → el reintegro en pesos se intentaba asentar en una
+            // caja en dólares. Detectado con datos reales: desde que se abrió una Caja USD en DEV
+            // (2026-09-04) NINGUNA anulación volvió a generar su `egreso_devolucion_sena`, y el
+            // ingreso de la venta sí quedaba → la caja quedaba inflada por el monto cobrado.
+            // Peor aún, todo el bloque estaba envuelto en `try {} catch {}` vacío y detrás de un
+            // `if (cancelSesionId)` sin `else`: fallaba **en silencio**, justo lo que la obligación
+            // #4 de la REGLA #0 prohíbe (todo movimiento de efectivo se asienta en caja, awaiteado
+            // y con aviso si falla).
+            const sesionArsCancel = (sesionesArs as any[]).find(s => s.id === sesionCajaId) ?? (sesionesArs as any[])[0] ?? null
+            const cancelSesionId: string | null = sesionArsCancel?.id ?? null
+            try {
+              const prevArr = venta.medio_pago
+                ? (typeof venta.medio_pago === 'string' ? JSON.parse(venta.medio_pago) : venta.medio_pago) as { tipo: string; monto: number }[]
+                : []
+              const efectivoCobrado = prevArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0) * ratio
+              const avisoManual = (monto: number, motivo: string) => toast.error(
+                `La cancelación se procesó, pero el reintegro de $${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} NO se asentó en caja (${motivo}). Registralo manualmente.`,
+                { duration: 14000 },
+              )
+
+              if (efectivoCobrado > 0.01) {
+                if (!cancelSesionId) {
+                  avisoManual(efectivoCobrado, 'no hay una caja EN PESOS abierta')
+                } else {
                   const { error: refErr } = await supabase.from('caja_movimientos').insert({
                     tenant_id: tenant!.id,
                     sesion_id: cancelSesionId,
@@ -5215,13 +5240,19 @@ export default function VentasPage() {
                     monto: efectivoCobrado,
                     usuario_id: user?.id,
                   })
-                  if (refErr) toast.error(`La cancelación se procesó, pero el reintegro de $${efectivoCobrado.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registralo manualmente.`, { duration: 12000 })
+                  if (refErr) avisoManual(efectivoCobrado, refErr.message)
                 }
-                const noCashCancelado = aDevolver - efectivoCobrado
-                if (noCashCancelado > 0.01) {
-                  const noCashTipos = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))]
-                  const noCashTypes = noCashTipos.join(' + ') || 'No efectivo'
-                  void supabase.from('caja_movimientos').insert({
+              }
+
+              const noCashCancelado = aDevolver - efectivoCobrado
+              if (noCashCancelado > 0.01) {
+                const noCashTipos = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))]
+                const noCashTypes = noCashTipos.join(' + ') || 'No efectivo'
+                if (!cancelSesionId) {
+                  avisoManual(noCashCancelado, 'no hay una caja EN PESOS abierta')
+                } else {
+                  // Awaiteado (antes era `void`): un movimiento de plata no se dispara y se olvida.
+                  const { error: infErr } = await supabase.from('caja_movimientos').insert({
                     tenant_id: tenant!.id,
                     sesion_id: cancelSesionId,
                     tipo: 'egreso_informativo',
@@ -5230,8 +5261,15 @@ export default function VentasPage() {
                     cuenta_origen_id: noCashTipos[0] ? cuentaOrigenDeMetodo(noCashTipos[0]) : null,
                     usuario_id: user?.id,
                   })
+                  if (infErr) avisoManual(noCashCancelado, infErr.message)
                 }
-              } catch {}
+              }
+            } catch (e: any) {
+              // Antes: `catch {}`. Un error acá dejaba la caja inflada sin que nadie se enterara.
+              toast.error(
+                `La cancelación se procesó, pero el reintegro NO se asentó en caja (${e?.message ?? 'error desconocido'}). Registralo manualmente.`,
+                { duration: 14000 },
+              )
             }
           }
         }

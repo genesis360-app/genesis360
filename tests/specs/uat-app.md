@@ -86,6 +86,45 @@ existentes corren un único camino feliz con el valor default de cada flag. **Ah
 > **UAT:** verificar que (1) el input por-ítem no acepta tipeo manual; (2) un combo de 1 SKU aplica su descuento y
 > se ve "por combo"; (3) el descuento manual sigue disponible vía "Descuento general" para DUEÑO/SUPERVISOR/ADMIN.
 
+### H5 — 🛑 Devolución de seña al ANULAR: iba a la caja equivocada y fallaba en silencio (CERRADO 2026-09-06)
+
+**Encontrado corriendo la regresión de las Tandas F/E, con datos reales — no por inspección.** El spec
+`137_ventas_anulacion_supervision_mutante` falló 2 de 2 veces en el paso "revierte caja". La venta
+quedaba `cancelada`, el stock se reincorporaba bien… y **el egreso de caja que devuelve el efectivo
+cobrado NO se creaba**. El ingreso de la venta sí estaba → **la caja quedaba inflada por el monto
+cobrado, en silencio**.
+
+**Causa raíz** (`VentasPage.tsx`, rama `cancelada` de `cambiarEstado`):
+
+```ts
+const cancelSesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? sesionesAbiertas[0].id : null)
+if (cancelSesionId) { try { …insert egreso… } catch {} }
+```
+
+`sesionesAbiertas` **mezcla monedas** y su query **no tiene `ORDER BY`**, así que `[0]` podía ser la
+sesión de la **Caja USD** → se intentaba asentar un reintegro en pesos en una caja en dólares. Verificado
+contra la DB: el último `egreso_devolucion_sena` correcto es del **2026-09-02**, y en DEV se abrió una
+**Caja USD el 2026-09-04**. Desde ahí, ninguna anulación volvió a generar su egreso.
+
+Y encima fallaba **mudo**, por dos caminos: `if (cancelSesionId)` sin `else`, y un `catch {}` vacío que
+se tragaba cualquier error. Más el `void supabase…insert(…)` fire-and-forget de la pata no-efectivo.
+Eso es exactamente lo que prohíbe la **obligación #4 de la REGLA #0** ("todo movimiento de EFECTIVO se
+asienta en caja — awaiteado + aviso si falla, nunca fire-and-forget ni silencioso").
+
+**Fix**: se elige la sesión de la lista **`sesionesArs`** (respetando `sesionCajaId` solo si es de
+pesos), el guard previo exige una caja **EN PESOS** (antes bastaba "cualquier caja abierta"), la pata
+no-efectivo pasa a estar `await`eada, y **todos** los caminos de falla avisan con un toast que dice el
+monto y el motivo, pidiendo registro manual. Verificado: el spec 137 vuelve a pasar y la Venta #684
+asentó su `egreso_devolucion_sena` de $1.234 en **Caja1 (ARS)**.
+
+⚠ **Queda abierto (nuevo)**: si la venta se cobró en **efectivo USD**, el reintegro al anular no se
+contempla en ninguna rama (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). Hay que
+relevarlo con GO.
+
+⚠ **En DEV quedó un desvío de $2.468 en Caja1** (las ventas #679 y #682 de las dos corridas fallidas:
+ingreso sin su egreso). No se corrigió a mano a propósito — escribir movimientos de caja "para
+emparejar" es justo lo que no hay que hacer sin decisión de GO.
+
 ### H1 — Controles financieros SOLO client-side (choca con REGLA #0 obligación #3) 🟥🟥
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos
 y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo existen `fn_gastos_iva_guard`
@@ -385,22 +424,43 @@ fallar la corrida el día que se cierren**, que es cuando hay que sacarles el `t
   existía y se esquivaba escribiendo la tabla. Ahora la tabla es **solo lectura** vía RLS: se escribe
   únicamente por los RPC `SECURITY DEFINER`. Verificado que el camino legítimo sigue vivo (DUEÑO
   cierra y reabre por RPC) y que la lectura no se rompió.
-- 🔴 **F1-h2 — cambiar el PRECIO DE VENTA de un producto.** Cualquier rol, por REST directo.
-- 🔴 **F1-h3 — editar el MONTO de un gasto.** Ídem.
-- 🔴 **F1-h4 — dar de alta productos.** Ídem.
-- 🔴 **F1-h5 — crear/renombrar medios de pago** (config). Ídem.
+- ✅ **F1-h2 — CERRADO (mig 396): cambiar el PRECIO DE VENTA de un producto.**
+- ✅ **F1-h3 — CERRADO (mig 396): editar el MONTO de un gasto** — enforzando el **umbral**, no el rol.
+- ✅ **F1-h4 — CERRADO (mig 396): dar de alta productos.**
+- ✅ **F1-h5 — CERRADO (mig 396): crear/renombrar medios de pago** (config).
+- ✅ **F1-h6 — CERRADO (mig 396), HALLAZGO NUEVO y el más grave de los cuatro:** `roles_custom` era
+  escribible por **cualquier usuario del tenant**. Alguien con un rol custom podía **auto-otorgarse**
+  `'editar'` sobre cualquier módulo y saltear todos los guards de arriba. Un guard que confía en un
+  dato que el atacante controla no es un guard — por eso esta tabla se cierra PRIMERO en la migración.
 
-**Por qué h2-h5 NO se cerraron en la misma sesión** (y no es pereza): `productos`, `ventas`, `gastos`
-y `metodos_pago` solo tienen RLS por tenant/sucursal — de las 152 policies, apenas **14 miran el rol**.
-Un guard genérico rompe flujos legítimos: **`VentasPage` actualiza `productos.stock_actual` desde el
+#### Cómo se cerraron h2-h6 (mig 396) sin romper nada
+
+Ninguno se podía cerrar con RLS a secas: **`VentasPage` actualiza `productos.stock_actual` desde el
 cliente** en devoluciones y anulaciones, así que un "CAJERO no escribe productos" corta ventas reales.
-El guard correcto es un trigger `BEFORE UPDATE` que mire **solo las columnas de precio** (mismo patrón
-que `fn_ventas_writeoff_rol_guard`), y hay que resolver antes qué pasa con los **roles custom**
-(`rol_custom_id`), que la UI respeta y un chequeo por `rol` a secas ignoraría. CLAUDE.md pide guard por
-guard, cada uno probado en DEV, porque es el hot-path de plata. **Decisión pendiente de GO.**
+Y en gastos el CAJERO edita legítimamente **por debajo de su umbral**. Entonces:
 
-**F2/F3 siguen abiertos**: la matriz de esta spec cubre 4 roles × 12 operaciones, no la matriz
-completa; y **F3 (roles custom) no se tocó** — es justamente lo que hay que definir para cerrar h2-h5.
+- **`productos`** → trigger `BEFORE INSERT OR UPDATE` que mira **solo las columnas de precio**
+  (`precio_venta`, `precio_costo`, `precio_marketplace`, `precio_usd`, `precio_costo_usd`,
+  `margen_objetivo`). Un UPDATE de `stock_actual` pasa; uno que mueve el precio, no.
+- **`gastos`** → se enforcea el **umbral del CAJERO** (espejo exacto de `evaluarUmbralGasto`), más el
+  bloqueo de los roles que no operan Gastos (DEPÓSITO/RRHH/Lector) y del alta para CONTADOR —que sí
+  edita campos fiscales de un gasto ya creado—. ⚠ El umbral del **SUPERVISOR** queda a propósito
+  fuera: el supervisor es quien **aplica** la autorización de un cajero, y enforzarlo rompería una
+  aprobación legítima cuando el monto pedido supera también su propio umbral. Cerrarlo requiere antes
+  mover la aplicación de autorizaciones a un RPC (patrón de las migs 236/237/238) — **sigue abierto**.
+- **`metodos_pago`** y **`roles_custom`** → RLS: lectura para todo el tenant, escritura solo gestión.
+- **Roles custom (F3)**: el helper `auth_puede_editar_modulo()` espeja `puedeEditarModulo` del front,
+  así que un rol custom en `'ver'`/`'no_ver'` queda bloqueado aunque su rol base pudiera. Verificado
+  con datos reales: `cajero1@local.com` tiene el rol custom `GO_Cajero` con `inventario: 'ver'`.
+
+**Verificación (lo que evita el falso verde):** las sondas negativas se corren con un valor **DISTINTO**
+—con el mismo valor el trigger no se dispara y todo "pasa"— y hay 4 tests **positivos** que son los que
+detectan un guard pasado de estricto: el CAJERO sigue escribiendo `stock_actual`, un UPDATE que no
+cambia el precio pasa, DUEÑO/SUPERVISOR sí cambian precios (y el precio queda restaurado), y el
+CONTADOR sigue editando campos de un gasto. Las tres ramas del umbral (bajo / sobre / sin umbral) se
+verificaron por impersonación SQL con un cajero sin rol custom.
+
+**F2 sigue abierto**: la matriz cubre 4 roles × 12 operaciones, no la matriz completa.
 
 > **Nota de método para las tres tandas**: hay que definir y documentar **con qué foto de datos** corre cada
 > escenario (tenant, sucursales, catálogo, usuarios por rol, estado de caja). Sin fixture explícito, un

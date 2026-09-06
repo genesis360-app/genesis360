@@ -17,7 +17,8 @@ Las sondas de la spec son **no mutantes** a propósito (corre contra un tenant c
 
 | Operación | Sonda | Cómo se lee el resultado |
 |---|---|---|
-| UPDATE | `PATCH` con el **mismo valor** que ya tiene la fila | `[]` = RLS bloqueó · fila devuelta = RLS dejó escribir |
+| UPDATE (RLS) | `PATCH` con el **mismo valor** que ya tiene la fila | `[]` = bloqueó · fila devuelta = dejó escribir |
+| UPDATE (guard por columna) | `PATCH` con un valor **DISTINTO**, y después se verifica que el dato quedó intacto | con el mismo valor el trigger NO se dispara → falso verde |
 | INSERT | `POST` con una **clave única duplicada** | `42501` = RLS bloqueó · `23505` = pasó la RLS (y no insertó nada) |
 | RPC de cierre | pedir el **mes en curso**, que la regla rechaza siempre | distingue un rechazo por **rol** de uno por regla de negocio |
 
@@ -36,19 +37,20 @@ Las sondas de la spec son **no mutantes** a propósito (corre contra un tenant c
 - **Aislamiento por sucursal cruzado con rol**: ningún rol operativo de Sucursal Norte ve `ventas`,
   `caja_sesiones` ni `gastos` de Sucursal Sur. (La spec 94 solo cubría SUPERVISOR.)
 
-## 🟥 Lo que NO protege — huecos medidos
+## 🟥 Los huecos que había — todos cerrados el 2026-09-06
 
-**De las 152 policies del esquema, solo 14 miran el rol.** `productos`, `ventas`, `gastos`,
-`metodos_pago` y compañía filtran por tenant y sucursal, nada más. Con un token válido de cualquier
-rol se puede, por REST directo:
+**De las 152 policies del esquema, solo 14 miraban el rol.** `productos`, `ventas`, `gastos`,
+`metodos_pago` y `roles_custom` filtraban por tenant y sucursal, nada más: con un token válido de
+cualquier rol se podía, por REST directo, hacer todo esto que la UI esconde.
 
 | # | Hueco | Estado |
 |---|---|---|
 | F1-h1 | **Cerrar un período contable salteando el RPC** | ✅ **CERRADO — mig 394** |
-| F1-h2 | Cambiar el **precio de venta** de un producto | 🔴 abierto |
-| F1-h3 | Editar el **monto** de un gasto | 🔴 abierto |
-| F1-h4 | Dar de alta productos | 🔴 abierto |
-| F1-h5 | Crear / renombrar medios de pago | 🔴 abierto |
+| F1-h2 | Cambiar el **precio de venta** de un producto | ✅ **CERRADO — mig 396** |
+| F1-h3 | Editar el **monto** de un gasto | ✅ **CERRADO — mig 396** |
+| F1-h4 | Dar de alta productos | ✅ **CERRADO — mig 396** |
+| F1-h5 | Crear / renombrar medios de pago | ✅ **CERRADO — mig 396** |
+| F1-h6 | **Auto-otorgarse permisos editando `roles_custom`** | ✅ **CERRADO — mig 396** |
 
 ### F1-h1 — cerrado (mig 394)
 
@@ -67,27 +69,61 @@ Riesgo verificado **antes** de aplicar: el frontend solo hace `SELECT` sobre esa
 Function la toca, y `service_role` no pasa por RLS. Verificado **después**: el CAJERO recibe 42501, la
 lectura sigue intacta, y el DUEÑO cierra y reabre por RPC sin problema.
 
-### Por qué h2-h5 siguen abiertos
+### F1-h6 — el que hacía inútiles a los demás (hallazgo nuevo)
 
-No es pereza: **un guard genérico rompe ventas reales.** `VentasPage` actualiza
-`productos.stock_actual` **desde el cliente** en devoluciones y anulaciones, así que una regla
-"CAJERO no escribe `productos`" corta un flujo legítimo del cajero. El guard correcto es un trigger
-`BEFORE UPDATE` que mire **solo las columnas de precio** (mismo patrón que `fn_ventas_writeoff_rol_guard`).
+`roles_custom` tenía una policy `FOR ALL` por tenant a secas: **cualquier usuario del tenant podía
+editar los permisos de cualquier rol custom**. Alguien con un rol custom asignado podía auto-otorgarse
+`'editar'` sobre cualquier módulo y saltear todos los guards de abajo — que justamente consultan
+`roles_custom.permisos`. **Un guard que confía en un dato que el atacante controla no es un guard**, así
+que la mig 396 cierra esta tabla PRIMERO y recién después instala los demás.
 
-Y antes hay que resolver los **roles custom** (`rol_custom_id`): la UI respeta permisos a medida por
-módulo, y un chequeo server-side por `rol` a secas los ignoraría — un CAJERO con un rol custom que le
-habilita Productos quedaría bloqueado. Eso es exactamente la **F3** de la tanda, todavía sin abrir.
+### Cómo se cerraron h2-h5 sin romper nada (mig 396)
 
-CLAUDE.md pide guard por guard, cada uno probado en DEV, porque es el hot-path de plata. **Decisión
-pendiente de GO.**
+Ninguno se podía cerrar con RLS a secas, y ese es el punto: **`VentasPage` actualiza
+`productos.stock_actual` DESDE EL CLIENTE** en devoluciones y anulaciones, así que un "CAJERO no escribe
+`productos`" corta ventas reales. Y en Gastos el CAJERO edita legítimamente por debajo de su umbral.
+
+- **`productos`** → trigger `BEFORE INSERT OR UPDATE` que mira **solo las columnas de precio**
+  (`precio_venta`, `precio_costo`, `precio_marketplace`, `precio_usd`, `precio_costo_usd`,
+  `margen_objetivo`). Un UPDATE de `stock_actual` pasa; uno que mueve el precio, no.
+- **`gastos`** → se enforcea el **umbral del CAJERO** (espejo exacto de `evaluarUmbralGasto`), más el
+  bloqueo de los roles que no operan Gastos (DEPÓSITO/RRHH/Lector) y del alta para CONTADOR, que sí
+  edita campos fiscales de un gasto ya creado.
+- **`metodos_pago`** → configuración: lectura para todo el tenant (el POS lista los medios), escritura
+  solo para gestión.
+- **Roles custom** → el helper `auth_puede_editar_modulo()` espeja `puedeEditarModulo` del frontend, así
+  que un rol custom en `'ver'`/`'no_ver'` queda bloqueado **aunque su rol base pudiera**. Es la primera
+  cobertura real de **F3**.
+
+**Sin sesión de usuario (`auth.uid() IS NULL`) el helper devuelve `true` a propósito**: service_role,
+Edge Functions y pg_cron tienen que seguir pasando. Verificado que todas las EF usan
+`SUPABASE_SERVICE_ROLE_KEY`, no un token de usuario.
+
+#### Lo que sigue abierto
+
+El **umbral del SUPERVISOR** queda deliberadamente fuera del guard: el supervisor es quien **aplica** la
+autorización de un cajero, y enforzarlo server-side rompería una aprobación legítima cuando el monto
+pedido supera también su propio umbral. Cerrarlo requiere antes mover la aplicación de autorizaciones a
+un RPC `SECURITY DEFINER` (mismo patrón que las migs 236/237/238).
+
+### La trampa que casi da un falso verde
+
+La primera verificación de la mig 396 dijo que el guard de precios **no funcionaba**… y era la sonda la
+que estaba mal: hacía `PATCH` con **el mismo valor**, y sin cambio de precio el trigger no debe
+dispararse. **Toda sonda de un guard por columna tiene que mandar un valor distinto.** La segunda
+trampa fue al revés: `cajero1@local.com` tiene el rol custom `GO_Cajero` con `inventario: 'ver'`, así
+que el bloqueo que parecía un falso positivo era el guard funcionando por la rama de rol custom.
 
 ### Cómo quedan anotados los huecos en la suite
 
-Con `test.fail()`: la aserción está escrita **correcta** (la DB debería bloquear), hoy falla, y
-Playwright la reporta en verde mientras el hueco siga abierto — pero **hace fallar la corrida el día
-que el guard se implemente**, que es cuando hay que sacarle el `test.fail()`. Así el hueco queda
-medido y no se olvida, sin dejar la suite en rojo permanente ni escribir una aserción que afirme lo
-contrario de lo que se quiere.
+Mientras estuvieron abiertos vivieron con `test.fail()`: la aserción escrita **correcta**, reportada en
+verde mientras el hueco siguiera abierto y **roja el día que el guard se implementara**. Al cerrarlos
+(mig 396) se les sacó el `test.fail()` y pasaron al bloque de guards.
+
+Además hay 5 tests **positivos** — los que valen oro, porque detectan un guard pasado de estricto: el
+CAJERO sigue escribiendo `stock_actual`, un UPDATE que no cambia el precio pasa, DUEÑO/SUPERVISOR sí
+cambian precios (y el precio queda restaurado), el CONTADOR sigue editando campos de un gasto, y
+`venta_items.sucursal_id` sigue sincronizada.
 
 ---
 

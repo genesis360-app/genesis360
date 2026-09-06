@@ -42,24 +42,34 @@ type: project
 > 🔴 **E4-h2 abierto**: `venta_items` cuesta **24× más al CAJERO que al DUEÑO** (materializa todas las
 > ventas del tenant). Detalle: `wiki/architecture/guards-server-side.md` y `wiki/architecture/resiliencia.md`.
 >
+> #### ✅ Cerrado después (GO: "corregí todo lo que viste que merece ser arreglado")
+>
+> - **Mig 396 — los 5 huecos de la Tanda F**, más uno NUEVO: **`roles_custom` era escribible por
+>   cualquier usuario del tenant** → auto-escalada de permisos que anulaba todos los demás guards.
+>   `productos` y `gastos` se cerraron con triggers por COLUMNA / por UMBRAL, no por rol, para no
+>   romper el `stock_actual` que `VentasPage` escribe desde el cliente ni la edición legítima del
+>   cajero bajo su umbral. Spec 141: 13 → **19 tests** (5 positivos nuevos).
+> - **Migs 397-399 — E4-h2 (`venta_items`)**: **48,0 → 4,62 ms**; con 20 concurrentes,
+>   **86 → 174 req/s** y **p95 1.461 → 193 ms**. La 397 quedó como registro de hipótesis descartada.
+> - **🛑 Bug REGLA #0 de caja (H5)**, encontrado por la regresión: al anular una venta el reintegro en
+>   efectivo podía apuntar a la **Caja USD** y fallaba **en silencio** → la caja quedaba inflada.
+>   Corregido y verificado. Detalle en `tests/specs/uat-app.md` §H5.
+>
 > #### Lo que sigue abierto (mismo orden de prioridad)
 >
-> - 🔴 **Decisión de GO — huecos F1-h2 a h5**: hay que elegir el guard. Un guard genérico ROMPE ventas
->   legítimas (`VentasPage` escribe `productos.stock_actual` desde el cliente en devoluciones/anulaciones);
->   el correcto es un trigger que mire **solo las columnas de precio**. Y antes hay que definir qué pasa con
->   los **roles custom** (`rol_custom_id`) — eso es la **F3**, sin abrir.
-> - 🔴 **Decisión de GO — E4-h2** (`venta_items`): (a) denormalizar `sucursal_id` (rápido, pero backfill +
->   trigger sobre tabla fiscal) o (b) índice de cobertura (aditivo, sin riesgo, mejora menos).
-> - **D2-D5** — sesión vencida con pestaña abierta, 5xx sostenido en las **consultas de datos** (no solo en
->   el refresco), red intermitente, pestaña dormida y reanudada.
-> - **E2 — techo real de la instancia**: el instrumento está listo (`--usuarios N --si-se-que-hago`), falta
->   acordar CUÁNDO correrlo (saturar DEV es destructivo y es el ambiente de trabajo de GO).
-> - **F2** — matriz completa por rol (la spec cubre 4 roles × 12 operaciones, no todo).
-> - **Decisión pendiente de GO**: si todo esto va a PROD ya (PR `dev→main` + release + migs 391-395) o
->   espera a más tandas. PROD sigue en `v1.195.4`; migs 391-395 **solo en DEV**.
-> - ✅ Resuelto de paso: el `tn-fulfillment-worker` que corría "133 veces/día sin que nadie lo mire" es el
->   job de **pg_cron** `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). `pg_cron` y `pg_net` **SÍ están
->   habilitados** en DEV y PROD — el wiki ya lo decía bien.
+> - 🟥 **Reintegro en efectivo USD al anular una venta**: no está contemplado en ninguna rama
+>   (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). **Relevar con GO.**
+> - 🟧 **Umbral del SUPERVISOR server-side**: necesita antes mover la aplicación de autorizaciones de
+>   gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238).
+> - **D2-D5** — sesión vencida con pestaña abierta, 5xx sostenido en las **consultas de datos**, red
+>   intermitente, pestaña dormida y reanudada.
+> - **E2 — techo real de la instancia**: el instrumento está listo (`--usuarios N --si-se-que-hago`),
+>   falta acordar CUÁNDO correrlo (saturar DEV es destructivo).
+> - **F2** — matriz completa por rol.
+> - ⚠ **En DEV, Caja1 quedó con un desvío de $2.468** (ventas #679/#682 de las corridas fallidas del
+>   spec 137: ingreso sin su egreso). NO se emparejó a mano a propósito — decisión de GO.
+> - **Decisión de GO**: si todo esto va a PROD (PR `dev→main` + migs 391-399) o espera. PROD sigue en
+>   `v1.195.4`; migs 391-399 **solo en DEV**.
 
 > ### 🟥🟥 (2026-09-06, cont. 50) — el incidente original que abrió las Tandas D/E/F
 > **[D1 ya cerrado — ver arriba. Se conserva por el diagnóstico y el método.]**

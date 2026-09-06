@@ -6,6 +6,80 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-06] update | ✅ Todos los huecos de F y E cerrados + 🛑 bug REGLA #0 de caja encontrado en la regresión
+
+GO: *"corrige o arregla todo lo que viste que merece ser arreglado"*. Se cerraron los 5 huecos que
+habían quedado abiertos, apareció uno nuevo más grave, y **la regresión destapó un bug de plata real**.
+
+### Tanda F — los 5 huecos cerrados (mig 396), y uno nuevo
+
+**🟥 F1-h6, hallazgo NUEVO y el más grave: `roles_custom` era escribible por CUALQUIER usuario del
+tenant.** Alguien con un rol custom asignado podía **auto-otorgarse `'editar'`** en cualquier módulo y
+saltear todos los demás guards — que justamente consultan `roles_custom.permisos`. **Un guard que
+confía en un dato que el atacante controla no es un guard**, así que la migración cierra esa tabla
+PRIMERO y recién después instala el resto.
+
+Los otros cuatro (precio de venta, monto de gasto, alta de productos, medios de pago) **no se podían
+cerrar con RLS a secas** — que es exactamente por lo que habían quedado abiertos:
+- **`productos`** → trigger que mira **solo las columnas de precio**. Un UPDATE de `stock_actual` pasa
+  (lo hace `VentasPage` desde el cliente en devoluciones y anulaciones: un guard genérico cortaba
+  ventas reales); uno que mueve el precio, no.
+- **`gastos`** → se enforcea el **umbral del CAJERO**, no el rol, porque el cajero edita gastos
+  legítimamente por debajo de su umbral. Espejo exacto de `evaluarUmbralGasto`. Las tres ramas (bajo /
+  sobre / sin umbral configurado) verificadas por impersonación SQL con un cajero sin rol custom.
+  ⚠ El umbral del **SUPERVISOR** queda afuera a propósito: es quien *aplica* la autorización de un
+  cajero, y enforzarlo rompería una aprobación legítima. Necesita antes un RPC (patrón migs 236/237/238).
+- **`metodos_pago`** → config: lectura para el tenant, escritura solo gestión.
+- **Roles custom (F3)** → el helper `auth_puede_editar_modulo()` espeja `puedeEditarModulo` del front.
+
+**Dos trampas de verificación que casi dan falsos verdes**, y quedan anotadas: (1) la sonda de precios
+mandaba **el mismo valor** — sin cambio de precio el trigger no debe dispararse, así que "pasaba" todo;
+hay que mandar un valor distinto y después comprobar que el dato quedó intacto. (2) Lo que parecía un
+falso positivo era el guard funcionando: `cajero1@local.com` tiene el rol custom `GO_Cajero` con
+`inventario: 'ver'`.
+
+La spec 141 pasó de 13 a **19 tests**, con 5 **positivos** nuevos que son los que detectan un guard
+pasado de estricto (el CAJERO sigue escribiendo `stock_actual`, un UPDATE que no cambia el precio pasa,
+DUEÑO/SUPERVISOR sí cambian precios y el precio queda restaurado, el CONTADOR sigue editando gastos).
+De yapa, gate client-side en el **importador de productos**, que no tenía ninguno.
+
+### Tanda E — E4-h2 cerrado (migs 397-399), con la hipótesis descartada a la vista
+
+1. **Mig 397 — índice de cobertura. NO funcionó**: 48 → **107 ms**, peor. Un Bitmap Index Scan siempre
+   va al heap, y el costo real era el `Filter` por fila. Se deja el registro para que nadie lo reintente.
+2. **Mig 398 — denormalizar `venta_items.sucursal_id`** + backfill + triggers. Bajó poco (51 ms): las
+   **39 ventas globales** del tenant caían en el `EXISTS` que quedó de red de seguridad y lo disparaban.
+3. **Mig 399 — sacar ese `EXISTS`**, redundante con la columna en sincronía. **48,0 → 4,62 ms.**
+
+Correctitud verificada, no supuesta: el CAJERO ve **565 ítems con la policy nueva y 565 con la vieja**.
+Efecto con 20 sesiones concurrentes: **86,3 → 173,9 req/s** y **p95 1.461 → 193 ms**, 0 errores.
+
+### 🛑 El bug de plata que apareció en la regresión (H5)
+
+El spec `137_ventas_anulacion` falló 2 de 2. La venta quedaba cancelada y el stock volvía bien, pero
+**el egreso de caja que devuelve el efectivo cobrado no se creaba** — el ingreso de la venta sí estaba,
+o sea **la caja quedaba inflada, en silencio**.
+
+Causa raíz: `const cancelSesionId = sesionCajaId ?? sesionesAbiertas[0].id`. **`sesionesAbiertas` mezcla
+monedas y su query no tiene `ORDER BY`**, así que `[0]` podía ser la sesión de la **Caja USD** → un
+reintegro en pesos intentaba asentarse en una caja en dólares. Confirmado con datos: el último
+`egreso_devolucion_sena` correcto es del **2/9**, y en DEV se abrió una **Caja USD el 4/9**. Desde ahí,
+ninguna anulación volvió a generar su egreso. Y fallaba **mudo** por partida triple: `if (cancelSesionId)`
+sin `else`, un `catch {}` vacío, y `void supabase…insert(…)` fire-and-forget en la pata no-efectivo —
+justo lo que prohíbe la **obligación #4 de la REGLA #0**.
+
+Fix: se elige la sesión de `sesionesArs`, el guard previo exige caja **EN PESOS**, la pata no-efectivo
+queda `await`eada y **todos** los caminos de falla avisan con monto y motivo. Verificado: el spec vuelve
+a pasar y la Venta #684 asentó su egreso de $1.234 en **Caja1 (ARS)**.
+⚠ Abierto: si la venta se cobró en **efectivo USD**, el reintegro al anular no está contemplado en
+ninguna rama. ⚠ En DEV quedó un desvío de **$2.468** en Caja1 (ventas #679/#682 de las corridas
+fallidas) — no se corrigió a mano a propósito.
+
+**Verde**: lint 0 warnings · tsc + build · e2e de regresión 26 passed (1 skip por fixture) · spec 141
+19/19.
+
+---
+
 ## [2026-09-06] update | 🟥 Tandas F y E — primera pasada: 5 huecos de rol medidos (1 cerrado) + el techo de escala de `ventas`
 
 Continuación de la misma sesión (GO: "hagamos más tandas"). Dos tandas nuevas, las dos con **medición

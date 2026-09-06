@@ -100,10 +100,11 @@ contra PROD o con más de 20 sesiones sin `--si-se-que-hago`.
 | Concurrencia | RPS | Errores | p50 | p95 |
 |---|---|---|---|---|
 | 5 sesiones · 20 s | 49,8 | **0** | 78 ms | 267 ms |
-| 20 sesiones · 25 s | 86,3 | **0** | 112 ms | 1.461 ms |
+| 20 sesiones · 25 s (antes de E4-h2) | 86,3 | **0** | 112 ms | 1.461 ms |
+| 20 sesiones · 25 s (**después** de E4-h2) | **173,9** | **0** | 103 ms | **193 ms** |
 
-Cero errores en las dos. A 20 concurrentes el p95 se dispara, y **es casi todo una sola consulta**
-(E4-h2): el resto de los listados se queda por debajo de 250 ms.
+Cero errores en las tres corridas. El p95 disparado a 20 concurrentes **era casi todo una sola
+consulta** (E4-h2); cerrada esa, el throughput se duplicó y el p95 bajó 7,6×.
 
 ### E2 — techo: deliberadamente NO se buscó
 
@@ -126,22 +127,43 @@ Con el compuesto `(tenant_id, created_at DESC)`: **17,0 ms → 1,14 ms**, leyend
 662 (deja de crecer con el historial). End-to-end: `ventas` p50 **277 → 78 ms**, p95 **435 → 96 ms**,
 y el total pasó de 35,8 a **49,8 req/s** con la misma concurrencia.
 
-**🔴 E4-h2 — `venta_items` castiga a los usuarios restringidos por sucursal (sin arreglar).**
-`venta_items` no tiene `sucursal_id`, así que su policy resuelve la sucursal con un
-`EXISTS (SELECT 1 FROM ventas v WHERE v.id = venta_items.venta_id AND …)`. Postgres lo convierte en un
-**hashed SubPlan que materializa TODAS las ventas visibles del tenant** antes de devolver la primera
-fila. Mismo query, distinto usuario: **DUEÑO 2,1 ms · CAJERO 48,0 ms (24×)** — el DUEÑO cortocircuita
-en `auth_ve_todas_sucursales()` y nunca ejecuta el subplan; el cajero sí, y arma el hash de 558 ventas
-para devolver 50 ítems. Es el causante del p95 de 1,4 s a 20 concurrentes, y escala O(ventas del
-tenant) por query.
+**✅ E4-h2 — `venta_items` castigaba a los usuarios restringidos por sucursal (CERRADO, migs 397-399).**
+`venta_items` no tenía `sucursal_id`, así que su policy resolvía la sucursal con un `EXISTS` contra
+`ventas`, y Postgres lo convertía en un **hashed SubPlan que materializa TODAS las ventas visibles del
+tenant** antes de devolver la primera fila. Mismo query, distinto usuario: **DUEÑO 2,1 ms · CAJERO
+48,0 ms (24×)** — el DUEÑO cortocircuita en `auth_ve_todas_sucursales()` y nunca ejecuta el subplan.
+Era el causante del p95 de 1,4 s a 20 concurrentes, y escalaba O(ventas del tenant) por query.
 
 > ⚠ **Medirlo con el DUEÑO da 2 ms y parece sano.** Cualquier prueba de performance con RLS hay que
 > hacerla con el rol restringido. Mismo criterio que la Tanda F — ver
 > [[wiki/architecture/guards-server-side]].
 
-Dos caminos, los dos con decisión pendiente de GO: (a) denormalizar `sucursal_id` en `venta_items`
-—rápido, pero es backfill + trigger sobre una tabla fiscal—, o (b) índice de cobertura para que el
-subplan se arme sin tocar el heap —aditivo y sin riesgo, pero mejora menos—.
+**El camino hasta el fix, incluida la hipótesis descartada** (vale la pena dejarlo escrito):
+
+1. **Mig 397 — índice de cobertura sobre `ventas`. NO funcionó**: 48 ms → **107 ms**, peor. Un Bitmap
+   Index Scan *siempre* va al heap para el recheck, y además el costo real no era el acceso al índice
+   sino el `Filter` evaluándose fila por fila. Índice inútil con costo de escritura → la 398 lo borra.
+2. **Mig 398 — denormalizar `sucursal_id` en `venta_items`** (la sucursal de una venta no cambia
+   después de crearse): columna + backfill + trigger de sincronía + trigger de propagación. Bajó poco
+   (51 ms) porque se dejó el `EXISTS` original como red de seguridad… y las **39 ventas globales**
+   (`sucursal_id IS NULL`) del tenant caían en esa rama y forzaban igual el subplan.
+3. **Mig 399 — sacar el `EXISTS` residual.** Con la columna en sincronía es redundante:
+   `vi.sucursal_id IS NULL ⟺ venta global ⟹ visible para todo el tenant`, que es lo mismo que decía el
+   EXISTS. **48,0 ms → 4,62 ms** y el SubPlan desaparece del plan.
+
+**Correctitud verificada, no supuesta**: el CAJERO ve **565 ítems** con la policy nueva y **565** con
+la lógica vieja calculada aparte — mismo conjunto exacto. Backfill completo (0 filas desincronizadas),
+y la spec 141 tiene un test permanente que vuelve a chequear esa sincronía: si la columna se desfasa,
+la RLS decidiría con un dato viejo.
+
+**Efecto end-to-end con 20 sesiones concurrentes** (`npm run stress:lectura`):
+
+| | Antes | Después |
+|---|---|---|
+| Throughput | 86,3 req/s | **173,9 req/s** |
+| p95 global | 1.461 ms | **193 ms** |
+| p95 `ítems de venta` | 1.637 ms | **181 ms** |
+| Errores | 0 | 0 |
 
 ### Corrección de documentación encontrada de paso
 
@@ -159,9 +181,9 @@ Eso explica el `tn-fulfillment-worker` que corría "133 veces por día sin que n
   datos**, no solo el refresco de sesión).
 - **D4** — red intermitente (online/offline/online): sin duplicar operaciones al reconectar.
 - **D5** — pestaña dormida y reanudada tras horas.
-- **Tanda E**: E2 (techo real de la instancia) y E4-h2 (`venta_items`).
-- **Tanda F**: los huecos F1-h2 a h5 y los escenarios F2/F3 — ver
-  [[wiki/architecture/guards-server-side]].
+- **Tanda E**: E2 (el techo real de la instancia — el instrumento está, falta acordar cuándo correrlo).
+- **Tanda F**: F2 (matriz completa por rol) y el **umbral del SUPERVISOR** server-side, que necesita
+  antes mover la aplicación de autorizaciones a un RPC — ver [[wiki/architecture/guards-server-side]].
 
 ## Contexto de infraestructura
 

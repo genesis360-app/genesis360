@@ -37,7 +37,22 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.198.0` (tag+release sobre `dev`, **sin deploy a PROD todavía** — PROD sigue en
+**Versión en DEV:** `v1.199.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). Cierra **todos** los huecos que las Tandas F y E habían dejado abiertos, y suma un bug de
+plata encontrado en la regresión.
+**Mig 396 — Tanda F completa**: los 4 huecos pendientes (precio de venta, monto de gasto, alta de
+productos, medios de pago) **más uno nuevo y más grave**: `roles_custom` era escribible por **cualquier
+usuario del tenant**, o sea auto-escalada de permisos que anulaba todos los demás guards. Se cerraron
+con triggers **por columna** (precios) y **por umbral** (gastos), no por rol, para no romper el
+`stock_actual` que `VentasPage` escribe desde el cliente ni la edición legítima del cajero.
+**Migs 397-399 — E4-h2**: `venta_items` costaba 24× más al CAJERO que al DUEÑO; denormalizando
+`sucursal_id`, **48,0 → 4,62 ms** y, con 20 sesiones concurrentes, **86 → 174 req/s** y **p95 1.461 →
+193 ms**. La 397 queda como registro de una hipótesis medida y descartada.
+**🛑 Bug REGLA #0 (H5)**: al anular una venta, el reintegro del efectivo podía ir a parar a la **Caja
+USD** y fallaba **en silencio** → la caja quedaba inflada por el monto cobrado. Corregido y verificado
+con datos reales. Ver [[wiki/architecture/guards-server-side]] y [[wiki/architecture/resiliencia]].
+
+**Detalle de v1.198.0** — tag+release sobre `dev`. Antes decía: `v1.198.0` (tag+release sobre `dev`, **sin deploy a PROD todavía** — PROD sigue en
 `v1.195.4`). Cambio: **primera pasada de las Tandas F y E de testing**, las dos con medición real.
 **Tanda F (roles server-side)**: spec nueva `141_roles_server_side_matriz` que pega a PostgREST con el
 token real de 4 roles; de las **152 policies solo 14 miran el rol**. 🟥 **F1-h1 cerrado (mig 394)**: un

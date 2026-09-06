@@ -71,7 +71,13 @@ interface FilaProducto {
 export default function ImportarProductosPage() {
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
+
+  // El importador crea y actualiza productos (incluidos PRECIOS), pero no tenía ningún gate de rol
+  // — a diferencia de `ProductoFormPage`, que deshabilita todo el formulario salvo para
+  // DUEÑO/SUPERVISOR/SUPER_USUARIO. La mig 396 lo bloquea server-side; esto es para que el usuario
+  // se entere ANTES de cargar un CSV entero, en vez de comerse un error de la base al final.
+  const puedeImportar = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO' || user?.rol === 'ADMIN'
 
   const qc = useQueryClient()
 
@@ -456,6 +462,26 @@ export default function ImportarProductosPage() {
   const errorProd      = filasProducto.filter(f => f.errores.length > 0).length
 
   if (limits && !limits.puede_importar) return <UpgradePrompt feature="importar" />
+
+  if (!puedeImportar) {
+    return (
+      <div className="p-6">
+        <button onClick={() => navigate('/productos')} className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4">
+          <ArrowLeft size={16} /> Volver a Productos
+        </button>
+        <div className="max-w-lg rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-5 flex items-start gap-3">
+          <AlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={20} />
+          <div>
+            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Tu rol no puede importar productos</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+              Importar da de alta productos y actualiza precios, así que está reservado a Dueño y Supervisor —
+              el mismo criterio que la ficha de producto. Pedile a un supervisor que haga la importación.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">

@@ -2823,6 +2823,52 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'conectividad' && !!waCred?.conectado,
   })
 
+  // Números autorizados a hablarle al asistente (mig 392). Un número fuera de esta lista se ignora
+  // en silencio ANTES de gastar tokens de IA. Escritura gateada a DUEÑO/ADMIN por RLS además de acá.
+  const { data: waAutorizados } = useQuery({
+    queryKey: ['whatsapp_numeros_autorizados', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('whatsapp_numeros_autorizados')
+        .select('id, numero, nombre, activo')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'conectividad' && !!waCred?.conectado,
+  })
+
+  const [waNuevoNumero, setWaNuevoNumero] = useState('')
+  const [waNuevoNombre, setWaNuevoNombre] = useState('')
+
+  const agregarNumeroWA = useMutation({
+    mutationFn: async () => {
+      // Meta manda `from` en dígitos puros (ej. 5491166100297) — normalizamos igual acá para que
+      // matchee, y el CHECK de la migración lo blinda del lado del servidor.
+      const numero = waNuevoNumero.replace(/\D/g, '')
+      if (!/^[0-9]{6,20}$/.test(numero)) throw new Error('Número inválido — ingresalo con código de país, sin espacios ni símbolos')
+      const { error } = await supabase.from('whatsapp_numeros_autorizados').insert({
+        tenant_id: tenant!.id, numero, nombre: waNuevoNombre.trim() || null,
+      })
+      if (error) throw new Error(error.code === '23505' ? 'Ese número ya está en la lista' : error.message)
+    },
+    onSuccess: () => {
+      toast.success('Número autorizado')
+      setWaNuevoNumero(''); setWaNuevoNombre('')
+      qc.invalidateQueries({ queryKey: ['whatsapp_numeros_autorizados'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const quitarNumeroWA = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('whatsapp_numeros_autorizados').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Número quitado'); qc.invalidateQueries({ queryKey: ['whatsapp_numeros_autorizados'] }) },
+    onError: () => toast.error('No se pudo quitar el número'),
+  })
+
   const [waConnecting, setWaConnecting] = useState(false)
 
   const conectarWhatsapp = async () => {
@@ -7568,6 +7614,68 @@ export default function ConfigPage() {
                   </button>
                 ) : (
                   <span className="text-xs text-gray-400 dark:text-gray-500 italic flex-shrink-0">Falta configuración</span>
+                )}
+              </div>
+            )}
+
+            {/* Números autorizados (mig 392). Un número fuera de la lista se ignora en silencio
+                ANTES de llamar a Claude — sin esto, cualquiera que consiga el número gasta tokens,
+                consulta el stock real y genera borradores de gasto. */}
+            {waCred?.conectado && (
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2.5">
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200">Quién puede usar el asistente</h4>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    Los mensajes de otros números se ignoran sin responder y sin consumir.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  {(waAutorizados ?? []).length === 0 ? (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Sin números cargados — por ahora responde a cualquiera que escriba.
+                    </p>
+                  ) : (waAutorizados ?? []).map((n: any) => (
+                    <div key={n.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-gray-600 dark:text-gray-300 truncate">
+                        <span className="tabular-nums">+{n.numero}</span>
+                        {n.nombre && <span className="text-gray-400 dark:text-gray-500"> · {n.nombre}</span>}
+                      </span>
+                      {user?.rol === 'DUEÑO' && (
+                        <button
+                          onClick={async () => { if (await confirmar(`¿Quitar +${n.numero} de la lista?`, { danger: true })) quitarNumeroWA.mutate(n.id) }}
+                          disabled={quitarNumeroWA.isPending}
+                          title="Quitar"
+                          className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {user?.rol === 'DUEÑO' && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      value={waNuevoNumero}
+                      onChange={e => setWaNuevoNumero(e.target.value)}
+                      placeholder="5491122334455"
+                      inputMode="numeric"
+                      className="flex-1 min-w-[130px] text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600"
+                    />
+                    <input
+                      value={waNuevoNombre}
+                      onChange={e => setWaNuevoNombre(e.target.value)}
+                      placeholder="Nombre (opcional)"
+                      className="flex-1 min-w-[110px] text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600"
+                    />
+                    <button
+                      onClick={() => agregarNumeroWA.mutate()}
+                      disabled={agregarNumeroWA.isPending || !waNuevoNumero.trim()}
+                      className="text-xs px-3 py-1.5 bg-[#25D366] hover:bg-[#1fb959] text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex-shrink-0">
+                      Agregar
+                    </button>
+                  </div>
                 )}
               </div>
             )}

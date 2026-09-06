@@ -379,7 +379,7 @@ serve(async (req) => {
 
         const { data: cred } = await supabase
           .from('whatsapp_credentials')
-          .select('tenant_id, access_token')
+          .select('tenant_id, access_token, numero_notificaciones')
           .eq('phone_number_id', phoneNumberId)
           .eq('conectado', true)
           .maybeSingle()
@@ -388,6 +388,19 @@ serve(async (req) => {
           console.warn('wa-webhook: phone_number_id sin credenciales conectadas', phoneNumberId)
           continue
         }
+
+        // Autorización (mig 392): quiénes pueden hablarle al asistente de este negocio. Se carga una
+        // sola vez por credencial, no por mensaje. El `numero_notificaciones` del dueño queda
+        // autorizado implícitamente — es su número por definición, no hace falta cargarlo dos veces.
+        const soloDigitos = (v: unknown) => String(v ?? '').replace(/\D/g, '')
+        const { data: autorizadosRows } = await supabase
+          .from('whatsapp_numeros_autorizados')
+          .select('numero')
+          .eq('tenant_id', cred.tenant_id)
+          .eq('activo', true)
+        const autorizados = new Set<string>((autorizadosRows ?? []).map((r: any) => soloDigitos(r.numero)))
+        const numNotif = soloDigitos(cred.numero_notificaciones)
+        if (numNotif) autorizados.add(numNotif)
 
         // Sección G: costo real de los mensajes salientes, informado por Meta.
         // La categoría NO se infiere de nuestro lado — se toma de `pricing.category` (utility /
@@ -426,6 +439,23 @@ serve(async (req) => {
             } else {
               console.error('wa-webhook: error de idempotencia, se aborta este mensaje', logInErr)
             }
+            continue
+          }
+
+          // Autorización (mig 392): el asistente es para el DUEÑO del negocio, no para clientes
+          // finales ni para cualquiera que consiga el número. Va DESPUÉS del log (para poder ver
+          // quién escribió) pero ANTES de todo lo caro: sin este corte, un número ajeno dispara una
+          // llamada a Claude, consultas al stock real y hasta la creación de un borrador de gasto
+          // — verificado en la prueba de Fede del 2026-09-05.
+          //
+          // Se lo ignora EN SILENCIO, sin responder: contestar cuesta un mensaje y, con un número
+          // productivo, sería pagarle al spam.
+          //
+          // Si el tenant todavía no tiene ningún número cargado, NO se bloquea nada (fail-open) —
+          // un tenant recién conectado no debe parecer roto. En la práctica casi nunca pasa: el
+          // numero_notificaciones del dueño ya cuenta como autorizado.
+          if (autorizados.size > 0 && !autorizados.has(soloDigitos(from))) {
+            console.warn('wa-webhook: mensaje de número NO autorizado, ignorado sin responder', from)
             continue
           }
 

@@ -6,6 +6,80 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-06] update | 🟥 Tandas F y E — primera pasada: 5 huecos de rol medidos (1 cerrado) + el techo de escala de `ventas`
+
+Continuación de la misma sesión (GO: "hagamos más tandas"). Dos tandas nuevas, las dos con **medición
+real, no inspección de código**. Todo en `dev`, **sin deploy a PROD**.
+
+### Tanda F — roles server-side (spec `141_roles_server_side_matriz.spec.ts`)
+
+Hasta hoy TODA la cobertura por rol era **por UI** (specs 13/15/16/17/18: qué rutas entran, qué links
+no se ven). Un token real + `curl` no pasa por ningún componente React — que es justo lo que dice la
+obligación #3 de la REGLA #0 y el hallazgo H1 del UAT. La spec nueva pega directo a PostgREST con el
+`access_token` de CAJERO, DEPÓSITO, RRHH y CONTADOR. **Sondas no mutantes a propósito**: PATCH con el
+mismo valor (`[]` = bloqueó · fila = dejó escribir), INSERT con clave única duplicada (`42501` vs
+`23505`, no inserta nada), y el RPC de cierre pidiendo el mes en curso para separar un rechazo por ROL
+de uno por regla de negocio.
+
+**Números**: de las **152 policies del esquema, solo 14 miran el rol**. ✅ Sí protegen: `tenants`,
+escalada de privilegios por `users`, Caja Fuerte, `set_clave_maestra`, `marcar_incobrable`, el guard de
+`cerrar_periodo` (CONTADOR sí / operativos no) y el **aislamiento por sucursal cruzado con rol** (F4 —
+la spec 94 solo cubría SUPERVISOR).
+
+**🟥 F1-h1 CERRADO (mig 394) — el hallazgo grave, y el más didáctico: el guard existía y se esquivaba
+escribiendo la tabla.** `cerrar_periodo()` valida el rol, pero la policy de `cierres_contables` era
+`FOR ALL` por tenant a secas: un CAJERO podía `POST /rest/v1/cierres_contables` directo y **congelar un
+mes contable entero** (los triggers de período cerrado bloquean después toda edición de gastos/ventas
+de ese mes). Ahora la tabla es **solo lectura** vía RLS — se escribe solo por los RPC SECURITY DEFINER.
+Verificado antes (el frontend solo hace SELECT, ninguna EF la toca) y después (CAJERO → 42501, lectura
+intacta, el DUEÑO cierra y reabre por RPC sin problema).
+
+**🔴 Siguen abiertos h2-h5** (cambiar el precio de venta, editar el monto de un gasto, alta de
+productos, medios de pago): cualquier rol, por REST directo. **No se cerraron a propósito**: un guard
+genérico rompe ventas legítimas — `VentasPage` actualiza `productos.stock_actual` **desde el cliente**
+en devoluciones/anulaciones. El guard correcto es un trigger que mire solo las columnas de precio, y
+antes hay que definir qué pasa con los **roles custom** (F3, sin abrir). Quedan anotados en la suite
+con `test.fail()`: verdes mientras el hueco siga abierto, **rojos el día que se cierre el guard**.
+
+### Tanda E — stress/carga (instrumento nuevo: `npm run stress:lectura`)
+
+`scripts/stress-lectura.mjs` simula N sesiones concurrentes con el mix de lecturas de la app. Solo GET;
+se niega a correr contra PROD o con >20 sesiones sin `--si-se-que-hago`.
+
+**E1 ✅**: 5 sesiones → 49,8 req/s, **0 errores**, p95 267 ms. 20 sesiones → 86,3 req/s, **0 errores**,
+p95 1.461 ms. **E2**: el techo NO se buscó a propósito (saturar DEV es destructivo y es el ambiente de
+trabajo de GO) — el instrumento está listo, falta acordar cuándo. **E3**: la base ENTERA de DEV son 881
+productos y **821 ventas** — un comercio real hace eso en dos semanas, así que todos los números son un
+piso optimista.
+
+**✅ E4-h1 ARREGLADO (mig 395)**: `EXPLAIN ANALYZE` real mostró que para devolver **20** ventas el plan
+leía **las 662 del tenant** y ordenaba después — el `LIMIT` no podía cortar. O(n) sobre el historial
+completo en cada carga; `ventas` tenía 13 índices y ninguno servía para ese orden, que usan **14
+lugares del frontend**. Índice `(tenant_id, created_at DESC)` → **17,0 ms → 1,14 ms** leyendo 20 filas
+en vez de 662. End-to-end: `ventas` p50 **277 → 78 ms**, p95 **435 → 96 ms**, total **35,8 → 49,8
+req/s**.
+
+**🔴 E4-h2 abierto**: `venta_items` no tiene `sucursal_id`, así que su policy materializa **todas las
+ventas visibles del tenant** en un hashed SubPlan antes de devolver la primera fila. Mismo query:
+**DUEÑO 2,1 ms · CAJERO 48,0 ms (24×)**. Es el causante del p95 de 1,4 s a 20 concurrentes y escala
+O(ventas del tenant). Los dos arreglos posibles (denormalizar `sucursal_id`, o índice de cobertura)
+necesitan decisión de GO.
+
+> **Regla que salió de las dos tandas y conviene no olvidar: medir SIEMPRE con el rol restringido, no
+> con el DUEÑO.** El DUEÑO cortocircuita casi todos los chequeos de RLS, así que da verde y rápido sin
+> decir nada. La primera medición de `venta_items` la hice como DUEÑO y daba 2 ms — sano. Como CAJERO
+> son 48 ms.
+
+**Corrección de documentación**: `pg_cron` y `pg_net` **SÍ están habilitados** en DEV y PROD, con 3 jobs
+activos. Eso explica el `tn-fulfillment-worker` que corría "133 veces por día sin que nadie lo mire":
+es el job `tn-fulfillment-sync`, `*/5 * * * *`. El wiki ya lo tenía bien; la memoria del asistente no.
+
+Páginas nuevas: [[wiki/architecture/guards-server-side]]. Actualizadas:
+[[wiki/architecture/resiliencia]], [[wiki/development/testing]], [[wiki/database/migraciones]] (391-395),
+`index.md`, `tests/specs/uat-app.md` (Tandas E y F).
+
+---
+
 ## [2026-09-06] update | ✅ D1 CERRADO — cortacircuitos del refresco de sesión (la app deja de amplificar las caídas)
 
 Sesión dedicada al bug urgente que quedó abierto en la entrada anterior. **Solo `dev`, sin deploy a PROD,

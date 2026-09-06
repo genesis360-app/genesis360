@@ -85,6 +85,73 @@ El test de regresión reproduce la caída real del 5/9 — ticker cada 30 s dura
 
 ---
 
+## Tanda E — Stress / carga (primera pasada, 2026-09-06)
+
+Nunca se había medido cuántos usuarios concurrentes aguanta el sistema, con qué instancia, ni qué se
+rompe primero.
+
+**Instrumento**: `scripts/stress-lectura.mjs` → `npm run stress:lectura`. Simula N sesiones
+concurrentes con el mix de LECTURAS que hace la app al navegar (catálogo, ventas, ítems, caja,
+clientes, movimientos) y reporta p50/p95/p99, RPS y errores por tipo. **Solo GET**; se niega a correr
+contra PROD o con más de 20 sesiones sin `--si-se-que-hago`.
+
+### E1 — concurrencia ✅ (DEV, compute MICRO, 5 cuentas reales de distinto rol)
+
+| Concurrencia | RPS | Errores | p50 | p95 |
+|---|---|---|---|---|
+| 5 sesiones · 20 s | 49,8 | **0** | 78 ms | 267 ms |
+| 20 sesiones · 25 s | 86,3 | **0** | 112 ms | 1.461 ms |
+
+Cero errores en las dos. A 20 concurrentes el p95 se dispara, y **es casi todo una sola consulta**
+(E4-h2): el resto de los listados se queda por debajo de 250 ms.
+
+### E2 — techo: deliberadamente NO se buscó
+
+Saturar la instancia es destructivo y DEV es el ambiente de trabajo de GO. El instrumento ya admite
+la carga que se le pida (`--usuarios N --si-se-que-hago`) — falta acordar **cuándo** correrlo.
+
+### E3 — volumen: el resultado ES el hallazgo
+
+La base **entera** de DEV (los 10 tenants juntos) tiene 881 productos, 821 ventas, 2.026 ítems de
+venta y 1.657 movimientos de stock. Un comercio real hace 821 ventas en dos semanas. **Nunca se probó
+nada a escala real**, así que todos los números de arriba son un piso optimista.
+
+### E4 — consultas caras: dos hallazgos, uno arreglado
+
+**✅ E4-h1 — `ventas` ordenada por fecha (mig 395).** Para devolver **20** ventas el plan leía **las
+662 del tenant** y recién después ordenaba: el `LIMIT` no podía cortar antes porque el orden se
+resuelve después del filtro de RLS. O(n) sobre el historial completo, en cada carga del dashboard.
+`ventas` tenía 13 índices y ninguno servía para ese orden — que usan **14 lugares del frontend**.
+Con el compuesto `(tenant_id, created_at DESC)`: **17,0 ms → 1,14 ms**, leyendo 20 filas en vez de
+662 (deja de crecer con el historial). End-to-end: `ventas` p50 **277 → 78 ms**, p95 **435 → 96 ms**,
+y el total pasó de 35,8 a **49,8 req/s** con la misma concurrencia.
+
+**🔴 E4-h2 — `venta_items` castiga a los usuarios restringidos por sucursal (sin arreglar).**
+`venta_items` no tiene `sucursal_id`, así que su policy resuelve la sucursal con un
+`EXISTS (SELECT 1 FROM ventas v WHERE v.id = venta_items.venta_id AND …)`. Postgres lo convierte en un
+**hashed SubPlan que materializa TODAS las ventas visibles del tenant** antes de devolver la primera
+fila. Mismo query, distinto usuario: **DUEÑO 2,1 ms · CAJERO 48,0 ms (24×)** — el DUEÑO cortocircuita
+en `auth_ve_todas_sucursales()` y nunca ejecuta el subplan; el cajero sí, y arma el hash de 558 ventas
+para devolver 50 ítems. Es el causante del p95 de 1,4 s a 20 concurrentes, y escala O(ventas del
+tenant) por query.
+
+> ⚠ **Medirlo con el DUEÑO da 2 ms y parece sano.** Cualquier prueba de performance con RLS hay que
+> hacerla con el rol restringido. Mismo criterio que la Tanda F — ver
+> [[wiki/architecture/guards-server-side]].
+
+Dos caminos, los dos con decisión pendiente de GO: (a) denormalizar `sucursal_id` en `venta_items`
+—rápido, pero es backfill + trigger sobre una tabla fiscal—, o (b) índice de cobertura para que el
+subplan se arme sin tocar el heap —aditivo y sin riesgo, pero mejora menos—.
+
+### Corrección de documentación encontrada de paso
+
+`pg_cron` y `pg_net` **están habilitados** en DEV y PROD (1.6.4 / 0.20.0), con 3 jobs activos en DEV.
+Eso explica el `tn-fulfillment-worker` que corría "133 veces por día sin que nadie lo mire": es el job
+`tn-fulfillment-sync`, `*/5 * * * *`, `active=true`. El wiki ya lo tenía bien
+([[wiki/development/supabase-dev-vs-prod]]); lo que estaba mal era la memoria del asistente.
+
+---
+
 ## Lo que sigue abierto
 
 - **D2** — sesión vencida con pestaña abierta: debe llevar a login limpio, no a un bucle.
@@ -92,7 +159,9 @@ El test de regresión reproduce la caída real del 5/9 — ticker cada 30 s dura
   datos**, no solo el refresco de sesión).
 - **D4** — red intermitente (online/offline/online): sin duplicar operaciones al reconectar.
 - **D5** — pestaña dormida y reanudada tras horas.
-- **Tanda E** (stress/carga) y **Tanda F** (roles server-side) — ver `tests/specs/uat-app.md`.
+- **Tanda E**: E2 (techo real de la instancia) y E4-h2 (`venta_items`).
+- **Tanda F**: los huecos F1-h2 a h5 y los escenarios F2/F3 — ver
+  [[wiki/architecture/guards-server-side]].
 
 ## Contexto de infraestructura
 

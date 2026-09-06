@@ -37,8 +37,22 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.197.0` (tag+release publicados sobre `dev`, **sin deploy a PROD todavía** — PROD
-sigue en `v1.195.4`). Cambio principal: **✅ D1 — cortacircuitos del refresco de sesión**. El cliente de
+**Versión en DEV:** `v1.198.0` (tag+release sobre `dev`, **sin deploy a PROD todavía** — PROD sigue en
+`v1.195.4`). Cambio: **primera pasada de las Tandas F y E de testing**, las dos con medición real.
+**Tanda F (roles server-side)**: spec nueva `141_roles_server_side_matriz` que pega a PostgREST con el
+token real de 4 roles; de las **152 policies solo 14 miran el rol**. 🟥 **F1-h1 cerrado (mig 394)**: un
+CAJERO podía `POST /cierres_contables` directo y **congelar un mes contable entero salteando el guard de
+rol del RPC** — la tabla pasó a solo-lectura vía RLS. 🔴 Quedan 4 huecos abiertos (precio de venta, monto
+de gasto, alta de productos, medios de pago), anotados con `test.fail()`: un guard genérico rompería
+ventas legítimas, hace falta un trigger por columna + definir roles custom.
+**Tanda E (stress)**: instrumento nuevo `npm run stress:lectura`; 5 sesiones → 49,8 req/s y 0 errores,
+20 sesiones → 86,3 req/s y 0 errores. ✅ **E4-h1 arreglado (mig 395)**: `ventas` ordenada por fecha leía
+las 662 del tenant para devolver 20 → **17 ms a 1,14 ms** (p95 end-to-end 435 → 96 ms, throughput +39 %).
+🔴 E4-h2 abierto: `venta_items` cuesta 24× más al CAJERO que al DUEÑO.
+Migraciones nuevas: **394 y 395** (solo DEV). Ver [[wiki/architecture/guards-server-side]] y
+[[wiki/architecture/resiliencia]].
+
+**Detalle de v1.197.0** — tag+release sobre `dev`. Cambio principal: **✅ D1 — cortacircuitos del refresco de sesión**. El cliente de
 Supabase reintentaba `POST /auth/v1/token?grant_type=refresh_token` **sin techo global** y amplificaba
 cualquier caída del backend. Confirmado con SQL contra los logs de edge de DEV: **595 requests en 24 h**,
 563 con 5xx de Cloudflare (452×522, 49×504, 45×521, 16×524, 1×525) y solo **32 con 200**, sosteniendo

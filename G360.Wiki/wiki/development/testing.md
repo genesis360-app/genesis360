@@ -326,8 +326,32 @@ entera.**
   test de regresión reproduce la caída real del 5/9 (ticker cada 30 s durante 5 h = 600 intentos) y exige
   10 requests de red en total, no 600. Lógica pura con reloj/aleatorio/`fetch` inyectados: determinístico,
   sin tenant ni backend. Ver [[wiki/architecture/resiliencia]].
-- ⬜ D2-D5 (sesión vencida, 5xx sostenido en consultas de datos, red intermitente, pestaña dormida),
-  Tanda E (stress/carga) y Tanda F (roles server-side por REST/RPC, no por UI) — `tests/specs/uat-app.md`.
+- ⬜ D2-D5 (sesión vencida, 5xx sostenido en consultas de datos, red intermitente, pestaña dormida)
+  — `tests/specs/uat-app.md`.
+
+## 🟧 Tests de ROLES server-side — Tanda F (abierto 2026-09-06)
+
+Las specs por rol que ya existían (`13_rol_cajero`, `15_rol_supervisor`, `16_rol_rrhh`,
+`17_rol_deposito`, `18_rol_contador`) verifican positivo Y negativo, pero **todo por UI**. La UI se
+cachea y se bypassea: un token real + `curl` no pasa por ningún componente React.
+
+- ✅ `tests/e2e/141_roles_server_side_matriz.spec.ts` — API-only, 4 roles × 12 operaciones.
+  9 tests verdes de guards que sí funcionan + 4 huecos anotados con `test.fail()`.
+  **Sondas no mutantes**: PATCH con el mismo valor, INSERT con clave única duplicada, y el RPC de
+  cierre pidiendo el mes en curso. Detalle y hallazgos: [[wiki/architecture/guards-server-side]].
+- ⬜ F2 (matriz completa) y F3 (roles custom `rol_custom_id`) — F3 es prerrequisito para cerrar los
+  huecos F1-h2 a h5.
+
+## 🟧 Sonda de CARGA — Tanda E (abierto 2026-09-06)
+
+`scripts/stress-lectura.mjs` → `npm run stress:lectura`. N sesiones concurrentes con el mix de
+lecturas de la app; reporta p50/p95/p99, RPS y errores. Solo GET; se niega a correr contra PROD o con
+más de 20 sesiones sin `--si-se-que-hago`. **No es un test de regresión** (agrega carga real a la
+instancia): se corre a conciencia. Baseline y hallazgos: [[wiki/architecture/resiliencia]].
+
+> ⚠ **Regla que salió de las dos tandas: medir siempre con el rol RESTRINGIDO, no con el DUEÑO.**
+> El DUEÑO cortocircuita casi todos los chequeos de RLS (`auth_ve_todas_sucursales()`), así que da
+> verde y rápido sin decir nada. `venta_items` mide 2 ms como DUEÑO y 48 ms como CAJERO.
 
 ## Specs de negocio — `tests/specs/`
 

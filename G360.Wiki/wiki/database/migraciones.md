@@ -3,10 +3,24 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-01
+updated: 2026-09-06
 ---
 
-# Historial de Migraciones (001-390, + correctivos 387b/387c)
+# Historial de Migraciones (001-395, + correctivos 387b/387c)
+
+**🗂️ Migraciones 391-395 — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`), ⏳ NINGUNA EN PROD**
+(PROD sigue en `v1.195.4`, última migración aplicada allá = 390):
+
+| # | Archivo | Qué hace |
+|---|---|---|
+| 391 | `391_consumo_medicion_seccion_g.sql` | Sección G fase 1 — ledger de medición de consumo por tenant (`consumo_tarifas` + `consumo_eventos`, costo congelado al momento del evento). |
+| 392 | `392_whatsapp_numeros_autorizados.sql` | `whatsapp_numeros_autorizados` — corta el gasto ANTES de llamar a Claude. Escritura gateada a DUEÑO/ADMIN **a nivel DB**. |
+| 393 | `393_fix_consumo_vista_null_facturable.sql` | Fix: `costo_facturable` devolvía NULL en vez de 0 (`SUM(...) FILTER` sin filas). |
+| 394 | `394_cierres_contables_solo_rpc.sql` | 🟥 **Tanda F, F1-h1.** `cierres_contables` pasa a **solo lectura** vía RLS: se escribe únicamente por `cerrar_periodo()`/`reabrir_periodo()` (SECURITY DEFINER, ya validan rol). Antes cualquier rol podía `POST` directo y **congelar un mes contable entero salteando el guard**. Ver [[wiki/architecture/guards-server-side]]. |
+| 395 | `395_indices_listados_recientes.sql` | **Tanda E, E4-h1.** Índices compuestos `(tenant_id, created_at DESC)` en `ventas` y `movimientos_stock`. Sin esto el `LIMIT 20` leía las 662 ventas del tenant y ordenaba después: **17 ms → 1,14 ms**. Aditivo puro. Ver [[wiki/architecture/resiliencia]]. |
+
+---
+
 
 **🗂️ Migración 390 (`390_portal_proveedores_oc_acceso.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) el 2026-09-01, `APP_VERSION` `v1.195.0`, **✅ EN PROD desde 2026-09-01** (PR #335,

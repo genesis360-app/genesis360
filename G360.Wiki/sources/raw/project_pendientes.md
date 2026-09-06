@@ -26,15 +26,40 @@ type: project
 > incluye el test de regresión de la caída de 5 h). Verde: lint · tsc · build · unit 1656.
 > Detalle completo: `G360.Wiki/wiki/architecture/resiliencia.md` y `tests/specs/uat-app.md` (§D1).
 >
+> #### Tandas F y E — primera pasada (misma sesión, `v1.198.0`)
+>
+> **Tanda F** (`tests/e2e/141_roles_server_side_matriz.spec.ts`): de las **152 policies, solo 14 miran el
+> rol**. ✅ Protegen `tenants`, escalada por `users`, Caja Fuerte, `set_clave_maestra`,
+> `marcar_incobrable`, `cerrar_periodo` y el aislamiento por sucursal cruzado con rol (F4).
+> ✅ **F1-h1 CERRADO (mig 394)**: un CAJERO podía `POST /cierres_contables` directo y **congelar un mes
+> contable entero salteando el guard de rol del RPC**; la tabla es ahora solo-lectura vía RLS.
+> 🔴 **Abiertos h2-h5**: precio de venta, monto de gasto, alta de productos, medios de pago — cualquier rol
+> por REST directo.
+>
+> **Tanda E** (`npm run stress:lectura`): 5 sesiones → 49,8 req/s / 0 errores / p95 267 ms · 20 sesiones →
+> 86,3 req/s / 0 errores / p95 1.461 ms. ✅ **E4-h1 ARREGLADO (mig 395)**: `ventas` ordenada por fecha leía
+> las 662 del tenant para devolver 20 → **17 ms a 1,14 ms** (p95 end-to-end 435 → 96 ms).
+> 🔴 **E4-h2 abierto**: `venta_items` cuesta **24× más al CAJERO que al DUEÑO** (materializa todas las
+> ventas del tenant). Detalle: `wiki/architecture/guards-server-side.md` y `wiki/architecture/resiliencia.md`.
+>
 > #### Lo que sigue abierto (mismo orden de prioridad)
 >
+> - 🔴 **Decisión de GO — huecos F1-h2 a h5**: hay que elegir el guard. Un guard genérico ROMPE ventas
+>   legítimas (`VentasPage` escribe `productos.stock_actual` desde el cliente en devoluciones/anulaciones);
+>   el correcto es un trigger que mire **solo las columnas de precio**. Y antes hay que definir qué pasa con
+>   los **roles custom** (`rol_custom_id`) — eso es la **F3**, sin abrir.
+> - 🔴 **Decisión de GO — E4-h2** (`venta_items`): (a) denormalizar `sucursal_id` (rápido, pero backfill +
+>   trigger sobre tabla fiscal) o (b) índice de cobertura (aditivo, sin riesgo, mejora menos).
 > - **D2-D5** — sesión vencida con pestaña abierta, 5xx sostenido en las **consultas de datos** (no solo en
 >   el refresco), red intermitente, pestaña dormida y reanudada.
-> - **Tanda E** (stress/carga) y **Tanda F** (roles server-side por REST/RPC directo, no por UI — choca con
->   el hallazgo H1 y con la obligación #3 de la REGLA #0).
-> - **Decisión pendiente de GO**: si esto va a PROD ya (bump de versión + PR `dev→main` + release) o espera
->   a tener más tandas cerradas. `v1.196.0` tampoco fue deployada todavía.
-> - Sigue anotado: `tn-fulfillment-worker` corre 133 veces/día contra DEV sin que nadie lo mire.
+> - **E2 — techo real de la instancia**: el instrumento está listo (`--usuarios N --si-se-que-hago`), falta
+>   acordar CUÁNDO correrlo (saturar DEV es destructivo y es el ambiente de trabajo de GO).
+> - **F2** — matriz completa por rol (la spec cubre 4 roles × 12 operaciones, no todo).
+> - **Decisión pendiente de GO**: si todo esto va a PROD ya (PR `dev→main` + release + migs 391-395) o
+>   espera a más tandas. PROD sigue en `v1.195.4`; migs 391-395 **solo en DEV**.
+> - ✅ Resuelto de paso: el `tn-fulfillment-worker` que corría "133 veces/día sin que nadie lo mire" es el
+>   job de **pg_cron** `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). `pg_cron` y `pg_net` **SÍ están
+>   habilitados** en DEV y PROD — el wiki ya lo decía bien.
 
 > ### 🟥🟥 (2026-09-06, cont. 50) — el incidente original que abrió las Tandas D/E/F
 > **[D1 ya cerrado — ver arriba. Se conserva por el diagnóstico y el método.]**

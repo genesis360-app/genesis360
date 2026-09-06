@@ -2806,6 +2806,23 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'conectividad',
   })
 
+  // Sección G (mig 391): consumo del mes en curso. Lee `vw_consumo_mensual`, que ya viene agregada y
+  // con security_invoker — la RLS de consumo_eventos aísla por tenant, no hace falta filtrar acá por
+  // seguridad (el .eq es para acotar la query, no para aislar).
+  const periodoActual = new Date().toISOString().slice(0, 8) + '01'
+  const { data: waConsumo } = useQuery({
+    queryKey: ['consumo_mensual', tenant?.id, periodoActual],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('vw_consumo_mensual')
+        .select('concepto, moneda, cantidad, costo_facturable, costo_total, eventos, eventos_sin_tarifa')
+        .eq('tenant_id', tenant!.id)
+        .eq('periodo', periodoActual)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'conectividad' && !!waCred?.conectado,
+  })
+
   const [waConnecting, setWaConnecting] = useState(false)
 
   const conectarWhatsapp = async () => {
@@ -7555,11 +7572,70 @@ export default function ConfigPage() {
               </div>
             )}
 
+            {/* Sección G (mig 391): consumo del mes. Cada moneda se muestra por separado —
+                Meta factura en ARS y Anthropic en USD, y NO se convierten ni se mezclan. */}
+            {waCred?.conectado && waConsumo && waConsumo.length > 0 && (() => {
+              const ETIQUETAS: Record<string, string> = {
+                whatsapp_service: 'Respuestas del asistente',
+                whatsapp_utility: 'Avisos de utilidad',
+                whatsapp_marketing: 'Mensajes promocionales',
+                whatsapp_authentication: 'Códigos de verificación',
+                ia_tokens_in: 'IA · tokens de entrada',
+                ia_tokens_out: 'IA · tokens de salida',
+                audio_transcripcion: 'Transcripción de audio',
+              }
+              // El `numeric` de Postgres llega como string — normalizar antes de sumar.
+              const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+              const monedas = [...new Set(waConsumo.map((r: any) => r.moneda))].sort()
+              const sinTarifa = waConsumo.reduce((a: number, r: any) => a + num(r.eventos_sin_tarifa), 0)
+
+              return (
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2.5">
+                  <div className="flex items-baseline justify-between">
+                    <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200">Consumo del mes</h4>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">Costo de plataforma</span>
+                  </div>
+
+                  {monedas.map((moneda: any) => {
+                    const filas = waConsumo.filter((r: any) => r.moneda === moneda)
+                    const total = filas.reduce((a: number, r: any) => a + num(r.costo_facturable), 0)
+                    return (
+                      <div key={moneda} className="space-y-1">
+                        {filas.map((r: any) => (
+                          <div key={r.concepto} className="flex items-baseline justify-between gap-3 text-xs">
+                            <span className="text-gray-500 dark:text-gray-400 truncate">
+                              {ETIQUETAS[r.concepto] ?? r.concepto}
+                              <span className="text-gray-300 dark:text-gray-600"> · {num(r.eventos)}</span>
+                            </span>
+                            <span className="text-gray-600 dark:text-gray-300 tabular-nums flex-shrink-0">
+                              {moneda === 'USD' ? 'US$' : '$'}{num(r.costo_facturable).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="flex items-baseline justify-between gap-3 text-xs font-semibold border-t border-dashed border-gray-100 dark:border-gray-700 pt-1">
+                          <span className="text-gray-600 dark:text-gray-300">Total {moneda}</span>
+                          <span className="text-gray-800 dark:text-gray-100 tabular-nums">
+                            {moneda === 'USD' ? 'US$' : '$'}{total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {sinTarifa > 0 && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      {sinTarifa} evento{sinTarifa === 1 ? '' : 's'} sin tarifa configurada — su costo figura en $0 hasta completar el rate card.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+
             {waCred?.conectado && (
               <p className="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-2.5">
                 Recordá agregar un método de pago en{' '}
                 <a href="https://business.facebook.com/wa/manage/home/" target="_blank" rel="noreferrer" className="text-[#25D366] hover:underline">WhatsApp Manager</a>
-                {' '}— desde el 1° de octubre de 2026 Meta cobra los mensajes salientes.
+                {' '}— desde el 1° de octubre de 2026 Meta también cobra las respuestas dentro de la ventana de 24 h, que hoy son gratis.
               </p>
             )}
           </div>

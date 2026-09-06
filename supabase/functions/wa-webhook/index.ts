@@ -231,6 +231,58 @@ async function llamarClaude(
   return { tipo: 'texto', texto: 'No pude terminar de procesar esa consulta, probá de nuevo.', tokensIn, tokensOut }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección G (mig 391): ledger de consumo. Registra lo que Genesis360 PAGA por cada tenant,
+// CONGELANDO la tarifa vigente al momento del evento — nunca se recalcula al leer.
+//
+// Nunca lanza: un fallo de medición es contabilidad interna y no puede romperle la conversación al
+// usuario. Si no hay tarifa vigente para el concepto, el evento igual se registra con costo 0 y
+// `tarifa_encontrada: false`, para no perder el consumo y que el hueco quede visible en la vista.
+// ─────────────────────────────────────────────────────────────────────────────
+async function registrarConsumo(
+  supabase: any, tenantId: string, concepto: string, cantidad: number,
+  referencia: string, detalle: Record<string, unknown>, facturable = true,
+): Promise<void> {
+  try {
+    if (!Number.isFinite(cantidad) || cantidad <= 0) return
+
+    const hoy = new Date().toISOString().slice(0, 10)
+    const { data: tarifa } = await supabase
+      .rpc('fn_consumo_tarifa_vigente', { p_concepto: concepto, p_fecha: hoy })
+      .maybeSingle()
+
+    // El `numeric` de Postgres llega como STRING ("37.679800") — normalizar antes de multiplicar,
+    // o el costo sale NaN. Un `|| 0` sobre un precio 0 legítimo también lo rompería, por eso
+    // Number.isFinite y no un truthy check.
+    const precioNum = tarifa ? Number(tarifa.precio) : NaN
+    const precio = Number.isFinite(precioNum) ? precioNum : 0
+
+    const { error } = await supabase.from('consumo_eventos').insert({
+      tenant_id: tenantId,
+      canal: 'whatsapp',
+      concepto,
+      cantidad,
+      unidad: tarifa?.unidad ?? 'mensaje',
+      precio_unitario: precio,
+      moneda: tarifa?.moneda ?? 'ARS',
+      costo: facturable ? cantidad * precio : 0,
+      facturable,
+      tarifa_encontrada: !!tarifa,
+      tarifa_id: tarifa?.tarifa_id ?? null,
+      referencia,
+      detalle,
+    })
+
+    // 23505 = ya registrado. Meta reenvía el mismo status (sent/delivered/read) varias veces por
+    // mensaje: el UNIQUE lo dedupea y esto NO es un error.
+    if (error && (error as any).code !== '23505') {
+      console.error('wa-webhook: error registrando consumo', concepto, error)
+    }
+  } catch (e: any) {
+    console.error('wa-webhook: excepción registrando consumo', concepto, e?.message)
+  }
+}
+
 async function enviarMensajeWhatsapp(phoneNumberId: string, accessToken: string, to: string, texto: string) {
   const res = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`, {
     method: 'POST',
@@ -319,8 +371,11 @@ serve(async (req) => {
         const value = change.value ?? {}
         const phoneNumberId = value.metadata?.phone_number_id
         const mensajes = value.messages ?? []
-        // value.statuses = recibos de entrega/lectura de mensajes SALIENTES — nada que responder.
-        if (!phoneNumberId || mensajes.length === 0) continue
+        // value.statuses = recibos de entrega/lectura de mensajes SALIENTES. No hay nada que
+        // responder, pero desde la mig 391 SÍ se procesan: traen el bloque `pricing` de Meta, que es
+        // la fuente de verdad de cuánto costó cada mensaje (categoría y si fue facturable).
+        const statuses = value.statuses ?? []
+        if (!phoneNumberId || (mensajes.length === 0 && statuses.length === 0)) continue
 
         const { data: cred } = await supabase
           .from('whatsapp_credentials')
@@ -332,6 +387,22 @@ serve(async (req) => {
         if (!cred) {
           console.warn('wa-webhook: phone_number_id sin credenciales conectadas', phoneNumberId)
           continue
+        }
+
+        // Sección G: costo real de los mensajes salientes, informado por Meta.
+        // La categoría NO se infiere de nuestro lado — se toma de `pricing.category` (utility /
+        // marketing / authentication / service). Si Meta manda una categoría que todavía no está en
+        // el rate card, el evento se guarda igual con `tarifa_encontrada: false` y queda visible.
+        for (const st of statuses) {
+          const pricing = st?.pricing
+          const categoria = String(pricing?.category ?? '').toLowerCase().trim()
+          if (!st?.id || !categoria) continue
+          const facturable = pricing.billable !== false && pricing.type !== 'free_customer_service'
+          await registrarConsumo(
+            supabase, cred.tenant_id, `whatsapp_${categoria}`, 1, st.id,
+            { status: st.status, pricing, origen: st.conversation?.origin?.type ?? null },
+            facturable,
+          )
         }
 
         for (const msg of mensajes) {
@@ -459,6 +530,19 @@ serve(async (req) => {
             console.error('wa-webhook: error llamando a Claude', e.message)
             respuesta = { tipo: 'texto', texto: 'Tuve un problema respondiendo, probá de nuevo en un rato.', tokensIn: 0, tokensOut: 0 }
           }
+
+          // Sección G: costo de IA de este mensaje. La cantidad va en MILLONES de tokens porque así
+          // está expresado el precio de lista de Anthropic (USD/MTok) — `detalle` guarda el conteo
+          // crudo para poder leerlo a ojo. En paralelo para no sumar dos viajes de latencia a la
+          // respuesta del bot.
+          await Promise.all([
+            registrarConsumo(supabase, cred.tenant_id, 'ia_tokens_in',
+              respuesta.tokensIn / 1_000_000, messageId,
+              { modelo: CLAUDE_MODEL, tokens: respuesta.tokensIn }),
+            registrarConsumo(supabase, cred.tenant_id, 'ia_tokens_out',
+              respuesta.tokensOut / 1_000_000, messageId,
+              { modelo: CLAUDE_MODEL, tokens: respuesta.tokensOut }),
+          ])
 
           if (respuesta.tipo === 'proponer_gasto') {
             const { data: borrador, error: borradorErr } = await supabase.from('whatsapp_gastos_borrador').insert({

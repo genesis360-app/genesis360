@@ -6,6 +6,65 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🟥🟥 ARRANCÁ ACÁ (2026-09-06, cont. 50) — URGENTE, decidido por GO: bucle de reintentos de sesión
+> que amplifica una caída. **Primer cliente REAL en ~2 semanas.**
+>
+> #### El bug (encontrado investigando por qué se caía la base de DEV)
+>
+> La instancia de DEV (`t4g.nano`, CPU compartida) se saturó: CPU 94%, Disk IO 97%, estado `Unhealthy`.
+> Al desglosar el tráfico de 24 h apareció la causa real: **~650 de ~5.000 requests eran UNA sola
+> pestaña de Chrome reintentando `POST /auth/v1/token?grant_type=refresh_token`**, casi todas fallando
+> con 5xx de Cloudflare. Era una sesión de GO (`gaston.otranto@gmail.com`, tenant "Almacén Jorgito")
+> abierta desde el 4/9. El tráfico legítimo de la app eran decenas de requests.
+>
+> **El problema de fondo no es la pestaña: es que el cliente de Supabase reintenta el refresco de sesión
+> sin freno.** Se retroalimenta — la base saturada hace fallar el refresco, el cliente reintenta, eso
+> suma carga, falla más. Con un cliente real, cada navegador abierto se vuelve un amplificador de la
+> caída. GO lo marcó como URGENTE: "si salíamos con esto en vivo íbamos a tener problemas".
+>
+> **Fix a diseñar** (NO empezado, no tocar a las apuradas — es código de autenticación): límite de
+> reintentos + backoff exponencial en el refresco de sesión; que tras N fallos lleve a login limpio en
+> vez de martillar. Revisar cómo está configurado el cliente de Supabase en `src/lib/supabase.ts`.
+>
+> #### Por qué NINGÚN test lo agarró (respuesta verificada, no supuesta)
+>
+> Las **142 specs e2e son todas funcionales**: corren siempre contra un backend sano y prueban "¿anda la
+> feature?". **No existe una sola spec que ejercite condiciones degradadas** — backend lento, backend
+> caído, 5xx sostenido, sesión vencida, red intermitente. Confirmado con grep: ni una menciona
+> `refresh_token`, sesión expirada, offline ni reintentos. Un bug que solo aparece cuando el backend
+> falla es, por construcción, invisible para esta suite. **No es un descuido puntual: falta una capa
+> entera.**
+>
+> #### Lo que GO pidió dejar anotado para la barrida completa (antes del cliente real)
+>
+> Documentado en detalle en `tests/specs/uat-app.md`, secciones nuevas **Tanda D / E / F**:
+> - **Tanda D — Resiliencia** (5 escenarios, D1 es el bug de arriba y va PRIMERO).
+> - **Tanda E — Stress/carga** (4 escenarios): nunca se midió cuántos usuarios concurrentes aguanta el
+>   sistema, ni con qué tamaño de instancia, ni qué se rompe primero.
+> - **Tanda F — Roles server-side** (4 escenarios): ya hay specs por rol (`13_rol_cajero`,
+>   `15_rol_supervisor`, `16_rol_rrhh`, `17_rol_deposito`, `18_rol_contador`) y verifican positivo Y
+>   negativo, pero **todo por UI**. Choca con el hallazgo **H1** del propio UAT ("controles financieros
+>   SOLO client-side") y con la obligación #3 de la REGLA #0. Falta probar que la DB rechace por REST/RPC
+>   directo lo que la UI esconde. GO lo pidió explícito: "que el dueño acceda a todo, el supervisor a lo
+>   que tiene configurado nomás, el cajero a lo suyo, y así con cada uno".
+> - **Método**: definir y documentar **con qué foto de datos** corre cada escenario. Sin fixture
+>   explícito un verde no es reproducible, y ya hay antecedente de que la suite no es determinística bajo
+>   carga.
+>
+> **Plan de GO**: corrida completa de todos los escenarios antes de que entre el cliente real.
+>
+> #### De paso, resuelto en esta sesión
+>
+> La instancia de DEV estaba en **NANO** teniendo plan **Pro pagado**. Pro sube cupos y trae un crédito
+> de compute, pero el tamaño de máquina es un eje aparte y nadie lo había reclamado: **MICRO figuraba
+> como "Free Upgrade" al MISMO precio** ($9,68/mes → $9,68/mes), con 1 GB y 2 cores dedicados en vez de
+> 0,5 GB con CPU compartida. GO confirmó el cambio. La CPU compartida de `t4g.nano` funciona con créditos
+> de ráfaga, lo que explica el patrón de caídas intermitentes que veníamos sufriendo.
+>
+> ⚠ Anotar: el `tn-fulfillment-worker` corre **133 veces por día contra DEV** sin que nadie lo mire. NO
+> era la causa (el bucle de auth es 5x más grande), pero es carga constante sobre un proyecto de
+> desarrollo — revisar si tiene sentido que siga corriendo.
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-05, cont. 49) — 🎉 WhatsApp: PRIMERA CONVERSACIÓN REAL end-to-end. El
 > bloqueador del "chip" era un diagnóstico EQUIVOCADO. Token permanente resuelto. Plantillas aprobadas.
 >

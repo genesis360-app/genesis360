@@ -248,7 +248,21 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-05 — 🎉 WhatsApp: primera conversación REAL end-to-end; el bloqueador del
+*Última actualización: 2026-09-06 — 🟥 URGENTE: bucle de reintentos de sesión que amplifica las caídas +
+Sección G construida y verificada* — Se construyó y verificó end-to-end el **ledger de medición de consumo**
+(Sección G, migs 391/393): mide lo que Genesis360 PAGA por tenant, con tarifas versionadas por fecha y costo
+congelado al momento del evento; la categoría de cada mensaje la informa Meta, no se infiere. También la
+**lista de números autorizados** (mig 392), tras descubrir que un número ajeno gastaba tokens, consultaba
+stock real y creaba borradores de gasto antes de que Meta bloqueara la respuesta. **Y el hallazgo urgente**:
+investigando por qué se caía la base de DEV apareció que ~650 de 5.000 requests eran una sola pestaña
+reintentando el refresco de sesión sin freno — la app amplifica la caída que la está rompiendo. Ningún test
+lo agarró porque las 142 specs e2e son todas funcionales contra backend sano: se abrieron las **Tandas D
+(resiliencia), E (stress) y F (roles server-side)** en `tests/specs/uat-app.md`, con corrida completa
+planificada antes del primer cliente real. De paso: DEV estaba en compute NANO teniendo Pro pagado (MICRO
+era un upgrade gratis al mismo precio). Ver `log.md` (2026-09-06), `sources/raw/project_pendientes.md`
+(cont. 50) y [[wiki/features/asistente-whatsapp]].
+
+Antes: *Última actualización: 2026-09-05 — 🎉 WhatsApp: primera conversación REAL end-to-end; el bloqueador del
 "chip" era un diagnóstico equivocado* — Fede creó un Business Portfolio nuevo y sumó a GO como admin, lo que
 permitió generar el **token permanente de System User** pendiente desde la Fase 1 (`expires_at: 0`) y
 diagnosticar por API en vez de por capturas. **Causa raíz real del bloqueo de mensajes entrantes: la app de

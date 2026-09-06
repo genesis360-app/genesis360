@@ -219,6 +219,59 @@ MELI/TN), visual PROD, concurrencia.
 Convertir presupuesto a despachada **desde el Historial** con 2+ cajas abiertas y sin caja preferida no
 expone selector de caja → callejón sin salida. Fix sugerido: exponer el selector en el modal de saldo.
 
+### 🟥🟥 Tanda D — RESILIENCIA: categoría COMPLETA que no existe (abierta 2026-09-06, URGENTE)
+
+**Origen**: la base de DEV se cayó (instancia `t4g.nano` saturada, CPU 94% / Disk IO 97%). Investigando el
+tráfico apareció que **~650 de las ~5.000 requests de 24 h eran una sola pestaña de Chrome reintentando
+`POST /auth/v1/token?grant_type=refresh_token`**, casi todas fallando con 5xx de Cloudflare. Una sesión
+vencida del 4/9 quedó en bucle de reintentos sin freno. El resto del tráfico legítimo eran decenas de
+requests. **La app amplificó la caída que la estaba rompiendo.**
+
+**Por qué NINGÚN test lo detectó — y no es un descuido puntual, es una capa entera que falta:** las 142
+specs e2e son todas **funcionales** (¿anda la feature cuando todo lo demás anda?). Corren siempre contra un
+backend sano. **Cero specs ejercitan condiciones degradadas**: backend lento, backend caído, 5xx sostenido,
+sesión vencida, red intermitente. Un bug que solo se manifiesta cuando el backend falla es, por
+construcción, invisible para esta suite. Verificado con grep: ni una spec menciona `refresh_token`, sesión
+expirada, offline ni reintentos.
+
+Escenarios a cubrir (ninguno existe hoy):
+- **D1 — Refresco de sesión con backend caído**: el cliente debe hacer backoff y rendirse, no reintentar
+  indefinidamente. Es el bug que originó esta tanda. **PRIMERO.**
+- **D2 — Sesión vencida con pestaña abierta**: debe llevar a login limpio, no a un bucle.
+- **D3 — Backend 5xx sostenido**: la UI debe degradar con mensaje claro, sin martillar.
+- **D4 — Red intermitente** (online/offline/online): sin duplicar operaciones al reconectar.
+- **D5 — Pestaña dormida / reanudada** tras horas: qué pasa al despertar.
+
+### 🟥 Tanda E — STRESS / CARGA: tampoco existe (abierta 2026-09-06)
+
+Cero cobertura de carga sostenida. Nunca se midió cuántos usuarios concurrentes aguanta, ni con qué tamaño
+de instancia, ni qué se rompe primero. Con el primer cliente real a 2 semanas, esto deja de ser teórico.
+
+- **E1 — Concurrencia real**: N usuarios operando a la vez (venta + caja + inventario) sin errores.
+- **E2 — Techo de la instancia**: a partir de qué carga se satura, para dimensionar el compute.
+- **E3 — Volumen de datos**: comportamiento con un catálogo y un historial de tamaño realista, no de demo.
+- **E4 — Consultas caras**: identificar las N más pesadas (pg_stat_statements) y ponerles presupuesto.
+
+### 🟧 Tanda F — ROLES: cobertura existe pero es SOLO client-side (pedido de GO 2026-09-06)
+
+Ya hay specs por rol (`13_rol_cajero`, `15_rol_supervisor`, `16_rol_rrhh`, `17_rol_deposito`,
+`18_rol_contador`) y verifican positivo y negativo: qué rutas entran, cuáles redirigen, qué links del
+sidebar NO se ven. **Pero todo se valida por UI.** Eso choca de frente con el hallazgo **H1** de este mismo
+documento ("Controles financieros SOLO client-side") y con la obligación #3 de la REGLA #0: los guards
+tienen que estar server-side ADEMÁS de en la UI, porque la UI se cachea y se bypassea.
+
+- **F1 — Negativo server-side por rol**: que un CAJERO no pueda ejecutar por REST/RPC directo lo que la UI
+  le esconde. Es la prueba que falta: hoy nadie verifica que la DB lo rechace, solo que el botón no esté.
+- **F2 — Matriz completa por rol**: DUEÑO ve todo; SUPERVISOR/CAJERO/DEPÓSITO/RRHH/CONTADOR **solo lo
+  configurado**, y nada más. Hoy la cobertura es despareja entre roles.
+- **F3 — Roles custom** (`rol_custom_id`) con permisos a medida.
+- **F4 — Aislamiento por sucursal cruzado con rol** (ver `reference_rls_por_sucursal`).
+
+> **Nota de método para las tres tandas**: hay que definir y documentar **con qué foto de datos** corre cada
+> escenario (tenant, sucursales, catálogo, usuarios por rol, estado de caja). Sin fixture explícito, un
+> resultado verde no es reproducible — y ya hay antecedente de que esta suite no es determinística bajo
+> carga (ver `reference_e2e_suite_no_deterministica`).
+
 ---
 
 ## 4) Ya validado por e2e mutante (specs 19-44)

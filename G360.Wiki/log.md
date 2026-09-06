@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-06] update | 🟥 Sección G construida y verificada + lista de autorizados + 🔴 bucle de reintentos de sesión (URGENTE)
+
+Continuación de la sesión del 05-09 (sin `/clear`). Tres bloques.
+
+**1. Sección G — medición de consumo (migs 391 y 393, v1.196.0+).** El ledger de costos de Fede, fase 1:
+mide lo que Genesis360 PAGA por tenant (Meta, Anthropic), **no** lo que se le cobra al cliente — el margen
+es una decisión de negocio sin tomar y se dejó para una fase aparte, para no hornear un número inventado en
+la base. `consumo_tarifas` (rate card versionado por fecha) + `consumo_eventos` (ledger inmutable, costo
+CONGELADO al momento del evento). Hallazgo de diseño: **la categoría de cada mensaje la informa Meta** en el
+webhook de `statuses` (`pricing.category`, `pricing.billable`), que hasta ahora `wa-webhook` descartaba —
+no hay que inferirla. Verificado end-to-end con una consulta real de GO: `ia_tokens_in` US$0,0074720 +
+`ia_tokens_out` US$0,0016800, y los 2 mensajes de WhatsApp en $0 porque Meta los marcó
+`free_customer_service` — **confirmación real de la excepción "utility dentro de ventana abierta es
+gratis"**, que hasta ahora solo teníamos por documentación. La proyección al 1/10/2026 de esa misma
+conversación da $75,36 ARS. Mig 393: `costo_facturable` devolvía NULL en vez de 0 (un `SUM(...) FILTER` sin
+filas), bomba para cualquier reporte futuro que sume sobre una columna de plata.
+
+**2. Lista de números autorizados (mig 392).** Origen: GO le pidió a Fede probar que el bot no respondiera
+desde un número ajeno. Meta bloqueó la ENTREGA (error 131030) pero **recién al final**: para entonces ya se
+había llamado a Claude (~4.300 tokens pagados por nosotros), consultado el STOCK REAL y **creado un borrador
+de gasto** en el tenant. O sea "no responde" ✅ pero "no consume" ❌. Hoy eso está tapado por el límite de 5
+destinatarios del número de PRUEBA de Meta, que desaparece con un número real. Se agregó
+`whatsapp_numeros_autorizados` con chequeo ANTES de gastar tokens; comportamiento elegido por GO: ignorar en
+silencio (responder cuesta un mensaje y con número real sería pagarle al spam). Escritura gateada a
+DUEÑO/ADMIN **a nivel DB**, no solo UI. Verificado con la re-prueba de Fede: 2 mensajes registrados, **cero**
+eventos de consumo, y sin el error 131030 porque ya ni se intenta enviar.
+
+**3. 🔴 URGENTE — bucle de reintentos de sesión.** La base de DEV se cayó repetidamente (instancia
+`t4g.nano`, CPU 94% / Disk IO 97%, `Unhealthy`). Al desglosar el tráfico: **~650 de ~5.000 requests de 24 h
+eran UNA pestaña de Chrome reintentando `/auth/v1/token?grant_type=refresh_token`**, casi todas con 5xx.
+Sesión de GO abierta desde el 4/9. **El cliente reintenta el refresco sin freno y se retroalimenta**: la base
+saturada hace fallar el refresco, el cliente reintenta, suma carga, falla más. Con un cliente real cada
+navegador abierto amplifica la caída. GO lo marcó URGENTE (primer cliente real en ~2 semanas) y se retoma en
+sesión dedicada. **Ningún test lo agarró y no es un descuido puntual**: las 142 specs e2e son todas
+funcionales, corren contra un backend sano, y no hay una sola que ejercite condiciones degradadas
+(verificado con grep). Se abrieron en `tests/specs/uat-app.md` las **Tandas D (resiliencia), E (stress) y F
+(roles server-side)** con 13 escenarios, más la nota de método de definir la foto de datos de cada uno.
+
+**De paso**: DEV estaba en compute **NANO** con plan **Pro pagado**. Pro sube cupos y trae crédito de
+compute, pero el tamaño de máquina es un eje aparte — **MICRO figuraba como "Free Upgrade" al mismo precio**
+($9,68/mes), 1 GB y 2 cores dedicados vs 0,5 GB compartidos. GO confirmó el cambio. La CPU compartida con
+créditos de ráfaga explica el patrón de caídas intermitentes de toda la sesión. Anotado también que
+`tn-fulfillment-worker` corre 133 veces/día contra DEV sin que nadie lo mire (no era la causa, pero es carga
+constante innecesaria).
+
+Ver [[wiki/features/asistente-whatsapp]], `tests/specs/uat-app.md` (Tandas D/E/F) y
+`sources/raw/project_pendientes.md` (cont. 50, arranque de la próxima sesión).
+
+---
+
 ## [2026-09-05] update | 🎉 Primera conversación REAL de WhatsApp end-to-end + causa raíz del bloqueo (no era el chip) + Pixel de Meta
 
 Sesión larga y pivote para el Asistente de WhatsApp. GO obtuvo acceso admin al Business Portfolio de Meta

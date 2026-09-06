@@ -6,6 +6,50 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-06] update | ✅ D1 CERRADO — cortacircuitos del refresco de sesión (la app deja de amplificar las caídas)
+
+Sesión dedicada al bug urgente que quedó abierto en la entrada anterior. **Solo `dev`, sin deploy a PROD,
+sin bump de versión** (DEV sigue `v1.196.0`).
+
+**Diagnóstico verificado contra los logs de edge de DEV con SQL, no reconstruido de memoria.** Últimas 24 h:
+**595 requests** a `POST /auth/v1/token?grant_type=refresh_token` — 452 con **522**, 49 con **504**, 45 con
+**521**, 16 con **524**, 1 con **525**, y solo **32 con 200**. El 100 % eran `grant_type=refresh_token`
+(ninguna era login). Por hora: **~65 requests/hora sostenidas entre las 19 h y las 00 h del 5/9, cinco horas
+seguidas**. Eso **descarta** la hipótesis de que auth-js descarte la sesión ante un 52x: el bucle es
+infinito, y sigue vivo hoy.
+
+**Causa raíz, leída en `node_modules/@supabase/auth-js` 2.98**: ticker cada 30 s
+(`AUTO_REFRESH_TICK_DURATION_MS`) que nunca se detiene, hasta ~7 reintentos con backoff **dentro** de cada
+tick, y **cero contador de fallos entre ticks** — nada corta el bucle. De paso: su `NETWORK_ERROR_CODES`
+solo contempla 502/503/504, así que los **52x de Cloudflare** (los que realmente llegan) caen fuera de su
+lógica de reintento.
+
+**Fix** — `src/lib/authRefreshBreaker.ts` + cableado en `src/lib/supabase.ts` +
+`src/components/AvisoSesionSinRefresco.tsx` montado en `App.tsx`. **No se toca auth-js ni su config**: se
+envuelve `global.fetch` y se intercepta **únicamente** ese endpoint; todo el resto del tráfico pasa sin
+tocar. Backoff exponencial con jitter ±20 % (2 s → 4 → 8 … tope 5 min), corte **local** sin tráfico de red
+mientras el circuito está abierto, y **se rinde tras 10 fallos consecutivos**. Decisión deliberada por
+REGLA #0: el cortocircuito devuelve **503**, el único código que auth-js trata como reintentable y por lo
+tanto el único que **no** le hace borrar la sesión guardada — un cajero en medio de una venta no puede
+quedar deslogueado por un blip de 30 s. Un **400/401** (`invalid_grant`) sí pasa derecho: es respuesta
+definitiva y corresponde el login limpio. La UI **no bloquea**: franja discreta al 2º fallo, tarjeta con
+**Reintentar** / **Volver a entrar** cuando se rindió (este último con `signOut({ scope: 'local' })`, que no
+sale a la red justo cuando la red es el problema).
+
+**Efecto medido**: una caída de 5 h pasa de ~600 requests por pestaña a **10**, y después silencio.
+
+**Cobertura**: `tests/unit/authRefreshBreaker.test.ts`, **19 tests**, con el de regresión reproduciendo la
+caída real (600 intentos → exige 10 requests y estado `rendido`). Lógica pura con reloj, aleatorio y `fetch`
+inyectados: determinístico, sin tenant ni backend — que era justo lo que pedía la nota de método de las
+tandas. Verde: lint (0 warnings) · `tsc` + build · unit **1656 + 5 todo en 101 archivos**.
+
+Wiki: página nueva [[wiki/architecture/resiliencia]] (incidente, causa raíz, medición, fix y lo que sigue
+abierto), más [[wiki/development/testing]] (sección nueva de tests de resiliencia),
+[[wiki/features/autenticacion-onboarding]], `index.md` y `tests/specs/uat-app.md` (D1 marcado ✅ con el
+detalle). **Siguen abiertos D2-D5 y las Tandas E/F.**
+
+---
+
 ## [2026-09-06] update | 🟥 Sección G construida y verificada + lista de autorizados + 🔴 bucle de reintentos de sesión (URGENTE)
 
 Continuación de la sesión del 05-09 (sin `/clear`). Tres bloques.

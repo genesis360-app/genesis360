@@ -234,13 +234,54 @@ sesión vencida, red intermitente. Un bug que solo se manifiesta cuando el backe
 construcción, invisible para esta suite. Verificado con grep: ni una spec menciona `refresh_token`, sesión
 expirada, offline ni reintentos.
 
-Escenarios a cubrir (ninguno existe hoy):
-- **D1 — Refresco de sesión con backend caído**: el cliente debe hacer backoff y rendirse, no reintentar
-  indefinidamente. Es el bug que originó esta tanda. **PRIMERO.**
+Escenarios a cubrir:
+- ✅ **D1 — Refresco de sesión con backend caído** (CERRADO 2026-09-06, ver abajo).
 - **D2 — Sesión vencida con pestaña abierta**: debe llevar a login limpio, no a un bucle.
 - **D3 — Backend 5xx sostenido**: la UI debe degradar con mensaje claro, sin martillar.
 - **D4 — Red intermitente** (online/offline/online): sin duplicar operaciones al reconectar.
 - **D5 — Pestaña dormida / reanudada** tras horas: qué pasa al despertar.
+
+#### ✅ D1 — CERRADO (2026-09-06)
+
+**Diagnóstico verificado contra los logs de edge de DEV, no inferido.** Últimas 24 h: **595 requests** a
+`POST /auth/v1/token?grant_type=refresh_token` — 452 con **522**, 49 con **504**, 45 con **521**, 16 con
+**524**, 1 con **525**, y solo **32 con 200**. El 100 % eran `grant_type=refresh_token` (ninguna era login).
+Distribución por hora: ~65 requests/hora sostenidas entre las 19 h y las 00 h del 5/9 — **cinco horas
+seguidas sin rendirse**. Eso descarta la hipótesis de que auth-js descarte la sesión ante un 52x: el bucle
+es infinito.
+
+**Causa raíz en auth-js 2.98** (leída en `node_modules/@supabase/auth-js`, no de memoria):
+- ticker cada 30 s (`AUTO_REFRESH_TICK_DURATION_MS`) que **nunca se detiene**;
+- hasta ~7 reintentos con backoff **dentro de cada tick** (200, 400, 800… ms);
+- **no existe contador de fallos entre ticks** → nada corta el bucle.
+- Además `NETWORK_ERROR_CODES` solo contempla 502/503/504: los 52x de Cloudflare (que son los que
+  realmente llegan) caen fuera de su lógica de reintento.
+
+**Fix** — `src/lib/authRefreshBreaker.ts` (cortacircuitos) + cableado en `src/lib/supabase.ts` +
+`src/components/AvisoSesionSinRefresco.tsx`. NO se toca auth-js ni su config: se envuelve el `fetch` del
+cliente y se intercepta **únicamente** ese endpoint.
+1. Backoff exponencial con jitter ±20 % entre intentos reales: 2 s → 4 → 8 → … tope 5 min.
+2. Con el circuito abierto el intento se corta **localmente**: cero tráfico de red.
+3. Tras 10 fallos consecutivos se rinde y no vuelve a salir a la red hasta que el usuario decida.
+4. El cortocircuito devuelve **503 a propósito**: es el único rango que auth-js trata como reintentable, y
+   por lo tanto el único que **no** le hace borrar la sesión guardada. Deliberado: un cajero en medio de una
+   venta no puede quedar deslogueado por un blip de 30 s (REGLA #0).
+5. Un **400/401** (`invalid_grant`, refresh token revocado) **no** abre el circuito: es respuesta
+   definitiva y auth-js hace el login limpio, que es lo correcto.
+6. La UI avisa sin bloquear: franja discreta al 2º fallo, tarjeta con **Reintentar** / **Volver a entrar**
+   cuando se rindió. "Volver a entrar" usa `signOut({ scope: 'local' })` — no sale a la red, justo cuando
+   la red es el problema.
+
+**Cobertura**: `tests/unit/authRefreshBreaker.test.ts`, 19 tests. El de regresión reproduce la caída real
+del 5/9 (ticker cada 30 s durante 5 h = 600 intentos) y exige **10 requests de red en total** en vez de 600,
+y estado final `rendido`.
+
+**Foto de datos**: ninguna — es lógica pura de cliente con reloj, aleatorio y `fetch` inyectados. Corre
+determinístico, sin tenant ni backend. (Es justamente lo que pedía la nota de método: un verde
+reproducible.)
+
+**Lo que este fix NO cubre** (queda para D2-D5): que la UI reaccione a un backend caído en las consultas de
+datos (no solo en el refresco de sesión), la pestaña dormida y reanudada, y la red intermitente.
 
 ### 🟥 Tanda E — STRESS / CARGA: tampoco existe (abierta 2026-09-06)
 

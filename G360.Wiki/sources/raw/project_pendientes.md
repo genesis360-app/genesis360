@@ -6,8 +6,38 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟥🟥 ARRANCÁ ACÁ (2026-09-06, cont. 50) — URGENTE, decidido por GO: bucle de reintentos de sesión
-> que amplifica una caída. **Primer cliente REAL en ~2 semanas.**
+> ### ✅🟥 ARRANCÁ ACÁ (2026-09-06, cont. 51) — **D1 CERRADO**. Siguen D2-D5 y las Tandas E/F.
+> **Primer cliente REAL en ~2 semanas.**
+>
+> #### Lo que se cerró (en `dev`, SIN deploy a PROD, sin bump de versión — DEV sigue `v1.196.0`)
+>
+> El bucle de reintentos del refresco de sesión (detalle del incidente en la sección de abajo, cont. 50).
+> **Confirmado con SQL contra los logs de edge de DEV, no de memoria**: 595 requests en 24 h al endpoint,
+> 563 con 5xx de Cloudflare (452×522, 49×504, 45×521, 16×524, 1×525) y solo 32 con 200, sosteniendo
+> **~65/hora durante 5 horas seguidas** el 5/9. Eso descarta que auth-js descarte la sesión ante un 52x:
+> el bucle es infinito y **seguía vivo**.
+>
+> Causa raíz (leída en `node_modules/@supabase/auth-js` 2.98): ticker de 30 s que nunca se detiene, ~7
+> reintentos internos por tick, y **ningún contador de fallos entre ticks**.
+>
+> Fix: cortacircuitos sobre `global.fetch` — `src/lib/authRefreshBreaker.ts`, `src/lib/supabase.ts`,
+> `src/components/AvisoSesionSinRefresco.tsx`. Backoff exponencial con jitter, corte local sin red, se
+> rinde tras 10 fallos. **600 requests → 10.** Cobertura: `tests/unit/authRefreshBreaker.test.ts` (19,
+> incluye el test de regresión de la caída de 5 h). Verde: lint · tsc · build · unit 1656.
+> Detalle completo: `G360.Wiki/wiki/architecture/resiliencia.md` y `tests/specs/uat-app.md` (§D1).
+>
+> #### Lo que sigue abierto (mismo orden de prioridad)
+>
+> - **D2-D5** — sesión vencida con pestaña abierta, 5xx sostenido en las **consultas de datos** (no solo en
+>   el refresco), red intermitente, pestaña dormida y reanudada.
+> - **Tanda E** (stress/carga) y **Tanda F** (roles server-side por REST/RPC directo, no por UI — choca con
+>   el hallazgo H1 y con la obligación #3 de la REGLA #0).
+> - **Decisión pendiente de GO**: si esto va a PROD ya (bump de versión + PR `dev→main` + release) o espera
+>   a tener más tandas cerradas. `v1.196.0` tampoco fue deployada todavía.
+> - Sigue anotado: `tn-fulfillment-worker` corre 133 veces/día contra DEV sin que nadie lo mire.
+
+> ### 🟥🟥 (2026-09-06, cont. 50) — el incidente original que abrió las Tandas D/E/F
+> **[D1 ya cerrado — ver arriba. Se conserva por el diagnóstico y el método.]**
 >
 > #### El bug (encontrado investigando por qué se caía la base de DEV)
 >
@@ -22,9 +52,12 @@ type: project
 > suma carga, falla más. Con un cliente real, cada navegador abierto se vuelve un amplificador de la
 > caída. GO lo marcó como URGENTE: "si salíamos con esto en vivo íbamos a tener problemas".
 >
-> **Fix a diseñar** (NO empezado, no tocar a las apuradas — es código de autenticación): límite de
-> reintentos + backoff exponencial en el refresco de sesión; que tras N fallos lleve a login limpio en
-> vez de martillar. Revisar cómo está configurado el cliente de Supabase en `src/lib/supabase.ts`.
+> ~~**Fix a diseñar** (NO empezado…)~~ → **✅ HECHO el mismo 2026-09-06** (cont. 51, arriba): límite de
+> reintentos + backoff exponencial, implementado como cortacircuitos sobre `global.fetch` en
+> `src/lib/authRefreshBreaker.ts`. Matiz sobre lo que se había anotado acá: **no** manda a login limpio
+> automáticamente tras N fallos — deja de martillar y le ofrece al usuario reintentar o volver a entrar.
+> Desloguear solo a un cajero en medio de una venta por un blip de 30 s del backend era peor que el
+> problema (REGLA #0). El login limpio automático sí ocurre cuando el refresh token es realmente inválido.
 >
 > #### Por qué NINGÚN test lo agarró (respuesta verificada, no supuesta)
 >
@@ -38,7 +71,7 @@ type: project
 > #### Lo que GO pidió dejar anotado para la barrida completa (antes del cliente real)
 >
 > Documentado en detalle en `tests/specs/uat-app.md`, secciones nuevas **Tanda D / E / F**:
-> - **Tanda D — Resiliencia** (5 escenarios, D1 es el bug de arriba y va PRIMERO).
+> - **Tanda D — Resiliencia** (5 escenarios; **D1 ✅ cerrado**, quedan D2-D5).
 > - **Tanda E — Stress/carga** (4 escenarios): nunca se midió cuántos usuarios concurrentes aguanta el
 >   sistema, ni con qué tamaño de instancia, ni qué se rompe primero.
 > - **Tanda F — Roles server-side** (4 escenarios): ya hay specs por rol (`13_rol_cajero`,

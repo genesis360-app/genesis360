@@ -313,6 +313,22 @@ agruparAgingCC(ventas, ahoraMs)                             // G1 — buckets 0-
 
 ---
 
+## 🟥 Tests de RESILIENCIA — backend degradado (abierto 2026-09-06)
+
+Hasta el 2026-09-06 **toda** la cobertura de la app era funcional: las 142 specs e2e corren siempre contra
+un backend **sano** y prueban "¿anda la feature?". **Ninguna ejercitaba condiciones degradadas** — backend
+lento, caído, 5xx sostenido, sesión vencida, red intermitente (verificado con grep: ni una mencionaba
+`refresh_token`, sesión expirada, offline ni reintentos). Un bug que solo se manifiesta cuando el backend
+falla era, por construcción, invisible para esta suite. **No era un descuido puntual: faltaba una capa
+entera.**
+
+- ✅ `tests/unit/authRefreshBreaker.test.ts` (19) — **D1**, el cortacircuitos del refresco de sesión. El
+  test de regresión reproduce la caída real del 5/9 (ticker cada 30 s durante 5 h = 600 intentos) y exige
+  10 requests de red en total, no 600. Lógica pura con reloj/aleatorio/`fetch` inyectados: determinístico,
+  sin tenant ni backend. Ver [[wiki/architecture/resiliencia]].
+- ⬜ D2-D5 (sesión vencida, 5xx sostenido en consultas de datos, red intermitente, pestaña dormida),
+  Tanda E (stress/carga) y Tanda F (roles server-side por REST/RPC, no por UI) — `tests/specs/uat-app.md`.
+
 ## Specs de negocio — `tests/specs/`
 
 Plan de escenarios testeables por módulo, generado por el agente `spec-extractor` desde el relevamiento + el código. Formato Given/When/Then con ID ligado al ítem del relevamiento, tipo (unit/e2e) y estado (cubierto/falta).

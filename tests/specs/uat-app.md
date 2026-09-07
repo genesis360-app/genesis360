@@ -517,6 +517,9 @@ alguna policy que mire el rol**.
 | `mercadopago_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos** los roles | ✅ 403 (mig 400) |
 | `tiendanube_credentials.access_token` | 🔴 lo leían **todos** | ✅ 403 (mig 400) |
 | `whatsapp_credentials.access_token` | 🔴 legible (0 filas en este tenant, pero sin protección) | ✅ 403 (mig 400) |
+| `meli_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos**, y `anon` (2 filas en DEV) | ✅ **cerrado (mig 403)** |
+| `modo_credentials.api_key` · `courier_credenciales.credenciales` | 🔴 ídem | ✅ **cerrado (mig 403)** |
+| `rrhh_salario_items` · `rrhh_anticipos` | 🔴 el DETALLE de la liquidación: 26 filas para un CAJERO | ✅ **cerrado (mig 403)** |
 | `emisores_fiscales.afipsdk_token` | 🔴 lo leen todos (2 de 4 emisores tienen uno cargado) | ✅ **cerrado (mig 402)** — ni el DUEÑO |
 | `tenants.afipsdk_token` (copia legacy del anterior) | 🔴 la lee todo el tenant vía `select('*')` | ✅ **vaciada y bloqueada (mig 402)** |
 | `rrhh_salarios.basico/neto` | 🔴 los leía **cualquier rol**, incluido CAJERO | ✅ **cerrado (mig 401)** |
@@ -535,6 +538,28 @@ por columna salteando los secretos (en PostgreSQL no se puede "restar" una colum
 tabla). Impacto cero verificado: las tres consultas de `ConfigPage.tsx` usan listas explícitas que no
 incluyen el token, y `service_role` queda intacto para las Edge Functions. Ojo: con `select('*')`
 PostgREST expande a todas las columnas y daría 403 — por eso hay un test que lo cubre.
+
+#### 🔎 La auditoría COMPLETA del esquema (mig 403) — y la matriz de escritura que queda abierta
+
+Después de la 402 se repitió la auditoría **sobre todo el esquema**, no sobre las tablas del hallazgo:
+**111 de 152 tablas no mencionan el rol en ninguna cláusula de sus policies.** La mayoría está bien
+así. Lo que salió y se cerró:
+
+- Los secretos que la mig 400 dejó afuera: **Mercado Libre**, **MODO** y **couriers**.
+- El **detalle** de RRHH que la mig 401 dejó afuera: `rrhh_salario_items` + `rrhh_anticipos`. Cerrar
+  la cabecera de la liquidación y dejar el detalle abierto es no cerrar nada — el sueldo se
+  reconstruye sumando conceptos.
+- La **escritura** de las 6 tablas de credenciales (un CAJERO podía desconectar las integraciones).
+
+🟥 **Abierto — escritura de plata e inventario.** Un CAJERO escribe hoy por REST directo: `cheques`
+(19), `cliente_creditos` (3), `proveedor_cc_movimientos` (17), `producto_precios_mayorista` (68),
+`cupones` (70), `sucursales` (2), `kit_recetas` (11). Dos cosas para el diseño del fix:
+`producto_precios_mayorista` y `cupones` **son el precio de venta que cerró la mig 396 por la puerta
+de al lado**; y el corte tiene que ser por **operación**, no por tabla — `VentasPage` inserta
+`cliente_creditos` en devoluciones y un CAJERO crea cheques al cobrar (INSERT sí, UPDATE/DELETE no).
+
+⚠ **Deuda de fixture (vale para las migs 401 y 403)**: en DEV hay **0 empleados con `user_id`**, así
+que la rama "cada empleado ve lo suyo" nunca se probó con datos.
 
 #### 🔴🔴 El NÚCLEO FISCAL — CERRADO (mig 402, 2026-09-07). Fue el hallazgo más grave de la tanda
 

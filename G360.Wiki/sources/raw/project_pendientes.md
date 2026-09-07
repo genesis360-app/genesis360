@@ -6,7 +6,73 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 53) — Tanda F CERRADA. `v1.203.0` en `dev`, migs **391-402** solo en DEV.
+> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 54) — `v1.204.0` en `dev`, migs **391-403** solo en DEV.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Qué salió (migs 402 + 403, misma sesión)
+>
+> La **402** cerró el núcleo fiscal (ver bloque cont. 53, abajo). Después, en vez de dar la tanda por
+> cerrada, repetí la auditoría **sobre todo el esquema**: de las 152 policies, **111 tablas no miran el
+> rol**. La **403** cerró los dos huecos que eran continuación directa de las migs 400 y 401:
+> Mercado Libre / MODO / couriers (secretos que la 400 dejó afuera, legibles hasta por `anon`) y
+> `rrhh_salario_items` + `rrhh_anticipos` (el detalle de la liquidación, que la 401 dejó afuera — con
+> la cabecera cerrada y el detalle abierto el sueldo se reconstruye sumando conceptos). Más la
+> **escritura** de las 6 tablas de credenciales, que seguía abierta: un CAJERO podía desconectar las
+> integraciones del comercio.
+>
+> #### 🟥🟥 LO PRIMERO DE LA PRÓXIMA SESIÓN — la matriz de ESCRITURA de plata/inventario
+>
+> **Verificado con sondas reales, no supuesto.** Un CAJERO escribe hoy, por REST directo:
+>
+> | Tabla | Filas escribibles en DEV | Por qué importa |
+> |---|---|---|
+> | `cheques` | 19 | plata |
+> | `cliente_creditos` | 3 | saldo a favor del cliente = plata |
+> | `proveedor_cc_movimientos` | 17 | lo que se le debe al proveedor |
+> | `producto_precios_mayorista` | 68 | **el precio de venta que cerró la mig 396, por la puerta de al lado** |
+> | `cupones` | 70 | descuentos = plata |
+> | `sucursales` | 2 | configuración |
+> | `kit_recetas` | 11 | inventario (qué consume cada kit) |
+>
+> ⚠ **No se toca a ciegas**: necesita el mismo análisis por tabla que hizo falta en la 396, donde un
+> guard genérico habría roto ventas. `VentasPage` **inserta** `cliente_creditos` en devoluciones y
+> anulaciones, y un CAJERO **crea** cheques legítimamente al cobrar. El corte no es por tabla sino por
+> **operación**: INSERT operativo sí, UPDATE/DELETE de una fila ya existente no.
+>
+> También quedó sin cerrar `proveedor_cuentas_bancarias` (el **CBU de los proveedores**: cambiarlo
+> redirige un pago) — hoy 0 filas en DEV y PROD, por eso no entró, pero es el mismo patrón.
+>
+> #### 🟥 El resto, en orden
+>
+> 1. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 2. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238). Hoy solo se enforcea el del CAJERO,
+>    a propósito: el supervisor es quien APLICA la autorización y enforzarlo rompería aprobaciones.
+> 3. **E2 — techo real de la instancia**: el instrumento está listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo —
+>    saturar DEV es destructivo y es el ambiente de trabajo de GO.
+> 4. **Dropear `tenants.afipsdk_token`** — hoy está siempre en NULL pero la columna sigue. Se dropea
+>    cuando PROD corra el código de esta tanda (v1.195.4 todavía la escribe).
+> 5. **Decisión de PROD**: cuándo van las migs 391-403 + el código. Ojo, **cambian comportamiento**:
+>    donde antes solo bloqueaba la UI, ahora la base rechaza. **Migraciones y código van juntos.**
+>
+> #### Deuda de fixture (anotada, vale para las migs 401 y 403)
+>
+> En DEV hay **0 empleados con `user_id`**, así que la rama "cada empleado ve lo suyo" de la
+> visibilidad de RRHH **no tiene fixture y nunca se probó con datos**. Para verificarla de verdad hay
+> que vincular un empleado a un usuario.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. Cuando venza, `npm run schema:dump` falla (el
+>   camino PG sigue roto por el bug de Supavisor). `schema_full.sql` está al día, tope mig 403.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV: es el job de **pg_cron**
+>   `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). Revisar si tiene sentido que siga.
+> - El spec `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado** (todas las liquidaciones del
+>   mes ya tienen su gasto pagado), no por código. Se destraba solo el mes que viene.
+
+> ### ✅ (2026-09-07, cont. 53) — el núcleo fiscal (mig 402). `v1.203.0` en `dev`.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
 >
 > #### Lo que salió en esta sesión (mig 402)

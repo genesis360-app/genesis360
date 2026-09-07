@@ -73,6 +73,28 @@ Los 3 pendientes que habían quedado fuera de RRHH 2.0 se implementaron (PROD, P
 
 ---
 
+## 🔒 Quién ve los sueldos (migs 401 + 403, 2026-09-07)
+
+> **DUEÑO / ADMIN / SUPER_USUARIO / RRHH ven todo · SUPERVISOR ve su equipo · cada empleado ve lo
+> suyo · las pantallas de COSTOS leen agregados.** Regla aprobada por GO.
+
+Antes de la mig 401, `rrhh_salarios` y `empleados` tenían RLS **solo por tenant**: un CAJERO leía el
+**sueldo, el CBU y el DNI** de todos los empleados por REST directo. La 401 cerró esas dos tablas y
+agregó `fn_empleados_basico()` (sin datos sensibles) y `fn_sueldos_agregado()` (totales) para las
+cinco pantallas que las leían.
+
+**La mig 403 completó el trabajo**: la 401 había dejado afuera el **detalle** —`rrhh_salario_items`
+(los conceptos de cada liquidación con su monto) y `rrhh_anticipos`—, que seguían abiertos. Con la
+cabecera cerrada y el detalle abierto **el sueldo se reconstruye sumando los conceptos**, así que la
+401 quedaba a medias. Ambas tablas usan ahora la misma regla de dos ramas; `rrhh_salario_items` no
+tiene `empleado_id`, así que la rama del empleado va por su `salario_id`.
+
+⚠ **Deuda de fixture**: en DEV hay **0 empleados con `user_id`**, así que la rama "cada empleado ve lo
+suyo" (la que usa `MiPortalPage` para el recibo de sueldo) **nunca se probó con datos**. Para
+verificarla hay que vincular un empleado a un usuario.
+
+Detalle: [[wiki/architecture/guards-server-side]].
+
 ## Roles con acceso
 
 ```

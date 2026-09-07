@@ -6,6 +6,57 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-07] update | 🔴 Los secretos que la 400 no cubrió + el detalle de sueldos (mig 403) — v1.204.0
+
+Después de la 402, en vez de dar la tanda por cerrada repetí la auditoría **sobre todo el esquema**:
+de las 152 policies, **111 tablas no miran el rol en ninguna cláusula**. La mayoría está bien así
+(catálogo, clientes, datos operativos que todos necesitan). Dos huecos eran continuación directa de
+migs anteriores, y los midió una sonda impersonando un CAJERO real: **veía exactamente lo mismo que
+el DUEÑO**.
+
+**1. La mig 400 cerró MP, Tienda Nube y WhatsApp — y dejó afuera tres.** `meli_credentials`
+(`access_token` + `refresh_token`, 2 filas legibles en DEV; con ese token se opera la cuenta de
+Mercado Libre del comercio desde afuera), `modo_credentials.api_key` y
+`courier_credenciales.credenciales` (usuario/clave/contrato de Andreani, OCA…). Las tres, además, con
+SELECT para **anon**.
+
+**2. La mig 401 cerró `rrhh_salarios` y `empleados` — pero no el DETALLE.** `rrhh_salario_items` (26
+filas visibles para el CAJERO en DEV) y `rrhh_anticipos` seguían con RLS por tenant a secas. Con la
+cabecera cerrada y el detalle abierto, **el sueldo se reconstruye sumando los conceptos**: la 401
+quedaba a medias.
+
+**3. Y la escritura.** La 400 había cerrado solo la LECTURA: un CAJERO todavía podía **desconectar
+las integraciones del comercio** o pisar un token por REST directo. Las 6 tablas de credenciales
+pasan a escritura DUEÑO/ADMIN/SUPER_USUARIO — `/configuracion` ya era `ownerOnly` en el frontend.
+
+**Frontend**: MODO sale de la consulta (la UI nunca mostró la `api_key` — el form ya exigía
+retipearla, así que fue mecánico). El panel de couriers sí precargaba el JSONB → pasa al patrón de
+secreto de solo escritura de la 402. **Detalle que casi se escapa**: sin poder leer las credenciales
+guardadas no hay merge parcial posible, así que guardar con los campos vacíos las habría **borrado**.
+El save ahora manda `credenciales` solo si se tipeó algo, y exige reingresarlas todas.
+
+**Alcance real**: las 5 tablas tienen **0 filas en PROD** (medido antes de tocar). Hoy no se filtra
+nada en producción; el agujero es estructural y el primer cliente real entra en ~2 semanas.
+
+**Verificación**: impersonación SQL (CAJERO 0 filas de RRHH y 0 escrituras de credenciales; DUEÑO
+sigue escribiendo, RRHH sigue viendo sus 18 items; leer `meli.access_token` da 42501 hasta para el
+DUEÑO); spec 141 **35/35** con 3 tests nuevos; regresión de roles/RRHH/courier 54/54.
+
+### 🟥 Lo que esta auditoría dejó ABIERTO (verificado, no supuesto)
+
+Un CAJERO **escribe** hoy, por REST directo: `cheques` (19 filas), `cliente_creditos` (3),
+`proveedor_cc_movimientos` (17), `producto_precios_mayorista` (68), `cupones` (70), `sucursales` (2)
+y `kit_recetas` (11). Los dos primeros y el tercero son **plata**; `producto_precios_mayorista` y
+`cupones` son **el mismo precio de venta que cerró la mig 396, por la puerta de al lado**;
+`kit_recetas` es **inventario**.
+
+No se tocó a ciegas porque necesita el análisis por tabla de "quién escribe legítimamente" — el
+mismo que hizo falta en la 396, donde un guard genérico habría roto ventas: `VentasPage` **inserta**
+`cliente_creditos` en devoluciones y anulaciones, y un CAJERO **crea** cheques legítimamente al
+cobrar. El corte no es por tabla sino por **operación** (INSERT operativo sí, UPDATE/DELETE no).
+
+---
+
 ## [2026-09-07] update | 🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402) — v1.203.0
 
 Fui a cerrar el pendiente #1 que había dejado la mig 400 (`emisores_fiscales.afipsdk_token`) y el

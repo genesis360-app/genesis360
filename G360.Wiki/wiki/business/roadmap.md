@@ -37,8 +37,18 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.203.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402)** — el hallazgo más
+**Versión en DEV:** `v1.204.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **🔴 Auditoría completa del esquema (mig 403)**: de las 152 policies, **111 tablas no
+miran el rol**. Se cerraron los dos huecos que continuaban migs anteriores — los secretos que la 400
+dejó afuera (**Mercado Libre**, MODO, couriers, legibles también por `anon`) y el **detalle** de RRHH
+que la 401 dejó afuera (`rrhh_salario_items`: con la cabecera cerrada y el detalle abierto, el sueldo
+se reconstruye sumando conceptos) — más la **escritura** de las 6 tablas de credenciales, que seguía
+abierta (un CAJERO podía desconectar las integraciones del comercio). 🟥 **Queda abierta la matriz de
+escritura de plata/inventario** (`cheques`, `cliente_creditos`, `proveedor_cc_movimientos`,
+`producto_precios_mayorista`, `cupones`, `kit_recetas`): necesita el análisis por OPERACIÓN, no por
+tabla — un CAJERO crea cheques y créditos legítimamente. Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.203.0** — tag+release sobre `dev`. **🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402)** — el hallazgo más
 grave de la Tanda F. `emisores_fiscales`, `tenant_certificates` y `puntos_venta_afip` tenían UNA policy
 `FOR ALL` que solo miraba el tenant: con el token de un CAJERO se podía cambiar el **CUIT**, la
 **condición de IVA** y el **umbral de Factura B**, prender **`afip_produccion`** (CAE fiscal REAL) y

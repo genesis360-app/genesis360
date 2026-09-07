@@ -133,6 +133,9 @@ sensibles auditadas, **solo 4 tienen alguna policy que mire el rol**.
 | Tabla · columna | Antes | Ahora |
 |---|---|---|
 | `mercadopago_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos** los roles | ✅ 403 (mig 400) |
+| `meli_credentials.access_token` + `refresh_token` (Mercado Libre) | 🔴 lo leían **todos**, y `anon` | ✅ **cerrado (mig 403)** |
+| `modo_credentials.api_key` · `courier_credenciales.credenciales` | 🔴 ídem | ✅ **cerrado (mig 403)** |
+| `rrhh_salario_items` · `rrhh_anticipos` (detalle de la liquidación) | 🔴 26 filas visibles para un CAJERO | ✅ **cerrado (mig 403)** |
 | `tiendanube_credentials.access_token` | 🔴 todos | ✅ 403 (mig 400) |
 | `whatsapp_credentials.access_token` | 🔴 sin protección | ✅ 403 (mig 400) |
 | `emisores_fiscales.afipsdk_token` | 🔴 todos | ✅ **cerrado (mig 402)** — ni el DUEÑO |
@@ -202,6 +205,46 @@ explícito para quitarlo.
 > pasar a producción AFIP. Los 9 tenants de PROD están en `afip_provider='propio'`, que firma con el
 > **certificado** y no usa el token, y ninguno tiene token cargado → **nadie podía pasar a producción
 > desde la UI**. Ahora el gate pide la credencial del circuito que corresponde.
+
+### La auditoría completa del esquema (mig 403) — y lo que sigue abierto
+
+Después de la 402, en vez de dar la tanda por cerrada, se repitió la auditoría **sobre todo el
+esquema** en vez de sobre las tablas del hallazgo. La consulta que la hace:
+
+```sql
+select tablename,
+       bool_or(coalesce(qual,'')||coalesce(with_check,'') ~ 'get_user_role|auth_puede_editar_modulo|auth_ve_todas|rol') as mira_rol
+  from pg_policies where schemaname='public' group by tablename;
+```
+
+**111 de 152 tablas no mencionan el rol en ninguna cláusula.** La mayoría está bien así (catálogo,
+clientes, datos operativos que todos necesitan). Lo que salió y se cerró en la **mig 403**:
+
+- **Los secretos que la 400 dejó afuera**: Mercado Libre (`access_token`+`refresh_token`), MODO
+  (`api_key`) y couriers (`credenciales`), los tres legibles también por `anon`.
+- **El detalle de RRHH que la 401 dejó afuera**: con `rrhh_salarios` cerrada pero
+  `rrhh_salario_items` abierta, **el sueldo se reconstruye sumando los conceptos**. Cerrar la
+  cabecera y dejar el detalle es no cerrar nada.
+- **La escritura de las credenciales**: la 400 solo había cerrado la lectura; un CAJERO podía
+  **desconectar las integraciones del comercio**.
+
+#### 🟥 Abierto: la matriz de ESCRITURA de plata e inventario
+
+Verificado con sondas — un CAJERO **escribe** hoy por REST directo: `cheques` (19 filas),
+`cliente_creditos` (3), `proveedor_cc_movimientos` (17), `producto_precios_mayorista` (68),
+`cupones` (70), `sucursales` (2) y `kit_recetas` (11). Dos observaciones que valen para el diseño
+del fix:
+
+1. **`producto_precios_mayorista` y `cupones` son el precio de venta que cerró la mig 396, por la
+   puerta de al lado.** Un guard sobre `productos.precio_venta` no sirve de nada si el mismo rol
+   edita la lista mayorista o crea un cupón del 90 %.
+2. **El corte no puede ser por tabla, tiene que ser por OPERACIÓN.** `VentasPage` **inserta**
+   `cliente_creditos` en devoluciones y anulaciones, y un CAJERO **crea** cheques legítimamente al
+   cobrar. INSERT operativo sí; UPDATE/DELETE de una fila ya existente, no. Es la misma lección de la
+   396, donde un guard genérico habría roto ventas.
+
+Queda también `proveedor_cuentas_bancarias` (el **CBU de los proveedores**: cambiarlo redirige un
+pago) — hoy 0 filas en DEV y PROD, por eso no entró en la 403.
 
 ---
 

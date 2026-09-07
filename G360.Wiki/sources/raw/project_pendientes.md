@@ -6,7 +6,56 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 52) — Tandas D, E y F esencialmente cerradas. `v1.202.0` en `dev`.
+> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 53) — Tanda F CERRADA. `v1.203.0` en `dev`, migs **391-402** solo en DEV.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo que salió en esta sesión (mig 402)
+>
+> Fui a cerrar el pendiente #1 (`emisores_fiscales.afipsdk_token`) y el pendiente chico destapó uno
+> mucho mayor: **las tres tablas del núcleo fiscal tenían UNA sola policy `FOR ALL` que miraba el
+> tenant y nada más**. Con el token de cualquier rol (CAJERO, DEPÓSITO, RRHH, CONTADOR, LECTOR) y
+> `curl` se podía cambiar el **CUIT** / la **condición de IVA** / el **umbral de Factura B**, prender
+> **`afip_produccion`** (CAE fiscal REAL), **borrar el certificado AFIP** y tocar los puntos de venta.
+> Y del bucket `certificados-afip` se **descargaba la clave privada AFIP** (con cert + key se factura
+> como ese CUIT desde afuera de Genesis360); su policy de INSERT era `auth.uid() IS NOT NULL` a secas,
+> o sea que además se escribía en la carpeta de **otro tenant**.
+>
+> Ahora: SELECT abierto al tenant (el POS necesita leer emisor y PV para facturar) + escritura solo
+> **DUEÑO/ADMIN/SUPER_USUARIO**. El `afipsdk_token` pasó a **secreto de solo escritura** (no lo lee
+> nadie, ni el DUEÑO; la UI usa la columna generada `afipsdk_token_configurado`) y la copia legacy
+> `tenants.afipsdk_token` se vació + quedó forzada a NULL por trigger.
+>
+> 🐛 **Bug que bloqueaba al primer cliente real, encontrado de paso**: `afipDatosListos` exigía CUIT +
+> **token AfipSDK** para pasar a producción AFIP. Los 9 tenants de PROD están en
+> `afip_provider='propio'` (firma con el **certificado**, no usa el token) y ninguno tiene token →
+> **nadie podía pasar a producción desde la UI**. Corregido: el gate mira la credencial del circuito.
+>
+> #### 🟥 Lo que sigue abierto (en orden)
+>
+> 1. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 2. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238). Hoy solo se enforcea el del CAJERO,
+>    a propósito: el supervisor es quien APLICA la autorización y enforzarlo rompería aprobaciones.
+> 3. **E2 — techo real de la instancia**: el instrumento está listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo —
+>    saturar DEV es destructivo y es el ambiente de trabajo de GO.
+> 4. **F2 (resto)** — matriz de ESCRITURA completa por rol (la spec cubre 4 roles × 15 operaciones).
+> 5. **Dropear `tenants.afipsdk_token`** — hoy está siempre en NULL pero la columna sigue. Se dropea
+>    cuando PROD corra el código de esta tanda (v1.195.4 todavía la escribe en el camino legacy).
+> 6. **Decisión de PROD**: cuándo van las migs 391-402 + el código. Ojo, **cambian comportamiento**:
+>    donde antes solo bloqueaba la UI, ahora la base rechaza.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. Cuando venza, `npm run schema:dump` falla (el
+>   camino PG sigue roto por el bug de Supavisor). `schema_full.sql` está al día, tope mig 402.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV: es el job de **pg_cron**
+>   `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). Revisar si tiene sentido que siga.
+> - El spec `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado** (todas las liquidaciones del
+>   mes ya tienen su gasto pagado), no por código. Se destraba solo el mes que viene.
+
+> ### ✅ (2026-09-07, cont. 52) — Tandas D, E y F esencialmente cerradas. `v1.202.0` en `dev`.
 > **PROD sigue en `v1.195.4` por decisión de GO** ("esperemos un poco más, sigamos con pendientes y
 > fixes"). Migs **391-401 solo en DEV**. Primer cliente REAL en ~2 semanas.
 >

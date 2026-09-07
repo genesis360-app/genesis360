@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-07] update | 🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402) — v1.203.0
+
+Fui a cerrar el pendiente #1 que había dejado la mig 400 (`emisores_fiscales.afipsdk_token`) y el
+pendiente chico destapó uno mayor. Midiendo `pg_policies` con datos reales: **las tres tablas del
+núcleo fiscal tenían UNA sola policy `FOR ALL` que miraba el tenant y nada más.**
+
+Con el token de CUALQUIER rol —CAJERO, DEPÓSITO, RRHH, CONTADOR, LECTOR— y `curl`:
+
+| Objetivo | Lo que se podía hacer | Consecuencia fiscal |
+|---|---|---|
+| `PATCH /emisores_fiscales` | cambiar **CUIT**, **condición de IVA**, **umbral de Factura B** | facturas con el CUIT o la LETRA equivocada |
+| ídem | prender **`afip_produccion`** | un cajero pasa el negocio a **CAE real e irreversible** |
+| `DELETE /tenant_certificates` | borrar el certificado AFIP | se cae la facturación |
+| `POST/DELETE /puntos_venta_afip` | tocar los puntos de venta | numeración fiscal |
+| `GET storage/certificados-afip/…key` | **bajarse la CLAVE PRIVADA AFIP** | firmar el WSAA y facturar como ese CUIT desde afuera |
+
+Lo del bucket es lo peor y el código lo daba por cerrado: el comentario de `generar-csr/index.ts` dice
+*"bucket certificados-afip, service_role-only"*, y no lo era. Su policy de INSERT además era
+`auth.uid() IS NOT NULL` **a secas** (mig 043) → se podía escribir en la carpeta de **otro tenant**.
+
+**Fix (mig 402)**: cada policy se parte en SELECT (todo el tenant — el POS necesita leer el emisor y
+sus PV para facturar) + escritura solo **DUEÑO/ADMIN/SUPER_USUARIO**, el mismo trío de la mig 396. Las
+3 policies del bucket se reescriben con carpeta-del-propio-tenant + rol de gestión.
+
+**El token**, ahora sí cerrado: es un **secreto de solo escritura**. No lo lee nadie desde el browser,
+ni el DUEÑO. La UI usa la columna generada `afipsdk_token_configurado`; el campo del form arranca
+vacío (vacío = "no lo toques") y hay un botón explícito para quitarlo. La copia legacy
+`tenants.afipsdk_token` —que leía todo el tenant vía `select('*')`— se vació, salió del espejo de la
+mig 271 y quedó forzada a NULL por trigger. **No se dropeó**: PROD corre v1.195.4, que todavía la
+escribe en el camino legacy "tenant sin CUIT"; se dropea cuando PROD tenga este código.
+
+**De paso, un bug que bloqueaba al primer cliente real**: `afipDatosListos` exigía CUIT **+ token
+AfipSDK** para pasar a producción AFIP. Los 9 tenants de PROD están en `afip_provider='propio'`, que
+firma con el **certificado** y no usa el token, y ninguno tiene token → **nadie podía pasar a
+producción desde la UI**. Ahora el gate pide la credencial del circuito que corresponde.
+
+**Verificación**: impersonación SQL (CAJERO escribe 0 filas en las 3 tablas, DUEÑO las 3, y leer el
+token da 42501 hasta para el DUEÑO); spec 141 **32/32** con 4 tests nuevos y el `test.fail()` del token
+cerrado; e2e fiscales verdes (21 factura con CAE real de homologación, 42 NC, 56/63 guards de letra,
+61/62 wizard de certificado, 87 identidad del PDF); 1656 unit; typecheck + build.
+
+---
+
 ## [2026-09-07] update | ✅ Visibilidad de RRHH cerrada (mig 401) — los sueldos dejan de verse desde cualquier rol
 
 GO aprobó la regla y se implementó completa: **DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo · SUPERVISOR ve

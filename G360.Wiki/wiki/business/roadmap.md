@@ -37,8 +37,20 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.202.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **Visibilidad de RRHH cerrada (mig 401)**: el sueldo, el CBU y el DNI de cada empleado los
+**Versión en DEV:** `v1.203.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402)** — el hallazgo más
+grave de la Tanda F. `emisores_fiscales`, `tenant_certificates` y `puntos_venta_afip` tenían UNA policy
+`FOR ALL` que solo miraba el tenant: con el token de un CAJERO se podía cambiar el **CUIT**, la
+**condición de IVA** y el **umbral de Factura B**, prender **`afip_produccion`** (CAE fiscal REAL) y
+borrar el certificado AFIP; y del bucket `certificados-afip` se **descargaba la clave privada**. Ahora:
+SELECT para todo el tenant + escritura solo DUEÑO/ADMIN/SUPER_USUARIO. El `afipsdk_token` pasó a
+**secreto de solo escritura** (columna generada `afipsdk_token_configurado` para la UI) y la copia
+legacy `tenants.afipsdk_token` se vació. 🐛 De paso: `afipDatosListos` exigía el token AfipSDK para
+pasar a producción AFIP, pero los 9 tenants de PROD están en `afip_provider='propio'` (firma con el
+**certificado**) → **nadie podía pasar a producción desde la UI**; corregido.
+Ver [[wiki/features/facturacion-afip]], [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.202.0** — tag+release sobre `dev`. **Visibilidad de RRHH cerrada (mig 401)**: el sueldo, el CBU y el DNI de cada empleado los
 leía **cualquier rol**. Regla aprobada por GO: DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo, SUPERVISOR su
 equipo, cada empleado lo suyo, y las pantallas de costos leen **agregados** (`fn_empleados_basico` sin
 datos sensibles + `fn_sueldos_agregado` con totales). Cinco pantallas leían esas tablas y ninguna se

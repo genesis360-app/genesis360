@@ -135,9 +135,10 @@ sensibles auditadas, **solo 4 tienen alguna policy que mire el rol**.
 | `mercadopago_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos** los roles | ✅ 403 (mig 400) |
 | `tiendanube_credentials.access_token` | 🔴 todos | ✅ 403 (mig 400) |
 | `whatsapp_credentials.access_token` | 🔴 sin protección | ✅ 403 (mig 400) |
-| `emisores_fiscales.afipsdk_token` | 🔴 todos | 🔴 abierto |
+| `emisores_fiscales.afipsdk_token` | 🔴 todos | ✅ **cerrado (mig 402)** — ni el DUEÑO |
+| `tenants.afipsdk_token` (copia legacy) | 🔴 todo el tenant vía `select('*')` | ✅ **vaciada + trigger la fuerza a NULL (mig 402)** |
 | `rrhh_salarios.basico/neto` · `empleados.salario_bruto/cbu/dni_rut` | 🔴 sueldos, CBU y DNI visibles para cualquier rol | ✅ **cerrado (mig 401)** |
-| `tenant_certificates.cert_key_path` | 🟠 ruta de la clave AFIP | 🟠 abierto |
+| `tenant_certificates.cert_key_path` | 🟠 ruta de la clave AFIP | 🟠 la ruta se ve, **el archivo ya no** (mig 402) |
 | `ai_tenant_memoria`, `boveda_retiros` | ✅ solo DUEÑO | ✅ |
 
 Con el token de Mercado Pago se opera la cuenta del comercio **desde afuera de Genesis360**. El
@@ -168,8 +169,39 @@ necesita:
   La usan Dashboard, Rentabilidad y Cierres contables, que **solo sumaban**. Gateada a los roles que ya
   ven reportes de plata; un CAJERO recibe 403.
 
-**Abierto**: `emisores_fiscales.afipsdk_token` — el panel hace `select('*')` y además edita el token, así
-que hay que pasar a listas explícitas de columnas antes de revocar.
+### 🔴🔴 El núcleo fiscal (mig 402) — el hallazgo más grave de toda la tanda
+
+Se abrió yendo a cerrar el pendiente chico (`afipsdk_token`). **`emisores_fiscales`,
+`tenant_certificates` y `puntos_venta_afip` tenían UNA sola policy `FOR ALL` que miraba el tenant y
+nada más.** Con el token de cualquier rol y `curl`:
+
+| Objetivo | Lo que se podía hacer | Consecuencia fiscal |
+|---|---|---|
+| `PATCH /emisores_fiscales` | cambiar **CUIT**, **condición de IVA**, **umbral de Factura B** | facturas con el CUIT o la LETRA equivocada |
+| ídem | prender **`afip_produccion`** | un cajero pasa el negocio a **CAE real e irreversible** |
+| `DELETE /tenant_certificates` | borrar el certificado AFIP | se cae la facturación |
+| `POST/DELETE /puntos_venta_afip` | tocar los puntos de venta | numeración fiscal |
+| `GET storage/certificados-afip/…key` | **bajarse la CLAVE PRIVADA AFIP** | firmar el WSAA y facturar como ese CUIT desde afuera |
+
+Lo del bucket es lo peor y el código lo daba por cerrado: el comentario de `generar-csr/index.ts` dice
+*"bucket certificados-afip, service_role-only"* — y no lo era. Su policy de INSERT era
+`auth.uid() IS NOT NULL` **a secas** (mig 043): se podía escribir en la carpeta de **otro tenant**.
+
+**Cómo se cerró**: cada policy se parte en **SELECT para todo el tenant** (el POS necesita leer el
+emisor y sus puntos de venta para facturar — cerrarlo rompía la venta) **+ escritura solo
+DUEÑO/ADMIN/SUPER_USUARIO**, el mismo trío de la mig 396. Las 3 policies del bucket se reescriben con
+carpeta-del-propio-tenant + rol de gestión.
+
+**El token, ahora sí**: es un **secreto de solo escritura**. No lo lee nadie desde el browser, ni el
+DUEÑO — lo usa `emitir-factura` con `service_role`. La UI lee la columna generada
+`afipsdk_token_configurado` para decir "Configurado", el campo del form arranca vacío (**vacío = "no lo
+toques"**, si no un guardado normal borraría el token que el browser ya no puede leer) y hay un botón
+explícito para quitarlo.
+
+> 🐛 **Efecto lateral que valía oro**: el gate `afipDatosListos` exigía CUIT **+ token AfipSDK** para
+> pasar a producción AFIP. Los 9 tenants de PROD están en `afip_provider='propio'`, que firma con el
+> **certificado** y no usa el token, y ninguno tiene token cargado → **nadie podía pasar a producción
+> desde la UI**. Ahora el gate pide la credencial del circuito que corresponde.
 
 ---
 

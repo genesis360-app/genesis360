@@ -434,16 +434,44 @@ test.describe('F2 — qué puede LEER cada rol', () => {
     }
   })
 
-  // 🔴 HUECO ABIERTO — mismo problema que las credenciales de MP/TN, pero el panel de Emisores hace
-  // `select('*')` y ADEMÁS edita el token, así que revocar la columna rompe la pantalla: hay que pasar
-  // antes a listas explícitas de columnas. Medido: 2 de 4 emisores de DEV tienen un token cargado.
-  test('🔴 F2-h1: ningún rol operativo debería leer emisores_fiscales.afipsdk_token', async ({ request }) => {
-    test.fail()
-    for (const r of rolesConCredenciales()) {
-      const token = await tokenRol(request, r)
-      const res = await request.get(`${SUPABASE_URL}/rest/v1/emisores_fiscales?select=id,afipsdk_token&limit=1`, { headers: restHeaders(token) })
-      expect(res.status(), `[141/F2] ${r.rol} NO debería poder leer el afipsdk_token`).toBe(403)
+  // ✅ CERRADO por la mig 402 (era F2-h1). El token de AfipSDK pasó a ser un secreto de
+  // SOLO ESCRITURA: no lo lee NADIE desde el browser, ni siquiera el DUEÑO. Lo usa `emitir-factura`
+  // con service_role. Para saber si hay uno cargado está la columna generada `afipsdk_token_configurado`.
+  test('el afipsdk_token no lo lee ningún rol, tampoco el DUEÑO (mig 402)', async ({ request }) => {
+    const owner = await tokenOwner(request)
+    for (const r of [...rolesConCredenciales(), { rol: 'DUEÑO' } as RolProbado]) {
+      const token = r.rol === 'DUEÑO' ? owner : await tokenRol(request, r)
+      for (const select of ['id,afipsdk_token', '*']) {
+        const res = await request.get(
+          `${SUPABASE_URL}/rest/v1/emisores_fiscales?select=${encodeURIComponent(select)}&limit=1`,
+          { headers: restHeaders(token) },
+        )
+        expect(res.status(), `[141/F2] ${r.rol} NO debe poder leer el afipsdk_token (select=${select})`).toBe(403)
+      }
     }
+  })
+
+  test('🔑 la consulta real del panel de Emisores (columnas explícitas) sigue andando', async ({ request }) => {
+    const cols = 'id,nombre,cuit,razon_social_fiscal,condicion_iva_emisor,domicilio_fiscal,' +
+      'ingresos_brutos,inicio_actividades,umbral_factura_b,afip_produccion,afip_provider,' +
+      'afipsdk_token_configurado,banco,cbu,alias_cbu,leyenda_comprobante,es_default,activo,csr_key_path'
+    const owner = await tokenOwner(request)
+    const res = await request.get(`${SUPABASE_URL}/rest/v1/emisores_fiscales?select=${cols}`, { headers: restHeaders(owner) })
+    expect(res.status(), `[141/F2] la consulta real de EmisoresFiscalesPanel debe seguir andando: ${await res.text()}`).toBe(200)
+    const filas = (await res.json()) as Record<string, unknown>[]
+    expect(filas.length, '[141/F2] fixture vacío: el tenant de prueba debería tener al menos un emisor').toBeGreaterThan(0)
+    expect(Object.keys(filas[0]), '[141/F2] el booleano reemplaza al token').toContain('afipsdk_token_configurado')
+  })
+
+  // La copia legacy del mismo secreto. `tenants` se lee con select('*') desde todo el frontend, así
+  // que no se puede cerrar por columna: se vació y un trigger la fuerza a NULL (mig 402).
+  test('la copia legacy tenants.afipsdk_token quedó vacía (mig 402)', async ({ request }) => {
+    const token = await tokenRol(request, rolesConCredenciales()[0])
+    const res = await request.get(`${SUPABASE_URL}/rest/v1/tenants?select=id,afipsdk_token`, { headers: restHeaders(token) })
+    expect(res.ok(), await res.text()).toBeTruthy()
+    const filas = (await res.json()) as { afipsdk_token: string | null }[]
+    expect(filas.length, '[141/F2] fixture vacío: el rol debería ver al menos su tenant').toBeGreaterThan(0)
+    for (const f of filas) expect(f.afipsdk_token, '[141/F2] tenants.afipsdk_token debe estar siempre en NULL').toBeNull()
   })
 
   /**
@@ -508,6 +536,76 @@ test.describe('F2 — qué puede LEER cada rol', () => {
       // pero no está en ROLES porque su usuario se usa como control positivo en otros tests.)
       const permitido = ['CONTADOR', 'RRHH'].includes(r.rol)
       expect(res.ok(), `[141/F2] ${r.rol} ${permitido ? 'DEBERÍA' : 'NO debería'} poder ver el costo laboral`).toBe(permitido)
+    }
+  })
+})
+
+/**
+ * F1 (cierre) — el NÚCLEO FISCAL, que es lo que la REGLA #0 pone primero.
+ *
+ * 🔴 Hallazgo que abrió la mig 402: `emisores_fiscales`, `tenant_certificates` y `puntos_venta_afip`
+ * tenían UNA policy `FOR ALL` que solo miraba el tenant. Con el token de cualquier rol se podía
+ * cambiar el CUIT o la condición de IVA del emisor, prender `afip_produccion` (CAE fiscal REAL) o
+ * borrar el certificado AFIP. Y del bucket `certificados-afip` se bajaba la CLAVE PRIVADA.
+ *
+ * 🔒 Sondas NO MUTANTES, igual que el resto de la spec: PATCH con el MISMO valor que ya tiene la
+ * fila, y `?select=id` para que la representación no expanda a `*` (el token no tiene SELECT).
+ */
+test.describe('F1 — el núcleo fiscal no lo escribe cualquier rol (mig 402)', () => {
+  /** Fila objetivo + el PATCH que no cambia nada, buscados con el token del DUEÑO. */
+  async function objetivosFiscales(request: APIRequestContext) {
+    const h = restHeaders(await tokenOwner(request))
+    const uno = async (path: string) =>
+      ((await (await request.get(`${SUPABASE_URL}/rest/v1/${path}`, { headers: h })).json()) as Record<string, unknown>[])[0]
+
+    const emisor = await uno(`emisores_fiscales?tenant_id=eq.${TENANT}&select=id,afip_produccion&limit=1`)
+    const cert = await uno(`tenant_certificates?tenant_id=eq.${TENANT}&select=id,activo&limit=1`)
+    const pv = await uno(`puntos_venta_afip?tenant_id=eq.${TENANT}&select=id,numero&limit=1`)
+    const objetivos: Array<[string, string, object]> = []
+    if (emisor) objetivos.push(['emisores_fiscales', emisor.id as string, { afip_produccion: emisor.afip_produccion }])
+    if (cert) objetivos.push(['tenant_certificates', cert.id as string, { activo: cert.activo }])
+    if (pv) objetivos.push(['puntos_venta_afip', pv.id as string, { numero: pv.numero }])
+    expect(objetivos.length, '[141/F1] fixture vacío: el tenant de prueba no tiene emisor/cert/PV que sondear').toBe(3)
+    return objetivos
+  }
+
+  test('ningún rol operativo escribe la identidad fiscal, el certificado ni los puntos de venta', async ({ request }) => {
+    const objetivos = await objetivosFiscales(request)
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      for (const [tabla, id, body] of objetivos) {
+        const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, body)
+        expect(escribio, `[141/F1] ${r.rol} NO debe poder escribir ${tabla}`).toBe(false)
+      }
+    }
+  })
+
+  test('🔑 el DUEÑO sí — la pantalla de Configuración tiene que seguir funcionando', async ({ request }) => {
+    const objetivos = await objetivosFiscales(request)
+    const owner = await tokenOwner(request)
+    for (const [tabla, id, body] of objetivos) {
+      const escribio = await rlsDejaEscribir(request, owner, `${tabla}?id=eq.${id}&select=id`, body)
+      expect(escribio, `[141/F1] el DUEÑO DEBE poder escribir ${tabla}`).toBe(true)
+    }
+  })
+
+  // La clave privada AFIP: con cert + key se firma el WSAA y se factura como ese CUIT desde afuera
+  // de Genesis360. Se lista el bucket en vez de descargar, para no traer material de clave al test.
+  test('el bucket de certificados AFIP no lo lee ningún rol operativo', async ({ request }) => {
+    const listar = async (token: string) => {
+      const res = await request.post(`${SUPABASE_URL}/storage/v1/object/list/certificados-afip`, {
+        headers: restHeaders(token),
+        data: { prefix: `${TENANT}/`, limit: 100 },
+      })
+      return res.ok() ? ((await res.json()) as unknown[]) : []
+    }
+
+    const delDueno = await listar(await tokenOwner(request))
+    expect(delDueno.length, '[141/F1] fixture vacío: el tenant de prueba no tiene certificado subido').toBeGreaterThan(0)
+
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      expect(await listar(token), `[141/F1] ${r.rol} NO debe ver los archivos del certificado AFIP`).toHaveLength(0)
     }
   })
 })

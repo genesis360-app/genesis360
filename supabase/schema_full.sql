@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-07T05:05:46.574Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260907045612 · 166 tablas
+-- Generado 2026-09-07T16:37:55.377Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260907162551 · 166 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -735,7 +735,8 @@ CREATE TABLE public.emisores_fiscales (
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  csr_key_path text
+  csr_key_path text,
+  afipsdk_token_configurado boolean DEFAULT ((afipsdk_token IS NOT NULL) AND (afipsdk_token <> ''::text))
 );
 
 CREATE TABLE public.empleados (
@@ -5611,7 +5612,6 @@ BEGIN
     umbral_factura_b     = NEW.umbral_factura_b,
     afip_produccion      = NEW.afip_produccion,
     afip_provider        = NEW.afip_provider,
-    afipsdk_token        = NEW.afipsdk_token,
     banco                = NEW.banco,
     cbu                  = NEW.cbu,
     alias_cbu            = NEW.alias_cbu,
@@ -5620,12 +5620,12 @@ BEGIN
   WHERE t.id = NEW.tenant_id
     AND (t.cuit, t.razon_social_fiscal, t.condicion_iva_emisor, t.domicilio_fiscal,
          t.ingresos_brutos, t.inicio_actividades, t.umbral_factura_b, t.afip_produccion,
-         t.afip_provider, t.afipsdk_token, t.banco, t.cbu, t.alias_cbu,
+         t.afip_provider, t.banco, t.cbu, t.alias_cbu,
          t.leyenda_comprobante, t.logo_url)
         IS DISTINCT FROM
         (NEW.cuit, NEW.razon_social_fiscal, NEW.condicion_iva_emisor, NEW.domicilio_fiscal,
          NEW.ingresos_brutos, NEW.inicio_actividades, NEW.umbral_factura_b, NEW.afip_produccion,
-         NEW.afip_provider, NEW.afipsdk_token, NEW.banco, NEW.cbu, NEW.alias_cbu,
+         NEW.afip_provider, NEW.banco, NEW.cbu, NEW.alias_cbu,
          NEW.leyenda_comprobante, NEW.logo_url);
 
   RETURN NEW;
@@ -8643,6 +8643,18 @@ BEGIN
     WHERE tenant_id = p_tenant_id AND dimension = p_dim
       AND (tipo = 'fijo' OR (tipo = 'temporal' AND vence_at > now()));
   RETURN v_base + v_addons;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_tenants_afipsdk_token_deprecado()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- `tenants.afipsdk_token` es legible por todo el tenant (select('*') masivo). Se deja siempre en
+  -- NULL para que sea imposible que un secreto viva ahí. El token va a emisores_fiscales.
+  NEW.afipsdk_token := NULL;
+  RETURN NEW;
 END $function$
 
 
@@ -11931,6 +11943,7 @@ CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH 
 CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tipos_pedido_new_tenant();
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
+CREATE TRIGGER trg_tenants_afipsdk_token_deprecado BEFORE INSERT OR UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenants_afipsdk_token_deprecado();
 CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
@@ -12426,13 +12439,11 @@ CREATE POLICY devprov_tenant ON public.devoluciones_proveedor AS PERMISSIVE FOR 
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY emisores_fiscales_tenant ON public.emisores_fiscales AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY emisores_fiscales_select ON public.emisores_fiscales AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY emisores_fiscales_write_gestion ON public.emisores_fiscales AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY empleados_select ON public.empleados AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (user_id = ( SELECT auth.uid() AS uid)) OR (supervisor_id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY empleados_write ON public.empleados AS PERMISSIVE FOR ALL TO public
@@ -12697,10 +12708,11 @@ CREATE POLICY proveedores_insert ON public.proveedores AS PERMISSIVE FOR INSERT 
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY proveedores_tenant ON public.proveedores AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()));
-CREATE POLICY pv_tenant ON public.puntos_venta_afip AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY pv_select ON public.puntos_venta_afip AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY pv_write_gestion ON public.puntos_venta_afip AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY recepcion_items_tenant ON public.recepcion_items AS PERMISSIVE FOR ALL TO public
   USING ((recepcion_id IN ( SELECT r.id
    FROM recepciones r
@@ -12884,13 +12896,11 @@ CREATE POLICY tareas_repositor_tenant ON public.tareas_repositor AS PERMISSIVE F
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY tenant_addons_select ON public.tenant_addons AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) OR is_admin()));
-CREATE POLICY tenant_certificates_tenant ON public.tenant_certificates AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY tenant_certificates_select ON public.tenant_certificates AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY tenant_certificates_write_gestion ON public.tenant_certificates AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY tenants_insert_new_user ON public.tenants AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((( SELECT auth.uid() AS uid) IS NOT NULL));
 CREATE POLICY tenants_select ON public.tenants AS PERMISSIVE FOR SELECT TO public
@@ -13147,7 +13157,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.de
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emision_factura_locks TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.empleados TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.empleados TO authenticated;

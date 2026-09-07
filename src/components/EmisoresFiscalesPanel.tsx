@@ -36,7 +36,9 @@ interface Emisor {
   umbral_factura_b: number | string | null
   afip_produccion: boolean
   afip_provider: string
-  afipsdk_token: string | null
+  /** ¿Hay token de AfipSDK cargado? El token EN SÍ no se puede leer desde el browser (mig 402):
+   *  es un secreto de solo-escritura, y esta columna generada es lo único que vuelve. */
+  afipsdk_token_configurado: boolean
   banco: string | null
   cbu: string | null
   alias_cbu: string | null
@@ -67,6 +69,10 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState(FORM_VACIO)
+  // Token de AfipSDK: secreto de solo-escritura (mig 402). El campo arranca SIEMPRE vacío y
+  // "vacío" significa "no lo toques". Estos dos flags son lo único que sabemos de él.
+  const [tokenGuardado, setTokenGuardado] = useState(false)
+  const [tokenQuitar, setTokenQuitar] = useState(false)
   const [saving, setSaving] = useState(false)
   const [expandido, setExpandido] = useState<string | null>(null)
   // Cert upload por emisor (modo manual: .crt + .key)
@@ -84,10 +90,17 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
   const { data: emisores = [], refetch } = useQuery({
     queryKey: ['emisores-fiscales-panel', tenant?.id],
     queryFn: async () => {
+      // 🛑 Lista EXPLÍCITA de columnas, no `select('*')`: desde la mig 402 el `afipsdk_token` no
+      // tiene SELECT para `authenticated` y un `*` (que PostgREST expande a TODAS las columnas)
+      // devolvería 403 y dejaría el panel en blanco.
       const { data } = await supabase.from('emisores_fiscales')
-        .select('*').eq('tenant_id', tenant!.id)
+        .select('id, nombre, cuit, razon_social_fiscal, condicion_iva_emisor, domicilio_fiscal, ' +
+                'ingresos_brutos, inicio_actividades, umbral_factura_b, afip_produccion, ' +
+                'afip_provider, afipsdk_token_configurado, banco, cbu, alias_cbu, ' +
+                'leyenda_comprobante, es_default, activo, csr_key_path')
+        .eq('tenant_id', tenant!.id)
         .order('es_default', { ascending: false }).order('created_at')
-      return (data ?? []) as Emisor[]
+      return (data ?? []) as unknown as Emisor[]
     },
     enabled: !!tenant,
   })
@@ -126,9 +139,15 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
   const adicionales = emisores.filter(e => !e.es_default)
   const principal = emisores.find(e => e.es_default) ?? null
 
-  const abrirNuevo = () => { setEditId(null); setForm(FORM_VACIO); setShowForm(true) }
+  const abrirNuevo = () => {
+    setEditId(null); setForm(FORM_VACIO)
+    setTokenGuardado(false); setTokenQuitar(false)
+    setShowForm(true)
+  }
   const abrirEditar = (e: Emisor) => {
     setEditId(e.id)
+    setTokenGuardado(e.afipsdk_token_configurado)
+    setTokenQuitar(false)
     setForm({
       nombre: e.nombre ?? '', cuit: e.cuit ?? '',
       razon_social_fiscal: e.razon_social_fiscal ?? '',
@@ -138,7 +157,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
       inicio_actividades: e.inicio_actividades ?? '',
       umbral_factura_b: e.umbral_factura_b != null ? String(e.umbral_factura_b) : '',
       afip_provider: e.afip_provider ?? 'propio',
-      afipsdk_token: e.afipsdk_token ?? '',
+      afipsdk_token: '',   // nunca se precarga un secreto: vacío = "dejalo como está"
       banco: e.banco ?? '', cbu: e.cbu ?? '', alias_cbu: e.alias_cbu ?? '',
       leyenda_comprobante: e.leyenda_comprobante ?? '',
     })
@@ -166,16 +185,22 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
         inicio_actividades: form.inicio_actividades || null,
         umbral_factura_b: form.umbral_factura_b ? parseFloat(form.umbral_factura_b) : null,
         afip_provider: form.afip_provider,
-        afipsdk_token: form.afipsdk_token.trim() || null,
         banco: form.banco.trim() || null, cbu: form.cbu.trim() || null,
         alias_cbu: form.alias_cbu.trim() || null,
         leyenda_comprobante: form.leyenda_comprobante.trim() || null,
         updated_at: new Date().toISOString(),
       }
+      // El token solo viaja si el usuario escribió uno nuevo, o si pidió quitarlo explícitamente.
+      // Si no, ni se menciona en el payload → el guardado no puede pisar con vacío un token que
+      // el browser ya no puede leer (mig 402).
+      const tokenNuevo = form.afipsdk_token.trim()
+      const rowConToken = tokenNuevo
+        ? { ...row, afipsdk_token: tokenNuevo }
+        : tokenQuitar ? { ...row, afipsdk_token: null } : row
       const { error } = editId
-        ? await supabase.from('emisores_fiscales').update(row).eq('id', editId)
+        ? await supabase.from('emisores_fiscales').update(rowConToken).eq('id', editId)
         : await supabase.from('emisores_fiscales').insert({
-            ...row, tenant_id: tenant!.id, es_default: false, activo: true,
+            ...rowConToken, tenant_id: tenant!.id, es_default: false, activo: true,
             // Los emisores adicionales SIEMPRE nacen en homologación; producción se
             // habilita por SQL/soporte con el onboarding AFIP completo (como el piloto).
             afip_produccion: false,
@@ -598,7 +623,23 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK (solo circuito AfipSDK)</label>
-                    <input type="password" value={form.afipsdk_token} onChange={ev => setForm(f => ({ ...f, afipsdk_token: ev.target.value }))} autoComplete="new-password" className={inputCls} />
+                    <input type="password" value={form.afipsdk_token}
+                      onChange={ev => { setForm(f => ({ ...f, afipsdk_token: ev.target.value })); setTokenQuitar(false) }}
+                      placeholder={tokenGuardado ? '•••••••• (hay uno guardado)' : ''}
+                      autoComplete="new-password" className={inputCls} />
+                    {tokenGuardado && !tokenQuitar && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Por seguridad no se muestra. Dejalo vacío para conservarlo, escribí uno nuevo para reemplazarlo
+                        {' '}o <button type="button" onClick={() => { setTokenQuitar(true); setForm(f => ({ ...f, afipsdk_token: '' })) }}
+                          className="text-accent-text hover:underline">quitarlo</button>.
+                      </p>
+                    )}
+                    {tokenQuitar && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                        Se va a borrar el token al guardar.{' '}
+                        <button type="button" onClick={() => setTokenQuitar(false)} className="text-accent-text hover:underline">Cancelar</button>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Banco</label>

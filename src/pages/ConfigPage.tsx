@@ -835,7 +835,9 @@ export default function ConfigPage() {
   const [bizRazonSocial,     setBizRazonSocial]     = useState<string>((tenant as any)?.razon_social_fiscal ?? '')
   const [bizDomicilioFiscal, setBizDomicilioFiscal] = useState<string>((tenant as any)?.domicilio_fiscal ?? '')
   const [bizUmbralB,         setBizUmbralB]         = useState<string>(String((tenant as any)?.umbral_factura_b ?? '68305.16'))
-  const [bizAfipToken,       setBizAfipToken]       = useState<string>((tenant as any)?.afipsdk_token ?? '')
+  // Secreto de solo-escritura (mig 402): el browser ya no puede leer el token, así que el campo
+  // arranca vacío SIEMPRE y "vacío" = "no lo toques".
+  const [bizAfipToken,       setBizAfipToken]       = useState<string>('')
   const [showAfipToken,      setShowAfipToken]      = useState(false)
   // Logo del negocio (sale en factura + presupuesto) — bucket `logos`
   const [bizLogoUrl,         setBizLogoUrl]         = useState<string>((tenant as any)?.logo_url ?? '')
@@ -867,7 +869,6 @@ export default function ConfigPage() {
     setBizRazonSocial(tAny.razon_social_fiscal ?? '')
     setBizDomicilioFiscal(tAny.domicilio_fiscal ?? '')
     setBizUmbralB(String(tAny.umbral_factura_b ?? '68305.16'))
-    setBizAfipToken(tAny.afipsdk_token ?? '')
     setBizLogoUrl(tAny.logo_url ?? '')
     setBizIngBrutos(tAny.ingresos_brutos ?? '')
     setBizInicioAct((tAny.inicio_actividades ?? '').slice(0, 10))
@@ -880,7 +881,7 @@ export default function ConfigPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     tAny?.cuit, tAny?.condicion_iva_emisor, tAny?.razon_social_fiscal, tAny?.domicilio_fiscal,
-    tAny?.umbral_factura_b, tAny?.afipsdk_token, tAny?.logo_url, tAny?.ingresos_brutos,
+    tAny?.umbral_factura_b, tAny?.logo_url, tAny?.ingresos_brutos,
     tAny?.inicio_actividades, tAny?.sitio_web, tAny?.banco, tAny?.cbu, tAny?.alias_cbu,
     tAny?.leyenda_comprobante, tAny?.afip_produccion,
   ])
@@ -1190,7 +1191,6 @@ export default function ConfigPage() {
         razon_social_fiscal: bizRazonSocial.trim() || null,
         domicilio_fiscal: bizDomicilioFiscal.trim() || null,
         umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
-        afipsdk_token: bizAfipToken.trim() || null,
         ingresos_brutos: bizIngBrutos.trim() || null,
         inicio_actividades: bizInicioAct || null,
         banco: bizBanco.trim() || null,
@@ -1198,14 +1198,18 @@ export default function ConfigPage() {
         alias_cbu: bizAliasCbu.trim() || null,
         leyenda_comprobante: bizLeyenda.trim() || null,
       }
+      // El token de AfipSDK solo viaja si el usuario escribió uno: es de solo-escritura (mig 402)
+      // y el campo arranca vacío, así que mandarlo siempre BORRARÍA el que ya estaba guardado.
+      const tokenNuevo = bizAfipToken.trim()
+      const identidadConToken = tokenNuevo ? { ...identidad, afipsdk_token: tokenNuevo } : identidad
       if (cuit) {
         // Fuente única: la identidad va a emisores_fiscales (el espejo DB actualiza tenants.*)
         const defId = await emisorDefaultId()
         const { error } = defId
           ? await supabase.from('emisores_fiscales')
-              .update({ ...identidad, updated_at: new Date().toISOString() }).eq('id', defId)
+              .update({ ...identidadConToken, updated_at: new Date().toISOString() }).eq('id', defId)
           : await supabase.from('emisores_fiscales').insert({
-              ...identidad,
+              ...identidadConToken,
               tenant_id: tenant!.id,
               nombre: identidad.razon_social_fiscal ?? tenant?.nombre ?? 'Emisor principal',
               es_default: true, activo: true,
@@ -1218,6 +1222,8 @@ export default function ConfigPage() {
       } else {
         // Sin CUIT no hay identidad fiscal que representar → legacy: solo tenants
         // (cuando cargue el CUIT, el save crea el emisor default con TODO el form)
+        // 🛑 `identidad` acá va SIN token a propósito: `tenants.afipsdk_token` es una copia
+        // legible por todo el tenant y quedó deprecada (mig 402). El token vive en el emisor.
         const { error } = await supabase.from('tenants').update({
           ...identidad, sitio_web: bizSitioWeb.trim() || null,
         }).eq('id', tenant!.id)
@@ -1225,6 +1231,8 @@ export default function ConfigPage() {
       }
       const data = await refrescarTenant()
       setBizAfipProduccion(data.afip_produccion ?? bizAfipProduccion)
+      setBizAfipToken('')            // no dejar el secreto tipeado en memoria del form
+      await refetchEmisorDefault()   // refrescar el "Configurado" del resumen
       toast.success('Datos fiscales guardados')
     } catch (err: any) {
       // El PostgrestError NO es instanceof Error → leer .message directo (lección del alta de
@@ -1235,8 +1243,6 @@ export default function ConfigPage() {
     }
   }
 
-  // Modo de emisión: pasar a producción exige CUIT + token GUARDADOS (no solo tipeados)
-  const afipDatosListos = !!(tenant as any)?.cuit && !!(tenant as any)?.afipsdk_token
   const persistAfipProduccion = async (nuevoValor: boolean) => {
     setSavingProd(true)
     try {
@@ -1274,7 +1280,9 @@ export default function ConfigPage() {
     }
     // Pasar a PRODUCCIÓN → confirmación explícita
     if (!afipDatosListos) {
-      toast.error('Primero guardá CUIT y Token AfipSDK antes de pasar a producción')
+      toast.error(afipProviderEmisor === 'propio'
+        ? 'Primero guardá el CUIT y cargá el certificado AFIP del emisor antes de pasar a producción'
+        : 'Primero guardá el CUIT y el Token AfipSDK antes de pasar a producción')
       return
     }
     setProdAck(false)
@@ -2459,12 +2467,15 @@ export default function ConfigPage() {
   // Multi-CUIT (F5): el emisor PRINCIPAL del tenant (es_default). Las secciones de
   // certificado y puntos de venta de este tab operan sobre ÉL; los emisores adicionales
   // se gestionan en EmisoresFiscalesPanel (cert y PV propios por emisor).
-  const { data: emisorDefault } = useQuery({
+  const { data: emisorDefault, refetch: refetchEmisorDefault } = useQuery({
     queryKey: ['emisor-fiscal-default', tenant?.id],
     queryFn: async () => {
+      // `afipsdk_token_configurado` es la columna GENERADA (mig 402): dice si hay token cargado
+      // sin devolver el token, que ya no tiene SELECT para el frontend.
       const { data } = await supabase.from('emisores_fiscales')
-        .select('id').eq('tenant_id', tenant!.id).eq('es_default', true).maybeSingle()
-      return data as { id: string } | null
+        .select('id, afip_provider, afipsdk_token_configurado')
+        .eq('tenant_id', tenant!.id).eq('es_default', true).maybeSingle()
+      return data as unknown as { id: string; afip_provider: string; afipsdk_token_configurado: boolean } | null
     },
     enabled: !!tenant && tab === 'facturacion',
   })
@@ -2483,6 +2494,19 @@ export default function ConfigPage() {
     },
     enabled: !!tenant && tab === 'facturacion',
   })
+
+  // 🛑 Qué credencial hace falta para pasar a PRODUCCIÓN AFIP depende del CIRCUITO del emisor:
+  //   • 'propio'  → la EF firma el WSAA con el CERTIFICADO del emisor. El token no se usa nunca.
+  //   • 'afipsdk' → delega en afipsdk.com, y ahí sí hace falta el token.
+  // Hasta acá se exigía el token SIEMPRE. Como los 9 tenants de PROD están en 'propio' y ninguno
+  // tiene token cargado (medido), NADIE podía pasar a producción desde la UI aunque tuviera el
+  // certificado en regla: el gate pedía una credencial que su circuito ni usa.
+  // Se mira el dato GUARDADO (emisor / store), no lo tipeado en el form — eso no cambió.
+  const afipProviderEmisor = emisorDefault?.afip_provider ?? ((tenant as any)?.afip_provider ?? 'propio')
+  const afipCredencialLista = afipProviderEmisor === 'propio'
+    ? !!tenantCert?.activo
+    : !!emisorDefault?.afipsdk_token_configurado
+  const afipDatosListos = !!(tenant as any)?.cuit && afipCredencialLista
 
   const { data: puntosVentaAfipTodos = [], refetch: refetchPV } = useQuery({
     queryKey: ['puntos-venta-afip-config', tenant?.id],
@@ -3615,14 +3639,17 @@ export default function ConfigPage() {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
                     <div className="relative">
                       <input type={showAfipToken ? 'text' : 'password'} value={bizAfipToken} onChange={e => setBizAfipToken(e.target.value)}
-                        placeholder="Token de afipsdk.com"
+                        placeholder={emisorDefault?.afipsdk_token_configurado ? '•••••••• (hay uno guardado)' : 'Token de afipsdk.com'}
                         className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       <button type="button" onClick={() => setShowAfipToken(v => !v)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         <Eye size={14} />
                       </button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Solo hace falta con el circuito AfipSDK; con el circuito propio se usa el certificado.
+                      {emisorDefault?.afipsdk_token_configurado && ' Por seguridad no se muestra: dejalo vacío para conservar el que está guardado.'}
+                    </p>
                   </div>
                 </div>
                 {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
@@ -3697,7 +3724,9 @@ export default function ConfigPage() {
                     <CampoResumenFiscal label="Condición IVA" value={tAny.condicion_iva_emisor ? (CONDICION_IVA_LABEL[tAny.condicion_iva_emisor] ?? tAny.condicion_iva_emisor) : null} />
                     <CampoResumenFiscal label="Domicilio fiscal" value={tAny.domicilio_fiscal} />
                     <CampoResumenFiscal label="Umbral Factura B" value={tAny.umbral_factura_b ? `$${Number(tAny.umbral_factura_b).toLocaleString('es-AR')}` : null} />
-                    <CampoResumenFiscal label="Token AfipSDK" value={tAny.afipsdk_token ? 'Configurado' : null} />
+                    {/* El token no se puede leer desde el browser (mig 402): lo que llega es el
+                        booleano de la columna generada. */}
+                    <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
                     <CampoResumenFiscal label="Ingresos Brutos" value={tAny.ingresos_brutos} />
                     <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(tAny.inicio_actividades).toLocaleDateString('es-AR') : null} />
                     <CampoResumenFiscal label="Banco" value={tAny.banco} />
@@ -3752,7 +3781,11 @@ export default function ConfigPage() {
                 />
               </div>
               {!afipDatosListos && !bizAfipProduccion && (
-                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">Cargá y guardá CUIT + Token AfipSDK para poder pasar a producción.</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                  {afipProviderEmisor === 'propio'
+                    ? 'Cargá y guardá el CUIT y el certificado AFIP del emisor para poder pasar a producción.'
+                    : 'Cargá y guardá el CUIT y el Token AfipSDK para poder pasar a producción.'}
+                </p>
               )}
             </div>
           </div>
@@ -3771,7 +3804,7 @@ export default function ConfigPage() {
                 <ul className="text-xs text-gray-500 dark:text-gray-400 mt-3 space-y-1 list-disc pl-5">
                   <li>El CUIT debe estar <strong>activo</strong> y habilitado para Facturación Electrónica.</li>
                   <li>El certificado de producción debe estar autorizado en AFIP (Administrador de Relaciones).</li>
-                  <li>El Token AfipSDK debe ser de <strong>producción</strong>.</li>
+                  {afipProviderEmisor !== 'propio' && <li>El Token AfipSDK debe ser de <strong>producción</strong>.</li>}
                 </ul>
                 <label className="flex items-start gap-2 mt-4 cursor-pointer">
                   <input type="checkbox" checked={prodAck} onChange={e => setProdAck(e.target.checked)} className="mt-0.5" />

@@ -539,7 +539,7 @@ tabla). Impacto cero verificado: las tres consultas de `ConfigPage.tsx` usan lis
 incluyen el token, y `service_role` queda intacto para las Edge Functions. Ojo: con `select('*')`
 PostgREST expande a todas las columnas y daría 403 — por eso hay un test que lo cubre.
 
-#### 🔎 La auditoría COMPLETA del esquema (mig 403) — y la matriz de escritura que queda abierta
+#### 🔎 La auditoría COMPLETA del esquema (mig 403) — y la matriz de escritura, ya cerrada (mig 404)
 
 Después de la 402 se repitió la auditoría **sobre todo el esquema**, no sobre las tablas del hallazgo:
 **111 de 152 tablas no mencionan el rol en ninguna cláusula de sus policies.** La mayoría está bien
@@ -551,12 +551,23 @@ así. Lo que salió y se cerró:
   reconstruye sumando conceptos.
 - La **escritura** de las 6 tablas de credenciales (un CAJERO podía desconectar las integraciones).
 
-🟥 **Abierto — escritura de plata e inventario.** Un CAJERO escribe hoy por REST directo: `cheques`
-(19), `cliente_creditos` (3), `proveedor_cc_movimientos` (17), `producto_precios_mayorista` (68),
-`cupones` (70), `sucursales` (2), `kit_recetas` (11). Dos cosas para el diseño del fix:
-`producto_precios_mayorista` y `cupones` **son el precio de venta que cerró la mig 396 por la puerta
-de al lado**; y el corte tiene que ser por **operación**, no por tabla — `VentasPage` inserta
-`cliente_creditos` en devoluciones y un CAJERO crea cheques al cobrar (INSERT sí, UPDATE/DELETE no).
+✅ **Escritura de plata, precios e inventario — CERRADA (mig 404).** Un CAJERO escribía por REST
+`cheques`, `cliente_creditos`, `caja_traspasos`, `producto_precios_mayorista`, `cupones`, `combos`,
+`sucursales`, `ubicaciones`, `estados_inventario`, `canales_venta`, `cuentas_origen`, `kit_recetas` y
+`proveedor_cuentas_bancarias`. Dos cosas del diseño que conviene no perder: la lista mayorista y los
+cupones **eran el precio de venta de la mig 396 por la puerta de al lado**; y el corte va por
+**OPERACIÓN** — `VentasPage` inserta `cliente_creditos`, el cajero crea cheques al cobrar y **el POS
+escribe `cupones_codigos` al canjear**, así que un guard por tabla habría roto la venta con cupón.
+
+🟥 **Sigue abierto por definición de negocio**: `proveedor_cc_movimientos` (¿un cajero registra un
+pago a proveedor?) y `gastos_fijos`/`gasto_cuotas` (el CAJERO opera bajo su umbral, el CONTADOR es
+actor legítimo).
+
+🐛 **Hallazgo aparte, de la corrida de regresión**: **9 specs e2e estaban rotos hace días** — todos
+los que siembran stock por UI (115, 116, 119, 122, 123, 128, 131, 132, 137). El fixture
+`ingresoRealPorUI` elige **la primera ubicación a ciegas**, y esa es **Mono-SKU**: el día que quedó
+ocupada por un producto de otro spec se cayeron los 9 juntos, con un `toBeVisible` que no decía nada.
+Verificado que **no** es de las migs 402/403/404. Sin arreglar: ver `project_pendientes.md`.
 
 ⚠ **Deuda de fixture (vale para las migs 401 y 403)**: en DEV hay **0 empleados con `user_id`**, así
 que la rama "cada empleado ve lo suyo" nunca se probó con datos.

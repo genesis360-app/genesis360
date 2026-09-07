@@ -37,8 +37,17 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.204.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **🔴 Auditoría completa del esquema (mig 403)**: de las 152 policies, **111 tablas no
+**Versión en DEV:** `v1.205.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **🔴 La matriz de ESCRITURA (mig 404)** — cierra la Tanda F. Un CAJERO escribía por REST
+`cheques`, `cliente_creditos`, `caja_traspasos`, la **lista mayorista**, `cupones`, `combos`,
+`sucursales`, `ubicaciones` y el **CBU de los proveedores**. Dos aprendizajes del diseño: la lista
+mayorista y los cupones **eran el precio de venta que cerró la mig 396 por la puerta de al lado**, y
+el corte tiene que ir por **operación** — el POS escribe `cupones_codigos` al canjear, así que un
+guard por tabla habría roto la venta con cupón. 🐛 Aparte: se encontró que **9 specs e2e estaban
+rotos hace días** por una ubicación Mono-SKU ocupada con datos de prueba viejos (no por las
+migraciones — verificado). Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.204.0** — tag+release sobre `dev`. **🔴 Auditoría completa del esquema (mig 403)**: de las 152 policies, **111 tablas no
 miran el rol**. Se cerraron los dos huecos que continuaban migs anteriores — los secretos que la 400
 dejó afuera (**Mercado Libre**, MODO, couriers, legibles también por `anon`) y el **detalle** de RRHH
 que la 401 dejó afuera (`rrhh_salario_items`: con la cabecera cerrada y el detalle abierto, el sueldo

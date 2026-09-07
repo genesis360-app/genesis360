@@ -6,6 +6,76 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-07] update | 🔴 La matriz de ESCRITURA de plata, precios e inventario (mig 404) — v1.205.0
+
+Cierra lo que la auditoría de la 403 había dejado medido. Con el token de un CAJERO se escribían por
+REST: `cheques`, `cliente_creditos`, `caja_traspasos`, `producto_precios_mayorista`, `cupones`,
+`combos`, `sucursales`, `ubicaciones`, `estados_inventario`, `canales_venta`, `cuentas_origen`,
+`kit_recetas` y `proveedor_cuentas_bancarias` (el **CBU al que se le paga a un proveedor**).
+
+**Dos cosas gobernaron el diseño, y las dos ya habían mordido en la mig 396:**
+
+1. **`producto_precios_mayorista`, `combos` y `cupones` son el precio de venta por la puerta de al
+   lado.** La 396 puso un trigger por columna sobre `productos.precio_*`, pero el mismo rol podía
+   editar la lista mayorista, armar un combo o crear un cupón del 90 %. Un guard que se esquiva por
+   otra tabla no es un guard.
+2. **El corte va por OPERACIÓN, no por tabla.** Y acá hubo un susto: **el POS ESCRIBE
+   `cupones_codigos` al canjear** (`VentasPage.tsx:3405`, claim atómico). Mi primer barrido de
+   escritores no lo vio porque el `.update()` está en la línea siguiente al `.from()`; apareció al
+   repetir el grep en **multilínea**. Un guard por tabla habría roto la venta con cupón. Quedó como
+   trigger por columna: marcar un código usado es la venta, cambiar el código o el cupón es Comercial.
+
+**Cómo quedó**: config pura (pantallas `ownerOnly`) → gestión · precios/comercial →
+`auth_puede_editar_modulo`, que suma el módulo `'comercial'` · `kit_recetas` → inventario **+
+DEPÓSITO** (arma kits) · `cliente_creditos` → INSERT operativo (la devolución lo necesita),
+UPDATE/DELETE gestión — la app nunca los hace, así que un UPDATE por REST es plata inventada ·
+`cheques` → registrar/cobrar/endosar operativo, **monto** por trigger de columna y DELETE gestión ·
+`caja_traspasos` → INSERT operativo, UPDATE (la corrección de monto) DUEÑO/SUPERVISOR, que era el
+gate que `CajaPage` tenía **solo en el cliente**.
+
+**También en la UI** (guards en las dos capas): `ChequesPanel` deshabilita el monto al editar y
+esconde el borrar según el rol, para que el cajero no se coma un error crudo.
+
+**Verificación**: matriz por impersonación con los 4 roles + controles positivos. CAJERO: 0
+escrituras salvo el estado de cheques (deliberado), y sigue pudiendo canjear cupones, mover cheques
+de estado e insertar saldo a favor. SUPERVISOR: precios, comercial y correcciones de caja sí;
+sucursales no. DEPÓSITO: kits sí; precios y cupones no. Cambiar el monto de un cheque → 42501.
+Spec 141 **40/40** con 5 tests nuevos. 1656 unit.
+
+⚠ **Un test mío falló primero y el guard tenía razón**: había puesto a DEPÓSITO entre los que "no
+deben escribir `kit_recetas`" cuando justamente es su trabajo. Mismo patrón que el falso rojo de RRHH
+en la 401 — cuando el test y el guard discrepan, primero hay que preguntarse cuál de los dos está
+equivocado.
+
+**Queda afuera a propósito** (necesita definición de negocio de GO): `proveedor_cc_movimientos`
+(¿puede un cajero registrar un pago a proveedor?) y `gastos_fijos`/`gasto_cuotas` (el CAJERO opera
+bajo su umbral y el CONTADOR es actor legítimo).
+
+### 🐛 Hallazgo aparte: 9 specs e2e estaban rotos hace días, y no por las migraciones
+
+Al correr la regresión aparecieron fallando **todos los specs que siembran stock por UI** (115, 116,
+119, 122, 123, 128, 131, 132, 137). El síntoma era inútil: un `toBeVisible` que no encontraba nada.
+
+Se investigó hasta la causa real instrumentando el fixture para capturar el toast antes de que se
+desvanezca:
+
+> `La ubicación "A-01-1" es Mono-SKU y ya tiene "E2E MoverMismaSuc 1788334922185"`
+
+El fixture `ingresoRealPorUI` **elige la primera ubicación de la lista a ciegas** (`vals[0]`), y esa
+es **Mono-SKU**. El día que quedó ocupada por un producto de otro spec, se cayeron los 9 de golpe.
+Hoy A-01-1 tiene **4 líneas E2E de 4 productos distintos** (7/8, 22/8 y dos del 1/9).
+
+**Descartado que sea de las migs 402/403/404**: el INSERT en `inventario_lineas` impersonando al
+DUEÑO pasa sin error, no hay ningún error de Postgres en los logs, y ninguna de las tablas que toca
+el ingreso (`inventario_lineas`, `inventario_series`, `movimientos_stock`) está en esas migraciones.
+
+**No se arregló** — se probaron dos caminos y ninguno cierra limpio: dejar "Sin ubicación" hace que
+el ingreso pase pero el POS no pueda despachar la línea, y reintentar ubicación por ubicación depende
+de detectar toasts que compiten y se desvanecen. Es deuda de fixture, no de producto. Las dos salidas
+razonables quedan anotadas en `project_pendientes.md`.
+
+---
+
 ## [2026-09-07] update | 🔴 Los secretos que la 400 no cubrió + el detalle de sueldos (mig 403) — v1.204.0
 
 Después de la 402, en vez de dar la tanda por cerrada repetí la auditoría **sobre todo el esquema**:

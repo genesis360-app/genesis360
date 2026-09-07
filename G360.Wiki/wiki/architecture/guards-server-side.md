@@ -228,23 +228,44 @@ clientes, datos operativos que todos necesitan). Lo que salió y se cerró en la
 - **La escritura de las credenciales**: la 400 solo había cerrado la lectura; un CAJERO podía
   **desconectar las integraciones del comercio**.
 
-#### 🟥 Abierto: la matriz de ESCRITURA de plata e inventario
+#### ✅ La matriz de ESCRITURA de plata, precios e inventario — CERRADA (mig 404)
 
-Verificado con sondas — un CAJERO **escribe** hoy por REST directo: `cheques` (19 filas),
-`cliente_creditos` (3), `proveedor_cc_movimientos` (17), `producto_precios_mayorista` (68),
-`cupones` (70), `sucursales` (2) y `kit_recetas` (11). Dos observaciones que valen para el diseño
-del fix:
+Un CAJERO escribía por REST `cheques` (19 filas), `cliente_creditos` (3), `caja_traspasos` (2),
+`producto_precios_mayorista` (68), `cupones` (70), `combos` (25), `sucursales` (2), `ubicaciones`
+(102), `estados_inventario` (202), `canales_venta` (17), `cuentas_origen` (7), `kit_recetas` (11) y
+`proveedor_cuentas_bancarias` (el **CBU al que se le paga a un proveedor**).
 
-1. **`producto_precios_mayorista` y `cupones` son el precio de venta que cerró la mig 396, por la
-   puerta de al lado.** Un guard sobre `productos.precio_venta` no sirve de nada si el mismo rol
-   edita la lista mayorista o crea un cupón del 90 %.
-2. **El corte no puede ser por tabla, tiene que ser por OPERACIÓN.** `VentasPage` **inserta**
-   `cliente_creditos` en devoluciones y anulaciones, y un CAJERO **crea** cheques legítimamente al
-   cobrar. INSERT operativo sí; UPDATE/DELETE de una fila ya existente, no. Es la misma lección de la
-   396, donde un guard genérico habría roto ventas.
+**Lo que hay que entender del diseño, porque es lo que hace difícil este tipo de guard:**
 
-Queda también `proveedor_cuentas_bancarias` (el **CBU de los proveedores**: cambiarlo redirige un
-pago) — hoy 0 filas en DEV y PROD, por eso no entró en la 403.
+1. **`producto_precios_mayorista`, `combos` y `cupones` eran el precio de venta por la puerta de al
+   lado.** La mig 396 puso un trigger sobre `productos.precio_*`, pero el mismo rol podía editar la
+   lista mayorista, armar un combo o crear un cupón del 90 %. Un guard que se esquiva por otra tabla
+   no es un guard.
+2. **El corte va por OPERACIÓN, no por tabla.** Y esto casi rompe la venta: **el POS ESCRIBE
+   `cupones_codigos` al canjear** (`VentasPage.tsx:3405`, claim atómico). No apareció en el primer
+   barrido de escritores porque el `.update()` está en la **línea siguiente** al `.from()` —
+   apareció al repetir el grep en **multilínea**. Método a repetir: buscar escritores con
+   `multiline`, nunca línea por línea.
+
+| Tabla | Leer | Escribir |
+|---|---|---|
+| `cuentas_origen`, `canales_venta`, `sucursales`, `motivos_movimiento`, `estados_inventario`, `ubicaciones`, `proveedor_cuentas_bancarias` | tenant | DUEÑO / ADMIN / SUPER_USUARIO |
+| `producto_precios_mayorista`, `producto_stock_minimo_sucursal` | tenant | `auth_puede_editar_modulo('inventario')` |
+| `combos`, `combo_items`, `cupones` | tenant | `auth_puede_editar_modulo('comercial')` (módulo nuevo en la 404) |
+| `cupones_codigos` | tenant | INSERT/DELETE Comercial · **UPDATE abierto (el canje)**, con trigger que protege `codigo` y `cupon_id` |
+| `kit_recetas` | tenant | inventario **+ DEPÓSITO** (arma kits) |
+| `cliente_creditos` | tenant | **INSERT operativo** (la devolución lo necesita) · UPDATE/DELETE gestión |
+| `cheques` | tenant | INSERT y cambio de **estado** operativos · **`monto`** por trigger de columna · DELETE gestión |
+| `caja_traspasos` | tenant | INSERT operativo · **UPDATE** DUEÑO/SUPERVISOR (era el gate que `CajaPage` tenía solo en el cliente) |
+
+> ⚠ **Cuando un test y un guard discrepan, preguntarse primero cuál de los dos está mal.** Acá un test
+> propio falló porque había puesto a DEPÓSITO entre los que "no deben escribir `kit_recetas`" — y
+> justamente es su trabajo. Mismo falso rojo que con RRHH en la mig 401. Las excepciones deliberadas
+> van **escritas** en la spec, con su control positivo, no descubiertas.
+
+**Sigue abierto, por definición de negocio**: `proveedor_cc_movimientos` (¿un cajero registra un pago
+a proveedor?) y `gastos_fijos`/`gasto_cuotas` (el CAJERO opera bajo su umbral y el CONTADOR es actor
+legítimo — cerrarlos por rol rompería a los dos).
 
 ---
 

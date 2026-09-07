@@ -6,7 +6,71 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 54) — `v1.204.0` en `dev`, migs **391-403** solo en DEV.
+> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 55) — Tanda F CERRADA. `v1.205.0` en `dev`, migs **391-404** solo en DEV.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo que salió hoy (migs 402, 403 y 404)
+>
+> | Mig | Qué cerró |
+> |---|---|
+> | **402** | el **núcleo fiscal** era escribible por cualquier rol (CUIT, condición de IVA, `afip_produccion`, certificado) y la **clave privada AFIP** era descargable |
+> | **403** | los secretos que la 400 dejó afuera (**Mercado Libre**, MODO, couriers) + el **detalle** de sueldos que la 401 dejó afuera |
+> | **404** | la **matriz de escritura**: plata (`cheques`, `cliente_creditos`, `caja_traspasos`), **precios por la puerta de al lado** (`producto_precios_mayorista`, `combos`, `cupones`) y configuración |
+>
+> #### 🟥 LO PRIMERO DE LA PRÓXIMA SESIÓN — dos issues que quedaron abiertos
+>
+> **1. 🐛 9 specs e2e rotos hace días (NO es de las migraciones — verificado).** Todos los que
+> siembran stock por UI: 115, 116, 119, 122, 123, 128, 131, 132, 137. Causa real, encontrada
+> instrumentando el fixture para atrapar el toast antes de que se desvanezca:
+>
+> > `La ubicación "A-01-1" es Mono-SKU y ya tiene "E2E MoverMismaSuc 1788334922185"`
+>
+> `ingresoRealPorUI` (`tests/e2e/helpers/fixtures.ts`) **elige la primera ubicación a ciegas**
+> (`vals[0]`) y esa es **Mono-SKU**. Cuando quedó ocupada por un producto de otro spec, se cayeron los
+> 9 juntos. Hoy A-01-1 tiene **4 líneas E2E de 4 productos distintos** (7/8, 22/8 y dos del 1/9).
+>
+> Se probaron dos salidas y **ninguna cierra limpio**, por eso quedó sin arreglar:
+> - *"Sin ubicación"*: el ingreso pasa (`Ingreso registrado`) pero después **el POS no despacha** la
+>   línea y el spec falla más adelante.
+> - *reintentar ubicación por ubicación*: depende de detectar dos toasts que compiten y se desvanecen;
+>   quedó flaky.
+>
+> Las dos opciones razonables: **(a)** que el fixture use una **ubicación dedicada de e2e**, creada si
+> no existe (es el principio de "foto de datos explícita" que la Tanda D/E/F ya adoptó), o **(b)**
+> liberar A-01-1 moviendo esas 4 líneas E2E a `ubicacion_id = NULL` (no cambia stock: el trigger de
+> recálculo mira `cantidad`/`activo`/`producto_id`, no la ubicación) — pero eso se vuelve a romper en
+> la próxima corrida, así que (a) es la buena.
+>
+> **2. Definición de negocio para cerrar los últimos dos de la matriz:**
+> - `proveedor_cc_movimientos` — ¿un CAJERO puede registrar un pago a proveedor? Lo inserta
+>   `ChequesPanel` (que vive dentro de Gastos, donde el cajero entra) y `ProveedoresPage` (ownerOnly).
+> - `gastos_fijos` / `gasto_cuotas` — el CAJERO opera bajo su umbral y el CONTADOR es actor legítimo;
+>   cerrarlos por rol rompería a los dos.
+>
+> #### 🟥 El resto, en orden
+>
+> 1. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 2. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238).
+> 3. **E2 — techo real de la instancia**: instrumento listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo.
+> 4. **Dropear `tenants.afipsdk_token`** — hoy siempre NULL; se dropea cuando PROD corra este código.
+> 5. **Decisión de PROD**: cuándo van las migs 391-404 + el código. **Cambian comportamiento**:
+>    donde antes bloqueaba solo la UI, ahora la base rechaza. **Migraciones y código van juntos.**
+>
+> #### Deuda de fixture (migs 401 y 403)
+>
+> En DEV hay **0 empleados con `user_id`** → la rama "cada empleado ve lo suyo" de la visibilidad de
+> RRHH **nunca se probó con datos**. Para verificarla hay que vincular un empleado a un usuario.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 404.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV (pg_cron `tn-fulfillment-sync`).
+> - `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado**, no por código.
+
+> ### ✅ (2026-09-07, cont. 54) — secretos restantes + detalle de RRHH (mig 403). `v1.204.0` en `dev`.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
 >
 > #### Qué salió (migs 402 + 403, misma sesión)

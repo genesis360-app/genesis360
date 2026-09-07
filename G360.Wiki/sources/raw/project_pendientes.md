@@ -66,10 +66,15 @@ type: project
 > - **E2 — techo real de la instancia**: el instrumento está listo (`--usuarios N --si-se-que-hago`),
 >   falta acordar CUÁNDO correrlo (saturar DEV es destructivo).
 > - **F2** — matriz completa por rol.
-> - ⚠ **En DEV, Caja1 quedó con un desvío de $2.468** (ventas #679/#682 de las corridas fallidas del
->   spec 137: ingreso sin su egreso). NO se emparejó a mano a propósito — decisión de GO.
-> - **Decisión de GO**: si todo esto va a PROD (PR `dev→main` + migs 391-399) o espera. PROD sigue en
+> - **PROD: GO decidió ESPERAR** (2026-09-06) — "sigamos con pendientes y fixes". PROD sigue en
 >   `v1.195.4`; migs 391-399 **solo en DEV**.
+> - 🔴 **`schema_full.sql` está 9 migraciones atrasado** (última actualización: mig 390). `npm run
+>   schema:dump` falla por el camino PG (bug de Supavisor) y necesita `SUPABASE_ACCESS_TOKEN` en
+>   `.env.local` — **bloqueado esperando el PAT de GO**, que además conviene que sea uno NUEVO para
+>   rotar de paso el `sbp_60df...` filtrado desde el 2026-07-09.
+> - ✅ **Desvío de $2.468 en Caja1 de DEV: REGULARIZADO** (autorizado por GO). Barrido completo: 0
+>   ventas canceladas con ingreso sin su egreso.
+> - ⏸ **Reintegro en efectivo USD al anular**: GO lo posterga ("lo vemos después").
 
 > ### 🟥🟥 (2026-09-06, cont. 50) — el incidente original que abrió las Tandas D/E/F
 > **[D1 ya cerrado — ver arriba. Se conserva por el diagnóstico y el método.]**

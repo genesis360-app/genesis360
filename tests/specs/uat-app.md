@@ -121,9 +121,25 @@ asentó su `egreso_devolucion_sena` de $1.234 en **Caja1 (ARS)**.
 contempla en ninguna rama (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). Hay que
 relevarlo con GO.
 
-⚠ **En DEV quedó un desvío de $2.468 en Caja1** (las ventas #679 y #682 de las dos corridas fallidas:
-ingreso sin su egreso). No se corrigió a mano a propósito — escribir movimientos de caja "para
-emparejar" es justo lo que no hay que hacer sin decisión de GO.
+✅ **Desvío de DEV regularizado (autorizado por GO, 2026-09-06).** Las ventas #679 y #682 de las dos
+corridas fallidas habían quedado con su `ingreso` y sin el `egreso_devolucion_sena` → $2.468 de más en
+Caja1. Se asentaron los dos egresos faltantes en **la misma sesión donde había caído el ingreso**
+(Caja1, ARS, abierta) y por el mismo monto, con el concepto marcado como *"regularización manual (bug
+caja USD)"* para que quede auditable. Saldo de la sesión: **$33.395** (era $35.863 con el desvío).
+
+**Auditoría de barrido**: se buscaron TODAS las ventas canceladas del tenant con cobro en efectivo que
+tuvieran `ingreso` sin su `egreso_devolucion_sena` → **0 resultados**. No había más huérfanos que esos
+dos. La consulta queda como control reusable:
+
+```sql
+-- ventas canceladas con cobro en efectivo cuyo ingreso NO tiene su egreso de devolución
+with cancel as (select numero from ventas where estado='cancelada'
+                 and coalesce(monto_pagado,0)>0 and medio_pago ilike '%Efectivo%')
+select c.numero from cancel c
+where exists (select 1 from caja_movimientos where tipo='ingreso' and concepto='Venta #'||c.numero)
+  and not exists (select 1 from caja_movimientos where tipo='egreso_devolucion_sena'
+                   and concepto like '%Venta #'||c.numero||'%');
+```
 
 ### H1 — Controles financieros SOLO client-side (choca con REGLA #0 obligación #3) 🟥🟥
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos

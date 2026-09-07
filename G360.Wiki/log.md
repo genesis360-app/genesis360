@@ -71,9 +71,20 @@ justo lo que prohíbe la **obligación #4 de la REGLA #0**.
 Fix: se elige la sesión de `sesionesArs`, el guard previo exige caja **EN PESOS**, la pata no-efectivo
 queda `await`eada y **todos** los caminos de falla avisan con monto y motivo. Verificado: el spec vuelve
 a pasar y la Venta #684 asentó su egreso de $1.234 en **Caja1 (ARS)**.
-⚠ Abierto: si la venta se cobró en **efectivo USD**, el reintegro al anular no está contemplado en
-ninguna rama. ⚠ En DEV quedó un desvío de **$2.468** en Caja1 (ventas #679/#682 de las corridas
-fallidas) — no se corrigió a mano a propósito.
+⚠ Abierto (GO lo posterga): si la venta se cobró en **efectivo USD**, el reintegro al anular no está
+contemplado en ninguna rama.
+
+**Cierre del desvío (autorizado por GO en la misma sesión)**: las ventas #679/#682 de las dos corridas
+fallidas quedaron con `ingreso` sin su `egreso_devolucion_sena` → $2.468 de más en Caja1. Se asentaron
+los dos egresos faltantes **en la misma sesión donde había caído el ingreso** (Caja1, ARS) y por el
+mismo monto, con el concepto marcado como *regularización manual* para que quede auditable. Saldo de la
+sesión: **$33.395** (era $35.863). Se corrió además un **barrido completo** buscando cualquier otra
+venta cancelada con cobro en efectivo cuyo ingreso no tuviera su egreso: **0 resultados**, no había más
+huérfanos. La consulta quedó documentada como control reusable en `uat-app.md` §H5.
+
+**Decisión de GO sobre PROD**: esperar — "sigamos con pendientes y fixes". Sigue en `v1.195.4`.
+**Bloqueado**: `schema_full.sql` está 9 migraciones atrasado; `npm run schema:dump` no puede usar el
+camino PG (bug de Supavisor) y necesita un `SUPABASE_ACCESS_TOKEN` que no está en `.env.local`.
 
 **Verde**: lint 0 warnings · tsc + build · e2e de regresión 26 passed (1 skip por fixture) · spec 141
 19/19.

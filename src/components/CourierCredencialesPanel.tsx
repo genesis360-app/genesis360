@@ -14,7 +14,9 @@ import toast from 'react-hot-toast'
 interface CredRow {
   id: string
   courier: string
-  credenciales: Record<string, string>
+  /** ¿Hay credenciales cargadas? Las credenciales EN SÍ no se pueden leer desde el browser
+   *  (mig 403): son un secreto de solo escritura y esta columna generada es lo único que vuelve. */
+  credenciales_configuradas: boolean
   activo: boolean
 }
 
@@ -30,7 +32,7 @@ export function CourierCredencialesPanel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('courier_credenciales')
-        .select('id, courier, credenciales, activo')
+        .select('id, courier, activo, credenciales_configuradas')
         .eq('tenant_id', tenantId)
       if (error) throw error
       return (data ?? []) as CredRow[]
@@ -75,18 +77,20 @@ function CourierItem({ courier, row, canEdit, tenantId, onSaved }: {
   const [vals, setVals] = useState<Record<string, string>>({})
   const [activo, setActivo] = useState(true)
 
-  // Sincroniza el form con la fila al cargar/cambiar
+  // 🔒 Las credenciales son un SECRETO DE SOLO ESCRITURA (mig 403): el browser no puede leerlas, así
+  // que el form arranca siempre vacío. Al cambiarlas hay que reingresarlas COMPLETAS — sin poder leer
+  // las guardadas no hay forma de hacer un merge parcial, y guardar la mitad borraría la otra mitad.
   useEffect(() => {
-    setVals(row?.credenciales ?? {})
+    setVals({})
     setActivo(row?.activo ?? true)
     setProbado(null)
   }, [row])
 
   const [probado, setProbado] = useState<{ ok: boolean; msg: string } | null>(null)
 
-  const configurado = !!row && campos.some(c => (row.credenciales?.[c.key] ?? '').trim() !== '')
-  // Hay cambios sin guardar respecto de lo persistido → probar testearía claves viejas.
-  const dirty = campos.some(c => (vals[c.key] ?? '').trim() !== (row?.credenciales?.[c.key] ?? '').trim())
+  const configurado = !!row?.credenciales_configuradas
+  // Hay algo tipeado sin guardar → probar testearía las claves viejas, no las de la pantalla.
+  const dirty = campos.some(c => (vals[c.key] ?? '').trim() !== '')
 
   const probar = useMutation({
     mutationFn: () => probarCredencialesCourier(courier),
@@ -105,8 +109,23 @@ function CourierItem({ courier, row, canEdit, tenantId, onSaved }: {
 
   const guardar = useMutation({
     mutationFn: async () => {
+      // Solo-actividad: si no se tipeó nada, NO se manda `credenciales` — mandar el objeto vacío
+      // borraría las guardadas, que el browser ya no puede leer para reconstruirlas (mig 403).
+      if (!dirty) {
+        if (!row) throw new Error('Cargá las credenciales antes de guardar')
+        const { error } = await supabase.from('courier_credenciales')
+          .update({ activo, updated_at: new Date().toISOString() }).eq('id', row.id)
+        if (error) throw error
+        return
+      }
+      // Se está reemplazando el secreto → tienen que venir TODOS los campos: sin poder leer los
+      // guardados no hay merge parcial posible, y guardar la mitad dejaría el courier inutilizable.
+      const faltantes = campos.filter(c => (vals[c.key] ?? '').trim() === '').map(c => c.label)
+      if (faltantes.length) {
+        throw new Error(`Reingresá TODAS las credenciales para reemplazarlas. Falta: ${faltantes.join(', ')}`)
+      }
       const credenciales: Record<string, string> = {}
-      campos.forEach(c => { const v = (vals[c.key] ?? '').trim(); if (v) credenciales[c.key] = v })
+      campos.forEach(c => { credenciales[c.key] = (vals[c.key] ?? '').trim() })
       const payload = {
         id: row?.id ?? crypto.randomUUID(),
         tenant_id: tenantId,
@@ -145,10 +164,16 @@ function CourierItem({ courier, row, canEdit, tenantId, onSaved }: {
                 disabled={!canEdit}
                 autoComplete="off"
                 onChange={e => setVals(v => ({ ...v, [c.key]: e.target.value }))}
-                placeholder={c.placeholder}
+                placeholder={configurado ? '•••••••• (guardado)' : c.placeholder}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
             </div>
           ))}
+          {configurado && (
+            <p className="text-xs text-gray-400">
+              Por seguridad no se muestran. Dejalas vacías para conservarlas; para reemplazarlas hay que
+              reingresarlas <strong>todas</strong>.
+            </p>
+          )}
           <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 pt-1">
             <input type="checkbox" checked={activo} disabled={!canEdit}
               onChange={e => setActivo(e.target.checked)} className="accent-accent" />

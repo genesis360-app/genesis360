@@ -3162,8 +3162,10 @@ export default function ConfigPage() {
   const { data: modoCred, refetch: refetchModo } = useQuery({
     queryKey: ['modo_credentials', tenant?.id],
     queryFn: async () => {
+      // Sin `api_key`: es un secreto de solo escritura (mig 403) y la UI nunca la mostró — el form
+      // de reconfigurar ya arrancaba vacío y exige tipearla de nuevo.
       const { data } = await supabase.from('modo_credentials')
-        .select('id, merchant_id, api_key, ambiente, conectado, conectado_at')
+        .select('id, merchant_id, ambiente, conectado, conectado_at')
         .eq('tenant_id', tenant!.id).maybeSingle()
       return data
     },

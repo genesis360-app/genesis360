@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-07T16:37:55.377Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260907162551 · 166 tablas
+-- Generado 2026-09-07T17:16:14.344Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260907171141 · 166 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -567,7 +567,8 @@ CREATE TABLE public.courier_credenciales (
   credenciales jsonb NOT NULL DEFAULT '{}'::jsonb,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  credenciales_configuradas boolean DEFAULT ((credenciales IS NOT NULL) AND (credenciales <> '{}'::jsonb))
 );
 
 CREATE TABLE public.courier_factura_lineas (
@@ -12355,13 +12356,11 @@ CREATE POLICY consumo_eventos_lectura_tenant ON public.consumo_eventos AS PERMIS
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY consumo_tarifas_lectura ON public.consumo_tarifas AS PERMISSIVE FOR SELECT TO authenticated
   USING (true);
-CREATE POLICY courier_credenciales_tenant ON public.courier_credenciales AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY courier_credenciales_select ON public.courier_credenciales AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY courier_credenciales_write_gestion ON public.courier_credenciales AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY courier_factura_lineas_tenant ON public.courier_factura_lineas AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12555,23 +12554,26 @@ CREATE POLICY kitting_log_tenant ON public.kitting_log AS PERMISSIVE FOR ALL TO 
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY meli_cred_tenant ON public.meli_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY mp_creds_tenant ON public.mercadopago_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY meli_credentials_select ON public.meli_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY meli_credentials_write_gestion ON public.meli_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY mercadopago_credentials_select ON public.mercadopago_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY mercadopago_credentials_write_gestion ON public.mercadopago_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY metodos_pago_select ON public.metodos_pago AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY metodos_pago_write_gestion ON public.metodos_pago AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
-CREATE POLICY tenant_isolation ON public.modo_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY modo_credentials_select ON public.modo_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY modo_credentials_write_gestion ON public.modo_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY motivos_tenant ON public.motivos_movimiento AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12745,13 +12747,13 @@ CREATE POLICY roles_custom_select ON public.roles_custom AS PERMISSIVE FOR SELEC
 CREATE POLICY roles_custom_write_gestion ON public.roles_custom AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
-CREATE POLICY rrhh_anticipos_tenant ON public.rrhh_anticipos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY rrhh_anticipos_select ON public.rrhh_anticipos AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (empleado_id IN ( SELECT e.id
+   FROM empleados e
+  WHERE (e.user_id = ( SELECT auth.uid() AS uid)))))));
+CREATE POLICY rrhh_anticipos_write ON public.rrhh_anticipos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY rrhh_asistencia_supervisor ON public.rrhh_asistencia AS PERMISSIVE FOR ALL TO public
   USING ((empleado_id IN ( SELECT get_supervisor_team_ids() AS get_supervisor_team_ids)))
   WITH CHECK ((empleado_id IN ( SELECT get_supervisor_team_ids() AS get_supervisor_team_ids)));
@@ -12836,13 +12838,15 @@ CREATE POLICY rrhh_puestos_tenant ON public.rrhh_puestos AS PERMISSIVE FOR ALL T
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY rrhh_salario_items_tenant ON public.rrhh_salario_items AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY rrhh_salario_items_select ON public.rrhh_salario_items AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (salario_id IN ( SELECT s.id
+   FROM rrhh_salarios s
+  WHERE (s.empleado_id IN ( SELECT e.id
+           FROM empleados e
+          WHERE (e.user_id = ( SELECT auth.uid() AS uid)))))))));
+CREATE POLICY rrhh_salario_items_write ON public.rrhh_salario_items AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY rrhh_salarios_select ON public.rrhh_salarios AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (empleado_id IN ( SELECT e.id
    FROM empleados e
@@ -12913,10 +12917,11 @@ CREATE POLICY tenants_update ON public.tenants AS PERMISSIVE FOR UPDATE TO publi
   WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
    FROM users
   WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text])))))) OR is_admin()));
-CREATE POLICY tn_creds_tenant ON public.tiendanube_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY tiendanube_credentials_select ON public.tiendanube_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY tiendanube_credentials_write_gestion ON public.tiendanube_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY tipos_pedido_tenant ON public.tipos_pedido AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
@@ -12991,10 +12996,11 @@ CREATE POLICY ventas_rec_tenant ON public.ventas_recurrentes AS PERMISSIVE FOR A
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY whatsapp_creds_tenant ON public.whatsapp_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = auth.uid()))));
+CREATE POLICY whatsapp_credentials_select ON public.whatsapp_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY whatsapp_credentials_write_gestion ON public.whatsapp_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY whatsapp_gastos_borrador_tenant ON public.whatsapp_gastos_borrador AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -13125,8 +13131,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.co
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_factura_lineas TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_factura_lineas TO authenticated;
@@ -13231,8 +13237,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ki
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.leads TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.leads TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.leads TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO anon;
 GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO authenticated;
@@ -13240,8 +13246,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.me
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.motivos_movimiento TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.motivos_movimiento TO authenticated;

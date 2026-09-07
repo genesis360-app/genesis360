@@ -396,13 +396,19 @@ test.describe('F2 — qué puede LEER cada rol', () => {
     ['mercadopago_credentials', 'refresh_token'],
     ['tiendanube_credentials', 'access_token'],
     ['whatsapp_credentials', 'access_token'],
+    // mig 403 — los tres que la 400 dejó afuera. Mercado Libre es el que más dolía: con ese token
+    // se opera la cuenta de ML del comercio (publicaciones, preguntas, órdenes) desde afuera.
+    ['meli_credentials', 'access_token'],
+    ['meli_credentials', 'refresh_token'],
+    ['modo_credentials', 'api_key'],
+    ['courier_credenciales', 'credenciales'],
   ]
 
   // 🔴 Hallazgo (mig 400): CUALQUIER rol del tenant podía leer el access_token de Mercado Pago y
   // Tienda Nube en claro. Con ese token se opera la cuenta de MP del comercio desde afuera de
   // Genesis360. El comentario del código decía "nunca expuesto al frontend" — y era cierto en la
   // interfaz TypeScript, que no es un control de acceso.
-  test('ningún rol puede leer los access_token de las integraciones (mig 400)', async ({ request }) => {
+  test('ningún rol puede leer los access_token de las integraciones (migs 400 y 403)', async ({ request }) => {
     const owner = await tokenOwner(request)
     for (const [tabla, col] of SECRETOS) {
       for (const r of [...rolesConCredenciales(), { rol: 'DUEÑO', email: undefined, password: undefined }]) {
@@ -485,7 +491,10 @@ test.describe('F2 — qué puede LEER cada rol', () => {
     // Se verifica en el test de abajo, no acá.
     for (const r of rolesConCredenciales().filter((x) => x.rol !== 'RRHH')) {
       const token = await tokenRol(request, r)
-      for (const q of ['empleados?select=id,salario_bruto,cbu,dni_rut&limit=5', 'rrhh_salarios?select=id,neto&limit=5']) {
+      // `rrhh_salario_items` y `rrhh_anticipos` los cerró la mig 403: con la cabecera cerrada y el
+      // detalle abierto, el sueldo se reconstruía sumando los conceptos.
+      for (const q of ['empleados?select=id,salario_bruto,cbu,dni_rut&limit=5', 'rrhh_salarios?select=id,neto&limit=5',
+                       'rrhh_salario_items?select=id,monto&limit=5', 'rrhh_anticipos?select=id,monto&limit=5']) {
         const res = await request.get(`${SUPABASE_URL}/rest/v1/${q}`, { headers: restHeaders(token) })
         expect(res.ok(), await res.text()).toBeTruthy()
         expect((await res.json()) as unknown[], `[141/F2] ${r.rol} NO debería ver ${q.split('?')[0]}`).toHaveLength(0)
@@ -499,7 +508,8 @@ test.describe('F2 — qué puede LEER cada rol', () => {
     if (rrhh?.email) quienes.push(['RRHH', await tokenRol(request, rrhh)])
 
     for (const [rol, token] of quienes) {
-      for (const q of ['empleados?select=id,salario_bruto&limit=3', 'rrhh_salarios?select=id,neto&limit=3']) {
+      for (const q of ['empleados?select=id,salario_bruto&limit=3', 'rrhh_salarios?select=id,neto&limit=3',
+                       'rrhh_salario_items?select=id,monto&limit=3']) {
         const res = await request.get(`${SUPABASE_URL}/rest/v1/${q}`, { headers: restHeaders(token) })
         expect((await res.json()) as unknown[], `[141/F2] ${rol} DEBE seguir viendo ${q.split('?')[0]}`).not.toHaveLength(0)
       }
@@ -606,6 +616,69 @@ test.describe('F1 — el núcleo fiscal no lo escribe cualquier rol (mig 402)', 
     for (const r of rolesConCredenciales()) {
       const token = await tokenRol(request, r)
       expect(await listar(token), `[141/F1] ${r.rol} NO debe ver los archivos del certificado AFIP`).toHaveLength(0)
+    }
+  })
+})
+
+/**
+ * F2 (cierre) — las credenciales de integración tampoco las ESCRIBE cualquiera (mig 403).
+ *
+ * La mig 400 cerró la LECTURA de los tokens y dejó la escritura abierta: con la policy por tenant a
+ * secas, un CAJERO podía **desconectar las integraciones del comercio** o pisar un token por REST
+ * directo. `/configuracion` es `ownerOnly` en el frontend; ahora la base sostiene lo mismo.
+ */
+test.describe('F2 — las credenciales de integración solo las escribe gestión (mig 403)', () => {
+  /** Tablas de credenciales que TIENEN fila en el tenant de prueba, con un PATCH que no cambia nada. */
+  async function objetivosCredenciales(request: APIRequestContext) {
+    const h = restHeaders(await tokenOwner(request))
+    const candidatas: Array<[string, string, object]> = [
+      ['mercadopago_credentials', 'id,conectado', { conectado: null }],
+      ['tiendanube_credentials', 'id,conectado', { conectado: null }],
+      ['whatsapp_credentials', 'id,conectado', { conectado: null }],
+      ['meli_credentials', 'id,conectado', { conectado: null }],
+    ]
+    const objetivos: Array<[string, string, object]> = []
+    for (const [tabla, select] of candidatas) {
+      const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=${select}&limit=1`, { headers: h })
+      if (!res.ok()) continue
+      const [fila] = (await res.json()) as Array<{ id: string; conectado: boolean | null }>
+      if (fila) objetivos.push([tabla, fila.id, { conectado: fila.conectado }])
+    }
+    expect(objetivos.length, '[141/F2] fixture vacío: el tenant de prueba no tiene ninguna integración conectada').toBeGreaterThan(0)
+    return objetivos
+  }
+
+  test('ningún rol operativo puede desconectar ni pisar una integración', async ({ request }) => {
+    const objetivos = await objetivosCredenciales(request)
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      for (const [tabla, id, body] of objetivos) {
+        const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, body)
+        expect(escribio, `[141/F2] ${r.rol} NO debe poder escribir ${tabla}`).toBe(false)
+      }
+    }
+  })
+
+  test('🔑 el DUEÑO sí — el tab Conectividad tiene que seguir funcionando', async ({ request }) => {
+    const objetivos = await objetivosCredenciales(request)
+    const owner = await tokenOwner(request)
+    for (const [tabla, id, body] of objetivos) {
+      const escribio = await rlsDejaEscribir(request, owner, `${tabla}?id=eq.${id}&select=id`, body)
+      expect(escribio, `[141/F2] el DUEÑO DEBE poder escribir ${tabla}`).toBe(true)
+    }
+  })
+
+  // Las consultas EXACTAS que quedaron en el frontend después de sacarles los secretos.
+  test('🔑 las consultas reales de las pantallas de integración siguen andando', async ({ request }) => {
+    const consultas: Array<[string, string]> = [
+      ['meli_credentials', 'id,sucursal_id,seller_id,seller_nickname,seller_email,expires_at,conectado'],
+      ['modo_credentials', 'id,merchant_id,ambiente,conectado,conectado_at'],
+      ['courier_credenciales', 'id,courier,activo,credenciales_configuradas'],
+    ]
+    const owner = await tokenOwner(request)
+    for (const [tabla, select] of consultas) {
+      const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=${select}&limit=3`, { headers: restHeaders(owner) })
+      expect(res.status(), `[141/F2] la consulta real sobre ${tabla} debe seguir andando: ${await res.text()}`).toBe(200)
     }
   })
 })

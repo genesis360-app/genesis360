@@ -37,7 +37,17 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.200.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+**Versión en DEV:** `v1.201.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **F2 — la matriz de LECTURA por rol**, la mitad que faltaba de la Tanda F, y donde
+aparecieron los hallazgos más serios: los `access_token` de **Mercado Pago y Tienda Nube los leía
+CUALQUIER usuario del tenant** en claro (con el de MP se opera la cuenta del comercio desde afuera).
+El comentario del código decía "nunca expuesto al frontend" y era cierto **en la interfaz TypeScript**
+— que no es un control de acceso. **Mig 400**: privilegios a nivel COLUMNA, impacto cero verificado.
+Siguen abiertos `emisores_fiscales.afipsdk_token` (el panel hace `select('*')`) y las tablas de RRHH
+—sueldos, CBU y DNI visibles para cualquier rol—, que son una **decisión de negocio**.
+Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.200.0** — tag+release sobre `dev`. Antes: (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
 `v1.195.4`, por decisión de GO: "esperemos un poco más, sigamos con pendientes y fixes").
 **Tanda D COMPLETA**: `142_resiliencia_backend_degradado` cierra D2-D5 y es la **primera spec del repo
 que intercepta la red del browser** (`page.route`, `context.setOffline`) — la capa de condiciones

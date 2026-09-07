@@ -125,6 +125,38 @@ CAJERO sigue escribiendo `stock_actual`, un UPDATE que no cambia el precio pasa,
 cambian precios (y el precio queda restaurado), el CONTADOR sigue editando campos de un gasto, y
 `venta_items.sucursal_id` sigue sincronizada.
 
+## 🔴 F2 — la matriz de LECTURA (donde aparecieron los hallazgos más serios)
+
+La Tanda F empezó mirando solo **qué escribe** cada rol. La otra mitad es **qué lee**. De 18 tablas
+sensibles auditadas, **solo 4 tienen alguna policy que mire el rol**.
+
+| Tabla · columna | Antes | Ahora |
+|---|---|---|
+| `mercadopago_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos** los roles | ✅ 403 (mig 400) |
+| `tiendanube_credentials.access_token` | 🔴 todos | ✅ 403 (mig 400) |
+| `whatsapp_credentials.access_token` | 🔴 sin protección | ✅ 403 (mig 400) |
+| `emisores_fiscales.afipsdk_token` | 🔴 todos | 🔴 abierto |
+| `rrhh_salarios.basico/neto` · `empleados.salario_bruto/cbu/dni_rut` | 🔴 sueldos, CBU y DNI visibles para cualquier rol | 🔴 abierto |
+| `tenant_certificates.cert_key_path` | 🟠 ruta de la clave AFIP | 🟠 abierto |
+| `ai_tenant_memoria`, `boveda_retiros` | ✅ solo DUEÑO | ✅ |
+
+Con el token de Mercado Pago se opera la cuenta del comercio **desde afuera de Genesis360**. El
+comentario del código decía *"access_token nunca expuesto al frontend"*, y era cierto **en la interfaz
+TypeScript** — que no es un control de acceso. PostgREST devuelve la columna que le pidas.
+
+**Fix (mig 400): privilegios a nivel COLUMNA.** Se revoca el SELECT de tabla y se re-otorga columna por
+columna salteando los secretos — en PostgreSQL no se puede "restar" una columna de un grant de tabla.
+Impacto cero verificado: las tres consultas de `ConfigPage.tsx` usan listas explícitas sin el token, y
+`service_role` queda intacto para las Edge Functions.
+
+> ⚠ Con `select('*')` PostgREST expande a todas las columnas y devuelve **403**. Si alguna pantalla
+> futura usa `select('*')` sobre estas tablas, se rompe — hay un test que cubre justamente eso.
+
+**Abierto**: `emisores_fiscales.afipsdk_token` (el panel hace `select('*')` y además edita el token →
+hay que pasar a listas explícitas antes) y las tablas de RRHH, que son una **decisión de negocio**
+—quién puede ver sueldos— y no un fix mecánico: `MiPortalPage` deja que cada empleado lea su fila, y
+tres pantallas más leen esas tablas para costos.
+
 ---
 
 Ver también: [[wiki/architecture/multi-tenant-rls]] · [[wiki/architecture/resiliencia]] ·

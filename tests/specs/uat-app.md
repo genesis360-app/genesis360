@@ -506,7 +506,44 @@ cambia el precio pasa, DUEÑO/SUPERVISOR sí cambian precios (y el precio queda 
 CONTADOR sigue editando campos de un gasto. Las tres ramas del umbral (bajo / sobre / sin umbral) se
 verificaron por impersonación SQL con un cajero sin rol custom.
 
-**F2 sigue abierto**: la matriz cubre 4 roles × 12 operaciones, no la matriz completa.
+#### 🔴 F2 — matriz de LECTURA por rol (2026-09-06): acá aparecieron los hallazgos más serios
+
+La Tanda F había mirado solo **qué escribe** cada rol. La otra mitad es **qué lee**. Sonda con tokens
+reales de los 6 roles sobre 14 tablas sensibles. De 18 tablas sensibles auditadas, **solo 4 tienen
+alguna policy que mire el rol**.
+
+| Tabla · columna | Antes | Ahora |
+|---|---|---|
+| `mercadopago_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos** los roles | ✅ 403 (mig 400) |
+| `tiendanube_credentials.access_token` | 🔴 lo leían **todos** | ✅ 403 (mig 400) |
+| `whatsapp_credentials.access_token` | 🔴 legible (0 filas en este tenant, pero sin protección) | ✅ 403 (mig 400) |
+| `emisores_fiscales.afipsdk_token` | 🔴 lo leen todos (2 de 4 emisores tienen uno cargado) | 🔴 **abierto** |
+| `rrhh_salarios.basico/neto` | 🔴 los lee **cualquier rol**, incluido CAJERO | 🔴 **abierto** |
+| `empleados.salario_bruto`, `cbu`, `dni_rut` | 🔴 ídem: sueldo, cuenta bancaria y DNI de cada empleado | 🔴 **abierto** |
+| `tenant_certificates.cert_key_path` | 🟠 ruta de la clave privada AFIP, legible por todos | 🟠 abierto |
+| `ai_tenant_memoria`, `boveda_retiros` | ✅ solo DUEÑO | ✅ |
+
+**Lo grave del caso Mercado Pago**: con ese token se opera la cuenta de MP del comercio (cobros,
+devoluciones) **desde afuera de Genesis360**. El comentario en `src/lib/supabase.ts` decía *"access_token
+nunca expuesto al frontend"* — y era cierto **en la interfaz TypeScript**, que no lo declara. Pero una
+interfaz no es un control de acceso: PostgREST devuelve la columna que le pidas. La protección existía
+solo en el tipo.
+
+**Fix (mig 400)**: privilegios a nivel **columna**. Se revoca el SELECT de tabla y se re-otorga columna
+por columna salteando los secretos (en PostgreSQL no se puede "restar" una columna de un grant de
+tabla). Impacto cero verificado: las tres consultas de `ConfigPage.tsx` usan listas explícitas que no
+incluyen el token, y `service_role` queda intacto para las Edge Functions. Ojo: con `select('*')`
+PostgREST expande a todas las columnas y daría 403 — por eso hay un test que lo cubre.
+
+**Lo que queda abierto y por qué:**
+- `emisores_fiscales.afipsdk_token`: mismo fix, pero el panel de Emisores hace `select('*')` y **edita**
+  el token, así que revocar la columna rompe la pantalla. Hay que pasar antes a listas explícitas.
+- `rrhh_salarios` / `empleados`: **es una decisión de negocio, no un fix mecánico** — hay que definir
+  quién puede ver sueldos. Complicación real: `MiPortalPage` deja que cada empleado lea su propia fila,
+  y `RentabilidadPage`/`DashGastosArea`/`useRecomendaciones` leen esas tablas para costos. Un gate
+  ingenuo rompe cuatro pantallas.
+
+**F2 sigue parcialmente abierto**: la matriz de escritura cubre 4 roles × 12 operaciones, no todo.
 
 > **Nota de método para las tres tandas**: hay que definir y documentar **con qué foto de datos** corre cada
 > escenario (tenant, sucursales, catálogo, usuarios por rol, estado de caja). Sin fixture explícito, un

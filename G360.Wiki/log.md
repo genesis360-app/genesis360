@@ -6,6 +6,40 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-07] update | 🔴 F2 — la matriz de LECTURA por rol: los access_token de las integraciones los leía cualquiera (mig 400)
+
+Siguiendo con la Tanda F, se atacó la mitad que faltaba: no **qué escribe** cada rol, sino **qué lee**.
+Ahí aparecieron los hallazgos más serios de toda la tanda. De 18 tablas sensibles auditadas, **solo 4
+tienen alguna policy que mire el rol**.
+
+**🔴 El hallazgo principal**: `mercadopago_credentials.access_token` (y `refresh_token`), y
+`tiendanube_credentials.access_token`, **los leía CUALQUIER usuario del tenant** —CAJERO, DEPÓSITO,
+RRHH, CONTADOR— en claro, con un simple `GET /rest/v1/...?select=access_token`. Con el token de MP se
+opera la cuenta del comercio (cobros, devoluciones) **desde afuera de Genesis360**.
+
+Lo aleccionador: el comentario en `src/lib/supabase.ts` decía *"access_token nunca expuesto al
+frontend"* — y era **cierto en la interfaz TypeScript**, que no lo declara. Pero una interfaz no es un
+control de acceso: PostgREST devuelve la columna que le pidas. **La protección existía solo en el tipo.**
+
+**Fix (mig 400)**: privilegios a nivel **COLUMNA** — se revoca el SELECT de tabla y se re-otorga
+columna por columna salteando los secretos (en PostgreSQL no se puede "restar" una columna de un grant
+de tabla). Verificado antes: las tres consultas de `ConfigPage.tsx` usan listas explícitas sin el token.
+Verificado después: token → **403** para todos (incluido el DUEÑO, que no lo necesita), `select=*` →
+403, y las consultas reales de ConfigPage siguen en 200.
+
+**Siguen abiertos, y no son fixes mecánicos:**
+- `emisores_fiscales.afipsdk_token` (2 de 4 emisores de DEV tienen uno): el panel hace `select('*')` y
+  **edita** el token, así que revocar la columna rompe la pantalla. Hay que pasar antes a listas
+  explícitas de columnas.
+- `rrhh_salarios` y `empleados`: **sueldo, CBU y DNI de cada empleado, hoy visibles para cualquier
+  rol**. Es una decisión de negocio (quién puede ver sueldos) y tiene una complicación real:
+  `MiPortalPage` deja que cada empleado lea su propia fila, y `RentabilidadPage`/`DashGastosArea`/
+  `useRecomendaciones` leen esas tablas para costos. Un gate ingenuo rompe cuatro pantallas.
+
+Spec 141: 19 → **23 tests**. Verde: lint · tsc + build.
+
+---
+
 ## [2026-09-06] update | ✅ Tanda D COMPLETA — D2 a D5 cerrados (spec 142) + limpieza del token filtrado + schema al día
 
 Cierre de la Tanda D, la categoría que se abrió por el incidente que tumbó la base de DEV.

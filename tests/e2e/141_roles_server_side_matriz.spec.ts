@@ -385,3 +385,64 @@ test.describe('F1 — los guards no bloquean lo legítimo', () => {
     ).toBe(true)
   })
 })
+
+/**
+ * F2 — matriz de LECTURA. La otra mitad de la Tanda F: no alcanza con qué puede ESCRIBIR cada rol,
+ * también importa qué puede LEER. Acá aparecieron los hallazgos más serios de toda la tanda.
+ */
+test.describe('F2 — qué puede LEER cada rol', () => {
+  const SECRETOS: Array<[string, string]> = [
+    ['mercadopago_credentials', 'access_token'],
+    ['mercadopago_credentials', 'refresh_token'],
+    ['tiendanube_credentials', 'access_token'],
+    ['whatsapp_credentials', 'access_token'],
+  ]
+
+  // 🔴 Hallazgo (mig 400): CUALQUIER rol del tenant podía leer el access_token de Mercado Pago y
+  // Tienda Nube en claro. Con ese token se opera la cuenta de MP del comercio desde afuera de
+  // Genesis360. El comentario del código decía "nunca expuesto al frontend" — y era cierto en la
+  // interfaz TypeScript, que no es un control de acceso.
+  test('ningún rol puede leer los access_token de las integraciones (mig 400)', async ({ request }) => {
+    const owner = await tokenOwner(request)
+    for (const [tabla, col] of SECRETOS) {
+      for (const r of [...rolesConCredenciales(), { rol: 'DUEÑO', email: undefined, password: undefined }]) {
+        const token = r.rol === 'DUEÑO' ? owner : await tokenRol(request, r)
+        const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=id,${col}&limit=1`, { headers: restHeaders(token) })
+        expect(res.status(), `[141/F2] ${r.rol} NO debe poder leer ${tabla}.${col}`).toBe(403)
+      }
+    }
+  })
+
+  test('tampoco con select=* (PostgREST lo expande a todas las columnas)', async ({ request }) => {
+    const token = await tokenRol(request, ROLES[0])
+    const res = await request.get(`${SUPABASE_URL}/rest/v1/mercadopago_credentials?select=*&limit=1`, { headers: restHeaders(token) })
+    expect(res.status(), '[141/F2] select=* sobre una tabla de credenciales debe dar 403').toBe(403)
+  })
+
+  // 🔑 POSITIVO: el guard de columna no puede romper la pantalla de Configuración. Estas son las
+  // consultas EXACTAS que hace `ConfigPage.tsx` (listas explícitas, sin el token).
+  test('🔑 las consultas reales de ConfigPage siguen funcionando', async ({ request }) => {
+    const consultas: Array<[string, string]> = [
+      ['tiendanube_credentials', 'id,sucursal_id,store_id,store_name,store_url,conectado,conectado_at'],
+      ['mercadopago_credentials', 'id,sucursal_id,seller_id,seller_email,expires_at,conectado,conectado_at'],
+      ['whatsapp_credentials', 'id,numero_whatsapp,conectado,conectado_at'],
+    ]
+    const owner = await tokenOwner(request)
+    for (const [tabla, select] of consultas) {
+      const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=${select}&limit=3`, { headers: restHeaders(owner) })
+      expect(res.status(), `[141/F2] la consulta real de ConfigPage sobre ${tabla} debe seguir andando: ${await res.text()}`).toBe(200)
+    }
+  })
+
+  // 🔴 HUECO ABIERTO — mismo problema que arriba, pero el panel de Emisores hace `select('*')` y
+  // ADEMÁS edita el token, así que revocar la columna rompe la pantalla: hay que pasar antes a listas
+  // explícitas de columnas. Medido: 2 de 4 emisores de DEV tienen un `afipsdk_token` cargado.
+  test('🔴 F2-h1: ningún rol operativo debería leer emisores_fiscales.afipsdk_token', async ({ request }) => {
+    test.fail()
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      const res = await request.get(`${SUPABASE_URL}/rest/v1/emisores_fiscales?select=id,afipsdk_token&limit=1`, { headers: restHeaders(token) })
+      expect(res.status(), `[141/F2] ${r.rol} NO debería poder leer el afipsdk_token`).toBe(403)
+    }
+  })
+})

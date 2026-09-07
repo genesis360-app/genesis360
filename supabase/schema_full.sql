@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-07T01:21:21.753Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260906224424 · 166 tablas
+-- Generado 2026-09-07T05:05:46.574Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260907045612 · 166 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -4343,6 +4343,20 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.auth_administra_rrhh()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users
+     WHERE id = (SELECT auth.uid())
+       AND rol = ANY (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','RRHH'])
+  )
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.auth_puede_editar_modulo(p_modulo text)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -5327,6 +5341,18 @@ AS $function$
      WHERE pp.activo
        AND (COALESCE(pp.peso_kg,0) <= 0 OR COALESCE(pp.alto_cm,0) <= 0
             OR COALESCE(pp.ancho_cm,0) <= 0 OR COALESCE(pp.largo_cm,0) <= 0));
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_empleados_basico()
+ RETURNS TABLE(id uuid, nombre text, apellido text, tel_personal text, fecha_nacimiento date, activo boolean)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT e.id, e.nombre, e.apellido, e.tel_personal, e.fecha_nacimiento, e.activo
+    FROM public.empleados e
+   WHERE e.tenant_id = public.get_user_tenant_id()
 $function$
 
 
@@ -8552,6 +8578,31 @@ BEGIN
   ORDER BY p.nombre, COALESCE(s.nombre, 'Sin sucursal');
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_sueldos_agregado(p_desde date, p_hasta date, p_hasta_exclusivo boolean DEFAULT false)
+ RETURNS TABLE(total_neto numeric, empleados integer)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_rol text := public.get_user_role();
+BEGIN
+  IF v_rol IS NULL OR v_rol <> ALL (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','SUPERVISOR','CONTADOR','RRHH']) THEN
+    RAISE EXCEPTION 'No autorizado: tu rol (%) no puede ver el costo laboral.', coalesce(v_rol, 'sin rol')
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  RETURN QUERY
+  SELECT COALESCE(SUM(s.neto), 0)::numeric,
+         COUNT(DISTINCT s.empleado_id)::integer
+    FROM public.rrhh_salarios s
+   WHERE s.tenant_id = public.get_user_tenant_id()
+     AND s.pagado = true
+     AND s.fecha_pago >= p_desde
+     AND (CASE WHEN p_hasta_exclusivo THEN s.fecha_pago < p_hasta ELSE s.fecha_pago <= p_hasta END);
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_tarea_repositor_asignado_valido_tenant()
@@ -12382,15 +12433,11 @@ CREATE POLICY emisores_fiscales_tenant ON public.emisores_fiscales AS PERMISSIVE
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY empleados_supervisor ON public.empleados AS PERMISSIVE FOR SELECT TO public
-  USING ((supervisor_id = ( SELECT auth.uid() AS uid)));
-CREATE POLICY empleados_tenant ON public.empleados AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY empleados_select ON public.empleados AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (user_id = ( SELECT auth.uid() AS uid)) OR (supervisor_id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY empleados_write ON public.empleados AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY envio_incidencias_tenant ON public.envio_incidencias AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12784,13 +12831,13 @@ CREATE POLICY rrhh_salario_items_tenant ON public.rrhh_salario_items AS PERMISSI
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY rrhh_salarios_tenant ON public.rrhh_salarios AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY rrhh_salarios_select ON public.rrhh_salarios AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (empleado_id IN ( SELECT e.id
+   FROM empleados e
+  WHERE (e.user_id = ( SELECT auth.uid() AS uid)))))));
+CREATE POLICY rrhh_salarios_write ON public.rrhh_salarios AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY rrhh_tipos_contrato_tenant ON public.rrhh_tipos_contrato AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -13177,8 +13224,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.le
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO authenticated;
@@ -13362,8 +13409,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.te
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tipos_pedido TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tipos_pedido TO service_role;
@@ -13427,7 +13474,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_tareas_repositor TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_gastos_borrador TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_gastos_borrador TO service_role;

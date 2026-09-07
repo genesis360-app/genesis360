@@ -80,14 +80,14 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       const desdeDate = desde.split('T')[0]
       const [gRes, sRes] = await Promise.all([
         supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate),
-        supabase.from('rrhh_salarios')
-          .select('neto, empleado_id')
-          .eq('tenant_id', tenant!.id).eq('pagado', true)
-          .gte('fecha_pago', desde),
+        // Mig 401 — el costo laboral se lee AGREGADO: esta pantalla solo suma, no muestra
+        // sueldos por empleado, así que no necesita acceso a las filas de rrhh_salarios.
+        supabase.rpc('fn_sueldos_agregado', { p_desde: desdeDate, p_hasta: new Date().toISOString().slice(0, 10) }),
       ])
       const gastos = (gRes.data ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
-      const sueldos = (sRes.data ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
-      const empleados = new Set((sRes.data ?? []).map((s: any) => s.empleado_id)).size
+      const agg = ((sRes.data ?? []) as any[])[0] ?? { total_neto: 0, empleados: 0 }
+      const sueldos = Number(agg.total_neto) || 0
+      const empleados = Number(agg.empleados) || 0
       return { gastos, sueldos, empleados }
     },
     enabled: !!tenant,

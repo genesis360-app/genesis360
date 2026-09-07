@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-07] update | ✅ Visibilidad de RRHH cerrada (mig 401) — los sueldos dejan de verse desde cualquier rol
+
+GO aprobó la regla y se implementó completa: **DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo · SUPERVISOR ve
+su equipo · cada empleado ve lo suyo · las pantallas de COSTOS leen agregados.**
+
+**Por qué no servía el truco de la mig 400**: los privilegios de columna son por rol de **base de
+datos** (`authenticated`), no por rol de la app — revocar `salario_bruto` se lo sacaría también a RRHH,
+que lo necesita. Acá el gate correcto es **RLS por fila**.
+
+**Lo que lo hacía no-mecánico**: cinco pantallas leían esas tablas. Se resolvió sin romper ninguna:
+
+| Consumidor | Qué necesitaba | Cómo quedó |
+|---|---|---|
+| `RrhhPage`, `RrhhReportesPanel` | detalle completo | acceso directo (rol RRHH) |
+| `MiPortalPage` | su ficha y sus liquidaciones | rama "cada empleado ve lo suyo" |
+| `RepartidoresPanel`, `useRecomendaciones` | nombre, teléfono, cumpleaños | **`fn_empleados_basico()`** |
+| `DashGastosArea`, `RentabilidadPage`, `CierresContablesPanel` | **solo sumaban** `neto` | **`fn_sueldos_agregado()`** |
+
+`fn_sueldos_agregado` está gateada a los roles que ya ven reportes de plata; un CAJERO recibe 403.
+
+**Verificado con 28 sondas**: CAJERO/DEPÓSITO/CONTADOR ven **0 filas** de `empleados` y
+`rrhh_salarios`; DUEÑO y RRHH siguen viendo todo; `fn_empleados_basico` responde a los 6 roles y **no
+expone** sueldo/CBU/DNI; `fn_sueldos_agregado` responde a los 4 roles de reportes y da 403 a CAJERO y
+DEPÓSITO. Spec 141: 23 → **27 tests**.
+
+⚠ Un test propio salió mal primero y valió la pena: había puesto a **RRHH** entre los roles que "no
+deben ver", cuando justamente administra el módulo. La falla era del test, no del guard.
+
+**Sigue abierto**: `emisores_fiscales.afipsdk_token` (el panel hace `select('*')` y edita el token →
+hay que pasar a listas explícitas de columnas antes de revocar).
+
+---
+
 ## [2026-09-07] update | 🔴 F2 — la matriz de LECTURA por rol: los access_token de las integraciones los leía cualquiera (mig 400)
 
 Siguiendo con la Tanda F, se atacó la mitad que faltaba: no **qué escribe** cada rol, sino **qué lee**.

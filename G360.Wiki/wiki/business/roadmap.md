@@ -37,7 +37,14 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.201.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+**Versión en DEV:** `v1.202.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **Visibilidad de RRHH cerrada (mig 401)**: el sueldo, el CBU y el DNI de cada empleado los
+leía **cualquier rol**. Regla aprobada por GO: DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo, SUPERVISOR su
+equipo, cada empleado lo suyo, y las pantallas de costos leen **agregados** (`fn_empleados_basico` sin
+datos sensibles + `fn_sueldos_agregado` con totales). Cinco pantallas leían esas tablas y ninguna se
+rompió. Verificado con 28 sondas. Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.201.0** — tag+release sobre `dev`. Antes: (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
 `v1.195.4`). **F2 — la matriz de LECTURA por rol**, la mitad que faltaba de la Tanda F, y donde
 aparecieron los hallazgos más serios: los `access_token` de **Mercado Pago y Tienda Nube los leía
 CUALQUIER usuario del tenant** en claro (con el de MP se opera la cuenta del comercio desde afuera).

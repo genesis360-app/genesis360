@@ -238,17 +238,16 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         .lt('fecha_vencimiento', hoy)
 
       // Sueldos pagados en el período (Migration 134 — Fase 4)
-      const { data: sueldosPeriodo = [] } = await supabase.from('rrhh_salarios')
-        .select('neto, fecha_pago, periodo, empleado_id')
-        .eq('tenant_id', tenant!.id)
-        .eq('pagado', true)
-        .gte('fecha_pago', desde).lte('fecha_pago', hasta)
-
-      const { data: sueldosPrev = [] } = await supabase.from('rrhh_salarios')
-        .select('neto')
-        .eq('tenant_id', tenant!.id)
-        .eq('pagado', true)
-        .gte('fecha_pago', desdePrev).lte('fecha_pago', hastaPrev)
+      // Mig 401 — el costo laboral se lee AGREGADO. El Dashboard solo necesita el total y la
+      // cantidad de empleados liquidados; leer fila por fila exponía el sueldo de cada uno.
+      const { data: aggPeriodo } = await supabase.rpc('fn_sueldos_agregado', {
+        p_desde: String(desde).slice(0, 10), p_hasta: String(hasta).slice(0, 10),
+      })
+      const { data: aggPrev } = await supabase.rpc('fn_sueldos_agregado', {
+        p_desde: String(desdePrev).slice(0, 10), p_hasta: String(hastaPrev).slice(0, 10),
+      })
+      const sueldosPeriodo = ((aggPeriodo ?? []) as any[])[0] ?? { total_neto: 0, empleados: 0 }
+      const sueldosPrev = ((aggPrev ?? []) as any[])[0] ?? { total_neto: 0, empleados: 0 }
 
       // ── KPI 1: Total Salidas ──────────────────────────────────────────────
       const totalGastos = (gastos ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
@@ -357,9 +356,9 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       }
 
       // ── Costo laboral del período (RRHH) ─────────────────────────────────
-      const costoLaboral = (sueldosPeriodo ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
-      const costoLaboralPrev = (sueldosPrev ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
-      const empleadosLiquidados = new Set((sueldosPeriodo ?? []).map((s: any) => s.empleado_id)).size
+      const costoLaboral = Number(sueldosPeriodo.total_neto) || 0
+      const costoLaboralPrev = Number(sueldosPrev.total_neto) || 0
+      const empleadosLiquidados = Number(sueldosPeriodo.empleados) || 0
 
       return {
         totalGastos, totalGastosPrev,

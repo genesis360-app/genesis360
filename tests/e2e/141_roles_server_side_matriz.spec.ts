@@ -434,15 +434,80 @@ test.describe('F2 — qué puede LEER cada rol', () => {
     }
   })
 
-  // 🔴 HUECO ABIERTO — mismo problema que arriba, pero el panel de Emisores hace `select('*')` y
-  // ADEMÁS edita el token, así que revocar la columna rompe la pantalla: hay que pasar antes a listas
-  // explícitas de columnas. Medido: 2 de 4 emisores de DEV tienen un `afipsdk_token` cargado.
+  // 🔴 HUECO ABIERTO — mismo problema que las credenciales de MP/TN, pero el panel de Emisores hace
+  // `select('*')` y ADEMÁS edita el token, así que revocar la columna rompe la pantalla: hay que pasar
+  // antes a listas explícitas de columnas. Medido: 2 de 4 emisores de DEV tienen un token cargado.
   test('🔴 F2-h1: ningún rol operativo debería leer emisores_fiscales.afipsdk_token', async ({ request }) => {
     test.fail()
     for (const r of rolesConCredenciales()) {
       const token = await tokenRol(request, r)
       const res = await request.get(`${SUPABASE_URL}/rest/v1/emisores_fiscales?select=id,afipsdk_token&limit=1`, { headers: restHeaders(token) })
       expect(res.status(), `[141/F2] ${r.rol} NO debería poder leer el afipsdk_token`).toBe(403)
+    }
+  })
+
+  /**
+   * Visibilidad de RRHH — regla aprobada por GO (mig 401):
+   *   DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo · SUPERVISOR su equipo · cada empleado lo suyo ·
+   *   las pantallas de costos leen AGREGADOS.
+   * Antes de la 401, un CAJERO leía el sueldo, el CBU y el DNI de todos los empleados.
+   */
+  test('sueldos, CBU y DNI: los roles operativos no los ven (mig 401)', async ({ request }) => {
+    // RRHH queda afuera A PROPÓSITO: administra el módulo, así que DEBE ver todo (regla de GO).
+    // Se verifica en el test de abajo, no acá.
+    for (const r of rolesConCredenciales().filter((x) => x.rol !== 'RRHH')) {
+      const token = await tokenRol(request, r)
+      for (const q of ['empleados?select=id,salario_bruto,cbu,dni_rut&limit=5', 'rrhh_salarios?select=id,neto&limit=5']) {
+        const res = await request.get(`${SUPABASE_URL}/rest/v1/${q}`, { headers: restHeaders(token) })
+        expect(res.ok(), await res.text()).toBeTruthy()
+        expect((await res.json()) as unknown[], `[141/F2] ${r.rol} NO debería ver ${q.split('?')[0]}`).toHaveLength(0)
+      }
+    }
+  })
+
+  test('🔑 quienes SÍ administran RRHH (DUEÑO y RRHH) siguen viendo todo', async ({ request }) => {
+    const rrhh = ROLES.find((x) => x.rol === 'RRHH')
+    const quienes: Array<[string, string]> = [['DUEÑO', await tokenOwner(request)]]
+    if (rrhh?.email) quienes.push(['RRHH', await tokenRol(request, rrhh)])
+
+    for (const [rol, token] of quienes) {
+      for (const q of ['empleados?select=id,salario_bruto&limit=3', 'rrhh_salarios?select=id,neto&limit=3']) {
+        const res = await request.get(`${SUPABASE_URL}/rest/v1/${q}`, { headers: restHeaders(token) })
+        expect((await res.json()) as unknown[], `[141/F2] ${rol} DEBE seguir viendo ${q.split('?')[0]}`).not.toHaveLength(0)
+      }
+    }
+  })
+
+  test('🔑 las pantallas que se migraron a RPC siguen andando y no filtran datos sensibles', async ({ request }) => {
+    // `fn_empleados_basico` — repartidores y recordatorios de cumpleaños. Todos los roles pueden,
+    // porque no expone nada sensible; eso último es lo que se afirma acá.
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      const res = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_empleados_basico`, { headers: restHeaders(token), data: {} })
+      expect(res.ok(), `[141/F2] ${r.rol} debería poder listar empleados básicos: ${await res.text()}`).toBeTruthy()
+      const filas = (await res.json()) as Record<string, unknown>[]
+      if (filas.length) {
+        const cols = Object.keys(filas[0])
+        for (const prohibida of ['salario_bruto', 'cbu', 'dni_rut', 'email_personal', 'direccion']) {
+          expect(cols, `[141/F2] fn_empleados_basico NO debe exponer ${prohibida}`).not.toContain(prohibida)
+        }
+      }
+    }
+  })
+
+  test('🔑 el costo laboral agregado: lo ven los roles de reportes, no los operativos', async ({ request }) => {
+    const rango = { p_desde: '2026-01-01', p_hasta: '2026-12-31' }
+    const owner = await tokenOwner(request)
+    const okOwner = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_sueldos_agregado`, { headers: restHeaders(owner), data: rango })
+    expect(okOwner.ok(), `[141/F2] el DUEÑO debe poder leer el costo laboral agregado: ${await okOwner.text()}`).toBeTruthy()
+
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      const res = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_sueldos_agregado`, { headers: restHeaders(token), data: rango })
+      // CONTADOR y RRHH ven reportes de plata; CAJERO y DEPÓSITO no. (SUPERVISOR también puede,
+      // pero no está en ROLES porque su usuario se usa como control positivo en otros tests.)
+      const permitido = ['CONTADOR', 'RRHH'].includes(r.rol)
+      expect(res.ok(), `[141/F2] ${r.rol} ${permitido ? 'DEBERÍA' : 'NO debería'} poder ver el costo laboral`).toBe(permitido)
     }
   })
 })

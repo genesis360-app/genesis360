@@ -518,8 +518,8 @@ alguna policy que mire el rol**.
 | `tiendanube_credentials.access_token` | 🔴 lo leían **todos** | ✅ 403 (mig 400) |
 | `whatsapp_credentials.access_token` | 🔴 legible (0 filas en este tenant, pero sin protección) | ✅ 403 (mig 400) |
 | `emisores_fiscales.afipsdk_token` | 🔴 lo leen todos (2 de 4 emisores tienen uno cargado) | 🔴 **abierto** |
-| `rrhh_salarios.basico/neto` | 🔴 los lee **cualquier rol**, incluido CAJERO | 🔴 **abierto** |
-| `empleados.salario_bruto`, `cbu`, `dni_rut` | 🔴 ídem: sueldo, cuenta bancaria y DNI de cada empleado | 🔴 **abierto** |
+| `rrhh_salarios.basico/neto` | 🔴 los leía **cualquier rol**, incluido CAJERO | ✅ **cerrado (mig 401)** |
+| `empleados.salario_bruto`, `cbu`, `dni_rut` | 🔴 sueldo, cuenta bancaria y DNI de cada empleado | ✅ **cerrado (mig 401)** |
 | `tenant_certificates.cert_key_path` | 🟠 ruta de la clave privada AFIP, legible por todos | 🟠 abierto |
 | `ai_tenant_memoria`, `boveda_retiros` | ✅ solo DUEÑO | ✅ |
 
@@ -538,10 +538,30 @@ PostgREST expande a todas las columnas y daría 403 — por eso hay un test que 
 **Lo que queda abierto y por qué:**
 - `emisores_fiscales.afipsdk_token`: mismo fix, pero el panel de Emisores hace `select('*')` y **edita**
   el token, así que revocar la columna rompe la pantalla. Hay que pasar antes a listas explícitas.
-- `rrhh_salarios` / `empleados`: **es una decisión de negocio, no un fix mecánico** — hay que definir
-  quién puede ver sueldos. Complicación real: `MiPortalPage` deja que cada empleado lea su propia fila,
-  y `RentabilidadPage`/`DashGastosArea`/`useRecomendaciones` leen esas tablas para costos. Un gate
-  ingenuo rompe cuatro pantallas.
+#### ✅ Visibilidad de RRHH — CERRADA (mig 401), regla aprobada por GO el 2026-09-07
+
+> **DUEÑO / ADMIN / SUPER_USUARIO / RRHH ven todo · SUPERVISOR ve su equipo · cada empleado ve lo
+> suyo · las pantallas de COSTOS leen agregados.**
+
+No se podía cerrar con privilegios de columna como la mig 400: los privilegios de columna son por rol
+de **base de datos** (`authenticated`), no por rol de la app — revocar `salario_bruto` se lo sacaría
+también a RRHH, que lo necesita. Acá el gate correcto es **RLS por fila**.
+
+Lo que exigió el cambio, y por qué no era mecánico: cinco pantallas leían esas tablas.
+
+| Consumidor | Qué necesitaba | Cómo quedó |
+|---|---|---|
+| `RrhhPage`, `RrhhReportesPanel` | detalle completo | acceso directo (rol RRHH) |
+| `MiPortalPage` | su propia ficha y sus liquidaciones | rama "cada empleado ve lo suyo" |
+| `RepartidoresPanel`, `useRecomendaciones` | nombre, teléfono, cumpleaños | **`fn_empleados_basico()`** — sin sueldo/CBU/DNI |
+| `DashGastosArea`, `RentabilidadPage`, `CierresContablesPanel` | **solo suman** `neto` | **`fn_sueldos_agregado()`** — totales, nunca filas |
+
+`fn_sueldos_agregado` está gateada a los roles que ya ven reportes de plata (DUEÑO/ADMIN/
+SUPER_USUARIO/SUPERVISOR/CONTADOR/RRHH): un CAJERO recibe 403.
+
+**Verificado (28 sondas)**: CAJERO/DEPÓSITO/CONTADOR ven **0 filas** de `empleados` y `rrhh_salarios`;
+DUEÑO y RRHH siguen viendo todo; `fn_empleados_basico` devuelve datos para los 6 roles y **no expone**
+sueldo/CBU/DNI; `fn_sueldos_agregado` responde a los 4 roles de reportes y da 403 a CAJERO y DEPÓSITO.
 
 **F2 sigue parcialmente abierto**: la matriz de escritura cubre 4 roles × 12 operaciones, no todo.
 

@@ -87,15 +87,17 @@ export default function CierresContablesPanel() {
           .select('total', { count: 'exact' })
           .eq('tenant_id', tenant!.id).in('estado', ['despachada','facturada'])
           .gte('created_at', desde).lt('created_at', hasta),
-        supabase.from('rrhh_salarios')
-          .select('neto').eq('tenant_id', tenant!.id).eq('pagado', true)
-          .gte('fecha_pago', desde).lt('fecha_pago', hasta),
+        // Mig 401 — costo laboral agregado (el panel solo suma). `p_hasta_exclusivo` conserva el
+        // `.lt('fecha_pago', hasta)` original: el período es [desde, hasta).
+        supabase.rpc('fn_sueldos_agregado', {
+          p_desde: String(desde).slice(0, 10), p_hasta: String(hasta).slice(0, 10), p_hasta_exclusivo: true,
+        }),
       ])
       const gastos = (gRes.data ?? []) as any[]
       const totalGastos  = gastos.reduce((a, g) => a + (g.monto ?? 0), 0)
       const correcciones = gastos.filter(g => g.es_correccion).length
       const totalVentas  = (vRes.data ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
-      const totalSueldos = (sRes.data ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
+      const totalSueldos = Number(((sRes.data ?? []) as any[])[0]?.total_neto) || 0
       return {
         totalGastos, correcciones,
         totalVentas, countVentas: vRes.count ?? 0,

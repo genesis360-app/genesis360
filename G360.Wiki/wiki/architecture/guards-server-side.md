@@ -136,7 +136,7 @@ sensibles auditadas, **solo 4 tienen alguna policy que mire el rol**.
 | `tiendanube_credentials.access_token` | 🔴 todos | ✅ 403 (mig 400) |
 | `whatsapp_credentials.access_token` | 🔴 sin protección | ✅ 403 (mig 400) |
 | `emisores_fiscales.afipsdk_token` | 🔴 todos | 🔴 abierto |
-| `rrhh_salarios.basico/neto` · `empleados.salario_bruto/cbu/dni_rut` | 🔴 sueldos, CBU y DNI visibles para cualquier rol | 🔴 abierto |
+| `rrhh_salarios.basico/neto` · `empleados.salario_bruto/cbu/dni_rut` | 🔴 sueldos, CBU y DNI visibles para cualquier rol | ✅ **cerrado (mig 401)** |
 | `tenant_certificates.cert_key_path` | 🟠 ruta de la clave AFIP | 🟠 abierto |
 | `ai_tenant_memoria`, `boveda_retiros` | ✅ solo DUEÑO | ✅ |
 
@@ -152,10 +152,24 @@ Impacto cero verificado: las tres consultas de `ConfigPage.tsx` usan listas expl
 > ⚠ Con `select('*')` PostgREST expande a todas las columnas y devuelve **403**. Si alguna pantalla
 > futura usa `select('*')` sobre estas tablas, se rompe — hay un test que cubre justamente eso.
 
-**Abierto**: `emisores_fiscales.afipsdk_token` (el panel hace `select('*')` y además edita el token →
-hay que pasar a listas explícitas antes) y las tablas de RRHH, que son una **decisión de negocio**
-—quién puede ver sueldos— y no un fix mecánico: `MiPortalPage` deja que cada empleado lea su fila, y
-tres pantallas más leen esas tablas para costos.
+### Visibilidad de RRHH (mig 401) — regla aprobada por GO
+
+> **DUEÑO / ADMIN / SUPER_USUARIO / RRHH ven todo · SUPERVISOR ve su equipo · cada empleado ve lo
+> suyo · las pantallas de COSTOS leen agregados.**
+
+Acá **no servía** el truco de la mig 400: los privilegios de columna son por rol de **base de datos**
+(`authenticated`), no por rol de la app — revocar `salario_bruto` se lo sacaría también a RRHH. El gate
+correcto es RLS por fila, más dos funciones `SECURITY DEFINER` para lo que el resto de la app sí
+necesita:
+
+- **`fn_empleados_basico()`** → nombre, apellido, teléfono y cumpleaños. Sin sueldo, CBU ni DNI. La usan
+  el panel de repartidores y los recordatorios de cumpleaños.
+- **`fn_sueldos_agregado(desde, hasta, hasta_exclusivo)`** → total neto pagado + empleados liquidados.
+  La usan Dashboard, Rentabilidad y Cierres contables, que **solo sumaban**. Gateada a los roles que ya
+  ven reportes de plata; un CAJERO recibe 403.
+
+**Abierto**: `emisores_fiscales.afipsdk_token` — el panel hace `select('*')` y además edita el token, así
+que hay que pasar a listas explícitas de columnas antes de revocar.
 
 ---
 

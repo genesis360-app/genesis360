@@ -35,9 +35,10 @@ export default function RepartidoresPanel({ canEdit }: { canEdit: boolean }) {
   const { data: empleados = [] } = useQuery({
     queryKey: ['empleados-repartidor', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('empleados')
-        .select('id, nombre, apellido, tel_personal').eq('tenant_id', tenant!.id).eq('activo', true)
-      return data ?? []
+      // Mig 401 — `empleados` pasó a estar gateada por rol (sueldo/CBU/DNI). Este panel solo
+      // necesita nombre y teléfono, así que va por el RPC que expone lo básico sin datos sensibles.
+      const { data } = await supabase.rpc('fn_empleados_basico')
+      return (data ?? []).filter((e: any) => e.activo)
     },
     enabled: !!tenant && showForm,
   })

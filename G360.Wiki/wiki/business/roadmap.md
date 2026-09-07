@@ -37,7 +37,18 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.199.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+**Versión en DEV:** `v1.200.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`, por decisión de GO: "esperemos un poco más, sigamos con pendientes y fixes").
+**Tanda D COMPLETA**: `142_resiliencia_backend_degradado` cierra D2-D5 y es la **primera spec del repo
+que intercepta la red del browser** (`page.route`, `context.setOffline`) — la capa de condiciones
+degradadas no existía. Buena noticia: la app se porta bien degradada (0 requests en 30 s con backend
+503, 0 sin red porque React Query pausa, 14 al despertar la pestaña); el caso anómalo era D1 y estaba
+en auth-js. Los techos son barandas anti-regresión, calibradas corriendo la spec con los presupuestos
+en 0. Cada una lleva un control **anti-falso-verde**, porque D4 llegó a pasar por vacío.
+De paso: **`schema_full.sql` al día** (estaba 9 migraciones atrasado) y limpieza del token filtrado de
+`.claude/settings.local.json`. Sin migraciones nuevas. Ver [[wiki/architecture/resiliencia]].
+
+**Detalle de v1.199.0** — tag+release sobre `dev`. Antes: (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
 `v1.195.4`). Cierra **todos** los huecos que las Tandas F y E habían dejado abiertos, y suma un bug de
 plata encontrado en la regresión.
 **Mig 396 — Tanda F completa**: los 4 huecos pendientes (precio de venta, monto de gasto, alta de

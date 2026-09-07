@@ -174,13 +174,36 @@ Eso explica el `tn-fulfillment-worker` que corría "133 veces por día sin que n
 
 ---
 
+## Tanda D completa — D2 a D5 (2026-09-06) · spec `142_resiliencia_backend_degradado`
+
+Primera spec del repo que **intercepta la red del browser** (`page.route`, `context.setOffline`) en
+vez de necesitar un backend roto de verdad: determinista, sin carga extra sobre DEV y sin depender de
+que algo esté caído. Verificado con grep que ninguna spec usaba esas APIs — la capa no existía.
+
+**El resultado es buena noticia: la app se porta bien en condiciones degradadas.** El caso anómalo era
+D1, y estaba en auth-js, no en la capa de React Query.
+
+| Escenario | Qué se verifica | Medido |
+|---|---|---|
+| **D2** | Refresh token inválido (400 `invalid_grant`) → cae en `/login` sola y deja de pedir | ≤1 refresco extra tras llegar a login |
+| **D3** | 503 sostenido en todas las consultas, 30 s de pantalla quieta | **0 requests** (techo 20) |
+| **D4** | Sin red no martilla; al volver **se recupera sola, sin recargar** | **0** offline · >0 al reconectar |
+| **D5** | Pestaña dormida y reanudada: revalida sin tormenta | **14 requests** al despertar (techo 60) |
+
+**Hallazgo de D4**: React Query usa `networkMode: 'online'` por default, así que sin red **pausa** las
+queries en lugar de dispararlas y verlas fallar — exactamente lo contrario de lo que hacía auth-js en
+D1. Queda afirmado como propiedad para que nadie lo rompa sin darse cuenta.
+
+Los techos son **barandas anti-regresión**, no la descripción de un problema: saltan si alguien saca el
+`retry: 1` global, cambia el `networkMode` o mete un `refetchInterval` agresivo. Se calibraron
+corriendo la spec con los presupuestos en 0, para conocer el margen real.
+
+> ⚠ **Método a repetir en toda spec de condiciones degradadas**: cada presupuesto va con un control
+> **anti-falso-verde** (`toBeGreaterThan(0)`) que prueba que el intercept se activó. Sin eso, un
+> intercept mal escrito hace pasar el test **por vacío** — pasó escribiendo esta misma spec.
+
 ## Lo que sigue abierto
 
-- **D2** — sesión vencida con pestaña abierta: debe llevar a login limpio, no a un bucle.
-- **D3** — backend 5xx sostenido: la UI debe degradar con mensaje claro (esto cubre las **consultas de
-  datos**, no solo el refresco de sesión).
-- **D4** — red intermitente (online/offline/online): sin duplicar operaciones al reconectar.
-- **D5** — pestaña dormida y reanudada tras horas.
 - **Tanda E**: E2 (el techo real de la instancia — el instrumento está, falta acordar cuándo correrlo).
 - **Tanda F**: F2 (matriz completa por rol) y el **umbral del SUPERVISOR** server-side, que necesita
   antes mover la aplicación de autorizaciones a un RPC — ver [[wiki/architecture/guards-server-side]].

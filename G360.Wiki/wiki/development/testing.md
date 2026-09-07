@@ -326,8 +326,12 @@ entera.**
   test de regresión reproduce la caída real del 5/9 (ticker cada 30 s durante 5 h = 600 intentos) y exige
   10 requests de red en total, no 600. Lógica pura con reloj/aleatorio/`fetch` inyectados: determinístico,
   sin tenant ni backend. Ver [[wiki/architecture/resiliencia]].
-- ⬜ D2-D5 (sesión vencida, 5xx sostenido en consultas de datos, red intermitente, pestaña dormida)
-  — `tests/specs/uat-app.md`.
+- ✅ `tests/e2e/142_resiliencia_backend_degradado.spec.ts` (5) — **D2 a D5**. Primera spec del repo que
+  **intercepta la red del browser** (`page.route`, `context.setOffline`): sesión vencida → login limpio,
+  503 sostenido, red intermitente y pestaña dormida/reanudada. No necesita romper el backend de verdad,
+  así que es determinista y no le agrega carga a DEV.
+  ⚠ **Cada presupuesto lleva un control anti-falso-verde** (`toBeGreaterThan(0)`) que prueba que el
+  intercept se activó: sin eso el test pasa **por vacío**, y pasó de verdad al escribirla.
 
 ## 🟧 Tests de ROLES server-side — Tanda F (abierto 2026-09-06)
 

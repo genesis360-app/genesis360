@@ -6,6 +6,50 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-06] update | ✅ Tanda D COMPLETA — D2 a D5 cerrados (spec 142) + limpieza del token filtrado + schema al día
+
+Cierre de la Tanda D, la categoría que se abrió por el incidente que tumbó la base de DEV.
+
+### D2-D5 — `tests/e2e/142_resiliencia_backend_degradado.spec.ts`
+
+**Primera spec del repo que intercepta la red del browser** (`page.route`, `context.setOffline`).
+Verificado con grep que ninguna spec usaba esas APIs: la capa de condiciones degradadas literalmente
+no existía. No necesita romper el backend de verdad, así que es determinista y no le agrega carga a DEV.
+
+**El resultado es buena noticia: la app se porta BIEN degradada.** El caso anómalo era D1, y estaba en
+auth-js, no en la capa de React Query.
+
+| Escenario | Qué verifica | Medido |
+|---|---|---|
+| D2 | Refresh token inválido (400 `invalid_grant`) → cae en `/login` sola y deja de pedir | ≤1 refresco extra |
+| D3 | 503 sostenido en todas las consultas, 30 s de pantalla quieta | **0 requests** (techo 20) |
+| D4 | Sin red no martilla; al volver se recupera **sola, sin recargar** | **0** offline · >0 al reconectar |
+| D5 | Pestaña dormida y reanudada | **14 requests** al despertar (techo 60) |
+
+**Hallazgo de D4**: React Query usa `networkMode: 'online'` por default → sin red **pausa** las queries
+en vez de dispararlas y verlas fallar. Exactamente lo contrario de lo que hacía auth-js en D1. Queda
+afirmado como propiedad para que nadie lo rompa sin darse cuenta.
+
+**⚠ Método que conviene repetir**: cada presupuesto lleva un control **anti-falso-verde**
+(`toBeGreaterThan(0)`) que prueba que el intercept se activó. Sin eso el test pasa **por vacío**, y
+pasó de verdad escribiendo esta spec: D4 daba verde con 0 requests fallidas porque, con la pantalla
+quieta, la app no pide nada y el corte de red no ejercitaba nada. Los techos se calibraron corriendo
+la spec con los presupuestos en 0, para conocer el margen real en vez de inventarlo.
+
+### Higiene
+
+- **`schema_full.sql` al día** (estaba 9 migraciones atrasado, última actualización del 1/9). Se
+  regeneró vía Management API — el camino PG sigue roto por el bug de Supavisor, así que hizo falta un
+  PAT nuevo. Verificado que el dump refleja el estado REAL: aparecen los guards y triggers nuevos, y
+  **no** aparece el índice de la mig 397 porque la 398 lo borró.
+- **Token filtrado**: se verificó que **ningún repo ni workflow** consume `SUPABASE_ACCESS_TOKEN` salvo
+  `scripts/dump-schema.mjs`. El único lugar con el token completo era `.claude/settings.local.json`, y
+  no como credencial sino en la allowlist de comandos (residuo de haberlo pasado inline en la línea de
+  comandos). Ese archivo está gitignored y nunca se commiteó → por este repo nunca llegó a GitHub. Se
+  limpiaron las 3 entradas; GO borra el token viejo en Supabase.
+
+---
+
 ## [2026-09-06] update | ✅ Todos los huecos de F y E cerrados + 🛑 bug REGLA #0 de caja encontrado en la regresión
 
 GO: *"corrige o arregla todo lo que viste que merece ser arreglado"*. Se cerraron los 5 huecos que

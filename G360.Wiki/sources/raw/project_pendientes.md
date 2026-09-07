@@ -61,17 +61,17 @@ type: project
 >   (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). **Relevar con GO.**
 > - 🟧 **Umbral del SUPERVISOR server-side**: necesita antes mover la aplicación de autorizaciones de
 >   gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238).
-> - **D2-D5** — sesión vencida con pestaña abierta, 5xx sostenido en las **consultas de datos**, red
->   intermitente, pestaña dormida y reanudada.
+> - ✅ **D2-D5 CERRADOS** (spec 142, primera que intercepta la red del browser). La app se porta bien
+>   degradada: 0 requests en 30 s con backend 503, 0 offline (React Query pausa), 14 al despertar.
 > - **E2 — techo real de la instancia**: el instrumento está listo (`--usuarios N --si-se-que-hago`),
 >   falta acordar CUÁNDO correrlo (saturar DEV es destructivo).
 > - **F2** — matriz completa por rol.
 > - **PROD: GO decidió ESPERAR** (2026-09-06) — "sigamos con pendientes y fixes". PROD sigue en
 >   `v1.195.4`; migs 391-399 **solo en DEV**.
-> - 🔴 **`schema_full.sql` está 9 migraciones atrasado** (última actualización: mig 390). `npm run
->   schema:dump` falla por el camino PG (bug de Supavisor) y necesita `SUPABASE_ACCESS_TOKEN` en
->   `.env.local` — **bloqueado esperando el PAT de GO**, que además conviene que sea uno NUEVO para
->   rotar de paso el `sbp_60df...` filtrado desde el 2026-07-09.
+> - ✅ **`schema_full.sql` al día** (tope mig 399), regenerado vía Management API con un PAT nuevo
+>   (`schema-dump-local`, **vence el 2026-10-06** — cuando venza, `npm run schema:dump` falla igual que
+>   antes). El token filtrado `sbp_60df...` quedó limpiado de `.claude/settings.local.json`; GO lo borra
+>   en Supabase. Verificado: ningún repo ni workflow lo consumía.
 > - ✅ **Desvío de $2.468 en Caja1 de DEV: REGULARIZADO** (autorizado por GO). Barrido completo: 0
 >   ventas canceladas con ingreso sin su egreso.
 > - ⏸ **Reintegro en efectivo USD al anular**: GO lo posterga ("lo vemos después").

@@ -274,7 +274,7 @@ MELI/TN), visual PROD, concurrencia.
 Convertir presupuesto a despachada **desde el Historial** con 2+ cajas abiertas y sin caja preferida no
 expone selector de caja → callejón sin salida. Fix sugerido: exponer el selector en el modal de saldo.
 
-### 🟥🟥 Tanda D — RESILIENCIA: categoría COMPLETA que no existe (abierta 2026-09-06, URGENTE)
+### ✅ Tanda D — RESILIENCIA: categoría COMPLETA que no existía (abierta y CERRADA el 2026-09-06)
 
 **Origen**: la base de DEV se cayó (instancia `t4g.nano` saturada, CPU 94% / Disk IO 97%). Investigando el
 tráfico apareció que **~650 de las ~5.000 requests de 24 h eran una sola pestaña de Chrome reintentando
@@ -291,10 +291,40 @@ expirada, offline ni reintentos.
 
 Escenarios a cubrir:
 - ✅ **D1 — Refresco de sesión con backend caído** (CERRADO 2026-09-06, ver abajo).
-- **D2 — Sesión vencida con pestaña abierta**: debe llevar a login limpio, no a un bucle.
-- **D3 — Backend 5xx sostenido**: la UI debe degradar con mensaje claro, sin martillar.
-- **D4 — Red intermitente** (online/offline/online): sin duplicar operaciones al reconectar.
-- **D5 — Pestaña dormida / reanudada** tras horas: qué pasa al despertar.
+- ✅ **D2 — Sesión vencida con pestaña abierta** (CERRADO 2026-09-06, spec 142).
+- ✅ **D3 — Backend 5xx sostenido** (CERRADO 2026-09-06, spec 142).
+- ✅ **D4 — Red intermitente** online/offline/online (CERRADO 2026-09-06, spec 142).
+- ✅ **D5 — Pestaña dormida / reanudada** (CERRADO 2026-09-06, spec 142).
+
+#### ✅ D2 a D5 — CERRADOS (2026-09-06) · `tests/e2e/142_resiliencia_backend_degradado.spec.ts`
+
+Primera spec del repo que **intercepta la red del browser** (`page.route`, `context.setOffline`) en vez
+de necesitar un backend roto de verdad: es determinista, no le agrega carga a DEV y no depende de que
+algo esté caído. Verificado con grep que ninguna spec usaba estas APIs — la capa no existía.
+
+**Y el resultado es buena noticia: la app se porta BIEN en condiciones degradadas.** El caso anómalo
+era D1, y estaba en auth-js, no en la capa de React Query.
+
+| Escenario | Qué se verifica | Medido |
+|---|---|---|
+| **D2** | Refresh token inválido (400 `invalid_grant`) → cae en `/login` **sola** y deja de pedir | ≤1 refresco extra tras llegar a login |
+| **D3** | Backend 503 sostenido en todas las consultas, 30 s de pantalla quieta | **0 requests** (techo 20) |
+| **D4** | Sin red no martilla, y al volver **se recupera sola sin recargar** | **0** offline · >0 al reconectar |
+| **D5** | Pestaña dormida y reanudada: revalida sin tormenta | **14 requests** al despertar (techo 60) |
+
+**Hallazgo de D4**: React Query usa `networkMode: 'online'` por default, así que sin red **pausa** las
+queries en vez de dispararlas y verlas fallar. Es exactamente lo contrario de lo que hacía auth-js en
+D1. Queda afirmado como propiedad para que nadie lo rompa sin darse cuenta.
+
+**Los techos son barandas anti-regresión, no descripciones de un problema**: si alguien saca el
+`retry: 1` global, cambia el `networkMode` o mete un `refetchInterval` agresivo, saltan acá. Se
+calibraron corriendo la spec con los presupuestos en 0 para ver el valor real y conocer el margen.
+
+> ⚠ **Método que hay que repetir en toda spec de condiciones degradadas**: cada presupuesto va con un
+> control **anti-falso-verde** (`toBeGreaterThan(0)`) que prueba que el intercept se activó. Sin eso,
+> un intercept mal escrito hace pasar el test **por vacío**. Pasó de verdad escribiendo esta spec: D4
+> daba verde con 0 requests fallidas porque, con la pantalla quieta, la app no pide nada y el corte de
+> red no ejercitaba nada.
 
 #### ✅ D1 — CERRADO (2026-09-06)
 

@@ -6,75 +6,53 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅🟥 ARRANCÁ ACÁ (2026-09-06, cont. 51) — **D1 CERRADO**. Siguen D2-D5 y las Tandas E/F.
-> **Primer cliente REAL en ~2 semanas.**
+> ### ✅ ARRANCÁ ACÁ (2026-09-07, cont. 52) — Tandas D, E y F esencialmente cerradas. `v1.202.0` en `dev`.
+> **PROD sigue en `v1.195.4` por decisión de GO** ("esperemos un poco más, sigamos con pendientes y
+> fixes"). Migs **391-401 solo en DEV**. Primer cliente REAL en ~2 semanas.
 >
-> #### Lo que se cerró (en `dev`, SIN deploy a PROD, sin bump de versión — DEV sigue `v1.196.0`)
+> #### Qué se cerró en la sesión larga del 6-7/9 (v1.197.0 → v1.202.0)
 >
-> El bucle de reintentos del refresco de sesión (detalle del incidente en la sección de abajo, cont. 50).
-> **Confirmado con SQL contra los logs de edge de DEV, no de memoria**: 595 requests en 24 h al endpoint,
-> 563 con 5xx de Cloudflare (452×522, 49×504, 45×521, 16×524, 1×525) y solo 32 con 200, sosteniendo
-> **~65/hora durante 5 horas seguidas** el 5/9. Eso descarta que auth-js descarte la sesión ante un 52x:
-> el bucle es infinito y **seguía vivo**.
+> | Tanda | Estado | Lo que salió |
+> |---|---|---|
+> | **D — Resiliencia** | ✅ completa | D1 cortacircuitos del refresco (600 req → 10) · D2-D5 spec 142, primera que intercepta la red del browser |
+> | **E — Stress** | ✅ salvo E2 | instrumento `npm run stress:lectura` · E4-h1 mig 395 (17 ms → 1,14 ms) · E4-h2 migs 397-399 (48 → 4,6 ms; 86 → 174 req/s) |
+> | **F — Roles server-side** | ✅ salvo lo de abajo | F1: migs 394+396 (6 huecos) · F2: migs 400+401 (credenciales y sueldos) |
 >
-> Causa raíz (leída en `node_modules/@supabase/auth-js` 2.98): ticker de 30 s que nunca se detiene, ~7
-> reintentos internos por tick, y **ningún contador de fallos entre ticks**.
+> **Bugs REGLA #0 encontrados y arreglados de paso**: (1) un CAJERO podía **congelar un mes contable**
+> escribiendo `cierres_contables` directo, salteando el guard del RPC; (2) al anular una venta el
+> reintegro del efectivo **podía ir a la Caja USD y fallaba en silencio** → la caja quedaba inflada;
+> (3) `roles_custom` era escribible por cualquiera → **auto-escalada de permisos**; (4) los
+> `access_token` de MP/TiendaNube los **leía cualquier rol**; (5) **sueldo, CBU y DNI** de todos los
+> empleados, ídem.
 >
-> Fix: cortacircuitos sobre `global.fetch` — `src/lib/authRefreshBreaker.ts`, `src/lib/supabase.ts`,
-> `src/components/AvisoSesionSinRefresco.tsx`. Backoff exponencial con jitter, corte local sin red, se
-> rinde tras 10 fallos. **600 requests → 10.** Cobertura: `tests/unit/authRefreshBreaker.test.ts` (19,
-> incluye el test de regresión de la caída de 5 h). Verde: lint · tsc · build · unit 1656.
-> Detalle completo: `G360.Wiki/wiki/architecture/resiliencia.md` y `tests/specs/uat-app.md` (§D1).
+> #### 🟥 Lo que sigue abierto (en orden de prioridad)
 >
-> #### Tandas F y E — primera pasada (misma sesión, `v1.198.0`)
+> 1. **`emisores_fiscales.afipsdk_token`** — mismo problema que MP/TN (lo lee cualquier rol; 2 de 4
+>    emisores de DEV tienen uno cargado). El fix es igual al de la mig 400, pero **primero** hay que
+>    pasar `EmisoresFiscalesPanel` y los otros 3 lectores de `select('*')` a listas explícitas de
+>    columnas, o la pantalla se rompe con 403. Queda medido en la spec 141 con `test.fail()`.
+> 2. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 3. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238). Hoy solo se enforcea el del CAJERO,
+>    a propósito: el supervisor es quien APLICA la autorización y enforzarlo rompería aprobaciones.
+> 4. **E2 — techo real de la instancia**: el instrumento está listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo —
+>    saturar DEV es destructivo y es el ambiente de trabajo de GO.
+> 5. **F2 (resto)** — matriz de ESCRITURA completa por rol (la spec cubre 4 roles × 12 operaciones).
+> 6. **Decisión de PROD**: cuándo van las migs 391-401 + el código. Ojo, **cambian comportamiento**:
+>    donde antes solo bloqueaba la UI, ahora la base rechaza.
 >
-> **Tanda F** (`tests/e2e/141_roles_server_side_matriz.spec.ts`): de las **152 policies, solo 14 miran el
-> rol**. ✅ Protegen `tenants`, escalada por `users`, Caja Fuerte, `set_clave_maestra`,
-> `marcar_incobrable`, `cerrar_periodo` y el aislamiento por sucursal cruzado con rol (F4).
-> ✅ **F1-h1 CERRADO (mig 394)**: un CAJERO podía `POST /cierres_contables` directo y **congelar un mes
-> contable entero salteando el guard de rol del RPC**; la tabla es ahora solo-lectura vía RLS.
-> 🔴 **Abiertos h2-h5**: precio de venta, monto de gasto, alta de productos, medios de pago — cualquier rol
-> por REST directo.
+> #### Cosas operativas a no olvidar
 >
-> **Tanda E** (`npm run stress:lectura`): 5 sesiones → 49,8 req/s / 0 errores / p95 267 ms · 20 sesiones →
-> 86,3 req/s / 0 errores / p95 1.461 ms. ✅ **E4-h1 ARREGLADO (mig 395)**: `ventas` ordenada por fecha leía
-> las 662 del tenant para devolver 20 → **17 ms a 1,14 ms** (p95 end-to-end 435 → 96 ms).
-> 🔴 **E4-h2 abierto**: `venta_items` cuesta **24× más al CAJERO que al DUEÑO** (materializa todas las
-> ventas del tenant). Detalle: `wiki/architecture/guards-server-side.md` y `wiki/architecture/resiliencia.md`.
->
-> #### ✅ Cerrado después (GO: "corregí todo lo que viste que merece ser arreglado")
->
-> - **Mig 396 — los 5 huecos de la Tanda F**, más uno NUEVO: **`roles_custom` era escribible por
->   cualquier usuario del tenant** → auto-escalada de permisos que anulaba todos los demás guards.
->   `productos` y `gastos` se cerraron con triggers por COLUMNA / por UMBRAL, no por rol, para no
->   romper el `stock_actual` que `VentasPage` escribe desde el cliente ni la edición legítima del
->   cajero bajo su umbral. Spec 141: 13 → **19 tests** (5 positivos nuevos).
-> - **Migs 397-399 — E4-h2 (`venta_items`)**: **48,0 → 4,62 ms**; con 20 concurrentes,
->   **86 → 174 req/s** y **p95 1.461 → 193 ms**. La 397 quedó como registro de hipótesis descartada.
-> - **🛑 Bug REGLA #0 de caja (H5)**, encontrado por la regresión: al anular una venta el reintegro en
->   efectivo podía apuntar a la **Caja USD** y fallaba **en silencio** → la caja quedaba inflada.
->   Corregido y verificado. Detalle en `tests/specs/uat-app.md` §H5.
->
-> #### Lo que sigue abierto (mismo orden de prioridad)
->
-> - 🟥 **Reintegro en efectivo USD al anular una venta**: no está contemplado en ninguna rama
->   (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). **Relevar con GO.**
-> - 🟧 **Umbral del SUPERVISOR server-side**: necesita antes mover la aplicación de autorizaciones de
->   gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238).
-> - ✅ **D2-D5 CERRADOS** (spec 142, primera que intercepta la red del browser). La app se porta bien
->   degradada: 0 requests en 30 s con backend 503, 0 offline (React Query pausa), 14 al despertar.
-> - **E2 — techo real de la instancia**: el instrumento está listo (`--usuarios N --si-se-que-hago`),
->   falta acordar CUÁNDO correrlo (saturar DEV es destructivo).
-> - **F2** — matriz completa por rol.
-> - **PROD: GO decidió ESPERAR** (2026-09-06) — "sigamos con pendientes y fixes". PROD sigue en
->   `v1.195.4`; migs 391-399 **solo en DEV**.
-> - ✅ **`schema_full.sql` al día** (tope mig 399), regenerado vía Management API con un PAT nuevo
->   (`schema-dump-local`, **vence el 2026-10-06** — cuando venza, `npm run schema:dump` falla igual que
->   antes). El token filtrado `sbp_60df...` quedó limpiado de `.claude/settings.local.json`; GO lo borra
->   en Supabase. Verificado: ningún repo ni workflow lo consumía.
-> - ✅ **Desvío de $2.468 en Caja1 de DEV: REGULARIZADO** (autorizado por GO). Barrido completo: 0
->   ventas canceladas con ingreso sin su egreso.
-> - ⏸ **Reintegro en efectivo USD al anular**: GO lo posterga ("lo vemos después").
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. Cuando venza, `npm run schema:dump` falla (el
+>   camino PG sigue roto por el bug de Supavisor). `schema_full.sql` está al día, tope mig 401.
+> - GO iba a **borrar el token filtrado `sbp_60df...`** en Supabase. Verificado que ningún repo ni
+>   workflow lo consume; ya se limpió de `.claude/settings.local.json`.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV: es el job de **pg_cron**
+>   `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). Revisar si tiene sentido que siga.
+> - El spec `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado** (todas las liquidaciones del
+>   mes ya tienen su gasto pagado), no por código. Se destraba solo el mes que viene.
 
 > ### 🟥🟥 (2026-09-06, cont. 50) — el incidente original que abrió las Tandas D/E/F
 > **[D1 ya cerrado — ver arriba. Se conserva por el diagnóstico y el método.]**

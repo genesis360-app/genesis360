@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-07T17:16:14.344Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260907171141 · 166 tablas
+-- Generado 2026-09-07T18:19:31.104Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260907173514 · 166 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -4370,6 +4370,10 @@ DECLARE
   v_rol  text;
   v_perm text;
 BEGIN
+  -- Sin sesión de usuario = service_role, Edge Functions, pg_cron. Esos caminos son de
+  -- confianza y ya están gateados en su propia capa; si el guard los frenara romperíamos los
+  -- workers de MELI/TN, el asistente de WhatsApp y los jobs. Verificado: todas las EF usan
+  -- SUPABASE_SERVICE_ROLE_KEY.
   IF v_uid IS NULL THEN RETURN true; END IF;
 
   SELECT u.rol, rc.permisos ->> p_modulo
@@ -4379,13 +4383,21 @@ BEGIN
   WHERE u.id = v_uid;
 
   IF v_rol IS NULL THEN RETURN false; END IF;
+
+  -- Rol custom con permiso EXPLÍCITO para el módulo: manda ese permiso (incluye 'no_ver'/'ver',
+  -- que son solo-lectura). 'supervisa' es superset de 'editar'.
   IF v_perm IS NOT NULL THEN RETURN v_perm IN ('editar','supervisa'); END IF;
-  IF v_rol = 'VIEWER' THEN RETURN false; END IF;
+
+  IF v_rol = 'VIEWER' THEN RETURN false; END IF;                       -- Lector: solo lectura
   IF v_rol IN ('DUEÑO','SUPER_USUARIO','ADMIN') THEN RETURN true; END IF;
 
+  -- Roles fijos operativos: allowlist por módulo.
   RETURN CASE p_modulo
+    -- Productos usa `modulo: 'inventario'` en el nav; el form (`ProductoFormPage.canEdit`) habilita
+    -- la edición a DUEÑO/SUPERVISOR/SUPER_USUARIO. DEPÓSITO ve la página en solo-lectura.
     WHEN 'inventario'    THEN v_rol = 'SUPERVISOR'
-    WHEN 'configuracion' THEN false
+    WHEN 'comercial'     THEN v_rol = 'SUPERVISOR'                      -- supervisorOnly (mig 404)
+    WHEN 'configuracion' THEN false                                     -- ownerOnly
     ELSE false
   END;
 END $function$
@@ -5157,6 +5169,24 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_cheques_monto_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.monto IS DISTINCT FROM OLD.monto THEN
+    IF NOT (public.get_user_role() = ANY (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','SUPERVISOR'])
+            OR auth.uid() IS NULL) THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar el monto de un cheque ya registrado.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_completar_tarea_armado(p_tarea_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -5344,6 +5374,26 @@ AS $function$
        AND (COALESCE(pp.peso_kg,0) <= 0 OR COALESCE(pp.alto_cm,0) <= 0
             OR COALESCE(pp.ancho_cm,0) <= 0 OR COALESCE(pp.largo_cm,0) <= 0));
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cupones_codigos_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Lo único que la venta necesita tocar es el canje. Cambiar el código en sí, o colgarlo de otro
+  -- cupón, es definir un descuento — eso es Comercial.
+  IF NEW.codigo IS DISTINCT FROM OLD.codigo
+  OR NEW.cupon_id IS DISTINCT FROM OLD.cupon_id THEN
+    IF NOT public.auth_puede_editar_modulo('comercial') THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar el código ni el cupón de un código de descuento.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_empleados_basico()
@@ -11873,7 +11923,9 @@ CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones 
 CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
 CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
+CREATE TRIGGER trg_cheques_monto_guard BEFORE UPDATE ON public.cheques FOR EACH ROW EXECUTE FUNCTION fn_cheques_monto_guard();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
+CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
@@ -12275,20 +12327,23 @@ CREATE POLICY mov_caja_tenant ON public.caja_movimientos AS PERMISSIVE FOR ALL T
 CREATE POLICY sesiones_tenant ON public.caja_sesiones AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY traspasos_tenant ON public.caja_traspasos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY caja_traspasos_delete_gestion ON public.caja_traspasos AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY caja_traspasos_insert ON public.caja_traspasos AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY caja_traspasos_select ON public.caja_traspasos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY caja_traspasos_update_supervision ON public.caja_traspasos AS PERMISSIVE FOR UPDATE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text, 'SUPERVISOR'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text, 'SUPERVISOR'::text]))));
 CREATE POLICY cajas_tenant ON public.cajas AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY canales_venta_tenant ON public.canales_venta AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY canales_venta_select ON public.canales_venta AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY canales_venta_write_gestion ON public.canales_venta AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY categorias_insert ON public.categorias AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12302,24 +12357,28 @@ CREATE POLICY categorias_gasto_tenant ON public.categorias_gasto AS PERMISSIVE F
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cheques_tenant ON public.cheques AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY cheques_delete_gestion ON public.cheques AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cheques_insert ON public.cheques AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cheques_select ON public.cheques AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cheques_update ON public.cheques AS PERMISSIVE FOR UPDATE TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY cierres_select_tenant ON public.cierres_contables AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cliente_creditos_tenant ON public.cliente_creditos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY cliente_creditos_delete_gestion ON public.cliente_creditos AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cliente_creditos_insert ON public.cliente_creditos AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cliente_creditos_select ON public.cliente_creditos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cliente_creditos_update_gestion ON public.cliente_creditos AS PERMISSIVE FOR UPDATE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY cli_dom_tenant ON public.cliente_domicilios AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12339,17 +12398,16 @@ CREATE POLICY codigo_perfiles_tenant ON public.codigo_perfiles AS PERMISSIVE FOR
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY combo_items_tenant ON public.combo_items AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY tenant_isolation ON public.combos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY combo_items_select ON public.combo_items AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY combo_items_write ON public.combo_items AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY combos_select ON public.combos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY combos_write ON public.combos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
 CREATE POLICY consumo_eventos_lectura_tenant ON public.consumo_eventos AS PERMISSIVE FOR SELECT TO authenticated
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12379,27 +12437,25 @@ CREATE POLICY courier_tarifas_tenant ON public.courier_tarifas AS PERMISSIVE FOR
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cuentas_origen_tenant ON public.cuentas_origen AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cupones_tenant ON public.cupones AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cupones_codigos_tenant ON public.cupones_codigos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY cuentas_origen_select ON public.cuentas_origen AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cuentas_origen_write_gestion ON public.cuentas_origen AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cupones_select ON public.cupones AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cupones_write ON public.cupones AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY cupones_codigos_delete ON public.cupones_codigos AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY cupones_codigos_insert ON public.cupones_codigos AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY cupones_codigos_select ON public.cupones_codigos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cupones_codigos_update ON public.cupones_codigos AS PERMISSIVE FOR UPDATE TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY devitem_tenant_insert ON public.devolucion_items AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((devolucion_id IN ( SELECT devoluciones.id
    FROM devoluciones
@@ -12477,10 +12533,11 @@ CREATE POLICY envio_pod_fotos_tenant ON public.envio_pod_fotos AS PERMISSIVE FOR
 CREATE POLICY envios_tenant ON public.envios AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY estados_tenant ON public.estados_inventario AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY estados_inventario_select ON public.estados_inventario AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY estados_inventario_write_gestion ON public.estados_inventario AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY gasto_cuotas_tenant ON public.gasto_cuotas AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12546,10 +12603,11 @@ CREATE POLICY tn_map_tenant ON public.inventario_tn_map AS PERMISSIVE FOR ALL TO
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY kit_recetas_tenant ON public.kit_recetas AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY kit_recetas_select ON public.kit_recetas AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY kit_recetas_write ON public.kit_recetas AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_puede_editar_modulo('inventario'::text) OR (get_user_role() = 'DEPOSITO'::text))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (auth_puede_editar_modulo('inventario'::text) OR (get_user_role() = 'DEPOSITO'::text))));
 CREATE POLICY kitting_log_tenant ON public.kitting_log AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12574,10 +12632,11 @@ CREATE POLICY modo_credentials_select ON public.modo_credentials AS PERMISSIVE F
 CREATE POLICY modo_credentials_write_gestion ON public.modo_credentials AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
-CREATE POLICY motivos_tenant ON public.motivos_movimiento AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY motivos_movimiento_select ON public.motivos_movimiento AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY motivos_movimiento_write_gestion ON public.motivos_movimiento AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY movimientos_insert ON public.movimientos_stock AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY movimientos_select ON public.movimientos_stock AS PERMISSIVE FOR SELECT TO public
@@ -12641,20 +12700,19 @@ CREATE POLICY pe_tenant_update ON public.producto_estructuras AS PERMISSIVE FOR 
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY ppm_tenant ON public.producto_precios_mayorista AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY producto_precios_mayorista_select ON public.producto_precios_mayorista AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY producto_precios_mayorista_write ON public.producto_precios_mayorista AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)));
 CREATE POLICY pp_tenant ON public.producto_presentaciones AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY psmss_tenant ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY producto_stock_minimo_sucursal_select ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY producto_stock_minimo_sucursal_write ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)));
 CREATE POLICY tenant_isolation ON public.producto_ubicacion_sucursal AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12693,13 +12751,11 @@ CREATE POLICY tenant_isolation ON public.proveedor_contactos AS PERMISSIVE FOR A
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY prov_cuentas_tenant ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY proveedor_cuentas_bancarias_select ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY proveedor_cuentas_bancarias_write_gestion ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY pp_tenant ON public.proveedor_productos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12889,10 +12945,11 @@ CREATE POLICY sp_tenant ON public.servicio_presupuestos AS PERMISSIVE FOR ALL TO
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY tenant_sucursales ON public.sucursales AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY sucursales_select ON public.sucursales AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY sucursales_write_gestion ON public.sucursales AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY support_agents_self_read ON public.support_agents AS PERMISSIVE FOR SELECT TO public
   USING ((id = ( SELECT auth.uid() AS uid)));
 CREATE POLICY tareas_repositor_tenant ON public.tareas_repositor AS PERMISSIVE FOR ALL TO public
@@ -12939,12 +12996,11 @@ CREATE POLICY traslados_tenant ON public.traslados AS PERMISSIVE FOR ALL TO publ
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY ubicaciones_insert ON public.ubicaciones AS PERMISSIVE FOR INSERT TO public
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY ubicaciones_tenant ON public.ubicaciones AS PERMISSIVE FOR ALL TO public
+CREATE POLICY ubicaciones_select ON public.ubicaciones AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY ubicaciones_write_gestion ON public.ubicaciones AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY tenant_isolation ON public.unidades_medida AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users

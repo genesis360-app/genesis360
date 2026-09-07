@@ -682,3 +682,137 @@ test.describe('F2 — las credenciales de integración solo las escribe gestión
     }
   })
 })
+
+/**
+ * F1 (cierre) — la matriz de ESCRITURA de PLATA, PRECIOS e INVENTARIO (mig 404).
+ *
+ * Lo que había abierto: con el token de un CAJERO se escribían `cheques`, `cliente_creditos`,
+ * `caja_traspasos`, `producto_precios_mayorista`, `cupones`, `combos`, `sucursales`, `ubicaciones`,
+ * `estados_inventario`, `canales_venta`, `cuentas_origen` y `kit_recetas`.
+ *
+ * 🔑 Lo que hace difícil este caso, y por lo que los tests POSITIVOS de abajo son la mitad
+ * importante: **el corte va por OPERACIÓN, no por tabla.** La venta INSERTA `cliente_creditos`,
+ * el cajero CREA cheques al cobrar y el POS ESCRIBE `cupones_codigos` al canjear. Un guard por tabla
+ * habría roto las tres cosas.
+ */
+test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)', () => {
+  /** Una fila por tabla + un PATCH que no cambia nada, buscados con el token del DUEÑO. */
+  async function objetivosMatriz(request: APIRequestContext) {
+    const h = restHeaders(await tokenOwner(request))
+    const objetivos: Array<[string, string]> = []
+    for (const tabla of ['cheques', 'cliente_creditos', 'caja_traspasos', 'producto_precios_mayorista',
+                         'cupones', 'combos', 'sucursales', 'ubicaciones', 'estados_inventario',
+                         'canales_venta', 'cuentas_origen', 'kit_recetas']) {
+      const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=id&limit=1`, { headers: h })
+      if (!res.ok()) continue
+      const [fila] = (await res.json()) as Array<{ id: string }>
+      if (fila) objetivos.push([tabla, fila.id])
+    }
+    expect(objetivos.length, '[141/F1] fixture flaco: se esperaban las 12 tablas de la matriz con al menos una fila').toBe(12)
+    return objetivos
+  }
+
+  test('ningún rol operativo escribe plata, precios ni configuración', async ({ request }) => {
+    const objetivos = await objetivosMatriz(request)
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      for (const [tabla, id] of objetivos) {
+        // Dos excepciones DELIBERADAS, y conviene que estén escritas y no descubiertas:
+        //  · `cheques`: cobrar/endosar/rechazar es operativo. Lo que se bloquea es el MONTO (test
+        //    aparte) y el DELETE.
+        //  · `kit_recetas` para DEPÓSITO: es el rol del depósito y arma kits. El guard lo incluye a
+        //    propósito; lo que saca de la lista es a CAJERO, RRHH, CONTADOR y LECTOR.
+        if (tabla === 'cheques') continue
+        if (tabla === 'kit_recetas' && r.rol === 'DEPOSITO') continue
+        const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT })
+        expect(escribio, `[141/F1] ${r.rol} NO debe poder escribir ${tabla}`).toBe(false)
+      }
+    }
+  })
+
+  test('🔑 el DEPÓSITO sí edita las recetas de kit — es su trabajo', async ({ request }) => {
+    const dep = rolesConCredenciales().find((r) => r.rol === 'DEPOSITO')
+    test.skip(!dep, 'sin credenciales de DEPOSITO en .env.test.local')
+    const token = await tokenRol(request, dep!)
+    const owner = await tokenOwner(request)
+    const [receta] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/kit_recetas?select=id&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string }>
+    expect(receta, '[141/F1] fixture vacío: el tenant de prueba no tiene recetas de kit').toBeTruthy()
+    expect(
+      await rlsDejaEscribir(request, token, `kit_recetas?id=eq.${receta.id}&select=id`, { tenant_id: TENANT }),
+      '[141/F1] el DEPÓSITO DEBE poder editar recetas de kit',
+    ).toBe(true)
+  })
+
+  test('el MONTO de un cheque ya registrado no lo cambia un rol operativo', async ({ request }) => {
+    const owner = await tokenOwner(request)
+    const [cheque] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/cheques?select=id,monto&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string; monto: number }>
+    expect(cheque, '[141/F1] fixture vacío: el tenant de prueba no tiene cheques').toBeTruthy()
+
+    for (const r of rolesConCredenciales()) {
+      const token = await tokenRol(request, r)
+      const res = await request.patch(`${SUPABASE_URL}/rest/v1/cheques?id=eq.${cheque.id}&select=id`, {
+        headers: restHeaders(token), data: { monto: Number(cheque.monto) + 1 },
+      })
+      expect(res.status(), `[141/F1] ${r.rol} NO debe poder cambiar el monto de un cheque`).toBe(403)
+    }
+
+    // Y el dato quedó intacto (la sonda es mutante por naturaleza: se verifica que NO mutó).
+    const [despues] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/cheques?id=eq.${cheque.id}&select=monto`, { headers: restHeaders(owner) })).json()) as Array<{ monto: number }>
+    expect(Number(despues.monto), '[141/F1] el monto del cheque no debe haber cambiado').toBe(Number(cheque.monto))
+  })
+
+  // 🔑 LA MITAD IMPORTANTE: que el guard no rompa la operación de todos los días.
+  test('🔑 el CAJERO sigue pudiendo cobrar: canjear un cupón, mover un cheque de estado y acreditar saldo', async ({ request }) => {
+    const cajero = rolesConCredenciales().find((r) => r.rol === 'CAJERO')
+    test.skip(!cajero, 'sin credenciales de CAJERO en .env.test.local')
+    const token = await tokenRol(request, cajero!)
+    const owner = await tokenOwner(request)
+
+    // 1) Canje de cupón — el UPDATE que hace VentasPage al cobrar (mismo valor, no muta).
+    const [codigo] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/cupones_codigos?select=id,usado_at&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string; usado_at: string | null }>
+    expect(codigo, '[141/F1] fixture vacío: el tenant de prueba no tiene códigos de cupón').toBeTruthy()
+    expect(
+      await rlsDejaEscribir(request, token, `cupones_codigos?id=eq.${codigo.id}&select=id`, { usado_at: codigo.usado_at }),
+      '[141/F1] el CAJERO DEBE poder canjear un cupón (si no, la venta con cupón se rompe)',
+    ).toBe(true)
+
+    // 2) Estado de un cheque — cobrarlo / endosarlo / rechazarlo.
+    const [cheque] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/cheques?select=id,estado&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string; estado: string }>
+    expect(
+      await rlsDejaEscribir(request, token, `cheques?id=eq.${cheque.id}&select=id`, { estado: cheque.estado }),
+      '[141/F1] el CAJERO DEBE poder mover el estado de un cheque',
+    ).toBe(true)
+
+    // 3) Saldo a favor — lo INSERTA la devolución/anulación desde VentasPage.
+    const [credito] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/cliente_creditos?select=cliente_id&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ cliente_id: string }>
+    expect(credito, '[141/F1] fixture vacío: el tenant de prueba no tiene saldos a favor').toBeTruthy()
+    const alta = await request.post(`${SUPABASE_URL}/rest/v1/cliente_creditos`, {
+      headers: restHeaders(token),
+      data: { tenant_id: TENANT, cliente_id: credito.cliente_id, monto: 1, origen: 'devolucion', nota: '[e2e 141] sonda, se borra sola' },
+    })
+    expect(alta.ok(), `[141/F1] el CAJERO DEBE poder acreditar saldo a favor: ${await alta.text()}`).toBeTruthy()
+    // Limpieza con el DUEÑO (el cajero ya no puede borrar — que es justamente el punto).
+    const creado = ((await alta.json()) as Array<{ id: string }>)[0]
+    if (creado) await request.delete(`${SUPABASE_URL}/rest/v1/cliente_creditos?id=eq.${creado.id}`, { headers: restHeaders(owner) })
+  })
+
+  test('🔑 el SUPERVISOR sí gestiona precios, comercial y correcciones de caja', async ({ request }) => {
+    const sup = { rol: 'SUPERVISOR', email: process.env.E2E_SUPERVISOR_EMAIL, password: process.env.E2E_SUPERVISOR_PASSWORD }
+    test.skip(!sup.email || !sup.password, 'sin credenciales de SUPERVISOR en .env.test.local')
+    const token = await tokenRol(request, sup)
+    const objetivos = await objetivosMatriz(request)
+    for (const [tabla, id] of objetivos) {
+      // `sucursales`, `ubicaciones`, `estados_inventario`, `canales_venta` y `cuentas_origen` son
+      // ownerOnly: el SUPERVISOR no entra ni por la UI.
+      if (['sucursales', 'ubicaciones', 'estados_inventario', 'canales_venta', 'cuentas_origen', 'cliente_creditos'].includes(tabla)) continue
+      const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT })
+      expect(escribio, `[141/F1] el SUPERVISOR DEBE poder escribir ${tabla}`).toBe(true)
+    }
+  })
+})

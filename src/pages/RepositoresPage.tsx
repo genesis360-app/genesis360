@@ -133,6 +133,27 @@ export default function RepositoresPage() {
   })
 
   // ── Etiquetas de precio (Fase 4, mig 357) ───────────────────────────────────────────────────────
+  // 🔎 Precondición del módulo (hallazgo de Fede, 2026-09-08: "creo que el módulo de repositores no
+  // está funcionando porque modifiqué un precio de un producto y no generó la tarea").
+  //
+  // El trigger `fn_generar_tarea_repositor_precio` SÍ funciona — probado end-to-end. Pero solo
+  // genera tarea para productos con **ubicación de exhibición (góndola) asignada**
+  // (`producto_ubicacion_sucursal.ubicacion_exhibicion_id`), que es el comportamiento diseñado: sin
+  // presencia en góndola no hay cartel que cambiar. El problema es que, sin ninguna asignada, el
+  // módulo queda **inerte en silencio** y desde afuera es indistinguible de estar roto — el vacío
+  // hasta decía "aparecen solas cuando cambia un precio", que era una promesa que no se iba a
+  // cumplir. Con esto el vacío explica la causa y dónde se configura.
+  const { data: productosEnGondola } = useQuery({
+    queryKey: ['repositores-productos-en-gondola', tenant?.id],
+    queryFn: async () => {
+      const { count } = await supabase.from('producto_ubicacion_sucursal')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant!.id).not('ubicacion_exhibicion_id', 'is', null)
+      return count ?? 0
+    },
+    enabled: !!tenant,
+  })
+
   const { data: unidadesFisicas = [] } = useQuery<UnidadFisica[]>({
     queryKey: ['unidades_medida_fisicas', tenant?.id],
     queryFn: async () => {
@@ -434,11 +455,29 @@ export default function RepositoresPage() {
           <Tags size={40} className="mb-3 text-gray-200 dark:text-gray-700" />
           <p className="font-medium">{filtro === 'activas' ? 'No hay tareas pendientes' : 'Sin tareas en este filtro'}</p>
           {filtro === 'activas' && (
-            <p className="text-sm mt-1">
-              {seccion === 'carteles'
-                ? 'Aparecen solas cuando cambia un precio o un producto entra en descuento.'
-                : 'Aparecen solas cuando una góndola queda en cero — o clickeá el botón de arriba para revisar ahora.'}
-            </p>
+            productosEnGondola === 0 ? (
+              // Nada asignado a góndola: el módulo no puede generar NINGUNA tarea. Se dice por qué.
+              <div className="text-sm mt-2 max-w-md text-center space-y-2">
+                <p className="text-amber-700 dark:text-amber-400 font-medium">
+                  Todavía no hay ningún producto asignado a una góndola.
+                </p>
+                <p>
+                  Las tareas se generan solo para los productos que están en exhibición: si nadie
+                  tiene góndola asignada, cambiar un precio no genera nada.
+                </p>
+                <p className="text-gray-400 dark:text-gray-500">
+                  Se configura en <strong>Productos → (abrir un producto) → Stock e inventario →
+                  «Ubicación de exhibición (góndola)»</strong>. La góndola tiene que existir antes,
+                  como ubicación de tipo <em>exhibición</em>.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm mt-1">
+                {seccion === 'carteles'
+                  ? 'Aparecen solas cuando cambia un precio o un producto entra en descuento.'
+                  : 'Aparecen solas cuando una góndola queda en cero — o clickeá el botón de arriba para revisar ahora.'}
+              </p>
+            )
           )}
         </div>
       ) : seccion === 'carteles' ? (

@@ -6,48 +6,26 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-08, cont. 56) — `v1.205.1` en `dev`, migs **391-404** solo en DEV.
+> ### ✅ ARRANCÁ ACÁ (2026-09-08, cont. 57) — **TANDA F CERRADA**. `v1.206.0` en `dev`, migs **391-405** solo en DEV.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
 >
 > #### Lo cerrado (7 y 8 de septiembre)
 >
 > | Mig / cambio | Qué cerró |
 > |---|---|
-> | **402** | el **núcleo fiscal** era escribible por cualquier rol (CUIT, condición de IVA, `afip_produccion`, certificado) y la **clave privada AFIP** era descargable |
-> | **403** | los secretos que la 400 dejó afuera (**Mercado Libre**, MODO, couriers) + el **detalle** de sueldos que la 401 dejó afuera |
-> | **404** | la **matriz de escritura**: plata, **precios por la puerta de al lado** (lista mayorista, combos, cupones) y configuración |
-> | **e2e** | los **9 specs** que sembraban stock por UI, rotos hace días por una ubicación Mono-SKU ocupada (`UBICACION_SIEMBRA`) |
+> | **402** | el **núcleo fiscal** era escribible por cualquier rol y la **clave privada AFIP** era descargable |
+> | **403** | los secretos que la 400 dejó afuera (**Mercado Libre**, MODO, couriers) + el **detalle** de sueldos |
+> | **404** | la **matriz de escritura**: plata, **precios por la puerta de al lado** y configuración |
+> | **405** | el **módulo Gastos**, con la regla de GO — el gate **no es el rol, es el permiso del rol custom** |
+> | **e2e** | los **9 specs** de siembra de stock + 8 de las 14 fallas de la corrida completa |
 >
-> #### 🧪 Foto REAL de la suite (corrida completa, 2026-09-08 — 48 min)
->
-> **394 tests · 339 verdes · 41 skipped · 14 rojos → 8 cerrados en el momento.** Lo que queda:
->
-> | Qué | Estado |
-> |---|---|
-> | `37_rrhh_nomina_gasto` | fixture agotado, **se destraba solo el mes que viene** |
-> | `107`, `128` ×2, `131` | **flake bajo carga** — las 4 pasan en aislado (verificado) |
-> | `20_caja_apertura_cierre` | 🟥 **abierto** (ver abajo) |
->
-> 🟥 **`20_caja` — y NO es un timeout** (falla igual con 90 s). El DUEÑO tiene **Caja1 y Caja USD
-> abiertas desde agosto**; el botón "Abrir caja" se deshabilita con *"Ya tenés una caja abierta"*. Es
-> **estado viejo del ambiente de DEV**, no las migraciones. Dos salidas: cerrar esas sesiones viejas
-> en DEV, o que el spec cierre lo que encuentre abierto antes de empezar (preferible: no depende del
-> ambiente). ⚠ Se probó subirle el presupuesto y **se revirtió** — no era la causa.
->
-> 📌 Para calibrar: el default de Playwright son **30 s** y **47 specs ya lo suben**. El default quedó
-> chico para esta app; vale evaluar subirlo en `playwright.config.ts` y sacar los overrides.
-
 > #### 🟥 Lo que sigue, en orden
 >
-> 1. **Definición de negocio para cerrar los últimos dos de la matriz**:
->    - `proveedor_cc_movimientos` — **¿un CAJERO puede registrar un pago a proveedor?** Lo inserta
->      `ChequesPanel` (que vive dentro de Gastos, donde el cajero entra) y `ProveedoresPage`
->      (ownerOnly). Sin esa respuesta no se puede elegir el gate.
->    - `gastos_fijos` / `gasto_cuotas` — el CAJERO opera bajo su umbral y el CONTADOR es actor
->      legítimo; cerrarlos por rol rompería a los dos.
-> 2. **Decisión de PROD**: cuándo van las migs **391-404** + el código. ⚠ **Cambian comportamiento**:
+> 1. **Decisión de PROD**: cuándo van las migs **391-405** + el código. ⚠ **Cambian comportamiento**:
 >    donde antes bloqueaba solo la UI, ahora la base rechaza → **migraciones y código van juntos**, no
->    aplica el "DDL aditivo primero".
+>    aplica el "DDL aditivo primero". La suite ya respalda la decisión: 339 verdes.
+> 2. **Dashboard "modo real" USD (G1)** — Fede lo espera; el patrón ya existe (KPI "Ingreso Neto de
+>    Caja"), falta extenderlo a Ventas/Gastos.
 > 3. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
 >    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
 > 4. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
@@ -55,8 +33,19 @@ type: project
 > 5. **E2 — techo real de la instancia**: instrumento listo
 >    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo.
 > 6. **Dropear `tenants.afipsdk_token`** — hoy siempre NULL; se dropea cuando PROD corra este código.
-> 7. **Dashboard "modo real" USD (G1)** — Fede lo espera y el patrón ya existe (KPI "Ingreso Neto de
->    Caja"), falta extenderlo a Ventas/Gastos.
+>
+> #### 🧪 Estado de la suite (corrida completa 2026-09-08 — 48 min)
+>
+> **394 tests · 339 verdes · 41 skipped · 14 rojos → 8 cerrados.** Lo que sobrevive:
+>
+> | Qué | Estado |
+> |---|---|
+> | `37_rrhh_nomina_gasto` | fixture agotado, **se destraba solo el mes que viene** |
+> | `107`, `128` ×2, `131` | **flake bajo carga** — las 4 pasan en aislado (verificado) |
+> | `20_caja_apertura_cierre` | 🟥 **abierto** — y **NO es un timeout** (falla igual con 90 s). El DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto**; el botón "Abrir caja" se deshabilita con *"Ya tenés una caja abierta"*. Es estado viejo de DEV. Salida preferible: que el spec cierre lo que encuentre abierto, para no depender del ambiente |
+>
+> 📌 El default de Playwright son **30 s** y **47 specs ya lo suben** → el default quedó chico; vale
+> evaluar subirlo en `playwright.config.ts` y sacar los overrides.
 >
 > #### Deuda de fixture (migs 401 y 403)
 >
@@ -65,9 +54,10 @@ type: project
 >
 > #### Cosas operativas a no olvidar
 >
-> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 404.
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 405.
 > - `tn-fulfillment-worker` corre 133 veces/día contra DEV (pg_cron `tn-fulfillment-sync`).
-> - `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado**, no por código.
+> - La ubicación **`E2E Siembra`** (global, multi-SKU, `disponible_surtido`) la crea el fixture de e2e.
+>   No borrarla ni pasarla a Mono-SKU: se cae la siembra de stock de 14 specs.
 
 > ### ✅ (2026-09-07, cont. 54) — secretos restantes + detalle de RRHH (mig 403). `v1.204.0` en `dev`.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.

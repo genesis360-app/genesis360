@@ -319,12 +319,35 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         pctNuevos = 100 - pctFrecuentes
       }
 
-      // ── Chart 1: Funnel ───────────────────────────────────────────────────────
-      const montoPresupuestado = ventas.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
-      const ventasPendCobro = ventasConf.filter((v: any) => (v.monto_pagado ?? 0) < (v.total ?? 0) - 0.5)
-      const ventasPagadas = ventasConf.filter((v: any) => (v.monto_pagado ?? 0) >= (v.total ?? 0) - 0.5)
-      const montoPendCobro = ventasPendCobro.reduce((a: number, v: any) => a + ((v.total ?? 0) - (v.monto_pagado ?? 0)), 0)
-      const montoPagado = ventasPagadas.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+      // ── Chart 1: Funnel — "El Camino de la Venta" ────────────────────────────
+      // Redefinido con Fede (2026-09-08). Antes las tres etapas no eran comparables entre sí:
+      // "Presupuestado" sumaba el total de TODAS las ventas del período (reservas y ventas ya
+      // cobradas incluidas), así que una reserva pagada aparecía como "presupuesto"; y "Pagado"
+      // sumaba el total completo de las ventas saldadas, ignorando las señas ya cobradas de las
+      // reservas. El embudo mostraba la misma plata dos veces y escondía otra.
+      //
+      // Ahora cada etapa es una cosa distinta y la plata no se duplica:
+      //   · Presupuestado/Iniciado → SOLO los presupuestos armados en el POS (`estado 'pendiente'`).
+      //   · Pendiente de cobro     → lo que FALTA cobrar (total − pagado).
+      //   · Pagado/Cerrado         → lo que YA se cobró, incluidas las señas de reservas.
+      //
+      // ⚠ Criterio propio, decime si lo querés distinto: en "pendiente de cobro" entran las reservas
+      // Y las ventas confirmadas con saldo (típico cuenta corriente). Fede nombró las reservas, pero
+      // dejar afuera un saldo de CC escondería plata que el negocio tiene por cobrar.
+      const presupuestos = ventas.filter((v: any) => v.estado === 'pendiente')
+      const reservas     = ventas.filter((v: any) => v.estado === 'reservada')
+      // Lo que ya es venta real (no presupuesto): confirmadas + reservas.
+      const cobrables    = [...ventasConf, ...reservas]
+
+      const montoPresupuestado = presupuestos.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+
+      const ventasPendCobro = cobrables.filter((v: any) => (v.monto_pagado ?? 0) < (v.total ?? 0) - 0.5)
+      const montoPendCobro  = ventasPendCobro.reduce((a: number, v: any) => a + ((v.total ?? 0) - (v.monto_pagado ?? 0)), 0)
+
+      // `min(pagado, total)` por las dudas: un pagado mayor al total (sobrepago/ajuste) inflaría
+      // la etapa y rompería que pendiente + pagado sea el total de lo vendido.
+      const ventasPagadas = cobrables.filter((v: any) => (v.monto_pagado ?? 0) > 0)
+      const montoPagado   = ventasPagadas.reduce((a: number, v: any) => a + Math.min(v.monto_pagado ?? 0, v.total ?? 0), 0)
 
       // ── Chart 2: Heatmap ──────────────────────────────────────────────────────
       const heatmap = buildHeatmapMatrix(ventasConf)
@@ -408,7 +431,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       list.push({
         tipo: 'danger',
         titulo: `${fmt(vData.funnelData.pendienteCobro.monto)} pendientes de cobro`,
-        impacto: `${vData.funnelData.pendienteCobro.count} venta${vData.funnelData.pendienteCobro.count !== 1 ? 's' : ''} confirmada${vData.funnelData.pendienteCobro.count !== 1 ? 's' : ''} con saldo sin cobrar.`,
+        impacto: `${vData.funnelData.pendienteCobro.count} venta${vData.funnelData.pendienteCobro.count !== 1 ? 's' : ''} o reserva${vData.funnelData.pendienteCobro.count !== 1 ? 's' : ''} con saldo sin cobrar.`,
         accion: 'Ver ventas', link: '/ventas',
       })
     }
@@ -693,7 +716,9 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
           </div>
           {isLoading ? (
             <div className="h-32 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />
-          ) : vData && vData.funnelData.presupuestado.count > 0 ? (
+          ) : vData && (vData.funnelData.presupuestado.count > 0
+                        || vData.funnelData.pendienteCobro.count > 0
+                        || vData.funnelData.pagado.count > 0) ? (
             <FunnelChart
               fmt={fmt}
               data={[

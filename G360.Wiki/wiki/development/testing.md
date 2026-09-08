@@ -385,6 +385,30 @@ extraerMedioPago / extraerNumeroVenta       // parsing de concepto
 
 ---
 
+## 🌱 La foto de datos de la siembra de stock (`UBICACION_SIEMBRA`, 2026-09-08)
+
+Los 9 specs que siembran stock por UI (115, 116, 119, 122, 123, 128, 131, 132, 137) pasan por
+`ingresoRealPorUI` en `tests/e2e/helpers/fixtures.ts`. Ese fixture **no elige la ubicación a ciegas**:
+usa `UBICACION_SIEMBRA` (`'E2E Siembra'`), que crea él mismo si no existe.
+
+**Por qué**: antes agarraba `vals[0]` — la primera del dropdown — y en el tenant de prueba esa es
+`A-01-1`, **Mono-SKU**. El día que quedó ocupada por un producto de otro spec se cayeron los 9 de
+golpe, con un `toBeVisible` que no explicaba nada.
+
+La ubicación necesita **las cuatro** propiedades, y cada una se descubrió rompiéndose:
+
+- `mono_sku: false` — el choque original.
+- `sucursal_id: null` — global; el dropdown de Ingreso lista `sucursal_id.eq.<actual>` **OR**
+  `is.null`, así sirve en cualquier sucursal.
+- `disponible_surtido: true` y `tipo_logico: 'almacenamiento'` — **sin esto el ingreso entra pero el
+  POS no ofrece la línea**, y el spec falla recién al armar el carrito.
+
+> 🔍 **Técnica reusable**: cuando un spec falla con un `toBeVisible` mudo después de una acción que
+> muestra un toast, instrumentar el fixture para volcar
+> `page.locator('[class*="go"], [role="status"]').allTextContents()` justo después del click. El toast
+> ya se desvaneció cuando Playwright toma el snapshot del fallo, así que el motivo real no aparece en
+> el `error-context.md`.
+
 ## Links relacionados
 
 - [[wiki/development/workflow-git]]

@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-08] update | ✅ Recuperados los 9 specs e2e que sembraban stock por UI — v1.205.1
+
+Cerrado el issue que había quedado abierto ayer. Los specs 115, 116, 119, 122, 123, 128, 131, 132 y
+137 estaban rojos hace días y el síntoma no decía nada: un `toBeVisible` que no encontraba el
+carrito. La causa apareció **instrumentando el fixture para atrapar el toast antes de que se
+desvanezca** (técnica a reusar):
+
+> `La ubicación "A-01-1" es Mono-SKU y ya tiene "E2E MoverMismaSuc 1788334922185"`
+
+`ingresoRealPorUI` elegía **la primera ubicación de la lista** (`vals[0]`), y en el tenant de prueba
+esa es Mono-SKU. El día que quedó ocupada por un producto de otro spec, se cayeron los 9 juntos. La
+foto de datos era **implícita**, así que se rompió sola — exactamente lo que la Tanda D/E/F vino a
+corregir ("definir con qué foto de datos corre cada escenario").
+
+**Fix**: `UBICACION_SIEMBRA` (`'E2E Siembra'`), que el propio fixture crea si no existe (idempotente,
+y la normaliza si alguien la desactiva o la pasa a Mono-SKU). Tres propiedades que **no son
+decorativas** — cada una se encontró rompiéndose:
+
+| Propiedad | Por qué |
+|---|---|
+| `mono_sku: false` | es el choque original |
+| `sucursal_id: null` | el dropdown de Ingreso lista `sucursal_id.eq.<actual>` **OR** `is.null`, así que una global sirve en cualquier sucursal |
+| `disponible_surtido: true` + `tipo_logico: 'almacenamiento'` | sin esto **el ingreso entra pero el POS no ofrece la línea**, y el spec falla más adelante al armar el carrito |
+
+Y al crearla hay que **recargar**: la lista que la pantalla ya cargó queda vieja y el `selectOption`
+no la encuentra.
+
+**Antes de tocar nada se descartó que fuera de las migs 402/403/404**: el INSERT en
+`inventario_lineas` impersonando al DUEÑO pasa sin error, no hay ningún error de Postgres en los logs
+de la ventana, y ninguna de las tablas del ingreso (`inventario_lineas`, `inventario_series`,
+`movimientos_stock`) está en esas migraciones.
+
+Verde: los 9 specs, **15/15** — incluidos los 3 que piden ubicación por nombre, que usan la otra rama.
+Sin cambios de producto: solo el helper de tests.
+
+---
+
 ## [2026-09-07] update | 🔴 La matriz de ESCRITURA de plata, precios e inventario (mig 404) — v1.205.0
 
 Cierra lo que la auditoría de la 403 había dejado medido. Con el token de un CAJERO se escribían por

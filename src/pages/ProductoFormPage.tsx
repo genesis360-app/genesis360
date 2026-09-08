@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeVerCosto } from '@/lib/permisosCosto'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
-import { logActividad } from '@/lib/actividadLog'
+import { logActividad, nuevaTransaccion, diffCampos } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
@@ -25,6 +25,24 @@ import { Toggle } from '@/components/Toggle'
 import { useConfirm } from '@/hooks/useConfirm'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
+
+// Qué campos de un producto se registran en el HISTORIAL cuando alguien lo edita, y con qué nombre
+// se muestran (issue #9 de Fede). Es una allowlist a propósito: el historial lo lee una persona, no
+// es un dump de la fila — quedan afuera ids internos, timestamps y los campos derivados.
+const ETIQUETAS_PRODUCTO: Record<string, string> = {
+  nombre: 'nombre', sku: 'SKU', descripcion: 'descripción',
+  precio_costo: 'precio de costo', precio_venta: 'precio de venta',
+  precio_usd: 'precio en USD', precio_costo_usd: 'costo en USD',
+  moneda_venta: 'moneda de venta', moneda_costo: 'moneda de costo',
+  stock_minimo: 'stock mínimo', unidad_medida: 'unidad de medida',
+  codigo_barras: 'código de barras', activo: 'activo',
+  categoria_id: 'categoría', proveedor_id: 'proveedor',
+  ubicacion_id: 'ubicación', estado_id: 'estado de inventario',
+  alicuota_iva: 'alícuota de IVA',
+  peso_kg: 'peso (kg)', largo_cm: 'largo (cm)', ancho_cm: 'ancho (cm)', alto_cm: 'alto (cm)',
+  tiene_series: 'lleva series', tiene_lote: 'lleva lote', tiene_vencimiento: 'lleva vencimiento',
+  es_kit: 'es kit', regla_inventario: 'regla de inventario',
+}
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
 
@@ -592,7 +610,32 @@ export default function ProductoFormPage() {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
         if (error) throw error
         toast.success('Producto actualizado')
-        logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: nombreFinal, accion: 'editar', pagina: '/productos' })
+        // 📜 Fede (2026-09-08): el historial decía solo "Editó producto X". `HistorialPage` ya sabe
+        // renderizar el detalle campo por campo (`"anterior" → "nuevo"`); lo que faltaba era
+        // mandárselo. Se registra UNA fila por campo cambiado, todas bajo la misma transacción,
+        // que es el patrón que el ledger ya usaba para la edición de un LPN.
+        const cambios = diffCampos(productoData as Record<string, unknown> | null, payload, ETIQUETAS_PRODUCTO)
+        if (cambios.length === 0) {
+          logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: nombreFinal, accion: 'editar', pagina: '/productos' })
+        } else {
+          const tx = nuevaTransaccion()
+          // Tope defensivo: una edición normal toca pocos campos; si alguna vez tocara 40 (una
+          // importación, un cambio masivo) no tiene sentido llenar el historial con 40 filas.
+          for (const c of cambios.slice(0, 15)) {
+            logActividad({
+              entidad: 'producto', entidad_id: id, entidad_nombre: nombreFinal, accion: 'editar',
+              campo: c.campo, valor_anterior: c.anterior, valor_nuevo: c.nuevo,
+              pagina: '/productos', transaccion_id: tx, tipo_transaccion: 'edicion',
+            })
+          }
+          if (cambios.length > 15) {
+            logActividad({
+              entidad: 'producto', entidad_id: id, entidad_nombre: nombreFinal, accion: 'editar',
+              campo: `y ${cambios.length - 15} campos más`, pagina: '/productos',
+              transaccion_id: tx, tipo_transaccion: 'edicion',
+            })
+          }
+        }
       } else {
         const { data: newProd, error } = await supabase.from('productos').insert(payload).select('id').single()
         if (error) { if (error.code === '23505') throw new Error('Ya existe un producto con ese SKU'); throw error }

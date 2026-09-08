@@ -6,58 +6,57 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-08, cont. 57) — **TANDA F CERRADA**. `v1.206.0` en `dev`, migs **391-405** solo en DEV.
+> ### ✅ ARRANCÁ ACÁ (2026-09-08, cont. 58) — `v1.207.0` en `dev`, migs **391-406** solo en DEV.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
 >
 > #### Lo cerrado (7 y 8 de septiembre)
 >
-> | Mig / cambio | Qué cerró |
+> | Bloque | Qué |
 > |---|---|
-> | **402** | el **núcleo fiscal** era escribible por cualquier rol y la **clave privada AFIP** era descargable |
-> | **403** | los secretos que la 400 dejó afuera (**Mercado Libre**, MODO, couriers) + el **detalle** de sueldos |
-> | **404** | la **matriz de escritura**: plata, **precios por la puerta de al lado** y configuración |
-> | **405** | el **módulo Gastos**, con la regla de GO — el gate **no es el rol, es el permiso del rol custom** |
-> | **e2e** | los **9 specs** de siembra de stock + 8 de las 14 fallas de la corrida completa |
+> | **Tanda F (migs 402-405)** | núcleo fiscal · secretos restantes + detalle de sueldos · matriz de escritura · módulo Gastos |
+> | **e2e** | los 9 specs de siembra de stock + 8 de las 14 fallas de la corrida completa |
+> | **Issues de Fede (mig 406)** | **10 de 13** — ver `log.md` (2026-09-08) |
 >
 > #### 🟥 Lo que sigue, en orden
 >
-> 1. **Decisión de PROD**: cuándo van las migs **391-405** + el código. ⚠ **Cambian comportamiento**:
->    donde antes bloqueaba solo la UI, ahora la base rechaza → **migraciones y código van juntos**, no
->    aplica el "DDL aditivo primero". La suite ya respalda la decisión: 339 verdes.
-> 2. **Dashboard "modo real" USD (G1)** — Fede lo espera; el patrón ya existe (KPI "Ingreso Neto de
->    Caja"), falta extenderlo a Ventas/Gastos.
-> 3. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
->    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
-> 4. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
->    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238).
-> 5. **E2 — techo real de la instancia**: instrumento listo
->    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo.
-> 6. **Dropear `tenants.afipsdk_token`** — hoy siempre NULL; se dropea cuando PROD corra este código.
+> 1. **Dashboard "modo real" USD (G1)** — lo pidió GO después de los issues de Fede. El patrón ya
+>    existe (KPI "Ingreso Neto de Caja"), falta extenderlo a Ventas/Gastos.
+> 2. **PASAR TODO A PROD** — GO lo dejó dicho: "luego de eso pasamos todos a PRD". Van las migs
+>    **391-406** + el código. ⚠ **Cambian comportamiento**: donde antes bloqueaba solo la UI, ahora
+>    la base rechaza → **migraciones y código van juntos**, no aplica el "DDL aditivo primero".
+> 3. **Gasto suelto en USD** (issue #3 de Fede, mitad pendiente) — `gastos.moneda` YA existe en la DB;
+>    falta la UI del formulario. ⚠ La **OC en USD ya funciona** (selector en `ProveedoresPage`, mig
+>    379): Fede probablemente no lo encontró porque se elige al crear la OC en Proveedores, no en
+>    Gastos. Para el gasto suelto está el patrón de la OC como guía (`cajasAbiertasOCMoneda`,
+>    `monedaDeMetodo`, cotización de descalce). Es una feature que **mueve plata desde una caja**, no
+>    un ajuste.
+> 4. **Cobrar en caja USD** (issue #2 de Fede) — es la **Fase 8 (C2)**, frenada esperando la
+>    definición del contador por la factura. Fede lo menciona en el mismo issue.
+> 5. **Góndolas para que sirva Repositores** — hay **0 ubicaciones de exhibición en PROD**. Hasta que
+>    alguien las cree y las asigne a productos, el módulo no genera nada (ahora el vacío lo explica).
+>    Decisión de GO: ¿carga masiva por categoría/lote, o producto por producto?
+> 6. **Reintegro en efectivo USD al anular una venta** — GO lo pospuso: **relevar**.
+> 7. **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)** · **dropear
+>    `tenants.afipsdk_token`** (cuando PROD corra este código).
 >
-> #### 🧪 Estado de la suite (corrida completa 2026-09-08 — 48 min)
+> #### 🧪 Estado de la suite
 >
-> **394 tests · 339 verdes · 41 skipped · 14 rojos → 8 cerrados.** Lo que sobrevive:
->
-> | Qué | Estado |
-> |---|---|
-> | `37_rrhh_nomina_gasto` | fixture agotado, **se destraba solo el mes que viene** |
-> | `107`, `128` ×2, `131` | **flake bajo carga** — las 4 pasan en aislado (verificado) |
-> | `20_caja_apertura_cierre` | 🟥 **abierto** — y **NO es un timeout** (falla igual con 90 s). El DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto**; el botón "Abrir caja" se deshabilita con *"Ya tenés una caja abierta"*. Es estado viejo de DEV. Salida preferible: que el spec cierre lo que encuentre abierto, para no depender del ambiente |
->
-> 📌 El default de Playwright son **30 s** y **47 specs ya lo suben** → el default quedó chico; vale
-> evaluar subirlo en `playwright.config.ts` y sacar los overrides.
+> **394 tests · 339 verdes** en la corrida completa del 8/9. Sobreviven: `37_rrhh` (fixture agotado,
+> se destraba solo), 4 de flake bajo carga (pasan en aislado) y **`20_caja`** — 🟥 abierto, y **NO es
+> timeout**: el DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y el botón "Abrir caja" se
+> deshabilita con *"Ya tenés una caja abierta"*. Es estado viejo de DEV.
 >
 > #### Deuda de fixture (migs 401 y 403)
 >
-> En DEV hay **0 empleados con `user_id`** → la rama "cada empleado ve lo suyo" de la visibilidad de
-> RRHH **nunca se probó con datos**. Para verificarla hay que vincular un empleado a un usuario.
+> En DEV hay **0 empleados con `user_id`** → la rama "cada empleado ve lo suyo" de RRHH nunca se
+> probó con datos.
 >
 > #### Cosas operativas a no olvidar
 >
-> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 405.
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 406.
 > - `tn-fulfillment-worker` corre 133 veces/día contra DEV (pg_cron `tn-fulfillment-sync`).
-> - La ubicación **`E2E Siembra`** (global, multi-SKU, `disponible_surtido`) la crea el fixture de e2e.
->   No borrarla ni pasarla a Mono-SKU: se cae la siembra de stock de 14 specs.
+> - La ubicación **`E2E Siembra`** (global, multi-SKU, `disponible_surtido`) la crea el fixture de
+>   e2e. No borrarla ni pasarla a Mono-SKU: se cae la siembra de stock de 14 specs.
 
 > ### ✅ (2026-09-07, cont. 54) — secretos restantes + detalle de RRHH (mig 403). `v1.204.0` en `dev`.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.

@@ -6,6 +6,82 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-08] update | 🐛 Tanda de issues de Fede — 10 de 13 cerrados · v1.207.0
+
+Fede pasó 13 issues (vía GO). Se cerraron 10, se respondió 1 que no era bug y quedan 2 con motivo.
+
+### Los que eran bugs de plata (REGLA #0)
+
+**1 · El POS convertía los precios en USD al dólar VENTA.** No era una preferencia: el propio
+sistema documenta la convención en `cajaBoveda.ts` (relevamiento F2, G5 Fase 5) — **USD→ARS usa
+COMPRA**, ARS→USD usa venta. El POS usaba venta y **le cobraba de más al cliente** en cada venta de
+un producto en dólares.
+
+Lo importante del fix: **no alcanzaba con cambiar el precio del producto**. El valor en pesos de un
+PAGO en dólares salía de la misma tasa, así que arreglar solo una de las dos habría hecho que quien
+paga en dólares sobrepagara y saliera vuelto de la nada. Ahora es **una sola tasa** (`tasaUsdAArs`,
+función pura) para precio, tiers mayoristas, combos y pagos.
+
+**10 · "El Camino de la Venta" contaba la misma plata dos veces.** "Presupuestado" sumaba el total de
+TODAS las ventas (reservas y ventas cobradas incluidas); "Pendiente de cobro" ignoraba el saldo de
+las reservas; "Pagado" ignoraba las señas. Redefinido con el criterio de Fede:
+
+| Etapa | Antes | Ahora |
+|---|---|---|
+| Presupuestado | $7.099.245 (todas las ventas) | **$115.280** (los 15 presupuestos reales) |
+| Pendiente de cobro | $1.190.550 | **$1.229.650** (+39.100 de saldos de reservas) |
+| Pagado / cerrado | $5.635.827 | **$5.750.658** (+114.830 de señas) |
+
+Ahora **cierra**: pendiente + pagado = $6.980.308,02 = el total exacto de las ventas reales. Antes no
+cerraba con nada.
+
+**12/13 · Recursos.** Dos síntomas, un solo bug: el insert del recurso **nunca seteaba
+`sucursal_id`** pero la lista filtra por sucursal → el recurso desaparecía apenas se guardaba, y como
+el tab Ubicaciones agrupa esa misma lista, la ubicación tampoco aparecía. Además el gasto del recurso
+nacía con el default `estado_pago = 'pagado'`: **la plata figuraba como salida sin que nadie la
+hubiera pagado**. Ahora nace pendiente, con `capitaliza_recurso` tildado, y la **mig 406** pasa el
+recurso a activo cuando el gasto se salda (va en trigger porque un gasto se paga por varios caminos).
+
+### Los que eran diagnósticos, no bugs
+
+**7 · "El módulo de repositores no está funcionando".** El trigger **funciona** — probado end-to-end
+en una transacción revertida: cambiar el precio generó 1 tarea. Lo que falta son los datos: solo
+genera tarea para productos con **góndola asignada**, y hay **0 en PROD** (0 ubicaciones de
+exhibición) y **0 asignadas en DEV**. Es el comportamiento diseñado y el wiki lo dice.
+
+**El bug real era otro**: el módulo quedaba inerte en silencio y el estado vacío **prometía lo
+contrario** ("aparecen solas cuando cambia un precio"). Fede sacó la conclusión correcta con la
+evidencia que tenía. Ahora el vacío explica la causa y dónde se configura.
+
+**5 · El descuento general** sí está gateado por rol (`ROLES_DESCUENTO`): el CAJERO está siempre
+bloqueado, el SUPERVISOR tiene tope configurable y el DUEÑO no. No es un bug.
+
+### El resto
+
+**4** · una reserva ahora exige cliente SIEMPRE (la validación existía pero colgaba de
+`cliente_obligatorio`, y la columna nace en `'nunca'`). **6** · cambiar de medio de pago ya no borra
+el monto — salvo que se cruce de moneda, que es lo que ese reset vino a proteger. **9** · el
+historial muestra qué campos se editaron de un producto (`HistorialPage` ya sabía renderizarlo; lo
+que faltaba era mandárselo). **11** · los % de "¿Por dónde compran?" con un decimal. **8** · sección
+nueva para **reimprimir etiquetas** buscando el producto, gateada a supervisor/dueño.
+
+### Lo que queda
+
+**2 · Cobrar en caja USD** — es la **Fase 8 (C2)** del relevamiento de Caja USD, frenada esperando
+justo lo que menciona Fede: la definición del contador por la factura.
+
+**3 · Gastos y OC en USD** — se verificó y está **partido en dos**:
+- **La OC en USD YA funciona**: `ordenes_compra.moneda` existe y el selector está en el form
+  (`ProveedoresPage`, mig 379), con toda la infra de pago multi-moneda (`cajasAbiertasOCMoneda`,
+  `monedaDeMetodo`, cotización de descalce). Probablemente Fede no lo encontró: se elige al **crear
+  la OC en Proveedores**, no en Gastos.
+- **El gasto suelto en USD sí falta**: `gastos.moneda` existe en la DB pero el formulario no lo
+  ofrece. Es el pendiente ya anotado como "gastos sueltos USD (sin UI)". No se hizo en esta tanda a
+  propósito: no es un ajuste sino una feature que **mueve plata desde una caja**, y merece su propio
+  espacio con el patrón de la OC como guía.
+
+---
+
 ## [2026-09-08] update | ✅ El módulo GASTOS server-side (mig 405) — TANDA F CERRADA · v1.206.0
 
 GO dio la definición que faltaba:

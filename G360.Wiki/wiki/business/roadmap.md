@@ -37,8 +37,17 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.206.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **✅ TANDA F CERRADA (mig 405)**: el módulo **Gastos** server-side, con la regla que dio
+**Versión en DEV:** `v1.207.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **🐛 Tanda de issues de Fede: 10 de 13 cerrados.** Los dos de plata: el POS convertía
+los precios en USD al **dólar venta** cuando la convención del sistema es **compra** (le cobraba de
+más al cliente), y **"El Camino de la Venta" contaba la misma plata dos veces**. Además: el recurso
+desaparecía al crearlo (no seteaba `sucursal_id`) y su gasto nacía ya pagado (**mig 406** cierra el
+ciclo); la reserva ahora exige cliente siempre; el historial muestra qué campos se editaron; y hay
+una sección nueva para reimprimir etiquetas. Dos diagnósticos: repositores **no estaba roto** (le
+faltan las góndolas asignadas — ahora el vacío lo explica) y el descuento general **sí** está gateado
+por rol. Ver `log.md` (2026-09-08).
+
+**Detalle de v1.206.0** — tag+release sobre `dev`. **✅ TANDA F CERRADA (mig 405)**: el módulo **Gastos** server-side, con la regla que dio
 GO — *un cajero registra un pago a proveedor solo si el dueño le habilitó Gastos en su rol custom*.
 No hizo falta estructura nueva: `auth_puede_editar_modulo` ya mira primero el permiso del rol custom,
 así que **el gate no es el rol, es el permiso**. De paso corrigió un supuesto falso de la 404 (los

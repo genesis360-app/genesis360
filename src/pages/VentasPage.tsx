@@ -42,7 +42,7 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda, conservaMontoAlCambiarMedio } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { cuponVigente, montoDescuentoCupon } from '@/lib/cupones'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
@@ -380,7 +380,12 @@ export default function VentasPage() {
   }
   const qc = useQueryClient()
   const { grupos, grupoDefault } = useGruposEstados()
-  const { cotizacion: cotizacionUSD } = useCotizacion()
+  // 🛑 REGLA #0 (hallazgo de Fede, 2026-09-08): TODAS las conversiones USD→ARS del POS —precio de
+  // un producto en USD, tiers mayoristas, combos y el valor en pesos de un pago en dólares— van a la
+  // tasa de COMPRA, que es la convención del sistema (ver `tasaUsdAArs`). Antes acá entraba la de
+  // VENTA y le cobrábamos de más al cliente. Es UNA sola tasa a propósito: si el precio fuera a
+  // compra y el pago a venta, quien pagara en dólares sobrepagaría y saldría vuelto de la nada.
+  const { cotizacionUsdAArs: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   // `?tab=pedidos` es el deep link desde /pedidos ("Entregar en mostrador"): ese pedido ya tiene su
@@ -2997,10 +3002,16 @@ export default function VentasPage() {
   // code-review: sin esto, cambiar "Efectivo" $5000 → "Efectivo USD" dejaba `monto` viejo (ARS)
   // arrastrado y `montoUsd` vacío — la venta pasaba validación, pero calcularEfectivoPorMoneda no
   // acreditaba nada en NINGUNA sesión: plata "cobrada" que desaparecía sin rastro de caja).
+  // Fede (2026-09-08): cambiar de medio ya no borra el monto tipeado… salvo que se cruce de
+  // moneda, que es el caso que este reset vino a proteger. Ver `conservaMontoAlCambiarMedio`.
   const updateMedioPago = (idx: number, field: keyof MedioPagoItem, value: string) =>
-    setMediosPago(prev => prev.map((m, i) => i === idx
-      ? (field === 'tipo' ? { tipo: value, monto: '' } : { ...m, [field]: value })
-      : m))
+    setMediosPago(prev => prev.map((m, i) => {
+      if (i !== idx) return m
+      if (field !== 'tipo') return { ...m, [field]: value }
+      return conservaMontoAlCambiarMedio(m.tipo, value, t => mediosEfectivoUsd.has(t))
+        ? { ...m, tipo: value, montoUsd: undefined }
+        : { tipo: value, monto: '' }
+    }))
   const addMedioPago = () => setMediosPago(prev => [...prev, { tipo: '', monto: '' }])
   const removeMedioPago = (idx: number) => setMediosPago(prev => prev.filter((_, i) => i !== idx))
   // G5 Fase 4 (D2) — el cajero tipea el monto en USD; `monto` (ARS) se deriva a la cotización
@@ -3186,14 +3197,23 @@ export default function VentasPage() {
     // permitido en Config, también es obligatorio.
     const ventaCF = permiteCF && esConsumidorFinal
     const clienteRequerido = clienteObligatorio === 'siempre'
-      || (clienteObligatorio === 'reservas' && (estado === 'pendiente' || estado === 'reservada'))
+      // 🛑 Una RESERVA siempre exige cliente, sin importar `cliente_obligatorio` (pedido de Fede,
+      // 2026-09-08: "si o si se tiene que tener un cliente designado para reservar"). La regla ya
+      // existía pero colgaba de la config, y la columna nace en 'nunca' (el default del código,
+      // 'reservas', nunca llega a aplicarse porque la fila trae un valor explícito) → en los 9
+      // tenants de PROD estaba apagada. Guardar mercadería a nombre de nadie no tiene sentido: no
+      // se sabe a quién avisarle ni a quién entregársela.
+      || estado === 'reservada'
+      || (clienteObligatorio === 'reservas' && estado === 'pendiente')  // 'reservada' ya salió arriba
       || (factHabilitada && !ventaCF)
       || !permiteCF
       || !!reglaCanal.requiere_cliente
     if (clienteRequerido && !clienteId) {
-      toast.error(factHabilitada && !ventaCF
-        ? 'Para facturar a un cliente registrado, seleccioná o creá el cliente (o marcá la venta como Consumidor Final).'
-        : 'Registrá o seleccioná un cliente para continuar.')
+      toast.error(estado === 'reservada'
+        ? 'Una reserva necesita un cliente: seleccioná o creá el cliente antes de reservar.'
+        : factHabilitada && !ventaCF
+          ? 'Para facturar a un cliente registrado, seleccioná o creá el cliente (o marcá la venta como Consumidor Final).'
+          : 'Registrá o seleccioná un cliente para continuar.')
       return
     }
     // ISS-090: CC como método de pago parcial

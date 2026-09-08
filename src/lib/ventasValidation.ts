@@ -434,3 +434,24 @@ export function validarMediosPago(
 
   return null
 }
+
+// ─── Cambio de MEDIO DE PAGO: ¿se conserva el monto ya tipeado? ──────────────────────────────
+//
+// Pedido de Fede (2026-09-08): "al poner primero el monto que paga el cliente y luego cambiar el
+// medio de pago, te resetea el monto (debería mantenerlo)".
+//
+// 🛑 Pero el reset NO era un descuido: lo puso la G5 Fase 4 por un hallazgo REGLA #0 real —
+// cambiar "Efectivo $5000" → "Efectivo USD" dejaba `monto` (ARS) arrastrado y `montoUsd` vacío; la
+// venta pasaba validación pero `calcularEfectivoPorMoneda` no acreditaba en NINGUNA sesión: plata
+// cobrada que desaparecía sin rastro de caja.
+//
+// La distinción correcta no es "cambió el tipo" sino **"cambió la MONEDA"**: entre dos medios en
+// pesos el número significa lo mismo y se conserva; si entra o sale un medio en dólares, el número
+// cambia de unidad y hay que volver a tipearlo.
+export function conservaMontoAlCambiarMedio(
+  tipoAnterior: string,
+  tipoNuevo: string,
+  esMedioEnDolares: (tipo: string) => boolean,
+): boolean {
+  return !esMedioEnDolares(tipoAnterior) && !esMedioEnDolares(tipoNuevo)
+}

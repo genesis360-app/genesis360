@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { rolEnLista } from '@/lib/cajaPermisos'
+import { tasaUsdAArs } from '@/lib/cajaBoveda'
 import toast from 'react-hot-toast'
 
 // Pedido de Fede (relevamiento Compras/Gastos USD, 2026-09-04): dejar de ofrecer Blue/MEP/Cripto
@@ -19,6 +20,9 @@ export function useCotizacion() {
 
   const cotizacion         = tenant?.cotizacion_usd ?? 0
   const cotizacionCompra   = (tenant as any)?.cotizacion_usd_compra ?? 0
+  // 🛑 La tasa con la que el negocio valúa dólares en pesos (precio de producto en USD, tiers,
+  // combos y pagos recibidos en dólares). Es COMPRA por convención — ver `tasaUsdAArs`.
+  const cotizacionUsdAArs  = tasaUsdAArs(cotizacionCompra, cotizacion)
   const updatedAt          = tenant?.cotizacion_usd_updated_at
   // DUEÑO siempre puede elegir, sea cual sea lo guardado — cotizacion_usd_roles_permitidos son roles
   // ADICIONALES (nunca reemplaza a DUEÑO), a diferencia de accedeABoveda donde la lista es completa.
@@ -69,5 +73,5 @@ export function useCotizacion() {
     }
   }
 
-  return { cotizacion, cotizacionCompra, updatedAt, puedeElegirTipo, guardar, fetchDesdeApi, loadingApi }
+  return { cotizacion, cotizacionCompra, cotizacionUsdAArs, updatedAt, puedeElegirTipo, guardar, fetchDesdeApi, loadingApi }
 }

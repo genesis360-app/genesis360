@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularConversionUsd } from '@/lib/cajaBoveda'
+import { calcularConversionUsd, tasaUsdAArs } from '@/lib/cajaBoveda'
 
 // Plan: G5 Fase 5 (Bóveda ARS/USD) — F2 del relevamiento
 
@@ -30,5 +30,38 @@ describe('calcularConversionUsd', () => {
   })
   it('BOV-CNV-07 monto origen negativo → throw', () => {
     expect(() => calcularConversionUsd('ars_a_usd', -50, 1300, 1250)).toThrow(/monto/i)
+  })
+})
+
+// ─── tasaUsdAArs (hallazgo de Fede, 2026-09-08) ──────────────────────────────────────────────
+// El POS convertía los precios en USD al dólar VENTA; la convención del sistema (F2, G5 Fase 5) es
+// que cuando el negocio valúa dólares en pesos usa la de COMPRA. Cobraba de más al cliente.
+describe('tasaUsdAArs — la tasa con la que el negocio pasa USD a pesos', () => {
+  it('usa la de COMPRA cuando está cargada (no la de venta)', () => {
+    expect(tasaUsdAArs(950, 1000)).toBe(950)
+  })
+
+  it('cae a la de VENTA solo si no hay compra — es el caso de la cotización cargada a mano', () => {
+    expect(tasaUsdAArs(0, 1000)).toBe(1000)
+    expect(tasaUsdAArs(null, 1000)).toBe(1000)
+    expect(tasaUsdAArs(undefined, 1000)).toBe(1000)
+  })
+
+  it('sin ninguna cotización devuelve 0, para que el llamador pueda frenar', () => {
+    expect(tasaUsdAArs(0, 0)).toBe(0)
+    expect(tasaUsdAArs(null, null)).toBe(0)
+  })
+
+  it('un producto de USD 100 se cobra a la de compra, no a la de venta', () => {
+    const precioUsd = 100
+    expect(precioUsd * tasaUsdAArs(950, 1000)).toBe(95000)   // lo correcto
+    expect(precioUsd * tasaUsdAArs(950, 1000)).not.toBe(100000) // lo que hacía antes
+  })
+
+  it('🔑 el precio y el pago en dólares usan la MISMA tasa: no se genera vuelto fantasma', () => {
+    const tasa = tasaUsdAArs(950, 1000)
+    const totalPesos = 100 * tasa          // producto de USD 100
+    const pagoEnPesos = 100 * tasa         // el cliente paga USD 100
+    expect(pagoEnPesos - totalPesos).toBe(0)
   })
 })

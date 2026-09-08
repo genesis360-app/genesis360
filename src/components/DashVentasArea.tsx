@@ -344,7 +344,9 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
           nombre,
           total,
           count,
-          pct: canalTotal > 0 ? Math.round((total / canalTotal) * 100) : 0,
+          // Un decimal (pedido de Fede, 2026-09-08): con canales que se reparten porcentajes
+          // parecidos, redondear a entero borraba la diferencia entre ellos.
+          pct: canalTotal > 0 ? Math.round((total / canalTotal) * 1000) / 10 : 0,
         }))
         .sort((a, b) => b.total - a.total)
 
@@ -735,7 +737,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
                       <span className="text-xs text-gray-600 dark:text-gray-400 truncate">{c.nombre}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-xs font-semibold text-primary">{c.pct}%</span>
+                      <span className="text-xs font-semibold text-primary">{c.pct.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</span>
                     </div>
                   </div>
                 ))}

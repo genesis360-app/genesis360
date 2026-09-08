@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-08] update | ✅ El módulo GASTOS server-side (mig 405) — TANDA F CERRADA · v1.206.0
+
+GO dio la definición que faltaba:
+
+> *"¿Un cajero puede registrar un pago a proveedor? Sólo si por temas del custom role tiene acceso al
+> módulo de Gastos. Por default un cajero no tiene acceso a ese módulo; ahora si el dueño le da
+> permisos para acceder al mod de Gastos, entonces ahí sí."*
+
+**No hizo falta estructura nueva**: `auth_puede_editar_modulo` ya mira **primero** el permiso
+explícito del rol custom (`roles_custom.permisos ->> 'gastos'`) y solo cae al allowlist de roles
+fijos si no hay ninguno. La regla de GO es literalmente esa primera rama.
+
+**La premisa se verificó en el código antes de codificarla**: `/gastos` está en las RUTAS
+RESTRINGIDAS del CAJERO (spec 13) y en las PERMITIDAS de SUPERVISOR (15) y CONTADOR (18 +
+`CONTADOR_ALLOWED`); DEPÓSITO y RRHH restringida (17 y 16). → allowlist de roles fijos:
+**SUPERVISOR + CONTADOR**.
+
+Gateadas al módulo: `proveedor_cc_movimientos` (la que motivó la consulta), `gastos_fijos`,
+`gasto_cuotas` y `cheques`.
+
+**Corrige un supuesto propio de la mig 404**: ahí se dejaron los cheques abiertos a todo el tenant
+argumentando que *"un CAJERO crea cheques legítimamente al cobrar"*. **Era falso** — verificado con
+grep: el POS no escribe `cheques` en ningún camino (los hits de "cheque" en `VentasPage` son la
+palabra "chequear"). Se crean solo desde Gastos.
+
+⚠ **Sutileza de PostgreSQL** que obligó a escribir `cheques` comando por comando: las policies
+**permisivas se combinan con OR**, así que un `FOR ALL` del módulo habilitaría el DELETE y una policy
+"solo gestión" **no lo restaría**. Borrar un cheque en cartera hace desaparecer plata sin rastro, así
+que ese queda en gestión.
+
+**Verificación, con el fixture ideal** — el CAJERO de prueba ya tenía el rol custom `GO_Cajero` con
+`gastos: 'ver'`:
+
+| Quién | Resultado |
+|---|---|
+| CAJERO con `'ver'` | **0 escrituras** — lado "no" de la regla |
+| CAJERO con `'editar'` | 18 CC proveedor · 20 cheques · 3 gastos fijos — lado "sí" |
+| CONTADOR | puede (rol fijo) |
+| DEPÓSITO / RRHH | no |
+| CAJERO con Gastos, borrando un cheque | **0** — eso sigue siendo gestión |
+
+Spec 141: **43/43**, con 3 tests nuevos (uno flipea el permiso del rol custom y lo restaura en un
+`finally`). Regresión de roles 59/59.
+
+Dos tests propios de la 404 quedaron **obsoletos** con esta regla y se actualizaron: el guard del
+MONTO ahora se mide con el CONTADOR (a un rol operativo la RLS ya le corta el UPDATE entero antes de
+llegar al trigger), y el cajero ya no "mueve cheques de estado".
+
+---
+
 ## [2026-09-08] update | 🧪 Primera corrida COMPLETA de la suite: 394 tests · 339 verdes · 14 rojos → 8 cerrados
 
 Con el fixture de siembra arreglado se corrió la suite entera por primera vez en mucho tiempo (48

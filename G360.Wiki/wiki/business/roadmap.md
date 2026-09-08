@@ -37,8 +37,15 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.205.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **🔴 La matriz de ESCRITURA (mig 404)** — cierra la Tanda F. Un CAJERO escribía por REST
+**Versión en DEV:** `v1.206.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **✅ TANDA F CERRADA (mig 405)**: el módulo **Gastos** server-side, con la regla que dio
+GO — *un cajero registra un pago a proveedor solo si el dueño le habilitó Gastos en su rol custom*.
+No hizo falta estructura nueva: `auth_puede_editar_modulo` ya mira primero el permiso del rol custom,
+así que **el gate no es el rol, es el permiso**. De paso corrigió un supuesto falso de la 404 (los
+cheques no los crea el POS). Y se recuperó la suite e2e: **394 tests, 339 verdes**, con los 9 specs de
+siembra de stock arreglados. Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.205.0** — tag+release sobre `dev`. **🔴 La matriz de ESCRITURA (mig 404)** — cierra la Tanda F. Un CAJERO escribía por REST
 `cheques`, `cliente_creditos`, `caja_traspasos`, la **lista mayorista**, `cupones`, `combos`,
 `sucursales`, `ubicaciones` y el **CBU de los proveedores**. Dos aprendizajes del diseño: la lista
 mayorista y los cupones **eran el precio de venta que cerró la mig 396 por la puerta de al lado**, y

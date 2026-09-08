@@ -263,9 +263,33 @@ Un CAJERO escribía por REST `cheques` (19 filas), `cliente_creditos` (3), `caja
 > justamente es su trabajo. Mismo falso rojo que con RRHH en la mig 401. Las excepciones deliberadas
 > van **escritas** en la spec, con su control positivo, no descubiertas.
 
-**Sigue abierto, por definición de negocio**: `proveedor_cc_movimientos` (¿un cajero registra un pago
-a proveedor?) y `gastos_fijos`/`gasto_cuotas` (el CAJERO opera bajo su umbral y el CONTADOR es actor
-legítimo — cerrarlos por rol rompería a los dos).
+#### ✅ El módulo GASTOS (mig 405) — y por qué el gate NO es el rol
+
+Lo último que faltaba, y necesitaba una definición de negocio. GO (2026-09-08):
+
+> *"¿Un cajero puede registrar un pago a proveedor? Sólo si por temas del custom role tiene acceso al
+> módulo de Gastos. Por default un cajero no tiene acceso a ese módulo; ahora si el dueño le da
+> permisos para acceder al mod de Gastos, entonces ahí sí."*
+
+**No hizo falta estructura nueva.** `auth_puede_editar_modulo` ya mira **primero**
+`roles_custom.permisos ->> '<modulo>'` y solo cae al allowlist de roles fijos si no hay permiso
+explícito. La regla de GO **es** esa primera rama: el gate no es el rol, es el permiso.
+
+| Quién | Puede escribir `proveedor_cc_movimientos`, `gastos_fijos`, `gasto_cuotas`, `cheques` |
+|---|---|
+| DUEÑO / ADMIN / SUPER_USUARIO | sí |
+| SUPERVISOR, CONTADOR | sí (rol fijo — `/gastos` es ruta permitida para ambos) |
+| CAJERO con Gastos en `'editar'`/`'supervisa'` por rol custom | **sí** ← la regla de GO |
+| CAJERO por default, o con `'ver'` | no |
+| DEPÓSITO, RRHH, LECTOR | no |
+| cualquiera, **borrando un cheque** | no — eso es gestión |
+
+⚠ **Sutileza de PostgreSQL, y es fácil equivocarse**: las policies **permisivas se combinan con OR**.
+Un `FOR ALL` del módulo + una policy de DELETE "solo gestión" **no** restringe el borrado: lo suma.
+Por eso `cheques` se escribe **comando por comando** (SELECT / INSERT / UPDATE / DELETE por separado).
+
+De paso, la 405 **corrigió un supuesto de la 404**: ahí se dejaron los cheques abiertos porque
+"un CAJERO crea cheques al cobrar" — falso, el POS no escribe `cheques` en ningún camino.
 
 ---
 

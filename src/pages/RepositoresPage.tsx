@@ -48,7 +48,7 @@ import { precioPorUnidadGrande, type UnidadFisica } from '@/lib/unidadMedidaFisi
 import { RepositoresReportes } from '@/components/RepositoresReportes'
 
 type FiltroEstado = 'activas' | 'completada' | 'cancelada'
-type Seccion = 'carteles' | 'reposicion' | 'reportes'
+type Seccion = 'carteles' | 'reposicion' | 'reportes' | 'reimprimir'
 
 const MOTIVOS_CANCELACION = ['Ya no aplica', 'Producto retirado de góndola', 'Error de carga', 'Otro']
 
@@ -171,6 +171,59 @@ export default function RepositoresPage() {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  // -- Reimprimir etiquetas (pedido de Fede, 2026-09-08) --------------------------------------
+  // Hasta aca solo se podian imprimir etiquetas de los CARTELES PENDIENTES: si una etiqueta se
+  // arruino, se despego o simplemente se quiere reimprimir con el precio de hoy, no habia forma.
+  // Esto busca cualquier producto y arma el PDF con su precio ACTUAL (sin precio tachado: no es una
+  // promo, es la etiqueta vigente). Igual que Reportes, solo para quien supervisa el modulo.
+  const [busquedaEtiq, setBusquedaEtiq] = useState('')
+  const [seleccionEtiq, setSeleccionEtiq] = useState<Set<string>>(new Set())
+  const busquedaEtiqTrim = busquedaEtiq.trim()
+
+  const { data: productosEtiq = [], isFetching: buscandoEtiq } = useQuery({
+    queryKey: ['repositor-etiquetas-buscar', tenant?.id, busquedaEtiqTrim],
+    queryFn: async () => {
+      let q = supabase.from('productos')
+        .select('id, nombre, sku, precio_venta, codigo_barras, gtin, contenido_cantidad, contenido_unidad_id')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .order('nombre').limit(50)
+      if (busquedaEtiqTrim) q = q.or(`nombre.ilike.%${busquedaEtiqTrim}%,sku.ilike.%${busquedaEtiqTrim}%`)
+      const { data, error } = await q
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && seccion === 'reimprimir',
+  })
+
+  const reimprimirEtiquetas = async () => {
+    const elegidos = (productosEtiq as any[]).filter(p => seleccionEtiq.has(p.id))
+    if (elegidos.length === 0) return
+    setImprimiendo(true)
+    try {
+      const etiquetas: EtiquetaPrecio[] = elegidos.map(prod => {
+        const precio = Number(prod.precio_venta ?? 0)
+        let pug: EtiquetaPrecio['precioPorUnidadGrande'] = null
+        if (prod.contenido_cantidad && prod.contenido_unidad_id) {
+          const unidadContenido = unidadesFisicas.find(u => u.id === prod.contenido_unidad_id)
+          if (unidadContenido) pug = precioPorUnidadGrande(precio, Number(prod.contenido_cantidad), unidadContenido, unidadesFisicas)
+        }
+        return {
+          nombre: prod.nombre, sku: prod.sku,
+          codigoBarras: prod.gtin || prod.codigo_barras || null,
+          precio, precioAnterior: null, precioPorUnidadGrande: pug,
+        }
+      })
+      const porHoja = ((tenant as any)?.repositor_etiquetas_por_hoja ?? 12) as EtiquetasPorHoja
+      generarEtiquetasPreciosPDF(etiquetas, porHoja)
+      toast.success(`PDF generado - ${etiquetas.length} etiqueta(s)`)
+      setSeleccionEtiq(new Set())
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudieron generar las etiquetas')
+    } finally {
+      setImprimiendo(false)
+    }
   }
 
   const imprimirEtiquetas = async () => {
@@ -401,7 +454,7 @@ export default function RepositoresPage() {
           ['carteles', 'Precios/Etiquetas'], ['reposicion', 'Reposición física'],
           // K1/K2 del relevamiento — solo quien supervisa el módulo ve el comparativo entre
           // repositores (GO, 2026-08-12: "para entender demoras, no para presionar al empleado").
-          ...(puedeSupervisar ? [['reportes', 'Reportes']] : []),
+          ...(puedeSupervisar ? [['reimprimir', 'Reimprimir etiquetas'], ['reportes', 'Reportes']] : []),
         ] as [Seccion, string][]).map(([key, label]) => (
           <button key={key} onClick={() => { setSeccion(key); setReasignando(null); setSeleccionadas(new Set()) }}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
@@ -411,7 +464,7 @@ export default function RepositoresPage() {
         ))}
       </div>
 
-      {seccion !== 'reportes' && (
+      {seccion !== 'reportes' && seccion !== 'reimprimir' && (
       <div className="flex gap-2">
         {([['activas', 'Pendientes'], ['completada', 'Completadas'], ['cancelada', 'Canceladas']] as [FiltroEstado, string][]).map(([key, label]) => (
           <button key={key} onClick={() => { setFiltro(key); setSeleccionadas(new Set()) }}
@@ -446,7 +499,66 @@ export default function RepositoresPage() {
         </div>
       )}
 
-      {seccion === 'reportes' ? (
+      {seccion === 'reimprimir' ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Buscá productos e imprimí sus etiquetas con el <strong>precio de hoy</strong>. Sirve para
+            reponer una etiqueta arruinada o despegada, sin esperar a que cambie un precio.
+          </p>
+          <input
+            value={busquedaEtiq}
+            onChange={e => { setBusquedaEtiq(e.target.value); setSeleccionEtiq(new Set()) }}
+            placeholder="Buscar por nombre o SKU..."
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <input type="checkbox"
+                checked={(productosEtiq as any[]).length > 0 && seleccionEtiq.size === (productosEtiq as any[]).length}
+                onChange={e => setSeleccionEtiq(e.target.checked
+                  ? new Set((productosEtiq as any[]).map(p => p.id))
+                  : new Set())}
+                className="accent-accent" />
+              Seleccionar todas ({(productosEtiq as any[]).length})
+            </label>
+            <button onClick={reimprimirEtiquetas} disabled={seleccionEtiq.size === 0 || imprimiendo}
+              className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent hover:bg-accent/90 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+              <Printer size={14} /> {imprimiendo ? 'Generando...' : `Imprimir etiquetas${seleccionEtiq.size > 0 ? ` (${seleccionEtiq.size})` : ''}`}
+            </button>
+          </div>
+
+          {buscandoEtiq ? (
+            <p className="text-sm text-gray-400 py-6 text-center">Buscando...</p>
+          ) : (productosEtiq as any[]).length === 0 ? (
+            <p className="text-sm text-gray-400 py-6 text-center">
+              {busquedaEtiqTrim ? 'Ningún producto coincide con la búsqueda.' : 'No hay productos activos.'}
+            </p>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+              {(productosEtiq as any[]).map(p => (
+                <label key={p.id} className="flex items-center gap-3 py-2 cursor-pointer">
+                  <input type="checkbox" checked={seleccionEtiq.has(p.id)}
+                    onChange={e => setSeleccionEtiq(prev => {
+                      const nueva = new Set(prev)
+                      if (e.target.checked) nueva.add(p.id)
+                      else nueva.delete(p.id)
+                      return nueva
+                    })}
+                    className="accent-accent" />
+                  <span className="flex-1 text-sm text-gray-700 dark:text-gray-200">{p.nombre}</span>
+                  <span className="text-xs text-gray-400 font-mono">{p.sku}</span>
+                  <span className="text-sm font-semibold text-primary tabular-nums">
+                    ${Number(p.precio_venta ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {(productosEtiq as any[]).length === 50 && (
+            <p className="text-xs text-gray-400">Se muestran los primeros 50 - afiná la búsqueda si no ves el que buscás.</p>
+          )}
+        </div>
+      ) : seccion === 'reportes' ? (
         <RepositoresReportes />
       ) : cargando ? (
         <div className="text-center py-16 text-gray-400 dark:text-gray-500">Cargando tareas…</div>

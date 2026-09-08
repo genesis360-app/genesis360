@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-07T18:19:31.104Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260907173514 · 166 tablas
+-- Generado 2026-09-08T17:21:51.717Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260908171251 · 166 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -4386,6 +4386,7 @@ BEGIN
 
   -- Rol custom con permiso EXPLÍCITO para el módulo: manda ese permiso (incluye 'no_ver'/'ver',
   -- que son solo-lectura). 'supervisa' es superset de 'editar'.
+  -- 👉 Esta es la rama por la que entra el CAJERO al que el DUEÑO le habilitó Gastos (mig 405).
   IF v_perm IS NOT NULL THEN RETURN v_perm IN ('editar','supervisa'); END IF;
 
   IF v_rol = 'VIEWER' THEN RETURN false; END IF;                       -- Lector: solo lectura
@@ -4397,6 +4398,10 @@ BEGIN
     -- la edición a DUEÑO/SUPERVISOR/SUPER_USUARIO. DEPÓSITO ve la página en solo-lectura.
     WHEN 'inventario'    THEN v_rol = 'SUPERVISOR'
     WHEN 'comercial'     THEN v_rol = 'SUPERVISOR'                      -- supervisorOnly (mig 404)
+    -- Gastos: /gastos es ruta PERMITIDA para SUPERVISOR y CONTADOR, y RESTRINGIDA para CAJERO,
+    -- DEPÓSITO y RRHH (specs 13/15/16/17/18 + CONTADOR_ALLOWED en AppLayout). El CAJERO con Gastos
+    -- habilitado por rol custom entra arriba, por `v_perm` (mig 405).
+    WHEN 'gastos'        THEN v_rol = ANY (ARRAY['SUPERVISOR','CONTADOR'])
     WHEN 'configuracion' THEN false                                     -- ownerOnly
     ELSE false
   END;
@@ -12359,13 +12364,13 @@ CREATE POLICY categorias_gasto_tenant ON public.categorias_gasto AS PERMISSIVE F
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY cheques_delete_gestion ON public.cheques AS PERMISSIVE FOR DELETE TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
-CREATE POLICY cheques_insert ON public.cheques AS PERMISSIVE FOR INSERT TO public
-  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cheques_insert_gastos ON public.cheques AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY cheques_select ON public.cheques AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
-CREATE POLICY cheques_update ON public.cheques AS PERMISSIVE FOR UPDATE TO public
-  USING ((tenant_id = get_user_tenant_id()))
-  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cheques_update_gastos ON public.cheques AS PERMISSIVE FOR UPDATE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY cierres_select_tenant ON public.cierres_contables AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12538,17 +12543,19 @@ CREATE POLICY estados_inventario_select ON public.estados_inventario AS PERMISSI
 CREATE POLICY estados_inventario_write_gestion ON public.estados_inventario AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
-CREATE POLICY gasto_cuotas_tenant ON public.gasto_cuotas AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY gasto_cuotas_select ON public.gasto_cuotas AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY gasto_cuotas_write_gastos ON public.gasto_cuotas AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY gastos_tenant ON public.gastos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY gastos_fijos_tenant ON public.gastos_fijos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY gastos_fijos_select ON public.gastos_fijos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY gastos_fijos_write_gastos ON public.gastos_fijos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY grupo_items_tenant ON public.grupo_estado_items AS PERMISSIVE FOR ALL TO public
   USING ((grupo_id IN ( SELECT grupos_estados.id
    FROM grupos_estados
@@ -12743,10 +12750,11 @@ CREATE POLICY proveedor_accounts_self ON public.proveedor_accounts AS PERMISSIVE
 CREATE POLICY proveedor_accounts_self_update ON public.proveedor_accounts AS PERMISSIVE FOR UPDATE TO public
   USING ((id = ( SELECT auth.uid() AS uid)))
   WITH CHECK ((id = ( SELECT auth.uid() AS uid)));
-CREATE POLICY pcc_tenant ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY proveedor_cc_movimientos_select ON public.proveedor_cc_movimientos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY proveedor_cc_movimientos_write_gastos ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY tenant_isolation ON public.proveedor_contactos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users

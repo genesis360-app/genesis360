@@ -718,11 +718,11 @@ test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)
       const token = await tokenRol(request, r)
       for (const [tabla, id] of objetivos) {
         // Dos excepciones DELIBERADAS, y conviene que estén escritas y no descubiertas:
-        //  · `cheques`: cobrar/endosar/rechazar es operativo. Lo que se bloquea es el MONTO (test
-        //    aparte) y el DELETE.
+        //  · `cheques` para el CONTADOR: desde la mig 405 son del módulo GASTOS, que el CONTADOR
+        //    administra. Se cubre en su propio describe.
         //  · `kit_recetas` para DEPÓSITO: es el rol del depósito y arma kits. El guard lo incluye a
         //    propósito; lo que saca de la lista es a CAJERO, RRHH, CONTADOR y LECTOR.
-        if (tabla === 'cheques') continue
+        if (tabla === 'cheques' && r.rol === 'CONTADOR') continue
         if (tabla === 'kit_recetas' && r.rol === 'DEPOSITO') continue
         const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT })
         expect(escribio, `[141/F1] ${r.rol} NO debe poder escribir ${tabla}`).toBe(false)
@@ -744,19 +744,30 @@ test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)
     ).toBe(true)
   })
 
-  test('el MONTO de un cheque ya registrado no lo cambia un rol operativo', async ({ request }) => {
+  // Desde la mig 405 los cheques son del módulo GASTOS, así que a un rol operativo la RLS ya le
+  // corta el UPDATE entero. El trigger del MONTO recién importa con quien SÍ puede escribirlos —
+  // el CONTADOR — y ahí es donde se mide.
+  test('el MONTO de un cheque ya registrado: ni el CONTADOR, que sí administra Gastos', async ({ request }) => {
     const owner = await tokenOwner(request)
     const [cheque] = (await (await request.get(
-      `${SUPABASE_URL}/rest/v1/cheques?select=id,monto&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string; monto: number }>
+      `${SUPABASE_URL}/rest/v1/cheques?select=id,monto,estado&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string; monto: number; estado: string }>
     expect(cheque, '[141/F1] fixture vacío: el tenant de prueba no tiene cheques').toBeTruthy()
 
-    for (const r of rolesConCredenciales()) {
-      const token = await tokenRol(request, r)
-      const res = await request.patch(`${SUPABASE_URL}/rest/v1/cheques?id=eq.${cheque.id}&select=id`, {
-        headers: restHeaders(token), data: { monto: Number(cheque.monto) + 1 },
-      })
-      expect(res.status(), `[141/F1] ${r.rol} NO debe poder cambiar el monto de un cheque`).toBe(403)
-    }
+    const contador = rolesConCredenciales().find((r) => r.rol === 'CONTADOR')
+    test.skip(!contador, 'sin credenciales de CONTADOR en .env.test.local')
+    const token = await tokenRol(request, contador!)
+
+    // Puede editar el cheque…
+    expect(
+      await rlsDejaEscribir(request, token, `cheques?id=eq.${cheque.id}&select=id`, { estado: cheque.estado }),
+      '[141/F1] el CONTADOR DEBE poder editar un cheque (administra Gastos)',
+    ).toBe(true)
+
+    // …pero no cambiarle el monto: ahí lo frena el trigger de columna de la mig 404.
+    const res = await request.patch(`${SUPABASE_URL}/rest/v1/cheques?id=eq.${cheque.id}&select=id`, {
+      headers: restHeaders(token), data: { monto: Number(cheque.monto) + 1 },
+    })
+    expect(res.status(), '[141/F1] el CONTADOR NO debe poder cambiar el monto de un cheque').toBe(403)
 
     // Y el dato quedó intacto (la sonda es mutante por naturaleza: se verifica que NO mutó).
     const [despues] = (await (await request.get(
@@ -765,7 +776,7 @@ test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)
   })
 
   // 🔑 LA MITAD IMPORTANTE: que el guard no rompa la operación de todos los días.
-  test('🔑 el CAJERO sigue pudiendo cobrar: canjear un cupón, mover un cheque de estado y acreditar saldo', async ({ request }) => {
+  test('🔑 el CAJERO sigue pudiendo cobrar: canjear un cupón y acreditar saldo a favor', async ({ request }) => {
     const cajero = rolesConCredenciales().find((r) => r.rol === 'CAJERO')
     test.skip(!cajero, 'sin credenciales de CAJERO en .env.test.local')
     const token = await tokenRol(request, cajero!)
@@ -780,15 +791,7 @@ test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)
       '[141/F1] el CAJERO DEBE poder canjear un cupón (si no, la venta con cupón se rompe)',
     ).toBe(true)
 
-    // 2) Estado de un cheque — cobrarlo / endosarlo / rechazarlo.
-    const [cheque] = (await (await request.get(
-      `${SUPABASE_URL}/rest/v1/cheques?select=id,estado&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ id: string; estado: string }>
-    expect(
-      await rlsDejaEscribir(request, token, `cheques?id=eq.${cheque.id}&select=id`, { estado: cheque.estado }),
-      '[141/F1] el CAJERO DEBE poder mover el estado de un cheque',
-    ).toBe(true)
-
-    // 3) Saldo a favor — lo INSERTA la devolución/anulación desde VentasPage.
+    // 2) Saldo a favor — lo INSERTA la devolución/anulación desde VentasPage.
     const [credito] = (await (await request.get(
       `${SUPABASE_URL}/rest/v1/cliente_creditos?select=cliente_id&limit=1`, { headers: restHeaders(owner) })).json()) as Array<{ cliente_id: string }>
     expect(credito, '[141/F1] fixture vacío: el tenant de prueba no tiene saldos a favor').toBeTruthy()
@@ -813,6 +816,107 @@ test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)
       if (['sucursales', 'ubicaciones', 'estados_inventario', 'canales_venta', 'cuentas_origen', 'cliente_creditos'].includes(tabla)) continue
       const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT })
       expect(escribio, `[141/F1] el SUPERVISOR DEBE poder escribir ${tabla}`).toBe(true)
+    }
+  })
+})
+
+/**
+ * F1 (cierre definitivo) — el módulo GASTOS (mig 405).
+ *
+ * Regla de negocio, definida por GO el 2026-09-08:
+ *
+ *   > "¿Un cajero puede registrar un pago a proveedor? Sólo si por temas del custom role tiene
+ *   >  acceso al módulo de Gastos. Por default un cajero no tiene acceso a ese módulo; ahora si el
+ *   >  dueño le da permisos para acceder al mod de Gastos, entonces ahí sí."
+ *
+ * Lo que hace interesante a este caso: **el gate no es el rol, es el permiso del rol custom**. El
+ * CAJERO de `.env.test.local` tiene el rol custom `GO_Cajero` con `gastos: 'ver'` (solo lectura), que
+ * es justamente el lado "no" de la regla. El lado "sí" se prueba flipeando ese permiso a 'editar' y
+ * dejándolo como estaba — el `finally` lo restaura pase lo que pase.
+ */
+test.describe('F1 — el módulo Gastos: pagos a proveedor, cheques y gastos fijos (mig 405)', () => {
+  const TABLAS_GASTOS = ['proveedor_cc_movimientos', 'gastos_fijos', 'cheques'] as const
+
+  async function unaFilaDe(request: APIRequestContext, tabla: string): Promise<string | null> {
+    const h = restHeaders(await tokenOwner(request))
+    const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=id&limit=1`, { headers: h })
+    if (!res.ok()) return null
+    const [fila] = (await res.json()) as Array<{ id: string }>
+    return fila?.id ?? null
+  }
+
+  test('sin acceso a Gastos, ningún rol operativo toca la CC del proveedor, los cheques ni los gastos fijos', async ({ request }) => {
+    let sondas = 0
+    for (const tabla of TABLAS_GASTOS) {
+      const id = await unaFilaDe(request, tabla)
+      expect(id, `[141/F1] fixture vacío: el tenant de prueba no tiene filas en ${tabla}`).toBeTruthy()
+      for (const r of rolesConCredenciales()) {
+        const token = await tokenRol(request, r)
+        const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT })
+        // El CONTADOR administra Gastos por rol fijo — es el control positivo del test de abajo.
+        if (r.rol === 'CONTADOR') continue
+        expect(escribio, `[141/F1] ${r.rol} NO debe poder escribir ${tabla}`).toBe(false)
+        sondas++
+      }
+    }
+    expect(sondas, '[141/F1] la sonda no ejercitó ningún rol — revisar .env.test.local').toBeGreaterThan(0)
+  })
+
+  test('🔑 el CONTADOR sí — administra Gastos por rol fijo', async ({ request }) => {
+    const contador = rolesConCredenciales().find((r) => r.rol === 'CONTADOR')
+    test.skip(!contador, 'sin credenciales de CONTADOR en .env.test.local')
+    const token = await tokenRol(request, contador!)
+    for (const tabla of TABLAS_GASTOS) {
+      const id = await unaFilaDe(request, tabla)
+      expect(
+        await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT }),
+        `[141/F1] el CONTADOR DEBE poder escribir ${tabla}`,
+      ).toBe(true)
+    }
+  })
+
+  test('🔑 la regla de GO: el CAJERO puede registrar un pago a proveedor SOLO con Gastos habilitado en su rol custom', async ({ request }) => {
+    const cajero = rolesConCredenciales().find((r) => r.rol === 'CAJERO')
+    test.skip(!cajero, 'sin credenciales de CAJERO en .env.test.local')
+    const owner = restHeaders(await tokenOwner(request))
+    const token = await tokenRol(request, cajero!)
+
+    const [rc] = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/roles_custom?select=id,permisos&tenant_id=eq.${TENANT}&limit=1`, { headers: owner })).json()) as Array<{ id: string; permisos: Record<string, string> }>
+    expect(rc, '[141/F1] el tenant de prueba necesita un rol custom para ejercitar la regla de GO').toBeTruthy()
+    const permisoOriginal = rc.permisos?.gastos ?? null
+
+    const idCC = await unaFilaDe(request, 'proveedor_cc_movimientos')
+    const setGastos = async (valor: string | null) => {
+      const permisos = { ...rc.permisos }
+      if (valor === null) delete permisos.gastos
+      else permisos.gastos = valor
+      const res = await request.patch(`${SUPABASE_URL}/rest/v1/roles_custom?id=eq.${rc.id}`, { headers: owner, data: { permisos } })
+      expect(res.ok(), `[141/F1] no se pudo ajustar el permiso del rol custom: ${await res.text()}`).toBeTruthy()
+    }
+
+    try {
+      // ── Lado "no": sin Gastos (o con 'ver', que es solo lectura) NO puede.
+      await setGastos('ver')
+      expect(
+        await rlsDejaEscribir(request, token, `proveedor_cc_movimientos?id=eq.${idCC}&select=id`, { tenant_id: TENANT }),
+        '[141/F1] un CAJERO con Gastos en "ver" NO debe poder registrar un pago a proveedor',
+      ).toBe(false)
+
+      // ── Lado "sí": el DUEÑO le habilita Gastos → ahí sí.
+      await setGastos('editar')
+      expect(
+        await rlsDejaEscribir(request, token, `proveedor_cc_movimientos?id=eq.${idCC}&select=id`, { tenant_id: TENANT }),
+        '[141/F1] con Gastos habilitado por el DUEÑO, el CAJERO SÍ debe poder registrar un pago a proveedor (regla de GO)',
+      ).toBe(true)
+
+      // ── Pero borrar un cheque sigue siendo gestión, aunque tenga Gastos.
+      const idCheque = await unaFilaDe(request, 'cheques')
+      const del = await request.delete(`${SUPABASE_URL}/rest/v1/cheques?id=eq.${idCheque}&select=id`, { headers: restHeaders(token) })
+      const borrados = del.ok() ? ((await del.json()) as unknown[]).length : 0
+      expect(borrados, '[141/F1] ni con Gastos habilitado se borra un cheque: eso es gestión').toBe(0)
+    } finally {
+      await setGastos(permisoOriginal)
     }
   })
 })

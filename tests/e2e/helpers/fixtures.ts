@@ -185,6 +185,64 @@ export async function garantizarCajaAbierta(
  * 131 (Motor de Rotación, Opción 2): la primera corrida reclamó la ubicación con su propio
  * producto, la segunda corrida (producto nuevo) chocó contra el mono_sku de la primera.
  */
+/**
+ * Ubicación DEDICADA para sembrar stock en los e2e.
+ *
+ * 🛑 Por qué existe: `ingresoRealPorUI` elegía **la primera ubicación de la lista** (`vals[0]`), y en
+ * el tenant de prueba esa es `A-01-1`, que es **Mono-SKU**. El día que quedó ocupada por un producto
+ * de otro spec, se cayeron de golpe los **9 specs que siembran stock por UI** (115, 116, 119, 122,
+ * 123, 128, 131, 132, 137) con un `toBeVisible` que no decía nada: el motivo real
+ * ("La ubicación A-01-1 es Mono-SKU y ya tiene ...") solo aparecía en un toast que se desvanecía
+ * antes del snapshot. La foto de datos era implícita, y por eso se rompió sola.
+ *
+ * Es GLOBAL (`sucursal_id = null`) a propósito: el dropdown de Ingreso lista
+ * `sucursal_id.eq.<actual>,sucursal_id.is.null`, así que sirve en cualquier sucursal. Y
+ * `mono_sku = false`, que es justamente lo que evita el choque.
+ *
+ * ⚠ `disponible_surtido = true` + `tipo_logico = 'almacenamiento'` NO son decorativos: sin eso el
+ * ingreso entra pero **el POS no ofrece la línea** y el spec falla más adelante, al armar el
+ * carrito. Es lo que separa a esta ubicación de una recién creada por defecto.
+ */
+export const UBICACION_SIEMBRA = 'E2E Siembra'
+
+/** Crea `UBICACION_SIEMBRA` si no existe. Idempotente. Devuelve `true` si tuvo que tocar la DB —
+ *  en ese caso la lista que ya cargó la pantalla quedó vieja y hay que recargar. */
+export async function garantizarUbicacionSiembra(page: Page): Promise<boolean> {
+  const h = restHeaders(await tokenDesdeBrowser(page))
+  const q = `${SUPABASE_URL}/rest/v1/ubicaciones?select=id,activo,mono_sku,disponible_surtido,tipo_logico&nombre=eq.${encodeURIComponent(UBICACION_SIEMBRA)}&limit=1`
+  const existentes = (await (await page.request.get(q, { headers: h })).json()) as Array<{
+    id: string; activo: boolean; mono_sku: boolean; disponible_surtido: boolean; tipo_logico: string | null
+  }>
+
+  if (existentes?.length) {
+    const u = existentes[0]
+    if (u.activo && !u.mono_sku && u.disponible_surtido && u.tipo_logico) return false
+    // Quedó desactivada, Mono-SKU o sin surtido: se normaliza en vez de fallar más adelante.
+    const fix = await page.request.patch(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${u.id}`, {
+      headers: h, data: { activo: true, mono_sku: false, disponible_surtido: true, tipo_logico: 'almacenamiento' },
+    })
+    expect(fix.ok(), `[fixtures] no se pudo normalizar "${UBICACION_SIEMBRA}": ${await fix.text()}`).toBeTruthy()
+    return true
+  }
+
+  const [me] = (await (await page.request.get(
+    `${SUPABASE_URL}/rest/v1/users?select=tenant_id&limit=1`, { headers: h })).json()) as Array<{ tenant_id: string }>
+  expect(me?.tenant_id, '[fixtures] no se pudo resolver el tenant del usuario de prueba').toBeTruthy()
+
+  // `codigo` se omite a propósito: lo autogenera el trigger `trg_ubic_autogenerar_codigo`.
+  const alta = await page.request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
+    headers: h,
+    data: {
+      tenant_id: me.tenant_id, nombre: UBICACION_SIEMBRA,
+      descripcion: 'Ubicación de siembra de los tests e2e — multi-SKU, global y disponible para surtido',
+      sucursal_id: null, mono_sku: false, activo: true, prioridad: 0,
+      disponible_surtido: true, tipo_logico: 'almacenamiento',
+    },
+  })
+  expect(alta.ok(), `[fixtures] no se pudo crear "${UBICACION_SIEMBRA}": ${await alta.text()}`).toBeTruthy()
+  return true
+}
+
 export async function ingresoRealPorUI(
   page: Page,
   opts: { nombreProducto: string; cantidad: number; estadoNombre?: string; ubicacionNombre?: string },
@@ -192,6 +250,12 @@ export async function ingresoRealPorUI(
   const { nombreProducto, cantidad, estadoNombre, ubicacionNombre } = opts
   await goto(page, '/inventario')
   await waitForApp(page)
+  // Antes de abrir el modal: la ubicación de siembra tiene que existir para poder elegirla. Si se
+  // acaba de crear, la lista que la pantalla ya cargó quedó vieja → recargar antes de abrir el modal.
+  if (!ubicacionNombre && await garantizarUbicacionSiembra(page)) {
+    await goto(page, '/inventario')
+    await waitForApp(page)
+  }
   await page.getByRole('button', { name: 'Agregar stock' }).first().click()
   // Los `expect(...).toBeVisible()` de abajo YA auto-esperan al resultado real — no hace falta
   // un sleep fijo antes (quedaba un `waitForTimeout` colgado sin ningún efecto real).
@@ -232,14 +296,12 @@ export async function ingresoRealPorUI(
     }
   }
 
+  // La ubicación NUNCA se elige a ciegas: o la pide el spec por nombre, o se usa la dedicada de
+  // siembra (ver `UBICACION_SIEMBRA` arriba). Elegir `vals[0]` acoplaba la suite entera a que la
+  // primera ubicación del tenant estuviera libre.
   const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
   if (await visible(ubicSelect, 3000)) {
-    if (ubicacionNombre) {
-      await ubicSelect.selectOption({ label: ubicacionNombre })
-    } else {
-      const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
-      if (vals.length > 0) await ubicSelect.selectOption(vals[0])
-    }
+    await ubicSelect.selectOption({ label: ubicacionNombre ?? UBICACION_SIEMBRA })
   }
 
   await page.locator('input[type="number"][placeholder="0"]').first().fill(String(cantidad))

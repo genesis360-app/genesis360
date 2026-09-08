@@ -15,7 +15,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, loginToken } from './helpers/fixtures'
 
 const PNG_1x1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -27,7 +27,7 @@ function decodeJwtSub(token: string): string {
   return JSON.parse(Buffer.from(payload, 'base64').toString('utf8')).sub as string
 }
 
-interface Ctx { headers: Record<string, string>; tenantId: string; sucursalId: string | null }
+interface Ctx { headers: Record<string, string>; headersOwner: Record<string, string>; tenantId: string; sucursalId: string | null }
 
 async function ctxDeposito(page: any, request: any): Promise<Ctx> {
   await goto(page, '/inventario')
@@ -48,12 +48,23 @@ async function ctxDeposito(page: any, request: any): Promise<Ctx> {
   const overrides = config && typeof config === 'object' ? Object.keys(config) : []
   expect(overrides.filter((r: string) => r === 'DUEÑO' || r === 'DEPOSITO'), '[126] el tenant tiene overrides de DUEÑO/DEPOSITO en ajuste_autorizacion_roles — este spec asume la config default').toHaveLength(0)
 
-  return { headers, tenantId: me.tenant_id, sucursalId: me.sucursal_id }
+  const headersOwner = restHeaders(await loginToken(request))
+  return { headers, headersOwner, tenantId: me.tenant_id, sucursalId: me.sucursal_id }
 }
 
+/**
+ * 🛑 SIEMBRA CON EL DUEÑO, ACTUÁ CON EL ROL.
+ *
+ * Los helpers de setup (`crear*`) usan `headersOwner`, no el token del DEPÓSITO. Desde las migs 396
+ * y 404 la base bloquea que un DEPÓSITO cree productos o catálogos de configuración
+ * (`estados_inventario`, `ubicaciones`, `proveedores`) — y hace bien: eso se define en ConfigPage,
+ * que es `ownerOnly`. Sembrar con el rol bajo prueba mezclaba el ARMADO del escenario con lo que el
+ * escenario quiere probar, y hacía que el spec dependiera de un privilegio que el rol no debería
+ * tener. Lo que SÍ se ejercita con el token del DEPÓSITO son las ACCIONES bajo prueba.
+ */
 async function crearEstadoConAprobacion(request: any, c: Ctx, nombre: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/estados_inventario`, {
-    headers: c.headers, data: { tenant_id: c.tenantId, nombre, requiere_aprobacion: true, es_disponible_venta: false },
+    headers: c.headersOwner, data: { tenant_id: c.tenantId, nombre, requiere_aprobacion: true, es_disponible_venta: false },
   })
   expect(res.ok(), `[126] no se pudo crear el estado: ${await res.text()}`).toBe(true)
   return ((await res.json()) as any[])[0]
@@ -61,7 +72,7 @@ async function crearEstadoConAprobacion(request: any, c: Ctx, nombre: string) {
 
 async function crearUbicacion(request: any, c: Ctx, nombre: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
-    headers: c.headers, data: { tenant_id: c.tenantId, nombre, activo: true },
+    headers: c.headersOwner, data: { tenant_id: c.tenantId, nombre, activo: true },
   })
   expect(res.ok(), `[126] no se pudo crear la ubicación "${nombre}": ${await res.text()}`).toBe(true)
   return ((await res.json()) as any[])[0]
@@ -69,7 +80,7 @@ async function crearUbicacion(request: any, c: Ctx, nombre: string) {
 
 async function crearProveedor(request: any, c: Ctx, nombre: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/proveedores`, {
-    headers: c.headers, data: { tenant_id: c.tenantId, nombre, activo: true },
+    headers: c.headersOwner, data: { tenant_id: c.tenantId, nombre, activo: true },
   })
   expect(res.ok(), `[126] no se pudo crear el proveedor "${nombre}": ${await res.text()}`).toBe(true)
   return ((await res.json()) as any[])[0]
@@ -77,7 +88,7 @@ async function crearProveedor(request: any, c: Ctx, nombre: string) {
 
 async function crearProducto(request: any, c: Ctx, nombre: string, sku: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/productos`, {
-    headers: c.headers, data: {
+    headers: c.headersOwner, data: {
       tenant_id: c.tenantId, nombre, sku, precio_costo: 60, precio_venta: 100,
       unidad_medida: 'unidad', activo: true, alicuota_iva: 21, tiene_lote: true,
     },
@@ -88,7 +99,7 @@ async function crearProducto(request: any, c: Ctx, nombre: string, sku: string) 
 
 async function crearLinea(request: any, c: Ctx, opts: { productoId: string; lpn: string; ubicacionId: string; proveedorId: string; nroLote: string }) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
-    headers: c.headers, data: {
+    headers: c.headersOwner, data: {
       tenant_id: c.tenantId, producto_id: opts.productoId, lpn: opts.lpn, cantidad: 10, activo: true,
       sucursal_id: c.sucursalId, ubicacion_id: opts.ubicacionId, proveedor_id: opts.proveedorId, nro_lote: opts.nroLote,
     },

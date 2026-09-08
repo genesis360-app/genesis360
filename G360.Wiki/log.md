@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-08] update | 🧪 Primera corrida COMPLETA de la suite: 394 tests · 339 verdes · 14 rojos → 8 cerrados
+
+Con el fixture de siembra arreglado se corrió la suite entera por primera vez en mucho tiempo (48
+minutos, 1 worker). **339 pasaron, 41 skipped, 14 rojos.** De los 14, **dos clusters eran bugs reales
+de test** y quedaron cerrados; el resto está clasificado.
+
+| Cluster | Fallas | Causa | Estado |
+|---|---|---|---|
+| **1** | 101, 103, 104, 95, 96 | el mismo bug Mono-SKU **copiado inline**: esos specs no usan `ingresoRealPorUI`, tienen su propia copia con `vals[0]` | ✅ cerrado |
+| **2** | 117 ×2, 126 | la **mig 404 haciendo lo suyo**: los specs sembraban con el token del DEPÓSITO | ✅ cerrado |
+| **3** | 37_rrhh | fixture agotado (ya documentado) | 🟡 se destraba solo el mes que viene |
+| **4** | 107, 128 ×2, 131 | flake bajo carga | 🟡 las 4 pasan en aislado — verificado |
+| **5** | 20_caja | ver abajo | 🟥 abierto |
+
+**Cluster 2 merece subrayarse**: el error era
+`42501: new row violates row-level security policy for table "estados_inventario"`. Los specs creaban
+estados de inventario, productos y ubicaciones **con el token del rol que están probando**. La 404 (y
+la 396 antes) lo bloquean, y hacen bien: eso se configura en ConfigPage, que es `ownerOnly`. **El
+guard tenía razón; el test estaba mal.** Regla que quedó escrita en los dos specs: **sembrá con el
+DUEÑO, actuá con el rol** — sembrar con el rol bajo prueba mezcla el armado del escenario con lo que
+el escenario quiere probar, y hace que el spec dependa de un privilegio que ese rol no debería tener.
+
+**Cluster 1**: arreglar el helper compartido no alcanzaba, porque 5 specs tienen el ingreso copiado.
+Ahora usan `UBICACION_SIEMBRA` y llaman a `garantizarUbicacionSiembra` antes de abrir el modal.
+
+**🟥 `20_caja_apertura_cierre` queda abierto, y NO es un timeout** (falla igual con 90 s en vez de los
+30 s del default). El DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y el botón "Abrir caja"
+se deshabilita con *"Ya tenés una caja abierta. Cerrala antes de abrir otra."* Es **estado viejo del
+ambiente de DEV**, no las migraciones. Se probó subirle el presupuesto y **se revirtió**: no era la
+causa y el commit habría mentido. Salida: cerrar esas sesiones viejas en DEV, o que el spec cierre lo
+que encuentre abierto antes de empezar.
+
+⚠ Dato para calibrar: el default de Playwright son **30 s** y **47 specs ya lo suben** por su cuenta.
+El default quedó chico para esta app.
+
+---
+
 ## [2026-09-08] update | ✅ Recuperados los 9 specs e2e que sembraban stock por UI — v1.205.1
 
 Cerrado el issue que había quedado abierto ayer. Los specs 115, 116, 119, 122, 123, 128, 131, 132 y

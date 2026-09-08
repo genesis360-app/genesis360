@@ -18,6 +18,25 @@ type: project
 > | **404** | la **matriz de escritura**: plata, **precios por la puerta de al lado** (lista mayorista, combos, cupones) y configuración |
 > | **e2e** | los **9 specs** que sembraban stock por UI, rotos hace días por una ubicación Mono-SKU ocupada (`UBICACION_SIEMBRA`) |
 >
+> #### 🧪 Foto REAL de la suite (corrida completa, 2026-09-08 — 48 min)
+>
+> **394 tests · 339 verdes · 41 skipped · 14 rojos → 8 cerrados en el momento.** Lo que queda:
+>
+> | Qué | Estado |
+> |---|---|
+> | `37_rrhh_nomina_gasto` | fixture agotado, **se destraba solo el mes que viene** |
+> | `107`, `128` ×2, `131` | **flake bajo carga** — las 4 pasan en aislado (verificado) |
+> | `20_caja_apertura_cierre` | 🟥 **abierto** (ver abajo) |
+>
+> 🟥 **`20_caja` — y NO es un timeout** (falla igual con 90 s). El DUEÑO tiene **Caja1 y Caja USD
+> abiertas desde agosto**; el botón "Abrir caja" se deshabilita con *"Ya tenés una caja abierta"*. Es
+> **estado viejo del ambiente de DEV**, no las migraciones. Dos salidas: cerrar esas sesiones viejas
+> en DEV, o que el spec cierre lo que encuentre abierto antes de empezar (preferible: no depende del
+> ambiente). ⚠ Se probó subirle el presupuesto y **se revirtió** — no era la causa.
+>
+> 📌 Para calibrar: el default de Playwright son **30 s** y **47 specs ya lo suben**. El default quedó
+> chico para esta app; vale evaluar subirlo en `playwright.config.ts` y sacar los overrides.
+
 > #### 🟥 Lo que sigue, en orden
 >
 > 1. **Definición de negocio para cerrar los últimos dos de la matriz**:

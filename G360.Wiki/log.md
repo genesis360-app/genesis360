@@ -6,6 +6,80 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-09] update | 💵 Modo "Real" del Dashboard + fin de la mezcla de pesos y dólares · v1.208.0
+
+Se cerró el pendiente #1 del handoff (G1). Y de paso apareció un bug de plata que estaba latente.
+
+### La feature: la 3ra opción del filtro Moneda
+
+Fede la pidió así: *mostrar los montos tal cual están, sin convertir nada, separando lo que fue en
+pesos de lo que fue en dólares*. No es una tercera moneda — son tres formas de leer los mismos
+números:
+
+| Modo | Qué muestra |
+|---|---|
+| **ARS** | vista en pesos (los dólares se convierten a la cotización de hoy antes de sumar) |
+| **USD** | lo mismo, dividido por la cotización de hoy — cuánto vale hoy, no cuánto se movió |
+| **Real** | dos números separados, cada uno en su moneda, que nunca se suman entre sí |
+
+El patrón **ya existía** en el KPI "Ingreso Neto de Caja" (dos acumuladores por
+`caja_movimientos.moneda`). Se extrajo a `src/lib/dashMoneda.ts` y se aplicó en Ventas y Gastos.
+Productos queda afuera: no tiene toggle de moneda y Fede no lo mencionó.
+
+### 🐛 El bug que apareció en el camino (REGLA #0)
+
+**El Dashboard sumaba dólares como si fueran pesos.** `gastos.moneda` existe desde la mig 379 y el
+`monto` está expresado en esa moneda (US$100 guarda `100`), pero las queries **ni leían la columna**.
+
+No había explotado porque hay **0 gastos en USD en DEV y PROD** — el formulario todavía no ofrece la
+moneda. Pero la columna ya está, y el gasto suelto en USD es el próximo pendiente de Fede.
+
+Tres lugares, el mismo defecto:
+
+| Dónde | Qué rompía |
+|---|---|
+| `DashGastosArea` | total de salidas, velocidad de gasto, rigidez, pie, evolución, top 5 |
+| `VentasVsGastosChart` | la serie diaria de gastos de "La Balanza" |
+| `DashboardPage` → `gastosTotal` | `rentabilidadNeta` y `margenNeto` — subestimaba el gasto e **inflaba el margen** |
+
+Ahora se convierten a la cotización de hoy antes de sumar, y **sin cotización cargada quedan afuera
+con aviso en pantalla** en vez de entrar deformados. Plata que se evapora de un total en silencio es
+justo lo que la REGLA #0 no tolera.
+
+### Lo que NO se pudo hacer, y por qué se dice de frente
+
+Para **Ventas** no existe el dato. `ventas.total` está siempre en pesos y `venta_items` no tiene
+columna `moneda`: el sistema **no guarda cuánto de una venta fue realmente en dólares**.
+`cotizacion_usd` (mig 368) solo marca que hubo una conversión (producto priceado en USD **o** pago en
+USD). Así que el modo Real saca esas ventas del número en pesos y las informa **aparte, como
+equivalente** — no inventa una cifra en US$ dividiendo por la cotización, que para una venta mixta
+sería directamente falsa.
+
+La **única** cifra en dólares reales que sí existe es `monto_usd` de cada medio en
+`ventas.medio_pago` (G5 Fase 4): los dólares efectivamente cobrados. Esa sí se muestra, aclarando
+que no es plata aparte sino la misma vista en su moneda. (En DEV todavía no hay ninguna venta que la
+use, así que esa rama no tiene fixture.)
+
+### Verificación
+
+- **25 tests unitarios** de `dashMoneda` (mutación: mezclar monedas rompe 3).
+- **e2e mutante 143**: siembra un gasto y compara el total **antes/después**. Con el bug el delta da
+  exactamente `777`; con el fix, `777 × cotización`. Verificado mutando el código real.
+- El e2e lleva **control anti-vacío** (siembra primero en pesos) por una razón concreta: el primer
+  intento midió **$0** porque el Dashboard filtra por sucursal activa y la siembra había caído en
+  `sucursal_id = null`. Sin ese control el test habría fallado en la aserción de moneda, culpando al
+  fix por algo que era la siembra.
+- 1697 unit + los 17 e2e de dashboard verdes, build y typecheck limpios.
+
+### ⚠️ Pendiente que quedó anotado
+
+Los `INSERT` en `gastos` del código (recepción de OC, envíos, RRHH, recursos, servicios recurrentes)
+**no setean `moneda`** → caen en el default `'ARS'`. Una recepción de una OC en dólares nace como
+gasto en pesos con el número en dólares. Latente (6 OC en USD en DEV, ninguna recibida). Va junto
+con la UI del gasto suelto en USD.
+
+---
+
 ## [2026-09-08] update | 🐛 Tanda de issues de Fede — 10 de 13 cerrados · v1.207.0
 
 Fede pasó 13 issues (vía GO). Se cerraron 10, se respondió 1 que no era bug y quedan 2 con motivo.

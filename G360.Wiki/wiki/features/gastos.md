@@ -3,7 +3,7 @@ title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381, migration 389, src/components/SolicitarAutorizacionGastoModal.tsx, src/components/BandejaAutorizacionesGasto.tsx]
-updated: 2026-09-04
+updated: 2026-09-09
 ---
 
 # Módulo Gastos
@@ -680,9 +680,42 @@ Detalle completo: `sources/raw/project_pendientes.md` (cont. 46, "ARRANCÁ ACÁ"
 
 ---
 
+## 🐛 El Dashboard sumaba los gastos en USD como si fueran pesos (v1.208.0, 2026-09-09)
+
+`gastos.moneda` existe desde la **mig 379** y el `monto` está expresado **en esa moneda** (un gasto
+de US$100 guarda `100`, no el equivalente en pesos). Las queries del Dashboard **no leían la
+columna**: sumaban el número pelado, con un dólar valiendo un peso.
+
+No había explotado porque **no hay ni un gasto en USD en DEV ni en PROD** — el formulario todavía no
+ofrece la moneda (es el pendiente "gasto suelto en USD"). Pero la columna ya está, y cualquier
+inserción por REST o el primer gasto en dólares lo activaba.
+
+Tres lugares con el mismo defecto, arreglados juntos:
+
+| Dónde | Qué rompía |
+|---|---|
+| `DashGastosArea` | "Total Salidas Operativas", velocidad de gasto, rigidez, pie por categoría, evolución, top 5, sin comprobante |
+| `VentasVsGastosChart` ("La Balanza") | la serie diaria de gastos del área Todo |
+| `DashboardPage` → `gastosTotal` | `rentabilidadNeta` y `margenNeto`: subestimaba el gasto e **inflaba el margen** |
+
+Ahora los dólares se convierten a la **cotización de hoy** antes de sumar (es una *vista* en pesos:
+`gastos` no guarda a qué cotización se pagó — eso vive en `caja_movimientos.cotizacion_usd`, mig
+381). Sin cotización cargada **quedan afuera con un aviso en pantalla**, nunca deformados ni
+silenciados. Y el nuevo modo **Real** del filtro de moneda los muestra aparte, en dólares, sin
+convertir: ver [[wiki/features/reportes-metricas]].
+
+⚠️ **Pendiente relacionado, no arreglado acá**: los `INSERT` en `gastos` del código (recepción de
+una OC, envíos, RRHH, recursos, servicios recurrentes) **no setean `moneda`**, así que caen en el
+default `'ARS'`. Una recepción de una OC en dólares nace como gasto en pesos con el número en
+dólares. Hoy es latente (hay 6 OC en USD en DEV, ninguna recibida), pero conviene cerrarlo junto
+con la UI del gasto suelto en USD.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/caja]]
+- [[wiki/features/reportes-metricas]]
 - [[wiki/features/facturacion-afip]]
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/alertas]]

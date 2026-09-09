@@ -37,8 +37,17 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.207.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **🐛 Tanda de issues de Fede: 10 de 13 cerrados.** Los dos de plata: el POS convertía
+**Versión en DEV:** `v1.208.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
+opción que muestra los montos **sin convertir nada**, con los pesos y los dólares en números
+separados que nunca se suman. El patrón ya existía en el KPI "Ingreso Neto de Caja"; se extrajo a
+`src/lib/dashMoneda.ts` y se aplicó a Ventas y Gastos. 🐛 De paso se cerró un **bug de plata
+latente**: el Dashboard **sumaba dólares como si fueran pesos** (`gastos.moneda`, mig 379, ni se
+leía) en tres lugares — el área Gastos, "La Balanza" y el `gastosTotal` que alimenta
+**rentabilidad/margen**, donde subestimaba el gasto e **inflaba el margen**. Ver `log.md`
+(2026-09-09).
+
+**Detalle de v1.207.0** — tag+release sobre `dev`. **🐛 Tanda de issues de Fede: 10 de 13 cerrados.** Los dos de plata: el POS convertía
 los precios en USD al **dólar venta** cuando la convención del sistema es **compra** (le cobraba de
 más al cliente), y **"El Camino de la Venta" contaba la misma plata dos veces**. Además: el recurso
 desaparecía al crearlo (no seteaba `sucursal_id`) y su gasto nacía ya pagado (**mig 406** cierra el

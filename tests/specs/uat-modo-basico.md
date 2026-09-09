@@ -1920,3 +1920,36 @@ estado con foto, cupones y módulo Comercial (migs 328-333) — 2026-08-03/04
 infraestructura bajo carga, ambos confirmados transitorios al reintentar en aislamiento — no
 relacionados a lógica de producto). Migración nueva: **333** (guard server-side de Fase B, revisada
 por `migration-reviewer`, aplicada en DEV). Diferidos a propósito, no bloqueantes: specs 129/130.
+
+---
+
+## 💵 §50 — Modo "Real" del filtro de moneda del Dashboard, y el fin de la mezcla de pesos y dólares (v1.208.0, sin migración) 🛑 PLATA — 2026-09-09
+
+El pedido de Fede (G1) era la 3ra opción del filtro Moneda: *mostrar los montos tal cual están, sin
+convertir nada, separando lo que fue en pesos de lo que fue en dólares*. Al implementarlo apareció
+un bug de plata **latente**: las queries del Dashboard no leían `gastos.moneda` (mig 379) y sumaban
+un gasto de US$100 como $100. No había explotado porque hay **0 gastos en USD en DEV y PROD**.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 101 | **🛑 Un gasto en USD entra al total en pesos CONVERTIDO** | El delta del "Total Salidas Operativas" al sembrar US$777 tiene que ser `777 × cotización`, no `777` | **e2e 143** (mutante, verificado mutando el código real) |
+| 102 | **🛑 "La Balanza" no mezcla monedas** | La serie diaria de gastos del área Todo convierte los USD antes de sumar | `dashMoneda.test.ts` (`sumarPorMonedaNativa`, `aVistaPesos`) |
+| 103 | **🛑 El margen no se infla** | `gastosTotal` → `rentabilidadNeta`/`margenNeto`: un gasto en USD sumado como pesos subestimaba el gasto e inflaba el margen | `dashMoneda.test.ts` + revisión de `DashboardPage` |
+| 104 | **🛑 Sin cotización, la plata no desaparece** | Si hay dólares y no hay cotización cargada, quedan **fuera del total con aviso en pantalla** — nunca convertidos a una tasa inventada ni sumados en silencio | `dashMoneda.test.ts` (DM-VP-02) + banner en `DashGastosArea` |
+| 105 | **Modo Real no convierte nada** | El número en pesos son los pesos nativos; los dólares van en su propio número, en dólares | **e2e 143** + `dashMoneda.test.ts` (DM-VP-05) |
+| 106 | **El `numeric` de Postgres llega como string** | `"1000.50"` se normaliza antes de sumar (REGLA #0, punto 5) | `dashMoneda.test.ts` (DM-SUM-02) |
+| 107 | **Ventas: NO se inventa una cifra en dólares** | `ventas.total` está siempre en pesos y `venta_items` no tiene `moneda` → las ventas con `cotizacion_usd` se informan **aparte, como equivalente**, nunca como US$ | `dashMoneda.test.ts` (DM-VTA-*) + banner en `DashVentasArea` |
+| 108 | **Ventas: los dólares reales sí se muestran** | `monto_usd` de cada medio en `ventas.medio_pago` (G5 Fase 4) — los dólares efectivamente cobrados, aclarando que no es plata aparte | `dashMoneda.test.ts` (DM-MP-*) |
+| 109 | **Un medio USD sin `monto_usd` cuenta 0** | No se completa dividiendo el monto en pesos por la cotización de hoy: daría una cifra distinta a la que se cobró | `dashMoneda.test.ts` (DM-MP-02) |
+| 110 | **Los indicadores que NO son plata no se parten** | Efectividad, nuevos vs recurrentes y heatmap se calculan sobre todas las ventas en los 3 modos; el ratio Gastos/Ventas queda en la vista en pesos (un % no se parte por moneda) | revisión de `DashVentasArea`/`DashGastosArea` |
+| 111 | ⚠️ **Gap abierto (no nuevo de esta tanda)** | Los `INSERT` en `gastos` del código (recepción de OC, envíos, RRHH, recursos, servicios) **no setean `moneda`** → una recepción de una OC en dólares nace como gasto en pesos con el número en dólares. Latente: 6 OC en USD en DEV, ninguna recibida | — (va con la UI del gasto suelto en USD) |
+| 112 | ⚠️ **Deuda de fixture** | En DEV no hay ninguna venta con `monto_usd` en `medio_pago`, así que la rama de "dólares realmente cobrados" del modo Real no se probó con datos | — |
+
+**Verde:** tsc · build · eslint `--max-warnings 0` · **unit 1697** (25 nuevos en `dashMoneda.test.ts`,
+mutación: mezclar monedas rompe 3) · **e2e 143 nuevo + los 17 de dashboard (01/14/84) verdes**.
+Sin migración: es un cambio de display + la corrección de tres agregaciones.
+
+⚠️ **Para quien escriba el próximo e2e del Dashboard**: filtra por **sucursal activa**. Una siembra
+con `sucursal_id = null` no aparece nunca en los KPI — el primer intento del spec 143 midió $0
+exactamente por eso, y por eso el spec lleva **control anti-vacío** (siembra primero en pesos y
+verifica que el gasto llegó al KPI antes de medir nada de moneda).

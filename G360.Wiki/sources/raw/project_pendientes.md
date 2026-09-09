@@ -6,6 +6,75 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### ✅ ARRANCÁ ACÁ (2026-09-09, cont. 59) — `v1.208.0` en `dev`, migs **391-406** solo en DEV.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo cerrado hoy — el pendiente #1 (G1, modo "Real" del Dashboard)
+>
+> La 3ra opción del filtro Moneda, sin migración (todo display). Y de paso salió un **bug de plata
+> latente**: el Dashboard **sumaba dólares como si fueran pesos** (`gastos.moneda` existe desde la
+> mig 379 y las queries ni la leían). Tres lugares: `DashGastosArea`, `VentasVsGastosChart` y el
+> `gastosTotal` que alimenta **rentabilidad/margen** del área Todo (ahí subestimaba el gasto e
+> **inflaba el margen**). No había explotado porque hay 0 gastos en USD en DEV y PROD.
+>
+> Detalle completo en `log.md` (2026-09-09) y en `wiki/features/reportes-metricas.md`.
+>
+> #### 🟥 Lo que sigue, en orden
+>
+> 1. **PASAR TODO A PROD** — GO lo dejó dicho: *"luego de eso pasamos todos a PRD"*. Van las migs
+>    **391-406** + el código (`v1.195.4` → `v1.208.0`). ⚠ **Cambian comportamiento**: donde antes
+>    bloqueaba solo la UI, ahora la base rechaza → **migraciones y código van juntos**, no aplica el
+>    "DDL aditivo primero".
+> 2. **Gasto suelto en USD** (issue #3 de Fede, mitad pendiente) — `gastos.moneda` YA existe en la
+>    DB; falta la UI del formulario. ⚠ La **OC en USD ya funciona** (selector en `ProveedoresPage`,
+>    mig 379). Patrón guía: `cajasAbiertasOCMoneda`, `monedaDeMetodo`, cotización de descalce.
+>    **Sumarle**: los `INSERT` en `gastos` del código (recepción de OC, envíos, RRHH, recursos,
+>    servicios recurrentes) **no setean `moneda`** → default `'ARS'`. Una recepción de una OC en
+>    dólares nace como gasto en pesos con el número en dólares. Latente (6 OC en USD en DEV, ninguna
+>    recibida) — va en la misma tanda.
+> 3. **Cobrar en caja USD** (issue #2 de Fede) — es la **Fase 8 (C2)**, frenada esperando la
+>    definición del contador por la factura.
+> 4. **Góndolas para que sirva Repositores** — hay **0 ubicaciones de exhibición en PROD**. Decisión
+>    de GO sin responder: ¿carga masiva por categoría/lote, o producto por producto?
+> 5. **¿El DUEÑO debería tener tope de descuento?** `ROLES_DESCUENTO` deja al CAJERO bloqueado, al
+>    SUPERVISOR con tope configurable y al DUEÑO sin tope. **GO no dijo si quiere cambiarlo.**
+> 6. **Reintegro en efectivo USD al anular una venta** — GO lo pospuso: **relevar**.
+> 7. **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)** · **dropear
+>    `tenants.afipsdk_token`** (cuando PROD corra este código).
+>
+> #### 🔍 Hueco de dato conocido (no es un bug, es un límite)
+>
+> **Ventas no puede reportar dólares reales.** `ventas.total` está siempre en pesos y `venta_items`
+> no tiene columna `moneda`: el sistema no guarda cuánto de una venta fue realmente en dólares
+> (`cotizacion_usd` solo marca que hubo conversión). La única cifra real es `monto_usd` de
+> `ventas.medio_pago` (G5 Fase 4) — los dólares efectivamente cobrados — y **en DEV no hay ninguna
+> venta que la use**, así que esa rama del modo Real no tiene fixture. Si GO quiere el desglose
+> completo por moneda en Ventas, hace falta guardarlo al vender (migración + POS).
+>
+> #### 🧪 Estado de la suite
+>
+> **395 specs e2e** (nuevo: `143_dashboard_modo_real_usd_mutante`). **1697 unit verdes** (25 nuevos
+> de `dashMoneda`). Los 17 e2e de dashboard verdes. Sobreviven de la corrida del 8/9: `37_rrhh`
+> (fixture agotado), 4 de flake bajo carga y **`20_caja`** — 🟥 abierto y **NO es timeout**: el
+> DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y "Abrir caja" se deshabilita con *"Ya
+> tenés una caja abierta"*. Es estado viejo de DEV.
+>
+> ⚠️ **Al escribir un e2e del Dashboard**: filtra por **sucursal activa**. Una siembra con
+> `sucursal_id = null` no aparece nunca en los KPI — costó un falso negativo. Sembrar copiando el
+> `sucursal_id` de una fila real del período.
+>
+> #### Deuda de fixture (migs 401 y 403)
+>
+> En DEV hay **0 empleados con `user_id`** → la rama "cada empleado ve lo suyo" de RRHH nunca se
+> probó con datos.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 406.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV (pg_cron `tn-fulfillment-sync`).
+> - La ubicación **`E2E Siembra`** (global, multi-SKU, `disponible_surtido`) la crea el fixture de
+>   e2e. No borrarla ni pasarla a Mono-SKU: se cae la siembra de stock de 14 specs.
+
 > ### ✅ ARRANCÁ ACÁ (2026-09-08, cont. 58) — `v1.207.0` en `dev`, migs **391-406** solo en DEV.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
 >

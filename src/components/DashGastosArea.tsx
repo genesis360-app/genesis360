@@ -15,12 +15,12 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
-import { getFechasDashboard, getFechasAnteriores, type PeriodoDash } from '@/components/FilterBar'
+import { getFechasDashboard, getFechasAnteriores, MONEDAS, type PeriodoDash, type Moneda } from '@/components/FilterBar'
+import { fmtDash, fmtUsdDash, sumarPorMonedaNativa, aVistaPesos, type SplitMoneda } from '@/lib/dashMoneda'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type GastosPeriodo = 'mes' | 'trimestre' | 'año' | 'custom'
-type Moneda = 'ARS' | 'USD'
 
 const PERIODO_LABELS: Record<GastosPeriodo, string> = {
   mes: 'Este mes', trimestre: 'Trimestre', año: 'Año', custom: 'Custom',
@@ -151,15 +151,29 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
   }, [filterOpen])
 
   const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
+  // G1 "modo real" — en REAL no se convierte nada: el número principal son los pesos nativos y
+  // los gastos cargados en dólares (`gastos.moneda`, mig 379) van en su propio número, aparte.
+  const esReal = monedaEff === 'REAL'
   const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
   const sym = monedaEff === 'USD' ? 'U$D ' : '$'
-  const fmt = useCallback((v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`, [sym, conv])
+  const fmt = useCallback((v: number) => fmtDash(v, monedaEff, cotizacion), [monedaEff, cotizacion])
   const fmtCorto = (v: number) => {
     const val = v / conv
     if (val >= 1_000_000) return `${sym}${(val / 1_000_000).toFixed(1)}M`
     if (val >= 1_000) return `${sym}${(val / 1_000).toFixed(0)}K`
     return `${sym}${val.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
   }
+  /** El número del modo: en Real solo los pesos nativos; en ARS/USD la vista en pesos. */
+  const delModo = useCallback(
+    (s: SplitMoneda | undefined) => !s ? 0 : esReal ? s.ars : aVistaPesos(s, cotizacion).total,
+    [esReal, cotizacion],
+  )
+  /** Leyenda del componente en dólares — dólares de verdad, nunca convertidos. */
+  const subUsd = useCallback((s: SplitMoneda | undefined) => (
+    esReal && s && s.usd > 0
+      ? ` · ${s.cantUsd} en dólares aparte (${fmtUsdDash(s.usd)})`
+      : ''
+  ), [esReal])
 
   const customRange = { desde: customDesde, hasta: customHasta }
   const gRange = { desde: gCustomDesde ?? customDesde, hasta: gCustomHasta ?? customHasta }
@@ -175,12 +189,12 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
   // ─── Query principal ──────────────────────────────────────────────────────
   const { data: gData, isLoading } = useQuery({
-    queryKey: ['dash-gastos-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, categoriaFiltro, moneda, sucursalId],
+    queryKey: ['dash-gastos-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, categoriaFiltro, moneda, sucursalId, cotizacion],
     queryFn: async () => {
 
       // Gastos del período
       let q = supabase.from('gastos')
-        .select('id, monto, categoria, descripcion, fecha, comprobante_url, iva_monto, iva_deducible, recurso_id')
+        .select('id, monto, moneda, categoria, descripcion, fecha, comprobante_url, iva_monto, iva_deducible, recurso_id')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdeDate).lte('fecha', hastaDate)
       if (categoriaFiltro) q = q.eq('categoria', categoriaFiltro)
@@ -189,7 +203,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       // Gastos período anterior
       let qGastosPrev = supabase.from('gastos')
-        .select('monto')
+        .select('monto, moneda')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
       qGastosPrev = dashFilter(qGastosPrev)
@@ -197,7 +211,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       // Gastos fijos activos (para estimación fijos vs variables)
       const { data: gastosFijos = [] } = await supabase.from('gastos_fijos')
-        .select('monto, categoria, descripcion')
+        .select('monto, moneda, categoria, descripcion')
         .eq('tenant_id', tenant!.id).eq('activo', true)
 
       // Evolución mensual — últimos 6 meses (siempre, independiente del filtro)
@@ -205,7 +219,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 5)
       seisMesesAtras.setDate(1)
       let qGastosHist = supabase.from('gastos')
-        .select('monto, fecha')
+        .select('monto, moneda, fecha')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', seisMesesAtras.toISOString().split('T')[0])
         .order('fecha')
@@ -249,9 +263,33 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const sueldosPeriodo = ((aggPeriodo ?? []) as any[])[0] ?? { total_neto: 0, empleados: 0 }
       const sueldosPrev = ((aggPrev ?? []) as any[])[0] ?? { total_neto: 0, empleados: 0 }
 
+      // ── G1 "modo real" + 🐛 mezcla de monedas ─────────────────────────────
+      // Cada gasto tiene su propia `moneda` (mig 379) y su `monto` está EXPRESADO en esa
+      // moneda: una compra de US$100 guarda 100, no el equivalente en pesos. Hasta acá esta
+      // query ni siquiera leía la columna, así que ese gasto sumaba $100 al total — un dólar
+      // valiendo un peso. Hoy no se nota (0 gastos en USD en DEV y PROD) pero la columna ya
+      // existe y el formulario de gasto en USD es el próximo pendiente de Fede.
+      //
+      //   · vista en pesos (modos ARS y USD) → los dólares se convierten a la cotización de
+      //     HOY antes de sumar. Es una vista, no el dato histórico: `gastos` no guarda a qué
+      //     cotización se pagó (eso vive en `caja_movimientos.cotizacion_usd`, mig 381).
+      //   · modo Real → dos números separados, cada uno en su moneda, sin convertir.
+      //
+      // Si hay dólares y NO hay cotización cargada, no se inventa una tasa: quedan fuera del
+      // total en pesos y `usdSinCotizacion` lo avisa en pantalla. Plata que se evapora de un
+      // total en silencio es exactamente lo que la REGLA #0 no tolera.
+      const esGastoUsd = (g: any) => String(g?.moneda ?? 'ARS').toUpperCase() === 'USD'
+      const aPesos = (g: any) => {
+        const m = Number(g?.monto ?? 0) || 0
+        return esGastoUsd(g) ? (cotizacion > 0 ? m * cotizacion : 0) : m
+      }
+
       // ── KPI 1: Total Salidas ──────────────────────────────────────────────
-      const totalGastos = (gastos ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
-      const totalGastosPrev = (gastosPrev ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
+      const splitGastos     = sumarPorMonedaNativa(gastos ?? [], (g: any) => g.monto, (g: any) => g.moneda)
+      const splitGastosPrev = sumarPorMonedaNativa(gastosPrev ?? [], (g: any) => g.monto, (g: any) => g.moneda)
+      const totalGastos     = aVistaPesos(splitGastos, cotizacion).total
+      const totalGastosPrev = aVistaPesos(splitGastosPrev, cotizacion).total
+      const usdSinCotizacion = aVistaPesos(splitGastos, cotizacion).usdSinConvertir
 
       // ── KPI 2: Burn Rate ──────────────────────────────────────────────────
       const d1 = new Date(desdeDate), d2 = new Date(hastaDate)
@@ -273,7 +311,8 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       // totalGastos = gastos variables reales del período
       // La rigidez se calcula como fijos / (fijos + variables) para que ambos
       // tengan el mismo denominador y el % sea coherente.
-      const fijosMensual = (gastosFijos ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
+      const splitFijos = sumarPorMonedaNativa(gastosFijos ?? [], (g: any) => g.monto, (g: any) => g.moneda)
+      const fijosMensual = aVistaPesos(splitFijos, cotizacion).total
       const totalCombinado = fijosMensual + totalGastos
       const pctFijos = totalCombinado > 0
         ? Math.round((fijosMensual / totalCombinado) * 100)
@@ -284,7 +323,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const catMap: Record<string, number> = {}
       for (const g of gastos ?? []) {
         const cat = (g as any).categoria || 'Sin categoría'
-        catMap[cat] = (catMap[cat] ?? 0) + ((g as any).monto ?? 0)
+        catMap[cat] = (catMap[cat] ?? 0) + aPesos(g)
       }
       const catTotal = Object.values(catMap).reduce((a, b) => a + b, 0)
       const catData = Object.entries(catMap)
@@ -299,7 +338,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const monthlyMap: Record<string, number> = {}
       for (const g of gastosHistorico ?? []) {
         const key = (g as any).fecha.slice(0, 7) // YYYY-MM
-        monthlyMap[key] = (monthlyMap[key] ?? 0) + ((g as any).monto ?? 0)
+        monthlyMap[key] = (monthlyMap[key] ?? 0) + aPesos(g)
       }
       const MESES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
       const monthlyData = Object.entries(monthlyMap)
@@ -316,7 +355,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const descMap: Record<string, number> = {}
       for (const g of gastos ?? []) {
         const desc = (g as any).descripcion || 'Sin descripción'
-        descMap[desc] = (descMap[desc] ?? 0) + ((g as any).monto ?? 0)
+        descMap[desc] = (descMap[desc] ?? 0) + aPesos(g)
       }
       const top5 = Object.entries(descMap)
         .sort(([, a], [, b]) => b - a)
@@ -326,7 +365,8 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       // ── Sin comprobante ───────────────────────────────────────────────────
       const sinComprobante = (gastos ?? []).filter((g: any) => !g.comprobante_url && !g.recurso_id)
-      const montoSinComprobante = sinComprobante.reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
+      const splitSinComprobante = sumarPorMonedaNativa(sinComprobante, (g: any) => g.monto, (g: any) => g.moneda)
+      const montoSinComprobante = aVistaPesos(splitSinComprobante, cotizacion).total
 
       // ── Categorías disponibles para filtro ───────────────────────────────
       const categoriasDisp = [...new Set((gastos ?? []).map((g: any) => g.categoria).filter(Boolean))]
@@ -335,14 +375,14 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       // Comparar distribución por categoría entre períodos
       const catMapPrev: Record<string, number> = {}
       let qGastosPrevCat = supabase.from('gastos')
-        .select('categoria, monto')
+        .select('categoria, monto, moneda')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
       qGastosPrevCat = dashFilter(qGastosPrevCat)
       const { data: gastosPrevCat = [] } = await qGastosPrevCat
       for (const g of gastosPrevCat ?? []) {
         const cat = (g as any).categoria || 'Sin categoría'
-        catMapPrev[cat] = (catMapPrev[cat] ?? 0) + ((g as any).monto ?? 0)
+        catMapPrev[cat] = (catMapPrev[cat] ?? 0) + aPesos(g)
       }
       let mayorAnomaliaCat = '', mayorAnomaliaPct = 0, mayorAnomaliaActual = 0
       for (const [cat, monto] of Object.entries(catMap)) {
@@ -362,7 +402,9 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       return {
         totalGastos, totalGastosPrev,
-        burnRate, burnRatePrev,
+        // G1 — las patas nativas de cada moneda, para el modo Real (nunca sumadas entre sí).
+        splitGastos, splitGastosPrev, splitFijos, splitSinComprobante, usdSinCotizacion,
+        burnRate, burnRatePrev, diasTranscurridos, diasPrev,
         ratioGastosVentas,
         pctFijos, pctVariable, fijosMensual,
         catData, catTotal,
@@ -382,26 +424,33 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
     staleTime: 0,
   })
 
+  // G1 — el promedio diario del modo: en Real, solo sobre la pata en pesos (un burn rate que
+  // sume pesos y dólares no significa nada).
+  const totalModo        = delModo(gData?.splitGastos)
+  const totalPrevModo     = delModo(gData?.splitGastosPrev)
+  const burnRateModo     = (gData?.diasTranscurridos ?? 0) > 0 ? totalModo / gData!.diasTranscurridos : 0
+  const burnRatePrevModo = (gData?.diasPrev ?? 0) > 0 ? totalPrevModo / gData!.diasPrev : 0
+
   // ─── Insights ────────────────────────────────────────────────────────────────
   const insights = useMemo(() => {
     if (!gData) return []
     const list: { tipo: 'danger' | 'warning' | 'success' | 'info'; titulo: string; impacto: string; accion: string; link: string }[] = []
 
     // Tendencia gastos
-    if (gData.totalGastosPrev > 0 && gData.totalGastos > 0) {
-      const pct = ((gData.totalGastos - gData.totalGastosPrev) / gData.totalGastosPrev) * 100
+    if (totalPrevModo > 0 && totalModo > 0) {
+      const pct = ((totalModo - totalPrevModo) / totalPrevModo) * 100
       if (pct >= 20) {
         list.push({
           tipo: 'danger',
           titulo: `Los gastos subieron ${pct.toFixed(0)}% vs el período anterior`,
-          impacto: `Gastaste ${fmt(gData.totalGastos - gData.totalGastosPrev)} más en el mismo período.`,
+          impacto: `Gastaste ${fmt(totalModo - totalPrevModo)} más en el mismo período.`,
           accion: 'Ver gastos', link: '/gastos',
         })
       } else if (pct <= -15) {
         list.push({
           tipo: 'success',
           titulo: `Bajaste los gastos ${Math.abs(pct).toFixed(0)}% vs el período anterior 🎉`,
-          impacto: `Ahorraste ${fmt(Math.abs(gData.totalGastos - gData.totalGastosPrev))} respecto al período anterior.`,
+          impacto: `Ahorraste ${fmt(Math.abs(totalModo - totalPrevModo))} respecto al período anterior.`,
           accion: 'Ver gastos', link: '/gastos',
         })
       }
@@ -432,7 +481,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       list.push({
         tipo: 'warning',
         titulo: `${gData.sinComprobante.count} gastos sin comprobante adjunto`,
-        impacto: `${fmt(gData.sinComprobante.monto)} sin respaldo fiscal. Podés estar perdiendo crédito de IVA.`,
+        impacto: `${fmt(delModo(gData.splitSinComprobante))} sin respaldo fiscal. Podés estar perdiendo crédito de IVA.`,
         accion: 'Cargar comprobantes', link: '/gastos',
       })
     }
@@ -462,13 +511,13 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       list.push({
         tipo: 'info',
         titulo: `El ${gData.pctFijos}% de tu estructura de gastos son fijos`,
-        impacto: `Tu negocio tiene alta rigidez: ${fmt(gData.fijosMensual)} en gastos recurrentes que se pagan vendas o no.`,
+        impacto: `Tu negocio tiene alta rigidez: ${fmt(delModo(gData.splitFijos))} en gastos recurrentes que se pagan vendas o no.`,
         accion: 'Ver gastos fijos', link: '/gastos?tab=fijos',
       })
     }
 
     return list.slice(0, 4)
-  }, [gData, fmt])
+  }, [gData, fmt, delModo, totalModo, totalPrevModo])
 
   // ─── Helpers badge (gastos: subir = malo → invertido) ────────────────────────
   const badgeVsInv = (actual: number | null, prev: number | null) => {
@@ -489,7 +538,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Mostrando <span className="font-medium text-primary">{PERIODO_LABELS[periodo].toLowerCase()}</span>
-          {moneda === 'USD' && <span className="ml-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">USD</span>}
+          {moneda !== 'ARS' && <span className="ml-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{MONEDAS.find(m => m.key === moneda)?.label}</span>}
           {categoriaFiltro && <span className="ml-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded">Cat: {categoriaFiltro}</span>}
         </p>
 
@@ -548,10 +597,10 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Moneda</p>
                   <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg w-fit">
-                    {(['ARS', 'USD'] as Moneda[]).map(m => (
-                      <button key={m} onClick={() => setMoneda(m)}
-                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {m}
+                    {MONEDAS.map(m => (
+                      <button key={m.key} onClick={() => setMoneda(m.key)}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m.key ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {m.label}
                       </button>
                     ))}
                   </div>
@@ -586,6 +635,24 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       </>)}
 
+      {/* G1 — los avisos van fuera de las sub-pestañas: los gráficos de Gastos (pie por
+          categoría, evolución, top 5) también se calculan con estos mismos montos. */}
+      {/* G1 — aviso de dólares que no se pudieron pasar a pesos por falta de cotización. Nunca
+          se inventa una tasa ni se suman como si fueran pesos: se avisa. */}
+      {!isLoading && (gData?.usdSinCotizacion ?? 0) > 0 && !esReal && (
+        <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2.5">
+          ⚠ Hay <strong>{fmtUsdDash(gData!.usdSinCotizacion)}</strong> en gastos cargados en dólares que
+          quedaron fuera de estos totales: no hay cotización cargada para pasarlos a pesos.
+          Cargala en el widget del dólar, o mirá los números con el filtro de moneda en <strong>Real</strong>.
+        </div>
+      )}
+      {!isLoading && esReal && (gData?.splitGastos.usd ?? 0) > 0 && (
+        <div className="text-xs text-muted bg-page border border-border-ds rounded-xl px-4 py-2.5">
+          Modo <strong>Real</strong>: los montos van sin convertir. Los números grandes son los pesos;
+          lo cargado en dólares se informa aparte y nunca se suma a ellos.
+        </div>
+      )}
+
       {showM && (<>
       {/* ── Capa 1: 4 KPI cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -593,9 +660,9 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         {/* KPI 1: Total Salidas */}
         <KPICard
           title="Total Salidas Operativas"
-          value={isLoading ? '—' : fmt(gData?.totalGastos ?? 0)}
-          badge={badgeVsInv(gData?.totalGastos ?? null, gData?.totalGastosPrev ?? null)}
-          sub="Dinero total que salió para operar el negocio."
+          value={isLoading ? '—' : fmt(delModo(gData?.splitGastos))}
+          badge={badgeVsInv(delModo(gData?.splitGastos) || null, delModo(gData?.splitGastosPrev) || null)}
+          sub={`Dinero total que salió para operar el negocio.${subUsd(gData?.splitGastos)}`}
           icon={
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
               <TrendingDown size={20} />
@@ -606,9 +673,9 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         {/* KPI 2: Burn Rate */}
         <KPICard
           title="Velocidad de Gasto"
-          value={isLoading ? '—' : (gData?.burnRate ?? 0) > 0 ? `${fmt(gData!.burnRate)}/día` : '—'}
-          badge={badgeVsInv(gData?.burnRate ?? null, gData?.burnRatePrev ?? null)}
-          sub="Promedio diario para mantener el negocio abierto."
+          value={isLoading ? '—' : burnRateModo > 0 ? `${fmt(burnRateModo)}/día` : '—'}
+          badge={badgeVsInv(burnRateModo || null, burnRatePrevModo || null)}
+          sub={`Promedio diario para mantener el negocio abierto.${esReal && (gData?.splitGastos.usd ?? 0) > 0 ? ' Solo la parte en pesos.' : ''}`}
           icon={
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
               <Flame size={20} />
@@ -625,7 +692,7 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
             color: gData.ratioGastosVentas > 80 ? 'danger' : gData.ratioGastosVentas > 60 ? 'warning' : 'success',
           } : undefined}
           sub={gData?.ratioGastosVentas != null
-            ? `De cada $100 que ingresan, $${gData.ratioGastosVentas.toFixed(0)} se van en gastos.`
+            ? `De cada $100 que ingresan, $${gData.ratioGastosVentas.toFixed(0)} se van en gastos.${esReal ? ' Ratio en pesos (un % no se puede partir por moneda).' : ''}`
             : 'Sin ventas registradas en el período.'}
           icon={
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">

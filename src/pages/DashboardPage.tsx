@@ -19,7 +19,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { sugiereModoAvanzado } from '@/lib/modoOperacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { useCotizacion } from '@/hooks/useCotizacion'
-import { getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
+import { getFechasDashboard, getFechasAnteriores, labelPeriodo, MONEDAS } from '@/components/FilterBar'
 import { mapDevolucionNc, ivaNcTotal } from '@/lib/libroIva'
 import type { PeriodoDash, Moneda } from '@/components/FilterBar'
 import { KPICard } from '@/components/KPICard'
@@ -190,14 +190,14 @@ export default function DashboardPage() {
   // Texto summary del filtro activo
   const filterSummary = useMemo(() => {
     const p = PERIODO_LABELS_DASH[periodo]
-    const m = moneda === 'USD' ? 'USD' : 'ARS'
+    const m = MONEDAS.find(x => x.key === moneda)?.label ?? 'ARS'
     return `${p} · ${m}`
   }, [periodo, moneda])
 
   const hoy = new Date().toISOString().split('T')[0]
 
   const { data: stats } = useQuery({
-    queryKey: ['dashboard-stats', tenant?.id, sucursalId],
+    queryKey: ['dashboard-stats', tenant?.id, sucursalId, cotizacion],
     queryFn: async () => {
       const hoy = new Date()
       const inicioMes    = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString()
@@ -236,7 +236,7 @@ export default function DashboardPage() {
         bySuc(supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada'])),
         supabase.from('productos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('activo', false),
         bySuc(supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja)),
-        bySuc(supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr)),
+        bySuc(supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr)),
         ventasMesCostoQ,
       ])
 
@@ -309,7 +309,15 @@ export default function DashboardPage() {
       const cantDeudoras = (ventasDeuda.data ?? []).filter(v => Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0)) > 0.5).length
 
       // Rentabilidad neta = ventas − costo de lo vendido − gastos del mes
-      const gastosTotal    = (gastosMes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
+      // G1 — el gasto trae su propia `moneda` (mig 379) y el `monto` está expresado en ella: sumar
+      // un gasto de US$100 como $100 subestimaba el gasto e inflaba el margen. Se convierte a la
+      // cotización de hoy (`totalVentasMes` y `costoVentas` de esta cuenta ya son ARS-nativos); sin
+      // cotización cargada queda afuera en vez de entrar deformado.
+      const gastosTotal    = (gastosMes.data ?? []).reduce((a, g: any) => {
+        const monto = Number(g.monto ?? 0) || 0
+        const esUsd = String(g.moneda ?? 'ARS').toUpperCase() === 'USD'
+        return a + (esUsd ? (cotizacion > 0 ? monto * cotizacion : 0) : monto)
+      }, 0)
       const costoVentas    = (ventasMesCosto.data ?? []).reduce((a, vi: any) => a + (vi.precio_costo_historico ?? 0) * (vi.cantidad ?? 0), 0)
       const rentabilidadNeta = totalVentasMes - costoVentas - gastosTotal
       const margenNeto = totalVentasMes > 0 ? (rentabilidadNeta / totalVentasMes) * 100 : null
@@ -818,10 +826,10 @@ export default function DashboardPage() {
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Moneda</p>
                       <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                        {(['ARS', 'USD'] as Moneda[]).map(m => (
-                          <button key={m} onClick={() => setMoneda(m)}
-                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                            {m}
+                        {MONEDAS.map(m => (
+                          <button key={m.key} onClick={() => setMoneda(m.key)}
+                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m.key ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {m.label}
                           </button>
                         ))}
                       </div>

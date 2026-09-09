@@ -173,6 +173,45 @@ Detalle: ver [[wiki/features/gastos]] sección "Capitalización en recursos".
 
 ---
 
+## 🔄 Ciclo de vida con el gasto (v1.207.0 + mig 406, 2026-09-08)
+
+Dos bugs que Fede reportó por separado y tenían una sola causa cada uno.
+
+### El recurso desaparecía apenas se creaba
+
+El insert **nunca seteaba `sucursal_id`**, pero la lista filtra con `.eq('sucursal_id', …)` cuando hay
+una sucursal elegida. El recurso nacía en NULL y desaparecía al guardarlo. Y como el tab
+**Ubicaciones** agrupa esa misma lista, la ubicación tampoco aparecía nunca — los dos síntomas que
+reportó Fede eran el mismo bug. Medido: **5 de los 7 recursos de DEV estaban sin sucursal**, o sea
+invisibles.
+
+De paso, la `queryKey` era `['recursos', tenant]` mientras la query filtraba por sucursal → al cambiar
+de sucursal servía el cache viejo. La sucursal ahora está en la key.
+
+### El gasto del recurso nacía ya pagado
+
+`gastos.estado_pago` tiene default `'pagado'`, así que el gasto de adquisición figuraba como **plata
+ya salida sin que nadie la hubiera pagado**. Ahora nace `'pendiente'` con `monto_pagado = 0`, y con
+`capitaliza_recurso` tildado: si el gasto viene del módulo de Recursos, por definición suma al valor
+del recurso.
+
+### El ciclo completo
+
+| Situación | Estado del recurso |
+|---|---|
+| Alta que genera un gasto por validar | `pendiente_adquisicion` |
+| Se salda ese gasto en Gastos | pasa a `activo` (**trigger**, mig 406) |
+| Alta sin gasto que validar | `activo` directo |
+
+La transición va en **trigger** y no en `GastosPage` a propósito: un gasto se salda por varios caminos
+(alta del pago, edición, pago de OC, sweep), y si viviera en una sola pantalla cualquier otro camino
+dejaría el recurso colgado en "pendientes" para siempre.
+
+Acotado: solo en la transición a `'pagado'`, solo sobre recursos en `pendiente_adquisicion` (uno dado
+de baja **no** se revive), y **sin camino inverso** — despagar no devuelve el recurso a pendiente,
+porque revertir un estado que alguien pudo tocar a mano es un efecto silencioso que conviene no
+inventar.
+
 ## Links relacionados
 
 - [[wiki/features/gastos]]

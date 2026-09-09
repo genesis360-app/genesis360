@@ -423,6 +423,42 @@ Fase 7 no agrega migración) — el único punto abierto de todo el plan de 8 fa
 
 ---
 
+## 📊 "El Camino de la Venta" — redefinido (v1.207.0, 2026-09-08)
+
+El embudo contaba **la misma plata dos veces** y escondía otra. Las tres etapas no eran comparables:
+
+- **Presupuestado** sumaba el total de **todas** las ventas del período — reservas y ventas ya
+  cobradas incluidas. Una reserva pagada aparecía como "presupuesto".
+- **Pendiente de cobro** miraba solo ventas confirmadas: el saldo de las reservas no figuraba en
+  ningún lado.
+- **Pagado** sumaba el total completo de las ventas saldadas e ignoraba las **señas** ya cobradas.
+
+Redefinido con el criterio de Fede — cada etapa es una cosa distinta:
+
+| Etapa | Qué toma | Antes | Ahora |
+|---|---|---|---|
+| Presupuestado / Iniciado | **solo** los presupuestos del POS (`estado 'pendiente'`) | $7.099.245 | **$115.280** |
+| Pendiente de cobro | lo que **falta** cobrar (total − pagado) | $1.190.550 | **$1.229.650** |
+| Pagado / Cerrado | lo que **ya** se cobró, señas incluidas | $5.635.827 | **$5.750.658** |
+
+Y ahora **cierra**: pendiente + pagado = $6.980.308,02 = el total exacto de las ventas reales
+(despachadas + facturadas + reservadas). Antes no cerraba con nada.
+
+Dos detalles del fix que conviene no revertir sin pensarlos:
+- El gráfico colgaba de `presupuestado.count > 0`. Con la definición nueva, **un negocio que no usa
+  presupuestos habría perdido el embudo entero**; ahora renderiza si hay algo en cualquier etapa.
+- `min(pagado, total)` en la etapa Pagado: un sobrepago inflaría la etapa y rompería que
+  pendiente + pagado dé el total.
+
+⚠ **Criterio a confirmar con Fede**: en "pendiente de cobro" entran las reservas **y** las ventas
+confirmadas con saldo (típico cuenta corriente). Fede nombró las reservas; dejar afuera un saldo de CC
+escondería plata que el negocio tiene por cobrar.
+
+## ¿Por dónde compran? — porcentajes con un decimal (v1.207.0)
+
+Con canales que se reparten porcentajes parecidos, redondear a entero borraba la diferencia entre
+ellos. Ahora un decimal, formateado en es-AR.
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]

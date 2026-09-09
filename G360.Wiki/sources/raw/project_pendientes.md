@@ -35,8 +35,12 @@ type: project
 > 5. **Góndolas para que sirva Repositores** — hay **0 ubicaciones de exhibición en PROD**. Hasta que
 >    alguien las cree y las asigne a productos, el módulo no genera nada (ahora el vacío lo explica).
 >    Decisión de GO: ¿carga masiva por categoría/lote, o producto por producto?
-> 6. **Reintegro en efectivo USD al anular una venta** — GO lo pospuso: **relevar**.
-> 7. **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)** · **dropear
+> 6. **¿El DUEÑO debería tener tope de descuento?** Fede preguntó si el descuento general del POS
+>    estaba gateado: sí — `ROLES_DESCUENTO` deja al CAJERO siempre bloqueado, al SUPERVISOR con tope
+>    configurable (`descuento_max_supervisor_pct`) y al DUEÑO sin tope. **GO no dijo si quiere
+>    cambiarlo.**
+> 7. **Reintegro en efectivo USD al anular una venta** — GO lo pospuso: **relevar**.
+> 8. **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)** · **dropear
 >    `tenants.afipsdk_token`** (cuando PROD corra este código).
 >
 > #### 🧪 Estado de la suite

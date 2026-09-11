@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diffCampos } from '@/lib/actividadLog'
+import { diffCampos } from '@/lib/actividadLogDiff'
 
 // Plan: issue #9 de Fede (2026-09-08) — el historial no mostraba QUÉ se editó de un producto.
 describe('diffCampos — el detalle que va al historial', () => {

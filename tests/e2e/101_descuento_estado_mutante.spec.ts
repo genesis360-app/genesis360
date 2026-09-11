@@ -12,7 +12,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, visible, UBICACION_SIEMBRA, garantizarUbicacionSiembra } from './helpers/fixtures'
 
 test.describe('Descuento automático por estado de inventario (mutante)', () => {
   test('estado con 15% de descuento aplica solo, sin clave, y queda trazado en la venta', async ({ page, request }) => {
@@ -70,6 +70,7 @@ test.describe('Descuento automático por estado de inventario (mutante)', () => 
     //    + movimientos_stock consistentes, no un INSERT directo que se saltearía eso).
     await goto(page, '/inventario')
     await waitForApp(page)
+    await garantizarUbicacionSiembra(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
@@ -92,11 +93,11 @@ test.describe('Descuento automático por estado de inventario (mutante)', () => 
     await expect(estadoSelect).toBeVisible({ timeout: 5000 })
     await estadoSelect.selectOption({ label: nombreEstado })
 
+    // La ubicación NO se elige a ciegas (`vals[0]`): la primera del tenant de prueba es Mono-SKU y,
+    // cuando queda ocupada por otro spec, el ingreso se rechaza con un toast que se desvanece.
+    // Se usa la ubicación dedicada de siembra — ver UBICACION_SIEMBRA en helpers/fixtures.ts.
     const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-    if (await ubicSelect.isVisible().catch(() => false)) {
-      const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
-      if (vals.length > 0) await ubicSelect.selectOption(vals[0])
-    }
+    if (await ubicSelect.isVisible().catch(() => false)) await ubicSelect.selectOption({ label: UBICACION_SIEMBRA })
 
     await page.locator('input[type="number"][placeholder="0"]').first().fill(String(CANTIDAD))
     await page.getByRole('button', { name: /Confirmar ingreso/ }).first().click()

@@ -1,9 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-31T06:32:55.930Z desde gcmhzdedrkmmzfzfveig vía MCP (execute_sql en partes, sin CLI)
--- Última migración aplicada: 20260901065114 · 163 tablas (parcheado a mano tras migs 388/389 —
--- 388 solo cambió fn_evaluar_repricing_margen; 389 amplió el CHECK de modulo y eliminó
--- autorizaciones_gasto (164→163 tablas); ninguna ameritó full regen)
+-- Generado 2026-09-08T19:47:45.207Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260908194253 · 166 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -531,6 +529,37 @@ CREATE TABLE public.combos (
   unidad_medida_id uuid
 );
 
+CREATE TABLE public.consumo_eventos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  canal text NOT NULL,
+  concepto text NOT NULL,
+  cantidad numeric(20,10) NOT NULL,
+  unidad text NOT NULL,
+  precio_unitario numeric(20,10) NOT NULL,
+  moneda text NOT NULL,
+  costo numeric(20,10) NOT NULL,
+  facturable boolean NOT NULL DEFAULT true,
+  tarifa_encontrada boolean NOT NULL DEFAULT true,
+  tarifa_id uuid,
+  referencia text,
+  detalle jsonb,
+  ocurrido_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.consumo_tarifas (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  concepto text NOT NULL,
+  unidad text NOT NULL,
+  precio numeric(20,10) NOT NULL,
+  moneda text NOT NULL,
+  vigente_desde date NOT NULL,
+  vigente_hasta date,
+  fuente text,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.courier_credenciales (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -538,7 +567,8 @@ CREATE TABLE public.courier_credenciales (
   credenciales jsonb NOT NULL DEFAULT '{}'::jsonb,
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  credenciales_configuradas boolean DEFAULT ((credenciales IS NOT NULL) AND (credenciales <> '{}'::jsonb))
 );
 
 CREATE TABLE public.courier_factura_lineas (
@@ -706,7 +736,8 @@ CREATE TABLE public.emisores_fiscales (
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  csr_key_path text
+  csr_key_path text,
+  afipsdk_token_configurado boolean DEFAULT ((afipsdk_token IS NOT NULL) AND (afipsdk_token <> ''::text))
 );
 
 CREATE TABLE public.empleados (
@@ -1279,7 +1310,9 @@ CREATE TABLE public.orden_compra_items (
   producto_id uuid NOT NULL,
   cantidad numeric(12,3) NOT NULL,
   precio_unitario numeric(12,2),
-  notas text
+  notas text,
+  precio_propuesto_proveedor numeric(12,2),
+  respondido_at timestamp with time zone
 );
 
 CREATE TABLE public.ordenes_compra (
@@ -2576,7 +2609,8 @@ CREATE TABLE public.venta_items (
   unidad_medida_id uuid,
   cantidad_uom numeric(12,3),
   pedido_item_id uuid,
-  comision_marketplace numeric(12,2)
+  comision_marketplace numeric(12,2),
+  sucursal_id uuid
 );
 
 CREATE TABLE public.venta_series (
@@ -2713,6 +2747,16 @@ CREATE TABLE public.whatsapp_mensajes_log (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.whatsapp_numeros_autorizados (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  numero text NOT NULL,
+  nombre text,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.wms_tareas (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -2747,7 +2791,6 @@ CREATE TABLE public.zonas (
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
-
 
 -- ============================================================
 -- CONSTRAINTS (PK / UNIQUE / CHECK / FK)
@@ -2825,6 +2868,18 @@ ALTER TABLE public.combo_items ADD CONSTRAINT combo_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.combos ADD CONSTRAINT combos_cantidad_check CHECK ((cantidad >= 2));
 ALTER TABLE public.combos ADD CONSTRAINT combos_descuento_pct_check CHECK (((descuento_pct >= (0)::numeric) AND (descuento_pct <= (100)::numeric)));
 ALTER TABLE public.combos ADD CONSTRAINT combos_pkey PRIMARY KEY (id);
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_cantidad_check CHECK ((cantidad >= (0)::numeric));
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_costo_check CHECK ((costo >= (0)::numeric));
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_moneda_check CHECK ((moneda = ANY (ARRAY['ARS'::text, 'USD'::text])));
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_pkey PRIMARY KEY (id);
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_precio_unitario_check CHECK ((precio_unitario >= (0)::numeric));
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tenant_id_canal_concepto_referencia_key UNIQUE (tenant_id, canal, concepto, referencia);
+ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_concepto_vigente_desde_key UNIQUE (concepto, vigente_desde);
+ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_moneda_check CHECK ((moneda = ANY (ARRAY['ARS'::text, 'USD'::text])));
+ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_pkey PRIMARY KEY (id);
+ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_precio_check CHECK ((precio >= (0)::numeric));
+ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_rango_valido CHECK (((vigente_hasta IS NULL) OR (vigente_hasta >= vigente_desde)));
+ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_unidad_check CHECK ((unidad = ANY (ARRAY['mensaje'::text, 'millon_tokens'::text, 'minuto'::text])));
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_pkey PRIMARY KEY (id);
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_courier_key UNIQUE (tenant_id, courier);
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_pkey PRIMARY KEY (id);
@@ -3133,6 +3188,9 @@ ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borra
 ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_direccion_check CHECK ((direccion = ANY (ARRAY['in'::text, 'out'::text])));
 ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_pkey PRIMARY KEY (id);
 ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_tenant_id_message_id_direccion_key UNIQUE (tenant_id, message_id, direccion);
+ALTER TABLE public.whatsapp_numeros_autorizados ADD CONSTRAINT whatsapp_numeros_autorizados_numero_check CHECK ((numero ~ '^[0-9]{6,20}$'::text));
+ALTER TABLE public.whatsapp_numeros_autorizados ADD CONSTRAINT whatsapp_numeros_autorizados_pkey PRIMARY KEY (id);
+ALTER TABLE public.whatsapp_numeros_autorizados ADD CONSTRAINT whatsapp_numeros_autorizados_tenant_id_numero_key UNIQUE (tenant_id, numero);
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_cantidad_check CHECK ((cantidad > 0));
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text, 'completada'::text, 'cancelada'::text])));
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_origen_check CHECK ((origen = ANY (ARRAY['envio'::text, 'manual'::text, 'umbral'::text, 'pedido'::text, 'marketplace'::text, 'repositor'::text])));
@@ -3240,6 +3298,8 @@ ALTER TABLE public.combos ADD CONSTRAINT combos_producto_id_fkey FOREIGN KEY (pr
 ALTER TABLE public.combos ADD CONSTRAINT combos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.combos ADD CONSTRAINT combos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.combos ADD CONSTRAINT combos_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tarifa_id_fkey FOREIGN KEY (tarifa_id) REFERENCES consumo_tarifas(id) ON DELETE SET NULL;
+ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_factura_id_fkey FOREIGN KEY (factura_id) REFERENCES courier_facturas(id) ON DELETE CASCADE;
@@ -3597,6 +3657,7 @@ ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_vent
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pedido_item_id_fkey FOREIGN KEY (pedido_item_id) REFERENCES pedido_items(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
@@ -3621,6 +3682,7 @@ ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borra
 ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_resuelto_por_fkey FOREIGN KEY (resuelto_por) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.whatsapp_gastos_borrador ADD CONSTRAINT whatsapp_gastos_borrador_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.whatsapp_mensajes_log ADD CONSTRAINT whatsapp_mensajes_log_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.whatsapp_numeros_autorizados ADD CONSTRAINT whatsapp_numeros_autorizados_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_kitting_log_id_fkey FOREIGN KEY (kitting_log_id) REFERENCES kitting_log(id) ON DELETE SET NULL;
@@ -3635,7 +3697,6 @@ ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_ubicacion_origen_id_fkey
 ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_usuario_asignado_id_fkey FOREIGN KEY (usuario_asignado_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.zonas ADD CONSTRAINT zonas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.zonas ADD CONSTRAINT zonas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-
 
 -- ============================================================
 -- ÍNDICES
@@ -3748,6 +3809,9 @@ CREATE INDEX idx_combo_items_tenant_id ON public.combo_items USING btree (tenant
 CREATE INDEX idx_combos_producto_id ON public.combos USING btree (producto_id);
 CREATE INDEX idx_combos_sucursal ON public.combos USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_combos_tenant_id ON public.combos USING btree (tenant_id);
+CREATE INDEX idx_consumo_eventos_sin_tarifa ON public.consumo_eventos USING btree (tenant_id) WHERE (NOT tarifa_encontrada);
+CREATE INDEX idx_consumo_eventos_tenant_periodo ON public.consumo_eventos USING btree (tenant_id, ocurrido_at DESC);
+CREATE INDEX idx_consumo_tarifas_lookup ON public.consumo_tarifas USING btree (concepto, vigente_desde DESC);
 CREATE INDEX idx_conteo_items_conteo ON public.inventario_conteo_items USING btree (conteo_id);
 CREATE INDEX idx_conteos_bloqueo ON public.inventario_conteos USING btree (tenant_id, sucursal_id, estado) WHERE (bloquea_movimientos = true);
 CREATE INDEX idx_conteos_tenant ON public.inventario_conteos USING btree (tenant_id);
@@ -3896,6 +3960,7 @@ CREATE INDEX idx_movimientos_stock_sucursal ON public.movimientos_stock USING bt
 CREATE INDEX idx_movimientos_stock_usuario_id ON public.movimientos_stock USING btree (usuario_id);
 CREATE INDEX idx_movimientos_stock_venta_id ON public.movimientos_stock USING btree (venta_id) WHERE (venta_id IS NOT NULL);
 CREATE INDEX idx_movimientos_tenant ON public.movimientos_stock USING btree (tenant_id);
+CREATE INDEX idx_movimientos_tenant_created ON public.movimientos_stock USING btree (tenant_id, created_at DESC);
 CREATE INDEX idx_mp_billing_alertas_tenant_id ON public.mp_billing_alertas USING btree (tenant_id);
 CREATE INDEX idx_mp_creds_expires ON public.mercadopago_credentials USING btree (expires_at) WHERE (conectado = true);
 CREATE INDEX idx_mp_creds_tenant ON public.mercadopago_credentials USING btree (tenant_id);
@@ -4117,6 +4182,7 @@ CREATE INDEX idx_venta_items_linea_id ON public.venta_items USING btree (linea_i
 CREATE INDEX idx_venta_items_pedido_item ON public.venta_items USING btree (pedido_item_id);
 CREATE INDEX idx_venta_items_producto_id ON public.venta_items USING btree (producto_id);
 CREATE INDEX idx_venta_items_tenant_id ON public.venta_items USING btree (tenant_id);
+CREATE INDEX idx_venta_items_tenant_sucursal ON public.venta_items USING btree (tenant_id, sucursal_id);
 CREATE INDEX idx_venta_items_venta ON public.venta_items USING btree (venta_id);
 CREATE INDEX idx_venta_series_serie_id ON public.venta_series USING btree (serie_id);
 CREATE INDEX idx_venta_series_tenant_id ON public.venta_series USING btree (tenant_id);
@@ -4137,11 +4203,13 @@ CREATE INDEX idx_ventas_recurrentes_cliente_id ON public.ventas_recurrentes USIN
 CREATE INDEX idx_ventas_recurrentes_sucursal_id ON public.ventas_recurrentes USING btree (sucursal_id);
 CREATE INDEX idx_ventas_sucursal ON public.ventas USING btree (sucursal_id);
 CREATE INDEX idx_ventas_tenant ON public.ventas USING btree (tenant_id);
+CREATE INDEX idx_ventas_tenant_created ON public.ventas USING btree (tenant_id, created_at DESC);
 CREATE UNIQUE INDEX idx_ventas_tracking_unique ON public.ventas USING btree (tenant_id, origen, tracking_id) WHERE (tracking_id IS NOT NULL);
 CREATE INDEX idx_ventas_usuario_id ON public.ventas USING btree (usuario_id);
 CREATE INDEX idx_vid_item ON public.venta_item_despachos USING btree (venta_item_id);
 CREATE INDEX idx_vid_tenant ON public.venta_item_despachos USING btree (tenant_id);
 CREATE INDEX idx_vid_venta ON public.venta_item_despachos USING btree (venta_id);
+CREATE INDEX idx_wa_autorizados_tenant ON public.whatsapp_numeros_autorizados USING btree (tenant_id) WHERE activo;
 CREATE INDEX idx_whatsapp_creds_tenant ON public.whatsapp_credentials USING btree (tenant_id);
 CREATE INDEX idx_whatsapp_gastos_borrador_tenant_estado ON public.whatsapp_gastos_borrador USING btree (tenant_id, estado);
 CREATE INDEX idx_whatsapp_log_tenant ON public.whatsapp_mensajes_log USING btree (tenant_id, created_at);
@@ -4172,10 +4240,6 @@ CREATE UNIQUE INDEX uq_tenant_addons_mp_payment ON public.tenant_addons USING bt
 CREATE UNIQUE INDEX uq_tenant_certificates_emisor ON public.tenant_certificates USING btree (emisor_id);
 CREATE UNIQUE INDEX uq_tenant_certificates_tenant_legacy ON public.tenant_certificates USING btree (tenant_id) WHERE (emisor_id IS NULL);
 CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));
-
-
-
-
 -- ============================================================
 -- FUNCIONES
 -- ============================================================
@@ -4279,6 +4343,69 @@ BEGIN
   WHERE id = p_solicitud_id;
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.auth_administra_rrhh()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users
+     WHERE id = (SELECT auth.uid())
+       AND rol = ANY (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','RRHH'])
+  )
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.auth_puede_editar_modulo(p_modulo text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid  uuid := auth.uid();
+  v_rol  text;
+  v_perm text;
+BEGIN
+  -- Sin sesión de usuario = service_role, Edge Functions, pg_cron. Esos caminos son de
+  -- confianza y ya están gateados en su propia capa; si el guard los frenara romperíamos los
+  -- workers de MELI/TN, el asistente de WhatsApp y los jobs. Verificado: todas las EF usan
+  -- SUPABASE_SERVICE_ROLE_KEY.
+  IF v_uid IS NULL THEN RETURN true; END IF;
+
+  SELECT u.rol, rc.permisos ->> p_modulo
+    INTO v_rol, v_perm
+  FROM public.users u
+  LEFT JOIN public.roles_custom rc ON rc.id = u.rol_custom_id AND rc.activo = true
+  WHERE u.id = v_uid;
+
+  IF v_rol IS NULL THEN RETURN false; END IF;
+
+  -- Rol custom con permiso EXPLÍCITO para el módulo: manda ese permiso (incluye 'no_ver'/'ver',
+  -- que son solo-lectura). 'supervisa' es superset de 'editar'.
+  -- 👉 Esta es la rama por la que entra el CAJERO al que el DUEÑO le habilitó Gastos (mig 405).
+  IF v_perm IS NOT NULL THEN RETURN v_perm IN ('editar','supervisa'); END IF;
+
+  IF v_rol = 'VIEWER' THEN RETURN false; END IF;                       -- Lector: solo lectura
+  IF v_rol IN ('DUEÑO','SUPER_USUARIO','ADMIN') THEN RETURN true; END IF;
+
+  -- Roles fijos operativos: allowlist por módulo.
+  RETURN CASE p_modulo
+    -- Productos usa `modulo: 'inventario'` en el nav; el form (`ProductoFormPage.canEdit`) habilita
+    -- la edición a DUEÑO/SUPERVISOR/SUPER_USUARIO. DEPÓSITO ve la página en solo-lectura.
+    WHEN 'inventario'    THEN v_rol = 'SUPERVISOR'
+    WHEN 'comercial'     THEN v_rol = 'SUPERVISOR'                      -- supervisorOnly (mig 404)
+    -- Gastos: /gastos es ruta PERMITIDA para SUPERVISOR y CONTADOR, y RESTRINGIDA para CAJERO,
+    -- DEPÓSITO y RRHH (specs 13/15/16/17/18 + CONTADOR_ALLOWED en AppLayout). El CAJERO con Gastos
+    -- habilitado por rol custom entra arriba, por `v_perm` (mig 405).
+    WHEN 'gastos'        THEN v_rol = ANY (ARRAY['SUPERVISOR','CONTADOR'])
+    WHEN 'configuracion' THEN false                                     -- ownerOnly
+    ELSE false
+  END;
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.auth_user_sucursal()
@@ -5047,6 +5174,24 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_cheques_monto_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.monto IS DISTINCT FROM OLD.monto THEN
+    IF NOT (public.get_user_role() = ANY (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','SUPERVISOR'])
+            OR auth.uid() IS NULL) THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar el monto de un cheque ya registrado.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_completar_tarea_armado(p_tarea_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -5174,6 +5319,19 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_consumo_tarifa_vigente(p_concepto text, p_fecha date)
+ RETURNS TABLE(tarifa_id uuid, precio numeric, moneda text, unidad text)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT t.id, t.precio, t.moneda, t.unidad FROM consumo_tarifas t
+  WHERE t.concepto = p_concepto AND t.vigente_desde <= p_fecha
+    AND (t.vigente_hasta IS NULL OR t.vigente_hasta >= p_fecha)
+  ORDER BY t.vigente_desde DESC LIMIT 1;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_crear_caja_fuerte()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5220,6 +5378,38 @@ AS $function$
      WHERE pp.activo
        AND (COALESCE(pp.peso_kg,0) <= 0 OR COALESCE(pp.alto_cm,0) <= 0
             OR COALESCE(pp.ancho_cm,0) <= 0 OR COALESCE(pp.largo_cm,0) <= 0));
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cupones_codigos_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Lo único que la venta necesita tocar es el canje. Cambiar el código en sí, o colgarlo de otro
+  -- cupón, es definir un descuento — eso es Comercial.
+  IF NEW.codigo IS DISTINCT FROM OLD.codigo
+  OR NEW.cupon_id IS DISTINCT FROM OLD.cupon_id THEN
+    IF NOT public.auth_puede_editar_modulo('comercial') THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar el código ni el cupón de un código de descuento.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_empleados_basico()
+ RETURNS TABLE(id uuid, nombre text, apellido text, tel_personal text, fecha_nacimiento date, activo boolean)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT e.id, e.nombre, e.apellido, e.tel_personal, e.fecha_nacimiento, e.activo
+    FROM public.empleados e
+   WHERE e.tenant_id = public.get_user_tenant_id()
 $function$
 
 
@@ -5478,7 +5668,6 @@ BEGIN
     umbral_factura_b     = NEW.umbral_factura_b,
     afip_produccion      = NEW.afip_produccion,
     afip_provider        = NEW.afip_provider,
-    afipsdk_token        = NEW.afipsdk_token,
     banco                = NEW.banco,
     cbu                  = NEW.cbu,
     alias_cbu            = NEW.alias_cbu,
@@ -5487,12 +5676,12 @@ BEGIN
   WHERE t.id = NEW.tenant_id
     AND (t.cuit, t.razon_social_fiscal, t.condicion_iva_emisor, t.domicilio_fiscal,
          t.ingresos_brutos, t.inicio_actividades, t.umbral_factura_b, t.afip_produccion,
-         t.afip_provider, t.afipsdk_token, t.banco, t.cbu, t.alias_cbu,
+         t.afip_provider, t.banco, t.cbu, t.alias_cbu,
          t.leyenda_comprobante, t.logo_url)
         IS DISTINCT FROM
         (NEW.cuit, NEW.razon_social_fiscal, NEW.condicion_iva_emisor, NEW.domicilio_fiscal,
          NEW.ingresos_brutos, NEW.inicio_actividades, NEW.umbral_factura_b, NEW.afip_produccion,
-         NEW.afip_provider, NEW.afipsdk_token, NEW.banco, NEW.cbu, NEW.alias_cbu,
+         NEW.afip_provider, NEW.banco, NEW.cbu, NEW.alias_cbu,
          NEW.leyenda_comprobante, NEW.logo_url);
 
   RETURN NEW;
@@ -5589,8 +5778,6 @@ BEGIN
     v_sugerido := fn_precio_para_margen(rec.precio_costo, rec.margen_objetivo, rec.alicuota_iva);
     IF v_sugerido IS NULL OR v_sugerido = rec.precio_venta THEN CONTINUE; END IF;
 
-    -- Todo-o-nada por producto: si ya hay una sugerencia pendiente de aprobar para este producto, no
-    -- duplicar en cada corrida del sweep (cada 6hs) — se resuelve la que ya existe primero.
     IF EXISTS (
       SELECT 1 FROM autorizaciones
       WHERE tenant_id = p_tenant_id AND tipo = 'repricing_margen' AND estado = 'pendiente'
@@ -5603,7 +5790,6 @@ BEGIN
       OR (v_modo = 'automatico_desde_monto' AND v_diferencia >= COALESCE(v_desde_monto, 0));
 
     IF v_aplicar_directo THEN
-      -- B5: tope de suba — el ajuste automático nunca mueve el precio más de X% de una sola vez.
       v_final := v_sugerido;
       IF v_tope_pct IS NOT NULL THEN
         v_maximo_variacion := rec.precio_venta * v_tope_pct / 100;
@@ -5677,6 +5863,66 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_gastos_rol_umbral_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid    uuid := auth.uid();
+  v_rol    text;
+  v_perm   text;
+  v_umbral numeric;
+BEGIN
+  IF v_uid IS NULL THEN RETURN NEW; END IF;
+
+  SELECT u.rol, rc.permisos ->> 'gastos'
+    INTO v_rol, v_perm
+  FROM public.users u
+  LEFT JOIN public.roles_custom rc ON rc.id = u.rol_custom_id AND rc.activo = true
+  WHERE u.id = v_uid;
+
+  IF v_rol IS NULL THEN
+    RAISE EXCEPTION 'No autorizado: usuario sin rol en el tenant.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF v_perm IN ('no_ver','ver') THEN
+    RAISE EXCEPTION 'No autorizado: tu rol tiene acceso de solo lectura en Gastos.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF v_rol = 'VIEWER' THEN
+    RAISE EXCEPTION 'No autorizado: el rol Lector es de solo lectura.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF v_rol IN ('DEPOSITO','RRHH') AND v_perm IS NULL THEN
+    RAISE EXCEPTION 'No autorizado: tu rol (%) no opera Gastos.', v_rol USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF v_rol = 'CONTADOR' AND v_perm IS NULL AND TG_OP = 'INSERT' THEN
+    RAISE EXCEPTION 'No autorizado: el rol CONTADOR no da de alta gastos.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF v_rol = 'CAJERO'
+     AND (TG_OP = 'INSERT' OR NEW.monto IS DISTINCT FROM OLD.monto) THEN
+    SELECT s.umbral_gasto_cajero INTO v_umbral
+      FROM public.sucursales s WHERE s.id = NEW.sucursal_id;
+
+    IF v_umbral IS NULL THEN
+      RAISE EXCEPTION 'No autorizado: sin umbral de gasto configurado, un CAJERO necesita autorizacion para cualquier monto.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.monto > v_umbral THEN
+      RAISE EXCEPTION 'No autorizado: el monto (%) supera tu umbral de gasto (%). Pedi autorizacion.', NEW.monto, v_umbral
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_generar_tarea_repositor_estado()
@@ -7203,6 +7449,97 @@ AS $function$
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_portal_proveedor_negocios()
+ RETURNS TABLE(tenant_id uuid, negocio_nombre text, proveedor_id uuid, proveedor_nombre text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT t.id, t.nombre, pat.proveedor_id, p.nombre
+  FROM public.proveedor_account_tenants pat
+  JOIN public.tenants t ON t.id = pat.tenant_id
+  JOIN public.proveedores p ON p.id = pat.proveedor_id AND p.tenant_id = pat.tenant_id
+  WHERE pat.proveedor_account_id = auth.uid() AND pat.activo = true;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_portal_proveedor_oc_items(p_oc_id uuid)
+ RETURNS TABLE(id uuid, producto_id uuid, producto_nombre text, producto_sku text, cantidad numeric, precio_unitario numeric, precio_propuesto_proveedor numeric, respondido_at timestamp with time zone, oc_estado text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT oci.id, oci.producto_id, pr.nombre, pr.sku,
+         oci.cantidad, oci.precio_unitario,
+         oci.precio_propuesto_proveedor, oci.respondido_at,
+         oc.estado
+  FROM public.orden_compra_items oci
+  JOIN public.ordenes_compra oc ON oc.id = oci.orden_compra_id
+  JOIN public.proveedor_account_tenants pat
+    ON pat.tenant_id = oc.tenant_id AND pat.proveedor_id = oc.proveedor_id
+  JOIN public.productos pr ON pr.id = oci.producto_id
+  WHERE pat.proveedor_account_id = auth.uid() AND pat.activo = true
+    AND oc.id = p_oc_id
+    AND oc.estado <> 'borrador';
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_portal_proveedor_ocs(p_tenant_id uuid)
+ RETURNS TABLE(id uuid, numero integer, estado text, fecha_esperada date, notas text, created_at timestamp with time zone, monto_total numeric, condiciones_pago text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT oc.id, oc.numero, oc.estado, oc.fecha_esperada, oc.notas,
+         oc.created_at, oc.monto_total, oc.condiciones_pago
+  FROM public.ordenes_compra oc
+  JOIN public.proveedor_account_tenants pat
+    ON pat.tenant_id = oc.tenant_id AND pat.proveedor_id = oc.proveedor_id
+  WHERE pat.proveedor_account_id = auth.uid() AND pat.activo = true
+    AND oc.tenant_id = p_tenant_id
+    AND oc.estado <> 'borrador'
+  ORDER BY oc.created_at DESC;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_portal_proveedor_responder_item(p_item_id uuid, p_precio numeric)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_precio IS NULL OR p_precio <= 0 THEN
+    RAISE EXCEPTION 'El precio propuesto debe ser mayor a 0.';
+  END IF;
+
+  -- UPDATE atómico con el chequeo de pertenencia/estado en el propio WHERE (evita la ventana
+  -- TOCTOU de un SELECT de verificación seguido de un UPDATE separado — hallazgo del
+  -- migration-reviewer: si el staff confirma/cancela la OC justo entre esos 2 statements, un
+  -- UPDATE separado podría escribir igual aunque el estado ya cambió).
+  UPDATE public.orden_compra_items oci
+    SET precio_propuesto_proveedor = p_precio, respondido_at = now()
+    WHERE oci.id = p_item_id
+      AND EXISTS (
+        SELECT 1 FROM public.ordenes_compra oc
+        JOIN public.proveedor_account_tenants pat
+          ON pat.tenant_id = oc.tenant_id AND pat.proveedor_id = oc.proveedor_id
+        WHERE oc.id = oci.orden_compra_id
+          AND pat.proveedor_account_id = auth.uid() AND pat.activo = true
+          AND oc.estado = 'enviada'
+      );
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+
+  IF v_count = 0 THEN
+    RAISE EXCEPTION 'No se puede proponer un precio para este ítem (la orden ya no está esperando respuesta, o no te pertenece).'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_precio_para_margen(p_costo numeric, p_margen_objetivo numeric, p_alicuota_iva numeric)
  RETURNS numeric
  LANGUAGE sql
@@ -7544,6 +7881,53 @@ BEGIN
     OR EXISTS (SELECT 1 FROM inventario_meli_map WHERE producto_id = p_producto_id)
     OR EXISTS (SELECT 1 FROM inventario_tn_map   WHERE producto_id = p_producto_id);
 END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_productos_rol_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NOT public.auth_puede_editar_modulo('inventario') THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede dar de alta productos.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.precio_venta       IS DISTINCT FROM OLD.precio_venta
+  OR NEW.precio_costo       IS DISTINCT FROM OLD.precio_costo
+  OR NEW.precio_marketplace IS DISTINCT FROM OLD.precio_marketplace
+  OR NEW.precio_usd         IS DISTINCT FROM OLD.precio_usd
+  OR NEW.precio_costo_usd   IS DISTINCT FROM OLD.precio_costo_usd
+  OR NEW.margen_objetivo    IS DISTINCT FROM OLD.margen_objetivo THEN
+    IF NOT public.auth_puede_editar_modulo('inventario') THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar precios de productos.'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_proveedor_portal_vinculo(p_proveedor_id uuid)
+ RETURNS TABLE(email text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT pa.email
+  FROM public.proveedor_account_tenants pat
+  JOIN public.proveedor_accounts pa ON pa.id = pat.proveedor_account_id
+  WHERE pat.proveedor_id = p_proveedor_id
+    AND pat.activo = true
+    AND pat.tenant_id = public.get_user_tenant_id()
+  LIMIT 1;
 $function$
 
 
@@ -7901,6 +8285,26 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_recurso_activar_al_pagar_gasto()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.recurso_id IS NOT NULL
+     AND NEW.estado_pago = 'pagado'
+     AND OLD.estado_pago IS DISTINCT FROM 'pagado' THEN
+    UPDATE public.recursos
+       SET estado = 'activo'
+     WHERE id = NEW.recurso_id
+       AND tenant_id = NEW.tenant_id
+       AND estado = 'pendiente_adquisicion';
+  END IF;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_registrar_pago_manual(p_tenant_id uuid, p_monto numeric, p_medio text, p_referencia text, p_registrado_por uuid, p_mp_payment_id text, p_notas text)
  RETURNS timestamp with time zone
  LANGUAGE plpgsql
@@ -8252,6 +8656,31 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_sueldos_agregado(p_desde date, p_hasta date, p_hasta_exclusivo boolean DEFAULT false)
+ RETURNS TABLE(total_neto numeric, empleados integer)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_rol text := public.get_user_role();
+BEGIN
+  IF v_rol IS NULL OR v_rol <> ALL (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','SUPERVISOR','CONTADOR','RRHH']) THEN
+    RAISE EXCEPTION 'No autorizado: tu rol (%) no puede ver el costo laboral.', coalesce(v_rol, 'sin rol')
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  RETURN QUERY
+  SELECT COALESCE(SUM(s.neto), 0)::numeric,
+         COUNT(DISTINCT s.empleado_id)::integer
+    FROM public.rrhh_salarios s
+   WHERE s.tenant_id = public.get_user_tenant_id()
+     AND s.pagado = true
+     AND s.fecha_pago >= p_desde
+     AND (CASE WHEN p_hasta_exclusivo THEN s.fecha_pago < p_hasta ELSE s.fecha_pago <= p_hasta END);
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_tarea_repositor_asignado_valido_tenant()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8290,6 +8719,18 @@ BEGIN
     WHERE tenant_id = p_tenant_id AND dimension = p_dim
       AND (tipo = 'fijo' OR (tipo = 'temporal' AND vence_at > now()));
   RETURN v_base + v_addons;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_tenants_afipsdk_token_deprecado()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- `tenants.afipsdk_token` es legible por todo el tenant (select('*') masivo). Se deja siempre en
+  -- NULL para que sea imposible que un secreto viva ahí. El token va a emisores_fiscales.
+  NEW.afipsdk_token := NULL;
+  RETURN NEW;
 END $function$
 
 
@@ -8482,6 +8923,15 @@ BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_updated_at_wa_autorizados()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_updated_at_whatsapp_creds()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8647,6 +9097,22 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_venta_items_set_sucursal()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.venta_id IS NULL THEN
+    NEW.sucursal_id := NULL;
+  ELSE
+    SELECT v.sucursal_id INTO NEW.sucursal_id FROM public.ventas v WHERE v.id = NEW.venta_id;
+  END IF;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_venta_requiere_pedido(p_venta_id uuid, p_con_envio boolean DEFAULT false)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -8756,6 +9222,18 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_ventas_propagar_sucursal_items()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  UPDATE public.venta_items SET sucursal_id = NEW.sucursal_id WHERE venta_id = NEW.id;
+  RETURN NULL;
 END $function$
 
 
@@ -9544,67 +10022,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -9679,6 +10096,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -11455,8 +11933,6 @@ DECLARE v_ok BOOLEAN; BEGIN
   RETURN v_ok;
 END;$function$
 
-
-
 -- ============================================================
 -- TRIGGERS
 -- ============================================================
@@ -11472,7 +11948,9 @@ CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones 
 CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
 CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
+CREATE TRIGGER trg_cheques_monto_guard BEFORE UPDATE ON public.cheques FOR EACH ROW EXECUTE FUNCTION fn_cheques_monto_guard();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
+CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
@@ -11485,6 +11963,8 @@ CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW 
 CREATE TRIGGER trg_tn_fulfillment_sync AFTER UPDATE OF estado ON public.envios FOR EACH ROW WHEN ((new.estado IS DISTINCT FROM old.estado)) EXECUTE FUNCTION fn_enqueue_tn_fulfillment_sync();
 CREATE TRIGGER trg_gastos_cierre BEFORE DELETE OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION trg_gastos_periodo_cerrado();
 CREATE TRIGGER trg_gastos_iva_guard BEFORE INSERT OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION fn_gastos_iva_guard();
+CREATE TRIGGER trg_gastos_rol_umbral_guard BEFORE INSERT OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION fn_gastos_rol_umbral_guard();
+CREATE TRIGGER trg_recurso_activar_al_pagar_gasto AFTER UPDATE OF estado_pago ON public.gastos FOR EACH ROW EXECUTE FUNCTION fn_recurso_activar_al_pagar_gasto();
 CREATE TRIGGER trg_updated_at_job_queue BEFORE UPDATE ON public.integration_job_queue FOR EACH ROW EXECUTE FUNCTION fn_updated_at_job_queue();
 CREATE TRIGGER trg_updated_at_conteo BEFORE UPDATE ON public.inventario_conteos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER lineas_lpn_trigger BEFORE INSERT ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION generate_lpn();
@@ -11515,6 +11995,7 @@ CREATE TRIGGER trg_productos_compose_nombre BEFORE INSERT OR UPDATE OF producto_
 CREATE TRIGGER trg_productos_precio_genera_tarea_repositor AFTER UPDATE OF precio_venta ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_generar_tarea_repositor_precio();
 CREATE TRIGGER trg_productos_presentacion_base AFTER INSERT OR UPDATE OF unidad_medida ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_sembrar_presentacion_base();
 CREATE TRIGGER trg_productos_propagar_nombre AFTER UPDATE OF nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_propagar_nombre();
+CREATE TRIGGER trg_productos_rol_guard BEFORE INSERT OR UPDATE ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_productos_rol_guard();
 CREATE TRIGGER trg_productos_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_productos_udm_familia BEFORE UPDATE OF unidad_medida_base_id ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_udm_cambio_familia();
 CREATE TRIGGER trg_productos_variante_atributos BEFORE INSERT OR UPDATE OF producto_padre_id, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_atributos_incompatibles();
@@ -11541,6 +12022,7 @@ CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH 
 CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tipos_pedido_new_tenant();
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
+CREATE TRIGGER trg_tenants_afipsdk_token_deprecado BEFORE INSERT OR UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenants_afipsdk_token_deprecado();
 CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
@@ -11551,17 +12033,19 @@ CREATE TRIGGER trg_ubic_tipo_logico_guard BEFORE INSERT OR UPDATE OF tipo_logico
 CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('usuarios');
 CREATE TRIGGER trg_guard_rol_admin BEFORE INSERT OR UPDATE OF rol ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_rol_admin();
 CREATE TRIGGER trg_venta_items_auto_pedido AFTER INSERT ON public.venta_items REFERENCING NEW TABLE AS nuevas FOR EACH STATEMENT EXECUTE FUNCTION trg_venta_items_sync_pedido();
+CREATE TRIGGER trg_venta_items_sucursal BEFORE INSERT OR UPDATE OF venta_id ON public.venta_items FOR EACH ROW EXECUTE FUNCTION fn_venta_items_set_sucursal();
 CREATE TRIGGER set_venta_numero BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION gen_venta_numero();
 CREATE TRIGGER trg_ventas_anulada_cancela_pedido AFTER UPDATE OF estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_anulada_cancela_pedido();
 CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pagado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_auto_pedido();
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
+CREATE TRIGGER trg_ventas_propagar_sucursal_items AFTER UPDATE OF sucursal_id ON public.ventas FOR EACH ROW WHEN ((old.sucursal_id IS DISTINCT FROM new.sucursal_id)) EXECUTE FUNCTION fn_ventas_propagar_sucursal_items();
 CREATE TRIGGER trg_ventas_writeoff_rol_guard BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_writeoff_rol_guard();
 CREATE TRIGGER ventas_updated_at BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_updated_at_whatsapp_creds BEFORE UPDATE ON public.whatsapp_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_whatsapp_creds();
+CREATE TRIGGER trg_updated_at_wa_autorizados BEFORE UPDATE ON public.whatsapp_numeros_autorizados FOR EACH ROW EXECUTE FUNCTION fn_updated_at_wa_autorizados();
 CREATE TRIGGER trg_wms_tarea_asignado_valido_tenant BEFORE INSERT OR UPDATE OF usuario_asignado_id ON public.wms_tareas FOR EACH ROW EXECUTE FUNCTION fn_wms_tarea_asignado_valido_tenant();
-
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -11603,6 +12087,8 @@ ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.codigo_perfiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combo_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.consumo_eventos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.consumo_tarifas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courier_credenciales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courier_factura_lineas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courier_facturas ENABLE ROW LEVEL SECURITY;
@@ -11727,6 +12213,7 @@ ALTER TABLE public.ventas_recurrentes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_gastos_borrador ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_mensajes_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_numeros_autorizados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wms_tareas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zonas ENABLE ROW LEVEL SECURITY;
 
@@ -11866,20 +12353,23 @@ CREATE POLICY mov_caja_tenant ON public.caja_movimientos AS PERMISSIVE FOR ALL T
 CREATE POLICY sesiones_tenant ON public.caja_sesiones AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY traspasos_tenant ON public.caja_traspasos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY caja_traspasos_delete_gestion ON public.caja_traspasos AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY caja_traspasos_insert ON public.caja_traspasos AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY caja_traspasos_select ON public.caja_traspasos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY caja_traspasos_update_supervision ON public.caja_traspasos AS PERMISSIVE FOR UPDATE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text, 'SUPERVISOR'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text, 'SUPERVISOR'::text]))));
 CREATE POLICY cajas_tenant ON public.cajas AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY canales_venta_tenant ON public.canales_venta AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY canales_venta_select ON public.canales_venta AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY canales_venta_write_gestion ON public.canales_venta AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY categorias_insert ON public.categorias AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -11893,27 +12383,28 @@ CREATE POLICY categorias_gasto_tenant ON public.categorias_gasto AS PERMISSIVE F
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cheques_tenant ON public.cheques AS PERMISSIVE FOR ALL TO public
+CREATE POLICY cheques_delete_gestion ON public.cheques AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cheques_insert_gastos ON public.cheques AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
+CREATE POLICY cheques_select ON public.cheques AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cheques_update_gastos ON public.cheques AS PERMISSIVE FOR UPDATE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
+CREATE POLICY cierres_select_tenant ON public.cierres_contables AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cierres_tenant ON public.cierres_contables AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cliente_creditos_tenant ON public.cliente_creditos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY cliente_creditos_delete_gestion ON public.cliente_creditos AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cliente_creditos_insert ON public.cliente_creditos AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cliente_creditos_select ON public.cliente_creditos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cliente_creditos_update_gestion ON public.cliente_creditos AS PERMISSIVE FOR UPDATE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY cli_dom_tenant ON public.cliente_domicilios AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -11933,24 +12424,27 @@ CREATE POLICY codigo_perfiles_tenant ON public.codigo_perfiles AS PERMISSIVE FOR
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY combo_items_tenant ON public.combo_items AS PERMISSIVE FOR ALL TO public
+CREATE POLICY combo_items_select ON public.combo_items AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY combo_items_write ON public.combo_items AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY combos_select ON public.combos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY combos_write ON public.combos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY consumo_eventos_lectura_tenant ON public.consumo_eventos AS PERMISSIVE FOR SELECT TO authenticated
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY tenant_isolation ON public.combos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY courier_credenciales_tenant ON public.courier_credenciales AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY consumo_tarifas_lectura ON public.consumo_tarifas AS PERMISSIVE FOR SELECT TO authenticated
+  USING (true);
+CREATE POLICY courier_credenciales_select ON public.courier_credenciales AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY courier_credenciales_write_gestion ON public.courier_credenciales AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY courier_factura_lineas_tenant ON public.courier_factura_lineas AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -11969,27 +12463,25 @@ CREATE POLICY courier_tarifas_tenant ON public.courier_tarifas AS PERMISSIVE FOR
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cuentas_origen_tenant ON public.cuentas_origen AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cupones_tenant ON public.cupones AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY cupones_codigos_tenant ON public.cupones_codigos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY cuentas_origen_select ON public.cuentas_origen AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cuentas_origen_write_gestion ON public.cuentas_origen AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cupones_select ON public.cupones AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cupones_write ON public.cupones AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY cupones_codigos_delete ON public.cupones_codigos AS PERMISSIVE FOR DELETE TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY cupones_codigos_insert ON public.cupones_codigos AS PERMISSIVE FOR INSERT TO public
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY cupones_codigos_select ON public.cupones_codigos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cupones_codigos_update ON public.cupones_codigos AS PERMISSIVE FOR UPDATE TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY devitem_tenant_insert ON public.devolucion_items AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((devolucion_id IN ( SELECT devoluciones.id
    FROM devoluciones
@@ -12028,22 +12520,16 @@ CREATE POLICY devprov_tenant ON public.devoluciones_proveedor AS PERMISSIVE FOR 
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY emisores_fiscales_tenant ON public.emisores_fiscales AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY empleados_supervisor ON public.empleados AS PERMISSIVE FOR SELECT TO public
-  USING ((supervisor_id = ( SELECT auth.uid() AS uid)));
-CREATE POLICY empleados_tenant ON public.empleados AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY emisores_fiscales_select ON public.emisores_fiscales AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY emisores_fiscales_write_gestion ON public.emisores_fiscales AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY empleados_select ON public.empleados AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (user_id = ( SELECT auth.uid() AS uid)) OR (supervisor_id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY empleados_write ON public.empleados AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY envio_incidencias_tenant ON public.envio_incidencias AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12073,21 +12559,24 @@ CREATE POLICY envio_pod_fotos_tenant ON public.envio_pod_fotos AS PERMISSIVE FOR
 CREATE POLICY envios_tenant ON public.envios AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY estados_tenant ON public.estados_inventario AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY gasto_cuotas_tenant ON public.gasto_cuotas AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY estados_inventario_select ON public.estados_inventario AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY estados_inventario_write_gestion ON public.estados_inventario AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY gasto_cuotas_select ON public.gasto_cuotas AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY gasto_cuotas_write_gastos ON public.gasto_cuotas AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY gastos_tenant ON public.gastos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY gastos_fijos_tenant ON public.gastos_fijos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY gastos_fijos_select ON public.gastos_fijos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY gastos_fijos_write_gastos ON public.gastos_fijos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY grupo_items_tenant ON public.grupo_estado_items AS PERMISSIVE FOR ALL TO public
   USING ((grupo_id IN ( SELECT grupos_estados.id
    FROM grupos_estados
@@ -12142,37 +12631,40 @@ CREATE POLICY tn_map_tenant ON public.inventario_tn_map AS PERMISSIVE FOR ALL TO
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY kit_recetas_tenant ON public.kit_recetas AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY kit_recetas_select ON public.kit_recetas AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY kit_recetas_write ON public.kit_recetas AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_puede_editar_modulo('inventario'::text) OR (get_user_role() = 'DEPOSITO'::text))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (auth_puede_editar_modulo('inventario'::text) OR (get_user_role() = 'DEPOSITO'::text))));
 CREATE POLICY kitting_log_tenant ON public.kitting_log AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY meli_cred_tenant ON public.meli_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY mp_creds_tenant ON public.mercadopago_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY metodos_pago_tenant ON public.metodos_pago AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY tenant_isolation ON public.modo_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY motivos_tenant ON public.motivos_movimiento AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY meli_credentials_select ON public.meli_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY meli_credentials_write_gestion ON public.meli_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY mercadopago_credentials_select ON public.mercadopago_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY mercadopago_credentials_write_gestion ON public.mercadopago_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY metodos_pago_select ON public.metodos_pago AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY metodos_pago_write_gestion ON public.metodos_pago AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY modo_credentials_select ON public.modo_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY modo_credentials_write_gestion ON public.modo_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY motivos_movimiento_select ON public.motivos_movimiento AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY motivos_movimiento_write_gestion ON public.motivos_movimiento AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY movimientos_insert ON public.movimientos_stock AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY movimientos_select ON public.movimientos_stock AS PERMISSIVE FOR SELECT TO public
@@ -12236,20 +12728,19 @@ CREATE POLICY pe_tenant_update ON public.producto_estructuras AS PERMISSIVE FOR 
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY ppm_tenant ON public.producto_precios_mayorista AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY producto_precios_mayorista_select ON public.producto_precios_mayorista AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY producto_precios_mayorista_write ON public.producto_precios_mayorista AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)));
 CREATE POLICY pp_tenant ON public.producto_presentaciones AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY psmss_tenant ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY producto_stock_minimo_sucursal_select ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY producto_stock_minimo_sucursal_write ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('inventario'::text)));
 CREATE POLICY tenant_isolation ON public.producto_ubicacion_sucursal AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12280,21 +12771,20 @@ CREATE POLICY proveedor_accounts_self ON public.proveedor_accounts AS PERMISSIVE
 CREATE POLICY proveedor_accounts_self_update ON public.proveedor_accounts AS PERMISSIVE FOR UPDATE TO public
   USING ((id = ( SELECT auth.uid() AS uid)))
   WITH CHECK ((id = ( SELECT auth.uid() AS uid)));
-CREATE POLICY pcc_tenant ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY proveedor_cc_movimientos_select ON public.proveedor_cc_movimientos AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY proveedor_cc_movimientos_write_gastos ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY tenant_isolation ON public.proveedor_contactos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY prov_cuentas_tenant ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY proveedor_cuentas_bancarias_select ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY proveedor_cuentas_bancarias_write_gestion ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY pp_tenant ON public.proveedor_productos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12305,10 +12795,11 @@ CREATE POLICY proveedores_insert ON public.proveedores AS PERMISSIVE FOR INSERT 
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY proveedores_tenant ON public.proveedores AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()));
-CREATE POLICY pv_tenant ON public.puntos_venta_afip AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY pv_select ON public.puntos_venta_afip AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY pv_write_gestion ON public.puntos_venta_afip AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY recepcion_items_tenant ON public.recepcion_items AS PERMISSIVE FOR ALL TO public
   USING ((recepcion_id IN ( SELECT r.id
    FROM recepciones r
@@ -12336,17 +12827,18 @@ CREATE POLICY ret_tenant ON public.retenciones_sufridas AS PERMISSIVE FOR ALL TO
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY roles_custom_tenant ON public.roles_custom AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY rrhh_anticipos_tenant ON public.rrhh_anticipos AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY roles_custom_select ON public.roles_custom AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY roles_custom_write_gestion ON public.roles_custom AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY rrhh_anticipos_select ON public.rrhh_anticipos AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (empleado_id IN ( SELECT e.id
+   FROM empleados e
+  WHERE (e.user_id = ( SELECT auth.uid() AS uid)))))));
+CREATE POLICY rrhh_anticipos_write ON public.rrhh_anticipos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY rrhh_asistencia_supervisor ON public.rrhh_asistencia AS PERMISSIVE FOR ALL TO public
   USING ((empleado_id IN ( SELECT get_supervisor_team_ids() AS get_supervisor_team_ids)))
   WITH CHECK ((empleado_id IN ( SELECT get_supervisor_team_ids() AS get_supervisor_team_ids)));
@@ -12431,20 +12923,22 @@ CREATE POLICY rrhh_puestos_tenant ON public.rrhh_puestos AS PERMISSIVE FOR ALL T
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY rrhh_salario_items_tenant ON public.rrhh_salario_items AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY rrhh_salarios_tenant ON public.rrhh_salarios AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY rrhh_salario_items_select ON public.rrhh_salario_items AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (salario_id IN ( SELECT s.id
+   FROM rrhh_salarios s
+  WHERE (s.empleado_id IN ( SELECT e.id
+           FROM empleados e
+          WHERE (e.user_id = ( SELECT auth.uid() AS uid)))))))));
+CREATE POLICY rrhh_salario_items_write ON public.rrhh_salario_items AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
+CREATE POLICY rrhh_salarios_select ON public.rrhh_salarios AS PERMISSIVE FOR SELECT TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_administra_rrhh() OR (empleado_id IN ( SELECT e.id
+   FROM empleados e
+  WHERE (e.user_id = ( SELECT auth.uid() AS uid)))))));
+CREATE POLICY rrhh_salarios_write ON public.rrhh_salarios AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_administra_rrhh()));
 CREATE POLICY rrhh_tipos_contrato_tenant ON public.rrhh_tipos_contrato AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12480,10 +12974,11 @@ CREATE POLICY sp_tenant ON public.servicio_presupuestos AS PERMISSIVE FOR ALL TO
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY tenant_sucursales ON public.sucursales AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY sucursales_select ON public.sucursales AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY sucursales_write_gestion ON public.sucursales AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY support_agents_self_read ON public.support_agents AS PERMISSIVE FOR SELECT TO public
   USING ((id = ( SELECT auth.uid() AS uid)));
 CREATE POLICY tareas_repositor_tenant ON public.tareas_repositor AS PERMISSIVE FOR ALL TO public
@@ -12491,13 +12986,11 @@ CREATE POLICY tareas_repositor_tenant ON public.tareas_repositor AS PERMISSIVE F
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY tenant_addons_select ON public.tenant_addons AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) OR is_admin()));
-CREATE POLICY tenant_certificates_tenant ON public.tenant_certificates AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY tenant_certificates_select ON public.tenant_certificates AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY tenant_certificates_write_gestion ON public.tenant_certificates AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY tenants_insert_new_user ON public.tenants AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((( SELECT auth.uid() AS uid) IS NOT NULL));
 CREATE POLICY tenants_select ON public.tenants AS PERMISSIVE FOR SELECT TO public
@@ -12510,10 +13003,11 @@ CREATE POLICY tenants_update ON public.tenants AS PERMISSIVE FOR UPDATE TO publi
   WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (EXISTS ( SELECT 1
    FROM users
   WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text])))))) OR is_admin()));
-CREATE POLICY tn_creds_tenant ON public.tiendanube_credentials AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY tiendanube_credentials_select ON public.tiendanube_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY tiendanube_credentials_write_gestion ON public.tiendanube_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY tipos_pedido_tenant ON public.tipos_pedido AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
@@ -12531,12 +13025,11 @@ CREATE POLICY traslados_tenant ON public.traslados AS PERMISSIVE FOR ALL TO publ
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY ubicaciones_insert ON public.ubicaciones AS PERMISSIVE FOR INSERT TO public
-  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY ubicaciones_tenant ON public.ubicaciones AS PERMISSIVE FOR ALL TO public
+CREATE POLICY ubicaciones_select ON public.ubicaciones AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY ubicaciones_write_gestion ON public.ubicaciones AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY tenant_isolation ON public.unidades_medida AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -12567,9 +13060,7 @@ CREATE POLICY venta_item_despachos_tenant ON public.venta_item_despachos AS PERM
   WHERE ((v.id = venta_item_despachos.venta_id) AND ((v.sucursal_id IS NULL) OR (v.sucursal_id = auth_user_sucursal()))))))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY venta_items_tenant ON public.venta_items AS PERMISSIVE FOR ALL TO public
-  USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (venta_id IS NULL) OR (EXISTS ( SELECT 1
-   FROM ventas v
-  WHERE ((v.id = venta_items.venta_id) AND ((v.sucursal_id IS NULL) OR (v.sucursal_id = auth_user_sucursal()))))))))
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (venta_id IS NULL) OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY venta_series_tenant ON public.venta_series AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (venta_id IS NULL) OR (EXISTS ( SELECT 1
@@ -12590,11 +13081,23 @@ CREATE POLICY ventas_rec_tenant ON public.ventas_recurrentes AS PERMISSIVE FOR A
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY whatsapp_creds_tenant ON public.whatsapp_credentials AS PERMISSIVE FOR ALL TO public
+CREATE POLICY whatsapp_credentials_select ON public.whatsapp_credentials AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY whatsapp_credentials_write_gestion ON public.whatsapp_credentials AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY whatsapp_gastos_borrador_tenant ON public.whatsapp_gastos_borrador AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
-  WHERE (users.id = auth.uid()))));
-CREATE POLICY whatsapp_gastos_borrador_tenant ON public.whatsapp_gastos_borrador AS PERMISSIVE FOR ALL TO public
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY wa_autorizados_escritura_owner ON public.whatsapp_numeros_autorizados AS PERMISSIVE FOR ALL TO authenticated
+  USING ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))))))
+  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE ((users.id = ( SELECT auth.uid() AS uid)) AND (users.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))))));
+CREATE POLICY wa_autorizados_lectura ON public.whatsapp_numeros_autorizados AS PERMISSIVE FOR SELECT TO authenticated
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
@@ -12709,8 +13212,12 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.co
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO service_role;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_factura_lineas TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_factura_lineas TO authenticated;
@@ -12741,7 +13248,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.de
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.devoluciones_proveedor TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emision_factura_locks TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.emisores_fiscales TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.empleados TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.empleados TO authenticated;
@@ -12815,17 +13322,17 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ki
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.leads TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.leads TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.leads TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.meli_credentials TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mercadopago_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.metodos_pago TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.modo_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.motivos_movimiento TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.motivos_movimiento TO authenticated;
@@ -12839,10 +13346,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.orden_compra_items TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.orden_compra_items TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.orden_compra_items TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO authenticated;
@@ -13005,8 +13510,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.te
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO anon;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tipos_pedido TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tipos_pedido TO service_role;
@@ -13057,6 +13562,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_caja_resumen_diario TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_caja_resumen_diario TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_caja_resumen_diario TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_consumo_mensual TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_consumo_mensual TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_diferencias_por_cajero TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_diferencias_por_cajero TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_diferencias_por_cajero TO service_role;
@@ -13068,11 +13575,13 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_tareas_repositor TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_credentials TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_gastos_borrador TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_gastos_borrador TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_mensajes_log TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_numeros_autorizados TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.whatsapp_numeros_autorizados TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.zonas TO authenticated;
@@ -13163,6 +13672,20 @@ CREATE OR REPLACE VIEW public.vw_caja_resumen_diario AS
      LEFT JOIN cajas c ON ((c.id = cs.caja_id)))
   WHERE (NOT COALESCE(c.es_caja_fuerte, false))
   GROUP BY cs.tenant_id, (date(cs.abierta_at)), cs.sucursal_id, s.nombre, cs.caja_id, c.nombre, c.moneda;
+
+CREATE OR REPLACE VIEW public.vw_consumo_mensual AS
+ SELECT tenant_id,
+    (date_trunc('month'::text, ocurrido_at))::date AS periodo,
+    canal,
+    concepto,
+    moneda,
+    count(*) AS eventos,
+    COALESCE(sum(cantidad), (0)::numeric) AS cantidad,
+    COALESCE(sum(costo) FILTER (WHERE facturable), (0)::numeric) AS costo_facturable,
+    COALESCE(sum(costo), (0)::numeric) AS costo_total,
+    count(*) FILTER (WHERE (NOT tarifa_encontrada)) AS eventos_sin_tarifa
+   FROM consumo_eventos e
+  GROUP BY tenant_id, (date_trunc('month'::text, ocurrido_at)), canal, concepto, moneda;
 
 CREATE OR REPLACE VIEW public.vw_diferencias_por_cajero AS
  SELECT cs.tenant_id,

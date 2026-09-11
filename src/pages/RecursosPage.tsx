@@ -142,7 +142,7 @@ export default function RecursosPage() {
 
   // ── Query ──────────────────────────────────────────────────────────────────
   const { data: recursos = [], isLoading } = useQuery({
-    queryKey: ['recursos', tenant?.id],
+    queryKey: ['recursos', tenant?.id, sucursalId],  // la query filtra por sucursal → tiene que estar en la key
     queryFn: async () => {
       const q = applyFilter(
         supabase.from('recursos')
@@ -245,6 +245,10 @@ export default function RecursosPage() {
   const guardar = useMutation({
     mutationFn: async () => {
       const esPendiente = form.estado === 'pendiente_adquisicion'
+      // Ciclo de vida pedido por Fede: si el alta genera un gasto por validar, el recurso espera en
+      // "pendientes" y recién pasa a activo cuando ese gasto se paga (lo hace el trigger de la mig
+      // 406, así que vale por cualquier camino que salde el gasto, no solo por esta pantalla).
+      // Si no hay gasto que validar, entra directo como activo — que es lo que ya hacía.
       const fv = parseInt(form.frecuencia_valor) || 1
       const proxVenc = form.es_recurrente
         ? (form.proximo_vencimiento || calcProximo(fv, form.frecuencia_unidad))
@@ -255,7 +259,7 @@ export default function RecursosPage() {
         nombre:              form.nombre.trim(),
         descripcion:         form.descripcion.trim() || null,
         categoria:           form.categoria,
-        estado:              form.estado,
+        estado:              (!editId && !esPendiente && form.valor && form.crear_gasto) ? 'pendiente_adquisicion' : form.estado,
         valor:               form.valor ? parseFloat(form.valor) : null,
         fecha_adquisicion:   form.fecha_adquisicion || null,
         proveedor_id:        form.proveedor_id || null,
@@ -269,6 +273,12 @@ export default function RecursosPage() {
         frecuencia_unidad:   form.es_recurrente ? form.frecuencia_unidad : null,
         proximo_vencimiento: proxVenc,
         created_by:          user?.id,
+        // 🐛 Fede (2026-09-08): "al crearse un recurso no aparece luego en los recursos activos.
+        // Tampoco aparecen las ubicaciones". Los dos síntomas eran el mismo bug: el insert NO
+        // seteaba `sucursal_id`, pero la lista filtra con `.eq('sucursal_id', …)` cuando hay una
+        // sucursal elegida → el recurso nacía en NULL y desaparecía apenas se guardaba. Y como el
+        // tab Ubicaciones agrupa esa misma lista, la ubicación tampoco aparecía nunca.
+        sucursal_id:         sucursalId ?? null,
       }
       if (editId) {
         const { error } = await supabase.from('recursos').update(payload).eq('id', editId)
@@ -279,6 +289,12 @@ export default function RecursosPage() {
         if (error) throw error
 
         if (!esPendiente && payload.valor && form.crear_gasto) {
+          // 🛑 Fede (2026-09-08): el gasto de un recurso recién adquirido NO es un gasto ya
+          // corriendo — está PENDIENTE DE PAGO hasta que se cierre en Gastos. Antes nacía con el
+          // default de la columna (`estado_pago = 'pagado'`), o sea que la plata figuraba como
+          // salida sin que nadie la hubiera pagado.
+          // Y `capitaliza_recurso` va tildado: el gasto viene del módulo de Recursos, así que por
+          // definición suma al valor del recurso.
           await supabase.from('gastos').insert({
             tenant_id:   tenant!.id,
             recurso_id:  nuevoRecurso.id,
@@ -289,8 +305,11 @@ export default function RecursosPage() {
             sucursal_id: sucursalId ?? null,
             usuario_id:  user?.id,
             notas:       payload.descripcion ?? null,
+            estado_pago: 'pendiente',
+            monto_pagado: 0,
+            capitaliza_recurso: true,
           })
-          toast('Gasto creado en Gastos → Recursos', { icon: '💼' })
+          toast('Gasto creado PENDIENTE en Gastos → Recursos. El recurso pasa a activo cuando lo pagues.', { icon: '💼', duration: 6000 })
         }
       }
       logActividad({ entidad: 'recurso', entidad_id: editId ?? '', accion: editId ? 'editar' : 'crear', entidad_nombre: payload.nombre })

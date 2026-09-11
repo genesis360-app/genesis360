@@ -103,12 +103,9 @@ export function useRecomendaciones() {
           .in('estado', ['despachada', 'facturada'])
           .gte('created_at', hace90dias),
 
-        // Empleados con cumpleaños (solo activos con fecha de nacimiento)
-        supabase.from('empleados')
-          .select('id, nombre, apellido, fecha_nacimiento')
-          .eq('tenant_id', tenant!.id)
-          .eq('activo', true)
-          .not('fecha_nacimiento', 'is', null),
+        // Empleados con cumpleaños (solo activos con fecha de nacimiento).
+        // Mig 401 — vía RPC: los cumpleaños no justifican acceso a sueldo/CBU/DNI.
+        supabase.rpc('fn_empleados_basico'),
       ])
 
       return {
@@ -120,7 +117,8 @@ export function useRecomendaciones() {
         reservasViejas: reservasViejas.data ?? [],
         clientesConCompras: clientesConCompras.data ?? [],
         ventas90d: ventas90d.data ?? [],
-        empleadosMes: empleadosMes.data ?? [],
+        // El RPC devuelve todos; el filtro de activos (que antes hacía la query) va acá.
+        empleadosMes: ((empleadosMes.data ?? []) as any[]).filter(e => e.activo),
       }
     },
     enabled: !!tenant,

@@ -624,3 +624,38 @@ el tenant quedó exactamente como estaba antes de probar.
 - `G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md` — las 35 preguntas originales y sus
   respuestas completas, incluida la sección "Cierre de ambigüedades" que resolvió A1/A2/H1/C3/I3, y la
   nota que corrige I3 con la conclusión final de la Fase 3.
+
+## 🖨️ Reimprimir etiquetas por búsqueda (v1.207.0, 2026-09-08)
+
+Hasta acá las etiquetas **solo** se podían imprimir desde los carteles pendientes. Si una se
+arruinaba, se despegaba o se quería reimprimir con el precio de hoy, no había forma sin esperar a
+que cambiara un precio.
+
+Sección nueva **"Reimprimir etiquetas"**: buscador por nombre o SKU, checkbox por producto,
+"seleccionar todas", y el mismo PDF en tanda que ya usaban los carteles
+(`generarEtiquetasPreciosPDF`, respetando `repositor_etiquetas_por_hoja`). Gateada con
+`puedeSupervisar` — el mismo gate que Reportes, tal como lo pidió Fede ("solo el supervisor o dueño").
+
+Dos decisiones: **sin precio tachado** (no son etiquetas de promoción, son la etiqueta vigente) y
+**tope de 50 resultados con aviso visible** — sin el aviso, un catálogo grande daría la impresión de
+que el producto no existe.
+
+## ⚠️ El módulo no genera tareas sin góndolas asignadas (y ahora lo dice)
+
+Fede reportó que el módulo "no estaba funcionando": cambió un precio y no se generó la tarea. **El
+trigger funciona** — probado end-to-end: con la precondición armada, el cambio de precio generó una
+tarea `cambio_precio`. Lo que faltaban eran los datos.
+
+`fn_generar_tarea_repositor_precio` solo genera tarea para productos con **ubicación de exhibición
+asignada** (`producto_ubicacion_sucursal.ubicacion_exhibicion_id`), que es el comportamiento diseñado
+(ver "Ubicación de exhibición" más arriba). Medido el 2026-09-08: **PROD tiene 0 ubicaciones
+`tipo_logico='exhibicion'`**, y en DEV hay 13 góndolas pero **0 productos asignados**.
+
+🐛 **El bug real era otro**: el módulo quedaba **inerte en silencio**, y desde afuera eso es
+indistinguible de estar roto. Peor, el estado vacío **prometía lo contrario** ("aparecen solas cuando
+cambia un precio"). Ahora el vacío distingue los dos casos: si no hay **ningún** producto con góndola
+asignada, explica que por eso no se genera nada y dónde se configura
+(Productos → Stock e inventario → "Ubicación de exhibición").
+
+> 📌 **Pendiente de negocio**: alguien tiene que crear las góndolas como ubicaciones de exhibición y
+> asignárselas a los productos. Hasta entonces el módulo no sirve, por diseño.

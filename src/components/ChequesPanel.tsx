@@ -40,6 +40,11 @@ const FORM_EMPTY: FormCheque = {
 }
 
 export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any; user: any; sucursalId: string | null }) {
+  // 🛑 Espejo en la UI de los guards de la mig 404. Registrar un cheque, cobrarlo o endosarlo es
+  // operativo; **cambiarle el monto a uno ya registrado** y **borrarlo** no. La base ya lo rechaza —
+  // esto es para que el usuario vea el campo deshabilitado en vez de comerse un error al guardar.
+  const puedeCambiarMonto = ['DUEÑO', 'ADMIN', 'SUPER_USUARIO', 'SUPERVISOR'].includes(user?.rol ?? '')
+  const puedeEliminar     = ['DUEÑO', 'ADMIN', 'SUPER_USUARIO'].includes(user?.rol ?? '')
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const hoy = new Date().toISOString().split('T')[0]
@@ -307,7 +312,9 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
                       </button>
                     )}
                     <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-accent-text p-1" title="Editar"><Pencil size={13} /></button>
-                    <button onClick={async () => { if (await confirmar('¿Eliminar este cheque?', { danger: true })) eliminar.mutate(c.id) }} className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"><Trash2 size={13} /></button>
+                    {puedeEliminar && (
+                      <button onClick={async () => { if (await confirmar('¿Eliminar este cheque?', { danger: true })) eliminar.mutate(c.id) }} className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"><Trash2 size={13} /></button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -348,7 +355,11 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Monto *</label>
                 <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
                   value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  disabled={!!editId && !puedeCambiarMonto}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400" />
+                {!!editId && !puedeCambiarMonto && (
+                  <p className="text-xs text-gray-400 mt-0.5">El monto de un cheque ya registrado solo lo cambia un supervisor.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

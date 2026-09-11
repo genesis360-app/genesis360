@@ -1,4 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
+import {
+  CortacircuitosRefresco,
+  envolverFetchConCortacircuitos,
+  EVENTO_ESTADO_REFRESCO,
+  type DetalleEstado,
+} from './authRefreshBreaker'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -7,10 +13,26 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Faltan variables de entorno de Supabase. Revisá tu archivo .env')
 }
 
+/**
+ * D1 — sin esto, una pestaña abierta contra un backend caído reintenta el refresco de sesión
+ * para siempre y amplifica la caída (medido: ~65 requests/hora durante 5 h seguidas en DEV).
+ * Ver `authRefreshBreaker.ts` para el detalle del bug y del fix.
+ */
+export const cortacircuitosRefresco = new CortacircuitosRefresco({
+  onEstado: (detalle: DetalleEstado) => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent<DetalleEstado>(EVENTO_ESTADO_REFRESCO, { detail: detalle }))
+  },
+})
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+  },
+  global: {
+    // Solo intercepta el refresco de sesión; el resto de las requests pasan sin tocar.
+    fetch: envolverFetchConCortacircuitos((...args) => fetch(...args), cortacircuitosRefresco),
   },
 })
 

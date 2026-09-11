@@ -702,6 +702,45 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 
 ---
 
+## 💵 Los precios en USD se cobran al dólar COMPRA (v1.207.0, 2026-09-08)
+
+🛑 **REGLA #0.** El POS convertía los precios en USD al dólar **venta**, así que **le cobraba de más
+al cliente** en cada venta de un producto en dólares. No era una preferencia: la convención está
+escrita en `src/lib/cajaBoveda.ts` (relevamiento F2, G5 Fase 5) — **USD→ARS usa COMPRA**, ARS→USD usa
+venta.
+
+Lo importante del fix: **no alcanzaba con cambiar el precio del producto**. El valor en pesos de un
+*pago* en dólares salía de la misma tasa, así que arreglar solo una de las dos habría hecho que quien
+paga en dólares **sobrepague y salga vuelto de la nada**. Ahora hay **una sola tasa** —
+`tasaUsdAArs(compra, venta)`, expuesta por `useCotizacion` como `cotizacionUsdAArs`— para precio de
+producto, tiers mayoristas, combos y pagos.
+
+Fallback a la de venta a propósito: la carga **manual** de cotización solo escribe `cotizacion_usd`,
+sin compra; en ese caso ese único valor es la tasa que eligió el dueño.
+
+## 🔒 Una reserva siempre exige cliente (v1.207.0)
+
+La validación **ya existía** pero colgaba de `tenants.cliente_obligatorio`, y esa columna nace en
+`'nunca'` — el default del código (`'reservas'`) nunca llega a aplicarse porque la fila trae un valor
+explícito. Resultado: estaba apagada en los 9 tenants de PROD y se podía reservar mercadería a nombre
+de nadie.
+
+Ahora `estado === 'reservada'` exige cliente **siempre**, sin importar la config, con mensaje propio.
+La config sigue gobernando el resto de los casos.
+
+⚠ **No se puso guard en la DB a propósito**: `meli-webhook` y `mp-webhook` crean ventas, y hay 50
+reservas históricas sin cliente — un trigger rompería la ingesta de marketplace.
+
+## Cambiar el medio de pago ya no borra el monto (v1.207.0)
+
+Ese reset **no era un descuido**: lo puso la G5 Fase 4 por un hallazgo REGLA #0 real — cambiar
+"Efectivo $5000" → "Efectivo USD" dejaba `monto` en ARS y `montoUsd` vacío, y **la plata cobrada no se
+acreditaba en ninguna sesión de caja**.
+
+La distinción correcta no es "cambió el tipo" sino **"cambió la MONEDA"**:
+`conservaMontoAlCambiarMedio` (pura, con tests) conserva el monto entre medios en pesos y lo limpia
+solo si entra o sale un medio en dólares.
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

@@ -37,6 +37,25 @@ Token expira periódicamente. El worker hace refresh automático.
 
 ---
 
+## 🔒 Los tokens no los lee el frontend (mig 403, 2026-09-07)
+
+`meli_credentials.access_token` y `refresh_token` **los leía cualquier rol del tenant** —y también
+`anon`— con un `GET /rest/v1/meli_credentials?select=access_token`. Con ese token se opera la cuenta
+de Mercado Libre del comercio desde afuera de Genesis360: publicaciones, preguntas, órdenes. Es el
+mismo hallazgo que la mig 400 cerró para Mercado Pago y Tienda Nube; Mercado Libre había quedado
+afuera de esa migración.
+
+Desde la mig 403: privilegios a nivel **columna** — sin SELECT para `authenticated`/`anon`, solo
+`service_role` (que es quien lo usa: `meli-oauth-callback`, `meli-stock-worker`, `meli-webhook`,
+`meli-search-items`). La consulta de `ConfigPage` ya usaba lista explícita sin los tokens, así que el
+impacto fue cero.
+
+**Además, la escritura**: la tabla pasa a escribirse solo desde DUEÑO/ADMIN/SUPER_USUARIO. Antes, un
+CAJERO podía **desconectar la integración del comercio** con un PATCH directo.
+
+⚠ Toda consulta nueva a `meli_credentials` debe usar **lista explícita de columnas**: con
+`select('*')` PostgREST expande a todas y devuelve 403. Ver [[wiki/architecture/guards-server-side]].
+
 ## OAuth flow
 
 **EF `meli-oauth-callback`** (sin JWT):

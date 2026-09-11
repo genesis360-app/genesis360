@@ -7,6 +7,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useCotizacion } from '@/hooks/useCotizacion'
 import type { PeriodoDash, Moneda } from './FilterBar'
 import { getFechasDashboard } from './FilterBar'
 
@@ -59,9 +60,11 @@ const CustomTooltip = ({ active, payload, label, moneda, cotizacion }: any) => {
 export function VentasVsGastosChart({ periodo, moneda, cotizacion, customDesde, customHasta }: Props) {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
+  // La cotización REAL del tenant (el prop `cotizacion` llega ya neutralizado a 1 en modo ARS).
+  const { cotizacion: cotizacionReal } = useCotizacion()
 
   const { data: chartData = [], isLoading } = useQuery({
-    queryKey: ['ventas-gastos-chart', tenant?.id, periodo, customDesde, customHasta, sucursalId],
+    queryKey: ['ventas-gastos-chart', tenant?.id, periodo, customDesde, customHasta, sucursalId, cotizacionReal],
     queryFn: async () => {
       const custom = customDesde && customHasta ? { desde: customDesde, hasta: customHasta } : undefined
       const { desde, hasta } = getFechasDashboard(periodo, custom)
@@ -75,7 +78,7 @@ export function VentasVsGastosChart({ periodo, moneda, cotizacion, customDesde, 
         .gte('created_at', desde)
         .lte('created_at', hasta)
       let gastosQ = supabase.from('gastos')
-        .select('fecha, monto')
+        .select('fecha, monto, moneda')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdeDate)
         .lte('fecha', hastaDate)
@@ -93,8 +96,15 @@ export function VentasVsGastosChart({ periodo, moneda, cotizacion, customDesde, 
         const d = v.created_at.split('T')[0]
         ventasMap[d] = (ventasMap[d] ?? 0) + (v.total ?? 0)
       })
+      // G1 — cada gasto trae su propia `moneda` (mig 379) y el `monto` está expresado en ella:
+      // sumar un gasto de US$100 como $100 sería un dólar valiendo un peso. Se convierte a la
+      // cotización de hoy (esta serie es una vista en pesos); sin cotización cargada el gasto en
+      // dólares queda afuera en vez de entrar deformado.
       gastos?.forEach(g => {
-        gastosMap[g.fecha] = (gastosMap[g.fecha] ?? 0) + (g.monto ?? 0)
+        const monto = Number((g as any).monto ?? 0) || 0
+        const esUsd = String((g as any).moneda ?? 'ARS').toUpperCase() === 'USD'
+        const enPesos = esUsd ? (cotizacionReal > 0 ? monto * cotizacionReal : 0) : monto
+        gastosMap[g.fecha] = (gastosMap[g.fecha] ?? 0) + enPesos
       })
 
       // Generar rango de fechas

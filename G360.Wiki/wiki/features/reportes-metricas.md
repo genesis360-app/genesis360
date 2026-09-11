@@ -3,7 +3,7 @@ title: Reportes y Métricas
 category: features
 tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights, caja-usd]
 sources: [CLAUDE.md, migrations 155, 351, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
-updated: 2026-08-20
+updated: 2026-09-09
 ---
 
 # Reportes y Métricas
@@ -28,7 +28,8 @@ updated: 2026-08-20
 ### FilterBar
 Controla período/moneda/IVA de KPIs y gráficos:
 - Período: Hoy / 7D / 30D / Mes / Trimestre / Año / Custom (date pickers)
-- Moneda: ARS / USD (via `useCotizacion`)
+- Moneda: ARS / USD / **Real** (via `useCotizacion`; opciones centralizadas en `MONEDAS` de
+  `FilterBar.tsx` — ver "Modo Real" más abajo)
 - Modo IVA: con IVA / sin IVA
 
 ### 4 KPIs principales
@@ -422,6 +423,101 @@ Fase 7 no agrega migración) — el único punto abierto de todo el plan de 8 fa
 **Próximo paso: Fase 8** (C2, bloqueada por el contador).
 
 ---
+
+## 📊 "El Camino de la Venta" — redefinido (v1.207.0, 2026-09-08)
+
+El embudo contaba **la misma plata dos veces** y escondía otra. Las tres etapas no eran comparables:
+
+- **Presupuestado** sumaba el total de **todas** las ventas del período — reservas y ventas ya
+  cobradas incluidas. Una reserva pagada aparecía como "presupuesto".
+- **Pendiente de cobro** miraba solo ventas confirmadas: el saldo de las reservas no figuraba en
+  ningún lado.
+- **Pagado** sumaba el total completo de las ventas saldadas e ignoraba las **señas** ya cobradas.
+
+Redefinido con el criterio de Fede — cada etapa es una cosa distinta:
+
+| Etapa | Qué toma | Antes | Ahora |
+|---|---|---|---|
+| Presupuestado / Iniciado | **solo** los presupuestos del POS (`estado 'pendiente'`) | $7.099.245 | **$115.280** |
+| Pendiente de cobro | lo que **falta** cobrar (total − pagado) | $1.190.550 | **$1.229.650** |
+| Pagado / Cerrado | lo que **ya** se cobró, señas incluidas | $5.635.827 | **$5.750.658** |
+
+Y ahora **cierra**: pendiente + pagado = $6.980.308,02 = el total exacto de las ventas reales
+(despachadas + facturadas + reservadas). Antes no cerraba con nada.
+
+Dos detalles del fix que conviene no revertir sin pensarlos:
+- El gráfico colgaba de `presupuestado.count > 0`. Con la definición nueva, **un negocio que no usa
+  presupuestos habría perdido el embudo entero**; ahora renderiza si hay algo en cualquier etapa.
+- `min(pagado, total)` en la etapa Pagado: un sobrepago inflaría la etapa y rompería que
+  pendiente + pagado dé el total.
+
+⚠ **Criterio a confirmar con Fede**: en "pendiente de cobro" entran las reservas **y** las ventas
+confirmadas con saldo (típico cuenta corriente). Fede nombró las reservas; dejar afuera un saldo de CC
+escondería plata que el negocio tiene por cobrar.
+
+## ¿Por dónde compran? — porcentajes con un decimal (v1.207.0)
+
+Con canales que se reparten porcentajes parecidos, redondear a entero borraba la diferencia entre
+ellos. Ahora un decimal, formateado en es-AR.
+
+## 💵 Modo "Real" del filtro de moneda (v1.208.0, 2026-09-09) — G1
+
+Tercera opción del filtro Moneda, pedida por Fede: **mostrar los montos tal cual están, sin
+convertir nada, separando lo que fue en pesos de lo que fue en dólares**. No es una tercera
+moneda: son tres formas de leer los mismos números.
+
+| Modo | Qué muestra |
+|---|---|
+| **ARS** | Vista en pesos. Lo que nació en dólares se convierte a la cotización de HOY antes de sumar. |
+| **USD** | Lo mismo, dividido por la cotización de hoy. Dice cuánto vale hoy en dólares, **no** cuánta plata se movió en dólares. |
+| **Real** | Sin convertir nada: dos números separados, cada uno en su moneda, que nunca se suman entre sí. |
+
+El patrón no se inventó: ya existía en el KPI **"Ingreso Neto de Caja"** (dos acumuladores según
+`caja_movimientos.moneda`, el USD como leyenda aparte). Se extrajo a **`src/lib/dashMoneda.ts`**
+(`convDash`, `symDash`, `fmtDash`, `fmtUsdDash`, `sumarPorMonedaNativa`, `aVistaPesos`,
+`totalDelModo`, `separarVentasUsd`, `usdCobradoDeMedioPago`) y se aplicó en `DashVentasArea` y
+`DashGastosArea`. **Productos queda afuera**: no tiene toggle de moneda y Fede no lo mencionó.
+
+### 🐛 REGLA #0 — el área Gastos sumaba dólares como si fueran pesos
+
+`gastos.moneda` existe desde la **mig 379** y el `monto` está expresado en esa moneda (una compra
+de US$100 guarda 100), pero la query del Dashboard **ni leía la columna**: ese gasto sumaba $100 al
+total, con un dólar valiendo un peso. No se notaba porque hay **0 gastos en USD en DEV y PROD**,
+pero la columna ya está y el formulario de gasto suelto en USD es el próximo pendiente de Fede.
+
+Mismo defecto y mismo fix en otros dos lugares:
+- **`VentasVsGastosChart`** ("La Balanza", área Todo) — la serie diaria de gastos.
+- **`DashboardPage` → `gastosTotal`** — alimenta `rentabilidadNeta` y `margenNeto`: subestimaba el
+  gasto e **inflaba el margen**.
+
+Sin cotización cargada los dólares **quedan afuera del total con aviso en pantalla**, en vez de
+entrar deformados o desaparecer en silencio (`aVistaPesos` devuelve `usdSinConvertir`).
+
+### Ventas: el límite del dato, dicho de frente
+
+`ventas.total` está **siempre en pesos** y no hay columna `moneda` en `venta_items`: el sistema
+**no guarda cuánto de una venta fue realmente en dólares**. `cotizacion_usd` (mig 368) solo marca
+que hubo una conversión (producto priceado en USD **o** pago en USD). Entonces:
+
+- El modo Real saca esas ventas del número en pesos y las informa **aparte, como equivalente** —
+  nunca inventa una cifra en US$ dividiendo por la cotización. Mismo criterio que ya usaban el KPI
+  "Margen de Contribución" y "Ventas del mes" del área Todo.
+- La **única** cifra en dólares reales que existe es `monto_usd` de cada medio en `ventas.medio_pago`
+  (G5 Fase 4): los dólares efectivamente cobrados. Esa sí se muestra, aclarando que **no es plata
+  aparte** sino la misma vista en su moneda.
+- Los indicadores que no son plata (efectividad, nuevos vs recurrentes, heatmap) se calculan sobre
+  **todas** las ventas en los tres modos: dejar afuera a un cliente por haber comprado un producto
+  priceado en dólares lo haría figurar como "nuevo" la próxima vez.
+- El **ratio Gastos/Ventas** queda siempre en la vista en pesos: un % no se puede partir por moneda.
+
+### Verificación
+
+- **25 tests unitarios** — `tests/unit/dashMoneda.test.ts`. Mutación: mezclar monedas rompe 3.
+- **e2e mutante 143** — `143_dashboard_modo_real_usd_mutante.spec.ts`. Siembra un gasto y compara el
+  total **antes/después**: con el bug el delta da exactamente `777`; con el fix, `777 × cotización`.
+  Verificado mutando el código real. Lleva **control anti-vacío** (siembra primero en pesos): el
+  Dashboard filtra por sucursal activa y una siembra con `sucursal_id` null no aparece nunca — el
+  primer intento midió $0 justamente por eso.
 
 ## Links relacionados
 

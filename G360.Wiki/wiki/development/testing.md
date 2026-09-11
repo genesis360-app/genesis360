@@ -313,6 +313,50 @@ agruparAgingCC(ventas, ahoraMs)                             // G1 — buckets 0-
 
 ---
 
+## 🟥 Tests de RESILIENCIA — backend degradado (abierto 2026-09-06)
+
+Hasta el 2026-09-06 **toda** la cobertura de la app era funcional: las 142 specs e2e corren siempre contra
+un backend **sano** y prueban "¿anda la feature?". **Ninguna ejercitaba condiciones degradadas** — backend
+lento, caído, 5xx sostenido, sesión vencida, red intermitente (verificado con grep: ni una mencionaba
+`refresh_token`, sesión expirada, offline ni reintentos). Un bug que solo se manifiesta cuando el backend
+falla era, por construcción, invisible para esta suite. **No era un descuido puntual: faltaba una capa
+entera.**
+
+- ✅ `tests/unit/authRefreshBreaker.test.ts` (19) — **D1**, el cortacircuitos del refresco de sesión. El
+  test de regresión reproduce la caída real del 5/9 (ticker cada 30 s durante 5 h = 600 intentos) y exige
+  10 requests de red en total, no 600. Lógica pura con reloj/aleatorio/`fetch` inyectados: determinístico,
+  sin tenant ni backend. Ver [[wiki/architecture/resiliencia]].
+- ✅ `tests/e2e/142_resiliencia_backend_degradado.spec.ts` (5) — **D2 a D5**. Primera spec del repo que
+  **intercepta la red del browser** (`page.route`, `context.setOffline`): sesión vencida → login limpio,
+  503 sostenido, red intermitente y pestaña dormida/reanudada. No necesita romper el backend de verdad,
+  así que es determinista y no le agrega carga a DEV.
+  ⚠ **Cada presupuesto lleva un control anti-falso-verde** (`toBeGreaterThan(0)`) que prueba que el
+  intercept se activó: sin eso el test pasa **por vacío**, y pasó de verdad al escribirla.
+
+## 🟧 Tests de ROLES server-side — Tanda F (abierto 2026-09-06)
+
+Las specs por rol que ya existían (`13_rol_cajero`, `15_rol_supervisor`, `16_rol_rrhh`,
+`17_rol_deposito`, `18_rol_contador`) verifican positivo Y negativo, pero **todo por UI**. La UI se
+cachea y se bypassea: un token real + `curl` no pasa por ningún componente React.
+
+- ✅ `tests/e2e/141_roles_server_side_matriz.spec.ts` — API-only, 4 roles × 12 operaciones.
+  9 tests verdes de guards que sí funcionan + 4 huecos anotados con `test.fail()`.
+  **Sondas no mutantes**: PATCH con el mismo valor, INSERT con clave única duplicada, y el RPC de
+  cierre pidiendo el mes en curso. Detalle y hallazgos: [[wiki/architecture/guards-server-side]].
+- ⬜ F2 (matriz completa) y F3 (roles custom `rol_custom_id`) — F3 es prerrequisito para cerrar los
+  huecos F1-h2 a h5.
+
+## 🟧 Sonda de CARGA — Tanda E (abierto 2026-09-06)
+
+`scripts/stress-lectura.mjs` → `npm run stress:lectura`. N sesiones concurrentes con el mix de
+lecturas de la app; reporta p50/p95/p99, RPS y errores. Solo GET; se niega a correr contra PROD o con
+más de 20 sesiones sin `--si-se-que-hago`. **No es un test de regresión** (agrega carga real a la
+instancia): se corre a conciencia. Baseline y hallazgos: [[wiki/architecture/resiliencia]].
+
+> ⚠ **Regla que salió de las dos tandas: medir siempre con el rol RESTRINGIDO, no con el DUEÑO.**
+> El DUEÑO cortocircuita casi todos los chequeos de RLS (`auth_ve_todas_sucursales()`), así que da
+> verde y rápido sin decir nada. `venta_items` mide 2 ms como DUEÑO y 48 ms como CAJERO.
+
 ## Specs de negocio — `tests/specs/`
 
 Plan de escenarios testeables por módulo, generado por el agente `spec-extractor` desde el relevamiento + el código. Formato Given/When/Then con ID ligado al ítem del relevamiento, tipo (unit/e2e) y estado (cubierto/falta).
@@ -340,6 +384,30 @@ extraerMedioPago / extraerNumeroVenta       // parsing de concepto
 ```
 
 ---
+
+## 🌱 La foto de datos de la siembra de stock (`UBICACION_SIEMBRA`, 2026-09-08)
+
+Los 9 specs que siembran stock por UI (115, 116, 119, 122, 123, 128, 131, 132, 137) pasan por
+`ingresoRealPorUI` en `tests/e2e/helpers/fixtures.ts`. Ese fixture **no elige la ubicación a ciegas**:
+usa `UBICACION_SIEMBRA` (`'E2E Siembra'`), que crea él mismo si no existe.
+
+**Por qué**: antes agarraba `vals[0]` — la primera del dropdown — y en el tenant de prueba esa es
+`A-01-1`, **Mono-SKU**. El día que quedó ocupada por un producto de otro spec se cayeron los 9 de
+golpe, con un `toBeVisible` que no explicaba nada.
+
+La ubicación necesita **las cuatro** propiedades, y cada una se descubrió rompiéndose:
+
+- `mono_sku: false` — el choque original.
+- `sucursal_id: null` — global; el dropdown de Ingreso lista `sucursal_id.eq.<actual>` **OR**
+  `is.null`, así sirve en cualquier sucursal.
+- `disponible_surtido: true` y `tipo_logico: 'almacenamiento'` — **sin esto el ingreso entra pero el
+  POS no ofrece la línea**, y el spec falla recién al armar el carrito.
+
+> 🔍 **Técnica reusable**: cuando un spec falla con un `toBeVisible` mudo después de una acción que
+> muestra un toast, instrumentar el fixture para volcar
+> `page.locator('[class*="go"], [role="status"]').allTextContents()` justo después del click. El toast
+> ya se desvaneció cuando Playwright toma el snapshot del fallo, así que el motivo real no aparece en
+> el `error-context.md`.
 
 ## Links relacionados
 

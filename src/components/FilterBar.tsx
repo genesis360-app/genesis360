@@ -1,7 +1,10 @@
 // FilterBar — DS Sprint 3: período / moneda / IVA
 
 export type PeriodoDash = 'hoy' | '7d' | 'mes' | 'trimestre' | 'año' | 'custom'
-export type Moneda = 'ARS' | 'USD'
+// G1 — "modo real": 3ra opción del filtro de moneda (pedido de Fede). No es una tercera
+// moneda, es una forma de leer los mismos números sin convertir nada. El criterio y los
+// helpers viven en `src/lib/dashMoneda.ts` (ModoMoneda es el mismo tipo).
+export type Moneda = 'ARS' | 'USD' | 'REAL'
 export type IVAMode = 'incluido' | 'excluido'
 
 // ─── Helpers de fechas ────────────────────────────────────────────────────────
@@ -129,6 +132,13 @@ const PERIODOS: { key: PeriodoDash; label: string }[] = [
   { key: 'custom',    label: 'Custom' },
 ]
 
+// G1 — "Real" muestra cada moneda en su propio número, sin convertir (ver src/lib/dashMoneda.ts).
+export const MONEDAS: { key: Moneda; label: string }[] = [
+  { key: 'ARS',  label: 'ARS' },
+  { key: 'USD',  label: 'USD' },
+  { key: 'REAL', label: 'Real' },
+]
+
 function PillGroup<T extends string>({
   options,
   value,
@@ -194,7 +204,7 @@ export function FilterBar({
 
       <div className="h-5 w-px bg-border-ds hidden sm:block" />
       <PillGroup
-        options={[{ key: 'ARS' as Moneda, label: 'ARS' }, { key: 'USD' as Moneda, label: 'USD' }]}
+        options={MONEDAS}
         value={moneda}
         onChange={setMoneda}
       />

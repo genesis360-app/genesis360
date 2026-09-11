@@ -1,6 +1,6 @@
 ---
 name: portal-proveedores
-description: Portal externo para que un PROVEEDOR (identidad separada de `users`, puede vincularse a varios negocios) vea las Órdenes de Compra que un negocio le mandó y proponga precio por ítem — el staff revisa y "aplica" a mano, nunca se automatiza un compromiso de pago (REGLA #0). Identidad (mig 387, v1.188.0) + acceso real a OC/invitación/UI (mig 390, v1.195.0) — 2ª mitad de la propuesta de Fede del 25/8/2026, la otra mitad fue el Asistente de WhatsApp (ver [[wiki/features/asistente-whatsapp]]). ✅ EN PROD desde el 2026-09-01 (PR #335); Redirect URLs de Supabase Auth ya configuradas (2026-09-02). `APP_URL` hardcodeada en `invitar-proveedor` PARCIALMENTE arreglada (v1.195.2, 2026-09-02, código configurable + warning en logs), pero el problema de fondo (no hay frontend público de DEV) sigue sin resolver — ver más abajo.
+description: Portal externo para que un PROVEEDOR (identidad separada de `users`, puede vincularse a varios negocios) vea las Órdenes de Compra que un negocio le mandó y proponga precio por ítem — el staff revisa y "aplica" a mano, nunca se automatiza un compromiso de pago (REGLA #0). Identidad (mig 387, v1.188.0) + acceso real a OC/invitación/UI (mig 390, v1.195.0) — 2ª mitad de la propuesta de Fede del 25/8/2026, la otra mitad fue el Asistente de WhatsApp (ver [[wiki/features/asistente-whatsapp]]). ✅ EN PROD desde el 2026-09-01 (PR #335); Redirect URLs de Supabase Auth ya configuradas (2026-09-02). `APP_URL` hardcodeada en `invitar-proveedor` PARCIALMENTE arreglada (v1.195.2, 2026-09-02, código configurable + warning en logs; redeployada a PROD el 2026-09-04 junto con el deploy de v1.195.4, PR #340), pero el problema de fondo (no hay frontend público de DEV) sigue sin resolver — ver más abajo.
 sources: [migration 387, migration 387b, migration 387c, migration 390, supabase/functions/invitar-proveedor, supabase/functions/send-email, src/pages/PortalProveedoresPage.tsx, src/pages/ProveedoresPage.tsx, src/store/authStore.ts, src/App.tsx, tests/e2e/138_portal_proveedores_invitacion_mutante.spec.ts, tests/e2e/139_portal_proveedores_respuesta_precio_mutante.spec.ts]
 updated: 2026-09-02
 ---
@@ -145,7 +145,7 @@ Supabase (confirmado con capturas de pantalla): **PROD** (`jjffnbrdjchquexdfgwq`
 MISMA URL de producción — correcto a propósito, no un error (ver el bug de `APP_URL` hardcodeado justo
 abajo, que explica por qué el link mágico apunta siempre a PROD hoy). Ya no es un pendiente.
 
-## 🩹 `APP_URL` hardcodeado en `invitar-proveedor` — PARCIALMENTE arreglado (v1.195.2, 2026-09-02)
+## 🩹 `APP_URL` hardcodeado en `invitar-proveedor` — PARCIALMENTE arreglado (v1.195.2, 2026-09-02; código en PROD desde v1.195.4, 2026-09-04)
 
 Bug original (encontrado 2026-09-02, ver `log.md` para el detalle completo de ambas sesiones):
 `supabase/functions/invitar-proveedor/index.ts` línea 25 tenía `const APP_URL = 'https://genesis360.pro'`
@@ -171,8 +171,9 @@ nueva, fuera de alcance).
    `genesis360.pro`.
 2. `console.warn` NO bloqueante (constante `ES_DEV`) cuando la función corre en DEV, explicando en el log
    por qué la sesión del proveedor va a fallar — antes fallaba en silencio, sin rastro en logs.
-3. Deployado a la Edge Function de **DEV** (versión 2, `ACTIVE`). **NO deployado a PROD** todavía (pasa por
-   el flujo normal de PR `dev→main`).
+3. Deployado a la Edge Function de **DEV** (versión 2, `ACTIVE`) el 2026-09-02, y a la de **PROD** el
+   2026-09-04 (`supabase functions deploy invitar-proveedor --project-ref jjffnbrdjchquexdfgwq`, junto
+   con el deploy de v1.195.4, PR #340) — mismo código en ambos lados.
 
 **Sigue SIN resolver**: el problema de fondo (no hay frontend público de DEV) sigue igual. Invitar a un
 proveedor real desde un tenant de DEV va a seguir fallando al establecer la sesión del proveedor hasta que
@@ -196,5 +197,6 @@ proveedor real existe en DEV (tenant de prueba), y las invitaciones reales solo 
 
 **🚀 DEPLOYADO A PROD el 2026-09-01** (PR #335, mig 390 aplicada y verificada también en PROD;
 `APP_VERSION` `v1.195.0`). Redirect URLs de Supabase Auth ya configuradas (arriba). El fix de `APP_URL`
-(v1.195.2) solo está en `dev`, sin deploy a PROD todavía — sin impacto real porque PROD no tiene el bug
-(siempre habló consigo mismo).
+(v1.195.2) llegó a PROD el 2026-09-04 (PR #340, `v1.195.4`) — Edge Function redeployada, mismo código que
+DEV. Sin impacto real esperado porque PROD siempre habló consigo mismo (nunca tuvo el bug de JWT
+cross-ambiente); el problema de fondo para DEV (sin frontend público) sigue sin resolver.

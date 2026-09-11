@@ -561,6 +561,38 @@ gastos.conciliado_iva BOOLEAN
 
 ---
 
+## 🔒 Quién puede tocar lo fiscal (mig 402, 2026-09-07) — Tanda F
+
+Hasta la mig 402 el núcleo fiscal estaba protegido **solo por la UI**: `emisores_fiscales`,
+`tenant_certificates` y `puntos_venta_afip` tenían UNA policy `FOR ALL` que miraba el tenant y nada
+más. Con el `access_token` de cualquier rol (CAJERO, DEPÓSITO, RRHH, CONTADOR, LECTOR) y `curl` se
+podía cambiar el **CUIT**, la **condición de IVA** y el **umbral de Factura B**, prender
+**`afip_produccion`** (CAE fiscal REAL e irreversible), borrar el certificado AFIP y tocar los puntos
+de venta. Y del bucket `certificados-afip` se **descargaba la clave privada** — con cert + key se firma
+el WSAA y se factura como ese CUIT desde afuera de Genesis360.
+
+Cómo quedó:
+
+| Objeto | Leer | Escribir |
+|---|---|---|
+| `emisores_fiscales` | todo el tenant (el POS lo necesita para facturar) | DUEÑO / ADMIN / SUPER_USUARIO |
+| `emisores_fiscales.afipsdk_token` | **nadie** (ni el DUEÑO) — solo `service_role` | ídem |
+| `tenant_certificates` | todo el tenant (solo son rutas) | DUEÑO / ADMIN / SUPER_USUARIO |
+| `puntos_venta_afip` | todo el tenant | DUEÑO / ADMIN / SUPER_USUARIO |
+| bucket `certificados-afip` | DUEÑO / ADMIN / SUPER_USUARIO, **su propia carpeta** | ídem |
+
+El **token de AfipSDK es un secreto de solo escritura**: se carga y se reemplaza, nunca se relee desde
+el browser. La pantalla usa la columna generada **`afipsdk_token_configurado`** para mostrar
+"Configurado", el campo del formulario arranca **vacío** (vacío = "no lo toques" — si no, cualquier
+guardado borraría el token que el browser ya no puede leer) y hay un botón explícito para quitarlo.
+La copia legacy `tenants.afipsdk_token` quedó vaciada y forzada a NULL por trigger.
+
+⚠ **Gotcha para el futuro**: cualquier consulta nueva a `emisores_fiscales` tiene que usar **lista
+explícita de columnas**. Con `select('*')` PostgREST expande a todas las columnas, toca el token y
+devuelve **403**. Cubierto por `tests/e2e/141_roles_server_side_matriz.spec.ts`.
+
+Detalle completo: [[wiki/architecture/guards-server-side]].
+
 ## Modo de emisión: homologación vs producción (v1.60.0)
 
 El módulo SIEMPRE operó contra **homologación** (sandbox de AFIP — los CAE no tienen
@@ -572,9 +604,10 @@ valor fiscal). El pase a **producción** (CAE fiscal real) ahora es un interrupt
 - **`AFIP_FORCE_HOMOLOGACION=true`** (env var de la EF) = freno de emergencia GLOBAL
   que fuerza homologación para todos. Nunca prende producción.
 - **UI:** Config → Facturación → banda "Modo de emisión" (DUEÑO). Pasar a producción
-  exige CUIT + Token AfipSDK guardados y una confirmación explícita (checkbox de
-  reconocimiento de que se emiten comprobantes fiscales reales). Volver a homologación
-  es directo (seguro).
+  exige el **CUIT guardado + la credencial del circuito del emisor** (v1.203.0): certificado
+  AFIP activo si `afip_provider='propio'`, Token AfipSDK si es `'afipsdk'`. Más una confirmación
+  explícita (checkbox de reconocimiento de que se emiten comprobantes fiscales reales). Volver a
+  homologación es directo (seguro).
 - **Por qué por-tenant y no la env var global anterior (`AFIP_PRODUCTION`):** prenderla
   globalmente pasaba a TODOS los tenants con facturación habilitada a emitir real de
   golpe. El flag por-tenant permite habilitar producción **un cliente a la vez**.
@@ -650,13 +683,13 @@ por SQL. **Desde mig 265 (2026-07-10) es el DEFAULT para tenants nuevos y ya est
 en los 17 tenants existentes** — en la práctica no hace falta tocarlo. Para volver un tenant
 puntual a `'afipsdk'` (rollback), hay que pedirlo (UPDATE por SQL, sin deploy).
 
-**5. ⚠ Gotcha conocido — toggle "Modo PRODUCCIÓN/PRUEBA":** el chequeo de habilitación de este
-toggle (`afipDatosListos`, `ConfigPage.tsx:883`) exige **CUIT + Token AfipSDK guardados**, sin
-contemplar que el circuito propio no usa ese token para nada. Mientras el tenant esté en
-homologación (recomendado para seguir probando) no afecta. Si en algún momento hace falta pasar
-un tenant 100%-propio a producción real sin cargar nunca un Token AfipSDK, hay 2 salidas: (a)
-arreglar ese chequeo en el código para que sea propio-aware, o (b) setear
-`tenants.afip_produccion=true` directo por SQL, salteando el toggle de la UI.
+**5. ✅ Gotcha del toggle "Modo PRODUCCIÓN/PRUEBA" — RESUELTO en v1.203.0 (era la salida (a)).**
+`afipDatosListos` exigía **CUIT + Token AfipSDK guardados**, sin contemplar que el circuito propio
+no usa ese token para nada. Como los 9 tenants de PROD están en `'propio'` y **ninguno tiene token
+cargado**, en los hechos *nadie* podía pasar a producción desde la UI aunque tuviera el certificado
+en regla — un bloqueador para el primer cliente real. Ahora el chequeo es **provider-aware**:
+`'propio'` → pide certificado AFIP activo del emisor; `'afipsdk'` → pide el token. Ya **no** hace
+falta el workaround de setear `tenants.afip_produccion=true` por SQL.
 
 **Resumen mínimo para que funcione:** CUIT + Condición IVA + ≥1 Punto de venta + Certificado
 (.crt+.key) + toggle "Habilitada". Nada de Token AfipSDK, nada de tocar `afip_provider` (ya está

@@ -16,7 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible, UBICACION_SIEMBRA, garantizarUbicacionSiembra } from './helpers/fixtures'
 
 test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => {
   test('exige elegir el color antes de rebajar y consume solo la línea elegida', async ({ page, request }) => {
@@ -44,7 +44,8 @@ test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => 
     const ingresar = async (cantidad: number, color: string) => {
       await goto(page, '/inventario')
       await waitForApp(page)
-      await page.getByRole('button', { name: 'Agregar stock' }).first().click()
+      await garantizarUbicacionSiembra(page)
+    await page.getByRole('button', { name: 'Agregar stock' }).first().click()
       const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
       await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
       test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
@@ -68,13 +69,11 @@ test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => 
       // (`cargarLineasParaRebaje`) excluye líneas con ubicacion_id NULL en modo avanzado — sin
       // esto las 2 líneas quedan invisibles para `atributoAmbiguoEnLineas` y la ambigüedad nunca
       // se detecta (encontrado corriendo este spec: el rebaje pasaba sin pedir el color).
+      // La ubicación NO se elige a ciegas (`vals[0]`): la primera del tenant de prueba es Mono-SKU y,
+      // cuando queda ocupada por otro spec, el ingreso se rechaza con un toast que se desvanece.
+      // Se usa la ubicación dedicada de siembra — ver UBICACION_SIEMBRA en helpers/fixtures.ts.
       const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-      if (await visible(ubicSelect, 2000)) {
-        const vals = await ubicSelect.locator('option').evaluateAll(
-          opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
-        )
-        if (vals.length > 0) await ubicSelect.selectOption(vals[0])
-      }
+      if (await ubicSelect.isVisible().catch(() => false)) await ubicSelect.selectOption({ label: UBICACION_SIEMBRA })
 
       await page.locator('input[type="number"][placeholder="0"]').first().fill(String(cantidad))
 

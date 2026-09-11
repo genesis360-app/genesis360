@@ -26,6 +26,30 @@ export function calcularConversionUsd(
   return { montoDestino: montoOrigen / cotizacionVenta, tasaUsada: cotizacionVenta }
 }
 
+/**
+ * Tasa a la que el negocio pasa USD → ARS: **COMPRA**.
+ *
+ * Es la misma convención que `calcularConversionUsd` de arriba (relevamiento F2, G5 Fase 5): cuando
+ * el negocio RECIBE dólares y los valúa en pesos usa la de compra, como una casa de cambio real.
+ * Aplica a las tres cosas del POS, y tienen que coincidir entre sí o la cuenta no cierra:
+ *   · el precio de un producto cargado en USD,
+ *   · los tiers mayoristas y combos con montos en USD,
+ *   · el valor en pesos de un pago recibido en dólares.
+ *
+ * 🐛 Hallazgo de Fede (2026-09-08): el POS convertía al dólar **venta**, así que le cobraba de más
+ * al cliente respecto de la regla del negocio. Si se arreglara solo el precio y no el pago, un
+ * cliente que paga en dólares sobrepagaría y saldría vuelto de la nada — por eso la tasa es UNA.
+ *
+ * Fallback a la de venta a propósito: la carga MANUAL de cotización (`useCotizacion.guardar`) solo
+ * escribe `cotizacion_usd`, sin compra. En ese caso ese único valor ES la tasa que eligió el dueño.
+ * Mismo criterio que ya usaba `GastosPage` (`cotizacion_usd_compra || cotizacion_usd`).
+ */
+export function tasaUsdAArs(cotizacionCompra: number | null | undefined, cotizacionVenta: number | null | undefined): number {
+  const compra = Number(cotizacionCompra) || 0
+  if (compra > 0) return compra
+  return Number(cotizacionVenta) || 0
+}
+
 // Busca la sesión permanente de una Caja Fuerte (por moneda); si no existe, la crea con la
 // `moneda` stampeada explícitamente (antes de esta fase, los 4 sitios que creaban esta sesión
 // nunca la seteaban — quedaban en el default 'ARS' de la columna, lo que hoy rechazaría el

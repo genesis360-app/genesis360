@@ -835,7 +835,9 @@ export default function ConfigPage() {
   const [bizRazonSocial,     setBizRazonSocial]     = useState<string>((tenant as any)?.razon_social_fiscal ?? '')
   const [bizDomicilioFiscal, setBizDomicilioFiscal] = useState<string>((tenant as any)?.domicilio_fiscal ?? '')
   const [bizUmbralB,         setBizUmbralB]         = useState<string>(String((tenant as any)?.umbral_factura_b ?? '68305.16'))
-  const [bizAfipToken,       setBizAfipToken]       = useState<string>((tenant as any)?.afipsdk_token ?? '')
+  // Secreto de solo-escritura (mig 402): el browser ya no puede leer el token, así que el campo
+  // arranca vacío SIEMPRE y "vacío" = "no lo toques".
+  const [bizAfipToken,       setBizAfipToken]       = useState<string>('')
   const [showAfipToken,      setShowAfipToken]      = useState(false)
   // Logo del negocio (sale en factura + presupuesto) — bucket `logos`
   const [bizLogoUrl,         setBizLogoUrl]         = useState<string>((tenant as any)?.logo_url ?? '')
@@ -867,7 +869,6 @@ export default function ConfigPage() {
     setBizRazonSocial(tAny.razon_social_fiscal ?? '')
     setBizDomicilioFiscal(tAny.domicilio_fiscal ?? '')
     setBizUmbralB(String(tAny.umbral_factura_b ?? '68305.16'))
-    setBizAfipToken(tAny.afipsdk_token ?? '')
     setBizLogoUrl(tAny.logo_url ?? '')
     setBizIngBrutos(tAny.ingresos_brutos ?? '')
     setBizInicioAct((tAny.inicio_actividades ?? '').slice(0, 10))
@@ -880,7 +881,7 @@ export default function ConfigPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     tAny?.cuit, tAny?.condicion_iva_emisor, tAny?.razon_social_fiscal, tAny?.domicilio_fiscal,
-    tAny?.umbral_factura_b, tAny?.afipsdk_token, tAny?.logo_url, tAny?.ingresos_brutos,
+    tAny?.umbral_factura_b, tAny?.logo_url, tAny?.ingresos_brutos,
     tAny?.inicio_actividades, tAny?.sitio_web, tAny?.banco, tAny?.cbu, tAny?.alias_cbu,
     tAny?.leyenda_comprobante, tAny?.afip_produccion,
   ])
@@ -1190,7 +1191,6 @@ export default function ConfigPage() {
         razon_social_fiscal: bizRazonSocial.trim() || null,
         domicilio_fiscal: bizDomicilioFiscal.trim() || null,
         umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
-        afipsdk_token: bizAfipToken.trim() || null,
         ingresos_brutos: bizIngBrutos.trim() || null,
         inicio_actividades: bizInicioAct || null,
         banco: bizBanco.trim() || null,
@@ -1198,14 +1198,18 @@ export default function ConfigPage() {
         alias_cbu: bizAliasCbu.trim() || null,
         leyenda_comprobante: bizLeyenda.trim() || null,
       }
+      // El token de AfipSDK solo viaja si el usuario escribió uno: es de solo-escritura (mig 402)
+      // y el campo arranca vacío, así que mandarlo siempre BORRARÍA el que ya estaba guardado.
+      const tokenNuevo = bizAfipToken.trim()
+      const identidadConToken = tokenNuevo ? { ...identidad, afipsdk_token: tokenNuevo } : identidad
       if (cuit) {
         // Fuente única: la identidad va a emisores_fiscales (el espejo DB actualiza tenants.*)
         const defId = await emisorDefaultId()
         const { error } = defId
           ? await supabase.from('emisores_fiscales')
-              .update({ ...identidad, updated_at: new Date().toISOString() }).eq('id', defId)
+              .update({ ...identidadConToken, updated_at: new Date().toISOString() }).eq('id', defId)
           : await supabase.from('emisores_fiscales').insert({
-              ...identidad,
+              ...identidadConToken,
               tenant_id: tenant!.id,
               nombre: identidad.razon_social_fiscal ?? tenant?.nombre ?? 'Emisor principal',
               es_default: true, activo: true,
@@ -1218,6 +1222,8 @@ export default function ConfigPage() {
       } else {
         // Sin CUIT no hay identidad fiscal que representar → legacy: solo tenants
         // (cuando cargue el CUIT, el save crea el emisor default con TODO el form)
+        // 🛑 `identidad` acá va SIN token a propósito: `tenants.afipsdk_token` es una copia
+        // legible por todo el tenant y quedó deprecada (mig 402). El token vive en el emisor.
         const { error } = await supabase.from('tenants').update({
           ...identidad, sitio_web: bizSitioWeb.trim() || null,
         }).eq('id', tenant!.id)
@@ -1225,6 +1231,8 @@ export default function ConfigPage() {
       }
       const data = await refrescarTenant()
       setBizAfipProduccion(data.afip_produccion ?? bizAfipProduccion)
+      setBizAfipToken('')            // no dejar el secreto tipeado en memoria del form
+      await refetchEmisorDefault()   // refrescar el "Configurado" del resumen
       toast.success('Datos fiscales guardados')
     } catch (err: any) {
       // El PostgrestError NO es instanceof Error → leer .message directo (lección del alta de
@@ -1235,8 +1243,6 @@ export default function ConfigPage() {
     }
   }
 
-  // Modo de emisión: pasar a producción exige CUIT + token GUARDADOS (no solo tipeados)
-  const afipDatosListos = !!(tenant as any)?.cuit && !!(tenant as any)?.afipsdk_token
   const persistAfipProduccion = async (nuevoValor: boolean) => {
     setSavingProd(true)
     try {
@@ -1274,7 +1280,9 @@ export default function ConfigPage() {
     }
     // Pasar a PRODUCCIÓN → confirmación explícita
     if (!afipDatosListos) {
-      toast.error('Primero guardá CUIT y Token AfipSDK antes de pasar a producción')
+      toast.error(afipProviderEmisor === 'propio'
+        ? 'Primero guardá el CUIT y cargá el certificado AFIP del emisor antes de pasar a producción'
+        : 'Primero guardá el CUIT y el Token AfipSDK antes de pasar a producción')
       return
     }
     setProdAck(false)
@@ -2459,12 +2467,15 @@ export default function ConfigPage() {
   // Multi-CUIT (F5): el emisor PRINCIPAL del tenant (es_default). Las secciones de
   // certificado y puntos de venta de este tab operan sobre ÉL; los emisores adicionales
   // se gestionan en EmisoresFiscalesPanel (cert y PV propios por emisor).
-  const { data: emisorDefault } = useQuery({
+  const { data: emisorDefault, refetch: refetchEmisorDefault } = useQuery({
     queryKey: ['emisor-fiscal-default', tenant?.id],
     queryFn: async () => {
+      // `afipsdk_token_configurado` es la columna GENERADA (mig 402): dice si hay token cargado
+      // sin devolver el token, que ya no tiene SELECT para el frontend.
       const { data } = await supabase.from('emisores_fiscales')
-        .select('id').eq('tenant_id', tenant!.id).eq('es_default', true).maybeSingle()
-      return data as { id: string } | null
+        .select('id, afip_provider, afipsdk_token_configurado')
+        .eq('tenant_id', tenant!.id).eq('es_default', true).maybeSingle()
+      return data as unknown as { id: string; afip_provider: string; afipsdk_token_configurado: boolean } | null
     },
     enabled: !!tenant && tab === 'facturacion',
   })
@@ -2483,6 +2494,19 @@ export default function ConfigPage() {
     },
     enabled: !!tenant && tab === 'facturacion',
   })
+
+  // 🛑 Qué credencial hace falta para pasar a PRODUCCIÓN AFIP depende del CIRCUITO del emisor:
+  //   • 'propio'  → la EF firma el WSAA con el CERTIFICADO del emisor. El token no se usa nunca.
+  //   • 'afipsdk' → delega en afipsdk.com, y ahí sí hace falta el token.
+  // Hasta acá se exigía el token SIEMPRE. Como los 9 tenants de PROD están en 'propio' y ninguno
+  // tiene token cargado (medido), NADIE podía pasar a producción desde la UI aunque tuviera el
+  // certificado en regla: el gate pedía una credencial que su circuito ni usa.
+  // Se mira el dato GUARDADO (emisor / store), no lo tipeado en el form — eso no cambió.
+  const afipProviderEmisor = emisorDefault?.afip_provider ?? ((tenant as any)?.afip_provider ?? 'propio')
+  const afipCredencialLista = afipProviderEmisor === 'propio'
+    ? !!tenantCert?.activo
+    : !!emisorDefault?.afipsdk_token_configurado
+  const afipDatosListos = !!(tenant as any)?.cuit && afipCredencialLista
 
   const { data: puntosVentaAfipTodos = [], refetch: refetchPV } = useQuery({
     queryKey: ['puntos-venta-afip-config', tenant?.id],
@@ -2806,6 +2830,69 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'conectividad',
   })
 
+  // Sección G (mig 391): consumo del mes en curso. Lee `vw_consumo_mensual`, que ya viene agregada y
+  // con security_invoker — la RLS de consumo_eventos aísla por tenant, no hace falta filtrar acá por
+  // seguridad (el .eq es para acotar la query, no para aislar).
+  const periodoActual = new Date().toISOString().slice(0, 8) + '01'
+  const { data: waConsumo } = useQuery({
+    queryKey: ['consumo_mensual', tenant?.id, periodoActual],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('vw_consumo_mensual')
+        .select('concepto, moneda, cantidad, costo_facturable, costo_total, eventos, eventos_sin_tarifa')
+        .eq('tenant_id', tenant!.id)
+        .eq('periodo', periodoActual)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'conectividad' && !!waCred?.conectado,
+  })
+
+  // Números autorizados a hablarle al asistente (mig 392). Un número fuera de esta lista se ignora
+  // en silencio ANTES de gastar tokens de IA. Escritura gateada a DUEÑO/ADMIN por RLS además de acá.
+  const { data: waAutorizados } = useQuery({
+    queryKey: ['whatsapp_numeros_autorizados', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('whatsapp_numeros_autorizados')
+        .select('id, numero, nombre, activo')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'conectividad' && !!waCred?.conectado,
+  })
+
+  const [waNuevoNumero, setWaNuevoNumero] = useState('')
+  const [waNuevoNombre, setWaNuevoNombre] = useState('')
+
+  const agregarNumeroWA = useMutation({
+    mutationFn: async () => {
+      // Meta manda `from` en dígitos puros (ej. 5491166100297) — normalizamos igual acá para que
+      // matchee, y el CHECK de la migración lo blinda del lado del servidor.
+      const numero = waNuevoNumero.replace(/\D/g, '')
+      if (!/^[0-9]{6,20}$/.test(numero)) throw new Error('Número inválido — ingresalo con código de país, sin espacios ni símbolos')
+      const { error } = await supabase.from('whatsapp_numeros_autorizados').insert({
+        tenant_id: tenant!.id, numero, nombre: waNuevoNombre.trim() || null,
+      })
+      if (error) throw new Error(error.code === '23505' ? 'Ese número ya está en la lista' : error.message)
+    },
+    onSuccess: () => {
+      toast.success('Número autorizado')
+      setWaNuevoNumero(''); setWaNuevoNombre('')
+      qc.invalidateQueries({ queryKey: ['whatsapp_numeros_autorizados'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const quitarNumeroWA = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('whatsapp_numeros_autorizados').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Número quitado'); qc.invalidateQueries({ queryKey: ['whatsapp_numeros_autorizados'] }) },
+    onError: () => toast.error('No se pudo quitar el número'),
+  })
+
   const [waConnecting, setWaConnecting] = useState(false)
 
   const conectarWhatsapp = async () => {
@@ -3075,8 +3162,10 @@ export default function ConfigPage() {
   const { data: modoCred, refetch: refetchModo } = useQuery({
     queryKey: ['modo_credentials', tenant?.id],
     queryFn: async () => {
+      // Sin `api_key`: es un secreto de solo escritura (mig 403) y la UI nunca la mostró — el form
+      // de reconfigurar ya arrancaba vacío y exige tipearla de nuevo.
       const { data } = await supabase.from('modo_credentials')
-        .select('id, merchant_id, api_key, ambiente, conectado, conectado_at')
+        .select('id, merchant_id, ambiente, conectado, conectado_at')
         .eq('tenant_id', tenant!.id).maybeSingle()
       return data
     },
@@ -3552,14 +3641,17 @@ export default function ConfigPage() {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
                     <div className="relative">
                       <input type={showAfipToken ? 'text' : 'password'} value={bizAfipToken} onChange={e => setBizAfipToken(e.target.value)}
-                        placeholder="Token de afipsdk.com"
+                        placeholder={emisorDefault?.afipsdk_token_configurado ? '•••••••• (hay uno guardado)' : 'Token de afipsdk.com'}
                         className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       <button type="button" onClick={() => setShowAfipToken(v => !v)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         <Eye size={14} />
                       </button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Solo hace falta con el circuito AfipSDK; con el circuito propio se usa el certificado.
+                      {emisorDefault?.afipsdk_token_configurado && ' Por seguridad no se muestra: dejalo vacío para conservar el que está guardado.'}
+                    </p>
                   </div>
                 </div>
                 {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
@@ -3634,7 +3726,9 @@ export default function ConfigPage() {
                     <CampoResumenFiscal label="Condición IVA" value={tAny.condicion_iva_emisor ? (CONDICION_IVA_LABEL[tAny.condicion_iva_emisor] ?? tAny.condicion_iva_emisor) : null} />
                     <CampoResumenFiscal label="Domicilio fiscal" value={tAny.domicilio_fiscal} />
                     <CampoResumenFiscal label="Umbral Factura B" value={tAny.umbral_factura_b ? `$${Number(tAny.umbral_factura_b).toLocaleString('es-AR')}` : null} />
-                    <CampoResumenFiscal label="Token AfipSDK" value={tAny.afipsdk_token ? 'Configurado' : null} />
+                    {/* El token no se puede leer desde el browser (mig 402): lo que llega es el
+                        booleano de la columna generada. */}
+                    <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
                     <CampoResumenFiscal label="Ingresos Brutos" value={tAny.ingresos_brutos} />
                     <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(tAny.inicio_actividades).toLocaleDateString('es-AR') : null} />
                     <CampoResumenFiscal label="Banco" value={tAny.banco} />
@@ -3689,7 +3783,11 @@ export default function ConfigPage() {
                 />
               </div>
               {!afipDatosListos && !bizAfipProduccion && (
-                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">Cargá y guardá CUIT + Token AfipSDK para poder pasar a producción.</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                  {afipProviderEmisor === 'propio'
+                    ? 'Cargá y guardá el CUIT y el certificado AFIP del emisor para poder pasar a producción.'
+                    : 'Cargá y guardá el CUIT y el Token AfipSDK para poder pasar a producción.'}
+                </p>
               )}
             </div>
           </div>
@@ -3708,7 +3806,7 @@ export default function ConfigPage() {
                 <ul className="text-xs text-gray-500 dark:text-gray-400 mt-3 space-y-1 list-disc pl-5">
                   <li>El CUIT debe estar <strong>activo</strong> y habilitado para Facturación Electrónica.</li>
                   <li>El certificado de producción debe estar autorizado en AFIP (Administrador de Relaciones).</li>
-                  <li>El Token AfipSDK debe ser de <strong>producción</strong>.</li>
+                  {afipProviderEmisor !== 'propio' && <li>El Token AfipSDK debe ser de <strong>producción</strong>.</li>}
                 </ul>
                 <label className="flex items-start gap-2 mt-4 cursor-pointer">
                   <input type="checkbox" checked={prodAck} onChange={e => setProdAck(e.target.checked)} className="mt-0.5" />
@@ -7555,11 +7653,132 @@ export default function ConfigPage() {
               </div>
             )}
 
+            {/* Números autorizados (mig 392). Un número fuera de la lista se ignora en silencio
+                ANTES de llamar a Claude — sin esto, cualquiera que consiga el número gasta tokens,
+                consulta el stock real y genera borradores de gasto. */}
+            {waCred?.conectado && (
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2.5">
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200">Quién puede usar el asistente</h4>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    Los mensajes de otros números se ignoran sin responder y sin consumir.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  {(waAutorizados ?? []).length === 0 ? (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Sin números cargados — por ahora responde a cualquiera que escriba.
+                    </p>
+                  ) : (waAutorizados ?? []).map((n: any) => (
+                    <div key={n.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-gray-600 dark:text-gray-300 truncate">
+                        <span className="tabular-nums">+{n.numero}</span>
+                        {n.nombre && <span className="text-gray-400 dark:text-gray-500"> · {n.nombre}</span>}
+                      </span>
+                      {user?.rol === 'DUEÑO' && (
+                        <button
+                          onClick={async () => { if (await confirmar(`¿Quitar +${n.numero} de la lista?`, { danger: true })) quitarNumeroWA.mutate(n.id) }}
+                          disabled={quitarNumeroWA.isPending}
+                          title="Quitar"
+                          className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors flex-shrink-0">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {user?.rol === 'DUEÑO' && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input
+                      value={waNuevoNumero}
+                      onChange={e => setWaNuevoNumero(e.target.value)}
+                      placeholder="5491122334455"
+                      inputMode="numeric"
+                      className="flex-1 min-w-[130px] text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600"
+                    />
+                    <input
+                      value={waNuevoNombre}
+                      onChange={e => setWaNuevoNombre(e.target.value)}
+                      placeholder="Nombre (opcional)"
+                      className="flex-1 min-w-[110px] text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600"
+                    />
+                    <button
+                      onClick={() => agregarNumeroWA.mutate()}
+                      disabled={agregarNumeroWA.isPending || !waNuevoNumero.trim()}
+                      className="text-xs px-3 py-1.5 bg-[#25D366] hover:bg-[#1fb959] text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex-shrink-0">
+                      Agregar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Sección G (mig 391): consumo del mes. Cada moneda se muestra por separado —
+                Meta factura en ARS y Anthropic en USD, y NO se convierten ni se mezclan. */}
+            {waCred?.conectado && waConsumo && waConsumo.length > 0 && (() => {
+              const ETIQUETAS: Record<string, string> = {
+                whatsapp_service: 'Respuestas del asistente',
+                whatsapp_utility: 'Avisos de utilidad',
+                whatsapp_marketing: 'Mensajes promocionales',
+                whatsapp_authentication: 'Códigos de verificación',
+                ia_tokens_in: 'IA · tokens de entrada',
+                ia_tokens_out: 'IA · tokens de salida',
+                audio_transcripcion: 'Transcripción de audio',
+              }
+              // El `numeric` de Postgres llega como string — normalizar antes de sumar.
+              const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+              const monedas = [...new Set(waConsumo.map((r: any) => r.moneda))].sort()
+              const sinTarifa = waConsumo.reduce((a: number, r: any) => a + num(r.eventos_sin_tarifa), 0)
+
+              return (
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2.5">
+                  <div className="flex items-baseline justify-between">
+                    <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-200">Consumo del mes</h4>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">Costo de plataforma</span>
+                  </div>
+
+                  {monedas.map((moneda: any) => {
+                    const filas = waConsumo.filter((r: any) => r.moneda === moneda)
+                    const total = filas.reduce((a: number, r: any) => a + num(r.costo_facturable), 0)
+                    return (
+                      <div key={moneda} className="space-y-1">
+                        {filas.map((r: any) => (
+                          <div key={r.concepto} className="flex items-baseline justify-between gap-3 text-xs">
+                            <span className="text-gray-500 dark:text-gray-400 truncate">
+                              {ETIQUETAS[r.concepto] ?? r.concepto}
+                              <span className="text-gray-300 dark:text-gray-600"> · {num(r.eventos)}</span>
+                            </span>
+                            <span className="text-gray-600 dark:text-gray-300 tabular-nums flex-shrink-0">
+                              {moneda === 'USD' ? 'US$' : '$'}{num(r.costo_facturable).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="flex items-baseline justify-between gap-3 text-xs font-semibold border-t border-dashed border-gray-100 dark:border-gray-700 pt-1">
+                          <span className="text-gray-600 dark:text-gray-300">Total {moneda}</span>
+                          <span className="text-gray-800 dark:text-gray-100 tabular-nums">
+                            {moneda === 'USD' ? 'US$' : '$'}{total.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {sinTarifa > 0 && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      {sinTarifa} evento{sinTarifa === 1 ? '' : 's'} sin tarifa configurada — su costo figura en $0 hasta completar el rate card.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+
             {waCred?.conectado && (
               <p className="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-2.5">
                 Recordá agregar un método de pago en{' '}
                 <a href="https://business.facebook.com/wa/manage/home/" target="_blank" rel="noreferrer" className="text-[#25D366] hover:underline">WhatsApp Manager</a>
-                {' '}— desde el 1° de octubre de 2026 Meta cobra los mensajes salientes.
+                {' '}— desde el 1° de octubre de 2026 Meta también cobra las respuestas dentro de la ventana de 24 h, que hoy son gratis.
               </p>
             )}
           </div>

@@ -33,7 +33,7 @@ const PNG_1x1 = Buffer.from(
   'base64',
 )
 
-interface Ctx { headers: Record<string, string>; token: string; tenantId: string; sucursalId: string | null }
+interface Ctx { headers: Record<string, string>; headersOwner: Record<string, string>; token: string; tenantId: string; sucursalId: string | null }
 
 async function ctxDeposito(page: any, request: any): Promise<Ctx> {
   await goto(page, '/inventario')
@@ -45,12 +45,23 @@ async function ctxDeposito(page: any, request: any): Promise<Ctx> {
   const [me] = (await meRes.json()) as Array<{ tenant_id: string; sucursal_id: string | null; rol: string }>
   expect(me, '[117] no se pudo resolver el usuario logueado (deposito)').toBeTruthy()
   expect(me.rol, '[117] este spec necesita correr bajo la sesión DEPOSITO (rol sujeto al gate) — ver chromium-deposito en playwright.config.ts').toBe('DEPOSITO')
-  return { headers, token, tenantId: me.tenant_id, sucursalId: me.sucursal_id }
+  const headersOwner = restHeaders(await loginToken(request))
+  return { headers, headersOwner, token, tenantId: me.tenant_id, sucursalId: me.sucursal_id }
 }
 
+/**
+ * 🛑 SIEMBRA CON EL DUEÑO, ACTUÁ CON EL ROL.
+ *
+ * Los helpers de setup (`crear*`) usan `headersOwner`, no el token del DEPÓSITO. Desde las migs 396
+ * y 404 la base bloquea que un DEPÓSITO cree productos o catálogos de configuración
+ * (`estados_inventario`, `ubicaciones`, `proveedores`) — y hace bien: eso se define en ConfigPage,
+ * que es `ownerOnly`. Sembrar con el rol bajo prueba mezclaba el ARMADO del escenario con lo que el
+ * escenario quiere probar, y hacía que el spec dependiera de un privilegio que el rol no debería
+ * tener. Lo que SÍ se ejercita con el token del DEPÓSITO son las ACCIONES bajo prueba.
+ */
 async function crearEstadoConAprobacion(request: any, c: Ctx, nombre: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/estados_inventario`, {
-    headers: c.headers, data: { tenant_id: c.tenantId, nombre, requiere_aprobacion: true, es_disponible_venta: false },
+    headers: c.headersOwner, data: { tenant_id: c.tenantId, nombre, requiere_aprobacion: true, es_disponible_venta: false },
   })
   expect(res.ok(), `[117] no se pudo crear el estado: ${await res.text()}`).toBe(true)
   return ((await res.json()) as any[])[0]
@@ -58,7 +69,7 @@ async function crearEstadoConAprobacion(request: any, c: Ctx, nombre: string) {
 
 async function crearProducto(request: any, c: Ctx, nombre: string, sku: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/productos`, {
-    headers: c.headers, data: {
+    headers: c.headersOwner, data: {
       tenant_id: c.tenantId, nombre, sku, precio_costo: 60, precio_venta: 100,
       unidad_medida: 'unidad', activo: true, alicuota_iva: 21,
     },
@@ -69,7 +80,7 @@ async function crearProducto(request: any, c: Ctx, nombre: string, sku: string) 
 
 async function crearLinea(request: any, c: Ctx, productoId: string, lpn: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
-    headers: c.headers, data: {
+    headers: c.headersOwner, data: {
       tenant_id: c.tenantId, producto_id: productoId, lpn, cantidad: 10, activo: true,
       sucursal_id: c.sucursalId,
     },

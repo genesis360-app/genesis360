@@ -6,9 +6,540 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 46) — 💵 Compras/Gastos en USD: aclarado que el relevamiento YA
+> ### ✅ ARRANCÁ ACÁ (2026-09-09, cont. 59) — `v1.208.0` en `dev`, migs **391-406** solo en DEV.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo cerrado hoy — el pendiente #1 (G1, modo "Real" del Dashboard)
+>
+> La 3ra opción del filtro Moneda, sin migración (todo display). Y de paso salió un **bug de plata
+> latente**: el Dashboard **sumaba dólares como si fueran pesos** (`gastos.moneda` existe desde la
+> mig 379 y las queries ni la leían). Tres lugares: `DashGastosArea`, `VentasVsGastosChart` y el
+> `gastosTotal` que alimenta **rentabilidad/margen** del área Todo (ahí subestimaba el gasto e
+> **inflaba el margen**). No había explotado porque hay 0 gastos en USD en DEV y PROD.
+>
+> Detalle completo en `log.md` (2026-09-09) y en `wiki/features/reportes-metricas.md`.
+>
+> #### 🟥 Lo que sigue, en orden
+>
+> 1. **PASAR TODO A PROD** — GO lo dejó dicho: *"luego de eso pasamos todos a PRD"*. Van las migs
+>    **391-406** + el código (`v1.195.4` → `v1.208.0`). ⚠ **Cambian comportamiento**: donde antes
+>    bloqueaba solo la UI, ahora la base rechaza → **migraciones y código van juntos**, no aplica el
+>    "DDL aditivo primero".
+> 2. **Gasto suelto en USD** (issue #3 de Fede, mitad pendiente) — `gastos.moneda` YA existe en la
+>    DB; falta la UI del formulario. ⚠ La **OC en USD ya funciona** (selector en `ProveedoresPage`,
+>    mig 379). Patrón guía: `cajasAbiertasOCMoneda`, `monedaDeMetodo`, cotización de descalce.
+>    **Sumarle**: los `INSERT` en `gastos` del código (recepción de OC, envíos, RRHH, recursos,
+>    servicios recurrentes) **no setean `moneda`** → default `'ARS'`. Una recepción de una OC en
+>    dólares nace como gasto en pesos con el número en dólares. Latente (6 OC en USD en DEV, ninguna
+>    recibida) — va en la misma tanda.
+> 3. **Cobrar en caja USD** (issue #2 de Fede) — es la **Fase 8 (C2)**, frenada esperando la
+>    definición del contador por la factura.
+> 4. **Góndolas para que sirva Repositores** — hay **0 ubicaciones de exhibición en PROD**. Decisión
+>    de GO sin responder: ¿carga masiva por categoría/lote, o producto por producto?
+> 5. **¿El DUEÑO debería tener tope de descuento?** `ROLES_DESCUENTO` deja al CAJERO bloqueado, al
+>    SUPERVISOR con tope configurable y al DUEÑO sin tope. **GO no dijo si quiere cambiarlo.**
+> 6. **Reintegro en efectivo USD al anular una venta** — GO lo pospuso: **relevar**.
+> 7. **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)** · **dropear
+>    `tenants.afipsdk_token`** (cuando PROD corra este código).
+>
+> #### 🔍 Hueco de dato conocido (no es un bug, es un límite)
+>
+> **Ventas no puede reportar dólares reales.** `ventas.total` está siempre en pesos y `venta_items`
+> no tiene columna `moneda`: el sistema no guarda cuánto de una venta fue realmente en dólares
+> (`cotizacion_usd` solo marca que hubo conversión). La única cifra real es `monto_usd` de
+> `ventas.medio_pago` (G5 Fase 4) — los dólares efectivamente cobrados — y **en DEV no hay ninguna
+> venta que la use**, así que esa rama del modo Real no tiene fixture. Si GO quiere el desglose
+> completo por moneda en Ventas, hace falta guardarlo al vender (migración + POS).
+>
+> #### 🧪 Estado de la suite
+>
+> **395 specs e2e** (nuevo: `143_dashboard_modo_real_usd_mutante`). **1697 unit verdes** (25 nuevos
+> de `dashMoneda`). Los 17 e2e de dashboard verdes. Sobreviven de la corrida del 8/9: `37_rrhh`
+> (fixture agotado), 4 de flake bajo carga y **`20_caja`** — 🟥 abierto y **NO es timeout**: el
+> DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y "Abrir caja" se deshabilita con *"Ya
+> tenés una caja abierta"*. Es estado viejo de DEV.
+>
+> ⚠️ **Al escribir un e2e del Dashboard**: filtra por **sucursal activa**. Una siembra con
+> `sucursal_id = null` no aparece nunca en los KPI — costó un falso negativo. Sembrar copiando el
+> `sucursal_id` de una fila real del período.
+>
+> #### Deuda de fixture (migs 401 y 403)
+>
+> En DEV hay **0 empleados con `user_id`** → la rama "cada empleado ve lo suyo" de RRHH nunca se
+> probó con datos.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 406.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV (pg_cron `tn-fulfillment-sync`).
+> - La ubicación **`E2E Siembra`** (global, multi-SKU, `disponible_surtido`) la crea el fixture de
+>   e2e. No borrarla ni pasarla a Mono-SKU: se cae la siembra de stock de 14 specs.
+
+> ### ✅ ARRANCÁ ACÁ (2026-09-08, cont. 58) — `v1.207.0` en `dev`, migs **391-406** solo en DEV.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo cerrado (7 y 8 de septiembre)
+>
+> | Bloque | Qué |
+> |---|---|
+> | **Tanda F (migs 402-405)** | núcleo fiscal · secretos restantes + detalle de sueldos · matriz de escritura · módulo Gastos |
+> | **e2e** | los 9 specs de siembra de stock + 8 de las 14 fallas de la corrida completa |
+> | **Issues de Fede (mig 406)** | **10 de 13** — ver `log.md` (2026-09-08) |
+>
+> #### 🟥 Lo que sigue, en orden
+>
+> 1. **Dashboard "modo real" USD (G1)** — lo pidió GO después de los issues de Fede. El patrón ya
+>    existe (KPI "Ingreso Neto de Caja"), falta extenderlo a Ventas/Gastos.
+> 2. **PASAR TODO A PROD** — GO lo dejó dicho: "luego de eso pasamos todos a PRD". Van las migs
+>    **391-406** + el código. ⚠ **Cambian comportamiento**: donde antes bloqueaba solo la UI, ahora
+>    la base rechaza → **migraciones y código van juntos**, no aplica el "DDL aditivo primero".
+> 3. **Gasto suelto en USD** (issue #3 de Fede, mitad pendiente) — `gastos.moneda` YA existe en la DB;
+>    falta la UI del formulario. ⚠ La **OC en USD ya funciona** (selector en `ProveedoresPage`, mig
+>    379): Fede probablemente no lo encontró porque se elige al crear la OC en Proveedores, no en
+>    Gastos. Para el gasto suelto está el patrón de la OC como guía (`cajasAbiertasOCMoneda`,
+>    `monedaDeMetodo`, cotización de descalce). Es una feature que **mueve plata desde una caja**, no
+>    un ajuste.
+> 4. **Cobrar en caja USD** (issue #2 de Fede) — es la **Fase 8 (C2)**, frenada esperando la
+>    definición del contador por la factura. Fede lo menciona en el mismo issue.
+> 5. **Góndolas para que sirva Repositores** — hay **0 ubicaciones de exhibición en PROD**. Hasta que
+>    alguien las cree y las asigne a productos, el módulo no genera nada (ahora el vacío lo explica).
+>    Decisión de GO: ¿carga masiva por categoría/lote, o producto por producto?
+> 6. **¿El DUEÑO debería tener tope de descuento?** Fede preguntó si el descuento general del POS
+>    estaba gateado: sí — `ROLES_DESCUENTO` deja al CAJERO siempre bloqueado, al SUPERVISOR con tope
+>    configurable (`descuento_max_supervisor_pct`) y al DUEÑO sin tope. **GO no dijo si quiere
+>    cambiarlo.**
+> 7. **Reintegro en efectivo USD al anular una venta** — GO lo pospuso: **relevar**.
+> 8. **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)** · **dropear
+>    `tenants.afipsdk_token`** (cuando PROD corra este código).
+>
+> #### 🧪 Estado de la suite
+>
+> **394 tests · 339 verdes** en la corrida completa del 8/9. Sobreviven: `37_rrhh` (fixture agotado,
+> se destraba solo), 4 de flake bajo carga (pasan en aislado) y **`20_caja`** — 🟥 abierto, y **NO es
+> timeout**: el DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y el botón "Abrir caja" se
+> deshabilita con *"Ya tenés una caja abierta"*. Es estado viejo de DEV.
+>
+> #### Deuda de fixture (migs 401 y 403)
+>
+> En DEV hay **0 empleados con `user_id`** → la rama "cada empleado ve lo suyo" de RRHH nunca se
+> probó con datos.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. `schema_full.sql` al día, tope mig 406.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV (pg_cron `tn-fulfillment-sync`).
+> - La ubicación **`E2E Siembra`** (global, multi-SKU, `disponible_surtido`) la crea el fixture de
+>   e2e. No borrarla ni pasarla a Mono-SKU: se cae la siembra de stock de 14 specs.
+
+> ### ✅ (2026-09-07, cont. 54) — secretos restantes + detalle de RRHH (mig 403). `v1.204.0` en `dev`.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Qué salió (migs 402 + 403, misma sesión)
+>
+> La **402** cerró el núcleo fiscal (ver bloque cont. 53, abajo). Después, en vez de dar la tanda por
+> cerrada, repetí la auditoría **sobre todo el esquema**: de las 152 policies, **111 tablas no miran el
+> rol**. La **403** cerró los dos huecos que eran continuación directa de las migs 400 y 401:
+> Mercado Libre / MODO / couriers (secretos que la 400 dejó afuera, legibles hasta por `anon`) y
+> `rrhh_salario_items` + `rrhh_anticipos` (el detalle de la liquidación, que la 401 dejó afuera — con
+> la cabecera cerrada y el detalle abierto el sueldo se reconstruye sumando conceptos). Más la
+> **escritura** de las 6 tablas de credenciales, que seguía abierta: un CAJERO podía desconectar las
+> integraciones del comercio.
+>
+> #### 🟥🟥 LO PRIMERO DE LA PRÓXIMA SESIÓN — la matriz de ESCRITURA de plata/inventario
+>
+> **Verificado con sondas reales, no supuesto.** Un CAJERO escribe hoy, por REST directo:
+>
+> | Tabla | Filas escribibles en DEV | Por qué importa |
+> |---|---|---|
+> | `cheques` | 19 | plata |
+> | `cliente_creditos` | 3 | saldo a favor del cliente = plata |
+> | `proveedor_cc_movimientos` | 17 | lo que se le debe al proveedor |
+> | `producto_precios_mayorista` | 68 | **el precio de venta que cerró la mig 396, por la puerta de al lado** |
+> | `cupones` | 70 | descuentos = plata |
+> | `sucursales` | 2 | configuración |
+> | `kit_recetas` | 11 | inventario (qué consume cada kit) |
+>
+> ⚠ **No se toca a ciegas**: necesita el mismo análisis por tabla que hizo falta en la 396, donde un
+> guard genérico habría roto ventas. `VentasPage` **inserta** `cliente_creditos` en devoluciones y
+> anulaciones, y un CAJERO **crea** cheques legítimamente al cobrar. El corte no es por tabla sino por
+> **operación**: INSERT operativo sí, UPDATE/DELETE de una fila ya existente no.
+>
+> También quedó sin cerrar `proveedor_cuentas_bancarias` (el **CBU de los proveedores**: cambiarlo
+> redirige un pago) — hoy 0 filas en DEV y PROD, por eso no entró, pero es el mismo patrón.
+>
+> #### 🟥 El resto, en orden
+>
+> 1. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 2. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238). Hoy solo se enforcea el del CAJERO,
+>    a propósito: el supervisor es quien APLICA la autorización y enforzarlo rompería aprobaciones.
+> 3. **E2 — techo real de la instancia**: el instrumento está listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo —
+>    saturar DEV es destructivo y es el ambiente de trabajo de GO.
+> 4. **Dropear `tenants.afipsdk_token`** — hoy está siempre en NULL pero la columna sigue. Se dropea
+>    cuando PROD corra el código de esta tanda (v1.195.4 todavía la escribe).
+> 5. **Decisión de PROD**: cuándo van las migs 391-403 + el código. Ojo, **cambian comportamiento**:
+>    donde antes solo bloqueaba la UI, ahora la base rechaza. **Migraciones y código van juntos.**
+>
+> #### Deuda de fixture (anotada, vale para las migs 401 y 403)
+>
+> En DEV hay **0 empleados con `user_id`**, así que la rama "cada empleado ve lo suyo" de la
+> visibilidad de RRHH **no tiene fixture y nunca se probó con datos**. Para verificarla de verdad hay
+> que vincular un empleado a un usuario.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. Cuando venza, `npm run schema:dump` falla (el
+>   camino PG sigue roto por el bug de Supavisor). `schema_full.sql` está al día, tope mig 403.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV: es el job de **pg_cron**
+>   `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). Revisar si tiene sentido que siga.
+> - El spec `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado** (todas las liquidaciones del
+>   mes ya tienen su gasto pagado), no por código. Se destraba solo el mes que viene.
+
+> ### ✅ (2026-09-07, cont. 53) — el núcleo fiscal (mig 402). `v1.203.0` en `dev`.
+> **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo que salió en esta sesión (mig 402)
+>
+> Fui a cerrar el pendiente #1 (`emisores_fiscales.afipsdk_token`) y el pendiente chico destapó uno
+> mucho mayor: **las tres tablas del núcleo fiscal tenían UNA sola policy `FOR ALL` que miraba el
+> tenant y nada más**. Con el token de cualquier rol (CAJERO, DEPÓSITO, RRHH, CONTADOR, LECTOR) y
+> `curl` se podía cambiar el **CUIT** / la **condición de IVA** / el **umbral de Factura B**, prender
+> **`afip_produccion`** (CAE fiscal REAL), **borrar el certificado AFIP** y tocar los puntos de venta.
+> Y del bucket `certificados-afip` se **descargaba la clave privada AFIP** (con cert + key se factura
+> como ese CUIT desde afuera de Genesis360); su policy de INSERT era `auth.uid() IS NOT NULL` a secas,
+> o sea que además se escribía en la carpeta de **otro tenant**.
+>
+> Ahora: SELECT abierto al tenant (el POS necesita leer emisor y PV para facturar) + escritura solo
+> **DUEÑO/ADMIN/SUPER_USUARIO**. El `afipsdk_token` pasó a **secreto de solo escritura** (no lo lee
+> nadie, ni el DUEÑO; la UI usa la columna generada `afipsdk_token_configurado`) y la copia legacy
+> `tenants.afipsdk_token` se vació + quedó forzada a NULL por trigger.
+>
+> 🐛 **Bug que bloqueaba al primer cliente real, encontrado de paso**: `afipDatosListos` exigía CUIT +
+> **token AfipSDK** para pasar a producción AFIP. Los 9 tenants de PROD están en
+> `afip_provider='propio'` (firma con el **certificado**, no usa el token) y ninguno tiene token →
+> **nadie podía pasar a producción desde la UI**. Corregido: el gate mira la credencial del circuito.
+>
+> #### 🟥 Lo que sigue abierto (en orden)
+>
+> 1. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 2. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238). Hoy solo se enforcea el del CAJERO,
+>    a propósito: el supervisor es quien APLICA la autorización y enforzarlo rompería aprobaciones.
+> 3. **E2 — techo real de la instancia**: el instrumento está listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo —
+>    saturar DEV es destructivo y es el ambiente de trabajo de GO.
+> 4. **F2 (resto)** — matriz de ESCRITURA completa por rol (la spec cubre 4 roles × 15 operaciones).
+> 5. **Dropear `tenants.afipsdk_token`** — hoy está siempre en NULL pero la columna sigue. Se dropea
+>    cuando PROD corra el código de esta tanda (v1.195.4 todavía la escribe en el camino legacy).
+> 6. **Decisión de PROD**: cuándo van las migs 391-402 + el código. Ojo, **cambian comportamiento**:
+>    donde antes solo bloqueaba la UI, ahora la base rechaza.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. Cuando venza, `npm run schema:dump` falla (el
+>   camino PG sigue roto por el bug de Supavisor). `schema_full.sql` está al día, tope mig 402.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV: es el job de **pg_cron**
+>   `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). Revisar si tiene sentido que siga.
+> - El spec `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado** (todas las liquidaciones del
+>   mes ya tienen su gasto pagado), no por código. Se destraba solo el mes que viene.
+
+> ### ✅ (2026-09-07, cont. 52) — Tandas D, E y F esencialmente cerradas. `v1.202.0` en `dev`.
+> **PROD sigue en `v1.195.4` por decisión de GO** ("esperemos un poco más, sigamos con pendientes y
+> fixes"). Migs **391-401 solo en DEV**. Primer cliente REAL en ~2 semanas.
+>
+> #### Qué se cerró en la sesión larga del 6-7/9 (v1.197.0 → v1.202.0)
+>
+> | Tanda | Estado | Lo que salió |
+> |---|---|---|
+> | **D — Resiliencia** | ✅ completa | D1 cortacircuitos del refresco (600 req → 10) · D2-D5 spec 142, primera que intercepta la red del browser |
+> | **E — Stress** | ✅ salvo E2 | instrumento `npm run stress:lectura` · E4-h1 mig 395 (17 ms → 1,14 ms) · E4-h2 migs 397-399 (48 → 4,6 ms; 86 → 174 req/s) |
+> | **F — Roles server-side** | ✅ salvo lo de abajo | F1: migs 394+396 (6 huecos) · F2: migs 400+401 (credenciales y sueldos) |
+>
+> **Bugs REGLA #0 encontrados y arreglados de paso**: (1) un CAJERO podía **congelar un mes contable**
+> escribiendo `cierres_contables` directo, salteando el guard del RPC; (2) al anular una venta el
+> reintegro del efectivo **podía ir a la Caja USD y fallaba en silencio** → la caja quedaba inflada;
+> (3) `roles_custom` era escribible por cualquiera → **auto-escalada de permisos**; (4) los
+> `access_token` de MP/TiendaNube los **leía cualquier rol**; (5) **sueldo, CBU y DNI** de todos los
+> empleados, ídem.
+>
+> #### 🟥 Lo que sigue abierto (en orden de prioridad)
+>
+> 1. **`emisores_fiscales.afipsdk_token`** — mismo problema que MP/TN (lo lee cualquier rol; 2 de 4
+>    emisores de DEV tienen uno cargado). El fix es igual al de la mig 400, pero **primero** hay que
+>    pasar `EmisoresFiscalesPanel` y los otros 3 lectores de `select('*')` a listas explícitas de
+>    columnas, o la pantalla se rompe con 403. Queda medido en la spec 141 con `test.fail()`.
+> 2. **Reintegro en efectivo USD al anular una venta** — no está contemplado en ninguna rama
+>    (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). GO lo pospuso: **relevar**.
+> 3. **Umbral del SUPERVISOR server-side** — necesita antes mover la aplicación de autorizaciones de
+>    gasto a un RPC `SECURITY DEFINER` (patrón migs 236/237/238). Hoy solo se enforcea el del CAJERO,
+>    a propósito: el supervisor es quien APLICA la autorización y enforzarlo rompería aprobaciones.
+> 4. **E2 — techo real de la instancia**: el instrumento está listo
+>    (`npm run stress:lectura --usuarios N --si-se-que-hago`), falta acordar **cuándo** correrlo —
+>    saturar DEV es destructivo y es el ambiente de trabajo de GO.
+> 5. **F2 (resto)** — matriz de ESCRITURA completa por rol (la spec cubre 4 roles × 12 operaciones).
+> 6. **Decisión de PROD**: cuándo van las migs 391-401 + el código. Ojo, **cambian comportamiento**:
+>    donde antes solo bloqueaba la UI, ahora la base rechaza.
+>
+> #### Cosas operativas a no olvidar
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. Cuando venza, `npm run schema:dump` falla (el
+>   camino PG sigue roto por el bug de Supavisor). `schema_full.sql` está al día, tope mig 401.
+> - GO iba a **borrar el token filtrado `sbp_60df...`** en Supabase. Verificado que ningún repo ni
+>   workflow lo consume; ya se limpió de `.claude/settings.local.json`.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV: es el job de **pg_cron**
+>   `tn-fulfillment-sync` (`*/5 * * * *`, `active=true`). Revisar si tiene sentido que siga.
+> - El spec `37_rrhh_nomina_gasto_mutante` falla por **fixture agotado** (todas las liquidaciones del
+>   mes ya tienen su gasto pagado), no por código. Se destraba solo el mes que viene.
+
+> ### 🟥🟥 (2026-09-06, cont. 50) — el incidente original que abrió las Tandas D/E/F
+> **[D1 ya cerrado — ver arriba. Se conserva por el diagnóstico y el método.]**
+>
+> #### El bug (encontrado investigando por qué se caía la base de DEV)
+>
+> La instancia de DEV (`t4g.nano`, CPU compartida) se saturó: CPU 94%, Disk IO 97%, estado `Unhealthy`.
+> Al desglosar el tráfico de 24 h apareció la causa real: **~650 de ~5.000 requests eran UNA sola
+> pestaña de Chrome reintentando `POST /auth/v1/token?grant_type=refresh_token`**, casi todas fallando
+> con 5xx de Cloudflare. Era una sesión de GO (`gaston.otranto@gmail.com`, tenant "Almacén Jorgito")
+> abierta desde el 4/9. El tráfico legítimo de la app eran decenas de requests.
+>
+> **El problema de fondo no es la pestaña: es que el cliente de Supabase reintenta el refresco de sesión
+> sin freno.** Se retroalimenta — la base saturada hace fallar el refresco, el cliente reintenta, eso
+> suma carga, falla más. Con un cliente real, cada navegador abierto se vuelve un amplificador de la
+> caída. GO lo marcó como URGENTE: "si salíamos con esto en vivo íbamos a tener problemas".
+>
+> ~~**Fix a diseñar** (NO empezado…)~~ → **✅ HECHO el mismo 2026-09-06** (cont. 51, arriba): límite de
+> reintentos + backoff exponencial, implementado como cortacircuitos sobre `global.fetch` en
+> `src/lib/authRefreshBreaker.ts`. Matiz sobre lo que se había anotado acá: **no** manda a login limpio
+> automáticamente tras N fallos — deja de martillar y le ofrece al usuario reintentar o volver a entrar.
+> Desloguear solo a un cajero en medio de una venta por un blip de 30 s del backend era peor que el
+> problema (REGLA #0). El login limpio automático sí ocurre cuando el refresh token es realmente inválido.
+>
+> #### Por qué NINGÚN test lo agarró (respuesta verificada, no supuesta)
+>
+> Las **142 specs e2e son todas funcionales**: corren siempre contra un backend sano y prueban "¿anda la
+> feature?". **No existe una sola spec que ejercite condiciones degradadas** — backend lento, backend
+> caído, 5xx sostenido, sesión vencida, red intermitente. Confirmado con grep: ni una menciona
+> `refresh_token`, sesión expirada, offline ni reintentos. Un bug que solo aparece cuando el backend
+> falla es, por construcción, invisible para esta suite. **No es un descuido puntual: falta una capa
+> entera.**
+>
+> #### Lo que GO pidió dejar anotado para la barrida completa (antes del cliente real)
+>
+> Documentado en detalle en `tests/specs/uat-app.md`, secciones nuevas **Tanda D / E / F**:
+> - **Tanda D — Resiliencia** (5 escenarios; **D1 ✅ cerrado**, quedan D2-D5).
+> - **Tanda E — Stress/carga** (4 escenarios): nunca se midió cuántos usuarios concurrentes aguanta el
+>   sistema, ni con qué tamaño de instancia, ni qué se rompe primero.
+> - **Tanda F — Roles server-side** (4 escenarios): ya hay specs por rol (`13_rol_cajero`,
+>   `15_rol_supervisor`, `16_rol_rrhh`, `17_rol_deposito`, `18_rol_contador`) y verifican positivo Y
+>   negativo, pero **todo por UI**. Choca con el hallazgo **H1** del propio UAT ("controles financieros
+>   SOLO client-side") y con la obligación #3 de la REGLA #0. Falta probar que la DB rechace por REST/RPC
+>   directo lo que la UI esconde. GO lo pidió explícito: "que el dueño acceda a todo, el supervisor a lo
+>   que tiene configurado nomás, el cajero a lo suyo, y así con cada uno".
+> - **Método**: definir y documentar **con qué foto de datos** corre cada escenario. Sin fixture
+>   explícito un verde no es reproducible, y ya hay antecedente de que la suite no es determinística bajo
+>   carga.
+>
+> **Plan de GO**: corrida completa de todos los escenarios antes de que entre el cliente real.
+>
+> #### De paso, resuelto en esta sesión
+>
+> La instancia de DEV estaba en **NANO** teniendo plan **Pro pagado**. Pro sube cupos y trae un crédito
+> de compute, pero el tamaño de máquina es un eje aparte y nadie lo había reclamado: **MICRO figuraba
+> como "Free Upgrade" al MISMO precio** ($9,68/mes → $9,68/mes), con 1 GB y 2 cores dedicados en vez de
+> 0,5 GB con CPU compartida. GO confirmó el cambio. La CPU compartida de `t4g.nano` funciona con créditos
+> de ráfaga, lo que explica el patrón de caídas intermitentes que veníamos sufriendo.
+>
+> ⚠ Anotar: el `tn-fulfillment-worker` corre **133 veces por día contra DEV** sin que nadie lo mire. NO
+> era la causa (el bucle de auth es 5x más grande), pero es carga constante sobre un proyecto de
+> desarrollo — revisar si tiene sentido que siga corriendo.
+
+> ### 🛑 ARRANCÁ ACÁ (2026-09-05, cont. 49) — 🎉 WhatsApp: PRIMERA CONVERSACIÓN REAL end-to-end. El
+> bloqueador del "chip" era un diagnóstico EQUIVOCADO. Token permanente resuelto. Plantillas aprobadas.
+>
+> Sesión pivote del Asistente de WhatsApp. Fede creó un Business Portfolio nuevo (`28370543342633394`) y
+> sumó a GO como admin; con eso GO generó el **token permanente de System User** que faltaba desde la
+> Fase 1 (26/8). Ese token —el primero con permisos reales de management— permitió diagnosticar **por
+> API** lo que hasta ahora solo se había inferido de capturas de pantalla.
+>
+> #### 🔴 Lo más importante: el bloqueador documentado hace 2 semanas no existía
+>
+> `GET /{waba_id}/subscribed_apps` mostró **una sola app suscripta al WABA** (`WA DevX Webhook Events 1P
+> App`, interna de Meta) y **NO la de Genesis360** (`1059640186689341`). El webhook estaba configurado a
+> nivel *app* (por eso el handshake GET verificaba OK en agosto), pero faltaba el paso separado
+> `POST /{waba_id}/subscribed_apps`, que es el que le dice a Meta a qué app entregar los eventos de ese
+> WABA. **Un solo request lo destrabó.** El "chip prepago dedicado" **nunca fue el problema**: el número
+> de test estaba `status: CONNECTED` desde siempre, y el `code_verification_status: NOT_VERIFIED` que se
+> leyó como "falta registrar el número" es normal en números de test de Meta. Nota: el código de
+> `wa-embedded-signup-exchange` **ya hace ese paso** para clientes futuros — el bug era solo de este WABA
+> armado a mano.
+>
+> #### ✅ Verificado con mensajes REALES (no sintéticos)
+>
+> `whatsapp_mensajes_log`, tenant "Familia Otranto De Porto", con `wamid` real de Meta (antes todo era
+> `wamid.test.*`): `"Tenes mantecol?"` → *"Sí! Mantecol Clásico 111g, tenemos 2 unidades en stock a $1500
+> c/u."* en 5 segundos, coincidiendo exacto con la DB. También el circuito completo de la Fase 2 (texto →
+> botones nativos → Confirmar → borrador `pendiente`) y el envío saliente de la Fase 4 al celular de GO.
+> **El webhook apunta a DEV**, confirmado empíricamente.
+>
+> #### Pendientes cerrados y abiertos
+>
+> - ✅ **Token permanente**: System User, `expires_at: 0` (no vence nunca), cargado en
+>   `whatsapp_credentials` de DEV. Cierra un pendiente abierto desde la Fase 1.
+> - ✅ **Plantillas del briefing**: las 2 pasaron a `APPROVED`.
+> - 🔜 **`briefing_cierre_dia_v2`** (`PENDING`): `briefing_cierre_dia` quedó en MARKETING ($89,5620 ARS)
+>   vs UTILITY ($37,6798) — 2,4x más caro, ~$3.800/mes por negocio solo por el tono del texto. La
+>   categoría de una plantilla aprobada NO se puede editar (`error_subcode 3835031`), así que se creó una
+>   v2 con texto neutro. **Cuando Meta la apruebe: cambiar el nombre de la plantilla del evento `cierre`
+>   en `wa-briefing-sweep/index.ts`.**
+> - 🐛 **Bug corregido (`wa-webhook` v7 en DEV)**: ante una foto de comprobante que NO coincidía con el
+>   texto del usuario, el bot avisaba bien la discrepancia pero respondía *"te armo el borrador"* y
+>   **nunca llamaba a `proponer_gasto`** — narraba una acción que no ejecutaba. Se agregaron 2 reglas al
+>   prompt (anti-narración; usar SIEMPRE los datos del comprobante y nunca los del texto) y un campo
+>   `advertencia` que se muestra con ⚠️ en la confirmación pero **nunca se persiste** (no ensuciar el
+>   registro contable).
+> - 🛑 **Embedded Signup sigue bloqueado, pero por otra razón de la documentada**: contra la doc oficial,
+>   el gate duro NO es la Verificación del Negocio (esa solo sube el límite de 10 a 200 negocios/7 días)
+>   sino el **App Review con Advanced Access** sobre `whatsapp_business_management` y
+>   `whatsapp_business_messaging`. Estado por API: `business_verification_status: pending_submission`,
+>   `account_review_status: APPROVED`. Sigue dependiendo de Fede (documentos argentinos; GO está en Chile).
+> - 🛑 **Chrome/FedCM** sin cambios — el popup de conexión falla, hay que usar Edge/Firefox.
+>
+> #### De paso
+>
+> - **Pixel de Meta** agregado a `index.html` (id `1044399641905959`, pedido de Fede). Dispara `PageView`
+>   en la carga inicial; no hay CSP que lo bloquee. Para medir conversión del funnel harían falta eventos
+>   custom (`Lead`, `CompleteRegistration`) — no pedidos todavía.
+> - **Guía de onboarding para clientes** publicada como artifact:
+>   https://claude.ai/code/artifact/db31003d-0d47-43d8-9b83-1729656e5aa8 — 5 requisitos previos, 7 pasos,
+>   precios reales en ARS, problemas conocidos. **Lleva banda roja de "no compartir todavía"** porque el
+>   self-service sigue bloqueado por App Review.
+> - Se **re-corrigió** el dato de pricing de Meta (ver la entrada `query` de esta misma fecha en
+>   `log.md`): los mensajes de servicio SÍ pasan a cobrarse el 1/10/2026 — el dato original de Fede era
+>   correcto y la "corrección" del 2026-09-04 estaba mal.
+>
+> Ver [[wiki/features/asistente-whatsapp]] (sección 2026-09-05) y `log.md`.
+
+> ### 🛑 ARRANCÁ ACÁ (2026-09-04, cont. 48) — 💱 Fede confirmó las 2 últimas dudas de USD: cotización
+> BNA-only YA CONSTRUIDA (sin deployar a PROD) + plan del modo "real" del Dashboard LISTO para
+> construir en sesión dedicada
+>
+> Continuación directa del deploy de arriba (cont. 47). **DEV avanzó a `v1.195.5`** (commit `01c15d56`,
+> tag+release publicados sobre `dev`, **sin deploy a PROD** — PROD sigue en `v1.195.4`). Fede respondió
+> (vía GO) las 2 preguntas que quedaban del relevamiento de Compras/Gastos USD:
+>
+> 1. **"Solo dólar oficial BNA"** → se refiere al widget general de cotización (Caja/Ventas/Dashboard):
+>    tiene que dejar de ofrecer Blue/MEP/Cripto y traer SIEMPRE compra/venta del Oficial de Banco Nación.
+>    La parte de AFIP (Fase 8/C2) se revisa aparte, sigue bloqueada por un contador.
+> 2. **Modo "real" del Dashboard (G1)** → confirmado que sí lo quiere, sumado como 3ª opción junto a
+>    "todo en pesos"/"todo en dólares".
+>
+> #### ✅ 1) Cotización BNA-only — CONSTRUIDO, VERIFICADO EN NAVEGADOR, commiteado en `dev` (commit
+> `e7db934b`), **sin deploy a PROD todavía**
+>
+> `src/hooks/useCotizacion.ts` + `src/components/CotizacionWidget.tsx`: se eliminó `TIPOS_DOLAR`
+> (Blue/Oficial/MEP/Cripto) y el menú desplegable para elegirlo — ahora un solo botón de refresco para
+> cualquier rol, siempre trae `dolarapi.com/v1/dolares/oficial`. Verificado con query real que NINGÚN
+> tenant (ni DEV ni PROD) tenía configurado Blue/MEP/Cripto — cambio sin impacto en datos existentes.
+> Probado en navegador real (Playwright ad-hoc): el widget refresca y muestra Venta/Compra reales de
+> BNA, timestamp actualizado, sin el dropdown viejo. `npm run build`/`lint` verdes.
+>
+> #### 📋 2) Modo "real" del Dashboard (G1) — PLAN LISTO, sin construir todavía, para sesión dedicada
+>
+> GO pidió armar el alcance para retomarlo en otra sesión (no se construyó código). Hallazgo clave: **el
+> patrón que pide Fede YA EXISTE** para un solo KPI — "Ingreso Neto de Caja" (área "Todo" del Dashboard,
+> `DashboardPage.tsx`) separa `caja_movimientos` por su columna `moneda` en dos acumuladores (ARS
+> principal + USD como leyenda aparte, "Efectivo este mes · +US$450"), sin convertir ni mezclar — mismo
+> criterio que ya usa el KPI "Margen de Contribución" (excluye ventas con `cotizacion_usd IS NOT NULL`).
+> El gap real: `DashVentasArea.tsx` y `DashGastosArea.tsx` NO usan este patrón — su toggle ARS/USD hoy es
+> una conversión ficticia (divide el mismo total por la cotización, no separa por moneda real). Plan
+> completo, con la lista de archivos a tocar y el criterio de distinción ARS/USD por tabla
+> (`ventas.cotizacion_usd`, `gastos.moneda`, `caja_movimientos.moneda`), en la memoria del asistente
+> `project_dashboard_modo_real_usd_plan.md` — **leerla primero** al arrancar esa sesión, no
+> re-investigar desde cero. Sin pendientes de diseño, solo falta la etiqueta exacta del botón y si
+> Productos entra en el alcance (decidible al arrancar).
+>
+> #### 💡 Analizada alternativa "app propia + Share Sheet" en vez de WhatsApp/Meta — sin decisión
+>
+> GO retomó la idea diferida de Fede (sección C/M): compartir fotos/comprobantes a Genesis360 desde el
+> menú "Compartir" del celular en vez de integrar con la API de WhatsApp. Investigado: Android se
+> podría lograr con la PWA existente, **iOS exige obligatoriamente una app nativa** (Share Extension,
+> sin atajo web). El "cerebro" de IA de las Fases 2/3 del asistente de WhatsApp sería 100% reusable —
+> solo cambia la puerta de entrada — pero se pierde el chat conversacional bidireccional que sí da
+> WhatsApp. Comparación completa de pros/contras y requisitos de cada camino dada a GO — **sin decisión
+> tomada, sin código escrito**. Detalle en [[wiki/features/asistente-whatsapp]] y la memoria del
+> asistente `project_whatsapp_ia_portal_proveedores.md`. Retomar solo si GO pide profundizar (relevamiento
+> técnico propio: Capacitor vs. nativo puro, multi-dispositivo por dueño, etc.).
+>
+> #### 🛑 Pendiente real para la próxima sesión
+>
+> 1. Decidir cuándo deployar la cotización BNA-only a PROD (bajo riesgo, ya verificada) — sola o junto
+>    con el modo "real" del Dashboard cuando esté listo.
+> 2. Construir el modo "real" del Dashboard (G1) — plan completo arriba, sesión dedicada.
+> 3. Heredado: WhatsApp/Meta (Fede: CUIT/monotributo + comprobante de domicilio; GO: reportar bug de
+>    Chrome/FedCM a Meta) — o evaluar la alternativa de app propia de arriba si GO prefiere no esperar más a Meta.
+> 4. Heredado: relevamiento Plan IA Fase 4 (panel admin, chat cross-tenant) — sigue sin respuesta.
+> 5. Backlog no bloqueante de Compras/Gastos USD: gastos sueltos en USD (sin UI), reportes G1/G2 (además
+>    del modo real), B3 (aviso de desvío de cotización + sugerir última cotización por proveedor).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-09-04, cont. 47) — 🚀 DEPLOY A PROD: v1.195.0 → v1.195.4, verificado real —
+> este bloque quedó SUPERADO por el de arriba (cont. 48)
+>
+> GO autorizó explícitamente ("podés pasar todo a PRD"). Se deployó TODO lo acumulado en `dev` desde el
+> último deploy real (v1.195.0, PR #335, 2026-09-01) — las tandas de mantenimiento cont. 43/44/45/46 de
+> abajo (v1.195.1 a v1.195.4), ~32 commits.
+>
+> #### Versión actual — PROD y DEV ya alineadas
+>
+> - **PROD**: `v1.195.4` (antes `v1.195.0`) — PR #340 "v1.195.4 — ESLint 100% + UX chicas + deps
+>   (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
+>   `a37e6e6c2e1a80cbd522823784555e1a63dc16fd`), confirmado con `gh pr view 340` → `state: MERGED`.
+> - **DEV**: `v1.195.4` (sin cambios, ya estaba acá desde cont. 46).
+> - **Migraciones**: **NINGUNA nueva** — tope confirmado en 390 en ambos proyectos (`list_migrations` de
+>   PROD `jjffnbrdjchquexdfgwq` y DEV `gcmhzdedrkmmzfzfveig`, misma última migración
+>   `390_portal_proveedores_oc_acceso` en los dos). Esta tanda es 100% código.
+>
+> #### Qué se hizo, en orden
+>
+> 1. `npm run build` verde (tsc + vite) antes de tocar nada.
+> 2. `dev` ya estaba pusheado y limpio (working tree sin cambios relevantes).
+> 3. PR #340 `dev`→`main` creado, checks de CI (Unit Tests Vitest, Vercel preview) verdes, mergeado con
+>    `gh pr merge 340 --merge`.
+> 4. Release `v1.195.4` (ya existía apuntando a `dev`) retargeteado a `main` con
+>    `gh release edit v1.195.4 --target main --latest` — confirmado `targetCommitish: main`.
+> 5. Edge Function `invitar-proveedor` redeployada a PROD (`supabase functions deploy invitar-proveedor
+>    --project-ref jjffnbrdjchquexdfgwq`) — mismo código que DEV, `verify_jwt: true` (no hay
+>    `supabase/config.toml` en el repo, así que usa el default de la CLI).
+> 6. Vercel: deployment `dpl_87HQR74KMvf2njwUQ9A76XZK3r9r` (`target: production`, commit `a37e6e6c`)
+>    confirmado `READY`. Verificado ADEMÁS con `curl` real contra `https://www.genesis360.pro/` (no solo
+>    el dashboard): el bundle servido `assets/index-DZyAUxNg.js` contiene el string `v1.195.4` (HTTP 200).
+>
+> #### Qué llegó a PROD (detalle completo en los bloques históricos cont. 43-46 de abajo)
+>
+> 1. Limpieza de ESLint 100% (161→0 warnings).
+> 2. 2 features UX chicas: búsqueda por foco en modales de Ingreso/Rebaje de Inventario, asignar rol
+>    personalizado existente a un usuario desde Usuarios.
+> 3. Dependencias: 6 PRs de Dependabot + `npm audit fix` + migración de `react-router-dom` v6.21.0→v7.18.3
+>    (2 CVEs moderados resueltos, guards de rol re-verificados post-bump).
+> 4. Fix parcial de `APP_URL` en Edge Function `invitar-proveedor` (configurable vía env var + warning en
+>    DEV) — **el problema de fondo sigue pendiente**: no existe frontend público de DEV, así que un magic
+>    link generado desde ahí sigue sin destino alcanzable. Ver [[wiki/features/portal-proveedores]].
+> 5. Test e2e permanente nuevo `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts`.
+>
+> #### Sin pendientes bloqueantes de este deploy
+>
+> El pendiente conocido de `invitar-proveedor` (bug de fondo, no el fix parcial) sigue igual que antes del
+> deploy — no es una regresión nueva, es un gap de infraestructura ya documentado (falta un frontend
+> público para DEV). No hay nada más pendiente de esta tanda.
+
+> ### ✅ (histórico, 2026-09-04, cont. 46) — 💵 Compras/Gastos en USD: aclarado que el relevamiento YA
 > estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + 🧪 test e2e real
-> de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
+> de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD) — este bloque quedó
+> SUPERADO por el de arriba (cont. 47): DEPLOY A PROD de v1.195.4
 >
 > #### Versión actual — PROD vs. DEV, no confundir
 >

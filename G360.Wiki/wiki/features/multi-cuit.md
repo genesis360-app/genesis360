@@ -145,6 +145,15 @@ Cada fase se deploya con su release y UAT propio (patrón [[feedback_features_gr
 6. **Gasto sin emisor con >1 emisor activo** = crédito mal imputado → obligatorio cuando hay
    multi-emisor (con default por sucursal); con 1 emisor sigue siendo implícito.
 7. **TA de WSAA por certificado**: ya resuelto (cache por cuit) — dos emisores nunca comparten TA.
+8. **La identidad fiscal no la edita cualquiera — ✅ cerrado (mig 402, 2026-09-07).** Hasta entonces
+   `emisores_fiscales` tenía una policy `FOR ALL` por tenant a secas: con el token de un CAJERO se
+   podía cambiar el **CUIT** o la **condición de IVA** de un emisor por REST directo (y prender
+   `afip_produccion`), que es el riesgo #2 de esta lista sin pasar por la UI. Ahora la escritura de
+   `emisores_fiscales`, `tenant_certificates`, `puntos_venta_afip` y del bucket `certificados-afip`
+   es solo **DUEÑO/ADMIN/SUPER_USUARIO**; la lectura sigue abierta al tenant porque el POS la
+   necesita para facturar. El `afipsdk_token` pasó a **secreto de solo escritura** — toda consulta
+   nueva a `emisores_fiscales` debe usar **lista explícita de columnas** (`select('*')` → 403).
+   Ver [[wiki/architecture/guards-server-side]] y [[wiki/features/facturacion-afip]].
 
 ## Testing por fase
 

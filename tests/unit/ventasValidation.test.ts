@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { validarMediosPago, validarDescuentosPorRol, descuentoEfectivoPct, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, elegirCotizacionReintegro, type ValidarDescuentosArgs } from '@/lib/ventasValidation'
+import {
+  validarMediosPago,
+  validarDescuentosPorRol,
+  descuentoEfectivoPct,
+  calcularVuelto,
+  calcularEfectivoCaja,
+  calcularEfectivoPorMoneda,
+  carritoAceptaUsd,
+  elegirCotizacionReintegro,
+  type ValidarDescuentosArgs,
+  conservaMontoAlCambiarMedio,
+} from '@/lib/ventasValidation'
 
 describe('Ventas — validación medios de pago', () => {
   const total = 1000
@@ -330,5 +341,29 @@ describe('elegirCotizacionReintegro', () => {
   })
   it('DEV-CTZ-05 tenant configurado, venta undefined → cae a la de hoy', () => {
     expect(elegirCotizacionReintegro(true, undefined, 1300)).toBe(1300)
+  })
+})
+
+// ─── conservaMontoAlCambiarMedio (pedido de Fede, 2026-09-08) ────────────────────────────────
+describe('conservaMontoAlCambiarMedio — cambiar de medio no debe borrar el monto tipeado', () => {
+  const enDolares = (t: string) => t === 'Efectivo USD'
+
+  it('entre dos medios en pesos conserva el monto', () => {
+    expect(conservaMontoAlCambiarMedio('Efectivo', 'Transferencia', enDolares)).toBe(true)
+    expect(conservaMontoAlCambiarMedio('', 'Efectivo', enDolares)).toBe(true)
+  })
+
+  it('🛑 al PASAR a un medio en dólares NO lo conserva: el número cambia de unidad', () => {
+    // Es el hallazgo REGLA #0 de la G5 Fase 4: "Efectivo $5000" → "Efectivo USD" dejaba 5000 ARS
+    // arrastrados y montoUsd vacío, y la plata cobrada no se acreditaba en ninguna sesión de caja.
+    expect(conservaMontoAlCambiarMedio('Efectivo', 'Efectivo USD', enDolares)).toBe(false)
+  })
+
+  it('🛑 al SALIR de un medio en dólares tampoco: ese monto era el equivalente de dólares', () => {
+    expect(conservaMontoAlCambiarMedio('Efectivo USD', 'Efectivo', enDolares)).toBe(false)
+  })
+
+  it('entre dos medios en dólares tampoco (no aplica hoy, pero la regla es por moneda)', () => {
+    expect(conservaMontoAlCambiarMedio('Efectivo USD', 'Efectivo USD', enDolares)).toBe(false)
   })
 })

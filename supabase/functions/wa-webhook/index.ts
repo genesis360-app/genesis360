@@ -76,6 +76,7 @@ const TOOL_PROPONER_GASTO = {
       monto: { type: 'number', description: 'Monto del gasto en pesos, solo el número' },
       categoria: { type: 'string', description: 'Categoría del gasto si se puede inferir (ej: "Combustible", "Insumos") — opcional' },
       fecha: { type: 'string', description: 'Fecha del gasto en formato YYYY-MM-DD, SOLO si el usuario la menciona explícitamente (ej: "ayer", "el lunes") — si no dice nada, dejar vacío' },
+      advertencia: { type: 'string', description: 'Discrepancia a avisarle al usuario antes de que confirme (ej: la foto del comprobante dice otro monto o comercio que lo que él escribió). NO se guarda en el gasto, solo se le muestra en el mensaje. Dejar vacío si no hay nada raro.' },
     },
     required: ['descripcion', 'monto'],
   },
@@ -88,9 +89,11 @@ Reglas:
 1. Consultas de stock y precio: usá la herramienta consultar_stock_precio. Nunca inventes números — si la herramienta no trae el dato, decilo.
 2. Si te cuentan que gastaron plata en algo (por texto, por audio ya transcripto, o te mandan la FOTO de un comprobante/ticket), usá la herramienta proponer_gasto para armar un BORRADOR con lo que puedas leer (descripción, monto, categoría, fecha) — nunca asumas que ya quedó guardado, eso lo confirma el usuario con un botón y después lo revisa un humano en la app.
 3. Si te mandan una foto que NO es un comprobante o ticket de un gasto, no llames a proponer_gasto — explicá qué ves en la imagen y qué podés hacer con eso.
-4. Si la búsqueda de stock no encuentra el producto, decilo claro y sugerí probar con otro nombre o SKU.
-5. Todavía no podés modificar nada directo — si te piden eso, explicá que está en camino.
-6. Respuestas cortas y directas en español, estilo WhatsApp (sin markdown, sin listas largas).`
+4. Si la foto SÍ es un comprobante pero NO coincide con lo que te escribieron (otro monto, otro comercio, otro concepto), igual llamá a proponer_gasto, pero usá SIEMPRE los datos que leíste en el comprobante — nunca los del texto — y explicá la discrepancia en el campo advertencia. El usuario decide con los botones; vos no elegís por él ni descartás el gasto por tu cuenta.
+5. NUNCA anuncies una acción que no ejecutás en el mismo turno. Está prohibido responder cosas como "te armo el borrador" o "ya lo cargo" sin llamar a proponer_gasto en esa misma respuesta: o llamás la herramienta, o preguntás qué querés que haga. Nunca las dos cosas por separado.
+6. Si la búsqueda de stock no encuentra el producto, decilo claro y sugerí probar con otro nombre o SKU.
+7. Todavía no podés modificar nada directo — si te piden eso, explicá que está en camino.
+8. Respuestas cortas y directas en español, estilo WhatsApp (sin markdown, sin listas largas).`
 }
 
 // Fase 3: helper único para audio e imagen. Meta entrega solo un media_id — hay que resolverlo a una
@@ -152,7 +155,7 @@ async function buscarProductos(supabase: any, tenantId: string, query: string) {
 
 type ResultadoClaude =
   | { tipo: 'texto'; texto: string; tokensIn: number; tokensOut: number }
-  | { tipo: 'proponer_gasto'; datos: { descripcion: string; monto: number; categoria: string | null; fecha: string | null }; tokensIn: number; tokensOut: number }
+  | { tipo: 'proponer_gasto'; datos: { descripcion: string; monto: number; categoria: string | null; fecha: string | null; advertencia: string | null }; tokensIn: number; tokensOut: number }
 
 async function llamarClaude(
   apiKey: string, systemPrompt: string, userContent: string | any[], supabase: any, tenantId: string,
@@ -207,6 +210,9 @@ async function llamarClaude(
           monto,
           categoria: toolUse.input?.categoria ? String(toolUse.input.categoria).trim() || null : null,
           fecha: toolUse.input?.fecha ? String(toolUse.input.fecha).trim() || null : null,
+          // Solo se le muestra al usuario en el mensaje de confirmación — nunca se guarda en el
+          // borrador ni termina en la descripción del gasto real (no ensuciar el registro contable).
+          advertencia: toolUse.input?.advertencia ? String(toolUse.input.advertencia).trim() || null : null,
         },
         tokensIn, tokensOut,
       }
@@ -223,6 +229,58 @@ async function llamarClaude(
     })
   }
   return { tipo: 'texto', texto: 'No pude terminar de procesar esa consulta, probá de nuevo.', tokensIn, tokensOut }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sección G (mig 391): ledger de consumo. Registra lo que Genesis360 PAGA por cada tenant,
+// CONGELANDO la tarifa vigente al momento del evento — nunca se recalcula al leer.
+//
+// Nunca lanza: un fallo de medición es contabilidad interna y no puede romperle la conversación al
+// usuario. Si no hay tarifa vigente para el concepto, el evento igual se registra con costo 0 y
+// `tarifa_encontrada: false`, para no perder el consumo y que el hueco quede visible en la vista.
+// ─────────────────────────────────────────────────────────────────────────────
+async function registrarConsumo(
+  supabase: any, tenantId: string, concepto: string, cantidad: number,
+  referencia: string, detalle: Record<string, unknown>, facturable = true,
+): Promise<void> {
+  try {
+    if (!Number.isFinite(cantidad) || cantidad <= 0) return
+
+    const hoy = new Date().toISOString().slice(0, 10)
+    const { data: tarifa } = await supabase
+      .rpc('fn_consumo_tarifa_vigente', { p_concepto: concepto, p_fecha: hoy })
+      .maybeSingle()
+
+    // El `numeric` de Postgres llega como STRING ("37.679800") — normalizar antes de multiplicar,
+    // o el costo sale NaN. Un `|| 0` sobre un precio 0 legítimo también lo rompería, por eso
+    // Number.isFinite y no un truthy check.
+    const precioNum = tarifa ? Number(tarifa.precio) : NaN
+    const precio = Number.isFinite(precioNum) ? precioNum : 0
+
+    const { error } = await supabase.from('consumo_eventos').insert({
+      tenant_id: tenantId,
+      canal: 'whatsapp',
+      concepto,
+      cantidad,
+      unidad: tarifa?.unidad ?? 'mensaje',
+      precio_unitario: precio,
+      moneda: tarifa?.moneda ?? 'ARS',
+      costo: facturable ? cantidad * precio : 0,
+      facturable,
+      tarifa_encontrada: !!tarifa,
+      tarifa_id: tarifa?.tarifa_id ?? null,
+      referencia,
+      detalle,
+    })
+
+    // 23505 = ya registrado. Meta reenvía el mismo status (sent/delivered/read) varias veces por
+    // mensaje: el UNIQUE lo dedupea y esto NO es un error.
+    if (error && (error as any).code !== '23505') {
+      console.error('wa-webhook: error registrando consumo', concepto, error)
+    }
+  } catch (e: any) {
+    console.error('wa-webhook: excepción registrando consumo', concepto, e?.message)
+  }
 }
 
 async function enviarMensajeWhatsapp(phoneNumberId: string, accessToken: string, to: string, texto: string) {
@@ -313,12 +371,15 @@ serve(async (req) => {
         const value = change.value ?? {}
         const phoneNumberId = value.metadata?.phone_number_id
         const mensajes = value.messages ?? []
-        // value.statuses = recibos de entrega/lectura de mensajes SALIENTES — nada que responder.
-        if (!phoneNumberId || mensajes.length === 0) continue
+        // value.statuses = recibos de entrega/lectura de mensajes SALIENTES. No hay nada que
+        // responder, pero desde la mig 391 SÍ se procesan: traen el bloque `pricing` de Meta, que es
+        // la fuente de verdad de cuánto costó cada mensaje (categoría y si fue facturable).
+        const statuses = value.statuses ?? []
+        if (!phoneNumberId || (mensajes.length === 0 && statuses.length === 0)) continue
 
         const { data: cred } = await supabase
           .from('whatsapp_credentials')
-          .select('tenant_id, access_token')
+          .select('tenant_id, access_token, numero_notificaciones')
           .eq('phone_number_id', phoneNumberId)
           .eq('conectado', true)
           .maybeSingle()
@@ -326,6 +387,35 @@ serve(async (req) => {
         if (!cred) {
           console.warn('wa-webhook: phone_number_id sin credenciales conectadas', phoneNumberId)
           continue
+        }
+
+        // Autorización (mig 392): quiénes pueden hablarle al asistente de este negocio. Se carga una
+        // sola vez por credencial, no por mensaje. El `numero_notificaciones` del dueño queda
+        // autorizado implícitamente — es su número por definición, no hace falta cargarlo dos veces.
+        const soloDigitos = (v: unknown) => String(v ?? '').replace(/\D/g, '')
+        const { data: autorizadosRows } = await supabase
+          .from('whatsapp_numeros_autorizados')
+          .select('numero')
+          .eq('tenant_id', cred.tenant_id)
+          .eq('activo', true)
+        const autorizados = new Set<string>((autorizadosRows ?? []).map((r: any) => soloDigitos(r.numero)))
+        const numNotif = soloDigitos(cred.numero_notificaciones)
+        if (numNotif) autorizados.add(numNotif)
+
+        // Sección G: costo real de los mensajes salientes, informado por Meta.
+        // La categoría NO se infiere de nuestro lado — se toma de `pricing.category` (utility /
+        // marketing / authentication / service). Si Meta manda una categoría que todavía no está en
+        // el rate card, el evento se guarda igual con `tarifa_encontrada: false` y queda visible.
+        for (const st of statuses) {
+          const pricing = st?.pricing
+          const categoria = String(pricing?.category ?? '').toLowerCase().trim()
+          if (!st?.id || !categoria) continue
+          const facturable = pricing.billable !== false && pricing.type !== 'free_customer_service'
+          await registrarConsumo(
+            supabase, cred.tenant_id, `whatsapp_${categoria}`, 1, st.id,
+            { status: st.status, pricing, origen: st.conversation?.origin?.type ?? null },
+            facturable,
+          )
         }
 
         for (const msg of mensajes) {
@@ -349,6 +439,23 @@ serve(async (req) => {
             } else {
               console.error('wa-webhook: error de idempotencia, se aborta este mensaje', logInErr)
             }
+            continue
+          }
+
+          // Autorización (mig 392): el asistente es para el DUEÑO del negocio, no para clientes
+          // finales ni para cualquiera que consiga el número. Va DESPUÉS del log (para poder ver
+          // quién escribió) pero ANTES de todo lo caro: sin este corte, un número ajeno dispara una
+          // llamada a Claude, consultas al stock real y hasta la creación de un borrador de gasto
+          // — verificado en la prueba de Fede del 2026-09-05.
+          //
+          // Se lo ignora EN SILENCIO, sin responder: contestar cuesta un mensaje y, con un número
+          // productivo, sería pagarle al spam.
+          //
+          // Si el tenant todavía no tiene ningún número cargado, NO se bloquea nada (fail-open) —
+          // un tenant recién conectado no debe parecer roto. En la práctica casi nunca pasa: el
+          // numero_notificaciones del dueño ya cuenta como autorizado.
+          if (autorizados.size > 0 && !autorizados.has(soloDigitos(from))) {
+            console.warn('wa-webhook: mensaje de número NO autorizado, ignorado sin responder', from)
             continue
           }
 
@@ -454,6 +561,19 @@ serve(async (req) => {
             respuesta = { tipo: 'texto', texto: 'Tuve un problema respondiendo, probá de nuevo en un rato.', tokensIn: 0, tokensOut: 0 }
           }
 
+          // Sección G: costo de IA de este mensaje. La cantidad va en MILLONES de tokens porque así
+          // está expresado el precio de lista de Anthropic (USD/MTok) — `detalle` guarda el conteo
+          // crudo para poder leerlo a ojo. En paralelo para no sumar dos viajes de latencia a la
+          // respuesta del bot.
+          await Promise.all([
+            registrarConsumo(supabase, cred.tenant_id, 'ia_tokens_in',
+              respuesta.tokensIn / 1_000_000, messageId,
+              { modelo: CLAUDE_MODEL, tokens: respuesta.tokensIn }),
+            registrarConsumo(supabase, cred.tenant_id, 'ia_tokens_out',
+              respuesta.tokensOut / 1_000_000, messageId,
+              { modelo: CLAUDE_MODEL, tokens: respuesta.tokensOut }),
+          ])
+
           if (respuesta.tipo === 'proponer_gasto') {
             const { data: borrador, error: borradorErr } = await supabase.from('whatsapp_gastos_borrador').insert({
               tenant_id: cred.tenant_id,
@@ -486,6 +606,7 @@ serve(async (req) => {
 
               const resumen = `📝 ¿Guardo este borrador de gasto?\n\n${respuesta.datos.descripcion}\n💰 $${respuesta.datos.monto.toLocaleString('es-AR')}` +
                 (respuesta.datos.categoria ? `\n🏷️ ${respuesta.datos.categoria}` : '') +
+                (respuesta.datos.advertencia ? `\n\n⚠️ ${respuesta.datos.advertencia}` : '') +
                 `\n\nOjo: esto todavía NO es un gasto real — alguien del equipo lo revisa y lo carga después.`
               await enviarMensajeInteractivoWhatsapp(phoneNumberId, cred.access_token, from, resumen, [
                 { id: `confirmar:${borrador.id}`, title: '✅ Confirmar' },

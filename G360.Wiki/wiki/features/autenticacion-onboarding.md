@@ -184,9 +184,26 @@ Los motivos `es_sistema=true` muestran badge "sistema" en ConfigPage y no tienen
 
 ---
 
+## Refresco de sesión con el backend caído (2026-09-06)
+
+El cliente de Supabase (auth-js 2.98) reintenta `POST /auth/v1/token?grant_type=refresh_token` **sin techo
+global**: un ticker de 30 s que nunca se detiene, con ~7 reintentos internos por tick y **cero contador de
+fallos entre ticks**. Medido en DEV: 595 requests en 24 h, 563 con 5xx, sosteniendo ~65/hora durante 5 horas
+seguidas. La app amplificaba la caída que la estaba rompiendo.
+
+Desde v1.196.x el cliente lleva un **cortacircuitos** (`src/lib/authRefreshBreaker.ts`, cableado en
+`global.fetch` de `src/lib/supabase.ts`): backoff exponencial con jitter, corte local sin tráfico de red, y
+se rinde tras 10 fallos consecutivos mostrando `AvisoSesionSinRefresco` con **Reintentar** / **Volver a
+entrar**. Un blip del backend **no** desloguea al usuario; un `invalid_grant` real sí lleva a login limpio.
+
+Detalle completo (incidente, causa raíz, medición y cobertura): [[wiki/architecture/resiliencia]].
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/suscripciones-planes]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/architecture/estado-global]]
+- [[wiki/architecture/resiliencia]]
 - [[wiki/database/triggers]]

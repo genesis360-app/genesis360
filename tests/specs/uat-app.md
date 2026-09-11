@@ -86,6 +86,61 @@ existentes corren un único camino feliz con el valor default de cada flag. **Ah
 > **UAT:** verificar que (1) el input por-ítem no acepta tipeo manual; (2) un combo de 1 SKU aplica su descuento y
 > se ve "por combo"; (3) el descuento manual sigue disponible vía "Descuento general" para DUEÑO/SUPERVISOR/ADMIN.
 
+### H5 — 🛑 Devolución de seña al ANULAR: iba a la caja equivocada y fallaba en silencio (CERRADO 2026-09-06)
+
+**Encontrado corriendo la regresión de las Tandas F/E, con datos reales — no por inspección.** El spec
+`137_ventas_anulacion_supervision_mutante` falló 2 de 2 veces en el paso "revierte caja". La venta
+quedaba `cancelada`, el stock se reincorporaba bien… y **el egreso de caja que devuelve el efectivo
+cobrado NO se creaba**. El ingreso de la venta sí estaba → **la caja quedaba inflada por el monto
+cobrado, en silencio**.
+
+**Causa raíz** (`VentasPage.tsx`, rama `cancelada` de `cambiarEstado`):
+
+```ts
+const cancelSesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? sesionesAbiertas[0].id : null)
+if (cancelSesionId) { try { …insert egreso… } catch {} }
+```
+
+`sesionesAbiertas` **mezcla monedas** y su query **no tiene `ORDER BY`**, así que `[0]` podía ser la
+sesión de la **Caja USD** → se intentaba asentar un reintegro en pesos en una caja en dólares. Verificado
+contra la DB: el último `egreso_devolucion_sena` correcto es del **2026-09-02**, y en DEV se abrió una
+**Caja USD el 2026-09-04**. Desde ahí, ninguna anulación volvió a generar su egreso.
+
+Y encima fallaba **mudo**, por dos caminos: `if (cancelSesionId)` sin `else`, y un `catch {}` vacío que
+se tragaba cualquier error. Más el `void supabase…insert(…)` fire-and-forget de la pata no-efectivo.
+Eso es exactamente lo que prohíbe la **obligación #4 de la REGLA #0** ("todo movimiento de EFECTIVO se
+asienta en caja — awaiteado + aviso si falla, nunca fire-and-forget ni silencioso").
+
+**Fix**: se elige la sesión de la lista **`sesionesArs`** (respetando `sesionCajaId` solo si es de
+pesos), el guard previo exige una caja **EN PESOS** (antes bastaba "cualquier caja abierta"), la pata
+no-efectivo pasa a estar `await`eada, y **todos** los caminos de falla avisan con un toast que dice el
+monto y el motivo, pidiendo registro manual. Verificado: el spec 137 vuelve a pasar y la Venta #684
+asentó su `egreso_devolucion_sena` de $1.234 en **Caja1 (ARS)**.
+
+⚠ **Queda abierto (nuevo)**: si la venta se cobró en **efectivo USD**, el reintegro al anular no se
+contempla en ninguna rama (`efectivoCobrado` solo suma `tipo === 'Efectivo'`, que es pesos). Hay que
+relevarlo con GO.
+
+✅ **Desvío de DEV regularizado (autorizado por GO, 2026-09-06).** Las ventas #679 y #682 de las dos
+corridas fallidas habían quedado con su `ingreso` y sin el `egreso_devolucion_sena` → $2.468 de más en
+Caja1. Se asentaron los dos egresos faltantes en **la misma sesión donde había caído el ingreso**
+(Caja1, ARS, abierta) y por el mismo monto, con el concepto marcado como *"regularización manual (bug
+caja USD)"* para que quede auditable. Saldo de la sesión: **$33.395** (era $35.863 con el desvío).
+
+**Auditoría de barrido**: se buscaron TODAS las ventas canceladas del tenant con cobro en efectivo que
+tuvieran `ingreso` sin su `egreso_devolucion_sena` → **0 resultados**. No había más huérfanos que esos
+dos. La consulta queda como control reusable:
+
+```sql
+-- ventas canceladas con cobro en efectivo cuyo ingreso NO tiene su egreso de devolución
+with cancel as (select numero from ventas where estado='cancelada'
+                 and coalesce(monto_pagado,0)>0 and medio_pago ilike '%Efectivo%')
+select c.numero from cancel c
+where exists (select 1 from caja_movimientos where tipo='ingreso' and concepto='Venta #'||c.numero)
+  and not exists (select 1 from caja_movimientos where tipo='egreso_devolucion_sena'
+                   and concepto like '%Venta #'||c.numero||'%');
+```
+
 ### H1 — Controles financieros SOLO client-side (choca con REGLA #0 obligación #3) 🟥🟥
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos
 y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo existen `fn_gastos_iva_guard`
@@ -218,6 +273,371 @@ MELI/TN), visual PROD, concurrencia.
 ### ⚠ Gotcha UX (no bloqueante, ya documentado)
 Convertir presupuesto a despachada **desde el Historial** con 2+ cajas abiertas y sin caja preferida no
 expone selector de caja → callejón sin salida. Fix sugerido: exponer el selector en el modal de saldo.
+
+### ✅ Tanda D — RESILIENCIA: categoría COMPLETA que no existía (abierta y CERRADA el 2026-09-06)
+
+**Origen**: la base de DEV se cayó (instancia `t4g.nano` saturada, CPU 94% / Disk IO 97%). Investigando el
+tráfico apareció que **~650 de las ~5.000 requests de 24 h eran una sola pestaña de Chrome reintentando
+`POST /auth/v1/token?grant_type=refresh_token`**, casi todas fallando con 5xx de Cloudflare. Una sesión
+vencida del 4/9 quedó en bucle de reintentos sin freno. El resto del tráfico legítimo eran decenas de
+requests. **La app amplificó la caída que la estaba rompiendo.**
+
+**Por qué NINGÚN test lo detectó — y no es un descuido puntual, es una capa entera que falta:** las 142
+specs e2e son todas **funcionales** (¿anda la feature cuando todo lo demás anda?). Corren siempre contra un
+backend sano. **Cero specs ejercitan condiciones degradadas**: backend lento, backend caído, 5xx sostenido,
+sesión vencida, red intermitente. Un bug que solo se manifiesta cuando el backend falla es, por
+construcción, invisible para esta suite. Verificado con grep: ni una spec menciona `refresh_token`, sesión
+expirada, offline ni reintentos.
+
+Escenarios a cubrir:
+- ✅ **D1 — Refresco de sesión con backend caído** (CERRADO 2026-09-06, ver abajo).
+- ✅ **D2 — Sesión vencida con pestaña abierta** (CERRADO 2026-09-06, spec 142).
+- ✅ **D3 — Backend 5xx sostenido** (CERRADO 2026-09-06, spec 142).
+- ✅ **D4 — Red intermitente** online/offline/online (CERRADO 2026-09-06, spec 142).
+- ✅ **D5 — Pestaña dormida / reanudada** (CERRADO 2026-09-06, spec 142).
+
+#### ✅ D2 a D5 — CERRADOS (2026-09-06) · `tests/e2e/142_resiliencia_backend_degradado.spec.ts`
+
+Primera spec del repo que **intercepta la red del browser** (`page.route`, `context.setOffline`) en vez
+de necesitar un backend roto de verdad: es determinista, no le agrega carga a DEV y no depende de que
+algo esté caído. Verificado con grep que ninguna spec usaba estas APIs — la capa no existía.
+
+**Y el resultado es buena noticia: la app se porta BIEN en condiciones degradadas.** El caso anómalo
+era D1, y estaba en auth-js, no en la capa de React Query.
+
+| Escenario | Qué se verifica | Medido |
+|---|---|---|
+| **D2** | Refresh token inválido (400 `invalid_grant`) → cae en `/login` **sola** y deja de pedir | ≤1 refresco extra tras llegar a login |
+| **D3** | Backend 503 sostenido en todas las consultas, 30 s de pantalla quieta | **0 requests** (techo 20) |
+| **D4** | Sin red no martilla, y al volver **se recupera sola sin recargar** | **0** offline · >0 al reconectar |
+| **D5** | Pestaña dormida y reanudada: revalida sin tormenta | **14 requests** al despertar (techo 60) |
+
+**Hallazgo de D4**: React Query usa `networkMode: 'online'` por default, así que sin red **pausa** las
+queries en vez de dispararlas y verlas fallar. Es exactamente lo contrario de lo que hacía auth-js en
+D1. Queda afirmado como propiedad para que nadie lo rompa sin darse cuenta.
+
+**Los techos son barandas anti-regresión, no descripciones de un problema**: si alguien saca el
+`retry: 1` global, cambia el `networkMode` o mete un `refetchInterval` agresivo, saltan acá. Se
+calibraron corriendo la spec con los presupuestos en 0 para ver el valor real y conocer el margen.
+
+> ⚠ **Método que hay que repetir en toda spec de condiciones degradadas**: cada presupuesto va con un
+> control **anti-falso-verde** (`toBeGreaterThan(0)`) que prueba que el intercept se activó. Sin eso,
+> un intercept mal escrito hace pasar el test **por vacío**. Pasó de verdad escribiendo esta spec: D4
+> daba verde con 0 requests fallidas porque, con la pantalla quieta, la app no pide nada y el corte de
+> red no ejercitaba nada.
+
+#### ✅ D1 — CERRADO (2026-09-06)
+
+**Diagnóstico verificado contra los logs de edge de DEV, no inferido.** Últimas 24 h: **595 requests** a
+`POST /auth/v1/token?grant_type=refresh_token` — 452 con **522**, 49 con **504**, 45 con **521**, 16 con
+**524**, 1 con **525**, y solo **32 con 200**. El 100 % eran `grant_type=refresh_token` (ninguna era login).
+Distribución por hora: ~65 requests/hora sostenidas entre las 19 h y las 00 h del 5/9 — **cinco horas
+seguidas sin rendirse**. Eso descarta la hipótesis de que auth-js descarte la sesión ante un 52x: el bucle
+es infinito.
+
+**Causa raíz en auth-js 2.98** (leída en `node_modules/@supabase/auth-js`, no de memoria):
+- ticker cada 30 s (`AUTO_REFRESH_TICK_DURATION_MS`) que **nunca se detiene**;
+- hasta ~7 reintentos con backoff **dentro de cada tick** (200, 400, 800… ms);
+- **no existe contador de fallos entre ticks** → nada corta el bucle.
+- Además `NETWORK_ERROR_CODES` solo contempla 502/503/504: los 52x de Cloudflare (que son los que
+  realmente llegan) caen fuera de su lógica de reintento.
+
+**Fix** — `src/lib/authRefreshBreaker.ts` (cortacircuitos) + cableado en `src/lib/supabase.ts` +
+`src/components/AvisoSesionSinRefresco.tsx`. NO se toca auth-js ni su config: se envuelve el `fetch` del
+cliente y se intercepta **únicamente** ese endpoint.
+1. Backoff exponencial con jitter ±20 % entre intentos reales: 2 s → 4 → 8 → … tope 5 min.
+2. Con el circuito abierto el intento se corta **localmente**: cero tráfico de red.
+3. Tras 10 fallos consecutivos se rinde y no vuelve a salir a la red hasta que el usuario decida.
+4. El cortocircuito devuelve **503 a propósito**: es el único rango que auth-js trata como reintentable, y
+   por lo tanto el único que **no** le hace borrar la sesión guardada. Deliberado: un cajero en medio de una
+   venta no puede quedar deslogueado por un blip de 30 s (REGLA #0).
+5. Un **400/401** (`invalid_grant`, refresh token revocado) **no** abre el circuito: es respuesta
+   definitiva y auth-js hace el login limpio, que es lo correcto.
+6. La UI avisa sin bloquear: franja discreta al 2º fallo, tarjeta con **Reintentar** / **Volver a entrar**
+   cuando se rindió. "Volver a entrar" usa `signOut({ scope: 'local' })` — no sale a la red, justo cuando
+   la red es el problema.
+
+**Cobertura**: `tests/unit/authRefreshBreaker.test.ts`, 19 tests. El de regresión reproduce la caída real
+del 5/9 (ticker cada 30 s durante 5 h = 600 intentos) y exige **10 requests de red en total** en vez de 600,
+y estado final `rendido`.
+
+**Foto de datos**: ninguna — es lógica pura de cliente con reloj, aleatorio y `fetch` inyectados. Corre
+determinístico, sin tenant ni backend. (Es justamente lo que pedía la nota de método: un verde
+reproducible.)
+
+**Lo que este fix NO cubre** (queda para D2-D5): que la UI reaccione a un backend caído en las consultas de
+datos (no solo en el refresco de sesión), la pestaña dormida y reanudada, y la red intermitente.
+
+### 🟥 Tanda E — STRESS / CARGA: tampoco existe (abierta 2026-09-06)
+
+Cero cobertura de carga sostenida. Nunca se midió cuántos usuarios concurrentes aguanta, ni con qué tamaño
+de instancia, ni qué se rompe primero. Con el primer cliente real a 2 semanas, esto deja de ser teórico.
+
+- **E1 — Concurrencia real**: N usuarios operando a la vez (venta + caja + inventario) sin errores.
+- **E2 — Techo de la instancia**: a partir de qué carga se satura, para dimensionar el compute.
+- **E3 — Volumen de datos**: comportamiento con un catálogo y un historial de tamaño realista, no de demo.
+- **E4 — Consultas caras**: identificar las N más pesadas (pg_stat_statements) y ponerles presupuesto.
+
+#### ✅ Primera pasada de Tanda E (2026-09-06)
+
+**Instrumento nuevo**: `scripts/stress-lectura.mjs` (`npm run stress:lectura`). Simula N sesiones
+concurrentes con el mix de LECTURAS que hace la app al navegar y reporta p50/p95/p99, RPS y errores.
+Solo GET, no escribe nada; se niega a correr contra PROD o con >20 usuarios sin `--si-se-que-hago`.
+
+**E1 — concurrencia ✅ medido** (DEV, compute MICRO, 5 cuentas reales de distinto rol):
+
+| Concurrencia | RPS | Errores | p50 | p95 |
+|---|---|---|---|---|
+| 5 sesiones · 20 s | 49,8 | **0** | 78 ms | 267 ms |
+| 20 sesiones · 25 s | 86,3 | **0** | 112 ms | 1.461 ms |
+
+Sin un solo error en ninguna de las dos. A 20 concurrentes el p95 se dispara y **es casi todo una
+sola consulta** (ver E4-h2): el resto de los listados se queda abajo de 250 ms.
+
+**E2 — techo: NO se buscó a propósito.** Saturar la instancia es destructivo y DEV es el ambiente de
+trabajo de GO. El instrumento ya está y admite la carga que se le pida (`--usuarios N
+--si-se-que-hago`) — **falta acordar con GO cuándo correrlo**.
+
+**E3 — volumen ✅ medido, y el resultado es el hallazgo**: la base ENTERA de DEV (los 10 tenants
+juntos) tiene 881 productos, 821 ventas, 2.026 ítems de venta, 1.657 movimientos de stock. Un
+comercio real hace 821 ventas en dos semanas. **Nunca se probó nada a escala real** — todos los
+números de arriba son con una base de demo, así que son un piso optimista.
+
+**E4 — consultas caras ✅ dos hallazgos, uno arreglado:**
+
+- ✅ **E4-h1 — `ventas` ordenada por fecha: ARREGLADO (mig 395).** `EXPLAIN ANALYZE` real: para
+  devolver **20** ventas el plan leía **las 662 del tenant** y recién después ordenaba (top-N
+  heapsort) — el `LIMIT` no podía cortar antes. O(n) sobre el historial completo, en cada carga.
+  `ventas` tenía 13 índices y ninguno servía para ese orden, que usan **14 lugares del frontend**.
+  Índice compuesto `(tenant_id, created_at DESC)` → **17,0 ms → 1,14 ms**, y lee 20 filas en vez de
+  662 (deja de crecer con el historial). End-to-end en la sonda: `ventas` p50 **277 → 78 ms**, p95
+  **435 → 96 ms**; el total pasó de 35,8 a **49,8 req/s** con la misma concurrencia.
+
+- 🔴 **E4-h2 — `venta_items` castiga a los usuarios restringidos por sucursal (SIN arreglar).**
+  `venta_items` no tiene `sucursal_id`, así que su policy resuelve la sucursal con un
+  `EXISTS (SELECT 1 FROM ventas v WHERE v.id = venta_items.venta_id AND ...)`. Postgres lo convierte
+  en un **hashed SubPlan que materializa TODAS las ventas visibles del tenant** antes de devolver la
+  primera fila. Medido con el mismo query: **DUEÑO 2,1 ms · CAJERO 48,0 ms (24×)** — el DUEÑO
+  cortocircuita en `auth_ve_todas_sucursales()` y nunca ejecuta el subplan; el cajero sí, y construye
+  el hash de las 558 ventas para devolver 50 ítems. Es el causante del p95 de 1,4 s a 20 concurrentes.
+  ⚠ **Cuidado con medir esto como DUEÑO: da 2 ms y parece sano.** Escala O(ventas del tenant) por
+  query. Dos caminos, los dos necesitan decisión de GO: (a) denormalizar `sucursal_id` en
+  `venta_items` (rápido, pero es backfill + trigger sobre una tabla fiscal), o (b) índice de cobertura
+  para que el subplan se arme sin tocar el heap (aditivo y sin riesgo, pero mejora menos).
+
+**De paso, corrección de documentación**: `pg_cron` y `pg_net` **SÍ están habilitados** en DEV y PROD
+(1.6.4 / 0.20.0), con 3 jobs activos en DEV. Eso explica el `tn-fulfillment-worker` que corría "133
+veces por día sin que nadie lo mire": es el job `tn-fulfillment-sync`, `*/5 * * * *`, `active=true`.
+El wiki ya lo tenía bien; era la memoria del asistente la que decía "pg_cron NO habilitado".
+
+### 🟧 Tanda F — ROLES: cobertura existe pero es SOLO client-side (pedido de GO 2026-09-06)
+
+Ya hay specs por rol (`13_rol_cajero`, `15_rol_supervisor`, `16_rol_rrhh`, `17_rol_deposito`,
+`18_rol_contador`) y verifican positivo y negativo: qué rutas entran, cuáles redirigen, qué links del
+sidebar NO se ven. **Pero todo se valida por UI.** Eso choca de frente con el hallazgo **H1** de este mismo
+documento ("Controles financieros SOLO client-side") y con la obligación #3 de la REGLA #0: los guards
+tienen que estar server-side ADEMÁS de en la UI, porque la UI se cachea y se bypassea.
+
+- **F1 — Negativo server-side por rol**: que un CAJERO no pueda ejecutar por REST/RPC directo lo que la UI
+  le esconde. Es la prueba que falta: hoy nadie verifica que la DB lo rechace, solo que el botón no esté.
+- **F2 — Matriz completa por rol**: DUEÑO ve todo; SUPERVISOR/CAJERO/DEPÓSITO/RRHH/CONTADOR **solo lo
+  configurado**, y nada más. Hoy la cobertura es despareja entre roles.
+- **F3 — Roles custom** (`rol_custom_id`) con permisos a medida.
+- **F4 — Aislamiento por sucursal cruzado con rol** (ver `reference_rls_por_sucursal`).
+
+#### ✅ Primera pasada de Tanda F (2026-09-06) — spec `141_roles_server_side_matriz.spec.ts`
+
+Spec API-only (sin browser): pega a PostgREST con el `access_token` real de CAJERO, DEPÓSITO, RRHH y
+CONTADOR. **Todas las sondas son NO MUTANTES** — UPDATE con el mismo valor (`[]` = RLS bloqueó ·
+fila = RLS dejó escribir), INSERT con clave única duplicada (`42501` = bloqueó · `23505` = pasó, y no
+inserta nada), y el RPC de cierre pidiendo el mes en curso (que la regla rechaza siempre) para
+distinguir un rechazo por ROL de uno por regla de negocio.
+
+**Lo que SÍ está protegido server-side** (9 tests verdes, valen como regresión): configuración del
+negocio (`tenants`), escalada de privilegios editando `users`, lectura de la Caja Fuerte
+(`boveda_retiros`), `set_clave_maestra`, `marcar_incobrable`, el guard de rol de `cerrar_periodo`
+(CONTADOR sí / operativos no) y **F4: ningún rol operativo de Sucursal Norte ve `ventas`,
+`caja_sesiones` ni `gastos` de Sur** (la spec 94 solo cubría SUPERVISOR).
+
+**🟥 Lo que NO está protegido — verificado en los 4 roles.** Van en la spec con `test.fail()`: la
+aserción correcta hoy falla, Playwright los da en verde mientras el hueco siga abierto y **hace
+fallar la corrida el día que se cierren**, que es cuando hay que sacarles el `test.fail()`.
+
+- ✅ **F1-h1 — CERRADO (mig 394): cerrar un período contable salteando el RPC.** `cerrar_periodo()`
+  validaba el rol… y la policy de `cierres_contables` era `FOR ALL` por tenant a secas. Un CAJERO
+  podía hacer `POST /rest/v1/cierres_contables` directo y **congelar un mes contable entero** (los
+  triggers de período cerrado bloquean después toda edición de gastos/ventas de ese mes). El guard
+  existía y se esquivaba escribiendo la tabla. Ahora la tabla es **solo lectura** vía RLS: se escribe
+  únicamente por los RPC `SECURITY DEFINER`. Verificado que el camino legítimo sigue vivo (DUEÑO
+  cierra y reabre por RPC) y que la lectura no se rompió.
+- ✅ **F1-h2 — CERRADO (mig 396): cambiar el PRECIO DE VENTA de un producto.**
+- ✅ **F1-h3 — CERRADO (mig 396): editar el MONTO de un gasto** — enforzando el **umbral**, no el rol.
+- ✅ **F1-h4 — CERRADO (mig 396): dar de alta productos.**
+- ✅ **F1-h5 — CERRADO (mig 396): crear/renombrar medios de pago** (config).
+- ✅ **F1-h6 — CERRADO (mig 396), HALLAZGO NUEVO y el más grave de los cuatro:** `roles_custom` era
+  escribible por **cualquier usuario del tenant**. Alguien con un rol custom podía **auto-otorgarse**
+  `'editar'` sobre cualquier módulo y saltear todos los guards de arriba. Un guard que confía en un
+  dato que el atacante controla no es un guard — por eso esta tabla se cierra PRIMERO en la migración.
+
+#### Cómo se cerraron h2-h6 (mig 396) sin romper nada
+
+Ninguno se podía cerrar con RLS a secas: **`VentasPage` actualiza `productos.stock_actual` desde el
+cliente** en devoluciones y anulaciones, así que un "CAJERO no escribe productos" corta ventas reales.
+Y en gastos el CAJERO edita legítimamente **por debajo de su umbral**. Entonces:
+
+- **`productos`** → trigger `BEFORE INSERT OR UPDATE` que mira **solo las columnas de precio**
+  (`precio_venta`, `precio_costo`, `precio_marketplace`, `precio_usd`, `precio_costo_usd`,
+  `margen_objetivo`). Un UPDATE de `stock_actual` pasa; uno que mueve el precio, no.
+- **`gastos`** → se enforcea el **umbral del CAJERO** (espejo exacto de `evaluarUmbralGasto`), más el
+  bloqueo de los roles que no operan Gastos (DEPÓSITO/RRHH/Lector) y del alta para CONTADOR —que sí
+  edita campos fiscales de un gasto ya creado—. ⚠ El umbral del **SUPERVISOR** queda a propósito
+  fuera: el supervisor es quien **aplica** la autorización de un cajero, y enforzarlo rompería una
+  aprobación legítima cuando el monto pedido supera también su propio umbral. Cerrarlo requiere antes
+  mover la aplicación de autorizaciones a un RPC (patrón de las migs 236/237/238) — **sigue abierto**.
+- **`metodos_pago`** y **`roles_custom`** → RLS: lectura para todo el tenant, escritura solo gestión.
+- **Roles custom (F3)**: el helper `auth_puede_editar_modulo()` espeja `puedeEditarModulo` del front,
+  así que un rol custom en `'ver'`/`'no_ver'` queda bloqueado aunque su rol base pudiera. Verificado
+  con datos reales: `cajero1@local.com` tiene el rol custom `GO_Cajero` con `inventario: 'ver'`.
+
+**Verificación (lo que evita el falso verde):** las sondas negativas se corren con un valor **DISTINTO**
+—con el mismo valor el trigger no se dispara y todo "pasa"— y hay 4 tests **positivos** que son los que
+detectan un guard pasado de estricto: el CAJERO sigue escribiendo `stock_actual`, un UPDATE que no
+cambia el precio pasa, DUEÑO/SUPERVISOR sí cambian precios (y el precio queda restaurado), y el
+CONTADOR sigue editando campos de un gasto. Las tres ramas del umbral (bajo / sobre / sin umbral) se
+verificaron por impersonación SQL con un cajero sin rol custom.
+
+#### 🔴 F2 — matriz de LECTURA por rol (2026-09-06): acá aparecieron los hallazgos más serios
+
+La Tanda F había mirado solo **qué escribe** cada rol. La otra mitad es **qué lee**. Sonda con tokens
+reales de los 6 roles sobre 14 tablas sensibles. De 18 tablas sensibles auditadas, **solo 4 tienen
+alguna policy que mire el rol**.
+
+| Tabla · columna | Antes | Ahora |
+|---|---|---|
+| `mercadopago_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos** los roles | ✅ 403 (mig 400) |
+| `tiendanube_credentials.access_token` | 🔴 lo leían **todos** | ✅ 403 (mig 400) |
+| `whatsapp_credentials.access_token` | 🔴 legible (0 filas en este tenant, pero sin protección) | ✅ 403 (mig 400) |
+| `meli_credentials.access_token` + `refresh_token` | 🔴 lo leían **todos**, y `anon` (2 filas en DEV) | ✅ **cerrado (mig 403)** |
+| `modo_credentials.api_key` · `courier_credenciales.credenciales` | 🔴 ídem | ✅ **cerrado (mig 403)** |
+| `rrhh_salario_items` · `rrhh_anticipos` | 🔴 el DETALLE de la liquidación: 26 filas para un CAJERO | ✅ **cerrado (mig 403)** |
+| `emisores_fiscales.afipsdk_token` | 🔴 lo leen todos (2 de 4 emisores tienen uno cargado) | ✅ **cerrado (mig 402)** — ni el DUEÑO |
+| `tenants.afipsdk_token` (copia legacy del anterior) | 🔴 la lee todo el tenant vía `select('*')` | ✅ **vaciada y bloqueada (mig 402)** |
+| `rrhh_salarios.basico/neto` | 🔴 los leía **cualquier rol**, incluido CAJERO | ✅ **cerrado (mig 401)** |
+| `empleados.salario_bruto`, `cbu`, `dni_rut` | 🔴 sueldo, cuenta bancaria y DNI de cada empleado | ✅ **cerrado (mig 401)** |
+| `tenant_certificates.cert_key_path` | 🟠 ruta de la clave privada AFIP, legible por todos | 🟠 la ruta sigue visible, pero **el archivo ya no** (mig 402) |
+| `ai_tenant_memoria`, `boveda_retiros` | ✅ solo DUEÑO | ✅ |
+
+**Lo grave del caso Mercado Pago**: con ese token se opera la cuenta de MP del comercio (cobros,
+devoluciones) **desde afuera de Genesis360**. El comentario en `src/lib/supabase.ts` decía *"access_token
+nunca expuesto al frontend"* — y era cierto **en la interfaz TypeScript**, que no lo declara. Pero una
+interfaz no es un control de acceso: PostgREST devuelve la columna que le pidas. La protección existía
+solo en el tipo.
+
+**Fix (mig 400)**: privilegios a nivel **columna**. Se revoca el SELECT de tabla y se re-otorga columna
+por columna salteando los secretos (en PostgreSQL no se puede "restar" una columna de un grant de
+tabla). Impacto cero verificado: las tres consultas de `ConfigPage.tsx` usan listas explícitas que no
+incluyen el token, y `service_role` queda intacto para las Edge Functions. Ojo: con `select('*')`
+PostgREST expande a todas las columnas y daría 403 — por eso hay un test que lo cubre.
+
+#### 🔎 La auditoría COMPLETA del esquema (mig 403) — y la matriz de escritura, ya cerrada (mig 404)
+
+Después de la 402 se repitió la auditoría **sobre todo el esquema**, no sobre las tablas del hallazgo:
+**111 de 152 tablas no mencionan el rol en ninguna cláusula de sus policies.** La mayoría está bien
+así. Lo que salió y se cerró:
+
+- Los secretos que la mig 400 dejó afuera: **Mercado Libre**, **MODO** y **couriers**.
+- El **detalle** de RRHH que la mig 401 dejó afuera: `rrhh_salario_items` + `rrhh_anticipos`. Cerrar
+  la cabecera de la liquidación y dejar el detalle abierto es no cerrar nada — el sueldo se
+  reconstruye sumando conceptos.
+- La **escritura** de las 6 tablas de credenciales (un CAJERO podía desconectar las integraciones).
+
+✅ **Escritura de plata, precios e inventario — CERRADA (mig 404).** Un CAJERO escribía por REST
+`cheques`, `cliente_creditos`, `caja_traspasos`, `producto_precios_mayorista`, `cupones`, `combos`,
+`sucursales`, `ubicaciones`, `estados_inventario`, `canales_venta`, `cuentas_origen`, `kit_recetas` y
+`proveedor_cuentas_bancarias`. Dos cosas del diseño que conviene no perder: la lista mayorista y los
+cupones **eran el precio de venta de la mig 396 por la puerta de al lado**; y el corte va por
+**OPERACIÓN** — `VentasPage` inserta `cliente_creditos`, el cajero crea cheques al cobrar y **el POS
+escribe `cupones_codigos` al canjear**, así que un guard por tabla habría roto la venta con cupón.
+
+🟥 **Sigue abierto por definición de negocio**: `proveedor_cc_movimientos` (¿un cajero registra un
+pago a proveedor?) y `gastos_fijos`/`gasto_cuotas` (el CAJERO opera bajo su umbral, el CONTADOR es
+actor legítimo).
+
+🐛 **Hallazgo aparte, de la corrida de regresión**: **9 specs e2e estaban rotos hace días** — todos
+los que siembran stock por UI (115, 116, 119, 122, 123, 128, 131, 132, 137). El fixture
+`ingresoRealPorUI` elige **la primera ubicación a ciegas**, y esa es **Mono-SKU**: el día que quedó
+ocupada por un producto de otro spec se cayeron los 9 juntos, con un `toBeVisible` que no decía nada.
+Verificado que **no** es de las migs 402/403/404. Sin arreglar: ver `project_pendientes.md`.
+
+⚠ **Deuda de fixture (vale para las migs 401 y 403)**: en DEV hay **0 empleados con `user_id`**, así
+que la rama "cada empleado ve lo suyo" nunca se probó con datos.
+
+#### 🔴🔴 El NÚCLEO FISCAL — CERRADO (mig 402, 2026-09-07). Fue el hallazgo más grave de la tanda
+
+Se abrió yendo a cerrar el pendiente chico (`afipsdk_token`) y apareció algo mayor: **las tres tablas
+fiscales tenían UNA sola policy `FOR ALL` que miraba el tenant y nada más**. Con el token de cualquier
+rol —CAJERO, DEPÓSITO, RRHH, CONTADOR, LECTOR— y `curl`:
+
+| Objetivo | Lo que se podía hacer | Consecuencia fiscal |
+|---|---|---|
+| `PATCH /emisores_fiscales` | cambiar **CUIT**, **condición de IVA**, **umbral de Factura B** | facturas con el CUIT o la LETRA equivocada |
+| ídem | prender **`afip_produccion`** | un cajero pasa el negocio a **CAE real e irreversible** |
+| `DELETE /tenant_certificates` | borrar el certificado AFIP | se cae la facturación |
+| `POST/DELETE /puntos_venta_afip` | tocar los puntos de venta | numeración fiscal |
+| `GET storage/certificados-afip/…key` | **bajarse la CLAVE PRIVADA AFIP** | firmar el WSAA y facturar como ese CUIT desde afuera |
+
+Lo del bucket es lo peor de la lista y estaba dado por cerrado en el código: el comentario de
+`generar-csr/index.ts` dice *"bucket certificados-afip, service_role-only"*, y no lo era. Además su
+policy de INSERT era `auth.uid() IS NOT NULL` **a secas** (mig 043) — servía para escribir en la
+carpeta de **otro tenant**.
+
+**Fix (mig 402)**: se parte cada policy en SELECT (todo el tenant, que el POS necesita leer el emisor
+y sus PV para facturar) + escritura solo para **DUEÑO/ADMIN/SUPER_USUARIO**, el mismo trío de la
+mig 396. Las policies del bucket se reescriben con carpeta-del-propio-tenant + rol de gestión.
+Impacto cero verificado por impersonación SQL y por la spec 141: el CAJERO escribe 0 filas en las tres
+tablas, el DUEÑO las 3, y los e2e fiscales (21 factura, 42 NC, 56/63 guards de letra, 61/62 wizard de
+certificado, 87 identidad del PDF) siguen verdes.
+
+**Y el token**: pasó a ser un **secreto de solo escritura** — no lo lee nadie desde el browser, ni el
+DUEÑO. La pantalla usa la columna generada `afipsdk_token_configurado` para decir "Configurado", y el
+campo del form arranca vacío (vacío = "no lo toques"), con un botón explícito para quitarlo.
+
+**De paso, un bug que bloqueaba al primer cliente real**: `afipDatosListos` exigía CUIT **+ token
+AfipSDK** para dejar pasar a producción AFIP. Los 9 tenants de PROD están en `afip_provider='propio'`,
+que firma con el **certificado** y no usa el token, y ninguno tiene token cargado → nadie podía pasar a
+producción desde la UI. Ahora el gate mira la credencial del circuito que corresponde.
+
+#### ✅ Visibilidad de RRHH — CERRADA (mig 401), regla aprobada por GO el 2026-09-07
+
+> **DUEÑO / ADMIN / SUPER_USUARIO / RRHH ven todo · SUPERVISOR ve su equipo · cada empleado ve lo
+> suyo · las pantallas de COSTOS leen agregados.**
+
+No se podía cerrar con privilegios de columna como la mig 400: los privilegios de columna son por rol
+de **base de datos** (`authenticated`), no por rol de la app — revocar `salario_bruto` se lo sacaría
+también a RRHH, que lo necesita. Acá el gate correcto es **RLS por fila**.
+
+Lo que exigió el cambio, y por qué no era mecánico: cinco pantallas leían esas tablas.
+
+| Consumidor | Qué necesitaba | Cómo quedó |
+|---|---|---|
+| `RrhhPage`, `RrhhReportesPanel` | detalle completo | acceso directo (rol RRHH) |
+| `MiPortalPage` | su propia ficha y sus liquidaciones | rama "cada empleado ve lo suyo" |
+| `RepartidoresPanel`, `useRecomendaciones` | nombre, teléfono, cumpleaños | **`fn_empleados_basico()`** — sin sueldo/CBU/DNI |
+| `DashGastosArea`, `RentabilidadPage`, `CierresContablesPanel` | **solo suman** `neto` | **`fn_sueldos_agregado()`** — totales, nunca filas |
+
+`fn_sueldos_agregado` está gateada a los roles que ya ven reportes de plata (DUEÑO/ADMIN/
+SUPER_USUARIO/SUPERVISOR/CONTADOR/RRHH): un CAJERO recibe 403.
+
+**Verificado (28 sondas)**: CAJERO/DEPÓSITO/CONTADOR ven **0 filas** de `empleados` y `rrhh_salarios`;
+DUEÑO y RRHH siguen viendo todo; `fn_empleados_basico` devuelve datos para los 6 roles y **no expone**
+sueldo/CBU/DNI; `fn_sueldos_agregado` responde a los 4 roles de reportes y da 403 a CAJERO y DEPÓSITO.
+
+**F2 sigue parcialmente abierto**: la matriz de escritura cubre 4 roles × 12 operaciones, no todo.
+
+> **Nota de método para las tres tandas**: hay que definir y documentar **con qué foto de datos** corre cada
+> escenario (tenant, sucursales, catálogo, usuarios por rol, estado de caja). Sin fixture explícito, un
+> resultado verde no es reproducible — y ya hay antecedente de que esta suite no es determinística bajo
+> carga (ver `reference_e2e_suite_no_deterministica`).
 
 ---
 

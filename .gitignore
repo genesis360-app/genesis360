@@ -23,3 +23,6 @@ Thumbs.db
 
 # Playwright artifacts
 test-results/
+
+# Windows folder metadata
+desktop.ini

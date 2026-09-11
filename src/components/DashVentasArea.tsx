@@ -12,12 +12,12 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
-import { getFechasDashboard, getFechasAnteriores, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
+import { getFechasDashboard, getFechasAnteriores, labelPeriodo, MONEDAS, type PeriodoDash, type Moneda } from '@/components/FilterBar'
+import { fmtDash, fmtUsdDash, separarVentasUsd, usdCobradoDeMedioPago } from '@/lib/dashMoneda'
 
 // ─── Tipos y helpers ──────────────────────────────────────────────────────────
 
 type VentasPeriodo = 'hoy' | '7d' | '15d' | '30d' | 'mes' | 'año' | 'custom'
-type Moneda = 'ARS' | 'USD'
 
 const PERIODO_LABELS: Record<VentasPeriodo, string> = {
   hoy: 'Hoy', '7d': '7D', '15d': '15D', '30d': '30D',
@@ -247,9 +247,13 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
   // Embebido en el Dashboard → período/moneda del filtro global; standalone → filtro interno.
   const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
-  const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
-  const sym = monedaEff === 'USD' ? 'U$D ' : '$'
-  const fmt = useCallback((v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`, [sym, conv])
+  // G1 "modo real" — en REAL no se convierte nada: la plata se calcula SOLO sobre las ventas
+  // nativas en pesos y las que tuvieron componente USD se informan aparte, nunca sumadas.
+  // ⚠ `ventas.total` está siempre en pesos (ver src/lib/dashMoneda.ts): el sistema no guarda
+  // cuánta plata de una venta fue realmente en dólares, así que el bloque USD se informa como
+  // "equivalente en pesos" y jamás como una cifra en dólares.
+  const esReal = monedaEff === 'REAL'
+  const fmt = useCallback((v: number) => fmtDash(v, monedaEff, cotizacion), [monedaEff, cotizacion])
   const fmtPct = (v: number) => `${v.toFixed(1)}%`
 
   const customRange = { desde: customDesde, hasta: customHasta }
@@ -267,7 +271,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
     queryFn: async () => {
       // Ventas del período
       let q = supabase.from('ventas')
-        .select('id, total, monto_pagado, estado, origen, created_at, cliente_id')
+        .select('id, total, monto_pagado, estado, origen, created_at, cliente_id, cotizacion_usd, medio_pago')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', desde)
         .lte('created_at', hasta)
@@ -278,7 +282,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       // Ventas del período anterior (solo confirmadas)
       let qPrev = supabase.from('ventas')
-        .select('total')
+        .select('total, cotizacion_usd')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', desdePrev).lte('created_at', hastaPrev)
         .in('estado', ['despachada', 'facturada'])
@@ -288,13 +292,13 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const ventas = ventasRaw ?? []
       const ventasConf = ventas.filter((v: any) => ['despachada', 'facturada'].includes(v.estado))
 
-      // ── KPI 1: Total Vendido ──────────────────────────────────────────────────
-      const totalVendido = ventasConf.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
-      const totalVendidoPrev = (ventasPrev ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
-
-      // ── KPI 2: Gasto promedio por cliente ────────────────────────────────────
-      const clientesSet = new Set(ventasConf.map((v: any) => v.cliente_id).filter(Boolean))
-      const gastoPromCliente = clientesSet.size > 0 ? totalVendido / clientesSet.size : 0
+      // G1 "modo real" — las ventas con `cotizacion_usd` no nulo (mig 368) tuvieron una
+      // conversión USD real (producto priceado en dólares o pago en dólares). Su `total` está
+      // igual en pesos, pero atado al tipo de cambio de ESE momento: mezclarlas con las nativas
+      // en pesos es lo que el modo Real viene a evitar. Mismo criterio que ya usan el KPI
+      // "Margen de Contribución" y "Ventas del mes" del área Todo.
+      const { ars: ventasArs, conUsd: ventasUsd } = separarVentasUsd(ventas as any[])
+      const { ars: ventasPrevArs } = separarVentasUsd((ventasPrev ?? []) as any[])
 
       // ── KPI 3: Efectividad de presupuestos ───────────────────────────────────
       const totalEmitidas = ventas.length
@@ -302,8 +306,11 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const efectividad = totalEmitidas >= 3 ? (totalConfirmadas / totalEmitidas) * 100 : null
 
       // ── KPI 4: Nuevos vs Frecuentes ──────────────────────────────────────────
+      // No es plata: se calcula sobre TODAS las ventas confirmadas en los tres modos. Dejar
+      // afuera a un cliente por haber comprado un producto priceado en dólares lo haría figurar
+      // como "nuevo" la próxima vez.
       let pctFrecuentes = 0, pctNuevos = 0, cantNuevos = 0, cantFrecuentes = 0
-      const clienteIds = Array.from(clientesSet) as string[]
+      const clienteIds = [...new Set(ventasConf.map((v: any) => v.cliente_id).filter(Boolean))] as string[]
       if (clienteIds.length > 0 && clienteIds.length <= 200) {
         const { data: historial = [] } = await supabase.from('ventas')
           .select('cliente_id')
@@ -319,34 +326,107 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         pctNuevos = 100 - pctFrecuentes
       }
 
-      // ── Chart 1: Funnel ───────────────────────────────────────────────────────
-      const montoPresupuestado = ventas.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
-      const ventasPendCobro = ventasConf.filter((v: any) => (v.monto_pagado ?? 0) < (v.total ?? 0) - 0.5)
-      const ventasPagadas = ventasConf.filter((v: any) => (v.monto_pagado ?? 0) >= (v.total ?? 0) - 0.5)
-      const montoPendCobro = ventasPendCobro.reduce((a: number, v: any) => a + ((v.total ?? 0) - (v.monto_pagado ?? 0)), 0)
-      const montoPagado = ventasPagadas.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+      // ── Bloque de PLATA — se calcula dos veces ───────────────────────────────
+      // G1 "modo real": una vez sobre TODAS las ventas (modos ARS/USD, comportamiento de
+      // siempre) y otra solo sobre las nativas en pesos (modo Real). Es la misma cuenta sobre
+      // dos conjuntos: extraerla evita que las dos versiones se desincronicen con el tiempo.
+      const bloquePlata = (vs: any[], vsPrev: any[]) => {
+        const conf = vs.filter((v: any) => ['despachada', 'facturada'].includes(v.estado))
+
+        // ── KPI 1: Total Vendido ────────────────────────────────────────────────
+        const totalVendido = conf.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+        const totalVendidoPrev = vsPrev.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+
+        // ── KPI 2: Gasto promedio por cliente ──────────────────────────────────
+        const clientesUnicos = new Set(conf.map((v: any) => v.cliente_id).filter(Boolean)).size
+        const gastoPromCliente = clientesUnicos > 0 ? totalVendido / clientesUnicos : 0
+
+      // ── Chart 1: Funnel — "El Camino de la Venta" ────────────────────────────
+      // Redefinido con Fede (2026-09-08). Antes las tres etapas no eran comparables entre sí:
+      // "Presupuestado" sumaba el total de TODAS las ventas del período (reservas y ventas ya
+      // cobradas incluidas), así que una reserva pagada aparecía como "presupuesto"; y "Pagado"
+      // sumaba el total completo de las ventas saldadas, ignorando las señas ya cobradas de las
+      // reservas. El embudo mostraba la misma plata dos veces y escondía otra.
+      //
+      // Ahora cada etapa es una cosa distinta y la plata no se duplica:
+      //   · Presupuestado/Iniciado → SOLO los presupuestos armados en el POS (`estado 'pendiente'`).
+      //   · Pendiente de cobro     → lo que FALTA cobrar (total − pagado).
+      //   · Pagado/Cerrado         → lo que YA se cobró, incluidas las señas de reservas.
+      //
+      // ⚠ Criterio propio, decime si lo querés distinto: en "pendiente de cobro" entran las reservas
+      // Y las ventas confirmadas con saldo (típico cuenta corriente). Fede nombró las reservas, pero
+      // dejar afuera un saldo de CC escondería plata que el negocio tiene por cobrar.
+        const presupuestos = vs.filter((v: any) => v.estado === 'pendiente')
+        const reservas     = vs.filter((v: any) => v.estado === 'reservada')
+        // Lo que ya es venta real (no presupuesto): confirmadas + reservas.
+        const cobrables    = [...conf, ...reservas]
+
+        const montoPresupuestado = presupuestos.reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+
+        const ventasPendCobro = cobrables.filter((v: any) => (v.monto_pagado ?? 0) < (v.total ?? 0) - 0.5)
+        const montoPendCobro  = ventasPendCobro.reduce((a: number, v: any) => a + ((v.total ?? 0) - (v.monto_pagado ?? 0)), 0)
+
+        // `min(pagado, total)` por las dudas: un pagado mayor al total (sobrepago/ajuste) inflaría
+        // la etapa y rompería que pendiente + pagado sea el total de lo vendido.
+        const ventasPagadas = cobrables.filter((v: any) => (v.monto_pagado ?? 0) > 0)
+        const montoPagado   = ventasPagadas.reduce((a: number, v: any) => a + Math.min(v.monto_pagado ?? 0, v.total ?? 0), 0)
+
+        // ── Chart 3: Canal (Pie) ──────────────────────────────────────────────
+        const canalMap: Record<string, { total: number; count: number }> = {}
+        for (const v of conf) {
+          const raw = v.origen ?? 'Presencial'
+          const key = CANAL_DISPLAY[raw] ?? raw
+          if (!canalMap[key]) canalMap[key] = { total: 0, count: 0 }
+          canalMap[key].total += v.total ?? 0
+          canalMap[key].count++
+        }
+        const canalTotal = Object.values(canalMap).reduce((a, b) => a + b.total, 0)
+        const canalData = Object.entries(canalMap)
+          .map(([nombre, { total, count }]) => ({
+            nombre,
+            total,
+            count,
+            // Un decimal (pedido de Fede, 2026-09-08): con canales que se reparten porcentajes
+            // parecidos, redondear a entero borraba la diferencia entre ellos.
+            pct: canalTotal > 0 ? Math.round((total / canalTotal) * 1000) / 10 : 0,
+          }))
+          .sort((a, b) => b.total - a.total)
+
+        return {
+          totalVendido, totalVendidoPrev, gastoPromCliente, clientesUnicos,
+          funnelData: {
+            presupuestado:  { count: vs.length, monto: montoPresupuestado },
+            pendienteCobro: { count: ventasPendCobro.length, monto: montoPendCobro },
+            pagado:         { count: ventasPagadas.length, monto: montoPagado },
+          },
+          canalData,
+        }
+      }
+
+      const plataTodas = bloquePlata(ventas as any[], (ventasPrev ?? []) as any[])
+      const plataArs   = bloquePlata(ventasArs, ventasPrevArs)
+
+      // Las ventas con componente USD que el modo Real deja FUERA del número en pesos. Se
+      // informan por separado (cantidad + su equivalente en pesos) para que la plata nunca
+      // desaparezca en silencio de un total. No se expresan en dólares a propósito: el sistema
+      // no guarda cuánto de cada venta fue realmente en dólares.
+      const ventasUsdConf = ventasUsd.filter((v: any) => ['despachada', 'facturada'].includes(v.estado))
+      // Los dólares que entraron DE VERDAD: `monto_usd` de los medios de efectivo en dólares
+      // (`ventas.medio_pago`, G5 Fase 4). Es la única cifra en dólares reales que guarda una
+      // venta — no es una conversión y no se suma al total en pesos: es otra mirada sobre la
+      // misma plata (el equivalente en pesos de ese pago ya está adentro de `total`).
+      const usdCobrado = ventas
+        .filter((v: any) => ['despachada', 'facturada', 'reservada'].includes(v.estado))
+        .reduce((a: number, v: any) => a + usdCobradoDeMedioPago(v.medio_pago), 0)
+      const compUsd = {
+        cant: ventasUsd.length,
+        cantConf: ventasUsdConf.length,
+        montoEquivalente: ventasUsdConf.reduce((a: number, v: any) => a + (v.total ?? 0), 0),
+        usdCobrado,
+      }
 
       // ── Chart 2: Heatmap ──────────────────────────────────────────────────────
       const heatmap = buildHeatmapMatrix(ventasConf)
-
-      // ── Chart 3: Canal (Pie) ──────────────────────────────────────────────────
-      const canalMap: Record<string, { total: number; count: number }> = {}
-      for (const v of ventasConf) {
-        const raw = v.origen ?? 'Presencial'
-        const key = CANAL_DISPLAY[raw] ?? raw
-        if (!canalMap[key]) canalMap[key] = { total: 0, count: 0 }
-        canalMap[key].total += v.total ?? 0
-        canalMap[key].count++
-      }
-      const canalTotal = Object.values(canalMap).reduce((a, b) => a + b.total, 0)
-      const canalData = Object.entries(canalMap)
-        .map(([nombre, { total, count }]) => ({
-          nombre,
-          total,
-          count,
-          pct: canalTotal > 0 ? Math.round((total / canalTotal) * 100) : 0,
-        }))
-        .sort((a, b) => b.total - a.total)
 
       // ── Canales disponibles (para filtro) ────────────────────────────────────
       let qCanales = supabase.from('ventas')
@@ -359,17 +439,10 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       const canalesDisp = [...new Set((canalOpts ?? []).map((v: any) => v.origen).filter(Boolean))]
 
       return {
-        totalVendido, totalVendidoPrev,
-        gastoPromCliente,
+        plataTodas, plataArs, compUsd,
         efectividad, totalEmitidas, totalConfirmadas,
         pctFrecuentes, pctNuevos, cantNuevos, cantFrecuentes,
-        funnelData: {
-          presupuestado: { count: ventas.length, monto: montoPresupuestado },
-          pendienteCobro: { count: ventasPendCobro.length, monto: montoPendCobro },
-          pagado: { count: ventasPagadas.length, monto: montoPagado },
-        },
         heatmap,
-        canalData,
         canalesDisp,
         ventasConf,
       }
@@ -378,35 +451,45 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
     staleTime: 0,
   })
 
+  // G1 "modo real" — qué bloque de plata mira la UI. En Real, SOLO las ventas nativas en pesos:
+  // las que tuvieron componente USD salen del número principal y se informan aparte (`compUsd`).
+  const mp = esReal ? vData?.plataArs : vData?.plataTodas
+
+  // Leyenda del bloque que el modo Real deja afuera. Se agrega al `sub` de los KPI de plata para
+  // que esa plata nunca desaparezca en silencio.
+  const subUsd = esReal && (vData?.compUsd.cantConf ?? 0) > 0
+    ? ` · ${vData!.compUsd.cantConf} venta${vData!.compUsd.cantConf !== 1 ? 's' : ''} con componente USD aparte (${fmt(vData!.compUsd.montoEquivalente)} equivalentes)`
+    : ''
+
   // ─── Insights ────────────────────────────────────────────────────────────────
   const insights = useMemo(() => {
-    if (!vData) return []
+    if (!vData || !mp) return []
     const list: { tipo: 'danger' | 'warning' | 'success' | 'info'; titulo: string; impacto: string; accion: string; link: string }[] = []
 
     // Tendencia ventas
-    if (vData.totalVendidoPrev > 0 && vData.totalVendido > 0) {
-      const pct = ((vData.totalVendido - vData.totalVendidoPrev) / vData.totalVendidoPrev) * 100
+    if (mp.totalVendidoPrev > 0 && mp.totalVendido > 0) {
+      const pct = ((mp.totalVendido - mp.totalVendidoPrev) / mp.totalVendidoPrev) * 100
       if (pct <= -15) {
         list.push({
           tipo: 'warning', titulo: `Las ventas cayeron ${Math.abs(pct).toFixed(0)}% vs el período anterior`,
-          impacto: `Facturaste ${fmt(Math.abs(vData.totalVendido - vData.totalVendidoPrev))} menos.`,
+          impacto: `Facturaste ${fmt(Math.abs(mp.totalVendido - mp.totalVendidoPrev))} menos.`,
           accion: 'Analizar métricas', link: '/historial',
         })
       } else if (pct >= 15) {
         list.push({
           tipo: 'success', titulo: `Las ventas crecieron ${pct.toFixed(0)}% vs el período anterior 🎉`,
-          impacto: `Facturaste ${fmt(vData.totalVendido - vData.totalVendidoPrev)} más.`,
+          impacto: `Facturaste ${fmt(mp.totalVendido - mp.totalVendidoPrev)} más.`,
           accion: 'Ver ventas', link: '/ventas',
         })
       }
     }
 
     // Pendiente de cobro
-    if (vData.funnelData.pendienteCobro.monto > 0) {
+    if (mp.funnelData.pendienteCobro.monto > 0) {
       list.push({
         tipo: 'danger',
-        titulo: `${fmt(vData.funnelData.pendienteCobro.monto)} pendientes de cobro`,
-        impacto: `${vData.funnelData.pendienteCobro.count} venta${vData.funnelData.pendienteCobro.count !== 1 ? 's' : ''} confirmada${vData.funnelData.pendienteCobro.count !== 1 ? 's' : ''} con saldo sin cobrar.`,
+        titulo: `${fmt(mp.funnelData.pendienteCobro.monto)} pendientes de cobro`,
+        impacto: `${mp.funnelData.pendienteCobro.count} venta${mp.funnelData.pendienteCobro.count !== 1 ? 's' : ''} o reserva${mp.funnelData.pendienteCobro.count !== 1 ? 's' : ''} con saldo sin cobrar.`,
         accion: 'Ver ventas', link: '/ventas',
       })
     }
@@ -441,10 +524,10 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
     }
 
     // Canal dominante
-    if (vData.canalData.length > 1 && vData.canalData[0].pct >= 70) {
+    if (mp.canalData.length > 1 && mp.canalData[0].pct >= 70) {
       list.push({
         tipo: 'info',
-        titulo: `El ${vData.canalData[0].pct}% de tus ventas vienen de ${vData.canalData[0].nombre}`,
+        titulo: `El ${mp.canalData[0].pct}% de tus ventas vienen de ${mp.canalData[0].nombre}`,
         impacto: `Alta concentración en un solo canal. Diversificar puede dar más estabilidad.`,
         accion: 'Ver envíos', link: '/envios',
       })
@@ -469,7 +552,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
     }
 
     return list.slice(0, 4)
-  }, [vData, fmt])
+  }, [vData, mp, fmt])
 
   // ─── Helpers badge ────────────────────────────────────────────────────────────
   const badgeVs = (actual: number | null, prev: number | null, invertido = false) => {
@@ -491,7 +574,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Mostrando <span className="font-medium text-primary">{PERIODO_LABELS[periodo].toLowerCase()}</span>
-          {moneda === 'USD' && <span className="ml-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">USD</span>}
+          {moneda !== 'ARS' && <span className="ml-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{MONEDAS.find(m => m.key === moneda)?.label}</span>}
           {canal && <span className="ml-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded">Canal: {CANAL_DISPLAY[canal] ?? canal}</span>}
         </p>
 
@@ -553,10 +636,10 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Moneda</p>
                     <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                      {(['ARS', 'USD'] as Moneda[]).map(m => (
-                        <button key={m} onClick={() => setMoneda(m)}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                          {m}
+                      {MONEDAS.map(m => (
+                        <button key={m.key} onClick={() => setMoneda(m.key)}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m.key ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {m.label}
                         </button>
                       ))}
                     </div>
@@ -592,6 +675,24 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       </>)}
 
+      {/* G1 "modo real" — por qué las ventas con componente USD salen de los números de plata.
+          Va fuera de las sub-pestañas: el embudo y el pie de canales viven en Gráficos y también
+          cambian de número. No se informa en dólares a propósito: el sistema no guarda cuánto de
+          una venta fue realmente en dólares (`ventas.total` está siempre en pesos), así que una
+          cifra en US$ acá sería inventada. */}
+      {!isLoading && esReal && (vData?.compUsd.cant ?? 0) > 0 && (
+        <div className="text-xs text-muted bg-page border border-border-ds rounded-xl px-4 py-2.5">
+          Modo <strong>Real</strong>: los montos van sin convertir. Quedan afuera de los números en
+          pesos <strong>{vData!.compUsd.cant} venta{vData!.compUsd.cant !== 1 ? 's' : ''}</strong> con
+          componente en dólares (producto priceado en USD o cobrado en USD), que están atadas al tipo
+          de cambio del día en que se hicieron.
+          {(vData?.compUsd.usdCobrado ?? 0) > 0 && (
+            <> De esas operaciones, <strong>{fmtUsdDash(vData!.compUsd.usdCobrado)}</strong> se
+            cobraron efectivamente en dólares — no es plata aparte, es la misma vista en su moneda.</>
+          )}
+        </div>
+      )}
+
       {showM && (<>
       {/* ── Capa 1: 4 KPI cards ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -599,9 +700,9 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         {/* KPI 1: Total Vendido */}
         <KPICard
           title="Total Vendido"
-          value={isLoading ? '—' : fmt(vData?.totalVendido ?? 0)}
-          badge={badgeVs(vData?.totalVendido ?? null, vData?.totalVendidoPrev ?? null)}
-          sub="Dinero total generado antes de gastos."
+          value={isLoading ? '—' : fmt(mp?.totalVendido ?? 0)}
+          badge={badgeVs(mp?.totalVendido ?? null, mp?.totalVendidoPrev ?? null)}
+          sub={`Dinero total generado antes de gastos.${subUsd}`}
           icon={
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text">
               <ShoppingCart size={20} />
@@ -612,9 +713,9 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         {/* KPI 2: Gasto promedio por cliente */}
         <KPICard
           title="Gasto Prom. por Cliente"
-          value={isLoading ? '—' : (vData?.gastoPromCliente ?? 0) > 0 ? fmt(vData!.gastoPromCliente) : '—'}
-          sub={vData && vData.gastoPromCliente > 0
-            ? `${[...new Set((vData.ventasConf ?? []).map((v: any) => v.cliente_id).filter(Boolean))].length} clientes únicos en el período.`
+          value={isLoading ? '—' : (mp?.gastoPromCliente ?? 0) > 0 ? fmt(mp!.gastoPromCliente) : '—'}
+          sub={mp && mp.gastoPromCliente > 0
+            ? `${mp.clientesUnicos} clientes únicos en el período.${subUsd}`
             : 'Sin ventas con cliente asignado.'}
           icon={
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
@@ -691,13 +792,15 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
           </div>
           {isLoading ? (
             <div className="h-32 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />
-          ) : vData && vData.funnelData.presupuestado.count > 0 ? (
+          ) : mp && (mp.funnelData.presupuestado.count > 0
+                        || mp.funnelData.pendienteCobro.count > 0
+                        || mp.funnelData.pagado.count > 0) ? (
             <FunnelChart
               fmt={fmt}
               data={[
-                { label: 'Presupuestado / Iniciado', count: vData.funnelData.presupuestado.count, monto: vData.funnelData.presupuestado.monto, color: '#7B00FF' },
-                { label: 'Pendiente de Cobro', count: vData.funnelData.pendienteCobro.count, monto: vData.funnelData.pendienteCobro.monto, color: '#F59E0B' },
-                { label: 'Pagado / Cerrado', count: vData.funnelData.pagado.count, monto: vData.funnelData.pagado.monto, color: '#22C55E' },
+                { label: 'Presupuestado / Iniciado', count: mp.funnelData.presupuestado.count, monto: mp.funnelData.presupuestado.monto, color: '#7B00FF' },
+                { label: 'Pendiente de Cobro', count: mp.funnelData.pendienteCobro.count, monto: mp.funnelData.pendienteCobro.monto, color: '#F59E0B' },
+                { label: 'Pagado / Cerrado', count: mp.funnelData.pagado.count, monto: mp.funnelData.pagado.monto, color: '#22C55E' },
               ]}
             />
           ) : (
@@ -714,13 +817,13 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
           </div>
           {isLoading ? (
             <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />
-          ) : vData && vData.canalData.length > 0 ? (
+          ) : mp && mp.canalData.length > 0 ? (
             <div className="flex items-center gap-4">
               <ResponsiveContainer width={140} height={140}>
                 <PieChart>
-                  <Pie data={vData.canalData} cx="50%" cy="50%" innerRadius={35} outerRadius={60}
+                  <Pie data={mp.canalData} cx="50%" cy="50%" innerRadius={35} outerRadius={60}
                     dataKey="total" paddingAngle={2} strokeWidth={0}>
-                    {vData.canalData.map((_: any, i: number) => (
+                    {mp.canalData.map((_: any, i: number) => (
                       <Cell key={i} fill={CANAL_COLORS[i % CANAL_COLORS.length]} />
                     ))}
                   </Pie>
@@ -728,14 +831,14 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-2">
-                {vData.canalData.map((c: any, i: number) => (
+                {mp.canalData.map((c: any, i: number) => (
                   <div key={c.nombre} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CANAL_COLORS[i % CANAL_COLORS.length] }} />
                       <span className="text-xs text-gray-600 dark:text-gray-400 truncate">{c.nombre}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-xs font-semibold text-primary">{c.pct}%</span>
+                      <span className="text-xs font-semibold text-primary">{c.pct.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</span>
                     </div>
                   </div>
                 ))}
@@ -797,7 +900,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
       </>)}
 
-      {!isLoading && vData && vData.totalVendido === 0 && (
+      {!isLoading && mp && mp.totalVendido === 0 && (
         <div className="text-center py-12 text-muted">
           <ShoppingCart size={36} className="mx-auto mb-3 opacity-30" />
           <p className="font-medium">Sin ventas confirmadas en este período</p>

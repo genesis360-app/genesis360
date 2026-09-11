@@ -6,6 +6,1012 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-09] update | 💵 Modo "Real" del Dashboard + fin de la mezcla de pesos y dólares · v1.208.0
+
+Se cerró el pendiente #1 del handoff (G1). Y de paso apareció un bug de plata que estaba latente.
+
+### La feature: la 3ra opción del filtro Moneda
+
+Fede la pidió así: *mostrar los montos tal cual están, sin convertir nada, separando lo que fue en
+pesos de lo que fue en dólares*. No es una tercera moneda — son tres formas de leer los mismos
+números:
+
+| Modo | Qué muestra |
+|---|---|
+| **ARS** | vista en pesos (los dólares se convierten a la cotización de hoy antes de sumar) |
+| **USD** | lo mismo, dividido por la cotización de hoy — cuánto vale hoy, no cuánto se movió |
+| **Real** | dos números separados, cada uno en su moneda, que nunca se suman entre sí |
+
+El patrón **ya existía** en el KPI "Ingreso Neto de Caja" (dos acumuladores por
+`caja_movimientos.moneda`). Se extrajo a `src/lib/dashMoneda.ts` y se aplicó en Ventas y Gastos.
+Productos queda afuera: no tiene toggle de moneda y Fede no lo mencionó.
+
+### 🐛 El bug que apareció en el camino (REGLA #0)
+
+**El Dashboard sumaba dólares como si fueran pesos.** `gastos.moneda` existe desde la mig 379 y el
+`monto` está expresado en esa moneda (US$100 guarda `100`), pero las queries **ni leían la columna**.
+
+No había explotado porque hay **0 gastos en USD en DEV y PROD** — el formulario todavía no ofrece la
+moneda. Pero la columna ya está, y el gasto suelto en USD es el próximo pendiente de Fede.
+
+Tres lugares, el mismo defecto:
+
+| Dónde | Qué rompía |
+|---|---|
+| `DashGastosArea` | total de salidas, velocidad de gasto, rigidez, pie, evolución, top 5 |
+| `VentasVsGastosChart` | la serie diaria de gastos de "La Balanza" |
+| `DashboardPage` → `gastosTotal` | `rentabilidadNeta` y `margenNeto` — subestimaba el gasto e **inflaba el margen** |
+
+Ahora se convierten a la cotización de hoy antes de sumar, y **sin cotización cargada quedan afuera
+con aviso en pantalla** en vez de entrar deformados. Plata que se evapora de un total en silencio es
+justo lo que la REGLA #0 no tolera.
+
+### Lo que NO se pudo hacer, y por qué se dice de frente
+
+Para **Ventas** no existe el dato. `ventas.total` está siempre en pesos y `venta_items` no tiene
+columna `moneda`: el sistema **no guarda cuánto de una venta fue realmente en dólares**.
+`cotizacion_usd` (mig 368) solo marca que hubo una conversión (producto priceado en USD **o** pago en
+USD). Así que el modo Real saca esas ventas del número en pesos y las informa **aparte, como
+equivalente** — no inventa una cifra en US$ dividiendo por la cotización, que para una venta mixta
+sería directamente falsa.
+
+La **única** cifra en dólares reales que sí existe es `monto_usd` de cada medio en
+`ventas.medio_pago` (G5 Fase 4): los dólares efectivamente cobrados. Esa sí se muestra, aclarando
+que no es plata aparte sino la misma vista en su moneda. (En DEV todavía no hay ninguna venta que la
+use, así que esa rama no tiene fixture.)
+
+### Verificación
+
+- **25 tests unitarios** de `dashMoneda` (mutación: mezclar monedas rompe 3).
+- **e2e mutante 143**: siembra un gasto y compara el total **antes/después**. Con el bug el delta da
+  exactamente `777`; con el fix, `777 × cotización`. Verificado mutando el código real.
+- El e2e lleva **control anti-vacío** (siembra primero en pesos) por una razón concreta: el primer
+  intento midió **$0** porque el Dashboard filtra por sucursal activa y la siembra había caído en
+  `sucursal_id = null`. Sin ese control el test habría fallado en la aserción de moneda, culpando al
+  fix por algo que era la siembra.
+- 1697 unit + los 17 e2e de dashboard verdes, build y typecheck limpios.
+
+### ⚠️ Pendiente que quedó anotado
+
+Los `INSERT` en `gastos` del código (recepción de OC, envíos, RRHH, recursos, servicios recurrentes)
+**no setean `moneda`** → caen en el default `'ARS'`. Una recepción de una OC en dólares nace como
+gasto en pesos con el número en dólares. Latente (6 OC en USD en DEV, ninguna recibida). Va junto
+con la UI del gasto suelto en USD.
+
+---
+
+## [2026-09-08] update | 🐛 Tanda de issues de Fede — 10 de 13 cerrados · v1.207.0
+
+Fede pasó 13 issues (vía GO). Se cerraron 10, se respondió 1 que no era bug y quedan 2 con motivo.
+
+### Los que eran bugs de plata (REGLA #0)
+
+**1 · El POS convertía los precios en USD al dólar VENTA.** No era una preferencia: el propio
+sistema documenta la convención en `cajaBoveda.ts` (relevamiento F2, G5 Fase 5) — **USD→ARS usa
+COMPRA**, ARS→USD usa venta. El POS usaba venta y **le cobraba de más al cliente** en cada venta de
+un producto en dólares.
+
+Lo importante del fix: **no alcanzaba con cambiar el precio del producto**. El valor en pesos de un
+PAGO en dólares salía de la misma tasa, así que arreglar solo una de las dos habría hecho que quien
+paga en dólares sobrepagara y saliera vuelto de la nada. Ahora es **una sola tasa** (`tasaUsdAArs`,
+función pura) para precio, tiers mayoristas, combos y pagos.
+
+**10 · "El Camino de la Venta" contaba la misma plata dos veces.** "Presupuestado" sumaba el total de
+TODAS las ventas (reservas y ventas cobradas incluidas); "Pendiente de cobro" ignoraba el saldo de
+las reservas; "Pagado" ignoraba las señas. Redefinido con el criterio de Fede:
+
+| Etapa | Antes | Ahora |
+|---|---|---|
+| Presupuestado | $7.099.245 (todas las ventas) | **$115.280** (los 15 presupuestos reales) |
+| Pendiente de cobro | $1.190.550 | **$1.229.650** (+39.100 de saldos de reservas) |
+| Pagado / cerrado | $5.635.827 | **$5.750.658** (+114.830 de señas) |
+
+Ahora **cierra**: pendiente + pagado = $6.980.308,02 = el total exacto de las ventas reales. Antes no
+cerraba con nada.
+
+**12/13 · Recursos.** Dos síntomas, un solo bug: el insert del recurso **nunca seteaba
+`sucursal_id`** pero la lista filtra por sucursal → el recurso desaparecía apenas se guardaba, y como
+el tab Ubicaciones agrupa esa misma lista, la ubicación tampoco aparecía. Además el gasto del recurso
+nacía con el default `estado_pago = 'pagado'`: **la plata figuraba como salida sin que nadie la
+hubiera pagado**. Ahora nace pendiente, con `capitaliza_recurso` tildado, y la **mig 406** pasa el
+recurso a activo cuando el gasto se salda (va en trigger porque un gasto se paga por varios caminos).
+
+### Los que eran diagnósticos, no bugs
+
+**7 · "El módulo de repositores no está funcionando".** El trigger **funciona** — probado end-to-end
+en una transacción revertida: cambiar el precio generó 1 tarea. Lo que falta son los datos: solo
+genera tarea para productos con **góndola asignada**, y hay **0 en PROD** (0 ubicaciones de
+exhibición) y **0 asignadas en DEV**. Es el comportamiento diseñado y el wiki lo dice.
+
+**El bug real era otro**: el módulo quedaba inerte en silencio y el estado vacío **prometía lo
+contrario** ("aparecen solas cuando cambia un precio"). Fede sacó la conclusión correcta con la
+evidencia que tenía. Ahora el vacío explica la causa y dónde se configura.
+
+**5 · El descuento general** sí está gateado por rol (`ROLES_DESCUENTO`): el CAJERO está siempre
+bloqueado, el SUPERVISOR tiene tope configurable y el DUEÑO no. No es un bug.
+
+### El resto
+
+**4** · una reserva ahora exige cliente SIEMPRE (la validación existía pero colgaba de
+`cliente_obligatorio`, y la columna nace en `'nunca'`). **6** · cambiar de medio de pago ya no borra
+el monto — salvo que se cruce de moneda, que es lo que ese reset vino a proteger. **9** · el
+historial muestra qué campos se editaron de un producto (`HistorialPage` ya sabía renderizarlo; lo
+que faltaba era mandárselo). **11** · los % de "¿Por dónde compran?" con un decimal. **8** · sección
+nueva para **reimprimir etiquetas** buscando el producto, gateada a supervisor/dueño.
+
+### Lo que queda
+
+**2 · Cobrar en caja USD** — es la **Fase 8 (C2)** del relevamiento de Caja USD, frenada esperando
+justo lo que menciona Fede: la definición del contador por la factura.
+
+**3 · Gastos y OC en USD** — se verificó y está **partido en dos**:
+- **La OC en USD YA funciona**: `ordenes_compra.moneda` existe y el selector está en el form
+  (`ProveedoresPage`, mig 379), con toda la infra de pago multi-moneda (`cajasAbiertasOCMoneda`,
+  `monedaDeMetodo`, cotización de descalce). Probablemente Fede no lo encontró: se elige al **crear
+  la OC en Proveedores**, no en Gastos.
+- **El gasto suelto en USD sí falta**: `gastos.moneda` existe en la DB pero el formulario no lo
+  ofrece. Es el pendiente ya anotado como "gastos sueltos USD (sin UI)". No se hizo en esta tanda a
+  propósito: no es un ajuste sino una feature que **mueve plata desde una caja**, y merece su propio
+  espacio con el patrón de la OC como guía.
+
+---
+
+## [2026-09-08] update | ✅ El módulo GASTOS server-side (mig 405) — TANDA F CERRADA · v1.206.0
+
+GO dio la definición que faltaba:
+
+> *"¿Un cajero puede registrar un pago a proveedor? Sólo si por temas del custom role tiene acceso al
+> módulo de Gastos. Por default un cajero no tiene acceso a ese módulo; ahora si el dueño le da
+> permisos para acceder al mod de Gastos, entonces ahí sí."*
+
+**No hizo falta estructura nueva**: `auth_puede_editar_modulo` ya mira **primero** el permiso
+explícito del rol custom (`roles_custom.permisos ->> 'gastos'`) y solo cae al allowlist de roles
+fijos si no hay ninguno. La regla de GO es literalmente esa primera rama.
+
+**La premisa se verificó en el código antes de codificarla**: `/gastos` está en las RUTAS
+RESTRINGIDAS del CAJERO (spec 13) y en las PERMITIDAS de SUPERVISOR (15) y CONTADOR (18 +
+`CONTADOR_ALLOWED`); DEPÓSITO y RRHH restringida (17 y 16). → allowlist de roles fijos:
+**SUPERVISOR + CONTADOR**.
+
+Gateadas al módulo: `proveedor_cc_movimientos` (la que motivó la consulta), `gastos_fijos`,
+`gasto_cuotas` y `cheques`.
+
+**Corrige un supuesto propio de la mig 404**: ahí se dejaron los cheques abiertos a todo el tenant
+argumentando que *"un CAJERO crea cheques legítimamente al cobrar"*. **Era falso** — verificado con
+grep: el POS no escribe `cheques` en ningún camino (los hits de "cheque" en `VentasPage` son la
+palabra "chequear"). Se crean solo desde Gastos.
+
+⚠ **Sutileza de PostgreSQL** que obligó a escribir `cheques` comando por comando: las policies
+**permisivas se combinan con OR**, así que un `FOR ALL` del módulo habilitaría el DELETE y una policy
+"solo gestión" **no lo restaría**. Borrar un cheque en cartera hace desaparecer plata sin rastro, así
+que ese queda en gestión.
+
+**Verificación, con el fixture ideal** — el CAJERO de prueba ya tenía el rol custom `GO_Cajero` con
+`gastos: 'ver'`:
+
+| Quién | Resultado |
+|---|---|
+| CAJERO con `'ver'` | **0 escrituras** — lado "no" de la regla |
+| CAJERO con `'editar'` | 18 CC proveedor · 20 cheques · 3 gastos fijos — lado "sí" |
+| CONTADOR | puede (rol fijo) |
+| DEPÓSITO / RRHH | no |
+| CAJERO con Gastos, borrando un cheque | **0** — eso sigue siendo gestión |
+
+Spec 141: **43/43**, con 3 tests nuevos (uno flipea el permiso del rol custom y lo restaura en un
+`finally`). Regresión de roles 59/59.
+
+Dos tests propios de la 404 quedaron **obsoletos** con esta regla y se actualizaron: el guard del
+MONTO ahora se mide con el CONTADOR (a un rol operativo la RLS ya le corta el UPDATE entero antes de
+llegar al trigger), y el cajero ya no "mueve cheques de estado".
+
+---
+
+## [2026-09-08] update | 🧪 Primera corrida COMPLETA de la suite: 394 tests · 339 verdes · 14 rojos → 8 cerrados
+
+Con el fixture de siembra arreglado se corrió la suite entera por primera vez en mucho tiempo (48
+minutos, 1 worker). **339 pasaron, 41 skipped, 14 rojos.** De los 14, **dos clusters eran bugs reales
+de test** y quedaron cerrados; el resto está clasificado.
+
+| Cluster | Fallas | Causa | Estado |
+|---|---|---|---|
+| **1** | 101, 103, 104, 95, 96 | el mismo bug Mono-SKU **copiado inline**: esos specs no usan `ingresoRealPorUI`, tienen su propia copia con `vals[0]` | ✅ cerrado |
+| **2** | 117 ×2, 126 | la **mig 404 haciendo lo suyo**: los specs sembraban con el token del DEPÓSITO | ✅ cerrado |
+| **3** | 37_rrhh | fixture agotado (ya documentado) | 🟡 se destraba solo el mes que viene |
+| **4** | 107, 128 ×2, 131 | flake bajo carga | 🟡 las 4 pasan en aislado — verificado |
+| **5** | 20_caja | ver abajo | 🟥 abierto |
+
+**Cluster 2 merece subrayarse**: el error era
+`42501: new row violates row-level security policy for table "estados_inventario"`. Los specs creaban
+estados de inventario, productos y ubicaciones **con el token del rol que están probando**. La 404 (y
+la 396 antes) lo bloquean, y hacen bien: eso se configura en ConfigPage, que es `ownerOnly`. **El
+guard tenía razón; el test estaba mal.** Regla que quedó escrita en los dos specs: **sembrá con el
+DUEÑO, actuá con el rol** — sembrar con el rol bajo prueba mezcla el armado del escenario con lo que
+el escenario quiere probar, y hace que el spec dependa de un privilegio que ese rol no debería tener.
+
+**Cluster 1**: arreglar el helper compartido no alcanzaba, porque 5 specs tienen el ingreso copiado.
+Ahora usan `UBICACION_SIEMBRA` y llaman a `garantizarUbicacionSiembra` antes de abrir el modal.
+
+**🟥 `20_caja_apertura_cierre` queda abierto, y NO es un timeout** (falla igual con 90 s en vez de los
+30 s del default). El DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y el botón "Abrir caja"
+se deshabilita con *"Ya tenés una caja abierta. Cerrala antes de abrir otra."* Es **estado viejo del
+ambiente de DEV**, no las migraciones. Se probó subirle el presupuesto y **se revirtió**: no era la
+causa y el commit habría mentido. Salida: cerrar esas sesiones viejas en DEV, o que el spec cierre lo
+que encuentre abierto antes de empezar.
+
+⚠ Dato para calibrar: el default de Playwright son **30 s** y **47 specs ya lo suben** por su cuenta.
+El default quedó chico para esta app.
+
+---
+
+## [2026-09-08] update | ✅ Recuperados los 9 specs e2e que sembraban stock por UI — v1.205.1
+
+Cerrado el issue que había quedado abierto ayer. Los specs 115, 116, 119, 122, 123, 128, 131, 132 y
+137 estaban rojos hace días y el síntoma no decía nada: un `toBeVisible` que no encontraba el
+carrito. La causa apareció **instrumentando el fixture para atrapar el toast antes de que se
+desvanezca** (técnica a reusar):
+
+> `La ubicación "A-01-1" es Mono-SKU y ya tiene "E2E MoverMismaSuc 1788334922185"`
+
+`ingresoRealPorUI` elegía **la primera ubicación de la lista** (`vals[0]`), y en el tenant de prueba
+esa es Mono-SKU. El día que quedó ocupada por un producto de otro spec, se cayeron los 9 juntos. La
+foto de datos era **implícita**, así que se rompió sola — exactamente lo que la Tanda D/E/F vino a
+corregir ("definir con qué foto de datos corre cada escenario").
+
+**Fix**: `UBICACION_SIEMBRA` (`'E2E Siembra'`), que el propio fixture crea si no existe (idempotente,
+y la normaliza si alguien la desactiva o la pasa a Mono-SKU). Tres propiedades que **no son
+decorativas** — cada una se encontró rompiéndose:
+
+| Propiedad | Por qué |
+|---|---|
+| `mono_sku: false` | es el choque original |
+| `sucursal_id: null` | el dropdown de Ingreso lista `sucursal_id.eq.<actual>` **OR** `is.null`, así que una global sirve en cualquier sucursal |
+| `disponible_surtido: true` + `tipo_logico: 'almacenamiento'` | sin esto **el ingreso entra pero el POS no ofrece la línea**, y el spec falla más adelante al armar el carrito |
+
+Y al crearla hay que **recargar**: la lista que la pantalla ya cargó queda vieja y el `selectOption`
+no la encuentra.
+
+**Antes de tocar nada se descartó que fuera de las migs 402/403/404**: el INSERT en
+`inventario_lineas` impersonando al DUEÑO pasa sin error, no hay ningún error de Postgres en los logs
+de la ventana, y ninguna de las tablas del ingreso (`inventario_lineas`, `inventario_series`,
+`movimientos_stock`) está en esas migraciones.
+
+Verde: los 9 specs, **15/15** — incluidos los 3 que piden ubicación por nombre, que usan la otra rama.
+Sin cambios de producto: solo el helper de tests.
+
+---
+
+## [2026-09-07] update | 🔴 La matriz de ESCRITURA de plata, precios e inventario (mig 404) — v1.205.0
+
+Cierra lo que la auditoría de la 403 había dejado medido. Con el token de un CAJERO se escribían por
+REST: `cheques`, `cliente_creditos`, `caja_traspasos`, `producto_precios_mayorista`, `cupones`,
+`combos`, `sucursales`, `ubicaciones`, `estados_inventario`, `canales_venta`, `cuentas_origen`,
+`kit_recetas` y `proveedor_cuentas_bancarias` (el **CBU al que se le paga a un proveedor**).
+
+**Dos cosas gobernaron el diseño, y las dos ya habían mordido en la mig 396:**
+
+1. **`producto_precios_mayorista`, `combos` y `cupones` son el precio de venta por la puerta de al
+   lado.** La 396 puso un trigger por columna sobre `productos.precio_*`, pero el mismo rol podía
+   editar la lista mayorista, armar un combo o crear un cupón del 90 %. Un guard que se esquiva por
+   otra tabla no es un guard.
+2. **El corte va por OPERACIÓN, no por tabla.** Y acá hubo un susto: **el POS ESCRIBE
+   `cupones_codigos` al canjear** (`VentasPage.tsx:3405`, claim atómico). Mi primer barrido de
+   escritores no lo vio porque el `.update()` está en la línea siguiente al `.from()`; apareció al
+   repetir el grep en **multilínea**. Un guard por tabla habría roto la venta con cupón. Quedó como
+   trigger por columna: marcar un código usado es la venta, cambiar el código o el cupón es Comercial.
+
+**Cómo quedó**: config pura (pantallas `ownerOnly`) → gestión · precios/comercial →
+`auth_puede_editar_modulo`, que suma el módulo `'comercial'` · `kit_recetas` → inventario **+
+DEPÓSITO** (arma kits) · `cliente_creditos` → INSERT operativo (la devolución lo necesita),
+UPDATE/DELETE gestión — la app nunca los hace, así que un UPDATE por REST es plata inventada ·
+`cheques` → registrar/cobrar/endosar operativo, **monto** por trigger de columna y DELETE gestión ·
+`caja_traspasos` → INSERT operativo, UPDATE (la corrección de monto) DUEÑO/SUPERVISOR, que era el
+gate que `CajaPage` tenía **solo en el cliente**.
+
+**También en la UI** (guards en las dos capas): `ChequesPanel` deshabilita el monto al editar y
+esconde el borrar según el rol, para que el cajero no se coma un error crudo.
+
+**Verificación**: matriz por impersonación con los 4 roles + controles positivos. CAJERO: 0
+escrituras salvo el estado de cheques (deliberado), y sigue pudiendo canjear cupones, mover cheques
+de estado e insertar saldo a favor. SUPERVISOR: precios, comercial y correcciones de caja sí;
+sucursales no. DEPÓSITO: kits sí; precios y cupones no. Cambiar el monto de un cheque → 42501.
+Spec 141 **40/40** con 5 tests nuevos. 1656 unit.
+
+⚠ **Un test mío falló primero y el guard tenía razón**: había puesto a DEPÓSITO entre los que "no
+deben escribir `kit_recetas`" cuando justamente es su trabajo. Mismo patrón que el falso rojo de RRHH
+en la 401 — cuando el test y el guard discrepan, primero hay que preguntarse cuál de los dos está
+equivocado.
+
+**Queda afuera a propósito** (necesita definición de negocio de GO): `proveedor_cc_movimientos`
+(¿puede un cajero registrar un pago a proveedor?) y `gastos_fijos`/`gasto_cuotas` (el CAJERO opera
+bajo su umbral y el CONTADOR es actor legítimo).
+
+### 🐛 Hallazgo aparte: 9 specs e2e estaban rotos hace días, y no por las migraciones
+
+Al correr la regresión aparecieron fallando **todos los specs que siembran stock por UI** (115, 116,
+119, 122, 123, 128, 131, 132, 137). El síntoma era inútil: un `toBeVisible` que no encontraba nada.
+
+Se investigó hasta la causa real instrumentando el fixture para capturar el toast antes de que se
+desvanezca:
+
+> `La ubicación "A-01-1" es Mono-SKU y ya tiene "E2E MoverMismaSuc 1788334922185"`
+
+El fixture `ingresoRealPorUI` **elige la primera ubicación de la lista a ciegas** (`vals[0]`), y esa
+es **Mono-SKU**. El día que quedó ocupada por un producto de otro spec, se cayeron los 9 de golpe.
+Hoy A-01-1 tiene **4 líneas E2E de 4 productos distintos** (7/8, 22/8 y dos del 1/9).
+
+**Descartado que sea de las migs 402/403/404**: el INSERT en `inventario_lineas` impersonando al
+DUEÑO pasa sin error, no hay ningún error de Postgres en los logs, y ninguna de las tablas que toca
+el ingreso (`inventario_lineas`, `inventario_series`, `movimientos_stock`) está en esas migraciones.
+
+**No se arregló** — se probaron dos caminos y ninguno cierra limpio: dejar "Sin ubicación" hace que
+el ingreso pase pero el POS no pueda despachar la línea, y reintentar ubicación por ubicación depende
+de detectar toasts que compiten y se desvanecen. Es deuda de fixture, no de producto. Las dos salidas
+razonables quedan anotadas en `project_pendientes.md`.
+
+---
+
+## [2026-09-07] update | 🔴 Los secretos que la 400 no cubrió + el detalle de sueldos (mig 403) — v1.204.0
+
+Después de la 402, en vez de dar la tanda por cerrada repetí la auditoría **sobre todo el esquema**:
+de las 152 policies, **111 tablas no miran el rol en ninguna cláusula**. La mayoría está bien así
+(catálogo, clientes, datos operativos que todos necesitan). Dos huecos eran continuación directa de
+migs anteriores, y los midió una sonda impersonando un CAJERO real: **veía exactamente lo mismo que
+el DUEÑO**.
+
+**1. La mig 400 cerró MP, Tienda Nube y WhatsApp — y dejó afuera tres.** `meli_credentials`
+(`access_token` + `refresh_token`, 2 filas legibles en DEV; con ese token se opera la cuenta de
+Mercado Libre del comercio desde afuera), `modo_credentials.api_key` y
+`courier_credenciales.credenciales` (usuario/clave/contrato de Andreani, OCA…). Las tres, además, con
+SELECT para **anon**.
+
+**2. La mig 401 cerró `rrhh_salarios` y `empleados` — pero no el DETALLE.** `rrhh_salario_items` (26
+filas visibles para el CAJERO en DEV) y `rrhh_anticipos` seguían con RLS por tenant a secas. Con la
+cabecera cerrada y el detalle abierto, **el sueldo se reconstruye sumando los conceptos**: la 401
+quedaba a medias.
+
+**3. Y la escritura.** La 400 había cerrado solo la LECTURA: un CAJERO todavía podía **desconectar
+las integraciones del comercio** o pisar un token por REST directo. Las 6 tablas de credenciales
+pasan a escritura DUEÑO/ADMIN/SUPER_USUARIO — `/configuracion` ya era `ownerOnly` en el frontend.
+
+**Frontend**: MODO sale de la consulta (la UI nunca mostró la `api_key` — el form ya exigía
+retipearla, así que fue mecánico). El panel de couriers sí precargaba el JSONB → pasa al patrón de
+secreto de solo escritura de la 402. **Detalle que casi se escapa**: sin poder leer las credenciales
+guardadas no hay merge parcial posible, así que guardar con los campos vacíos las habría **borrado**.
+El save ahora manda `credenciales` solo si se tipeó algo, y exige reingresarlas todas.
+
+**Alcance real**: las 5 tablas tienen **0 filas en PROD** (medido antes de tocar). Hoy no se filtra
+nada en producción; el agujero es estructural y el primer cliente real entra en ~2 semanas.
+
+**Verificación**: impersonación SQL (CAJERO 0 filas de RRHH y 0 escrituras de credenciales; DUEÑO
+sigue escribiendo, RRHH sigue viendo sus 18 items; leer `meli.access_token` da 42501 hasta para el
+DUEÑO); spec 141 **35/35** con 3 tests nuevos; regresión de roles/RRHH/courier 54/54.
+
+### 🟥 Lo que esta auditoría dejó ABIERTO (verificado, no supuesto)
+
+Un CAJERO **escribe** hoy, por REST directo: `cheques` (19 filas), `cliente_creditos` (3),
+`proveedor_cc_movimientos` (17), `producto_precios_mayorista` (68), `cupones` (70), `sucursales` (2)
+y `kit_recetas` (11). Los dos primeros y el tercero son **plata**; `producto_precios_mayorista` y
+`cupones` son **el mismo precio de venta que cerró la mig 396, por la puerta de al lado**;
+`kit_recetas` es **inventario**.
+
+No se tocó a ciegas porque necesita el análisis por tabla de "quién escribe legítimamente" — el
+mismo que hizo falta en la 396, donde un guard genérico habría roto ventas: `VentasPage` **inserta**
+`cliente_creditos` en devoluciones y anulaciones, y un CAJERO **crea** cheques legítimamente al
+cobrar. El corte no es por tabla sino por **operación** (INSERT operativo sí, UPDATE/DELETE no).
+
+---
+
+## [2026-09-07] update | 🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402) — v1.203.0
+
+Fui a cerrar el pendiente #1 que había dejado la mig 400 (`emisores_fiscales.afipsdk_token`) y el
+pendiente chico destapó uno mayor. Midiendo `pg_policies` con datos reales: **las tres tablas del
+núcleo fiscal tenían UNA sola policy `FOR ALL` que miraba el tenant y nada más.**
+
+Con el token de CUALQUIER rol —CAJERO, DEPÓSITO, RRHH, CONTADOR, LECTOR— y `curl`:
+
+| Objetivo | Lo que se podía hacer | Consecuencia fiscal |
+|---|---|---|
+| `PATCH /emisores_fiscales` | cambiar **CUIT**, **condición de IVA**, **umbral de Factura B** | facturas con el CUIT o la LETRA equivocada |
+| ídem | prender **`afip_produccion`** | un cajero pasa el negocio a **CAE real e irreversible** |
+| `DELETE /tenant_certificates` | borrar el certificado AFIP | se cae la facturación |
+| `POST/DELETE /puntos_venta_afip` | tocar los puntos de venta | numeración fiscal |
+| `GET storage/certificados-afip/…key` | **bajarse la CLAVE PRIVADA AFIP** | firmar el WSAA y facturar como ese CUIT desde afuera |
+
+Lo del bucket es lo peor y el código lo daba por cerrado: el comentario de `generar-csr/index.ts` dice
+*"bucket certificados-afip, service_role-only"*, y no lo era. Su policy de INSERT además era
+`auth.uid() IS NOT NULL` **a secas** (mig 043) → se podía escribir en la carpeta de **otro tenant**.
+
+**Fix (mig 402)**: cada policy se parte en SELECT (todo el tenant — el POS necesita leer el emisor y
+sus PV para facturar) + escritura solo **DUEÑO/ADMIN/SUPER_USUARIO**, el mismo trío de la mig 396. Las
+3 policies del bucket se reescriben con carpeta-del-propio-tenant + rol de gestión.
+
+**El token**, ahora sí cerrado: es un **secreto de solo escritura**. No lo lee nadie desde el browser,
+ni el DUEÑO. La UI usa la columna generada `afipsdk_token_configurado`; el campo del form arranca
+vacío (vacío = "no lo toques") y hay un botón explícito para quitarlo. La copia legacy
+`tenants.afipsdk_token` —que leía todo el tenant vía `select('*')`— se vació, salió del espejo de la
+mig 271 y quedó forzada a NULL por trigger. **No se dropeó**: PROD corre v1.195.4, que todavía la
+escribe en el camino legacy "tenant sin CUIT"; se dropea cuando PROD tenga este código.
+
+**De paso, un bug que bloqueaba al primer cliente real**: `afipDatosListos` exigía CUIT **+ token
+AfipSDK** para pasar a producción AFIP. Los 9 tenants de PROD están en `afip_provider='propio'`, que
+firma con el **certificado** y no usa el token, y ninguno tiene token → **nadie podía pasar a
+producción desde la UI**. Ahora el gate pide la credencial del circuito que corresponde.
+
+**Verificación**: impersonación SQL (CAJERO escribe 0 filas en las 3 tablas, DUEÑO las 3, y leer el
+token da 42501 hasta para el DUEÑO); spec 141 **32/32** con 4 tests nuevos y el `test.fail()` del token
+cerrado; e2e fiscales verdes (21 factura con CAE real de homologación, 42 NC, 56/63 guards de letra,
+61/62 wizard de certificado, 87 identidad del PDF); 1656 unit; typecheck + build.
+
+---
+
+## [2026-09-07] update | ✅ Visibilidad de RRHH cerrada (mig 401) — los sueldos dejan de verse desde cualquier rol
+
+GO aprobó la regla y se implementó completa: **DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo · SUPERVISOR ve
+su equipo · cada empleado ve lo suyo · las pantallas de COSTOS leen agregados.**
+
+**Por qué no servía el truco de la mig 400**: los privilegios de columna son por rol de **base de
+datos** (`authenticated`), no por rol de la app — revocar `salario_bruto` se lo sacaría también a RRHH,
+que lo necesita. Acá el gate correcto es **RLS por fila**.
+
+**Lo que lo hacía no-mecánico**: cinco pantallas leían esas tablas. Se resolvió sin romper ninguna:
+
+| Consumidor | Qué necesitaba | Cómo quedó |
+|---|---|---|
+| `RrhhPage`, `RrhhReportesPanel` | detalle completo | acceso directo (rol RRHH) |
+| `MiPortalPage` | su ficha y sus liquidaciones | rama "cada empleado ve lo suyo" |
+| `RepartidoresPanel`, `useRecomendaciones` | nombre, teléfono, cumpleaños | **`fn_empleados_basico()`** |
+| `DashGastosArea`, `RentabilidadPage`, `CierresContablesPanel` | **solo sumaban** `neto` | **`fn_sueldos_agregado()`** |
+
+`fn_sueldos_agregado` está gateada a los roles que ya ven reportes de plata; un CAJERO recibe 403.
+
+**Verificado con 28 sondas**: CAJERO/DEPÓSITO/CONTADOR ven **0 filas** de `empleados` y
+`rrhh_salarios`; DUEÑO y RRHH siguen viendo todo; `fn_empleados_basico` responde a los 6 roles y **no
+expone** sueldo/CBU/DNI; `fn_sueldos_agregado` responde a los 4 roles de reportes y da 403 a CAJERO y
+DEPÓSITO. Spec 141: 23 → **27 tests**.
+
+⚠ Un test propio salió mal primero y valió la pena: había puesto a **RRHH** entre los roles que "no
+deben ver", cuando justamente administra el módulo. La falla era del test, no del guard.
+
+**Sigue abierto**: `emisores_fiscales.afipsdk_token` (el panel hace `select('*')` y edita el token →
+hay que pasar a listas explícitas de columnas antes de revocar).
+
+---
+
+## [2026-09-07] update | 🔴 F2 — la matriz de LECTURA por rol: los access_token de las integraciones los leía cualquiera (mig 400)
+
+Siguiendo con la Tanda F, se atacó la mitad que faltaba: no **qué escribe** cada rol, sino **qué lee**.
+Ahí aparecieron los hallazgos más serios de toda la tanda. De 18 tablas sensibles auditadas, **solo 4
+tienen alguna policy que mire el rol**.
+
+**🔴 El hallazgo principal**: `mercadopago_credentials.access_token` (y `refresh_token`), y
+`tiendanube_credentials.access_token`, **los leía CUALQUIER usuario del tenant** —CAJERO, DEPÓSITO,
+RRHH, CONTADOR— en claro, con un simple `GET /rest/v1/...?select=access_token`. Con el token de MP se
+opera la cuenta del comercio (cobros, devoluciones) **desde afuera de Genesis360**.
+
+Lo aleccionador: el comentario en `src/lib/supabase.ts` decía *"access_token nunca expuesto al
+frontend"* — y era **cierto en la interfaz TypeScript**, que no lo declara. Pero una interfaz no es un
+control de acceso: PostgREST devuelve la columna que le pidas. **La protección existía solo en el tipo.**
+
+**Fix (mig 400)**: privilegios a nivel **COLUMNA** — se revoca el SELECT de tabla y se re-otorga
+columna por columna salteando los secretos (en PostgreSQL no se puede "restar" una columna de un grant
+de tabla). Verificado antes: las tres consultas de `ConfigPage.tsx` usan listas explícitas sin el token.
+Verificado después: token → **403** para todos (incluido el DUEÑO, que no lo necesita), `select=*` →
+403, y las consultas reales de ConfigPage siguen en 200.
+
+**Siguen abiertos, y no son fixes mecánicos:**
+- `emisores_fiscales.afipsdk_token` (2 de 4 emisores de DEV tienen uno): el panel hace `select('*')` y
+  **edita** el token, así que revocar la columna rompe la pantalla. Hay que pasar antes a listas
+  explícitas de columnas.
+- `rrhh_salarios` y `empleados`: **sueldo, CBU y DNI de cada empleado, hoy visibles para cualquier
+  rol**. Es una decisión de negocio (quién puede ver sueldos) y tiene una complicación real:
+  `MiPortalPage` deja que cada empleado lea su propia fila, y `RentabilidadPage`/`DashGastosArea`/
+  `useRecomendaciones` leen esas tablas para costos. Un gate ingenuo rompe cuatro pantallas.
+
+Spec 141: 19 → **23 tests**. Verde: lint · tsc + build.
+
+---
+
+## [2026-09-06] update | ✅ Tanda D COMPLETA — D2 a D5 cerrados (spec 142) + limpieza del token filtrado + schema al día
+
+Cierre de la Tanda D, la categoría que se abrió por el incidente que tumbó la base de DEV.
+
+### D2-D5 — `tests/e2e/142_resiliencia_backend_degradado.spec.ts`
+
+**Primera spec del repo que intercepta la red del browser** (`page.route`, `context.setOffline`).
+Verificado con grep que ninguna spec usaba esas APIs: la capa de condiciones degradadas literalmente
+no existía. No necesita romper el backend de verdad, así que es determinista y no le agrega carga a DEV.
+
+**El resultado es buena noticia: la app se porta BIEN degradada.** El caso anómalo era D1, y estaba en
+auth-js, no en la capa de React Query.
+
+| Escenario | Qué verifica | Medido |
+|---|---|---|
+| D2 | Refresh token inválido (400 `invalid_grant`) → cae en `/login` sola y deja de pedir | ≤1 refresco extra |
+| D3 | 503 sostenido en todas las consultas, 30 s de pantalla quieta | **0 requests** (techo 20) |
+| D4 | Sin red no martilla; al volver se recupera **sola, sin recargar** | **0** offline · >0 al reconectar |
+| D5 | Pestaña dormida y reanudada | **14 requests** al despertar (techo 60) |
+
+**Hallazgo de D4**: React Query usa `networkMode: 'online'` por default → sin red **pausa** las queries
+en vez de dispararlas y verlas fallar. Exactamente lo contrario de lo que hacía auth-js en D1. Queda
+afirmado como propiedad para que nadie lo rompa sin darse cuenta.
+
+**⚠ Método que conviene repetir**: cada presupuesto lleva un control **anti-falso-verde**
+(`toBeGreaterThan(0)`) que prueba que el intercept se activó. Sin eso el test pasa **por vacío**, y
+pasó de verdad escribiendo esta spec: D4 daba verde con 0 requests fallidas porque, con la pantalla
+quieta, la app no pide nada y el corte de red no ejercitaba nada. Los techos se calibraron corriendo
+la spec con los presupuestos en 0, para conocer el margen real en vez de inventarlo.
+
+### Higiene
+
+- **`schema_full.sql` al día** (estaba 9 migraciones atrasado, última actualización del 1/9). Se
+  regeneró vía Management API — el camino PG sigue roto por el bug de Supavisor, así que hizo falta un
+  PAT nuevo. Verificado que el dump refleja el estado REAL: aparecen los guards y triggers nuevos, y
+  **no** aparece el índice de la mig 397 porque la 398 lo borró.
+- **Token filtrado**: se verificó que **ningún repo ni workflow** consume `SUPABASE_ACCESS_TOKEN` salvo
+  `scripts/dump-schema.mjs`. El único lugar con el token completo era `.claude/settings.local.json`, y
+  no como credencial sino en la allowlist de comandos (residuo de haberlo pasado inline en la línea de
+  comandos). Ese archivo está gitignored y nunca se commiteó → por este repo nunca llegó a GitHub. Se
+  limpiaron las 3 entradas; GO borra el token viejo en Supabase.
+
+---
+
+## [2026-09-06] update | ✅ Todos los huecos de F y E cerrados + 🛑 bug REGLA #0 de caja encontrado en la regresión
+
+GO: *"corrige o arregla todo lo que viste que merece ser arreglado"*. Se cerraron los 5 huecos que
+habían quedado abiertos, apareció uno nuevo más grave, y **la regresión destapó un bug de plata real**.
+
+### Tanda F — los 5 huecos cerrados (mig 396), y uno nuevo
+
+**🟥 F1-h6, hallazgo NUEVO y el más grave: `roles_custom` era escribible por CUALQUIER usuario del
+tenant.** Alguien con un rol custom asignado podía **auto-otorgarse `'editar'`** en cualquier módulo y
+saltear todos los demás guards — que justamente consultan `roles_custom.permisos`. **Un guard que
+confía en un dato que el atacante controla no es un guard**, así que la migración cierra esa tabla
+PRIMERO y recién después instala el resto.
+
+Los otros cuatro (precio de venta, monto de gasto, alta de productos, medios de pago) **no se podían
+cerrar con RLS a secas** — que es exactamente por lo que habían quedado abiertos:
+- **`productos`** → trigger que mira **solo las columnas de precio**. Un UPDATE de `stock_actual` pasa
+  (lo hace `VentasPage` desde el cliente en devoluciones y anulaciones: un guard genérico cortaba
+  ventas reales); uno que mueve el precio, no.
+- **`gastos`** → se enforcea el **umbral del CAJERO**, no el rol, porque el cajero edita gastos
+  legítimamente por debajo de su umbral. Espejo exacto de `evaluarUmbralGasto`. Las tres ramas (bajo /
+  sobre / sin umbral configurado) verificadas por impersonación SQL con un cajero sin rol custom.
+  ⚠ El umbral del **SUPERVISOR** queda afuera a propósito: es quien *aplica* la autorización de un
+  cajero, y enforzarlo rompería una aprobación legítima. Necesita antes un RPC (patrón migs 236/237/238).
+- **`metodos_pago`** → config: lectura para el tenant, escritura solo gestión.
+- **Roles custom (F3)** → el helper `auth_puede_editar_modulo()` espeja `puedeEditarModulo` del front.
+
+**Dos trampas de verificación que casi dan falsos verdes**, y quedan anotadas: (1) la sonda de precios
+mandaba **el mismo valor** — sin cambio de precio el trigger no debe dispararse, así que "pasaba" todo;
+hay que mandar un valor distinto y después comprobar que el dato quedó intacto. (2) Lo que parecía un
+falso positivo era el guard funcionando: `cajero1@local.com` tiene el rol custom `GO_Cajero` con
+`inventario: 'ver'`.
+
+La spec 141 pasó de 13 a **19 tests**, con 5 **positivos** nuevos que son los que detectan un guard
+pasado de estricto (el CAJERO sigue escribiendo `stock_actual`, un UPDATE que no cambia el precio pasa,
+DUEÑO/SUPERVISOR sí cambian precios y el precio queda restaurado, el CONTADOR sigue editando gastos).
+De yapa, gate client-side en el **importador de productos**, que no tenía ninguno.
+
+### Tanda E — E4-h2 cerrado (migs 397-399), con la hipótesis descartada a la vista
+
+1. **Mig 397 — índice de cobertura. NO funcionó**: 48 → **107 ms**, peor. Un Bitmap Index Scan siempre
+   va al heap, y el costo real era el `Filter` por fila. Se deja el registro para que nadie lo reintente.
+2. **Mig 398 — denormalizar `venta_items.sucursal_id`** + backfill + triggers. Bajó poco (51 ms): las
+   **39 ventas globales** del tenant caían en el `EXISTS` que quedó de red de seguridad y lo disparaban.
+3. **Mig 399 — sacar ese `EXISTS`**, redundante con la columna en sincronía. **48,0 → 4,62 ms.**
+
+Correctitud verificada, no supuesta: el CAJERO ve **565 ítems con la policy nueva y 565 con la vieja**.
+Efecto con 20 sesiones concurrentes: **86,3 → 173,9 req/s** y **p95 1.461 → 193 ms**, 0 errores.
+
+### 🛑 El bug de plata que apareció en la regresión (H5)
+
+El spec `137_ventas_anulacion` falló 2 de 2. La venta quedaba cancelada y el stock volvía bien, pero
+**el egreso de caja que devuelve el efectivo cobrado no se creaba** — el ingreso de la venta sí estaba,
+o sea **la caja quedaba inflada, en silencio**.
+
+Causa raíz: `const cancelSesionId = sesionCajaId ?? sesionesAbiertas[0].id`. **`sesionesAbiertas` mezcla
+monedas y su query no tiene `ORDER BY`**, así que `[0]` podía ser la sesión de la **Caja USD** → un
+reintegro en pesos intentaba asentarse en una caja en dólares. Confirmado con datos: el último
+`egreso_devolucion_sena` correcto es del **2/9**, y en DEV se abrió una **Caja USD el 4/9**. Desde ahí,
+ninguna anulación volvió a generar su egreso. Y fallaba **mudo** por partida triple: `if (cancelSesionId)`
+sin `else`, un `catch {}` vacío, y `void supabase…insert(…)` fire-and-forget en la pata no-efectivo —
+justo lo que prohíbe la **obligación #4 de la REGLA #0**.
+
+Fix: se elige la sesión de `sesionesArs`, el guard previo exige caja **EN PESOS**, la pata no-efectivo
+queda `await`eada y **todos** los caminos de falla avisan con monto y motivo. Verificado: el spec vuelve
+a pasar y la Venta #684 asentó su egreso de $1.234 en **Caja1 (ARS)**.
+⚠ Abierto (GO lo posterga): si la venta se cobró en **efectivo USD**, el reintegro al anular no está
+contemplado en ninguna rama.
+
+**Cierre del desvío (autorizado por GO en la misma sesión)**: las ventas #679/#682 de las dos corridas
+fallidas quedaron con `ingreso` sin su `egreso_devolucion_sena` → $2.468 de más en Caja1. Se asentaron
+los dos egresos faltantes **en la misma sesión donde había caído el ingreso** (Caja1, ARS) y por el
+mismo monto, con el concepto marcado como *regularización manual* para que quede auditable. Saldo de la
+sesión: **$33.395** (era $35.863). Se corrió además un **barrido completo** buscando cualquier otra
+venta cancelada con cobro en efectivo cuyo ingreso no tuviera su egreso: **0 resultados**, no había más
+huérfanos. La consulta quedó documentada como control reusable en `uat-app.md` §H5.
+
+**Decisión de GO sobre PROD**: esperar — "sigamos con pendientes y fixes". Sigue en `v1.195.4`.
+**Bloqueado**: `schema_full.sql` está 9 migraciones atrasado; `npm run schema:dump` no puede usar el
+camino PG (bug de Supavisor) y necesita un `SUPABASE_ACCESS_TOKEN` que no está en `.env.local`.
+
+**Verde**: lint 0 warnings · tsc + build · e2e de regresión 26 passed (1 skip por fixture) · spec 141
+19/19.
+
+---
+
+## [2026-09-06] update | 🟥 Tandas F y E — primera pasada: 5 huecos de rol medidos (1 cerrado) + el techo de escala de `ventas`
+
+Continuación de la misma sesión (GO: "hagamos más tandas"). Dos tandas nuevas, las dos con **medición
+real, no inspección de código**. Todo en `dev`, **sin deploy a PROD**.
+
+### Tanda F — roles server-side (spec `141_roles_server_side_matriz.spec.ts`)
+
+Hasta hoy TODA la cobertura por rol era **por UI** (specs 13/15/16/17/18: qué rutas entran, qué links
+no se ven). Un token real + `curl` no pasa por ningún componente React — que es justo lo que dice la
+obligación #3 de la REGLA #0 y el hallazgo H1 del UAT. La spec nueva pega directo a PostgREST con el
+`access_token` de CAJERO, DEPÓSITO, RRHH y CONTADOR. **Sondas no mutantes a propósito**: PATCH con el
+mismo valor (`[]` = bloqueó · fila = dejó escribir), INSERT con clave única duplicada (`42501` vs
+`23505`, no inserta nada), y el RPC de cierre pidiendo el mes en curso para separar un rechazo por ROL
+de uno por regla de negocio.
+
+**Números**: de las **152 policies del esquema, solo 14 miran el rol**. ✅ Sí protegen: `tenants`,
+escalada de privilegios por `users`, Caja Fuerte, `set_clave_maestra`, `marcar_incobrable`, el guard de
+`cerrar_periodo` (CONTADOR sí / operativos no) y el **aislamiento por sucursal cruzado con rol** (F4 —
+la spec 94 solo cubría SUPERVISOR).
+
+**🟥 F1-h1 CERRADO (mig 394) — el hallazgo grave, y el más didáctico: el guard existía y se esquivaba
+escribiendo la tabla.** `cerrar_periodo()` valida el rol, pero la policy de `cierres_contables` era
+`FOR ALL` por tenant a secas: un CAJERO podía `POST /rest/v1/cierres_contables` directo y **congelar un
+mes contable entero** (los triggers de período cerrado bloquean después toda edición de gastos/ventas
+de ese mes). Ahora la tabla es **solo lectura** vía RLS — se escribe solo por los RPC SECURITY DEFINER.
+Verificado antes (el frontend solo hace SELECT, ninguna EF la toca) y después (CAJERO → 42501, lectura
+intacta, el DUEÑO cierra y reabre por RPC sin problema).
+
+**🔴 Siguen abiertos h2-h5** (cambiar el precio de venta, editar el monto de un gasto, alta de
+productos, medios de pago): cualquier rol, por REST directo. **No se cerraron a propósito**: un guard
+genérico rompe ventas legítimas — `VentasPage` actualiza `productos.stock_actual` **desde el cliente**
+en devoluciones/anulaciones. El guard correcto es un trigger que mire solo las columnas de precio, y
+antes hay que definir qué pasa con los **roles custom** (F3, sin abrir). Quedan anotados en la suite
+con `test.fail()`: verdes mientras el hueco siga abierto, **rojos el día que se cierre el guard**.
+
+### Tanda E — stress/carga (instrumento nuevo: `npm run stress:lectura`)
+
+`scripts/stress-lectura.mjs` simula N sesiones concurrentes con el mix de lecturas de la app. Solo GET;
+se niega a correr contra PROD o con >20 sesiones sin `--si-se-que-hago`.
+
+**E1 ✅**: 5 sesiones → 49,8 req/s, **0 errores**, p95 267 ms. 20 sesiones → 86,3 req/s, **0 errores**,
+p95 1.461 ms. **E2**: el techo NO se buscó a propósito (saturar DEV es destructivo y es el ambiente de
+trabajo de GO) — el instrumento está listo, falta acordar cuándo. **E3**: la base ENTERA de DEV son 881
+productos y **821 ventas** — un comercio real hace eso en dos semanas, así que todos los números son un
+piso optimista.
+
+**✅ E4-h1 ARREGLADO (mig 395)**: `EXPLAIN ANALYZE` real mostró que para devolver **20** ventas el plan
+leía **las 662 del tenant** y ordenaba después — el `LIMIT` no podía cortar. O(n) sobre el historial
+completo en cada carga; `ventas` tenía 13 índices y ninguno servía para ese orden, que usan **14
+lugares del frontend**. Índice `(tenant_id, created_at DESC)` → **17,0 ms → 1,14 ms** leyendo 20 filas
+en vez de 662. End-to-end: `ventas` p50 **277 → 78 ms**, p95 **435 → 96 ms**, total **35,8 → 49,8
+req/s**.
+
+**🔴 E4-h2 abierto**: `venta_items` no tiene `sucursal_id`, así que su policy materializa **todas las
+ventas visibles del tenant** en un hashed SubPlan antes de devolver la primera fila. Mismo query:
+**DUEÑO 2,1 ms · CAJERO 48,0 ms (24×)**. Es el causante del p95 de 1,4 s a 20 concurrentes y escala
+O(ventas del tenant). Los dos arreglos posibles (denormalizar `sucursal_id`, o índice de cobertura)
+necesitan decisión de GO.
+
+> **Regla que salió de las dos tandas y conviene no olvidar: medir SIEMPRE con el rol restringido, no
+> con el DUEÑO.** El DUEÑO cortocircuita casi todos los chequeos de RLS, así que da verde y rápido sin
+> decir nada. La primera medición de `venta_items` la hice como DUEÑO y daba 2 ms — sano. Como CAJERO
+> son 48 ms.
+
+**Corrección de documentación**: `pg_cron` y `pg_net` **SÍ están habilitados** en DEV y PROD, con 3 jobs
+activos. Eso explica el `tn-fulfillment-worker` que corría "133 veces por día sin que nadie lo mire":
+es el job `tn-fulfillment-sync`, `*/5 * * * *`. El wiki ya lo tenía bien; la memoria del asistente no.
+
+Páginas nuevas: [[wiki/architecture/guards-server-side]]. Actualizadas:
+[[wiki/architecture/resiliencia]], [[wiki/development/testing]], [[wiki/database/migraciones]] (391-395),
+`index.md`, `tests/specs/uat-app.md` (Tandas E y F).
+
+---
+
+## [2026-09-06] update | ✅ D1 CERRADO — cortacircuitos del refresco de sesión (la app deja de amplificar las caídas)
+
+Sesión dedicada al bug urgente que quedó abierto en la entrada anterior. **Solo `dev`, sin deploy a PROD,
+sin bump de versión** (DEV sigue `v1.196.0`).
+
+**Diagnóstico verificado contra los logs de edge de DEV con SQL, no reconstruido de memoria.** Últimas 24 h:
+**595 requests** a `POST /auth/v1/token?grant_type=refresh_token` — 452 con **522**, 49 con **504**, 45 con
+**521**, 16 con **524**, 1 con **525**, y solo **32 con 200**. El 100 % eran `grant_type=refresh_token`
+(ninguna era login). Por hora: **~65 requests/hora sostenidas entre las 19 h y las 00 h del 5/9, cinco horas
+seguidas**. Eso **descarta** la hipótesis de que auth-js descarte la sesión ante un 52x: el bucle es
+infinito, y sigue vivo hoy.
+
+**Causa raíz, leída en `node_modules/@supabase/auth-js` 2.98**: ticker cada 30 s
+(`AUTO_REFRESH_TICK_DURATION_MS`) que nunca se detiene, hasta ~7 reintentos con backoff **dentro** de cada
+tick, y **cero contador de fallos entre ticks** — nada corta el bucle. De paso: su `NETWORK_ERROR_CODES`
+solo contempla 502/503/504, así que los **52x de Cloudflare** (los que realmente llegan) caen fuera de su
+lógica de reintento.
+
+**Fix** — `src/lib/authRefreshBreaker.ts` + cableado en `src/lib/supabase.ts` +
+`src/components/AvisoSesionSinRefresco.tsx` montado en `App.tsx`. **No se toca auth-js ni su config**: se
+envuelve `global.fetch` y se intercepta **únicamente** ese endpoint; todo el resto del tráfico pasa sin
+tocar. Backoff exponencial con jitter ±20 % (2 s → 4 → 8 … tope 5 min), corte **local** sin tráfico de red
+mientras el circuito está abierto, y **se rinde tras 10 fallos consecutivos**. Decisión deliberada por
+REGLA #0: el cortocircuito devuelve **503**, el único código que auth-js trata como reintentable y por lo
+tanto el único que **no** le hace borrar la sesión guardada — un cajero en medio de una venta no puede
+quedar deslogueado por un blip de 30 s. Un **400/401** (`invalid_grant`) sí pasa derecho: es respuesta
+definitiva y corresponde el login limpio. La UI **no bloquea**: franja discreta al 2º fallo, tarjeta con
+**Reintentar** / **Volver a entrar** cuando se rindió (este último con `signOut({ scope: 'local' })`, que no
+sale a la red justo cuando la red es el problema).
+
+**Efecto medido**: una caída de 5 h pasa de ~600 requests por pestaña a **10**, y después silencio.
+
+**Cobertura**: `tests/unit/authRefreshBreaker.test.ts`, **19 tests**, con el de regresión reproduciendo la
+caída real (600 intentos → exige 10 requests y estado `rendido`). Lógica pura con reloj, aleatorio y `fetch`
+inyectados: determinístico, sin tenant ni backend — que era justo lo que pedía la nota de método de las
+tandas. Verde: lint (0 warnings) · `tsc` + build · unit **1656 + 5 todo en 101 archivos**.
+
+Wiki: página nueva [[wiki/architecture/resiliencia]] (incidente, causa raíz, medición, fix y lo que sigue
+abierto), más [[wiki/development/testing]] (sección nueva de tests de resiliencia),
+[[wiki/features/autenticacion-onboarding]], `index.md` y `tests/specs/uat-app.md` (D1 marcado ✅ con el
+detalle). **Siguen abiertos D2-D5 y las Tandas E/F.**
+
+---
+
+## [2026-09-06] update | 🟥 Sección G construida y verificada + lista de autorizados + 🔴 bucle de reintentos de sesión (URGENTE)
+
+Continuación de la sesión del 05-09 (sin `/clear`). Tres bloques.
+
+**1. Sección G — medición de consumo (migs 391 y 393, v1.196.0+).** El ledger de costos de Fede, fase 1:
+mide lo que Genesis360 PAGA por tenant (Meta, Anthropic), **no** lo que se le cobra al cliente — el margen
+es una decisión de negocio sin tomar y se dejó para una fase aparte, para no hornear un número inventado en
+la base. `consumo_tarifas` (rate card versionado por fecha) + `consumo_eventos` (ledger inmutable, costo
+CONGELADO al momento del evento). Hallazgo de diseño: **la categoría de cada mensaje la informa Meta** en el
+webhook de `statuses` (`pricing.category`, `pricing.billable`), que hasta ahora `wa-webhook` descartaba —
+no hay que inferirla. Verificado end-to-end con una consulta real de GO: `ia_tokens_in` US$0,0074720 +
+`ia_tokens_out` US$0,0016800, y los 2 mensajes de WhatsApp en $0 porque Meta los marcó
+`free_customer_service` — **confirmación real de la excepción "utility dentro de ventana abierta es
+gratis"**, que hasta ahora solo teníamos por documentación. La proyección al 1/10/2026 de esa misma
+conversación da $75,36 ARS. Mig 393: `costo_facturable` devolvía NULL en vez de 0 (un `SUM(...) FILTER` sin
+filas), bomba para cualquier reporte futuro que sume sobre una columna de plata.
+
+**2. Lista de números autorizados (mig 392).** Origen: GO le pidió a Fede probar que el bot no respondiera
+desde un número ajeno. Meta bloqueó la ENTREGA (error 131030) pero **recién al final**: para entonces ya se
+había llamado a Claude (~4.300 tokens pagados por nosotros), consultado el STOCK REAL y **creado un borrador
+de gasto** en el tenant. O sea "no responde" ✅ pero "no consume" ❌. Hoy eso está tapado por el límite de 5
+destinatarios del número de PRUEBA de Meta, que desaparece con un número real. Se agregó
+`whatsapp_numeros_autorizados` con chequeo ANTES de gastar tokens; comportamiento elegido por GO: ignorar en
+silencio (responder cuesta un mensaje y con número real sería pagarle al spam). Escritura gateada a
+DUEÑO/ADMIN **a nivel DB**, no solo UI. Verificado con la re-prueba de Fede: 2 mensajes registrados, **cero**
+eventos de consumo, y sin el error 131030 porque ya ni se intenta enviar.
+
+**3. 🔴 URGENTE — bucle de reintentos de sesión.** La base de DEV se cayó repetidamente (instancia
+`t4g.nano`, CPU 94% / Disk IO 97%, `Unhealthy`). Al desglosar el tráfico: **~650 de ~5.000 requests de 24 h
+eran UNA pestaña de Chrome reintentando `/auth/v1/token?grant_type=refresh_token`**, casi todas con 5xx.
+Sesión de GO abierta desde el 4/9. **El cliente reintenta el refresco sin freno y se retroalimenta**: la base
+saturada hace fallar el refresco, el cliente reintenta, suma carga, falla más. Con un cliente real cada
+navegador abierto amplifica la caída. GO lo marcó URGENTE (primer cliente real en ~2 semanas) y se retoma en
+sesión dedicada. **Ningún test lo agarró y no es un descuido puntual**: las 142 specs e2e son todas
+funcionales, corren contra un backend sano, y no hay una sola que ejercite condiciones degradadas
+(verificado con grep). Se abrieron en `tests/specs/uat-app.md` las **Tandas D (resiliencia), E (stress) y F
+(roles server-side)** con 13 escenarios, más la nota de método de definir la foto de datos de cada uno.
+
+**De paso**: DEV estaba en compute **NANO** con plan **Pro pagado**. Pro sube cupos y trae crédito de
+compute, pero el tamaño de máquina es un eje aparte — **MICRO figuraba como "Free Upgrade" al mismo precio**
+($9,68/mes), 1 GB y 2 cores dedicados vs 0,5 GB compartidos. GO confirmó el cambio. La CPU compartida con
+créditos de ráfaga explica el patrón de caídas intermitentes de toda la sesión. Anotado también que
+`tn-fulfillment-worker` corre 133 veces/día contra DEV sin que nadie lo mire (no era la causa, pero es carga
+constante innecesaria).
+
+Ver [[wiki/features/asistente-whatsapp]], `tests/specs/uat-app.md` (Tandas D/E/F) y
+`sources/raw/project_pendientes.md` (cont. 50, arranque de la próxima sesión).
+
+---
+
+## [2026-09-05] update | 🎉 Primera conversación REAL de WhatsApp end-to-end + causa raíz del bloqueo (no era el chip) + Pixel de Meta
+
+Sesión larga y pivote para el Asistente de WhatsApp. GO obtuvo acceso admin al Business Portfolio de Meta
+(Fede creó uno nuevo, `28370543342633394`) y generó el **token permanente de System User** que faltaba desde
+la Fase 1 — el primero con permisos reales de management, lo que permitió diagnosticar **por API** lo que
+hasta ahora solo se había inferido de capturas.
+
+**🔴 El hallazgo principal: el diagnóstico de agosto estaba equivocado.** `GET /{waba_id}/subscribed_apps`
+mostró una sola app suscripta al WABA — `WA DevX Webhook Events 1P App`, interna de Meta — y **NO la de
+Genesis360** (`1059640186689341`). El webhook estaba configurado a nivel *app* (por eso el handshake GET
+verificaba OK), pero faltaba el paso separado `POST /{waba_id}/subscribed_apps` que le dice a Meta a qué app
+entregar los eventos de ese WABA. Un solo request lo resolvió. **El "chip prepago dedicado" que figuraba como
+bloqueador desde el 26/8 nunca fue el problema**: el número de test estaba `status: CONNECTED` todo el tiempo,
+y el `code_verification_status: NOT_VERIFIED` que se interpretó como "falta registrar" es normal en números
+de test de Meta. Lección: un bloqueo externo diagnosticado sin poder interrogar al sistema externo es una
+hipótesis, no una causa — marcarlo como tal.
+
+**✅ Verificado real** (`whatsapp_mensajes_log`, tenant "Familia Otranto De Porto", wamid REAL de Meta y no
+`wamid.test.*`): `"Tenes mantecol?"` → *"Sí! Mantecol Clásico 111g, tenemos 2 unidades en stock a $1500 c/u."*
+en 5 segundos, coincidiendo exacto con la DB. También el circuito completo de Fase 2 (texto → botones nativos
+→ Confirmar → borrador `pendiente`) y el envío saliente de Fase 4 al celular de GO.
+
+**Otros cierres**: token `expires_at: 0` (no vence nunca) cargado en `whatsapp_credentials` de DEV; las 2
+plantillas del briefing pasaron de `PENDING` a `APPROVED`.
+
+**🐛 Bug real corregido (`wa-webhook` v7 en DEV)**: ante una foto de comprobante que NO coincidía con el texto
+del usuario, el bot detectaba bien la discrepancia y la avisaba, pero respondía *"te armo el borrador"* y
+**nunca llamaba a `proponer_gasto`** — narraba una acción que no ejecutaba. Tres cambios: regla anti-narración
+(o llama la herramienta o pregunta, nunca anuncia sin hacer), regla de discrepancia (usar SIEMPRE los datos
+del comprobante, nunca los del texto), y campo `advertencia` nuevo que se muestra con ⚠️ en la confirmación
+pero **nunca se persiste** en el borrador ni en la descripción del gasto (no ensuciar el registro contable).
+
+**💰 Hallazgo de costos**: `briefing_cierre_dia` quedó definitivamente en MARKETING ($89,5620 ARS) vs UTILITY
+($37,6798) — 2,4x, ~$3.800/mes extra por negocio solo por el tono del texto. La categoría de una plantilla
+aprobada **no se puede editar** (`error_subcode 3835031`), así que se creó `briefing_cierre_dia_v2` con texto
+neutro solicitada como UTILITY, `PENDING` al cierre. Cuando se apruebe, cambiar el nombre en
+`wa-briefing-sweep/index.ts`.
+
+**🔄 Corrección sobre el gate de Embedded Signup**: contra la doc oficial, la Verificación del Negocio NO es
+el prerequisito duro (solo sube el límite de 10 a 200 negocios/7 días) — el que bloquea es el **App Review con
+Advanced Access** sobre los 2 permisos de WhatsApp. Estado por API: `business_verification_status:
+pending_submission`, `account_review_status: APPROVED`.
+
+**📌 Pixel de Meta** agregado a `index.html` (id `1044399641905959`, pedido de Fede) — dispara `PageView` en
+la carga inicial; no hay CSP que lo bloquee. Para medir conversión del funnel harían falta eventos custom
+(`Lead`, `CompleteRegistration`), no pedidos todavía.
+
+**📄 Guía de onboarding para clientes** publicada como artifact
+(https://claude.ai/code/artifact/db31003d-0d47-43d8-9b83-1729656e5aa8) — 5 requisitos previos, 7 pasos,
+precios reales de Meta en ARS, problemas conocidos. Lleva banda roja de "no compartir todavía" porque el
+onboarding self-service sigue bloqueado por App Review.
+
+Actualizado en [[wiki/features/asistente-whatsapp]] (sección nueva 2026-09-05 + corrección de los pendientes
+1/2/3/6) y en la memoria del proyecto.
+
+---
+
+## [2026-09-05] query | 🔴🔁 Re-corrección: el dato de octubre 2026 SÍ era correcto — Meta cobra mensajes de servicio desde esa fecha
+
+GO trajo un rate card oficial de Meta en ARS para Argentina (categorías Marketing/Utilidad/
+Autenticación/Servicio) y pidió re-verificar el dato "corregido" ayer antes de seguir usándolo.
+Resultado: **la corrección del 2026-09-04 estaba mal** — la verificación de esa sesión miró solo la
+página general `developers.facebook.com/documentation/business-messaging/whatsapp/pricing`, que
+documenta el cambio histórico de cobro por conversación → por mensaje (jul/2025) pero no menciona el
+cambio de mensajes "Service". Existe una sub-página dedicada,
+`.../whatsapp/pricing/non-template-messages`, no consultada esa vez, que confirma textual:
+*"Effective October 1, 2026, Meta will charge on a per-message basis for service messages"*, a la
+misma tarifa que utilidad/autenticación en cada mercado. Confirmado con 2 fetches independientes a esa
+URL.
+
+**Estado real**: el dato original de Fede (sección K, 25/8/2026 — "desde el 1° de octubre de 2026,
+Meta cobra los mensajes salientes dentro de la ventana de 24hs, hoy gratis") era correcto. Argentina
+tiene rate card propio en ARS (Marketing $89,5620 · Utilidad/Autenticación $37,6798, coincide con los
+USD 0,0618/0,0260 ya usados en el diseño) — la columna "Servicio" todavía no está publicada en el rate
+card al 2026-09-05, pese a que Meta había dicho que la publicaría antes del 1/sep/2026.
+
+**Implicancia real para Sección G** (medición/facturación del asistente de WhatsApp, sin construir
+todavía): las respuestas del bot dentro de la ventana de 24hs (100% de lo que hacen hoy las Fases 1-3
+en DEV) dejan de ser gratis desde el 1/oct/2026 — el diseño de costeo debe contemplarlo desde el
+arranque. Corregido en [[wiki/features/asistente-whatsapp]] (segunda pasada de tachado + nota, sin
+borrar ninguna versión anterior) y en la memoria del asistente
+(`project_whatsapp_ia_portal_proveedores.md`). **Lección de proceso**: verificar 2-3 veces contra la
+misma página no alcanza si es la página equivocada — para un cambio de pricing específico, buscar
+también las sub-páginas dedicadas (`/pricing/<tema>`), no solo la página general.
+
+---
+
+## [2026-09-04] query | 🛑✅ Corregido dato incorrecto: Meta NO cobra "todo mensaje" desde octubre 2026
+
+Dato que venía arrastrándose desde el relevamiento original de Fede (25/8/2026, sección K), nunca antes
+verificado contra la fuente oficial: "desde el 1° de octubre de 2026, Meta cobra TODO mensaje saliente
+(hoy la ventana de 24hs es gratis)". GO pidió revisarlo antes de usarlo como argumento en la comparación
+WhatsApp vs. app propia del día.
+
+**Verificado contra `developers.facebook.com/documentation/business-messaging/whatsapp/pricing` (3
+consultas distintas) — el dato es incorrecto**:
+- El cobro por mensaje (en vez de por conversación de 24hs) **ya rige desde el 1° de julio de 2025**,
+  no es un cambio futuro.
+- Los mensajes de servicio y las respuestas libres dentro de la ventana de 24hs **siguen siendo gratis
+  hoy**, sin ninguna fecha anunciada para que cambie (textual: "Effective November 1, 2024 — Service
+  conversations are now free for all businesses").
+- El 1° de octubre de 2026 SÍ existe en el calendario oficial de Meta, pero es un ajuste de tarifas
+  regionales para 9 países (Bangladesh, Irak, Nepal, Sri Lanka, Kazajistán, Kuwait, Marruecos, Omán,
+  Ucrania) — **Argentina no está incluida** — mismo tipo de ajuste trimestral rutinario que Meta hace
+  desde hace años (hay entradas equivalentes en oct 2025, ene/abr/jul 2026 para otros países).
+
+**Implicancia**: no hay una fecha límite de costos inminente presionando a migrar de WhatsApp a una app
+propia — el modelo de costos actual es estable y conocido desde mediados de 2025. Corregido en
+[[wiki/features/asistente-whatsapp]] (con tachado + nota, sin borrar el dato original) y en la memoria
+del asistente (`project_whatsapp_ia_portal_proveedores.md`). Las 2 apariciones históricas del dato
+incorrecto en `log.md`/`project_pendientes.md` se dejaron intactas (registro append-only del estado en
+ese momento) — esta entrada es la corrección vigente.
+
+---
+
+## [2026-09-04] query | 💡 Analizada propuesta de app propia con Share Sheet nativo, alternativa a WhatsApp/Meta — sin decisión, sin código
+
+GO retomó una idea que Fede ya había dejado diferida (sección C/M del relevamiento de WhatsApp): en
+vez de integrar con la API de WhatsApp de Meta, construir algo propio que aparezca en el menú
+"Compartir" del celular (como Google Drive), para que el dueño comparta una foto/comprobante directo
+a Genesis360 desde WhatsApp o cualquier app.
+
+Investigación técnica (sin tocar código): es el mecanismo de Share Target del sistema operativo.
+**Android** se podría lograr con la PWA existente (Web Share Target API). **iOS no tiene equivalente
+— es obligatorio una app nativa** con Share Extension propia, sin atajo web posible. El "cerebro" de
+IA (Fases 2/3 del asistente de WhatsApp: leer una foto, proponer un gasto, doble confirmación) ya
+está construido y sería 100% reusable — solo cambiaría la puerta de entrada. Limitación real: un
+share es de ida solamente, no da chat bidireccional como sí da WhatsApp hoy.
+
+Se armó una comparación de pros/contras y qué necesita cada camino (WhatsApp: solo falta que Fede
+suba 2 documentos a Meta, trámite administrativo no técnico; app propia: proyecto de ingeniería
+nuevo, cuentas de desarrollador + código nativo + revisión de tiendas + mantenimiento). Recomendación
+dada: no son excluyentes, cada uno resuelve algo distinto — insistir con Fede para destrabar lo ya
+construido, y considerar la app propia como proyecto aparte con su propio relevamiento si GO quiere
+independencia de Meta a mediano plazo. **Sin decisión tomada, sin código escrito** — detalle completo
+en la memoria del asistente (`project_whatsapp_ia_portal_proveedores.md`).
+
+---
+
+## [2026-09-04] fix | 💱 Cotización BNA-only construida (sin deploy) + plan del modo "real" del Dashboard listo para otra sesión
+
+Fede confirmó las 2 últimas dudas de USD. **(1) Cotización BNA-only**: el widget general debe dejar de
+ofrecer Blue/MEP/Cripto y traer siempre Oficial de Banco Nación. Implementado en
+`src/hooks/useCotizacion.ts` + `src/components/CotizacionWidget.tsx` (commit `e7db934b`, `dev`, sin
+deploy a PROD): se eliminó el menú desplegable de tipos de dólar, un solo botón de refresco para
+cualquier rol. Verificado con query real que ningún tenant (DEV/PROD) usaba Blue/MEP/Cripto — cambio
+sin impacto en datos existentes — y probado en navegador real (Playwright ad-hoc): trae el valor
+correcto de `dolarapi.com/v1/dolares/oficial`, timestamp actualizado. `npm run build`/`lint` verdes. `APP_VERSION`
+bumpeado a `v1.195.5` (commit `01c15d56`), tag+release publicados sobre `dev` — PROD sigue en `v1.195.4`.
+
+**(2) Modo "real" del Dashboard (G1)**: confirmado que Fede lo quiere, pero se armó el PLAN en vez de
+construirlo ahora (GO pidió dejarlo para una sesión dedicada — toca reportes de plata, REGLA #0).
+Hallazgo clave: el patrón ya existe para el KPI "Ingreso Neto de Caja" (separa `caja_movimientos` por
+`moneda` en dos acumuladores, sin convertir) — falta extenderlo a `DashVentasArea.tsx`/
+`DashGastosArea.tsx`, que hoy solo hacen una conversión ficticia (dividir por cotización). Plan
+detallado, con archivos y criterio de distinción ARS/USD por tabla, en la memoria del asistente
+`project_dashboard_modo_real_usd_plan.md`.
+
+Detalle completo: `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 48).
+
+---
+
+## [2026-09-04] deploy | 🚀 PROD v1.195.0 → v1.195.4 — ESLint 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor
+
+GO autorizó explícitamente ("podés pasar todo a PRD"). Deploy de TODO lo acumulado en `dev` desde el
+último deploy real (v1.195.0, PR #335, 2026-09-01) — las 4 tandas de mantenimiento intermedias
+(v1.195.1-v1.195.4, ~32 commits) llegan a PROD juntas en este release.
+
+**Sin migraciones nuevas**: tope de migraciones confirmado en 390 tanto en DEV (`gcmhzdedrkmmzfzfveig`)
+como en PROD (`jjffnbrdjchquexdfgwq`) vía `list_migrations`, misma última migración
+`390_portal_proveedores_oc_acceso` en ambos lados. Esta tanda es 100% código.
+
+**Flujo ejecutado:**
+1. `npm run build` verde (tsc + vite).
+2. PR #340 `dev`→`main` (título "v1.195.4 — ESLint 100% + UX chicas + deps (react-router v7) + fix
+   invitar-proveedor"), checks de CI verdes (Unit Tests Vitest, Vercel preview), mergeado con
+   `gh pr merge 340 --merge` → merge commit `a37e6e6c2e1a80cbd522823784555e1a63dc16fd`.
+3. Release `v1.195.4` (existente, apuntaba a `dev`) retargeteado a `main` (`gh release edit v1.195.4
+   --target main --latest`) — confirmado `targetCommitish: main`.
+4. Edge Function `invitar-proveedor` redeployada a PROD (`supabase functions deploy invitar-proveedor
+   --project-ref jjffnbrdjchquexdfgwq`), mismo código que DEV.
+5. Vercel: deployment `dpl_87HQR74KMvf2njwUQ9A76XZK3r9r` (`target: production`, commit `a37e6e6c`)
+   confirmado `READY`. Verificación real (no solo dashboard): `curl` contra `https://www.genesis360.pro/`
+   confirma que el bundle servido `assets/index-DZyAUxNg.js` contiene el string `v1.195.4` (HTTP 200).
+
+**Qué llegó a PROD** (detalle completo en las entradas `fix`/`chore` del 2026-09-02/03/04 de este mismo
+log):
+1. Limpieza de ESLint 100% (161→0 warnings) — deuda técnica, sin cambio de comportamiento.
+2. 2 features UX chicas: búsqueda por foco en modales de Ingreso/Rebaje de Inventario, asignar rol
+   personalizado ya existente a un usuario desde Usuarios.
+3. Dependencias: 6 PRs de Dependabot + `npm audit fix` + migración de `react-router-dom` v6.21.0→v7.18.3
+   (resuelve 2 CVEs moderados GHSA-wrjc-x8rr-h8h6/GHSA-337j-9hxr-rhxg; guards de rol re-verificados
+   funcionando contra DEV real tras el bump).
+4. Fix parcial en Edge Function `invitar-proveedor`: `APP_URL` configurable vía `Deno.env.get('APP_URL')`
+   con el mismo valor como fallback + `console.warn` no bloqueante en DEV. **No resuelve el problema de
+   fondo** (no existe frontend público de DEV) — sigue documentado como pendiente en
+   [[wiki/features/portal-proveedores]].
+5. Nuevo test e2e permanente `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts`.
+
+**Sin pendientes bloqueantes de este deploy.** Detalle completo: `sources/raw/project_pendientes.md`
+(bloque "ARRANCÁ ACÁ", cont. 47), `wiki/business/roadmap.md`.
+
+---
+
 ## [2026-09-04] fix | 💵🧪 Compras/Gastos en USD: aclarado que el relevamiento YA estaba 100% respondido y construido (gap de memoria del asistente, no del proyecto) + test e2e real de pago de OC en USD CERRADO — v1.195.4 (tag+release en `dev`, SIN deploy a PROD)
 
 Cierre del último tramo de una sesión larga: retoma Compras/Gastos en USD (código ya en PROD desde

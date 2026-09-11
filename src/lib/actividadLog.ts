@@ -103,3 +103,16 @@ export function logActividad(params: LogParams): void {
     venta_id:         params.venta_id ?? null,
   }).then(() => {}) // fire-and-forget
 }
+
+// ─── Diff de campos para el HISTORIAL ────────────────────────────────────────────────────────
+//
+// Pedido de Fede (2026-09-08): "en el módulo historial debería aparecer el detalle cuando alguien
+// edita un producto, ver los campos o cosas que se editaron". `HistorialPage` YA sabe renderizar
+// `Editó <campo> de <entidad> <nombre>: "<anterior>" → "<nuevo>"`; lo que faltaba era que el
+// formulario mandara el detalle en vez de un `accion: 'editar'` pelado.
+
+// `diffCampos` y `CampoCambiado` viven en `actividadLogDiff.ts` (lógica pura, sin `supabase`)
+// para que se puedan testear sin credenciales — este archivo hace `throw` al importar si faltan
+// las env vars. Se reexportan para no tocar los imports existentes.
+export { diffCampos } from '@/lib/actividadLogDiff'
+export type { CampoCambiado } from '@/lib/actividadLogDiff'

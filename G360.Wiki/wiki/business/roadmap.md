@@ -3,14 +3,196 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-04
+updated: 2026-09-06
 ---
 
 # Roadmap y Versiones
 
-**Versión en DEV (tag, sin deploy a PROD):** v1.195.4 — publicado 2026-09-04 (commit `4f991613`,
-tag+release `targetCommitish: dev`, marcado `latest`, título "v1.195.4 — e2e OC-USD real + incidente
-Supabase resuelto"). Reemplaza a v1.195.3 (commit `d8b10904`, 2026-09-03) como último tag de `dev`. Sin
+**Versión en PROD:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
+100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
+`a37e6e6c2e1a80cbd522823784555e1a63dc16fd`), confirmado con `gh pr view 340` → `state: MERGED`. **Este
+deploy promovió TODO lo acumulado en `dev` desde el último deploy real (`v1.195.0`, PR #335, 2026-09-01)**
+— **SIN migraciones nuevas**: tope de migraciones confirmado en 390 tanto en DEV como en PROD
+(`list_migrations`), misma última migración `390_portal_proveedores_oc_acceso` en ambos lados. Edge
+Function `invitar-proveedor` redeployada a PROD (mismo código que DEV, `verify_jwt: true`). **Release de
+GitHub `v1.195.4` retargeteado de `dev` a `main`** (`targetCommitish: main`), marcado `latest`.
+
+Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamiento fiscal/contable:
+1. **Limpieza de ESLint 100%** (161→0 warnings, detalle abajo) — deuda técnica, sin cambio de
+   comportamiento.
+2. **2 features UX chicas**: búsqueda por foco en modales de Ingreso/Rebaje de Inventario, y asignar un rol
+   personalizado ya existente a un usuario desde Usuarios.
+3. **Dependencias**: 6 PRs de Dependabot + `npm audit fix` + **migración de `react-router-dom` v6.21.0 →
+   v7.18.3** (resuelve 2 CVEs moderados, detalle abajo). Guards de rol (`AuthGuard`, restricciones por rol
+   en `AppLayout`) verificados funcionando contra DEV real tras el bump.
+4. **Fix parcial en Edge Function `invitar-proveedor`**: `APP_URL` pasa de hardcode puro a
+   `Deno.env.get('APP_URL')` con el mismo valor como fallback + `console.warn` no bloqueante cuando corre
+   contra DEV. **No resuelve el problema de fondo** (no existe frontend público de DEV) — sigue pendiente,
+   ver [[wiki/features/portal-proveedores]].
+5. Nuevo test e2e permanente `tests/e2e/140_compra_pago_oc_usd_mutante.spec.ts` (no afecta el build de
+   producción).
+
+**Vercel: confirmado READY** (`dpl_87HQR74KMvf2njwUQ9A76XZK3r9r`, `target: production`, commit
+`a37e6e6c`). Verificado además por `curl` contra `https://www.genesis360.pro/` (no solo el dashboard): el
+bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
+`G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
+
+**Versión en DEV:** `v1.208.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
+opción que muestra los montos **sin convertir nada**, con los pesos y los dólares en números
+separados que nunca se suman. El patrón ya existía en el KPI "Ingreso Neto de Caja"; se extrajo a
+`src/lib/dashMoneda.ts` y se aplicó a Ventas y Gastos. 🐛 De paso se cerró un **bug de plata
+latente**: el Dashboard **sumaba dólares como si fueran pesos** (`gastos.moneda`, mig 379, ni se
+leía) en tres lugares — el área Gastos, "La Balanza" y el `gastosTotal` que alimenta
+**rentabilidad/margen**, donde subestimaba el gasto e **inflaba el margen**. Ver `log.md`
+(2026-09-09).
+
+**Detalle de v1.207.0** — tag+release sobre `dev`. **🐛 Tanda de issues de Fede: 10 de 13 cerrados.** Los dos de plata: el POS convertía
+los precios en USD al **dólar venta** cuando la convención del sistema es **compra** (le cobraba de
+más al cliente), y **"El Camino de la Venta" contaba la misma plata dos veces**. Además: el recurso
+desaparecía al crearlo (no seteaba `sucursal_id`) y su gasto nacía ya pagado (**mig 406** cierra el
+ciclo); la reserva ahora exige cliente siempre; el historial muestra qué campos se editaron; y hay
+una sección nueva para reimprimir etiquetas. Dos diagnósticos: repositores **no estaba roto** (le
+faltan las góndolas asignadas — ahora el vacío lo explica) y el descuento general **sí** está gateado
+por rol. Ver `log.md` (2026-09-08).
+
+**Detalle de v1.206.0** — tag+release sobre `dev`. **✅ TANDA F CERRADA (mig 405)**: el módulo **Gastos** server-side, con la regla que dio
+GO — *un cajero registra un pago a proveedor solo si el dueño le habilitó Gastos en su rol custom*.
+No hizo falta estructura nueva: `auth_puede_editar_modulo` ya mira primero el permiso del rol custom,
+así que **el gate no es el rol, es el permiso**. De paso corrigió un supuesto falso de la 404 (los
+cheques no los crea el POS). Y se recuperó la suite e2e: **394 tests, 339 verdes**, con los 9 specs de
+siembra de stock arreglados. Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.205.0** — tag+release sobre `dev`. **🔴 La matriz de ESCRITURA (mig 404)** — cierra la Tanda F. Un CAJERO escribía por REST
+`cheques`, `cliente_creditos`, `caja_traspasos`, la **lista mayorista**, `cupones`, `combos`,
+`sucursales`, `ubicaciones` y el **CBU de los proveedores**. Dos aprendizajes del diseño: la lista
+mayorista y los cupones **eran el precio de venta que cerró la mig 396 por la puerta de al lado**, y
+el corte tiene que ir por **operación** — el POS escribe `cupones_codigos` al canjear, así que un
+guard por tabla habría roto la venta con cupón. 🐛 Aparte: se encontró que **9 specs e2e estaban
+rotos hace días** por una ubicación Mono-SKU ocupada con datos de prueba viejos (no por las
+migraciones — verificado). Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.204.0** — tag+release sobre `dev`. **🔴 Auditoría completa del esquema (mig 403)**: de las 152 policies, **111 tablas no
+miran el rol**. Se cerraron los dos huecos que continuaban migs anteriores — los secretos que la 400
+dejó afuera (**Mercado Libre**, MODO, couriers, legibles también por `anon`) y el **detalle** de RRHH
+que la 401 dejó afuera (`rrhh_salario_items`: con la cabecera cerrada y el detalle abierto, el sueldo
+se reconstruye sumando conceptos) — más la **escritura** de las 6 tablas de credenciales, que seguía
+abierta (un CAJERO podía desconectar las integraciones del comercio). 🟥 **Queda abierta la matriz de
+escritura de plata/inventario** (`cheques`, `cliente_creditos`, `proveedor_cc_movimientos`,
+`producto_precios_mayorista`, `cupones`, `kit_recetas`): necesita el análisis por OPERACIÓN, no por
+tabla — un CAJERO crea cheques y créditos legítimamente. Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.203.0** — tag+release sobre `dev`. **🔴🔴 El NÚCLEO FISCAL era escribible por cualquier rol (mig 402)** — el hallazgo más
+grave de la Tanda F. `emisores_fiscales`, `tenant_certificates` y `puntos_venta_afip` tenían UNA policy
+`FOR ALL` que solo miraba el tenant: con el token de un CAJERO se podía cambiar el **CUIT**, la
+**condición de IVA** y el **umbral de Factura B**, prender **`afip_produccion`** (CAE fiscal REAL) y
+borrar el certificado AFIP; y del bucket `certificados-afip` se **descargaba la clave privada**. Ahora:
+SELECT para todo el tenant + escritura solo DUEÑO/ADMIN/SUPER_USUARIO. El `afipsdk_token` pasó a
+**secreto de solo escritura** (columna generada `afipsdk_token_configurado` para la UI) y la copia
+legacy `tenants.afipsdk_token` se vació. 🐛 De paso: `afipDatosListos` exigía el token AfipSDK para
+pasar a producción AFIP, pero los 9 tenants de PROD están en `afip_provider='propio'` (firma con el
+**certificado**) → **nadie podía pasar a producción desde la UI**; corregido.
+Ver [[wiki/features/facturacion-afip]], [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.202.0** — tag+release sobre `dev`. **Visibilidad de RRHH cerrada (mig 401)**: el sueldo, el CBU y el DNI de cada empleado los
+leía **cualquier rol**. Regla aprobada por GO: DUEÑO/ADMIN/SUPER_USUARIO/RRHH ven todo, SUPERVISOR su
+equipo, cada empleado lo suyo, y las pantallas de costos leen **agregados** (`fn_empleados_basico` sin
+datos sensibles + `fn_sueldos_agregado` con totales). Cinco pantallas leían esas tablas y ninguna se
+rompió. Verificado con 28 sondas. Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.201.0** — tag+release sobre `dev`. Antes: (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). **F2 — la matriz de LECTURA por rol**, la mitad que faltaba de la Tanda F, y donde
+aparecieron los hallazgos más serios: los `access_token` de **Mercado Pago y Tienda Nube los leía
+CUALQUIER usuario del tenant** en claro (con el de MP se opera la cuenta del comercio desde afuera).
+El comentario del código decía "nunca expuesto al frontend" y era cierto **en la interfaz TypeScript**
+— que no es un control de acceso. **Mig 400**: privilegios a nivel COLUMNA, impacto cero verificado.
+Siguen abiertos `emisores_fiscales.afipsdk_token` (el panel hace `select('*')`) y las tablas de RRHH
+—sueldos, CBU y DNI visibles para cualquier rol—, que son una **decisión de negocio**.
+Ver [[wiki/architecture/guards-server-side]].
+
+**Detalle de v1.200.0** — tag+release sobre `dev`. Antes: (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`, por decisión de GO: "esperemos un poco más, sigamos con pendientes y fixes").
+**Tanda D COMPLETA**: `142_resiliencia_backend_degradado` cierra D2-D5 y es la **primera spec del repo
+que intercepta la red del browser** (`page.route`, `context.setOffline`) — la capa de condiciones
+degradadas no existía. Buena noticia: la app se porta bien degradada (0 requests en 30 s con backend
+503, 0 sin red porque React Query pausa, 14 al despertar la pestaña); el caso anómalo era D1 y estaba
+en auth-js. Los techos son barandas anti-regresión, calibradas corriendo la spec con los presupuestos
+en 0. Cada una lleva un control **anti-falso-verde**, porque D4 llegó a pasar por vacío.
+De paso: **`schema_full.sql` al día** (estaba 9 migraciones atrasado) y limpieza del token filtrado de
+`.claude/settings.local.json`. Sin migraciones nuevas. Ver [[wiki/architecture/resiliencia]].
+
+**Detalle de v1.199.0** — tag+release sobre `dev`. Antes: (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
+`v1.195.4`). Cierra **todos** los huecos que las Tandas F y E habían dejado abiertos, y suma un bug de
+plata encontrado en la regresión.
+**Mig 396 — Tanda F completa**: los 4 huecos pendientes (precio de venta, monto de gasto, alta de
+productos, medios de pago) **más uno nuevo y más grave**: `roles_custom` era escribible por **cualquier
+usuario del tenant**, o sea auto-escalada de permisos que anulaba todos los demás guards. Se cerraron
+con triggers **por columna** (precios) y **por umbral** (gastos), no por rol, para no romper el
+`stock_actual` que `VentasPage` escribe desde el cliente ni la edición legítima del cajero.
+**Migs 397-399 — E4-h2**: `venta_items` costaba 24× más al CAJERO que al DUEÑO; denormalizando
+`sucursal_id`, **48,0 → 4,62 ms** y, con 20 sesiones concurrentes, **86 → 174 req/s** y **p95 1.461 →
+193 ms**. La 397 queda como registro de una hipótesis medida y descartada.
+**🛑 Bug REGLA #0 (H5)**: al anular una venta, el reintegro del efectivo podía ir a parar a la **Caja
+USD** y fallaba **en silencio** → la caja quedaba inflada por el monto cobrado. Corregido y verificado
+con datos reales. Ver [[wiki/architecture/guards-server-side]] y [[wiki/architecture/resiliencia]].
+
+**Detalle de v1.198.0** — tag+release sobre `dev`. Antes decía: `v1.198.0` (tag+release sobre `dev`, **sin deploy a PROD todavía** — PROD sigue en
+`v1.195.4`). Cambio: **primera pasada de las Tandas F y E de testing**, las dos con medición real.
+**Tanda F (roles server-side)**: spec nueva `141_roles_server_side_matriz` que pega a PostgREST con el
+token real de 4 roles; de las **152 policies solo 14 miran el rol**. 🟥 **F1-h1 cerrado (mig 394)**: un
+CAJERO podía `POST /cierres_contables` directo y **congelar un mes contable entero salteando el guard de
+rol del RPC** — la tabla pasó a solo-lectura vía RLS. 🔴 Quedan 4 huecos abiertos (precio de venta, monto
+de gasto, alta de productos, medios de pago), anotados con `test.fail()`: un guard genérico rompería
+ventas legítimas, hace falta un trigger por columna + definir roles custom.
+**Tanda E (stress)**: instrumento nuevo `npm run stress:lectura`; 5 sesiones → 49,8 req/s y 0 errores,
+20 sesiones → 86,3 req/s y 0 errores. ✅ **E4-h1 arreglado (mig 395)**: `ventas` ordenada por fecha leía
+las 662 del tenant para devolver 20 → **17 ms a 1,14 ms** (p95 end-to-end 435 → 96 ms, throughput +39 %).
+🔴 E4-h2 abierto: `venta_items` cuesta 24× más al CAJERO que al DUEÑO.
+Migraciones nuevas: **394 y 395** (solo DEV). Ver [[wiki/architecture/guards-server-side]] y
+[[wiki/architecture/resiliencia]].
+
+**Detalle de v1.197.0** — tag+release sobre `dev`. Cambio principal: **✅ D1 — cortacircuitos del refresco de sesión**. El cliente de
+Supabase reintentaba `POST /auth/v1/token?grant_type=refresh_token` **sin techo global** y amplificaba
+cualquier caída del backend. Confirmado con SQL contra los logs de edge de DEV: **595 requests en 24 h**,
+563 con 5xx de Cloudflare (452×522, 49×504, 45×521, 16×524, 1×525) y solo **32 con 200**, sosteniendo
+**~65/hora durante 5 horas seguidas** el 5/9. Causa raíz en auth-js 2.98 (ticker de 30 s que nunca se
+detiene, ~7 reintentos por tick, **cero contador de fallos entre ticks**). Fix: cortacircuitos sobre
+`global.fetch` con backoff exponencial + jitter que se rinde tras 10 fallos —
+**600 requests → 10**. Devuelve 503 a propósito (único código que no le hace borrar la sesión a auth-js:
+un cajero no puede quedar deslogueado por un blip). 19 unit tests nuevos, incluida la regresión de la
+caída de 5 h. Sin migración de DB nueva. Ver [[wiki/architecture/resiliencia]].
+
+Esta versión también promueve lo acumulado en `dev` desde `v1.196.0` y que no tenía tag: **Sección G fase 1**
+(ledger de medición de consumo por tenant, **migs 391 y 393**), **lista de números autorizados de WhatsApp**
+(**mig 392**, corta el gasto antes de llamar a Claude) y la documentación de las Tandas D/E/F de testing.
+
+**Detalle de v1.196.0** — tag+release sobre `dev` (commit `66409d10`). Cambio: **🎉 primera conversación REAL end-to-end del Asistente
+de WhatsApp**. Con el token permanente de System User (`expires_at: 0`) se pudo diagnosticar por API y
+apareció la causa raíz del bloqueo de mensajes entrantes: **la app nunca estuvo suscripta al WABA**
+(`POST /{waba_id}/subscribed_apps`) — el "chip prepago dedicado" documentado como bloqueador desde el 26/8
+era un **diagnóstico equivocado**. Verificado con `wamid` real de Meta: consulta de stock respondida en 5
+segundos con datos reales de la DB, más el circuito completo de Fase 2 (botones nativos) y el envío
+saliente de Fase 4. Cerrados de paso: token permanente (pendiente desde la Fase 1) y las 2 plantillas del
+briefing (`APPROVED`). **Bug corregido en `wa-webhook` v7**: el bot anunciaba *"te armo el borrador"* sin
+llamar la herramienta — se agregaron reglas anti-narración y de discrepancia (usar siempre los datos del
+comprobante, nunca los del texto) más un campo `advertencia` que se muestra pero **nunca se persiste** en el
+registro contable. También: **Pixel de Meta** en `index.html` (`1044399641905959`, pedido de Fede) y
+`briefing_cierre_dia_v2` creada como UTILITY (`PENDING`) porque la de cierre quedó MARKETING y cuesta 2,4x.
+Sin migración de DB nueva. Ver [[wiki/features/asistente-whatsapp]] (sección 2026-09-05).
+
+**Detalle de v1.195.5** — tag+release publicados sobre `dev` (commit `01c15d56`). Cambio: **cotización BNA-only** — el widget general de
+cotización (Caja/Ventas/Dashboard) dejó de ofrecer Blue/MEP/Cripto, ahora trae siempre compra/venta del
+Oficial de Banco Nación (pedido de Fede, `src/hooks/useCotizacion.ts` + `src/components/
+CotizacionWidget.tsx`, commit `e7db934b`). Verificado que ningún tenant real (DEV ni PROD) usaba los
+tipos eliminados — sin impacto en datos existentes — y probado en navegador real contra
+`dolarapi.com/v1/dolares/oficial`. Sin migración de DB nueva. De paso se armó el **plan completo del
+modo "real" del Dashboard (G1)** — Fede confirmó que lo quiere, pero se dejó para una sesión dedicada
+sin construir código (toca reportes de plata) — ver [[wiki/development/reglas-negocio]] y la memoria del
+asistente `project_dashboard_modo_real_usd_plan.md`.
+
+**Detalle de v1.195.4** (ya 🚀 EN PROD, ver arriba) — tag+release publicado originalmente 2026-09-04 (commit
+`4f991613`, retargeteado de `dev` a `main` el 2026-09-04 tras el deploy, marcado `latest`, título
+"v1.195.4 — e2e OC-USD real + incidente Supabase resuelto"). Reemplaza a v1.195.3 (commit `d8b10904`, 2026-09-03) como último tag de `dev`. Sin
 migración de DB nueva (fixture de datos de prueba en DEV — `metodos_pago` "Efectivo USD" — no un cambio de
 esquema). Cambio: (1) aclarado que el relevamiento de Compras/Gastos en USD
 (`relevamiento-compras-gastos-usd-reglas-negocio.html`, 23 preguntas, generado 2026-08-21) YA estaba 100%
@@ -69,8 +251,8 @@ nuevo para DEV, fuera de alcance de esta sesión. Deployado a la Edge Function d
 PROD — no hay migración nueva. Detalle: `log.md` (2026-09-02, tipo `fix`),
 [[wiki/features/portal-proveedores]], `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 44).
 
-Anterior en la misma tanda de mantenimiento — **v1.195.1** (commit `1be9e697`, 2026-09-02, sin deploy a
-PROD): release de mantenimiento interno que cierra bajo una sola versión 3 piezas hechas en `dev` desde el
+Anterior en la misma tanda de mantenimiento — **v1.195.1** (commit `1be9e697`, 2026-09-02): release de
+mantenimiento interno que cierra bajo una sola versión 3 piezas hechas en `dev` desde el
 deploy real de v1.195.0: **ESLint 100% (161→0 warnings)** — 121 `no-unused-vars` + 41
 `react-hooks/exhaustive-deps` revisados uno por uno, `--max-warnings` en 0; **2 features de UX** — búsqueda
 con foco en Inventario, asignar rol personalizado existente en Usuarios; y **dependencias vulnerables
@@ -79,7 +261,7 @@ con foco en Inventario, asignar rol personalizado existente en Usuarios; y **dep
 feature visible para el usuario final. Detalle: [[wiki/features/rrhh]] § RH3 (bug de moneda en recibo de
 sueldo, corregido de paso), `log.md` (2026-09-02, 3 entradas `fix`).
 
-**Versión en PROD:** v1.195.0 (código — 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
+**Antes de este release (2026-09-01, v1.195.0):** 🚀 DEPLOYADO A PROD el 2026-09-01: PR #335 "v1.195.0 — Embedded
 Signup, ESLint, Supervisión (Nivel1+A4+C1+A1) y Portal de Proveedores Fase 2" mergeado `dev`→`main` (merge
 commit `2a8ebbf4`), confirmado con `gh pr view 335` → `state: MERGED`. **Este deploy promovió TODO lo
 acumulado en `dev` desde el último deploy real (`v1.184.0`, 2026-08-27)** — migraciones 386 a 390

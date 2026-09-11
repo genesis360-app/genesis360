@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore'
 import { AuthGuard, SubscriptionGuard } from '@/components/AuthGuard'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { AvisoSesionSinRefresco } from '@/components/AvisoSesionSinRefresco'
 import { ConfirmProvider } from '@/hooks/useConfirm'
 
 // Lazy loading de módulos
@@ -121,6 +122,8 @@ function App() {
           ⚠ Ambiente DEV — {window.location.hostname}
         </div>
       )}
+      {/* D1 — avisa cuando el refresco de sesión se rindió (ver authRefreshBreaker.ts) */}
+      <AvisoSesionSinRefresco />
       <BrowserRouter>
         <Suspense fallback={
           <div className="min-h-screen bg-brand-bg flex items-center justify-center">

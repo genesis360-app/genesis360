@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Precio de venta con fecha/hora de vigencia · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .cita { background: #eef2f7; border-left: 3px solid #8aa8c4; padding: 6pt 10pt; margin: 8pt 0; font-style: italic; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+  code { background: #f2f4f7; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Precio de venta con fecha/hora de vigencia</h1>
+<div class="meta">
+  Genesis360 · v1.209.0 · Fecha: 11 de septiembre de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  Pedido de <strong>Fede</strong> (vía GO, 2026-09-11). Texto literal:
+  <div class="cita">
+    "Al modificar el precio de venta de un producto (solo el precio de venta — o sea si se modifica
+    cualquier otra cosa de la hoja de producto menos el precio de venta no, pero si se modifica como mínimo
+    el precio de venta e indistintamente otras cosas o no también) debe aparecer al dar guardar una opción
+    que diga a partir de qué fecha/hora se debe aplicar el cambio de precio. Esto va a disparar la urgencia
+    y necesidad del cambio de etiquetas del repositor, también va a permitir que si se cambió a las 14hs el
+    precio, el que lo compre 14:01hs no lo compre a un precio diferente automáticamente por sistema, el
+    sistema debe tomar el cambio a partir de cuando se seteó en esa configuración de fecha y hora al
+    guardarse los cambios, esa misma fecha/hora también va a disparar automáticamente el cambio del precio
+    en mercado libre/tienda nube (si aplica)."
+  </div>
+  <strong>Esto no es un arreglo: es una funcionalidad nueva que toca tres sistemas que hoy funcionan
+  "al instante".</strong> Las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span> (definir una
+  regla que hoy no existe), <span class="tag tag-existente">EXISTENTE</span> (confirmar una regla que el
+  código ya implementa) o <span class="tag tag-cambio">CAMBIO</span> (el código actual contradice o tensiona
+  lo pedido — hay que resolverlo, no solo elegir una opción).
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual, verificado contra el código (no contra memoria):</strong>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li><strong>El precio no tiene vigencia.</strong> <code>productos.precio_venta</code> es un valor único:
+    se pisa al guardar y rige desde ese instante. No hay historial de precios futuros ni columna de fecha.</li>
+    <li><strong>Dos triggers reaccionan al instante del guardado</strong>, ambos
+    <code>AFTER UPDATE OF precio_venta ON productos</code>:
+      <ul>
+        <li><code>trg_productos_precio_genera_tarea_repositor</code> → crea la tarea de cambio de etiqueta
+        (solo si el tenant está en modo avanzado y el producto tiene góndola asignada).</li>
+        <li><code>trg_enqueue_sync_precio</code> → encola la republicación del precio en Mercado Libre y
+        Tienda Nube.</li>
+      </ul>
+    </li>
+    <li><strong>El POS lee el precio del producto en el momento de la venta</strong>, sin mirar ninguna
+    fecha. Por eso hoy el caso que describe Fede (comprar 14:01 con el precio cambiado a las 14:00) ocurre
+    exactamente así.</li>
+  </ul>
+</div>
+
+<div class="alerta-critica">
+  <strong>El nudo del asunto (léase antes de responder):</strong> si el precio se guarda ahora pero rige
+  mañana, los dos triggers de arriba <strong>se disparan igual, hoy</strong>: el repositor recibiría la orden
+  de cambiar la etiqueta antes de tiempo y Mercado Libre / Tienda Nube publicarían el precio nuevo
+  anticipadamente. <strong>No alcanza con agregar un campo de fecha al formulario.</strong> Hay que decidir
+  qué pasa con cada uno de esos tres consumidores, y esa decisión es de negocio, no técnica. Es lo que este
+  documento viene a resolver.
+</div>
+
+<h2>A · Qué se programa y cómo se guarda</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span>
+  <span class="pregunta-titulo">¿El precio programado reemplaza al actual, o conviven los dos hasta que llegue la fecha?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy hay un solo valor. Si se programa uno futuro, hay que guardarlo en algún lado sin
+pisar el vigente — si no, el POS empieza a cobrar el nuevo desde que se guarda, que es justo lo que se
+quiere evitar.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Conviven: el precio actual sigue rigiendo y el nuevo queda "agendado" hasta su fecha.</li>
+  <li><strong>(b)</strong> Se reemplaza al guardar, y el sistema "recuerda" el viejo para seguir cobrándolo hasta la fecha.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span>
+  <span class="pregunta-titulo">¿Se puede tener MÁS DE UN cambio programado para el mismo producto?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Ejemplo: programar un aumento para el lunes y otro para el viernes, los dos cargados
+hoy. Permitirlo es más potente pero obliga a definir qué pasa si se superponen.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Uno solo: programar otro pisa el anterior.</li>
+  <li><strong>(b)</strong> Varios, en cola por fecha.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span>
+  <span class="pregunta-titulo">¿Se puede cancelar o editar un cambio ya programado antes de que entre en vigencia?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Y si se puede: ¿quién? El cambio de precio hoy ya está gateado por rol
+(<code>fn_productos_rol_guard</code>, mig 396: solo DUEÑO / SUPERVISOR / ADMIN pueden tocar precios).</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span>
+  <span class="pregunta-titulo">¿La fecha/hora es obligatoria, o "ahora" sigue siendo la opción por defecto?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Importa para no volver más lento el día a día: si el 90% de los cambios son inmediatos,
+conviene que "ahora" sea un clic y programar sea la excepción.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Por defecto "ahora"; programar es opcional.</li>
+  <li><strong>(b)</strong> Siempre hay que elegir fecha y hora.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span>
+  <span class="pregunta-titulo">¿Aplica también al precio MAYORISTA, a los combos y al precio en USD?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Fede habla del "precio de venta". Pero el precio efectivo de una venta también sale de
+<code>producto_precios_mayorista</code> (tiers por cantidad), de los combos y —para productos en dólares— de
+<code>precio_usd</code> más la cotización. Si solo se programa <code>precio_venta</code>, un cliente
+mayorista podría seguir comprando al precio viejo (o al nuevo) sin que nadie lo haya decidido.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Solo el precio de venta minorista, por ahora.</li>
+  <li><strong>(b)</strong> También mayorista y combos.</li>
+  <li><strong>(c)</strong> Todo, incluido el precio en USD.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>B · El POS — qué precio se cobra</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span>
+  <span class="pregunta-titulo">Una venta empezada 13:59 y cobrada 14:01, con el precio cambiando a las 14:00. ¿Qué precio lleva?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Es el corazón del pedido. Hoy el POS toma el precio al agregar el producto al carrito y
+lo mantiene; el total se recalcula con lo que está en el carrito. La pregunta es si la vigencia se congela al
+abrir la venta o se evalúa al cobrar.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> El de las 13:59 (el precio se congela cuando el producto entra al carrito).</li>
+  <li><strong>(b)</strong> El de las 14:01 (manda el momento del cobro; el carrito se actualiza solo).</li>
+  <li><strong>(c)</strong> El de las 14:01, pero avisándole al cajero que el precio cambió mientras vendía.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span>
+  <span class="pregunta-titulo">Una RESERVA con seña tomada la semana pasada, que se termina de pagar después del cambio. ¿Qué precio lleva?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy la reserva guarda el total al crearse, así que en los hechos el precio ya queda
+congelado. Conviene confirmarlo explícitamente porque acá hay plata de por medio y un cliente esperando.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> El precio de cuando se tomó la reserva (se respeta lo pactado).</li>
+  <li><strong>(b)</strong> El precio vigente al terminar de pagar.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span>
+  <span class="pregunta-titulo">Un PRESUPUESTO emitido antes del cambio, que el cliente acepta después. ¿Qué precio lleva?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Mismo problema que la reserva, pero sin plata entregada. ¿El presupuesto tiene una
+validez en días, pasada la cual se repactan los precios?</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>C · El repositor y las etiquetas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span>
+  <span class="pregunta-titulo">¿Cuándo aparece la tarea de cambiar la etiqueta: al programar el cambio, o cuando entra en vigencia?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Hoy la tarea se crea en el mismo instante en que se guarda el precio
+(<code>trg_productos_precio_genera_tarea_repositor</code>). Fede dice que la fecha/hora "va a disparar la
+urgencia y necesidad del cambio de etiquetas", lo que sugiere que la tarea debería nacer <em>antes</em> para
+llegar a tiempo — pero si nace demasiado antes, el repositor podría poner la etiqueta nueva cuando todavía
+rige el precio viejo, y el cliente ve un precio que el sistema no le va a cobrar.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Al programarlo, con la fecha de vigencia bien visible en la tarea.</li>
+  <li><strong>(b)</strong> Recién cuando entra en vigencia.</li>
+  <li><strong>(c)</strong> Un rato antes (definir cuánto: ¿1 hora? ¿el mismo día a primera hora?).</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span>
+  <span class="pregunta-titulo">¿Qué precio se imprime en la etiqueta de un cambio programado: el nuevo o el que rige hoy?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Consecuencia directa de C1. Si la etiqueta sale con el precio nuevo y se pega antes de
+la fecha, la góndola miente. Es el riesgo que más se parece a un problema con un cliente en el mostrador.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span>
+  <span class="pregunta-titulo">¿Qué pasa si el repositor no llegó a cambiar la etiqueta y el precio ya entró en vigencia?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El cliente ve el precio viejo en la góndola y el sistema le cobra el nuevo. ¿Se le respeta
+el de la etiqueta? ¿Se avisa al cajero? ¿Queda una alerta para el dueño?</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>D · Mercado Libre y Tienda Nube</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span>
+  <span class="pregunta-titulo">Confirmar: la publicación del precio nuevo en ML/TN debe esperar a la fecha de vigencia.</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Hoy <code>trg_enqueue_sync_precio</code> encola la republicación apenas se guarda el
+precio. Con el cambio programado habría que retenerla hasta la fecha. Fede lo pide explícitamente ("esa misma
+fecha/hora también va a disparar automáticamente el cambio del precio en mercado libre/tienda nube").</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span>
+  <span class="pregunta-titulo">Si la publicación en ML/TN falla a la hora señalada, ¿qué pasa?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Escenario real: se programa un aumento para las 8:00, a esa hora la API de Mercado Libre
+no responde. El precio ya subió en el local pero la publicación sigue con el viejo, y alguien puede comprar
+online al precio anterior.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Se reintenta en silencio hasta que salga.</li>
+  <li><strong>(b)</strong> Se reintenta y, si no sale en X minutos, se avisa al dueño.</li>
+  <li><strong>(c)</strong> Se pausa la publicación hasta resolverlo a mano.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span>
+  <span class="pregunta-titulo">¿El precio de ML/TN puede tener una fecha de vigencia DISTINTA a la del local?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Los canales online ya tienen su propio ajuste porcentual
+(<code>precio_ajuste_meli_pct</code>, <code>precio_ajuste_tn_pct</code>), así que el precio publicado no es
+necesariamente el del local. La pregunta es si además puede cambiar en otro momento.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>E · Operación y control</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span>
+  <span class="pregunta-titulo">¿Se pueden programar cambios MASIVOS (una lista, una categoría, un proveedor entero)?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Es el caso realista de un aumento de lista: no se programa producto por producto. Cambia
+bastante el alcance del desarrollo, por eso conviene definirlo desde el principio.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span>
+  <span class="pregunta-titulo">¿Dónde se ven los cambios programados que están pendientes?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Sin una pantalla que los liste, un aumento programado y olvidado aparece un lunes sin
+que nadie lo recuerde. ¿Una sección en Productos? ¿Un aviso en el Dashboard? ¿Una alerta el día anterior?</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span>
+  <span class="pregunta-titulo">Si el local está cerrado a la hora de vigencia, ¿el cambio se aplica igual?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El cambio lo tiene que ejecutar un proceso automático del servidor, no la aplicación
+abierta en una computadora — si dependiera de que alguien tenga Genesis360 abierto, un precio programado para
+las 6:00 no se aplicaría nunca. Se confirma que va por proceso automático.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span>
+  <span class="pregunta-titulo">¿Queda registro de quién programó el cambio y cuándo se aplicó?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy el historial ya registra la edición de un producto y qué campos cambiaron. Con el
+precio programado hay <em>dos</em> momentos que registrar: cuándo se programó (y quién) y cuándo se aplicó
+efectivamente. Se propone registrar los dos.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>F · Alcance de la primera versión</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span>
+  <span class="pregunta-titulo">Si hubiera que entregarlo en dos etapas, ¿qué entra en la primera?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Propuesta a confirmar o corregir: la primera etapa cubre el precio minorista, el POS
+respetando la fecha, y la tarea del repositor; la segunda suma ML/TN, los cambios masivos y el precio
+mayorista. Si algo de la segunda etapa es imprescindible desde el día uno, marcarlo acá.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="footer">
+  Genesis360 — Relevamiento de reglas de negocio · Precio de venta con fecha/hora de vigencia<br />
+  Documento para responder offline. Cada respuesta se convierte en una regla implementada y testeada.
+</div>
+
+</body>
+</html>

@@ -6,6 +6,51 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-11] update | 💵 El gasto se registra en cualquier moneda · v1.211.0
+
+Pedido de GO: un select de moneda a la izquierda del monto, con la del negocio por defecto.
+
+### Por qué no alcanzaba con agregar el select
+
+`gastos.moneda` existía desde la mig 379 pero **nadie la seteaba**. Y `GastosPage` filtraba las
+cajas a `'ARS'` **a propósito**, con el motivo escrito en el código: el trigger
+`fn_validar_moneda_coincide_sesion` **rechaza** un movimiento de caja cuya moneda no coincida con su
+sesión. Agregar el selector sin abrir la caja habría dejado el pago en efectivo fallando contra la
+base.
+
+Se abrió el circuito entero (`src/lib/gastoMoneda.ts`, 19 unit):
+
+| Pieza | Qué cambió |
+|---|---|
+| Cajas ofrecidas | las de la **moneda del gasto** (fuerte incluida: desde la mig 373 hay una por moneda) |
+| Los 5 asientos de caja | llevan la moneda del **gasto**, no la del medio — el `monto` está expresado en la del gasto |
+| Efectivo en otra moneda | se frena **antes**, con mensaje entendible, en vez del error crudo de Postgres |
+| Medios NO efectivo | **no** se bloquean: son movimientos informativos que no tocan el saldo, así que un gasto en dólares se paga por transferencia sin Caja USD |
+| La lista | muestra cada gasto en **su** moneda (formatear todo con la del tenant hacía que US$77 se leyera $77 — el mismo bug del mirror de la OC) |
+
+⚠️ Hubo que **separar una validación**: el check "no hay ninguna caja abierta" es OPERATIVO, no de
+moneda. Al pasar a filtrar por la moneda del gasto habría bloqueado un gasto en dólares pagado por
+transferencia solo porque no hay una Caja USD abierta.
+
+### 🛑 El agujero que abrió este mismo cambio, cerrado en el acto
+
+Al habilitar las 11 monedas de la app, `sumarPorMonedaNativa` mandaba al bucket de **pesos** todo lo
+que no fuera USD: **un gasto de €100 habría sumado 100 al total en pesos** — el mismo bug que esa
+lib cerró el 9/9, entrando por la puerta de al lado. Ahora hay un bucket `otras` por moneda que no
+se suma a ningún total (el tenant guarda **una sola** cotización) y el Dashboard las lista para que
+la plata no desaparezca sin explicación.
+
+### ⚠️ Un falso verde propio, encontrado por mutar
+
+El e2e 145 pasaba **aunque se rompiera el fix**: la descripción sembrada se llamaba `GastoUSD`, así
+que la aserción "la fila muestra US$" la satisfacía el propio nombre. Renombrada a `GastoMoneda`,
+recién ahí la mutación quedó detectada (`$77` en vez de `US$77`). Es el recordatorio de que un test
+verde no prueba nada hasta que se lo ve fallar.
+
+Verde: 1735 unit · e2e 145 mutante · build · typecheck · eslint.
+
+---
+
 ## [2026-09-11] update | 🐛 La tanda de Fede, cerrada · v1.210.0 (migs 407-408)
 
 GO: *"corregí lo que haya que corregir, todo debe funcionar bien como debería ser"*. Se cerraron

@@ -712,6 +712,38 @@ con la UI del gasto suelto en USD.
 
 ---
 
+## 💵 El gasto se registra en cualquier moneda (v1.211.0) — 2026-09-11
+
+Selector de moneda a la izquierda del monto, con la **del negocio por defecto**
+(`tenants.moneda`, Config → Moneda principal). Antes el label decía `Monto total ($)` con el peso
+hardcodeado y `gastos.moneda` (mig 379) quedaba siempre en su default.
+
+**No alcanzaba con agregar el select.** `GastosPage` filtraba las cajas a `'ARS'` a propósito
+porque el trigger `fn_validar_moneda_coincide_sesion` rechaza un movimiento cuya moneda no coincida
+con su sesión de caja. La lógica vive en `src/lib/gastoMoneda.ts`:
+
+- Las **cajas ofrecidas** son las de la moneda del gasto (la fuerte también: desde la mig 373 hay
+  una por moneda).
+- Los **asientos de caja** llevan la moneda del GASTO, no la del medio de pago.
+- El **efectivo en otra moneda** se frena antes de escribir, con un mensaje entendible.
+- Los **medios no-efectivo no se bloquean**: son movimientos informativos que no tocan el saldo de
+  ninguna caja, así que un gasto en dólares se puede pagar por transferencia aunque no exista una
+  Caja USD.
+- La **lista** muestra cada gasto en su moneda.
+
+⚠️ **Terceras monedas**: la app ofrece 11 monedas pero el tenant guarda **una sola cotización**
+(`cotizacion_usd`). Un gasto en EUR o BRL se registra bien, pero el Dashboard **no lo puede
+consolidar**: queda fuera de los totales y se informa aparte (ver [[wiki/features/reportes-metricas]]).
+Sin eso, un gasto de €100 habría sumado 100 al total en pesos.
+
+### Lo que todavía NO tiene moneda
+
+- **Gastos fijos**: su formulario no ofrece el selector, así que nacen en la moneda del negocio.
+- Los `INSERT` de gastos que hace el resto del código (recepción de OC, envíos, RRHH, recursos,
+  servicios) siguen sin setear `moneda` — una recepción de OC en dólares nace como gasto en pesos.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

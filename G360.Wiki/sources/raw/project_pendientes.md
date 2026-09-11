@@ -6,6 +6,69 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### ✅ ARRANCÁ ACÁ (2026-09-11, cont. 62) — DEV `v1.211.0` (migs 407-408) · **PROD `v1.208.0`**
+>
+> #### Lo cerrado hoy
+>
+> **💵 El gasto se registra en cualquier moneda** (pedido de GO): selector a la izquierda del monto,
+> default = moneda del negocio. No alcanzaba con el select: hubo que abrir el circuito de caja
+> entero, porque `fn_validar_moneda_coincide_sesion` rechaza un movimiento cuya moneda no coincida
+> con su sesión. Ver `log.md` (2026-09-11) y `wiki/features/gastos.md`.
+>
+> 🛑 **Y se cerró en el acto un agujero que abrió ese mismo cambio**: al habilitar las 11 monedas,
+> `sumarPorMonedaNativa` mandaba al bucket de PESOS todo lo que no fuera USD — un gasto de €100
+> habría sumado 100 al total en pesos. Ahora hay un bucket `otras` que no se suma a nada y el
+> Dashboard lo informa.
+>
+> #### 🟥 LO PRIMERO: deployar
+>
+> DEV está en **v1.211.0 + migs 407-408**; PROD en **v1.208.0 / mig 406**. Las dos migraciones son
+> **aditivas**, así que acá sí aplica el "DDL aditivo primero".
+>
+> #### 🟡 PARA REVISAR CON GO (lo que pidió anotar)
+>
+> **1 · Los sueldos y la sucursal.** Los 4 `INSERT` de gastos de `RrhhPage` (1123, 1165, 1214, 1704)
+> no setean `sucursal_id` → esos gastos **son invisibles** cuando hay una sucursal activa. Pero
+> `empleados` **no tiene** `sucursal_id`: imputar el sueldo a la sucursal de quien liquida sería
+> inventar un criterio contable. Salidas: (a) que un empleado pertenezca a una sucursal (migración +
+> ficha), o (b) que los gastos sin sucursal se vean SIEMPRE — ⚠️ (b) cambia el comportamiento de
+> GastosPage para **todos** los gastos globales, no solo RRHH.
+>
+> **2 · "Monedas disponibles por tenant" no existe.** GO la mencionó al pedir el selector. Hoy hay
+> una lista GLOBAL de 11 monedas (`MONEDAS_DISPONIBLES`) y **una** moneda principal por tenant. Se
+> ofrecen las 11. Si se quiere restringir por tenant, hace falta esa config.
+>
+> **3 · Solo hay cotización para USD.** `tenants.cotizacion_usd` es la única. Por eso un gasto en
+> EUR/BRL se registra pero **no se consolida** en el Dashboard. Si el negocio va a operar en otra
+> moneda de verdad, hace falta cotización por moneda.
+>
+> **4 · Gastos fijos sin moneda.** Su formulario no ofrece el selector: nacen en la del negocio.
+>
+> **5 · Los `INSERT` de gastos del resto del código no setean `moneda`** (recepción de OC, envíos,
+> RRHH, recursos, servicios): una recepción de OC en dólares nace como gasto en pesos.
+>
+> **6 · Precio con fecha/hora de vigencia** — relevamiento generado y **sin responder**:
+> `relevamiento-precio-programado-reglas-negocio.html` (17 preguntas). El nudo: DOS triggers
+> reaccionan al `UPDATE OF precio_venta` (etiqueta del repositor y sync a ML/TN).
+>
+> **7 · Cobrar en caja USD** (Fase 8/C2), frenada por el contador · **góndolas de Repositores**
+> (0 en PROD) · **¿tope de descuento para el DUEÑO?** · **reintegro en efectivo USD al anular**.
+>
+> **8 · Dropear** `tenants.afipsdk_token` (ya se puede) y `recursos.ubicacion` (cuando PROD corra
+> el código de la 407).
+>
+> #### 🧪 Suite
+>
+> **1735 unit** · **397 specs e2e** (nuevos: 144 OC-USD, 145 gasto-moneda).
+>
+> ⚠️ **Tres trampas que ya costaron tiempo**:
+> - Un test de función pura **no debe importar** `@/lib/supabase` (hace `throw` sin env vars: local
+>   pasa por `.env.local`, el CI falla).
+> - **El Dashboard y la lista de Gastos filtran por sucursal activa**: sembrar con `sucursal_id`
+>   null mide $0 / no aparece.
+> - **Un nombre de fixture puede satisfacer la aserción**: el e2e 145 se llamaba "GastoUSD" y el
+>   test pasaba aunque el fix estuviera roto. Verificar SIEMPRE mutando.
+
 > ### ✅ ARRANCÁ ACÁ (2026-09-11, cont. 61) — DEV `v1.210.0` (migs 407-408) · **PROD `v1.208.0`**
 > La tanda de Fede del 11/9 está **cerrada**. Lo de DEV todavía **no se deployó**.
 >

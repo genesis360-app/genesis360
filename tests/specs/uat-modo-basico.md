@@ -1975,3 +1975,29 @@ verifica que el gasto llegó al KPI antes de medir nada de moneda).
 | 125 | ⚠️ **Abierto: los sueldos y la sucursal** | Los 4 INSERT de RRHH tienen el mismo problema, pero `empleados` no tiene `sucursal_id`: imputar el sueldo a la sucursal de quien liquida sería inventar un criterio contable | — (decisión de GO) |
 
 **Verde:** 1713 unit (16 nuevos de `ocCosto`) · e2e 34/140/144 · build · typecheck · eslint.
+
+---
+
+## 💵 §52 — El gasto en cualquier moneda (v1.211.0) 🛑 PLATA — 2026-09-11
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 126 | **La moneda por defecto es la del negocio** | `tenants.moneda` (Config → Moneda principal), no `ARS` fijo. Hay un tenant real en CLP | `gastoMoneda.test.ts` (GM-LISTA-01/03) |
+| 127 | **🛑 El gasto se guarda con SU moneda** | `gastos.moneda` existía desde la mig 379 pero nadie la seteaba: todos nacían en el default `'ARS'` | **e2e 145** (mutante) |
+| 128 | **🛑 El efectivo sale de una caja de la MISMA moneda** | Lo exige `fn_validar_moneda_coincide_sesion`. Las cajas ofrecidas son las de la moneda del gasto, la fuerte incluida | `gastoMoneda.test.ts` (GM-CAJA-*) + **e2e 145** |
+| 129 | **🛑 Efectivo en otra moneda se frena ANTES de escribir** | Con mensaje entendible, en vez del error crudo de Postgres | `gastoMoneda.test.ts` (GM-VAL-02) |
+| 130 | **Sin caja de esa moneda, se avisa y no se inventa una** | No se cae en una caja de otra moneda "porque es la que hay" | `gastoMoneda.test.ts` (GM-VAL-03) |
+| 131 | **Un gasto en USD se puede pagar por TRANSFERENCIA sin Caja USD** | Los medios no-efectivo generan un movimiento informativo que no toca el saldo de ninguna caja | `gastoMoneda.test.ts` (GM-VAL-04) |
+| 132 | **"No hay caja abierta" es OPERATIVO, no de moneda** | Si mirara la moneda del gasto, bloquearía un gasto en dólares pagado por transferencia solo porque no hay Caja USD | revisión de `GastosPage` |
+| 133 | **La lista muestra cada gasto en su moneda** | Formatear todo con la del tenant hacía que US$77 se leyera $77 | **e2e 145** (mutante, verificado mutando el código real) |
+| 134 | **🛑 Una TERCERA moneda no se suma como pesos** | Al habilitar las 11 monedas, el Dashboard mandaba al bucket de pesos todo lo que no fuera USD: €100 sumaba 100 al total en pesos | `dashMoneda.test.ts` (DM-SUM-06/07/08) |
+| 135 | **Las monedas no consolidables se informan** | El tenant guarda UNA sola cotización; esos importes quedan fuera de los totales y el Dashboard los lista | revisión de `DashGastosArea` |
+| 136 | ⚠️ **Abierto: gastos fijos sin moneda** | Su formulario no ofrece el selector — nacen en la del negocio | — |
+| 137 | ⚠️ **Abierto: los `INSERT` del resto del código no setean `moneda`** | Una recepción de OC en dólares nace como gasto en pesos | — |
+
+**Verde:** 1735 unit · e2e 145 mutante · build · typecheck · eslint.
+
+⚠️ **Falso verde encontrado al escribir el e2e 145**: la descripción sembrada se llamaba
+`GastoUSD`, así que la aserción "la fila muestra US$" la satisfacía el propio nombre y el test
+pasaba **aunque el fix estuviera roto**. Renombrada a `GastoMoneda`, recién ahí la mutación quedó
+detectada. Un test verde no prueba nada hasta que se lo ve fallar.

@@ -58,10 +58,16 @@ const ESTADO_CFG: Record<EstadoEnvio, { label: string; color: string; icon: Reac
   cancelado:  { label: 'Cancelado',          color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',           icon: <X size={12} /> },
 }
 
+// La ruta feliz NO pasa por bodega (decision de GO, 2026-09-11, a partir del reporte de Fede).
+// Antes `en_camino` avanzaba obligatoriamente a `en_bodega` y el POD solo aparecia ahi, asi que
+// para entregar con reparto propio habia que marcar una bodega que no existia en el viaje.
+// `en_bodega` sigue existiendo, pero como DESVIO: el paquete que quedo en el deposito del courier
+// o que volvio sin entregarse. A ese estado se llega desde "No entregado" o a mano, no por el
+// camino natural. Ver wiki/features/envios.md.
 const ESTADO_SIGUIENTE: Partial<Record<EstadoEnvio, EstadoEnvio>> = {
   pendiente:  'despachado',
   despachado: 'en_camino',
-  en_camino:  'en_bodega',
+  en_camino:  'entregado',
   en_bodega:  'entregado',
 }
 
@@ -1852,15 +1858,20 @@ export default function EnviosPage() {
                                     )
                                   )}
                                   {/* Avanzar estado */}
-                                  {ESTADO_SIGUIENTE[e.estado as EstadoEnvio] && e.estado !== 'en_bodega' && (
+                                  {/* Avanzar generico: solo para los tramos que NO son la entrega.
+                                      Entregar exige POD (boton verde de abajo), asi que `en_camino`
+                                      y `en_bodega` quedan afuera. */}
+                                  {ESTADO_SIGUIENTE[e.estado as EstadoEnvio]
+                                    && e.estado !== 'en_bodega' && e.estado !== 'en_camino' && (
                                     <button
                                       onClick={() => actualizarEstado.mutate({ id: e.id, estado: ESTADO_SIGUIENTE[e.estado as EstadoEnvio]!, envio: e })}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors">
                                       <RefreshCw size={13} /> Marcar como {ESTADO_CFG[ESTADO_SIGUIENTE[e.estado as EstadoEnvio]!].label}
                                     </button>
                                   )}
-                                  {/* En bodega: avanzar a Entregado */}
-                                  {e.estado === 'en_bodega' && (
+                                  {/* Registrar la entrega: desde `en_camino` (ruta normal) y desde
+                                      `en_bodega` (el paquete que habia vuelto o quedado en deposito). */}
+                                  {(e.estado === 'en_camino' || e.estado === 'en_bodega') && (
                                     <button onClick={() => {
                                       setPodModalId(e.id)
                                       setPodForm({ pod_fecha: new Date().toISOString().split('T')[0], pod_receptor: '', pod_notas: '', pod_url: '', pod_dni: e.pod_dni ?? '' })
@@ -1868,6 +1879,19 @@ export default function EnviosPage() {
                                     }}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                                       <ClipboardCheck size={13} /> Registrar entrega (POD)
+                                    </button>
+                                  )}
+                                  {/* Desvio a bodega: el paquete quedo en el deposito del courier o
+                                      volvio sin entregarse. Es opcional y secundario — la ruta normal
+                                      es entregar directo desde "En camino" (decision de GO, 2026-09-11).
+                                      Sin este boton `en_bodega` seria inalcanzable, porque "No entregado"
+                                      resuelve a `en_camino` o `devolucion`. */}
+                                  {(e.estado === 'en_camino' || e.estado === 'despachado') && (
+                                    <button
+                                      onClick={() => actualizarEstado.mutate({ id: e.id, estado: 'en_bodega', envio: e })}
+                                      title="El paquete quedo en el deposito del courier, esperando recoleccion final"
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-purple-300 dark:border-purple-700 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+                                      <Warehouse size={13} /> Dejar en bodega
                                     </button>
                                   )}
                                   {/* EN2/D5 — No entregado (sub-estado + reintento) */}

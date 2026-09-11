@@ -16,6 +16,9 @@ import {
   type PresupuestoComparable,
 } from '@/lib/serviciosRecurrentes'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useCotizacion } from '@/hooks/useCotizacion'
+import { costoSugeridoOC } from '@/lib/ocCosto'
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
 import { esDecimal } from '@/lib/ventasValidation'
@@ -134,6 +137,9 @@ export default function ProveedoresPage() {
   const { tenant, user } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
+  // Compras en USD — la tasa con la que el negocio valúa dólares (COMPRA por convención).
+  // Se usa la MISMA en las dos direcciones para que el ida y vuelta cierre: ver src/lib/ocCosto.ts.
+  const { cotizacionUsdAArs } = useCotizacion()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   // CO1 — gobierno de OC: capacidad de creación por rol + config de aprobación por umbral
@@ -265,6 +271,11 @@ export default function ProveedoresPage() {
   const [editOcId, setEditOcId] = useState<string | null>(null)
   const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
+  // Buscador de producto por linea de OC (pedido de Fede, 2026-09-11): el `<select>` nativo solo
+  // dejaba saltar por la PRIMERA letra - con 1.000+ productos era inusable. Estado por linea:
+  // el termino tipeado y si el desplegable esta abierto.
+  const [ocBusqueda, setOcBusqueda] = useState<Record<number, string>>({})
+  const [ocAbierto, setOcAbierto] = useState<number | null>(null)
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
   // CO4 — devolución a proveedor
@@ -510,6 +521,9 @@ export default function ProveedoresPage() {
   }
 
   async function descargarOCpdf(oc: OrdenCompra, items: OrdenCompraItem[]) {
+    // Este PDF se le manda AL PROVEEDOR. El símbolo estaba fijo en `$`, así que una OC pactada en
+    // dólares le llegaba expresada en pesos (Fede, 2026-09-11).
+    const monedaOC = (oc as any).moneda ?? 'ARS'
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
       import('jspdf'), import('jspdf-autotable'),
     ])
@@ -540,8 +554,8 @@ export default function ProveedoresPage() {
           p?.sku ?? '—',
           it.cantidad % 1 === 0 ? String(it.cantidad) : it.cantidad.toFixed(3),
           p?.unidad_medida ?? '',
-          it.precio_unitario != null ? `$${it.precio_unitario.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—',
-          sub != null ? `$${sub.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—',
+          it.precio_unitario != null ? formatMonedaLib(it.precio_unitario, monedaOC, { decimals: 2 }) : '—',
+          sub != null ? formatMonedaLib(sub, monedaOC, { decimals: 2 }) : '—',
         ]
       }),
       headStyles: { fillColor: [30, 58, 95], fontSize: 9 },
@@ -556,13 +570,16 @@ export default function ProveedoresPage() {
     if (total > 0) {
       const ty = (doc as any).lastAutoTable.finalY + 6
       doc.setFontSize(10).setFont('helvetica', 'bold').setTextColor(0)
-      doc.text(`Total estimado: $${total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, W - 14, ty, { align: 'right' })
+      doc.text(`Total estimado: ${formatMonedaLib(total, monedaOC, { decimals: 2 })}`, W - 14, ty, { align: 'right' })
     }
     doc.save(`OC_${String(oc.numero).padStart(4, '0')}_${((oc as any).proveedores?.nombre ?? 'proveedor').replace(/\s+/g, '_')}.pdf`)
   }
 
   function descargarOCcsv(oc: OrdenCompra, items: OrdenCompraItem[]) {
-    const header = ['Producto', 'SKU', 'Cantidad', 'Unidad', 'Precio Unitario', 'Subtotal']
+    // Los importes van sin símbolo (es un CSV), así que la moneda se nombra en el encabezado —
+    // si no, una OC en dólares es indistinguible de una en pesos al abrir el archivo.
+    const monedaOC = (oc as any).moneda ?? 'ARS'
+    const header = ['Producto', 'SKU', 'Cantidad', 'Unidad', `Precio Unitario (${monedaOC})`, `Subtotal (${monedaOC})`]
     const rows = items.map(it => {
       const p = (it as any).productos
       const sub = it.precio_unitario != null ? it.cantidad * it.precio_unitario : ''
@@ -581,11 +598,16 @@ export default function ProveedoresPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('productos')
-        .select('id, nombre, sku, unidad_medida, precio_costo')
+        // `precio_costo_usd` y `moneda_costo` son imprescindibles: sin ellas, el costo sugerido de
+        // una OC en dólares cae al mirror en ARS — el bug de Fede del 2026-09-11. Ver src/lib/ocCosto.ts.
+        .select('id, nombre, sku, unidad_medida, precio_costo, precio_costo_usd, moneda_costo')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
-      return (data ?? []) as Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida' | 'precio_costo'>[]
+      // El tipo `Producto` de supabase.ts no declara las columnas de costo en USD (existen en la
+      // tabla desde la mig 367); se tipan acá para que el costo sugerido no dependa de un `as any`.
+      return (data ?? []) as (Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida' | 'precio_costo'>
+        & { precio_costo_usd?: number | null; moneda_costo?: string | null })[]
     },
     enabled: !!tenant && (showOcForm || tab === 'ordenes'),
   })
@@ -990,6 +1012,10 @@ export default function ProveedoresPage() {
         notas: `Generado desde servicio recurrente (${si.frecuencia})`,
         proveedor_id: si.proveedor_id ?? null,
         usuario_id: user?.id ?? null,
+        // 🛑 Sin `sucursal_id` el gasto queda INVISIBLE: GastosPage filtra por la sucursal activa,
+        // asi que se creaba de verdad pero no aparecia nunca (Fede, 2026-09-11). Mismo bug que los
+        // issues #12/#13 de Recursos.
+        sucursal_id: sucursalId || null,
       })
       if (gErr) throw gErr
       const siguiente = proximoVencimiento(fechaGasto, si.frecuencia)
@@ -1066,6 +1092,10 @@ export default function ProveedoresPage() {
         fecha: new Date().toISOString().split('T')[0],
         categoria: 'Honorarios profesionales',
         notas: `Presupuesto aprobado. Proveedor: ${prov?.nombre ?? ''}${ps.notas ? ` | ${ps.notas}` : ''}`,
+        // 🛑 Ver arriba: sin sucursal_id el gasto no aparece en el modulo Gastos. Este es el caso
+        // exacto que reporto Fede ("aparece gasto creado pero en Gastos no aparece").
+        sucursal_id: sucursalId || null,
+        usuario_id: user?.id ?? null,
       }).select('id').single()
       if (gErr) throw gErr
       const { error: pErr } = await supabase.from('servicio_presupuestos')
@@ -3048,26 +3078,63 @@ export default function ProveedoresPage() {
                     const decimal = prod ? esDecimal(prod.unidad_medida ?? '') : false
                     return (
                       <div key={it._key} className="flex gap-2 items-start">
-                        {/* Producto */}
-                        <div className="flex-1 min-w-0">
-                          <select
+                        {/* Producto — combobox con búsqueda parcial por nombre o SKU */}
+                        <div className="flex-1 min-w-0 relative">
+                          <input
+                            type="text"
                             className="w-full px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm"
-                            value={it.producto_id}
-                            onChange={e => {
-                              const p = productos.find(x => x.id === e.target.value)
-                              updateOcItem(it._key, 'producto_id', e.target.value)
-                              if (p && !it.precio_unitario) {
-                                updateOcItem(it._key, 'precio_unitario', p.precio_costo?.toString() ?? '')
-                              }
-                              // reset cantidad al cambiar producto para evitar valor inválido
-                              updateOcItem(it._key, 'cantidad', '')
-                            }}
-                          >
-                            <option value="">Seleccioná producto…</option>
-                            {productos.map(p => (
-                              <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
-                            ))}
-                          </select>
+                            placeholder="Buscar por nombre o SKU…"
+                            value={ocAbierto === it._key ? (ocBusqueda[it._key] ?? '') : (prod ? `${prod.nombre} (${prod.sku})` : '')}
+                            onFocus={() => { setOcAbierto(it._key); setOcBusqueda(b => ({ ...b, [it._key]: '' })) }}
+                            onChange={e => { setOcAbierto(it._key); setOcBusqueda(b => ({ ...b, [it._key]: e.target.value })) }}
+                            onBlur={() => setTimeout(() => setOcAbierto(a => (a === it._key ? null : a)), 150)}
+                          />
+                          {ocAbierto === it._key && (() => {
+                            const q = (ocBusqueda[it._key] ?? '').trim().toLowerCase()
+                            // Sin término: las primeras 30, para que el desplegable sirva también
+                            // como lista. Con término: nombre O SKU, en cualquier posición.
+                            const matches = (q
+                              ? productos.filter(pr =>
+                                  pr.nombre.toLowerCase().includes(q) || (pr.sku ?? '').toLowerCase().includes(q))
+                              : productos
+                            ).slice(0, 30)
+                            return (
+                              <div className="absolute z-30 mt-1 w-full max-h-56 overflow-auto bg-surface border border-border-ds rounded-lg shadow-lg">
+                                {matches.length === 0 && (
+                                  <p className="px-3 py-2 text-xs text-muted">Sin resultados</p>
+                                )}
+                                {matches.map(pr => (
+                                  <button
+                                    key={pr.id}
+                                    type="button"
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={() => {
+                                      updateOcItem(it._key, 'producto_id', pr.id)
+                                      // 🛑 El costo sugerido va SIEMPRE en la moneda de la OC. Antes se
+                                      // precargaba `precio_costo` a secas — el mirror en ARS — y en una OC
+                                      // en dólares eso convertía un producto de US$99,99 en uno de
+                                      // US$150.985 (bug de Fede, 2026-09-11). Ver src/lib/ocCosto.ts.
+                                      if (!it.precio_unitario) {
+                                        const sug = costoSugeridoOC(pr, ocForm.moneda, cotizacionUsdAArs)
+                                        updateOcItem(it._key, 'precio_unitario', sug.valor != null ? String(sug.valor) : '')
+                                        if (sug.valor == null && sug.motivo === 'sin_cotizacion') {
+                                          toast.error(`Cargá la cotización del dólar para sugerir el costo de "${pr.nombre}" en ${ocForm.moneda}.`)
+                                        } else if (sug.convertido) {
+                                          toast(`Costo convertido a ${ocForm.moneda} con la cotización de hoy — revisalo antes de enviar la OC.`, { icon: '💱' })
+                                        }
+                                      }
+                                      // reset cantidad al cambiar producto para evitar valor inválido
+                                      updateOcItem(it._key, 'cantidad', '')
+                                      setOcAbierto(null)
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-page text-primary"
+                                  >
+                                    {pr.nombre} <span className="text-muted text-xs">({pr.sku})</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )
+                          })()}
                         </div>
                         {/* Cantidad */}
                         <div className="w-24 shrink-0">
@@ -3097,7 +3164,8 @@ export default function ProveedoresPage() {
                             min={0}
                             step="0.01"
                             className="w-full px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm"
-                            placeholder="Precio unit."
+                            placeholder={ocForm.moneda === 'USD' ? 'Precio unit. US$' : 'Precio unit. $'}
+                            title={`Precio unitario en ${ocForm.moneda} — la moneda de esta OC`}
                             value={it.precio_unitario}
                             onChange={e => updateOcItem(it._key, 'precio_unitario', e.target.value)}
                             onWheel={e => e.currentTarget.blur()}
@@ -3119,11 +3187,13 @@ export default function ProveedoresPage() {
                 {/* Total estimado */}
                 {ocItems.some(it => it.precio_unitario && it.cantidad) && (
                   <div className="mt-3 text-right text-sm font-semibold text-primary">
-                    Total estimado: ${ocItems.reduce((sum, it) => {
+                    {/* El símbolo sale de la moneda de la OC. Estaba hardcodeado en `$`, así que una
+                        OC en dólares mostraba su total con signo de pesos. */}
+                    Total estimado: {formatMonedaLib(ocItems.reduce((sum, it) => {
                       const q = parseFloat(it.cantidad) || 0
                       const p = parseFloat(it.precio_unitario) || 0
                       return sum + q * p
-                    }, 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    }, 0), ocForm.moneda, { decimals: 2 })}
                   </div>
                 )}
               </div>

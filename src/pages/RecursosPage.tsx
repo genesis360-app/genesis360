@@ -9,7 +9,7 @@ import { Recurso } from '@/lib/supabase'
 import {
   Plus, Pencil, Trash2, Landmark, Wrench, CheckCircle,
   ShoppingBag, AlertTriangle, Search, ChevronRight,
-  MapPin, RefreshCw, Check, X, TrendingUp, Wrench as WrenchIcon,
+  MapPin, RefreshCw, Check, X, TrendingUp, Wrench as WrenchIcon, Clock,
 } from 'lucide-react'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { useNavigate } from 'react-router-dom'
@@ -473,12 +473,17 @@ export default function RecursosPage() {
           {r.notas && <p className="text-xs text-muted italic truncate">{r.notas}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {/* 🛑 Ya NO hay boton "Marcar como adquirido" (Fede, 2026-09-11): activaba el recurso sin
+              mirar el gasto, asi que se podia esquivar el pago y quedarse con un recurso activo que
+              nadie abono. La UNICA forma de pasar a activo es saldar el gasto de adquisicion — lo
+              hace el trigger `fn_recurso_activar_al_pagar_gasto` (mig 406), que ademas cubre TODOS
+              los caminos por los que un gasto se salda, no solo la pantalla de Gastos. */}
           {r.estado === 'pendiente_adquisicion' && (
-            <button onClick={() => cambiarEstado.mutate({ id: r.id, estado: 'activo' })}
-              title="Marcar como adquirido"
-              className="p-1.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20">
-              <CheckCircle className="w-4 h-4" />
-            </button>
+            <span
+              title="Se activa solo cuando se salda su gasto de adquisicion, en el modulo Gastos"
+              className="p-1.5 text-muted cursor-help">
+              <Clock className="w-4 h-4" />
+            </span>
           )}
           {r.estado === 'activo' && (
             <button onClick={() => cambiarEstado.mutate({ id: r.id, estado: 'en_reparacion' })}

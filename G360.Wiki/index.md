@@ -102,7 +102,7 @@ Supervisión efectivamente muta `stock_actual` (gap de cobertura de tests, no bu
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | **⚠ Estado MÁS actual (2026-08-31, cont. 34): migraciones 386-387c
+| [[wiki/database/migraciones]] | **🚀 2026-09-11: las migs 391-406 pasaron a PROD** con el deploy de `v1.208.0` (PR #343) — PROD saltó de la mig 390 a la 406 y de `v1.195.4` a `v1.208.0`. Paridad verificada por hash de `pg_policies` (`587a4b05…`, 228 policies en ambos) y backfill de `venta_items` con 0 desincronizados. **Ya no hay brecha DEV↔PROD.** Antes: **⚠ Estado MÁS actual (2026-08-31, cont. 34): migraciones 386-387c
 APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`), commit `deef2fc2`, `v1.188.0` — 386 (prerequisito
 técnico de Supervisión) + 387/387b/387c (identidad del Portal de Proveedores, `proveedor_accounts`/
 `proveedor_account_tenants`). SIN aplicar a PROD todavía** (`jjffnbrdjchquexdfgwq` sigue en 001-385). Total

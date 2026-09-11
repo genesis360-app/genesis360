@@ -37,8 +37,7 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.208.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
+**🚀 EN PROD: `v1.208.0`** (PR #343, deploy real 2026-09-11 — autorizado por GO: *"pasemos todo a PRD"*). PROD saltó de `v1.195.4` a `v1.208.0` y de la migración **390 a la 406**: 16 migraciones y 13 versiones de golpe. Paridad DEV↔PROD verificada por hash de `pg_policies` (`587a4b05…`, 228 policies) y backfill de `venta_items` con 0 filas desincronizadas. Verificado además por `curl` contra `app.genesis360.pro`: el bundle `assets/index-DSxm-mw9.js` contiene `v1.208.0`. Detalle: `log.md` (2026-09-11, tipo `deploy`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
 opción que muestra los montos **sin convertir nada**, con los pesos y los dólares en números
 separados que nunca se suman. El patrón ya existía en el KPI "Ingreso Neto de Caja"; se extrajo a
 `src/lib/dashMoneda.ts` y se aplicó a Ventas y Gastos. 🐛 De paso se cerró un **bug de plata

@@ -3,13 +3,17 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-06
+updated: 2026-09-11
 ---
 
 # Historial de Migraciones (001-406, + correctivos 387b/387c)
 
-**🗂️ Migraciones 391-406 — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`), ⏳ NINGUNA EN PROD**
-(PROD sigue en `v1.195.4`, última migración aplicada allá = 390):
+**🗂️ Migraciones 391-406 — 🚀 APLICADAS EN DEV **Y EN PROD** (deploy del 2026-09-11, `v1.208.0`).**
+Se aplicaron una por una contra PROD (`jjffnbrdjchquexdfgwq`) tras revisarlas de a una: sin DDL
+destructivo, sin UUIDs hardcodeados, sin colisión de nombres de policy y con todas las tablas y
+funciones base ya presentes. **Paridad verificada**: el `md5` de `pg_policies` da idéntico en los dos
+ambientes (`587a4b053df90f4150919bcdb81ea4e4`, 228 policies) y el backfill de `venta_items` dejó
+**0 filas desincronizadas**. Ver `log.md` (2026-09-11, tipo `deploy`):
 
 | # | Archivo | Qué hace |
 |---|---|---|

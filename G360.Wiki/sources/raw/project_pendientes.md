@@ -6,6 +6,87 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### ✅ ARRANCÁ ACÁ (2026-09-11, cont. 60) — 🚀 **PROD = `v1.208.0`, migs 001-406**. DEV = PROD.
+> **Ya no hay brecha entre DEV y PROD.** Primer cliente REAL en ~2 semanas.
+>
+> #### Lo que pasó
+>
+> Se deployó TODO lo que estaba acumulado (GO: *"pasemos todo a PRD"*): **16 migraciones (391-406) y
+> 13 versiones de código**. Paridad verificada: el `md5` de `pg_policies` da idéntico en DEV y PROD
+> (`587a4b05…`, 228 policies). Detalle completo en `log.md` (2026-09-11, tipo `deploy`).
+>
+> ⚠️ El CI estuvo en rojo por un test que importaba `supabase.ts` (que hace `throw` al importar sin
+> env vars) — arreglado moviendo la lógica pura a `src/lib/actividadLogDiff.ts`. **Regla para el
+> futuro: un test de función pura nunca debe importar, ni transitivamente, el cliente de Supabase.**
+>
+> #### 🟥🟥 LO PRIMERO: la tanda nueva de Fede (2026-09-11) — hay un bug de PLATA
+>
+> **1 · 🛑 La OC en USD infla la orden ~1500x (REGLA #0).** Fede reportó que "no permite poner el
+> valor por unidad en USD, lo convierte a $". Investigado: al elegir un producto,
+> `ProveedoresPage.tsx:3059` autocompleta con `productos.precio_costo` — el **mirror en ARS** —
+> ignorando `moneda_costo`/`precio_costo_usd`. Ese número se guarda tal cual y después se muestra
+> como dólares (`formatMonedaLib(total, oc.moneda)`): un producto de **US$99,99 queda como
+> US$150.985**, y al recibir la OC genera el gasto por ese monto. En DEV hay 5 productos así.
+> Es el MISMO bug del mirror que Fede reportó el 20/8 para la lista de Productos (ahí sí se arregló).
+> Sumar: el campo no dice en qué moneda se carga y el "Total estimado" tiene el `$` hardcodeado
+> (línea 3122). **⚠️ Corrección de lo dicho en la sesión anterior: la OC en USD NO funciona.**
+>
+> **2 · Gastos invisibles por `sucursal_id` faltante.** Fede: "al aprobar presupuesto de un servicio
+> no genera el gasto". Verificado: `ProveedoresPage:984` y `:1062` insertan en `gastos` **sin
+> `sucursal_id`**, y `GastosPage` filtra con `.eq('sucursal_id', …)` → el gasto existe pero es
+> invisible. **Hay 4 más iguales en `RrhhPage` (1123, 1165, 1214, 1704)**: los gastos de sueldos
+> tienen el mismo problema. Es el mismo patrón de los issues #12/#13.
+>
+> **3 · Recursos: "Marcar como adquirido" es una trampa.** `RecursosPage:477` hace
+> `estado: 'activo'` directo sin mirar el gasto → se activa un recurso sin pagarlo. **Contradice la
+> mig 406 que se acaba de deployar**, que lo activa cuando se salda el gasto. Sacar el botón.
+>
+> **4 · Buscador de productos en la OC**: es un `<select>` nativo → solo salta por primera letra.
+> Necesita el buscador con filtro que ya usa el POS.
+>
+> **5 · Recursos → Ubicaciones**: la pestaña asigna en vez de crear. Ojo: `recursos.ubicacion` es
+> **texto libre**, no hay catálogo — "crear ubicación" implica decidir si se crea tabla propia o se
+> reusa la de inventario (no mezclar: son cosas distintas).
+>
+> **6 · Etiquetas de repositores**: hoy celdas casi cuadradas (3×4 en A4) con todo apilado a la
+> izquierda. Fede pide rectangular horizontal, nombre más grande y precio a la DERECHA.
+> (`src/lib/etiquetasPreciosPDF.ts`, grillas en `GRIDS`.)
+>
+> #### 🟡 Decisiones de GO pendientes
+>
+> - **Envíos: sacar `en_bodega` de la ruta feliz.** Hoy `ESTADO_SIGUIENTE` lo hace **paso
+>   obligatorio** entre `en_camino` y `entregado`, y el POD solo aparece en `en_bodega`
+>   (`EnviosPage.tsx:1863`) → no hay forma de entregar sin pasar por bodega. Se agregó en v1.8.39
+>   (mig 127) como "paquete en depósito del courier". Lo que Fede espera (`en_camino → entregado`) y
+>   lo que GO intuye (volver a bodega por rechazo) es lo correcto — y el camino del rechazo **ya
+>   existe aparte**: el botón "No entregado" (EN2/D5) con subestados e intentos. Costo de migrar:
+>   **1 solo envío** en ese estado en DEV; ningún adapter de courier lo mapea.
+> - **Precio de venta con fecha/hora de vigencia** (pedido de Fede): feature grande, no un fix. Toca
+>   POS (qué precio cobra según el reloj), Repositores (urgencia de la etiqueta) y ML/TN. Necesita
+>   migración + job. **Merece relevamiento propio.**
+> - **Góndolas para Repositores** (0 ubicaciones de exhibición en PROD) · **¿tope de descuento para
+>   el DUEÑO?** · **Reintegro en efectivo USD al anular** (relevar).
+>
+> #### 🟢 Lo que quedó abierto de la tanda anterior
+>
+> - Los `INSERT` en `gastos` del código **no setean `moneda`** → una recepción de OC en dólares nace
+>   como gasto en pesos. Va junto con la UI del gasto suelto en USD (punto 1).
+> - **Cobrar en caja USD** (Fase 8/C2), frenada por la definición del contador.
+> - **Dropear `tenants.afipsdk_token`**: ahora SÍ se puede — PROD ya corre el código de la tanda F.
+> - **Umbral del SUPERVISOR server-side** · **E2 (techo de instancia)**.
+>
+> #### 🧪 Suite
+>
+> **1697 unit verdes** · 395 specs e2e. ⚠️ **Al escribir un e2e del Dashboard**: filtra por sucursal
+> activa — sembrar con `sucursal_id = null` mide $0 (costó un falso negativo en el spec 143).
+>
+> #### Cosas operativas
+>
+> - El PAT `schema-dump-local` **vence el 2026-10-06**. ⚠️ `schema_full.sql` quedó en la mig 406 por
+>   DEV, pero **PROD ya está igual** — regenerar no es urgente.
+> - `tn-fulfillment-worker` corre 133 veces/día contra DEV.
+> - La ubicación **`E2E Siembra`** la crea el fixture de e2e: no borrarla ni pasarla a Mono-SKU.
+
 > ### ✅ ARRANCÁ ACÁ (2026-09-09, cont. 59) — `v1.208.0` en `dev`, migs **391-406** solo en DEV.
 > **PROD sigue en `v1.195.4`.** Primer cliente REAL en ~2 semanas.
 >

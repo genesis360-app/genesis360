@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-11] deploy | 🚀 v1.208.0 EN PROD (PR #343) — 16 migraciones + 13 versiones de golpe
+
+GO autorizó: *"pasemos todo a PRD"*. Es el deploy más grande de las últimas semanas: PROD salta de
+`v1.195.4` a **`v1.208.0`** y de la migración **390 a la 406**.
+
+### Por qué no aplicó el "DDL aditivo primero"
+
+Estas migraciones **cambian comportamiento**: donde antes bloqueaba solo la UI, ahora la base
+rechaza. El código viejo contra la base nueva ve menos datos de los que espera (RRHH pasa a leerse
+por `fn_sueldos_agregado()`), así que la ventana entre aplicar las migs y que Vercel sirva el código
+nuevo tenía que ser mínima. Medido antes de empezar: PROD tiene **29 ventas, 35 ítems y 1 gasto**, y
+**0 ventas en los últimos 7 días** — sin tráfico real que cayera en esa ventana.
+
+### La revisión previa (lo que evitó sorpresas)
+
+Las 16 se revisaron una por una ANTES de aplicar, no se confió en que estuvieran bien por haber
+corrido en DEV:
+
+| Chequeo | Resultado |
+|---|---|
+| DDL destructivo (`DROP TABLE/COLUMN`, `TRUNCATE`) | ninguno |
+| `CREATE POLICY IF NOT EXISTS` (no existe en PG) | ninguno |
+| UUIDs hardcodeados (ids de DEV) | ninguno |
+| Colisión de nombres de policy contra PROD | ninguna — las 37 nuevas no existían; la única que sí (`venta_items_tenant`) la dropea la 398 antes |
+| Tablas y funciones base presentes | las 31 tablas y las 3 funciones (`get_user_tenant_id`, `auth_ve_todas_sucursales`, `auth_user_sucursal`) ya estaban |
+| Dependencias de la 396 y la 401 | `get_user_role`, `sucursales.umbral_gasto_cajero`, las 6 columnas de precio y las de `empleados`/`rrhh_salarios`, todas presentes |
+
+Dos falsas alarmas que valieron la pena descartar: `emisores_fiscales.afipsdk_token_configurado` y
+`courier_credenciales.credenciales_configuradas` figuraban como "faltantes en PROD" — las **crean
+las propias migraciones** (402 y 403) justo antes del GRANT que las nombra.
+
+Y una verificación de plata: la 402 hace `UPDATE tenants SET afipsdk_token = NULL`. Los **9 tenants
+de PROD están en `afip_provider='propio'` y ninguno tenía token** → 0 filas afectadas.
+
+### Verificación post-aplicación
+
+- **Paridad exacta DEV↔PROD**: `md5` de `pg_policies` = `587a4b053df90f4150919bcdb81ea4e4` en los dos,
+  **228 policies**. Drift cero (la auditoría que pide el CLAUDE.md).
+- **Backfill de `venta_items`** (REGLA #0 — una columna desincronizada esconde ítems de venta por
+  RLS): **0 filas desincronizadas**, los 35 ítems con su sucursal.
+- Acentos del seed de la 391 verificados ("millón" intacto) por el gotcha conocido de
+  `apply_migration`.
+
+### 🐛 El CI estaba en rojo y no era el código
+
+El PR quedó frenado por `actividadLogDiff.test.ts`. **Local pasaba, CI no**: ese test importaba
+`diffCampos` desde `actividadLog.ts`, que arranca con `import { supabase } from '@/lib/supabase'` — y
+ese módulo hace `throw` **en tiempo de import** si faltan las env vars. La diferencia era `.env.local`:
+Vite resuelve `import.meta.env.VITE_*` en tiempo de **transform**, así que el `Object.defineProperty`
+de `tests/unit/setup.ts` llega tarde. Era el primer test del repo que importaba, aunque fuera
+transitivamente, el cliente real de Supabase.
+
+Fix alineado al patrón del repo: `diffCampos` y `CampoCambiado` se mudan a
+**`src/lib/actividadLogDiff.ts`**, sin I/O, y `actividadLog.ts` los reexporta. Verificado
+reproduciendo la condición del CI — con `.env.local` fuera del proyecto, el test pasa.
+
+### Estado final
+
+`main` = `d78ac0b1`, tag `v1.208.0` reapuntado al merge, release publicado. Suite: **1697 unit
+verdes**, build y typecheck limpios, CI verde.
+
+---
+
 ## [2026-09-09] update | 💵 Modo "Real" del Dashboard + fin de la mezcla de pesos y dólares · v1.208.0
 
 Se cerró el pendiente #1 del handoff (G1). Y de paso apareció un bug de plata que estaba latente.

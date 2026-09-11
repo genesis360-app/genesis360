@@ -18,12 +18,16 @@ import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule, converti
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { logActividad } from '@/lib/actividadLog'
+import {
+  monedasParaGasto, cajasOperativasDeMoneda, cajaFuerteDeMoneda,
+  puedePagarEfectivoEn, validarPagoGasto,
+} from '@/lib/gastoMoneda'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useSearchParams } from 'react-router-dom'
 import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 import { evaluarUmbralGasto } from '@/lib/umbralGasto'
-import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { formatMoneda as formatMonedaLib, simboloMoneda } from '@/lib/formato'
 import { chequearBloqueoCC, existeAutorizacionCCAprobada, type MotivoBloqueoCC } from '@/lib/ccProveedor'
 import SolicitarAutorizacionGastoModal from '@/components/SolicitarAutorizacionGastoModal'
 import SolicitarOverrideCCModal from '@/components/SolicitarOverrideCCModal'
@@ -108,6 +112,10 @@ function calcularIVA(monto: number, tipoIva: string, alicuotaCustom?: number | n
 
 interface FormGasto {
   descripcion: string; monto: string
+  // Pedido de GO (2026-09-11): el gasto puede ser en cualquier moneda; por default la del negocio
+  // (`tenants.moneda`). Antes el label decia "Monto total ($)" con el peso hardcodeado y
+  // `gastos.moneda` (mig 379) quedaba siempre en su default 'ARS'.
+  moneda: string
   tipo_comprobante: string
   tipo_iva: string; iva_deducible: boolean
   alicuota_iva_custom: string
@@ -129,7 +137,9 @@ interface FormFijo {
 }
 
 const FORM_VACIO: FormGasto = {
-  descripcion: '', monto: '', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
+  // `moneda` se pisa con la del negocio al abrir el form (ver `abrirNuevo`/`resetForm`): aca no
+  // hay acceso al tenant, y dejarla vacia haria que el selector arranque sin valor.
+  descripcion: '', monto: '', moneda: 'ARS', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
   alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', fecha: new Date().toISOString().split('T')[0], notas: '',
@@ -169,6 +179,11 @@ export default function GastosPage() {
   // Moneda principal del tenant para formateo (v1.8.44)
   const monedaTenant = (tenant as any)?.moneda ?? 'ARS'
   const formatMoneda = (v: number) => formatMonedaLib(v, monedaTenant)
+  // 🛑 Un gasto puede estar en otra moneda que el negocio (2026-09-11). Mostrarlo siempre con el
+  // símbolo del tenant hacía que un gasto de US$100 se leyera como $100 — el mismo bug del mirror
+  // que apareció en la OC. `formatGasto` usa la moneda de la FILA.
+  const formatGasto = (v: number, g: { moneda?: string | null } | null | undefined) =>
+    formatMonedaLib(v, g?.moneda ?? monedaTenant)
 
   // Condición frente al IVA del tenant (default Monotributista si no está seteada).
   // Solo un Responsable Inscripto discrimina crédito de IVA (en Factura A) y deduce Ganancias.
@@ -245,7 +260,7 @@ export default function GastosPage() {
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
 
   // ISS-190: pago parcial de gasto
-  const [pagoGastoModal, setPagoGastoModal] = useState<{ id: string; monto: number; montoPagado: number; descripcion: string; proveedorId?: string | null } | null>(null)
+  const [pagoGastoModal, setPagoGastoModal] = useState<{ id: string; monto: number; montoPagado: number; descripcion: string; proveedorId?: string | null; moneda?: string | null } | null>(null)
   const [pagoParcialmonto, setPagoParcialmonto] = useState('')
   const [pagoParcialmedio, setPagoParcialmedio] = useState('')
   const [pagoParcialSaving, setPagoParcialSaving] = useState(false)
@@ -355,15 +370,23 @@ export default function GastosPage() {
     return m?.moneda ?? 'ARS'
   }
 
-  // G5 Fase 5 — desde mig 373 hay 2 filas es_caja_fuerte=true por tenant (ARS y USD); Gastos solo
-  // paga en ARS (ver comentario de sesionesOperativas debajo), así que la fuerte de fallback tiene
-  // que ser específicamente la de pesos.
-  const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte && (s.cajas?.moneda ?? 'ARS') === 'ARS') ?? null
-  // G5 Fase 4 (hallazgo de code-review, mig 372) — Gastos todavía no soporta pagar en USD (eso es
-  // específico de Ventas). Sin filtrar acá, el picker podía ofrecer una Caja USD y el trigger de
-  // moneda-por-sesión rechazaría el insert (fallaría con toast en vez de plata perdida en silencio,
-  // pero es mejor no ofrecerla directamente). Mismo patrón sesionesArs que ya usa VentasPage.tsx.
-  const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte && (s.cajas?.moneda ?? 'ARS') === 'ARS')
+  // 🛑 Las cajas que se ofrecen son las de la MONEDA DEL GASTO (2026-09-11, pedido de GO).
+  //
+  // Hasta acá estas dos líneas filtraban a `'ARS'` fijo, con este motivo escrito en el código:
+  // "Gastos todavía no soporta pagar en USD... el picker podía ofrecer una Caja USD y el trigger
+  // de moneda-por-sesión rechazaría el insert". Ese trigger
+  // (`fn_validar_moneda_coincide_sesion`) sigue ahí y sigue siendo el guard real: un movimiento
+  // cuya moneda no coincide con su sesión se rechaza. Lo que cambió es que ahora el gasto TIENE
+  // moneda propia, así que en vez de clavar pesos se ofrece la caja que corresponde.
+  //
+  // Desde la mig 373 hay una caja fuerte POR MONEDA, así que el fallback también se resuelve por
+  // moneda en vez de asumir la de pesos.
+  const monedaGasto = (form.moneda || monedaTenant || 'ARS').toUpperCase()
+  const sesionFuerte = cajaFuerteDeMoneda(sesionesAbiertas as any[], monedaGasto)
+  const sesionesOperativas = cajasOperativasDeMoneda(sesionesAbiertas as any[], monedaGasto)
+  // ¿Hay dónde asentar un egreso en efectivo de esta moneda? Si no, la UI lo dice ANTES de que el
+  // usuario cargue todo y se lo rechace la base.
+  const hayCajaParaMoneda = puedePagarEfectivoEn(sesionesAbiertas as any[], monedaGasto)
   const efectivoEnMedios = mediosPago.some(m => mediosEfectivo.has(m.tipo) && parseFloat(m.monto) > 0)
   const montoEfectivo = mediosPago.filter(m => mediosEfectivo.has(m.tipo)).reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   // Para mostrar el selector de caja en JSX (mediosValidos completo se calcula en guardar())
@@ -972,7 +995,9 @@ export default function GastosPage() {
 
   const abrirNuevo = () => {
     // GAS-17: el default de "Deducir de Ganancias" depende de la condición del tenant — RI ON, resto OFF.
-    setEditandoId(null); setCorreccionPadre(null); setForm({ ...FORM_VACIO, deduce_ganancias: esRI })
+    // La moneda arranca en la del NEGOCIO (`tenants.moneda`, Config → Moneda principal).
+    setEditandoId(null); setCorreccionPadre(null)
+    setForm({ ...FORM_VACIO, deduce_ganancias: esRI, moneda: monedaTenant })
     setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
@@ -986,6 +1011,9 @@ export default function GastosPage() {
     setForm({
       descripcion:          `Corrección de: ${g.descripcion}`,
       monto:                '',
+      // La corrección va en la MISMA moneda que el gasto corregido: si no, la nota no revierte
+      // nada — sumaría dólares contra pesos.
+      moneda:               (g.moneda ?? monedaTenant),
       tipo_comprobante:     g.tipo_comprobante ?? '',
       tipo_iva:             g.tipo_iva ?? '',
       iva_deducible:        g.iva_deducible ?? false,
@@ -1035,6 +1063,8 @@ export default function GastosPage() {
     setEditandoId(g.id)
     setForm({
       descripcion: g.descripcion, monto: String(g.monto),
+      // Un gasto ya registrado conserva SU moneda: reabrirlo no puede reinterpretarlo en otra.
+      moneda: g.moneda ?? monedaTenant,
       tipo_comprobante: g.tipo_comprobante ?? '', tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
       alicuota_iva_custom: g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
       deduce_ganancias: g.deduce_ganancias ?? false,
@@ -1117,13 +1147,22 @@ export default function GastosPage() {
 
     // Validación de caja (solo en creación nueva)
     if (!editandoId) {
-      if (sesionesOperativas.length === 0 && !sesionFuerte) {
+      // ⚠ Estos dos checks son OPERATIVOS ("no se registran gastos con la caja cerrada"), no de
+      // moneda: miran si hay ALGUNA caja abierta, no una de la moneda del gasto. `sesionesOperativas`
+      // pasó a filtrar por la moneda del gasto (2026-09-11), así que usarlo acá bloquearía un gasto
+      // en dólares pagado por transferencia solo porque no hay una Caja USD abierta — que es un
+      // caso perfectamente válido. Lo que SÍ exige caja de la moneda es el efectivo, y de eso se
+      // ocupa `validarPagoGasto` unas líneas más abajo.
+      const hayAlgunaCajaAbierta = (sesionesAbiertas as any[]).length > 0
+      if (!hayAlgunaCajaAbierta) {
         toast.error('No hay ninguna caja abierta. Abrí una caja antes de registrar gastos.')
         return
       }
       if (esCajero) {
-        const misSesiones = sesionesOperativas.filter((s: any) => s.usuario_id === user?.id)
-        if (misSesiones.length === 0 && !sesionFuerte) {
+        const misSesiones = (sesionesAbiertas as any[]).filter(
+          (s: any) => !s.cajas?.es_caja_fuerte && s.usuario_id === user?.id)
+        const hayFuerte = (sesionesAbiertas as any[]).some((s: any) => s.cajas?.es_caja_fuerte)
+        if (misSesiones.length === 0 && !hayFuerte) {
           toast.error('No tenés caja abierta. Pedile a tu supervisor que abra una para vos.')
           return
         }
@@ -1133,6 +1172,20 @@ export default function GastosPage() {
         toast.error('Seleccioná desde qué caja sale el efectivo.')
         return
       }
+      // 🛑 La moneda del efectivo tiene que coincidir con la del gasto y existir una caja donde
+      // asentarlo. El guard real es el trigger `fn_validar_moneda_coincide_sesion`; esto lo dice
+      // antes y con un mensaje entendible, en vez del error crudo de Postgres.
+      const problemaMoneda = validarPagoGasto({
+        monedaGasto,
+        sesiones: sesionesAbiertas as any[],
+        medios: mediosPago.map(m => ({
+          tipo: m.tipo,
+          monto: parseFloat(m.monto.replace(',', '.')) || 0,
+          moneda: monedaDeMetodo(m.tipo),
+          esEfectivo: mediosEfectivo.has(m.tipo),
+        })),
+      })
+      if (problemaMoneda) { toast.error(problemaMoneda.detalle, { duration: 9000 }); return }
       // ISS-084: Si la sesión seleccionada es regular, validar saldo disponible
       if (efectivoEnMedios && sesionCajaId && cajaSeleccionadaId !== '__fuerte__') {
         const sesion = sesionesOperativas.find((s: any) => s.id === sesionCajaId)
@@ -1233,6 +1286,9 @@ export default function GastosPage() {
         comprobante_url: comprobanteUrl,
         tenant_id: tenant!.id,
         descripcion: form.descripcion.trim(), monto,
+        // `gastos.moneda` existe desde la mig 379 pero NADIE la seteaba: todos los gastos nacian
+        // en el default 'ARS' sin importar la moneda real (2026-09-11).
+        moneda: monedaGasto,
         tipo_comprobante: form.tipo_comprobante || null,
         tipo_iva: form.tipo_iva || null,
         iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
@@ -1313,7 +1369,10 @@ export default function GastosPage() {
                 monto: montoMp,
                 cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
                 usuario_id: user?.id,
-                moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
+                // 🛑 La moneda es la del GASTO, no la del medio: el `monto` asentado está expresado
+                // en la moneda del gasto, y el trigger `fn_validar_moneda_coincide_sesion` exige que
+                // coincida con la sesión — que ya se eligió por esa misma moneda.
+                moneda: monedaGasto,
               })
               if (cajErr) toast.error(`El gasto se editó, pero el movimiento de caja de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
             }
@@ -1372,7 +1431,8 @@ export default function GastosPage() {
               monto: montoMp,
               cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
               usuario_id: user?.id,
-              moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
+              // 🛑 Misma regla: la moneda del movimiento es la del gasto (ver arriba).
+              moneda: monedaGasto,
             })
             if (cajErr) {
               console.error('caja_movimientos gasto:', cajErr.message)
@@ -1458,7 +1518,8 @@ export default function GastosPage() {
               : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
-            moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
+            // 🛑 La reversa va en la MISMA moneda que el gasto que revierte; si no, no lo revierte.
+            moneda: (g.moneda ?? monedaTenant),
           })
           if (cajErr) toast.error(`El gasto se eliminó, pero la reversión de ${mp.tipo} ($${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no se asentó en caja. Registrala manualmente. (${cajErr.message})`, { duration: 12000 })
         }
@@ -1525,7 +1586,8 @@ export default function GastosPage() {
           concepto: esEfectivo ? `Pago gasto: ${pagoGastoModal.descripcion}` : `[${pagoParcialmedio}] Pago gasto: ${pagoGastoModal.descripcion}`,
           monto, cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(pagoParcialmedio),
           usuario_id: user?.id,
-          moneda: monedaDeMetodo(pagoParcialmedio),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
+          // 🛑 El pago parcial se asienta en la moneda del GASTO que se está pagando.
+          moneda: (pagoGastoModal.moneda ?? monedaTenant),
         })
         if (cajErr) toast.error(`El pago se registró en el gasto, pero el movimiento de caja no se asentó. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
       }
@@ -1691,7 +1753,9 @@ export default function GastosPage() {
             monto: parseFloat(mp.monto),
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
-            moneda: monedaDeMetodo(mp.tipo),  // Compras/Gastos en USD (mig 379) — antes quedaba en el DEFAULT 'ARS' sin importar el medio real
+            // Los gastos FIJOS todavía no ofrecen moneda en su formulario, así que nacen en la del
+          // negocio — que es el default correcto y coherente con lo que muestran.
+          moneda: monedaTenant,
           })
           if (cajErr) {
             console.error('caja fijo:', cajErr.message)
@@ -2031,16 +2095,16 @@ export default function GastosPage() {
                           ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm hidden md:table-cell">{formatMediosPago(g.medio_pago)}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">{formatMoneda(Number(g.monto))}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">{formatGasto(Number(g.monto), g)}</td>
                         <td className="px-4 py-3 text-right text-xs hidden md:table-cell">
                           {g.iva_deducible && g.iva_monto > 0
-                            ? <span className="text-blue-500 dark:text-blue-400">{formatMoneda(Number(g.iva_monto))}</span>
+                            ? <span className="text-blue-500 dark:text-blue-400">{formatGasto(Number(g.iva_monto), g)}</span>
                             : <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
                             {(g.estado_pago === 'pendiente' || g.estado_pago === 'parcial' || (!g.estado_pago && !g.medio_pago)) && !isPeriodoCerrado(g.fecha) && (
-                              <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion, proveedorId: g.proveedor_id ?? null }); setPagoParcialmonto(''); setPagoParcialmedio(''); setChqGastoNro(''); setChqGastoBanco(''); setChqGastoFechaCobro('') }}
+                              <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion, proveedorId: g.proveedor_id ?? null, moneda: g.moneda ?? monedaTenant }); setPagoParcialmonto(''); setPagoParcialmedio(''); setChqGastoNro(''); setChqGastoBanco(''); setChqGastoFechaCobro('') }}
                                 title="Registrar pago"
                                 className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
                                 <CreditCard size={14} />
@@ -2185,9 +2249,9 @@ export default function GastosPage() {
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-semibold text-red-600 dark:text-red-400 text-sm">{formatMoneda(Number(g.monto))}</p>
+                        <p className="font-semibold text-red-600 dark:text-red-400 text-sm">{formatGasto(Number(g.monto), g)}</p>
                         {g.iva_deducible && g.iva_monto > 0 && (
-                          <p className="text-xs text-blue-500 dark:text-blue-400">IVA {formatMoneda(Number(g.iva_monto))}</p>
+                          <p className="text-xs text-blue-500 dark:text-blue-400">IVA {formatGasto(Number(g.iva_monto), g)}</p>
                         )}
                       </div>
                       <ChevronRight size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${gastoExpandidoId === g.id ? 'rotate-90' : ''}`} />
@@ -2201,10 +2265,10 @@ export default function GastosPage() {
                             <div><p className="text-xs text-gray-400 dark:text-gray-500">IVA</p><p className="font-medium text-gray-700 dark:text-gray-300">{TASAS_IVA.find(t => t.value === g.tipo_iva)?.label ?? g.tipo_iva}</p></div>
                           )}
                           {g.iva_deducible && g.iva_monto > 0 && (
-                            <div><p className="text-xs text-gray-400 dark:text-gray-500">IVA a favor</p><p className="font-medium text-blue-600 dark:text-blue-400">{formatMoneda(Number(g.iva_monto))}</p></div>
+                            <div><p className="text-xs text-gray-400 dark:text-gray-500">IVA a favor</p><p className="font-medium text-blue-600 dark:text-blue-400">{formatGasto(Number(g.iva_monto), g)}</p></div>
                           )}
                           {g.iva_deducible && g.iva_monto > 0 && (
-                            <div><p className="text-xs text-gray-400 dark:text-gray-500">Neto</p><p className="font-medium text-gray-700 dark:text-gray-300">{formatMoneda(Number(g.monto) - Number(g.iva_monto))}</p></div>
+                            <div><p className="text-xs text-gray-400 dark:text-gray-500">Neto</p><p className="font-medium text-gray-700 dark:text-gray-300">{formatGasto(Number(g.monto) - Number(g.iva_monto), g)}</p></div>
                           )}
                           {g.deduce_ganancias !== null && g.deduce_ganancias !== undefined && (
                             <div><p className="text-xs text-gray-400 dark:text-gray-500">Ganancias</p>
@@ -2231,7 +2295,7 @@ export default function GastosPage() {
 
                         <div className="flex items-center gap-2 pt-1 flex-wrap">
                           {(g.estado_pago === 'pendiente' || g.estado_pago === 'parcial' || (!g.estado_pago && !g.medio_pago)) && !isPeriodoCerrado(g.fecha) && (
-                            <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion, proveedorId: g.proveedor_id ?? null }); setPagoParcialmonto(''); setPagoParcialmedio(''); setChqGastoNro(''); setChqGastoBanco(''); setChqGastoFechaCobro('') }}
+                            <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion, proveedorId: g.proveedor_id ?? null, moneda: g.moneda ?? monedaTenant }); setPagoParcialmonto(''); setPagoParcialmedio(''); setChqGastoNro(''); setChqGastoBanco(''); setChqGastoFechaCobro('') }}
                               className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
                               <CreditCard size={12} /> Registrar pago
                             </button>
@@ -2504,12 +2568,37 @@ export default function GastosPage() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto total ($) *</label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
-                  onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
-                  disabled={!!(editandoId && originalTeniaPago) || esContador}
-                  placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto total *</label>
+                {/* Moneda a la IZQUIERDA del monto (pedido de GO, 2026-09-11). Por default la del
+                    negocio (Config → Moneda principal); antes el label decia "($)" fijo y
+                    `gastos.moneda` quedaba siempre en 'ARS' sin importar el gasto real. */}
+                <div className="flex gap-2">
+                  <select
+                    value={form.moneda}
+                    onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}
+                    disabled={!!(editandoId && originalTeniaPago) || esContador || !!correccionPadre}
+                    title={correccionPadre
+                      ? 'Una nota de corrección va siempre en la moneda del gasto que corrige'
+                      : 'Moneda del gasto'}
+                    className="w-28 shrink-0 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">
+                    {monedasParaGasto(monedaTenant).map(m => (
+                      <option key={m} value={m}>{simboloMoneda(m)} {m}</option>
+                    ))}
+                  </select>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
+                    onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
+                    disabled={!!(editandoId && originalTeniaPago) || esContador}
+                    placeholder="0" min="0" step="0.01"
+                    className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
+                </div>
+                {/* Se avisa ACA, antes de cargar todo, y no cuando el trigger de la base rechace
+                    el movimiento con un error crudo. */}
+                {monedaGasto !== monedaTenant && !hayCajaParaMoneda && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                    ⚠ No hay ninguna caja en {monedaGasto} abierta: este gasto no se va a poder pagar
+                    en efectivo. Sí por transferencia u otro medio, o dejándolo pendiente.
+                  </p>
+                )}
               </div>
 
               {/* Información fiscal */}

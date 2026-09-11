@@ -16,7 +16,7 @@ import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
 import { getFechasDashboard, getFechasAnteriores, MONEDAS, type PeriodoDash, type Moneda } from '@/components/FilterBar'
-import { fmtDash, fmtUsdDash, sumarPorMonedaNativa, aVistaPesos, type SplitMoneda } from '@/lib/dashMoneda'
+import { fmtDash, fmtUsdDash, sumarPorMonedaNativa, aVistaPesos, monedasSinConsolidar, type SplitMoneda } from '@/lib/dashMoneda'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -634,6 +634,21 @@ export function DashGastosArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       </div>
 
       </>)}
+
+      {/* Terceras monedas (2026-09-11): desde que Gastos ofrece todas las monedas de la app, un
+          gasto puede estar en una que el tenant no sabe convertir — guarda una sola cotización
+          (`cotizacion_usd`). Esos importes NO entran a ningún total; se listan acá para que la
+          plata no desaparezca de la pantalla sin explicación. */}
+      {!isLoading && monedasSinConsolidar(gData?.splitGastos ?? { ars: 0, usd: 0, cantArs: 0, cantUsd: 0, otras: {} }).length > 0 && (
+        <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2.5">
+          ⚠ Hay gastos en monedas que no se pueden consolidar (el negocio guarda cotización solo del
+          dólar), así que quedan fuera de estos totales:{' '}
+          <strong>
+            {monedasSinConsolidar(gData!.splitGastos).map(m =>
+              `${m.cant} en ${m.moneda} (${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 2 })})`).join(' · ')}
+          </strong>
+        </div>
+      )}
 
       {/* G1 — los avisos van fuera de las sub-pestañas: los gráficos de Gastos (pie por
           categoría, evolución, top 5) también se calculan con estos mismos montos. */}

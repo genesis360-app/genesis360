@@ -1953,3 +1953,25 @@ Sin migración: es un cambio de display + la corrección de tres agregaciones.
 con `sucursal_id = null` no aparece nunca en los KPI — el primer intento del spec 143 midió $0
 exactamente por eso, y por eso el spec lleva **control anti-vacío** (siembra primero en pesos y
 verifica que el gasto llegó al KPI antes de medir nada de moneda).
+
+---
+
+## 🛒 §51 — La tanda de Fede del 11/9 (v1.210.0, migs 407-408) 🛑 PLATA — 2026-09-11
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 113 | **🛑 OC en USD precarga el costo NATIVO** | Un producto de US$99,99 entra a la OC como 99,99 — no como 150.985, que es su mirror en pesos. Con el bug, la OC quedaba inflada ~1500x y al recibirla generaba el gasto por ese monto | **e2e 144** (mutante, verificado mutando el código real) |
+| 114 | **Moneda cruzada se convierte y se avisa** | Producto en pesos dentro de una OC en dólares: se convierte con la cotización y se avisa que hay que revisarlo | `ocCosto.test.ts` (OCC-OCUSD-02) |
+| 115 | **🛑 Sin cotización NO se precarga nada** | Un campo vacío es menos peligroso que un número plausible en la moneda equivocada | `ocCosto.test.ts` (OCC-OCUSD-03) |
+| 116 | **Una sola tasa en ambas direcciones** | El ida y vuelta cierra dentro del redondeo a centavos (techo: medio centavo × cotización). Misma lección del vuelto fantasma del POS | `ocCosto.test.ts` (OCC-ROB-03) |
+| 117 | **El total y el PDF llevan la moneda de la OC** | El PDF se le manda AL PROVEEDOR: una OC en dólares le llegaba expresada en pesos | **e2e 144** + revisión de `descargarOCpdf` |
+| 118 | **Buscador de la OC por nombre o SKU** | Era un `<select>` nativo: solo saltaba por la primera letra, inusable con 1.000+ productos | **e2e 34 y 140** (vía `elegirProductoOC`) |
+| 119 | **🛑 Un recurso no se activa sin pagarlo** | Se sacó "Marcar como adquirido". La única vía es saldar el gasto (trigger de la mig 406) | revisión de `RecursosPage` |
+| 120 | **Ubicaciones de recursos: catálogo real** | Se pueden crear y ver aunque no tengan ningún recurso. Nombre único por tenant | migs 407-408, verificado con el ciclo completo en DEV |
+| 121 | **Borrar una ubicación deja los recursos SIN ubicación** | El diálogo promete "N recursos quedarán sin ubicación" — el texto huérfano hacía que la ubicación reapareciera agrupándolos | mig 408, verificado con datos reales |
+| 122 | **Envíos: `en_camino` → `entregado` directo** | Bodega era paso obligatorio y el POD solo aparecía ahí: entregar con reparto propio exigía marcar una bodega inexistente | revisión de `EnviosPage` |
+| 123 | **`en_bodega` sigue siendo alcanzable** | Con botón propio. Sin él quedaría inalcanzable: "No entregado" resuelve a `en_camino` o `devolucion`, nunca a bodega | revisión de `EnviosPage` |
+| 124 | **Gasto de servicio visible en Gastos** | Los 2 INSERT de Proveedores no seteaban `sucursal_id` y Gastos filtra por sucursal | revisión de `ProveedoresPage` |
+| 125 | ⚠️ **Abierto: los sueldos y la sucursal** | Los 4 INSERT de RRHH tienen el mismo problema, pero `empleados` no tiene `sucursal_id`: imputar el sueldo a la sucursal de quien liquida sería inventar un criterio contable | — (decisión de GO) |
+
+**Verde:** 1713 unit (16 nuevos de `ocCosto`) · e2e 34/140/144 · build · typecheck · eslint.

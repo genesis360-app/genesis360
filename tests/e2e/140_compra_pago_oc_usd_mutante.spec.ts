@@ -18,7 +18,7 @@
  */
 import { test, expect, Page } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { garantizarCajaAbierta } from './helpers/fixtures'
+import { garantizarCajaAbierta, elegirProductoOC } from './helpers/fixtures'
 
 const PROVEEDOR = 'Mayorista MAX'
 const PRODUCTO_OPT = 'Elite Pañuelos (SKU-0001)'
@@ -61,10 +61,12 @@ test.describe('Pago de OC en USD (mutante)', () => {
     const monedaSel = page.locator('select').filter({ has: page.locator('option', { hasText: /USD — Dólares/i }) }).first()
     await monedaSel.selectOption({ label: 'USD — Dólares' })
 
-    const prodSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Seleccioná producto/i }) }).first()
-    await prodSel.selectOption({ label: PRODUCTO_OPT })
+    // Producto: combobox con búsqueda (antes era un `<select>` nativo — ver elegirProductoOC).
+    await elegirProductoOC(page, PRODUCTO_OPT)
     await page.getByPlaceholder(/^Cant\./).first().fill('1')
-    await page.getByPlaceholder('Precio unit.').first().fill(PRECIO_USD)
+    // El placeholder ahora lleva la MONEDA de la OC ("Precio unit. US$" / "Precio unit. $"): se
+    // agregó justamente porque el campo no decía en qué moneda se estaba cargando.
+    await page.getByPlaceholder(/^Precio unit\./).first().fill(PRECIO_USD)
 
     await page.getByRole('button', { name: /Guardar OC/i }).click()
     await expect(page.getByText(/OC creada/i)).toBeVisible({ timeout: 10000 })

@@ -94,6 +94,30 @@ export function restHeaders(token: string) {
  * que YA está abierta. Por eso acá nunca se confía en la primera lectura: si el modal no
  * aparece tras el click, se re-chequea el estado real antes de fallar.
  */
+/**
+ * Elige un producto en una linea del formulario de Orden de Compra.
+ *
+ * El `<select>` nativo se reemplazo por un combobox con busqueda (2026-09-11, pedido de Fede: el
+ * select solo dejaba saltar por la PRIMERA letra). Los specs que elegian con `selectOption` se
+ * rompieron; este helper encapsula el cambio para que el proximo no tenga que redescubrirlo.
+ *
+ * `etiqueta` es el texto tal como lo muestra la lista: "{nombre} ({sku})".
+ */
+export async function elegirProductoOC(page: Page, etiqueta: string, indice = 0): Promise<void> {
+  const input = page.getByPlaceholder(/Buscar por nombre o SKU/i).nth(indice)
+  await expect(input).toBeVisible({ timeout: 10000 })
+  await input.click()
+  // Se busca por el nombre (lo que va antes del parentesis): el combobox filtra por nombre o SKU.
+  const soloNombre = etiqueta.replace(/\s*\(.*\)\s*$/, '')
+  await input.fill(soloNombre)
+  const opcion = page.getByRole('button', { name: etiqueta, exact: false }).first()
+  await expect(
+    opcion,
+    `[precondicion faltante] El combobox de la OC no ofrecio "${etiqueta}" al buscar "${soloNombre}".`,
+  ).toBeVisible({ timeout: 10000 })
+  await opcion.click()
+}
+
 export async function garantizarCajaAbierta(
   page: Page,
   opts: { caja?: string; montoInicial?: number } = {},

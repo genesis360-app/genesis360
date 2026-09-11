@@ -659,3 +659,18 @@ asignada, explica que por eso no se genera nada y dónde se configura
 
 > 📌 **Pendiente de negocio**: alguien tiene que crear las góndolas como ubicaciones de exhibición y
 > asignárselas a los productos. Hasta entonces el módulo no sirve, por diseño.
+
+## 🏷️ Etiquetas horizontales, precio a la derecha (v1.210.0) — 2026-09-11
+
+Pedido de Fede: *"debe ser un formato rectangular horizontal, el nombre del producto debe verse más
+grande y el precio además de también verse más grande debe estar del lado derecho"*.
+
+Antes las celdas eran casi cuadradas (4=2×2, 6=2×3, 12=3×4) y todo se apilaba alineado a la
+izquierda. Ahora las tres grillas son horizontales (4=1×4, 6=1×6, 12=2×6) y cada etiqueta se parte
+en dos zonas: **nombre grande + código de barras a la izquierda, precio grande a la derecha** — que
+es donde el cliente lo busca al recorrer la góndola.
+
+**El tamaño de fuente se auto-ajusta** (`fuenteQueEntra` en `src/lib/etiquetasPreciosPDF.ts`): un
+precio de siete cifras no puede pisar el nombre ni salirse de la etiqueta, y el ancho disponible
+cambia bastante entre los 3 tamaños de hoja. Se prefiere achicar la fuente antes que recortar un
+número de plata.

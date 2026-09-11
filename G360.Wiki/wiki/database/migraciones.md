@@ -6,7 +6,17 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-11
 ---
 
-# Historial de Migraciones (001-406, + correctivos 387b/387c)
+# Historial de Migraciones (001-408, + correctivos 387b/387c)
+
+**🗂️ Migraciones 407-408 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
+`v1.208.0`). Son **aditivas** (tabla nueva + columna + triggers), así que acá sí aplica el "DDL
+aditivo primero":
+
+| # | Archivo | Qué hace |
+|---|---|---|
+| 407 | `407_recurso_ubicaciones_catalogo.sql` | Catálogo `recurso_ubicaciones` + `recursos.ubicacion_id`. `recursos.ubicacion` era texto libre, así que una ubicación **no existía hasta que había un recurso en ella** — por eso la pestaña solo podía "asignar", no "crear" (pedido de Fede). NO reusa `ubicaciones` (la del WMS, con cubicaje y picking) a propósito. Siembra desde los textos existentes y deja el texto sincronizado por trigger hasta que PROD corra el código nuevo. |
+| 408 | `408_recurso_ubicacion_borrar_limpia_texto.sql` | Correctivo de la 407, **encontrado probando el ciclo completo contra datos reales**: al borrar una ubicación el recurso perdía la FK pero conservaba el texto huérfano, así que la ubicación reaparecía en pantalla agrupando recursos — contradiciendo el diálogo que promete "N recursos quedarán sin ubicación". |
+
 
 **🗂️ Migraciones 391-406 — 🚀 APLICADAS EN DEV **Y EN PROD** (deploy del 2026-09-11, `v1.208.0`).**
 Se aplicaron una por una contra PROD (`jjffnbrdjchquexdfgwq`) tras revisarlas de a una: sin DDL

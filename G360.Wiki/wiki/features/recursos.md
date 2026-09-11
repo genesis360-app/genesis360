@@ -212,6 +212,44 @@ de baja **no** se revive), y **sin camino inverso** — despagar no devuelve el 
 porque revertir un estado que alguien pudo tocar a mano es un efecto silencioso que conviene no
 inventar.
 
+## 📍 Las ubicaciones son un catálogo (v1.210.0, migs 407-408) — 2026-09-11
+
+Pedido de Fede: *"esa pestaña no es para asignar ubicación a un recurso, debería ser para crear
+ubicaciones y visualizarlas"*.
+
+**Por qué no se podía antes**: `recursos.ubicacion` era **texto libre** y la pestaña agrupaba los
+recursos por ese texto. Una ubicación **no existía hasta que había un recurso parado en ella**, así
+que no había nada que "crear" — el único botón posible era "asignar".
+
+**Qué hay ahora** (mig 407): tabla `recurso_ubicaciones` (nombre único por tenant, descripción,
+`sucursal_id` opcional — NULL = de todo el negocio). La pestaña lista el catálogo con cuántos
+recursos hay en cada ubicación, y deja crear, renombrar y borrar.
+
+**Por qué NO se reusó `ubicaciones`**: esa es la del WMS — tiene `tipo_logico`, dimensiones,
+cubicaje y zona, y la usan picking, stock y repositores. Un lugar donde está parada una impresora es
+otra cosa; mezclarlas contaminaría el árbol del depósito con lugares sin stock.
+
+**Transición**: `recursos.ubicacion` (texto) **no se dropeó** — mismo criterio que la mig 402 con
+`tenants.afipsdk_token`. Un trigger lo mantiene en sincronía con el catálogo, así que el frontend
+viejo y el nuevo ven lo mismo. Se dropea cuando PROD corra este código.
+
+⚠️ **La mig 408 salió de probar el ciclo completo contra datos reales**, no de leer el código: al
+borrar una ubicación el recurso perdía la FK (`ON DELETE SET NULL`) pero **conservaba el texto
+huérfano**, y como la pantalla suma los textos sueltos a la lista de disponibles, la ubicación
+**reaparecía agrupando recursos apenas borrada**. Además el diálogo promete "N recursos quedarán sin
+ubicación": la pantalla no puede prometer una cosa y la base hacer otra.
+
+## 🛑 Se sacó "Marcar como adquirido" (v1.210.0) — 2026-09-11
+
+Fede: *"esto no se debe poder hacer... sino con esta 'trampa' se puede evitar el gasto y se pueden
+crear recursos sin haberlos pagado"*. Tenía razón: el botón hacía `estado: 'activo'` directo, sin
+mirar el gasto.
+
+La única vía para que un recurso pase de `pendiente_adquisicion` a `activo` es **saldar su gasto de
+adquisición**, y lo hace el trigger `fn_recurso_activar_al_pagar_gasto` (mig 406) — que además cubre
+todos los caminos por los que un gasto se salda, no solo la pantalla de Gastos. En su lugar quedó un
+indicador con el motivo, para que no parezca que falta un botón.
+
 ## Links relacionados
 
 - [[wiki/features/gastos]]

@@ -11,6 +11,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { elegirProductoOC } from './helpers/fixtures'
 
 const PROVEEDOR = 'Mayorista MAX'
 const PRODUCTO_OPT = 'Elite Pañuelos (SKU-0001)' // texto exacto de la opción "{nombre} ({sku})"
@@ -32,9 +33,8 @@ test.describe('Creación de OC (mutante)', () => {
     await provSel.selectOption({ label: PROVEEDOR })
 
     // El form ya arranca con una línea de producto vacía (openNewOC) → NO agregar otra.
-    // Producto (select de la línea, identificado por su opción "Seleccioná producto…")
-    const prodSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Seleccioná producto/i }) }).first()
-    await prodSel.selectOption({ label: PRODUCTO_OPT })
+    // Producto: combobox con búsqueda (antes era un `<select>` nativo — ver elegirProductoOC).
+    await elegirProductoOC(page, PRODUCTO_OPT)
 
     // Cantidad = 5 (el precio unitario se autocompleta con el costo)
     await page.getByPlaceholder(/^Cant\./).first().fill('5')

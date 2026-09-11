@@ -6,6 +6,59 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### ✅ ARRANCÁ ACÁ (2026-09-11, cont. 61) — DEV `v1.210.0` (migs 407-408) · **PROD `v1.208.0`**
+> La tanda de Fede del 11/9 está **cerrada**. Lo de DEV todavía **no se deployó**.
+>
+> #### Lo cerrado
+>
+> | Ítem de Fede | Qué era |
+> |---|---|
+> | OC en USD | 🛑 **bug de plata**: inflaba la orden ~1500x (mirror ARS guardado como dólares) |
+> | Buscador de la OC | `<select>` nativo → combobox con filtro por nombre o SKU |
+> | Gasto de servicio invisible | los 2 INSERT de Proveedores sin `sucursal_id` |
+> | "Marcar como adquirido" | se sacó: activaba el recurso sin pagar el gasto |
+> | Ubicaciones de recursos | catálogo real (migs **407-408**) |
+> | Etiquetas | rediseño horizontal, precio grande a la derecha |
+> | Envíos `en_bodega` | `en_camino → entregado` directo; bodega como desvío con botón propio |
+>
+> Detalle completo en `log.md` (2026-09-11, "La tanda de Fede, cerrada").
+>
+> #### 🟥 LO PRIMERO: deployar
+>
+> DEV tiene **v1.210.0 + migs 407-408**; PROD quedó en **v1.208.0 / mig 406**. Las dos migraciones
+> son **aditivas** (tabla nueva + columna + triggers), así que acá **sí** aplica el "DDL aditivo
+> primero" — a diferencia de la tanda 391-406.
+>
+> #### 🟡 LO QUE NECESITA DEFINICIÓN DE GO (nada más está bloqueado)
+>
+> 1. **Los sueldos y la sucursal.** Los 4 `INSERT` de gastos de `RrhhPage` (1123, 1165, 1214, 1704)
+>    no setean `sucursal_id`, así que esos gastos **son invisibles** cuando hay una sucursal activa
+>    — mismo síntoma que el de Servicios, que sí se arregló. Pero **`empleados` no tiene
+>    `sucursal_id`**: imputar el sueldo a la sucursal de quien lo liquida sería inventar un criterio
+>    contable. Dos salidas posibles: (a) que un empleado pertenezca a una sucursal (migración +
+>    ficha), o (b) que los gastos sin sucursal se vean SIEMPRE, como las ventas globales. **(b) es
+>    un cambio de comportamiento de GastosPage para todos los gastos globales**, no solo RRHH.
+> 2. **`INSERT` de gastos sin `moneda`** (recepción de OC, envíos, RRHH, recursos, servicios): una
+>    recepción de OC en dólares nace como gasto en pesos. Va junto con la UI del gasto suelto en USD.
+> 3. **Precio con fecha/hora de vigencia** — relevamiento generado y sin responder:
+>    `relevamiento-precio-programado-reglas-negocio.html` (17 preguntas). El nudo: DOS triggers
+>    reaccionan al `UPDATE OF precio_venta` (la etiqueta del repositor y el sync a ML/TN), así que
+>    agregar un campo de fecha **no alcanza**.
+> 4. **Cobrar en caja USD** (Fase 8/C2), frenada por la definición del contador.
+> 5. **Góndolas de Repositores** (0 ubicaciones de exhibición en PROD) · **¿tope de descuento para
+>    el DUEÑO?** · **reintegro en efectivo USD al anular**.
+> 6. **Dropear** `tenants.afipsdk_token` (ya se puede: PROD corre el código) y, más adelante,
+>    `recursos.ubicacion` (cuando PROD corra el código de la 407).
+>
+> #### 🧪 Suite
+>
+> **1713 unit** (16 nuevos de `ocCosto`) · **396 specs e2e** (nuevo: `144_oc_usd_costo_nativo`).
+>
+> ⚠️ **Dos trampas que costaron tiempo y conviene no repetir**:
+> - Un test de función pura **no debe importar, ni transitivamente, `@/lib/supabase`**: hace `throw`
+>   al importar sin env vars, y local pasa por `.env.local` mientras el CI falla.
+> - El **Dashboard filtra por sucursal activa**: sembrar con `sucursal_id = null` mide $0.
+
 > ### ✅ ARRANCÁ ACÁ (2026-09-11, cont. 60) — 🚀 **PROD = `v1.208.0`, migs 001-406**. DEV = PROD.
 > **Ya no hay brecha entre DEV y PROD.** Primer cliente REAL en ~2 semanas.
 >

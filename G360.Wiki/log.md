@@ -6,6 +6,76 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-11] update | 🐛 La tanda de Fede, cerrada · v1.210.0 (migs 407-408)
+
+GO: *"corregí lo que haya que corregir, todo debe funcionar bien como debería ser"*. Se cerraron
+los 7 ítems de la tanda del 11/9. El más caro no era ninguno de los que él listó.
+
+### 🛑 La OC en USD inflaba la orden ~1500x (REGLA #0)
+
+Fede lo reportó como una molestia de UI ("no permite poner el valor por unidad en USD, lo convierte
+automáticamente a $"). Era un bug de plata.
+
+Al elegir un producto, el form precargaba `productos.precio_costo` a secas. Para un producto
+priceado en dólares eso es el **mirror en ARS**. Ese número se guardaba tal cual y después se
+mostraba como dólares, porque la OC tiene su propia `moneda`: **US$99,99 → una OC de US$150.985**, y
+al recibirla generaba el gasto por ese monto.
+
+Es el mismo bug del mirror que Fede reportó el 2026-08-20 para la LISTA de productos — ahí se
+arregló, al form de la OC nunca se aplicó. Y la causa que lo hacía invisible: el `SELECT` de
+productos **ni traía** `precio_costo_usd` ni `moneda_costo`.
+
+El fix vive en `src/lib/ocCosto.ts` (función pura, 16 unit): el costo sugerido va **siempre en la
+moneda de la OC**; moneda cruzada se convierte y se avisa; **sin cotización no se precarga nada** —
+un campo vacío es menos peligroso que un número plausible en la moneda equivocada. Una sola tasa en
+ambas direcciones, misma lección del vuelto fantasma del POS.
+
+Lo que además mentía la moneda: el "Total estimado" con `$` fijo, **el PDF que se le manda al
+proveedor** (una OC en dólares le llegaba en pesos) y el CSV sin rotular.
+
+**e2e 144 mutante**: siembra un producto en USD y verifica que precargue 99,99 y no 150.985.
+Verificado mutando el código real — falla con "precargó 150985".
+
+### 🐛 El combobox rompió dos e2e, y eso fue lo bueno
+
+Reemplazar el `<select>` por el buscador (Fede: solo saltaba por la primera letra) rompió los specs
+34 y 140, que elegían con `selectOption`. Se arreglaron con un helper compartido
+(`elegirProductoOC`) para que el próximo no tenga que redescubrir el cambio.
+
+### 📍 Ubicaciones de recursos: de texto libre a catálogo (migs 407-408)
+
+`recursos.ubicacion` era texto libre, así que una ubicación **no existía hasta que había un recurso
+parado en ella** — no había nada que "crear", y por eso el único botón posible era "asignar".
+La 407 crea `recurso_ubicaciones`, siembra desde los textos existentes y backfillea el vínculo.
+
+**No se reusó `ubicaciones`** (la del WMS) a propósito: esa tiene tipo lógico, cubicaje y zona, y la
+usan picking y stock. Un lugar donde está parada una impresora es otra cosa.
+
+⚠️ **La 408 salió de probar el ciclo completo contra datos reales**, no de leer el código: al borrar
+una ubicación, el recurso perdía la FK pero **conservaba el texto huérfano**, así que la ubicación
+reaparecía en pantalla agrupando recursos. Y el diálogo de borrado promete "N recursos quedarán sin
+ubicación". La pantalla no puede prometer una cosa y la base hacer otra.
+
+### El resto
+
+**Recursos**: se sacó "Marcar como adquirido" — activaba el recurso sin mirar el gasto. La única vía
+es saldar el gasto (trigger de la mig 406). **Envíos**: `en_camino` va directo a `entregado`;
+`en_bodega` queda como desvío **con botón propio** — al cortar el camino viejo habría quedado
+inalcanzable, porque "No entregado" resuelve a `en_camino` o `devolucion`. **Etiquetas**: rediseño
+horizontal, nombre grande a la izquierda y precio grande a la derecha, con auto-ajuste de fuente
+para que un precio de siete cifras no se salga. **Gastos invisibles**: los dos INSERT de Proveedores
+que no seteaban `sucursal_id`.
+
+### Lo que NO se tocó, y por qué
+
+Los **4 INSERT de gastos de RRHH** tienen el mismo problema de `sucursal_id`, pero `empleados` **no
+tiene** esa columna: imputar un sueldo a la sucursal de quien lo liquida sería inventar un criterio
+contable. Queda a decisión de GO.
+
+Verde: 1713 unit · e2e 34/140/144 · build · typecheck · eslint.
+
+---
+
 ## [2026-09-11] deploy | 🚀 v1.208.0 EN PROD (PR #343) — 16 migraciones + 13 versiones de golpe
 
 GO autorizó: *"pasemos todo a PRD"*. Es el deploy más grande de las últimas semanas: PROD salta de

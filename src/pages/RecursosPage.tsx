@@ -6,6 +6,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 import { Recurso } from '@/lib/supabase'
+import { useConfirm } from '@/hooks/useConfirm'
 import {
   Plus, Pencil, Trash2, Landmark, Wrench, CheckCircle,
   ShoppingBag, AlertTriangle, Search, ChevronRight,
@@ -133,9 +134,15 @@ export default function RecursosPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Modal asignar ubicación (tab Ubicaciones → botón Agregar)
+  // Catalogo de ubicaciones (mig 407). Antes la pestana "Ubicaciones" solo dejaba ASIGNARLE una
+  // ubicacion a un recurso, porque `recursos.ubicacion` era texto libre y un lugar no existia hasta
+  // que habia un recurso parado en el. Fede (2026-09-11): la pestana tiene que servir para CREAR
+  // ubicaciones y verlas.
+  const confirmar = useConfirm()
   const [showUbicModal, setShowUbicModal] = useState(false)
-  const [ubicModalRecursoId, setUbicModalRecursoId] = useState('')
-  const [ubicModalValor, setUbicModalValor] = useState('')
+  const [ubicEditId, setUbicEditId] = useState<string | null>(null)
+  const [ubicNombre, setUbicNombre] = useState('')
+  const [ubicDescripcion, setUbicDescripcion] = useState('')
 
   // Inline edit de ubicación en tab Ubicaciones
   const [editUbic, setEditUbic] = useState<{ id: string; valor: string } | null>(null)
@@ -237,9 +244,67 @@ export default function RecursosPage() {
 
   // ISS-148 — Catálogo derivado de ubicaciones ya cargadas (recursos visibles
   // están filtrados por sucursal vía applyFilter en la query principal).
-  const ubicacionesDisponibles = Array.from(
-    new Set(recursos.map(r => r.ubicacion?.trim()).filter((v): v is string => !!v))
-  ).sort((a, b) => a.localeCompare(b))
+  // ── Catalogo de ubicaciones (mig 407) ──────────────────────────────────────
+  const { data: catalogoUbic = [] } = useQuery({
+    queryKey: ['recurso-ubicaciones', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('recurso_ubicaciones')
+        .select('id, nombre, descripcion, activo')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .order('nombre')
+      if (error) throw error
+      return (data ?? []) as { id: string; nombre: string; descripcion: string | null; activo: boolean }[]
+    },
+    enabled: !!tenant,
+  })
+
+  const guardarUbicacion = useMutation({
+    mutationFn: async () => {
+      const nombre = ubicNombre.trim()
+      if (!nombre) throw new Error('Poné un nombre para la ubicación')
+      if (ubicEditId) {
+        const { error } = await supabase.from('recurso_ubicaciones')
+          .update({ nombre, descripcion: ubicDescripcion.trim() || null }).eq('id', ubicEditId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('recurso_ubicaciones')
+          .insert({ tenant_id: tenant!.id, nombre, descripcion: ubicDescripcion.trim() || null })
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success(ubicEditId ? 'Ubicación actualizada' : 'Ubicación creada')
+      qc.invalidateQueries({ queryKey: ['recurso-ubicaciones'] })
+      qc.invalidateQueries({ queryKey: ['recursos'] })   // el trigger sincroniza el texto
+      setShowUbicModal(false); setUbicEditId(null); setUbicNombre(''); setUbicDescripcion('')
+    },
+    // El UNIQUE (tenant_id, nombre) es lo que evita el "Deposito"/"Depósito" duplicado.
+    onError: (e: any) => toast.error(
+      /duplicate key|unique/i.test(e.message ?? '') ? 'Ya existe una ubicación con ese nombre' : e.message,
+    ),
+  })
+
+  const eliminarUbicacion = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('recurso_ubicaciones').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Ubicación eliminada')
+      qc.invalidateQueries({ queryKey: ['recurso-ubicaciones'] })
+      qc.invalidateQueries({ queryKey: ['recursos'] })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  // Las opciones salen del CATALOGO (mig 407). Se suman los textos sueltos que todavia no esten
+  // en el —recursos viejos cargados a mano— para no esconder ninguna ubicacion en uso.
+  const ubicacionesDisponibles = Array.from(new Set([
+    ...catalogoUbic.map(u => u.nombre),
+    ...recursos.map(r => r.ubicacion?.trim()).filter((v): v is string => !!v),
+  ])).sort((a, b) => a.localeCompare(b))
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const guardar = useMutation({
@@ -524,15 +589,16 @@ export default function RecursosPage() {
         </div>
         <button onClick={() => {
           if (tab === 'ubicaciones') {
-            setUbicModalRecursoId('')
-            setUbicModalValor('')
+            setUbicEditId(null)
+            setUbicNombre('')
+            setUbicDescripcion('')
             setShowUbicModal(true)
           } else {
             abrirNuevo(tab === 'adquirir' ? 'pendiente_adquisicion' : 'activo')
           }
         }}
           className={`${BTN.primary} ${BTN.md} flex items-center gap-2`}>
-          <Plus className="w-4 h-4" /> {tab === 'ubicaciones' ? 'Asignar ubicación' : 'Agregar'}
+          <Plus className="w-4 h-4" /> {tab === 'ubicaciones' ? 'Crear ubicación' : 'Agregar'}
         </button>
       </div>
 
@@ -634,6 +700,64 @@ export default function RecursosPage() {
         {/* ── TAB UBICACIONES ──────────────────────────────────────────────── */}
         {tab === 'ubicaciones' && (
           <div className="p-4 space-y-5">
+            {/* El catalogo: las ubicaciones EXISTEN aunque no tengan ningun recurso todavia.
+                Es lo que pidio Fede — antes una ubicacion sin recursos no existia en ningun lado. */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <MapPin className="w-4 h-4 text-accent-text" />
+                <h3 className="text-sm font-semibold text-primary">Ubicaciones</h3>
+                <span className="text-xs text-muted">({catalogoUbic.length})</span>
+              </div>
+              {catalogoUbic.length === 0 ? (
+                <p className="text-sm text-muted pl-6">
+                  Todavía no hay ubicaciones. Creá la primera con <strong>Crear ubicación</strong> y después
+                  asignásela a los recursos desde la lista de abajo.
+                </p>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 pl-6">
+                  {catalogoUbic.map(u => {
+                    const cuantos = recursos.filter(r => (r.ubicacion ?? '').trim() === u.nombre).length
+                    return (
+                      <div key={u.id} className="flex items-start gap-2 bg-page border border-border-ds rounded-lg px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-primary truncate">{u.nombre}</p>
+                          {u.descripcion && <p className="text-xs text-muted truncate">{u.descripcion}</p>}
+                          <p className="text-xs text-muted">{cuantos} recurso{cuantos !== 1 ? 's' : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => {
+                              setUbicEditId(u.id); setUbicNombre(u.nombre)
+                              setUbicDescripcion(u.descripcion ?? ''); setShowUbicModal(true)
+                            }}
+                            title="Editar ubicación"
+                            className="p-1.5 rounded text-muted hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              // Borrar una ubicacion con recursos adentro los deja sin ubicacion
+                              // (la FK es ON DELETE SET NULL): se avisa con el numero exacto.
+                              const ok = await confirmar(
+                                cuantos > 0
+                                  ? `${cuantos} recurso${cuantos !== 1 ? 's' : ''} quedará${cuantos !== 1 ? 'n' : ''} sin ubicación. ¿Eliminar "${u.nombre}" igual?`
+                                  : `No hay recursos en esta ubicación. ¿Eliminar "${u.nombre}"?`,
+                                { titulo: 'Eliminar ubicación', confirmText: 'Eliminar', danger: true },
+                              )
+                              if (ok) eliminarUbicacion.mutate(u.id)
+                            }}
+                            title="Eliminar ubicación"
+                            className="p-1.5 rounded text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             {recurrentesAlerta > 0 && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -719,53 +843,52 @@ export default function RecursosPage() {
       )}
 
       {/* Modal asignar ubicación (tab Ubicaciones → Agregar) */}
+      {/* Modal: crear o renombrar una ubicacion del CATALOGO (mig 407). Antes este modal
+          asignaba una ubicacion a un recurso — eso ahora se hace desde la ficha del recurso o
+          con el lapiz de cada fila, que es donde corresponde. */}
       {showUbicModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-surface rounded-xl w-full max-w-sm shadow-xl">
             <div className="flex items-center justify-between p-4 border-b border-border-ds">
               <h2 className="font-semibold text-primary flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-accent-text" /> Asignar ubicación
+                <MapPin className="w-4 h-4 text-accent-text" /> {ubicEditId ? 'Editar ubicación' : 'Crear ubicación'}
               </h2>
               <button onClick={() => setShowUbicModal(false)} className="text-muted hover:text-primary">✕</button>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-xs font-medium text-muted mb-1 block">Recurso *</label>
-                <select value={ubicModalRecursoId} onChange={e => setUbicModalRecursoId(e.target.value)}
-                  className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary">
-                  <option value="">Seleccioná un recurso...</option>
-                  {recursosConUbicacion
-                    .sort((a, b) => {
-                      const aVacio = !a.ubicacion
-                      const bVacio = !b.ubicacion
-                      return aVacio === bVacio ? a.nombre.localeCompare(b.nombre) : aVacio ? -1 : 1
-                    })
-                    .map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.nombre}{r.ubicacion ? ` (actual: ${r.ubicacion})` : ' — sin ubicación'}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted mb-1 block">Ubicación *</label>
-                <UbicacionPicker
-                  value={ubicModalValor}
-                  onChange={setUbicModalValor}
-                  opciones={ubicacionesDisponibles}
+                <label className="text-xs font-medium text-muted mb-1 block">Nombre *</label>
+                <input
+                  autoFocus
+                  value={ubicNombre}
+                  onChange={e => setUbicNombre(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && ubicNombre.trim()) guardarUbicacion.mutate() }}
+                  placeholder="Oficina, Mostrador, Depósito…"
+                  className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
                 />
               </div>
+              <div>
+                <label className="text-xs font-medium text-muted mb-1 block">Descripción</label>
+                <input
+                  value={ubicDescripcion}
+                  onChange={e => setUbicDescripcion(e.target.value)}
+                  placeholder="Opcional — para distinguirla de otra parecida"
+                  className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
+                />
+              </div>
+              {ubicEditId && (
+                <p className="text-xs text-muted">
+                  Al renombrarla, los recursos que están en esta ubicación se actualizan solos.
+                </p>
+              )}
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border-ds">
               <button onClick={() => setShowUbicModal(false)} className={`${BTN.secondary} ${BTN.sm}`}>Cancelar</button>
               <button
-                onClick={() => {
-                  actualizarUbicacion.mutate({ id: ubicModalRecursoId, ubicacion: ubicModalValor })
-                  setShowUbicModal(false)
-                }}
-                disabled={!ubicModalRecursoId || !ubicModalValor.trim() || actualizarUbicacion.isPending}
+                onClick={() => guardarUbicacion.mutate()}
+                disabled={!ubicNombre.trim() || guardarUbicacion.isPending}
                 className={`${BTN.primary} ${BTN.sm}`}>
-                Guardar
+                {ubicEditId ? 'Guardar' : 'Crear'}
               </button>
             </div>
           </div>

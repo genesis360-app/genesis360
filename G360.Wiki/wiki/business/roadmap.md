@@ -37,6 +37,8 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.210.0` (migs **407-408**, aditivas, sin deployar). 🛑 **Cerró la tanda de Fede del 11/9**, cuyo ítem más caro no era ninguno de los que él listó como bug: la **OC en USD inflaba la orden ~1500x** (el mirror en ARS del costo se guardaba y después se mostraba como dólares — US$99,99 quedaba como US$150.985, y al recibir la OC generaba el gasto por ese monto). Además: buscador de productos en la OC, catálogo de ubicaciones de recursos (407-408), etiquetas horizontales con el precio a la derecha, se sacó el botón que activaba un recurso sin pagarlo, y `en_camino → entregado` directo en Envíos. Ver `log.md` (2026-09-11).
+
 **🚀 EN PROD: `v1.208.0`** (PR #343, deploy real 2026-09-11 — autorizado por GO: *"pasemos todo a PRD"*). PROD saltó de `v1.195.4` a `v1.208.0` y de la migración **390 a la 406**: 16 migraciones y 13 versiones de golpe. Paridad DEV↔PROD verificada por hash de `pg_policies` (`587a4b05…`, 228 policies) y backfill de `venta_items` con 0 filas desincronizadas. Verificado además por `curl` contra `app.genesis360.pro`: el bundle `assets/index-DSxm-mw9.js` contiene `v1.208.0`. Detalle: `log.md` (2026-09-11, tipo `deploy`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
 opción que muestra los montos **sin convertir nada**, con los pesos y los dólares en números
 separados que nunca se suman. El patrón ya existía en el KPI "Ingreso Neto de Caja"; se extrajo a

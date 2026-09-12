@@ -26,6 +26,11 @@ const ACTION_MODULE: Record<string, string> = {
   'metrics.overview': 'dashboard',
   'customers.list': 'customers',
   'customers.get': 'customers',
+  // Herramientas de soporte sobre un cliente. `extend_trial` y `reset_password` son de `admin`
+  // (el guard explícito vive adentro del case, igual que la baja).
+  'customers.extend_trial': 'customers',
+  'customers.reset_password': 'customers',
+  'audit.list': 'dashboard',
   // Baja de un tenant desde el panel de soporte. Van en el módulo `customers` (es donde vive la
   // pantalla), pero OJO: `support` también tiene ese módulo, y borrar un negocio entero no puede
   // ser cosa de soporte. El guard real es `soloAdmin()` adentro de cada case.
@@ -282,18 +287,41 @@ Deno.serve(async (req) => {
 
       case 'metrics.overview': {
         const ago30 = new Date(Date.now() - 30 * DAY).toISOString()
-        const nowIso = new Date().toISOString()
-        const [t, a30, trial, tickets] = await Promise.all([
+        const [t, a30, tickets] = await Promise.all([
           svc.from('tenants').select('id', { count: 'exact', head: true }),
           svc.from('tenants').select('id', { count: 'exact', head: true }).gte('created_at', ago30),
-          svc.from('tenants').select('id', { count: 'exact', head: true }).gt('trial_ends_at', nowIso),
           svc.from('support_tickets').select('id', { count: 'exact', head: true }).neq('estado', 'cerrado'),
         ])
         const { data: modos } = await svc.from('tenants').select('modo_operacion')
         const basico = (modos ?? []).filter((m: any) => m.modo_operacion === 'basico').length
         const { mrr } = await computeBilling(svc)
+
+        // Lo que el equipo tiene que MIRAR hoy, no solo el tamaño del negocio. Sale del mismo RPC
+        // que la lista de clientes (mig 410) para que los números coincidan con lo que se ve ahí.
+        // 🛑 "En trial" NO es `subscription_status === 'trial'`: ese campo se queda en 'trial' para
+        // siempre aunque la fecha haya pasado. Al 2026-09-12, 5 de los 6 "en trial" de PROD ya
+        // estaban vencidos — contarlos como prueba activa infla el pipeline con gente que ya se fue.
+        const { data: overview } = await svc.rpc('fn_admin_tenants_overview', { p_q: null, p_limit: 500 })
+        const ahora = Date.now()
+        const en7 = ahora + 7 * DAY
+        const hace30 = ahora - 30 * DAY
+        let trialVigente = 0, trialPorVencer = 0, trialVencido = 0, bajasProgramadas = 0, sinActividad30 = 0
+        for (const c of (overview ?? []) as any[]) {
+          const fin = c.trial_ends_at ? new Date(c.trial_ends_at).getTime() : null
+          if (c.subscription_status === 'trial' && fin !== null) {
+            if (fin <= ahora) trialVencido++
+            else if (fin <= en7) trialPorVencer++
+            else trialVigente++
+          }
+          if (c.delete_scheduled_at) bajasProgramadas++
+          const acc = c.ultimo_acceso ? new Date(c.ultimo_acceso).getTime() : null
+          if (acc === null || acc < hace30) sinActividad30++
+        }
+
         return json({ metrics: {
-          total: t.count ?? 0, altas30: a30.count ?? 0, enTrial: trial.count ?? 0,
+          total: t.count ?? 0, altas30: a30.count ?? 0,
+          enTrial: trialVigente + trialPorVencer,
+          trialPorVencer, trialVencido, bajasProgramadas, sinActividad30,
           ticketsAbiertos: tickets.count ?? 0, basico, avanzado: (modos?.length ?? 0) - basico, mrr,
         } })
       }
@@ -492,9 +520,14 @@ Deno.serve(async (req) => {
       }
 
       case 'customers.list': {
-        let query = svc.from('tenants').select('id, nombre, created_at').order('created_at', { ascending: false }).limit(100)
-        if (p.q?.trim()) query = query.ilike('nombre', `%${p.q.trim()}%`)
-        const { data, error } = await query
+        // mig 410 — la búsqueda ya no es solo por nombre del negocio: también por el mail (o el
+        // nombre) del dueño, por el mail de cualquier usuario y por el id del tenant. El que
+        // escribe a soporte lo hace desde su mail, que era justo con lo que no se podía buscar.
+        // Los mails viven en `auth.users`, fuera del alcance de PostgREST → RPC SECURITY DEFINER.
+        const { data, error } = await svc.rpc('fn_admin_tenants_overview', {
+          p_q: p.q?.trim() || null,
+          p_limit: 200,
+        })
         if (error) throw error
         await audit({ q: p.q ?? null, count: data?.length ?? 0 })
         return json({ customers: data ?? [] })
@@ -503,7 +536,11 @@ Deno.serve(async (req) => {
       case 'customers.get': {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
         const { data: tenant, error } = await svc.from('tenants')
-          .select('id, nombre, plan_id, modo_operacion, created_at, trial_ends_at, inicio_actividades, subscription_status')
+          .select('id, nombre, plan_id, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
+            + 'inicio_actividades, subscription_status, subscription_period_end, delete_scheduled_at, '
+            + 'pais, tipo_comercio, moneda, mp_subscription_id, '
+            // Estado fiscal: es lo primero que pregunta un cliente que no puede facturar.
+            + 'cuit, condicion_iva_emisor, razon_social_fiscal, facturacion_habilitada, afip_produccion, afip_provider')
           .eq('id', p.tenantId).maybeSingle()
         if (error) throw error
         if (!tenant) return json({ error: 'Tenant no encontrado' }, 404)
@@ -518,6 +555,12 @@ Deno.serve(async (req) => {
         const { data: recientes } = await svc.from('ventas')
           .select('numero, total, estado, created_at').eq('tenant_id', p.tenantId)
           .order('created_at', { ascending: false }).limit(5)
+        // Quién puede entrar a este negocio, con qué mail y cuándo entró por última vez (mig 410).
+        // Antes solo se veía el CONTADOR de usuarios, que no sirve para identificar a nadie.
+        const { data: cuentas } = await svc.rpc('fn_admin_tenant_cuentas', { p_tenant_id: p.tenantId })
+        // Cuánto emitió: distingue "no factura porque no configuró" de "no factura porque falla".
+        const { count: comprobantes } = await svc.from('ventas')
+          .select('id', { count: 'exact', head: true }).eq('tenant_id', p.tenantId).not('cae', 'is', null)
         await audit({ tenantId: p.tenantId })
         return json({
           tenant,
@@ -526,7 +569,9 @@ Deno.serve(async (req) => {
             ventas_total: ventasTotal.count ?? 0, ventas_30d: ventas30.count ?? 0,
             tickets_abiertos: ticketsAbiertos.count ?? 0,
             ultima_venta_at: recientes?.[0]?.created_at ?? null,
+            comprobantes_con_cae: comprobantes ?? 0,
           },
+          cuentas: cuentas ?? [],
           recent_sales: recientes ?? [],
         })
       }
@@ -669,6 +714,115 @@ Deno.serve(async (req) => {
           ok: true, purgado: tenant.nombre, inventario: inv, mp_cancelled: mpCancelled,
           auth_users_borrados: authBorrados, auth_users_omitidos: authOmitidos,
         })
+      }
+
+      // Extender la prueba gratuita. Es la herramienta que más se pide en soporte ("se me venció
+      // mientras lo estaba probando") y hasta hoy había que hacerlo con SQL a mano contra PROD.
+      case 'customers.extend_trial': {
+        if (agent.rol !== 'admin') {
+          return json({ error: `Solo un agente con rol "admin" puede extender una prueba (tu rol: ${agent.rol}).` }, 403)
+        }
+        const dias = Number(p.dias)
+        if (!Number.isFinite(dias) || dias < 1 || dias > 365) {
+          return json({ error: 'Indicá entre 1 y 365 días.' }, 400)
+        }
+        const { data: t } = await svc.from('tenants')
+          .select('id, nombre, subscription_status, trial_ends_at').eq('id', p.tenantId).maybeSingle()
+        if (!t) return json({ error: 'Tenant no encontrado' }, 404)
+        // 🛑 No tocar una suscripción PAGA: extenderle el trial a alguien que está pagando no
+        // tiene sentido y puede confundir el estado de su cuenta.
+        if (t.subscription_status === 'active') {
+          return json({ error: 'Esta cuenta tiene una suscripción activa; no corresponde extender la prueba.' }, 409)
+        }
+        // Desde HOY si ya venció, o desde la fecha original si todavía corre: así "7 días" siempre
+        // significa 7 días de uso real y no se pierden extendiendo una prueba ya vencida.
+        const base = t.trial_ends_at && new Date(t.trial_ends_at) > new Date()
+          ? new Date(t.trial_ends_at) : new Date()
+        const nueva = new Date(base.getTime() + dias * DAY)
+        const { error } = await svc.from('tenants')
+          .update({ subscription_status: 'trial', trial_ends_at: nueva.toISOString() }).eq('id', p.tenantId)
+        if (error) throw error
+        await audit({ tenantId: p.tenantId, tenant_nombre: t.nombre, dias, trial_ends_at: nueva.toISOString(), anterior: t.trial_ends_at })
+        return json({ ok: true, trial_ends_at: nueva.toISOString() })
+      }
+
+      // Mandarle al usuario un mail de recuperación. NO setea una contraseña desde el panel: un
+      // agente no debería poder elegir la clave con la que después entra alguien.
+      case 'customers.reset_password': {
+        if (agent.rol !== 'admin') {
+          return json({ error: `Solo un agente con rol "admin" puede disparar un reseteo (tu rol: ${agent.rol}).` }, 403)
+        }
+        const email = String(p.email ?? '').trim().toLowerCase()
+        if (!email) return json({ error: 'Falta el email' }, 400)
+        // Que el mail sea REALMENTE de ese tenant: si no, el panel serviría para mandar mails de
+        // recuperación a cualquier dirección.
+        const { data: cuentas } = await svc.rpc('fn_admin_tenant_cuentas', { p_tenant_id: p.tenantId })
+        const pertenece = (cuentas ?? []).some((c: any) => String(c.email ?? '').toLowerCase() === email)
+        if (!pertenece) return json({ error: 'Ese mail no pertenece a este negocio.' }, 403)
+        // ⚠️ `generateLink` NO manda el mail: solo devuelve el link. En este proyecto el envío va
+        // por la EF `send-email` (Resend) — mismo patrón que `invitar-proveedor`. Sin este segundo
+        // paso el panel diría "mail enviado" y no llegaría nada.
+        const { data: link, error } = await svc.auth.admin.generateLink({
+          type: 'recovery',
+          email,
+          options: { redirectTo: `${Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'}/login` },
+        })
+        if (error) return json({ error: error.message }, 400)
+        const actionLink = link?.properties?.action_link
+        if (!actionLink) return json({ error: 'No se pudo generar el link de recuperación.' }, 500)
+
+        const mailRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'notificacion',
+            to: email,
+            data: {
+              titulo: 'Restablecé tu contraseña de Genesis360',
+              mensaje: 'Pediste (o soporte pidió por vos) restablecer tu contraseña. Entrá al enlace para elegir una nueva. Si no fuiste vos, ignorá este mail: tu contraseña actual sigue funcionando.',
+              action_url: actionLink,
+            },
+          }),
+        })
+        // Fail-closed en el AVISO: si el mail no salió, el agente tiene que enterarse — si no, se
+        // queda esperando a un cliente que nunca recibió nada.
+        if (!mailRes.ok) {
+          await audit({ tenantId: p.tenantId, reset_password_para: email, envio_fallo: mailRes.status })
+          return json({ error: `Se generó el link pero el mail no se pudo enviar (${mailRes.status}). Reintentá.` }, 502)
+        }
+        await audit({ tenantId: p.tenantId, reset_password_para: email })
+        return json({ ok: true, email })
+      }
+
+      // El registro de lo que hizo el equipo de soporte. La tabla existía desde la mig 221 y se
+      // escribía en cada acción, pero no había forma de LEERLA: una auditoría que nadie puede
+      // mirar no audita nada.
+      case 'audit.list': {
+        let q = svc.from('admin_audit_log')
+          .select('id, agent_email, action, target_tenant_id, metadata, created_at')
+          .order('created_at', { ascending: false }).limit(Math.min(Number(p.limit) || 100, 500))
+        if (p.tenantId) q = q.eq('target_tenant_id', p.tenantId)
+        if (p.agentEmail) q = q.eq('agent_email', p.agentEmail)
+        if (p.action) q = q.eq('action', p.action)
+        const { data, error } = await q
+        if (error) throw error
+
+        // 🛑 El nombre del negocio se resuelve APARTE, no con un embed de PostgREST. No hay —ni
+        // debe haber— FK de `admin_audit_log.target_tenant_id` a `tenants`: con CASCADE, purgar un
+        // negocio borraría el registro de su propia baja, y con SET NULL se perdería a quién se le
+        // hizo. La auditoría tiene que SOBREVIVIR al borrado de lo auditado.
+        const ids = [...new Set((data ?? []).map((e: any) => e.target_tenant_id).filter(Boolean))]
+        const nombres = new Map<string, string | null>()
+        if (ids.length) {
+          const { data: ts } = await svc.from('tenants').select('id, nombre').in('id', ids)
+          for (const t of ts ?? []) nombres.set(t.id, t.nombre)
+        }
+        const entries = (data ?? []).map((e: any) => ({
+          ...e,
+          // `null` cuando el negocio ya no existe: es justamente el caso de una purga.
+          tenants: e.target_tenant_id ? { nombre: nombres.get(e.target_tenant_id) ?? null } : null,
+        }))
+        return json({ entries })
       }
 
       case 'impersonation.start':

@@ -332,6 +332,45 @@ Botón CreditCard por proveedor → modal con:
 
 ---
 
+## 🛑 La OC en USD registraba el mirror en pesos como dólares (v1.210.0) — 2026-09-11
+
+Fede lo reportó como una molestia de interfaz: *"en la orden de compra tampoco permite poner el
+valor por unidad en USD, lo convierte automáticamente a $"*. **Era un bug de plata.**
+
+Al elegir un producto, el formulario precargaba `productos.precio_costo` a secas. Para un producto
+priceado en dólares eso es el **mirror en ARS** — el valor que la ficha calcula para
+margen/reportes/POS, no el costo real. Ese número se guardaba tal cual y después se mostraba como
+dólares, porque la OC tiene su propia `moneda`:
+
+| | Con el bug | Correcto |
+|---|---|---|
+| Costo del producto | US$99,99 | US$99,99 |
+| El form precargaba | **150.985** | 99,99 |
+| La OC quedaba en | **US$150.985** | US$99,99 |
+
+Y al recibir la OC, el gasto se generaba por ese monto. Es el **mismo bug del mirror** que Fede
+había reportado el 2026-08-20 para la lista de Productos: ahí se arregló, al formulario de la OC
+nunca se aplicó.
+
+La causa que lo hacía invisible: el `SELECT` de productos del formulario **ni siquiera traía**
+`precio_costo_usd` ni `moneda_costo`, así que no había con qué distinguir.
+
+**El fix** (`src/lib/ocCosto.ts`, 16 tests + e2e mutante 144): el costo sugerido va **siempre en la
+moneda de la OC**. Producto en USD dentro de una OC en USD → su valor nativo. Moneda cruzada → se
+convierte y se avisa. **Sin cotización cargada no se precarga nada**: un campo vacío es menos
+peligroso que un número plausible en la moneda equivocada. Una sola tasa en ambas direcciones, para
+que el ida y vuelta cierre.
+
+También mentían la moneda **el PDF que se le manda al proveedor** (una OC pactada en dólares le
+llegaba expresada en pesos), el "Total estimado" del formulario y el CSV exportado.
+
+## 🔎 El buscador de productos de la OC (v1.210.0)
+
+Era un `<select>` HTML nativo: el navegador solo permite saltar a la primera coincidencia **por
+letra**, inusable con 1.000+ productos. Ahora es un combobox que filtra por **nombre o SKU** en
+cualquier posición. ⚠️ Los e2e que elegían con `selectOption` se rompieron; se resolvió con el
+helper compartido `elegirProductoOC` en `tests/e2e/helpers/fixtures.ts`.
+
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]

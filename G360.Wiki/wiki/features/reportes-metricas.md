@@ -519,6 +519,23 @@ que hubo una conversión (producto priceado en USD **o** pago en USD). Entonces:
   Dashboard filtra por sucursal activa y una siembra con `sucursal_id` null no aparece nunca — el
   primer intento midió $0 justamente por eso.
 
+## ⚠️ Terceras monedas: lo que el Dashboard NO puede consolidar (v1.211.0) — 2026-09-11
+
+Desde que el formulario de Gastos ofrece **todas** las monedas de la app, apareció un agujero en la
+lib de moneda del Dashboard: `sumarPorMonedaNativa` mandaba al bucket de **pesos** todo lo que no
+fuera USD. Un gasto de **€100 habría sumado 100 al total en pesos** — exactamente el bug que esta
+lib cerró el 2026-09-09, entrando por la puerta de al lado.
+
+La causa de fondo es que el tenant guarda **una sola cotización** (`tenants.cotizacion_usd`): no hay
+con qué convertir un importe en euros o reales.
+
+**Cómo quedó**: `SplitMoneda` tiene un bucket `otras` por código de moneda que **no se suma a ningún
+total**, y el área Gastos del Dashboard las lista (`monedasSinConsolidar`) para que la plata no
+desaparezca de la pantalla sin explicación.
+
+> 📌 **Pendiente de negocio**: si el comercio va a operar de verdad en otra moneda, hace falta
+> **cotización por moneda**, no solo la del dólar.
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]

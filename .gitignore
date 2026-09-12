@@ -26,3 +26,6 @@ test-results/
 
 # Windows folder metadata
 desktop.ini
+
+# Basura de sincronización de Google Drive en el wiki (aparece y desaparece sola)
+G360.Wiki/.tmp.driveupload/

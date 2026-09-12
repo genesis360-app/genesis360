@@ -323,11 +323,17 @@ nueva para **reimprimir etiquetas** buscando el producto, gateada a supervisor/d
 justo lo que menciona Fede: la definición del contador por la factura.
 
 **3 · Gastos y OC en USD** — se verificó y está **partido en dos**:
+> 🛑 **CORRECCIÓN (2026-09-11): lo que sigue era FALSO.** Fede tenía razón y este diagnóstico
+> estaba mal. La moneda de la OC se guardaba, pero el formulario precargaba el **mirror en ARS** del
+> costo y lo registraba como dólares: **US$99,99 quedaba como una OC de US$150.985**. Se corrigió en
+> `v1.210.0`. Se deja el texto original para que se vea el error de método: *"probé que la columna
+> existe" no es lo mismo que "probé el flujo"*.
+
 - **La OC en USD YA funciona**: `ordenes_compra.moneda` existe y el selector está en el form
   (`ProveedoresPage`, mig 379), con toda la infra de pago multi-moneda (`cajasAbiertasOCMoneda`,
   `monedaDeMetodo`, cotización de descalce). Probablemente Fede no lo encontró: se elige al **crear
   la OC en Proveedores**, no en Gastos.
-- **El gasto suelto en USD sí falta**: `gastos.moneda` existe en la DB pero el formulario no lo
+- **El gasto suelto en USD sí falta** ✅ *(cerrado el 2026-09-11 en `v1.211.0`)*: `gastos.moneda` existe en la DB pero el formulario no lo
   ofrece. Es el pendiente ya anotado como "gastos sueltos USD (sin UI)". No se hizo en esta tanda a
   propósito: no es un ajuste sino una feature que **mueve plata desde una caja**, y merece su propio
   espacio con el patrón de la OC como guía.

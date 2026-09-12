@@ -26,6 +26,13 @@ const ACTION_MODULE: Record<string, string> = {
   'metrics.overview': 'dashboard',
   'customers.list': 'customers',
   'customers.get': 'customers',
+  // Baja de un tenant desde el panel de soporte. Van en el módulo `customers` (es donde vive la
+  // pantalla), pero OJO: `support` también tiene ese módulo, y borrar un negocio entero no puede
+  // ser cosa de soporte. El guard real es `soloAdmin()` adentro de cada case.
+  'customers.delete_preview': 'customers',
+  'customers.schedule_delete': 'customers',
+  'customers.cancel_delete': 'customers',
+  'customers.purge_now': 'customers',
   'impersonation.start': 'customers',
   'support.tickets.list': 'support',
   'support.tickets.get': 'support',
@@ -168,6 +175,31 @@ async function computeBilling(svc: any) {
     porPlan.set(key, row)
   }
   return { mrr, por_plan: Array.from(porPlan.values()) }
+}
+
+/**
+ * Qué se pierde si se borra este tenant. Se usa para DOS cosas: mostrárselo al agente antes de
+ * que confirme, y dejarlo escrito en la auditoría — una vez ejecutado el CASCADE no queda nada
+ * que contar, así que si no se toma la foto antes, se pierde para siempre.
+ */
+async function inventarioTenant(svc: any, tenantId: string) {
+  const tabla = async (t: string, col = 'tenant_id') => {
+    const { count } = await svc.from(t).select('id', { count: 'exact', head: true }).eq(col, tenantId)
+    return count ?? 0
+  }
+  const [usuarios, sucursales, ventas, productos, clientes, gastos, movimientos] = await Promise.all([
+    tabla('users'), tabla('sucursales'), tabla('ventas'), tabla('productos'),
+    tabla('clientes'), tabla('gastos'), tabla('movimientos_stock'),
+  ])
+  // 🛑 Lo fiscal se cuenta aparte: un comprobante con CAE ya fue informado a AFIP y tiene
+  // obligación de conservación. No se bloquea acá (esa decisión es del negocio, no de esta
+  // función), pero NO puede pasar inadvertido — ver el guard de `confirmFiscal`.
+  const { count: conCae } = await svc.from('ventas')
+    .select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).not('cae', 'is', null)
+  return {
+    usuarios, sucursales, ventas, productos, clientes, gastos, movimientos,
+    comprobantes_fiscales_con_cae: conCae ?? 0,
+  }
 }
 
 Deno.serve(async (req) => {
@@ -464,6 +496,93 @@ Deno.serve(async (req) => {
           },
           recent_sales: recientes ?? [],
         })
+      }
+
+      // ── Baja de un tenant (soporte) ───────────────────────────────────────────────────────
+      // Complementa el camino self-service del cliente (MiCuentaPage → `delete_scheduled_at`).
+      // Dos diferencias con aquel: acá puede purgarse SIN esperar los 30 días, y queda auditado
+      // con nombre y apellido del agente que lo pidió.
+      //
+      // 🛑 Guard de rol: el módulo es `customers`, que `support` también tiene. Borrar un negocio
+      // entero no es una tarea de soporte — se exige `admin` explícitamente.
+      case 'customers.delete_preview':
+      case 'customers.schedule_delete':
+      case 'customers.cancel_delete':
+      case 'customers.purge_now': {
+        if (agent.rol !== 'admin') {
+          return json({ error: `Solo un agente con rol "admin" puede dar de baja un negocio (tu rol: ${agent.rol}).` }, 403)
+        }
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+
+        const { data: tenant } = await svc.from('tenants')
+          .select('id, nombre, subscription_status, delete_scheduled_at').eq('id', p.tenantId).maybeSingle()
+        if (!tenant) return json({ error: 'Tenant no encontrado' }, 404)
+
+        if (action === 'customers.delete_preview') {
+          const inv = await inventarioTenant(svc, p.tenantId)
+          await audit({ preview: true })
+          return json({ tenant, inventario: inv })
+        }
+
+        if (action === 'customers.cancel_delete') {
+          const { error } = await svc.from('tenants')
+            .update({ delete_scheduled_at: null }).eq('id', p.tenantId)
+          if (error) throw error
+          await audit({ cancelada: true, tenant_nombre: tenant.nombre })
+          return json({ ok: true, tenant: tenant.nombre })
+        }
+
+        // Para programar o purgar: el agente tiene que escribir el nombre exacto. Es la misma
+        // barrera que la app le pone al dueño — un `tenantId` mal copiado borra el negocio
+        // equivocado y no hay vuelta atrás.
+        if (String(p.confirmNombre ?? '').trim() !== String(tenant.nombre ?? '').trim()) {
+          return json({ error: `Para confirmar, escribí el nombre exacto del negocio: "${tenant.nombre}"` }, 400)
+        }
+
+        const inv = await inventarioTenant(svc, p.tenantId)
+
+        // 🛑 REGLA #0 — comprobantes ya informados a AFIP. No se bloquea (puede haber un motivo
+        // legítimo: un tenant de prueba que emitió en homologación), pero exige un segundo sí
+        // explícito para que nadie los borre sin enterarse de que existían.
+        if (inv.comprobantes_fiscales_con_cae > 0 && p.confirmFiscal !== true) {
+          return json({
+            error: `Este negocio tiene ${inv.comprobantes_fiscales_con_cae} comprobante(s) con CAE ya informados a AFIP. `
+              + 'Borrarlos elimina documentación fiscal con obligación de conservación. '
+              + 'Si aun así corresponde, reenviá la baja confirmando explícitamente.',
+            requiere_confirmacion_fiscal: true,
+            comprobantes_fiscales_con_cae: inv.comprobantes_fiscales_con_cae,
+          }, 409)
+        }
+
+        if (action === 'customers.schedule_delete') {
+          const dias = Number.isFinite(Number(p.dias)) ? Math.max(0, Number(p.dias)) : 30
+          const fecha = new Date(Date.now() + dias * DAY)
+          const { error } = await svc.from('tenants')
+            .update({ delete_scheduled_at: fecha.toISOString() }).eq('id', p.tenantId)
+          if (error) throw error
+          await audit({ programada_para: fecha.toISOString(), dias, tenant_nombre: tenant.nombre, inventario: inv })
+          return json({ ok: true, delete_scheduled_at: fecha.toISOString(), inventario: inv })
+        }
+
+        // purge_now — irreversible. El CASCADE de las ~140 FK a tenant_id hace el resto (mig 358).
+        // Se audita ANTES de borrar: después del DELETE ya no hay nada que contar.
+        await audit({ purge_now: true, tenant_nombre: tenant.nombre, inventario: inv })
+        const { error: delErr } = await svc.from('tenants').delete().eq('id', p.tenantId)
+        if (delErr) throw delErr
+
+        // El sweep programado NO toca `auth.users` (borra el tenant y deja la cuenta huérfana:
+        // el mail queda sin negocio pero existiendo). Acá se ofrece cerrar el círculo, porque
+        // "dar de baja" desde soporte se espera que deje el mail realmente libre.
+        const authBorrados: string[] = []
+        if (p.borrarUsuariosAuth === true && Array.isArray(p.authUserIds)) {
+          for (const uidBorrar of p.authUserIds as string[]) {
+            const { error } = await svc.auth.admin.deleteUser(uidBorrar)
+            if (!error) authBorrados.push(uidBorrar)
+          }
+          await audit({ purge_now: true, auth_users_borrados: authBorrados })
+        }
+
+        return json({ ok: true, purgado: tenant.nombre, inventario: inv, auth_users_borrados: authBorrados })
       }
 
       case 'impersonation.start':

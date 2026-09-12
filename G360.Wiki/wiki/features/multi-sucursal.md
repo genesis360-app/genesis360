@@ -3,7 +3,7 @@ title: Multi-Sucursal
 category: features
 tags: [sucursales, multi-sucursal, filtros, selector, roles, stock-por-sucursal]
 sources: [CLAUDE.md]
-updated: 2026-05-30
+updated: 2026-09-12
 ---
 
 # Multi-Sucursal
@@ -104,7 +104,7 @@ applyFilter(query)
 | ProductosPage — stock crítico | ✅ filtra | `applyFilter` aplicado al query de `inventario_lineas` (v1.8.5) |
 | RecepcionesPage — listado | ✅ filtra | `applyFilter` aplicado al query del listado (v1.8.5) |
 | Notificaciones (campana) | — | Alertas de stock y CC se generan a nivel tenant. Evaluar si las de stock deben ser por sucursal. |
-| RRHH | — | Verificar si el módulo existe y si empleados tienen `sucursal_id`. |
+| RRHH | ✅ filtra (mig 409, v1.213.0) | `empleados.sucursal_id` — GO eligió que el empleado pertenezca a una sucursal; los 4 gastos que genera RRHH ahora se imputan ahí. Ver [[wiki/features/rrhh]] → "El empleado pertenece a una sucursal". |
 
 ---
 
@@ -536,5 +536,6 @@ Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/productos]]
 - [[wiki/features/caja]]
+- [[wiki/features/rrhh]]
 - [[wiki/support/supabase-db-rescue]]
 - [[wiki/integrations/tienda-nube]]

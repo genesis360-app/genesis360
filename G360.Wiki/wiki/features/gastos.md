@@ -3,7 +3,7 @@ title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381, migration 389, src/components/SolicitarAutorizacionGastoModal.tsx, src/components/BandejaAutorizacionesGasto.tsx]
-updated: 2026-09-09
+updated: 2026-09-12
 ---
 
 # Módulo Gastos
@@ -736,11 +736,48 @@ con su sesión de caja. La lógica vive en `src/lib/gastoMoneda.ts`:
 consolidar**: queda fuera de los totales y se informa aparte (ver [[wiki/features/reportes-metricas]]).
 Sin eso, un gasto de €100 habría sumado 100 al total en pesos.
 
-### Lo que todavía NO tiene moneda
+### Lo que todavía NO tiene moneda (al 2026-09-11)
 
 - **Gastos fijos**: su formulario no ofrece el selector, así que nacen en la moneda del negocio.
 - Los `INSERT` de gastos que hace el resto del código (recepción de OC, envíos, RRHH, recursos,
   servicios) siguen sin setear `moneda` — una recepción de OC en dólares nace como gasto en pesos.
+
+---
+
+## 💵 Los 9 INSERT sin moneda + los 10 totales que sumaban monedas distintas — CERRADO (v1.213.0) — 2026-09-12
+
+Cierra los dos pendientes que dejó abiertos el punto anterior. `gastos.moneda` es `NOT NULL DEFAULT
+'ARS'`: todo `INSERT` que no la seteara explícitamente estampaba "pesos" sobre un monto que a veces
+no lo era.
+
+### Los 9 lugares que no seteaban `moneda`
+
+RRHH (×4: sueldo, cargas sociales, adelanto/préstamo, liquidación final), Envíos, Proveedores (×2),
+Recursos (×2), Recepciones y el gasto generado desde un gasto fijo. El peor de los nueve era
+**Recepciones**: usa los precios de la OC, que están en la moneda **de la OC** — el mismo patrón del
+bug de la OC en USD (ver arriba, "Compras/Gastos en USD"), pero del lado del gasto que genera al
+recibir. Se agregó además el **selector de moneda en Gastos fijos**, que hasta acá nacían siempre en
+la moneda del negocio.
+
+### Los 10 totales que sumaban monedas distintas en un solo número
+
+Sin la corrección anterior no explotaba nunca (no había gastos en otra moneda); con ella, cualquier
+lugar que sumara `monto` a secas mezclaba pesos y dólares en el mismo número. Se corrigieron 10
+totales, **incluidos el cierre contable y el Libro IVA Compras** (`FacturacionPage`): ahí un gasto en
+otra moneda queda **fuera** del libro, con un aviso explícito — nunca convertido ni descartado en
+silencio.
+
+Helper único: `totalesPorMoneda` en `src/lib/gastoMoneda.ts`. El criterio que queda escrito en el
+código: el total va en la moneda del negocio; lo que está en otra moneda **no se suma ni se
+convierte**; y donde se firma o se decide algo (cierre contable, Libro IVA) se informa aparte lo que
+quedó afuera.
+
+> [!WARNING] **Dato real, sin backfillear (REGLA #0 punto 7 — nunca reescribir el histórico):** hay un
+> tenant configurado en **CLP** ("Familia Otranto De Porto") con gastos grabados como `ARS` (62 en DEV,
+> 1 en PROD) de antes de este fix. No se tocan.
+
+> [!NOTE] **Pregunta abierta para el contador**: si un gasto en USD con IVA genera crédito fiscal
+> declarable, y a qué cotización.
 
 ---
 

@@ -6,7 +6,71 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-12, cont. 63) — DEV `v1.212.0` · **PROD `v1.208.0`**
+> ### ▶️ ARRANCÁ ACÁ (2026-09-12, cont. 64) — DEV `v1.214.0` (migs 409-412) · **PROD `v1.208.0`** (migs 001-406)
+>
+> #### 🟥 LO PRIMERO: deployar TODO el batch acumulado — necesita el OK de GO
+>
+> PROD sigue en `v1.208.0`/mig 406. Lo que falta llevar: migs **407-412** (todas aditivas, aplica
+> "DDL primero") + código `v1.209.0`→`v1.214.0` + la EF `admin-api` (acciones nuevas de `customers` y
+> de `admin`) + el **panel de soporte** (repo aparte `genesis360-admin`, rama `dev` — no tiene tag ni
+> release propio, se pushea por separado). Nada de esto tocó PROD todavía.
+>
+> #### ✅ Cerrado en esta sesión (cont. 64), todo en DEV
+>
+> 1. **🔴 El bloqueo del trial vencido** (arrastrado de cont. 63): `/mi-cuenta` salió del
+>    `SubscriptionGuard` — el DUEÑO con la prueba vencida ya no queda atrapado sin poder pagar ni
+>    pedir la baja. Ver [[wiki/features/suscripciones-planes]].
+> 2. **🗑️ Baja de tenant desde el panel de soporte — COMPLETA, 12/12 en DEV.** 3 agujeros de REGLA #0
+>    cerrados antes de deployar: purgar cancela el preapproval de MP ANTES de borrar (fail-closed),
+>    la cancelación deja de saltear al tenant nunca linkeado a MP, y las cuentas de `auth` a borrar
+>    las resuelve la EF (no un payload que llega desde el panel). Ver [[wiki/support/plataforma-soporte]].
+> 3. **🎬 Guion de videos de onboarding** — `wiki/manuales/guion-videos-onboarding.md`. Hallazgo:
+>    `mailer_autoconfirm` es `true` en DEV y `false` en PROD (grabar en DEV saltea la confirmación de
+>    mail). Claude **sigue sin poder** grabar video ni capturar pantalla — los videos en sí quedan
+>    pendientes de que GO los grabe con este guion.
+> 4. **💵 Gasto multimoneda cerrado de punta a punta**: 9 `INSERT` sin `moneda` (RRHH ×4, Envíos,
+>    Proveedores ×2, Recursos ×2, Recepciones) + 10 totales que sumaban monedas distintas (cierre
+>    contable + Libro IVA Compras incluidos) + selector en Gastos fijos. Ver [[wiki/features/gastos]].
+> 5. **👥 RRHH: el empleado pertenece a una sucursal** (GO eligió la opción (a), mig 409) — cierra el
+>    pendiente de los 4 gastos de RRHH invisibles. Ver [[wiki/features/rrhh]].
+> 6. **🛟 Panel de soporte, tanda grande** (migs 410-411): búsqueda por dueño/mail, ficha completa
+>    (cuentas, límites de plan, fiscal, NC AFIP pendientes, notas internas), Auditoría, dashboard,
+>    Ctrl/⌘+K, Analytics, 2FA — 18/18 e2e. Ver [[wiki/support/plataforma-soporte]].
+> 7. **📞 `tenants.telefono`** (mig 412) — se pedía en el alta y se descartaba; ahora se guarda de
+>    verdad y es editable.
+>
+> #### 🟡 Lo que sigue esperando definición de GO
+>
+> 1. **Login-as read-only** en el panel de soporte — sigue **501 (Not Implemented)**. Necesita modo
+>    read-only real + token efímero en la app principal; merece diseño propio, no se resolvió acá.
+> 2. **"Monedas disponibles por tenant" sigue sin existir** · **solo hay cotización para USD**: un
+>    gasto en EUR/BRL se registra pero no se consolida en ningún total.
+> 3. ⚠️ Dato real sin backfillear (REGLA #0 punto 7): tenant en **CLP** ("Familia Otranto De Porto")
+>    con 62 gastos en DEV (1 en PROD) grabados como `ARS` de antes del fix. No se tocan.
+> 4. **Pregunta para el contador**: un gasto en USD con IVA, ¿genera crédito fiscal declarable? ¿A
+>    qué cotización?
+> 5. **Precio con fecha/hora de vigencia** — relevamiento sin responder
+>    (`relevamiento-precio-programado-reglas-negocio.html`).
+> 6. **Cobrar en caja USD** (contador) · **góndolas de Repositores** · **tope de descuento del
+>    DUEÑO** · **reintegro en efectivo USD al anular**.
+>
+> #### 🟢 Deuda técnica
+>
+> - **Deployar a PROD** el batch completo de esta entrada (ver "LO PRIMERO" arriba).
+> - **Grabar los videos de onboarding** con el guion ya escrito (GO, no Claude).
+> - Dropear `tenants.afipsdk_token` y `recursos.ubicacion` (cuando PROD corra el código
+>   correspondiente).
+> - `schema_full.sql` quedó en la mig 406; DEV tiene 412. PAT `schema-dump-local` vence
+>   **2026-10-06**.
+>
+> #### 🧪 Suite
+>
+> ⚠️ No se informó el conteo de unit/e2e de esta sesión — confirmar antes de cerrar (última cifra
+> conocida, cont. 63: **1750 unit · 397 e2e**, más los tests nuevos de esta sesión: 5 de
+> `rrhhNomina.ts`, el estático de rutas de `/mi-cuenta`, y los 18 e2e del panel de soporte que corren
+> en el repo aparte `genesis360-admin`, no en este conteo).
+
+> ### ✅ ARRANCÁ ACÁ (2026-09-12, cierre cont. 63) — DEV `v1.212.0` · **PROD `v1.208.0`**
 >
 > #### 🟥 LO PRIMERO: terminar la baja de tenant desde el panel de soporte
 >

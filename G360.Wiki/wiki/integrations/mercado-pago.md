@@ -471,3 +471,4 @@ Eventos: Pagos ✅ + Planes y suscripciones ✅
 - [[wiki/features/suscripciones-planes]]
 - [[wiki/integrations/mercado-libre]]
 - [[wiki/architecture/edge-functions]]
+- [[wiki/support/plataforma-soporte]] — baja de tenant cancela el preapproval ANTES de purgar (2026-09-12)

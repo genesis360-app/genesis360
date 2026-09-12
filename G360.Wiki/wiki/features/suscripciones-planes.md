@@ -3,7 +3,7 @@ title: Suscripciones y Planes
 category: features
 tags: [suscripcion, planes, mercado-pago, trial, billing]
 sources: []
-updated: 2026-07-05
+updated: 2026-09-12
 ---
 
 # Suscripciones y Planes
@@ -109,19 +109,27 @@ Ahora (`src/lib/estadoTrial.ts`, 15 tests):
 no entiende por qué. La lógica salió de la pantalla a una lib porque **`AdminPage` ya repetía la
 misma comparación inline**, y porque los textos ERAN el bug — así que se testean.
 
-## 🔴 ABIERTO: con el trial vencido, el usuario no puede darse de baja
+## ✅ CERRADO: con el trial vencido, el usuario ya no queda atrapado (v1.213.0) — 2026-09-12
 
-`/mi-cuenta` está **dentro** del `SubscriptionGuard` (`App.tsx`), así que un usuario con la prueba
-vencida nunca llega a "Eliminar cuenta y negocio": el guard lo saca a `/suscripcion` antes.
+Era un hallazgo con arista legal: `/mi-cuenta` estaba **dentro** del `SubscriptionGuard`, así que un
+usuario con la prueba vencida nunca llegaba a "Eliminar cuenta y negocio" — el guard lo sacaba a
+`/suscripcion` antes de que pudiera pagar, avisar un pago o pedir la baja. No podía usar la app **ni
+irse**, lo que choca con el derecho de supresión (AAIP) — ver [[wiki/business/legal-compliance]].
 
-**Queda atrapado: no puede usar la app ni irse.** Con el blindaje legal ya hecho (AAIP, derecho de
-supresión), no poder ejercer la baja es un flanco real — ver [[wiki/business/legal-compliance]].
+**Fix:** `/mi-cuenta` salió del `SubscriptionGuard` (sigue bajo `AuthGuard` + `AppLayout`); el resto
+de la app sigue cerrado igual que antes. Además:
+- `/suscripcion` ya no ofrece "Volver al dashboard" (que rebotaba al propio usuario a la misma
+  pantalla) — ahora ofrece **Mi cuenta**.
+- Al programar la baja desde `/mi-cuenta`, si la suscripción está vencida **no navega al
+  dashboard** (no hay a dónde volver).
 
-Salidas posibles, a decidir: sacar `/mi-cuenta` del guard, o poner el acceso a la baja en la propia
-pantalla de suscripción.
+Test estático del árbol de rutas: `tests/unit/rutaMiCuentaSinSuscripcion.test.ts`, con control
+anti-vacío — verificado que falla contra el árbol de rutas viejo (con `/mi-cuenta` adentro del guard)
+antes de aplicar el fix. Ver [[wiki/features/autenticacion-onboarding]] → "Mi Cuenta".
 
 ## Links relacionados
 
 - [[wiki/integrations/mercado-pago]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/features/autenticacion-onboarding]]
+- [[wiki/support/plataforma-soporte]]

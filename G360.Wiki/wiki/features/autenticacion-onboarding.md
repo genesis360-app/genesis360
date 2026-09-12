@@ -3,7 +3,7 @@ title: Autenticación y Onboarding
 category: features
 tags: [auth, onboarding, google-oauth, trial, suscripcion, guard]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-09-12
 ---
 
 # Autenticación y Onboarding
@@ -59,14 +59,18 @@ App carga
 
 ---
 
-## Trial de 14 días
+## Trial de 30 días
 
-- Comienza automáticamente al registrar un nuevo tenant
+- Comienza automáticamente al registrar un nuevo tenant (`trial_ends_at` nace con `now() + 30 días`, desde v1.113.0)
 - Durante el trial: acceso completo equivalente al plan Pro
 - `usePlanLimits` detecta `subscription_status='trial'` con `trial_ends_at` futuro → usa `FEATURES_POR_PLAN['pro']`
 - Al vencer: pantalla de pago (SuscripcionPage)
 
 > [!NOTE] Fix v1.3.0: botón "Cerrar sesión" en SuscripcionPage y OnboardingPage cuando el trial vence (el usuario quedaba atrapado en un loop sin poder cerrar sesión).
+
+> [!IMPORTANT] **v1.212.0 (2026-09-12)**: la pantalla de planes decía "tu prueba está por vencer" a
+> usuarios cuyo trial había vencido hacía semanas (la condición nunca comparaba `trial_ends_at`, solo
+> el status) — en PROD **5 de 6 tenants en trial** estaban en ese caso. Ver [[wiki/features/suscripciones-planes]].
 
 ---
 
@@ -127,6 +131,22 @@ Accesible desde el bloque de perfil en sidebar. Disponible para todos los roles.
   - Non-OWNER: "Salir del negocio" → DELETE de `users` (la cuenta de auth queda libre)
   - OWNER: "Eliminar cuenta permanentemente" → requiere escribir el nombre del negocio
 
+> [!IMPORTANT] **v1.213.0 (2026-09-12)**: `/mi-cuenta` salió del `SubscriptionGuard`. Antes, un DUEÑO
+> con el trial vencido nunca llegaba a esta pantalla — el guard lo sacaba a `/suscripcion` primero, y
+> quedaba **atrapado: no podía pagar, ni avisar un pago, ni eliminar la cuenta**. Ahora sigue accesible
+> bajo `AuthGuard` + `AppLayout` aunque la suscripción esté vencida; el resto de la app sigue cerrado.
+> Ver [[wiki/features/suscripciones-planes]] → "CERRADO: con el trial vencido...".
+
+---
+
+## `tenants.telefono` — el dato que se pedía y se descartaba (mig 412, v1.214.0) — 2026-09-12
+
+El alta de negocio pide el teléfono desde siempre, pero `provisionNegocio()` nunca lo guardaba: se
+tipeaba y se perdía. La mig 412 agrega `tenants.telefono` y ahora se guarda por los **3 caminos** del
+alta (form directo, Google OAuth, onboarding con negocio existente). Se puede editar después en
+Configuración → Mi negocio. El panel de soporte (`admin.genesis360.pro`) lo muestra como link `tel:`
+en la ficha del cliente — ver [[wiki/support/plataforma-soporte]].
+
 ---
 
 ## Walkthrough (primer uso)
@@ -184,6 +204,18 @@ Los motivos `es_sistema=true` muestran badge "sistema" en ConfigPage y no tienen
 
 ---
 
+## 🎬 Guion de videos de onboarding (2026-09-12)
+
+Pedido de GO: grabar una serie — (1) desde `genesis360.pro` hasta tener el negocio creado y entrar,
+(2) configuración inicial para modo básico, (3) por funcionalidad. Se escribió el guion de pasos
+obligatorios sacado del flujo REAL del código: [[wiki/manuales/guion-videos-onboarding]].
+
+> [!WARNING] **Hallazgo clave**: `mailer_autoconfirm` es `true` en DEV y `false` en PROD — en DEV el
+> alta **no pide confirmar el mail**, en PROD **sí**. Grabar el video en DEV saltea un paso entero del
+> flujo real que un usuario nuevo de PROD sí ve.
+
+---
+
 ## Refresco de sesión con el backend caído (2026-09-06)
 
 El cliente de Supabase (auth-js 2.98) reintenta `POST /auth/v1/token?grant_type=refresh_token` **sin techo
@@ -207,3 +239,5 @@ Detalle completo (incidente, causa raíz, medición y cobertura): [[wiki/archite
 - [[wiki/architecture/estado-global]]
 - [[wiki/architecture/resiliencia]]
 - [[wiki/database/triggers]]
+- [[wiki/support/plataforma-soporte]]
+- [[wiki/manuales/guion-videos-onboarding]]

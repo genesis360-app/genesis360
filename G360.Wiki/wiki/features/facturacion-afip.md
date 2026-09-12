@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375]
-updated: 2026-08-20
+updated: 2026-09-12
 ---
 
 # Facturación Electrónica AFIP
@@ -301,6 +301,11 @@ autorizado" de AFIP antes de que nadie vuelva a tocar esa devolución.
     sigue esperando el próximo ciclo. Si tiene éxito → marca `resuelto_at`, notifica in-app + email "NC
     emitida automáticamente" (mismo patrón que el resto de los sweeps del proyecto, ej.
     `repositores-cierre-dia-sweep`).
+
+> [!TIP] **2026-09-12**: el panel de soporte (`admin.genesis360.pro`) ahora muestra, en la ficha de
+> cada cliente, las filas de `nc_afip_pendientes` con `requiere_reconciliacion_manual=true` como
+> alerta 🛑 "notas de crédito sin emitir en AFIP" — deja de ser algo que solo se ve por SQL directo.
+> Ver [[wiki/support/plataforma-soporte]].
 
 ### Verificación real contra DEV (AFIP homologación REAL, no mockeada) — los 4 caminos
 
@@ -745,3 +750,4 @@ discriminando por alícuota. Cubierto por `calcularImportes` + tests.
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/architecture/edge-functions]]
 - [[wiki/database/schema-overview]]
+- [[wiki/support/plataforma-soporte]]

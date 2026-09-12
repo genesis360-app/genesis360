@@ -6,6 +6,114 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-12] update | 🗑️🔒💵👥🛟📞 Baja de tenant COMPLETA + gasto multimoneda cerrado + RRHH-sucursal + panel de soporte ampliado (migs 409-412) · v1.213.0 y v1.214.0
+
+> **Dos versiones, no una.** El grueso de la jornada quedó en **`v1.213.0`** (migs 409-411): el fix
+> del dueño atrapado, la baja de tenant, el gasto multimoneda, RRHH-sucursal y la primera tanda del
+> panel. **`v1.214.0`** (mig 412) es el cierre del backlog del panel: Analytics, 2FA opt-in y el
+> teléfono del alta.
+
+Continuación de la misma sesión que cerró el hallazgo del trial vencido (ver entrada siguiente, más
+abajo, ya en `v1.212.0`). DEV termina en `v1.214.0`, migraciones **409-412**. **Nada de esto se
+deployó a PROD** — sigue en `v1.208.0`, migs 001-406, a la espera del OK de GO. El deploy pendiente es
+el batch entero: migs 407-412 + código `v1.209.0`→`v1.214.0` + la EF `admin-api` + el panel de soporte
+(repo aparte `genesis360-admin`, rama `dev`).
+
+### 🔴 El bloqueo del trial vencido, cerrado: `/mi-cuenta` salió del `SubscriptionGuard`
+
+`/mi-cuenta` estaba DENTRO del `SubscriptionGuard`: con el trial vencido el guard sacaba al usuario a
+`/suscripcion` antes de que pudiera pagar, avisar un pago o pedir la baja. **Quedaba atrapado: no
+podía usar la app ni irse** — choca con el derecho de supresión (AAIP). Se sacó la ruta del guard
+(sigue bajo `AuthGuard` + `AppLayout`; el resto de la app sigue cerrado igual que antes). Además:
+`/suscripcion` ya no ofrece "Volver al dashboard" (rebotaba a la misma pantalla) sino **Mi cuenta**, y
+al programar la baja no navega al dashboard si la suscripción está vencida. Test estático del árbol de
+rutas (`tests/unit/rutaMiCuentaSinSuscripcion.test.ts`) con control anti-vacío, verificado que falla
+contra el árbol viejo. Ver [[wiki/features/suscripciones-planes]].
+
+### 🗑️ Baja de tenant desde el panel de soporte — COMPLETA en DEV, 12/12
+
+EF `admin-api` con `customers.delete_preview` / `schedule_delete` / `cancel_delete` / `purge_now` +
+UI `BajaTenantPanel.tsx` en el panel (`genesis360-admin`). Probada end-to-end contra DEV: **12/12**.
+Se cerraron **3 agujeros de REGLA #0** antes de deployar:
+
+1. **Purgar no cancelaba el preapproval de Mercado Pago** → se le seguía cobrando a un negocio
+   borrado, y tras el `CASCADE` no queda ni el `mp_subscription_id`. Ahora cancela ANTES, fail-closed.
+2. **La cancelación estaba gateada por "¿parece que tiene cobro?"** y eso salteaba justo al tenant
+   que nunca se linkeó (hallazgo histórico H8/MP-C7), que es el que `cancelarSubMP` sabe encontrar por
+   el mail del dueño. Ahora se llama siempre, sin gate.
+3. **Las cuentas de `auth` a borrar llegaban como lista de UUIDs DESDE el panel** → se podía borrar la
+   cuenta de otro tenant con un payload manipulado. Ahora las resuelve la EF antes del `DELETE`, nunca
+   toca a un agente de soporte, y saltea a quien siga teniendo fila en `users` de otro tenant.
+
+Ver [[wiki/support/plataforma-soporte]].
+
+### 🎬 Guion de videos de onboarding
+
+Nueva página `wiki/manuales/guion-videos-onboarding.md`. Hallazgo clave: **en DEV el alta NO pide
+confirmar el mail y en PROD SÍ** (`mailer_autoconfirm` true/false), así que grabar en DEV saltea un
+paso entero del flujo real. Claude no puede grabar video ni capturar pantalla — lo acordado es aportar
+el guion de pasos obligatorios, sacado del flujo real del código.
+
+### 💱 El gasto multimoneda, cerrado de punta a punta
+
+`gastos.moneda` es `NOT NULL DEFAULT 'ARS'`: todo `INSERT` que no la seteara estampaba "pesos" sobre
+montos que no lo eran. Se estampó en **9 lugares** (RRHH ×4, Envíos, Proveedores ×2, Recursos ×2,
+Recepciones —el peor: usa los precios de la OC, que están en la moneda DE LA OC—, y el gasto generado
+desde un gasto fijo). Se agregó **selector de moneda en gastos fijos**. Y se corrigieron **10 totales
+que sumaban monedas distintas en un solo número**, incluidos el **cierre contable** y el **Libro IVA
+Compras** (ahí los gastos en otra moneda quedan FUERA del libro con aviso). Helper nuevo
+`totalesPorMoneda` en `src/lib/gastoMoneda.ts`. Criterio único: el total va en la moneda del negocio,
+lo que está en otra no se suma ni se convierte, y donde se firma o decide se informa lo que quedó
+afuera.
+
+⚠️ Dato real, sin backfillear (REGLA #0 punto 7): hay un tenant configurado en **CLP** ("Familia
+Otranto De Porto") con gastos grabados como ARS (62 en DEV, 1 en PROD). Pregunta abierta para el
+contador: si un gasto en USD con IVA genera crédito fiscal declarable y a qué cotización. Ver
+[[wiki/features/gastos]].
+
+### 👥 RRHH: el empleado pertenece a una sucursal (decisión de GO)
+
+GO eligió la opción (a) del pendiente que estaba trabado. Los 4 gastos que genera RRHH (sueldo,
+cargas sociales, adelanto/préstamo, liquidación final) nacían SIN `sucursal_id` y por eso eran
+invisibles en el módulo Gastos. Ahora se imputan a la sucursal DEL EMPLEADO, hay selector en la
+ficha, y las cargas sociales se agrupan por concepto Y sucursal (`agruparCargasSociales` en
+`src/lib/rrhhNomina.ts`, 5 tests). Los gastos ya creados no se tocan. Mig 409, revisada por
+`migration-reviewer` — al aplicarla saltó que Postgres no tiene `min(uuid)`, se usó
+`(array_agg(id))[1]`. Ver [[wiki/features/rrhh]].
+
+### 🛟 Panel de soporte — tanda grande de herramientas
+
+Pedido de GO: "no tengo cómo filtrar o saber quién es el dueño de un tenant y su mail". Se agregó
+búsqueda por negocio/mail del dueño/mail de cualquier usuario/id del tenant; dueño+mail+estado
+REAL+usuarios+último acceso+baja programada en la lista, con filtros y export CSV; en la ficha:
+cuentas de acceso con reseteo de contraseña, ficha comercial+fiscal, uso vs. límites del plan (vía
+`fn_tenant_limite`, la misma función del trigger de bloqueo), tickets, actividad reciente, 🛑 NC sin
+emitir en AFIP (`nc_afip_pendientes`), extender la prueba desde el panel, y notas internas (mig 411).
+Nueva pantalla de **Auditoría** (`admin_audit_log`, escrito desde la mig 221 y sin pantalla hasta
+ahora — el nombre del negocio se resuelve aparte, sin FK a `tenants` para que sobreviva a la purga).
+Dashboard con bloque "Requiere atención", búsqueda global Ctrl/⌘+K, Analytics con datos reales (sin
+CAC — falta la inversión publicitaria), 2FA (TOTP) opt-in para agentes, y pagos manuales ordenados por
+vencimiento con contador de vencidos.
+
+Mig 410 (`fn_admin_tenants_overview`/`fn_admin_tenant_cuentas`): hallazgo del `migration-reviewer` —
+este proyecto tiene un `ALTER DEFAULT PRIVILEGES` que da EXECUTE a `anon`/`authenticated` en TODA
+función nueva de `public`, así que el REVOKE explícito es imprescindible (mismo agujero que corrigió
+la mig 272). Mig 411 además hardening de `admin_audit_log`, que desde la mig 221 confiaba solo en
+"RLS sin policies" sin el mismo REVOKE.
+
+Probado end-to-end contra DEV: **18/18**, incluidos tests de fuga (el RPC de mails y las notas
+internas NO son accesibles con la anon key ni con el token de un usuario real de la app). Único ítem
+NO hecho del backlog: **login-as read-only** (sigue 501) — requiere modo read-only real + token
+efímero en la app principal, merece su propio diseño. Ver [[wiki/support/plataforma-soporte]].
+
+### 📞 El teléfono del alta (mig 412)
+
+Se pedía en el alta y se descartaba (`provisionNegocio()` nunca lo guardaba). Ahora se guarda por los
+3 caminos del alta, se puede editar en Configuración → Mi negocio, y el panel lo muestra como link
+`tel:`. Ver [[wiki/features/autenticacion-onboarding]].
+
+---
+
 ## [2026-09-12] update | 🐛 "Tu prueba está por vencer" con el trial vencido hace 25 días · v1.212.0
 
 GO entró a PROD con `genesis360.ar@gmail.com` creyendo que era un mail nuevo y reportó que "no le

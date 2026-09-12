@@ -3,17 +3,21 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-11
+updated: 2026-09-12
 ---
 
-# Historial de Migraciones (001-408, + correctivos 387b/387c)
+# Historial de Migraciones (001-412, + correctivos 387b/387c)
 
-**🗂️ Migraciones 407-408 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
-`v1.208.0`). Son **aditivas** (tabla nueva + columna + triggers), así que acá sí aplica el "DDL
+**🗂️ Migraciones 407-412 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
+`v1.208.0`). Son **aditivas** (tablas/funciones/columnas nuevas), así que acá sí aplica el "DDL
 aditivo primero":
 
 | # | Archivo | Qué hace |
 |---|---|---|
+| 412 | `412_tenants_telefono.sql` | `tenants.telefono` — el alta de negocio pedía el teléfono y `provisionNegocio()` nunca lo guardaba. Se guarda ahora por los 3 caminos del alta; editable en Configuración → Mi negocio. Ver [[wiki/features/autenticacion-onboarding]]. |
+| 411 | `411_admin_customer_notes_y_hardening_audit_log.sql` | Tabla `admin_customer_notes` (notas internas de soporte sobre un cliente) — RLS encendida **sin policies** + `REVOKE` a `anon`/`authenticated`, **sin FK a `tenants`** (para que la nota sobreviva a la baja del tenant que audita). Además **hardening de `admin_audit_log`**: la mig 221 lo había dejado con GRANT completo para `anon`/`authenticated` confiando solo en "RLS sin policies" como defensa — mismo `REVOKE` que le faltaba, mismo agujero de fondo que corrigió la mig 272 (ver más abajo). Ver [[wiki/support/plataforma-soporte]]. |
+| 410 | `410_admin_tenants_overview_cuentas.sql` | `fn_admin_tenants_overview(p_q, p_limit)` y `fn_admin_tenant_cuentas(p_tenant_id)` para el panel de soporte — `SECURITY DEFINER`, `REVOKE` de `anon`/`authenticated` + `GRANT` solo a `service_role`. ⚠️ Hallazgo del `migration-reviewer`: este proyecto tiene un `ALTER DEFAULT PRIVILEGES` que le da `EXECUTE` a `anon`/`authenticated` en **toda función nueva** de `public`, así que el `REVOKE` explícito de estos dos roles es imprescindible (mismo agujero que corrigió la mig 272). Ver [[wiki/support/plataforma-soporte]]. |
+| 409 | `409_empleados_sucursal_id.sql` | `empleados.sucursal_id` — nullable, `FK ON DELETE SET NULL`, índice por tenant. Backfill automático **solo en tenants con UNA sucursal activa**. Revisada por `migration-reviewer`. Al aplicarla saltó que Postgres **no tiene `min(uuid)`** → se usó `(array_agg(id))[1]`. Decisión de GO: el empleado pertenece a una sucursal (cierra el pendiente de los 4 gastos de RRHH invisibles). Ver [[wiki/features/rrhh]]. |
 | 407 | `407_recurso_ubicaciones_catalogo.sql` | Catálogo `recurso_ubicaciones` + `recursos.ubicacion_id`. `recursos.ubicacion` era texto libre, así que una ubicación **no existía hasta que había un recurso en ella** — por eso la pestaña solo podía "asignar", no "crear" (pedido de Fede). NO reusa `ubicaciones` (la del WMS, con cubicaje y picking) a propósito. Siembra desde los textos existentes y deja el texto sincronizado por trigger hasta que PROD corra el código nuevo. |
 | 408 | `408_recurso_ubicacion_borrar_limpia_texto.sql` | Correctivo de la 407, **encontrado probando el ciclo completo contra datos reales**: al borrar una ubicación el recurso perdía la FK pero conservaba el texto huérfano, así que la ubicación reaparecía en pantalla agrupando recursos — contradiciendo el diálogo que promete "N recursos quedarán sin ubicación". |
 

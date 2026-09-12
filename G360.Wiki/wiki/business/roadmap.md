@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-06
+updated: 2026-09-12
 ---
 
 # Roadmap y Versiones
@@ -37,7 +37,38 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.212.0` — 🐛 la pantalla de planes decía **"tu prueba está por vencer"** a un usuario cuyo trial había vencido 25 días antes (la condición nunca comparaba la fecha). En PROD **5 de 6 tenants en trial** estaban así. Ahora dice qué pasó, de qué negocio, desde cuándo y que sus datos están intactos. 🔴 Quedó abierto un hallazgo mayor: **con el trial vencido el usuario no puede darse de baja** (`/mi-cuenta` está bajo el `SubscriptionGuard`). Ver `log.md` (2026-09-12).
+**Versión en DEV:** `v1.214.0` (mig **412**, SIN deployar a PROD) — 📊🔐📞 Cierre del backlog de
+herramientas del panel de soporte: **Analytics** con datos reales (altas por mes con la porción que
+terminó pagando, embudo y leads por origen; el **CAC no se muestra** porque necesita la inversión
+publicitaria, que no está cargada — un CAC inventado es peor que no tenerlo), **2FA opt-in (TOTP)**
+para los agentes (opt-in a propósito: forzarlo dejaría afuera a quien no lo configuró, incluido quien
+administra el panel), y 🐛 **`tenants.telefono` se guarda de verdad** (mig 412) — el alta lo pedía y
+`provisionNegocio()` lo descartaba, así que soporte no tenía un solo teléfono para llamar a nadie.
+Queda **login-as read-only** (sigue 501): necesita modo read-only + token efímero en la app
+principal, no es un pendiente del panel. Ver `log.md` (2026-09-12) y
+[[wiki/support/plataforma-soporte]].
+
+**Versión en DEV:** `v1.213.0` (migs **409-411**, SIN deployar a PROD) — 🗑️🔴💵👥🛟 Jornada grande de
+la misma sesión que cerró el trial atrapado (ver entrada de abajo): **1)** `/mi-cuenta` salió del
+`SubscriptionGuard` — el dueño con la prueba vencida ya no queda sin poder pagar ni pedir la baja.
+**2)** **Baja de tenant desde el panel de soporte, COMPLETA y probada 12/12 en DEV**, con 3 agujeros
+de REGLA #0 cerrados antes de deployar: purgar cancela el preapproval de Mercado Pago ANTES de borrar
+(si no, se le seguía cobrando a un negocio ya borrado), la cancelación dejó de saltear al tenant que
+nunca se linkeó a MP, y las cuentas de `auth` a borrar las resuelve la propia Edge Function (no un
+payload que llega desde el panel). **3)** **El gasto multimoneda queda cerrado de punta a punta**:
+9 `INSERT` que no seteaban `moneda` (RRHH, Envíos, Proveedores, Recursos, Recepciones — el peor, usa
+los precios de la OC) + 10 totales que sumaban monedas distintas en un solo número, incluidos el
+cierre contable y el Libro IVA Compras + selector de moneda en Gastos fijos. **4)** **RRHH: el
+empleado pertenece a una sucursal** (decisión de GO, mig 409) — cierra el pendiente de los 4 gastos de
+RRHH invisibles. **5)** **Tanda grande en el panel de soporte** (migs 410-411): búsqueda por
+negocio/mail del dueño/mail de cualquier usuario/id de tenant, ficha con cuentas de acceso + límites
+de plan + estado fiscal + NC AFIP pendientes + notas internas, pantalla de Auditoría (`admin_audit_log`,
+escrito desde la mig 221 y sin pantalla hasta ahora), dashboard "Requiere atención", búsqueda global
+Ctrl/⌘+K y export CSV — 18/18 e2e, incluidos tests de fuga. Ver `log.md` (2026-09-12),
+[[wiki/features/suscripciones-planes]], [[wiki/support/plataforma-soporte]],
+[[wiki/features/gastos]], [[wiki/features/rrhh]].
+
+**Versión en DEV:** `v1.212.0` — 🐛 la pantalla de planes decía **"tu prueba está por vencer"** a un usuario cuyo trial había vencido 25 días antes (la condición nunca comparaba la fecha). En PROD **5 de 6 tenants en trial** estaban así. Ahora dice qué pasó, de qué negocio, desde cuándo y que sus datos están intactos. 🔴 Quedó abierto un hallazgo mayor: **con el trial vencido el usuario no puede darse de baja** (`/mi-cuenta` está bajo el `SubscriptionGuard`) — ✅ **CERRADO en la misma sesión, ver la entrada `v1.214.0` arriba.** Ver `log.md` (2026-09-12).
 
 **Versión en DEV:** `v1.211.0` — 💵 **el gasto se registra en cualquier moneda**, con la del negocio por defecto (pedido de GO). No alcanzaba con agregar el selector: hubo que abrir el circuito de caja entero, porque el trigger `fn_validar_moneda_coincide_sesion` rechaza un movimiento cuya moneda no coincida con su sesión. 🛑 Se cerró en el acto un agujero que ese mismo cambio abrió: al habilitar las 11 monedas, el Dashboard sumaba como PESOS todo lo que no fuera USD. Ver `log.md` (2026-09-11).
 

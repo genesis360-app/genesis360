@@ -155,6 +155,10 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
   return { mp_cancelled, errores, periodEnd }
 }
 
+/** Ese tenant, ¿puede seguir generando cobros en Mercado Pago? */
+const cobroVivo = (t: { subscription_status?: string | null; mp_subscription_id?: string | null }) =>
+  t.subscription_status === 'active' || !!t.mp_subscription_id
+
 // MRR + distribución por plan (join tenants→planes). Paga = plan_id no nulo y fuera de trial.
 async function computeBilling(svc: any) {
   const nowIso = new Date().toISOString()
@@ -200,6 +204,28 @@ async function inventarioTenant(svc: any, tenantId: string) {
     usuarios, sucursales, ventas, productos, clientes, gastos, movimientos,
     comprobantes_fiscales_con_cae: conCae ?? 0,
   }
+}
+
+/**
+ * Las cuentas de acceso (auth) del tenant, con su mail. Se toman ANTES del DELETE: el CASCADE
+ * borra `users` y después ya no hay forma de saber qué mails quedaron colgados.
+ *
+ * `es_agente` marca a los que además son agentes del panel de soporte — viven en el MISMO pool de
+ * `auth.users` que los clientes (mig 221), así que borrar uno por arrastre dejaría a soporte sin
+ * acceso. Nunca se borran.
+ */
+async function cuentasAuthDelTenant(svc: any, tenantId: string) {
+  const { data: filas } = await svc.from('users').select('id, rol, nombre_display').eq('tenant_id', tenantId)
+  const out: Array<{ id: string; rol: string; nombre: string | null; email: string | null; es_agente: boolean }> = []
+  for (const u of filas ?? []) {
+    const { data: authU } = await svc.auth.admin.getUserById(u.id).catch(() => ({ data: null }))
+    const { data: ag } = await svc.from('support_agents').select('id').eq('id', u.id).maybeSingle()
+    out.push({
+      id: u.id, rol: u.rol, nombre: u.nombre_display ?? null,
+      email: authU?.user?.email ?? null, es_agente: !!ag,
+    })
+  }
+  return out
 }
 
 Deno.serve(async (req) => {
@@ -515,13 +541,15 @@ Deno.serve(async (req) => {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
 
         const { data: tenant } = await svc.from('tenants')
-          .select('id, nombre, subscription_status, delete_scheduled_at').eq('id', p.tenantId).maybeSingle()
+          .select('id, nombre, subscription_status, delete_scheduled_at, mp_subscription_id')
+          .eq('id', p.tenantId).maybeSingle()
         if (!tenant) return json({ error: 'Tenant no encontrado' }, 404)
 
         if (action === 'customers.delete_preview') {
           const inv = await inventarioTenant(svc, p.tenantId)
+          const cuentas = await cuentasAuthDelTenant(svc, p.tenantId)
           await audit({ preview: true })
-          return json({ tenant, inventario: inv })
+          return json({ tenant, inventario: inv, cuentas, cobro_vivo: cobroVivo(tenant) })
         }
 
         if (action === 'customers.cancel_delete') {
@@ -554,35 +582,83 @@ Deno.serve(async (req) => {
           }, 409)
         }
 
+        // 🛑 REGLA #0 - PLATA: si el tenant tiene un preapproval vivo en Mercado Pago, borrarlo
+        // NO frena el cobro: el preapproval vive en MP, no acá. Se le seguiría debitando a un
+        // cliente cuyo negocio ya no existe, y tras el CASCADE no queda ni el `mp_subscription_id`
+        // para rastrearlo. Se cancela ANTES y fail-closed: si MP no confirma, no se borra nada.
+        // Es lo mismo que hace el camino self-service del dueño (MiCuentaPage -> cancel-suscripcion).
+        let mpCancelled = 0
+        let mpPeriodEnd: string | null = null
+        if (cobroVivo(tenant)) {
+          const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
+          if (!mpToken) return json({ error: 'MP no configurado: no se puede frenar el cobro antes de dar de baja.' }, 500)
+          const r = await cancelarSubMP(svc, p.tenantId, mpToken)
+          if (r.errores.length) {
+            await audit({ abortada: true, motivo: 'mp_no_confirmo', errores: r.errores })
+            return json({
+              error: 'No se pudo cancelar la suscripción en Mercado Pago, así que NO se dio de baja nada: '
+                + 'el cliente seguiría siendo cobrado por un negocio borrado. Reintentá o cancelala desde el panel de MP.',
+              detalle: r.errores,
+            }, 502)
+          }
+          mpCancelled = r.mp_cancelled
+          mpPeriodEnd = r.periodEnd
+          // MP-C9: el período ya pagado se respeta. En `schedule_delete` esto además le deja el
+          // acceso vigente durante la ventana, por si quiere cancelar la baja.
+          await svc.from('tenants').update({
+            subscription_status: 'cancelled',
+            subscription_period_end: mpPeriodEnd ?? new Date(Date.now() + 30 * DAY).toISOString(),
+          }).eq('id', p.tenantId)
+        }
+
         if (action === 'customers.schedule_delete') {
           const dias = Number.isFinite(Number(p.dias)) ? Math.max(0, Number(p.dias)) : 30
           const fecha = new Date(Date.now() + dias * DAY)
           const { error } = await svc.from('tenants')
             .update({ delete_scheduled_at: fecha.toISOString() }).eq('id', p.tenantId)
           if (error) throw error
-          await audit({ programada_para: fecha.toISOString(), dias, tenant_nombre: tenant.nombre, inventario: inv })
-          return json({ ok: true, delete_scheduled_at: fecha.toISOString(), inventario: inv })
+          await audit({ programada_para: fecha.toISOString(), dias, tenant_nombre: tenant.nombre, inventario: inv, mp_cancelled: mpCancelled })
+          return json({
+            ok: true, delete_scheduled_at: fecha.toISOString(), inventario: inv, mp_cancelled: mpCancelled,
+            // La cancelación en MP no se deshace sola: `cancel_delete` revive el negocio, no el cobro.
+            aviso_mp: mpCancelled > 0
+              ? 'Se canceló la suscripción en Mercado Pago. Si después se cancela la baja, el cliente tiene que volver a suscribirse.'
+              : null,
+          })
         }
 
-        // purge_now — irreversible. El CASCADE de las ~140 FK a tenant_id hace el resto (mig 358).
-        // Se audita ANTES de borrar: después del DELETE ya no hay nada que contar.
-        await audit({ purge_now: true, tenant_nombre: tenant.nombre, inventario: inv })
+        // purge_now - irreversible. El CASCADE de las ~140 FK a tenant_id hace el resto (mig 358).
+        // Las cuentas de acceso se resuelven ANTES del DELETE: el CASCADE borra `users` y después
+        // ya no hay de dónde sacarlas. Se resuelven acá y NO se aceptan del cliente: una lista de
+        // uuids mandada por el panel podría borrar cuentas de cualquier otro tenant.
+        const cuentas = await cuentasAuthDelTenant(svc, p.tenantId)
+        await audit({ purge_now: true, tenant_nombre: tenant.nombre, inventario: inv, cuentas, mp_cancelled: mpCancelled })
         const { error: delErr } = await svc.from('tenants').delete().eq('id', p.tenantId)
         if (delErr) throw delErr
 
         // El sweep programado NO toca `auth.users` (borra el tenant y deja la cuenta huérfana:
         // el mail queda sin negocio pero existiendo). Acá se ofrece cerrar el círculo, porque
         // "dar de baja" desde soporte se espera que deje el mail realmente libre.
-        const authBorrados: string[] = []
-        if (p.borrarUsuariosAuth === true && Array.isArray(p.authUserIds)) {
-          for (const uidBorrar of p.authUserIds as string[]) {
-            const { error } = await svc.auth.admin.deleteUser(uidBorrar)
-            if (!error) authBorrados.push(uidBorrar)
+        const authBorrados: Array<{ id: string; email: string | null }> = []
+        const authOmitidos: Array<{ id: string; email: string | null; motivo: string }> = []
+        if (p.borrarUsuariosAuth === true) {
+          for (const c of cuentas) {
+            if (c.es_agente) { authOmitidos.push({ id: c.id, email: c.email, motivo: 'es agente del panel de soporte' }); continue }
+            // Defensa extra: si tras el CASCADE todavía tiene fila en `users`, pertenece a otro
+            // negocio y su mail no es nuestro para borrar.
+            const { data: sigue } = await svc.from('users').select('id').eq('id', c.id).maybeSingle()
+            if (sigue) { authOmitidos.push({ id: c.id, email: c.email, motivo: 'pertenece a otro negocio' }); continue }
+            const { error } = await svc.auth.admin.deleteUser(c.id)
+            if (error) authOmitidos.push({ id: c.id, email: c.email, motivo: error.message })
+            else authBorrados.push({ id: c.id, email: c.email })
           }
-          await audit({ purge_now: true, auth_users_borrados: authBorrados })
+          await audit({ purge_now: true, auth_users_borrados: authBorrados, auth_users_omitidos: authOmitidos })
         }
 
-        return json({ ok: true, purgado: tenant.nombre, inventario: inv, auth_users_borrados: authBorrados })
+        return json({
+          ok: true, purgado: tenant.nombre, inventario: inv, mp_cancelled: mpCancelled,
+          auth_users_borrados: authBorrados, auth_users_omitidos: authOmitidos,
+        })
       }
 
       case 'impersonation.start':

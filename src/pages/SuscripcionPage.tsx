@@ -4,6 +4,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { BRAND, PLANES, MP_PLAN_IDS, ADDON_FIJO_ENABLED } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { estadoTrial, tituloPlanes, subtituloPlanes } from '@/lib/estadoTrial'
+import { tieneAccesoVigente } from '@/lib/accesoSuscripcion'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { type AddonRow } from '@/lib/addons'
@@ -12,7 +13,7 @@ import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib
 import PricingConfigurator from '@/components/PricingConfigurator'
 import {
   Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, ArrowLeft, Shield, RefreshCw, AlertTriangle, LogOut,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, AlertTriangle, LogOut, UserCircle2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -41,6 +42,17 @@ export default function SuscripcionPage() {
     now: new Date(),
   })
   const tieneSubMP = esActivo && !!tenant?.mp_subscription_id
+
+  // ¿Está acá porque el guard lo echó, o entró por su cuenta a ver los planes? Si lo echaron,
+  // "Volver al dashboard" es un botón que lo trae de vuelta a esta misma pantalla: la salida real
+  // es Mi cuenta (pagar, avisar un pago hecho o dar de baja el negocio), la única ruta de la app
+  // que queda abierta sin suscripción vigente.
+  const sinAcceso = !!tenant && !tieneAccesoVigente({
+    subscriptionStatus: tenant.subscription_status,
+    trialEndsAt: tenant.trial_ends_at,
+    subscriptionPeriodEnd: tenant.subscription_period_end,
+    now: new Date(),
+  })
 
   // Add-ons FIJOS activos del tenant → estado inicial del panel batch (packs tildados).
   const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string }>>({
@@ -497,6 +509,13 @@ export default function SuscripcionPage() {
               <ArrowLeft size={16} /> Registrar nuevo negocio
             </button>
           </div>
+        ) : sinAcceso ? (
+          <button
+            onClick={() => navigate('/mi-cuenta')}
+            className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"
+          >
+            <UserCircle2 size={16} /> Ir a Mi cuenta
+          </button>
         ) : (
           <button
             onClick={() => navigate('/dashboard')}
@@ -751,6 +770,19 @@ export default function SuscripcionPage() {
             <p className="text-blue-300 text-sm mb-2">
               Sesión activa como <strong>{user.nombre_display ?? user.rol}</strong>
             </p>
+            {/* Sin esto, el dueño que NO quiere seguir no tiene a dónde ir: la baja vive en Mi
+                cuenta y hasta v1.213 el guard no lo dejaba llegar. */}
+            {sinAcceso && user.rol === 'DUEÑO' && (
+              <p className="text-blue-300 text-sm mb-2">
+                ¿No querés seguir?{' '}
+                <button
+                  onClick={() => navigate('/mi-cuenta')}
+                  className="text-blue-200 hover:text-white underline underline-offset-4 transition-colors"
+                >
+                  Eliminá el negocio y todos sus datos desde Mi cuenta
+                </button>
+              </p>
+            )}
             <button
               onClick={async () => {
                 const { signOut } = useAuthStore.getState()

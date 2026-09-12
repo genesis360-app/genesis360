@@ -14,10 +14,11 @@ import {
 // 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { logActividad } from '@/lib/actividadLog'
-import { calcularItemsNomina, mejorSueldoSemestre, sacMejorSueldo, type ConceptoNomina } from '@/lib/rrhhNomina'
+import { calcularItemsNomina, mejorSueldoSemestre, sacMejorSueldo, type ConceptoNomina, agruparCargasSociales } from '@/lib/rrhhNomina'
 import { generarReciboSueldoPDF } from '@/lib/reciboSueldoPDF'
 import { LICENCIA_TIPOS, montoHorasExtra, sueldoHora, minutosTardeFacturables, descuentoTardanza } from '@/lib/rrhhAsistencia'
 import { FRECUENCIAS, basicoProrrateado, anticiposADescontar } from '@/lib/rrhhLiquidacion'
@@ -165,6 +166,9 @@ interface Empleado {
   fecha_egreso: string | null
   puesto_id: string | null
   departamento_id: string | null
+  // mig 409 — a qué sucursal se imputan los gastos que genera RRHH por este empleado.
+  // NULL = gasto global (como era antes de la migración).
+  sucursal_id?: string | null
   supervisor_id: string | null
   tipo_contrato: string
   salario_bruto: number | null
@@ -257,6 +261,9 @@ interface Feriado {
 export default function RrhhPage() {
   const { limits } = usePlanLimits()
   const { tenant, user, setTenant } = useAuthStore()
+  // Las sucursales del negocio (todas, no la activa): un empleado pertenece a una, y eso gobierna
+  // a qué sucursal se imputan su sueldo y sus cargas. Ver mig 409.
+  const { sucursales } = useSucursalFilter()
   // Los gastos que genera RRHH (sueldos, cargas, adelantos, liquidación final) están expresados en
   // la moneda del negocio. Sin estamparla caían en el default 'ARS' de la columna.
   const monedaNegocio = ((tenant as any)?.moneda ?? 'ARS').toUpperCase()
@@ -1128,6 +1135,9 @@ export default function RrhhPage() {
         descripcion: `Sueldo ${nombreEmpleado(salario.empleado)} — ${salario.periodo.slice(0, 7)}`,
         monto: salario.neto,
         moneda: monedaNegocio,
+        // mig 409 — la sucursal del EMPLEADO, no la de quien liquida. Sin esto el sueldo nacía sin
+        // sucursal y el módulo Gastos (que filtra por la activa) no lo mostraba nunca.
+        sucursal_id: salario.empleado?.sucursal_id ?? null,
         categoria: 'Sueldos',
         categoria_id: catSueldos,
         fecha: new Date().toISOString().split('T')[0],
@@ -1153,24 +1163,31 @@ export default function RrhhPage() {
       // sumar los ítems de aporte (DESCUENTO) de todas las liquidaciones del período
       const salarioIds = salarios.map(s => s.id)
       if (salarioIds.length === 0) throw new Error('No hay liquidaciones en el período')
+      // `salario_id` se trae para poder remontar cada aporte hasta SU empleado: desde la mig 409
+      // las cargas se acumulan por concepto Y por sucursal, no en una bolsa única del negocio.
       const { data: items } = await supabase.from('rrhh_salario_items')
-        .select('descripcion, tipo, monto, concepto_id').in('salario_id', salarioIds).eq('tipo', 'DESCUENTO')
+        .select('salario_id, descripcion, tipo, monto, concepto_id').in('salario_id', salarioIds).eq('tipo', 'DESCUENTO')
+      const sucursalDeSalario = new Map<string, string | null>(
+        salarios.map((sal: any) => [sal.id, sal.empleado?.sucursal_id ?? null]),
+      )
       const aporteConceptIds = new Set(conceptosAporte.map(c => c.id))
-      const porConcepto = new Map<string, number>()
-      for (const it of (items ?? []) as any[]) {
-        if (!it.concepto_id || !aporteConceptIds.has(it.concepto_id)) continue
-        porConcepto.set(it.descripcion, (porConcepto.get(it.descripcion) ?? 0) + Number(it.monto || 0))
-      }
-      if (porConcepto.size === 0) throw new Error('No hay aportes en las liquidaciones del período')
+      const porConceptoSucursal = agruparCargasSociales(
+        (items ?? []) as any[],
+        sucursalDeSalario,
+        (id) => !!id && aporteConceptIds.has(id),
+      )
+      if (porConceptoSucursal.length === 0) throw new Error('No hay aportes en las liquidaciones del período')
       const catCargas = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Cargas sociales').maybeSingle()).data?.id ?? null
       let n = 0
-      for (const [concepto, monto] of porConcepto) {
+      for (const { concepto, sucursalId, monto } of porConceptoSucursal) {
         if (monto <= 0) continue
+        const nombreSucursal = sucursalId ? (sucursales ?? []).find((su: any) => su.id === sucursalId)?.nombre : null
         await supabase.from('gastos').insert({
           tenant_id: tenant!.id,
-          descripcion: `${concepto} — ${nominaPeriodo.slice(0, 7)}`,
+          descripcion: `${concepto} — ${nominaPeriodo.slice(0, 7)}${nombreSucursal ? ` (${nombreSucursal})` : ''}`,
           monto: Math.round(monto * 100) / 100,
           moneda: monedaNegocio,
+          sucursal_id: sucursalId,
           categoria: 'Cargas sociales', categoria_id: catCargas,
           fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
           gasto_negocio: true, deduce_ganancias: true, monto_pagado: 0, estado_pago: 'pendiente',
@@ -1219,6 +1236,7 @@ export default function RrhhPage() {
         const { data: gasto } = await supabase.from('gastos').insert({
           tenant_id: tenant!.id, descripcion: `${etiqueta} ${nombreEmpleado(emp)}`, monto,
           moneda: monedaNegocio,
+          sucursal_id: emp?.sucursal_id ?? null,
           categoria: 'Adelantos al personal', categoria_id: catId,
           fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
           gasto_negocio: true, deduce_ganancias: false, monto_pagado: 0, estado_pago: 'pendiente',
@@ -1710,6 +1728,7 @@ export default function RrhhPage() {
       const { data: gasto } = await supabase.from('gastos').insert({
         tenant_id: tenant!.id, descripcion: `Liquidación final ${nombreEmpleado(liqFinal)}`, monto: r.total,
         moneda: monedaNegocio,
+        sucursal_id: liqFinal.sucursal_id ?? null,
         categoria: 'Sueldos', categoria_id: catSueldos, fecha: new Date().toISOString().split('T')[0],
         usuario_id: user?.id ?? null, gasto_negocio: true, deduce_ganancias: true, monto_pagado: 0, estado_pago: 'pendiente',
         notas: `Liquidación final (indemnización ${r.indemnizacion} + SAC ${r.sacProporcional} + vacaciones ${r.vacacionesNoGozadas})`,
@@ -2391,6 +2410,20 @@ export default function RrhhPage() {
                       <option key={d.id} value={d.id}>
                         {d.nombre}
                       </option>
+                    ))}
+                  </select>
+
+                  {/* mig 409 — sin sucursal, el sueldo y las cargas de este empleado se generan
+                      como gasto GLOBAL y no aparecen al filtrar Gastos por una sucursal. */}
+                  <select
+                    value={formData.sucursal_id ?? ''}
+                    onChange={(e) => setFormData({ ...formData, sucursal_id: e.target.value || null })}
+                    title="Sucursal a la que se imputan los gastos de este empleado"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
+                  >
+                    <option value="">Sin sucursal (gasto global)</option>
+                    {(sucursales ?? []).map((su: any) => (
+                      <option key={su.id} value={su.id}>{su.nombre}</option>
                     ))}
                   </select>
 

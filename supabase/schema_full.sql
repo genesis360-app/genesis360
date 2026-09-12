@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-08T19:47:45.207Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260908194253 · 166 tablas
+-- Generado 2026-09-12T16:25:19.702Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260912162434 · 167 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -776,7 +776,8 @@ CREATE TABLE public.empleados (
   horario_salida time without time zone,
   dias_laborales jsonb NOT NULL DEFAULT '[1, 2, 3, 4, 5]'::jsonb,
   frecuencia_liquidacion text NOT NULL DEFAULT 'mensual'::text,
-  frecuencia_dias integer
+  frecuencia_dias integer,
+  sucursal_id uuid
 );
 
 CREATE TABLE public.envio_incidencias (
@@ -1782,6 +1783,17 @@ CREATE TABLE public.recepciones (
   remito_url text
 );
 
+CREATE TABLE public.recurso_ubicaciones (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  nombre text NOT NULL,
+  descripcion text,
+  sucursal_id uuid,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.recursos (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -1805,7 +1817,8 @@ CREATE TABLE public.recursos (
   frecuencia_unidad text,
   proximo_vencimiento date,
   km_acumulado numeric NOT NULL DEFAULT 0,
-  consumo_litros_100km numeric
+  consumo_litros_100km numeric,
+  ubicacion_id uuid
 );
 
 CREATE TABLE public.reglas_almacenaje (
@@ -3061,6 +3074,9 @@ ALTER TABLE public.puntos_venta_afip ADD CONSTRAINT puntos_venta_afip_pkey PRIMA
 ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmada'::text, 'cancelada'::text])));
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_pkey PRIMARY KEY (id);
+ALTER TABLE public.recurso_ubicaciones ADD CONSTRAINT recurso_ubicaciones_nombre_check CHECK ((btrim(nombre) <> ''::text));
+ALTER TABLE public.recurso_ubicaciones ADD CONSTRAINT recurso_ubicaciones_pkey PRIMARY KEY (id);
+ALTER TABLE public.recurso_ubicaciones ADD CONSTRAINT recurso_ubicaciones_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_estado_check CHECK ((estado = ANY (ARRAY['activo'::text, 'en_reparacion'::text, 'dado_de_baja'::text, 'pendiente_adquisicion'::text])));
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_frecuencia_unidad_check CHECK ((frecuencia_unidad = ANY (ARRAY['dia'::text, 'semana'::text, 'mes'::text, 'año'::text])));
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_pkey PRIMARY KEY (id);
@@ -3335,6 +3351,7 @@ ALTER TABLE public.emision_factura_locks ADD CONSTRAINT emision_factura_locks_te
 ALTER TABLE public.emisores_fiscales ADD CONSTRAINT emisores_fiscales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_departamento_id_fkey FOREIGN KEY (departamento_id) REFERENCES rrhh_departamentos(id) ON DELETE SET NULL;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_puesto_id_fkey FOREIGN KEY (puesto_id) REFERENCES rrhh_puestos(id) ON DELETE SET NULL;
+ALTER TABLE public.empleados ADD CONSTRAINT empleados_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_supervisor_id_fkey FOREIGN KEY (supervisor_id) REFERENCES empleados(id) ON DELETE SET NULL;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.empleados ADD CONSTRAINT empleados_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
@@ -3536,10 +3553,13 @@ ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_oc_id_fkey FOREIGN KEY
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.recurso_ubicaciones ADD CONSTRAINT recurso_ubicaciones_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
+ALTER TABLE public.recurso_ubicaciones ADD CONSTRAINT recurso_ubicaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.recursos ADD CONSTRAINT recursos_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES recurso_ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE CASCADE;
 ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_zona_id_fkey FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE CASCADE;
@@ -3852,6 +3872,7 @@ CREATE INDEX idx_empleados_activo ON public.empleados USING btree (activo);
 CREATE INDEX idx_empleados_departamento ON public.empleados USING btree (departamento_id);
 CREATE INDEX idx_empleados_fecha_nacimiento ON public.empleados USING btree (fecha_nacimiento);
 CREATE INDEX idx_empleados_puesto ON public.empleados USING btree (puesto_id);
+CREATE INDEX idx_empleados_sucursal ON public.empleados USING btree (tenant_id, sucursal_id);
 CREATE INDEX idx_empleados_supervisor_id ON public.empleados USING btree (supervisor_id);
 CREATE INDEX idx_empleados_tenant ON public.empleados USING btree (tenant_id);
 CREATE INDEX idx_empleados_user_id ON public.empleados USING btree (user_id);
@@ -4058,12 +4079,14 @@ CREATE INDEX idx_recepciones_oc ON public.recepciones USING btree (oc_id) WHERE 
 CREATE INDEX idx_recepciones_proveedor_id ON public.recepciones USING btree (proveedor_id);
 CREATE INDEX idx_recepciones_sucursal_id ON public.recepciones USING btree (sucursal_id);
 CREATE INDEX idx_recepciones_tenant ON public.recepciones USING btree (tenant_id);
+CREATE INDEX idx_recurso_ubicaciones_tenant ON public.recurso_ubicaciones USING btree (tenant_id) WHERE activo;
 CREATE INDEX idx_recursos_created_by ON public.recursos USING btree (created_by);
 CREATE INDEX idx_recursos_proveedor_id ON public.recursos USING btree (proveedor_id);
 CREATE INDEX idx_recursos_recurrentes ON public.recursos USING btree (tenant_id, proximo_vencimiento) WHERE (es_recurrente = true);
 CREATE INDEX idx_recursos_sucursal_id ON public.recursos USING btree (sucursal_id);
 CREATE INDEX idx_recursos_tenant ON public.recursos USING btree (tenant_id);
 CREATE INDEX idx_recursos_tenant_estado ON public.recursos USING btree (tenant_id, estado);
+CREATE INDEX idx_recursos_ubicacion_id ON public.recursos USING btree (ubicacion_id) WHERE (ubicacion_id IS NOT NULL);
 CREATE INDEX idx_repartidores_empleado_id ON public.repartidores USING btree (empleado_id);
 CREATE INDEX idx_repartidores_tenant ON public.repartidores USING btree (tenant_id);
 CREATE INDEX idx_ret_tenant ON public.retenciones_sufridas USING btree (tenant_id);
@@ -8305,6 +8328,50 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_recurso_ubicacion_borrar_limpia_texto()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Se limpian los dos campos a la vez: el ON DELETE SET NULL de la FK se encarga de
+  -- `ubicacion_id`, pero el texto quedaría colgado y la pantalla lo volvería a mostrar.
+  UPDATE public.recursos
+     SET ubicacion = NULL, ubicacion_id = NULL
+   WHERE ubicacion_id = OLD.id;
+  RETURN OLD;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_recurso_ubicacion_propagar_nombre()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  UPDATE public.recursos SET ubicacion = NEW.nombre WHERE ubicacion_id = NEW.id;
+  RETURN NULL;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_recursos_sync_ubicacion_texto()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.ubicacion_id IS NULL THEN
+    RETURN NEW;   -- sin catalogo: se respeta el texto (compatibilidad con el form viejo)
+  END IF;
+  SELECT ru.nombre INTO NEW.ubicacion
+    FROM public.recurso_ubicaciones ru WHERE ru.id = NEW.ubicacion_id;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_registrar_pago_manual(p_tenant_id uuid, p_monto numeric, p_medio text, p_referencia text, p_registrado_por uuid, p_mp_payment_id text, p_notas text)
  RETURNS timestamp with time zone
  LANGUAGE plpgsql
@@ -8912,6 +8979,14 @@ CREATE OR REPLACE FUNCTION public.fn_updated_at_proveedor_accounts()
 AS $function$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_updated_at_recurso_ubicaciones()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN NEW.updated_at = now(); RETURN NEW; END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_updated_at_tn_creds()
@@ -10022,6 +10097,67 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -10096,67 +10232,6 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -12002,6 +12077,10 @@ CREATE TRIGGER trg_productos_variante_atributos BEFORE INSERT OR UPDATE OF produ
 CREATE TRIGGER trg_updated_at_proveedor_accounts BEFORE UPDATE ON public.proveedor_accounts FOR EACH ROW EXECUTE FUNCTION fn_updated_at_proveedor_accounts();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
 CREATE TRIGGER trg_updated_at_recepcion BEFORE UPDATE ON public.recepciones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_recurso_ubicacion_borrar_limpia_texto BEFORE DELETE ON public.recurso_ubicaciones FOR EACH ROW EXECUTE FUNCTION fn_recurso_ubicacion_borrar_limpia_texto();
+CREATE TRIGGER trg_recurso_ubicacion_propagar_nombre AFTER UPDATE OF nombre ON public.recurso_ubicaciones FOR EACH ROW WHEN ((old.nombre IS DISTINCT FROM new.nombre)) EXECUTE FUNCTION fn_recurso_ubicacion_propagar_nombre();
+CREATE TRIGGER trg_updated_at_recurso_ubicaciones BEFORE UPDATE ON public.recurso_ubicaciones FOR EACH ROW EXECUTE FUNCTION fn_updated_at_recurso_ubicaciones();
+CREATE TRIGGER trg_recursos_sync_ubicacion_texto BEFORE INSERT OR UPDATE OF ubicacion_id ON public.recursos FOR EACH ROW EXECUTE FUNCTION fn_recursos_sync_ubicacion_texto();
 CREATE TRIGGER trg_recursos_updated_at BEFORE UPDATE ON public.recursos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_asistencia_updated_at BEFORE UPDATE ON public.rrhh_asistencia FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_conceptos_updated_at BEFORE UPDATE ON public.rrhh_conceptos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -12162,6 +12241,7 @@ ALTER TABLE public.proveedores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.puntos_venta_afip ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recepcion_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recepciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recurso_ubicaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recursos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reglas_almacenaje ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.repartidores ENABLE ROW LEVEL SECURITY;
@@ -12810,6 +12890,11 @@ CREATE POLICY recepcion_items_tenant ON public.recepcion_items AS PERMISSIVE FOR
 CREATE POLICY recepciones_tenant ON public.recepciones AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY recurso_ubicaciones_select ON public.recurso_ubicaciones AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY recurso_ubicaciones_write_gestion ON public.recurso_ubicaciones AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY recursos_tenant ON public.recursos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
@@ -13411,6 +13496,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.re
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recepciones TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recepciones TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recepciones TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recurso_ubicaciones TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recurso_ubicaciones TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recursos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recursos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recursos TO service_role;

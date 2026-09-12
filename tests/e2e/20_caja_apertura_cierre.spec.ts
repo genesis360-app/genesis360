@@ -28,8 +28,20 @@ test.describe('Caja — apertura + cierre (mutante)', () => {
     await pill.click()
 
     // 2) APERTURA — solo si está cerrada (si quedó abierta, se ejerce solo el cierre)
+    //
+    // ⚠️ El panel renderiza "Abrir caja" MIENTRAS la query de la sesión está en vuelo, así que
+    // leerlo apenas carga la pantalla es una carrera: se veía "Abrir caja" sobre una caja que ya
+    // estaba abierta, el click no abría ningún modal y el spec moría esperando el campo "Monto
+    // inicial" — un timeout que no decía nada de la causa. Se espera a que el panel se defina por
+    // uno de los dos estados posibles antes de decidir.
     const abrirBtn = page.getByRole('button', { name: /^Abrir caja$/ }).first()
-    if (await visible(abrirBtn, 3000)) {
+    const arqueoTemprano = page.getByRole('button', { name: /^Arqueo$/ }).first()
+    await expect
+      .poll(async () => (await arqueoTemprano.isVisible()) || (await abrirBtn.isVisible()), { timeout: 15000 })
+      .toBe(true)
+
+    // Si "Arqueo" ya está, la caja está ABIERTA: no se intenta abrirla de nuevo.
+    if (!(await arqueoTemprano.isVisible()) && await visible(abrirBtn, 3000)) {
       await abrirBtn.click()
       const montoInicial = page.locator('xpath=//label[contains(.,"Monto inicial")]/following::input[1]')
       await montoInicial.fill('0')

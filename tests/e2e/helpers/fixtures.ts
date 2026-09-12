@@ -478,12 +478,18 @@ export async function garantizarLiquidacionSinGasto(
     gastos?: { id: string; estado_pago: string; descripcion: string } | null
   }>
 
+  // El mes todavía no tiene NINGUNA liquidación (es lo normal al cambiar de mes: la última era de
+  // julio y el test corrió en septiembre). No hay nada que liberar y tampoco es un problema: el
+  // propio spec arranca con "Generar nómina del mes", que las crea. Antes esto fallaba acá con un
+  // mensaje que además despistaba ("todas sus gastos ya están PAGADOS (0 con gasto)") — el spec se
+  // rompía solo el día 1 de cada mes sin que nadie tocara código.
+  if (filas.length === 0) return
+
   const liberable = filas.find(f => f.gastos?.estado_pago === 'pendiente')
   expect(
     liberable,
-    `[fixtures] No hay ninguna liquidación de ${periodo} liberable: o no hay ninguna, o todas ` +
-      `sus gastos ya están PAGADOS (${filas.length} con gasto). Un gasto pagado NO se borra ` +
-      `(tiene movimiento de caja y borrarlo lo dejaría huérfano — REGLA #0). ` +
+    `[fixtures] Las ${filas.length} liquidaciones de ${periodo} tienen su gasto ya PAGADO. Un gasto ` +
+      `pagado NO se borra (tiene movimiento de caja y borrarlo lo dejaría huérfano — REGLA #0). ` +
       `Sembrar una liquidación nueva a mano o esperar al mes siguiente.`,
   ).toBeTruthy()
 

@@ -365,6 +365,9 @@ export default function RecursosPage() {
             recurso_id:  nuevoRecurso.id,
             descripcion: `Adquisición: ${payload.nombre}`,
             monto:       payload.valor,
+            // La moneda del negocio: `recursos` no guarda una propia, y sin esto el gasto caía en
+            // el default 'ARS' de la columna.
+            moneda:      ((tenant as any)?.moneda ?? 'ARS').toUpperCase(),
             categoria:   'Recurso',
             fecha:       payload.fecha_adquisicion ?? hoy,
             sucursal_id: sucursalId ?? null,

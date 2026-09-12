@@ -1093,6 +1093,9 @@ export default function ProveedoresPage() {
         tenant_id: tenant!.id,
         descripcion: ps.nombre ?? `Presupuesto aprobado — ${prov?.nombre ?? 'proveedor'}`,
         monto: ps.monto ?? 0,
+        // La moneda del gasto es la del NEGOCIO: el monto de acá está expresado en ella. Sin
+        // setearla caía en el default 'ARS' de la columna (ver src/lib/gastoMoneda.ts).
+        moneda: ((tenant as any)?.moneda ?? 'ARS').toUpperCase(),
         fecha: new Date().toISOString().split('T')[0],
         categoria: 'Honorarios profesionales',
         notas: `Presupuesto aprobado. Proveedor: ${prov?.nombre ?? ''}${ps.notas ? ` | ${ps.notas}` : ''}`,

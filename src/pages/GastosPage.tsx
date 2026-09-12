@@ -946,13 +946,23 @@ export default function GastosPage() {
   const gastosFiltrados = filtroCategoria
     ? gastos.filter((g: any) => g.categoria === filtroCategoria)
     : gastos
-  const totalPeriodo  = gastosFiltrados.reduce((a: number, g: any) => a + Number(g.monto), 0)
-  const totalIVA      = gastosFiltrados.filter((g: any) => g.iva_deducible).reduce((a: number, g: any) => a + Number(g.iva_monto ?? 0), 0)
-  const cantPeriodo   = gastosFiltrados.length
-  const mayorGasto    = gastosFiltrados.reduce((max: any, g: any) =>
+  // 🛑 REGLA #0 — los totales de este tab son en la moneda del NEGOCIO. Desde v1.211.0 un gasto
+  // puede registrarse en otra moneda, y sumarlo acá daría un número que no es plata (US$500 +
+  // $300.000 = "$300.500"). No se convierte tampoco: no hay cotización guardada por gasto, así que
+  // convertir sería inventar el dato. Se calcula sobre la moneda del negocio y lo demás se INFORMA
+  // aparte, debajo de las tarjetas.
+  const esMonedaNegocio = (g: any) => (g.moneda ?? monedaTenant ?? 'ARS').toUpperCase() === String(monedaTenant).toUpperCase()
+  const gastosMonedaNegocio = gastosFiltrados.filter(esMonedaNegocio)
+  const otrasMonedasPeriodo = totalesPorMoneda(gastosFiltrados.filter((g: any) => !esMonedaNegocio(g)), monedaTenant)
+
+  const totalPeriodo  = gastosMonedaNegocio.reduce((a: number, g: any) => a + Number(g.monto), 0)
+  const totalIVA      = gastosMonedaNegocio.filter((g: any) => g.iva_deducible).reduce((a: number, g: any) => a + Number(g.iva_monto ?? 0), 0)
+  const cantPeriodo   = gastosMonedaNegocio.length
+  // El "mayor gasto" también compara de a una moneda: US$100 no es mayor que $50.000.
+  const mayorGasto    = gastosMonedaNegocio.reduce((max: any, g: any) =>
     (!max || Number(g.monto) > Number(max.monto)) ? g : max, null)
   const categoriasTotales: Record<string, number> = {}
-  gastosFiltrados.forEach((g: any) => {
+  gastosMonedaNegocio.forEach((g: any) => {
     const cat = g.categoria || 'Sin categoría'
     categoriasTotales[cat] = (categoriasTotales[cat] || 0) + Number(g.monto)
   })
@@ -1994,6 +2004,13 @@ export default function GastosPage() {
               </div>
               <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(totalPeriodo)}</p>
               <p className="text-xs text-gray-400 mt-1">{cantPeriodo} gasto{cantPeriodo !== 1 ? 's' : ''}</p>
+              {/* Lo que quedó fuera del total, en su propia moneda. Sin esto el número de arriba
+                  parecería "todos los gastos" cuando en realidad hay más. */}
+              {otrasMonedasPeriodo.length > 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                  + {otrasMonedasPeriodo.map(([m, t]) => formatMonedaLib(t, m)).join(' · ')} en otra moneda (no se suman)
+                </p>
+              )}
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-3 mb-2">
@@ -2144,7 +2161,12 @@ export default function GastosPage() {
                   <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
                     <tr>
                       <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">Total</td>
-                      <td className="px-4 py-3 text-right font-bold text-red-600 dark:text-red-400">{formatMoneda(totalPeriodo)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-red-600 dark:text-red-400">
+                        {formatMoneda(totalPeriodo)}
+                        {otrasMonedasPeriodo.map(([m, t]) => (
+                          <div key={m} className="text-xs font-semibold text-amber-600 dark:text-amber-400">{formatMonedaLib(t, m)}</div>
+                        ))}
+                      </td>
                       <td className="px-4 py-3 text-right font-bold text-blue-500 dark:text-blue-400 hidden md:table-cell">{totalIVA > 0 ? formatMoneda(totalIVA) : '—'}</td>
                       <td />
                     </tr>
@@ -2223,7 +2245,9 @@ export default function GastosPage() {
               )}
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              {histFiltrados.length} resultado{histFiltrados.length !== 1 ? 's' : ''} · Total {formatMoneda(histFiltrados.reduce((a: number, g: any) => a + Number(g.monto), 0))}
+              {/* Un total por moneda: el historial puede mezclar gastos de monedas distintas. */}
+              {histFiltrados.length} resultado{histFiltrados.length !== 1 ? 's' : ''} · Total{' '}
+              {totalesPorMoneda(histFiltrados, monedaTenant).map(([m, t]) => formatMonedaLib(t, m)).join(' · ') || formatMoneda(0)}
             </p>
           </div>
 

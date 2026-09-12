@@ -204,7 +204,10 @@ export default function RecepcionesPage() {
   const { data: ocsConfirmadas = [] } = useQuery({
     queryKey: ['ocs-confirmadas', tenant?.id, fProveedorId],
     queryFn: async () => {
-      let q = supabase.from('ordenes_compra').select('id, numero').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
+      // `moneda`: el gasto que se genera al confirmar la recepción lleva los precios de la OC, que
+      // están expresados en la moneda DE LA OC. Sin traerla, el gasto caía en el default 'ARS' de
+      // la columna y una OC en dólares quedaba registrada como pesos.
+      let q = supabase.from('ordenes_compra').select('id, numero, moneda').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
       if (fProveedorId) q = q.eq('proveedor_id', fProveedorId)
       const { data } = await q
       return data ?? []
@@ -686,12 +689,15 @@ export default function RecepcionesPage() {
         }, 0)
         if (montoGasto > 0) {
           const provNombre = proveedores.find(p => p.id === fProveedorId)?.nombre ?? 'proveedor'
-          const ocNumero = ocsConfirmadas.find(oc => oc.id === fOcId)?.numero
+          const ocSel = ocsConfirmadas.find((oc: any) => oc.id === fOcId) as any
+          const ocNumero = ocSel?.numero
           await supabase.from('gastos').insert({
             tenant_id: tenant!.id,
             recepcion_id: rec.id,
             descripcion: ocNumero ? `Compra OC #${ocNumero} — ${provNombre}` : `Compra — ${provNombre}`,
             monto: montoGasto,
+            // La moneda de la OC si viene de una; si es una recepción suelta, la del negocio.
+            moneda: (ocSel?.moneda ?? (tenant as any)?.moneda ?? 'ARS').toUpperCase(),
             categoria: 'Compras',
             fecha: new Date().toISOString().split('T')[0],
             notas: `Recepción #${rec.numero}`,

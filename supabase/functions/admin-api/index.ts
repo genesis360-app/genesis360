@@ -155,7 +155,14 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
   return { mp_cancelled, errores, periodEnd }
 }
 
-/** Ese tenant, ¿puede seguir generando cobros en Mercado Pago? */
+/**
+ * ¿Este tenant PARECE tener cobro vivo en Mercado Pago?
+ *
+ * Solo informativo (se muestra en el preview). NO se usa para decidir si cancelar: un tenant cuyo
+ * checkout nunca terminó de linkearse queda con `mp_subscription_id` NULL y sin estado 'active', y
+ * sin embargo puede tener un preapproval cobrando (el escenario H8/MP-C7 que `cancelarSubMP` sabe
+ * resolver buscando por el mail del dueño). Gatear la cancelación con esto saltearía justo ese caso.
+ */
 const cobroVivo = (t: { subscription_status?: string | null; mp_subscription_id?: string | null }) =>
   t.subscription_status === 'active' || !!t.mp_subscription_id
 
@@ -587,27 +594,30 @@ Deno.serve(async (req) => {
         // cliente cuyo negocio ya no existe, y tras el CASCADE no queda ni el `mp_subscription_id`
         // para rastrearlo. Se cancela ANTES y fail-closed: si MP no confirma, no se borra nada.
         // Es lo mismo que hace el camino self-service del dueño (MiCuentaPage -> cancel-suscripcion).
-        let mpCancelled = 0
-        let mpPeriodEnd: string | null = null
-        if (cobroVivo(tenant)) {
-          const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
-          if (!mpToken) return json({ error: 'MP no configurado: no se puede frenar el cobro antes de dar de baja.' }, 500)
-          const r = await cancelarSubMP(svc, p.tenantId, mpToken)
-          if (r.errores.length) {
-            await audit({ abortada: true, motivo: 'mp_no_confirmo', errores: r.errores })
-            return json({
-              error: 'No se pudo cancelar la suscripción en Mercado Pago, así que NO se dio de baja nada: '
-                + 'el cliente seguiría siendo cobrado por un negocio borrado. Reintentá o cancelala desde el panel de MP.',
-              detalle: r.errores,
-            }, 502)
-          }
-          mpCancelled = r.mp_cancelled
-          mpPeriodEnd = r.periodEnd
+        // Se llama SIEMPRE, sin preguntar antes si "parece" que hay cobro. Un tenant cuyo checkout
+        // nunca se linkeó no tiene `mp_subscription_id` ni estado 'active' y aun así puede estar
+        // siendo cobrado: `cancelarSubMP` lo busca por el mail del dueño (H8/MP-C7). Preguntar
+        // primero era justamente saltear ese caso. Si no hay nada que cancelar, no cancela nada.
+        const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
+        if (!mpToken) return json({ error: 'MP no configurado: no se puede frenar el cobro antes de dar de baja.' }, 500)
+        const rMp = await cancelarSubMP(svc, p.tenantId, mpToken)
+        if (rMp.errores.length) {
+          await audit({ abortada: true, motivo: 'mp_no_confirmo', errores: rMp.errores })
+          return json({
+            error: 'No se pudo cancelar la suscripción en Mercado Pago, así que NO se dio de baja nada: '
+              + 'el cliente seguiría siendo cobrado por un negocio borrado. Reintentá o cancelala desde el panel de MP.',
+            detalle: rMp.errores,
+          }, 502)
+        }
+        const mpCancelled = rMp.mp_cancelled
+        // Solo se toca el estado de la cuenta si de verdad se canceló algo: si no había nada vivo,
+        // marcar 'cancelled' mentiría sobre un tenant que quizá estaba en trial.
+        if (mpCancelled > 0) {
           // MP-C9: el período ya pagado se respeta. En `schedule_delete` esto además le deja el
           // acceso vigente durante la ventana, por si quiere cancelar la baja.
           await svc.from('tenants').update({
             subscription_status: 'cancelled',
-            subscription_period_end: mpPeriodEnd ?? new Date(Date.now() + 30 * DAY).toISOString(),
+            subscription_period_end: rMp.periodEnd ?? new Date(Date.now() + 30 * DAY).toISOString(),
           }).eq('id', p.tenantId)
         }
 

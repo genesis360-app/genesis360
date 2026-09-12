@@ -808,7 +808,7 @@ Deno.serve(async (req) => {
           return json({ error: 'Indicá entre 1 y 365 días.' }, 400)
         }
         const { data: t } = await svc.from('tenants')
-          .select('id, nombre, subscription_status, trial_ends_at').eq('id', p.tenantId).maybeSingle()
+          .select('id, nombre, subscription_status, trial_ends_at, subscription_period_end').eq('id', p.tenantId).maybeSingle()
         if (!t) return json({ error: 'Tenant no encontrado' }, 404)
         // 🛑 No tocar una suscripción PAGA: extenderle el trial a alguien que está pagando no
         // tiene sentido y puede confundir el estado de su cuenta.
@@ -817,8 +817,13 @@ Deno.serve(async (req) => {
         }
         // Desde HOY si ya venció, o desde la fecha original si todavía corre: así "7 días" siempre
         // significa 7 días de uso real y no se pierden extendiendo una prueba ya vencida.
-        const base = t.trial_ends_at && new Date(t.trial_ends_at) > new Date()
-          ? new Date(t.trial_ends_at) : new Date()
+        //
+        // 🛑 Se toma la fecha de acceso MÁS LEJANA, no solo `trial_ends_at`. Un tenant `cancelled`
+        // conserva acceso hasta `subscription_period_end` (el período que YA pagó, MP-C9): mirar
+        // solo el trial podía dejarlo con MENOS acceso del que tenía — "extender" acortando.
+        const candidatas = [new Date(), ...[t.trial_ends_at, t.subscription_period_end]
+          .filter(Boolean).map((d: any) => new Date(d)).filter((d: Date) => !isNaN(d.getTime()) && d > new Date())]
+        const base = new Date(Math.max(...candidatas.map(d => d.getTime())))
         const nueva = new Date(base.getTime() + dias * DAY)
         const { error } = await svc.from('tenants')
           .update({ subscription_status: 'trial', trial_ends_at: nueva.toISOString() }).eq('id', p.tenantId)

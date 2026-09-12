@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-12T16:25:19.702Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260912162434 · 167 tablas
+-- Generado 2026-09-12T21:23:24.385Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260912211751 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -75,6 +75,17 @@ CREATE TABLE public.admin_audit_log (
   metadata jsonb,
   ip text,
   user_agent text,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.admin_customer_notes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  tenant_nombre text,
+  agent_id uuid,
+  agent_email text,
+  cuerpo text NOT NULL,
+  fijada boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
@@ -2432,7 +2443,8 @@ CREATE TABLE public.tenants (
   diferencia_caja_umbral_usd numeric(14,2),
   caja_usd_clave_maestra_umbral numeric(14,2),
   reintegro_usd_cotizacion_original boolean NOT NULL DEFAULT false,
-  compras_cotizacion_roles_permitidos jsonb
+  compras_cotizacion_roles_permitidos jsonb,
+  telefono text
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2813,6 +2825,8 @@ ALTER TABLE public.addon_batch_changes ADD CONSTRAINT addon_batch_changes_estado
 ALTER TABLE public.addon_batch_changes ADD CONSTRAINT addon_batch_changes_pkey PRIMARY KEY (id);
 ALTER TABLE public.addon_batch_changes ADD CONSTRAINT addon_batch_changes_plan_objetivo_check CHECK ((plan_objetivo = ANY (ARRAY['basico'::text, 'pro'::text])));
 ALTER TABLE public.admin_audit_log ADD CONSTRAINT admin_audit_log_pkey PRIMARY KEY (id);
+ALTER TABLE public.admin_customer_notes ADD CONSTRAINT admin_customer_notes_cuerpo_check CHECK ((btrim(cuerpo) <> ''::text));
+ALTER TABLE public.admin_customer_notes ADD CONSTRAINT admin_customer_notes_pkey PRIMARY KEY (id);
 ALTER TABLE public.afip_wsaa_ta ADD CONSTRAINT afip_wsaa_ta_cuit_service_environment_key UNIQUE (cuit, service, environment);
 ALTER TABLE public.afip_wsaa_ta ADD CONSTRAINT afip_wsaa_ta_environment_check CHECK ((environment = ANY (ARRAY['homologacion'::text, 'produccion'::text])));
 ALTER TABLE public.afip_wsaa_ta ADD CONSTRAINT afip_wsaa_ta_pkey PRIMARY KEY (id);
@@ -3219,6 +3233,7 @@ ALTER TABLE public.actividad_log ADD CONSTRAINT actividad_log_usuario_id_fkey FO
 ALTER TABLE public.actividad_log ADD CONSTRAINT actividad_log_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.addon_batch_changes ADD CONSTRAINT addon_batch_changes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.admin_audit_log ADD CONSTRAINT admin_audit_log_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.admin_customer_notes ADD CONSTRAINT admin_customer_notes_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id) ON DELETE RESTRICT;
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES aging_profiles(id) ON DELETE CASCADE;
 ALTER TABLE public.aging_profile_reglas ADD CONSTRAINT aging_profile_reglas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3734,6 +3749,7 @@ CREATE INDEX idx_actividad_log_usuario_id ON public.actividad_log USING btree (u
 CREATE INDEX idx_actividad_log_venta_id ON public.actividad_log USING btree (venta_id) WHERE (venta_id IS NOT NULL);
 CREATE INDEX idx_admin_audit_agent ON public.admin_audit_log USING btree (agent_id, created_at DESC);
 CREATE INDEX idx_admin_audit_tenant ON public.admin_audit_log USING btree (target_tenant_id, created_at DESC);
+CREATE INDEX idx_admin_notes_tenant ON public.admin_customer_notes USING btree (tenant_id, created_at DESC);
 CREATE INDEX idx_aging_profile_reglas_estado_id ON public.aging_profile_reglas USING btree (estado_id);
 CREATE INDEX idx_aging_profile_reglas_profile_id ON public.aging_profile_reglas USING btree (profile_id);
 CREATE INDEX idx_aging_profile_reglas_tenant_id ON public.aging_profile_reglas USING btree (tenant_id);
@@ -4864,6 +4880,75 @@ BEGIN
     WHERE id = p_tenant_id;
   RETURN v_precio;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_admin_tenant_cuentas(p_tenant_id uuid)
+ RETURNS TABLE(id uuid, email text, rol text, nombre_display text, activo boolean, created_at timestamp with time zone, ultimo_acceso timestamp with time zone, es_agente boolean)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  SELECT u.id, au.email, u.rol, u.nombre_display, u.activo, u.created_at,
+         au.last_sign_in_at,
+         EXISTS (SELECT 1 FROM public.support_agents sa WHERE sa.id = u.id)
+  FROM public.users u
+  JOIN auth.users au ON au.id = u.id
+  WHERE u.tenant_id = p_tenant_id
+  ORDER BY (u.rol = 'DUEÑO') DESC, u.created_at;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_admin_tenants_overview(p_q text DEFAULT NULL::text, p_limit integer DEFAULT 100)
+ RETURNS TABLE(id uuid, nombre text, created_at timestamp with time zone, subscription_status text, trial_ends_at timestamp with time zone, plan_tier text, billing_mode text, modo_operacion text, pais text, tipo_comercio text, delete_scheduled_at timestamp with time zone, dueno_nombre text, dueno_email text, usuarios integer, ultimo_acceso timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+  WITH q AS (SELECT NULLIF(btrim(p_q), '') AS term),
+  duenos AS (
+    -- Un negocio puede tener más de un DUEÑO; se toma el más antiguo (el que lo creó).
+    SELECT DISTINCT ON (u.tenant_id)
+           u.tenant_id, u.nombre_display, au.email
+    FROM public.users u
+    JOIN auth.users au ON au.id = u.id
+    WHERE u.rol = 'DUEÑO'
+    ORDER BY u.tenant_id, u.created_at
+  ),
+  agg AS (
+    SELECT u.tenant_id,
+           COUNT(*)::int              AS usuarios,
+           MAX(au.last_sign_in_at)     AS ultimo_acceso
+    FROM public.users u
+    JOIN auth.users au ON au.id = u.id
+    GROUP BY u.tenant_id
+  )
+  SELECT t.id, t.nombre, t.created_at, t.subscription_status, t.trial_ends_at,
+         t.plan_tier, t.billing_mode, t.modo_operacion, t.pais, t.tipo_comercio,
+         t.delete_scheduled_at,
+         d.nombre_display, d.email,
+         COALESCE(a.usuarios, 0), a.ultimo_acceso
+  FROM public.tenants t
+  LEFT JOIN duenos d ON d.tenant_id = t.id
+  LEFT JOIN agg    a ON a.tenant_id = t.id
+  CROSS JOIN q
+  WHERE q.term IS NULL
+     -- por nombre del negocio (lo único que había)
+     OR t.nombre ILIKE '%' || q.term || '%'
+     -- por el mail o el nombre del dueño
+     OR d.email ILIKE '%' || q.term || '%'
+     OR d.nombre_display ILIKE '%' || q.term || '%'
+     -- por el mail de CUALQUIER usuario del negocio: el que escribe a soporte puede ser el
+     -- cajero, no el dueño
+     OR EXISTS (
+          SELECT 1 FROM public.users u2
+          JOIN auth.users au2 ON au2.id = u2.id
+          WHERE u2.tenant_id = t.id AND au2.email ILIKE '%' || q.term || '%'
+        )
+     -- y por id, para cuando se pega un UUID salido de un log o de un ticket
+     OR t.id::text = q.term
+  ORDER BY t.created_at DESC
+  LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 100), 500));
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_ai_config_set_bool(p_campo text, p_valor boolean, p_razon text DEFAULT NULL::text)
@@ -12132,6 +12217,7 @@ CREATE TRIGGER trg_wms_tarea_asignado_valido_tenant BEFORE INSERT OR UPDATE OF u
 ALTER TABLE public.actividad_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.addon_batch_changes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_customer_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.afip_wsaa_ta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aging_profile_reglas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.aging_profiles ENABLE ROW LEVEL SECURITY;
@@ -13201,9 +13287,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ac
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.actividad_log TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.addon_batch_changes TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.addon_batch_changes TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.admin_audit_log TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.admin_audit_log TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.admin_audit_log TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.admin_customer_notes TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.afip_wsaa_ta TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.aging_profile_reglas TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.aging_profile_reglas TO authenticated;

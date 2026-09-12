@@ -35,6 +35,7 @@ const ACTION_MODULE: Record<string, string> = {
   'customers.notes.create': 'customers',
   'customers.notes.delete': 'customers',
   'audit.list': 'dashboard',
+  'analytics.overview': 'analytics',
   // Baja de un tenant desde el panel de soporte. Van en el módulo `customers` (es donde vive la
   // pantalla), pero OJO: `support` también tiene ese módulo, y borrar un negocio entero no puede
   // ser cosa de soporte. El guard real es `soloAdmin()` adentro de cada case.
@@ -330,6 +331,59 @@ Deno.serve(async (req) => {
         } })
       }
 
+      // Analytics con los datos que SÍ tenemos. El CAC por canal necesita la inversión
+      // publicitaria, que hoy no está cargada en ningún lado: en vez de inventar un número, se
+      // muestra el embudo real (altas, conversión a pago, churn y origen de los leads) y se dice
+      // explícitamente qué falta para poder calcular CAC.
+      case 'analytics.overview': {
+        const [{ data: tenants }, { data: leads }] = await Promise.all([
+          svc.from('tenants').select('created_at, subscription_status, plan_tier, primera_compra_at, trial_ends_at'),
+          svc.from('leads').select('origen, estado, valor_estimado, created_at'),
+        ])
+
+        // Altas por mes, últimos 12 — la serie que muestra si el negocio crece o se amesetó.
+        const meses: { mes: string; altas: number; convirtieron: number }[] = []
+        const hoy = new Date()
+        for (let i = 11; i >= 0; i--) {
+          const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+          const fin = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+          const delMes = (tenants ?? []).filter((t: any) => {
+            const c = new Date(t.created_at).getTime()
+            return c >= d.getTime() && c < fin.getTime()
+          })
+          meses.push({
+            mes: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+            altas: delMes.length,
+            // "Convirtió" = alguna vez pagó. `primera_compra_at` es el hecho, no el estado actual:
+            // un cliente que pagó y después canceló convirtió igual.
+            convirtieron: delMes.filter((t: any) => !!t.primera_compra_at).length,
+          })
+        }
+
+        const total = (tenants ?? []).length
+        const pagaron = (tenants ?? []).filter((t: any) => !!t.primera_compra_at).length
+        const activos = (tenants ?? []).filter((t: any) => t.subscription_status === 'active').length
+        const cancelados = (tenants ?? []).filter((t: any) => t.subscription_status === 'cancelled').length
+
+        // Embudo del CRM por origen: de dónde vienen los leads y en qué terminan.
+        const porOrigen = new Map<string, { origen: string; leads: number; ganados: number; perdidos: number; valor: number }>()
+        for (const l of (leads ?? []) as any[]) {
+          const k = l.origen?.trim() || 'sin origen'
+          const row = porOrigen.get(k) ?? { origen: k, leads: 0, ganados: 0, perdidos: 0, valor: 0 }
+          row.leads++
+          if (l.estado === 'won') row.ganados++
+          if (l.estado === 'lost') row.perdidos++
+          row.valor += Number(l.valor_estimado ?? 0)
+          porOrigen.set(k, row)
+        }
+
+        return json({
+          meses,
+          embudo: { total, pagaron, activos, cancelados },
+          por_origen: [...porOrigen.values()].sort((a, b) => b.leads - a.leads),
+        })
+      }
+
       case 'billing.overview': {
         const { mrr, por_plan } = await computeBilling(svc)
         return json({ mrr, por_plan })
@@ -542,7 +596,7 @@ Deno.serve(async (req) => {
         const { data: tenant, error } = await svc.from('tenants')
           .select('id, nombre, plan_id, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
             + 'inicio_actividades, subscription_status, subscription_period_end, delete_scheduled_at, '
-            + 'pais, tipo_comercio, moneda, mp_subscription_id, '
+            + 'pais, tipo_comercio, moneda, telefono, mp_subscription_id, '
             // Estado fiscal: es lo primero que pregunta un cliente que no puede facturar.
             + 'cuit, condicion_iva_emisor, razon_social_fiscal, facturacion_habilitada, afip_produccion, afip_provider')
           .eq('id', p.tenantId).maybeSingle()

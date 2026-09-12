@@ -846,6 +846,8 @@ export default function ConfigPage() {
   const [bizIngBrutos,       setBizIngBrutos]       = useState<string>((tenant as any)?.ingresos_brutos ?? '')
   const [bizInicioAct,       setBizInicioAct]       = useState<string>(((tenant as any)?.inicio_actividades ?? '').slice(0, 10))
   const [bizSitioWeb,        setBizSitioWeb]        = useState<string>((tenant as any)?.sitio_web ?? '')
+  // mig 412 — el alta lo pedía y se descartaba; acá se puede cargar o corregir después.
+  const [bizTelefono,        setBizTelefono]        = useState<string>((tenant as any)?.telefono ?? '')
   const [bizBanco,           setBizBanco]           = useState<string>((tenant as any)?.banco ?? '')
   const [bizCbu,             setBizCbu]             = useState<string>((tenant as any)?.cbu ?? '')
   const [bizAliasCbu,        setBizAliasCbu]        = useState<string>((tenant as any)?.alias_cbu ?? '')
@@ -873,6 +875,7 @@ export default function ConfigPage() {
     setBizIngBrutos(tAny.ingresos_brutos ?? '')
     setBizInicioAct((tAny.inicio_actividades ?? '').slice(0, 10))
     setBizSitioWeb(tAny.sitio_web ?? '')
+    setBizTelefono(tAny.telefono ?? '')
     setBizBanco(tAny.banco ?? '')
     setBizCbu(tAny.cbu ?? '')
     setBizAliasCbu(tAny.alias_cbu ?? '')
@@ -882,7 +885,7 @@ export default function ConfigPage() {
   }, [
     tAny?.cuit, tAny?.condicion_iva_emisor, tAny?.razon_social_fiscal, tAny?.domicilio_fiscal,
     tAny?.umbral_factura_b, tAny?.logo_url, tAny?.ingresos_brutos,
-    tAny?.inicio_actividades, tAny?.sitio_web, tAny?.banco, tAny?.cbu, tAny?.alias_cbu,
+    tAny?.inicio_actividades, tAny?.sitio_web, tAny?.telefono, tAny?.banco, tAny?.cbu, tAny?.alias_cbu,
     tAny?.leyenda_comprobante, tAny?.afip_produccion,
   ])
   const [savingProd,         setSavingProd]         = useState(false)
@@ -1215,9 +1218,9 @@ export default function ConfigPage() {
               es_default: true, activo: true,
             })
         if (error) throw error
-        // sitio_web es contacto del NEGOCIO (no identidad fiscal) → sigue en tenants
+        // sitio_web y telefono son contacto del NEGOCIO (no identidad fiscal) → siguen en tenants
         const { error: tErr } = await supabase.from('tenants')
-          .update({ sitio_web: bizSitioWeb.trim() || null }).eq('id', tenant!.id)
+          .update({ sitio_web: bizSitioWeb.trim() || null, telefono: bizTelefono.trim() || null }).eq('id', tenant!.id)
         if (tErr) throw tErr
       } else {
         // Sin CUIT no hay identidad fiscal que representar → legacy: solo tenants
@@ -1225,7 +1228,7 @@ export default function ConfigPage() {
         // 🛑 `identidad` acá va SIN token a propósito: `tenants.afipsdk_token` es una copia
         // legible por todo el tenant y quedó deprecada (mig 402). El token vive en el emisor.
         const { error } = await supabase.from('tenants').update({
-          ...identidad, sitio_web: bizSitioWeb.trim() || null,
+          ...identidad, sitio_web: bizSitioWeb.trim() || null, telefono: bizTelefono.trim() || null,
         }).eq('id', tenant!.id)
         if (error) throw error
       }
@@ -3673,6 +3676,12 @@ export default function ConfigPage() {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
                       <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
                         placeholder="www.minegocio.com"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Teléfono</label>
+                      <input type="tel" value={bizTelefono} onChange={e => setBizTelefono(e.target.value)}
+                        placeholder="+54 11 1234-5678"
                         className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>

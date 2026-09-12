@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { BRAND, PLANES, MP_PLAN_IDS, ADDON_FIJO_ENABLED } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
+import { estadoTrial, tituloPlanes, subtituloPlanes } from '@/lib/estadoTrial'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { type AddonRow } from '@/lib/addons'
@@ -31,6 +32,14 @@ export default function SuscripcionPage() {
   const queryClient = useQueryClient()
 
   const esActivo = tenant?.subscription_status === 'active'
+  // 🐛 El título miraba solo `subscription_status === 'trial'` y nunca la fecha, así que decía
+  // "está por vencer" igual el día 29 del trial que 25 días DESPUÉS de vencido — que es cuando el
+  // usuario llega acá, porque justamente lo sacaron de la app. Ver src/lib/estadoTrial.ts.
+  const trial = estadoTrial({
+    subscriptionStatus: tenant?.subscription_status,
+    trialEndsAt: tenant?.trial_ends_at,
+    now: new Date(),
+  })
   const tieneSubMP = esActivo && !!tenant?.mp_subscription_id
 
   // Add-ons FIJOS activos del tenant → estado inicial del panel batch (packs tildados).
@@ -510,14 +519,10 @@ export default function SuscripcionPage() {
           <img src={BRAND.logo} alt={BRAND.name} className="w-16 h-16 object-contain drop-shadow-lg" />
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">
-          {tenant?.subscription_status === 'trial'
-            ? '¡Tu prueba gratuita está por vencer!'
-            : 'Elegí tu plan'}
+          {tituloPlanes(trial, tenant?.nombre)}
         </h1>
         <p className="text-blue-200">
-          {tenant?.subscription_status === 'trial'
-            ? 'Activá tu suscripción para seguir usando Genesis360 sin interrupciones'
-            : 'Todos los planes incluyen 30 días de prueba gratuita'}
+          {subtituloPlanes(trial, tenant?.trial_ends_at)}
         </p>
       </div>
 

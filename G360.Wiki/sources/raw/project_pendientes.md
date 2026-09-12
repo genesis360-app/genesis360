@@ -6,6 +6,80 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### ▶️ ARRANCÁ ACÁ (2026-09-12, cont. 63) — DEV `v1.212.0` · **PROD `v1.208.0`**
+>
+> #### 🟥 LO PRIMERO: terminar la baja de tenant desde el panel de soporte
+>
+> Quedó **a medio construir** y es lo que GO estaba probando cuando se cortó la sesión.
+>
+> **Hecho** (commit `be1c8a5b`): 4 acciones en `supabase/functions/admin-api/index.ts` —
+> `customers.delete_preview` · `schedule_delete` · `cancel_delete` · `purge_now`. Parsea, pero
+> **NO está deployada ni probada**. No afecta PROD: una EF no se publica sola.
+>
+> **Falta**:
+> 1. `supabase functions deploy admin-api` (el repo de las EF es Genesis360, no el del panel).
+> 2. **La UI en el panel admin** (`D:/Dev/genesis360-admin`, repo aparte): botón en
+>    `CustomerDetailPage`, con el modal de confirmación por nombre. Hoy el panel **no tiene nada**
+>    de baja de tenant. Llamar vía `callAdminApi('customers.…')` — ver `src/lib/adminApi.ts`.
+> 3. **Probar los dos caminos**, que es lo que quiere GO:
+>    - **Cliente**: desde la app (MiCuentaPage → programa a 30 días).
+>    - **Soporte**: desde el panel (`purge_now`, sin esperar).
+>    GO dijo que para el segundo puede usar otro cliente de prueba de PROD.
+>
+> #### 🔴 BLOQUEO que hay que resolver antes de probar el camino del CLIENTE
+>
+> **`/mi-cuenta` está dentro del `SubscriptionGuard`.** Un usuario con el trial vencido NO llega a
+> "Eliminar cuenta y negocio": el guard lo saca a `/suscripcion` antes. **Queda atrapado — no puede
+> usar la app ni darse de baja.** Es un agujero de producto con arista legal (AAIP, derecho de
+> supresión), no solo un problema de la prueba de GO.
+>
+> Para destrabar la prueba: **extenderle el trial a "Don Ferretero"** unos días. GO todavía **no lo
+> confirmó** — preguntar antes de tocar PROD.
+>
+> #### 🎬 Videos de onboarding (pedido nuevo de GO)
+>
+> GO quiere grabar una serie de videos: (1) desde `genesis360.pro` hasta tener el negocio creado y
+> entrar, (2) configuración inicial para modo básico, (3) y así por funcionalidad.
+>
+> ⚠️ **Claude NO puede grabar video ni capturar pantalla** — se le dijo y lo aceptó. Lo que SÍ
+> quedó acordado que aporte:
+> - **El guion de pasos obligatorios de cada video**, sacado del flujo REAL del código (GO dijo "ok
+>   con el flujo y guía de pasos obligatorios"). **Esto quedó pendiente, es el próximo entregable.**
+> - Dejar el entorno limpio y repetible, con datos de ejemplo: el negocio se llama
+>   **"Genesis360 Onboarding"** (GO va a pasar el resto de los datos).
+>
+> #### El estado del mail de GO (`genesis360.ar@gmail.com`)
+>
+> **NO se borró nada todavía.** Es DUEÑO de "Don Ferretero" (creado 18/07, trial vencido 17/08).
+> El tenant está prácticamente vacío: 2 productos, 1 usuario, 1 sucursal, 3 cajas, **0 ventas y 0
+> comprobantes fiscales** → borrarlo es seguro.
+>
+> ⚠️ El sweep (`tenant-hard-delete-sweep`) borra el tenant por CASCADE pero **NO toca
+> `auth.users`**: el mail queda sin negocio pero existiendo. Tiene `workflow_dispatch`, así que se
+> puede disparar a mano sin esperar los 30 días.
+>
+> #### 🟡 Lo que sigue esperando definición de GO (de antes)
+>
+> 1. **Los sueldos y la sucursal** — `empleados` no tiene `sucursal_id`; imputar el sueldo al de
+>    quien liquida sería inventar un criterio contable.
+> 2. **"Monedas disponibles por tenant" no existe** · **solo hay cotización para USD**.
+> 3. **Precio con fecha/hora de vigencia** — relevamiento sin responder
+>    (`relevamiento-precio-programado-reglas-negocio.html`).
+> 4. **Cobrar en caja USD** (contador) · **góndolas de Repositores** · **tope de descuento del
+>    DUEÑO** · **reintegro en efectivo USD al anular**.
+>
+> #### 🟢 Deuda técnica
+>
+> - **Deployar a PROD**: `v1.209.0`→`v1.212.0` + migs **407-408** (aditivas → aplica "DDL primero").
+> - Gastos fijos sin selector de moneda · los `INSERT` de gastos del resto del código no setean
+>   `moneda` · dropear `tenants.afipsdk_token` y `recursos.ubicacion`.
+> - `schema_full.sql` en la mig 406, DEV tiene 408. PAT `schema-dump-local` vence **2026-10-06**.
+>
+> #### 🧪 Suite: **1750 unit · 397 e2e**
+>
+> Cuatro trampas conocidas en [[reference_e2e_suite_no_deterministica]] — la más reciente: **el
+> nombre del fixture puede satisfacer la aserción** (un spec pasaba con el fix roto).
+
 > ### ✅ ARRANCÁ ACÁ (2026-09-12, cierre cont. 62) — DEV `v1.211.0` · **PROD `v1.208.0`**
 >
 > | | Versión | Migraciones |

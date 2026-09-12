@@ -86,6 +86,40 @@ MP_PRICE_ID=               # ID del plan en Mercado Pago
 
 ---
 
+## 🐛 "Tu prueba está por vencer" con el trial vencido hace 25 días (v1.212.0) — 2026-09-12
+
+GO entró a PROD con una cuenta cuyo trial había vencido el 17/08 y la pantalla de planes lo recibió
+con **"¡Tu prueba gratuita está por vencer!"** y *"seguí usando Genesis360 sin interrupciones"*. Las
+dos frases eran falsas: ya había vencido, y la interrupción ya había ocurrido — estaba ahí
+**porque** lo habían sacado de la app.
+
+La condición miraba solo `subscription_status === 'trial'` y **nunca comparaba `trial_ends_at`**, así
+que decía exactamente lo mismo el día 29 del trial que 25 días después de vencido. Al momento del
+fix, **5 de los 6 tenants en trial de PROD** ya lo tenían vencido: el caso mayoritario.
+
+Ahora (`src/lib/estadoTrial.ts`, 15 tests):
+
+| Fase | Título | Bajada |
+|---|---|---|
+| `vencido` | La prueba gratuita de "<negocio>" venció | Terminó el <fecha> (hace N días). Activá un plan para volver a entrar — **tus datos están intactos**. |
+| `por_vencer` (≤7 días) | Tu prueba gratuita vence en N días / **mañana** | Activá tu suscripción para seguir usando Genesis360 sin interrupciones |
+| `vigente` | Elegí tu plan | Todos los planes incluyen 30 días de prueba gratuita |
+
+*"Tus datos están intactos"* es deliberado: es lo que más necesita saber alguien que quedó afuera y
+no entiende por qué. La lógica salió de la pantalla a una lib porque **`AdminPage` ya repetía la
+misma comparación inline**, y porque los textos ERAN el bug — así que se testean.
+
+## 🔴 ABIERTO: con el trial vencido, el usuario no puede darse de baja
+
+`/mi-cuenta` está **dentro** del `SubscriptionGuard` (`App.tsx`), así que un usuario con la prueba
+vencida nunca llega a "Eliminar cuenta y negocio": el guard lo saca a `/suscripcion` antes.
+
+**Queda atrapado: no puede usar la app ni irse.** Con el blindaje legal ya hecho (AAIP, derecho de
+supresión), no poder ejercer la baja es un flanco real — ver [[wiki/business/legal-compliance]].
+
+Salidas posibles, a decidir: sacar `/mi-cuenta` del guard, o poner el acceso a la baja en la propia
+pantalla de suscripción.
+
 ## Links relacionados
 
 - [[wiki/integrations/mercado-pago]]

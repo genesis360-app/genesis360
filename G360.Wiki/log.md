@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-12] update | 🐛 "Tu prueba está por vencer" con el trial vencido hace 25 días · v1.212.0
+
+GO entró a PROD con `genesis360.ar@gmail.com` creyendo que era un mail nuevo y reportó que "no le
+daba el trial". **No era un bug del trial** — pero al investigarlo apareció uno real al lado.
+
+### Lo que realmente pasaba
+
+Ese mail **no era nuevo**: existe desde el 18/07, entró por Google y ya es DUEÑO de **"Don
+Ferretero"**. Su trial de 30 días venció el **17/08**. El sistema hizo lo correcto: el onboarding
+detecta que ya tiene negocio y lo manda al dashboard (evita duplicados), y ahí el `SubscriptionGuard`
+lo saca a la pantalla de planes. Un mail realmente nuevo **sí** recibe trial —
+`trial_ends_at` nace con `now() + 30 días`.
+
+### 🐛 El bug: la pantalla mentía
+
+La página de planes lo recibió con **"¡Tu prueba gratuita está por vencer!"** y *"seguí usando
+Genesis360 sin interrupciones"*. Las dos frases eran falsas: ya había vencido y la interrupción ya
+había ocurrido — estaba ahí PORQUE lo habían sacado.
+
+La condición miraba solo `subscription_status === 'trial'` y **nunca comparaba la fecha**, así que
+decía lo mismo el día 29 del trial que 25 días después. **5 de los 6 tenants en trial de PROD ya lo
+tenían vencido**: era el caso mayoritario, no un borde.
+
+Ahora dice qué pasó, de qué negocio y desde cuándo, y —lo que más necesita saber quien quedó
+afuera— que **sus datos están intactos**. Lógica en `src/lib/estadoTrial.ts` (15 tests), sacada de
+la pantalla porque `AdminPage` ya repetía la misma comparación inline.
+
+### 🔴 Hallazgo que quedó ABIERTO: el usuario con trial vencido no puede darse de baja
+
+`/mi-cuenta` está **dentro** del `SubscriptionGuard`, así que con la prueba vencida el guard lo saca
+antes de que pueda abrir "Eliminar cuenta y negocio". **Queda atrapado: no puede usar la app ni
+irse.** Con el blindaje legal ya hecho (AAIP, derecho de supresión), es un flanco real.
+
+### 🚧 Baja de tenant desde el panel de soporte (EF escrita, SIN deployar)
+
+GO pidió el segundo camino de baja: que soporte pueda eliminar un tenant desde
+`admin.genesis360.pro`. Se escribieron 4 acciones en `admin-api` (`delete_preview`,
+`schedule_delete`, `cancel_delete`, `purge_now`) siguiendo el patrón del panel: nunca service_role
+en el cliente, la EF valida agente + autoriza por rol + audita.
+
+Las salvaguardas son lo que importa: **solo rol `admin`** (el módulo `customers` lo tiene también
+`support`, y borrar un negocio no es tarea de soporte), **hay que escribir el nombre exacto**, el
+**inventario se audita ANTES del DELETE** (después del CASCADE no queda nada que contar) y — 🛑
+REGLA #0 — si el tenant tiene **comprobantes con CAE** la baja responde 409 y exige un segundo sí
+explícito: es documentación fiscal con obligación de conservación. En PROD hoy hay un tenant así.
+
+⚠️ **Falta**: deployar la EF, construir la UI en el panel y probar los dos caminos.
+
+---
+
 ## [2026-09-11] update | 💵 El gasto se registra en cualquier moneda · v1.211.0
 
 Pedido de GO: un select de moneda a la izquierda del monto, con la del negocio por defecto.

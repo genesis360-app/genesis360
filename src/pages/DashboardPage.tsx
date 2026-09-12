@@ -428,12 +428,15 @@ export default function DashboardPage() {
         buildSesQ(desdePrev, hastaPrev),
         getVentaIdsConfirmadas(desde, hasta),
         getVentaIdsConfirmadas(desdePrev, hastaPrev),
+        // `moneda`: el Burn Rate es un número en la moneda del negocio; un gasto en otra moneda no
+        // se le puede sumar sin cotización (mismo criterio que ya aplica `ingresoNeto` para los
+        // movimientos de caja, G5 Fase 7/H2).
         sucursalId
-          ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdeDate).lte('fecha', hastaDate)
-          : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate),
+          ? supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdeDate).lte('fecha', hastaDate)
+          : supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate),
         sucursalId
-          ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
-          : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
+          ? supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
+          : supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
       ])
       const [viData, viPrevData] = await Promise.all([getItemsDe(ventaIds), getItemsDe(ventaIdsPrev)])
 
@@ -509,8 +512,10 @@ export default function DashboardPage() {
         ? ((totalVentasNetoPrev - totalCostoPrev) / totalVentasNetoPrev) * 100 : null
 
       // Burn Rate diario
-      const totalGastos = (gastosRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
-      const totalGastosPrev = (gastosPrevRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
+      const monedaNeg = String((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+      const enMonedaNeg = (g: any) => String(g.moneda ?? monedaNeg).toUpperCase() === monedaNeg
+      const totalGastos = (gastosRes.data ?? []).filter(enMonedaNeg).reduce((a, g) => a + (g.monto ?? 0), 0)
+      const totalGastosPrev = (gastosPrevRes.data ?? []).filter(enMonedaNeg).reduce((a, g) => a + (g.monto ?? 0), 0)
       const { desde: d1s, hasta: d2s } = getFechasDashboard(periodo, customRange)
       const d1 = new Date(d1s), d2 = new Date(d2s)
       const daysInPeriod = Math.max(1, Math.ceil((d2.getTime() - d1.getTime()) / 86400000))

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { supabase, CierreContable } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { totalesPorMoneda } from '@/lib/gastoMoneda'
 import { BTN, BRAND } from '@/config/brand'
 import { logActividad } from '@/lib/actividadLog'
 
@@ -81,7 +82,9 @@ export default function CierresContablesPanel() {
 
       const [gRes, vRes, sRes] = await Promise.all([
         supabase.from('gastos')
-          .select('monto, es_correccion', { count: 'exact' })
+          // `moneda`: desde v1.211.0 un gasto puede estar en otra moneda. Sin traerla, el cierre
+          // sumaba dólares y pesos en un mismo total — un número que no es plata.
+          .select('monto, moneda, es_correccion', { count: 'exact' })
           .eq('tenant_id', tenant!.id).gte('fecha', desde).lt('fecha', hasta),
         supabase.from('ventas')
           .select('total', { count: 'exact' })
@@ -94,12 +97,18 @@ export default function CierresContablesPanel() {
         }),
       ])
       const gastos = (gRes.data ?? []) as any[]
-      const totalGastos  = gastos.reduce((a, g) => a + (g.monto ?? 0), 0)
+      // 🛑 REGLA #0 — el cierre es en la moneda del negocio. Un gasto en otra moneda NO se suma
+      // (no hay cotización guardada por gasto: convertirlo sería inventar el dato) y NO se
+      // esconde: se informa aparte para que el cierre no se firme creyendo que están todos.
+      const monedaCierre = String((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+      const enMonedaCierre = (g: any) => String(g.moneda ?? monedaCierre).toUpperCase() === monedaCierre
+      const totalGastos  = gastos.filter(enMonedaCierre).reduce((a, g) => a + (g.monto ?? 0), 0)
+      const gastosOtraMoneda = totalesPorMoneda(gastos.filter(g => !enMonedaCierre(g)), monedaCierre)
       const correcciones = gastos.filter(g => g.es_correccion).length
       const totalVentas  = (vRes.data ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
       const totalSueldos = Number(((sRes.data ?? []) as any[])[0]?.total_neto) || 0
       return {
-        totalGastos, correcciones,
+        totalGastos, gastosOtraMoneda, correcciones,
         totalVentas, countVentas: vRes.count ?? 0,
         totalSueldos, countGastos: gRes.count ?? 0,
       }
@@ -284,12 +293,23 @@ export default function CierresContablesPanel() {
               {loadingPreview ? (
                 <p className="text-sm text-muted flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Calculando…</p>
               ) : preview ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                  <Stat label="Gastos" value={formatMoneda(preview.totalGastos)} sub={`${preview.countGastos} registros${preview.correcciones > 0 ? ` · ${preview.correcciones} corr.` : ''}`} />
-                  <Stat label="Ventas" value={formatMoneda(preview.totalVentas)} sub={`${preview.countVentas} despachadas/facturadas`} />
-                  <Stat label="Sueldos pagados" value={formatMoneda(preview.totalSueldos)} sub="rrhh_salarios.pagado" />
-                  <Stat label="Egresos totales" value={formatMoneda(preview.totalGastos + preview.totalSueldos)} sub="Gastos + RRHH" />
-                </div>
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <Stat label="Gastos" value={formatMoneda(preview.totalGastos)} sub={`${preview.countGastos} registros${preview.correcciones > 0 ? ` · ${preview.correcciones} corr.` : ''}`} />
+                    <Stat label="Ventas" value={formatMoneda(preview.totalVentas)} sub={`${preview.countVentas} despachadas/facturadas`} />
+                    <Stat label="Sueldos pagados" value={formatMoneda(preview.totalSueldos)} sub="rrhh_salarios.pagado" />
+                    <Stat label="Egresos totales" value={formatMoneda(preview.totalGastos + preview.totalSueldos)} sub="Gastos + RRHH" />
+                  </div>
+                  {/* Lo que queda FUERA del cierre, dicho antes de firmarlo. */}
+                  {preview.gastosOtraMoneda.length > 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-3">
+                      ⚠ Hay gastos en otra moneda que NO entran en estos totales:{' '}
+                      {preview.gastosOtraMoneda.map(([m, t]) => formatMonedaLib(t, m)).join(' · ')}.
+                      El cierre se expresa en {String((tenant as any)?.moneda ?? 'ARS').toUpperCase()} y no se
+                      convierten automáticamente (no hay cotización guardada por gasto).
+                    </p>
+                  )}
+                </>
               ) : null}
             </div>
           )}

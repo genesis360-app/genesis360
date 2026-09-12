@@ -30,6 +30,7 @@ const TIPO_COMPROBANTE_OPTS = [
 ]
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { totalesPorMoneda } from '@/lib/gastoMoneda'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 function mesLabel(m: string) {
   const [y, mo] = m.split('-')
@@ -340,7 +341,10 @@ export default function FacturacionPage() {
     queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta, emisorFiltro?.id],
     queryFn: async () => {
       let q = supabase.from('gastos')
-        .select('id, descripcion, monto, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
+        // `moneda`: desde v1.211.0 un gasto puede estar en otra moneda, y su `iva_monto` se calcula
+        // sobre el monto EN ESA moneda (no se convierte). Sumarlo al libro contaminaría la posición
+        // de IVA que se compara contra AFIP.
+        .select('id, descripcion, monto, moneda, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
         .eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true)
         .gt('iva_monto', 0)
@@ -505,7 +509,7 @@ export default function FacturacionPage() {
       }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'IVA Ventas')
     } else {
-      const rows = (ivaCompras as any[]).map(r => ({
+      const rows = comprasLibro.map((r: any) => ({
         'Fecha':       r.fecha,
         'Descripción': r.descripcion,
         'Categoría':   r.categoria ?? '',
@@ -529,8 +533,22 @@ export default function FacturacionPage() {
   const ivaNcPeriodo = ivaNcTotal(ncPeriodo as NcEmitida[])
   const totalIvaVentas  = (ivaVentas as any[]).reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
     + filasNc.reduce((s, f) => s + f.iva, 0)
-  const totalIvaCompras = (ivaCompras as any[]).reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
-  const comprasConciliadas = (ivaCompras as any[]).filter(r => r.conciliado_iva).length
+  // 🛑 REGLA #0 (fiscal) — el Libro IVA Compras va en la moneda del negocio (para AFIP, pesos).
+  // El IVA de un gasto en otra moneda está expresado EN esa moneda y no hay cotización guardada
+  // por gasto, así que no se puede convertir sin inventar el dato. Se deja FUERA del libro y se
+  // avisa: un crédito fiscal que no entra tiene que salir a la luz, no desaparecer en silencio.
+  // ⚠ Pendiente de criterio contable: si un gasto en USD con IVA genera crédito fiscal declarable
+  // y a qué cotización. Hasta tenerlo, no se declara solo.
+  const monedaLibro = String((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+  const comprasLibro = (ivaCompras as any[]).filter(r => String(r.moneda ?? monedaLibro).toUpperCase() === monedaLibro)
+  const comprasFueraDelLibro = totalesPorMoneda(
+    (ivaCompras as any[])
+      .filter(r => String(r.moneda ?? monedaLibro).toUpperCase() !== monedaLibro)
+      .map(r => ({ monto: r.iva_monto, moneda: r.moneda })),
+    monedaLibro,
+  )
+  const totalIvaCompras = comprasLibro.reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
+  const comprasConciliadas = comprasLibro.filter(r => r.conciliado_iva).length
   // KPIs del panel netos de NC (débito y posición; el crédito no cambia).
   const kpiDebito   = (kpis?.debito ?? 0) - ivaNcPeriodo
   const kpiPosicion = (kpis?.posicion ?? 0) - ivaNcPeriodo
@@ -814,7 +832,13 @@ export default function FacturacionPage() {
             {libroSub === 'compras' && (
               <span className="text-sm text-gray-500 dark:text-gray-400 ml-auto">
                 Deducible: <strong className="text-green-600 dark:text-green-400">{formatMoneda(totalIvaCompras)}</strong>
-                {' · '}{comprasConciliadas}/{(ivaCompras as any[]).length} conciliados
+                {' · '}{comprasConciliadas}/{comprasLibro.length} conciliados
+                {comprasFueraDelLibro.length > 0 && (
+                  <span className="block text-xs text-amber-600 dark:text-amber-400">
+                    ⚠ {comprasFueraDelLibro.map(([m, t]) => `${formatMonedaLib(t, m)} de IVA`).join(' · ')} en
+                    gastos en otra moneda, fuera del libro (no se convierten). Consultalo con tu contador.
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -885,9 +909,9 @@ export default function FacturacionPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {(ivaCompras as any[]).length === 0 ? (
+                    {comprasLibro.length === 0 ? (
                       <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin compras deducibles en el período</td></tr>
-                    ) : (ivaCompras as any[]).map((r: any) => {
+                    ) : comprasLibro.map((r: any) => {
                       const neto = Number(r.monto) - Number(r.iva_monto ?? 0)
                       return (
                         <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">

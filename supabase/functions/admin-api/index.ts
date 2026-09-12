@@ -30,6 +30,10 @@ const ACTION_MODULE: Record<string, string> = {
   // (el guard explícito vive adentro del case, igual que la baja).
   'customers.extend_trial': 'customers',
   'customers.reset_password': 'customers',
+  'customers.activity': 'customers',
+  'customers.notes.list': 'customers',
+  'customers.notes.create': 'customers',
+  'customers.notes.delete': 'customers',
   'audit.list': 'dashboard',
   // Baja de un tenant desde el panel de soporte. Van en el módulo `customers` (es donde vive la
   // pantalla), pero OJO: `support` también tiene ese módulo, y borrar un negocio entero no puede
@@ -561,6 +565,28 @@ Deno.serve(async (req) => {
         // Cuánto emitió: distingue "no factura porque no configuró" de "no factura porque falla".
         const { count: comprobantes } = await svc.from('ventas')
           .select('id', { count: 'exact', head: true }).eq('tenant_id', p.tenantId).not('cae', 'is', null)
+
+        // Uso contra el límite del plan. Es lo que distingue al cliente que está TRABADO (no puede
+        // dar de alta un usuario más) del que simplemente no usa la app — desde afuera se ven
+        // igual, y son dos conversaciones opuestas: una es soporte, la otra es venta.
+        // El límite sale de `fn_tenant_limite`, la misma función que usa el trigger que bloquea el
+        // INSERT (`fn_enforce_limite`), así que el panel no puede desincronizarse de la realidad.
+        // -1 = sin límite (enterprise).
+        const DIMS: { dim: string; label: string; tabla: string }[] = [
+          { dim: 'usuarios',   label: 'Usuarios',   tabla: 'users' },
+          { dim: 'sku',        label: 'Productos',  tabla: 'productos' },
+          { dim: 'sucursales', label: 'Sucursales', tabla: 'sucursales' },
+        ]
+        const limites = await Promise.all(DIMS.map(async ({ dim, label, tabla }) => {
+          const [{ data: lim }, { count }] = await Promise.all([
+            svc.rpc('fn_tenant_limite', { p_tenant_id: p.tenantId, p_dim: dim }),
+            // `activo = true`: el trigger cuenta exactamente así, y un usuario dado de baja no
+            // consume cupo.
+            svc.from(tabla).select('id', { count: 'exact', head: true })
+              .eq('tenant_id', p.tenantId).eq('activo', true),
+          ])
+          return { dim, label, usado: count ?? 0, limite: Number(lim ?? 0) }
+        }))
         await audit({ tenantId: p.tenantId })
         return json({
           tenant,
@@ -571,6 +597,7 @@ Deno.serve(async (req) => {
             ultima_venta_at: recientes?.[0]?.created_at ?? null,
             comprobantes_con_cae: comprobantes ?? 0,
           },
+          limites,
           cuentas: cuentas ?? [],
           recent_sales: recientes ?? [],
         })
@@ -792,6 +819,79 @@ Deno.serve(async (req) => {
         }
         await audit({ tenantId: p.tenantId, reset_password_para: email })
         return json({ ok: true, email })
+      }
+
+      // Qué pasó últimamente en el negocio + qué se le está rompiendo. Las dos preguntas que
+      // abre cualquier reclamo ("¿qué hizo antes de que fallara?" y "¿le está fallando algo?") y
+      // que hasta hoy solo se podían responder entrando a la base a mano.
+      case 'customers.activity': {
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+        const [act, nc] = await Promise.all([
+          svc.from('actividad_log')
+            .select('id, usuario_nombre, entidad, entidad_nombre, accion, campo, valor_anterior, valor_nuevo, pagina, created_at')
+            .eq('tenant_id', p.tenantId).order('created_at', { ascending: false }).limit(50),
+          // 🛑 Notas de crédito que NO se pudieron emitir en AFIP. Es el error fiscal que más
+          // duele: la devolución ya ocurrió y el comprobante que la respalda no existe. Las que
+          // piden reconciliación manual son las que alguien TIENE que mirar.
+          svc.from('nc_afip_pendientes')
+            .select('id, venta_id, tipo_comprobante, intentos, ultimo_error, requiere_reconciliacion_manual, created_at')
+            .eq('tenant_id', p.tenantId).is('resuelto_at', null)
+            .order('created_at', { ascending: false }).limit(20),
+        ])
+        await audit({ tenantId: p.tenantId })
+        return json({ actividad: act.data ?? [], afip_pendientes: nc.data ?? [] })
+      }
+
+      // Notas internas sobre un cliente (mig 411). A diferencia de un ticket —que es un problema
+      // con estado y ciclo de vida— una nota es CONTEXTO: "llamó, pidió que lo llamemos el lunes".
+      // Hasta ahora eso vivía en la cabeza del que atendió y se perdía cuando atendía otro.
+      // Las puede leer y escribir cualquier agente con acceso a `customers` (incluido `support`):
+      // el punto es justamente que el equipo comparta contexto.
+      case 'customers.notes.list': {
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+        const { data, error } = await svc.from('admin_customer_notes')
+          .select('id, cuerpo, fijada, agent_email, created_at')
+          .eq('tenant_id', p.tenantId)
+          .order('fijada', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(200)
+        if (error) throw error
+        return json({ notes: data ?? [] })
+      }
+
+      case 'customers.notes.create': {
+        const cuerpo = String(p.cuerpo ?? '').trim()
+        if (!p.tenantId || !cuerpo) return json({ error: 'Faltan tenantId y cuerpo' }, 400)
+        // El nombre del negocio se guarda EN la nota: sin FK a `tenants`, es lo único que la deja
+        // legible el día que el negocio ya no exista.
+        // Sin FK a `tenants` (para que la nota sobreviva a la baja), la base NO valida que el
+        // negocio exista: un id mal copiado crearía una nota colgada de la nada. Se valida acá.
+        const { data: t } = await svc.from('tenants').select('nombre').eq('id', p.tenantId).maybeSingle()
+        if (!t) return json({ error: 'Tenant no encontrado' }, 404)
+        const { data, error } = await svc.from('admin_customer_notes').insert({
+          tenant_id: p.tenantId, tenant_nombre: t?.nombre ?? null,
+          agent_id: uid, agent_email: agent.email,
+          cuerpo, fijada: p.fijada === true,
+        }).select('id').single()
+        if (error) throw error
+        await audit({ tenantId: p.tenantId, nota_id: data.id })
+        return json({ ok: true, id: data.id })
+      }
+
+      case 'customers.notes.delete': {
+        if (!p.noteId) return json({ error: 'Falta noteId' }, 400)
+        // Solo el autor puede borrar la suya; un admin puede borrar cualquiera. Nadie más: una
+        // nota que cualquiera puede hacer desaparecer no sirve como memoria compartida.
+        const { data: nota } = await svc.from('admin_customer_notes')
+          .select('id, agent_id, tenant_id').eq('id', p.noteId).maybeSingle()
+        if (!nota) return json({ error: 'Nota no encontrada' }, 404)
+        if (nota.agent_id !== uid && agent.rol !== 'admin') {
+          return json({ error: 'Solo el autor de la nota (o un admin) puede borrarla.' }, 403)
+        }
+        const { error } = await svc.from('admin_customer_notes').delete().eq('id', p.noteId)
+        if (error) throw error
+        await audit({ tenantId: nota.tenant_id, nota_borrada: p.noteId })
+        return json({ ok: true })
       }
 
       // El registro de lo que hizo el equipo de soporte. La tabla existía desde la mig 221 y se

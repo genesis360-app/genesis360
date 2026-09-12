@@ -15,6 +15,28 @@ type: project
 > de `admin`) + el **panel de soporte** (repo aparte `genesis360-admin`, rama `dev` — no tiene tag ni
 > release propio, se pushea por separado). Nada de esto tocó PROD todavía.
 >
+> #### ⏰ El que hay que chequear ANTES de diagnosticar cualquier falla masiva de e2e
+>
+> Los **9 specs que siembran stock por UI** figuraban rotos "por la ubicación Mono-SKU". Ese fix ya
+> estaba hecho (`UBICACION_SIEMBRA` en `tests/e2e/helpers/fixtures.ts`). Lo que los tenía rojos el
+> 12/09 era otra cosa: **`Almacén Jorgito` perdió el acceso ese mismo día a las 17:54 UTC** — se lo
+> había cancelado el 13/08 probando el flujo, con 30 días de gracia (MP-C9), y el reloj se cumplió en
+> medio de la sesión. Desde ese minuto el `SubscriptionGuard` mandaba **cada test** a `/suscripcion`,
+> y la falla se leía como "elemento no visible" en la pantalla que el spec esperaba.
+>
+> Extendido `subscription_period_end` a **2028-12-31** (no se tocó el estado: 'cancelled' con período
+> vigente es legítimo). Specs 115 y 131 verdes de nuevo.
+>
+> ```sql
+> select nombre, subscription_status, subscription_period_end,
+>        now() > subscription_period_end as grace_vencido
+> from tenants where nombre = 'Almacén Jorgito';
+> ```
+>
+> ⚠️ **Cada vez que se pruebe una cancelación o una baja sobre el tenant de e2e, extender el período
+> en el mismo momento** — si no, la suite entera muere sola un día cualquiera sin que nadie haya
+> tocado código.
+>
 > #### ✅ Cerrado en esta sesión (cont. 64), todo en DEV
 >
 > 1. **🔴 El bloqueo del trial vencido** (arrastrado de cont. 63): `/mi-cuenta` salió del

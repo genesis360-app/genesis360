@@ -125,3 +125,27 @@ export function validarPagoGasto(params: {
   }
   return null
 }
+
+/**
+ * Suma montos AGRUPADOS POR MONEDA.
+ *
+ * 🛑 Existe para no volver a sumar un alquiler en dólares con uno en pesos: ese total no es plata,
+ * es un número inventado. El tab de gastos fijos mostraba uno solo (`Total mensual estimado`)
+ * sumando todo junto — con una sola moneda daba bien y por eso pasó desapercibido.
+ *
+ * Devuelve pares `[moneda, total]` con la moneda del negocio PRIMERO (es la que el usuario espera
+ * leer arriba), y el resto alfabético para que el orden no dependa del orden de las filas.
+ */
+export function totalesPorMoneda(
+  filas: { monto: number | string | null | undefined; moneda?: string | null }[] | null | undefined,
+  monedaTenant: string | null | undefined,
+): [string, number][] {
+  const principal = (monedaTenant ?? 'ARS').toUpperCase()
+  const acc: Record<string, number> = {}
+  for (const f of filas ?? []) {
+    const m = (f.moneda ?? principal).toUpperCase()
+    acc[m] = (acc[m] ?? 0) + (Number(f.monto) || 0)
+  }
+  return Object.entries(acc).sort(([a], [b]) =>
+    a === principal ? -1 : b === principal ? 1 : a.localeCompare(b))
+}

@@ -19,7 +19,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { logActividad } from '@/lib/actividadLog'
 import {
-  monedasParaGasto, cajasOperativasDeMoneda, cajaFuerteDeMoneda,
+  monedasParaGasto, cajasOperativasDeMoneda, cajaFuerteDeMoneda, totalesPorMoneda,
   puedePagarEfectivoEn, validarPagoGasto,
 } from '@/lib/gastoMoneda'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -127,6 +127,8 @@ interface FormGasto {
 }
 interface FormFijo {
   descripcion: string; monto: string
+  // Igual que en el gasto suelto: se pisa con la del negocio al abrir el form.
+  moneda: string
   tipo_comprobante: string
   tipo_iva: string; iva_deducible: boolean
   alicuota_iva_custom: string
@@ -146,7 +148,7 @@ const FORM_VACIO: FormGasto = {
   recurso_id: '', capitaliza_recurso: false,
 }
 const FORM_FIJO_VACIO: FormFijo = {
-  descripcion: '', monto: '', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
+  descripcion: '', monto: '', moneda: 'ARS', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
   alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', medio_pago: '', frecuencia: 'mensual',
@@ -709,6 +711,7 @@ export default function GastosPage() {
         recurso_id:  recurso.id,
         descripcion: `Renovación: ${recurso.nombre}`,
         monto:       recurso.valor ?? 0,
+        moneda:      monedaTenant,
         categoria:   'Recurso',
         fecha:       fechaHoy,
         sucursal_id: recurso.sucursal_id ?? null,
@@ -1093,11 +1096,12 @@ export default function GastosPage() {
   }
   useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
 
-  const abrirNuevoFijo = () => { setEditandoFijoId(null); setFormFijo({ ...FORM_FIJO_VACIO, deduce_ganancias: esRI }); setModalFijoAbierto(true) }
+  const abrirNuevoFijo = () => { setEditandoFijoId(null); setFormFijo({ ...FORM_FIJO_VACIO, deduce_ganancias: esRI, moneda: monedaTenant }); setModalFijoAbierto(true) }
   const abrirEdicionFijo = (f: any) => {
     setEditandoFijoId(f.id)
     setFormFijo({
       descripcion: f.descripcion, monto: String(f.monto),
+      moneda: (f.moneda ?? monedaTenant ?? 'ARS').toUpperCase(),
       tipo_comprobante: f.tipo_comprobante ?? '', tipo_iva: f.tipo_iva ?? '', iva_deducible: f.iva_deducible ?? false,
       alicuota_iva_custom: f.tipo_iva === 'custom' && f.alicuota_iva != null ? String(f.alicuota_iva) : '',
       deduce_ganancias: f.deduce_ganancias ?? false,
@@ -1624,6 +1628,7 @@ export default function GastosPage() {
           ? (formFijo.gasto_negocio === 'negocio' ? true : formFijo.gasto_negocio === 'personal' ? false : null)
           : null,
         categoria: formFijo.categoria || null, medio_pago: formFijo.medio_pago || null,
+        moneda: (formFijo.moneda || monedaTenant || 'ARS').toUpperCase(),
         frecuencia: formFijo.frecuencia,
         dia_vencimiento: formFijo.dia_vencimiento ? parseInt(formFijo.dia_vencimiento) : null,
         alerta_dias_antes: formFijo.alerta_dias_antes ? parseInt(formFijo.alerta_dias_antes) : 3,
@@ -1719,6 +1724,10 @@ export default function GastosPage() {
         iva_monto: f.iva_monto ?? null, iva_deducible: f.iva_deducible ?? false,
         deduce_ganancias: f.deduce_ganancias ?? false, gasto_negocio: f.gasto_negocio ?? null,
         categoria: f.categoria ?? null, medio_pago: medioJson,
+        // El gasto generado hereda la moneda del gasto fijo. Sin esto caía en el default 'ARS' de
+        // la columna y un alquiler en otra moneda se leía como pesos (mismo bug que el mirror de
+        // la OC en USD).
+        moneda: (f.moneda ?? monedaTenant ?? 'ARS').toUpperCase(),
         fecha: formGenerar.fecha,
         notas: formGenerar.notas.trim() || `Generado desde gasto fijo — ${f.frecuencia}`,
         sucursal_id: f.sucursal_id ?? null, usuario_id: user?.id ?? null,
@@ -1780,6 +1789,12 @@ export default function GastosPage() {
   const netoPreview = montoNum - ivaPreview
 
   const montoFijoNum = parseFloat(formFijo.monto.replace(',', '.')) || 0
+
+  /** Total mensual estimado, AGRUPADO POR MONEDA (ver el tfoot de la tabla de gastos fijos). */
+  const totalesFijosMensuales = totalesPorMoneda(
+    (gastosFijos as any[]).filter(f => f.activo && f.frecuencia === 'mensual'),
+    monedaTenant,
+  )
   const alicuotaFijoCustomNum = parseFloat(formFijo.alicuota_iva_custom) || null
   const ivaFijoPreview = montoFijoNum > 0 && formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(montoFijoNum, formFijo.tipo_iva, alicuotaFijoCustomNum) : 0
 
@@ -2398,7 +2413,7 @@ export default function GastosPage() {
                             ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3 text-gray-600 dark:text-gray-300 capitalize">{f.frecuencia}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">{formatMoneda(Number(f.monto))}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">{formatGasto(Number(f.monto), f)}</td>
                           <td className="px-4 py-3 text-center">
                             <button onClick={() => toggleActivoFijo(f.id, f.activo)} title={f.activo ? 'Desactivar' : 'Activar'}>
                               {f.activo ? <ToggleRight size={22} className="text-green-500" /> : <ToggleLeft size={22} className="text-gray-400" />}
@@ -2423,8 +2438,14 @@ export default function GastosPage() {
                   <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
                     <tr>
                       <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">Total mensual estimado (activos)</td>
+                      {/* 🛑 Un total por moneda, no uno solo: sumar un alquiler en dólares con uno
+                          en pesos da un número que no existe. */}
                       <td className="px-4 py-3 text-right font-bold text-gray-700 dark:text-gray-300">
-                        {formatMoneda((gastosFijos as any[]).filter(f => f.activo && f.frecuencia === 'mensual').reduce((a: number, f: any) => a + Number(f.monto), 0))}
+                        {totalesFijosMensuales.length === 0
+                          ? formatMoneda(0)
+                          : totalesFijosMensuales.map(([m, total]) => (
+                              <div key={m}>{formatMonedaLib(total, m)}</div>
+                            ))}
                       </td>
                       <td colSpan={2} />
                     </tr>
@@ -2940,11 +2961,24 @@ export default function GastosPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto estimado ($) *</label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.monto}
-                  onChange={e => setFormFijo(f => ({ ...f, monto: e.target.value }))}
-                  placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto estimado *</label>
+                {/* Mismo selector que el gasto suelto: un alquiler puede estar pactado en otra
+                    moneda, y el gasto que se genera cada mes hereda esta. */}
+                <div className="flex gap-2">
+                  <select
+                    value={formFijo.moneda}
+                    onChange={e => setFormFijo(f => ({ ...f, moneda: e.target.value }))}
+                    title="Moneda del gasto fijo"
+                    className="w-28 shrink-0 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    {monedasParaGasto(monedaTenant).map(m => (
+                      <option key={m} value={m}>{simboloMoneda(m)} {m}</option>
+                    ))}
+                  </select>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.monto}
+                    onChange={e => setFormFijo(f => ({ ...f, monto: e.target.value }))}
+                    placeholder="0" min="0" step="0.01"
+                    className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
               </div>
 
               {/* Información fiscal */}

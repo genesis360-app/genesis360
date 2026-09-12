@@ -396,6 +396,10 @@ export default function EnviosPage() {
         tenant_id: tenant!.id,
         descripcion: `Combustible — envío #${combustibleEnvio.numero ?? combustibleEnvio.id.slice(-6)}${veh ? ` (${veh.nombre})` : ''}`,
         monto,
+        // La moneda del gasto es la del NEGOCIO: el monto de acá está expresado en ella. Sin
+        // setearla caía en el default 'ARS' de la columna y un negocio en otra moneda leía
+        // sus gastos con el símbolo equivocado (ver src/lib/gastoMoneda.ts).
+        moneda: ((tenant as any)?.moneda ?? 'ARS').toUpperCase(),
         categoria: 'Combustible',
         categoria_id: categoriaCombustibleId ?? null,
         recurso_id: combustibleEnvio.recurso_id ?? null,

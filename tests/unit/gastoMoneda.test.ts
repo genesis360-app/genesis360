@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   monedasParaGasto, cajasOperativasDeMoneda, cajaFuerteDeMoneda,
-  puedePagarEfectivoEn, medioSirveParaMoneda, validarPagoGasto,
+  puedePagarEfectivoEn, medioSirveParaMoneda, validarPagoGasto, totalesPorMoneda,
   type SesionCaja,
 } from '@/lib/gastoMoneda'
 
@@ -144,5 +144,46 @@ describe('validarPagoGasto', () => {
       ],
     })
     expect(r?.motivo).toBe('medio_otra_moneda')
+  })
+})
+
+// ── totalesPorMoneda ────────────────────────────────────────────────────────────────────────
+// 🛑 El tab de "Gastos fijos" mostraba UN total mensual estimado sumando todas las filas sin mirar
+// la moneda: un alquiler de US$500 + uno de $300.000 daba "$300.500", un número que no existe.
+// Con un solo tipo de moneda daba bien, que es por lo que pasó desapercibido.
+describe('totalesPorMoneda — no sumar peras con manzanas', () => {
+  it('agrupa por moneda en vez de sumar todo junto', () => {
+    const r = totalesPorMoneda(
+      [
+        { monto: 300000, moneda: 'ARS' },
+        { monto: 500, moneda: 'USD' },
+        { monto: 120000, moneda: 'ARS' },
+      ],
+      'ARS',
+    )
+    expect(r).toEqual([['ARS', 420000], ['USD', 500]])
+  })
+
+  it('la moneda del negocio va primero, el resto alfabético', () => {
+    const r = totalesPorMoneda(
+      [{ monto: 1, moneda: 'USD' }, { monto: 2, moneda: 'ARS' }, { monto: 3, moneda: 'BRL' }],
+      'USD',
+    )
+    expect(r.map(([m]) => m)).toEqual(['USD', 'ARS', 'BRL'])
+  })
+
+  it('una fila sin moneda cuenta como la del negocio (default de la columna)', () => {
+    expect(totalesPorMoneda([{ monto: 10 }, { monto: 5, moneda: null }], 'CLP'))
+      .toEqual([['CLP', 15]])
+  })
+
+  it('los montos que vienen como string (numeric de Postgres) se suman igual', () => {
+    expect(totalesPorMoneda([{ monto: '10.50' }, { monto: '0.50' }], 'ARS'))
+      .toEqual([['ARS', 11]])
+  })
+
+  it('sin filas no inventa un total', () => {
+    expect(totalesPorMoneda([], 'ARS')).toEqual([])
+    expect(totalesPorMoneda(null, 'ARS')).toEqual([])
   })
 })

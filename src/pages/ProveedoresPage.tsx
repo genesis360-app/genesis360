@@ -1007,6 +1007,10 @@ export default function ProveedoresPage() {
         tenant_id: tenant!.id,
         descripcion: `Servicio: ${si.nombre}`,
         monto: si.costo,
+        // La moneda del gasto es la del NEGOCIO: el monto de acá está expresado en ella. Sin
+        // setearla caía en el default 'ARS' de la columna y un negocio en otra moneda leía
+        // sus gastos con el símbolo equivocado (ver src/lib/gastoMoneda.ts).
+        moneda: ((tenant as any)?.moneda ?? 'ARS').toUpperCase(),
         categoria: 'Servicios',
         fecha: fechaGasto,
         notas: `Generado desde servicio recurrente (${si.frecuencia})`,

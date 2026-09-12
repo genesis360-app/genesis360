@@ -257,6 +257,9 @@ interface Feriado {
 export default function RrhhPage() {
   const { limits } = usePlanLimits()
   const { tenant, user, setTenant } = useAuthStore()
+  // Los gastos que genera RRHH (sueldos, cargas, adelantos, liquidación final) están expresados en
+  // la moneda del negocio. Sin estamparla caían en el default 'ARS' de la columna.
+  const monedaNegocio = ((tenant as any)?.moneda ?? 'ARS').toUpperCase()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const preguntar = usePrompt()
@@ -1124,6 +1127,7 @@ export default function RrhhPage() {
         tenant_id: tenant!.id,
         descripcion: `Sueldo ${nombreEmpleado(salario.empleado)} — ${salario.periodo.slice(0, 7)}`,
         monto: salario.neto,
+        moneda: monedaNegocio,
         categoria: 'Sueldos',
         categoria_id: catSueldos,
         fecha: new Date().toISOString().split('T')[0],
@@ -1166,6 +1170,7 @@ export default function RrhhPage() {
           tenant_id: tenant!.id,
           descripcion: `${concepto} — ${nominaPeriodo.slice(0, 7)}`,
           monto: Math.round(monto * 100) / 100,
+          moneda: monedaNegocio,
           categoria: 'Cargas sociales', categoria_id: catCargas,
           fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
           gasto_negocio: true, deduce_ganancias: true, monto_pagado: 0, estado_pago: 'pendiente',
@@ -1213,6 +1218,7 @@ export default function RrhhPage() {
         const catId = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Adelantos al personal').maybeSingle()).data?.id ?? null
         const { data: gasto } = await supabase.from('gastos').insert({
           tenant_id: tenant!.id, descripcion: `${etiqueta} ${nombreEmpleado(emp)}`, monto,
+          moneda: monedaNegocio,
           categoria: 'Adelantos al personal', categoria_id: catId,
           fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
           gasto_negocio: true, deduce_ganancias: false, monto_pagado: 0, estado_pago: 'pendiente',
@@ -1703,6 +1709,7 @@ export default function RrhhPage() {
       const catSueldos = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Sueldos').maybeSingle()).data?.id ?? null
       const { data: gasto } = await supabase.from('gastos').insert({
         tenant_id: tenant!.id, descripcion: `Liquidación final ${nombreEmpleado(liqFinal)}`, monto: r.total,
+        moneda: monedaNegocio,
         categoria: 'Sueldos', categoria_id: catSueldos, fecha: new Date().toISOString().split('T')[0],
         usuario_id: user?.id ?? null, gasto_negocio: true, deduce_ganancias: true, monto_pagado: 0, estado_pago: 'pendiente',
         notas: `Liquidación final (indemnización ${r.indemnizacion} + SAC ${r.sacProporcional} + vacaciones ${r.vacacionesNoGozadas})`,

@@ -6,14 +6,15 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-12
 ---
 
-# Historial de Migraciones (001-412, + correctivos 387b/387c)
+# Historial de Migraciones (001-413, + correctivos 387b/387c)
 
-**🗂️ Migraciones 407-412 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
+**🗂️ Migraciones 407-413 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
 `v1.208.0`). Son **aditivas** (tablas/funciones/columnas nuevas), así que acá sí aplica el "DDL
 aditivo primero":
 
 | # | Archivo | Qué hace |
 |---|---|---|
+| 413 | `413_fix_loop_infinito_codigo_ubicacion.sql` | 🛑 **Bug real de inventario.** `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con `lpad(v_seq::text, 2, '0')`, y **`lpad` TRUNCA** cuando el texto ya mide más que el ancho: en `v_seq=100` devolvía `U10` (que ya existe) y el **loop no salía nunca**. Un negocio con 99 ubicaciones raíz no podía crear la 100 — el INSERT giraba hasta el `statement_timeout`, sin error visible. Latente en PROD (máximo 4 raíces hoy), pero 100 racks es normal en un depósito real. Fix: ancho 2 hasta `U99` y después el número completo, + tope de 10.000 vueltas en los dos loops. Lo destapó la suite e2e: 4 specs con `57014` en la misma tabla, archivados como "lentitud de DEV". ⚠️ `CREATE OR REPLACE FUNCTION` **no conserva** `SET search_path` — hay que repetirlo. |
 | 412 | `412_tenants_telefono.sql` | `tenants.telefono` — el alta de negocio pedía el teléfono y `provisionNegocio()` nunca lo guardaba. Se guarda ahora por los 3 caminos del alta; editable en Configuración → Mi negocio. Ver [[wiki/features/autenticacion-onboarding]]. |
 | 411 | `411_admin_customer_notes_y_hardening_audit_log.sql` | Tabla `admin_customer_notes` (notas internas de soporte sobre un cliente) — RLS encendida **sin policies** + `REVOKE` a `anon`/`authenticated`, **sin FK a `tenants`** (para que la nota sobreviva a la baja del tenant que audita). Además **hardening de `admin_audit_log`**: la mig 221 lo había dejado con GRANT completo para `anon`/`authenticated` confiando solo en "RLS sin policies" como defensa — mismo `REVOKE` que le faltaba, mismo agujero de fondo que corrigió la mig 272 (ver más abajo). Ver [[wiki/support/plataforma-soporte]]. |
 | 410 | `410_admin_tenants_overview_cuentas.sql` | `fn_admin_tenants_overview(p_q, p_limit)` y `fn_admin_tenant_cuentas(p_tenant_id)` para el panel de soporte — `SECURITY DEFINER`, `REVOKE` de `anon`/`authenticated` + `GRANT` solo a `service_role`. ⚠️ Hallazgo del `migration-reviewer`: este proyecto tiene un `ALTER DEFAULT PRIVILEGES` que le da `EXECUTE` a `anon`/`authenticated` en **toda función nueva** de `public`, así que el `REVOKE` explícito de estos dos roles es imprescindible (mismo agujero que corrigió la mig 272). Ver [[wiki/support/plataforma-soporte]]. |

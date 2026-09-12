@@ -440,3 +440,19 @@ Si el acceso está vencido, **toda** la suite está roja por eso. Se arregla ext
 
 ⚠️ **Cada vez que se pruebe una cancelación o una baja contra el tenant de e2e, extender el período
 en el mismo momento.** Si no, la suite muere sola un día cualquiera sin que nadie haya tocado código.
+
+## 🐛 Una falla archivada como "flakiness" puede ser un bug real del producto
+
+El 2026-09-12, cuatro specs (107, 114, 126, 130) fallaban con `57014 statement timeout` insertando
+en `ubicaciones`. Estaban anotados como "lentitud de DEV". Eran un **loop infinito** real del
+trigger que autogenera el código de ubicación (mig 413): con 99 ubicaciones raíz, la número 100 no
+se podía crear nunca.
+
+El patrón que lo delataba estaba a la vista: *cuatro specs distintos*, todos fallando en *la misma
+tabla*, todos con *el mismo código de error*. **El ruido no se concentra.**
+
+- Si dos o más specs fallan en la misma tabla o con el mismo error, buscá la causa común antes de
+  escribir "flaky".
+- `57014` en un INSERT chico no es carga: es un lock o algo que no termina. Mirá los triggers
+  `BEFORE` de esa tabla.
+- Reproducir el INSERT a mano por SQL, fuera del test, separa producto de harness en un minuto.

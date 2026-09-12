@@ -15,6 +15,27 @@ type: project
 > de `admin`) + el **panel de soporte** (repo aparte `genesis360-admin`, rama `dev` — no tiene tag ni
 > release propio, se pushea por separado). Nada de esto tocó PROD todavía.
 >
+> #### 🛑 mig 413 — el código de ubicación entraba en LOOP INFINITO en la raíz nº 100
+>
+> Cuatro specs (107, 114, 126, 130) fallaban con `57014 statement timeout` insertando en
+> `ubicaciones` y estaban archivados como **"lentitud de DEV"**. No era lentitud:
+> `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con `'U' || lpad(v_seq::text, 2, '0')`, y
+> **`lpad` TRUNCA** cuando el texto ya mide más que el ancho pedido → en `v_seq = 100` devuelve
+> `'10'` → candidato `U10`, que ya existe → 101 → `U10` otra vez. El loop no salía nunca.
+>
+> **Un negocio con 99 ubicaciones raíz no podía crear la número 100**, y sin error: el INSERT giraba
+> hasta que lo mataba el `statement_timeout`, quemando una conexión. En pantalla, un botón "Agregar"
+> que no hace nada. En PROD está **latente** (máximo 4 ubicaciones raíz hoy), pero 100 racks o
+> pasillos es normal en un depósito real.
+>
+> Arreglado en la **mig 413**: ancho 2 hasta `U99` y después el número completo (`U100`), más un tope
+> de 10.000 vueltas en los dos loops. Verificado: el INSERT que se colgaba devuelve `U100` al
+> instante y los 5 specs afectados pasan (11 tests).
+>
+> ⚠️ Dos cosas que el `migration-reviewer` atajó y conviene no olvidar: `CREATE OR REPLACE FUNCTION`
+> **no conserva** `SET search_path` (había que repetirlo), y el índice que se iba a agregar ya
+> existía como `uq_ubicaciones_tenant_codigo`.
+>
 > #### ⏰ El que hay que chequear ANTES de diagnosticar cualquier falla masiva de e2e
 >
 > Los **9 specs que siembran stock por UI** figuraban rotos "por la ubicación Mono-SKU". Ese fix ya

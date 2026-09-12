@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-12T21:23:24.385Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260912211751 · 168 tablas
+-- Generado 2026-09-12T23:01:33.680Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260912225709 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -11552,6 +11552,9 @@ DECLARE
   v_seq       int;
   v_padre_cod text;
   v_candidato text;
+  -- Cota dura: con 10.000 intentos ya se agotó cualquier caso legítimo. Si se llega acá es que hay
+  -- un bug, y es mejor un error que se lee que un INSERT colgado hasta el statement_timeout.
+  c_max_intentos CONSTANT int := 10000;
 BEGIN
   NEW.codigo := NULLIF(upper(trim(NEW.codigo)), '');
 
@@ -11567,8 +11570,15 @@ BEGIN
     v_seq := 0;
     LOOP
       v_seq := v_seq + 1;
-      v_candidato := 'U' || lpad(v_seq::text, 2, '0');
+      -- 🛑 `lpad(x, 2, '0')` TRUNCA cuando el texto ya mide más de 2: con v_seq >= 100 devolvía
+      -- siempre 'U10' y el loop no salía nunca. Se conserva el ancho 2 hasta 99 para no cambiar
+      -- los códigos ya existentes, y de ahí en adelante se escribe el número completo.
+      v_candidato := 'U' || CASE WHEN v_seq < 100 THEN lpad(v_seq::text, 2, '0') ELSE v_seq::text END;
       EXIT WHEN NOT EXISTS (SELECT 1 FROM ubicaciones WHERE tenant_id = NEW.tenant_id AND codigo = v_candidato);
+      IF v_seq > c_max_intentos THEN
+        RAISE EXCEPTION 'No se pudo autogenerar un código de ubicación raíz tras % intentos (tenant %). Cargá el código a mano.',
+          c_max_intentos, NEW.tenant_id;
+      END IF;
     END LOOP;
   ELSE
     SELECT codigo INTO v_padre_cod FROM ubicaciones WHERE id = NEW.padre_ubicacion_id;
@@ -11577,6 +11587,10 @@ BEGIN
       v_seq := v_seq + 1;
       v_candidato := v_padre_cod || '-' || v_seq::text;
       EXIT WHEN NOT EXISTS (SELECT 1 FROM ubicaciones WHERE tenant_id = NEW.tenant_id AND codigo = v_candidato);
+      IF v_seq > c_max_intentos THEN
+        RAISE EXCEPTION 'No se pudo autogenerar un código bajo "%" tras % intentos (tenant %). Cargá el código a mano.',
+          v_padre_cod, c_max_intentos, NEW.tenant_id;
+      END IF;
     END LOOP;
   END IF;
 

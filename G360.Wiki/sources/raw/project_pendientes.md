@@ -44,6 +44,18 @@ type: project
 > dev servers peleando el puerto 5173 + doble carga sobre DEV) y contaminó los números de ambas — 10
 > fallas fantasma del rol CONTADOR que pasan 10/10 en aislado.
 >
+> #### 🗑️ La baja de tenant, verificada en DEV con un caso real (13/09)
+>
+> GO purgó "Ferretería Tongas" desde el panel. **Barrido limpio**: 151 tablas con `tenant_id` → 0
+> huérfanos; 41 tablas con `sucursal_id` → 0 colgadas; auditoría completa con la foto del inventario
+> tomada ANTES del DELETE, y la entrada sobrevivió al borrado del tenant (sin FK, como se diseñó).
+>
+> 🛑 **Pero destapó un hueco**: el CASCADE es de Postgres y **Storage no se entera**. Un negocio con
+> archivos dejaba huérfano su **certificado de AFIP**, los comprobantes del cliente, fotos, remitos,
+> logo y documentación de empleados. Cerrado: `purge_now` ahora los borra (4 esquemas de prefijo
+> distintos, ids juntados antes del DELETE). Probado: 8 archivos → 0.
+> ⚠️ **Bucket nuevo = sumarlo a `BUCKETS_POR_TENANT`** o vuelve a quedar huérfano en silencio.
+>
 > #### 🛑 mig 413 — el código de ubicación entraba en LOOP INFINITO en la raíz nº 100
 >
 > Cuatro specs (107, 114, 126, 130) fallaban con `57014 statement timeout` insertando en

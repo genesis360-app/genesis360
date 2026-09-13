@@ -192,6 +192,41 @@ lo era). Recorrer Dashboard → Clientes → ficha de un cliente → Auditoría 
 probar `Ctrl/⌘+K`.
 
 
+## 🗑️ La baja real (verificada el 2026-09-13 con "Ferretería Tongas" en DEV)
+
+GO purgó un tenant desde el panel. **Salió bien**: barrido de las **151 tablas con `tenant_id` → 0
+filas huérfanas**, ninguna fila colgando de la sucursal borrada (41 tablas con `sucursal_id`
+revisadas), y la auditoría completa — con la **foto del inventario tomada ANTES del DELETE**, que es
+justamente lo que después ya no se puede reconstruir. La entrada de `admin_audit_log` **sobrevivió
+al borrado del tenant**, como se había diseñado (sin FK a `tenants`).
+
+### 🛑 Pero faltaba algo: los archivos de Storage
+
+Ese tenant estaba vacío, y por eso no se notaba. **El CASCADE es de Postgres; Storage es otro
+sistema y no se entera.** Un negocio con archivos dejaba huérfano, entre otras cosas, **su
+certificado de AFIP** — una credencial fiscal viva colgada de un negocio que ya no existe (hoy hay
+35 de un solo tenant en DEV). Más los comprobantes que el cliente subió, fotos de productos,
+remitos, logo, documentación de empleados y facturas de courier. Además de la factura de storage que
+nunca baja, es un borrado **incompleto** frente al derecho de supresión.
+
+Cerrado: `purge_now` ahora borra los archivos, juntando los ids **antes** del DELETE (después del
+CASCADE no hay de dónde sacarlos). Los prefijos no son todos iguales:
+
+| Esquema | Buckets |
+|---|---|
+| `<tenant_id>/` | archivos-biblioteca, autorizaciones-fotos, certificados-afip, comprobantes-gastos, logos, presupuestos-servicios, productos, remitos |
+| `<user_id>/` | avatares |
+| `<empleado_id>/` y `prestamos/<empleado_id>/` | empleados |
+| `pod/<envio_id>/` y `facturas-courier/<tenant_id>/` | etiquetas-envios |
+
+Fail-soft: cuando corre, el negocio ya está borrado, así que un error no aborta nada — se devuelve
+al panel y queda en la auditoría (`storage_borrados`, `storage_errores`). Probado con archivos en
+los 4 esquemas: **8 subidos → 8 borrados → 0 restos**.
+
+⚠️ **Si se agrega un bucket nuevo, hay que sumarlo a `BUCKETS_POR_TENANT`** en la EF — si no, sus
+archivos vuelven a quedar huérfanos en silencio.
+
+
 ## Links relacionados
 
 - [[wiki/integrations/mercado-pago]] — cancelación/linkeo de suscripciones desde el panel

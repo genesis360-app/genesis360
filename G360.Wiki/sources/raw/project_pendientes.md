@@ -11,7 +11,7 @@ type: project
 > | | Versión | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
-> | **DEV** | `v1.218.0` | 001-**414** | todo validado: unit 1782 · e2e verde · paridad sin drift |
+> | **DEV** | `v1.218.0` | 001-**414** | todo validado: unit 1782 · e2e verde (+146 nuevo) · paridad sin drift |
 >
 > #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
 >
@@ -73,6 +73,25 @@ type: project
 >    contador** si la NC del proveedor lleva la suya.
 > 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
 >    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
+>
+> #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
+>
+> 🛑 **El tenant de e2e ("Almacén Jorgito") es Monotributista**, y un Monotributista no discrimina
+> IVA crédito: el bloque de alícuota solo existe con `esRI && tipo_comprobante === 'Factura A'`. Todo
+> el circuito de compras/IVA era **inalcanzable por UI** — el spec 86 verifica que las pantallas
+> renderizan, pero sobre un tenant que nunca puede tener un número adentro.
+>
+> Agregado `auth.ri.setup.ts` + project **`chromium-ri`** ("Kiosco Buildi", RI), reusando el usuario
+> del spec 63 de multi-CUIT que hasta ahora solo se usaba por API. **Disponible para cualquier spec
+> futuro de compras/IVA.**
+>
+> **e2e 146 (4/4, verificado por mutación)**: el formulario pide la cotización solo cuando
+> corresponde y la guarda; el crédito cuenta el IVA convertido; sin cotización el gasto queda fuera
+> con los dos avisos. Con el fix revertido el KPI mostró **$594** donde el crédito real era
+> **$575.325**.
+>
+> ⚠️ Aprendido: **"Monto total" es IVA INCLUIDO** (`calcularIVA` extrae el contenido, no suma 21%
+> encima) y la tasa se renderiza en formato es-AR (**"1.500"**).
 >
 > #### 🧾 Registro vivo de consultas para el contador — `wiki/business/consultas-contador.md`
 >

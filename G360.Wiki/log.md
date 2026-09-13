@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-13] update | 🧪 El circuito de IVA crédito no se podía testear por UI — e2e 146 + tenant RI
+
+Lo de ayer (v1.218.0) se había validado con typecheck, 1782 unit y build, pero **nunca en un
+navegador**. Al ir a escribir el e2e apareció por qué: no se podía.
+
+### 🛑 El tenant de e2e es Monotributista
+
+**"Almacén Jorgito"** —el tenant de toda la suite— es **Monotributista**, y un Monotributista **no
+discrimina IVA crédito**: el bloque de alícuota del formulario de Gastos solo existe con `esRI &&
+tipo_comprobante === 'Factura A'`. Con el usuario de siempre, **todo el circuito de IVA crédito es
+inalcanzable por UI**: el Libro IVA Compras queda siempre vacío y el KPI de crédito siempre en cero.
+
+El spec 86 verifica que esas pantallas *renderizan* — pero sobre un tenant que nunca puede tener un
+número adentro. Un verde que no prueba ningún importe.
+
+**Destrabado**: `auth.ri.setup.ts` + project **`chromium-ri`** ("Kiosco Buildi", RI), reusando el
+usuario que el spec 63 de multi-CUIT ya tenía y hasta ahora **solo usaba por API, nunca por
+navegador**. Queda disponible para cualquier spec futuro de compras/IVA.
+
+### e2e 146 — 4/4, verificado por mutación
+
+1. El formulario pide la cotización **solo** cuando corresponde (con control anti-vacío: en la
+   moneda del negocio el bloque **no** debe aparecer) y guarda las 3 columnas de la mig 414.
+2. El crédito fiscal cuenta el IVA **convertido**.
+3. Sin cotización el gasto queda fuera del libro, con los **dos** avisos (Libro y Panel).
+
+**Las dos mutaciones se detectaron**, y la primera dejó a la vista el tamaño del bug de ayer: con el
+fix revertido el KPI mostró **$594** donde el crédito real era **$575.325**.
+
+### Dos correcciones a lo que yo había escrito
+
+- **"Monto total" es IVA INCLUIDO.** `calcularIVA` extrae el IVA *contenido* (`monto − monto/1,21`),
+  no le suma 21% encima: sobre US$1.000 da **173,55**, no 210. El test esperaba 210 y falló — la
+  expectativa estaba mal, no el código.
+- La tasa se renderiza con formato es-AR (**"1.500"**), así que la aserción que buscaba `1500` no
+  habría matcheado nunca.
+
+Sin cambios en `src/` (las mutaciones se revirtieron y `git diff` de `src/` quedó vacío).
+**Verde:** e2e 146 4/4 · specs 86 y 145 sin regresión · typecheck · eslint `--max-warnings 0`.
+
+---
+
 ## [2026-09-13] update | 🧾 Registro vivo de consultas para el contador
 
 Pedido de GO: juntar **todas** las preguntas fiscales y contables abiertas en un solo documento, para

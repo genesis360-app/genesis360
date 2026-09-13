@@ -57,6 +57,12 @@ export default defineConfig({
       name: 'setup-contador',
       testMatch: /auth\.contador\.setup\.ts/,
     }] : []),
+    // Setup DUEÑO del tenant RI ("Kiosco Buildi") — habilita probar el circuito de IVA crédito por
+    // UI, que con el tenant principal (Monotributista) es inalcanzable. Ver auth.ri.setup.ts.
+    ...(process.env.E2E_MULTICUIT_EMAIL ? [{
+      name: 'setup-ri',
+      testMatch: /auth\.ri\.setup\.ts/,
+    }] : []),
     // Setup SUPERVISOR de Familia Otranto (tenant SIN clave) — solo si hay credenciales
     ...(process.env.E2E_FOTRANTO_SUP_EMAIL ? [{
       name: 'setup-fotranto-sup',
@@ -88,6 +94,19 @@ export default defineConfig({
       dependencies: ['setup-owner'],
       testMatch: /88_mobile_responsive\.spec\.ts/,
     },
+
+    // ─── Tests sobre el tenant RESPONSABLE INSCRIPTO — solo si hay credenciales.
+    // Único lugar donde el IVA crédito de compras existe de verdad (el tenant principal es
+    // Monotributista y no discrimina IVA), así que acá viven los specs del Libro IVA Compras.
+    ...(process.env.E2E_MULTICUIT_EMAIL ? [{
+      name: 'chromium-ri',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/ri_session.json'),
+      },
+      dependencies: ['setup-ri'],
+      testMatch: /146_gasto_cotizacion_fiscal_mutante\.spec\.ts/,
+    }] : []),
 
     // ─── Tests CAJERO — solo si hay credenciales
     ...(process.env.E2E_CAJERO_EMAIL ? [{

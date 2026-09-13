@@ -2016,14 +2016,14 @@ genera crédito fiscal computable (art. 12 Ley 23.349) y la DDJJ va en pesos (ar
 
 | # | Escenario | Regla | Cubierto por |
 |---|---|---|---|
-| 138 | **🛑 El KPI del Panel NO suma dólares como pesos** | Era un bug real: `iva_monto` se sumaba crudo, así que un IVA de US$210 entraba a la posición de IVA como $210 | `cotizacionFiscal.test.ts` (CF-CRED-01, con `not.toBe(420)`) |
+| 138 | **🛑 El KPI del Panel NO suma dólares como pesos** | Era un bug real: `iva_monto` se sumaba crudo, así que un IVA de US$210 entraba a la posición de IVA como $210 | `cotizacionFiscal.test.ts` (CF-CRED-01) + **e2e 146** (mutante: con el fix revertido el KPI mostró **$594** donde el crédito real era **$575.325**) |
 | 139 | **🛑 La posición de los 12 meses usa el MISMO cálculo** | Panel, Liquidación y Libro salían de tres cuentas distintas: dos pantallas de la misma sesión decían cosas distintas sobre la misma plata | `creditoFiscalCompras` es la única fuente |
 | 140 | **La tasa fiscal NO es la operativa del sistema** | El sistema convierte al dólar **COMPRA** (valuar lo que el negocio tiene); lo fiscal pide **BNA VENDEDOR** de una fecha concreta. Mezclarlas falsea la posición | columna propia `gastos.cotizacion_fiscal` (mig 414) |
-| 141 | **🛑 La tasa se congela EN el gasto** | `tenants.cotizacion_usd*` guarda el valor de HOY: convertir con eso un gasto de hace 3 meses da un número que no existió nunca | mig 414 + `abrirEdicion` la relee |
-| 142 | **Sin cotización NO se inventa una tasa** | El gasto queda fuera del libro y se avisa **cuánto** crédito quedó sin declarar y en qué moneda — en el Panel y en el Libro, no solo en uno | `cotizacionFiscal.test.ts` (CF-CRED-02) |
-| 143 | **La fecha propuesta es el día hábil anterior, y es editable** | ⚠️ `diaHabilAnterior` **no contempla feriados** (no hay calendario cargado): el día siguiente a un feriado propone un día sin cotización del BNA | `cotizacionFiscal.test.ts` (día hábil) + campo editable |
+| 141 | **🛑 La tasa se congela EN el gasto** | `tenants.cotizacion_usd*` guarda el valor de HOY: convertir con eso un gasto de hace 3 meses da un número que no existió nunca | mig 414 + **e2e 146** (mutante: la persistencia devuelta a `null` se detecta) |
+| 142 | **Sin cotización NO se inventa una tasa** | El gasto queda fuera del libro y se avisa **cuánto** crédito quedó sin declarar y en qué moneda — en el Panel y en el Libro, no solo en uno | `cotizacionFiscal.test.ts` (CF-CRED-02) + **e2e 146** (verifica los DOS avisos) |
+| 143 | **La fecha propuesta es el día hábil anterior, y es editable** | ⚠️ `diaHabilAnterior` **no contempla feriados** (no hay calendario cargado): el día siguiente a un feriado propone un día sin cotización del BNA | `cotizacionFiscal.test.ts` + **e2e 146** (verifica que viene prefijada) |
 | 144 | **Una fecha editada a mano NO se repisa** | El prefill solo pisa el valor si sigue siendo el que propuso el sistema (`ultimaFechaSugerida`) | revisión de `GastosPage` |
-| 145 | **La fila del libro muestra el importe original y la tasa** | Sin eso, una fila en dólares es indistinguible de una en pesos y el número no se puede auditar | revisión de `FacturacionPage` |
+| 145 | **La fila del libro muestra el importe original y la tasa** | Sin eso, una fila en dólares es indistinguible de una en pesos y el número no se puede auditar | **e2e 146** |
 | 146 | **🛑 El Excel exporta el tipo de cambio explícito** | El Libro IVA Digital de ARCA lo exige: sin él el comprobante cae en "importaciones con avisos" y hay que reincorporarlo a mano | columnas Moneda origen / Monto origen / Tipo de cambio / Fecha cotización |
 | 147 | **Editar el gasto de vuelta a la moneda del negocio LIMPIA la tasa** | Si no, quedaría una tasa colgada convirtiendo algo que no hay que convertir | payload persiste `null` a propósito |
 | 148 | **El IVA se convierte por la MISMA tasa que el monto** | `iva_monto` está expresado en la moneda del gasto | `cotizacionFiscal.test.ts` |
@@ -2031,7 +2031,25 @@ genera crédito fiscal computable (art. 12 Ley 23.349) y la DDJJ va en pesos (ar
 | 150 | ⚠️ **Abierto: la nota de corrección arrastra la tasa del gasto que corrige** | Si convirtiera a la tasa de hoy, revertir no daría cero: quedaría un resto de IVA por diferencia de cambio. **A confirmar con el contador** si la NC del proveedor lleva la suya | comentario en `abrirCorreccion` |
 | 151 | ⚠️ **Abierto: `gastos_fijos` no tiene cotización fiscal** | La mig 414 tocó solo `gastos`. Un fijo en otra moneda se materializa sin tasa → cae afuera del libro **con aviso** (no en silencio) | — |
 
-**Verde:** 1782 unit (108 archivos) · build · typecheck · eslint `--max-warnings 0`.
+**Verde:** 1782 unit (108 archivos) · **e2e 146 — 4/4, verificado por mutación** · build · typecheck ·
+eslint `--max-warnings 0`.
+
+### 🛑 Por qué este bloque no tenía e2e hasta ahora (y qué se destrabó)
+
+El tenant principal de e2e (**"Almacén Jorgito"**) es **Monotributista**, y un Monotributista **no
+discrimina IVA crédito**: el bloque de alícuota del formulario solo existe con `esRI &&
+tipo_comprobante === 'Factura A'`. O sea que **todo este circuito era inalcanzable por UI** con el
+usuario de siempre — el Libro IVA Compras siempre vacío y el KPI de crédito siempre en cero. El
+spec 86 verifica que esas pantallas *renderizan*, pero sobre un tenant que nunca puede tener un
+número adentro.
+
+Se agregó `auth.ri.setup.ts` + el project **`chromium-ri`** ("Kiosco Buildi", RI), reusando el
+usuario que el spec 63 de multi-CUIT ya tenía pero solo usaba por API. Queda disponible para
+cualquier spec futuro del circuito de compras/IVA.
+
+⚠️ **Aprendido escribiendo el spec:** el campo **"Monto total" es IVA INCLUIDO** — `calcularIVA`
+extrae el IVA *contenido* (`monto − monto/1,21`), no le suma 21% encima. Sobre US$1.000 da
+**173,55**, no 210.
 
 **Estado de los datos al momento del cambio:** DEV 210 gastos, **todos ARS**; PROD 1 gasto, ARS, sin
 IVA crédito. El bug del KPI (#138) estaba **latente**: no llegó a ensuciar ningún número real.

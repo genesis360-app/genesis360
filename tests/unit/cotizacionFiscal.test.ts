@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   diaHabilAnterior, aFechaISO, convertirGastoAMonedaLibro, gastosSinCotizacion,
+  creditoFiscalCompras,
 } from '@/lib/cotizacionFiscal'
 
 // ⚠️ Criterio contable PENDIENTE de validar con un contador matriculado (ver el encabezado de
@@ -98,5 +99,37 @@ describe('gastosSinCotizacion — lo que queda FUERA del libro', () => {
   it('sin gastos problemáticos devuelve vacío (control anti-vacío del caso feliz)', () => {
     expect(gastosSinCotizacion([{ monto: 1, iva_monto: 1, moneda: 'ARS' }], 'ARS')).toEqual([])
     expect(gastosSinCotizacion([], 'ARS')).toEqual([])
+  })
+})
+
+describe('creditoFiscalCompras — el número que se liquida', () => {
+  // 🛑 Este es el bug que motivó el helper: el KPI del panel y la posición de 12 meses sumaban
+  // `iva_monto` crudo, así que un IVA de US$210 entraba a la posición como $210.
+  it('convierte el IVA en otra moneda en vez de sumarlo como si fueran pesos', () => {
+    const { credito } = creditoFiscalCompras([
+      { monto: 1000, iva_monto: 210, moneda: 'ARS' },
+      { monto: 1000, iva_monto: 210, moneda: 'USD', cotizacion_fiscal: 1500 },
+    ], 'ARS')
+    expect(credito).toBe(210 + 210 * 1500)
+    expect(credito).not.toBe(420)   // lo que devolvía el cálculo viejo
+  })
+
+  it('NO suma —ni estima— el crédito de un gasto sin cotización, y lo reporta aparte', () => {
+    const { credito, sinCotizacion } = creditoFiscalCompras([
+      { monto: 1000, iva_monto: 210, moneda: 'ARS' },
+      { monto: 100, iva_monto: 21, moneda: 'USD' },
+    ], 'ARS')
+    expect(credito).toBe(210)
+    expect(sinCotizacion).toEqual([{ moneda: 'USD', cantidad: 1, iva: 21 }])
+  })
+
+  it('el numeric de Postgres llega string: se parsea antes de operar', () => {
+    const { credito } = creditoFiscalCompras(
+      [{ monto: '1000.00', iva_monto: '210.00', moneda: 'USD', cotizacion_fiscal: '1500.0000' }], 'ARS')
+    expect(credito).toBe(315000)
+  })
+
+  it('sin gastos da 0 y nada afuera (control anti-vacío)', () => {
+    expect(creditoFiscalCompras([], 'ARS')).toEqual({ credito: 0, sinCotizacion: [] })
   })
 })

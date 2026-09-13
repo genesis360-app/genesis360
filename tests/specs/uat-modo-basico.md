@@ -2001,3 +2001,37 @@ verifica que el gasto llegó al KPI antes de medir nada de moneda).
 `GastoUSD`, así que la aserción "la fila muestra US$" la satisfacía el propio nombre y el test
 pasaba **aunque el fix estuviera roto**. Renombrada a `GastoMoneda`, recién ahí la mutación quedó
 detectada. Un test verde no prueba nada hasta que se lo ve fallar.
+
+---
+
+## 🧾 §53 — El gasto en moneda extranjera entra al Libro IVA (v1.218.0, mig 414) 🛑 FISCAL — 2026-09-13
+
+⚠️ **Criterio contable PENDIENTE de validar con un contador matriculado.** Lo que fija esta sección
+viene de una consulta de GO a una IA que se presentó como contador (2026-09-13) y se adopta como
+criterio de trabajo. Ver el encabezado de `src/lib/cotizacionFiscal.ts`.
+
+Cierra lo que §52 dejó abierto: hasta ahora un gasto en otra moneda quedaba **fuera** del Libro IVA
+Compras "por las dudas". Ese criterio conservador era incorrecto: un gasto en moneda extranjera SÍ
+genera crédito fiscal computable (art. 12 Ley 23.349) y la DDJJ va en pesos (art. 96 Ley 11.683).
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 138 | **🛑 El KPI del Panel NO suma dólares como pesos** | Era un bug real: `iva_monto` se sumaba crudo, así que un IVA de US$210 entraba a la posición de IVA como $210 | `cotizacionFiscal.test.ts` (CF-CRED-01, con `not.toBe(420)`) |
+| 139 | **🛑 La posición de los 12 meses usa el MISMO cálculo** | Panel, Liquidación y Libro salían de tres cuentas distintas: dos pantallas de la misma sesión decían cosas distintas sobre la misma plata | `creditoFiscalCompras` es la única fuente |
+| 140 | **La tasa fiscal NO es la operativa del sistema** | El sistema convierte al dólar **COMPRA** (valuar lo que el negocio tiene); lo fiscal pide **BNA VENDEDOR** de una fecha concreta. Mezclarlas falsea la posición | columna propia `gastos.cotizacion_fiscal` (mig 414) |
+| 141 | **🛑 La tasa se congela EN el gasto** | `tenants.cotizacion_usd*` guarda el valor de HOY: convertir con eso un gasto de hace 3 meses da un número que no existió nunca | mig 414 + `abrirEdicion` la relee |
+| 142 | **Sin cotización NO se inventa una tasa** | El gasto queda fuera del libro y se avisa **cuánto** crédito quedó sin declarar y en qué moneda — en el Panel y en el Libro, no solo en uno | `cotizacionFiscal.test.ts` (CF-CRED-02) |
+| 143 | **La fecha propuesta es el día hábil anterior, y es editable** | ⚠️ `diaHabilAnterior` **no contempla feriados** (no hay calendario cargado): el día siguiente a un feriado propone un día sin cotización del BNA | `cotizacionFiscal.test.ts` (día hábil) + campo editable |
+| 144 | **Una fecha editada a mano NO se repisa** | El prefill solo pisa el valor si sigue siendo el que propuso el sistema (`ultimaFechaSugerida`) | revisión de `GastosPage` |
+| 145 | **La fila del libro muestra el importe original y la tasa** | Sin eso, una fila en dólares es indistinguible de una en pesos y el número no se puede auditar | revisión de `FacturacionPage` |
+| 146 | **🛑 El Excel exporta el tipo de cambio explícito** | El Libro IVA Digital de ARCA lo exige: sin él el comprobante cae en "importaciones con avisos" y hay que reincorporarlo a mano | columnas Moneda origen / Monto origen / Tipo de cambio / Fecha cotización |
+| 147 | **Editar el gasto de vuelta a la moneda del negocio LIMPIA la tasa** | Si no, quedaría una tasa colgada convirtiendo algo que no hay que convertir | payload persiste `null` a propósito |
+| 148 | **El IVA se convierte por la MISMA tasa que el monto** | `iva_monto` está expresado en la moneda del gasto | `cotizacionFiscal.test.ts` |
+| 149 | **Un gasto en la moneda del negocio pasa intacto** | Ningún número existente se mueve con este cambio | `cotizacionFiscal.test.ts` + DEV/PROD sin gastos en otra moneda |
+| 150 | ⚠️ **Abierto: la nota de corrección arrastra la tasa del gasto que corrige** | Si convirtiera a la tasa de hoy, revertir no daría cero: quedaría un resto de IVA por diferencia de cambio. **A confirmar con el contador** si la NC del proveedor lleva la suya | comentario en `abrirCorreccion` |
+| 151 | ⚠️ **Abierto: `gastos_fijos` no tiene cotización fiscal** | La mig 414 tocó solo `gastos`. Un fijo en otra moneda se materializa sin tasa → cae afuera del libro **con aviso** (no en silencio) | — |
+
+**Verde:** 1782 unit (108 archivos) · build · typecheck · eslint `--max-warnings 0`.
+
+**Estado de los datos al momento del cambio:** DEV 210 gastos, **todos ARS**; PROD 1 gasto, ARS, sin
+IVA crédito. El bug del KPI (#138) estaba **latente**: no llegó a ensuciar ningún número real.

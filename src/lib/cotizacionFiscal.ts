@@ -109,3 +109,27 @@ export function gastosSinCotizacion<T extends GastoConvertible>(
   }
   return [...acc.values()].sort((a, b) => a.moneda.localeCompare(b.moneda))
 }
+
+/**
+ * El IVA crédito computable de un período, ya llevado a la moneda del libro.
+ *
+ * 🛑 REGLA #0 — existe para que el KPI del Panel, la posición de los últimos 12 meses y la tabla
+ * del Libro IVA Compras salgan del MISMO cálculo. Antes cada uno hacía el suyo: la tabla filtraba
+ * los gastos en otra moneda y avisaba, pero el KPI y el historial sumaban su `iva_monto` crudo
+ * —un IVA de US$210 entraba como $210 de crédito fiscal—. Dos pantallas de la misma sesión decían
+ * cosas distintas sobre la misma plata, y la que se usa para liquidar era la equivocada.
+ *
+ * Los que no tienen cotización NO se suman ni se estiman: salen aparte para que la pantalla los
+ * muestre. Un crédito fiscal que no entra tiene que verse, no desaparecer.
+ */
+export function creditoFiscalCompras<T extends GastoConvertible>(
+  gastos: T[] | null | undefined,
+  monedaLibro: string | null | undefined,
+): { credito: number; sinCotizacion: { moneda: string; cantidad: number; iva: number }[] } {
+  let credito = 0
+  for (const g of gastos ?? []) {
+    const c = convertirGastoAMonedaLibro(g, monedaLibro)
+    if (c.problema === null) credito += c.iva
+  }
+  return { credito, sinCotizacion: gastosSinCotizacion(gastos, monedaLibro) }
+}

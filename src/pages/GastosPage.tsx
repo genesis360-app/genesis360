@@ -22,6 +22,7 @@ import {
   monedasParaGasto, cajasOperativasDeMoneda, cajaFuerteDeMoneda, totalesPorMoneda,
   puedePagarEfectivoEn, validarPagoGasto,
 } from '@/lib/gastoMoneda'
+import { diaHabilAnterior, aFechaISO, convertirGastoAMonedaLibro } from '@/lib/cotizacionFiscal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useSearchParams } from 'react-router-dom'
 import { Toggle } from '@/components/Toggle'
@@ -119,6 +120,14 @@ interface FormGasto {
   tipo_comprobante: string
   tipo_iva: string; iva_deducible: boolean
   alicuota_iva_custom: string
+  // Cotizacion FISCAL (mig 414) — solo cuando la moneda del gasto != la del negocio y el IVA es
+  // credito. Es la tasa con la que el gasto entra al Libro IVA Compras: BNA VENDEDOR del dia habil
+  // anterior al comprobante. 🛑 NO es la cotizacion operativa del tenant (que va al dolar COMPRA):
+  // son dos numeros distintos y mezclarlos falsea la posicion de IVA. Por eso se carga a mano y se
+  // congela en el gasto.
+  cotizacion_fiscal: string
+  cotizacion_fiscal_fecha: string
+  cotizacion_fiscal_fuente: string
   deduce_ganancias: boolean; gasto_negocio: string
   categoria: string; fecha: string; notas: string
   // Migration 134 — link a recurso + capitalización
@@ -143,6 +152,7 @@ const FORM_VACIO: FormGasto = {
   // hay acceso al tenant, y dejarla vacia haria que el selector arranque sin valor.
   descripcion: '', monto: '', moneda: 'ARS', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
   alicuota_iva_custom: '',
+  cotizacion_fiscal: '', cotizacion_fiscal_fecha: '', cotizacion_fiscal_fuente: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', fecha: new Date().toISOString().split('T')[0], notas: '',
   recurso_id: '', capitaliza_recurso: false,
@@ -215,6 +225,10 @@ export default function GastosPage() {
 
   // ── Gastos variables — state ─────────────────────────────────────────────
   const [modalAbierto, setModalAbierto] = useState(false)
+  // Cotizacion fiscal: la ultima fecha que PROPUSO el sistema. Solo se repisa la fecha del form si
+  // sigue siendo esa — una editada a mano se respeta. Declarada aca arriba porque `cerrarModal` la
+  // limpia y se define bastante antes que el efecto que la usa.
+  const ultimaFechaSugerida = useRef<string>('')
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [form, setForm] = useState<FormGasto>(FORM_VACIO)
   const [comprobanteFile, setComprobanteFile] = useState<File | null>(null)
@@ -1031,6 +1045,15 @@ export default function GastosPage() {
       tipo_iva:             g.tipo_iva ?? '',
       iva_deducible:        g.iva_deducible ?? false,
       alicuota_iva_custom:  g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
+      // Misma logica que la moneda: la nota arrastra la cotizacion fiscal del gasto que corrige. Si
+      // se convirtiera a la tasa de HOY, revertir un gasto no daria cero — quedaria un resto de IVA
+      // credito por la diferencia de cambio. Queda editable por si el comprobante del proveedor es
+      // uno nuevo con su propia fecha.
+      // ⚠️ A confirmar con el contador: si la NC del proveedor es un comprobante propio, el criterio
+      // podria ser el BNA vendedor de SU fecha y no el del gasto original.
+      cotizacion_fiscal:       g.cotizacion_fiscal != null ? String(g.cotizacion_fiscal) : '',
+      cotizacion_fiscal_fecha: g.cotizacion_fiscal_fecha ?? '',
+      cotizacion_fiscal_fuente: g.cotizacion_fiscal_fuente ?? '',
       deduce_ganancias:     g.deduce_ganancias ?? false,
       gasto_negocio:        g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
       categoria:            g.categoria ?? '',
@@ -1080,6 +1103,10 @@ export default function GastosPage() {
       moneda: g.moneda ?? monedaTenant,
       tipo_comprobante: g.tipo_comprobante ?? '', tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
       alicuota_iva_custom: g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
+      // La tasa con la que YA entro al libro: reabrir el gasto no puede reinterpretarlo a otra.
+      cotizacion_fiscal: g.cotizacion_fiscal != null ? String(g.cotizacion_fiscal) : '',
+      cotizacion_fiscal_fecha: g.cotizacion_fiscal_fecha ?? '',
+      cotizacion_fiscal_fuente: g.cotizacion_fiscal_fuente ?? '',
       deduce_ganancias: g.deduce_ganancias ?? false,
       gasto_negocio: g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
       categoria: g.categoria ?? '', fecha: g.fecha, notas: g.notas ?? '',
@@ -1096,6 +1123,9 @@ export default function GastosPage() {
   }
   const cerrarModal = () => {
     setModalAbierto(false); setEditandoId(null); setCorreccionPadre(null); setForm(FORM_VACIO)
+    // Olvidar que sugerimos una fecha: si no, al reabrir otro gasto con esa misma fecha guardada, el
+    // efecto la trataria como "propuesta nuestra" y la pisaria.
+    ultimaFechaSugerida.current = ''
     setMediosPago([{ tipo: '', monto: '' }])
     setOriginalMedioPago(null)
     setComprobanteFile(null); setComprobanteExistente(null)
@@ -1308,6 +1338,16 @@ export default function GastosPage() {
         iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
         alicuota_iva: alicuotaIvaPersist,
         iva_deducible: form.iva_deducible,
+        // Cotizacion FISCAL (mig 414) — se congela con el gasto. Solo tiene sentido si el gasto esta
+        // en otra moneda Y su IVA es credito: en cualquier otro caso se persiste NULL a proposito,
+        // para que editar un gasto de vuelta a la moneda del negocio no deje una tasa colgada que
+        // despues convierta algo que no hay que convertir.
+        cotizacion_fiscal: necesitaCotizacionFiscal && parseFloat(form.cotizacion_fiscal) > 0
+          ? parseFloat(form.cotizacion_fiscal) : null,
+        cotizacion_fiscal_fecha: necesitaCotizacionFiscal && parseFloat(form.cotizacion_fiscal) > 0
+          ? (form.cotizacion_fiscal_fecha || null) : null,
+        cotizacion_fiscal_fuente: necesitaCotizacionFiscal && parseFloat(form.cotizacion_fiscal) > 0
+          ? (form.cotizacion_fiscal_fuente.trim() || 'BNA vendedor') : null,
         deduce_ganancias: form.deduce_ganancias,
         gasto_negocio: form.deduce_ganancias
           ? (form.gasto_negocio === 'negocio' ? true : form.gasto_negocio === 'personal' ? false : null)
@@ -1798,6 +1838,32 @@ export default function GastosPage() {
   const ivaPreview = montoNum > 0 && form.tipo_iva && form.iva_deducible ? calcularIVA(montoNum, form.tipo_iva, alicuotaCustomNum) : 0
   const netoPreview = montoNum - ivaPreview
 
+  // ── Cotizacion fiscal (mig 414) ───────────────────────────────────────────
+  // 🛑 REGLA #0 — un gasto en otra moneda con IVA credito SI genera credito fiscal computable, pero
+  // la DDJJ va en pesos: hay que convertirlo, y con la tasa correcta (BNA VENDEDOR del dia habil
+  // anterior al comprobante). Sin este dato el gasto queda FUERA del Libro IVA Compras — el credito
+  // existe pero no se declara. Por eso el campo aparece solo cuando hace falta, y cuando falta se
+  // avisa en pantalla en vez de dejarlo pasar en silencio.
+  // ⚠️ Criterio pendiente de validar con un contador matriculado (ver src/lib/cotizacionFiscal.ts).
+  const necesitaCotizacionFiscal = monedaGasto !== String(monedaTenant).toUpperCase() && form.iva_deducible && ivaPreview > 0
+  // La fecha sugerida: el dia habil anterior al comprobante. Se propone, no se impone — no hay
+  // calendario de feriados cargado, asi que el dia siguiente a un feriado propone un dia sin
+  // cotizacion del BNA y hay que corregirlo a mano.
+  const fechaCotizSugerida = form.fecha ? aFechaISO(diaHabilAnterior(form.fecha)) : ''
+  useEffect(() => {
+    if (!necesitaCotizacionFiscal || !fechaCotizSugerida) return
+    setForm(f => {
+      if (f.cotizacion_fiscal_fecha && f.cotizacion_fiscal_fecha !== ultimaFechaSugerida.current) return f
+      ultimaFechaSugerida.current = fechaCotizSugerida
+      return { ...f, cotizacion_fiscal_fecha: fechaCotizSugerida, cotizacion_fiscal_fuente: f.cotizacion_fiscal_fuente || 'BNA vendedor' }
+    })
+  }, [necesitaCotizacionFiscal, fechaCotizSugerida])
+  // Vista previa de lo que va a entrar al libro, con la tasa cargada.
+  const previewFiscal = convertirGastoAMonedaLibro(
+    { monto: montoNum, iva_monto: ivaPreview, moneda: monedaGasto, cotizacion_fiscal: form.cotizacion_fiscal },
+    monedaTenant,
+  )
+
   const montoFijoNum = parseFloat(formFijo.monto.replace(',', '.')) || 0
 
   /** Total mensual estimado, AGRUPADO POR MONEDA (ver el tfoot de la tabla de gastos fijos). */
@@ -1812,7 +1878,10 @@ export default function GastosPage() {
   const renderFiscal = (
     vals: { tipo_comprobante: string; tipo_iva: string; iva_deducible: boolean; alicuota_iva_custom: string; deduce_ganancias: boolean; gasto_negocio: string; monto: string },
     setVals: (u: any) => void,
-    ivaCalc: number, netoCalc: number
+    ivaCalc: number, netoCalc: number,
+    // Bloque extra que se inyecta debajo del IVA. Lo usa SOLO el gasto suelto: la cotizacion fiscal
+    // vive en `gastos` (mig 414) y `gastos_fijos` no tiene esas columnas.
+    extraFiscal?: any,
   ) => (
     <div className="space-y-3 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 bg-blue-50/50 dark:bg-blue-900/10">
       <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Información fiscal</p>
@@ -1883,6 +1952,8 @@ export default function GastosPage() {
         )}
       </div>
       )}
+
+      {extraFiscal}
 
       {/* Ganancias — solo RI */}
       {esRI && (
@@ -2647,7 +2718,70 @@ export default function GastosPage() {
               </div>
 
               {/* Información fiscal */}
-              {renderFiscal(form, setForm, ivaPreview, netoPreview)}
+              {renderFiscal(form, setForm, ivaPreview, netoPreview, necesitaCotizacionFiscal && (
+                /* 🛑 Cotización FISCAL (mig 414). Ver `src/lib/cotizacionFiscal.ts`: es la tasa con
+                   la que este gasto entra al Libro IVA Compras, y NO es la cotización operativa del
+                   negocio (esa va al dólar COMPRA; la fiscal, al BNA VENDEDOR de una fecha concreta).
+                   Se carga a mano y se congela acá: convertir con la tasa de hoy un gasto de hace
+                   meses da un número que no existió nunca. */
+                <div className="border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 bg-amber-50/60 dark:bg-amber-900/10 space-y-2">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                    Cotización para IVA — gasto en {monedaGasto}
+                  </p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    La DDJJ de IVA va en {monedaTenant}. Cargá el <strong>BNA vendedor</strong> del día hábil
+                    anterior al comprobante: es la tasa con la que este gasto entra al Libro IVA Compras.
+                    No es la cotización que usa el resto del sistema.
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {monedaTenant} por 1 {monedaGasto}
+                      </label>
+                      <input type="number" value={form.cotizacion_fiscal} min="0" step="0.0001" placeholder="0,0000"
+                        onChange={e => setForm(f => ({ ...f, cotizacion_fiscal: e.target.value }))}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div className="flex-1 min-w-[140px]">
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de la cotización</label>
+                      <input type="date" value={form.cotizacion_fiscal_fecha}
+                        onChange={e => setForm(f => ({ ...f, cotizacion_fiscal_fecha: e.target.value }))}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div className="flex-1 min-w-[140px]">
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fuente</label>
+                      <input type="text" value={form.cotizacion_fiscal_fuente} placeholder="BNA vendedor"
+                        onChange={e => setForm(f => ({ ...f, cotizacion_fiscal_fuente: e.target.value }))}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                  </div>
+                  {/* ⚠ No hay calendario de feriados: la fecha propuesta puede caer en uno. */}
+                  {form.cotizacion_fiscal_fecha && form.cotizacion_fiscal_fecha === fechaCotizSugerida && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Propuesta: día hábil anterior al {formatFecha(form.fecha)}. Si fue feriado, corregila —
+                      el sistema no tiene cargado el calendario.
+                    </p>
+                  )}
+                  {previewFiscal.problema === 'sin_cotizacion' ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      ⚠ Sin cotización, este gasto <strong>no entra al Libro IVA Compras</strong>: el IVA de
+                      {' '}{formatMonedaLib(ivaPreview, monedaGasto)} queda sin declarar hasta que la cargues.
+                      Podés guardarlo igual y completarla después.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-center">
+                        <p className="text-gray-500 dark:text-gray-400">Neto al libro</p>
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(previewFiscal.monto - previewFiscal.iva)}</p>
+                      </div>
+                      <div className="bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-center">
+                        <p className="text-green-600 dark:text-green-400">IVA crédito al libro</p>
+                        <p className="font-semibold text-green-700 dark:text-green-400">{formatMoneda(previewFiscal.iva)}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>

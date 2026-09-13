@@ -6,6 +6,55 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-13] update | 🧾 Llegó el criterio del contador para el gasto en moneda extranjera · v1.217.0
+
+⚠️ **PENDIENTE DE VALIDAR CON UN CONTADOR MATRICULADO.** La respuesta vino de una IA que se presentó
+como contador; GO la adopta como criterio de trabajo mientras tanto. **Mantener el recordatorio
+hasta que lo confirme un contador real.**
+
+### Corrige lo que habíamos asumido
+
+Ayer, al cerrar el gasto multimoneda, dejamos los gastos en otra moneda **fuera** del Libro IVA
+Compras por las dudas. **Ese criterio conservador era incorrecto:**
+
+1. Un gasto en moneda extranjera **SÍ genera crédito fiscal computable** (art. 12 Ley 23.349), si
+   está vinculado a la actividad gravada y tiene comprobante válido con IVA discriminado.
+2. La DDJJ va obligatoriamente **en pesos** (art. 96 Ley 11.683): hay que convertir.
+3. Tipo de cambio: **BNA VENDEDOR del día hábil ANTERIOR** al comprobante. En **importación de
+   servicios** (reverse charge, art. 1° inc. d), el del día hábil anterior al **pago**.
+4. El Libro IVA Digital de ARCA exige el tipo de cambio explícito: si falta, el comprobante cae en
+   "importaciones con avisos" y hay que reincorporarlo a mano.
+
+### 🛑 El detalle de diseño que más importa
+
+**La cotización fiscal NO es la que usa el resto de Genesis360.** El sistema convierte USD→ARS al
+dólar **COMPRA** por convención propia —correcto para valuar lo que el negocio TIENE— y lo fiscal
+pide **VENDEDOR**, de una fecha concreta. Son dos números distintos: mezclarlos falsea la posición
+de IVA. Y `tenants.cotizacion_usd*` guarda el valor de HOY, que se mueve: convertir con eso un gasto
+de hace tres meses da cualquier cosa.
+
+Por eso la tasa se **congela en el gasto** (mig 414), el mismo patrón que ya usan `ventas`,
+`caja_movimientos`, `devoluciones` y `boveda_conversiones_usd`.
+
+### Lo hecho y lo que falta
+
+**✅ Cimientos**: mig **414** (`gastos.cotizacion_fiscal` + `_fecha` + `_fuente`, con CHECK de
+positividad, **sin backfill** — inventarle una tasa retroactiva a un gasto viejo sería fabricar un
+dato fiscal) y **`src/lib/cotizacionFiscal.ts`** con 15 tests: día hábil anterior (retrocede al
+viernes desde el lunes; ⚠️ **no contempla feriados**, no hay calendario cargado), conversión de monto
+**e IVA** por la misma tasa, y el agrupado de lo que queda afuera. Sin cotización **no inventa una
+tasa**: devuelve el problema.
+
+**🟥 Falta**, en este orden: (1) el campo "Cotización para IVA" en `GastosPage` cuando la moneda del
+gasto ≠ la del negocio y el IVA es deducible, con la fecha prefijada por `diaHabilAnterior` y
+editable; (2) que `FacturacionPage` **incluya** los convertidos en vez de excluirlos, dejando fuera
+solo los que no tengan cotización.
+
+⚠️ Mientras tanto **el comportamiento de la app no cambió**: los cimientos están y nadie los usa
+todavía.
+
+---
+
 ## [2026-09-12] update | 🧪🛑 Validación de la sesión: la suite entera, la paridad con PROD, y un loop infinito real · v1.215.0
 
 Cierre de la jornada. Se validó TODO lo anterior contra la app real y aparecieron cosas que ni el

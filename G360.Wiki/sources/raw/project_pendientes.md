@@ -6,17 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 64) — DEV `v1.216.0` (migs 409-413) · **PROD `v1.208.0`** (migs 001-406)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 64) — DEV `v1.217.0` (migs 409-414) · **PROD `v1.208.0`** (migs 001-406)
 >
 > | | Versión | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
-> | **DEV** | `v1.216.0` | 001-**413** | todo validado: unit 1763 · e2e verde · paridad sin drift |
+> | **DEV** | `v1.217.0` | 001-**414** | todo validado: unit 1763 · e2e verde · paridad sin drift |
 >
 > #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
 >
-> Lo que falta llevar: migs **407-413** (todas aditivas, aplica "DDL primero") + código
-> `v1.209.0`→`v1.216.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
+> Lo que falta llevar: migs **407-414** (todas aditivas, aplica "DDL primero") + código
+> `v1.209.0`→`v1.217.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
 > `genesis360-admin`, rama `dev`; su merge a `main` dispara el deploy de Vercel a
 > `admin.genesis360.pro`).
 >
@@ -32,7 +32,7 @@ type: project
 > - `gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379) → el
 >   código nuevo no depende de nada que no esté o que no llegue con las migraciones. **Sin orden
 >   riesgoso.**
-> - Tags y releases `v1.213.0`, `v1.214.0`, `v1.215.0` y `v1.216.0` creados sobre `dev`.
+> - Tags y releases `v1.213.0` … `v1.217.0` creados sobre `dev`.
 >
 > #### 🧪 Estado de la suite al cierre
 >
@@ -43,6 +43,42 @@ type: project
 > ⚠️ **No lanzar la suite si ya hay una corriendo**: esta jornada se corrieron dos en paralelo (dos
 > dev servers peleando el puerto 5173 + doble carga sobre DEV) y contaminó los números de ambas — 10
 > fallas fantasma del rol CONTADOR que pasan 10/10 en aislado.
+>
+> #### 🟨 LO QUE QUEDÓ A MEDIO HACER (retomar acá) — el gasto en USD y el Libro IVA
+>
+> **Llegó la respuesta del contador** (⚠️ es una **IA**, GO la adoptó como criterio de trabajo
+> **pendiente de validar con un contador matriculado de verdad** — dejarlo marcado hasta que se
+> confirme). Y **corrige lo que habíamos asumido**:
+>
+> 1. Un gasto en moneda extranjera **SÍ genera crédito fiscal computable** (art. 12 Ley 23.349).
+>    Ayer los dejábamos fuera del Libro IVA por las dudas: **ese criterio conservador era incorrecto**.
+> 2. La DDJJ va **en pesos** (art. 96 Ley 11.683): hay que convertir.
+> 3. Tipo de cambio: **BNA VENDEDOR del día hábil ANTERIOR** al comprobante. En **importación de
+>    servicios** (reverse charge), el del día hábil anterior al **pago**.
+> 4. El Libro IVA Digital de ARCA exige el tipo de cambio explícito; si no, el comprobante cae en
+>    "importaciones con avisos" y hay que cargarlo a mano.
+>
+> 🛑 **Lo que no hay que perder de vista**: la cotización FISCAL no es la del resto del sistema.
+> Genesis360 convierte al dólar **COMPRA** (correcto para valuar lo que el negocio tiene); lo fiscal
+> pide **VENDEDOR**, y de una fecha concreta. Son dos números distintos.
+>
+> **✅ Hecho** (`v1.217.0`): **mig 414** (`gastos.cotizacion_fiscal` + `_fecha` + `_fuente`, sin
+> backfill) y **`src/lib/cotizacionFiscal.ts`** con 15 tests — día hábil anterior, conversión de
+> monto **e IVA** por la misma tasa, y el agrupado de lo que queda afuera. Sin cotización **no se
+> inventa una tasa**.
+>
+> **🟥 Falta** (dos pasos, en este orden):
+> 1. **`GastosPage`**: campo "Cotización para IVA" cuando la moneda del gasto ≠ la del negocio **y**
+>    el IVA es deducible. Prefijar la fecha con `diaHabilAnterior(fecha del gasto)` y dejar el valor
+>    editable (no hay feed de BNA por fecha, y `diaHabilAnterior` **no contempla feriados**).
+>    Guardar en las 3 columnas nuevas. Hay un borrador del parche en el scratchpad de la sesión, pero
+>    conviene rehacerlo leyendo el archivo.
+> 2. **`FacturacionPage`** (Libro IVA Compras): **incluir** los gastos en otra moneda convertidos con
+>    `convertirGastoAMonedaLibro`, mostrando el importe original y la tasa en la fila. Dejar fuera
+>    SOLO los que no tengan cotización, con el aviso de que les falta. Hoy la pantalla los excluye a
+>    todos: es seguro pero, según este criterio, **incorrecto**.
+>
+> ⚠️ Mientras tanto el comportamiento en la app **no cambió**: los cimientos están, nadie los usa.
 >
 > #### 🗑️ La baja de tenant, verificada en DEV con un caso real (13/09)
 >
@@ -131,8 +167,10 @@ type: project
 >    gasto en EUR/BRL se registra pero no se consolida en ningún total.
 > 3. ⚠️ Dato real sin backfillear (REGLA #0 punto 7): tenant en **CLP** ("Familia Otranto De Porto")
 >    con 62 gastos en DEV (1 en PROD) grabados como `ARS` de antes del fix. No se tocan.
-> 4. **Pregunta para el contador**: un gasto en USD con IVA, ¿genera crédito fiscal declarable? ¿A
->    qué cotización?
+> 4. ✅ **Respondida** (2026-09-13, por una IA — **falta validarla con un contador matriculado**): sí
+>    genera crédito fiscal, se convierte a pesos al **BNA vendedor del día hábil anterior** al
+>    comprobante (o al pago, en importación de servicios). Ver el bloque "LO QUE QUEDÓ A MEDIO
+>    HACER" arriba. **Mantener el recordatorio hasta que lo confirme un contador real.**
 > 5. **Precio con fecha/hora de vigencia** — relevamiento sin responder
 >    (`relevamiento-precio-programado-reglas-negocio.html`).
 > 6. **Cobrar en caja USD** (contador) · **góndolas de Repositores** · **tope de descuento del

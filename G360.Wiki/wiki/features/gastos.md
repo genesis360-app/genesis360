@@ -776,8 +776,26 @@ quedó afuera.
 > tenant configurado en **CLP** ("Familia Otranto De Porto") con gastos grabados como `ARS` (62 en DEV,
 > 1 en PROD) de antes de este fix. No se tocan.
 
-> [!NOTE] **Pregunta abierta para el contador**: si un gasto en USD con IVA genera crédito fiscal
-> declarable, y a qué cotización.
+> [!IMPORTANT] **Respondida el 2026-09-13 — ⚠️ pero por una IA, PENDIENTE de validar con un contador
+> matriculado.** Mantener este aviso hasta que lo confirme un contador real.
+>
+> Un gasto en moneda extranjera **SÍ genera crédito fiscal computable** (art. 12 Ley 23.349), si
+> está vinculado a la actividad gravada y tiene comprobante válido con IVA discriminado. La DDJJ va
+> **en pesos** (art. 96 Ley 11.683), convertido al **BNA VENDEDOR del día hábil ANTERIOR** al
+> comprobante — o al pago, en **importación de servicios** (reverse charge). El Libro IVA Digital de
+> ARCA exige el tipo de cambio explícito: sin él, el comprobante cae en "importaciones con avisos".
+>
+> **Esto corrige lo que habíamos asumido**: dejarlos fuera del Libro IVA era conservador pero
+> incorrecto.
+>
+> 🛑 **La cotización fiscal no es la del resto del sistema.** Genesis360 convierte al dólar
+> **COMPRA** (correcto para valuar lo que el negocio tiene); lo fiscal pide **VENDEDOR**, y de una
+> fecha concreta. Por eso la tasa se congela **por gasto** (`gastos.cotizacion_fiscal`, mig 414) en
+> vez de derivarla de `tenants.cotizacion_usd*`, que es el valor de hoy.
+>
+> **Estado**: están la migración y `src/lib/cotizacionFiscal.ts` (15 tests). **Falta** el campo en el
+> formulario de Gastos y que el Libro IVA incluya los convertidos en vez de excluirlos — hoy la
+> pantalla los sigue dejando afuera con aviso.
 
 ---
 

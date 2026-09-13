@@ -37,6 +37,15 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.217.0` (mig **414**, SIN deployar a PROD) — 🧾 Cimientos para llevar un gasto
+en moneda extranjera al **Libro IVA**. Llegó el criterio del contador (⚠️ **es una IA, pendiente de
+validar con un matriculado**) y **corrige lo que habíamos asumido**: esos gastos **sí** generan
+crédito fiscal computable y hay que **convertirlos a pesos al BNA VENDEDOR del día hábil anterior**
+al comprobante (o al pago, en importación de servicios) — no dejarlos afuera. 🛑 Esa cotización **no
+es** la operativa del sistema (que va al dólar COMPRA), así que se congela por gasto (mig 414) en vez
+de derivarla del tenant. Entran la migración y `src/lib/cotizacionFiscal.ts` (15 tests); **falta** el
+campo en Gastos y que Facturación incluya los convertidos. Ver `log.md` (2026-09-13).
+
 **Versión en DEV:** `v1.216.0` (sin migración nueva, SIN deployar a PROD) — 🛑 **Purgar un negocio
 dejaba todos sus archivos en Storage.** Apareció verificando una baja real desde el panel: el CASCADE
 es de Postgres y Storage es otro sistema, así que quedaban huérfanos el **certificado de AFIP** del

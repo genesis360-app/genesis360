@@ -6,14 +6,43 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-12, cont. 64) — DEV `v1.214.0` (migs 409-412) · **PROD `v1.208.0`** (migs 001-406)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-12, cont. 64) — DEV `v1.215.0` (migs 409-413) · **PROD `v1.208.0`** (migs 001-406)
 >
-> #### 🟥 LO PRIMERO: deployar TODO el batch acumulado — necesita el OK de GO
+> | | Versión | Migraciones | Estado |
+> |---|---|---|---|
+> | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
+> | **DEV** | `v1.215.0` | 001-**413** | todo validado: unit 1763 · e2e verde · paridad sin drift |
 >
-> PROD sigue en `v1.208.0`/mig 406. Lo que falta llevar: migs **407-412** (todas aditivas, aplica
-> "DDL primero") + código `v1.209.0`→`v1.214.0` + la EF `admin-api` (acciones nuevas de `customers` y
-> de `admin`) + el **panel de soporte** (repo aparte `genesis360-admin`, rama `dev` — no tiene tag ni
-> release propio, se pushea por separado). Nada de esto tocó PROD todavía.
+> #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
+>
+> Lo que falta llevar: migs **407-413** (todas aditivas, aplica "DDL primero") + código
+> `v1.209.0`→`v1.215.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
+> `genesis360-admin`, rama `dev`; su merge a `main` dispara el deploy de Vercel a
+> `admin.genesis360.pro`).
+>
+> **Se puede partir en dos**, y la distinción importa:
+> - **La EF + el panel se deployan SOLOS**, sin tocar `main` de Genesis360 → habilita el camino de
+>   **SOPORTE** en PROD (incluido poder purgar "Don Ferretero" y liberar `genesis360.ar@gmail.com`).
+> - El camino del **CLIENTE** (darse de baja con el trial vencido) **sí** necesita la app: el fix de
+>   `/mi-cuenta` vive ahí.
+>
+> ✅ **Pre-deploy ya verificado** (no hace falta repetirlo si se deploya pronto):
+> - **Paridad DEV↔PROD sin drift**: DEV 230 policies, PROD 228, y la única diferencia son las 2 de
+>   `recurso_ubicaciones` (mig 407). Ninguna solo-en-PROD, ninguna con distinta definición.
+> - `gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379) → el
+>   código nuevo no depende de nada que no esté o que no llegue con las migraciones. **Sin orden
+>   riesgoso.**
+> - Tags y releases `v1.213.0`, `v1.214.0` y `v1.215.0` creados sobre `dev`.
+>
+> #### 🧪 Estado de la suite al cierre
+>
+> **Unit 1763 verdes.** **e2e: las 7 fallas reales de la corrida completa quedaron cerradas** (4 eran
+> la mig 413, 2 eran specs rotos del harness —`20_caja` y `37_rrhh`—, 1 un browser caído). Queda
+> únicamente el flake conocido del spec 21 (Factura C contra AFIP homologación).
+>
+> ⚠️ **No lanzar la suite si ya hay una corriendo**: esta jornada se corrieron dos en paralelo (dos
+> dev servers peleando el puerto 5173 + doble carga sobre DEV) y contaminó los números de ambas — 10
+> fallas fantasma del rol CONTADOR que pasan 10/10 en aislado.
 >
 > #### 🛑 mig 413 — el código de ubicación entraba en LOOP INFINITO en la raíz nº 100
 >
@@ -103,15 +132,16 @@ type: project
 > - **Grabar los videos de onboarding** con el guion ya escrito (GO, no Claude).
 > - Dropear `tenants.afipsdk_token` y `recursos.ubicacion` (cuando PROD corra el código
 >   correspondiente).
-> - `schema_full.sql` quedó en la mig 406; DEV tiene 412. PAT `schema-dump-local` vence
+> - `schema_full.sql` **está al día** (regenerado con la mig 413). PAT `schema-dump-local` vence
 >   **2026-10-06**.
 >
 > #### 🧪 Suite
 >
-> ⚠️ No se informó el conteo de unit/e2e de esta sesión — confirmar antes de cerrar (última cifra
-> conocida, cont. 63: **1750 unit · 397 e2e**, más los tests nuevos de esta sesión: 5 de
-> `rrhhNomina.ts`, el estático de rutas de `/mi-cuenta`, y los 18 e2e del panel de soporte que corren
-> en el repo aparte `genesis360-admin`, no en este conteo).
+> **1763 unit verdes** (se sumaron: 5 de `agruparCargasSociales`, 5 de `totalesPorMoneda` y el
+> estático del árbol de rutas de `/mi-cuenta`) · **e2e: corrida completa corrida y las 7 fallas
+> reales cerradas** — ver el detalle en el bloque de arriba. Aparte, fuera de este conteo, los **18
+> chequeos end-to-end del panel de soporte** (script propio contra DEV, repo `genesis360-admin`) y la
+> verificación renderizada de sus 10 pantallas.
 
 > ### ✅ ARRANCÁ ACÁ (2026-09-12, cierre cont. 63) — DEV `v1.212.0` · **PROD `v1.208.0`**
 >
@@ -449,7 +479,7 @@ type: project
 > de `dashMoneda`). Los 17 e2e de dashboard verdes. Sobreviven de la corrida del 8/9: `37_rrhh`
 > (fixture agotado), 4 de flake bajo carga y **`20_caja`** — 🟥 abierto y **NO es timeout**: el
 > DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y "Abrir caja" se deshabilita con *"Ya
-> tenés una caja abierta"*. Es estado viejo de DEV.
+> tenés una caja abierta"*. Es estado viejo de DEV. ⚠️ **CORREGIDO el 12/09: ese diagnóstico era falso.** La captura del fallo muestra Caja1 ABIERTA y el botón "Arqueo" a la vista. La causa real es una carrera — el panel renderiza "Abrir caja" mientras la query de la sesión está en vuelo. Spec arreglado.
 >
 > ⚠️ **Al escribir un e2e del Dashboard**: filtra por **sucursal activa**. Una siembra con
 > `sucursal_id = null` no aparece nunca en los KPI — costó un falso negativo. Sembrar copiando el
@@ -509,7 +539,7 @@ type: project
 > **394 tests · 339 verdes** en la corrida completa del 8/9. Sobreviven: `37_rrhh` (fixture agotado,
 > se destraba solo), 4 de flake bajo carga (pasan en aislado) y **`20_caja`** — 🟥 abierto, y **NO es
 > timeout**: el DUEÑO tiene **Caja1 y Caja USD abiertas desde agosto** y el botón "Abrir caja" se
-> deshabilita con *"Ya tenés una caja abierta"*. Es estado viejo de DEV.
+> deshabilita con *"Ya tenés una caja abierta"*. Es estado viejo de DEV. ⚠️ **CORREGIDO el 12/09: ese diagnóstico era falso.** La captura del fallo muestra Caja1 ABIERTA y el botón "Arqueo" a la vista. La causa real es una carrera — el panel renderiza "Abrir caja" mientras la query de la sesión está en vuelo. Spec arreglado.
 >
 > #### Deuda de fixture (migs 401 y 403)
 >

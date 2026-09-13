@@ -37,6 +37,19 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.215.0` (mig **413**, SIN deployar a PROD) — 🛑🧪 Validación de la jornada
+contra la app real. **La suite destapó un bug de verdad**: `trg_ubic_autogenerar_codigo` entraba en
+**loop infinito** en la ubicación raíz nº 100 (`lpad(x, 2, '0')` TRUNCA: en `v_seq=100` devolvía
+`U10`, que ya existe, y no salía nunca). Un negocio con 99 ubicaciones raíz no podía crear la 100 y
+no recibía error — el INSERT giraba hasta el `statement_timeout`. Latente en PROD (máximo 4 raíces
+hoy), pero 100 racks es normal en un depósito real. Cuatro specs venían fallando por esto archivados
+como "lentitud de DEV". Además: 2 specs del harness arreglados (`20_caja`, con el diagnóstico viejo
+del wiki desmentido por la captura, y `37_rrhh`, que se rompía solo al cambiar de mes), **paridad
+DEV↔PROD verificada sin drift**, y el panel de soporte verificado RENDERIZADO — lo que destapó otros
+dos bugs invisibles al typecheck: clave duplicada de React en el sidebar y, más serio, **"Extender
+prueba" podía ACORTAR el acceso** de un negocio cancelado con período pagado por delante. Ver
+`log.md` (2026-09-12), [[wiki/development/testing]], [[wiki/support/plataforma-soporte]].
+
 **Versión en DEV:** `v1.214.0` (mig **412**, SIN deployar a PROD) — 📊🔐📞 Cierre del backlog de
 herramientas del panel de soporte: **Analytics** con datos reales (altas por mes con la porción que
 terminó pagando, embudo y leads por origen; el **CAC no se muestra** porque necesita la inversión

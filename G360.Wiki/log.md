@@ -6,6 +6,95 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-12] update | 🧪🛑 Validación de la sesión: la suite entera, la paridad con PROD, y un loop infinito real · v1.215.0
+
+Cierre de la jornada. Se validó TODO lo anterior contra la app real y aparecieron cosas que ni el
+typecheck ni los tests de API podían ver.
+
+### La corrida e2e completa (400 specs) — 7 fallas reales, las 7 cerradas
+
+⚠️ Se corrieron **dos suites en paralelo** sin querer (una propia y una de un subagente): dos dev
+servers peleando el puerto 5173 y doble carga sobre DEV. Eso contaminó los números de ambas. Las 10
+fallas del rol CONTADOR de una de ellas eran el dev server muerto (`chrome-error://chromewebdata`):
+**10/10 verdes en aislado**. Lección operativa: no lanzar la suite si ya hay una corriendo.
+
+Reconciliado, quedaban **7 fallas**:
+
+| Specs | Qué era | Estado |
+|---|---|---|
+| 107, 114, 126, 130 | **Loop infinito de `ubicaciones`** (ver abajo) | ✅ mig 413 |
+| `20_caja` | Carrera al leer el estado del panel | ✅ spec arreglado |
+| `37_rrhh` | Fixture que se rompía solo el día 1 de cada mes | ✅ fixture arreglado |
+| `92_lpn` | Browser cerrado a mitad | ✅ pasa al reintentar |
+
+**`20_caja` figuraba 🟥 abierto con un diagnóstico equivocado** ("el DUEÑO tiene cajas abiertas desde
+agosto y 'Abrir caja' se deshabilita"). La captura del fallo lo desmiente: Caja1 aparece abierta y
+con el botón "Arqueo" a la vista. La causa real es una carrera — el panel renderiza "Abrir caja"
+MIENTRAS la query de la sesión está en vuelo, el spec lo leía antes de tiempo, clickeaba sobre una
+caja ya abierta y moría esperando el campo "Monto inicial". Mismo patrón que el gotcha #9 de la
+suite: leer un estado async de una sola vez en vez de esperarlo.
+
+**`37_rrhh`**: el fixture fallaba cuando el mes no tenía NINGUNA liquidación — que es exactamente lo
+que el spec crea en su primer paso. El mensaje de error despistaba ("todas sus gastos ya están
+PAGADOS (0 con gasto)"). Se rompía solo cada vez que cambiaba el mes.
+
+### 🛑 mig 413 — el código de ubicación entraba en LOOP INFINITO en la raíz nº 100
+
+Lo destapó la suite, no una auditoría. `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con
+`'U' || lpad(v_seq::text, 2, '0')`, y **`lpad` TRUNCA** cuando el texto ya mide más que el ancho
+pedido: en `v_seq = 100` devuelve `'10'` → candidato `U10`, que ya existe → 101 → `U10` otra vez.
+
+Un negocio con **99 ubicaciones raíz no podía crear la número 100**, y sin ningún error: el INSERT
+giraba dentro del trigger hasta que lo mataba el `statement_timeout`, quemando una conexión. En
+pantalla, un botón "Agregar" que no hace nada. En PROD está **latente** (máximo 4 ubicaciones raíz
+hoy), pero 100 racks o pasillos es normal en un depósito real.
+
+Fix: ancho 2 hasta `U99`, después el número completo (`U100`), y **tope de 10.000 vueltas en los dos
+loops** — un `LOOP` sin cota dentro de un trigger es una bomba de tiempo. Verificado: el INSERT que
+se colgaba devuelve `U100` al instante y los 5 specs afectados pasan (11 tests).
+
+Dos correcciones del `migration-reviewer`, ambas confirmadas contra la base antes de aplicar:
+**`CREATE OR REPLACE FUNCTION` NO conserva los atributos que no se repiten** (la función ya tenía
+`SET search_path TO 'public'` y omitirlo se lo habría sacado en silencio), y el índice que se iba a
+agregar ya existía como `uq_ubicaciones_tenant_codigo`.
+
+### 📏 La lección transversal
+
+**Una falla de test archivada como "flakiness" sin diagnosticar la causa es un bug esperando.** El
+patrón estaba a la vista: cuatro specs distintos, la misma tabla, el mismo código de error. **El
+ruido no se concentra.** Escrito en [[wiki/development/testing]].
+
+### ✅ Paridad DEV↔PROD verificada (pre-deploy)
+
+| | policies | diferencia |
+|---|---|---|
+| DEV | 230 | + las 2 de `recurso_ubicaciones` (mig 407) |
+| PROD | 228 | — |
+
+Ninguna policy solo-en-PROD, ninguna con distinta definición. Tablas solo en DEV:
+`admin_customer_notes`, `recurso_ubicaciones`. **Sin drift.** Además se verificó que
+`gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379), así
+que el código nuevo no depende de nada que no esté o que no llegue con las migraciones: **el deploy
+no tiene orden riesgoso.**
+
+### 🖥️ El panel de soporte, verificado RENDERIZADO (no solo compilado)
+
+Se levantó contra DEV y se recorrieron las 10 pantallas con capturas, atrapando errores de consola y
+HTTP. Las 10 cargan con datos reales y sin errores — pero aparecieron **dos bugs que el typecheck y
+los tests de API no veían**:
+
+- **Clave duplicada de React en el sidebar**: "Usuarios" y "Auditoría" comparten el módulo `users` y
+  el menú keyeaba por módulo. Ahora keyea por ruta.
+- 🛑 **"Extender prueba" podía ACORTAR el acceso**: un tenant `cancelled` conserva acceso hasta
+  `subscription_period_end` (el período que YA pagó, MP-C9), y la fecha nueva se calculaba solo
+  sobre `trial_ends_at`. A uno con dos meses por delante, "extenderle 15 días" lo dejaba con 15
+  días — extender restando, desde el botón que promete lo contrario. Ahora la base es la fecha de
+  acceso más lejana vigente.
+
+Moraleja: escribir UI que compila no prueba que no explote al montarse.
+
+---
+
 ## [2026-09-12] update | 🗑️🔒💵👥🛟📞 Baja de tenant COMPLETA + gasto multimoneda cerrado + RRHH-sucursal + panel de soporte ampliado (migs 409-412) · v1.213.0 y v1.214.0
 
 > **Dos versiones, no una.** El grueso de la jornada quedó en **`v1.213.0`** (migs 409-411): el fix

@@ -162,6 +162,36 @@ Detalle completo de cada una en [[wiki/database/migraciones]].
 
 ---
 
+## 🖥️ Verificado RENDERIZADO, no solo compilado (2026-09-12)
+
+Se levantó el panel contra DEV y se recorrieron las **10 pantallas** con capturas, atrapando errores
+de consola y requests fallidos. Las 10 cargan con datos reales y sin errores — pero el recorrido
+destapó **dos bugs que ni el typecheck ni los tests de API veían**:
+
+1. **Clave duplicada de React en el sidebar.** "Usuarios" y "Auditoría" comparten el módulo `users`
+   (las dos son solo-admin) y el menú keyeaba por módulo. Ahora keyea por ruta.
+2. 🛑 **"Extender prueba" podía ACORTAR el acceso.** Un tenant `cancelled` conserva acceso hasta
+   `subscription_period_end` — el período que YA pagó (MP-C9) — y la fecha nueva se calculaba solo
+   sobre `trial_ends_at`. A uno con dos meses por delante, "extenderle 15 días" lo dejaba con 15
+   días: extender restando, desde el botón que promete lo contrario. Ahora la base es la fecha de
+   acceso **más lejana** de las vigentes (hoy, el trial o el período pagado), así que sumar nunca
+   puede restar.
+
+**Moraleja para el próximo cambio de UI acá: que compile no prueba que no explote al montarse.** El
+recorrido con capturas cuesta un minuto y encontró en una pasada lo que 18 tests de API no podían
+ver.
+
+### Cómo repetirlo
+
+```bash
+cd D:/Dev/genesis360-admin && npm run dev     # su .env.local ya apunta a DEV
+```
+
+Entrar con un agente de rol `admin` (en DEV, `soporte@genesis360.pro` quedó con ese rol — en PROD ya
+lo era). Recorrer Dashboard → Clientes → ficha de un cliente → Auditoría → Analytics → Facturación, y
+probar `Ctrl/⌘+K`.
+
+
 ## Links relacionados
 
 - [[wiki/integrations/mercado-pago]] — cancelación/linkeo de suscripciones desde el panel

@@ -37,6 +37,14 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.216.0` (sin migración nueva, SIN deployar a PROD) — 🛑 **Purgar un negocio
+dejaba todos sus archivos en Storage.** Apareció verificando una baja real desde el panel: el CASCADE
+es de Postgres y Storage es otro sistema, así que quedaban huérfanos el **certificado de AFIP** del
+negocio, los comprobantes que el cliente subió, fotos, remitos, logo y documentación de empleados —
+costo que nunca baja, y un borrado incompleto frente al derecho de supresión. Cerrado en `purge_now`
+(4 esquemas de prefijo distintos, ids juntados antes del DELETE, fail-soft). Probado: 8 archivos →
+0. Ver [[wiki/support/plataforma-soporte]].
+
 **Versión en DEV:** `v1.215.0` (mig **413**, SIN deployar a PROD) — 🛑🧪 Validación de la jornada
 contra la app real. **La suite destapó un bug de verdad**: `trg_ubic_autogenerar_codigo` entraba en
 **loop infinito** en la ubicación raíz nº 100 (`lpad(x, 2, '0')` TRUNCA: en `v_seq=100` devolvía
@@ -47,7 +55,7 @@ como "lentitud de DEV". Además: 2 specs del harness arreglados (`20_caja`, con 
 del wiki desmentido por la captura, y `37_rrhh`, que se rompía solo al cambiar de mes), **paridad
 DEV↔PROD verificada sin drift**, y el panel de soporte verificado RENDERIZADO — lo que destapó otros
 dos bugs invisibles al typecheck: clave duplicada de React en el sidebar y, más serio, **"Extender
-prueba" podía ACORTAR el acceso** de un negocio cancelado con período pagado por delante. Ver
+prueba" podía ACORTAR el acceso** de un negocio cancelado con período pagado por delante. Y al verificar una baja real desde el panel apareció que **purgar un negocio dejaba TODOS sus archivos en Storage** —incluido su certificado de AFIP—: el CASCADE es de Postgres y Storage es otro sistema. Cerrado y probado (8 archivos → 0). Ver
 `log.md` (2026-09-12), [[wiki/development/testing]], [[wiki/support/plataforma-soporte]].
 
 **Versión en DEV:** `v1.214.0` (mig **412**, SIN deployar a PROD) — 📊🔐📞 Cierre del backlog de

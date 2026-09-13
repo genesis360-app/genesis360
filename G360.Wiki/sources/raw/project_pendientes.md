@@ -6,17 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-12, cont. 64) — DEV `v1.215.0` (migs 409-413) · **PROD `v1.208.0`** (migs 001-406)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 64) — DEV `v1.216.0` (migs 409-413) · **PROD `v1.208.0`** (migs 001-406)
 >
 > | | Versión | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
-> | **DEV** | `v1.215.0` | 001-**413** | todo validado: unit 1763 · e2e verde · paridad sin drift |
+> | **DEV** | `v1.216.0` | 001-**413** | todo validado: unit 1763 · e2e verde · paridad sin drift |
 >
 > #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
 >
 > Lo que falta llevar: migs **407-413** (todas aditivas, aplica "DDL primero") + código
-> `v1.209.0`→`v1.215.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
+> `v1.209.0`→`v1.216.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
 > `genesis360-admin`, rama `dev`; su merge a `main` dispara el deploy de Vercel a
 > `admin.genesis360.pro`).
 >
@@ -32,7 +32,7 @@ type: project
 > - `gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379) → el
 >   código nuevo no depende de nada que no esté o que no llegue con las migraciones. **Sin orden
 >   riesgoso.**
-> - Tags y releases `v1.213.0`, `v1.214.0` y `v1.215.0` creados sobre `dev`.
+> - Tags y releases `v1.213.0`, `v1.214.0`, `v1.215.0` y `v1.216.0` creados sobre `dev`.
 >
 > #### 🧪 Estado de la suite al cierre
 >

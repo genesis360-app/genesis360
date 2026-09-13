@@ -58,6 +58,32 @@ Dos correcciones del `migration-reviewer`, ambas confirmadas contra la base ante
 `SET search_path TO 'public'` y omitirlo se lo habría sacado en silencio), y el índice que se iba a
 agregar ya existía como `uq_ubicaciones_tenant_codigo`.
 
+### 🛑 Y al final, verificando una baja real: Storage no se iba con el CASCADE
+
+GO purgó "Ferretería Tongas" desde el panel de DEV. **La baja salió impecable**: barrido de las
+**151 tablas con `tenant_id` → 0 filas huérfanas**, 41 tablas con `sucursal_id` → 0 colgadas, y la
+auditoría completa con la foto del inventario tomada ANTES del DELETE. La entrada de
+`admin_audit_log` **sobrevivió al borrado del tenant**, que es exactamente para lo que se decidió no
+ponerle FK.
+
+Pero ese tenant estaba **vacío**, y por eso no se veía el hueco: **el CASCADE es de Postgres;
+Storage es otro sistema y no se entera.** Un negocio con archivos dejaba huérfanos su **certificado
+de AFIP** (credencial fiscal viva colgada de un negocio que ya no existe — 35 de un solo tenant en
+DEV), los comprobantes que el cliente subió, fotos de productos, remitos, logo, documentación de
+empleados y facturas de courier. Además del costo de storage que nunca baja, es un borrado
+**incompleto** frente al derecho de supresión: el mismo flanco que cerramos hoy con `/mi-cuenta`.
+
+Cerrado en `purge_now`. Lo no obvio: **los prefijos no son todos iguales** y los ids hay que juntarlos
+ANTES del DELETE, porque después del CASCADE no hay de dónde sacarlos — `<tenant_id>/` (8 buckets),
+`<user_id>/` (avatares), `<empleado_id>/` y `prestamos/<empleado_id>/` (empleados), `pod/<envio_id>/`
+y `facturas-courier/<tenant_id>/` (etiquetas-envíos). Fail-soft: el negocio ya está borrado cuando
+esto corre, así que un error se informa y queda auditado, no aborta nada.
+
+Probado con archivos en los 4 esquemas: **8 subidos → 8 borrados → 0 restos**. ⚠️ Con control
+anti-vacío, porque el primer intento pasó "en verde" habiendo subido **1 solo** archivo real: los
+buckets rechazan tipos MIME que no esperan. **Verificar una baja con un tenant vacío no prueba casi
+nada.**
+
 ### 📏 La lección transversal
 
 **Una falla de test archivada como "flakiness" sin diagnosticar la causa es un bug esperando.** El

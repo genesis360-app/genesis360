@@ -44,6 +44,27 @@ soporte entero.
 ⚠️ **El criterio contable del gasto en moneda extranjera sigue PENDIENTE de validar con un contador
 matriculado** — las 15 preguntas abiertas están en `wiki/business/consultas-contador.md`.
 
+### Verificación en vivo (no el dashboard)
+
+- **`app.genesis360.pro` sirve `v1.218.0`** — confirmado bajando el bundle real
+  (`assets/index-DdRtncKv.js`) y buscando el `APP_VERSION` adentro, no mirando el estado de Vercel.
+- **`admin.genesis360.pro`** responde 200; su deploy de producción quedó `READY`.
+- CI de `main` en `success`.
+
+🛑 **Smoke de PostgREST post-DDL — conviene repetirlo en todo deploy con columnas nuevas.**
+PostgREST **cachea el esquema**: un `select` con una columna recién creada puede dar **400 en vivo**
+aunque la migración haya salido perfecta. Contra el REST real de PROD con la anon key:
+
+| Qué | Esperado | Real |
+|---|---|---|
+| Columnas de la 414 (`cotizacion_fiscal*`), 409 y 412 | 200 | ✅ 200 |
+| `recurso_ubicaciones` (RLS + revoke a anon) | 401 | ✅ 401 |
+| `admin_customer_notes` (notas internas) | 401 | ✅ 401 |
+| **Una columna inventada** | 400 | ✅ 400 |
+
+La última fila es la que importa: sin ese **control negativo**, un 200 podría significar "PostgREST
+ignora lo que no conoce" y las otras cuatro filas no probarían nada.
+
 🟥 **Queda destrabado para la próxima sesión**: dropear `tenants.afipsdk_token` y
 `recursos.ubicacion`, que se dejaron a propósito hasta que PROD corriera el código nuevo.
 

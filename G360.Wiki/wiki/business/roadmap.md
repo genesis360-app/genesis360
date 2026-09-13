@@ -37,14 +37,25 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.218.0` (sin migración nueva —usa la 414—, SIN deployar a PROD) — 🧾 **El
+gasto en moneda extranjera entra al Libro IVA**, cerrando los dos pasos que faltaban: el campo
+"Cotización para IVA" en Gastos (propone el día hábil anterior, editable, y la limpia si el gasto
+vuelve a la moneda del negocio) y el Libro IVA Compras que ahora **los incluye convertidos** en vez
+de excluirlos, con el importe original y la tasa en la fila y el **tipo de cambio explícito en el
+Excel** (ARCA lo exige). 🛑 **Bug REGLA #0 arreglado de paso:** el KPI "IVA Crédito (Compras)" del
+Panel y la posición de los últimos 12 meses sumaban `iva_monto` crudo — un IVA de **US$210 entraba a
+la posición como $210**. Solo la tabla del Libro filtraba por moneda. Estaba **latente** (no había
+ningún gasto en otra moneda ni en DEV ni en PROD) y ningún importe existente se mueve. ⚠️ El criterio
+contable sigue pendiente de un contador matriculado. UAT §53. Ver `log.md` (2026-09-13).
+
 **Versión en DEV:** `v1.217.0` (mig **414**, SIN deployar a PROD) — 🧾 Cimientos para llevar un gasto
 en moneda extranjera al **Libro IVA**. Llegó el criterio del contador (⚠️ **es una IA, pendiente de
 validar con un matriculado**) y **corrige lo que habíamos asumido**: esos gastos **sí** generan
 crédito fiscal computable y hay que **convertirlos a pesos al BNA VENDEDOR del día hábil anterior**
 al comprobante (o al pago, en importación de servicios) — no dejarlos afuera. 🛑 Esa cotización **no
 es** la operativa del sistema (que va al dólar COMPRA), así que se congela por gasto (mig 414) en vez
-de derivarla del tenant. Entran la migración y `src/lib/cotizacionFiscal.ts` (15 tests); **falta** el
-campo en Gastos y que Facturación incluya los convertidos. Ver `log.md` (2026-09-13).
+de derivarla del tenant. Entran la migración y `src/lib/cotizacionFiscal.ts` (15 tests); el campo en
+Gastos y la inclusión en Facturación llegaron en **v1.218.0** (ver arriba). Ver `log.md` (2026-09-13).
 
 **Versión en DEV:** `v1.216.0` (sin migración nueva, SIN deployar a PROD) — 🛑 **Purgar un negocio
 dejaba todos sus archivos en Storage.** Apareció verificando una baja real desde el panel: el CASCADE

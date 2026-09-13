@@ -764,8 +764,9 @@ la moneda del negocio.
 Sin la corrección anterior no explotaba nunca (no había gastos en otra moneda); con ella, cualquier
 lugar que sumara `monto` a secas mezclaba pesos y dólares en el mismo número. Se corrigieron 10
 totales, **incluidos el cierre contable y el Libro IVA Compras** (`FacturacionPage`): ahí un gasto en
-otra moneda queda **fuera** del libro, con un aviso explícito — nunca convertido ni descartado en
-silencio.
+otra moneda quedaba **fuera** del libro, con un aviso explícito — nunca convertido ni descartado en
+silencio. ⚠️ **Ese criterio cambió en v1.218.0**: ahora entran convertidos con la tasa fiscal
+congelada en el gasto, y solo quedan afuera los que no tengan cotización cargada (ver más abajo).
 
 Helper único: `totalesPorMoneda` en `src/lib/gastoMoneda.ts`. El criterio que queda escrito en el
 código: el total va en la moneda del negocio; lo que está en otra moneda **no se suma ni se
@@ -793,9 +794,7 @@ quedó afuera.
 > fecha concreta. Por eso la tasa se congela **por gasto** (`gastos.cotizacion_fiscal`, mig 414) en
 > vez de derivarla de `tenants.cotizacion_usd*`, que es el valor de hoy.
 >
-> **Estado**: están la migración y `src/lib/cotizacionFiscal.ts` (15 tests). **Falta** el campo en el
-> formulario de Gastos y que el Libro IVA incluya los convertidos en vez de excluirlos — hoy la
-> pantalla los sigue dejando afuera con aviso.
+> **Estado**: ✅ **completo en v1.218.0** — ver la sección siguiente.
 
 ---
 
@@ -810,3 +809,62 @@ quedó afuera.
 - [[wiki/development/reglas-negocio]]
 - [[wiki/development/cierre-contable]]
 - [[wiki/features/configuracion]]
+
+## 🧾 El gasto en moneda extranjera entra al Libro IVA (v1.218.0, mig 414) — 2026-09-13
+
+> [!WARNING] **Criterio contable PENDIENTE de validar con un contador matriculado.** Viene de una
+> consulta de GO a una IA que se presentó como contador (2026-09-13) y se adopta como criterio de
+> trabajo. Todo lo de esta sección cambia si un contador real dice otra cosa.
+
+Cierra el punto anterior. Hasta v1.217.0 un gasto en otra moneda quedaba fuera del Libro IVA
+Compras "por las dudas"; ese criterio conservador era **incorrecto**.
+
+### 🛑 El bug que apareció al implementarlo (REGLA #0)
+
+Al tocar `FacturacionPage` se descubrió que **solo la tabla del Libro filtraba por moneda**. El KPI
+**"IVA Crédito (Compras)" del Panel** y la **posición de los últimos 12 meses** de Liquidación
+pedían `select('iva_monto')` y lo sumaban crudo: el IVA de un gasto de **US$1.000 entraba a la
+posición de IVA como $210**. Dos pantallas de la misma sesión decían cosas distintas sobre la misma
+plata — y la que se usa para liquidar era la equivocada.
+
+Los tres cálculos salen ahora del mismo helper, `creditoFiscalCompras`.
+
+**El bug estaba latente**: verificado contra la DB el 2026-09-13, DEV tenía 210 gastos **todos en
+ARS** y PROD 1 gasto en ARS sin IVA crédito. No llegó a ensuciar ningún número real. Un gasto en la
+moneda del negocio pasa **intacto** por la conversión, así que ningún importe existente se mueve.
+
+### El campo "Cotización para IVA" (GastosPage)
+
+Aparece **solo** cuando la moneda del gasto ≠ la del negocio **y** su IVA es crédito. Propone el
+**día hábil anterior** al comprobante (`diaHabilAnterior`) y deja tasa, fecha y fuente editables:
+no hay feed del BNA por fecha, y **`diaHabilAnterior` no contempla feriados** (no hay calendario
+cargado en el sistema). Una fecha editada a mano **no se repisa**.
+
+- Se guardan las 3 columnas de la mig 414 (`cotizacion_fiscal`, `_fecha`, `_fuente`).
+- Si el gasto se edita de vuelta a la moneda del negocio, se persiste `NULL` **a propósito**: una
+  tasa colgada convertiría después algo que no hay que convertir.
+- **No bloquea el guardado.** Sin cotización avisa, en el formulario, cuánto IVA queda sin declarar.
+
+### El Libro IVA los incluye (FacturacionPage)
+
+- Entran **convertidos** con la tasa congelada en el gasto (monto **e IVA**, por la misma tasa).
+- La fila muestra el **importe original y la tasa** — sin eso una fila en dólares es indistinguible
+  de una en pesos y el número no se puede auditar.
+- El **Excel** exporta *Moneda origen · Monto origen · Tipo de cambio · Fecha cotización*: el Libro
+  IVA Digital de ARCA **exige el tipo de cambio explícito**, y sin él el comprobante cae en
+  "importaciones con avisos" y hay que reincorporarlo a mano.
+- Los que **no tienen tasa** siguen afuera (no se les inventa una) y el aviso ahora está también en
+  el **Panel**, no solo en el Libro: la posición de arriba se lee como si estuviera completa.
+
+### Lo que queda abierto
+
+- **La nota de corrección arrastra la tasa del gasto que corrige.** Si convirtiera a la tasa de hoy,
+  revertir un gasto no daría cero: quedaría un resto de IVA crédito por diferencia de cambio. ⚠️ **A
+  confirmar con el contador** si la NC del proveedor es un comprobante propio con su propia fecha.
+- **`gastos_fijos` no tiene cotización fiscal**: la mig 414 tocó solo `gastos`. Un fijo en otra
+  moneda se materializa sin tasa → cae afuera del libro, **con aviso** (no en silencio).
+
+Escenarios en el UAT: `tests/specs/uat-modo-basico.md` **§53** (#138-#151).
+Ver también [[wiki/features/facturacion-afip]].
+
+---

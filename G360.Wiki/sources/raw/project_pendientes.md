@@ -6,17 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 64) — DEV `v1.217.0` (migs 409-414) · **PROD `v1.208.0`** (migs 001-406)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 65) — DEV `v1.218.0` (migs 409-414) · **PROD `v1.208.0`** (migs 001-406)
 >
 > | | Versión | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
-> | **DEV** | `v1.217.0` | 001-**414** | todo validado: unit 1763 · e2e verde · paridad sin drift |
+> | **DEV** | `v1.218.0` | 001-**414** | todo validado: unit 1782 · e2e verde · paridad sin drift |
 >
 > #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
 >
 > Lo que falta llevar: migs **407-414** (todas aditivas, aplica "DDL primero") + código
-> `v1.209.0`→`v1.217.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
+> `v1.209.0`→`v1.218.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
 > `genesis360-admin`, rama `dev`; su merge a `main` dispara el deploy de Vercel a
 > `admin.genesis360.pro`).
 >
@@ -32,7 +32,7 @@ type: project
 > - `gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379) → el
 >   código nuevo no depende de nada que no esté o que no llegue con las migraciones. **Sin orden
 >   riesgoso.**
-> - Tags y releases `v1.213.0` … `v1.217.0` creados sobre `dev`.
+> - Tags y releases `v1.213.0` … `v1.218.0` creados sobre `dev`.
 >
 > #### 🧪 Estado de la suite al cierre
 >
@@ -44,41 +44,35 @@ type: project
 > dev servers peleando el puerto 5173 + doble carga sobre DEV) y contaminó los números de ambas — 10
 > fallas fantasma del rol CONTADOR que pasan 10/10 en aislado.
 >
-> #### 🟨 LO QUE QUEDÓ A MEDIO HACER (retomar acá) — el gasto en USD y el Libro IVA
+> #### ✅ CERRADO en cont. 65 — el gasto en USD y el Libro IVA (`v1.218.0`)
 >
-> **Llegó la respuesta del contador** (⚠️ es una **IA**, GO la adoptó como criterio de trabajo
-> **pendiente de validar con un contador matriculado de verdad** — dejarlo marcado hasta que se
-> confirme). Y **corrige lo que habíamos asumido**:
+> Se completaron los dos pasos que faltaban, y **apareció un bug REGLA #0 más grave que el pendiente**.
 >
-> 1. Un gasto en moneda extranjera **SÍ genera crédito fiscal computable** (art. 12 Ley 23.349).
->    Ayer los dejábamos fuera del Libro IVA por las dudas: **ese criterio conservador era incorrecto**.
-> 2. La DDJJ va **en pesos** (art. 96 Ley 11.683): hay que convertir.
-> 3. Tipo de cambio: **BNA VENDEDOR del día hábil ANTERIOR** al comprobante. En **importación de
->    servicios** (reverse charge), el del día hábil anterior al **pago**.
-> 4. El Libro IVA Digital de ARCA exige el tipo de cambio explícito; si no, el comprobante cae en
->    "importaciones con avisos" y hay que cargarlo a mano.
+> 🛑 **El KPI "IVA Crédito (Compras)" del Panel y la posición de los últimos 12 meses sumaban
+> `iva_monto` crudo**: el IVA de un gasto de US$1.000 entraba a la posición de IVA como **$210**.
+> Solo la tabla del Libro filtraba por moneda — dos pantallas de la misma sesión decían cosas
+> distintas sobre la misma plata, y la que se usa para liquidar era la equivocada. Los tres cálculos
+> salen ahora de `creditoFiscalCompras`. **Estaba latente**: DEV tenía 210 gastos todos ARS y PROD 1
+> gasto ARS sin IVA crédito, así que no ensució ningún número real. Un gasto en la moneda del negocio
+> pasa intacto por la conversión: **ningún importe existente se mueve**.
 >
-> 🛑 **Lo que no hay que perder de vista**: la cotización FISCAL no es la del resto del sistema.
-> Genesis360 convierte al dólar **COMPRA** (correcto para valuar lo que el negocio tiene); lo fiscal
-> pide **VENDEDOR**, y de una fecha concreta. Son dos números distintos.
+> ✅ **GastosPage**: campo "Cotización para IVA" cuando la moneda del gasto ≠ la del negocio y su IVA
+> es crédito. Propone el día hábil anterior, todo editable, y una fecha editada a mano no se repisa.
+> Guarda las 3 columnas de la mig 414 y las limpia a `NULL` si el gasto vuelve a la moneda del
+> negocio. No bloquea: sin cotización avisa cuánto IVA queda sin declarar.
 >
-> **✅ Hecho** (`v1.217.0`): **mig 414** (`gastos.cotizacion_fiscal` + `_fecha` + `_fuente`, sin
-> backfill) y **`src/lib/cotizacionFiscal.ts`** con 15 tests — día hábil anterior, conversión de
-> monto **e IVA** por la misma tasa, y el agrupado de lo que queda afuera. Sin cotización **no se
-> inventa una tasa**.
+> ✅ **FacturacionPage**: el Libro **incluye** los convertidos, la fila muestra importe original +
+> tasa, y el Excel exporta el tipo de cambio explícito (ARCA lo exige). Los sin tasa siguen afuera,
+> con el aviso ahora también en el Panel.
 >
-> **🟥 Falta** (dos pasos, en este orden):
-> 1. **`GastosPage`**: campo "Cotización para IVA" cuando la moneda del gasto ≠ la del negocio **y**
->    el IVA es deducible. Prefijar la fecha con `diaHabilAnterior(fecha del gasto)` y dejar el valor
->    editable (no hay feed de BNA por fecha, y `diaHabilAnterior` **no contempla feriados**).
->    Guardar en las 3 columnas nuevas. Hay un borrador del parche en el scratchpad de la sesión, pero
->    conviene rehacerlo leyendo el archivo.
-> 2. **`FacturacionPage`** (Libro IVA Compras): **incluir** los gastos en otra moneda convertidos con
->    `convertirGastoAMonedaLibro`, mostrando el importe original y la tasa en la fila. Dejar fuera
->    SOLO los que no tengan cotización, con el aviso de que les falta. Hoy la pantalla los excluye a
->    todos: es seguro pero, según este criterio, **incorrecto**.
+> ⚠️ **El criterio contable sigue PENDIENTE de validar con un contador matriculado.**
 >
-> ⚠️ Mientras tanto el comportamiento en la app **no cambió**: los cimientos están, nadie los usa.
+> **🟥 Queda abierto** (los dos anotados en el UAT §53):
+> 1. **La nota de corrección arrastra la tasa del gasto que corrige.** Si convirtiera a la de hoy,
+>    revertir no daría cero: quedaría un resto de IVA por diferencia de cambio. **Preguntarle al
+>    contador** si la NC del proveedor lleva la suya.
+> 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
+>    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
 >
 > #### 🗑️ La baja de tenant, verificada en DEV con un caso real (13/09)
 >

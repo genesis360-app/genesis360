@@ -2,8 +2,8 @@
 title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
-sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375]
-updated: 2026-09-12
+sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375, migration 414]
+updated: 2026-09-13
 ---
 
 # Facturación Electrónica AFIP
@@ -744,8 +744,37 @@ discriminando por alícuota. Cubierto por `calcularImportes` + tests.
 
 ---
 
+## 🧾 El Libro IVA Compras y los gastos en moneda extranjera (v1.218.0, mig 414) — 2026-09-13
+
+> [!WARNING] **Criterio contable PENDIENTE de validar con un contador matriculado.** Ver el detalle
+> completo en [[wiki/features/gastos]].
+
+Un gasto en moneda extranjera **SÍ genera crédito fiscal computable** (art. 12 Ley 23.349) y la DDJJ
+va en pesos (art. 96 Ley 11.683). Hasta v1.217.0 el Libro IVA Compras **los excluía a todos**;
+ahora entran **convertidos** con la tasa fiscal congelada en el gasto (`gastos.cotizacion_fiscal`,
+mig 414 — **BNA vendedor del día hábil anterior** al comprobante, que NO es la cotización operativa
+del sistema: esa va al dólar comprador).
+
+🛑 **Bug REGLA #0 arreglado en la misma tanda.** Solo la tabla del Libro filtraba por moneda: el KPI
+**"IVA Crédito (Compras)" del Panel** y la **posición de los últimos 12 meses** sumaban `iva_monto`
+crudo, así que un IVA de **US$210 entraba a la posición como $210**. Los tres cálculos salen ahora
+del mismo helper (`creditoFiscalCompras`, `src/lib/cotizacionFiscal.ts`). Estaba **latente**: al
+2026-09-13 no había ningún gasto en otra moneda ni en DEV ni en PROD.
+
+- La **fila** del libro muestra el importe original y la tasa usada.
+- El **Excel** exporta *Moneda origen · Monto origen · Tipo de cambio · Fecha cotización* — el Libro
+  IVA Digital de ARCA exige el tipo de cambio explícito; sin él el comprobante cae en "importaciones
+  con avisos".
+- Un gasto **sin cotización** sigue fuera del libro (no se le inventa una tasa) y el aviso aparece
+  ahora también en el **Panel**, no solo en el Libro.
+
+Escenarios: `tests/specs/uat-modo-basico.md` **§53**.
+
+---
+
 ## Links relacionados
 
+- [[wiki/features/gastos]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/architecture/edge-functions]]

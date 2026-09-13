@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-13] update | 🧾 Registro vivo de consultas para el contador
+
+Pedido de GO: juntar **todas** las preguntas fiscales y contables abiertas en un solo documento, para
+entregárselo a un contador el día que lo tengamos, y mantenerlo vivo a medida que aparezcan más.
+
+Hasta ahora las dudas quedaban donde surgían: un comentario en el código, una fila 🟡 de
+`reglas-negocio.md`, un `log.md` de hace un mes. **El C2 del relevamiento de Caja USD llevaba abierto
+desde agosto** esperando exactamente esto y nadie lo tenía a mano.
+
+### Lo que hay
+
+**`wiki/business/consultas-contador.md`** — el registro vivo, **15 preguntas** (`C-01`…`C-15`) en 5
+bloques: gastos en moneda extranjera y Libro IVA (6, el más grande y el que ya está implementado
+sobre un criterio sin validar), ventas cobradas en USD (2, incluido el C2 viejo), Ganancias y
+patrimonio (2), Monotributo (1) y liquidación/comprobantes (4).
+
+Cada pregunta lleva **Estado · Área · Impacta en · Criterio provisorio**, la pregunta concreta y —lo
+que más importa— **qué se rompe si el criterio provisorio está mal**. Las secciones finales dicen
+cómo agregar una pregunta nueva y qué hacer cuando lleguen las respuestas (no alcanza con anotarlas:
+hay que volver al código marcado en "Impacta en").
+
+**`npm run contador:doc`** genera el HTML imprimible con un recuadro de respuesta y espacio de firma
+debajo de cada pregunta. **El `.md` es la única fuente de verdad**: mantener dos copias a mano
+garantiza que se desincronicen y que la que se entregue sea la vieja.
+
+### 🐛 Un hallazgo de paso
+
+**El indicador "Proyección vs Tope Cat." de Monotributo mide el año calendario** (`DashFacturacionArea.tsx`
+suma desde el 1° de enero), pero AFIP recategoriza mirando los **últimos 12 meses móviles**. En
+febrero muestra casi cero aunque el negocio venga al 95% del tope desde hace meses.
+
+No es REGLA #0 —está rotulado como estimación en todos lados, no emite nada ni mueve plata— pero es
+un número sobre el que alguien podría decidir no recategorizarse. Quedó como **C-11**, marcada como
+"probablemente sea un error nuestro", para confirmarlo antes de tocarlo.
+
+---
+
 ## [2026-09-13] update | 🧾 El gasto en USD entra al Libro IVA — y el KPI sumaba dólares como pesos · v1.218.0
 
 Se cerraron los dos pasos que el criterio del contador había dejado pendientes (ver la entrada

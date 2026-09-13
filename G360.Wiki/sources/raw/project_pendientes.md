@@ -67,12 +67,30 @@ type: project
 >
 > ⚠️ **El criterio contable sigue PENDIENTE de validar con un contador matriculado.**
 >
-> **🟥 Queda abierto** (los dos anotados en el UAT §53):
+> **🟥 Queda abierto** (los dos anotados en el UAT §53, y ahora también en el registro de consultas):
 > 1. **La nota de corrección arrastra la tasa del gasto que corrige.** Si convirtiera a la de hoy,
 >    revertir no daría cero: quedaría un resto de IVA por diferencia de cambio. **Preguntarle al
 >    contador** si la NC del proveedor lleva la suya.
 > 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
 >    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
+>
+> #### 🧾 Registro vivo de consultas para el contador — `wiki/business/consultas-contador.md`
+>
+> A pedido de GO, **todas** las preguntas fiscales/contables abiertas viven ahora en un solo lugar:
+> **15 preguntas** (`C-01`…`C-15`), ninguna validada por un matriculado todavía. Incluye el **C2 del
+> relevamiento de Caja USD**, que llevaba abierto desde agosto esperando justamente esto.
+>
+> ⚠️ **Regla nueva: toda duda fiscal o contable que aparezca va a ese archivo**, con su `C-NN`, en vez
+> de quedar enterrada en un comentario del código o en una entrada vieja del log.
+>
+> El imprimible para entregarle al contador (con recuadro de respuesta y firma por pregunta) se
+> genera con `npm run contador:doc` — **el `.md` es la única fuente de verdad, el `.html` no se edita
+> a mano.**
+>
+> 🐛 De paso salió **C-11**: el indicador "Proyección vs Tope Cat." de Monotributo mide el **año
+> calendario** y AFIP recategoriza por **12 meses móviles** → subestima a principio de año. No es
+> REGLA #0 (es una estimación rotulada, no emite ni mueve plata), pero conviene confirmarlo y
+> corregirlo.
 >
 > #### 🗑️ La baja de tenant, verificada en DEV con un caso real (13/09)
 >

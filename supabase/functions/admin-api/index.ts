@@ -224,6 +224,73 @@ async function inventarioTenant(svc: any, tenantId: string) {
 }
 
 /**
+ * Borra de Storage todo lo que subió este negocio.
+ *
+ * 🛑 Por qué hace falta: el `DELETE FROM tenants` cascadea sobre ~140 FK de **Postgres**, pero
+ * Storage es otro sistema — los archivos NO se van con él. Purgando un negocio sin esto quedaban
+ * huérfanos para siempre: fotos de productos, comprobantes de gastos que el cliente subió, remitos,
+ * documentación de empleados y —lo más serio— **su certificado de AFIP**, una credencial fiscal
+ * viva colgada de un negocio que ya no existe. Además de la factura de storage que nunca baja, es
+ * un borrado incompleto frente al derecho de supresión (AAIP).
+ *
+ * Los prefijos NO son todos iguales, así que hay que pasarle los ids juntados ANTES del DELETE:
+ *   • `<tenant_id>/…`           → la mayoría de los buckets
+ *   • `<user_id>/avatar.*`      → avatares
+ *   • `<empleado_id>/…` y `prestamos/<empleado_id>/…` → empleados
+ *   • `pod/<envio_id>/…` y `facturas-courier/<tenant_id>/…` → etiquetas-envios
+ *
+ * Fail-soft: el negocio ya está borrado cuando esto corre, así que un error acá NO puede abortar
+ * nada — se devuelve para que el panel lo muestre y quede en la auditoría.
+ */
+const BUCKETS_POR_TENANT = [
+  'archivos-biblioteca', 'autorizaciones-fotos', 'certificados-afip', 'comprobantes-gastos',
+  'logos', 'presupuestos-servicios', 'productos', 'remitos',
+] as const
+
+async function borrarStorageDelTenant(
+  svc: any,
+  tenantId: string,
+  ids: { usuarios: string[]; empleados: string[]; envios: string[] },
+): Promise<{ borrados: number; errores: string[] }> {
+  let borrados = 0
+  const errores: string[] = []
+
+  // Lista un prefijo y borra lo que haya. `list` no recursea, así que se baja un nivel cuando la
+  // entrada es una carpeta (Storage la devuelve con `id: null`).
+  const purgarPrefijo = async (bucket: string, prefijo: string, profundidad = 0) => {
+    try {
+      const { data, error } = await svc.storage.from(bucket).list(prefijo, { limit: 1000 })
+      if (error) { errores.push(`${bucket}/${prefijo}: ${error.message}`); return }
+      if (!data?.length) return
+      const archivos = data.filter((o: any) => o.id !== null).map((o: any) => `${prefijo}/${o.name}`)
+      if (archivos.length) {
+        const { error: delErr } = await svc.storage.from(bucket).remove(archivos)
+        if (delErr) errores.push(`${bucket}/${prefijo}: ${delErr.message}`)
+        else borrados += archivos.length
+      }
+      if (profundidad < 2) {
+        for (const carpeta of data.filter((o: any) => o.id === null)) {
+          await purgarPrefijo(bucket, `${prefijo}/${carpeta.name}`, profundidad + 1)
+        }
+      }
+    } catch (e) {
+      errores.push(`${bucket}/${prefijo}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  for (const b of BUCKETS_POR_TENANT) await purgarPrefijo(b, tenantId)
+  for (const uid of ids.usuarios) await purgarPrefijo('avatares', uid)
+  for (const eid of ids.empleados) {
+    await purgarPrefijo('empleados', eid)
+    await purgarPrefijo('empleados', `prestamos/${eid}`)
+  }
+  for (const env of ids.envios) await purgarPrefijo('etiquetas-envios', `pod/${env}`)
+  await purgarPrefijo('etiquetas-envios', `facturas-courier/${tenantId}`)
+
+  return { borrados, errores }
+}
+
+/**
  * Las cuentas de acceso (auth) del tenant, con su mail. Se toman ANTES del DELETE: el CASCADE
  * borra `users` y después ya no hay forma de saber qué mails quedaron colgados.
  *
@@ -768,9 +835,25 @@ Deno.serve(async (req) => {
         // ya no hay de dónde sacarlas. Se resuelven acá y NO se aceptan del cliente: una lista de
         // uuids mandada por el panel podría borrar cuentas de cualquier otro tenant.
         const cuentas = await cuentasAuthDelTenant(svc, p.tenantId)
+        // Los ids de Storage se juntan ACÁ, antes del DELETE: después del CASCADE no hay de dónde
+        // sacarlos y los archivos quedarían huérfanos para siempre.
+        const [{ data: emps }, { data: envs }] = await Promise.all([
+          svc.from('empleados').select('id').eq('tenant_id', p.tenantId),
+          svc.from('envios').select('id').eq('tenant_id', p.tenantId),
+        ])
+        const idsStorage = {
+          usuarios: cuentas.map((c: any) => c.id),
+          empleados: (emps ?? []).map((e: any) => e.id),
+          envios: (envs ?? []).map((e: any) => e.id),
+        }
         await audit({ purge_now: true, tenant_nombre: tenant.nombre, inventario: inv, cuentas, mp_cancelled: mpCancelled })
         const { error: delErr } = await svc.from('tenants').delete().eq('id', p.tenantId)
         if (delErr) throw delErr
+
+        // 🛑 Storage NO se va con el CASCADE de Postgres: hay que borrarlo aparte. Entre lo que
+        // quedaba huérfano estaba el CERTIFICADO DE AFIP del negocio.
+        const storage = await borrarStorageDelTenant(svc, p.tenantId, idsStorage)
+        await audit({ purge_now: true, storage_borrados: storage.borrados, storage_errores: storage.errores })
 
         // El sweep programado NO toca `auth.users` (borra el tenant y deja la cuenta huérfana:
         // el mail queda sin negocio pero existiendo). Acá se ofrece cerrar el círculo, porque
@@ -794,6 +877,7 @@ Deno.serve(async (req) => {
         return json({
           ok: true, purgado: tenant.nombre, inventario: inv, mp_cancelled: mpCancelled,
           auth_users_borrados: authBorrados, auth_users_omitidos: authOmitidos,
+          storage_borrados: storage.borrados, storage_errores: storage.errores,
         })
       }
 

@@ -415,3 +415,44 @@ La ubicación necesita **las cuatro** propiedades, y cada una se descubrió romp
 - [[wiki/development/agentes-claude-code]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/inventario-stock]]
+
+## ⏰ Antes de diagnosticar una falla MASIVA de e2e: chequeá el acceso del tenant de prueba
+
+Encontrado el 2026-09-12. Los 9 specs que siembran stock por UI figuraban rotos "por la ubicación
+Mono-SKU" — pero ese fix ya estaba hecho (`UBICACION_SIEMBRA` en `tests/e2e/helpers/fixtures.ts`).
+Lo que los tenía rojos era que **`Almacén Jorgito` perdió el acceso ese mismo día**: se lo había
+cancelado un mes antes probando el flujo de cancelación, con 30 días de gracia (MP-C9), y el reloj
+se cumplió a las 17:54 UTC en medio de la sesión. Desde ese minuto el `SubscriptionGuard` mandaba
+**cada test** a `/suscripcion`.
+
+**El síntoma engaña**: la falla dice "elemento no visible" en la pantalla que el spec esperaba, sin
+un solo error de autenticación. La sesión es válida; lo que falta es la suscripción.
+
+```sql
+select nombre, subscription_status, trial_ends_at, subscription_period_end,
+       now() > subscription_period_end as grace_vencido
+from tenants where nombre = 'Almacén Jorgito';
+```
+
+Si el acceso está vencido, **toda** la suite está roja por eso. Se arregla extendiendo
+`subscription_period_end` (quedó en 2028-12-31); no hace falta tocar `subscription_status`:
+'cancelled' con período vigente es un estado legítimo y no cambia lo que los specs asumen.
+
+⚠️ **Cada vez que se pruebe una cancelación o una baja contra el tenant de e2e, extender el período
+en el mismo momento.** Si no, la suite muere sola un día cualquiera sin que nadie haya tocado código.
+
+## 🐛 Una falla archivada como "flakiness" puede ser un bug real del producto
+
+El 2026-09-12, cuatro specs (107, 114, 126, 130) fallaban con `57014 statement timeout` insertando
+en `ubicaciones`. Estaban anotados como "lentitud de DEV". Eran un **loop infinito** real del
+trigger que autogenera el código de ubicación (mig 413): con 99 ubicaciones raíz, la número 100 no
+se podía crear nunca.
+
+El patrón que lo delataba estaba a la vista: *cuatro specs distintos*, todos fallando en *la misma
+tabla*, todos con *el mismo código de error*. **El ruido no se concentra.**
+
+- Si dos o más specs fallan en la misma tabla o con el mismo error, buscá la causa común antes de
+  escribir "flaky".
+- `57014` en un INSERT chico no es carga: es un lock o algo que no termina. Mirá los triggers
+  `BEFORE` de esa tabla.
+- Reproducir el INSERT a mano por SQL, fuera del test, separa producto de harness en un minuto.

@@ -235,12 +235,21 @@ Edge Function **`courier-api`** (`supabase/functions/courier-api/`) con router p
 ## Estados del envío (v1.8.39+)
 
 ```
-pendiente → despachado → en_camino → en_bodega → entregado
-                                              → devolucion
+pendiente → despachado → en_camino → entregado
+                             │
+                             ├─ "Dejar en bodega" → en_bodega → entregado
+                             └─ "No entregado"   → en_camino (reintento) | devolucion
            (cancelado desde cualquier estado)
 ```
 
-- `en_bodega` (NUEVO v1.8.39, migration 127): paquete está en depósito del courier, esperando recolección final
+- `en_bodega` (v1.8.39, mig 127) — **desde v1.210.0 es un DESVÍO, no un paso de la ruta feliz**.
+  Hasta entonces `ESTADO_SIGUIENTE` mandaba `en_camino → en_bodega → entregado` y el POD solo
+  aparecía en `en_bodega`, así que **entregar con reparto propio exigía marcar una bodega que no
+  existía en el viaje** (lo detectó Fede, 2026-09-11: *"¿no se supone que de en camino pase a
+  entregado?"*). Ahora `en_camino` va **directo a `entregado`**, y a bodega se llega con el botón
+  **"Dejar en bodega"** — el paquete que quedó en el depósito del courier o volvió sin entregarse.
+  ⚠️ Ese botón es imprescindible: sin él el estado quedaría **inalcanzable**, porque el flujo
+  "No entregado" (EN2/D5) resuelve a `en_camino` (reintento) o `devolucion`, nunca a bodega.
 - Badge violeta + icono Warehouse
 - Desde `en_bodega` el botón "Avanzar" lleva al modal POD para confirmar entrega
 - **`devolucion` → CTA "Registrar devolución de la venta"** (v1.52.0, auditoría de procesos): el envío que volvió ya no muere en el limbo — botón violeta que navega a `/ventas?id=<venta>&devolver=1` y abre el flujo de devolución del POS (reingreso de stock + NC/egreso de caja, respeta plazo de canal + clave maestra). Además, **anular la venta cancela automáticamente sus envíos `pendiente`** (los que ya están en la calle se avisan con toast para gestionarlos acá).

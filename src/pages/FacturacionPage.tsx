@@ -30,6 +30,7 @@ const TIPO_COMPROBANTE_OPTS = [
 ]
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { convertirGastoAMonedaLibro, creditoFiscalCompras } from '@/lib/cotizacionFiscal'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 function mesLabel(m: string) {
   const [y, mo] = m.split('-')
@@ -41,6 +42,9 @@ const DISCLAIMER = `Los valores de IVA mostrados son de carácter estimado, basa
 export default function FacturacionPage() {
   const { tenant } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
+  // La moneda en la que se llevan los libros IVA = la del negocio (para AFIP, pesos). Declarada acá
+  // arriba porque la usan las queries del panel, del libro y de la liquidación.
+  const monedaLibro = String((tenant as any)?.moneda ?? 'ARS').toUpperCase()
   const { sucursalId } = useSucursalFilter()
   usePlanLimits()
   const qc = useQueryClient()
@@ -340,7 +344,11 @@ export default function FacturacionPage() {
     queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta, emisorFiltro?.id],
     queryFn: async () => {
       let q = supabase.from('gastos')
-        .select('id, descripcion, monto, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
+        // `moneda` + `cotizacion_fiscal*` (mig 414): un gasto puede estar en otra moneda, y su
+        // `iva_monto` está expresado EN esa moneda. Al libro entra CONVERTIDO, con la tasa que se
+        // congeló en el gasto — nunca con la cotización operativa del tenant, que es de hoy y va al
+        // dólar comprador. El que no tenga tasa queda afuera y se avisa.
+        .select('id, descripcion, monto, moneda, cotizacion_fiscal, cotizacion_fiscal_fecha, cotizacion_fiscal_fuente, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
         .eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true)
         .gt('iva_monto', 0)
@@ -388,14 +396,17 @@ export default function FacturacionPage() {
           .gte('ventas.created_at', desde).lte('ventas.created_at', hasta + 'T23:59:59')
           .not('ventas.cae', 'is', null)
         if (emisorOr) qV = qV.or(emisorOr, { referencedTable: 'ventas' })
-        let qG = supabase.from('gastos').select('iva_monto')
+        // 🛑 REGLA #0 — el crédito sale de `creditoFiscalCompras`, igual que el KPI del panel y el
+        // libro. Antes esta query pedía solo `iva_monto` y lo sumaba crudo: el IVA de un gasto en
+        // dólares entraba a la posición como si fueran pesos (US$210 → $210).
+        let qG = supabase.from('gastos').select('iva_monto, monto, moneda, cotizacion_fiscal')
           .eq('tenant_id', tenant!.id).eq('iva_deducible', true).gt('iva_monto', 0)
           .gte('fecha', desde).lte('fecha', hasta)
         if (emisorOr) qG = qG.or(emisorOr)
         const [{ data: dVentas }, { data: dGastos }] = await Promise.all([qV, qG])
         const debito  = (dVentas ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
           - (ncPorMes[periodo] ?? 0)
-        const credito = (dGastos ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
+        const credito = creditoFiscalCompras(dGastos as any[], monedaLibro).credito
         rows.push({ periodo, debito, credito, posicion: debito - credito })
       }
       return rows
@@ -422,14 +433,17 @@ export default function FacturacionPage() {
         .gte('ventas.created_at', periodoDesde).lte('ventas.created_at', periodoHasta + 'T23:59:59')
         .not('ventas.cae', 'is', null)
       if (emisorOr) qV = qV.or(emisorOr, { referencedTable: 'ventas' })
-      let qG = supabase.from('gastos').select('iva_monto')
+      // 🛑 REGLA #0 — mismo cálculo que el libro y que el historial de 12 meses. El KPI sumaba
+      // `iva_monto` crudo, así que un gasto en otra moneda contaminaba el crédito fiscal del panel
+      // mientras la pantalla del libro decía que ese mismo gasto estaba afuera.
+      let qG = supabase.from('gastos').select('iva_monto, monto, moneda, cotizacion_fiscal')
         .eq('tenant_id', tenant!.id).eq('iva_deducible', true).gt('iva_monto', 0)
         .gte('fecha', periodoDesde).lte('fecha', periodoHasta)
       if (emisorOr) qG = qG.or(emisorOr)
       const [{ data: dVentas }, { data: dGastos }] = await Promise.all([qV, qG])
       const debito  = (dVentas ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
-      const credito = (dGastos ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
-      return { debito, credito, posicion: debito - credito }
+      const { credito, sinCotizacion } = creditoFiscalCompras(dGastos as any[], monedaLibro)
+      return { debito, credito, posicion: debito - credito, sinCotizacion }
     },
     enabled: !!tenant && tab === 'panel',
   })
@@ -505,14 +519,21 @@ export default function FacturacionPage() {
       }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'IVA Ventas')
     } else {
-      const rows = (ivaCompras as any[]).map(r => ({
+      // Los importes exportados son los del LIBRO (ya convertidos). Las 4 columnas de origen no son
+      // decorativas: el Libro IVA Digital de ARCA exige el tipo de cambio explícito, y sin él el
+      // comprobante cae en "importaciones con avisos" y hay que reincorporarlo a mano.
+      const rows = comprasLibro.map((r: any) => ({
         'Fecha':       r.fecha,
         'Descripción': r.descripcion,
         'Categoría':   r.categoria ?? '',
-        'Monto Total': Number(r.monto),
+        'Monto Total': r.conv.monto,
         'Tipo IVA':    r.tipo_iva ?? '',
-        'IVA':         Number(r.iva_monto ?? 0),
-        'Neto':        Number(r.monto) - Number(r.iva_monto ?? 0),
+        'IVA':         r.conv.iva,
+        'Neto':        r.conv.monto - r.conv.iva,
+        'Moneda origen':  r.conv.convertido ? String(r.moneda).toUpperCase() : monedaLibro,
+        'Monto origen':   Number(r.monto),
+        'Tipo de cambio': r.conv.convertido ? Number(r.cotizacion_fiscal) : '',
+        'Fecha cotización': r.conv.convertido ? (r.cotizacion_fiscal_fecha ?? '') : '',
         'Conciliado':  r.conciliado_iva ? 'Sí' : 'No',
       }))
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'IVA Compras')
@@ -529,8 +550,19 @@ export default function FacturacionPage() {
   const ivaNcPeriodo = ivaNcTotal(ncPeriodo as NcEmitida[])
   const totalIvaVentas  = (ivaVentas as any[]).reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
     + filasNc.reduce((s, f) => s + f.iva, 0)
-  const totalIvaCompras = (ivaCompras as any[]).reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
-  const comprasConciliadas = (ivaCompras as any[]).filter(r => r.conciliado_iva).length
+  // 🛑 REGLA #0 (fiscal) — el Libro IVA Compras va en la moneda del negocio (para AFIP, pesos).
+  // Un gasto en moneda extranjera SÍ genera crédito fiscal computable (art. 12 Ley 23.349) y la DDJJ
+  // va en pesos (art. 96 Ley 11.683): entra al libro CONVERTIDO con la tasa fiscal congelada en el
+  // gasto (mig 414). Antes se los excluía a todos — seguro, pero según este criterio, incorrecto.
+  // El que no tenga tasa cargada sigue afuera: no se le inventa una, se avisa cuánto crédito quedó
+  // sin declarar y en qué moneda. Un crédito que no entra tiene que verse, no desaparecer.
+  // ⚠️ Criterio pendiente de validar con un contador matriculado (src/lib/cotizacionFiscal.ts).
+  const comprasLibro = (ivaCompras as any[])
+    .map(r => ({ ...r, conv: convertirGastoAMonedaLibro(r, monedaLibro) }))
+    .filter(r => r.conv.problema === null)
+  const comprasFueraDelLibro = creditoFiscalCompras(ivaCompras as any[], monedaLibro).sinCotizacion
+  const totalIvaCompras = comprasLibro.reduce((s, r) => s + r.conv.iva, 0)
+  const comprasConciliadas = comprasLibro.filter(r => r.conciliado_iva).length
   // KPIs del panel netos de NC (débito y posición; el crédito no cambia).
   const kpiDebito   = (kpis?.debito ?? 0) - ivaNcPeriodo
   const kpiPosicion = (kpis?.posicion ?? 0) - ivaNcPeriodo
@@ -614,6 +646,20 @@ export default function FacturacionPage() {
               </div>
             ))}
           </div>
+
+          {/* 🛑 El crédito que quedó SIN declarar por falta de cotización fiscal. Va en el panel y no
+              solo en el libro: la posición de arriba se lee como si estuviera completa, y quien la
+              mira tiene que enterarse acá de que hay crédito afuera. */}
+          {(kpis?.sinCotizacion?.length ?? 0) > 0 && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-900/10 p-4">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                <AlertTriangle size={14} className="inline mr-1 -mt-0.5" />
+                Hay crédito fiscal <strong>fuera de esta posición</strong>:{' '}
+                {kpis!.sinCotizacion.map(f => `${f.cantidad} gasto${f.cantidad === 1 ? '' : 's'} en ${f.moneda} con ${formatMonedaLib(f.iva, f.moneda)} de IVA`).join(' · ')}.
+                Les falta la cotización para IVA — cargásela en Gastos y entran al libro.
+              </p>
+            </div>
+          )}
 
           {/* Info fiscal del negocio */}
           {config?.cuit && (
@@ -814,7 +860,14 @@ export default function FacturacionPage() {
             {libroSub === 'compras' && (
               <span className="text-sm text-gray-500 dark:text-gray-400 ml-auto">
                 Deducible: <strong className="text-green-600 dark:text-green-400">{formatMoneda(totalIvaCompras)}</strong>
-                {' · '}{comprasConciliadas}/{(ivaCompras as any[]).length} conciliados
+                {' · '}{comprasConciliadas}/{comprasLibro.length} conciliados
+                {comprasFueraDelLibro.length > 0 && (
+                  <span className="block text-xs text-amber-600 dark:text-amber-400">
+                    ⚠ {comprasFueraDelLibro.map(f => `${f.cantidad} gasto${f.cantidad === 1 ? '' : 's'} con ${formatMonedaLib(f.iva, f.moneda)} de IVA`).join(' · ')}
+                    {' '}sin cotización fiscal cargada: quedan <strong>fuera del libro</strong>. Cargales la
+                    cotización en Gastos para que el crédito se declare.
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -885,17 +938,28 @@ export default function FacturacionPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {(ivaCompras as any[]).length === 0 ? (
+                    {comprasLibro.length === 0 ? (
                       <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin compras deducibles en el período</td></tr>
-                    ) : (ivaCompras as any[]).map((r: any) => {
-                      const neto = Number(r.monto) - Number(r.iva_monto ?? 0)
+                    ) : comprasLibro.map((r: any) => {
+                      // Los montos del libro son SIEMPRE los convertidos. El original se muestra al
+                      // lado, con la tasa: sin eso, una fila de un gasto en dólares es indistinguible
+                      // de una en pesos y nadie puede auditar de dónde salió el número.
+                      const neto = r.conv.monto - r.conv.iva
                       return (
                         <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">{r.fecha}</td>
-                          <td className="px-4 py-2.5 text-gray-800 dark:text-gray-100">{r.descripcion}</td>
+                          <td className="px-4 py-2.5 text-gray-800 dark:text-gray-100">
+                            {r.descripcion}
+                            {r.conv.convertido && (
+                              <span className="block text-xs text-amber-600 dark:text-amber-400">
+                                {formatMonedaLib(Number(r.monto), r.moneda)} × {Number(r.cotizacion_fiscal).toLocaleString('es-AR', { maximumFractionDigits: 4 })}
+                                {r.cotizacion_fiscal_fecha ? ` (${r.cotizacion_fiscal_fuente ?? 'cotización'} ${r.cotizacion_fiscal_fecha})` : ''}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 text-xs">{r.categoria ?? '—'}</td>
                           <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300">{formatMoneda(neto)}</td>
-                          <td className="px-4 py-2.5 text-right font-medium text-green-600 dark:text-green-400">{formatMoneda(Number(r.iva_monto ?? 0))}</td>
+                          <td className="px-4 py-2.5 text-right font-medium text-green-600 dark:text-green-400">{formatMoneda(r.conv.iva)}</td>
                           <td className="px-4 py-2.5 text-center">
                             <button onClick={() => conciliar.mutate({ id: r.id, val: !r.conciliado_iva })}
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center mx-auto transition-colors

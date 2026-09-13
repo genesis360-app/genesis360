@@ -3,7 +3,7 @@ title: Suscripciones y Planes
 category: features
 tags: [suscripcion, planes, mercado-pago, trial, billing]
 sources: []
-updated: 2026-07-05
+updated: 2026-09-12
 ---
 
 # Suscripciones y Planes
@@ -86,8 +86,50 @@ MP_PRICE_ID=               # ID del plan en Mercado Pago
 
 ---
 
+## 🐛 "Tu prueba está por vencer" con el trial vencido hace 25 días (v1.212.0) — 2026-09-12
+
+GO entró a PROD con una cuenta cuyo trial había vencido el 17/08 y la pantalla de planes lo recibió
+con **"¡Tu prueba gratuita está por vencer!"** y *"seguí usando Genesis360 sin interrupciones"*. Las
+dos frases eran falsas: ya había vencido, y la interrupción ya había ocurrido — estaba ahí
+**porque** lo habían sacado de la app.
+
+La condición miraba solo `subscription_status === 'trial'` y **nunca comparaba `trial_ends_at`**, así
+que decía exactamente lo mismo el día 29 del trial que 25 días después de vencido. Al momento del
+fix, **5 de los 6 tenants en trial de PROD** ya lo tenían vencido: el caso mayoritario.
+
+Ahora (`src/lib/estadoTrial.ts`, 15 tests):
+
+| Fase | Título | Bajada |
+|---|---|---|
+| `vencido` | La prueba gratuita de "<negocio>" venció | Terminó el <fecha> (hace N días). Activá un plan para volver a entrar — **tus datos están intactos**. |
+| `por_vencer` (≤7 días) | Tu prueba gratuita vence en N días / **mañana** | Activá tu suscripción para seguir usando Genesis360 sin interrupciones |
+| `vigente` | Elegí tu plan | Todos los planes incluyen 30 días de prueba gratuita |
+
+*"Tus datos están intactos"* es deliberado: es lo que más necesita saber alguien que quedó afuera y
+no entiende por qué. La lógica salió de la pantalla a una lib porque **`AdminPage` ya repetía la
+misma comparación inline**, y porque los textos ERAN el bug — así que se testean.
+
+## ✅ CERRADO: con el trial vencido, el usuario ya no queda atrapado (v1.213.0) — 2026-09-12
+
+Era un hallazgo con arista legal: `/mi-cuenta` estaba **dentro** del `SubscriptionGuard`, así que un
+usuario con la prueba vencida nunca llegaba a "Eliminar cuenta y negocio" — el guard lo sacaba a
+`/suscripcion` antes de que pudiera pagar, avisar un pago o pedir la baja. No podía usar la app **ni
+irse**, lo que choca con el derecho de supresión (AAIP) — ver [[wiki/business/legal-compliance]].
+
+**Fix:** `/mi-cuenta` salió del `SubscriptionGuard` (sigue bajo `AuthGuard` + `AppLayout`); el resto
+de la app sigue cerrado igual que antes. Además:
+- `/suscripcion` ya no ofrece "Volver al dashboard" (que rebotaba al propio usuario a la misma
+  pantalla) — ahora ofrece **Mi cuenta**.
+- Al programar la baja desde `/mi-cuenta`, si la suscripción está vencida **no navega al
+  dashboard** (no hay a dónde volver).
+
+Test estático del árbol de rutas: `tests/unit/rutaMiCuentaSinSuscripcion.test.ts`, con control
+anti-vacío — verificado que falla contra el árbol de rutas viejo (con `/mi-cuenta` adentro del guard)
+antes de aplicar el fix. Ver [[wiki/features/autenticacion-onboarding]] → "Mi Cuenta".
+
 ## Links relacionados
 
 - [[wiki/integrations/mercado-pago]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/features/autenticacion-onboarding]]
+- [[wiki/support/plataforma-soporte]]

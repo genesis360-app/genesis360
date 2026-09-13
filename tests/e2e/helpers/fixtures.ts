@@ -94,6 +94,30 @@ export function restHeaders(token: string) {
  * que YA está abierta. Por eso acá nunca se confía en la primera lectura: si el modal no
  * aparece tras el click, se re-chequea el estado real antes de fallar.
  */
+/**
+ * Elige un producto en una linea del formulario de Orden de Compra.
+ *
+ * El `<select>` nativo se reemplazo por un combobox con busqueda (2026-09-11, pedido de Fede: el
+ * select solo dejaba saltar por la PRIMERA letra). Los specs que elegian con `selectOption` se
+ * rompieron; este helper encapsula el cambio para que el proximo no tenga que redescubrirlo.
+ *
+ * `etiqueta` es el texto tal como lo muestra la lista: "{nombre} ({sku})".
+ */
+export async function elegirProductoOC(page: Page, etiqueta: string, indice = 0): Promise<void> {
+  const input = page.getByPlaceholder(/Buscar por nombre o SKU/i).nth(indice)
+  await expect(input).toBeVisible({ timeout: 10000 })
+  await input.click()
+  // Se busca por el nombre (lo que va antes del parentesis): el combobox filtra por nombre o SKU.
+  const soloNombre = etiqueta.replace(/\s*\(.*\)\s*$/, '')
+  await input.fill(soloNombre)
+  const opcion = page.getByRole('button', { name: etiqueta, exact: false }).first()
+  await expect(
+    opcion,
+    `[precondicion faltante] El combobox de la OC no ofrecio "${etiqueta}" al buscar "${soloNombre}".`,
+  ).toBeVisible({ timeout: 10000 })
+  await opcion.click()
+}
+
 export async function garantizarCajaAbierta(
   page: Page,
   opts: { caja?: string; montoInicial?: number } = {},
@@ -454,12 +478,18 @@ export async function garantizarLiquidacionSinGasto(
     gastos?: { id: string; estado_pago: string; descripcion: string } | null
   }>
 
+  // El mes todavía no tiene NINGUNA liquidación (es lo normal al cambiar de mes: la última era de
+  // julio y el test corrió en septiembre). No hay nada que liberar y tampoco es un problema: el
+  // propio spec arranca con "Generar nómina del mes", que las crea. Antes esto fallaba acá con un
+  // mensaje que además despistaba ("todas sus gastos ya están PAGADOS (0 con gasto)") — el spec se
+  // rompía solo el día 1 de cada mes sin que nadie tocara código.
+  if (filas.length === 0) return
+
   const liberable = filas.find(f => f.gastos?.estado_pago === 'pendiente')
   expect(
     liberable,
-    `[fixtures] No hay ninguna liquidación de ${periodo} liberable: o no hay ninguna, o todas ` +
-      `sus gastos ya están PAGADOS (${filas.length} con gasto). Un gasto pagado NO se borra ` +
-      `(tiene movimiento de caja y borrarlo lo dejaría huérfano — REGLA #0). ` +
+    `[fixtures] Las ${filas.length} liquidaciones de ${periodo} tienen su gasto ya PAGADO. Un gasto ` +
+      `pagado NO se borra (tiene movimiento de caja y borrarlo lo dejaría huérfano — REGLA #0). ` +
       `Sembrar una liquidación nueva a mano o esperar al mes siguiente.`,
   ).toBeTruthy()
 

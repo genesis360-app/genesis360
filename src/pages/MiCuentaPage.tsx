@@ -7,6 +7,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { BRAND, BTN, DATOS_TRANSFERENCIA } from '@/config/brand'
 import { elegibleArrepentimiento } from '@/lib/arrepentimiento'
 import { cancelarBajaProgramada } from '@/lib/tenantHardDelete'
+import { tieneAccesoVigente } from '@/lib/accesoSuscripcion'
 import { formatearVencimiento } from '@/lib/facturacionManual'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -365,7 +366,15 @@ export default function MiCuentaPage() {
       toast.success(`Eliminación programada para el ${fechaFmt}. Podés cancelarla iniciando sesión antes de esa fecha.`, { duration: 8000 })
       setShowDanger(false)
       setConfirmText('')
-      navigate('/dashboard')
+      // Con la suscripción vencida el dashboard rebota a /suscripcion y el dueño nunca vería ni la
+      // confirmación ni el aviso para cancelar la baja. En ese caso se queda acá, donde esta misma
+      // página ya muestra la fecha programada y el botón para dar marcha atrás.
+      if (tieneAccesoVigente({
+        subscriptionStatus: tenant.subscription_status,
+        trialEndsAt: tenant.trial_ends_at,
+        subscriptionPeriodEnd: tenant.subscription_period_end,
+        now: new Date(),
+      })) navigate('/dashboard')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al programar la eliminación')
     } finally {

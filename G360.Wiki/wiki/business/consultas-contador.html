@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Genesis360 - Consultas para el Contador</title>
+<style>
+:root { --tinta:#1a1a1a; --gris:#666; --linea:#d8d8d8; --marca:#7B00FF; --aviso:#b45309; }
+* { box-sizing: border-box; }
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--tinta); line-height: 1.55; margin: 0 auto; max-width: 820px;
+  padding: 32px 28px 64px; font-size: 11pt;
+}
+header { border-bottom: 3px solid var(--marca); padding-bottom: 14px; margin-bottom: 8px; }
+header h1 { margin: 0 0 4px; font-size: 21pt; letter-spacing: -.4px; }
+header .sub { color: var(--gris); font-size: 10pt; margin: 0; }
+h1 { font-size: 18pt; margin: 26px 0 8px; }
+h2 { font-size: 14pt; margin: 30px 0 10px; padding-bottom: 5px; border-bottom: 1px solid var(--linea); }
+h3 { font-size: 11.5pt; margin: 22px 0 8px; }
+h3.pregunta { page-break-after: avoid; break-after: avoid; }
+h4 { font-size: 11pt; margin: 16px 0 6px; }
+p { margin: 7px 0; }
+ul { margin: 7px 0; padding-left: 20px; }
+ul.num { list-style: decimal; }
+li { margin: 3px 0; }
+code { font-family: Consolas, "SF Mono", monospace; font-size: .88em; background: #f2f2f5; padding: 1px 4px; border-radius: 3px; }
+.ref { font-style: italic; color: var(--gris); }
+hr { border: 0; border-top: 1px solid var(--linea); margin: 26px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 10pt; }
+th, td { border: 1px solid var(--linea); padding: 5px 9px; text-align: left; }
+th { background: #f6f4fb; }
+.chip {
+  display: inline-block; background: var(--marca); color: #fff; font-size: 9pt;
+  padding: 1px 8px; border-radius: 10px; margin-right: 6px; vertical-align: 2px;
+}
+.cita { border-left: 3px solid var(--linea); padding: 2px 0 2px 14px; margin: 12px 0; color: #444; }
+.cita.aviso { border-left-color: var(--aviso); background: #fffbeb; padding: 8px 14px; }
+.cita p { margin: 4px 0; }
+
+/* El recuadro donde el contador escribe. Se mantiene junto a su pregunta al paginar. */
+.respuesta {
+  border: 1.5px solid var(--marca); border-radius: 8px; padding: 12px 14px 10px;
+  margin: 14px 0 4px; page-break-inside: avoid; break-inside: avoid;
+}
+.respuesta-label {
+  margin: 0 0 8px; font-size: 8.5pt; font-weight: 700; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--marca);
+}
+.lineas {
+  height: 108px;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 25px, var(--linea) 25px 26px);
+}
+.firma { margin: 12px 0 0; font-size: 9pt; color: var(--gris); }
+
+@media print {
+  body { padding: 0; max-width: none; font-size: 10.5pt; }
+  header { border-bottom-width: 2px; }
+  a { text-decoration: none; color: inherit; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Genesis360 &mdash; Consultas para el Contador</h1>
+  <p class="sub">Documento generado el 13 de septiembre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
+</header>
+<h1>Consultas para el Contador</h1>
+<p><strong>Qué es esto:</strong> el registro <strong>vivo</strong> de todas las preguntas fiscales y contables que Genesis360</p>
+<p>tiene abiertas, para entregárselas a un Contador Público Matriculado el día que lo tengamos y que</p>
+<p>las responda de una vez.</p>
+<p><strong>Cómo se usa:</strong></p>
+<ul class="num">
+<li>Cada vez que aparece una duda fiscal/contable durante el desarrollo, <strong>se agrega acá</strong> con su</li>
+</ul>
+<p>número (<code>C-NN</code>), en vez de quedar enterrada en un comentario del código o en el <code>log.md</code>.</p>
+<ul class="num">
+<li>Cuando haya contador, se genera el PDF/HTML imprimible con <code>npm run contador:doc</code> y se le</li>
+</ul>
+<p>entrega. El documento tiene espacio para que responda cada punto.</p>
+<ul class="num">
+<li>Con las respuestas en la mano, se vuelve acá: se pasa la pregunta a ✅, se escribe la respuesta</li>
+</ul>
+<p>textual, y <strong>se ajusta el código y el wiki</strong> donde el criterio provisorio haya quedado mal.</p>
+<div class="cita aviso">
+<p><strong>Nada de lo que está implementado hoy sobre estos temas está validado por un profesional.</strong></p>
+<p>Donde hubo que decidir para poder seguir, se adoptó un <strong>criterio provisorio</strong> — está marcado en</p>
+<p>cada pregunta y también en el código (<code>src/lib/cotizacionFiscal.ts</code>, mig 414). Si el contador dice</p>
+<p>otra cosa, cambia el código.</p>
+</div>
+<hr>
+<h2>Estado</h2>
+<table><thead><tr><th>Estado</th><th>Cantidad</th></tr></thead><tbody>
+<tr><td>🟥 Abiertas</td><td>15</td></tr>
+<tr><td>✅ Respondidas por un matriculado</td><td>0</td></tr>
+</tbody></table>
+<p>⚠️ <strong>Ninguna respondida todavía.</strong> La C-01 y sus derivadas tienen una respuesta **de una IA que se</p>
+<p>presentó como contador** (consulta de GO, 2026-09-13); GO la adoptó como criterio de trabajo, pero</p>
+<p><strong>no cuenta como validada</strong> y hay que repreguntarla igual.</p>
+<hr>
+<h2>Bloque 1 — Gastos en moneda extranjera y el Libro IVA</h2>
+<p>Este bloque es el más grande y el que ya está implementado sobre un criterio sin validar. Es la</p>
+<p>prioridad si el contador solo tiene tiempo para un bloque.</p>
+<h3 class="pregunta"><span class="chip">C-01</span> ¿Un gasto en moneda extranjera genera crédito fiscal computable, y a qué tipo de cambio?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (hay respuesta de una IA, no de un matriculado)</li>
+<li><strong>Área:</strong> IVA — crédito fiscal</li>
+<li><strong>Impacta en:</strong> <code>src/lib/cotizacionFiscal.ts</code>, mig 414, Libro IVA Compras, posición de IVA</li>
+<li><strong>Criterio provisorio implementado:</strong> sí genera crédito fiscal computable (art. 12 Ley 23.349) si</li>
+</ul>
+<p>está vinculado a la actividad gravada y tiene comprobante válido con IVA discriminado; la DDJJ va</p>
+<p>en pesos (art. 96 Ley 11.683); se convierte al <strong>BNA vendedor del día hábil anterior</strong> a la fecha</p>
+<p>del comprobante.</p>
+<p><strong>Pregunta:</strong> ¿es correcto? ¿Es el tipo vendedor o el comprador? ¿Es el día hábil anterior al</p>
+<p>comprobante, o el del comprobante mismo?</p>
+<p><strong>Por qué importa:</strong> de esto depende el número de crédito fiscal que el sistema declara. Si la tasa</p>
+<p>está mal, la posición de IVA de todos los períodos con gastos en moneda extranjera está mal.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-02</span> Importación de servicios (reverse charge): ¿la fecha es la del pago?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA — importación de servicios</li>
+<li><strong>Impacta en:</strong> hoy <strong>no está implementado</strong> — el sistema no distingue una importación de</li>
+</ul>
+<p>servicios de un gasto común en moneda extranjera.</p>
+<ul>
+<li><strong>Criterio provisorio:</strong> en importación de servicios (art. 1° inc. d) la cotización sería la del</li>
+</ul>
+<p>día hábil anterior al <strong>pago</strong>, no al comprobante, y el crédito se computa en el período en que se</p>
+<p>verifica el pago (F.2002/F.2003).</p>
+<p><strong>Pregunta:</strong> ¿se confirma? Y sobre todo: <strong>¿hace falta que el sistema lo distinga?</strong> Es decir,</p>
+<p>¿tiene sentido un checkbox "es importación de servicios" en el gasto que cambie qué fecha se usa?</p>
+<p><strong>Por qué importa:</strong> hoy un gasto de un servicio del exterior (hosting, software, publicidad) se</p>
+<p>trata igual que cualquier otro. Si el tratamiento es distinto, lo estamos haciendo mal en silencio.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-03</span> ¿Qué cotización se usa cuando el día hábil anterior fue feriado?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA — tipo de cambio</li>
+<li><strong>Impacta en:</strong> <code>diaHabilAnterior()</code> en <code>src/lib/cotizacionFiscal.ts</code></li>
+<li><strong>Criterio provisorio:</strong> la función retrocede un día y salta sábados y domingos, pero **no</li>
+</ul>
+<p>contempla feriados** (el sistema no tiene calendario de feriados cargado). Por eso la fecha que</p>
+<p>propone es <strong>editable</strong> y se guarda junto con la tasa, para poder auditar cuál se usó.</p>
+<p><strong>Pregunta:</strong> cuando el día hábil anterior cae feriado y el BNA no publicó cotización, ¿qué se usa?</p>
+<p>¿El último día con publicación? ¿Y vale la pena que carguemos el calendario de feriados para</p>
+<p>automatizarlo, o alcanza con que lo corrija a mano quien carga el gasto?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-04</span> La nota de corrección de un gasto en moneda extranjera, ¿lleva la tasa del original o la suya?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA — notas de crédito / correcciones</li>
+<li><strong>Impacta en:</strong> <code>abrirCorreccion()</code> en <code>src/pages/GastosPage.tsx</code></li>
+<li><strong>Criterio provisorio:</strong> la nota <strong>arrastra la cotización del gasto que corrige</strong>.</li>
+</ul>
+<p><strong>Pregunta:</strong> ¿es correcto, o la nota de crédito del proveedor —siendo un comprobante propio con su</p>
+<p>propia fecha— debe convertirse al BNA vendedor del día hábil anterior a <strong>su</strong> fecha?</p>
+<p><strong>Por qué importa:</strong> es una disyuntiva real, no una preferencia. Si la nota usara la tasa de su</p>
+<p>propia fecha, <strong>revertir un gasto no daría cero</strong>: quedaría un resto de IVA crédito por la diferencia</p>
+<p>de cambio entre las dos fechas. Elegimos arrastrar la tasa del original justamente para que la</p>
+<p>reversión cierre en cero, pero puede ser que fiscalmente corresponda lo otro y esa diferencia tenga</p>
+<p>que existir (y en ese caso, ¿dónde se imputa?).</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-05</span> Gastos fijos recurrentes en moneda extranjera: ¿una cotización por devengamiento?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA — gastos recurrentes</li>
+<li><strong>Impacta en:</strong> tabla <code>gastos_fijos</code> (hoy <strong>no</strong> tiene columnas de cotización fiscal)</li>
+<li><strong>Criterio provisorio:</strong> ninguno. Hoy un gasto fijo en otra moneda se materializa **sin</li>
+</ul>
+<p>cotización** y queda fuera del Libro IVA, con aviso.</p>
+<p><strong>Pregunta:</strong> un servicio recurrente en dólares (ej. un software que se paga todos los meses),</p>
+<p>¿lleva una cotización distinta cada mes según la fecha de cada comprobante? ¿O se puede fijar una?</p>
+<p><strong>Por qué importa:</strong> define si hay que agregar las columnas a <code>gastos_fijos</code> y pedir la cotización</p>
+<p>en cada devengamiento, o si alcanza con lo que hay.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-06</span> Gastos históricos sin cotización: ¿se pueden incorporar retroactivamente?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA — períodos anteriores</li>
+<li><strong>Impacta en:</strong> mig 414 se aplicó <strong>sin backfill</strong> a propósito</li>
+<li><strong>Criterio provisorio:</strong> no se les inventó una tasa retroactiva. Los gastos en moneda extranjera</li>
+</ul>
+<p>anteriores a la mig 414 quedan sin cotización y <strong>fuera</strong> del Libro IVA, con aviso explícito de</p>
+<p>cuánto crédito quedó sin declarar.</p>
+<p><strong>Pregunta:</strong> si un negocio tiene gastos viejos en dólares que nunca se declararon por esto, ¿se</p>
+<p>pueden incorporar ahora? ¿Con qué tipo de cambio — el que correspondía a la fecha del comprobante?</p>
+<p>¿Se rectifica la DDJJ del período o entra en el período actual?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h2>Bloque 2 — Ventas cobradas en dólares</h2>
+<h3 class="pregunta"><span class="chip">C-07</span> ¿Qué cotización se declara en un comprobante AFIP cuando la venta se cobró en USD?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta desde 2026-08 (es el punto <strong>C2</strong> del relevamiento de USD/Caja — la única</li>
+</ul>
+<p>fase de ese proyecto que quedó sin cerrar, justamente esperando un contador)</p>
+<ul>
+<li><strong>Área:</strong> IVA / facturación</li>
+<li><strong>Impacta en:</strong> Edge Function <code>emitir-factura</code>, <code>ventas.cotizacion_usd</code></li>
+<li><strong>Criterio provisorio:</strong> la factura <strong>siempre se emite en pesos</strong> (no se usa <code>MonId='DOL'</code> de</li>
+</ul>
+<p>WSFE) y se guarda la cotización usada por venta. Pero **no está definido de qué fuente exacta debe</p>
+<p>salir esa cotización** a efectos fiscales.</p>
+<p><strong>Pregunta:</strong> cuando se cobra una venta en dólares y se factura en pesos, ¿qué cotización hay que</p>
+<p>usar para el comprobante? ¿Banco Nación? ¿Comprador o vendedor? ¿De qué día — el de la operación o</p>
+<p>el hábil anterior?</p>
+<p><strong>Por qué importa:</strong> hoy el sistema usa la cotización <strong>comercial</strong> que el dueño carga a mano (que</p>
+<p>puede ser blue, MEP, oficial — la elige él). Para la operación interna está bien, pero si lo que va</p>
+<p>al comprobante tiene que ser una fuente oficial específica, son dos números distintos y hay que</p>
+<p>separarlos, igual que hicimos con los gastos.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-08</span> Valuar en dólar comprador lo que el negocio tiene, ¿es correcto?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Valuación / balance</li>
+<li><strong>Impacta en:</strong> convención de todo el sistema (<code>reference_usd_ars_usa_dolar_compra</code>)</li>
+<li><strong>Criterio provisorio:</strong> para convertir USD→ARS en reportes internos (cuánto vale la caja en</li>
+</ul>
+<p>dólares, cuánto valen las tenencias) el sistema usa el <strong>dólar comprador</strong>, con el razonamiento de</p>
+<p>que es lo que el negocio obtendría si vendiera esos dólares.</p>
+<p><strong>Pregunta:</strong> ¿es el criterio correcto para valuar tenencias en moneda extranjera? ¿Cambia si es</p>
+<p>para un balance formal en vez de para gestión interna?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h2>Bloque 3 — Ganancias y patrimonio</h2>
+<h3 class="pregunta"><span class="chip">C-09</span> Gasto "del negocio" vs "personal": ¿qué criterio le damos al usuario?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Impuesto a las Ganancias</li>
+<li><strong>Impacta en:</strong> <code>gastos.deduce_ganancias</code> + <code>gastos.gasto_negocio</code> (el usuario marca cuál es)</li>
+<li><strong>Criterio provisorio:</strong> el sistema le pregunta al usuario si el gasto pertenece al negocio o es</li>
+</ul>
+<p>personal, y le avisa que si pertenece al negocio y tiene la factura correspondiente "podría</p>
+<p>deducirse de Ganancias". No valida nada: es declarativo.</p>
+<p><strong>Pregunta:</strong> ¿ese texto es correcto y suficiente? ¿Hay categorías de gasto que conviene marcar</p>
+<p>explícitamente como <strong>no deducibles</strong> para que el sistema no las ofrezca (ej. algún tipo de</p>
+<p>comprobante, o gastos de un monotributista)?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-10</span> Capitalización de recursos sin amortización: ¿falta algo?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Ganancias / activo fijo</li>
+<li><strong>Impacta en:</strong> <code>gastos.capitaliza_recurso</code>, módulo Recursos</li>
+<li><strong>Criterio provisorio:</strong> un gasto vinculado a un recurso se puede marcar como "capitaliza" y</li>
+</ul>
+<p><strong>suma al valor patrimonial</strong> del recurso. El sistema <strong>no calcula amortización</strong> de ningún tipo.</p>
+<p><strong>Pregunta:</strong> para el tipo de negocio al que apuntamos (comercio/depósito pyme), ¿la amortización de</p>
+<p>bienes de uso es algo que el sistema debería calcular, o es trabajo del estudio contable y con</p>
+<p>registrar el valor y las mejoras alcanza?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h2>Bloque 4 — Monotributo</h2>
+<h3 class="pregunta"><span class="chip">C-11</span> 🐛 El indicador de tope de categoría mide el año calendario, ¿no deberían ser 12 meses móviles?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta — <strong>y probablemente sea un error nuestro</strong></li>
+<li><strong>Área:</strong> Monotributo — recategorización</li>
+<li><strong>Impacta en:</strong> <code>src/components/DashFacturacionArea.tsx</code> (tarjeta "Proyección vs Tope Cat." y las</li>
+</ul>
+<p>alertas de 75% / 90%)</p>
+<ul>
+<li><strong>Criterio provisorio:</strong> el sistema suma las ventas <strong>desde el 1° de enero</strong> del año en curso y lo</li>
+</ul>
+<p>compara contra el límite de la categoría.</p>
+<p><strong>Pregunta:</strong> ¿no debería medirse sobre los <strong>últimos 12 meses móviles</strong>, que es lo que mira AFIP en</p>
+<p>cada recategorización cuatrimestral?</p>
+<p><strong>Por qué importa:</strong> si es así, el indicador <strong>subestima sistemáticamente</strong> a principio de año. En</p>
+<p>febrero muestra casi cero aunque el negocio venga facturando al 95% del tope desde hace meses. Está</p>
+<p>rotulado como estimación en todos lados y no emite nada ni mueve plata — pero es un número sobre el</p>
+<p>que alguien podría decidir no recategorizarse.</p>
+<p><strong>Preguntar también:</strong> ¿la base son las ventas facturadas (devengado) o lo efectivamente cobrado</p>
+<p>(percibido)? Hoy el sistema suma el total de las ventas despachadas/facturadas.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h2>Bloque 5 — Liquidación y comprobantes</h2>
+<h3 class="pregunta"><span class="chip">C-12</span> Retenciones y percepciones sufridas: ¿deberían descontarse solas de la posición?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA — liquidación</li>
+<li><strong>Impacta en:</strong> tabla <code>retenciones_sufridas</code>, tab Liquidación de Facturación</li>
+<li><strong>Criterio provisorio:</strong> el sistema <strong>las registra y las lista</strong>, pero <strong>no las resta</strong> de la</li>
+</ul>
+<p>posición de IVA que muestra. La posición que exhibe es débito − crédito, a secas.</p>
+<p><strong>Pregunta:</strong> ¿la posición que se le muestra al usuario debería estar neta de retenciones y</p>
+<p>percepciones sufridas? ¿O es correcto mostrarlas separadas, porque el saldo de libre disponibilidad</p>
+<p>es otra cosa?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-13</span> Percepciones aplicadas: ¿las necesita un comercio típico?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA / IIBB</li>
+<li><strong>Impacta en:</strong> hoy <strong>no existen</strong> en el sistema (solo se registran las <em>sufridas</em>)</li>
+<li><strong>Criterio provisorio:</strong> ninguno — no está implementado.</li>
+</ul>
+<p><strong>Pregunta:</strong> un comercio pyme que vende a otros comercios, ¿necesita aplicar percepciones de IVA o</p>
+<p>de IIBB en sus propias facturas? ¿O eso solo aplica a agentes de percepción designados, y la mayoría</p>
+<p>de nuestros usuarios no lo son?</p>
+<p><strong>Por qué importa:</strong> define si esto es un agujero funcional o algo que correctamente no hacemos.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-14</span> Cierre contable mensual: ¿el criterio de bloqueo es el correcto?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Registros contables</li>
+<li><strong>Impacta en:</strong> RPC <code>cerrar_periodo</code>, triggers de período cerrado en <code>gastos</code>/<code>ventas</code>/<code>caja_*</code></li>
+<li><strong>Criterio provisorio:</strong> al cerrar un mes, **todo registro con fecha igual o anterior al último día</li>
+</ul>
+<p>de ese mes queda bloqueado** contra UPDATE y DELETE. Para corregir algo hay que emitir una nota de</p>
+<p>corrección con fecha nueva.</p>
+<p><strong>Pregunta:</strong> ¿es el criterio correcto? ¿Hay algo que legítimamente debería poder editarse después</p>
+<p>de cerrado el período (por ejemplo, datos no contables como una nota o una categoría)?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-15</span> El disclaimer de la app, ¿dice lo que tiene que decir?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Responsabilidad profesional</li>
+<li><strong>Impacta en:</strong> <code>DISCLAIMER</code> en <code>src/pages/FacturacionPage.tsx</code> y los avisos de</li>
+</ul>
+<p><code>DashFacturacionArea.tsx</code></p>
+<ul>
+<li><strong>Criterio provisorio actual:</strong></li>
+<div class="cita">
+<p>"Los valores de IVA mostrados son de carácter estimado, basados en los datos ingresados por el</p>
+<p>usuario. Genesis360 no reemplaza la labor de un profesional contable matriculado ni constituye</p>
+<p>representación contable legal ante ARCA/AFIP."</p>
+</ul>
+</div>
+<p><strong>Pregunta:</strong> desde el punto de vista de un matriculado, ¿ese texto alcanza? ¿Hay algo que la app</p>
+<p>muestre hoy y que <strong>no debería mostrar</strong> sin la firma de un profesional?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h2>Cómo agregar una pregunta nueva</h2>
+<ul class="num">
+<li>Sumarla al bloque que corresponda con el siguiente número <code>C-NN</code> (nunca reutilizar uno viejo).</li>
+<li>Completar siempre <strong>Estado · Área · Impacta en · Criterio provisorio</strong>, y las dos preguntas de</li>
+</ul>
+<p>fondo: <em>qué</em> se pregunta y <em>por qué importa</em> (qué se rompe si el criterio provisorio está mal).</p>
+<ul class="num">
+<li>Actualizar el contador de la tabla <strong>Estado</strong> de arriba.</li>
+<li>Si además se implementó algo sobre un criterio provisorio, dejar la marca en el código</li>
+</ul>
+<p>(<code>⚠️ CRITERIO CONTABLE PENDIENTE DE VALIDAR</code>) apuntando acá.</p>
+<h2>Cuando lleguen las respuestas</h2>
+<ul class="num">
+<li>Pegar la respuesta textual en la pregunta y pasarla a ✅ con la fecha y el nombre del profesional.</li>
+<li><strong>Revisar el código y el wiki</strong> donde el criterio provisorio haya quedado desmentido — no alcanza</li>
+</ul>
+<p>con anotar la respuesta acá. Los lugares marcados son los de "Impacta en".</p>
+<ul class="num">
+<li>Registrar el cambio en <code>log.md</code> y, si movió números fiscales, agregar el escenario al UAT</li>
+</ul>
+<p>(<code>tests/specs/uat-modo-basico.md</code>).</p>
+<hr>
+<p>Ver también: <span class="ref">gastos</span>, <span class="ref">facturacion-afip</span>,</p>
+<p><span class="ref">reglas-negocio</span>, <span class="ref">cierre-contable</span>.</p>
+</body>
+</html>

@@ -157,6 +157,15 @@ function App() {
 
             {/* Rutas protegidas */}
             <Route element={<AuthGuard />}>
+              {/* 🔴 "Mi cuenta" va FUERA del SubscriptionGuard a propósito. Con la prueba vencida
+                  el guard mandaba a /suscripcion antes de que el dueño pudiera abrirla, y ahí
+                  adentro viven las tres únicas salidas que le quedan: pagar, avisar un pago ya
+                  hecho y eliminar la cuenta. Dejarla adentro lo dejaba atrapado —no podía usar la
+                  app ni irse—, lo que además choca con el derecho de supresión (AAIP). El resto de
+                  la app sigue cerrado: cualquier otra ruta rebota a /suscripcion. */}
+              <Route element={<AppLayout />}>
+                <Route path="/mi-cuenta" element={<MiCuentaPage />} />
+              </Route>
               <Route element={<SubscriptionGuard />}>
                 <Route element={<AppLayout />}>
                   <Route path="/app" element={<Navigate to="/dashboard" replace />} />
@@ -177,7 +186,6 @@ function App() {
                   <Route path="/reportes" element={<ReportesPage />} />
                   <Route path="/usuarios" element={<UsuariosPage />} />
                   <Route path="/rrhh" element={<RrhhPage />} />
-                  <Route path="/mi-cuenta" element={<MiCuentaPage />} />
                   <Route path="/mi-portal" element={<MiPortalPage />} />
                   <Route path="/ayuda" element={<AyudaPage />} />
                   <Route path="/sucursales" element={<SucursalesPage />} />

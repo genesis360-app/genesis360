@@ -3,7 +3,7 @@ title: Módulo RRHH
 category: features
 tags: [rrhh, empleados, nomina, vacaciones, asistencia, capacitaciones, aportes, sac, fichado, recibo-sueldo]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_rrhh_respuestas.md, migration 386, src/pages/RrhhPage.tsx]
-updated: 2026-08-31
+updated: 2026-09-12
 ---
 
 # Módulo RRHH
@@ -291,8 +291,34 @@ get_supervisor_team_ids() SECURITY DEFINER STABLE
 
 ---
 
+## 🏢 El empleado pertenece a una sucursal (mig 409, v1.213.0) — 2026-09-12
+
+Los 4 gastos que genera RRHH (sueldo, cargas sociales, adelanto/préstamo, liquidación final) nacían
+**sin `sucursal_id`**, así que eran invisibles en el módulo Gastos apenas había una sucursal activa
+— el mismo síntoma que ya se había arreglado en Servicios/Proveedores. Pero `empleados` no tenía
+`sucursal_id`: imputar el sueldo a la sucursal de quien lo liquida hubiera sido inventar un criterio
+contable, así que quedó como pendiente de decisión de GO.
+
+**GO eligió la opción (a): el empleado pertenece a una sucursal.**
+
+- **`empleados.sucursal_id`** (mig 409) — nullable, `FK ON DELETE SET NULL`, índice por tenant.
+  Backfill automático **solo en los tenants con UNA sucursal activa** (los multi-sucursal quedan sin
+  asignar hasta que alguien lo confirme a mano).
+- **Selector de sucursal en la ficha del empleado.**
+- Los 4 `INSERT` de gastos de RRHH ahora imputan a la **sucursal del empleado**.
+- **Cargas sociales**: se agrupan por concepto **Y sucursal** (antes solo por concepto) —
+  `agruparCargasSociales` en `src/lib/rrhhNomina.ts` (5 tests).
+- Los gastos de RRHH **ya generados no se tocan** (no se reescribe histórico, REGLA #0).
+
+⚠ **Revisada por `migration-reviewer`.** Al aplicarla saltó que Postgres **no tiene `min(uuid)`** —
+el backfill se resolvió con `(array_agg(id))[1]` para elegir una sucursal determinística por tenant.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/caja]]
+- [[wiki/features/gastos]]
+- [[wiki/features/multi-sucursal]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/database/schema-overview]]

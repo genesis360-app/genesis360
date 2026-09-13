@@ -105,3 +105,45 @@ export const APORTES_AR_BASE = [
   { nombre: 'Obra Social', pct: 3,  es_aporte: true },
   { nombre: 'Ley 19.032',  pct: 3,  es_aporte: true },
 ] as const
+
+// ── mig 409 — cargas sociales imputadas a la sucursal del empleado ───────────────────────────
+export interface AporteItem {
+  salario_id: string
+  descripcion: string
+  monto: number | string | null | undefined
+  concepto_id?: string | null
+}
+
+export interface CargaSocialAgrupada {
+  concepto: string
+  sucursalId: string | null
+  monto: number
+}
+
+/**
+ * Acumula los aportes de un período en un gasto por CONCEPTO y por SUCURSAL.
+ *
+ * Antes se acumulaban solo por concepto, en una bolsa única del negocio. Con los empleados
+ * repartidos en sucursales eso mete las cargas de todas las sucursales en un gasto que después no
+ * se puede imputar a ninguna — y el módulo Gastos, que filtra por la sucursal activa, no lo
+ * muestra en ninguna.
+ *
+ * Los empleados sin sucursal caen juntos en `sucursalId: null` (gasto global), que es el
+ * comportamiento de siempre: no se los reparte ni se los asigna a una sucursal arbitraria.
+ */
+export function agruparCargasSociales(
+  items: AporteItem[] | null | undefined,
+  sucursalDeSalario: Map<string, string | null>,
+  esAporte: (conceptoId: string | null | undefined) => boolean,
+): CargaSocialAgrupada[] {
+  const acc = new Map<string, CargaSocialAgrupada>()
+  for (const it of items ?? []) {
+    if (!esAporte(it.concepto_id)) continue
+    const sucursalId = sucursalDeSalario.get(it.salario_id) ?? null
+    const key = `${it.descripcion}|${sucursalId ?? ''}`
+    const fila = acc.get(key) ?? { concepto: it.descripcion, sucursalId, monto: 0 }
+    fila.monto += Number(it.monto) || 0
+    acc.set(key, fila)
+  }
+  return [...acc.values()]
+}

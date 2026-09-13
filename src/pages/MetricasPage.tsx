@@ -133,10 +133,15 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     queryKey: ['metricas-gastos', tenant?.id, periodo, fechaDesdeCustom, fechaHastaCustom],
     queryFn: async () => {
       const fechaDesdeStr = getFechaDesde().split('T')[0]
-      let q = supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', fechaDesdeStr)
+      // `moneda`: el KPI está en la moneda del negocio. Un gasto en otra moneda no se suma acá
+      // (no hay cotización guardada por gasto); se lo ve en el módulo Gastos, en la suya.
+      let q = supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).gte('fecha', fechaDesdeStr)
       if (periodo === 'custom') q = q.lte('fecha', fechaHastaCustom)
       const { data } = await q
-      return (data ?? []).reduce((a, g: any) => a + Number(g.monto), 0)
+      const monedaNeg = String((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+      return (data ?? [])
+        .filter((g: any) => String(g.moneda ?? monedaNeg).toUpperCase() === monedaNeg)
+        .reduce((a, g: any) => a + Number(g.monto), 0)
     },
     enabled: !!tenant,
   })

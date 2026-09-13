@@ -57,6 +57,16 @@ export interface SplitMoneda {
   usd: number
   cantArs: number
   cantUsd: number
+  /**
+   * Monedas que no son ni pesos ni dólares, por código (EUR, BRL, …).
+   *
+   * Desde que el formulario de Gastos ofrece todas las monedas de la app (2026-09-11) esto dejó de
+   * ser teórico. NO se suman a ningún total: el tenant guarda una sola cotización
+   * (`cotizacion_usd`), así que no hay con qué convertirlas, y meterlas en el bucket de pesos sería
+   * repetir exactamente el bug que esta lib vino a cerrar — sumar un importe extranjero como si
+   * fuera local. Se informan aparte y la UI las muestra en su moneda.
+   */
+  otras: Record<string, { monto: number; cant: number }>
 }
 
 /**
@@ -70,16 +80,28 @@ export function sumarPorMonedaNativa<T>(
   getMonto: (r: T) => unknown,
   getMoneda: (r: T) => unknown,
 ): SplitMoneda {
-  const out: SplitMoneda = { ars: 0, usd: 0, cantArs: 0, cantUsd: 0 }
+  const out: SplitMoneda = { ars: 0, usd: 0, cantArs: 0, cantUsd: 0, otras: {} }
   for (const r of rows ?? []) {
     const monto = num(getMonto(r))
-    if (String(getMoneda(r) ?? 'ARS').toUpperCase() === 'USD') {
+    const m = String(getMoneda(r) ?? 'ARS').toUpperCase()
+    if (m === 'USD') {
       out.usd += monto; out.cantUsd++
-    } else {
+    } else if (m === 'ARS' || m === '') {
       out.ars += monto; out.cantArs++
+    } else {
+      // Tercera moneda: ni se suma a pesos ni se convierte. Ver el comentario de `otras`.
+      const acum = out.otras[m] ?? { monto: 0, cant: 0 }
+      out.otras[m] = { monto: acum.monto + monto, cant: acum.cant + 1 }
     }
   }
   return out
+}
+
+/** Las monedas de `otras` que quedaron fuera de todo total, para poder informarlas en pantalla. */
+export function monedasSinConsolidar(s: SplitMoneda): { moneda: string; monto: number; cant: number }[] {
+  return Object.entries(s.otras ?? {})
+    .map(([moneda, v]) => ({ moneda, monto: v.monto, cant: v.cant }))
+    .sort((a, b) => b.monto - a.monto)
 }
 
 /**

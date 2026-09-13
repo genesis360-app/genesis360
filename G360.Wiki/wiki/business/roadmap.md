@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-06
+updated: 2026-09-12
 ---
 
 # Roadmap y Versiones
@@ -37,8 +37,85 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.208.0` (tag+release sobre `dev`, **sin deploy a PROD** — PROD sigue en
-`v1.195.4`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
+**Versión en DEV:** `v1.218.0` (sin migración nueva —usa la 414—, SIN deployar a PROD) — 🧾 **El
+gasto en moneda extranjera entra al Libro IVA**, cerrando los dos pasos que faltaban: el campo
+"Cotización para IVA" en Gastos (propone el día hábil anterior, editable, y la limpia si el gasto
+vuelve a la moneda del negocio) y el Libro IVA Compras que ahora **los incluye convertidos** en vez
+de excluirlos, con el importe original y la tasa en la fila y el **tipo de cambio explícito en el
+Excel** (ARCA lo exige). 🛑 **Bug REGLA #0 arreglado de paso:** el KPI "IVA Crédito (Compras)" del
+Panel y la posición de los últimos 12 meses sumaban `iva_monto` crudo — un IVA de **US$210 entraba a
+la posición como $210**. Solo la tabla del Libro filtraba por moneda. Estaba **latente** (no había
+ningún gasto en otra moneda ni en DEV ni en PROD) y ningún importe existente se mueve. ⚠️ El criterio
+contable sigue pendiente de un contador matriculado. UAT §53. Ver `log.md` (2026-09-13).
+
+**Versión en DEV:** `v1.217.0` (mig **414**, SIN deployar a PROD) — 🧾 Cimientos para llevar un gasto
+en moneda extranjera al **Libro IVA**. Llegó el criterio del contador (⚠️ **es una IA, pendiente de
+validar con un matriculado**) y **corrige lo que habíamos asumido**: esos gastos **sí** generan
+crédito fiscal computable y hay que **convertirlos a pesos al BNA VENDEDOR del día hábil anterior**
+al comprobante (o al pago, en importación de servicios) — no dejarlos afuera. 🛑 Esa cotización **no
+es** la operativa del sistema (que va al dólar COMPRA), así que se congela por gasto (mig 414) en vez
+de derivarla del tenant. Entran la migración y `src/lib/cotizacionFiscal.ts` (15 tests); el campo en
+Gastos y la inclusión en Facturación llegaron en **v1.218.0** (ver arriba). Ver `log.md` (2026-09-13).
+
+**Versión en DEV:** `v1.216.0` (sin migración nueva, SIN deployar a PROD) — 🛑 **Purgar un negocio
+dejaba todos sus archivos en Storage.** Apareció verificando una baja real desde el panel: el CASCADE
+es de Postgres y Storage es otro sistema, así que quedaban huérfanos el **certificado de AFIP** del
+negocio, los comprobantes que el cliente subió, fotos, remitos, logo y documentación de empleados —
+costo que nunca baja, y un borrado incompleto frente al derecho de supresión. Cerrado en `purge_now`
+(4 esquemas de prefijo distintos, ids juntados antes del DELETE, fail-soft). Probado: 8 archivos →
+0. Ver [[wiki/support/plataforma-soporte]].
+
+**Versión en DEV:** `v1.215.0` (mig **413**, SIN deployar a PROD) — 🛑🧪 Validación de la jornada
+contra la app real. **La suite destapó un bug de verdad**: `trg_ubic_autogenerar_codigo` entraba en
+**loop infinito** en la ubicación raíz nº 100 (`lpad(x, 2, '0')` TRUNCA: en `v_seq=100` devolvía
+`U10`, que ya existe, y no salía nunca). Un negocio con 99 ubicaciones raíz no podía crear la 100 y
+no recibía error — el INSERT giraba hasta el `statement_timeout`. Latente en PROD (máximo 4 raíces
+hoy), pero 100 racks es normal en un depósito real. Cuatro specs venían fallando por esto archivados
+como "lentitud de DEV". Además: 2 specs del harness arreglados (`20_caja`, con el diagnóstico viejo
+del wiki desmentido por la captura, y `37_rrhh`, que se rompía solo al cambiar de mes), **paridad
+DEV↔PROD verificada sin drift**, y el panel de soporte verificado RENDERIZADO — lo que destapó otros
+dos bugs invisibles al typecheck: clave duplicada de React en el sidebar y, más serio, **"Extender
+prueba" podía ACORTAR el acceso** de un negocio cancelado con período pagado por delante. Y al verificar una baja real desde el panel apareció que **purgar un negocio dejaba TODOS sus archivos en Storage** —incluido su certificado de AFIP—: el CASCADE es de Postgres y Storage es otro sistema. Cerrado y probado (8 archivos → 0). Ver
+`log.md` (2026-09-12), [[wiki/development/testing]], [[wiki/support/plataforma-soporte]].
+
+**Versión en DEV:** `v1.214.0` (mig **412**, SIN deployar a PROD) — 📊🔐📞 Cierre del backlog de
+herramientas del panel de soporte: **Analytics** con datos reales (altas por mes con la porción que
+terminó pagando, embudo y leads por origen; el **CAC no se muestra** porque necesita la inversión
+publicitaria, que no está cargada — un CAC inventado es peor que no tenerlo), **2FA opt-in (TOTP)**
+para los agentes (opt-in a propósito: forzarlo dejaría afuera a quien no lo configuró, incluido quien
+administra el panel), y 🐛 **`tenants.telefono` se guarda de verdad** (mig 412) — el alta lo pedía y
+`provisionNegocio()` lo descartaba, así que soporte no tenía un solo teléfono para llamar a nadie.
+Queda **login-as read-only** (sigue 501): necesita modo read-only + token efímero en la app
+principal, no es un pendiente del panel. Ver `log.md` (2026-09-12) y
+[[wiki/support/plataforma-soporte]].
+
+**Versión en DEV:** `v1.213.0` (migs **409-411**, SIN deployar a PROD) — 🗑️🔴💵👥🛟 Jornada grande de
+la misma sesión que cerró el trial atrapado (ver entrada de abajo): **1)** `/mi-cuenta` salió del
+`SubscriptionGuard` — el dueño con la prueba vencida ya no queda sin poder pagar ni pedir la baja.
+**2)** **Baja de tenant desde el panel de soporte, COMPLETA y probada 12/12 en DEV**, con 3 agujeros
+de REGLA #0 cerrados antes de deployar: purgar cancela el preapproval de Mercado Pago ANTES de borrar
+(si no, se le seguía cobrando a un negocio ya borrado), la cancelación dejó de saltear al tenant que
+nunca se linkeó a MP, y las cuentas de `auth` a borrar las resuelve la propia Edge Function (no un
+payload que llega desde el panel). **3)** **El gasto multimoneda queda cerrado de punta a punta**:
+9 `INSERT` que no seteaban `moneda` (RRHH, Envíos, Proveedores, Recursos, Recepciones — el peor, usa
+los precios de la OC) + 10 totales que sumaban monedas distintas en un solo número, incluidos el
+cierre contable y el Libro IVA Compras + selector de moneda en Gastos fijos. **4)** **RRHH: el
+empleado pertenece a una sucursal** (decisión de GO, mig 409) — cierra el pendiente de los 4 gastos de
+RRHH invisibles. **5)** **Tanda grande en el panel de soporte** (migs 410-411): búsqueda por
+negocio/mail del dueño/mail de cualquier usuario/id de tenant, ficha con cuentas de acceso + límites
+de plan + estado fiscal + NC AFIP pendientes + notas internas, pantalla de Auditoría (`admin_audit_log`,
+escrito desde la mig 221 y sin pantalla hasta ahora), dashboard "Requiere atención", búsqueda global
+Ctrl/⌘+K y export CSV — 18/18 e2e, incluidos tests de fuga. Ver `log.md` (2026-09-12),
+[[wiki/features/suscripciones-planes]], [[wiki/support/plataforma-soporte]],
+[[wiki/features/gastos]], [[wiki/features/rrhh]].
+
+**Versión en DEV:** `v1.212.0` — 🐛 la pantalla de planes decía **"tu prueba está por vencer"** a un usuario cuyo trial había vencido 25 días antes (la condición nunca comparaba la fecha). En PROD **5 de 6 tenants en trial** estaban así. Ahora dice qué pasó, de qué negocio, desde cuándo y que sus datos están intactos. 🔴 Quedó abierto un hallazgo mayor: **con el trial vencido el usuario no puede darse de baja** (`/mi-cuenta` está bajo el `SubscriptionGuard`) — ✅ **CERRADO en la misma sesión, ver la entrada `v1.214.0` arriba.** Ver `log.md` (2026-09-12).
+
+**Versión en DEV:** `v1.211.0` — 💵 **el gasto se registra en cualquier moneda**, con la del negocio por defecto (pedido de GO). No alcanzaba con agregar el selector: hubo que abrir el circuito de caja entero, porque el trigger `fn_validar_moneda_coincide_sesion` rechaza un movimiento cuya moneda no coincida con su sesión. 🛑 Se cerró en el acto un agujero que ese mismo cambio abrió: al habilitar las 11 monedas, el Dashboard sumaba como PESOS todo lo que no fuera USD. Ver `log.md` (2026-09-11).
+
+**Versión en DEV:** `v1.210.0` (migs **407-408**, aditivas, sin deployar). 🛑 **Cerró la tanda de Fede del 11/9**, cuyo ítem más caro no era ninguno de los que él listó como bug: la **OC en USD inflaba la orden ~1500x** (el mirror en ARS del costo se guardaba y después se mostraba como dólares — US$99,99 quedaba como US$150.985, y al recibir la OC generaba el gasto por ese monto). Además: buscador de productos en la OC, catálogo de ubicaciones de recursos (407-408), etiquetas horizontales con el precio a la derecha, se sacó el botón que activaba un recurso sin pagarlo, y `en_camino → entregado` directo en Envíos. Ver `log.md` (2026-09-11).
+
+**🚀 EN PROD: `v1.208.0`** (PR #343, deploy real 2026-09-11 — autorizado por GO: *"pasemos todo a PRD"*). PROD saltó de `v1.195.4` a `v1.208.0` y de la migración **390 a la 406**: 16 migraciones y 13 versiones de golpe. Paridad DEV↔PROD verificada por hash de `pg_policies` (`587a4b05…`, 228 policies) y backfill de `venta_items` con 0 filas desincronizadas. Verificado además por `curl` contra `app.genesis360.pro`: el bundle `assets/index-DSxm-mw9.js` contiene `v1.208.0`. Detalle: `log.md` (2026-09-11, tipo `deploy`). **💵 Modo "Real" del filtro de moneda del Dashboard (G1)**, sin migración: una 3ra
 opción que muestra los montos **sin convertir nada**, con los pesos y los dólares en números
 separados que nunca se suman. El patrón ya existía en el KPI "Ingreso Neto de Caja"; se extrajo a
 `src/lib/dashMoneda.ts` y se aplicó a Ventas y Gastos. 🐛 De paso se cerró un **bug de plata

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   montoConcepto, montoBeneficio, calcularItemsNomina,
-  mejorSueldoSemestre, sacMejorSueldo,
+  mejorSueldoSemestre, sacMejorSueldo, agruparCargasSociales,
   type ConceptoNomina,
 } from '@/lib/rrhhNomina'
 
@@ -62,5 +62,57 @@ describe('SAC (B5)', () => {
   })
   it('SAC proporcional por meses trabajados', () => {
     expect(sacMejorSueldo(120000, 3)).toBe(30000) // 50% × 120000 × 3/6
+  })
+})
+
+// ── mig 409 — cargas sociales imputadas a la sucursal del empleado ──────────────────────────
+// Antes se acumulaban solo por CONCEPTO, en una bolsa única del negocio: las cargas de todas las
+// sucursales terminaban en un gasto que no se podía imputar a ninguna y que el módulo Gastos
+// (filtra por la sucursal activa) no mostraba en ninguna.
+describe('agruparCargasSociales', () => {
+  const esAporte = (id: string | null | undefined) => id === 'jub' || id === 'os'
+  const sucursales = new Map<string, string | null>([
+    ['sal-1', 'norte'], ['sal-2', 'norte'], ['sal-3', 'sur'], ['sal-4', null],
+  ])
+
+  it('separa el mismo concepto por sucursal en vez de mezclarlo', () => {
+    const r = agruparCargasSociales([
+      { salario_id: 'sal-1', descripcion: 'Jubilación', monto: 100, concepto_id: 'jub' },
+      { salario_id: 'sal-2', descripcion: 'Jubilación', monto: 50, concepto_id: 'jub' },
+      { salario_id: 'sal-3', descripcion: 'Jubilación', monto: 70, concepto_id: 'jub' },
+    ], sucursales, esAporte)
+    expect(r).toEqual([
+      { concepto: 'Jubilación', sucursalId: 'norte', monto: 150 },
+      { concepto: 'Jubilación', sucursalId: 'sur', monto: 70 },
+    ])
+  })
+
+  it('los empleados sin sucursal quedan juntos como gasto global, no repartidos', () => {
+    const r = agruparCargasSociales([
+      { salario_id: 'sal-4', descripcion: 'Obra social', monto: 30, concepto_id: 'os' },
+      { salario_id: 'sal-1', descripcion: 'Obra social', monto: 20, concepto_id: 'os' },
+    ], sucursales, esAporte)
+    expect(r).toContainEqual({ concepto: 'Obra social', sucursalId: null, monto: 30 })
+    expect(r).toContainEqual({ concepto: 'Obra social', sucursalId: 'norte', monto: 20 })
+  })
+
+  it('ignora los ítems que no son aportes', () => {
+    expect(agruparCargasSociales([
+      { salario_id: 'sal-1', descripcion: 'Adelanto', monto: 999, concepto_id: 'otro' },
+      { salario_id: 'sal-1', descripcion: 'Adelanto', monto: 999, concepto_id: null },
+    ], sucursales, esAporte)).toEqual([])
+  })
+
+  it('suma montos que llegan como string (numeric de Postgres)', () => {
+    expect(agruparCargasSociales([
+      { salario_id: 'sal-1', descripcion: 'Jubilación', monto: '10.25', concepto_id: 'jub' },
+      { salario_id: 'sal-1', descripcion: 'Jubilación', monto: '0.75', concepto_id: 'jub' },
+    ], sucursales, esAporte)).toEqual([{ concepto: 'Jubilación', sucursalId: 'norte', monto: 11 }])
+  })
+
+  it('un salario que no está en el mapa cuenta como sin sucursal', () => {
+    expect(agruparCargasSociales([
+      { salario_id: 'desconocido', descripcion: 'Jubilación', monto: 5, concepto_id: 'jub' },
+    ], sucursales, esAporte)).toEqual([{ concepto: 'Jubilación', sucursalId: null, monto: 5 }])
   })
 })

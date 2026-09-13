@@ -6,6 +6,637 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-13] update | 🧪 El circuito de IVA crédito no se podía testear por UI — e2e 146 + tenant RI
+
+Lo de ayer (v1.218.0) se había validado con typecheck, 1782 unit y build, pero **nunca en un
+navegador**. Al ir a escribir el e2e apareció por qué: no se podía.
+
+### 🛑 El tenant de e2e es Monotributista
+
+**"Almacén Jorgito"** —el tenant de toda la suite— es **Monotributista**, y un Monotributista **no
+discrimina IVA crédito**: el bloque de alícuota del formulario de Gastos solo existe con `esRI &&
+tipo_comprobante === 'Factura A'`. Con el usuario de siempre, **todo el circuito de IVA crédito es
+inalcanzable por UI**: el Libro IVA Compras queda siempre vacío y el KPI de crédito siempre en cero.
+
+El spec 86 verifica que esas pantallas *renderizan* — pero sobre un tenant que nunca puede tener un
+número adentro. Un verde que no prueba ningún importe.
+
+**Destrabado**: `auth.ri.setup.ts` + project **`chromium-ri`** ("Kiosco Buildi", RI), reusando el
+usuario que el spec 63 de multi-CUIT ya tenía y hasta ahora **solo usaba por API, nunca por
+navegador**. Queda disponible para cualquier spec futuro de compras/IVA.
+
+### e2e 146 — 4/4, verificado por mutación
+
+1. El formulario pide la cotización **solo** cuando corresponde (con control anti-vacío: en la
+   moneda del negocio el bloque **no** debe aparecer) y guarda las 3 columnas de la mig 414.
+2. El crédito fiscal cuenta el IVA **convertido**.
+3. Sin cotización el gasto queda fuera del libro, con los **dos** avisos (Libro y Panel).
+
+**Las dos mutaciones se detectaron**, y la primera dejó a la vista el tamaño del bug de ayer: con el
+fix revertido el KPI mostró **$594** donde el crédito real era **$575.325**.
+
+### Dos correcciones a lo que yo había escrito
+
+- **"Monto total" es IVA INCLUIDO.** `calcularIVA` extrae el IVA *contenido* (`monto − monto/1,21`),
+  no le suma 21% encima: sobre US$1.000 da **173,55**, no 210. El test esperaba 210 y falló — la
+  expectativa estaba mal, no el código.
+- La tasa se renderiza con formato es-AR (**"1.500"**), así que la aserción que buscaba `1500` no
+  habría matcheado nunca.
+
+Sin cambios en `src/` (las mutaciones se revirtieron y `git diff` de `src/` quedó vacío).
+**Verde:** e2e 146 4/4 · specs 86 y 145 sin regresión · typecheck · eslint `--max-warnings 0`.
+
+---
+
+## [2026-09-13] update | 🧾 Registro vivo de consultas para el contador
+
+Pedido de GO: juntar **todas** las preguntas fiscales y contables abiertas en un solo documento, para
+entregárselo a un contador el día que lo tengamos, y mantenerlo vivo a medida que aparezcan más.
+
+Hasta ahora las dudas quedaban donde surgían: un comentario en el código, una fila 🟡 de
+`reglas-negocio.md`, un `log.md` de hace un mes. **El C2 del relevamiento de Caja USD llevaba abierto
+desde agosto** esperando exactamente esto y nadie lo tenía a mano.
+
+### Lo que hay
+
+**`wiki/business/consultas-contador.md`** — el registro vivo, **15 preguntas** (`C-01`…`C-15`) en 5
+bloques: gastos en moneda extranjera y Libro IVA (6, el más grande y el que ya está implementado
+sobre un criterio sin validar), ventas cobradas en USD (2, incluido el C2 viejo), Ganancias y
+patrimonio (2), Monotributo (1) y liquidación/comprobantes (4).
+
+Cada pregunta lleva **Estado · Área · Impacta en · Criterio provisorio**, la pregunta concreta y —lo
+que más importa— **qué se rompe si el criterio provisorio está mal**. Las secciones finales dicen
+cómo agregar una pregunta nueva y qué hacer cuando lleguen las respuestas (no alcanza con anotarlas:
+hay que volver al código marcado en "Impacta en").
+
+**`npm run contador:doc`** genera el HTML imprimible con un recuadro de respuesta y espacio de firma
+debajo de cada pregunta. **El `.md` es la única fuente de verdad**: mantener dos copias a mano
+garantiza que se desincronicen y que la que se entregue sea la vieja.
+
+### 🐛 Un hallazgo de paso
+
+**El indicador "Proyección vs Tope Cat." de Monotributo mide el año calendario** (`DashFacturacionArea.tsx`
+suma desde el 1° de enero), pero AFIP recategoriza mirando los **últimos 12 meses móviles**. En
+febrero muestra casi cero aunque el negocio venga al 95% del tope desde hace meses.
+
+No es REGLA #0 —está rotulado como estimación en todos lados, no emite nada ni mueve plata— pero es
+un número sobre el que alguien podría decidir no recategorizarse. Quedó como **C-11**, marcada como
+"probablemente sea un error nuestro", para confirmarlo antes de tocarlo.
+
+---
+
+## [2026-09-13] update | 🧾 El gasto en USD entra al Libro IVA — y el KPI sumaba dólares como pesos · v1.218.0
+
+Se cerraron los dos pasos que el criterio del contador había dejado pendientes (ver la entrada
+siguiente), y **al hacerlo apareció un bug REGLA #0 más grave que lo que estaba pendiente.**
+
+### 🛑 El bug: el crédito fiscal del Panel sumaba dólares como pesos
+
+Solo la tabla del **Libro IVA Compras** filtraba por moneda. El KPI **"IVA Crédito (Compras)" del
+Panel** y la **posición de los últimos 12 meses** de Liquidación pedían `select('iva_monto')` y lo
+sumaban crudo: el IVA de un gasto de **US$1.000 entraba a la posición de IVA como $210**. Dos
+pantallas de la misma sesión decían cosas distintas sobre la misma plata, y la que se usa para
+liquidar era la equivocada.
+
+Los tres cálculos salen ahora de un solo helper, `creditoFiscalCompras`.
+
+**Estaba latente**: verificado contra la DB, DEV tenía 210 gastos **todos en ARS** y PROD 1 gasto en
+ARS sin IVA crédito. No llegó a ensuciar ningún número real. Y un gasto en la moneda del negocio
+pasa **intacto** por la conversión, así que ningún importe existente se mueve.
+
+### ✅ Paso 1 — el campo "Cotización para IVA" en Gastos
+
+Aparece solo cuando la moneda del gasto ≠ la del negocio **y** su IVA es crédito. Propone el **día
+hábil anterior** al comprobante y deja tasa, fecha y fuente editables (no hay feed del BNA por fecha,
+y `diaHabilAnterior` **no contempla feriados**). Una fecha editada a mano no se repisa. Guarda las 3
+columnas de la mig 414; si el gasto vuelve a la moneda del negocio las limpia a `NULL` **a
+propósito** — una tasa colgada convertiría después algo que no hay que convertir.
+
+**No bloquea el guardado**: sin cotización avisa, ahí mismo, cuánto IVA queda sin declarar.
+
+### ✅ Paso 2 — el Libro IVA los INCLUYE
+
+Antes los excluía a todos "por las dudas": seguro, pero según este criterio **incorrecto**. Ahora
+entran convertidos, la fila muestra el **importe original y la tasa**, y el Excel exporta el **tipo
+de cambio explícito** (el Libro IVA Digital de ARCA lo exige; sin él el comprobante cae en
+"importaciones con avisos"). Los que no tienen tasa siguen afuera, con el aviso ahora también en el
+**Panel** y no solo en el Libro.
+
+### Lo que queda abierto
+
+- **La nota de corrección arrastra la tasa del gasto que corrige.** Si convirtiera a la de hoy,
+  revertir no daría cero: quedaría un resto de IVA por diferencia de cambio. ⚠️ **A confirmar con el
+  contador** si la NC del proveedor es un comprobante propio con su propia fecha.
+- **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
+  moneda cae afuera del libro, con aviso.
+
+⚠️ **El criterio contable sigue PENDIENTE de validar con un contador matriculado.**
+
+**Verde:** 1782 unit (108 archivos) · build · typecheck · eslint `--max-warnings 0`.
+Escenarios nuevos: UAT **§53** (#138-#151). Sin migración nueva (usa la 414, ya aplicada en DEV).
+
+---
+
+## [2026-09-13] update | 🧾 Llegó el criterio del contador para el gasto en moneda extranjera · v1.217.0
+
+⚠️ **PENDIENTE DE VALIDAR CON UN CONTADOR MATRICULADO.** La respuesta vino de una IA que se presentó
+como contador; GO la adopta como criterio de trabajo mientras tanto. **Mantener el recordatorio
+hasta que lo confirme un contador real.**
+
+### Corrige lo que habíamos asumido
+
+Ayer, al cerrar el gasto multimoneda, dejamos los gastos en otra moneda **fuera** del Libro IVA
+Compras por las dudas. **Ese criterio conservador era incorrecto:**
+
+1. Un gasto en moneda extranjera **SÍ genera crédito fiscal computable** (art. 12 Ley 23.349), si
+   está vinculado a la actividad gravada y tiene comprobante válido con IVA discriminado.
+2. La DDJJ va obligatoriamente **en pesos** (art. 96 Ley 11.683): hay que convertir.
+3. Tipo de cambio: **BNA VENDEDOR del día hábil ANTERIOR** al comprobante. En **importación de
+   servicios** (reverse charge, art. 1° inc. d), el del día hábil anterior al **pago**.
+4. El Libro IVA Digital de ARCA exige el tipo de cambio explícito: si falta, el comprobante cae en
+   "importaciones con avisos" y hay que reincorporarlo a mano.
+
+### 🛑 El detalle de diseño que más importa
+
+**La cotización fiscal NO es la que usa el resto de Genesis360.** El sistema convierte USD→ARS al
+dólar **COMPRA** por convención propia —correcto para valuar lo que el negocio TIENE— y lo fiscal
+pide **VENDEDOR**, de una fecha concreta. Son dos números distintos: mezclarlos falsea la posición
+de IVA. Y `tenants.cotizacion_usd*` guarda el valor de HOY, que se mueve: convertir con eso un gasto
+de hace tres meses da cualquier cosa.
+
+Por eso la tasa se **congela en el gasto** (mig 414), el mismo patrón que ya usan `ventas`,
+`caja_movimientos`, `devoluciones` y `boveda_conversiones_usd`.
+
+### Lo hecho y lo que falta
+
+**✅ Cimientos**: mig **414** (`gastos.cotizacion_fiscal` + `_fecha` + `_fuente`, con CHECK de
+positividad, **sin backfill** — inventarle una tasa retroactiva a un gasto viejo sería fabricar un
+dato fiscal) y **`src/lib/cotizacionFiscal.ts`** con 15 tests: día hábil anterior (retrocede al
+viernes desde el lunes; ⚠️ **no contempla feriados**, no hay calendario cargado), conversión de monto
+**e IVA** por la misma tasa, y el agrupado de lo que queda afuera. Sin cotización **no inventa una
+tasa**: devuelve el problema.
+
+**🟥 Falta**, en este orden: (1) el campo "Cotización para IVA" en `GastosPage` cuando la moneda del
+gasto ≠ la del negocio y el IVA es deducible, con la fecha prefijada por `diaHabilAnterior` y
+editable; (2) que `FacturacionPage` **incluya** los convertidos en vez de excluirlos, dejando fuera
+solo los que no tengan cotización.
+
+⚠️ Mientras tanto **el comportamiento de la app no cambió**: los cimientos están y nadie los usa
+todavía.
+
+---
+
+## [2026-09-12] update | 🧪🛑 Validación de la sesión: la suite entera, la paridad con PROD, y un loop infinito real · v1.215.0
+
+Cierre de la jornada. Se validó TODO lo anterior contra la app real y aparecieron cosas que ni el
+typecheck ni los tests de API podían ver.
+
+### La corrida e2e completa (400 specs) — 7 fallas reales, las 7 cerradas
+
+⚠️ Se corrieron **dos suites en paralelo** sin querer (una propia y una de un subagente): dos dev
+servers peleando el puerto 5173 y doble carga sobre DEV. Eso contaminó los números de ambas. Las 10
+fallas del rol CONTADOR de una de ellas eran el dev server muerto (`chrome-error://chromewebdata`):
+**10/10 verdes en aislado**. Lección operativa: no lanzar la suite si ya hay una corriendo.
+
+Reconciliado, quedaban **7 fallas**:
+
+| Specs | Qué era | Estado |
+|---|---|---|
+| 107, 114, 126, 130 | **Loop infinito de `ubicaciones`** (ver abajo) | ✅ mig 413 |
+| `20_caja` | Carrera al leer el estado del panel | ✅ spec arreglado |
+| `37_rrhh` | Fixture que se rompía solo el día 1 de cada mes | ✅ fixture arreglado |
+| `92_lpn` | Browser cerrado a mitad | ✅ pasa al reintentar |
+
+**`20_caja` figuraba 🟥 abierto con un diagnóstico equivocado** ("el DUEÑO tiene cajas abiertas desde
+agosto y 'Abrir caja' se deshabilita"). La captura del fallo lo desmiente: Caja1 aparece abierta y
+con el botón "Arqueo" a la vista. La causa real es una carrera — el panel renderiza "Abrir caja"
+MIENTRAS la query de la sesión está en vuelo, el spec lo leía antes de tiempo, clickeaba sobre una
+caja ya abierta y moría esperando el campo "Monto inicial". Mismo patrón que el gotcha #9 de la
+suite: leer un estado async de una sola vez en vez de esperarlo.
+
+**`37_rrhh`**: el fixture fallaba cuando el mes no tenía NINGUNA liquidación — que es exactamente lo
+que el spec crea en su primer paso. El mensaje de error despistaba ("todas sus gastos ya están
+PAGADOS (0 con gasto)"). Se rompía solo cada vez que cambiaba el mes.
+
+### 🛑 mig 413 — el código de ubicación entraba en LOOP INFINITO en la raíz nº 100
+
+Lo destapó la suite, no una auditoría. `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con
+`'U' || lpad(v_seq::text, 2, '0')`, y **`lpad` TRUNCA** cuando el texto ya mide más que el ancho
+pedido: en `v_seq = 100` devuelve `'10'` → candidato `U10`, que ya existe → 101 → `U10` otra vez.
+
+Un negocio con **99 ubicaciones raíz no podía crear la número 100**, y sin ningún error: el INSERT
+giraba dentro del trigger hasta que lo mataba el `statement_timeout`, quemando una conexión. En
+pantalla, un botón "Agregar" que no hace nada. En PROD está **latente** (máximo 4 ubicaciones raíz
+hoy), pero 100 racks o pasillos es normal en un depósito real.
+
+Fix: ancho 2 hasta `U99`, después el número completo (`U100`), y **tope de 10.000 vueltas en los dos
+loops** — un `LOOP` sin cota dentro de un trigger es una bomba de tiempo. Verificado: el INSERT que
+se colgaba devuelve `U100` al instante y los 5 specs afectados pasan (11 tests).
+
+Dos correcciones del `migration-reviewer`, ambas confirmadas contra la base antes de aplicar:
+**`CREATE OR REPLACE FUNCTION` NO conserva los atributos que no se repiten** (la función ya tenía
+`SET search_path TO 'public'` y omitirlo se lo habría sacado en silencio), y el índice que se iba a
+agregar ya existía como `uq_ubicaciones_tenant_codigo`.
+
+### 🛑 Y al final, verificando una baja real: Storage no se iba con el CASCADE
+
+GO purgó "Ferretería Tongas" desde el panel de DEV. **La baja salió impecable**: barrido de las
+**151 tablas con `tenant_id` → 0 filas huérfanas**, 41 tablas con `sucursal_id` → 0 colgadas, y la
+auditoría completa con la foto del inventario tomada ANTES del DELETE. La entrada de
+`admin_audit_log` **sobrevivió al borrado del tenant**, que es exactamente para lo que se decidió no
+ponerle FK.
+
+Pero ese tenant estaba **vacío**, y por eso no se veía el hueco: **el CASCADE es de Postgres;
+Storage es otro sistema y no se entera.** Un negocio con archivos dejaba huérfanos su **certificado
+de AFIP** (credencial fiscal viva colgada de un negocio que ya no existe — 35 de un solo tenant en
+DEV), los comprobantes que el cliente subió, fotos de productos, remitos, logo, documentación de
+empleados y facturas de courier. Además del costo de storage que nunca baja, es un borrado
+**incompleto** frente al derecho de supresión: el mismo flanco que cerramos hoy con `/mi-cuenta`.
+
+Cerrado en `purge_now`. Lo no obvio: **los prefijos no son todos iguales** y los ids hay que juntarlos
+ANTES del DELETE, porque después del CASCADE no hay de dónde sacarlos — `<tenant_id>/` (8 buckets),
+`<user_id>/` (avatares), `<empleado_id>/` y `prestamos/<empleado_id>/` (empleados), `pod/<envio_id>/`
+y `facturas-courier/<tenant_id>/` (etiquetas-envíos). Fail-soft: el negocio ya está borrado cuando
+esto corre, así que un error se informa y queda auditado, no aborta nada.
+
+Probado con archivos en los 4 esquemas: **8 subidos → 8 borrados → 0 restos**. ⚠️ Con control
+anti-vacío, porque el primer intento pasó "en verde" habiendo subido **1 solo** archivo real: los
+buckets rechazan tipos MIME que no esperan. **Verificar una baja con un tenant vacío no prueba casi
+nada.**
+
+### 📏 La lección transversal
+
+**Una falla de test archivada como "flakiness" sin diagnosticar la causa es un bug esperando.** El
+patrón estaba a la vista: cuatro specs distintos, la misma tabla, el mismo código de error. **El
+ruido no se concentra.** Escrito en [[wiki/development/testing]].
+
+### ✅ Paridad DEV↔PROD verificada (pre-deploy)
+
+| | policies | diferencia |
+|---|---|---|
+| DEV | 230 | + las 2 de `recurso_ubicaciones` (mig 407) |
+| PROD | 228 | — |
+
+Ninguna policy solo-en-PROD, ninguna con distinta definición. Tablas solo en DEV:
+`admin_customer_notes`, `recurso_ubicaciones`. **Sin drift.** Además se verificó que
+`gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379), así
+que el código nuevo no depende de nada que no esté o que no llegue con las migraciones: **el deploy
+no tiene orden riesgoso.**
+
+### 🖥️ El panel de soporte, verificado RENDERIZADO (no solo compilado)
+
+Se levantó contra DEV y se recorrieron las 10 pantallas con capturas, atrapando errores de consola y
+HTTP. Las 10 cargan con datos reales y sin errores — pero aparecieron **dos bugs que el typecheck y
+los tests de API no veían**:
+
+- **Clave duplicada de React en el sidebar**: "Usuarios" y "Auditoría" comparten el módulo `users` y
+  el menú keyeaba por módulo. Ahora keyea por ruta.
+- 🛑 **"Extender prueba" podía ACORTAR el acceso**: un tenant `cancelled` conserva acceso hasta
+  `subscription_period_end` (el período que YA pagó, MP-C9), y la fecha nueva se calculaba solo
+  sobre `trial_ends_at`. A uno con dos meses por delante, "extenderle 15 días" lo dejaba con 15
+  días — extender restando, desde el botón que promete lo contrario. Ahora la base es la fecha de
+  acceso más lejana vigente.
+
+Moraleja: escribir UI que compila no prueba que no explote al montarse.
+
+---
+
+## [2026-09-12] update | 🗑️🔒💵👥🛟📞 Baja de tenant COMPLETA + gasto multimoneda cerrado + RRHH-sucursal + panel de soporte ampliado (migs 409-412) · v1.213.0 y v1.214.0
+
+> **Dos versiones, no una.** El grueso de la jornada quedó en **`v1.213.0`** (migs 409-411): el fix
+> del dueño atrapado, la baja de tenant, el gasto multimoneda, RRHH-sucursal y la primera tanda del
+> panel. **`v1.214.0`** (mig 412) es el cierre del backlog del panel: Analytics, 2FA opt-in y el
+> teléfono del alta.
+
+Continuación de la misma sesión que cerró el hallazgo del trial vencido (ver entrada siguiente, más
+abajo, ya en `v1.212.0`). DEV termina en `v1.214.0`, migraciones **409-412**. **Nada de esto se
+deployó a PROD** — sigue en `v1.208.0`, migs 001-406, a la espera del OK de GO. El deploy pendiente es
+el batch entero: migs 407-412 + código `v1.209.0`→`v1.214.0` + la EF `admin-api` + el panel de soporte
+(repo aparte `genesis360-admin`, rama `dev`).
+
+### 🔴 El bloqueo del trial vencido, cerrado: `/mi-cuenta` salió del `SubscriptionGuard`
+
+`/mi-cuenta` estaba DENTRO del `SubscriptionGuard`: con el trial vencido el guard sacaba al usuario a
+`/suscripcion` antes de que pudiera pagar, avisar un pago o pedir la baja. **Quedaba atrapado: no
+podía usar la app ni irse** — choca con el derecho de supresión (AAIP). Se sacó la ruta del guard
+(sigue bajo `AuthGuard` + `AppLayout`; el resto de la app sigue cerrado igual que antes). Además:
+`/suscripcion` ya no ofrece "Volver al dashboard" (rebotaba a la misma pantalla) sino **Mi cuenta**, y
+al programar la baja no navega al dashboard si la suscripción está vencida. Test estático del árbol de
+rutas (`tests/unit/rutaMiCuentaSinSuscripcion.test.ts`) con control anti-vacío, verificado que falla
+contra el árbol viejo. Ver [[wiki/features/suscripciones-planes]].
+
+### 🗑️ Baja de tenant desde el panel de soporte — COMPLETA en DEV, 12/12
+
+EF `admin-api` con `customers.delete_preview` / `schedule_delete` / `cancel_delete` / `purge_now` +
+UI `BajaTenantPanel.tsx` en el panel (`genesis360-admin`). Probada end-to-end contra DEV: **12/12**.
+Se cerraron **3 agujeros de REGLA #0** antes de deployar:
+
+1. **Purgar no cancelaba el preapproval de Mercado Pago** → se le seguía cobrando a un negocio
+   borrado, y tras el `CASCADE` no queda ni el `mp_subscription_id`. Ahora cancela ANTES, fail-closed.
+2. **La cancelación estaba gateada por "¿parece que tiene cobro?"** y eso salteaba justo al tenant
+   que nunca se linkeó (hallazgo histórico H8/MP-C7), que es el que `cancelarSubMP` sabe encontrar por
+   el mail del dueño. Ahora se llama siempre, sin gate.
+3. **Las cuentas de `auth` a borrar llegaban como lista de UUIDs DESDE el panel** → se podía borrar la
+   cuenta de otro tenant con un payload manipulado. Ahora las resuelve la EF antes del `DELETE`, nunca
+   toca a un agente de soporte, y saltea a quien siga teniendo fila en `users` de otro tenant.
+
+Ver [[wiki/support/plataforma-soporte]].
+
+### 🎬 Guion de videos de onboarding
+
+Nueva página `wiki/manuales/guion-videos-onboarding.md`. Hallazgo clave: **en DEV el alta NO pide
+confirmar el mail y en PROD SÍ** (`mailer_autoconfirm` true/false), así que grabar en DEV saltea un
+paso entero del flujo real. Claude no puede grabar video ni capturar pantalla — lo acordado es aportar
+el guion de pasos obligatorios, sacado del flujo real del código.
+
+### 💱 El gasto multimoneda, cerrado de punta a punta
+
+`gastos.moneda` es `NOT NULL DEFAULT 'ARS'`: todo `INSERT` que no la seteara estampaba "pesos" sobre
+montos que no lo eran. Se estampó en **9 lugares** (RRHH ×4, Envíos, Proveedores ×2, Recursos ×2,
+Recepciones —el peor: usa los precios de la OC, que están en la moneda DE LA OC—, y el gasto generado
+desde un gasto fijo). Se agregó **selector de moneda en gastos fijos**. Y se corrigieron **10 totales
+que sumaban monedas distintas en un solo número**, incluidos el **cierre contable** y el **Libro IVA
+Compras** (ahí los gastos en otra moneda quedan FUERA del libro con aviso). Helper nuevo
+`totalesPorMoneda` en `src/lib/gastoMoneda.ts`. Criterio único: el total va en la moneda del negocio,
+lo que está en otra no se suma ni se convierte, y donde se firma o decide se informa lo que quedó
+afuera.
+
+⚠️ Dato real, sin backfillear (REGLA #0 punto 7): hay un tenant configurado en **CLP** ("Familia
+Otranto De Porto") con gastos grabados como ARS (62 en DEV, 1 en PROD). Pregunta abierta para el
+contador: si un gasto en USD con IVA genera crédito fiscal declarable y a qué cotización. Ver
+[[wiki/features/gastos]].
+
+### 👥 RRHH: el empleado pertenece a una sucursal (decisión de GO)
+
+GO eligió la opción (a) del pendiente que estaba trabado. Los 4 gastos que genera RRHH (sueldo,
+cargas sociales, adelanto/préstamo, liquidación final) nacían SIN `sucursal_id` y por eso eran
+invisibles en el módulo Gastos. Ahora se imputan a la sucursal DEL EMPLEADO, hay selector en la
+ficha, y las cargas sociales se agrupan por concepto Y sucursal (`agruparCargasSociales` en
+`src/lib/rrhhNomina.ts`, 5 tests). Los gastos ya creados no se tocan. Mig 409, revisada por
+`migration-reviewer` — al aplicarla saltó que Postgres no tiene `min(uuid)`, se usó
+`(array_agg(id))[1]`. Ver [[wiki/features/rrhh]].
+
+### 🛟 Panel de soporte — tanda grande de herramientas
+
+Pedido de GO: "no tengo cómo filtrar o saber quién es el dueño de un tenant y su mail". Se agregó
+búsqueda por negocio/mail del dueño/mail de cualquier usuario/id del tenant; dueño+mail+estado
+REAL+usuarios+último acceso+baja programada en la lista, con filtros y export CSV; en la ficha:
+cuentas de acceso con reseteo de contraseña, ficha comercial+fiscal, uso vs. límites del plan (vía
+`fn_tenant_limite`, la misma función del trigger de bloqueo), tickets, actividad reciente, 🛑 NC sin
+emitir en AFIP (`nc_afip_pendientes`), extender la prueba desde el panel, y notas internas (mig 411).
+Nueva pantalla de **Auditoría** (`admin_audit_log`, escrito desde la mig 221 y sin pantalla hasta
+ahora — el nombre del negocio se resuelve aparte, sin FK a `tenants` para que sobreviva a la purga).
+Dashboard con bloque "Requiere atención", búsqueda global Ctrl/⌘+K, Analytics con datos reales (sin
+CAC — falta la inversión publicitaria), 2FA (TOTP) opt-in para agentes, y pagos manuales ordenados por
+vencimiento con contador de vencidos.
+
+Mig 410 (`fn_admin_tenants_overview`/`fn_admin_tenant_cuentas`): hallazgo del `migration-reviewer` —
+este proyecto tiene un `ALTER DEFAULT PRIVILEGES` que da EXECUTE a `anon`/`authenticated` en TODA
+función nueva de `public`, así que el REVOKE explícito es imprescindible (mismo agujero que corrigió
+la mig 272). Mig 411 además hardening de `admin_audit_log`, que desde la mig 221 confiaba solo en
+"RLS sin policies" sin el mismo REVOKE.
+
+Probado end-to-end contra DEV: **18/18**, incluidos tests de fuga (el RPC de mails y las notas
+internas NO son accesibles con la anon key ni con el token de un usuario real de la app). Único ítem
+NO hecho del backlog: **login-as read-only** (sigue 501) — requiere modo read-only real + token
+efímero en la app principal, merece su propio diseño. Ver [[wiki/support/plataforma-soporte]].
+
+### 📞 El teléfono del alta (mig 412)
+
+Se pedía en el alta y se descartaba (`provisionNegocio()` nunca lo guardaba). Ahora se guarda por los
+3 caminos del alta, se puede editar en Configuración → Mi negocio, y el panel lo muestra como link
+`tel:`. Ver [[wiki/features/autenticacion-onboarding]].
+
+---
+
+## [2026-09-12] update | 🐛 "Tu prueba está por vencer" con el trial vencido hace 25 días · v1.212.0
+
+GO entró a PROD con `genesis360.ar@gmail.com` creyendo que era un mail nuevo y reportó que "no le
+daba el trial". **No era un bug del trial** — pero al investigarlo apareció uno real al lado.
+
+### Lo que realmente pasaba
+
+Ese mail **no era nuevo**: existe desde el 18/07, entró por Google y ya es DUEÑO de **"Don
+Ferretero"**. Su trial de 30 días venció el **17/08**. El sistema hizo lo correcto: el onboarding
+detecta que ya tiene negocio y lo manda al dashboard (evita duplicados), y ahí el `SubscriptionGuard`
+lo saca a la pantalla de planes. Un mail realmente nuevo **sí** recibe trial —
+`trial_ends_at` nace con `now() + 30 días`.
+
+### 🐛 El bug: la pantalla mentía
+
+La página de planes lo recibió con **"¡Tu prueba gratuita está por vencer!"** y *"seguí usando
+Genesis360 sin interrupciones"*. Las dos frases eran falsas: ya había vencido y la interrupción ya
+había ocurrido — estaba ahí PORQUE lo habían sacado.
+
+La condición miraba solo `subscription_status === 'trial'` y **nunca comparaba la fecha**, así que
+decía lo mismo el día 29 del trial que 25 días después. **5 de los 6 tenants en trial de PROD ya lo
+tenían vencido**: era el caso mayoritario, no un borde.
+
+Ahora dice qué pasó, de qué negocio y desde cuándo, y —lo que más necesita saber quien quedó
+afuera— que **sus datos están intactos**. Lógica en `src/lib/estadoTrial.ts` (15 tests), sacada de
+la pantalla porque `AdminPage` ya repetía la misma comparación inline.
+
+### 🔴 Hallazgo que quedó ABIERTO: el usuario con trial vencido no puede darse de baja
+
+`/mi-cuenta` está **dentro** del `SubscriptionGuard`, así que con la prueba vencida el guard lo saca
+antes de que pueda abrir "Eliminar cuenta y negocio". **Queda atrapado: no puede usar la app ni
+irse.** Con el blindaje legal ya hecho (AAIP, derecho de supresión), es un flanco real.
+
+### 🚧 Baja de tenant desde el panel de soporte (EF escrita, SIN deployar)
+
+GO pidió el segundo camino de baja: que soporte pueda eliminar un tenant desde
+`admin.genesis360.pro`. Se escribieron 4 acciones en `admin-api` (`delete_preview`,
+`schedule_delete`, `cancel_delete`, `purge_now`) siguiendo el patrón del panel: nunca service_role
+en el cliente, la EF valida agente + autoriza por rol + audita.
+
+Las salvaguardas son lo que importa: **solo rol `admin`** (el módulo `customers` lo tiene también
+`support`, y borrar un negocio no es tarea de soporte), **hay que escribir el nombre exacto**, el
+**inventario se audita ANTES del DELETE** (después del CASCADE no queda nada que contar) y — 🛑
+REGLA #0 — si el tenant tiene **comprobantes con CAE** la baja responde 409 y exige un segundo sí
+explícito: es documentación fiscal con obligación de conservación. En PROD hoy hay un tenant así.
+
+⚠️ **Falta**: deployar la EF, construir la UI en el panel y probar los dos caminos.
+
+---
+
+## [2026-09-11] update | 💵 El gasto se registra en cualquier moneda · v1.211.0
+
+Pedido de GO: un select de moneda a la izquierda del monto, con la del negocio por defecto.
+
+### Por qué no alcanzaba con agregar el select
+
+`gastos.moneda` existía desde la mig 379 pero **nadie la seteaba**. Y `GastosPage` filtraba las
+cajas a `'ARS'` **a propósito**, con el motivo escrito en el código: el trigger
+`fn_validar_moneda_coincide_sesion` **rechaza** un movimiento de caja cuya moneda no coincida con su
+sesión. Agregar el selector sin abrir la caja habría dejado el pago en efectivo fallando contra la
+base.
+
+Se abrió el circuito entero (`src/lib/gastoMoneda.ts`, 19 unit):
+
+| Pieza | Qué cambió |
+|---|---|
+| Cajas ofrecidas | las de la **moneda del gasto** (fuerte incluida: desde la mig 373 hay una por moneda) |
+| Los 5 asientos de caja | llevan la moneda del **gasto**, no la del medio — el `monto` está expresado en la del gasto |
+| Efectivo en otra moneda | se frena **antes**, con mensaje entendible, en vez del error crudo de Postgres |
+| Medios NO efectivo | **no** se bloquean: son movimientos informativos que no tocan el saldo, así que un gasto en dólares se paga por transferencia sin Caja USD |
+| La lista | muestra cada gasto en **su** moneda (formatear todo con la del tenant hacía que US$77 se leyera $77 — el mismo bug del mirror de la OC) |
+
+⚠️ Hubo que **separar una validación**: el check "no hay ninguna caja abierta" es OPERATIVO, no de
+moneda. Al pasar a filtrar por la moneda del gasto habría bloqueado un gasto en dólares pagado por
+transferencia solo porque no hay una Caja USD abierta.
+
+### 🛑 El agujero que abrió este mismo cambio, cerrado en el acto
+
+Al habilitar las 11 monedas de la app, `sumarPorMonedaNativa` mandaba al bucket de **pesos** todo lo
+que no fuera USD: **un gasto de €100 habría sumado 100 al total en pesos** — el mismo bug que esa
+lib cerró el 9/9, entrando por la puerta de al lado. Ahora hay un bucket `otras` por moneda que no
+se suma a ningún total (el tenant guarda **una sola** cotización) y el Dashboard las lista para que
+la plata no desaparezca sin explicación.
+
+### ⚠️ Un falso verde propio, encontrado por mutar
+
+El e2e 145 pasaba **aunque se rompiera el fix**: la descripción sembrada se llamaba `GastoUSD`, así
+que la aserción "la fila muestra US$" la satisfacía el propio nombre. Renombrada a `GastoMoneda`,
+recién ahí la mutación quedó detectada (`$77` en vez de `US$77`). Es el recordatorio de que un test
+verde no prueba nada hasta que se lo ve fallar.
+
+Verde: 1735 unit · e2e 145 mutante · build · typecheck · eslint.
+
+---
+
+## [2026-09-11] update | 🐛 La tanda de Fede, cerrada · v1.210.0 (migs 407-408)
+
+GO: *"corregí lo que haya que corregir, todo debe funcionar bien como debería ser"*. Se cerraron
+los 7 ítems de la tanda del 11/9. El más caro no era ninguno de los que él listó.
+
+### 🛑 La OC en USD inflaba la orden ~1500x (REGLA #0)
+
+Fede lo reportó como una molestia de UI ("no permite poner el valor por unidad en USD, lo convierte
+automáticamente a $"). Era un bug de plata.
+
+Al elegir un producto, el form precargaba `productos.precio_costo` a secas. Para un producto
+priceado en dólares eso es el **mirror en ARS**. Ese número se guardaba tal cual y después se
+mostraba como dólares, porque la OC tiene su propia `moneda`: **US$99,99 → una OC de US$150.985**, y
+al recibirla generaba el gasto por ese monto.
+
+Es el mismo bug del mirror que Fede reportó el 2026-08-20 para la LISTA de productos — ahí se
+arregló, al form de la OC nunca se aplicó. Y la causa que lo hacía invisible: el `SELECT` de
+productos **ni traía** `precio_costo_usd` ni `moneda_costo`.
+
+El fix vive en `src/lib/ocCosto.ts` (función pura, 16 unit): el costo sugerido va **siempre en la
+moneda de la OC**; moneda cruzada se convierte y se avisa; **sin cotización no se precarga nada** —
+un campo vacío es menos peligroso que un número plausible en la moneda equivocada. Una sola tasa en
+ambas direcciones, misma lección del vuelto fantasma del POS.
+
+Lo que además mentía la moneda: el "Total estimado" con `$` fijo, **el PDF que se le manda al
+proveedor** (una OC en dólares le llegaba en pesos) y el CSV sin rotular.
+
+**e2e 144 mutante**: siembra un producto en USD y verifica que precargue 99,99 y no 150.985.
+Verificado mutando el código real — falla con "precargó 150985".
+
+### 🐛 El combobox rompió dos e2e, y eso fue lo bueno
+
+Reemplazar el `<select>` por el buscador (Fede: solo saltaba por la primera letra) rompió los specs
+34 y 140, que elegían con `selectOption`. Se arreglaron con un helper compartido
+(`elegirProductoOC`) para que el próximo no tenga que redescubrir el cambio.
+
+### 📍 Ubicaciones de recursos: de texto libre a catálogo (migs 407-408)
+
+`recursos.ubicacion` era texto libre, así que una ubicación **no existía hasta que había un recurso
+parado en ella** — no había nada que "crear", y por eso el único botón posible era "asignar".
+La 407 crea `recurso_ubicaciones`, siembra desde los textos existentes y backfillea el vínculo.
+
+**No se reusó `ubicaciones`** (la del WMS) a propósito: esa tiene tipo lógico, cubicaje y zona, y la
+usan picking y stock. Un lugar donde está parada una impresora es otra cosa.
+
+⚠️ **La 408 salió de probar el ciclo completo contra datos reales**, no de leer el código: al borrar
+una ubicación, el recurso perdía la FK pero **conservaba el texto huérfano**, así que la ubicación
+reaparecía en pantalla agrupando recursos. Y el diálogo de borrado promete "N recursos quedarán sin
+ubicación". La pantalla no puede prometer una cosa y la base hacer otra.
+
+### El resto
+
+**Recursos**: se sacó "Marcar como adquirido" — activaba el recurso sin mirar el gasto. La única vía
+es saldar el gasto (trigger de la mig 406). **Envíos**: `en_camino` va directo a `entregado`;
+`en_bodega` queda como desvío **con botón propio** — al cortar el camino viejo habría quedado
+inalcanzable, porque "No entregado" resuelve a `en_camino` o `devolucion`. **Etiquetas**: rediseño
+horizontal, nombre grande a la izquierda y precio grande a la derecha, con auto-ajuste de fuente
+para que un precio de siete cifras no se salga. **Gastos invisibles**: los dos INSERT de Proveedores
+que no seteaban `sucursal_id`.
+
+### Lo que NO se tocó, y por qué
+
+Los **4 INSERT de gastos de RRHH** tienen el mismo problema de `sucursal_id`, pero `empleados` **no
+tiene** esa columna: imputar un sueldo a la sucursal de quien lo liquida sería inventar un criterio
+contable. Queda a decisión de GO.
+
+Verde: 1713 unit · e2e 34/140/144 · build · typecheck · eslint.
+
+---
+
+## [2026-09-11] deploy | 🚀 v1.208.0 EN PROD (PR #343) — 16 migraciones + 13 versiones de golpe
+
+GO autorizó: *"pasemos todo a PRD"*. Es el deploy más grande de las últimas semanas: PROD salta de
+`v1.195.4` a **`v1.208.0`** y de la migración **390 a la 406**.
+
+### Por qué no aplicó el "DDL aditivo primero"
+
+Estas migraciones **cambian comportamiento**: donde antes bloqueaba solo la UI, ahora la base
+rechaza. El código viejo contra la base nueva ve menos datos de los que espera (RRHH pasa a leerse
+por `fn_sueldos_agregado()`), así que la ventana entre aplicar las migs y que Vercel sirva el código
+nuevo tenía que ser mínima. Medido antes de empezar: PROD tiene **29 ventas, 35 ítems y 1 gasto**, y
+**0 ventas en los últimos 7 días** — sin tráfico real que cayera en esa ventana.
+
+### La revisión previa (lo que evitó sorpresas)
+
+Las 16 se revisaron una por una ANTES de aplicar, no se confió en que estuvieran bien por haber
+corrido en DEV:
+
+| Chequeo | Resultado |
+|---|---|
+| DDL destructivo (`DROP TABLE/COLUMN`, `TRUNCATE`) | ninguno |
+| `CREATE POLICY IF NOT EXISTS` (no existe en PG) | ninguno |
+| UUIDs hardcodeados (ids de DEV) | ninguno |
+| Colisión de nombres de policy contra PROD | ninguna — las 37 nuevas no existían; la única que sí (`venta_items_tenant`) la dropea la 398 antes |
+| Tablas y funciones base presentes | las 31 tablas y las 3 funciones (`get_user_tenant_id`, `auth_ve_todas_sucursales`, `auth_user_sucursal`) ya estaban |
+| Dependencias de la 396 y la 401 | `get_user_role`, `sucursales.umbral_gasto_cajero`, las 6 columnas de precio y las de `empleados`/`rrhh_salarios`, todas presentes |
+
+Dos falsas alarmas que valieron la pena descartar: `emisores_fiscales.afipsdk_token_configurado` y
+`courier_credenciales.credenciales_configuradas` figuraban como "faltantes en PROD" — las **crean
+las propias migraciones** (402 y 403) justo antes del GRANT que las nombra.
+
+Y una verificación de plata: la 402 hace `UPDATE tenants SET afipsdk_token = NULL`. Los **9 tenants
+de PROD están en `afip_provider='propio'` y ninguno tenía token** → 0 filas afectadas.
+
+### Verificación post-aplicación
+
+- **Paridad exacta DEV↔PROD**: `md5` de `pg_policies` = `587a4b053df90f4150919bcdb81ea4e4` en los dos,
+  **228 policies**. Drift cero (la auditoría que pide el CLAUDE.md).
+- **Backfill de `venta_items`** (REGLA #0 — una columna desincronizada esconde ítems de venta por
+  RLS): **0 filas desincronizadas**, los 35 ítems con su sucursal.
+- Acentos del seed de la 391 verificados ("millón" intacto) por el gotcha conocido de
+  `apply_migration`.
+
+### 🐛 El CI estaba en rojo y no era el código
+
+El PR quedó frenado por `actividadLogDiff.test.ts`. **Local pasaba, CI no**: ese test importaba
+`diffCampos` desde `actividadLog.ts`, que arranca con `import { supabase } from '@/lib/supabase'` — y
+ese módulo hace `throw` **en tiempo de import** si faltan las env vars. La diferencia era `.env.local`:
+Vite resuelve `import.meta.env.VITE_*` en tiempo de **transform**, así que el `Object.defineProperty`
+de `tests/unit/setup.ts` llega tarde. Era el primer test del repo que importaba, aunque fuera
+transitivamente, el cliente real de Supabase.
+
+Fix alineado al patrón del repo: `diffCampos` y `CampoCambiado` se mudan a
+**`src/lib/actividadLogDiff.ts`**, sin I/O, y `actividadLog.ts` los reexporta. Verificado
+reproduciendo la condición del CI — con `.env.local` fuera del proyecto, el test pasa.
+
+### Estado final
+
+`main` = `d78ac0b1`, tag `v1.208.0` reapuntado al merge, release publicado. Suite: **1697 unit
+verdes**, build y typecheck limpios, CI verde.
+
+---
+
 ## [2026-09-09] update | 💵 Modo "Real" del Dashboard + fin de la mezcla de pesos y dólares · v1.208.0
 
 Se cerró el pendiente #1 del handoff (G1). Y de paso apareció un bug de plata que estaba latente.
@@ -145,11 +776,17 @@ nueva para **reimprimir etiquetas** buscando el producto, gateada a supervisor/d
 justo lo que menciona Fede: la definición del contador por la factura.
 
 **3 · Gastos y OC en USD** — se verificó y está **partido en dos**:
+> 🛑 **CORRECCIÓN (2026-09-11): lo que sigue era FALSO.** Fede tenía razón y este diagnóstico
+> estaba mal. La moneda de la OC se guardaba, pero el formulario precargaba el **mirror en ARS** del
+> costo y lo registraba como dólares: **US$99,99 quedaba como una OC de US$150.985**. Se corrigió en
+> `v1.210.0`. Se deja el texto original para que se vea el error de método: *"probé que la columna
+> existe" no es lo mismo que "probé el flujo"*.
+
 - **La OC en USD YA funciona**: `ordenes_compra.moneda` existe y el selector está en el form
   (`ProveedoresPage`, mig 379), con toda la infra de pago multi-moneda (`cajasAbiertasOCMoneda`,
   `monedaDeMetodo`, cotización de descalce). Probablemente Fede no lo encontró: se elige al **crear
   la OC en Proveedores**, no en Gastos.
-- **El gasto suelto en USD sí falta**: `gastos.moneda` existe en la DB pero el formulario no lo
+- **El gasto suelto en USD sí falta** ✅ *(cerrado el 2026-09-11 en `v1.211.0`)*: `gastos.moneda` existe en la DB pero el formulario no lo
   ofrece. Es el pendiente ya anotado como "gastos sueltos USD (sin UI)". No se hizo en esta tanda a
   propósito: no es un ajuste sino una feature que **mueve plata desde una caja**, y merece su propio
   espacio con el patrón de la OC como guía.

@@ -10,6 +10,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "ai:knowledge": "node scripts/build-ai-knowledge.mjs",
     "ai:smoke": "node scripts/smoke-ai-assistant.mjs",
+    "contador:doc": "node scripts/gen-consultas-contador.mjs",
     "schema:dump": "node scripts/dump-schema.mjs",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",

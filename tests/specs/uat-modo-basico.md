@@ -1953,3 +1953,103 @@ Sin migración: es un cambio de display + la corrección de tres agregaciones.
 con `sucursal_id = null` no aparece nunca en los KPI — el primer intento del spec 143 midió $0
 exactamente por eso, y por eso el spec lleva **control anti-vacío** (siembra primero en pesos y
 verifica que el gasto llegó al KPI antes de medir nada de moneda).
+
+---
+
+## 🛒 §51 — La tanda de Fede del 11/9 (v1.210.0, migs 407-408) 🛑 PLATA — 2026-09-11
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 113 | **🛑 OC en USD precarga el costo NATIVO** | Un producto de US$99,99 entra a la OC como 99,99 — no como 150.985, que es su mirror en pesos. Con el bug, la OC quedaba inflada ~1500x y al recibirla generaba el gasto por ese monto | **e2e 144** (mutante, verificado mutando el código real) |
+| 114 | **Moneda cruzada se convierte y se avisa** | Producto en pesos dentro de una OC en dólares: se convierte con la cotización y se avisa que hay que revisarlo | `ocCosto.test.ts` (OCC-OCUSD-02) |
+| 115 | **🛑 Sin cotización NO se precarga nada** | Un campo vacío es menos peligroso que un número plausible en la moneda equivocada | `ocCosto.test.ts` (OCC-OCUSD-03) |
+| 116 | **Una sola tasa en ambas direcciones** | El ida y vuelta cierra dentro del redondeo a centavos (techo: medio centavo × cotización). Misma lección del vuelto fantasma del POS | `ocCosto.test.ts` (OCC-ROB-03) |
+| 117 | **El total y el PDF llevan la moneda de la OC** | El PDF se le manda AL PROVEEDOR: una OC en dólares le llegaba expresada en pesos | **e2e 144** + revisión de `descargarOCpdf` |
+| 118 | **Buscador de la OC por nombre o SKU** | Era un `<select>` nativo: solo saltaba por la primera letra, inusable con 1.000+ productos | **e2e 34 y 140** (vía `elegirProductoOC`) |
+| 119 | **🛑 Un recurso no se activa sin pagarlo** | Se sacó "Marcar como adquirido". La única vía es saldar el gasto (trigger de la mig 406) | revisión de `RecursosPage` |
+| 120 | **Ubicaciones de recursos: catálogo real** | Se pueden crear y ver aunque no tengan ningún recurso. Nombre único por tenant | migs 407-408, verificado con el ciclo completo en DEV |
+| 121 | **Borrar una ubicación deja los recursos SIN ubicación** | El diálogo promete "N recursos quedarán sin ubicación" — el texto huérfano hacía que la ubicación reapareciera agrupándolos | mig 408, verificado con datos reales |
+| 122 | **Envíos: `en_camino` → `entregado` directo** | Bodega era paso obligatorio y el POD solo aparecía ahí: entregar con reparto propio exigía marcar una bodega inexistente | revisión de `EnviosPage` |
+| 123 | **`en_bodega` sigue siendo alcanzable** | Con botón propio. Sin él quedaría inalcanzable: "No entregado" resuelve a `en_camino` o `devolucion`, nunca a bodega | revisión de `EnviosPage` |
+| 124 | **Gasto de servicio visible en Gastos** | Los 2 INSERT de Proveedores no seteaban `sucursal_id` y Gastos filtra por sucursal | revisión de `ProveedoresPage` |
+| 125 | ⚠️ **Abierto: los sueldos y la sucursal** | Los 4 INSERT de RRHH tienen el mismo problema, pero `empleados` no tiene `sucursal_id`: imputar el sueldo a la sucursal de quien liquida sería inventar un criterio contable | — (decisión de GO) |
+
+**Verde:** 1713 unit (16 nuevos de `ocCosto`) · e2e 34/140/144 · build · typecheck · eslint.
+
+---
+
+## 💵 §52 — El gasto en cualquier moneda (v1.211.0) 🛑 PLATA — 2026-09-11
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 126 | **La moneda por defecto es la del negocio** | `tenants.moneda` (Config → Moneda principal), no `ARS` fijo. Hay un tenant real en CLP | `gastoMoneda.test.ts` (GM-LISTA-01/03) |
+| 127 | **🛑 El gasto se guarda con SU moneda** | `gastos.moneda` existía desde la mig 379 pero nadie la seteaba: todos nacían en el default `'ARS'` | **e2e 145** (mutante) |
+| 128 | **🛑 El efectivo sale de una caja de la MISMA moneda** | Lo exige `fn_validar_moneda_coincide_sesion`. Las cajas ofrecidas son las de la moneda del gasto, la fuerte incluida | `gastoMoneda.test.ts` (GM-CAJA-*) + **e2e 145** |
+| 129 | **🛑 Efectivo en otra moneda se frena ANTES de escribir** | Con mensaje entendible, en vez del error crudo de Postgres | `gastoMoneda.test.ts` (GM-VAL-02) |
+| 130 | **Sin caja de esa moneda, se avisa y no se inventa una** | No se cae en una caja de otra moneda "porque es la que hay" | `gastoMoneda.test.ts` (GM-VAL-03) |
+| 131 | **Un gasto en USD se puede pagar por TRANSFERENCIA sin Caja USD** | Los medios no-efectivo generan un movimiento informativo que no toca el saldo de ninguna caja | `gastoMoneda.test.ts` (GM-VAL-04) |
+| 132 | **"No hay caja abierta" es OPERATIVO, no de moneda** | Si mirara la moneda del gasto, bloquearía un gasto en dólares pagado por transferencia solo porque no hay Caja USD | revisión de `GastosPage` |
+| 133 | **La lista muestra cada gasto en su moneda** | Formatear todo con la del tenant hacía que US$77 se leyera $77 | **e2e 145** (mutante, verificado mutando el código real) |
+| 134 | **🛑 Una TERCERA moneda no se suma como pesos** | Al habilitar las 11 monedas, el Dashboard mandaba al bucket de pesos todo lo que no fuera USD: €100 sumaba 100 al total en pesos | `dashMoneda.test.ts` (DM-SUM-06/07/08) |
+| 135 | **Las monedas no consolidables se informan** | El tenant guarda UNA sola cotización; esos importes quedan fuera de los totales y el Dashboard los lista | revisión de `DashGastosArea` |
+| 136 | ⚠️ **Abierto: gastos fijos sin moneda** | Su formulario no ofrece el selector — nacen en la del negocio | — |
+| 137 | ⚠️ **Abierto: los `INSERT` del resto del código no setean `moneda`** | Una recepción de OC en dólares nace como gasto en pesos | — |
+
+**Verde:** 1735 unit · e2e 145 mutante · build · typecheck · eslint.
+
+⚠️ **Falso verde encontrado al escribir el e2e 145**: la descripción sembrada se llamaba
+`GastoUSD`, así que la aserción "la fila muestra US$" la satisfacía el propio nombre y el test
+pasaba **aunque el fix estuviera roto**. Renombrada a `GastoMoneda`, recién ahí la mutación quedó
+detectada. Un test verde no prueba nada hasta que se lo ve fallar.
+
+---
+
+## 🧾 §53 — El gasto en moneda extranjera entra al Libro IVA (v1.218.0, mig 414) 🛑 FISCAL — 2026-09-13
+
+⚠️ **Criterio contable PENDIENTE de validar con un contador matriculado.** Lo que fija esta sección
+viene de una consulta de GO a una IA que se presentó como contador (2026-09-13) y se adopta como
+criterio de trabajo. Ver el encabezado de `src/lib/cotizacionFiscal.ts`.
+
+Cierra lo que §52 dejó abierto: hasta ahora un gasto en otra moneda quedaba **fuera** del Libro IVA
+Compras "por las dudas". Ese criterio conservador era incorrecto: un gasto en moneda extranjera SÍ
+genera crédito fiscal computable (art. 12 Ley 23.349) y la DDJJ va en pesos (art. 96 Ley 11.683).
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 138 | **🛑 El KPI del Panel NO suma dólares como pesos** | Era un bug real: `iva_monto` se sumaba crudo, así que un IVA de US$210 entraba a la posición de IVA como $210 | `cotizacionFiscal.test.ts` (CF-CRED-01) + **e2e 146** (mutante: con el fix revertido el KPI mostró **$594** donde el crédito real era **$575.325**) |
+| 139 | **🛑 La posición de los 12 meses usa el MISMO cálculo** | Panel, Liquidación y Libro salían de tres cuentas distintas: dos pantallas de la misma sesión decían cosas distintas sobre la misma plata | `creditoFiscalCompras` es la única fuente |
+| 140 | **La tasa fiscal NO es la operativa del sistema** | El sistema convierte al dólar **COMPRA** (valuar lo que el negocio tiene); lo fiscal pide **BNA VENDEDOR** de una fecha concreta. Mezclarlas falsea la posición | columna propia `gastos.cotizacion_fiscal` (mig 414) |
+| 141 | **🛑 La tasa se congela EN el gasto** | `tenants.cotizacion_usd*` guarda el valor de HOY: convertir con eso un gasto de hace 3 meses da un número que no existió nunca | mig 414 + **e2e 146** (mutante: la persistencia devuelta a `null` se detecta) |
+| 142 | **Sin cotización NO se inventa una tasa** | El gasto queda fuera del libro y se avisa **cuánto** crédito quedó sin declarar y en qué moneda — en el Panel y en el Libro, no solo en uno | `cotizacionFiscal.test.ts` (CF-CRED-02) + **e2e 146** (verifica los DOS avisos) |
+| 143 | **La fecha propuesta es el día hábil anterior, y es editable** | ⚠️ `diaHabilAnterior` **no contempla feriados** (no hay calendario cargado): el día siguiente a un feriado propone un día sin cotización del BNA | `cotizacionFiscal.test.ts` + **e2e 146** (verifica que viene prefijada) |
+| 144 | **Una fecha editada a mano NO se repisa** | El prefill solo pisa el valor si sigue siendo el que propuso el sistema (`ultimaFechaSugerida`) | revisión de `GastosPage` |
+| 145 | **La fila del libro muestra el importe original y la tasa** | Sin eso, una fila en dólares es indistinguible de una en pesos y el número no se puede auditar | **e2e 146** |
+| 146 | **🛑 El Excel exporta el tipo de cambio explícito** | El Libro IVA Digital de ARCA lo exige: sin él el comprobante cae en "importaciones con avisos" y hay que reincorporarlo a mano | columnas Moneda origen / Monto origen / Tipo de cambio / Fecha cotización |
+| 147 | **Editar el gasto de vuelta a la moneda del negocio LIMPIA la tasa** | Si no, quedaría una tasa colgada convirtiendo algo que no hay que convertir | payload persiste `null` a propósito |
+| 148 | **El IVA se convierte por la MISMA tasa que el monto** | `iva_monto` está expresado en la moneda del gasto | `cotizacionFiscal.test.ts` |
+| 149 | **Un gasto en la moneda del negocio pasa intacto** | Ningún número existente se mueve con este cambio | `cotizacionFiscal.test.ts` + DEV/PROD sin gastos en otra moneda |
+| 150 | ⚠️ **Abierto: la nota de corrección arrastra la tasa del gasto que corrige** | Si convirtiera a la tasa de hoy, revertir no daría cero: quedaría un resto de IVA por diferencia de cambio. **A confirmar con el contador** si la NC del proveedor lleva la suya | comentario en `abrirCorreccion` |
+| 151 | ⚠️ **Abierto: `gastos_fijos` no tiene cotización fiscal** | La mig 414 tocó solo `gastos`. Un fijo en otra moneda se materializa sin tasa → cae afuera del libro **con aviso** (no en silencio) | — |
+
+**Verde:** 1782 unit (108 archivos) · **e2e 146 — 4/4, verificado por mutación** · build · typecheck ·
+eslint `--max-warnings 0`.
+
+### 🛑 Por qué este bloque no tenía e2e hasta ahora (y qué se destrabó)
+
+El tenant principal de e2e (**"Almacén Jorgito"**) es **Monotributista**, y un Monotributista **no
+discrimina IVA crédito**: el bloque de alícuota del formulario solo existe con `esRI &&
+tipo_comprobante === 'Factura A'`. O sea que **todo este circuito era inalcanzable por UI** con el
+usuario de siempre — el Libro IVA Compras siempre vacío y el KPI de crédito siempre en cero. El
+spec 86 verifica que esas pantallas *renderizan*, pero sobre un tenant que nunca puede tener un
+número adentro.
+
+Se agregó `auth.ri.setup.ts` + el project **`chromium-ri`** ("Kiosco Buildi", RI), reusando el
+usuario que el spec 63 de multi-CUIT ya tenía pero solo usaba por API. Queda disponible para
+cualquier spec futuro del circuito de compras/IVA.
+
+⚠️ **Aprendido escribiendo el spec:** el campo **"Monto total" es IVA INCLUIDO** — `calcularIVA`
+extrae el IVA *contenido* (`monto − monto/1,21`), no le suma 21% encima. Sobre US$1.000 da
+**173,55**, no 210.
+
+**Estado de los datos al momento del cambio:** DEV 210 gastos, **todos ARS**; PROD 1 gasto, ARS, sin
+IVA crédito. El bug del KPI (#138) estaba **latente**: no llegó a ensuciar ningún número real.

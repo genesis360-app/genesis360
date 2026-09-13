@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   convDash, symDash, fmtDash, fmtUsdDash,
   sumarPorMonedaNativa, aVistaPesos, totalDelModo, separarVentasUsd, usdCobradoDeMedioPago,
+  monedasSinConsolidar,
 } from '@/lib/dashMoneda'
 
 // Plan: G1 — "modo real" del Dashboard (3ra opción del filtro Moneda, pedido de Fede).
@@ -45,7 +46,7 @@ describe('sumarPorMonedaNativa', () => {
   ]
   it('DM-SUM-01 nunca mezcla monedas en un solo acumulador', () => {
     const s = sumarPorMonedaNativa(rows, r => r.monto, r => r.moneda)
-    expect(s).toEqual({ ars: 1500, usd: 150, cantArs: 2, cantUsd: 2 })
+    expect(s).toEqual({ ars: 1500, usd: 150, cantArs: 2, cantUsd: 2, otras: {} })
   })
   it('DM-SUM-02 el numeric de Postgres llega como string y se normaliza', () => {
     const s = sumarPorMonedaNativa(
@@ -60,15 +61,44 @@ describe('sumarPorMonedaNativa', () => {
       [{ monto: 100, moneda: null }, { monto: 200, moneda: undefined }],
       r => r.monto, r => r.moneda,
     )
-    expect(s).toEqual({ ars: 300, usd: 0, cantArs: 2, cantUsd: 0 })
+    expect(s).toEqual({ ars: 300, usd: 0, cantArs: 2, cantUsd: 0, otras: {} })
   })
   it('DM-SUM-04 "usd" en minúscula también es dólares', () => {
     const s = sumarPorMonedaNativa([{ monto: 10, moneda: 'usd' }], r => r.monto, r => r.moneda)
     expect(s.usd).toBe(10)
   })
+  it('🛑 DM-SUM-06 una TERCERA moneda no se suma como pesos', () => {
+    // Desde que Gastos ofrece todas las monedas de la app (2026-09-11) esto dejó de ser teórico:
+    // sin este bucket, un gasto de €100 sumaba 100 al total en PESOS — el mismo bug que esta lib
+    // vino a cerrar, entrando por la puerta de al lado.
+    const s = sumarPorMonedaNativa(
+      [{ monto: 1000, moneda: 'ARS' }, { monto: 100, moneda: 'EUR' }, { monto: 50, moneda: 'BRL' }],
+      r => r.monto, r => r.moneda,
+    )
+    expect(s.ars).toBe(1000)
+    expect(s.usd).toBe(0)
+    expect(s.otras).toEqual({ EUR: { monto: 100, cant: 1 }, BRL: { monto: 50, cant: 1 } })
+  })
+
+  it('DM-SUM-07 varias filas de la misma tercera moneda se acumulan juntas', () => {
+    const s = sumarPorMonedaNativa(
+      [{ monto: 100, moneda: 'EUR' }, { monto: 25, moneda: 'eur' }],
+      r => r.monto, r => r.moneda,
+    )
+    expect(s.otras.EUR).toEqual({ monto: 125, cant: 2 })
+  })
+
+  it('DM-SUM-08 monedasSinConsolidar las lista para poder avisarlas, de mayor a menor', () => {
+    const s = sumarPorMonedaNativa(
+      [{ monto: 10, moneda: 'BRL' }, { monto: 300, moneda: 'EUR' }],
+      r => r.monto, r => r.moneda,
+    )
+    expect(monedasSinConsolidar(s).map(x => x.moneda)).toEqual(['EUR', 'BRL'])
+  })
+
   it('DM-SUM-05 lista vacía o nula no rompe', () => {
     expect(sumarPorMonedaNativa(null, (r: any) => r.monto, (r: any) => r.moneda))
-      .toEqual({ ars: 0, usd: 0, cantArs: 0, cantUsd: 0 })
+      .toEqual({ ars: 0, usd: 0, cantArs: 0, cantUsd: 0, otras: {} })
   })
 })
 

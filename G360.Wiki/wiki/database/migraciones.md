@@ -3,13 +3,33 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-06
+updated: 2026-09-12
 ---
 
-# Historial de Migraciones (001-406, + correctivos 387b/387c)
+# Historial de Migraciones (001-414, + correctivos 387b/387c)
 
-**🗂️ Migraciones 391-406 — ✅ APLICADAS Y VERIFICADAS EN DEV (`gcmhzdedrkmmzfzfveig`), ⏳ NINGUNA EN PROD**
-(PROD sigue en `v1.195.4`, última migración aplicada allá = 390):
+**🗂️ Migraciones 407-414 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
+`v1.208.0`). Son **aditivas** (tablas/funciones/columnas nuevas), así que acá sí aplica el "DDL
+aditivo primero":
+
+| # | Archivo | Qué hace |
+|---|---|---|
+| 414 | `414_gasto_cotizacion_fiscal.sql` | `gastos.cotizacion_fiscal` + `_fecha` + `_fuente`: la tasa con la que un gasto en moneda extranjera entra al Libro IVA. ⚠️ **Criterio contable pendiente de validar con un contador matriculado.** 🛑 **No es la cotización operativa del tenant** (que va al dólar COMPRA): lo fiscal pide **BNA VENDEDOR del día hábil anterior** al comprobante. Se congela por gasto porque `tenants.cotizacion_usd*` es el valor de HOY. Sin backfill. **Todavía nadie escribe ni lee estas columnas** — falta el campo en `GastosPage` y que `FacturacionPage` incluya los convertidos. Ver [[wiki/features/gastos]]. |
+| 413 | `413_fix_loop_infinito_codigo_ubicacion.sql` | 🛑 **Bug real de inventario.** `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con `lpad(v_seq::text, 2, '0')`, y **`lpad` TRUNCA** cuando el texto ya mide más que el ancho: en `v_seq=100` devolvía `U10` (que ya existe) y el **loop no salía nunca**. Un negocio con 99 ubicaciones raíz no podía crear la 100 — el INSERT giraba hasta el `statement_timeout`, sin error visible. Latente en PROD (máximo 4 raíces hoy), pero 100 racks es normal en un depósito real. Fix: ancho 2 hasta `U99` y después el número completo, + tope de 10.000 vueltas en los dos loops. Lo destapó la suite e2e: 4 specs con `57014` en la misma tabla, archivados como "lentitud de DEV". ⚠️ `CREATE OR REPLACE FUNCTION` **no conserva** `SET search_path` — hay que repetirlo. |
+| 412 | `412_tenants_telefono.sql` | `tenants.telefono` — el alta de negocio pedía el teléfono y `provisionNegocio()` nunca lo guardaba. Se guarda ahora por los 3 caminos del alta; editable en Configuración → Mi negocio. Ver [[wiki/features/autenticacion-onboarding]]. |
+| 411 | `411_admin_customer_notes_y_hardening_audit_log.sql` | Tabla `admin_customer_notes` (notas internas de soporte sobre un cliente) — RLS encendida **sin policies** + `REVOKE` a `anon`/`authenticated`, **sin FK a `tenants`** (para que la nota sobreviva a la baja del tenant que audita). Además **hardening de `admin_audit_log`**: la mig 221 lo había dejado con GRANT completo para `anon`/`authenticated` confiando solo en "RLS sin policies" como defensa — mismo `REVOKE` que le faltaba, mismo agujero de fondo que corrigió la mig 272 (ver más abajo). Ver [[wiki/support/plataforma-soporte]]. |
+| 410 | `410_admin_tenants_overview_cuentas.sql` | `fn_admin_tenants_overview(p_q, p_limit)` y `fn_admin_tenant_cuentas(p_tenant_id)` para el panel de soporte — `SECURITY DEFINER`, `REVOKE` de `anon`/`authenticated` + `GRANT` solo a `service_role`. ⚠️ Hallazgo del `migration-reviewer`: este proyecto tiene un `ALTER DEFAULT PRIVILEGES` que le da `EXECUTE` a `anon`/`authenticated` en **toda función nueva** de `public`, así que el `REVOKE` explícito de estos dos roles es imprescindible (mismo agujero que corrigió la mig 272). Ver [[wiki/support/plataforma-soporte]]. |
+| 409 | `409_empleados_sucursal_id.sql` | `empleados.sucursal_id` — nullable, `FK ON DELETE SET NULL`, índice por tenant. Backfill automático **solo en tenants con UNA sucursal activa**. Revisada por `migration-reviewer`. Al aplicarla saltó que Postgres **no tiene `min(uuid)`** → se usó `(array_agg(id))[1]`. Decisión de GO: el empleado pertenece a una sucursal (cierra el pendiente de los 4 gastos de RRHH invisibles). Ver [[wiki/features/rrhh]]. |
+| 407 | `407_recurso_ubicaciones_catalogo.sql` | Catálogo `recurso_ubicaciones` + `recursos.ubicacion_id`. `recursos.ubicacion` era texto libre, así que una ubicación **no existía hasta que había un recurso en ella** — por eso la pestaña solo podía "asignar", no "crear" (pedido de Fede). NO reusa `ubicaciones` (la del WMS, con cubicaje y picking) a propósito. Siembra desde los textos existentes y deja el texto sincronizado por trigger hasta que PROD corra el código nuevo. |
+| 408 | `408_recurso_ubicacion_borrar_limpia_texto.sql` | Correctivo de la 407, **encontrado probando el ciclo completo contra datos reales**: al borrar una ubicación el recurso perdía la FK pero conservaba el texto huérfano, así que la ubicación reaparecía en pantalla agrupando recursos — contradiciendo el diálogo que promete "N recursos quedarán sin ubicación". |
+
+
+**🗂️ Migraciones 391-406 — 🚀 APLICADAS EN DEV **Y EN PROD** (deploy del 2026-09-11, `v1.208.0`).**
+Se aplicaron una por una contra PROD (`jjffnbrdjchquexdfgwq`) tras revisarlas de a una: sin DDL
+destructivo, sin UUIDs hardcodeados, sin colisión de nombres de policy y con todas las tablas y
+funciones base ya presentes. **Paridad verificada**: el `md5` de `pg_policies` da idéntico en los dos
+ambientes (`587a4b053df90f4150919bcdb81ea4e4`, 228 policies) y el backfill de `venta_items` dejó
+**0 filas desincronizadas**. Ver `log.md` (2026-09-11, tipo `deploy`):
 
 | # | Archivo | Qué hace |
 |---|---|---|

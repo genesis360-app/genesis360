@@ -26,6 +26,23 @@ const ACTION_MODULE: Record<string, string> = {
   'metrics.overview': 'dashboard',
   'customers.list': 'customers',
   'customers.get': 'customers',
+  // Herramientas de soporte sobre un cliente. `extend_trial` y `reset_password` son de `admin`
+  // (el guard explícito vive adentro del case, igual que la baja).
+  'customers.extend_trial': 'customers',
+  'customers.reset_password': 'customers',
+  'customers.activity': 'customers',
+  'customers.notes.list': 'customers',
+  'customers.notes.create': 'customers',
+  'customers.notes.delete': 'customers',
+  'audit.list': 'dashboard',
+  'analytics.overview': 'analytics',
+  // Baja de un tenant desde el panel de soporte. Van en el módulo `customers` (es donde vive la
+  // pantalla), pero OJO: `support` también tiene ese módulo, y borrar un negocio entero no puede
+  // ser cosa de soporte. El guard real es `soloAdmin()` adentro de cada case.
+  'customers.delete_preview': 'customers',
+  'customers.schedule_delete': 'customers',
+  'customers.cancel_delete': 'customers',
+  'customers.purge_now': 'customers',
   'impersonation.start': 'customers',
   'support.tickets.list': 'support',
   'support.tickets.get': 'support',
@@ -148,6 +165,17 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
   return { mp_cancelled, errores, periodEnd }
 }
 
+/**
+ * ¿Este tenant PARECE tener cobro vivo en Mercado Pago?
+ *
+ * Solo informativo (se muestra en el preview). NO se usa para decidir si cancelar: un tenant cuyo
+ * checkout nunca terminó de linkearse queda con `mp_subscription_id` NULL y sin estado 'active', y
+ * sin embargo puede tener un preapproval cobrando (el escenario H8/MP-C7 que `cancelarSubMP` sabe
+ * resolver buscando por el mail del dueño). Gatear la cancelación con esto saltearía justo ese caso.
+ */
+const cobroVivo = (t: { subscription_status?: string | null; mp_subscription_id?: string | null }) =>
+  t.subscription_status === 'active' || !!t.mp_subscription_id
+
 // MRR + distribución por plan (join tenants→planes). Paga = plan_id no nulo y fuera de trial.
 async function computeBilling(svc: any) {
   const nowIso = new Date().toISOString()
@@ -168,6 +196,120 @@ async function computeBilling(svc: any) {
     porPlan.set(key, row)
   }
   return { mrr, por_plan: Array.from(porPlan.values()) }
+}
+
+/**
+ * Qué se pierde si se borra este tenant. Se usa para DOS cosas: mostrárselo al agente antes de
+ * que confirme, y dejarlo escrito en la auditoría — una vez ejecutado el CASCADE no queda nada
+ * que contar, así que si no se toma la foto antes, se pierde para siempre.
+ */
+async function inventarioTenant(svc: any, tenantId: string) {
+  const tabla = async (t: string, col = 'tenant_id') => {
+    const { count } = await svc.from(t).select('id', { count: 'exact', head: true }).eq(col, tenantId)
+    return count ?? 0
+  }
+  const [usuarios, sucursales, ventas, productos, clientes, gastos, movimientos] = await Promise.all([
+    tabla('users'), tabla('sucursales'), tabla('ventas'), tabla('productos'),
+    tabla('clientes'), tabla('gastos'), tabla('movimientos_stock'),
+  ])
+  // 🛑 Lo fiscal se cuenta aparte: un comprobante con CAE ya fue informado a AFIP y tiene
+  // obligación de conservación. No se bloquea acá (esa decisión es del negocio, no de esta
+  // función), pero NO puede pasar inadvertido — ver el guard de `confirmFiscal`.
+  const { count: conCae } = await svc.from('ventas')
+    .select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).not('cae', 'is', null)
+  return {
+    usuarios, sucursales, ventas, productos, clientes, gastos, movimientos,
+    comprobantes_fiscales_con_cae: conCae ?? 0,
+  }
+}
+
+/**
+ * Borra de Storage todo lo que subió este negocio.
+ *
+ * 🛑 Por qué hace falta: el `DELETE FROM tenants` cascadea sobre ~140 FK de **Postgres**, pero
+ * Storage es otro sistema — los archivos NO se van con él. Purgando un negocio sin esto quedaban
+ * huérfanos para siempre: fotos de productos, comprobantes de gastos que el cliente subió, remitos,
+ * documentación de empleados y —lo más serio— **su certificado de AFIP**, una credencial fiscal
+ * viva colgada de un negocio que ya no existe. Además de la factura de storage que nunca baja, es
+ * un borrado incompleto frente al derecho de supresión (AAIP).
+ *
+ * Los prefijos NO son todos iguales, así que hay que pasarle los ids juntados ANTES del DELETE:
+ *   • `<tenant_id>/…`           → la mayoría de los buckets
+ *   • `<user_id>/avatar.*`      → avatares
+ *   • `<empleado_id>/…` y `prestamos/<empleado_id>/…` → empleados
+ *   • `pod/<envio_id>/…` y `facturas-courier/<tenant_id>/…` → etiquetas-envios
+ *
+ * Fail-soft: el negocio ya está borrado cuando esto corre, así que un error acá NO puede abortar
+ * nada — se devuelve para que el panel lo muestre y quede en la auditoría.
+ */
+const BUCKETS_POR_TENANT = [
+  'archivos-biblioteca', 'autorizaciones-fotos', 'certificados-afip', 'comprobantes-gastos',
+  'logos', 'presupuestos-servicios', 'productos', 'remitos',
+] as const
+
+async function borrarStorageDelTenant(
+  svc: any,
+  tenantId: string,
+  ids: { usuarios: string[]; empleados: string[]; envios: string[] },
+): Promise<{ borrados: number; errores: string[] }> {
+  let borrados = 0
+  const errores: string[] = []
+
+  // Lista un prefijo y borra lo que haya. `list` no recursea, así que se baja un nivel cuando la
+  // entrada es una carpeta (Storage la devuelve con `id: null`).
+  const purgarPrefijo = async (bucket: string, prefijo: string, profundidad = 0) => {
+    try {
+      const { data, error } = await svc.storage.from(bucket).list(prefijo, { limit: 1000 })
+      if (error) { errores.push(`${bucket}/${prefijo}: ${error.message}`); return }
+      if (!data?.length) return
+      const archivos = data.filter((o: any) => o.id !== null).map((o: any) => `${prefijo}/${o.name}`)
+      if (archivos.length) {
+        const { error: delErr } = await svc.storage.from(bucket).remove(archivos)
+        if (delErr) errores.push(`${bucket}/${prefijo}: ${delErr.message}`)
+        else borrados += archivos.length
+      }
+      if (profundidad < 2) {
+        for (const carpeta of data.filter((o: any) => o.id === null)) {
+          await purgarPrefijo(bucket, `${prefijo}/${carpeta.name}`, profundidad + 1)
+        }
+      }
+    } catch (e) {
+      errores.push(`${bucket}/${prefijo}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  for (const b of BUCKETS_POR_TENANT) await purgarPrefijo(b, tenantId)
+  for (const uid of ids.usuarios) await purgarPrefijo('avatares', uid)
+  for (const eid of ids.empleados) {
+    await purgarPrefijo('empleados', eid)
+    await purgarPrefijo('empleados', `prestamos/${eid}`)
+  }
+  for (const env of ids.envios) await purgarPrefijo('etiquetas-envios', `pod/${env}`)
+  await purgarPrefijo('etiquetas-envios', `facturas-courier/${tenantId}`)
+
+  return { borrados, errores }
+}
+
+/**
+ * Las cuentas de acceso (auth) del tenant, con su mail. Se toman ANTES del DELETE: el CASCADE
+ * borra `users` y después ya no hay forma de saber qué mails quedaron colgados.
+ *
+ * `es_agente` marca a los que además son agentes del panel de soporte — viven en el MISMO pool de
+ * `auth.users` que los clientes (mig 221), así que borrar uno por arrastre dejaría a soporte sin
+ * acceso. Nunca se borran.
+ */
+async function cuentasAuthDelTenant(svc: any, tenantId: string) {
+  const { data: filas } = await svc.from('users').select('id, rol, nombre_display').eq('tenant_id', tenantId)
+  const out: Array<{ id: string; rol: string; nombre: string | null; email: string | null; es_agente: boolean }> = []
+  for (const u of filas ?? []) {
+    const { data: authU } = await svc.auth.admin.getUserById(u.id).catch(() => ({ data: null }))
+    const { data: ag } = await svc.from('support_agents').select('id').eq('id', u.id).maybeSingle()
+    out.push({
+      id: u.id, rol: u.rol, nombre: u.nombre_display ?? null,
+      email: authU?.user?.email ?? null, es_agente: !!ag,
+    })
+  }
+  return out
 }
 
 Deno.serve(async (req) => {
@@ -217,20 +359,96 @@ Deno.serve(async (req) => {
 
       case 'metrics.overview': {
         const ago30 = new Date(Date.now() - 30 * DAY).toISOString()
-        const nowIso = new Date().toISOString()
-        const [t, a30, trial, tickets] = await Promise.all([
+        const [t, a30, tickets] = await Promise.all([
           svc.from('tenants').select('id', { count: 'exact', head: true }),
           svc.from('tenants').select('id', { count: 'exact', head: true }).gte('created_at', ago30),
-          svc.from('tenants').select('id', { count: 'exact', head: true }).gt('trial_ends_at', nowIso),
           svc.from('support_tickets').select('id', { count: 'exact', head: true }).neq('estado', 'cerrado'),
         ])
         const { data: modos } = await svc.from('tenants').select('modo_operacion')
         const basico = (modos ?? []).filter((m: any) => m.modo_operacion === 'basico').length
         const { mrr } = await computeBilling(svc)
+
+        // Lo que el equipo tiene que MIRAR hoy, no solo el tamaño del negocio. Sale del mismo RPC
+        // que la lista de clientes (mig 410) para que los números coincidan con lo que se ve ahí.
+        // 🛑 "En trial" NO es `subscription_status === 'trial'`: ese campo se queda en 'trial' para
+        // siempre aunque la fecha haya pasado. Al 2026-09-12, 5 de los 6 "en trial" de PROD ya
+        // estaban vencidos — contarlos como prueba activa infla el pipeline con gente que ya se fue.
+        const { data: overview } = await svc.rpc('fn_admin_tenants_overview', { p_q: null, p_limit: 500 })
+        const ahora = Date.now()
+        const en7 = ahora + 7 * DAY
+        const hace30 = ahora - 30 * DAY
+        let trialVigente = 0, trialPorVencer = 0, trialVencido = 0, bajasProgramadas = 0, sinActividad30 = 0
+        for (const c of (overview ?? []) as any[]) {
+          const fin = c.trial_ends_at ? new Date(c.trial_ends_at).getTime() : null
+          if (c.subscription_status === 'trial' && fin !== null) {
+            if (fin <= ahora) trialVencido++
+            else if (fin <= en7) trialPorVencer++
+            else trialVigente++
+          }
+          if (c.delete_scheduled_at) bajasProgramadas++
+          const acc = c.ultimo_acceso ? new Date(c.ultimo_acceso).getTime() : null
+          if (acc === null || acc < hace30) sinActividad30++
+        }
+
         return json({ metrics: {
-          total: t.count ?? 0, altas30: a30.count ?? 0, enTrial: trial.count ?? 0,
+          total: t.count ?? 0, altas30: a30.count ?? 0,
+          enTrial: trialVigente + trialPorVencer,
+          trialPorVencer, trialVencido, bajasProgramadas, sinActividad30,
           ticketsAbiertos: tickets.count ?? 0, basico, avanzado: (modos?.length ?? 0) - basico, mrr,
         } })
+      }
+
+      // Analytics con los datos que SÍ tenemos. El CAC por canal necesita la inversión
+      // publicitaria, que hoy no está cargada en ningún lado: en vez de inventar un número, se
+      // muestra el embudo real (altas, conversión a pago, churn y origen de los leads) y se dice
+      // explícitamente qué falta para poder calcular CAC.
+      case 'analytics.overview': {
+        const [{ data: tenants }, { data: leads }] = await Promise.all([
+          svc.from('tenants').select('created_at, subscription_status, plan_tier, primera_compra_at, trial_ends_at'),
+          svc.from('leads').select('origen, estado, valor_estimado, created_at'),
+        ])
+
+        // Altas por mes, últimos 12 — la serie que muestra si el negocio crece o se amesetó.
+        const meses: { mes: string; altas: number; convirtieron: number }[] = []
+        const hoy = new Date()
+        for (let i = 11; i >= 0; i--) {
+          const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+          const fin = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+          const delMes = (tenants ?? []).filter((t: any) => {
+            const c = new Date(t.created_at).getTime()
+            return c >= d.getTime() && c < fin.getTime()
+          })
+          meses.push({
+            mes: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+            altas: delMes.length,
+            // "Convirtió" = alguna vez pagó. `primera_compra_at` es el hecho, no el estado actual:
+            // un cliente que pagó y después canceló convirtió igual.
+            convirtieron: delMes.filter((t: any) => !!t.primera_compra_at).length,
+          })
+        }
+
+        const total = (tenants ?? []).length
+        const pagaron = (tenants ?? []).filter((t: any) => !!t.primera_compra_at).length
+        const activos = (tenants ?? []).filter((t: any) => t.subscription_status === 'active').length
+        const cancelados = (tenants ?? []).filter((t: any) => t.subscription_status === 'cancelled').length
+
+        // Embudo del CRM por origen: de dónde vienen los leads y en qué terminan.
+        const porOrigen = new Map<string, { origen: string; leads: number; ganados: number; perdidos: number; valor: number }>()
+        for (const l of (leads ?? []) as any[]) {
+          const k = l.origen?.trim() || 'sin origen'
+          const row = porOrigen.get(k) ?? { origen: k, leads: 0, ganados: 0, perdidos: 0, valor: 0 }
+          row.leads++
+          if (l.estado === 'won') row.ganados++
+          if (l.estado === 'lost') row.perdidos++
+          row.valor += Number(l.valor_estimado ?? 0)
+          porOrigen.set(k, row)
+        }
+
+        return json({
+          meses,
+          embudo: { total, pagaron, activos, cancelados },
+          por_origen: [...porOrigen.values()].sort((a, b) => b.leads - a.leads),
+        })
       }
 
       case 'billing.overview': {
@@ -427,9 +645,14 @@ Deno.serve(async (req) => {
       }
 
       case 'customers.list': {
-        let query = svc.from('tenants').select('id, nombre, created_at').order('created_at', { ascending: false }).limit(100)
-        if (p.q?.trim()) query = query.ilike('nombre', `%${p.q.trim()}%`)
-        const { data, error } = await query
+        // mig 410 — la búsqueda ya no es solo por nombre del negocio: también por el mail (o el
+        // nombre) del dueño, por el mail de cualquier usuario y por el id del tenant. El que
+        // escribe a soporte lo hace desde su mail, que era justo con lo que no se podía buscar.
+        // Los mails viven en `auth.users`, fuera del alcance de PostgREST → RPC SECURITY DEFINER.
+        const { data, error } = await svc.rpc('fn_admin_tenants_overview', {
+          p_q: p.q?.trim() || null,
+          p_limit: 200,
+        })
         if (error) throw error
         await audit({ q: p.q ?? null, count: data?.length ?? 0 })
         return json({ customers: data ?? [] })
@@ -438,7 +661,11 @@ Deno.serve(async (req) => {
       case 'customers.get': {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
         const { data: tenant, error } = await svc.from('tenants')
-          .select('id, nombre, plan_id, modo_operacion, created_at, trial_ends_at, inicio_actividades, subscription_status')
+          .select('id, nombre, plan_id, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
+            + 'inicio_actividades, subscription_status, subscription_period_end, delete_scheduled_at, '
+            + 'pais, tipo_comercio, moneda, telefono, mp_subscription_id, '
+            // Estado fiscal: es lo primero que pregunta un cliente que no puede facturar.
+            + 'cuit, condicion_iva_emisor, razon_social_fiscal, facturacion_habilitada, afip_produccion, afip_provider')
           .eq('id', p.tenantId).maybeSingle()
         if (error) throw error
         if (!tenant) return json({ error: 'Tenant no encontrado' }, 404)
@@ -453,6 +680,34 @@ Deno.serve(async (req) => {
         const { data: recientes } = await svc.from('ventas')
           .select('numero, total, estado, created_at').eq('tenant_id', p.tenantId)
           .order('created_at', { ascending: false }).limit(5)
+        // Quién puede entrar a este negocio, con qué mail y cuándo entró por última vez (mig 410).
+        // Antes solo se veía el CONTADOR de usuarios, que no sirve para identificar a nadie.
+        const { data: cuentas } = await svc.rpc('fn_admin_tenant_cuentas', { p_tenant_id: p.tenantId })
+        // Cuánto emitió: distingue "no factura porque no configuró" de "no factura porque falla".
+        const { count: comprobantes } = await svc.from('ventas')
+          .select('id', { count: 'exact', head: true }).eq('tenant_id', p.tenantId).not('cae', 'is', null)
+
+        // Uso contra el límite del plan. Es lo que distingue al cliente que está TRABADO (no puede
+        // dar de alta un usuario más) del que simplemente no usa la app — desde afuera se ven
+        // igual, y son dos conversaciones opuestas: una es soporte, la otra es venta.
+        // El límite sale de `fn_tenant_limite`, la misma función que usa el trigger que bloquea el
+        // INSERT (`fn_enforce_limite`), así que el panel no puede desincronizarse de la realidad.
+        // -1 = sin límite (enterprise).
+        const DIMS: { dim: string; label: string; tabla: string }[] = [
+          { dim: 'usuarios',   label: 'Usuarios',   tabla: 'users' },
+          { dim: 'sku',        label: 'Productos',  tabla: 'productos' },
+          { dim: 'sucursales', label: 'Sucursales', tabla: 'sucursales' },
+        ]
+        const limites = await Promise.all(DIMS.map(async ({ dim, label, tabla }) => {
+          const [{ data: lim }, { count }] = await Promise.all([
+            svc.rpc('fn_tenant_limite', { p_tenant_id: p.tenantId, p_dim: dim }),
+            // `activo = true`: el trigger cuenta exactamente así, y un usuario dado de baja no
+            // consume cupo.
+            svc.from(tabla).select('id', { count: 'exact', head: true })
+              .eq('tenant_id', p.tenantId).eq('activo', true),
+          ])
+          return { dim, label, usado: count ?? 0, limite: Number(lim ?? 0) }
+        }))
         await audit({ tenantId: p.tenantId })
         return json({
           tenant,
@@ -461,9 +716,356 @@ Deno.serve(async (req) => {
             ventas_total: ventasTotal.count ?? 0, ventas_30d: ventas30.count ?? 0,
             tickets_abiertos: ticketsAbiertos.count ?? 0,
             ultima_venta_at: recientes?.[0]?.created_at ?? null,
+            comprobantes_con_cae: comprobantes ?? 0,
           },
+          limites,
+          cuentas: cuentas ?? [],
           recent_sales: recientes ?? [],
         })
+      }
+
+      // ── Baja de un tenant (soporte) ───────────────────────────────────────────────────────
+      // Complementa el camino self-service del cliente (MiCuentaPage → `delete_scheduled_at`).
+      // Dos diferencias con aquel: acá puede purgarse SIN esperar los 30 días, y queda auditado
+      // con nombre y apellido del agente que lo pidió.
+      //
+      // 🛑 Guard de rol: el módulo es `customers`, que `support` también tiene. Borrar un negocio
+      // entero no es una tarea de soporte — se exige `admin` explícitamente.
+      case 'customers.delete_preview':
+      case 'customers.schedule_delete':
+      case 'customers.cancel_delete':
+      case 'customers.purge_now': {
+        if (agent.rol !== 'admin') {
+          return json({ error: `Solo un agente con rol "admin" puede dar de baja un negocio (tu rol: ${agent.rol}).` }, 403)
+        }
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+
+        const { data: tenant } = await svc.from('tenants')
+          .select('id, nombre, subscription_status, delete_scheduled_at, mp_subscription_id')
+          .eq('id', p.tenantId).maybeSingle()
+        if (!tenant) return json({ error: 'Tenant no encontrado' }, 404)
+
+        if (action === 'customers.delete_preview') {
+          const inv = await inventarioTenant(svc, p.tenantId)
+          const cuentas = await cuentasAuthDelTenant(svc, p.tenantId)
+          await audit({ preview: true })
+          return json({ tenant, inventario: inv, cuentas, cobro_vivo: cobroVivo(tenant) })
+        }
+
+        if (action === 'customers.cancel_delete') {
+          const { error } = await svc.from('tenants')
+            .update({ delete_scheduled_at: null }).eq('id', p.tenantId)
+          if (error) throw error
+          await audit({ cancelada: true, tenant_nombre: tenant.nombre })
+          return json({ ok: true, tenant: tenant.nombre })
+        }
+
+        // Para programar o purgar: el agente tiene que escribir el nombre exacto. Es la misma
+        // barrera que la app le pone al dueño — un `tenantId` mal copiado borra el negocio
+        // equivocado y no hay vuelta atrás.
+        if (String(p.confirmNombre ?? '').trim() !== String(tenant.nombre ?? '').trim()) {
+          return json({ error: `Para confirmar, escribí el nombre exacto del negocio: "${tenant.nombre}"` }, 400)
+        }
+
+        const inv = await inventarioTenant(svc, p.tenantId)
+
+        // 🛑 REGLA #0 — comprobantes ya informados a AFIP. No se bloquea (puede haber un motivo
+        // legítimo: un tenant de prueba que emitió en homologación), pero exige un segundo sí
+        // explícito para que nadie los borre sin enterarse de que existían.
+        if (inv.comprobantes_fiscales_con_cae > 0 && p.confirmFiscal !== true) {
+          return json({
+            error: `Este negocio tiene ${inv.comprobantes_fiscales_con_cae} comprobante(s) con CAE ya informados a AFIP. `
+              + 'Borrarlos elimina documentación fiscal con obligación de conservación. '
+              + 'Si aun así corresponde, reenviá la baja confirmando explícitamente.',
+            requiere_confirmacion_fiscal: true,
+            comprobantes_fiscales_con_cae: inv.comprobantes_fiscales_con_cae,
+          }, 409)
+        }
+
+        // 🛑 REGLA #0 - PLATA: si el tenant tiene un preapproval vivo en Mercado Pago, borrarlo
+        // NO frena el cobro: el preapproval vive en MP, no acá. Se le seguiría debitando a un
+        // cliente cuyo negocio ya no existe, y tras el CASCADE no queda ni el `mp_subscription_id`
+        // para rastrearlo. Se cancela ANTES y fail-closed: si MP no confirma, no se borra nada.
+        // Es lo mismo que hace el camino self-service del dueño (MiCuentaPage -> cancel-suscripcion).
+        // Se llama SIEMPRE, sin preguntar antes si "parece" que hay cobro. Un tenant cuyo checkout
+        // nunca se linkeó no tiene `mp_subscription_id` ni estado 'active' y aun así puede estar
+        // siendo cobrado: `cancelarSubMP` lo busca por el mail del dueño (H8/MP-C7). Preguntar
+        // primero era justamente saltear ese caso. Si no hay nada que cancelar, no cancela nada.
+        const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
+        if (!mpToken) return json({ error: 'MP no configurado: no se puede frenar el cobro antes de dar de baja.' }, 500)
+        const rMp = await cancelarSubMP(svc, p.tenantId, mpToken)
+        if (rMp.errores.length) {
+          await audit({ abortada: true, motivo: 'mp_no_confirmo', errores: rMp.errores })
+          return json({
+            error: 'No se pudo cancelar la suscripción en Mercado Pago, así que NO se dio de baja nada: '
+              + 'el cliente seguiría siendo cobrado por un negocio borrado. Reintentá o cancelala desde el panel de MP.',
+            detalle: rMp.errores,
+          }, 502)
+        }
+        const mpCancelled = rMp.mp_cancelled
+        // Solo se toca el estado de la cuenta si de verdad se canceló algo: si no había nada vivo,
+        // marcar 'cancelled' mentiría sobre un tenant que quizá estaba en trial.
+        if (mpCancelled > 0) {
+          // MP-C9: el período ya pagado se respeta. En `schedule_delete` esto además le deja el
+          // acceso vigente durante la ventana, por si quiere cancelar la baja.
+          await svc.from('tenants').update({
+            subscription_status: 'cancelled',
+            subscription_period_end: rMp.periodEnd ?? new Date(Date.now() + 30 * DAY).toISOString(),
+          }).eq('id', p.tenantId)
+        }
+
+        if (action === 'customers.schedule_delete') {
+          const dias = Number.isFinite(Number(p.dias)) ? Math.max(0, Number(p.dias)) : 30
+          const fecha = new Date(Date.now() + dias * DAY)
+          const { error } = await svc.from('tenants')
+            .update({ delete_scheduled_at: fecha.toISOString() }).eq('id', p.tenantId)
+          if (error) throw error
+          await audit({ programada_para: fecha.toISOString(), dias, tenant_nombre: tenant.nombre, inventario: inv, mp_cancelled: mpCancelled })
+          return json({
+            ok: true, delete_scheduled_at: fecha.toISOString(), inventario: inv, mp_cancelled: mpCancelled,
+            // La cancelación en MP no se deshace sola: `cancel_delete` revive el negocio, no el cobro.
+            aviso_mp: mpCancelled > 0
+              ? 'Se canceló la suscripción en Mercado Pago. Si después se cancela la baja, el cliente tiene que volver a suscribirse.'
+              : null,
+          })
+        }
+
+        // purge_now - irreversible. El CASCADE de las ~140 FK a tenant_id hace el resto (mig 358).
+        // Las cuentas de acceso se resuelven ANTES del DELETE: el CASCADE borra `users` y después
+        // ya no hay de dónde sacarlas. Se resuelven acá y NO se aceptan del cliente: una lista de
+        // uuids mandada por el panel podría borrar cuentas de cualquier otro tenant.
+        const cuentas = await cuentasAuthDelTenant(svc, p.tenantId)
+        // Los ids de Storage se juntan ACÁ, antes del DELETE: después del CASCADE no hay de dónde
+        // sacarlos y los archivos quedarían huérfanos para siempre.
+        const [{ data: emps }, { data: envs }] = await Promise.all([
+          svc.from('empleados').select('id').eq('tenant_id', p.tenantId),
+          svc.from('envios').select('id').eq('tenant_id', p.tenantId),
+        ])
+        const idsStorage = {
+          usuarios: cuentas.map((c: any) => c.id),
+          empleados: (emps ?? []).map((e: any) => e.id),
+          envios: (envs ?? []).map((e: any) => e.id),
+        }
+        await audit({ purge_now: true, tenant_nombre: tenant.nombre, inventario: inv, cuentas, mp_cancelled: mpCancelled })
+        const { error: delErr } = await svc.from('tenants').delete().eq('id', p.tenantId)
+        if (delErr) throw delErr
+
+        // 🛑 Storage NO se va con el CASCADE de Postgres: hay que borrarlo aparte. Entre lo que
+        // quedaba huérfano estaba el CERTIFICADO DE AFIP del negocio.
+        const storage = await borrarStorageDelTenant(svc, p.tenantId, idsStorage)
+        await audit({ purge_now: true, storage_borrados: storage.borrados, storage_errores: storage.errores })
+
+        // El sweep programado NO toca `auth.users` (borra el tenant y deja la cuenta huérfana:
+        // el mail queda sin negocio pero existiendo). Acá se ofrece cerrar el círculo, porque
+        // "dar de baja" desde soporte se espera que deje el mail realmente libre.
+        const authBorrados: Array<{ id: string; email: string | null }> = []
+        const authOmitidos: Array<{ id: string; email: string | null; motivo: string }> = []
+        if (p.borrarUsuariosAuth === true) {
+          for (const c of cuentas) {
+            if (c.es_agente) { authOmitidos.push({ id: c.id, email: c.email, motivo: 'es agente del panel de soporte' }); continue }
+            // Defensa extra: si tras el CASCADE todavía tiene fila en `users`, pertenece a otro
+            // negocio y su mail no es nuestro para borrar.
+            const { data: sigue } = await svc.from('users').select('id').eq('id', c.id).maybeSingle()
+            if (sigue) { authOmitidos.push({ id: c.id, email: c.email, motivo: 'pertenece a otro negocio' }); continue }
+            const { error } = await svc.auth.admin.deleteUser(c.id)
+            if (error) authOmitidos.push({ id: c.id, email: c.email, motivo: error.message })
+            else authBorrados.push({ id: c.id, email: c.email })
+          }
+          await audit({ purge_now: true, auth_users_borrados: authBorrados, auth_users_omitidos: authOmitidos })
+        }
+
+        return json({
+          ok: true, purgado: tenant.nombre, inventario: inv, mp_cancelled: mpCancelled,
+          auth_users_borrados: authBorrados, auth_users_omitidos: authOmitidos,
+          storage_borrados: storage.borrados, storage_errores: storage.errores,
+        })
+      }
+
+      // Extender la prueba gratuita. Es la herramienta que más se pide en soporte ("se me venció
+      // mientras lo estaba probando") y hasta hoy había que hacerlo con SQL a mano contra PROD.
+      case 'customers.extend_trial': {
+        if (agent.rol !== 'admin') {
+          return json({ error: `Solo un agente con rol "admin" puede extender una prueba (tu rol: ${agent.rol}).` }, 403)
+        }
+        const dias = Number(p.dias)
+        if (!Number.isFinite(dias) || dias < 1 || dias > 365) {
+          return json({ error: 'Indicá entre 1 y 365 días.' }, 400)
+        }
+        const { data: t } = await svc.from('tenants')
+          .select('id, nombre, subscription_status, trial_ends_at, subscription_period_end').eq('id', p.tenantId).maybeSingle()
+        if (!t) return json({ error: 'Tenant no encontrado' }, 404)
+        // 🛑 No tocar una suscripción PAGA: extenderle el trial a alguien que está pagando no
+        // tiene sentido y puede confundir el estado de su cuenta.
+        if (t.subscription_status === 'active') {
+          return json({ error: 'Esta cuenta tiene una suscripción activa; no corresponde extender la prueba.' }, 409)
+        }
+        // Desde HOY si ya venció, o desde la fecha original si todavía corre: así "7 días" siempre
+        // significa 7 días de uso real y no se pierden extendiendo una prueba ya vencida.
+        //
+        // 🛑 Se toma la fecha de acceso MÁS LEJANA, no solo `trial_ends_at`. Un tenant `cancelled`
+        // conserva acceso hasta `subscription_period_end` (el período que YA pagó, MP-C9): mirar
+        // solo el trial podía dejarlo con MENOS acceso del que tenía — "extender" acortando.
+        const candidatas = [new Date(), ...[t.trial_ends_at, t.subscription_period_end]
+          .filter(Boolean).map((d: any) => new Date(d)).filter((d: Date) => !isNaN(d.getTime()) && d > new Date())]
+        const base = new Date(Math.max(...candidatas.map(d => d.getTime())))
+        const nueva = new Date(base.getTime() + dias * DAY)
+        const { error } = await svc.from('tenants')
+          .update({ subscription_status: 'trial', trial_ends_at: nueva.toISOString() }).eq('id', p.tenantId)
+        if (error) throw error
+        await audit({ tenantId: p.tenantId, tenant_nombre: t.nombre, dias, trial_ends_at: nueva.toISOString(), anterior: t.trial_ends_at })
+        return json({ ok: true, trial_ends_at: nueva.toISOString() })
+      }
+
+      // Mandarle al usuario un mail de recuperación. NO setea una contraseña desde el panel: un
+      // agente no debería poder elegir la clave con la que después entra alguien.
+      case 'customers.reset_password': {
+        if (agent.rol !== 'admin') {
+          return json({ error: `Solo un agente con rol "admin" puede disparar un reseteo (tu rol: ${agent.rol}).` }, 403)
+        }
+        const email = String(p.email ?? '').trim().toLowerCase()
+        if (!email) return json({ error: 'Falta el email' }, 400)
+        // Que el mail sea REALMENTE de ese tenant: si no, el panel serviría para mandar mails de
+        // recuperación a cualquier dirección.
+        const { data: cuentas } = await svc.rpc('fn_admin_tenant_cuentas', { p_tenant_id: p.tenantId })
+        const pertenece = (cuentas ?? []).some((c: any) => String(c.email ?? '').toLowerCase() === email)
+        if (!pertenece) return json({ error: 'Ese mail no pertenece a este negocio.' }, 403)
+        // ⚠️ `generateLink` NO manda el mail: solo devuelve el link. En este proyecto el envío va
+        // por la EF `send-email` (Resend) — mismo patrón que `invitar-proveedor`. Sin este segundo
+        // paso el panel diría "mail enviado" y no llegaría nada.
+        const { data: link, error } = await svc.auth.admin.generateLink({
+          type: 'recovery',
+          email,
+          options: { redirectTo: `${Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'}/login` },
+        })
+        if (error) return json({ error: error.message }, 400)
+        const actionLink = link?.properties?.action_link
+        if (!actionLink) return json({ error: 'No se pudo generar el link de recuperación.' }, 500)
+
+        const mailRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'notificacion',
+            to: email,
+            data: {
+              titulo: 'Restablecé tu contraseña de Genesis360',
+              mensaje: 'Pediste (o soporte pidió por vos) restablecer tu contraseña. Entrá al enlace para elegir una nueva. Si no fuiste vos, ignorá este mail: tu contraseña actual sigue funcionando.',
+              action_url: actionLink,
+            },
+          }),
+        })
+        // Fail-closed en el AVISO: si el mail no salió, el agente tiene que enterarse — si no, se
+        // queda esperando a un cliente que nunca recibió nada.
+        if (!mailRes.ok) {
+          await audit({ tenantId: p.tenantId, reset_password_para: email, envio_fallo: mailRes.status })
+          return json({ error: `Se generó el link pero el mail no se pudo enviar (${mailRes.status}). Reintentá.` }, 502)
+        }
+        await audit({ tenantId: p.tenantId, reset_password_para: email })
+        return json({ ok: true, email })
+      }
+
+      // Qué pasó últimamente en el negocio + qué se le está rompiendo. Las dos preguntas que
+      // abre cualquier reclamo ("¿qué hizo antes de que fallara?" y "¿le está fallando algo?") y
+      // que hasta hoy solo se podían responder entrando a la base a mano.
+      case 'customers.activity': {
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+        const [act, nc] = await Promise.all([
+          svc.from('actividad_log')
+            .select('id, usuario_nombre, entidad, entidad_nombre, accion, campo, valor_anterior, valor_nuevo, pagina, created_at')
+            .eq('tenant_id', p.tenantId).order('created_at', { ascending: false }).limit(50),
+          // 🛑 Notas de crédito que NO se pudieron emitir en AFIP. Es el error fiscal que más
+          // duele: la devolución ya ocurrió y el comprobante que la respalda no existe. Las que
+          // piden reconciliación manual son las que alguien TIENE que mirar.
+          svc.from('nc_afip_pendientes')
+            .select('id, venta_id, tipo_comprobante, intentos, ultimo_error, requiere_reconciliacion_manual, created_at')
+            .eq('tenant_id', p.tenantId).is('resuelto_at', null)
+            .order('created_at', { ascending: false }).limit(20),
+        ])
+        await audit({ tenantId: p.tenantId })
+        return json({ actividad: act.data ?? [], afip_pendientes: nc.data ?? [] })
+      }
+
+      // Notas internas sobre un cliente (mig 411). A diferencia de un ticket —que es un problema
+      // con estado y ciclo de vida— una nota es CONTEXTO: "llamó, pidió que lo llamemos el lunes".
+      // Hasta ahora eso vivía en la cabeza del que atendió y se perdía cuando atendía otro.
+      // Las puede leer y escribir cualquier agente con acceso a `customers` (incluido `support`):
+      // el punto es justamente que el equipo comparta contexto.
+      case 'customers.notes.list': {
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+        const { data, error } = await svc.from('admin_customer_notes')
+          .select('id, cuerpo, fijada, agent_email, created_at')
+          .eq('tenant_id', p.tenantId)
+          .order('fijada', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(200)
+        if (error) throw error
+        return json({ notes: data ?? [] })
+      }
+
+      case 'customers.notes.create': {
+        const cuerpo = String(p.cuerpo ?? '').trim()
+        if (!p.tenantId || !cuerpo) return json({ error: 'Faltan tenantId y cuerpo' }, 400)
+        // El nombre del negocio se guarda EN la nota: sin FK a `tenants`, es lo único que la deja
+        // legible el día que el negocio ya no exista.
+        // Sin FK a `tenants` (para que la nota sobreviva a la baja), la base NO valida que el
+        // negocio exista: un id mal copiado crearía una nota colgada de la nada. Se valida acá.
+        const { data: t } = await svc.from('tenants').select('nombre').eq('id', p.tenantId).maybeSingle()
+        if (!t) return json({ error: 'Tenant no encontrado' }, 404)
+        const { data, error } = await svc.from('admin_customer_notes').insert({
+          tenant_id: p.tenantId, tenant_nombre: t?.nombre ?? null,
+          agent_id: uid, agent_email: agent.email,
+          cuerpo, fijada: p.fijada === true,
+        }).select('id').single()
+        if (error) throw error
+        await audit({ tenantId: p.tenantId, nota_id: data.id })
+        return json({ ok: true, id: data.id })
+      }
+
+      case 'customers.notes.delete': {
+        if (!p.noteId) return json({ error: 'Falta noteId' }, 400)
+        // Solo el autor puede borrar la suya; un admin puede borrar cualquiera. Nadie más: una
+        // nota que cualquiera puede hacer desaparecer no sirve como memoria compartida.
+        const { data: nota } = await svc.from('admin_customer_notes')
+          .select('id, agent_id, tenant_id').eq('id', p.noteId).maybeSingle()
+        if (!nota) return json({ error: 'Nota no encontrada' }, 404)
+        if (nota.agent_id !== uid && agent.rol !== 'admin') {
+          return json({ error: 'Solo el autor de la nota (o un admin) puede borrarla.' }, 403)
+        }
+        const { error } = await svc.from('admin_customer_notes').delete().eq('id', p.noteId)
+        if (error) throw error
+        await audit({ tenantId: nota.tenant_id, nota_borrada: p.noteId })
+        return json({ ok: true })
+      }
+
+      // El registro de lo que hizo el equipo de soporte. La tabla existía desde la mig 221 y se
+      // escribía en cada acción, pero no había forma de LEERLA: una auditoría que nadie puede
+      // mirar no audita nada.
+      case 'audit.list': {
+        let q = svc.from('admin_audit_log')
+          .select('id, agent_email, action, target_tenant_id, metadata, created_at')
+          .order('created_at', { ascending: false }).limit(Math.min(Number(p.limit) || 100, 500))
+        if (p.tenantId) q = q.eq('target_tenant_id', p.tenantId)
+        if (p.agentEmail) q = q.eq('agent_email', p.agentEmail)
+        if (p.action) q = q.eq('action', p.action)
+        const { data, error } = await q
+        if (error) throw error
+
+        // 🛑 El nombre del negocio se resuelve APARTE, no con un embed de PostgREST. No hay —ni
+        // debe haber— FK de `admin_audit_log.target_tenant_id` a `tenants`: con CASCADE, purgar un
+        // negocio borraría el registro de su propia baja, y con SET NULL se perdería a quién se le
+        // hizo. La auditoría tiene que SOBREVIVIR al borrado de lo auditado.
+        const ids = [...new Set((data ?? []).map((e: any) => e.target_tenant_id).filter(Boolean))]
+        const nombres = new Map<string, string | null>()
+        if (ids.length) {
+          const { data: ts } = await svc.from('tenants').select('id, nombre').in('id', ids)
+          for (const t of ts ?? []) nombres.set(t.id, t.nombre)
+        }
+        const entries = (data ?? []).map((e: any) => ({
+          ...e,
+          // `null` cuando el negocio ya no existe: es justamente el caso de una purga.
+          tenants: e.target_tenant_id ? { nombre: nombres.get(e.target_tenant_id) ?? null } : null,
+        }))
+        return json({ entries })
       }
 
       case 'impersonation.start':

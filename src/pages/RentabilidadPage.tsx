@@ -79,12 +79,17 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       const desde = getFechaDesde(periodo)
       const desdeDate = desde.split('T')[0]
       const [gRes, sRes] = await Promise.all([
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate),
+        // `moneda`: la rentabilidad se calcula en la moneda del negocio. Un gasto en otra moneda no
+        // se suma (no hay cotización guardada por gasto) — si no, el margen sale mal.
+        supabase.from('gastos').select('monto, moneda').eq('tenant_id', tenant!.id).gte('fecha', desdeDate),
         // Mig 401 — el costo laboral se lee AGREGADO: esta pantalla solo suma, no muestra
         // sueldos por empleado, así que no necesita acceso a las filas de rrhh_salarios.
         supabase.rpc('fn_sueldos_agregado', { p_desde: desdeDate, p_hasta: new Date().toISOString().slice(0, 10) }),
       ])
-      const gastos = (gRes.data ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
+      const monedaNeg = String((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+      const gastos = (gRes.data ?? [])
+        .filter((g: any) => String(g.moneda ?? monedaNeg).toUpperCase() === monedaNeg)
+        .reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
       const agg = ((sRes.data ?? []) as any[])[0] ?? { total_neto: 0, empleados: 0 }
       const sueldos = Number(agg.total_neto) || 0
       const empleados = Number(agg.empleados) || 0

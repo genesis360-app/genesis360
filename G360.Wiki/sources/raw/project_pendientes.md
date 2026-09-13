@@ -6,33 +6,42 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 65) — DEV `v1.218.0` (migs 409-414) · **PROD `v1.208.0`** (migs 001-406)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 65) — 🚀 **DEPLOY COMPLETO A PROD: `v1.218.0`, migs 001-414**
 >
 > | | Versión | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
-> | **DEV** | `v1.218.0` | 001-**414** | todo validado: unit 1782 · e2e verde (+146 nuevo) · paridad sin drift |
+> | **PROD** | `v1.218.0` | 001-**414** | 🚀 deployado el 2026-09-13 (GO: "pasa todo a PRD") |
+> | **DEV** | `v1.218.0` | 001-**414** | idéntico a PROD |
 >
-> #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
+> **Ya no hay batch acumulado**: DEV y PROD quedaron a la par por primera vez desde el 2026-09-09.
 >
-> Lo que falta llevar: migs **407-414** (todas aditivas, aplica "DDL primero") + código
-> `v1.209.0`→`v1.218.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
-> `genesis360-admin`, rama `dev`; su merge a `main` dispara el deploy de Vercel a
-> `admin.genesis360.pro`).
+> #### Qué se hizo, en orden
 >
-> **Se puede partir en dos**, y la distinción importa:
-> - **La EF + el panel se deployan SOLOS**, sin tocar `main` de Genesis360 → habilita el camino de
->   **SOPORTE** en PROD (incluido poder purgar "Don Ferretero" y liberar `genesis360.ar@gmail.com`).
-> - El camino del **CLIENTE** (darse de baja con el trial vencido) **sí** necesita la app: el fix de
->   `/mi-cuenta` vive ahí.
+> 1. **Migs 407-414 aplicadas a PROD ANTES del merge** (todas aditivas — "DDL aditivo primero"), una
+>    por una y revisadas antes de aplicar. Verificación estructural post-aplicación de cada objeto.
+> 2. 🔍 **Paridad DEV↔PROD sin drift**: **230 policies**, hash global
+>    `01b696bc90fc863dc812b6285682d795` **idéntico** en los dos ambientes.
+> 3. 🛡️ **Chequeos de seguridad** (la 410 devuelve mails cross-tenant, la 411 son notas internas):
+>    `anon`/`authenticated` **no** ejecutan `fn_admin_tenants_overview` ni `fn_admin_tenant_cuentas`
+>    y `service_role` **sí**; `admin_customer_notes` con 0 policies e ilegible para los dos roles.
+>    En la 413 se confirmó el fix del truncado **y** que `SET search_path` sobrevivió al
+>    `CREATE OR REPLACE`.
+> 4. **EF `admin-api` deployada a PROD** → quedó en **v11** con `verify_jwt: true` preservado.
+> 5. **PR #345** `dev→main` (app) y **PR #4** del panel (`genesis360-admin`).
 >
-> ✅ **Pre-deploy ya verificado** (no hace falta repetirlo si se deploya pronto):
-> - **Paridad DEV↔PROD sin drift**: DEV 230 policies, PROD 228, y la única diferencia son las 2 de
->   `recurso_ubicaciones` (mig 407). Ninguna solo-en-PROD, ninguna con distinta definición.
-> - `gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379) → el
->   código nuevo no depende de nada que no esté o que no llegue con las migraciones. **Sin orden
->   riesgoso.**
-> - Tags y releases `v1.213.0` … `v1.218.0` creados sobre `dev`.
+> ⚠️ Antes del merge hubo que reconciliar la divergencia de siempre (`main` tiene los squash-merge
+> que nunca volvieron a `dev`) con `git merge origin/main` — en los **dos** repos.
+>
+> #### ✅ El deploy que estaba pendiente — HECHO
+>
+> Lo que se llevó: migs **407-414** + código `v1.209.0`→`v1.218.0` + la EF **`admin-api`** + el
+> **panel de soporte**. Los dos caminos de la baja de tenant quedan habilitados en PROD: el de
+> **SOPORTE** (purgar desde el panel) y el del **CLIENTE** (darse de baja con el trial vencido — el
+> fix de `/mi-cuenta` viajaba en la app).
+>
+> 🟥 **Lo único que queda de este bloque**: dropear `tenants.afipsdk_token` y `recursos.ubicacion`,
+> que se dejaron a propósito hasta que PROD corriera el código nuevo. **Ahora ya lo corre**, así que
+> se puede hacer en la próxima sesión con una migración nueva.
 >
 > #### 🧪 Estado de la suite al cierre
 >

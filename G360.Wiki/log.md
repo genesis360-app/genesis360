@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-13] deploy | 🚀 v1.218.0 EN PROD — migs 407-414, EF y panel · PR #345 y #4
+
+GO autorizó el deploy completo ("Ok, pasa todo a PRD y actualiza todo"). Se llevó el batch que venía
+acumulado desde el 2026-09-09: **DEV y PROD quedan a la par**, migs **001-414**.
+
+### El orden, que acá importa
+
+1. **Migs 407-414 aplicadas a PROD ANTES del merge** — todas aditivas, así que aplica el "DDL
+   aditivo primero". Se leyeron y revisaron **las 8 antes de aplicar ninguna**, y se aplicaron de a
+   una. Verificación estructural después: las 3 columnas de `cotizacion_fiscal*`,
+   `empleados.sucursal_id`, `tenants.telefono`, las 2 tablas nuevas, las 2 funciones de la 410, las
+   2 policies de `recurso_ubicaciones` y el CHECK de la 414.
+2. 🔍 **Paridad DEV↔PROD sin drift**, medida después: **230 policies** y el mismo hash global
+   `01b696bc90fc863dc812b6285682d795` en los dos ambientes.
+3. 🛡️ **Chequeos de seguridad** — importan porque la 410 devuelve mails cross-tenant y la 411 son
+   notas internas sobre el cliente: `anon` y `authenticated` **no** pueden ejecutar
+   `fn_admin_tenants_overview` ni `fn_admin_tenant_cuentas` (`service_role` sí), y
+   `admin_customer_notes` tiene 0 policies y es ilegible para ambos. En la 413 se confirmó que el
+   fix del truncado quedó **y** que `SET search_path` sobrevivió al `CREATE OR REPLACE`.
+4. **EF `admin-api` → v11** en PROD, con `verify_jwt: true` preservado.
+5. **PR #345** (app) y **PR #4** (panel `genesis360-admin`), ambos mergeados.
+
+⚠️ En los **dos** repos hubo que reconciliar la divergencia de siempre —`main` tiene los
+squash-merge que nunca volvieron a `dev`— con `git merge origin/main`. Los dos PR se mergearon con
+**merge commit** (no squash) justamente para no volver a abrir esa brecha.
+
+### Qué llega a PROD
+
+El **gasto en moneda extranjera al Libro IVA** con el bug del KPI que sumaba dólares como pesos (era
+latente: 0 gastos en otra moneda en ambos ambientes), la **baja de tenant por los dos caminos** —
+soporte y cliente— con la purga de Storage, `/mi-cuenta` fuera del `SubscriptionGuard`, el **loop
+infinito** del código de ubicación (mig 413), el empleado con sucursal (mig 409) que cierra los 4
+gastos de RRHH invisibles, el gasto multimoneda completo, la tanda de Fede del 11/9 y el panel de
+soporte entero.
+
+⚠️ **El criterio contable del gasto en moneda extranjera sigue PENDIENTE de validar con un contador
+matriculado** — las 15 preguntas abiertas están en `wiki/business/consultas-contador.md`.
+
+🟥 **Queda destrabado para la próxima sesión**: dropear `tenants.afipsdk_token` y
+`recursos.ubicacion`, que se dejaron a propósito hasta que PROD corriera el código nuevo.
+
+---
+
 ## [2026-09-13] update | 🧪 El circuito de IVA crédito no se podía testear por UI — e2e 146 + tenant RI
 
 Lo de ayer (v1.218.0) se había validado con typecheck, 1782 unit y build, pero **nunca en un

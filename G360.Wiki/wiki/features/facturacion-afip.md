@@ -744,7 +744,7 @@ discriminando por alícuota. Cubierto por `calcularImportes` + tests.
 
 ---
 
-## 🧾 El Libro IVA Compras y los gastos en moneda extranjera (v1.218.0, mig 414) — 2026-09-13
+## 🧾 El Libro IVA Compras y los gastos en moneda extranjera (v1.218.0, mig 414) — 🚀 EN PROD 2026-09-13
 
 > [!WARNING] **Criterio contable PENDIENTE de validar con un contador matriculado.** Ver el detalle
 > completo en [[wiki/features/gastos]].

@@ -37,7 +37,30 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.218.0` (sin migración nueva —usa la 414—, SIN deployar a PROD) — 🧾 **El
+## 🚀 v1.218.0 — EN PROD (2026-09-13, PR #345) — migs 001-**414**
+
+**Deploy acumulado de `v1.209.0` → `v1.218.0`**, autorizado por GO ("pasa todo a PRD"). Cierra el
+batch que venía sin deployar desde el 2026-09-09: **DEV y PROD quedan a la par**.
+
+Orden ejecutado: **migs 407-414 aplicadas a PROD ANTES del merge** (todas aditivas), revisadas una
+por una y verificadas estructuralmente después. **Paridad sin drift**: 230 policies y hash global
+`01b696bc90fc863dc812b6285682d795` idéntico en los dos ambientes. Chequeos de seguridad post-
+aplicación: `anon`/`authenticated` no pueden ejecutar las funciones de la 410 (devuelven mails
+cross-tenant) ni leer las notas internas de la 411. EF **`admin-api` → v11** con `verify_jwt: true`
+preservado. Panel de soporte mergeado en su repo (PR #4).
+
+Lo que llega a PROD: el **gasto en moneda extranjera al Libro IVA** (+ el bug del KPI que sumaba
+dólares como pesos, latente), la **baja de tenant por los dos caminos** (soporte y cliente) con la
+purga de Storage, `/mi-cuenta` fuera del `SubscriptionGuard`, el **loop infinito** del código de
+ubicación (mig 413), el empleado con sucursal (mig 409), y la tanda del panel de soporte.
+
+⚠️ **El criterio contable del gasto en moneda extranjera sigue pendiente de un contador matriculado**
+— las 15 preguntas abiertas están en [[wiki/business/consultas-contador]].
+
+🟥 **Queda para la próxima**: dropear `tenants.afipsdk_token` y `recursos.ubicacion`, que se dejaron
+a propósito hasta que PROD corriera el código nuevo. Ahora ya lo corre.
+
+**Versión anterior en DEV (ahora en PROD):** `v1.218.0` (sin migración nueva —usa la 414—) — 🧾 **El
 gasto en moneda extranjera entra al Libro IVA**, cerrando los dos pasos que faltaban: el campo
 "Cotización para IVA" en Gastos (propone el día hábil anterior, editable, y la limpia si el gasto
 vuelve a la moneda del negocio) y el Libro IVA Compras que ahora **los incluye convertidos** en vez

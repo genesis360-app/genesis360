@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-12T23:01:33.680Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260912225709 · 168 tablas
+-- Generado 2026-09-13T15:10:06.120Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260913150627 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -965,7 +965,10 @@ CREATE TABLE public.gastos (
   estado_pago text NOT NULL DEFAULT 'pagado'::text,
   tipo_comprobante text,
   emisor_id uuid,
-  moneda text NOT NULL DEFAULT 'ARS'::text
+  moneda text NOT NULL DEFAULT 'ARS'::text,
+  cotizacion_fiscal numeric(14,4),
+  cotizacion_fiscal_fecha date,
+  cotizacion_fiscal_fuente text
 );
 
 CREATE TABLE public.gastos_fijos (
@@ -2947,6 +2950,7 @@ ALTER TABLE public.estados_inventario ADD CONSTRAINT estados_inventario_descuent
 ALTER TABLE public.estados_inventario ADD CONSTRAINT estados_inventario_pkey PRIMARY KEY (id);
 ALTER TABLE public.gasto_cuotas ADD CONSTRAINT gasto_cuotas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'pagado'::text])));
 ALTER TABLE public.gasto_cuotas ADD CONSTRAINT gasto_cuotas_pkey PRIMARY KEY (id);
+ALTER TABLE public.gastos ADD CONSTRAINT chk_gastos_cotizacion_fiscal_positiva CHECK (((cotizacion_fiscal IS NULL) OR (cotizacion_fiscal > (0)::numeric)));
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_capitaliza_requires_recurso CHECK (((capitaliza_recurso = false) OR (recurso_id IS NOT NULL)));
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_estado_pago_check CHECK ((estado_pago = ANY (ARRAY['pendiente'::text, 'parcial'::text, 'pagado'::text])));
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_pkey PRIMARY KEY (id);

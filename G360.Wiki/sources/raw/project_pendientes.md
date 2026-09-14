@@ -30,9 +30,21 @@ type: project
 >   `marketplace-api`, `marketplace-webhook`, `data-api`, `birthday-notifications`, `process-aging`,
 >   `clever-handler`. ¿Se borran? (no se deshace)
 >
-> 🟥 **Siguiente técnico**: terminar de pasar `RecursosPage` al catálogo de ubicaciones (hoy escribe solo
-> `recursos.ubicacion` texto y nunca `ubicacion_id`, con una inconsistencia latente al editar) y recién
-> después dropear `recursos.ubicacion`.
+> 🟥 **`recursos.ubicacion` — BLOQUEADO por una decisión de GO/Fede** (relevado 2026-09-14):
+>
+> - `RecursosPage` nunca pasó al catálogo de la mig 407: escribe solo el texto y jamás `ubicacion_id`.
+>   Inconsistencia latente: editar la ubicación de un recurso que ya tenía FK cambia el texto pero no el
+>   id → renombrar o borrar la ubicación vieja le pisa el cambio. (PROD: 0 recursos. DEV: 6, consistentes.)
+> - Otros lectores del texto: `DashInventarioArea` (lo selecciona) y el tipo `Recurso` en `src/lib/supabase.ts`.
+>   Triggers que lo escriben: `fn_recursos_sync_ubicacion_texto`, `fn_recurso_ubicacion_propagar_nombre`,
+>   `fn_recurso_ubicacion_borrar_limpia_texto` — hay que dropearlos con la columna.
+> - 🛑 **La decisión**: hoy **cualquier usuario** que edita recursos puede escribir una ubicación nueva
+>   (texto libre, policy `recursos_tenant`). El catálogo solo acepta altas de **DUEÑO / ADMIN /
+>   SUPER_USUARIO** (`recurso_ubicaciones_write_gestion`). Pasar la pantalla al catálogo le quita a un
+>   supervisor/encargado la opción "+ Nueva ubicación". Opciones: (a) solo gestión crea, el resto elige
+>   de la lista; (b) abrir el alta del catálogo a quien puede editar recursos.
+> - Plan una vez decidido: frontend a `ubicacion_id` (deploy) → mig con backfill de textos sueltos al
+>   catálogo + DROP de los 3 triggers y la columna → smoke de PostgREST con control negativo.
 >
 > #### Qué se hizo en el deploy del 13/09, en orden
 >

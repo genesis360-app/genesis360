@@ -1064,7 +1064,9 @@ export default function ProveedoresPage() {
       if (presupFile && presupId) {
         const ext = presupFile.name.split('.').pop()?.toLowerCase() ?? 'pdf'
         const path = `${tenant!.id}/${presupId}.${ext}`
-        await supabase.storage.from('presupuestos-servicios').upload(path, presupFile, { upsert: true })
+        const { error: upErr } = await supabase.storage.from('presupuestos-servicios').upload(path, presupFile, { upsert: true })
+        // Antes se ignoraba el error y quedaba guardada una ruta a un archivo que no existe.
+        if (upErr) throw new Error(`El presupuesto se guardó pero el archivo no: ${upErr.message}`)
         await supabase.from('servicio_presupuestos').update({ archivo_url: path }).eq('id', presupId)
       }
     },

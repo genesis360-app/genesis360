@@ -77,7 +77,9 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive|117_aprobacion_estado_bypass_masivo_mutante|126_aprobacion_estado_convive_cantidad_mutante/,
+      // Anclado al inicio del nombre del archivo: sin el `(^|[\\/])`, `4[89]_.*_mutante` (pensado para
+      // los specs 48 y 49) también ignoraba en silencio al 148 — y a cualquier X48/X49 futuro.
+      testIgnore: /(^|[\\/])(1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive|117_aprobacion_estado_bypass_masivo_mutante|126_aprobacion_estado_convive_cantidad_mutante)/,
     },
 
     // ─── Barrido responsive/mobile (owner) — viewport de celular, mismo storageState.

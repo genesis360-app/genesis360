@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-14T16:12:39.185Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260914161137 · 168 tablas
+-- Generado 2026-09-14T17:34:36.554Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260914173327 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -4398,6 +4398,37 @@ AS $function$
        AND rol = ANY (ARRAY['DUEÑO','ADMIN','SUPER_USUARIO','RRHH'])
   )
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.auth_puede_acceder_rrhh(p_escritura boolean)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid  uuid := auth.uid();
+  v_rol  text;
+  v_perm text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN true; END IF;
+
+  SELECT u.rol, rc.permisos ->> 'rrhh'
+    INTO v_rol, v_perm
+  FROM public.users u
+  LEFT JOIN public.roles_custom rc ON rc.id = u.rol_custom_id AND rc.activo = true
+  WHERE u.id = v_uid;
+
+  IF v_rol IS NULL THEN RETURN false; END IF;
+
+  IF v_perm IS NOT NULL THEN
+    RETURN CASE WHEN p_escritura THEN v_perm IN ('editar', 'supervisa')
+                ELSE v_perm IN ('ver', 'editar', 'supervisa') END;
+  END IF;
+
+  IF v_rol = 'VIEWER' THEN RETURN false; END IF;
+  RETURN v_rol IN ('DUEÑO', 'SUPER_USUARIO', 'ADMIN', 'RRHH');
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.auth_puede_editar_modulo(p_modulo text)
@@ -10193,67 +10224,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -10328,6 +10298,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -11163,6 +11194,48 @@ AS $function$
     AND il.activo      = true
     AND il.cantidad    > 0
     AND il.ubicacion_id IS NOT NULL;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.storage_puede_archivo_empleado(p_name text, p_escritura boolean)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_carpetas text[] := storage.foldername(p_name);
+  v_empleado text;
+  v_user_id  uuid;
+BEGIN
+  v_empleado := CASE WHEN v_carpetas[1] IN ('prestamos', 'recibos') THEN v_carpetas[2] ELSE v_carpetas[1] END;
+  IF v_empleado IS NULL THEN RETURN false; END IF;
+
+  SELECT e.user_id INTO v_user_id
+  FROM public.empleados e
+  WHERE e.id::text = v_empleado AND e.tenant_id = public.get_user_tenant_id();
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  IF public.auth_puede_acceder_rrhh(p_escritura) THEN RETURN true; END IF;
+  RETURN NOT p_escritura AND v_user_id IS NOT NULL AND v_user_id = auth.uid();
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.storage_ruta_envio_es_del_negocio(p_name text)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT CASE (storage.foldername(p_name))[1]
+    WHEN 'pod' THEN EXISTS (
+      SELECT 1 FROM public.envios e
+      WHERE e.id::text = (storage.foldername(p_name))[2]
+        AND e.tenant_id = public.get_user_tenant_id()
+    )
+    WHEN 'facturas-courier' THEN (storage.foldername(p_name))[2] = public.get_user_tenant_id()::text
+    ELSE false
+  END
 $function$
 
 

@@ -857,6 +857,9 @@ export default function EnviosPage() {
         if (!upErr) {
           const { data: signed } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
           firmaUrl = signed?.signedUrl ?? firmaUrl
+        } else {
+          // Antes se ignoraba: la entrega quedaba registrada sin la firma y nadie se enteraba.
+          toast.error(`La firma no se guardó: ${upErr.message}`)
         }
       }
       const { error } = await supabase.from('envios').update({
@@ -987,6 +990,8 @@ export default function EnviosPage() {
         if (!upErr) {
           const { data: signed } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
           archivoUrl = signed?.signedUrl ?? null
+        } else {
+          toast.error(`El archivo de la factura no se guardó: ${upErr.message}`)
         }
       }
 

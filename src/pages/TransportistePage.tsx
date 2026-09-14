@@ -113,16 +113,32 @@ export default function TransportistePage() {
       )
     })
 
+  // La página es pública (sin sesión): ninguna política de storage le permite subir. Lo hace la Edge
+  // Function `transportista-subir-archivo`, que valida el token y arma la ruta del lado del servidor.
+  const subirAlEnvio = async (archivo: Blob, tipo: 'foto' | 'firma', nombre: string): Promise<string> => {
+    const form = new FormData()
+    form.append('token', token ?? '')
+    form.append('tipo', tipo)
+    form.append('archivo', archivo, nombre)
+    const { data, error } = await supabase.functions.invoke('transportista-subir-archivo', { body: form })
+    if (error || !data?.url) {
+      let mensaje = 'No se pudo subir la imagen'
+      try { mensaje = (await (error as any)?.context?.json())?.error ?? mensaje } catch { /* sin detalle */ }
+      throw new Error(mensaje)
+    }
+    return data.url as string
+  }
+
   const subirFirma = async (): Promise<string | null> => {
     if (!podFirma || !envio) return envio?.pod_firma_url ?? null
     try {
       const blob = await (await fetch(podFirma)).blob()
-      const path = `pod/${envio.id}/firma_${Date.now()}.png`
-      const { error } = await supabase.storage.from('etiquetas-envios').upload(path, blob, { upsert: true, contentType: 'image/png' })
-      if (error) return envio.pod_firma_url ?? null
-      const { data } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
-      return data?.signedUrl ?? null
-    } catch { return envio.pod_firma_url ?? null }
+      return await subirAlEnvio(blob, 'firma', 'firma.png')
+    } catch (e: any) {
+      // Antes fallaba en silencio y la entrega quedaba sin firma sin que nadie lo supiera.
+      toast.error(`La firma no se guardó: ${e?.message ?? 'error al subir'}`)
+      return envio.pod_firma_url ?? null
+    }
   }
 
   const avanzarEstado = async (nuevoEstado: EstadoEnvio) => {
@@ -232,12 +248,10 @@ export default function TransportistePage() {
     if (!file || !envio) return
     setUploadingFoto(true)
     try {
-      const path = `pod/${envio.id}/${Date.now()}.${file.name.split('.').pop() ?? 'jpg'}`
-      const { error } = await supabase.storage.from('etiquetas-envios').upload(path, file, { upsert: true })
-      if (error) throw error
-      const { data } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
-      if (data?.signedUrl) { setPodUrl(data.signedUrl); toast.success('Foto subida') }
-    } catch { toast.error('Error al subir la foto') }
+      const url = await subirAlEnvio(file, 'foto', file.name)
+      setPodUrl(url)
+      toast.success('Foto subida')
+    } catch (e: any) { toast.error(e?.message ?? 'Error al subir la foto') }
     finally { setUploadingFoto(false) }
   }
 

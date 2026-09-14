@@ -3,12 +3,14 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-12
+updated: 2026-09-14
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
+**Versión en PROD (actual): `v1.219.0`** (2026-09-14, PR #346, migs 001-416) — detalle en la sección "v1.219.0" de abajo.
+
+**Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
 `a37e6e6c2e1a80cbd522823784555e1a63dc16fd`), confirmado con `gh pr view 340` → `state: MERGED`. **Este
 deploy promovió TODO lo acumulado en `dev` desde el último deploy real (`v1.195.0`, PR #335, 2026-09-01)**
@@ -37,12 +39,18 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-**Versión en DEV:** `v1.219.0` (mig **415**, aplicada en DEV **y PROD**; el frontend sin deployar) —
+## 🚀 v1.219.0 — EN PROD (2026-09-14, PR #346) — migs 001-**416**
+
 🛑 **Arreglado el callejón sin salida del alta.** El escáner de links de Gmail pre-cargaba la URL de
 confirmación, quemaba el token de un solo uso y dejaba una cuenta confirmada **sin negocio**, sin
 forma de recuperarse. Ahora el negocio se crea **server-side** al confirmarse el mail (trigger sobre
 `auth.users`), y el login dejó de rebotar al usuario sin `users` a `/login` — lo manda a
 `/onboarding`, donde la recuperación ya existía pero era inalcanzable. Ver `log.md` (2026-09-14).
+
+Con el mismo deploy:
+- **Mig 416**: dropeada `tenants.afipsdk_token` (DEV y PROD), después de sacarla de `emitir-factura` y de un trigger.
+- 🛑 **Edge Functions realineadas**: `emitir-factura` de PROD era la del 15/07, **sin el lock anti doble emisión** que el wiki daba por deployado desde el 20/08. También `tn-webhook`/`meli-webhook` (reserva atómica), `emitir-factura-plataforma`, `wa-webhook`, MODO, y `scan-ticket` que no existía en PROD. Script nuevo: `scripts/auditar-edge-functions.sh`.
+- js-yaml 4.3.2 → 0 alertas de Dependabot.
 
 ## 🚀 v1.218.0 — EN PROD (2026-09-13, PR #345) — migs 001-**414**
 
@@ -64,8 +72,8 @@ ubicación (mig 413), el empleado con sucursal (mig 409), y la tanda del panel d
 ⚠️ **El criterio contable del gasto en moneda extranjera sigue pendiente de un contador matriculado**
 — las 15 preguntas abiertas están en [[wiki/business/consultas-contador]].
 
-🟥 **Queda para la próxima**: dropear `tenants.afipsdk_token` y `recursos.ubicacion`, que se dejaron
-a propósito hasta que PROD corriera el código nuevo. Ahora ya lo corre.
+✅ `tenants.afipsdk_token` dropeada en `v1.219.0` (mig 416). 🟥 `recursos.ubicacion` sigue: el frontend nunca
+pasó a `ubicacion_id`, hay que migrarlo antes del DROP.
 
 **Versión anterior en DEV (ahora en PROD):** `v1.218.0` (sin migración nueva —usa la 414—) — 🧾 **El
 gasto en moneda extranjera entra al Libro IVA**, cerrando los dos pasos que faltaban: el campo

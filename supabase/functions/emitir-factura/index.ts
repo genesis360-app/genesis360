@@ -139,7 +139,7 @@ serve(async (req) => {
 
     // 1. Fetch config del tenant
     const { data: tenant, error: tErr } = await supabase.from('tenants')
-      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion, afip_provider')
+      .select('cuit, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion, afip_provider')
       .eq('id', tenant_id).single()
     if (tErr || !tenant) throw new Error('Tenant no encontrado')
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
@@ -171,7 +171,9 @@ serve(async (req) => {
     const emisorDesdeTenant = (): EmisorFiscal => ({
       id: null, cuit: tenant.cuit, condicion_iva_emisor: tenant.condicion_iva_emisor,
       umbral_factura_b: tenant.umbral_factura_b, afip_produccion: tenant.afip_produccion,
-      afip_provider: tenant.afip_provider, afipsdk_token: tenant.afipsdk_token,
+      // `tenants.afipsdk_token` se dropeó (mig 416). Desde la mig 402 un trigger la forzaba a NULL,
+      // así que este fallback siempre recibió null: el token vive solo en `emisores_fiscales`.
+      afip_provider: tenant.afip_provider, afipsdk_token: null,
       es_default: true, activo: true,
     })
     const validarEmisor = (e: (EmisorFiscal & { tenant_id?: string }) | null, origen: string): Response | null => {

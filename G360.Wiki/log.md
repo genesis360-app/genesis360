@@ -6,6 +6,78 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] deploy | 🚀 v1.219.0 en PROD + mig 416 · 🛑 drift de Edge Functions: el lock anti doble factura nunca había llegado a PROD
+
+GO pausó la serie de videos (la revisa con su socio) y pidió seguir con pendientes.
+
+### 🚀 v1.219.0 en PROD (PR #346, merge `ec1fa54b`, release marcado Latest)
+
+- Frontend del fix del alta: `LoginPage` espera `loadUserData` antes de navegar y rutea a
+  `/onboarding` al usuario sin negocio; `OnboardingPage` manda `ob_terminos_version`. La mig 415 ya
+  estaba en PROD.
+- **js-yaml 4.3.1 → 4.3.2**: con el merge se cerraron las dos alertas HIGH (js-yaml y sharp) →
+  **0 alertas abiertas** de Dependabot.
+- Verificado antes del merge: `tsc`, lint 0 warnings, **1782 unit**, build, CI verde, y los 3 logins
+  por UI (dueño, cajero, contador) sobre el `LoginPage` nuevo. Después: Vercel production OK y
+  **smoke real en PROD** — login → dashboard con `v1.219.0` y el negocio visibles, 0 respuestas REST ≥400.
+
+### 🗑️ Mig 416 — `tenants.afipsdk_token` dropeada (DEV y PROD)
+
+El pendiente decía "ya se puede dropear". No era tan directo: `emitir-factura` todavía la pedía en
+el `select` (fallback legacy del emisor) y el trigger `trg_tenants_afipsdk_token_deprecado`
+escribía `NEW.afipsdk_token` en **cada** insert/update de `tenants`. Dropearla tal cual rompía la
+facturación y toda escritura sobre `tenants`.
+
+Orden: EF sin la columna (DEV → e2e → PROD) → migración con guard (aborta si hubiera datos; había 0
+filas en los dos ambientes) que dropea trigger, función y columna → **smoke de PostgREST con
+control negativo** en PROD: `tenants?select=*` 200 y la columna borrada 400 (`42703`). El e2e 141
+ahora verifica que la columna no existe, con control positivo.
+
+### 🛑 REGLA #0 — el lock anti doble emisión NO estaba en PROD
+
+Antes de desplegar la EF se bajó el código que corre en PROD y se comparó con el repo:
+**`emitir-factura` de PROD era exactamente la del 15/07** (commit `5581f220`). El wiki daba el lock
+de la mig 361 (dos clicks, dos pestañas o un reintento podían sacar **dos CAE para la misma venta**)
+como "✅ EN PROD desde 2026-08-20". Ese deploy aplicó la migración y mergeó el frontend, **pero
+nunca redesplegó la función**. Tampoco llegaba la cuarentena "NO reintentar" de las NC automáticas.
+
+**Sin daño**: en PROD hay 2 facturas con CAE, ninguna duplicada, 0 NC emitidas, 0 ventas en USD y
+ningún cliente real.
+
+Validación antes de PROD: la EF del repo desplegada en DEV → e2e 21/42/63/87 **12/12** y 141+21+42
+**45/45**, con Factura C y NC-C **con CAE real de AFIP homologación**. En PROD: diff 0 contra el
+commit y GET sin JWT → 401 (`verify_jwt` intacto).
+
+### 🔍 Auditoría de TODAS las Edge Functions (código desplegado vs HEAD, en DEV y PROD)
+
+| Función | Qué faltaba | Acción |
+|---|---|---|
+| `emitir-factura` | PROD sin lock anti doble emisión ni cuarentena | redesplegada DEV y PROD |
+| `tn-webhook`, `meli-webhook` | DEV **y** PROD sin la reserva atómica de stock (mig 362): leían y escribían `cantidad_reservada` por separado | redesplegadas, `--no-verify-jwt` preservado · inertes en PROD (0 credenciales) |
+| `emitir-factura-plataforma` | DEV y PROD sin el "NO reintentar" del circuito AfipSDK | redesplegada · inerte en PROD (0 billers) |
+| `scan-ticket` | **no existía en PROD**: "Completar desde foto" de Productos y el escaneo de Recepciones fallaban | desplegada en PROD |
+| `wa-webhook` | PROD sin las mejoras del 05/09 (aviso de discrepancia, ledger de consumo) | redesplegada · inerte (0 credenciales) |
+| `modo-webhook`, `modo-crear-pago` | diferencias de formato y comentarios | redesplegadas · inertes |
+| 8 de cobros, mails y sweeps | solo comentarios o caracteres de adorno | **sin** redesplegar a propósito |
+
+Todo lo redesplegado quedó con diff 0 en DEV y PROD, y `verify_jwt` verificado con un GET sin
+`Authorization` (el gateway responde `UNAUTHORIZED_NO_AUTH_HEADER` solo donde está activo).
+La auditoría quedó en el repo: **`bash scripts/auditar-edge-functions.sh`** — paso nuevo del deploy.
+
+### Pendiente
+
+- **Funciones que existen solo en PROD**: `crear-suscripcion` (sin código en el repo),
+  `marketplace-api`, `marketplace-webhook`, `data-api`, `birthday-notifications`, `process-aging`,
+  `clever-handler`. Decidir con GO si se borran: borrar una EF no se deshace.
+- `wa-embedded-signup-exchange` sigue solo en DEV (espera el App Review de Meta).
+- 🟥 **`recursos.ubicacion` tampoco se puede dropear todavía**: `RecursosPage` nunca pasó al
+  catálogo de la mig 407 — escribe solo el texto y jamás `ubicacion_id`. Y hay una inconsistencia
+  latente: editar la ubicación de un recurso que ya tenía FK cambia el texto pero no el id, así que
+  renombrar o borrar la ubicación vieja le pisa el cambio. Primero migrar el frontend a
+  `ubicacion_id`; recién después, el DROP.
+
+---
+
 ## [2026-09-14] update | ✨ Efectos de click construidos + 🛒 Video 4 (Vender) grabado con todo
 
 GO pidió construir los efectos de click y grabar el siguiente video con todas las mejoras.

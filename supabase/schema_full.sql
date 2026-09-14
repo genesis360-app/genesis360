@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-13T15:10:06.120Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260913150627 · 168 tablas
+-- Generado 2026-09-14T14:21:07.783Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260914142022 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2279,7 +2279,6 @@ CREATE TABLE public.tenants (
   razon_social_fiscal text,
   domicilio_fiscal text,
   umbral_factura_b numeric(12,2) DEFAULT 68305.16,
-  afipsdk_token text,
   cuit text,
   whatsapp_plantilla text,
   costo_envio_por_km numeric(10,2),
@@ -5462,6 +5461,71 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_crear_negocio_al_confirmar()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth', 'pg_temp'
+AS $function$
+DECLARE
+  v_md     jsonb;
+  v_tenant uuid;
+BEGIN
+  v_md := COALESCE(NEW.raw_user_meta_data, '{}'::jsonb);
+
+  -- Solo las altas self-service traen `ob_nombre` + `ob_pais`. Esto deja AFUERA a propósito a todo
+  -- lo demás que también confirma un mail y NO debe tener negocio propio: usuarios invitados a un
+  -- tenant existente, agentes del panel de soporte (mig 221) y cuentas del Portal de Proveedores.
+  IF v_md->>'ob_nombre' IS NULL OR v_md->>'ob_pais' IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- El navegador llegó primero y ya lo creó: no duplicar.
+  IF EXISTS (SELECT 1 FROM public.users u WHERE u.id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+
+  -- `tenants` solo exige `nombre`; el resto tiene default (incluidos `trial_ends_at`,
+  -- `modo_operacion` y `moneda`). Los 5 triggers AFTER INSERT ON tenants siembran sucursal, caja,
+  -- métodos de pago, categorías de gasto, canales y unidades.
+  INSERT INTO public.tenants (
+    nombre, tipo_comercio, pais, telefono,
+    subscription_status, max_users, regla_inventario,
+    terminos_aceptados_at, terminos_version, marketing_consent
+  ) VALUES (
+    v_md->>'ob_nombre',
+    NULLIF(btrim(COALESCE(v_md->>'ob_tipo', '')), ''),
+    v_md->>'ob_pais',
+    NULLIF(btrim(COALESCE(v_md->>'ob_telefono', '')), ''),
+    'trial', 2, 'Manual',
+    now(),
+    -- La versión de T&C aceptada viaja en el metadata. Si no vino (alta anterior a este cambio),
+    -- queda NULL: inventar una versión sería falsear un consentimiento legal.
+    NULLIF(btrim(COALESCE(v_md->>'ob_terminos_version', '')), ''),
+    COALESCE((v_md->>'ob_marketing')::boolean, false)
+  )
+  RETURNING id INTO v_tenant;
+
+  INSERT INTO public.users (id, tenant_id, rol, nombre_display, activo)
+  VALUES (
+    NEW.id, v_tenant, 'DUEÑO',
+    COALESCE(NULLIF(btrim(COALESCE(v_md->>'full_name', '')), ''),
+             NULLIF(btrim(COALESCE(v_md->>'name', '')), ''),
+             NEW.email),
+    true
+  );
+
+  RETURN NEW;
+
+EXCEPTION WHEN OTHERS THEN
+  -- 🛑 CRÍTICO: este trigger NO puede romper la confirmación del mail. Si algo falla acá y se
+  -- propaga, la persona no puede ni siquiera confirmar su cuenta — un bug peor que el que esto
+  -- arregla. Se avisa y se deja seguir: el camino del frontend sigue estando como red.
+  RAISE WARNING 'fn_crear_negocio_al_confirmar falló para % (%): %', NEW.id, NEW.email, SQLERRM;
+  RETURN NEW;
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_cubicaje_cobertura(p_tenant_id uuid)
@@ -8878,18 +8942,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.fn_tenants_afipsdk_token_deprecado()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN
-  -- `tenants.afipsdk_token` es legible por todo el tenant (select('*') masivo). Se deja siempre en
-  -- NULL para que sea imposible que un secreto viva ahí. El token va a emisores_fiscales.
-  NEW.afipsdk_token := NULL;
-  RETURN NEW;
-END $function$
-
-
 CREATE OR REPLACE FUNCTION public.fn_tn_sync_heartbeat()
  RETURNS void
  LANGUAGE plpgsql
@@ -12204,7 +12256,6 @@ CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH 
 CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tipos_pedido_new_tenant();
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
-CREATE TRIGGER trg_tenants_afipsdk_token_deprecado BEFORE INSERT OR UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenants_afipsdk_token_deprecado();
 CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();

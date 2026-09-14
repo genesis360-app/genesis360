@@ -470,14 +470,18 @@ test.describe('F2 — qué puede LEER cada rol', () => {
   })
 
   // La copia legacy del mismo secreto. `tenants` se lee con select('*') desde todo el frontend, así
-  // que no se puede cerrar por columna: se vació y un trigger la fuerza a NULL (mig 402).
-  test('la copia legacy tenants.afipsdk_token quedó vacía (mig 402)', async ({ request }) => {
+  // que no se podía cerrar por columna: la mig 402 la vació y la forzó a NULL con un trigger, y la
+  // mig 416 la dropeó. Ahora la columna directamente no existe.
+  test('la copia legacy tenants.afipsdk_token ya no existe (mig 416)', async ({ request }) => {
     const token = await tokenRol(request, rolesConCredenciales()[0])
+    // Control: el rol SÍ lee su tenant — si esto fallara, el 400 de abajo no probaría nada.
+    const control = await request.get(`${SUPABASE_URL}/rest/v1/tenants?select=id`, { headers: restHeaders(token) })
+    expect(control.ok(), await control.text()).toBeTruthy()
+    expect(((await control.json()) as unknown[]).length, '[141/F2] fixture vacío: el rol debería ver su tenant').toBeGreaterThan(0)
+
     const res = await request.get(`${SUPABASE_URL}/rest/v1/tenants?select=id,afipsdk_token`, { headers: restHeaders(token) })
-    expect(res.ok(), await res.text()).toBeTruthy()
-    const filas = (await res.json()) as { afipsdk_token: string | null }[]
-    expect(filas.length, '[141/F2] fixture vacío: el rol debería ver al menos su tenant').toBeGreaterThan(0)
-    for (const f of filas) expect(f.afipsdk_token, '[141/F2] tenants.afipsdk_token debe estar siempre en NULL').toBeNull()
+    expect(res.status(), '[141/F2] tenants.afipsdk_token no debe existir').toBe(400)
+    expect(await res.text()).toContain('afipsdk_token')
   })
 
   /**

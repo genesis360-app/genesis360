@@ -12,6 +12,38 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 
 ---
 
+## 🛑 El código desplegado puede no ser el del repo — auditoría 2026-09-14
+
+**Mergear `dev`→`main` despliega el frontend (Vercel) y nada más.** Las Edge Functions se despliegan
+a mano, y una migración aplicada no dice nada sobre la función que la usa.
+
+El 2026-09-14, antes de desplegar `emitir-factura`, se bajó el código de PROD y resultó ser **el del
+15/07**: le faltaba el lock anti doble emisión que el wiki daba "EN PROD desde 2026-08-20". La
+auditoría de todas las funciones encontró además `tn-webhook`/`meli-webhook` sin la reserva atómica
+de stock (DEV y PROD), `emitir-factura-plataforma` sin el "NO reintentar" de AfipSDK, `wa-webhook`
+de PROD atrasada y **`scan-ticket` sin desplegar en PROD**. Todo realineado ese día (detalle en
+`log.md`).
+
+**Regla**: en cada deploy a PROD, y antes de escribir "EN PROD" sobre un cambio de una EF:
+
+```bash
+bash scripts/auditar-edge-functions.sh            # todas, DEV y PROD vs HEAD
+bash scripts/auditar-edge-functions.sh emitir-factura tn-webhook
+```
+
+- Baja el código con `supabase functions download --use-api` (no necesita Docker) y lo compara con
+  `git show HEAD:…`. `0` = idéntico.
+- 🛑 Al redesplegar, **respetar `verify_jwt`**: los webhooks (`tn-webhook`, `meli-webhook`,
+  `wa-webhook`, `modo-*`, `mp-webhook`, `mp-ipn`) van con `--no-verify-jwt`. Verificar con un GET
+  sin `Authorization`: el gateway responde `UNAUTHORIZED_NO_AUTH_HEADER` solo donde está activo.
+- Drift de solo comentarios no justifica redesplegar una función de cobros.
+
+🟡 **Existen solo en PROD** (ni en el repo actual ni en DEV): `crear-suscripcion` (con otro código),
+`marketplace-api`, `marketplace-webhook`, `data-api`, `birthday-notifications`, `process-aging`,
+`clever-handler`. Pendiente de decisión de GO — borrar una EF no se deshace.
+
+---
+
 ## Lista completa
 
 | Función | Propósito |
@@ -24,7 +56,7 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
 | `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts |
-| `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }` |
+| `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }`. **Desplegada en PROD recién el 2026-09-14** — antes no existía ahí y esas dos pantallas fallaban |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
 | `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock) |
 | `meli-search-items` | Busca productos en Mercado Libre |
@@ -113,6 +145,8 @@ supabase functions deploy nombre-funcion
 ```
 
 En DEV primero, PROD después. Ver [[wiki/development/deploy]].
+
+⚠️ **Mergear a `main` no las despliega.** Después de cada deploy: `bash scripts/auditar-edge-functions.sh` (ver la sección de arriba).
 
 ---
 

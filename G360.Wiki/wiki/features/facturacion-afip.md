@@ -350,7 +350,9 @@ Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md`, `wiki/datab
 
 ---
 
-## Lock anti doble-submit en `emitir-factura` (mig 361 — ✅ EN PROD desde 2026-08-20, commiteado 2026-08-18, hallazgo 2026-08-14)
+## Lock anti doble-submit en `emitir-factura` (mig 361 — ✅ EN PROD: migración 2026-08-20, **EF recién 2026-09-14**; commiteado 2026-08-18, hallazgo 2026-08-14)
+
+> 🛑 **Corrección (2026-09-14)**: esta sección decía "EN PROD desde 2026-08-20". Ese día fue la **migración**; la EF de PROD siguió siendo la del 15/07, **sin el lock**, hasta el 2026-09-14. Se detectó bajando el código desplegado y comparándolo con el repo antes de otro deploy; se redesplegó tras e2e 21/42/63/87 con CAE real de homologación. Sin daño: 2 facturas en PROD, ninguna duplicada. Lección y script: [[wiki/architecture/edge-functions]].
 
 🛑 **REGLA #0 (fiscal)** — hallazgo CRÍTICO de una auditoría general de performance/calidad pedida por GO
 (2 agentes en paralelo, reporte publicado como Artifact; este fix y el de reservas de stock —
@@ -543,7 +545,7 @@ gastos.conciliado_iva BOOLEAN
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
 | NC automática al confirmar devolución (A10) | Fire-and-forget + cola `nc_afip_pendientes` + sweep de reintento con escalamiento REGLA #0 (mig 359) — botón manual queda de fallback | ✅ PROD v1.170.0 |
-| Lock anti doble-submit (REGLA #0) | Tabla mutex `emision_factura_locks` + INSERT atómico antes de llamar a AFIP, cuarentena ante "NO reintentar" (mig 361) | ✅ EN PROD desde 2026-08-20 (commiteado `310d9b3b`, PR #331) |
+| Lock anti doble-submit (REGLA #0) | Tabla mutex `emision_factura_locks` + INSERT atómico antes de llamar a AFIP, cuarentena ante "NO reintentar" (mig 361) | ✅ EN PROD — migración 2026-08-20; la **EF recién el 2026-09-14** (antes corría la del 15/07, sin el lock) |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ PROD v1.60.0 |
 | Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ PROD v1.60.0 |
@@ -567,6 +569,8 @@ gastos.conciliado_iva BOOLEAN
 ---
 
 ## 🔒 Quién puede tocar lo fiscal (mig 402, 2026-09-07) — Tanda F
+
+> 🗑️ **2026-09-14**: la copia legacy `tenants.afipsdk_token` ya **no existe** (mig 416). El token vive solo en `emisores_fiscales.afipsdk_token` (escritura) y se consulta con `afipsdk_token_configurado`.
 
 Hasta la mig 402 el núcleo fiscal estaba protegido **solo por la UI**: `emisores_fiscales`,
 `tenant_certificates` y `puntos_venta_afip` tenían UNA policy `FOR ALL` que miraba el tenant y nada

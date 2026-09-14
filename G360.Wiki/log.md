@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | ✨ Efectos de click construidos + 🛒 Video 4 (Vender) grabado con todo
+
+GO pidió construir los efectos de click y grabar el siguiente video con todas las mejoras.
+
+### Lo construido (`scripts/video/`)
+
+- **`director.mjs`**: cursor dibujado dentro de la página (Playwright no dibuja puntero) con anillo en cada
+  click, y registro de cada click `{t, x, y, tipo}` + marcas de escena para ubicar rótulos sin adivinar.
+- **`sticker.html` + `efectos.mjs`**: estallido de historieta con onomatopeya **variada según la acción**,
+  sacudida (zoom 3 % + temblor) en los clicks que cierran algo, y sonidos sintetizados (pop, campanitas en el
+  cobro, golpe grave). Determinista: re-renderizar da el mismo video.
+- **`grabaciones/video4-vender.mjs`**: la toma guardada. Las anteriores eran scripts temporales y hubo que
+  reconstruirlas del historial de la sesión.
+
+### 🛒 Video 4 — 83 s
+
+Abrir caja → 6 Gaseosas + 2 Yerbas → descuento 5 % → transferencia $10.000 + efectivo $11.000 → vuelto $290 →
+ticket → el stock bajó solo → la venta entró sola a la caja. 7 stickers (¡Clack! ¡Toc! ¡Al carrito! ¡Sumado!
+¡Vendido! ¡Zas! ¡Adentro!), 2 sacudidas. Dos versiones: **con y sin sonido de efectos**.
+
+✅ **REGLA #0 verificada en la DB**: venta #31 por $20.710 (precio por ítem 1.805 y 4.940), rebajes 48→42 y
+24→22 con "Venta #31", y en caja **$10.710 de efectivo neto del vuelto** + `ingreso_informativo` de $10.000 por
+la transferencia. Sin factura: "Venta directa" no emite.
+
+### Tres cosas que salieron mal, detectadas mirando y midiendo
+
+1. **El ticket nunca se cerró**: el locator agarró la pestaña "Nueva venta" detrás del modal. En vez de volver a
+   vender en PROD, se grabó un **complemento que solo navega** y se unió con un fundido.
+2. **Stickers a medio fundir**: la opacidad solo estaba en el último cuadro clave y Web Animations la
+   interpolaba 1→0 durante toda la animación. Se vio en cuadros extraídos del render, no en el log.
+3. **Sonidos tapados** a −18 dBFS (+0,9 dB en el cobro); a −12, +3,8 dB. Medido restando la versión sin
+   efectos: Claude no escucha.
+
+### Pendiente
+
+- **GO**: mirar el Video 4 → ¿stickers y sacudida van? ¿con o sin sonido de efectos?
+- Los videos 1-3, 5 y 8 no tienen clicks registrados: ponerles efectos exige regrabar o marcarlos a mano.
+- Negocio de prueba tras el 4: **caja ABIERTA** (sesión 2, saldo $20.710), stock 42 / 22.
+- Siguiente: **Video 6 — Gastos** (la caja no registra egresos: es el paso natural).
+- Las piezas nuevas de `scripts/video/` van en las notas del próximo release.
+
+---
+
 ## [2026-09-14] update | 🎬 Serie de videos: 5 grabados, música nueva en todos · y dos hallazgos de producto
 
 GO eligió el orden siguiendo la rutina real del negocio: **1 → 2 → 3 → 5 (caja) → 8 (inventario) → 4

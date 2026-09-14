@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  Sticker de historieta para los clicks de los videos ("¡Ka-ching!", "¡Listo!"…).
+
+  `efectos.mjs` lo abre en Playwright con un viewport de 440×280 y fondo transparente, y lo
+  fotografía cuadro por cuadro: la animación es de Web Animations y `window.fijar(ms)` la deja
+  quieta en un instante exacto. Así el resultado es determinista — re-renderizar da el mismo video.
+
+  Parámetros: palabra, color (relleno del estallido), rot (grados), semilla (forma del estallido).
+
+  🛑 Sombras DURAS (un polígono negro corrido), nunca `box-shadow`/`filter: blur`: ffmpeg compone
+  la sombra difusa como un rectángulo negro. Ver la nota de `overlay.html`.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 440px; height: 280px; background: transparent; overflow: hidden }
+  #escena { position: absolute; inset: 0 }
+  svg { position: absolute; inset: 0; overflow: visible }
+  text { font-family: Bangers, Impact, "Arial Black", sans-serif; letter-spacing: 1px }
+</style>
+<div id="escena"></div>
+<script>
+  const P = new URLSearchParams(location.search)
+  const palabra = P.get('palabra') || '¡Click!'
+  const color = P.get('color') || '#FFD60A'
+  const rot = parseFloat(P.get('rot') || '-6')
+  let s = parseInt(P.get('semilla') || '7', 10) >>> 0
+  const azar = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+
+  const W = 440, H = 280, CX = W / 2, CY = H / 2
+  // Estallido: puntas alternadas con un poco de irregularidad, como dibujado a mano.
+  const puntas = 14, RX = 168, RY = 104
+  const pts = []
+  for (let i = 0; i < puntas * 2; i++) {
+    const a = (i / (puntas * 2)) * Math.PI * 2
+    const r = i % 2 === 0 ? 1 + azar() * 0.1 : 0.72 + azar() * 0.06
+    pts.push(`${(CX + Math.cos(a) * RX * r).toFixed(1)},${(CY + Math.sin(a) * RY * r).toFixed(1)}`)
+  }
+  // Líneas de velocidad alrededor, que salen disparadas al aparecer.
+  const lineas = []
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2 + azar() * 0.25
+    const x1 = CX + Math.cos(a) * RX * 1.02, y1 = CY + Math.sin(a) * RY * 1.02
+    const x2 = CX + Math.cos(a) * RX * 1.22, y2 = CY + Math.sin(a) * RY * 1.22
+    lineas.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`)
+  }
+
+  document.getElementById('escena').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}">
+      <g id="lineas" stroke="#111" stroke-width="6" stroke-linecap="round">${lineas.join('')}</g>
+      <g id="sticker">
+        <polygon points="${pts.join(' ')}" fill="#111" transform="translate(9 9)"/>
+        <polygon points="${pts.join(' ')}" fill="${color}" stroke="#111" stroke-width="7" stroke-linejoin="round"/>
+        <text id="sombra" x="${CX + 4}" y="${CY + 4}" text-anchor="middle" dominant-baseline="central"
+          font-size="62" fill="#111" stroke="#111" stroke-width="9" stroke-linejoin="round">${palabra}</text>
+        <text id="texto" x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central"
+          font-size="62" fill="#fff" stroke="#111" stroke-width="9" stroke-linejoin="round" paint-order="stroke">${palabra}</text>
+      </g>
+    </svg>`
+
+  window.listo = document.fonts.ready.then(() => {
+    // Palabras largas ("¡Confirmado!") se achican hasta entrar en el estallido.
+    const texto = document.getElementById('texto'), sombra = document.getElementById('sombra')
+    const largo = texto.getComputedTextLength(), max = RX * 1.45
+    if (largo > max) {
+      const fs = Math.floor(62 * max / largo)
+      texto.setAttribute('font-size', fs); sombra.setAttribute('font-size', fs)
+    }
+
+    const DUR = 1100
+    const st = document.getElementById('sticker')
+    st.style.transformOrigin = `${CX}px ${CY}px`
+    // 🛑 `opacity: 1` en TODOS los cuadros clave: si solo el último la define, Web Animations
+    // interpola 1 → 0 durante toda la animación y el sticker sale a medio fundir.
+    st.animate([
+      { transform: `scale(0) rotate(${rot - 28}deg)`, opacity: 1, offset: 0 },
+      { transform: `scale(1.32) rotate(${rot + 5}deg)`, opacity: 1, offset: 0.12 },
+      { transform: `scale(.9) rotate(${rot - 2}deg)`, opacity: 1, offset: 0.21 },
+      { transform: `scale(1.05) rotate(${rot + 1}deg)`, opacity: 1, offset: 0.29 },
+      { transform: `scale(1) rotate(${rot}deg)`, opacity: 1, offset: 0.36 },
+      { transform: `scale(1.02) rotate(${rot + 1.5}deg)`, opacity: 1, offset: 0.58 },
+      { transform: `scale(1) rotate(${rot - 1}deg)`, opacity: 1, offset: 0.8 },
+      { transform: `scale(.15) rotate(${rot + 14}deg)`, opacity: 0, offset: 1 },
+    ], { duration: DUR, fill: 'both', easing: 'linear' })
+
+    const ln = document.getElementById('lineas')
+    ln.style.transformOrigin = `${CX}px ${CY}px`
+    ln.animate([
+      { transform: 'scale(.7)', opacity: 0, offset: 0 },
+      { transform: 'scale(.95)', opacity: 1, offset: 0.1 },
+      { transform: 'scale(1.25)', opacity: 0, offset: 0.34 },
+      { transform: 'scale(1.25)', opacity: 0, offset: 1 },
+    ], { duration: DUR, fill: 'both' })
+
+    document.getAnimations().forEach((a) => a.pause())
+    window.fijar = (ms) => document.getAnimations().forEach((a) => { a.currentTime = ms })
+    window.duracion = DUR
+  })
+</script>

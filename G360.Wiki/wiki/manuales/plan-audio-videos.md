@@ -280,6 +280,24 @@ razonamiento de −14 de §2.**
 
 ---
 
+## 4.sexies 🔊 Efectos sonoros de los clicks — primera versión (2026-09-14)
+
+Con los efectos de click (ver el [guion](guion-videos-onboarding.md)) entró la primera pieza del **diseño de
+sonido** de §3.1, sintetizada en `efectos.mjs`, sincronizada con cada sticker:
+
+- *pop* con caída de tono (1.140 → 320 Hz, ~0,16 s) en cada sticker;
+- **campanitas de caja registradora** (2.093 + 2.637 Hz) en el cobro;
+- **golpe grave** (100 → 55 Hz) cuando la imagen se sacude.
+
+Nivel: **pico −12 dBFS**. A −18 quedaban tapados — medido restando la versión sin efectos: en el cobro el pico de
+la ventana subía 0,9 dB; a −12 sube 3,8 dB. El programa completo queda en −23,4 LUFS: los efectos no mueven el
+integrado.
+
+🟡 **A validar por GO de oído**: el Video 4 salió en dos versiones (con y sin sonido de efectos). Se desactivan
+por guion con `"efectos": { "sonido": false }`.
+
+---
+
 ## 5. Qué falta decidir (GO)
 
 1. ✅ Afinación — **432**, decidido.

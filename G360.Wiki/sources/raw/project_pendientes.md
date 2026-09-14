@@ -127,7 +127,7 @@ type: project
 > `ffmpeg`), y las capturas además las puede **leer**. Lo que no puede: la pantalla de quien opera,
 > audio, puntero del mouse, y entrar a una casilla de correo.
 >
-> ✅ **5 videos hechos (1, 2, 3, 5, 8)**, todos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
+> ✅ **6 videos hechos (1, 2, 3, 4, 5, 8)**, todos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
 > así que hay continuidad visual entre ellos. Quedan en `D:/Dev/genesis360-videos/` (fuera del repo,
 > son binarios):
 >
@@ -148,9 +148,12 @@ type: project
 > objetivo: sonaban anémicos y YouTube no los habría subido. Ahora todos entre −13,3 y −13,7. Los
 > renders viejos quedaron en `_anteriores/` por si hace falta comparar.
 >
-> **El siguiente es el 4 — Vender** (`/ventas`). ✅ **Ya hay stock** (48 y 24 unidades, cargado en el
-> video 8). ⚠️ Falta abrir una caja: quedó **cerrada** al final del video 5 — lo que narrativamente
-> funciona, el 4 puede arrancar como "el día siguiente".
+> ✅ **Video 4 — Vender grabado** (83 s, `video4-ventas/`): abrir caja → carrito → descuento 5 % → dos
+> medios con vuelto → ticket → stock y caja se acomodan solos. Venta #31 verificada en la DB (caja: $10.710
+> de efectivo neto del vuelto + la transferencia informada). La toma quedó en `scripts/video/grabaciones/`.
+>
+> **El siguiente es el 6 — Gastos** (`/gastos`): la caja no registra egresos, es el paso natural. Estado
+> del negocio de prueba: **caja ABIERTA** (sesión 2, saldo $20.710), stock Gaseosa 42 / Yerba 22.
 >
 > 🛑 **HALLAZGO del video 5 — motivos de caja que invitan a equivocarse con plata.** El modal de
 > movimiento **solo registra ingresos** (lo dice él mismo: los egresos se cargan desde Gastos), pero
@@ -173,9 +176,9 @@ type: project
 > 🔉 **Dos pedidos de GO para los PRÓXIMOS videos (2026-09-14):**
 > 1. **La música satura → −10 dB.** Ya es el default de `postproducir.mjs` (−24 LUFS). Los 5 hechos
 >    siguen a −14: re-renderizarlos es opcional (minutos, sin regrabar) — decisión de GO.
-> 2. **Efectos en los clicks**, porque el cursor no se ve: sticker tipo cómic con onomatopeya
->    **variada según la acción** (¡Adentro!, ¡Listo!, ¡Ka-ching!…) + la imagen que vibra. Diseño en
->    `guion-videos-onboarding.md` → "Efectos de click". 🟥 **Construirlo ANTES de grabar el Video 4.**
+> 2. **Efectos en los clicks** → ✅ **CONSTRUIDOS y usados en el Video 4**: cursor visible, sticker de
+>    historieta con onomatopeya variada según la acción, sacudida y sonidos. `scripts/video/{director,efectos}.mjs`
+>    + `sticker.html`. 🟡 **Falta que GO lo mire**: ¿van? ¿con o sin sonido de efectos? (salieron las dos versiones)
 >
 > 🔁 **Reusable para los videos 3-9**: `scripts/video/postproducir.mjs` + `overlay.html`. Dos
 > trampas anotadas ahí: sin `-loop 1` los overlays salen **invisibles** (el PNG es un solo fotograma

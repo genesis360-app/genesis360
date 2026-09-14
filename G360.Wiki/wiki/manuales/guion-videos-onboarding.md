@@ -211,7 +211,7 @@ menor fricción: **primero cargar, después vender, después medir.**
 | # | Video | Pantalla | Qué tiene que quedar demostrado |
 |---|---|---|---|
 | 3 | **Cargar productos** ✅ *grabado* | `/productos/nuevo` | Alta manual (costo, precio, stock mínimo, categoría), alta **desde una foto**, e importación por Excel |
-| 4 | **Vender** | `/ventas` | Buscar, agregar al carrito, descuento, **varios medios de pago** en una venta, y que el stock baja solo |
+| 4 | **Vender** ✅ *grabado (83 s, con efectos de click)* | `/ventas` | Buscar, agregar al carrito, descuento, **varios medios de pago** en una venta, y que el stock baja solo |
 | 5 | **Caja** ✅ *grabado* | `/caja` | Abrir la caja, **ingresos** de efectivo, arqueo y cierre del día. ⚠️ **NO “egresos”** — ver la corrección abajo |
 | 6 | **Gastos** | `/gastos` | Registrar un gasto, categorizarlo, y que impacta en la ganancia |
 | 7 | **Clientes y cuenta corriente** | `/clientes` | Alta de cliente, venta en cuenta corriente y cobranza |
@@ -229,6 +229,31 @@ menor fricción: **primero cargar, después vender, después medir.**
 
 Para grabarlo hace falta un CUIT de prueba en homologación. **Nunca en cámara un CUIT real ni el
 certificado.**
+
+---
+
+## 🎬 Video 4 — Vender — ✅ GRABADO (83 s, 2026-09-14, con efectos de click)
+
+Primer video con **cursor visible y efectos de click**. Archivos en `D:/Dev/genesis360-videos/video4-ventas/`:
+`video4-final.mp4` (con sonidos de efectos), `video4-final-sin-sonido-efectos.mp4`, el crudo, `guion.json` y
+`clicks.json`. La toma quedó guardada en `scripts/video/grabaciones/video4-vender.mjs`.
+
+**Recorrido**: el día siguiente, caja cerrada → abrir con $10.000 → buscar y sumar 6 Gaseosas + 2 Yerbas →
+descuento general 5 % → transferencia $10.000 + efectivo $11.000 → **vuelto $290** → Venta directa → ticket →
+el stock bajó solo (48→42, 24→22) → la venta entró sola a la caja (ingreso $10.710 + la transferencia informada).
+
+✅ **Verificado en la DB lo que escribió la toma** (REGLA #0): venta #31 por $20.710, rebajes con "Venta #31",
+y en caja el **efectivo neto del vuelto** ($10.710) más un `ingreso_informativo` por la transferencia. "Venta
+directa" **no emite factura** (es un botón aparte del ticket): la grabación no toca AFIP.
+
+### 🛑 Lo que hizo tropezar la toma (ya corregido en el script)
+
+- **El ticket nunca se cerró**: `getByRole('button', { name: /^(Cerrar|Nueva venta)$/ })` agarró la **pestaña**
+  "Nueva venta" que está detrás del modal. Los últimos 20 s quedaron quietos sobre el ticket. En vez de volver a
+  vender en PROD, se grabó un **complemento que solo navega** (Inventario + Caja) y se unió con un fundido.
+  → Nombres exactos, y buscar del lado del modal.
+- El link **"Caja"** del menú tiene de nombre accesible "Caja" + el punto de estado: `^Caja$` no coincide.
+- El primer `input[type=number][placeholder="0"]` del POS es el **% del ítem**, no "Descuento general".
 
 ---
 
@@ -252,7 +277,30 @@ cambia sola. GO pidió reemplazarlo con efectos tipo cómic, más dinámicos:
 | Abrir / cerrar caja | ¡Abierta! · ¡Cuadra! · ¡Clack! |
 | Tipear / clicks menores | sin palabra: solo un anillo que marca el punto |
 
-### Cómo construirlo (a hacer ANTES de grabar el Video 4)
+### ✅ Construido y usado en el Video 4 (2026-09-14)
+
+| Pieza | Qué hace |
+|---|---|
+| `scripts/video/director.mjs` | **Cursor dibujado dentro de la página** (Playwright no dibuja puntero) con un anillo en cada click y movimiento con aceleración; registra cada click `{ t, x, y, tipo }` y marcas de escena. |
+| `scripts/video/sticker.html` | Estallido de historieta (fuente Bangers, sombra dura) animado con Web Animations y **fotografiado cuadro por cuadro**: determinista. |
+| `scripts/video/efectos.mjs` | Palabra (bolsa barajada por tipo, nunca dos iguales seguidas), posición al lado del botón, sacudida (zoom 3 % + temblor 0,32 s) y sonidos: *pop* en cada sticker, campanitas en el cobro, golpe grave en la sacudida. |
+| `scripts/video/postproducir.mjs` | Sacudida → rótulos → stickers; sonidos mezclados sobre la música a −24 LUFS. |
+
+Tipos de click: `navegar` · `agregar` · `guardar` · `confirmar` · `cobrar` · `abrir` · `cerrar` · `menor` (solo
+el anillo). Una palabra puntual se fija con `"palabra"` en el click (en el Video 4: "¡Al carrito!" para el primer
+producto — la bolsa había sacado "¡Uno más!").
+
+Diferencias con el plan de abajo: el **cursor** y el **anillo** van dentro de la página (quedan en el crudo), y
+los stickers en post, como estaba previsto — volver a grabar escribe datos en PROD; cambiar una palabra en post
+es re-renderizar.
+
+🛑 **Dos trampas que costaron**: (1) la opacidad del sticker tiene que estar en **todos** los cuadros clave — si
+solo la define el último, Web Animations la interpola 1→0 durante toda la animación y sale a medio fundir; (2) a
+−18 dBFS los sonidos quedaban tapados por la música (el cobro subía el pico 0,9 dB); a −12 se oyen (+3,8 dB).
+
+⚠️ Los videos 1-3, 5 y 8 **no tienen clicks registrados**: ponerles efectos exige regrabar o marcar los clicks a mano.
+
+### El plan original
 
 1. **Registrar los clicks al grabar**, no estimarlos después: un helper `clickConEfecto(locator, tipo)`
    que antes del click toma el `boundingBox()` y el tiempo desde el inicio de la grabación, y lo

@@ -1,10 +1,12 @@
-// Postproducción de los videos de onboarding: placas, rótulos y música sobre una grabación cruda.
+// Postproducción de los videos de onboarding: placas, rótulos, efectos de click y música sobre una
+// grabación cruda.
 //
 //   node scripts/video/postproducir.mjs <guion.json> <video-crudo.mp4> <salida.mp4>
 //
 // La grabación cruda sale de Playwright (`recordVideo`) convertida a MP4 con ffmpeg. Este script
 // le agrega encima lo que la hace mirable: una placa de entrada, rótulos numerados que entran y
-// salen con fundido, una placa de cierre y una cama de música sintetizada.
+// salen con fundido, stickers de historieta y sacudidas en los clicks, una placa de cierre y una
+// cama de música sintetizada.
 //
 // Ver `scripts/video/guion-ejemplo.json` para el formato del guion.
 //
@@ -17,6 +19,14 @@
 //    se ve "bien" salvo que no tiene ningún texto. No da error.
 // 2. **Nada de `box-shadow` grande en los rótulos** (ver `overlay.html`): ffmpeg compone la sombra
 //    semitransparente como un rectángulo negro duro al costado.
+//
+// ── ✨ Efectos de click ──────────────────────────────────────────────────────────────────────
+// Si el guion trae `clicks` (o `clicksArchivo`, el JSON que escribe `director.mjs` al grabar), cada
+// click importante lleva un sticker con onomatopeya y los que cierran algo sacuden la imagen. Toda
+// la lógica está en `efectos.mjs`. Opciones del guion:
+//   "efectos": false                          → sin stickers ni sacudidas
+//   "efectos": { "semilla": 4, "sonido": false, "desfase": 0.1 }
+// `desfase` corrige si el video de Playwright arrancó unas décimas antes o después del reloj.
 //
 // ── ⚠️ Sobre la música ───────────────────────────────────────────────────────────────────────
 // La genera `musica.mjs` (sintetizador propio: ADSR, armónicos, detune, reverb Schroeder), no una
@@ -35,10 +45,10 @@
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
 import { construir, escribirWav } from './musica.mjs'
+import { filtroSacudida, filtroStickers, pistaSfx, planificar, renderizarStickers } from './efectos.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const PLANTILLA = resolve(AQUI, 'overlay.html')
@@ -73,6 +83,17 @@ function musica(dir, segundos, opciones = {}) {
   return master
 }
 
+/** Mezcla los efectos sonoros de los stickers sobre la pista de audio (sin normalizar la suma). */
+function mezclarSfx(dir, audio, segundos, eventos) {
+  if (!eventos.length) return audio
+  const pista = join(dir, 'sfx.wav')
+  escribirWav(pistaSfx(segundos, eventos), pista)
+  const mezcla = join(dir, 'mezcla.wav')
+  ff(['-i', audio, '-i', pista, '-filter_complex', '[0:a][1:a]amix=inputs=2:normalize=0:duration=first',
+    '-ar', '44100', mezcla])
+  return mezcla
+}
+
 async function overlays(dir, guion) {
   const { chromium } = await import('@playwright/test')
   const ctx = await chromium.launchPersistentContext('', {
@@ -96,6 +117,16 @@ async function overlays(dir, guion) {
   }
   await ctx.close()
   return hechos
+}
+
+function clicksDelGuion(guion, guionPath) {
+  if (guion.efectos === false) return []
+  const desfase = guion.efectos?.desfase ?? 0
+  let clicks = guion.clicks
+  if (!clicks && guion.clicksArchivo) {
+    clicks = JSON.parse(readFileSync(resolve(dirname(guionPath), guion.clicksArchivo), 'utf8')).clicks
+  }
+  return (clicks ?? []).map((c) => ({ ...c, t: c.t + desfase }))
 }
 
 const [guionPath, crudo, salida] = process.argv.slice(2)
@@ -129,32 +160,50 @@ try {
     '-c:v', 'libx264', '-crf', '20', '-pix_fmt', 'yuv420p', base])
 
   const total = duracion(base)
-  const audio = guion.musica ? resolve(guion.musica) : musica(dir, total, guion.audio ?? {})
-
-  // 2. Rótulos. El desfase de la placa de entrada se suma acá, no en el guion.
+  // El desfase de la placa de entrada se suma acá, no en el guion (rótulos, clicks y sonidos).
   const offset = png.intro ? (guion.intro.segundos ?? 3) : 0
+
+  // 2. Efectos de click: qué clicks llevan sticker/sacudida, y los cuadros de cada sticker.
+  const plan = planificar(
+    clicksDelGuion(guion, guionPath).map((c) => ({ ...c, t: c.t + offset })),
+    { semilla: guion.efectos?.semilla ?? 1 },
+  )
+  const stickers = await renderizarStickers(dir, plan)
+
+  let audio = guion.musica ? resolve(guion.musica) : musica(dir, total, guion.audio ?? {})
+  if (guion.efectos?.sonido !== false) audio = mezclarSfx(dir, audio, total, plan)
+
+  // 3. Grafo de video: sacudida → rótulos → stickers (arriba de todo).
   const entradas = []
   const filtros = []
-  let prev = '[0]'
+  filtros.push(...filtroSacudida('[0:v]', '[vsq]', plan.filter((s) => s.sacudir).map((s) => s.t)))
+
+  let prev = '[vsq]'
   guion.rotulos.forEach((r, i) => {
     const idx = i + 1
     const d = r.desde + offset, h = r.hasta + offset
     entradas.push('-loop', '1', '-t', String(total + 1), '-i', png[`rot${i}`])
     filtros.push(`[${idx}]format=rgba,fade=t=in:st=${d}:d=0.5:alpha=1,` +
       `fade=t=out:st=${h - 0.5}:d=0.5:alpha=1[o${idx}]`)
-    const out = i === guion.rotulos.length - 1 ? '[vout]' : `[v${idx}]`
-    filtros.push(`${prev}[o${idx}]overlay=0:0:enable='between(t,${d},${h})'${out}`)
+    filtros.push(`${prev}[o${idx}]overlay=0:0:enable='between(t,${d},${h})'[v${idx}]`)
     prev = `[v${idx}]`
   })
 
+  const primerSticker = guion.rotulos.length + 1
+  for (const s of stickers) entradas.push('-framerate', '25', '-i', s.patron)
+  filtros.push(...filtroStickers(prev, '[vout]', stickers, primerSticker))
+
+  const indiceAudio = primerSticker + stickers.length
   ff(['-i', base, ...entradas, '-i', audio,
     '-filter_complex', filtros.join(';'),
-    '-map', '[vout]', '-map', `${guion.rotulos.length + 1}:a`,
+    '-map', '[vout]', '-map', `${indiceAudio}:a`,
     '-c:v', 'libx264', '-crf', '20', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart',
+    '-c:a', 'aac', '-b:a', '128k', '-t', String(total), '-movflags', '+faststart',
     resolve(salida)])
 
-  console.log(`OK ${salida} — ${duracion(resolve(salida)).toFixed(1)}s`)
+  console.log(`OK ${salida} — ${duracion(resolve(salida)).toFixed(1)}s` +
+    (plan.length ? ` · ${plan.length} stickers (${plan.map((s) => s.palabra).join(' ')}) · ` +
+      `${plan.filter((s) => s.sacudir).length} sacudidas` : ''))
   console.log('⚠️  La música es sintetizada. Claude no la escucha: verificala antes de publicar.')
 } finally {
   rmSync(dir, { recursive: true, force: true })

@@ -6,6 +6,67 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | 🛑 El escáner de mails de Gmail deja el alta MUERTA — y la salida existe pero es inalcanzable
+
+Apareció grabando el Video 1 con un alias real (`genesis360.ar+video1@gmail.com`) contra PROD. **Es
+un callejón sin salida en la puerta de entrada del producto, y se dispara solo.**
+
+### La cadena, con los tiempos reales
+
+| Hora | Qué pasó |
+|---|---|
+| 01:14:53 | Alta enviada. Usuario de auth creado, **sin confirmar**. Los datos del negocio viajan en `raw_user_meta_data` (`ob_nombre`, `ob_tipo`, `ob_pais`, `ob_telefono`). Mail despachado. |
+| 01:16:27 | **El escáner de links de Gmail pre-carga la URL de verificación.** Supabase confirma el mail y **consume el token, que es de un solo uso**. Pero ningún navegador ejecutó la app → `provisionNegocio()` nunca corrió. |
+| ~01:20 | La persona clickea el link: **`otp_expired`** → cae en el formulario de alta, sin sesión. |
+
+Resultado: **cuenta de auth confirmada y válida, sin fila en `public.users` y sin `tenants`.**
+
+### Por qué la persona no puede salir sola
+
+- **Loguearse no sirve.** La auth funciona (`last_sign_in_at` se actualiza), pero la app va a
+  `/dashboard`, pega un **`406`** en `users?select=*&id=eq.<uuid>` —PostgREST devuelve 406 cuando
+  `.single()` no encuentra fila— y **la rebota a `/login` con el formulario vacío y sin ningún
+  mensaje**. Ruta observada: `/login` → `/dashboard` → `/login`.
+- **Registrarse de nuevo tampoco.** El anti-enumeración de Supabase devuelve éxito falso → *"Revisá
+  tu email"* → un mail que no llega o no sirve.
+- Y el mail queda quemado.
+
+### 🔑 La salida EXISTE — pero nada lleva hasta ella
+
+`OnboardingPage.tsx` (líneas 78-88) ya tiene el rescate: **si la persona cae en `/onboarding` CON
+sesión y con `ob_nombre`+`ob_pais` en el metadata, crea el negocio ahí mismo.** Está escrito y
+funciona.
+
+**Comprobado**: logueando y navegando a mano a `/onboarding`, el negocio se creó completo —
+"Genesis360 Onboarding", Almacén, AR, **teléfono guardado** (mig 412 funcionando end-to-end en PROD),
+trial a 30 días, y los seeds (1 sucursal, 3 cajas, 5 métodos de pago, 16 categorías de gasto).
+
+El problema es de **ruteo**: el login manda a `/dashboard`, no a `/onboarding`. La puerta de
+emergencia está construida y con llave.
+
+### El arreglo, en dos niveles
+
+1. **Barato e inmediato (ruteo):** cuando un usuario autenticado no tiene fila en `users`, en vez de
+   rebotarlo a `/login` mandarlo a `/onboarding`, que ya sabe terminar el trabajo. Convierte un
+   bloqueo permanente en un hipo.
+2. **De fondo (server-side):** que el negocio NO dependa de que un navegador aterrice. Crearlo al
+   confirmarse el mail, desde la base (trigger sobre `auth.users` cuando `email_confirmed_at` pasa a
+   no-nulo, leyendo el metadata `ob_*`) o desde una EF. Mismo criterio que la REGLA #0 aplica a lo
+   fiscal: **el guard server-side además de la UI.** Hoy la creación del negocio vive solo en el
+   cliente, y cualquier cosa que interrumpa el aterrizaje —escáner de mails, cerrar la pestaña,
+   perder señal justo ahí— deja la cuenta huérfana.
+
+### Alcance
+
+En PROD hay **3 usuarios de auth sin fila en `users`**: el de esta prueba, una cuenta de agente de
+soporte (esperado, mig 221) y uno de marzo sin metadata de negocio. O sea que **no hay víctimas
+reales todavía** — pero tampoco hubo clientes reales todavía.
+
+⚠️ **Esto es lo que se lleva puesto a un cliente el primer día.** Gmail escanea links por default, y
+Outlook Safe Links y los escáneres corporativos también.
+
+---
+
 ## [2026-09-13] update | 🎥 Video 1 grabado, y dos hallazgos del alta
 
 GO pidió intentar el primer video del guion. **Salió**, 33 s en 720p contra PROD: landing →

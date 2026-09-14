@@ -83,6 +83,38 @@ type: project
 > 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
 >    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
 >
+> #### 🔴🔴 LO PRIMERO DE LA PRÓXIMA SESIÓN — el alta se muere sola con Gmail
+>
+> Apareció grabando el Video 1 con un alias real contra PROD (14/09). **Es un callejón sin salida en
+> la puerta de entrada, y se dispara solo.**
+>
+> **El escáner de links de Gmail pre-carga la URL de confirmación** (94 s después del envío, medido).
+> Supabase confirma el mail y **quema el token de un solo uso**, pero ningún navegador ejecutó la app
+> → `provisionNegocio()` nunca corre → **cuenta confirmada, sin `users`, sin `tenants`**.
+>
+> La persona queda encerrada: al clickear el link ve `otp_expired`; al loguearse la auth funciona
+> pero la app pega **`406`** en `users?...` y la rebota a `/login` **sin mensaje**
+> (`/login`→`/dashboard`→`/login`); y al registrarse otra vez el anti-enumeración le muestra "Revisá
+> tu email" para siempre. El mail queda quemado.
+>
+> 🔑 **La salida ya está escrita**: `OnboardingPage.tsx:78-88` crea el negocio si la persona cae en
+> `/onboarding` con sesión y con el metadata. **Comprobado**: se recuperó el usuario de la prueba y
+> el negocio nació completo. El bug es de **ruteo** — el login va a `/dashboard`, nunca a
+> `/onboarding`. La puerta de emergencia está construida y con llave.
+>
+> **Arreglo en dos niveles:**
+> 1. **Ruteo (barato, inmediato):** usuario autenticado sin fila en `users` → mandarlo a
+>    `/onboarding` en vez de rebotarlo a `/login`.
+> 2. **Server-side (de fondo):** que el negocio no dependa de que un navegador aterrice — crearlo al
+>    confirmarse el mail (trigger sobre `auth.users` leyendo el metadata `ob_*`, o una EF). Mismo
+>    criterio que la REGLA #0 aplica a lo fiscal: **guard server-side además de la UI.**
+>
+> **Alcance hoy**: 3 usuarios de auth sin `users` en PROD — el de la prueba, una cuenta de agente
+> (esperado) y uno de marzo. Sin víctimas reales **porque todavía no hay clientes reales**.
+>
+> 🧹 **Limpieza pendiente**: purgar el tenant de prueba **"Genesis360 Onboarding"** y liberar el
+> alias `genesis360.ar+video1@gmail.com` desde el panel.
+>
 > #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
 >
 > 🛑 **El tenant de e2e ("Almacén Jorgito") es Monotributista**, y un Monotributista no discrimina

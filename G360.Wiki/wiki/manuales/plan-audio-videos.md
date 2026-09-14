@@ -128,7 +128,7 @@ Momentos ya identificados en la serie:
 | 5 | **"Sin diferencia"** al cerrar la caja | en el modal de cierre |
 
 Implementado como `acentos: [seg, seg]` en el spec: un brillo corto (D5-A5-D6, ataque de 5 ms) que
-marca el momento sin interrumpir. Muestra `c-acentos`.
+marca el momento sin interrumpir. Muestra `c-acentos`. 🛑 **GO lo rechazó** al escucharlo: *"distraen, no suman"* — ver §4.bis.
 
 Con una pista comprada esto **no se puede hacer**.
 
@@ -162,11 +162,11 @@ scripts/video/overlay.html ← plantilla visual de los rótulos
 
 ```json
 {
-  "duracion": 30, "bpm": 100, "afinacion": 440,
+  "duracion": 59, "bpm": 100, "afinacion": 432,
   "intro": 8, "outro": 7,
   "arpegio": true, "pulsoRitmico": true,
   "destino": "sinVoz",
-  "acentos": [12, 19]
+  "acentos": []
 }
 ```
 
@@ -255,6 +255,30 @@ a pitido plano).
 Los renders viejos estaban **16 dB por debajo** del objetivo. YouTube no sube lo que recibe bajo, así
 que habrían sonado anémicos contra cualquier otro video. **No era solo la melodía: el audio venía
 mal nivelado.** Los renders anteriores quedaron en `_anteriores/` por si hace falta comparar.
+
+## 4.quinquies 🔉 La música bajó 10 dB — GO: "está saturando" (2026-09-14)
+
+Escuchando la serie terminada, GO pidió bajar la música **"por lo menos un 50%"** porque satura.
+Medido: los finales están a −13,6 LUFS con un **LRA de apenas 3,2-3,6 LU** — una cama muy densa y
+pareja, empujada al nivel de programa. El −14 de §2 era correcto *en papel* (es a lo que normaliza
+YouTube), pero en un video sin voz, donde la música acompaña pantallas que hay que leer, queda encima.
+
+**Decisión: master de la música a −24 LUFS (−10 dB).** Se eligió −10 y no −6 porque "la mitad" de
+volumen *percibido* son unos 10 dB; −6 dB es la mitad de *amplitud*, que al oído queda bastante más
+fuerte que la mitad. −10 cubre las dos lecturas de "50%".
+
+⚠️ **Consecuencia aceptada**: YouTube no sube lo que está por debajo de −14, así que estos videos van
+a sonar más bajos que otros. Es lo pedido: la música acompaña, no protagoniza. **Esto supera el
+razonamiento de −14 de §2.**
+
+- Es el **default de `postproducir.mjs`** desde ahora; se puede pisar por guion con `audio.lufs`.
+- Aplica a los **próximos** videos. Los 5 hechos siguen a −14 hasta que GO decida re-renderizarlos
+  (son minutos: no hay que volver a grabar, solo correr `postproducir.mjs` sobre el crudo).
+- Junto con esto GO pidió **efectos visuales en los clicks** (el cursor no se ve): ver
+  [Efectos de click](guion-videos-onboarding.md#-efectos-de-click-para-los-próximos-videos-pedido-de-go-2026-09-14).
+  El "pop" sonoro que los acompañe entra acá como diseño de sonido — y a este volumen nuevo.
+
+---
 
 ## 5. Qué falta decidir (GO)
 

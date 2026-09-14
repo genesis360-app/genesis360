@@ -6,6 +6,65 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | 🎬 Serie de videos: 5 grabados, música nueva en todos · y dos hallazgos de producto
+
+GO eligió el orden siguiendo la rutina real del negocio: **1 → 2 → 3 → 5 (caja) → 8 (inventario) → 4
+(vender)…** — abrir la caja y que entre la mercadería **antes** de vender. Todos contra PROD sobre el
+tenant de prueba "Genesis360 Onboarding": GO decidió no mudarse a DEV para no perder la continuidad
+visual, sabiendo que del 3 en adelante se escriben datos reales en ese tenant.
+
+| | Video | Duración | Momento clave |
+|---|---|---|---|
+| 1 | Onboarding | 70,7 s | "Revisá tu email" → negocio creado → tour |
+| 2 | Configuración inicial | 59,3 s | lo que viene sembrado vs. las categorías de producto (lo único obligatorio) |
+| 3 | Cargar productos | 50,0 s | la alerta de stock crítico aparece sola |
+| 5 | Caja, la rutina del día | 78,8 s | cierre esperado vs. contado, "Sin diferencia" |
+| 8 | Carga de inventario | 63,0 s | la alerta de stock crítico se apaga sola |
+
+Archivos en `D:/Dev/genesis360-videos/<videoN>/` (fuera del repo): `videoN-final.mp4`, el crudo y el
+`guion.json`. Se regeneran sin volver a grabar con `node scripts/video/postproducir.mjs`.
+
+### 🎧 Música nueva en toda la serie
+
+`postproducir.mjs` ahora usa el sintetizador propio (`musica.mjs`) con lo que GO eligió de oído:
+**432 Hz**, cama de fondo con arpegio y pulso, y **sin acentos** ("distraen, no suman"). GO además
+detectó de oído que **la frase se cortaba antes del outro** — bug real: las secciones se cortaban
+por tiempo y no por frase. Corregido.
+
+Al re-renderizar apareció que los renders viejos estaban a **−29,8 LUFS, 16 dB por debajo** del
+objetivo: habrían sonado anémicos en YouTube. Ahora entre −13,3 y −13,7. Los viejos quedaron en
+`_anteriores/`.
+
+### 🛑 Hallazgo 1 — motivos de caja que invitan a asentar una salida como ingreso
+
+El modal de Caja **solo registra ingresos** (lo dice él mismo: los egresos van por Gastos), pero el
+sistema **siembra tres motivos y dos nombran salidas**: "Extracción / Retiro" y "Gastos varios". Los
+chips solo rellenan el concepto (`setMovConcepto`), no cambian el tipo. Grabando se asentó un flete
+de $6.200 como **+$6.200 de ingreso, dos veces seguidas** y leyendo la pantalla. No es un bug de
+código (se ve en verde con `+$` y el cierre detectó el faltante), es **qué se siembra**.
+**Decisión de GO pendiente**: renombrarlos, sacarlos o filtrarlos en ese modal.
+
+### Hallazgo 2 — correcciones al guion
+
+- La Caja **no** registra egresos: el video 5 prometía "ingresos y egresos". Corregido.
+- "Completar desde foto" no se puede clickear en una grabación (`<label>` sobre `input[type=file]`
+  abre el diálogo nativo del sistema). Se muestra con un rótulo; la demo real necesita una foto.
+
+### Pendiente
+
+- **Video 4 — Vender**: ya hay stock (48 y 24 unidades); la caja quedó cerrada → arrancar como "el
+  día siguiente", abriendo caja.
+- 🔉 **GO escuchó la serie: la música satura** → pidió bajarla "por lo menos un 50%". Default nuevo
+  de `postproducir.mjs`: **−24 LUFS** (−10 dB = mitad de volumen percibido). Medido: los finales
+  estaban a −13,6 LUFS con LRA de 3,2-3,6 LU, una cama muy densa. Aplica a los próximos; los 5 hechos
+  quedan a −14 salvo que GO pida re-renderizar.
+- ✨ **Efectos de click tipo cómic** (pedido de GO): el cursor no se ve, así que cada click importante
+  lleva un sticker con onomatopeya variada según la acción y una sacudida corta. Diseño en
+  `guion-videos-onboarding.md`; se construye **antes** del Video 4.
+- Limpieza del tenant de prueba en PROD: **al terminar la serie**, no antes — se sigue usando.
+
+---
+
 ## [2026-09-14] update | 🎧 Plan de audio de los videos — el brief, medido
 
 GO trajo un brief de un productor de sonido y pidió **desafiarlo** para que el video refuerce la

@@ -100,7 +100,7 @@ datos reales.
 
 ---
 
-## 🎬 Video 1 — De la web a tu negocio creado
+## 🎬 Video 1 — De la web a tu negocio creado — ✅ GRABADO (70 s, 2026-09-13)
 
 **Punto de partida:** `genesis360.pro` sin sesión iniciada.
 (Ojo: `app.genesis360.pro` es el dominio de la app y redirige directo al login — el landing con el
@@ -201,17 +201,21 @@ Cómo invitar a alguien y qué hace cada rol. En el plan de prueba el límite ar
 
 ## 🎬 Videos por funcionalidad — orden sugerido
 
+> ✅ **Orden real de grabación** (decisión de GO, 2026-09-14): 1 → 2 → 3 → **5 (caja)** → **8 (inventario)** → 4 (vender)…
+> Sigue la rutina real del negocio: abrir la caja y que entre la mercadería **antes** de vender. Los archivos viven en
+> `D:/Dev/genesis360-videos/` (fuera del repo) y la música en el [Plan de audio](plan-audio-videos.md).
+
 El orden sale del recorrido que ya hace el tour de bienvenida, que está pensado como camino de
 menor fricción: **primero cargar, después vender, después medir.**
 
 | # | Video | Pantalla | Qué tiene que quedar demostrado |
 |---|---|---|---|
-| 3 | **Cargar productos** | `/productos/nuevo` | Alta manual (costo, precio, stock mínimo, categoría), alta **desde una foto**, e importación por Excel |
+| 3 | **Cargar productos** ✅ *grabado* | `/productos/nuevo` | Alta manual (costo, precio, stock mínimo, categoría), alta **desde una foto**, e importación por Excel |
 | 4 | **Vender** | `/ventas` | Buscar, agregar al carrito, descuento, **varios medios de pago** en una venta, y que el stock baja solo |
 | 5 | **Caja** ✅ *grabado* | `/caja` | Abrir la caja, **ingresos** de efectivo, arqueo y cierre del día. ⚠️ **NO “egresos”** — ver la corrección abajo |
 | 6 | **Gastos** | `/gastos` | Registrar un gasto, categorizarlo, y que impacta en la ganancia |
 | 7 | **Clientes y cuenta corriente** | `/clientes` | Alta de cliente, venta en cuenta corriente y cobranza |
-| 8 | **Stock** | `/inventario` | Entradas, salidas, ajustes, y el stock mínimo disparando alertas |
+| 8 | **Stock** ✅ *grabado (carga de inventario)* | `/inventario` | Entradas, salidas, ajustes, y el stock mínimo disparando alertas |
 | 9 | **Métricas** | `/dashboard` → Métricas | Ventas, margen, rotación, productos sin movimiento |
 | 10 | **Facturar (AFIP)** | Configuración → Facturación | El video más delicado: ver abajo |
 
@@ -225,6 +229,47 @@ menor fricción: **primero cargar, después vender, después medir.**
 
 Para grabarlo hace falta un CUIT de prueba en homologación. **Nunca en cámara un CUIT real ni el
 certificado.**
+
+---
+
+## ✨ Efectos de click para los próximos videos (pedido de GO, 2026-09-14)
+
+Playwright no dibuja el puntero, así que en el video **no se ve dónde se hace click**: la pantalla
+cambia sola. GO pidió reemplazarlo con efectos tipo cómic, más dinámicos:
+
+- **Sticker de onomatopeya** en el punto del click, estilo historieta (globo con borde grueso,
+  tipografía pesada, leve rotación), que entra con *pop* (escala 0 → 1,2 → 1) y sale rápido.
+- **Que vibre la imagen** (sacudida corta, ~200 ms) en los clicks que importan: entrar, confirmar,
+  guardar, cobrar.
+- **Que NO diga siempre "¡Click!"** — variar y ser ocurrente, según lo que hace el botón:
+
+| Acción | Ideas |
+|---|---|
+| Navegar / entrar | ¡Adentro! · ¡Vamos! · ¡Zas! · ¡Toc! |
+| Guardar / crear | ¡Listo! · ¡Hecho! · ¡Pum! · ¡Anotado! |
+| Confirmar | ¡Confirmado! · ¡Dale! · ¡Bum! · ¡Eso! |
+| Cobrar / vender | ¡Ka-ching! · ¡Vendido! · ¡Cha-chín! |
+| Abrir / cerrar caja | ¡Abierta! · ¡Cuadra! · ¡Clack! |
+| Tipear / clicks menores | sin palabra: solo un anillo que marca el punto |
+
+### Cómo construirlo (a hacer ANTES de grabar el Video 4)
+
+1. **Registrar los clicks al grabar**, no estimarlos después: un helper `clickConEfecto(locator, tipo)`
+   que antes del click toma el `boundingBox()` y el tiempo desde el inicio de la grabación, y lo
+   agrega al `guion.json` como `clicks: [{ t, x, y, tipo }]`. La hoja de contacto ya hizo correr
+   rótulos 5 s una vez; con el dato grabado la posición es exacta.
+2. **Sticker como overlay**, con el mismo mecanismo de los rótulos (HTML → PNG con alpha): plantilla
+   `tipo=sticker` en `overlay.html` con palabra, color y rotación. El *pop* con escala animada.
+3. **Vibración** con `crop` sobre el cuadro levemente escalado, desplazando x/y con `sin(t)` solo en la
+   ventana del click.
+4. **Anillo** en el punto para los clicks menores: reemplaza al puntero sin tapar nada.
+5. No repetir la misma palabra dos veces seguidas; sorteo con **semilla fija**, para que
+   re-renderizar dé siempre el mismo video.
+6. Un **"pop" sonoro** muy bajo en sincronía (el diseño de sonido que estaba abierto en el
+   [plan de audio](plan-audio-videos.md)) — primero como muestra para que GO lo escuche.
+
+**Regla de mesura**: como mucho un sticker cada ~3 s, y la sacudida solo en los clicks importantes.
+El efecto tiene que dar ritmo, no tapar la pantalla que se está explicando.
 
 ---
 

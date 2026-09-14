@@ -23,9 +23,9 @@
 // pista bajada — esto se publica y una licencia ajena es un problema esperando.
 //
 // Parámetros fijados por GO escuchando muestras (2026-09-14): **432 Hz**, densidad actual como cama
-// de fondo, y **sin acentos sincronizados** ("distraen, no suman"). Master a **-14 LUFS**, que es a
-// lo que normaliza YouTube. Todo el detalle y lo que se discutió del brief original está en
-// `G360.Wiki/wiki/manuales/plan-audio-videos.md`.
+// de fondo, y **sin acentos sincronizados** ("distraen, no suman"). Master a **-24 LUFS**: estuvo a
+// -14 (lo que normaliza YouTube) y GO lo escuchó "saturando". Todo el detalle y lo que se discutió
+// del brief original está en `G360.Wiki/wiki/manuales/plan-audio-videos.md`.
 //
 // Se puede pisar por guion: `musica` (ruta a un archivo propio) o `audio` (opciones del spec).
 //
@@ -63,10 +63,13 @@ function musica(dir, segundos, opciones = {}) {
     ...opciones,
   }), salida)
 
-  // Master: loudness medido al objetivo de la plataforma. Sin voz, la música ES el programa →
-  // -14 LUFS, que es a lo que normaliza YouTube (más bajo, YouTube no lo sube).
+  // Master a -24 LUFS. Estuvo a -14 (a lo que normaliza YouTube) y GO lo escuchó "saturando": pidió
+  // bajarla "por lo menos un 50%" → -10 dB, que es la mitad de volumen PERCIBIDO (-6 dB es la mitad
+  // de amplitud, y al oído queda bastante más que la mitad). YouTube no sube lo que está por debajo
+  // de -14: aceptado, la música es de fondo. Se puede pisar por guion con `audio.lufs`.
   const master = join(dir, 'cama-master.wav')
-  ff(['-i', salida, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '44100', master])
+  const lufs = opciones.lufs ?? -24
+  ff(['-i', salida, '-af', `loudnorm=I=${lufs}:TP=-1.5:LRA=11`, '-ar', '44100', master])
   return master
 }
 

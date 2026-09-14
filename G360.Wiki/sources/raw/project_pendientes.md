@@ -97,7 +97,7 @@ type: project
 > 2. `OnboardingPage` — `ob_terminos_version` en el metadata del alta, para que el trigger grabe la
 >    versión de T&C aceptada en vez de dejarla en `NULL`.
 >
-> **Falta**: bump de `APP_VERSION` a `v1.219.0`, PR `dev→main`, merge, release.
+> ✅ `APP_VERSION` ya bumpeado a `v1.219.0` (tag + release sobre `dev`). **Falta**: PR `dev→main`, merge, release sobre `main`, verificar Vercel.
 >
 > ##### El bug que esto arregla (por si hace falta el contexto)
 >
@@ -120,7 +120,7 @@ type: project
 > `ffmpeg`), y las capturas además las puede **leer**. Lo que no puede: la pantalla de quien opera,
 > audio, puntero del mouse, y entrar a una casilla de correo.
 >
-> ✅ **Videos 1 y 2 hechos**, los dos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
+> ✅ **5 videos hechos (1, 2, 3, 5, 8)**, todos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
 > así que hay continuidad visual entre ellos. Quedan en `D:/Dev/genesis360-videos/` (fuera del repo,
 > son binarios):
 >
@@ -159,8 +159,16 @@ type: project
 > se resolvió dejándolo visible en pantalla con un rótulo que lo señala. Para demostrarlo de verdad
 > hace falta una foto real de un producto — lo puede hacer GO.
 >
-> ⚠️ **La música es sintetizada y NADIE la escuchó** — Claude no puede. Si no sirve, se reemplaza
-> pasando un `.wav`/`.mp3` propio en el guion.
+> ✅ **La música la eligió GO escuchando muestras** (Claude no escucha): sintetizador propio, 432 Hz, cama
+> de fondo, sin acentos. Detalle en `wiki/manuales/plan-audio-videos.md`. Se puede pisar pasando un
+> `.wav`/`.mp3` propio en el guion.
+>
+> 🔉 **Dos pedidos de GO para los PRÓXIMOS videos (2026-09-14):**
+> 1. **La música satura → −10 dB.** Ya es el default de `postproducir.mjs` (−24 LUFS). Los 5 hechos
+>    siguen a −14: re-renderizarlos es opcional (minutos, sin regrabar) — decisión de GO.
+> 2. **Efectos en los clicks**, porque el cursor no se ve: sticker tipo cómic con onomatopeya
+>    **variada según la acción** (¡Adentro!, ¡Listo!, ¡Ka-ching!…) + la imagen que vibra. Diseño en
+>    `guion-videos-onboarding.md` → "Efectos de click". 🟥 **Construirlo ANTES de grabar el Video 4.**
 >
 > 🔁 **Reusable para los videos 3-9**: `scripts/video/postproducir.mjs` + `overlay.html`. Dos
 > trampas anotadas ahí: sin `-loop 1` los overlays salen **invisibles** (el PNG es un solo fotograma
@@ -170,7 +178,7 @@ type: project
 > 🟥 **El landing dice "+500 comercios"** con 9 tenants en PROD y **ninguno cliente real**. Se ve en
 > primer plano en el video. Decisión de GO.
 >
-> #### 🧪 e2e 146 + project `chromium-ri`> #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
+> #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
 >
 > 🛑 **El tenant de e2e ("Almacén Jorgito") es Monotributista**, y un Monotributista no discrimina
 > IVA crédito: el bloque de alícuota solo existe con `esRI && tipo_comprobante === 'Factura A'`. Todo

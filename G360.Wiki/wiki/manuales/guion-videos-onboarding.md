@@ -208,7 +208,7 @@ menor fricción: **primero cargar, después vender, después medir.**
 |---|---|---|---|
 | 3 | **Cargar productos** | `/productos/nuevo` | Alta manual (costo, precio, stock mínimo, categoría), alta **desde una foto**, e importación por Excel |
 | 4 | **Vender** | `/ventas` | Buscar, agregar al carrito, descuento, **varios medios de pago** en una venta, y que el stock baja solo |
-| 5 | **Caja** | `/caja` | Abrir la caja, ingresos y egresos de efectivo, arqueo y cierre del día |
+| 5 | **Caja** ✅ *grabado* | `/caja` | Abrir la caja, **ingresos** de efectivo, arqueo y cierre del día. ⚠️ **NO “egresos”** — ver la corrección abajo |
 | 6 | **Gastos** | `/gastos` | Registrar un gasto, categorizarlo, y que impacta en la ganancia |
 | 7 | **Clientes y cuenta corriente** | `/clientes` | Alta de cliente, venta en cuenta corriente y cobranza |
 | 8 | **Stock** | `/inventario` | Entradas, salidas, ajustes, y el stock mínimo disparando alertas |
@@ -245,3 +245,41 @@ certificado.**
 - [Suscripciones y planes](../features/suscripciones-planes.md) — trial, límites y planes.
 - [Plataforma de soporte](../support/plataforma-soporte.md) — la baja de un negocio para liberar un
   mail entre tomas.
+
+---
+
+## ⚠️ Corrección al Video 5: la Caja NO registra egresos
+
+Este documento decía que el video 5 debía mostrar *"ingresos y egresos de efectivo"*. **La mitad es
+falsa**, y se descubrió grabándolo.
+
+El modal de movimiento se llama **"Ingreso de caja"** y lo dice él mismo:
+
+> *"Para registrar un egreso, creá un **Gasto** con el monto y método de pago. Caja solo registra
+> ingresos manuales (aportes, devoluciones, etc.)."*
+
+O sea: **la plata que sale se carga desde el módulo Gastos** (video 6), no desde Caja. El video 5
+ahora lo aclara en pantalla en vez de prometer algo que no existe.
+
+### 🛑 El detalle que hizo tropezar la grabación — dos veces
+
+Dentro de ese modal hay tres chips de **motivos**, que el sistema **siembra solo** al crear el
+negocio (`motivos_movimiento`, `tipo='caja'`):
+
+| Motivo sembrado | Qué sugiere | Qué hace en realidad |
+|---|---|---|
+| Ingreso de efectivo | entrada | rellena el concepto |
+| **Extracción / Retiro** | **salida** | rellena el concepto |
+| **Gastos varios** | **salida** | rellena el concepto |
+
+Los tres solo hacen `setMovConcepto(m.nombre)`: **rellenan el texto del concepto y nada más.** No
+cambian el tipo del movimiento — el modal siempre graba un **ingreso**.
+
+Dos de los tres nombran **salidas de plata** y están adentro de un modal que **solo registra
+entradas**. Al grabar, se clickeó "Gastos varios", se escribió *"Flete de la mercadería"*, se puso
+**$6.200**… y quedó asentado como **+$6.200 de ingreso**. Pasó **dos veces seguidas**, leyendo la
+pantalla.
+
+La app no lo esconde —la lista lo muestra en verde con `+$`, y al cerrar detectó el faltante de
+$12.400 y lo registró— pero el camino invita al error. **Anotado como hallazgo para GO**; no es un
+bug de código, es qué motivos se siembran.

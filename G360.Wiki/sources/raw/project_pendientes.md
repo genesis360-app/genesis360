@@ -128,19 +128,25 @@ type: project
 > |---|---|---|---|
 > | 1 | Onboarding | 70 s | landing → alta → "Revisá tu email" → negocio creado → dashboard → tour |
 > | 2 | Configuración inicial | 59 s | datos y modo Básico · lo que YA viene sembrado (métodos de pago, 16 categorías de gasto) · **las categorías de producto, lo único que hay que crear** · el equipo |
+> | 5 | Caja (rutina del día) | 79 s | cerrada → abrir con fondo → 2 ingresos → arqueo → cierre esperado vs contado, **sin diferencia** |
 > | 3 | Cargar productos | 50 s | catálogo vacío → 2 productos a mano (SKU autogenerado, categoría, stock mínimo) → **la alerta de stock crítico aparece sola** → Acciones → Importar |
 >
 > ✅ **GO decidió seguir grabando contra PROD** (2026-09-14) para no perder la continuidad del mismo
 > negocio. Los videos 3+ **escriben datos reales** en el tenant de prueba "Genesis360 Onboarding",
 > que se purga al terminar la serie.
 >
-> **El siguiente por orden es el 4 — Vender** (`/ventas`): buscar, agregar al carrito, descuento,
-> **varios medios de pago en una venta**, y que el stock baja solo.
+> **El siguiente es el 4 — Vender** (`/ventas`). ⚠️ Sigue faltando **stock**: los 2 productos están
+> en 0. Y la caja quedó **cerrada** al final del video 5, así que hay que abrir una antes (o grabar
+> el 4 como "el día siguiente", que narrativamente cierra bien).
 >
-> ⚠️ **Ojo con el 4**: para vender hace falta **stock**, y los 2 productos están en 0. Hay que
-> ingresarlo antes (o grabar el ingreso como parte del video 8, y adelantar acá solo lo mínimo). Y
-> para cobrar en efectivo hace falta **caja abierta** — hoy el negocio no tiene ninguna (el punto
-> rojo del menú Caja).
+> 🛑 **HALLAZGO del video 5 — motivos de caja que invitan a equivocarse con plata.** El modal de
+> movimiento **solo registra ingresos** (lo dice él mismo: los egresos se cargan desde Gastos), pero
+> el sistema siembra tres motivos y **dos nombran salidas**: *"Extracción / Retiro"* y *"Gastos
+> varios"*. Los chips solo rellenan el concepto (`setMovConcepto`), no cambian el tipo. Grabando se
+> clickeó "Gastos varios", se escribió "Flete de la mercadería" con **$6.200** y quedó como **+$6.200
+> de ingreso** — **dos veces seguidas, leyendo la pantalla**. No es un bug de código (la app lo
+> muestra en verde con `+$` y el cierre detectó el faltante), es **qué motivos se siembran**.
+> Decisión de GO: renombrarlos, sacarlos, o que el modal los filtre.
 >
 > 📷 **"Completar desde foto" no se puede clickear en la grabación**: es un `<label>` que envuelve un
 > `input[type=file]`, así que abre el diálogo nativo del sistema, que no entra en el video. En el 3

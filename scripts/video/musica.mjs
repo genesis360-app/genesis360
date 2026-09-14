@@ -160,7 +160,7 @@ const ARPEGIOS = {
 
 export function construir(spec) {
   const {
-    duracion, bpm = 100, afinacion = 440,
+    duracion, bpm = 100, afinacion = 432,
     intro = 10, outro = 6,
     arpegio = true, pulsoRitmico = true,
     destino = 'sinVoz',
@@ -172,12 +172,33 @@ export function construir(spec) {
   const mono = new Float32Array(n)
   const f = (x) => frec(x, afinacion)
 
+  // ── 🛑 La música tiene que terminar SUS FRASES ───────────────────────────────────────────────
+  // Bug real que escuchó GO (2026-09-14): "al segundo 23 corta la melodía y parece que pasa al
+  // outro". Tenía razón. Antes las secciones se cortaban por TIEMPO: el cuerpo terminaba en el
+  // segundo que tocara, aunque la progresión viniera por la mitad.
+  //
+  //   30 s · 100 BPM → compás 2,4 s · cuerpo de 8 a 23 s = 6,25 compases
+  //   progresión D-A-Bm-G → a los 23 s venía en **Bm**, el tercero. El outro le caía encima.
+  //
+  // Ahora las secciones se cortan por FRASE: se calcula cuántos ciclos COMPLETOS de 4 acordes
+  // entran, y el cierre arranca recién cuando la progresión terminó en G (IV) — que además es la
+  // mejor antesala posible para el Dsus4 → D.
+  const compasesIntro = Math.max(2, Math.round(intro / compas))
+  const introReal = compasesIntro * compas
+  const disponible = duracion - introReal - outro
+  const ciclos = Math.max(1, Math.floor(disponible / (4 * compas)))
+  const finCuerpo = introReal + ciclos * 4 * compas
+  const cierreDur = duracion - finCuerpo               // lo que sobra es todo para la resolución
+
+  const agenda = []                                    // para poder verificar el corte sin oírlo
+
   // ── Sección 1 · Introducción: I – IV, solo pads. Baja la resistencia, no invade.
   let t = 0
   const introAcordes = ['D', 'G']
   let k = 0
-  while (t < intro) {
+  while (t < introReal - 0.01) {
     const ac = introAcordes[k++ % introAcordes.length]
+    agenda.push({ seg: +t.toFixed(2), ac, sec: 'intro' })
     for (const nn of ACORDES[ac]) {
       mezclar(mono, nota(f(nn), compas * 1.15, {
         ganancia: 0.16, env: { a: 0.8, d: 0.5, s: 0.72, r: 1.1 }, armonicos: [1, 0.3, 0.12],
@@ -186,41 +207,53 @@ export function construir(spec) {
     t += compas
   }
 
-  // ── Sección 2 · Cuerpo: I – V – vi – IV. Entra el arpegio y el pulso. Genera dinamismo.
-  const finCuerpo = Math.max(intro, duracion - outro)
+  // ── Sección 2 · Cuerpo: I – V – vi – IV, en ciclos enteros. Entra el arpegio y el pulso.
   const prog = ['D', 'A', 'Bm', 'G']
-  k = 0
-  while (t < finCuerpo) {
-    const ac = prog[k++ % prog.length]
+  const totalAcordes = ciclos * 4
+  for (let c = 0; c < totalAcordes; c++) {
+    const ac = prog[c % 4]
+    const ultimo = c === totalAcordes - 1              // el G que cierra la última vuelta
+    agenda.push({ seg: +t.toFixed(2), ac, sec: ultimo ? 'cuerpo (cierre de frase)' : 'cuerpo' })
+
+    // El acorde final se sostiene MÁS y se solapa con la resolución: así no queda hueco ni corte.
     for (const nn of ACORDES[ac]) {
-      mezclar(mono, nota(f(nn), compas * 1.15, {
-        ganancia: 0.15, env: { a: 0.5, d: 0.4, s: 0.7, r: 0.9 }, armonicos: [1, 0.35, 0.15, 0.06],
+      mezclar(mono, nota(f(nn), compas * (ultimo ? 2.1 : 1.15), {
+        ganancia: ultimo ? 0.17 : 0.15,
+        env: ultimo ? { a: 0.5, d: 0.5, s: 0.75, r: 1.6 } : { a: 0.5, d: 0.4, s: 0.7, r: 0.9 },
+        armonicos: [1, 0.35, 0.15, 0.06],
       }), t)
     }
+
     if (arpegio) {
       const paso = compas / 4
-      ARPEGIOS[ac].forEach((nn, i) => {
+      // En el último compás el arpegio BAJA en vez de subir: es el gesto de cierre de la frase.
+      const figura = ultimo ? [...ARPEGIOS[ac]].reverse() : ARPEGIOS[ac]
+      figura.forEach((nn, i) => {
         mezclar(mono, nota(f(nn), paso * 0.9, {
-          ganancia: 0.075, env: { a: 0.01, d: 0.25, s: 0.25, r: 0.3 }, armonicos: [1, 0.18], detune: 1.5,
+          ganancia: ultimo ? 0.06 : 0.075,
+          env: { a: 0.01, d: 0.25, s: 0.25, r: ultimo ? 0.6 : 0.3 }, armonicos: [1, 0.18], detune: 1.5,
         }), t + i * paso)
       })
     }
-    if (pulsoRitmico) {
+    // El pulso se calla en el último compás: ese silencio es lo que anuncia el cierre.
+    if (pulsoRitmico && !ultimo) {
       for (let b = 0; b < 4; b++) if (b % 2 === 1) mezclar(mono, pulso(0.25), t + b * (compas / 4))
     }
     t += compas
   }
 
-  // ── Sección 3 · Cierre: Dsus4 → D. La resolución cae con el logo.
-  const mitad = outro / 2
+  // ── Sección 3 · Cierre: Dsus4 → D. La resolución cae con la placa final.
+  const mitad = cierreDur / 2
+  agenda.push({ seg: +finCuerpo.toFixed(2), ac: 'Dsus4', sec: 'cierre' })
   for (const nn of ACORDES.Dsus4) {
-    mezclar(mono, nota(f(nn), mitad * 1.1, {
-      ganancia: 0.17, env: { a: 0.35, d: 0.3, s: 0.75, r: 0.8 }, armonicos: [1, 0.32, 0.14],
+    mezclar(mono, nota(f(nn), mitad * 1.25, {
+      ganancia: 0.17, env: { a: 0.35, d: 0.3, s: 0.75, r: 0.9 }, armonicos: [1, 0.32, 0.14],
     }), finCuerpo)
   }
+  agenda.push({ seg: +(finCuerpo + mitad).toFixed(2), ac: 'D (resolución)', sec: 'cierre' })
   for (const nn of [...ACORDES.D, 'F#4', 'A4']) {
-    mezclar(mono, nota(f(nn), mitad * 1.6, {
-      ganancia: 0.16, env: { a: 0.25, d: 0.6, s: 0.6, r: Math.max(1.2, mitad) }, armonicos: [1, 0.3, 0.13, 0.05],
+    mezclar(mono, nota(f(nn), mitad * 1.7, {
+      ganancia: 0.16, env: { a: 0.25, d: 0.6, s: 0.6, r: Math.max(1.4, mitad) }, armonicos: [1, 0.3, 0.13, 0.05],
     }), finCuerpo + mitad)
   }
 
@@ -242,6 +275,7 @@ export function construir(spec) {
   for (let i = 0; i < fin && i < n; i++) mezcla[i] *= i / fin
   for (let i = 0; i < fout && i < n; i++) mezcla[n - 1 - i] *= i / fout
 
+  construir.ultimaAgenda = agenda
   return mezcla
 }
 
@@ -275,6 +309,6 @@ if (process.argv[1] && process.argv[1].endsWith('musica.mjs')) {
   }
   const spec = JSON.parse(readFileSync(specPath, 'utf8'))
   escribirWav(construir(spec), salida)
-  console.log(`OK ${salida} — ${spec.duracion}s · ${spec.bpm ?? 100} BPM · A=${spec.afinacion ?? 440} Hz · ${spec.destino ?? 'sinVoz'}`)
+  console.log(`OK ${salida} — ${spec.duracion}s · ${spec.bpm ?? 100} BPM · A=${spec.afinacion ?? 432} Hz · ${spec.destino ?? 'sinVoz'}`)
   console.log('⚠️  Nadie escuchó esto todavía. Verificalo antes de publicar.')
 }

@@ -191,13 +191,62 @@ ffmpeg -i cama.wav -af "equalizer=f=3250:width_type=o:width=0.9:g=-9,loudnorm=I=
 
 ---
 
+## 4.bis Decisiones tomadas por GO (2026-09-14, escuchando)
+
+| Pregunta | Veredicto | Aplicado |
+|---|---|---|
+| Afinación: 440 vs **432** | **432** — a GO le gustó más | `afinacion: 432` es el default |
+| Densidad: con arpegio+pulso vs solo pads | **Está bien como cama de fondo** — la densidad actual sirve, no hace falta más presencia | se mantiene arpegio + pulso |
+| Acentos sincronizados al guion | 🛑 **"distraen, no suman"** — rechazado | `acentos: []`. La capacidad queda en el código por si cambia el criterio, pero **no se usa** |
+
+Sobre los acentos vale registrar el aprendizaje: era **mi propuesta** y técnicamente funcionaba
+(marcar el momento exacto del guion). Pero un brillo cada vez que pasa algo **compite con la
+pantalla** en lugar de reforzarla. La lección: sincronizar no es gratis — lo que suma es que la
+**estructura** caiga bien, no que cada evento tenga su sonidito.
+
+## 4.ter 🛑 El bug de la frase cortada (encontrado por GO, de oído)
+
+GO escuchando la muestra de 30 s: *"al segundo 23 como que corta la melodía que venía haciendo y
+parece que pasa al outro"*. **Tenía razón, y era un bug de arreglo, no una cuestión de gusto.**
+
+Las secciones se cortaban por **tiempo**, no por **frase**:
+
+```
+30 s · 100 BPM → compás = 2,4 s
+cuerpo de 8 a 23 s = 6,25 compases
+progresión D–A–Bm–G (4 acordes)
+→ a los 23 s la secuencia venía en **Bm**, el tercero, y el outro le caía encima
+```
+
+**Corregido**: ahora se calcula cuántos **ciclos completos** de 4 acordes entran, y el cierre arranca
+recién cuando la progresión terminó en **G (IV)** — que además es la mejor antesala posible para el
+`Dsus4 → D`.
+
+Y el último compás hace un **gesto de cierre** de verdad:
+- el arpegio **baja** en vez de subir,
+- el pulso **se calla** (ese silencio es lo que anuncia el final),
+- el acorde se sostiene casi el doble y **se solapa** con la resolución, así no queda hueco.
+
+**Cómo se verifica sin escuchar**: `construir.ultimaAgenda` devuelve la agenda de acordes con sus
+segundos. El cuerpo **siempre** tiene que terminar en `G` antes del `Dsus4`:
+
+```
+30 s → 0 D · 2.4 G · 4.8 D · 7.2 D · 9.6 A · 12 Bm · 14.4 G · 16.8 Dsus4 · 23.4 D
+59 s → … 43.2 G · 45.6 Dsus4 · 52.3 D
+```
+
+> **Lección que vale más que el fix**: un oído detectó en 30 segundos algo que ninguna medición mía
+> iba a encontrar. LUFS, pico y espectro estaban perfectos — el problema era **musical**. Cuando no
+> se puede escuchar, hay que hacer que lo audible sea **verificable de otra forma** (acá, la agenda
+> de acordes), y aun así el oído humano sigue siendo el juez.
+
 ## 5. Qué falta decidir (GO)
 
-1. **Afinación**: `a-440` contra `b-432`. ¿Se escucha diferencia? ¿Cuál gusta más?
-2. **Densidad**: `a-440` (con arpegio y pulso) contra `e-sinarp` (98 BPM, solo pads). ¿Cama de fondo
-   o pista con presencia?
-3. **Acentos**: ¿`c-acentos` suma o distrae?
-4. **Y la pregunta de fondo**: ¿seguimos con síntesis propia, o se licencia una pista?
+1. ✅ Afinación — **432**, decidido.
+2. ✅ Densidad — **cama de fondo**, decidido.
+3. ✅ Acentos — **rechazados**, decidido.
+4. 🟡 **La pregunta de fondo, todavía abierta**: ¿seguimos con síntesis propia, o se licencia una
+   pista?
 
 Sobre la 4, honestamente: **la síntesis propia tiene techo**. Llega a "corporativo correcto", no a
 "premium con instrumentos reales". Si el objetivo es que el video *venda*, puede convenir **licenciar

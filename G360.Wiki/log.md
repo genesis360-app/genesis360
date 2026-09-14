@@ -6,6 +6,34 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] deploy | 🚀 v1.220.0 — la ubicación de un recurso es el catálogo (migs 417-418) + 4 Edge Functions muertas borradas
+
+GO respondió las dos decisiones que habían quedado abiertas.
+
+### 1. 📍 Ubicaciones de Recursos
+**Decisión**: *"solo dueño o admin o alguien que el dueño le asigne un custom rol que lo permita"*.
+
+- `RecursosPage` guarda **`ubicacion_id`** (nunca lo había hecho: escribía solo el texto, con una
+  inconsistencia latente al editar). `+ Nueva ubicación...` crea la ubicación en el catálogo, y solo
+  aparece para quien puede gestionarlo (`puedeGestionarUbicacionesRecursos`).
+- **Mig 417**: la policy del catálogo usa `auth_puede_editar_modulo('recursos')`, que ya resolvía
+  exactamente la regla de GO (la misma función que Gastos en la mig 405).
+- **Mig 418**: backfill con guard + DROP de los 3 triggers que escribían el texto y de
+  `recursos.ubicacion`. En PROD, **después** del frontend.
+- Tests: unit del permiso (18/18) y **e2e 147** mutante — verificado corriéndolo contra la pantalla
+  vieja (falla en "el recurso tiene que guardar ubicacion_id") y con la nueva (pasa); SUPERVISOR 403 y
+  DUEÑO 201 por API. En DEV, después del DROP: API `select=*` 200 y la columna 400, e2e 147 + dashboard 7/7.
+
+### 2. 🗑️ Edge Functions que existían solo en PROD
+**Decisión**: *"si no se usan para nada y no se van a usar, eliminalas"*. Revisadas una por una:
+**borradas** `crear-suscripcion`, `smart-endpoint`, `clever-handler` y `process-aging` (sin
+referencias en código, workflows, cron ni triggers, y sin llamadas en 24 h; backup del código antes).
+**Se quedan** `birthday-notifications` (cron diario de GitHub Actions), `data-api` y `marketplace-api`
+(Configuración las muestra) y `marketplace-webhook` (parte del marketplace). Detalle en
+[[wiki/architecture/edge-functions]].
+
+---
+
 ## [2026-09-14] deploy | 🚀 v1.219.0 en PROD + mig 416 · 🛑 drift de Edge Functions: el lock anti doble factura nunca había llegado a PROD
 
 GO pausó la serie de videos (la revisa con su socio) y pidió seguir con pendientes.

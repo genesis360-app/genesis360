@@ -38,9 +38,20 @@ bash scripts/auditar-edge-functions.sh emitir-factura tn-webhook
   sin `Authorization`: el gateway responde `UNAUTHORIZED_NO_AUTH_HEADER` solo donde está activo.
 - Drift de solo comentarios no justifica redesplegar una función de cobros.
 
-🟡 **Existen solo en PROD** (ni en el repo actual ni en DEV): `crear-suscripcion` (con otro código),
-`marketplace-api`, `marketplace-webhook`, `data-api`, `birthday-notifications`, `process-aging`,
-`clever-handler`. Pendiente de decisión de GO — borrar una EF no se deshace.
+🗑️ **Funciones que existían solo en PROD** — GO: *"si no se usan para nada y no se van a usar,
+eliminalas"* (2026-09-14). Revisadas una por una (código, workflows, cron, triggers, logs de 24 h):
+
+| Función | Veredicto | Evidencia |
+|---|---|---|
+| `crear-suscripcion` | 🗑️ borrada | nada la llama; la suscripción MP se arma en el frontend (`init_point`); su carpeta en el repo estaba vacía |
+| `smart-endpoint` | 🗑️ borrada | duplicado viejo de `crear-suscripcion`, sin referencias |
+| `clever-handler` | 🗑️ borrada | duplicado viejo de `mp-webhook`; todo `notification_url` apunta a `mp-webhook`, y con `verify_jwt` activo rebotaba a MP igual |
+| `process-aging` | 🗑️ borrada | el wiki ya la daba por eliminada en v1.54.0 (código muerto: ConfigPage llama la RPC directo), pero seguía desplegada |
+| `birthday-notifications` | ✅ se queda | la llama un cron diario de GitHub Actions (corrió el mismo día) |
+| `data-api`, `marketplace-api` | ✅ se quedan | Configuración muestra sus endpoints a los usuarios |
+| `marketplace-webhook` | ✅ se queda | parte del marketplace, con código en el repo (hoy ningún negocio lo tiene activo) |
+
+Antes de borrar se bajó el código de cada una a `D:/Dev/genesis360-backups/edge-functions-eliminadas-2026-09-14/`.
 
 ---
 

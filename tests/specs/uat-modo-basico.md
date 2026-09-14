@@ -2066,3 +2066,15 @@ que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edg
 | 54.3 | `verify_jwt` preservado tras redesplegar | GET sin `Authorization` → `UNAUTHORIZED_NO_AUTH_HEADER` en `emitir-factura` | ✅ |
 | 54.4 | Dropear `tenants.afipsdk_token` no rompe la facturación | e2e 141 (la columna no existe) + 21/42 con CAE real después del DROP | ✅ |
 
+## 📍 §55 — La ubicación de un recurso es el catálogo, y quién la crea (v1.220.0, migs 417-418) — 2026-09-14
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 55.1 | Crear un recurso con "+ Nueva ubicación" la crea en el catálogo y guarda `ubicacion_id` | e2e 147 (mutante: con la pantalla vieja falla) | ✅ |
+| 55.2 | La pestaña Ubicaciones cuenta los recursos por id | e2e 147 ("1 recurso") | ✅ |
+| 55.3 | SUPERVISOR no crea ubicaciones del catálogo | e2e 147 por API → 403 | ✅ |
+| 55.4 | DUEÑO sí (control positivo) | e2e 147 por API → 201 | ✅ |
+| 55.5 | Rol custom con Recursos en `editar`/`supervisa` puede; con `ver` no | unit `puedeGestionarUbicacionesRecursos` + policy con `auth_puede_editar_modulo('recursos')` | ✅ unit · e2e con usuario de rol custom pendiente |
+| 55.6 | Sin permiso, la UI no ofrece "+ Nueva ubicación" ni crear/renombrar/borrar | revisión de `RecursosPage` | ✅ código |
+| 55.7 | Después del DROP la app no pide `recursos.ubicacion` | API `select=ubicacion` → 400 y `select=*` → 200; e2e dashboard | ✅ DEV |
+

@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 67) — PROD = DEV = `v1.219.0` · migs 001-**416** · Edge Functions realineadas
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 67) — PROD = DEV = `v1.220.0` · migs 001-**418** · Edge Functions realineadas
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.219.0` | 001-**416** | PR #346 el 14/09; mig 416 aplicada; Edge Functions = repo |
-> | **DEV** | `v1.219.0` | 001-**416** | igual que PROD |
+> | **PROD** | `v1.220.0` | 001-**418** | PRs #346/#347 y v1.220.0 el 14/09; Edge Functions = repo |
+> | **DEV** | `v1.220.0` | 001-**418** | igual que PROD |
 >
 > #### 🛑 Lo que apareció en esta sesión (cont. 67) — detalle en `log.md` (2026-09-14, deploy)
 >
@@ -25,26 +25,13 @@ type: project
 > 3. **Mig 416**: `tenants.afipsdk_token` dropeada en DEV y PROD (la EF y un trigger todavía la usaban:
 >    se sacaron primero).
 >
-> 🟥 **Decisiones para GO**:
-> - Funciones que existen **solo en PROD** y no en el repo o en DEV: `crear-suscripcion`,
->   `marketplace-api`, `marketplace-webhook`, `data-api`, `birthday-notifications`, `process-aging`,
->   `clever-handler`. ¿Se borran? (no se deshace)
->
-> 🟥 **`recursos.ubicacion` — BLOQUEADO por una decisión de GO/Fede** (relevado 2026-09-14):
->
-> - `RecursosPage` nunca pasó al catálogo de la mig 407: escribe solo el texto y jamás `ubicacion_id`.
->   Inconsistencia latente: editar la ubicación de un recurso que ya tenía FK cambia el texto pero no el
->   id → renombrar o borrar la ubicación vieja le pisa el cambio. (PROD: 0 recursos. DEV: 6, consistentes.)
-> - Otros lectores del texto: `DashInventarioArea` (lo selecciona) y el tipo `Recurso` en `src/lib/supabase.ts`.
->   Triggers que lo escriben: `fn_recursos_sync_ubicacion_texto`, `fn_recurso_ubicacion_propagar_nombre`,
->   `fn_recurso_ubicacion_borrar_limpia_texto` — hay que dropearlos con la columna.
-> - 🛑 **La decisión**: hoy **cualquier usuario** que edita recursos puede escribir una ubicación nueva
->   (texto libre, policy `recursos_tenant`). El catálogo solo acepta altas de **DUEÑO / ADMIN /
->   SUPER_USUARIO** (`recurso_ubicaciones_write_gestion`). Pasar la pantalla al catálogo le quita a un
->   supervisor/encargado la opción "+ Nueva ubicación". Opciones: (a) solo gestión crea, el resto elige
->   de la lista; (b) abrir el alta del catálogo a quien puede editar recursos.
-> - Plan una vez decidido: frontend a `ubicacion_id` (deploy) → mig con backfill de textos sueltos al
->   catálogo + DROP de los 3 triggers y la columna → smoke de PostgREST con control negativo.
+> ✅ **Las dos decisiones de GO, resueltas el mismo día (v1.220.0)**:
+> - **Ubicaciones de Recursos**: crean el dueño, el admin o un rol custom que lo permita. `RecursosPage`
+>   pasó a `ubicacion_id` (nunca lo había escrito), mig 417 (policy con `auth_puede_editar_modulo`) y
+>   mig 418 (DROP de `recursos.ubicacion` y sus 3 triggers). e2e 147 mutante.
+> - **Edge Functions solo-PROD**: borradas `crear-suscripcion`, `smart-endpoint`, `clever-handler` y
+>   `process-aging` (muertas, con backup); se quedan `birthday-notifications`, `data-api`,
+>   `marketplace-api` y `marketplace-webhook` (en uso o parte de features vivas).
 >
 > #### Qué se hizo en el deploy del 13/09, en orden
 >
@@ -70,8 +57,7 @@ type: project
 > **SOPORTE** (purgar desde el panel) y el del **CLIENTE** (darse de baja con el trial vencido — el
 > fix de `/mi-cuenta` viajaba en la app).
 >
-> ✅ `tenants.afipsdk_token` **dropeada** (mig 416, 2026-09-14). 🟥 `recursos.ubicacion` **no se puede
-> dropear todavía**: el frontend nunca pasó a `ubicacion_id` (ver el bloque de arriba).
+> ✅ `tenants.afipsdk_token` **dropeada** (mig 416) y `recursos.ubicacion` **dropeada** (mig 418), los dos el 2026-09-14.
 >
 > #### 🧪 Estado de la suite al cierre
 >

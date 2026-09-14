@@ -6,6 +6,50 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | ✅ Arreglado el alta: el negocio se crea server-side · mig 415
+
+GO autorizó el fix. Las dos mitades, con la migración **ya aplicada en DEV y PROD**.
+
+### mig 415 — el negocio nace en la base
+
+Trigger sobre `auth.users` que crea `tenants` + `users` al confirmarse el mail, sin depender de que
+un navegador aterrice. **Mismo criterio que la REGLA #0 exige en lo fiscal: guard server-side además
+de la UI.**
+
+Dos disparadores (`AFTER UPDATE OF email_confirmed_at` para PROD, `AFTER INSERT` para DEV que
+autoconfirma), así DEV se comporta igual que PROD y esto se puede probar sin adivinar.
+
+**Probado en DEV con 4 escenarios — los 3 más importantes son los que NO deben crear negocio:**
+
+| Escenario | Esperado | Real |
+|---|---|---|
+| Confirmación normal | negocio completo | ✅ con los 5 seeds (1 sucursal, 3 cajas, 16 categorías) y el teléfono de la mig 412 |
+| Usuario **invitado** (sin `ob_nombre`) | 0 negocios | ✅ 0 |
+| Usuario que **ya tiene** fila en `users` | 0 duplicados | ✅ 0 |
+| 🛑 Metadata corrupta que revienta el trigger | **la cuenta se confirma igual** | ✅ confirmada |
+
+Ese último es el que más importa: si el trigger propagara el error, la persona **no podría ni
+confirmar su cuenta** — un bug peor que el que arregla. Por eso atrapa cualquier error y avisa.
+
+### La carrera del login, que era por qué la salida existía pero no se alcanzaba
+
+`LoginPage` hacía `navigate('/dashboard')` **sin esperar** a `loadUserData`: el `AuthGuard` evaluaba
+con la store todavía vacía y rebotaba a `/login`. **Es el mismo gotcha que el CLAUDE.md documenta
+para Google OAuth** — el camino de email/contraseña lo tenía igual, sin que nadie lo hubiera notado.
+
+Por eso la vía de recuperación de `OnboardingPage:78-88` era inalcanzable: existía y funcionaba,
+pero nada llevaba hasta ella. Ahora el login espera y rutea por el resultado.
+
+Y se agregó `ob_terminos_version` al metadata del alta, para que el trigger no tenga que inventar
+una versión de T&C — o sea, falsear un consentimiento legal.
+
+**Estado**: mig 415 en DEV y PROD (aditiva). **El frontend viaja en el próximo deploy** — la
+migración sola ya corta el problema de raíz, porque el negocio se crea igual.
+
+Verde: 1782 unit · typecheck · build · eslint `--max-warnings 0`.
+
+---
+
 ## [2026-09-14] update | 🛑 El escáner de mails de Gmail deja el alta MUERTA — y la salida existe pero es inalcanzable
 
 Apareció grabando el Video 1 con un alias real (`genesis360.ar+video1@gmail.com`) contra PROD. **Es

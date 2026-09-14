@@ -37,6 +37,13 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
+**Versión en DEV:** `v1.219.0` (mig **415**, aplicada en DEV **y PROD**; el frontend sin deployar) —
+🛑 **Arreglado el callejón sin salida del alta.** El escáner de links de Gmail pre-cargaba la URL de
+confirmación, quemaba el token de un solo uso y dejaba una cuenta confirmada **sin negocio**, sin
+forma de recuperarse. Ahora el negocio se crea **server-side** al confirmarse el mail (trigger sobre
+`auth.users`), y el login dejó de rebotar al usuario sin `users` a `/login` — lo manda a
+`/onboarding`, donde la recuperación ya existía pero era inalcanzable. Ver `log.md` (2026-09-14).
+
 ## 🚀 v1.218.0 — EN PROD (2026-09-13, PR #345) — migs 001-**414**
 
 **Deploy acumulado de `v1.209.0` → `v1.218.0`**, autorizado por GO ("pasa todo a PRD"). Cierra el

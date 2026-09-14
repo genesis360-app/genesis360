@@ -6,16 +6,19 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 65) — 🚀 **DEPLOY COMPLETO A PROD: `v1.218.0`, migs 001-414**
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 66) — PROD `v1.218.0` + **mig 415** · código `v1.219.0` sin deployar
 >
-> | | Versión | Migraciones | Estado |
+> | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.218.0` | 001-**414** | 🚀 deployado el 2026-09-13 (GO: "pasa todo a PRD") |
-> | **DEV** | `v1.218.0` | 001-**414** | idéntico a PROD |
+> | **PROD** | `v1.218.0` | 001-**415** | app deployada el 13/09; **mig 415 aplicada el 14/09** |
+> | **DEV** | `v1.219.0` (sin deployar) | 001-**415** | el frontend del fix del alta, commiteado en `dev` |
 >
-> **Ya no hay batch acumulado**: DEV y PROD quedaron a la par por primera vez desde el 2026-09-09.
+> ⚠️ **La mig 415 está en PROD pero su frontend no.** Es deliberado y seguro: el trigger por sí solo
+> ya crea el negocio server-side (lo importante), y el frontend solo mejora el ruteo del login y
+> graba la versión de T&C. Pero **hasta que se deploye, un usuario sin negocio en PROD sigue viendo
+> el rebote a `/login` sin mensaje** si llega a caer en ese estado.
 >
-> #### Qué se hizo, en orden
+> #### Qué se hizo en el deploy del 13/09, en orden
 >
 > 1. **Migs 407-414 aplicadas a PROD ANTES del merge** (todas aditivas — "DDL aditivo primero"), una
 >    por una y revisadas antes de aplicar. Verificación estructural post-aplicación de cada objeto.
@@ -83,39 +86,55 @@ type: project
 > 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
 >    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
 >
-> #### 🔴🔴 LO PRIMERO DE LA PRÓXIMA SESIÓN — el alta se muere sola con Gmail
+> #### 🟥 LO PRIMERO: deployar el frontend del fix del alta (`v1.219.0`)
 >
-> Apareció grabando el Video 1 con un alias real contra PROD (14/09). **Es un callejón sin salida en
-> la puerta de entrada, y se dispara solo.**
+> **La mig 415 ya está en DEV y PROD** y por sí sola corta el problema de raíz: el negocio se crea
+> server-side al confirmarse el mail. Lo que falta llevar es el **frontend** que la acompaña, que
+> está commiteado en `dev` y sin deployar:
 >
-> **El escáner de links de Gmail pre-carga la URL de confirmación** (94 s después del envío, medido).
-> Supabase confirma el mail y **quema el token de un solo uso**, pero ningún navegador ejecutó la app
-> → `provisionNegocio()` nunca corre → **cuenta confirmada, sin `users`, sin `tenants`**.
+> 1. `LoginPage` — esperar a `loadUserData` antes de navegar y rutear al usuario sin fila en `users`
+>    hacia `/onboarding` (hoy en PROD todavía lo rebota a `/login` sin mensaje).
+> 2. `OnboardingPage` — `ob_terminos_version` en el metadata del alta, para que el trigger grabe la
+>    versión de T&C aceptada en vez de dejarla en `NULL`.
 >
-> La persona queda encerrada: al clickear el link ve `otp_expired`; al loguearse la auth funciona
-> pero la app pega **`406`** en `users?...` y la rebota a `/login` **sin mensaje**
-> (`/login`→`/dashboard`→`/login`); y al registrarse otra vez el anti-enumeración le muestra "Revisá
-> tu email" para siempre. El mail queda quemado.
+> **Falta**: bump de `APP_VERSION` a `v1.219.0`, PR `dev→main`, merge, release.
 >
-> 🔑 **La salida ya está escrita**: `OnboardingPage.tsx:78-88` crea el negocio si la persona cae en
-> `/onboarding` con sesión y con el metadata. **Comprobado**: se recuperó el usuario de la prueba y
-> el negocio nació completo. El bug es de **ruteo** — el login va a `/dashboard`, nunca a
-> `/onboarding`. La puerta de emergencia está construida y con llave.
+> ##### El bug que esto arregla (por si hace falta el contexto)
 >
-> **Arreglo en dos niveles:**
-> 1. **Ruteo (barato, inmediato):** usuario autenticado sin fila en `users` → mandarlo a
->    `/onboarding` en vez de rebotarlo a `/login`.
-> 2. **Server-side (de fondo):** que el negocio no dependa de que un navegador aterrice — crearlo al
->    confirmarse el mail (trigger sobre `auth.users` leyendo el metadata `ob_*`, o una EF). Mismo
->    criterio que la REGLA #0 aplica a lo fiscal: **guard server-side además de la UI.**
+> El **escáner de links de Gmail** pre-carga la URL de confirmación (94 s después del envío,
+> medido). Supabase confirma la cuenta y **quema el token de un solo uso**, pero ningún navegador
+> ejecuta la app → `provisionNegocio()` nunca corría → **cuenta confirmada, sin `users`, sin
+> `tenants`**, y sin salida: el link daba `otp_expired`, el login rebotaba `/login`→`/dashboard`→
+> `/login` sin mensaje, y registrarse de nuevo caía en el anti-enumeración para siempre.
 >
-> **Alcance hoy**: 3 usuarios de auth sin `users` en PROD — el de la prueba, una cuenta de agente
-> (esperado) y uno de marzo. Sin víctimas reales **porque todavía no hay clientes reales**.
+> Outlook Safe Links y los escáneres corporativos hacen lo mismo. **Esto se llevaba puesto a un
+> cliente el primer día.**
 >
-> 🧹 **Limpieza pendiente**: purgar el tenant de prueba **"Genesis360 Onboarding"** y liberar el
-> alias `genesis360.ar+video1@gmail.com` desde el panel.
+> 🧹 **Limpieza pendiente en PROD**: purgar el tenant de prueba **"Genesis360 Onboarding"** y
+> liberar el alias `genesis360.ar+video1@gmail.com` desde el panel de soporte.
 >
-> #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
+> #### 🎥 Los videos de onboarding — Claude SÍ puede grabarlos
+>
+> **Se corrigió una afirmación falsa que estuvo arrastrada en 3 lugares del wiki**: Claude **sí**
+> puede grabar video y capturar pantalla — de un navegador que maneja él (Playwright → MP4 720p con
+> `ffmpeg`), y las capturas además las puede **leer**. Lo que no puede: la pantalla de quien opera,
+> audio, puntero del mouse, y entrar a una casilla de correo.
+>
+> ✅ **Video 1 hecho**: 70 s, 720p, con placas de entrada/cierre, 6 rótulos numerados y música.
+> Queda en `D:/Dev/genesis360-videos/video1-onboarding/` (fuera del repo, es binario).
+>
+> ⚠️ **La música es sintetizada y NADIE la escuchó** — Claude no puede. Si no sirve, se reemplaza
+> pasando un `.wav`/`.mp3` propio en el guion.
+>
+> 🔁 **Reusable para los videos 3-9**: `scripts/video/postproducir.mjs` + `overlay.html`. Dos
+> trampas anotadas ahí: sin `-loop 1` los overlays salen **invisibles** (el PNG es un solo fotograma
+> en t=0 y el fundido lo deja en alpha 0), y un `box-shadow` grande se compone como un **rectángulo
+> negro duro**.
+>
+> 🟥 **El landing dice "+500 comercios"** con 9 tenants en PROD y **ninguno cliente real**. Se ve en
+> primer plano en el video. Decisión de GO.
+>
+> #### 🧪 e2e 146 + project `chromium-ri`> #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
 >
 > 🛑 **El tenant de e2e ("Almacén Jorgito") es Monotributista**, y un Monotributista no discrimina
 > IVA crédito: el bloque de alícuota solo existe con `esRI && tipo_comprobante === 'Factura A'`. Todo

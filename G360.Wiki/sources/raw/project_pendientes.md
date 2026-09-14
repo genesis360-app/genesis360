@@ -6,33 +6,45 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-13, cont. 65) — DEV `v1.218.0` (migs 409-414) · **PROD `v1.208.0`** (migs 001-406)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 66) — PROD `v1.218.0` + **mig 415** · código `v1.219.0` sin deployar
 >
-> | | Versión | Migraciones | Estado |
+> | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.208.0` | 001-**406** | sin tocar en toda la jornada |
-> | **DEV** | `v1.218.0` | 001-**414** | todo validado: unit 1782 · e2e verde (+146 nuevo) · paridad sin drift |
+> | **PROD** | `v1.218.0` | 001-**415** | app deployada el 13/09; **mig 415 aplicada el 14/09** |
+> | **DEV** | `v1.219.0` (sin deployar) | 001-**415** | el frontend del fix del alta, commiteado en `dev` |
 >
-> #### 🟥 LO PRIMERO: deployar el batch acumulado — **necesita el OK explícito de GO**
+> ⚠️ **La mig 415 está en PROD pero su frontend no.** Es deliberado y seguro: el trigger por sí solo
+> ya crea el negocio server-side (lo importante), y el frontend solo mejora el ruteo del login y
+> graba la versión de T&C. Pero **hasta que se deploye, un usuario sin negocio en PROD sigue viendo
+> el rebote a `/login` sin mensaje** si llega a caer en ese estado.
 >
-> Lo que falta llevar: migs **407-414** (todas aditivas, aplica "DDL primero") + código
-> `v1.209.0`→`v1.218.0` + la EF **`admin-api`** + el **panel de soporte** (repo aparte
-> `genesis360-admin`, rama `dev`; su merge a `main` dispara el deploy de Vercel a
-> `admin.genesis360.pro`).
+> #### Qué se hizo en el deploy del 13/09, en orden
 >
-> **Se puede partir en dos**, y la distinción importa:
-> - **La EF + el panel se deployan SOLOS**, sin tocar `main` de Genesis360 → habilita el camino de
->   **SOPORTE** en PROD (incluido poder purgar "Don Ferretero" y liberar `genesis360.ar@gmail.com`).
-> - El camino del **CLIENTE** (darse de baja con el trial vencido) **sí** necesita la app: el fix de
->   `/mi-cuenta` vive ahí.
+> 1. **Migs 407-414 aplicadas a PROD ANTES del merge** (todas aditivas — "DDL aditivo primero"), una
+>    por una y revisadas antes de aplicar. Verificación estructural post-aplicación de cada objeto.
+> 2. 🔍 **Paridad DEV↔PROD sin drift**: **230 policies**, hash global
+>    `01b696bc90fc863dc812b6285682d795` **idéntico** en los dos ambientes.
+> 3. 🛡️ **Chequeos de seguridad** (la 410 devuelve mails cross-tenant, la 411 son notas internas):
+>    `anon`/`authenticated` **no** ejecutan `fn_admin_tenants_overview` ni `fn_admin_tenant_cuentas`
+>    y `service_role` **sí**; `admin_customer_notes` con 0 policies e ilegible para los dos roles.
+>    En la 413 se confirmó el fix del truncado **y** que `SET search_path` sobrevivió al
+>    `CREATE OR REPLACE`.
+> 4. **EF `admin-api` deployada a PROD** → quedó en **v11** con `verify_jwt: true` preservado.
+> 5. **PR #345** `dev→main` (app) y **PR #4** del panel (`genesis360-admin`).
 >
-> ✅ **Pre-deploy ya verificado** (no hace falta repetirlo si se deploya pronto):
-> - **Paridad DEV↔PROD sin drift**: DEV 230 policies, PROD 228, y la única diferencia son las 2 de
->   `recurso_ubicaciones` (mig 407). Ninguna solo-en-PROD, ninguna con distinta definición.
-> - `gastos.moneda`, `gastos_fijos.moneda` y `fn_tenant_limite` **ya existen en PROD** (mig 379) → el
->   código nuevo no depende de nada que no esté o que no llegue con las migraciones. **Sin orden
->   riesgoso.**
-> - Tags y releases `v1.213.0` … `v1.218.0` creados sobre `dev`.
+> ⚠️ Antes del merge hubo que reconciliar la divergencia de siempre (`main` tiene los squash-merge
+> que nunca volvieron a `dev`) con `git merge origin/main` — en los **dos** repos.
+>
+> #### ✅ El deploy que estaba pendiente — HECHO
+>
+> Lo que se llevó: migs **407-414** + código `v1.209.0`→`v1.218.0` + la EF **`admin-api`** + el
+> **panel de soporte**. Los dos caminos de la baja de tenant quedan habilitados en PROD: el de
+> **SOPORTE** (purgar desde el panel) y el del **CLIENTE** (darse de baja con el trial vencido — el
+> fix de `/mi-cuenta` viajaba en la app).
+>
+> 🟥 **Lo único que queda de este bloque**: dropear `tenants.afipsdk_token` y `recursos.ubicacion`,
+> que se dejaron a propósito hasta que PROD corriera el código nuevo. **Ahora ya lo corre**, así que
+> se puede hacer en la próxima sesión con una migración nueva.
 >
 > #### 🧪 Estado de la suite al cierre
 >
@@ -73,6 +85,108 @@ type: project
 >    contador** si la NC del proveedor lleva la suya.
 > 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
 >    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
+>
+> #### 🟥 LO PRIMERO: deployar el frontend del fix del alta (`v1.219.0`)
+>
+> **La mig 415 ya está en DEV y PROD** y por sí sola corta el problema de raíz: el negocio se crea
+> server-side al confirmarse el mail. Lo que falta llevar es el **frontend** que la acompaña, que
+> está commiteado en `dev` y sin deployar:
+>
+> 1. `LoginPage` — esperar a `loadUserData` antes de navegar y rutear al usuario sin fila en `users`
+>    hacia `/onboarding` (hoy en PROD todavía lo rebota a `/login` sin mensaje).
+> 2. `OnboardingPage` — `ob_terminos_version` en el metadata del alta, para que el trigger grabe la
+>    versión de T&C aceptada en vez de dejarla en `NULL`.
+>
+> ✅ `APP_VERSION` ya bumpeado a `v1.219.0`, con tag y release creados (el release NO está marcado Latest:
+> v1.218.0 sigue siéndolo porque es lo que está en PROD). **Falta**: PR `dev→main`, merge, marcar
+> v1.219.0 como Latest, verificar Vercel.
+>
+> 📦 **2 alertas HIGH de Dependabot abiertas en `main`** (del 11/09, sin PR), las dos en devDependencies
+> (no viajan en el bundle): **sharp** 0.35.1 → ya está en 0.35.4 en `dev`, se cierra sola con este deploy;
+> **js-yaml** 4.3.1 (vía eslint) → pide 4.3.2 y **no** está arreglada en `dev`: `npm update js-yaml` +
+> lint/tests. Ojo con el bug `edgesOut` de npm local (ver memoria de Dependabot).
+>
+> ##### El bug que esto arregla (por si hace falta el contexto)
+>
+> El **escáner de links de Gmail** pre-carga la URL de confirmación (94 s después del envío,
+> medido). Supabase confirma la cuenta y **quema el token de un solo uso**, pero ningún navegador
+> ejecuta la app → `provisionNegocio()` nunca corría → **cuenta confirmada, sin `users`, sin
+> `tenants`**, y sin salida: el link daba `otp_expired`, el login rebotaba `/login`→`/dashboard`→
+> `/login` sin mensaje, y registrarse de nuevo caía en el anti-enumeración para siempre.
+>
+> Outlook Safe Links y los escáneres corporativos hacen lo mismo. **Esto se llevaba puesto a un
+> cliente el primer día.**
+>
+> 🧹 **Limpieza pendiente en PROD**: purgar el tenant de prueba **"Genesis360 Onboarding"** y
+> liberar el alias `genesis360.ar+video1@gmail.com` desde el panel de soporte.
+>
+> #### 🎥 Los videos de onboarding — Claude SÍ puede grabarlos
+>
+> **Se corrigió una afirmación falsa que estuvo arrastrada en 3 lugares del wiki**: Claude **sí**
+> puede grabar video y capturar pantalla — de un navegador que maneja él (Playwright → MP4 720p con
+> `ffmpeg`), y las capturas además las puede **leer**. Lo que no puede: la pantalla de quien opera,
+> audio, puntero del mouse, y entrar a una casilla de correo.
+>
+> ✅ **6 videos hechos (1, 2, 3, 4, 5, 8)**, todos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
+> así que hay continuidad visual entre ellos. Quedan en `D:/Dev/genesis360-videos/` (fuera del repo,
+> son binarios):
+>
+> | | Video | Duración | Qué muestra |
+> |---|---|---|---|
+> | 1 | Onboarding | 70 s | landing → alta → "Revisá tu email" → negocio creado → dashboard → tour |
+> | 2 | Configuración inicial | 59 s | datos y modo Básico · lo que YA viene sembrado (métodos de pago, 16 categorías de gasto) · **las categorías de producto, lo único que hay que crear** · el equipo |
+> | 8 | Carga de inventario | 63 s | inventario en 0 con alerta → 2 ingresos con motivo → **la alerta se apaga sola** → el Historial con el rastro |
+> | 5 | Caja (rutina del día) | 79 s | cerrada → abrir con fondo → 2 ingresos → arqueo → cierre esperado vs contado, **sin diferencia** |
+> | 3 | Cargar productos | 50 s | catálogo vacío → 2 productos a mano (SKU autogenerado, categoría, stock mínimo) → **la alerta de stock crítico aparece sola** → Acciones → Importar |
+>
+> ✅ **GO decidió seguir grabando contra PROD** (2026-09-14) para no perder la continuidad del mismo
+> negocio. Los videos 3+ **escriben datos reales** en el tenant de prueba "Genesis360 Onboarding",
+> que se purga al terminar la serie.
+>
+> 🎧 **Los 5 videos están re-renderizados con la música nueva** (sintetizador propio, 432 Hz). Al
+> hacerlo apareció que los renders viejos estaban a **−29,8 LUFS**, o sea **16 dB por debajo** del
+> objetivo: sonaban anémicos y YouTube no los habría subido. Ahora todos entre −13,3 y −13,7. Los
+> renders viejos quedaron en `_anteriores/` por si hace falta comparar.
+>
+> ✅ **Video 4 — Vender grabado** (83 s, `video4-ventas/`): abrir caja → carrito → descuento 5 % → dos
+> medios con vuelto → ticket → stock y caja se acomodan solos. Venta #31 verificada en la DB (caja: $10.710
+> de efectivo neto del vuelto + la transferencia informada). La toma quedó en `scripts/video/grabaciones/`.
+>
+> **El siguiente es el 6 — Gastos** (`/gastos`): la caja no registra egresos, es el paso natural. Estado
+> del negocio de prueba: **caja ABIERTA** (sesión 2, saldo $20.710), stock Gaseosa 42 / Yerba 22.
+>
+> 🛑 **HALLAZGO del video 5 — motivos de caja que invitan a equivocarse con plata.** El modal de
+> movimiento **solo registra ingresos** (lo dice él mismo: los egresos se cargan desde Gastos), pero
+> el sistema siembra tres motivos y **dos nombran salidas**: *"Extracción / Retiro"* y *"Gastos
+> varios"*. Los chips solo rellenan el concepto (`setMovConcepto`), no cambian el tipo. Grabando se
+> clickeó "Gastos varios", se escribió "Flete de la mercadería" con **$6.200** y quedó como **+$6.200
+> de ingreso** — **dos veces seguidas, leyendo la pantalla**. No es un bug de código (la app lo
+> muestra en verde con `+$` y el cierre detectó el faltante), es **qué motivos se siembran**.
+> Decisión de GO: renombrarlos, sacarlos, o que el modal los filtre.
+>
+> 📷 **"Completar desde foto" no se puede clickear en la grabación**: es un `<label>` que envuelve un
+> `input[type=file]`, así que abre el diálogo nativo del sistema, que no entra en el video. En el 3
+> se resolvió dejándolo visible en pantalla con un rótulo que lo señala. Para demostrarlo de verdad
+> hace falta una foto real de un producto — lo puede hacer GO.
+>
+> ✅ **La música la eligió GO escuchando muestras** (Claude no escucha): sintetizador propio, 432 Hz, cama
+> de fondo, sin acentos. Detalle en `wiki/manuales/plan-audio-videos.md`. Se puede pisar pasando un
+> `.wav`/`.mp3` propio en el guion.
+>
+> 🔉 **Dos pedidos de GO para los PRÓXIMOS videos (2026-09-14):**
+> 1. **La música satura → −10 dB.** Ya es el default de `postproducir.mjs` (−24 LUFS). Los 5 hechos
+>    siguen a −14: re-renderizarlos es opcional (minutos, sin regrabar) — decisión de GO.
+> 2. **Efectos en los clicks** → ✅ **CONSTRUIDOS y usados en el Video 4**: cursor visible, sticker de
+>    historieta con onomatopeya variada según la acción, sacudida y sonidos. `scripts/video/{director,efectos}.mjs`
+>    + `sticker.html`. 🟡 **Falta que GO lo mire**: ¿van? ¿con o sin sonido de efectos? (salieron las dos versiones)
+>
+> 🔁 **Reusable para los videos 3-9**: `scripts/video/postproducir.mjs` + `overlay.html`. Dos
+> trampas anotadas ahí: sin `-loop 1` los overlays salen **invisibles** (el PNG es un solo fotograma
+> en t=0 y el fundido lo deja en alpha 0), y un `box-shadow` grande se compone como un **rectángulo
+> negro duro**.
+>
+> 🟥 **El landing dice "+500 comercios"** con 9 tenants en PROD y **ninguno cliente real**. Se ve en
+> primer plano en el video. Decisión de GO.
 >
 > #### 🧪 e2e 146 + project `chromium-ri` — el IVA crédito ya se puede testear por UI
 >
@@ -259,7 +373,10 @@ type: project
 > GO quiere grabar una serie de videos: (1) desde `genesis360.pro` hasta tener el negocio creado y
 > entrar, (2) configuración inicial para modo básico, (3) y así por funcionalidad.
 >
-> ⚠️ **Claude NO puede grabar video ni capturar pantalla** — se le dijo y lo aceptó. Lo que SÍ
+> ⚠️ **CORREGIDO 2026-09-13: Claude SÍ puede grabar video y capturar pantalla** — de un navegador
+> que maneja él (Playwright → MP4 720p con ffmpeg), no del escritorio de quien opera. Sin narración
+> ni puntero, y no puede confirmar el mail del alta. Ver el detalle en `guion-videos-onboarding.md`.
+> Lo que SÍ
 > quedó acordado que aporte:
 > - **El guion de pasos obligatorios de cada video**, sacado del flujo REAL del código (GO dijo "ok
 >   con el flujo y guía de pasos obligatorios"). **Esto quedó pendiente, es el próximo entregable.**

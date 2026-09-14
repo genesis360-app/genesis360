@@ -241,3 +241,65 @@ Detalle completo (incidente, causa raíz, medición y cobertura): [[wiki/archite
 - [[wiki/database/triggers]]
 - [[wiki/support/plataforma-soporte]]
 - [[wiki/manuales/guion-videos-onboarding]]
+
+---
+
+## 🛑 El negocio se crea al confirmar el mail (v1.219.0, mig 415) — 2026-09-14
+
+### El bug: el escáner de mails dejaba el alta muerta
+
+Crear el negocio era trabajo del **navegador**: `provisionNegocio()` en `OnboardingPage` corre
+después de que el link de confirmación redirige a la app. Si ese aterrizaje no ocurre, no hay
+negocio.
+
+Y hay una forma muy común de que no ocurra: **el escáner de links del proveedor de correo**. Gmail
+pre-carga las URLs de los mails — medido en un caso real: **94 segundos después del envío**.
+Supabase confirma la cuenta y **consume el token, que es de un solo uso**, pero ningún navegador
+ejecutó la app.
+
+Quedaba una **cuenta de auth confirmada y válida, sin fila en `users` y sin `tenants`**. Y sin
+salida:
+
+| Lo que intenta la persona | Lo que pasaba |
+|---|---|
+| Clickear el link del mail | `otp_expired` → cae en el formulario de alta, sin sesión |
+| Loguearse | La auth funciona, pero la app pega **406** en `users?...` y la rebota a `/login` **sin ningún mensaje** (`/login`→`/dashboard`→`/login`) |
+| Registrarse de nuevo | Anti-enumeración de Supabase → *"Revisá tu email"* para siempre |
+
+Y el mail quedaba quemado. Outlook Safe Links y los escáneres corporativos hacen lo mismo.
+
+### El arreglo, en dos niveles
+
+**1. Server-side (mig 415).** Un trigger sobre `auth.users` crea `tenants` + `users` al confirmarse
+el mail, sin depender del navegador. Es el mismo criterio que la REGLA #0 exige en lo fiscal:
+**guard server-side ADEMÁS de la UI**. Que el alta de un negocio dependa de que un navegador llegue
+a una página es tan frágil como validar un permiso solo en el frontend.
+
+- **Dos disparadores**: `AFTER UPDATE OF email_confirmed_at` (PROD, `mailer_autoconfirm` false) y
+  `AFTER INSERT` (DEV, que autoconfirma). Así DEV se comporta como PROD y se puede probar.
+- **Solo altas self-service**: son las únicas con `ob_nombre`+`ob_pais` en el metadata. Invitados,
+  agentes del panel (mig 221) y cuentas del Portal de Proveedores quedan afuera a propósito.
+- 🛑 **Nunca hace fallar la confirmación**: atrapa cualquier error y avisa. Si propagara, la persona
+  no podría ni confirmar su cuenta — un bug peor que el que arregla. **Probado forzando un error
+  adentro: la cuenta se confirma igual.**
+- El frontend **no se saca**: sigue siendo el camino normal y el único para Google OAuth (que nace
+  confirmado, sin `UPDATE`). Si corren los dos, el `EXISTS` cubre el caso normal y en la carrera
+  exacta gana el trigger (`users.id` es PK y `provisionNegocio` ya borra su tenant al fallar).
+
+**2. La carrera del login.** `LoginPage` hacía `navigate('/dashboard')` **sin esperar** a
+`loadUserData`, así que el `AuthGuard` evaluaba con la store vacía (`user: null`,
+`needsOnboarding: false`) y mandaba a `/login`. Es el mismo gotcha que el CLAUDE.md documenta para
+Google OAuth; el camino de email/contraseña lo tenía igual.
+
+Por eso la **vía de recuperación de `OnboardingPage` (líneas 78-88) era inalcanzable**: existía,
+funcionaba, pero nada llevaba hasta ella. Ahora el login espera y rutea por el resultado — sin fila
+en `users` va a `/onboarding`, que sabe terminar el trabajo.
+
+**3. `ob_terminos_version` en el metadata del alta**, para que el trigger no tenga que inventar una
+versión de T&C — o sea, falsear un consentimiento legal.
+
+### Lo que no hace
+
+No manda el mail de bienvenida (eso lo dispara el frontend con la EF `send-email`). Si la persona
+nunca aterriza, tiene su negocio pero no recibe ese mail. Detalle menor frente a quedarse sin
+negocio, y evita meter `pg_net` en el camino de la confirmación.

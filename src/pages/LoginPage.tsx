@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Mail, Lock, Chrome } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
@@ -14,13 +15,23 @@ export default function LoginPage() {
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       toast.error(error.message === 'Invalid login credentials'
         ? 'Email o contraseña incorrectos'
         : error.message)
     } else {
-      navigate('/dashboard')
+      // 🛑 `await` ANTES de navegar. Es el mismo gotcha que el CLAUDE.md documenta para Google
+      // OAuth, y este camino lo tenía igual: navegar de una deja al `AuthGuard` evaluando con la
+      // store todavía vacía (`user: null`, `needsOnboarding: false`) y manda a `/login`.
+      //
+      // No es teórico: así quedaba encerrada una cuenta CONFIRMADA SIN NEGOCIO (el caso del
+      // escáner de mails, mig 415). Se autenticaba bien, la app rebotaba `/dashboard` → `/login`
+      // con el formulario vacío y sin un solo mensaje, y no había forma de salir. La vía de
+      // recuperación existía en `/onboarding` desde siempre; lo que faltaba era llegar.
+      if (data.user) await useAuthStore.getState().loadUserData(data.user.id)
+      const { user, needsOnboarding } = useAuthStore.getState()
+      navigate(!user && needsOnboarding ? '/onboarding' : '/dashboard', { replace: true })
     }
     setLoading(false)
   }

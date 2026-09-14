@@ -138,7 +138,10 @@ export default function OnboardingPage() {
             // El consentimiento viaja en el metadata: al confirmar el email todavía no hay sesión,
             // el tenant se crea después en el useEffect y necesita saber qué se aceptó. `ob_terminos`
             // siempre true (gateado arriba); `ob_marketing` = opt-in.
-            data: { full_name: accountData.name, ob_nombre: bizData.nombre, ob_tipo: tipoFinal, ob_pais: bizData.pais, ob_terminos: true, ob_marketing: aceptaMarketing, ob_telefono: bizData.telefono?.trim() || null },
+            // `ob_terminos_version` lo lee el trigger de la mig 415, que crea el negocio del lado
+            // del servidor cuando el navegador no llega a aterrizar acá. Sin este dato el trigger
+            // tendría que inventar una versión de T&C — o sea, falsear un consentimiento legal.
+            data: { full_name: accountData.name, ob_nombre: bizData.nombre, ob_tipo: tipoFinal, ob_pais: bizData.pais, ob_terminos: true, ob_terminos_version: LEGAL_VERSION, ob_marketing: aceptaMarketing, ob_telefono: bizData.telefono?.trim() || null },
             emailRedirectTo: `${window.location.origin}/onboarding`,
           },
         })

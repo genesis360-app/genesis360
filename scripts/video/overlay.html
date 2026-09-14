@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  Plantilla de overlays para los videos de onboarding.
+
+  Se renderiza en Playwright con `omitBackground: true` → PNG con transparencia, y después se
+  compone sobre el video con ffmpeg (ver `postproducir.mjs`).
+
+  ¿Por qué HTML y no `drawtext` de ffmpeg? Porque acá se puede usar la identidad real del producto:
+  la tipografía Inter, el degradé violeta→cian de la marca y emoji A COLOR. Con `drawtext` hay que
+  pelearse con rutas de fuentes en Windows y los emoji salen en blanco y negro o directamente no
+  salen.
+
+  Parámetros por query string:
+    tipo=card   → placa a pantalla completa (entrada / cierre).  ico, t, s, pill
+    (sin tipo)  → rótulo inferior izquierdo.                      n (número), t (título), s (bajada)
+
+  🛑 NO agregar `box-shadow` grande a `.lt`: ffmpeg compone la sombra semitransparente como un
+  RECTÁNGULO NEGRO DURO al costado de la tarjeta. Se ve espantoso y cuesta un rato darse cuenta.
+  Si hace falta despegarla del fondo, usar `border`.
+-->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+  html, body {
+    margin: 0; width: 1280px; height: 720px;
+    background: transparent; overflow: hidden;
+    font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  }
+
+  /* ── Placa a pantalla completa (entrada / cierre) ── */
+  .card {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: linear-gradient(135deg, #12021f 0%, #3b0a6b 55%, #7B00FF 100%);
+  }
+  .card .ico { font-size: 64px; line-height: 1 }
+  .card h1 {
+    margin: 0; color: #fff; font-size: 52px; font-weight: 800;
+    letter-spacing: -1.5px; text-align: center;
+  }
+  .card p { margin: 0; color: #c9b3ff; font-size: 24px; font-weight: 400 }
+  .pill {
+    margin-top: 8px; padding: 10px 22px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.25); color: #fff; font-size: 18px;
+    background: rgba(255,255,255,.08);
+  }
+
+  /* ── Rótulo inferior izquierdo ── */
+  .lt {
+    position: absolute; left: 56px; bottom: 52px;
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px 26px 16px 18px; border-radius: 18px;
+    background: #150a24;                        /* opaco a propósito: ver la nota de arriba */
+    border: 1px solid rgba(160,110,255,.45);
+    box-shadow: none;
+  }
+  .lt .num {
+    width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, #7B00FF, #06B6D4);
+    color: #fff; font-size: 22px; font-weight: 800;
+  }
+  .lt .tx { display: flex; flex-direction: column; gap: 3px }
+  .lt .t { color: #fff; font-size: 25px; font-weight: 600; letter-spacing: -.3px }
+  .lt .s { color: #b79cff; font-size: 17px }
+</style>
+<div id="root"></div>
+<script>
+  const P = new URLSearchParams(location.search)
+  const tipo = P.get('tipo'), ico = P.get('ico') || ''
+  const t = P.get('t') || '', s = P.get('s') || '', n = P.get('n') || ''
+  const R = document.getElementById('root')
+  if (tipo === 'card') {
+    R.innerHTML = `<div class="card"><div class="ico">${ico}</div><h1>${t}</h1><p>${s}</p>
+      ${P.get('pill') ? `<div class="pill">${P.get('pill')}</div>` : ''}</div>`
+  } else {
+    R.innerHTML = `<div class="lt"><div class="num">${n || ico}</div>
+      <div class="tx"><div class="t">${t}</div><div class="s">${s}</div></div></div>`
+  }
+</script>

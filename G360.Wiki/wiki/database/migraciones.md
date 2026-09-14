@@ -8,13 +8,25 @@ updated: 2026-09-12
 
 # Historial de Migraciones (001-414, + correctivos 387b/387c)
 
-**🗂️ Migraciones 407-414 — ✅ EN DEV, ⏳ NINGUNA EN PROD** (PROD quedó en la 406 con el deploy de
-`v1.208.0`). Son **aditivas** (tablas/funciones/columnas nuevas), así que acá sí aplica el "DDL
-aditivo primero":
+**🗂️ Migraciones 407-414 — ✅ EN DEV Y EN PROD** (aplicadas el **2026-09-13** con el deploy de
+`v1.218.0`, **antes** del merge `dev→main`, como manda el "DDL aditivo primero"). Verificado
+estructuralmente después de aplicar: 3 columnas de `cotizacion_fiscal*`, `empleados.sucursal_id`,
+`tenants.telefono`, las 2 tablas nuevas, las 2 funciones de la 410 con sus grants, las 2 policies de
+`recurso_ubicaciones` y el CHECK de la 414.
+
+🔍 **Paridad DEV↔PROD sin drift**, medida después de aplicar: **230 policies** y el mismo hash global
+`01b696bc90fc863dc812b6285682d795` en los dos ambientes.
+
+🛡️ Chequeos de seguridad post-aplicación (las funciones de la 410 devuelven mails cross-tenant y las
+notas de la 411 son internas): `anon` y `authenticated` **no** pueden ejecutar
+`fn_admin_tenants_overview` ni `fn_admin_tenant_cuentas`, `service_role` **sí**; `admin_customer_notes`
+tiene 0 policies y ni `anon` ni `authenticated` pueden leerla. Y en la 413 se verificó que el fix del
+truncado quedó (`CASE WHEN v_seq < 100`) **y** que `SET search_path` sobrevivió al `CREATE OR REPLACE`:
 
 | # | Archivo | Qué hace |
 |---|---|---|
-| 414 | `414_gasto_cotizacion_fiscal.sql` | `gastos.cotizacion_fiscal` + `_fecha` + `_fuente`: la tasa con la que un gasto en moneda extranjera entra al Libro IVA. ⚠️ **Criterio contable pendiente de validar con un contador matriculado.** 🛑 **No es la cotización operativa del tenant** (que va al dólar COMPRA): lo fiscal pide **BNA VENDEDOR del día hábil anterior** al comprobante. Se congela por gasto porque `tenants.cotizacion_usd*` es el valor de HOY. Sin backfill. **Todavía nadie escribe ni lee estas columnas** — falta el campo en `GastosPage` y que `FacturacionPage` incluya los convertidos. Ver [[wiki/features/gastos]]. |
+| 415 | `415_crear_negocio_al_confirmar_mail.sql` | 🛑 **El negocio se crea al CONFIRMAR el mail, no cuando el navegador aterriza.** Trigger sobre `auth.users` (dos: `AFTER UPDATE OF email_confirmed_at` para PROD y `AFTER INSERT` para DEV, que autoconfirma). Lo motivó el **escáner de links de Gmail**: pre-carga la URL de confirmación (94 s después del envío, medido), Supabase confirma y **quema el token de un solo uso**, pero ningún navegador ejecuta la app → `provisionNegocio()` nunca corre y queda una cuenta confirmada **sin `users` y sin `tenants`**, imposible de recuperar. Mismo criterio que la REGLA #0 exige en lo fiscal: **guard server-side además de la UI**. Solo actúa sobre altas self-service (las únicas con `ob_nombre`+`ob_pais`): invitados, agentes del panel y cuentas del Portal de Proveedores quedan afuera. 🛑 **Nunca hace fallar la confirmación** — atrapa cualquier error y avisa; si propagara, la persona no podría ni confirmar. Probado en DEV con los 4 escenarios, incluidos los 3 que NO deben crear negocio. **DEV ✅ · PROD ✅ (2026-09-14)**; el frontend que lo acompaña viaja en el próximo deploy. |
+| 414 | `414_gasto_cotizacion_fiscal.sql` | `gastos.cotizacion_fiscal` + `_fecha` + `_fuente`: la tasa con la que un gasto en moneda extranjera entra al Libro IVA. ⚠️ **Criterio contable pendiente de validar con un contador matriculado.** 🛑 **No es la cotización operativa del tenant** (que va al dólar COMPRA): lo fiscal pide **BNA VENDEDOR del día hábil anterior** al comprobante. Se congela por gasto porque `tenants.cotizacion_usd*` es el valor de HOY. Sin backfill. ✅ **En uso desde `v1.218.0`**: el campo "Cotización para IVA" de `GastosPage` las escribe y el Libro IVA Compras las lee para incluir los gastos convertidos. Cubierto por el **e2e 146** (mutante). Ver [[wiki/features/gastos]]. |
 | 413 | `413_fix_loop_infinito_codigo_ubicacion.sql` | 🛑 **Bug real de inventario.** `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con `lpad(v_seq::text, 2, '0')`, y **`lpad` TRUNCA** cuando el texto ya mide más que el ancho: en `v_seq=100` devolvía `U10` (que ya existe) y el **loop no salía nunca**. Un negocio con 99 ubicaciones raíz no podía crear la 100 — el INSERT giraba hasta el `statement_timeout`, sin error visible. Latente en PROD (máximo 4 raíces hoy), pero 100 racks es normal en un depósito real. Fix: ancho 2 hasta `U99` y después el número completo, + tope de 10.000 vueltas en los dos loops. Lo destapó la suite e2e: 4 specs con `57014` en la misma tabla, archivados como "lentitud de DEV". ⚠️ `CREATE OR REPLACE FUNCTION` **no conserva** `SET search_path` — hay que repetirlo. |
 | 412 | `412_tenants_telefono.sql` | `tenants.telefono` — el alta de negocio pedía el teléfono y `provisionNegocio()` nunca lo guardaba. Se guarda ahora por los 3 caminos del alta; editable en Configuración → Mi negocio. Ver [[wiki/features/autenticacion-onboarding]]. |
 | 411 | `411_admin_customer_notes_y_hardening_audit_log.sql` | Tabla `admin_customer_notes` (notas internas de soporte sobre un cliente) — RLS encendida **sin policies** + `REVOKE` a `anon`/`authenticated`, **sin FK a `tenants`** (para que la nota sobreviva a la baja del tenant que audita). Además **hardening de `admin_audit_log`**: la mig 221 lo había dejado con GRANT completo para `anon`/`authenticated` confiando solo en "RLS sin policies" como defensa — mismo `REVOKE` que le faltaba, mismo agujero de fondo que corrigió la mig 272 (ver más abajo). Ver [[wiki/support/plataforma-soporte]]. |

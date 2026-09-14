@@ -810,7 +810,7 @@ quedó afuera.
 - [[wiki/development/cierre-contable]]
 - [[wiki/features/configuracion]]
 
-## 🧾 El gasto en moneda extranjera entra al Libro IVA (v1.218.0, mig 414) — 2026-09-13
+## 🧾 El gasto en moneda extranjera entra al Libro IVA (v1.218.0, mig 414) — 🚀 EN PROD 2026-09-13
 
 > [!WARNING] **Criterio contable PENDIENTE de validar con un contador matriculado.** Viene de una
 > consulta de GO a una IA que se presentó como contador (2026-09-13) y se adopta como criterio de

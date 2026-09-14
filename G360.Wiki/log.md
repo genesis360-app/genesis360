@@ -6,6 +6,353 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | ✨ Efectos de click construidos + 🛒 Video 4 (Vender) grabado con todo
+
+GO pidió construir los efectos de click y grabar el siguiente video con todas las mejoras.
+
+### Lo construido (`scripts/video/`)
+
+- **`director.mjs`**: cursor dibujado dentro de la página (Playwright no dibuja puntero) con anillo en cada
+  click, y registro de cada click `{t, x, y, tipo}` + marcas de escena para ubicar rótulos sin adivinar.
+- **`sticker.html` + `efectos.mjs`**: estallido de historieta con onomatopeya **variada según la acción**,
+  sacudida (zoom 3 % + temblor) en los clicks que cierran algo, y sonidos sintetizados (pop, campanitas en el
+  cobro, golpe grave). Determinista: re-renderizar da el mismo video.
+- **`grabaciones/video4-vender.mjs`**: la toma guardada. Las anteriores eran scripts temporales y hubo que
+  reconstruirlas del historial de la sesión.
+
+### 🛒 Video 4 — 83 s
+
+Abrir caja → 6 Gaseosas + 2 Yerbas → descuento 5 % → transferencia $10.000 + efectivo $11.000 → vuelto $290 →
+ticket → el stock bajó solo → la venta entró sola a la caja. 7 stickers (¡Clack! ¡Toc! ¡Al carrito! ¡Uno más!
+¡Cha-chín! ¡Zas! ¡Adentro!), 2 sacudidas. Dos versiones: **con y sin sonido de efectos**.
+
+✅ **REGLA #0 verificada en la DB**: venta #31 por $20.710 (precio por ítem 1.805 y 4.940), rebajes 48→42 y
+24→22 con "Venta #31", y en caja **$10.710 de efectivo neto del vuelto** + `ingreso_informativo` de $10.000 por
+la transferencia. Sin factura: "Venta directa" no emite.
+
+### Tres cosas que salieron mal, detectadas mirando y midiendo
+
+1. **El ticket nunca se cerró**: el locator agarró la pestaña "Nueva venta" detrás del modal. En vez de volver a
+   vender en PROD, se grabó un **complemento que solo navega** y se unió con un fundido.
+2. **Stickers a medio fundir**: la opacidad solo estaba en el último cuadro clave y Web Animations la
+   interpolaba 1→0 durante toda la animación. Se vio en cuadros extraídos del render, no en el log.
+3. **Sonidos tapados** a −18 dBFS (+0,9 dB en el cobro); a −12, +3,8 dB. Medido restando la versión sin
+   efectos: Claude no escucha.
+
+### Pendiente
+
+- **GO**: mirar el Video 4 → ¿stickers y sacudida van? ¿con o sin sonido de efectos?
+- Los videos 1-3, 5 y 8 no tienen clicks registrados: ponerles efectos exige regrabar o marcarlos a mano.
+- Negocio de prueba tras el 4: **caja ABIERTA** (sesión 2, saldo $20.710), stock 42 / 22.
+- Siguiente: **Video 6 — Gastos** (la caja no registra egresos: es el paso natural).
+- Las piezas nuevas de `scripts/video/` van en las notas del próximo release.
+
+---
+
+## [2026-09-14] update | 🎬 Serie de videos: 5 grabados, música nueva en todos · y dos hallazgos de producto
+
+GO eligió el orden siguiendo la rutina real del negocio: **1 → 2 → 3 → 5 (caja) → 8 (inventario) → 4
+(vender)…** — abrir la caja y que entre la mercadería **antes** de vender. Todos contra PROD sobre el
+tenant de prueba "Genesis360 Onboarding": GO decidió no mudarse a DEV para no perder la continuidad
+visual, sabiendo que del 3 en adelante se escriben datos reales en ese tenant.
+
+| | Video | Duración | Momento clave |
+|---|---|---|---|
+| 1 | Onboarding | 70,7 s | "Revisá tu email" → negocio creado → tour |
+| 2 | Configuración inicial | 59,3 s | lo que viene sembrado vs. las categorías de producto (lo único obligatorio) |
+| 3 | Cargar productos | 50,0 s | la alerta de stock crítico aparece sola |
+| 5 | Caja, la rutina del día | 78,8 s | cierre esperado vs. contado, "Sin diferencia" |
+| 8 | Carga de inventario | 63,0 s | la alerta de stock crítico se apaga sola |
+
+Archivos en `D:/Dev/genesis360-videos/<videoN>/` (fuera del repo): `videoN-final.mp4`, el crudo y el
+`guion.json`. Se regeneran sin volver a grabar con `node scripts/video/postproducir.mjs`.
+
+### 🎧 Música nueva en toda la serie
+
+`postproducir.mjs` ahora usa el sintetizador propio (`musica.mjs`) con lo que GO eligió de oído:
+**432 Hz**, cama de fondo con arpegio y pulso, y **sin acentos** ("distraen, no suman"). GO además
+detectó de oído que **la frase se cortaba antes del outro** — bug real: las secciones se cortaban
+por tiempo y no por frase. Corregido.
+
+Al re-renderizar apareció que los renders viejos estaban a **−29,8 LUFS, 16 dB por debajo** del
+objetivo: habrían sonado anémicos en YouTube. Ahora entre −13,3 y −13,7. Los viejos quedaron en
+`_anteriores/`.
+
+### 🛑 Hallazgo 1 — motivos de caja que invitan a asentar una salida como ingreso
+
+El modal de Caja **solo registra ingresos** (lo dice él mismo: los egresos van por Gastos), pero el
+sistema **siembra tres motivos y dos nombran salidas**: "Extracción / Retiro" y "Gastos varios". Los
+chips solo rellenan el concepto (`setMovConcepto`), no cambian el tipo. Grabando se asentó un flete
+de $6.200 como **+$6.200 de ingreso, dos veces seguidas** y leyendo la pantalla. No es un bug de
+código (se ve en verde con `+$` y el cierre detectó el faltante), es **qué se siembra**.
+**Decisión de GO pendiente**: renombrarlos, sacarlos o filtrarlos en ese modal.
+
+### Hallazgo 2 — correcciones al guion
+
+- La Caja **no** registra egresos: el video 5 prometía "ingresos y egresos". Corregido.
+- "Completar desde foto" no se puede clickear en una grabación (`<label>` sobre `input[type=file]`
+  abre el diálogo nativo del sistema). Se muestra con un rótulo; la demo real necesita una foto.
+
+### Pendiente
+
+- **Video 4 — Vender**: ya hay stock (48 y 24 unidades); la caja quedó cerrada → arrancar como "el
+  día siguiente", abriendo caja.
+- 🔉 **GO escuchó la serie: la música satura** → pidió bajarla "por lo menos un 50%". Default nuevo
+  de `postproducir.mjs`: **−24 LUFS** (−10 dB = mitad de volumen percibido). Medido: los finales
+  estaban a −13,6 LUFS con LRA de 3,2-3,6 LU, una cama muy densa. Aplica a los próximos; los 5 hechos
+  quedan a −14 salvo que GO pida re-renderizar.
+- ✨ **Efectos de click tipo cómic** (pedido de GO): el cursor no se ve, así que cada click importante
+  lleva un sticker con onomatopeya variada según la acción y una sacudida corta. Diseño en
+  `guion-videos-onboarding.md`; se construye **antes** del Video 4.
+- Limpieza del tenant de prueba en PROD: **al terminar la serie**, no antes — se sigue usando.
+
+---
+
+## [2026-09-14] update | 🎧 Plan de audio de los videos — el brief, medido
+
+GO trajo un brief de un productor de sonido y pidió **desafiarlo** para que el video refuerce la
+venta. Quedó en `wiki/manuales/plan-audio-videos.md`, con muestras para que elija de oído.
+
+**Lo que se acepta**: tempo 98-105, Re Mayor, la estructura I-IV → I-V-vi-IV → **Dsus4→D resolviendo
+en el logo**, y el rechazo a la hipercompresión.
+
+**Lo que se desafió, con números:**
+
+| Punto del brief | Qué se midió |
+|---|---|
+| **A = 432 Hz** "más orgánico" | Sin respaldo — es un mito de audio. Pero acá se sintetiza todo, así que **no hay nada con qué desafinar** y el costo es cero: queda como parámetro y se entregaron dos muestras idénticas para decidir de oído. |
+| **−18 LUFS "debajo de la voz"** | Mal planteado: LUFS mide el programa, y **nuestros videos no tienen voz**. Sin voz la música ES el programa → **−14 LUFS** (lo que normaliza YouTube; más bajo, YouTube no lo sube). Con voz → −26. Dos masters, no uno. |
+| **Hueco en 2.5-4 kHz** | Técnica correcta, pero **casi cosmética acá**: esa banda está **36 dB por debajo** del total de esta cama. El consejo apunta a una mezcla densa (cuerdas, piano, batería); nuestros pads no tienen energía ahí. |
+
+**Dos errores propios, corregidos y documentados:**
+1. El pocket se intentó cavar **dentro del sintetizador** con filtros de un polo: **0,4 dB reales**
+   contra los ~8 dB que el comentario afirmaba. Va en el master, con un biquad → **4,3 dB**.
+2. Se midió con `bandpass` de ffmpeg, que es de **2 polos**: los graves (25 dB más arriba) se
+   filtran igual y **tapan la lectura**. Para medir una banda hay que aislarla con 4 polos por falda.
+
+**Lo que el brief no ve** (y es donde más se gana): **diseño de sonido** — que se escuche que el
+producto responde, no solo música — y sobre todo la **sincronía con `guion.json`**: como los videos
+se generan con los timestamps exactos, la música puede **resolver justo** en "negocio creado" o en
+"Sin diferencia". Con una pista comprada eso es imposible.
+
+**Herramienta nueva**: `scripts/video/musica.mjs` — sintetizador propio con ADSR, armónicos, detune
+y reverb Schroeder, duración adaptativa y acentos sincronizados. Sin problemas de licencia.
+
+⚠️ **Dicho de frente**: la síntesis propia llega a "corporativo correcto", no a "premium con
+instrumentos reales". Si el objetivo es que el video venda, puede convenir licenciar una pista y que
+el pipeline haga lo que sí hace bien: sincronizar, cavar, masterizar y sumar diseño de sonido.
+
+---
+
+## [2026-09-14] update | ✅ Arreglado el alta: el negocio se crea server-side · mig 415
+
+GO autorizó el fix. Las dos mitades, con la migración **ya aplicada en DEV y PROD**.
+
+### mig 415 — el negocio nace en la base
+
+Trigger sobre `auth.users` que crea `tenants` + `users` al confirmarse el mail, sin depender de que
+un navegador aterrice. **Mismo criterio que la REGLA #0 exige en lo fiscal: guard server-side además
+de la UI.**
+
+Dos disparadores (`AFTER UPDATE OF email_confirmed_at` para PROD, `AFTER INSERT` para DEV que
+autoconfirma), así DEV se comporta igual que PROD y esto se puede probar sin adivinar.
+
+**Probado en DEV con 4 escenarios — los 3 más importantes son los que NO deben crear negocio:**
+
+| Escenario | Esperado | Real |
+|---|---|---|
+| Confirmación normal | negocio completo | ✅ con los 5 seeds (1 sucursal, 3 cajas, 16 categorías) y el teléfono de la mig 412 |
+| Usuario **invitado** (sin `ob_nombre`) | 0 negocios | ✅ 0 |
+| Usuario que **ya tiene** fila en `users` | 0 duplicados | ✅ 0 |
+| 🛑 Metadata corrupta que revienta el trigger | **la cuenta se confirma igual** | ✅ confirmada |
+
+Ese último es el que más importa: si el trigger propagara el error, la persona **no podría ni
+confirmar su cuenta** — un bug peor que el que arregla. Por eso atrapa cualquier error y avisa.
+
+### La carrera del login, que era por qué la salida existía pero no se alcanzaba
+
+`LoginPage` hacía `navigate('/dashboard')` **sin esperar** a `loadUserData`: el `AuthGuard` evaluaba
+con la store todavía vacía y rebotaba a `/login`. **Es el mismo gotcha que el CLAUDE.md documenta
+para Google OAuth** — el camino de email/contraseña lo tenía igual, sin que nadie lo hubiera notado.
+
+Por eso la vía de recuperación de `OnboardingPage:78-88` era inalcanzable: existía y funcionaba,
+pero nada llevaba hasta ella. Ahora el login espera y rutea por el resultado.
+
+Y se agregó `ob_terminos_version` al metadata del alta, para que el trigger no tenga que inventar
+una versión de T&C — o sea, falsear un consentimiento legal.
+
+**Estado**: mig 415 en DEV y PROD (aditiva). **El frontend viaja en el próximo deploy** — la
+migración sola ya corta el problema de raíz, porque el negocio se crea igual.
+
+Verde: 1782 unit · typecheck · build · eslint `--max-warnings 0`.
+
+---
+
+## [2026-09-14] update | 🛑 El escáner de mails de Gmail deja el alta MUERTA — y la salida existe pero es inalcanzable
+
+Apareció grabando el Video 1 con un alias real (`genesis360.ar+video1@gmail.com`) contra PROD. **Es
+un callejón sin salida en la puerta de entrada del producto, y se dispara solo.**
+
+### La cadena, con los tiempos reales
+
+| Hora | Qué pasó |
+|---|---|
+| 01:14:53 | Alta enviada. Usuario de auth creado, **sin confirmar**. Los datos del negocio viajan en `raw_user_meta_data` (`ob_nombre`, `ob_tipo`, `ob_pais`, `ob_telefono`). Mail despachado. |
+| 01:16:27 | **El escáner de links de Gmail pre-carga la URL de verificación.** Supabase confirma el mail y **consume el token, que es de un solo uso**. Pero ningún navegador ejecutó la app → `provisionNegocio()` nunca corrió. |
+| ~01:20 | La persona clickea el link: **`otp_expired`** → cae en el formulario de alta, sin sesión. |
+
+Resultado: **cuenta de auth confirmada y válida, sin fila en `public.users` y sin `tenants`.**
+
+### Por qué la persona no puede salir sola
+
+- **Loguearse no sirve.** La auth funciona (`last_sign_in_at` se actualiza), pero la app va a
+  `/dashboard`, pega un **`406`** en `users?select=*&id=eq.<uuid>` —PostgREST devuelve 406 cuando
+  `.single()` no encuentra fila— y **la rebota a `/login` con el formulario vacío y sin ningún
+  mensaje**. Ruta observada: `/login` → `/dashboard` → `/login`.
+- **Registrarse de nuevo tampoco.** El anti-enumeración de Supabase devuelve éxito falso → *"Revisá
+  tu email"* → un mail que no llega o no sirve.
+- Y el mail queda quemado.
+
+### 🔑 La salida EXISTE — pero nada lleva hasta ella
+
+`OnboardingPage.tsx` (líneas 78-88) ya tiene el rescate: **si la persona cae en `/onboarding` CON
+sesión y con `ob_nombre`+`ob_pais` en el metadata, crea el negocio ahí mismo.** Está escrito y
+funciona.
+
+**Comprobado**: logueando y navegando a mano a `/onboarding`, el negocio se creó completo —
+"Genesis360 Onboarding", Almacén, AR, **teléfono guardado** (mig 412 funcionando end-to-end en PROD),
+trial a 30 días, y los seeds (1 sucursal, 3 cajas, 5 métodos de pago, 16 categorías de gasto).
+
+El problema es de **ruteo**: el login manda a `/dashboard`, no a `/onboarding`. La puerta de
+emergencia está construida y con llave.
+
+### El arreglo, en dos niveles
+
+1. **Barato e inmediato (ruteo):** cuando un usuario autenticado no tiene fila en `users`, en vez de
+   rebotarlo a `/login` mandarlo a `/onboarding`, que ya sabe terminar el trabajo. Convierte un
+   bloqueo permanente en un hipo.
+2. **De fondo (server-side):** que el negocio NO dependa de que un navegador aterrice. Crearlo al
+   confirmarse el mail, desde la base (trigger sobre `auth.users` cuando `email_confirmed_at` pasa a
+   no-nulo, leyendo el metadata `ob_*`) o desde una EF. Mismo criterio que la REGLA #0 aplica a lo
+   fiscal: **el guard server-side además de la UI.** Hoy la creación del negocio vive solo en el
+   cliente, y cualquier cosa que interrumpa el aterrizaje —escáner de mails, cerrar la pestaña,
+   perder señal justo ahí— deja la cuenta huérfana.
+
+### Alcance
+
+En PROD hay **3 usuarios de auth sin fila en `users`**: el de esta prueba, una cuenta de agente de
+soporte (esperado, mig 221) y uno de marzo sin metadata de negocio. O sea que **no hay víctimas
+reales todavía** — pero tampoco hubo clientes reales todavía.
+
+⚠️ **Esto es lo que se lleva puesto a un cliente el primer día.** Gmail escanea links por default, y
+Outlook Safe Links y los escáneres corporativos también.
+
+---
+
+## [2026-09-13] update | 🎥 Video 1 grabado, y dos hallazgos del alta
+
+GO pidió intentar el primer video del guion. **Salió**, 33 s en 720p contra PROD: landing →
+"Empezar gratis" → paso 1 → paso 2 → "Crear negocio" → **"Revisá tu email"**.
+
+Antes: quedó corregida la afirmación de que Claude no podía grabar. **Sí puede** — Playwright graba
+un navegador que maneja él y `ffmpeg` (ya instalado) lo pasa a MP4 h264 720p; las capturas además
+las puede LEER. Lo que no puede: la pantalla de quien opera, audio, puntero del mouse, y entrar al
+correo. La frase contraria estuvo en 3 lugares del wiki arrastrada sin que nadie la probara.
+
+### 🛑 Hallazgo 1 — el alta con un mail YA registrado no manda al dashboard
+
+El guion decía que un mail que ya es dueño de un negocio "no repite el formulario: detecta que ya
+tiene tenant y lo manda al dashboard". **Falso.** Con `genesis360.ar@gmail.com` (dueño de "Don
+Ferretero") el formulario **corrió entero y terminó en "Revisá tu email"**, igual que un alta nueva.
+
+Es el anti-enumeración de Supabase: ante un mail registrado devuelve un éxito falso para no revelar
+quién tiene cuenta. Verificado en la base: **sin usuario duplicado, sin tenant nuevo (9, el último de
+agosto) y `confirmation_sent_at` en `null` — no se mandó ningún mail.** La grabación no tocó nada.
+
+**El costado que sí es un problema de producto:** a esa persona la pantalla le promete *"Confirmá tu
+cuenta desde ese email y tu negocio queda creado automáticamente"*. Para ella eso **no va a pasar
+nunca** — su negocio ya existe y no llega ningún mail. Queda esperando algo que no viene, sin
+ninguna vía de salida más que "Ir a Ingresar". No es fiscal ni de plata, pero es un callejón sin
+salida en la puerta de entrada del producto.
+
+### 🛑 Hallazgo 2 — el landing dice "+500 comercios"
+
+El hero de `genesis360.pro` afirma *"Más de 500 comercios ya controlan su stock con Genesis360"*.
+En PROD hay **9 tenants y ninguno es un cliente real** (son todos de prueba de GO). Queda anotado
+porque el video lo muestra en primer plano — decisión de GO qué hacer.
+
+### Lo que falta del Video 1
+
+De "Revisá tu email" en adelante: confirmar, el negocio creándose, la primera entrada al dashboard y
+el tour de bienvenida. Necesita un mail **realmente nuevo** (un alias `+algo` sirve) y que una
+persona abra el correo — Claude no entra a la casilla.
+
+---
+
+## [2026-09-13] deploy | 🚀 v1.218.0 EN PROD — migs 407-414, EF y panel · PR #345 y #4
+
+GO autorizó el deploy completo ("Ok, pasa todo a PRD y actualiza todo"). Se llevó el batch que venía
+acumulado desde el 2026-09-09: **DEV y PROD quedan a la par**, migs **001-414**.
+
+### El orden, que acá importa
+
+1. **Migs 407-414 aplicadas a PROD ANTES del merge** — todas aditivas, así que aplica el "DDL
+   aditivo primero". Se leyeron y revisaron **las 8 antes de aplicar ninguna**, y se aplicaron de a
+   una. Verificación estructural después: las 3 columnas de `cotizacion_fiscal*`,
+   `empleados.sucursal_id`, `tenants.telefono`, las 2 tablas nuevas, las 2 funciones de la 410, las
+   2 policies de `recurso_ubicaciones` y el CHECK de la 414.
+2. 🔍 **Paridad DEV↔PROD sin drift**, medida después: **230 policies** y el mismo hash global
+   `01b696bc90fc863dc812b6285682d795` en los dos ambientes.
+3. 🛡️ **Chequeos de seguridad** — importan porque la 410 devuelve mails cross-tenant y la 411 son
+   notas internas sobre el cliente: `anon` y `authenticated` **no** pueden ejecutar
+   `fn_admin_tenants_overview` ni `fn_admin_tenant_cuentas` (`service_role` sí), y
+   `admin_customer_notes` tiene 0 policies y es ilegible para ambos. En la 413 se confirmó que el
+   fix del truncado quedó **y** que `SET search_path` sobrevivió al `CREATE OR REPLACE`.
+4. **EF `admin-api` → v11** en PROD, con `verify_jwt: true` preservado.
+5. **PR #345** (app) y **PR #4** (panel `genesis360-admin`), ambos mergeados.
+
+⚠️ En los **dos** repos hubo que reconciliar la divergencia de siempre —`main` tiene los
+squash-merge que nunca volvieron a `dev`— con `git merge origin/main`. Los dos PR se mergearon con
+**merge commit** (no squash) justamente para no volver a abrir esa brecha.
+
+### Qué llega a PROD
+
+El **gasto en moneda extranjera al Libro IVA** con el bug del KPI que sumaba dólares como pesos (era
+latente: 0 gastos en otra moneda en ambos ambientes), la **baja de tenant por los dos caminos** —
+soporte y cliente— con la purga de Storage, `/mi-cuenta` fuera del `SubscriptionGuard`, el **loop
+infinito** del código de ubicación (mig 413), el empleado con sucursal (mig 409) que cierra los 4
+gastos de RRHH invisibles, el gasto multimoneda completo, la tanda de Fede del 11/9 y el panel de
+soporte entero.
+
+⚠️ **El criterio contable del gasto en moneda extranjera sigue PENDIENTE de validar con un contador
+matriculado** — las 15 preguntas abiertas están en `wiki/business/consultas-contador.md`.
+
+### Verificación en vivo (no el dashboard)
+
+- **`app.genesis360.pro` sirve `v1.218.0`** — confirmado bajando el bundle real
+  (`assets/index-DdRtncKv.js`) y buscando el `APP_VERSION` adentro, no mirando el estado de Vercel.
+- **`admin.genesis360.pro`** responde 200; su deploy de producción quedó `READY`.
+- CI de `main` en `success`.
+
+🛑 **Smoke de PostgREST post-DDL — conviene repetirlo en todo deploy con columnas nuevas.**
+PostgREST **cachea el esquema**: un `select` con una columna recién creada puede dar **400 en vivo**
+aunque la migración haya salido perfecta. Contra el REST real de PROD con la anon key:
+
+| Qué | Esperado | Real |
+|---|---|---|
+| Columnas de la 414 (`cotizacion_fiscal*`), 409 y 412 | 200 | ✅ 200 |
+| `recurso_ubicaciones` (RLS + revoke a anon) | 401 | ✅ 401 |
+| `admin_customer_notes` (notas internas) | 401 | ✅ 401 |
+| **Una columna inventada** | 400 | ✅ 400 |
+
+La última fila es la que importa: sin ese **control negativo**, un 200 podría significar "PostgREST
+ignora lo que no conoce" y las otras cuatro filas no probarían nada.
+
+🟥 **Queda destrabado para la próxima sesión**: dropear `tenants.afipsdk_token` y
+`recursos.ubicacion`, que se dejaron a propósito hasta que PROD corriera el código nuevo.
+
+---
+
 ## [2026-09-13] update | 🧪 El circuito de IVA crédito no se podía testear por UI — e2e 146 + tenant RI
 
 Lo de ayer (v1.218.0) se había validado con typecheck, 1782 unit y build, pero **nunca en un

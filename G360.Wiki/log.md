@@ -23,8 +23,8 @@ GO pidió construir los efectos de click y grabar el siguiente video con todas l
 ### 🛒 Video 4 — 83 s
 
 Abrir caja → 6 Gaseosas + 2 Yerbas → descuento 5 % → transferencia $10.000 + efectivo $11.000 → vuelto $290 →
-ticket → el stock bajó solo → la venta entró sola a la caja. 7 stickers (¡Clack! ¡Toc! ¡Al carrito! ¡Sumado!
-¡Vendido! ¡Zas! ¡Adentro!), 2 sacudidas. Dos versiones: **con y sin sonido de efectos**.
+ticket → el stock bajó solo → la venta entró sola a la caja. 7 stickers (¡Clack! ¡Toc! ¡Al carrito! ¡Uno más!
+¡Cha-chín! ¡Zas! ¡Adentro!), 2 sacudidas. Dos versiones: **con y sin sonido de efectos**.
 
 ✅ **REGLA #0 verificada en la DB**: venta #31 por $20.710 (precio por ítem 1.805 y 4.940), rebajes 48→42 y
 24→22 con "Venta #31", y en caja **$10.710 de efectivo neto del vuelto** + `ingreso_informativo` de $10.000 por

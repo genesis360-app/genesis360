@@ -268,7 +268,10 @@ type: project
 > GO quiere grabar una serie de videos: (1) desde `genesis360.pro` hasta tener el negocio creado y
 > entrar, (2) configuración inicial para modo básico, (3) y así por funcionalidad.
 >
-> ⚠️ **Claude NO puede grabar video ni capturar pantalla** — se le dijo y lo aceptó. Lo que SÍ
+> ⚠️ **CORREGIDO 2026-09-13: Claude SÍ puede grabar video y capturar pantalla** — de un navegador
+> que maneja él (Playwright → MP4 720p con ffmpeg), no del escritorio de quien opera. Sin narración
+> ni puntero, y no puede confirmar el mail del alta. Ver el detalle en `guion-videos-onboarding.md`.
+> Lo que SÍ
 > quedó acordado que aporte:
 > - **El guion de pasos obligatorios de cada video**, sacado del flujo REAL del código (GO dijo "ok
 >   con el flujo y guía de pasos obligatorios"). **Esto quedó pendiente, es el próximo entregable.**

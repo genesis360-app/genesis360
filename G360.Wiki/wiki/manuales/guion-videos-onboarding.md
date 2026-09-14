@@ -19,10 +19,31 @@ type: manual
 Pedido de GO (2026-09-12): una serie de videos que arranca en `genesis360.pro` y termina con el
 negocio funcionando, y después uno por funcionalidad.
 
-**Claude no puede grabar video ni capturar pantalla.** Lo que aporta es esto: los **pasos
-obligatorios** de cada video, verificados contra el código que realmente corre — qué pantalla,
-qué campo, qué pasa después de cada click y dónde el flujo se bifurca. Los textos hablados quedan
-a criterio de quien graba.
+Lo que aporta este documento son los **pasos obligatorios** de cada video, verificados contra el
+código que realmente corre — qué pantalla, qué campo, qué pasa después de cada click y dónde el
+flujo se bifurca. Los textos hablados quedan a criterio de quien graba.
+
+### ✋ Qué puede y qué no puede grabar Claude (corregido el 2026-09-13)
+
+Hasta acá este documento decía *"Claude no puede grabar video ni capturar pantalla"*. **Es falso** —
+se dio por bueno sin probarlo. Verificado con una grabación real de `app.genesis360.pro`:
+
+| | |
+|---|---|
+| ✅ **Grabar video de un navegador que maneja Claude** | Playwright graba WebM y `ffmpeg` (ya instalado) lo pasa a **MP4 h264 720p**. |
+| ✅ **Capturar pantalla** — y **verla** | `page.screenshot()`; Claude lee el PNG y puede revisar que la toma haya salido bien. |
+| ❌ **Grabar LA pantalla de quien opera** | No hay acceso al escritorio. Solo el navegador que Claude conduce. |
+| ❌ **Narración** | Sin audio. La voz la pone quien graba. |
+| ❌ **Puntero del mouse** | Playwright no dibuja cursor: se ve el efecto del click, no el movimiento. El tipeo sale parejo, sin ritmo humano. |
+| ❌ **Confirmar el mail del alta** | El link llega a una casilla a la que Claude no entra (el conector de Gmail no está autorizado). |
+
+**Lo que esto habilita en la práctica:** los videos **3 a 9** (productos, ventas, caja, gastos,
+clientes, stock, métricas) se pueden grabar contra **DEV** con datos sembrados y quedar como *B-roll*
+limpio y repetible, para narrar encima. **El video 1 no**: se corta justo en la confirmación del
+mail, que es el paso que en PROD no se puede saltear.
+
+⚠️ Grabar contra **PROD** crea cuentas reales y manda mails reales — no se hace sin decisión
+explícita de GO.
 
 ---
 

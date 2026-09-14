@@ -6,6 +6,16 @@ type: manual
 
 # Guion de los videos de onboarding
 
+> ✅ **LISTA PARA GRABAR desde el 2026-09-13.** Se escribió el 12/09, cuando el panel de soporte
+> todavía **no estaba en PROD** — y el paso de "liberar el mail entre tomas" dependía justamente de
+> eso. Con el deploy de `v1.218.0` quedó operativo: `admin.genesis360.pro` está en producción y la
+> EF `admin-api` en v11, así que **los dos caminos de baja funcionan en PROD** (soporte y cliente).
+> También entró la mig 412, así que el **Teléfono del alta ahora se guarda de verdad** (antes se
+> pedía y se descartaba).
+>
+> Verificado el 13/09 contra PROD: sigue pidiendo **confirmación de mail** (3 usuarios sin confirmar
+> y 7 que confirmaron después del alta), que es el paso que el video 1 no puede saltearse.
+
 Pedido de GO (2026-09-12): una serie de videos que arranca en `genesis360.pro` y termina con el
 negocio funcionando, y después uno por funcionalidad.
 

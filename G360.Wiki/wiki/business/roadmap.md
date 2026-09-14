@@ -8,7 +8,7 @@ updated: 2026-09-14
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.219.0`** (2026-09-14, PR #346, migs 001-416) — detalle en la sección "v1.219.0" de abajo.
+**Versión en PROD (actual): `v1.220.0`** (2026-09-14, migs 001-418) — detalle en las secciones de abajo.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -38,6 +38,17 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 `a37e6e6c`). Verificado además por `curl` contra `https://www.genesis360.pro/` (no solo el dashboard): el
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
+
+## 🚀 v1.220.0 — EN PROD (2026-09-14) — migs 001-**418**
+
+📍 **La ubicación de un recurso es el catálogo.** `RecursosPage` guardaba solo el texto y nunca
+`ubicacion_id`; ahora elige y crea por id. Crean ubicaciones el dueño, el admin o un rol custom que lo
+permita (decisión de GO, mig 417), y `recursos.ubicacion` se dropeó con sus 3 triggers (mig 418).
+e2e 147 mutante. Además se borraron 4 Edge Functions muertas que existían solo en PROD.
+
+## 🚀 v1.219.1 — EN PROD (2026-09-14, PR #347)
+
+Mig 416 y Edge Functions realineadas con el repo, llevadas a `main` (ver v1.219.0).
 
 ## 🚀 v1.219.0 — EN PROD (2026-09-14, PR #346) — migs 001-**416**
 
@@ -72,8 +83,7 @@ ubicación (mig 413), el empleado con sucursal (mig 409), y la tanda del panel d
 ⚠️ **El criterio contable del gasto en moneda extranjera sigue pendiente de un contador matriculado**
 — las 15 preguntas abiertas están en [[wiki/business/consultas-contador]].
 
-✅ `tenants.afipsdk_token` dropeada en `v1.219.0` (mig 416). 🟥 `recursos.ubicacion` sigue: el frontend nunca
-pasó a `ubicacion_id`, hay que migrarlo antes del DROP.
+✅ `tenants.afipsdk_token` dropeada en `v1.219.0` (mig 416) y `recursos.ubicacion` en `v1.220.0` (mig 418).
 
 **Versión anterior en DEV (ahora en PROD):** `v1.218.0` (sin migración nueva —usa la 414—) — 🧾 **El
 gasto en moneda extranjera entra al Libro IVA**, cerrando los dos pasos que faltaban: el campo

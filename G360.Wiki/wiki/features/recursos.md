@@ -229,15 +229,48 @@ recursos hay en cada ubicación, y deja crear, renombrar y borrar.
 cubicaje y zona, y la usan picking, stock y repositores. Un lugar donde está parada una impresora es
 otra cosa; mezclarlas contaminaría el árbol del depósito con lugares sin stock.
 
-**Transición**: `recursos.ubicacion` (texto) **no se dropeó** — mismo criterio que la mig 402 con
-`tenants.afipsdk_token`. Un trigger lo mantiene en sincronía con el catálogo, así que el frontend
-viejo y el nuevo ven lo mismo. Se dropea cuando PROD corra este código.
+**Transición**: `recursos.ubicacion` (texto) **no se dropeó** en ese momento. ⚠️ **Y la pantalla nunca
+pasó al catálogo**: siguió guardando el texto y jamás `ubicacion_id` — ver la sección siguiente, que
+lo cierra (v1.220.0).
 
 ⚠️ **La mig 408 salió de probar el ciclo completo contra datos reales**, no de leer el código: al
 borrar una ubicación el recurso perdía la FK (`ON DELETE SET NULL`) pero **conservaba el texto
 huérfano**, y como la pantalla suma los textos sueltos a la lista de disponibles, la ubicación
 **reaparecía agrupando recursos apenas borrada**. Además el diálogo promete "N recursos quedarán sin
 ubicación": la pantalla no puede prometer una cosa y la base hacer otra.
+
+## 📍 La ubicación de un recurso ES el catálogo (v1.220.0, migs 417-418) — 2026-09-14
+
+**Lo que estaba mal**: aunque la mig 407 creó el catálogo y `recursos.ubicacion_id`, `RecursosPage`
+**seguía escribiendo solo el texto** `recursos.ubicacion`. El catálogo no gobernaba nada, y había una
+inconsistencia latente: editar la ubicación de un recurso que ya tenía FK cambiaba el texto pero no el
+id, así que renombrar o borrar la ubicación vieja le pisaba el cambio. Se encontró al ir a dropear la
+columna "ahora que PROD corre el código nuevo": el código nuevo no la había dejado de usar.
+
+**Qué hace ahora**:
+- El selector de ubicación (ficha del recurso y lápiz de cada fila) elige del **catálogo por id**.
+  `+ Nueva ubicación...` crea la ubicación en el catálogo al guardar (o reusa la que ya exista con
+  ese nombre, sin distinguir mayúsculas).
+- La pestaña agrupa, cuenta y busca por el id; los nombres salen del catálogo.
+- `DashInventarioArea` dejó de pedir el texto.
+
+**🔐 Quién crea ubicaciones** — decisión de GO: *"solo dueño o admin o alguien que el dueño le asigne
+un custom rol que lo permita"*.
+- **Mig 417**: la policy de escritura del catálogo pasa a `auth_puede_editar_modulo('recursos')` —
+  rol custom con permiso explícito manda (`editar`/`supervisa` sí); si no, solo DUEÑO /
+  SUPER_USUARIO / ADMIN. Antes era un allowlist fijo que no contemplaba el rol custom.
+- En la UI, `puedeGestionarUbicacionesRecursos` (`src/lib/permisosModulo.ts`) es el espejo exacto:
+  sin permiso no aparece `+ Nueva ubicación...` ni los botones de crear/renombrar/borrar — se elige de
+  la lista. El servidor lo exige igual.
+
+**Mig 418**: backfill de textos sueltos al catálogo (con guard), DROP de los 3 triggers que
+escribían el texto (`fn_recursos_sync_ubicacion_texto`, `fn_recurso_ubicacion_propagar_nombre`,
+`fn_recurso_ubicacion_borrar_limpia_texto`) y de la columna. Va **después** del frontend en PROD.
+
+**Tests**: unit de `puedeGestionarUbicacionesRecursos` (roles fijos, custom con cada nivel, prioridad
+del permiso explícito) y **e2e 147** (mutante, verificado contra la pantalla vieja): crear un recurso
+con ubicación nueva deja `ubicacion_id` apuntando al catálogo; el SUPERVISOR no puede crear ubicaciones
+por API (403) y el DUEÑO sí (control positivo).
 
 ## 🛑 Se sacó "Marcar como adquirido" (v1.210.0) — 2026-09-11
 

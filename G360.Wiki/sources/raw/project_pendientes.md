@@ -97,7 +97,14 @@ type: project
 > 2. `OnboardingPage` — `ob_terminos_version` en el metadata del alta, para que el trigger grabe la
 >    versión de T&C aceptada en vez de dejarla en `NULL`.
 >
-> ✅ `APP_VERSION` ya bumpeado a `v1.219.0` (tag + release sobre `dev`). **Falta**: PR `dev→main`, merge, release sobre `main`, verificar Vercel.
+> ✅ `APP_VERSION` ya bumpeado a `v1.219.0`, con tag y release creados (el release NO está marcado Latest:
+> v1.218.0 sigue siéndolo porque es lo que está en PROD). **Falta**: PR `dev→main`, merge, marcar
+> v1.219.0 como Latest, verificar Vercel.
+>
+> 📦 **2 alertas HIGH de Dependabot abiertas en `main`** (del 11/09, sin PR), las dos en devDependencies
+> (no viajan en el bundle): **sharp** 0.35.1 → ya está en 0.35.4 en `dev`, se cierra sola con este deploy;
+> **js-yaml** 4.3.1 (vía eslint) → pide 4.3.2 y **no** está arreglada en `dev`: `npm update js-yaml` +
+> lint/tests. Ojo con el bug `edgesOut` de npm local (ver memoria de Dependabot).
 >
 > ##### El bug que esto arregla (por si hace falta el contexto)
 >

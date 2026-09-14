@@ -25,6 +25,29 @@ type: project
 > 3. **Mig 416**: `tenants.afipsdk_token` dropeada en DEV y PROD (la EF y un trigger todavía la usaban:
 >    se sacaron primero).
 >
+> 🛑 **Hallazgo nuevo (2026-09-14, paridad DEV↔PROD) — archivos de 3 buckets sin políticas en PROD. Esperando 2 decisiones de GO.**
+>
+> `public` y `cron` están idénticos (230 policies, mismo hash). `storage` no: **PROD no tiene las políticas de
+> `empleados`, `etiquetas-envios` ni `presupuestos-servicios`** (las crearon las migs 022/073/075, que en PROD no
+> las dejaron). En PROD fallan: documentos, préstamos y recibos de RRHH; firma, fotos de entrega y facturas de
+> courier en Envíos; archivo de presupuestos de servicios. **Sin datos perdidos**: PROD tiene 0 envíos, 0
+> documentos y 0 presupuestos.
+>
+> Y lo que hay en DEV no se puede copiar tal cual:
+> - `etiquetas-envios` y `presupuestos-servicios` usan `auth.uid() IS NOT NULL`: **cualquier usuario de otro
+>   negocio lee (y en presupuestos borra) archivos ajenos** si conoce la ruta.
+> - `empleados` solo acepta rutas `<empleado_id>/…`: las de `prestamos/<empleado_id>/…` y `recibos/<empleado_id>/…`
+>   **fallan también en DEV**.
+> - `EnviosPage` ignora en silencio si la firma no se sube; `TransportistePage` (pública, sin login) no puede subir
+>   nada con ninguna política de usuario autenticado.
+>
+> **Decisiones para GO**: (1) quién puede ver los archivos de RRHH (préstamos, recibos de sueldo) — ¿todo el
+> negocio, o solo quien gestiona RRHH más el propio empleado desde Mi Portal?; (2) ¿se habilita que el
+> transportista suba la foto y la firma de entrega desde su link (necesita un camino server-side validado por el token)?
+>
+> Plan una vez decidido: migración con políticas por negocio según la ruta de cada bucket (DEV y PROD), aviso en
+> la UI cuando una subida falla, e2e de subida por bucket.
+>
 > ✅ **Las dos decisiones de GO, resueltas el mismo día (v1.220.0)**:
 > - **Ubicaciones de Recursos**: crean el dueño, el admin o un rol custom que lo permita. `RecursosPage`
 >   pasó a `ubicacion_id` (nunca lo había escrito), mig 417 (policy con `auth_puede_editar_modulo`) y

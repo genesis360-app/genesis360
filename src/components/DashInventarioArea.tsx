@@ -188,7 +188,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
 
       // 3. Recursos
       let qRecursos = supabase.from('recursos')
-        .select('id, nombre, categoria, estado, valor, ubicacion')
+        .select('id, nombre, categoria, estado, valor')
         .eq('tenant_id', tenant!.id)
         .neq('estado', 'pendiente_adquisicion')
       qRecursos = dashFilter(qRecursos)

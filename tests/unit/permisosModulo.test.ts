@@ -1,5 +1,33 @@
 import { describe, it, expect } from 'vitest'
-import { moduloSoloLectura, moduloOculto, puedeEditarModulo, puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { moduloSoloLectura, moduloOculto, puedeEditarModulo, puedeSupervisarModulo, puedeGestionarUbicacionesRecursos } from '@/lib/permisosModulo'
+
+// Decisión de GO (2026-09-14): crear ubicaciones de Recursos = dueño, admin o rol custom que lo permita.
+// Espejo de la policy de la mig 417 (`auth_puede_editar_modulo('recursos')`).
+describe('puedeGestionarUbicacionesRecursos', () => {
+  it('DUEÑO, SUPER_USUARIO y ADMIN pueden', () => {
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'DUEÑO' })).toBe(true)
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'SUPER_USUARIO' })).toBe(true)
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'ADMIN' })).toBe(true)
+  })
+  it('los roles fijos operativos y el LECTOR no pueden', () => {
+    for (const rol of ['SUPERVISOR', 'CAJERO', 'DEPOSITO', 'RRHH', 'CONTADOR', 'VIEWER']) {
+      expect(puedeGestionarUbicacionesRecursos({ rol }), rol).toBe(false)
+    }
+  })
+  it("un rol custom puede solo con 'editar' o 'supervisa' en recursos", () => {
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'CAJERO', permisos_custom: { recursos: 'editar' } })).toBe(true)
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'CAJERO', permisos_custom: { recursos: 'supervisa' } })).toBe(true)
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'CAJERO', permisos_custom: { recursos: 'ver' } })).toBe(false)
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'CAJERO', permisos_custom: { recursos: 'no_ver' } })).toBe(false)
+  })
+  it('el permiso explícito del rol custom manda aunque el rol base sea DUEÑO (igual que la función SQL)', () => {
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'DUEÑO', permisos_custom: { recursos: 'ver' } })).toBe(false)
+  })
+  it('un rol custom sin permiso para recursos cae al rol base', () => {
+    expect(puedeGestionarUbicacionesRecursos({ rol: 'CAJERO', permisos_custom: { ventas: 'editar' } })).toBe(false)
+    expect(puedeGestionarUbicacionesRecursos(null)).toBe(false)
+  })
+})
 
 // Enforcement de rol custom en mutaciones (gap cerrado v1.57.0): 'ver' = solo lectura.
 

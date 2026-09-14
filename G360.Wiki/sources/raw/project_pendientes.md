@@ -128,14 +128,24 @@ type: project
 > |---|---|---|---|
 > | 1 | Onboarding | 70 s | landing → alta → "Revisá tu email" → negocio creado → dashboard → tour |
 > | 2 | Configuración inicial | 59 s | datos y modo Básico · lo que YA viene sembrado (métodos de pago, 16 categorías de gasto) · **las categorías de producto, lo único que hay que crear** · el equipo |
+> | 3 | Cargar productos | 50 s | catálogo vacío → 2 productos a mano (SKU autogenerado, categoría, stock mínimo) → **la alerta de stock crítico aparece sola** → Acciones → Importar |
 >
-> **El siguiente por orden es el 3 — Cargar productos** (`/productos/nuevo`): alta manual, alta
-> **desde una foto** e importación por Excel.
+> ✅ **GO decidió seguir grabando contra PROD** (2026-09-14) para no perder la continuidad del mismo
+> negocio. Los videos 3+ **escriben datos reales** en el tenant de prueba "Genesis360 Onboarding",
+> que se purga al terminar la serie.
 >
-> ⚠️ **Decisión pendiente para los videos 3-9**: hoy se graban contra **PROD** por la continuidad
-> visual, pero del 3 en adelante **escriben datos de verdad** (productos, ventas, movimientos de
-> caja, gastos). Es un tenant de prueba y se purga después, pero conviene decidirlo a conciencia —
-> la alternativa es mudarse a DEV y perder el hilo del mismo negocio.
+> **El siguiente por orden es el 4 — Vender** (`/ventas`): buscar, agregar al carrito, descuento,
+> **varios medios de pago en una venta**, y que el stock baja solo.
+>
+> ⚠️ **Ojo con el 4**: para vender hace falta **stock**, y los 2 productos están en 0. Hay que
+> ingresarlo antes (o grabar el ingreso como parte del video 8, y adelantar acá solo lo mínimo). Y
+> para cobrar en efectivo hace falta **caja abierta** — hoy el negocio no tiene ninguna (el punto
+> rojo del menú Caja).
+>
+> 📷 **"Completar desde foto" no se puede clickear en la grabación**: es un `<label>` que envuelve un
+> `input[type=file]`, así que abre el diálogo nativo del sistema, que no entra en el video. En el 3
+> se resolvió dejándolo visible en pantalla con un rótulo que lo señala. Para demostrarlo de verdad
+> hace falta una foto real de un producto — lo puede hacer GO.
 >
 > ⚠️ **La música es sintetizada y NADIE la escuchó** — Claude no puede. Si no sirve, se reemplaza
 > pasando un `.wav`/`.mp3` propio en el guion.

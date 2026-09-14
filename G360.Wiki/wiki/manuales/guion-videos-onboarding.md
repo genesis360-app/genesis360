@@ -236,6 +236,12 @@ certificado.**
 
 ---
 
+## Audio
+
+El plan de música y diseño sonoro vive aparte: [Plan de audio de los videos](plan-audio-videos.md).
+⚠️ La música de los videos ya producidos es **sintetizada y nadie la escuchó todavía** — verificar
+antes de publicar.
+
 ## Relacionado
 
 - [Autenticación y onboarding](../features/autenticacion-onboarding.md) — el flujo técnico completo.

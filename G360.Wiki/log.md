@@ -6,6 +6,42 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | 🎧 Plan de audio de los videos — el brief, medido
+
+GO trajo un brief de un productor de sonido y pidió **desafiarlo** para que el video refuerce la
+venta. Quedó en `wiki/manuales/plan-audio-videos.md`, con muestras para que elija de oído.
+
+**Lo que se acepta**: tempo 98-105, Re Mayor, la estructura I-IV → I-V-vi-IV → **Dsus4→D resolviendo
+en el logo**, y el rechazo a la hipercompresión.
+
+**Lo que se desafió, con números:**
+
+| Punto del brief | Qué se midió |
+|---|---|
+| **A = 432 Hz** "más orgánico" | Sin respaldo — es un mito de audio. Pero acá se sintetiza todo, así que **no hay nada con qué desafinar** y el costo es cero: queda como parámetro y se entregaron dos muestras idénticas para decidir de oído. |
+| **−18 LUFS "debajo de la voz"** | Mal planteado: LUFS mide el programa, y **nuestros videos no tienen voz**. Sin voz la música ES el programa → **−14 LUFS** (lo que normaliza YouTube; más bajo, YouTube no lo sube). Con voz → −26. Dos masters, no uno. |
+| **Hueco en 2.5-4 kHz** | Técnica correcta, pero **casi cosmética acá**: esa banda está **36 dB por debajo** del total de esta cama. El consejo apunta a una mezcla densa (cuerdas, piano, batería); nuestros pads no tienen energía ahí. |
+
+**Dos errores propios, corregidos y documentados:**
+1. El pocket se intentó cavar **dentro del sintetizador** con filtros de un polo: **0,4 dB reales**
+   contra los ~8 dB que el comentario afirmaba. Va en el master, con un biquad → **4,3 dB**.
+2. Se midió con `bandpass` de ffmpeg, que es de **2 polos**: los graves (25 dB más arriba) se
+   filtran igual y **tapan la lectura**. Para medir una banda hay que aislarla con 4 polos por falda.
+
+**Lo que el brief no ve** (y es donde más se gana): **diseño de sonido** — que se escuche que el
+producto responde, no solo música — y sobre todo la **sincronía con `guion.json`**: como los videos
+se generan con los timestamps exactos, la música puede **resolver justo** en "negocio creado" o en
+"Sin diferencia". Con una pista comprada eso es imposible.
+
+**Herramienta nueva**: `scripts/video/musica.mjs` — sintetizador propio con ADSR, armónicos, detune
+y reverb Schroeder, duración adaptativa y acentos sincronizados. Sin problemas de licencia.
+
+⚠️ **Dicho de frente**: la síntesis propia llega a "corporativo correcto", no a "premium con
+instrumentos reales". Si el objetivo es que el video venda, puede convenir licenciar una pista y que
+el pipeline haga lo que sí hace bien: sincronizar, cavar, masterizar y sumar diseño de sonido.
+
+---
+
 ## [2026-09-14] update | ✅ Arreglado el alta: el negocio se crea server-side · mig 415
 
 GO autorizó el fix. Las dos mitades, con la migración **ya aplicada en DEV y PROD**.

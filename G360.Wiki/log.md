@@ -6,6 +6,47 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] deploy | 🚀 v1.221.0 — archivos por negocio (mig 419) + el transportista sube por token · DEV = PROD en los 3 schemas
+
+### El hallazgo
+Cerrando v1.220.0 se comparó la paridad de políticas DEV↔PROD por schema: `public` y `cron`
+idénticos, **`storage` no** (DEV 34, PROD 26).
+- **PROD no tenía políticas para `empleados`, `etiquetas-envios` ni `presupuestos-servicios`** → fallaban
+  documentos/préstamos/recibos de RRHH, firma, fotos de entrega y facturas de courier, y archivos de
+  presupuestos de servicios. Sin datos perdidos: PROD tenía 0 de cada cosa.
+- **Las de DEV no se podían copiar**: `etiquetas-envios` y `presupuestos-servicios` con
+  `auth.uid() IS NOT NULL` dejaban a un usuario de **otro negocio** leer (y en presupuestos borrar)
+  archivos ajenos; `empleados` no cubría `prestamos/` ni `recibos/` (fallaban hasta en DEV).
+- `EnviosPage` ignoraba si la firma no se subía; `TransportistePage` (pública) no podía subir nada.
+
+### Decisiones de GO
+1. Archivos de RRHH: *"solo quien maneja RRHH y el propio empleado desde Mi Portal. Y obviamente el
+   dueño y algún custom role si es que se lo permiten en el rol"*.
+2. El transportista sube foto y firma desde su link: *"si"*.
+
+### Qué se hizo
+- **Mig 419** (DEV y PROD): políticas por negocio según la ruta real de cada bucket. RRHH:
+  `auth_puede_acceder_rrhh` (permiso explícito del rol custom — `ver` para leer, `editar`/`supervisa`
+  para escribir — o DUEÑO/SUPER_USUARIO/ADMIN/RRHH) + el empleado vinculado ve lo suyo. 🛑 Las
+  funciones auxiliares devuelven **solo booleanos**: un primer borrador devolvía la fila del empleado
+  y, por ser SECURITY DEFINER, habría expuesto sueldos y CBU por RPC. `anon` no las ejecuta.
+- **EF `transportista-subir-archivo`** (`verify_jwt: false`): valida el token como `get_envio_by_token`,
+  rechaza envíos cerrados, solo PNG/JPEG ≤ 5 MB, ruta armada por el servidor.
+- Envíos, Transportista y Proveedores **avisan** si una subida falla.
+- `playwright.config.ts`: el `testIgnore` de `chromium` no estaba anclado y `4[89]_.*_mutante` ignoraba
+  en silencio al spec 148. Anclado (no cambia ningún otro spec).
+
+### Verificación
+- **e2e 148 mutante**: con las políticas viejas de DEV falla (sube a la carpeta de otro negocio; RRHH
+  no sube recibos); con la 419 pasa. Con la pantalla vieja del transportista **sin sesión** falla.
+  ⚠️ Un primer intento del caso de UI dio **falso verde**: corría con la sesión guardada del DUEÑO, que
+  sí puede subir. Se detectó corriendo la mutación; ahora usa un contexto sin sesión.
+- PROD con la cuenta de prueba: rutas propias 200, ajenas 400, lectura propia 200, limpieza OK. EF:
+  OPTIONS 200, token inválido 404.
+- **Paridad final: DEV y PROD idénticos en `cron`, `public` y `storage`** (2/230/38 policies, mismos hashes).
+
+---
+
 ## [2026-09-14] deploy | 🚀 v1.220.0 — la ubicación de un recurso es el catálogo (migs 417-418) + 4 Edge Functions muertas borradas
 
 GO respondió las dos decisiones que habían quedado abiertas.

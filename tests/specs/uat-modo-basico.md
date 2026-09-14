@@ -2078,3 +2078,16 @@ que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edg
 | 55.6 | Sin permiso, la UI no ofrece "+ Nueva ubicación" ni crear/renombrar/borrar | revisión de `RecursosPage` | ✅ código |
 | 55.7 | Después del DROP la app no pide `recursos.ubicacion` | API `select=ubicacion` → 400 y `select=*` → 200; e2e dashboard | ✅ DEV |
 
+## 🛑 §56 — Archivos por negocio: RRHH, Envíos, presupuestos y el transportista (v1.221.0, mig 419) — 2026-09-14
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 56.1 | No se sube a la carpeta de otro negocio (presupuestos, POD, facturas de courier) | e2e 148 (mutante: con las políticas viejas de DEV pasaba) | ✅ |
+| 56.2 | RRHH sube préstamos y recibos (`prestamos/`, `recibos/`) | e2e 148 (antes fallaba hasta en DEV) | ✅ |
+| 56.3 | SUPERVISOR y rol custom sin RRHH no leen ni suben archivos de RRHH | e2e 148 | ✅ |
+| 56.4 | El empleado vinculado ve SU recibo y no el de otro, y no sube | e2e 148 (Mi Portal) | ✅ |
+| 56.5 | El transportista sube la foto desde `/transporte/:token` sin sesión | e2e 148 por UI, contexto sin sesión (mutante: con la pantalla vieja falla) | ✅ |
+| 56.6 | Token inválido o envío cerrado → la EF rechaza | e2e 148 (404) + smoke PROD | ✅ |
+| 56.7 | Si la firma no se guarda, la pantalla avisa | revisión de `EnviosPage`/`TransportistePage` | ✅ código |
+| 56.8 | En PROD, un usuario real: propio 200, ajeno rechazado | smoke con la cuenta de prueba | ✅ |
+

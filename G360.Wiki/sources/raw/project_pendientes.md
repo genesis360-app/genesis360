@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 67) — PROD = DEV = `v1.220.0` · migs 001-**418** · Edge Functions realineadas
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 67) — PROD = DEV = `v1.221.0` · migs 001-**419** · DEV = PROD en policies y Edge Functions
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.220.0` | 001-**418** | PRs #346/#347 y v1.220.0 el 14/09; Edge Functions = repo |
-> | **DEV** | `v1.220.0` | 001-**418** | igual que PROD |
+> | **PROD** | `v1.221.0` | 001-**419** | PRs #346-#349 el 14/09; Edge Functions = repo; policies = DEV |
+> | **DEV** | `v1.221.0` | 001-**419** | igual que PROD |
 >
 > #### 🛑 Lo que apareció en esta sesión (cont. 67) — detalle en `log.md` (2026-09-14, deploy)
 >
@@ -25,28 +25,11 @@ type: project
 > 3. **Mig 416**: `tenants.afipsdk_token` dropeada en DEV y PROD (la EF y un trigger todavía la usaban:
 >    se sacaron primero).
 >
-> 🛑 **Hallazgo nuevo (2026-09-14, paridad DEV↔PROD) — archivos de 3 buckets sin políticas en PROD. Esperando 2 decisiones de GO.**
->
-> `public` y `cron` están idénticos (230 policies, mismo hash). `storage` no: **PROD no tiene las políticas de
-> `empleados`, `etiquetas-envios` ni `presupuestos-servicios`** (las crearon las migs 022/073/075, que en PROD no
-> las dejaron). En PROD fallan: documentos, préstamos y recibos de RRHH; firma, fotos de entrega y facturas de
-> courier en Envíos; archivo de presupuestos de servicios. **Sin datos perdidos**: PROD tiene 0 envíos, 0
-> documentos y 0 presupuestos.
->
-> Y lo que hay en DEV no se puede copiar tal cual:
-> - `etiquetas-envios` y `presupuestos-servicios` usan `auth.uid() IS NOT NULL`: **cualquier usuario de otro
->   negocio lee (y en presupuestos borra) archivos ajenos** si conoce la ruta.
-> - `empleados` solo acepta rutas `<empleado_id>/…`: las de `prestamos/<empleado_id>/…` y `recibos/<empleado_id>/…`
->   **fallan también en DEV**.
-> - `EnviosPage` ignora en silencio si la firma no se sube; `TransportistePage` (pública, sin login) no puede subir
->   nada con ninguna política de usuario autenticado.
->
-> **Decisiones para GO**: (1) quién puede ver los archivos de RRHH (préstamos, recibos de sueldo) — ¿todo el
-> negocio, o solo quien gestiona RRHH más el propio empleado desde Mi Portal?; (2) ¿se habilita que el
-> transportista suba la foto y la firma de entrega desde su link (necesita un camino server-side validado por el token)?
->
-> Plan una vez decidido: migración con políticas por negocio según la ruta de cada bucket (DEV y PROD), aviso en
-> la UI cuando una subida falla, e2e de subida por bucket.
+> ✅ **Archivos de 3 buckets — RESUELTO en v1.221.0 (mig 419)**: PROD no tenía políticas para `empleados`,
+> `etiquetas-envios` y `presupuestos-servicios`, y las de DEV eran cross-tenant o no cubrían `prestamos/`/`recibos/`.
+> Ahora: políticas por negocio según la ruta; RRHH lo ven quien lo maneja (dueño, super usuario, admin, rol RRHH o
+> rol custom con permiso) y el propio empleado desde Mi Portal; el transportista sube foto y firma por la EF
+> `transportista-subir-archivo` (token). e2e 148 mutante. **DEV = PROD en `cron`, `public` y `storage`.**
 >
 > ✅ **Las dos decisiones de GO, resueltas el mismo día (v1.220.0)**:
 > - **Ubicaciones de Recursos**: crean el dueño, el admin o un rol custom que lo permita. `RecursosPage`

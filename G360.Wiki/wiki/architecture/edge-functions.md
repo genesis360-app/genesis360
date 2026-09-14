@@ -67,6 +67,7 @@ Antes de borrar se bajó el código de cada una a `D:/Dev/genesis360-backups/edg
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
 | `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts |
+| `transportista-subir-archivo` | 🆕 2026-09-14 (v1.221.0, DEV y PROD) · `verify_jwt: false` — el transportista sube foto o firma de entrega desde `/transporte/:token` (página pública, sin sesión). Valida el token como `get_envio_by_token`, rechaza envíos entregados/cancelados, acepta PNG/JPEG ≤ 5 MB, arma la ruta `pod/<envio_id>/…` y sube con service_role; devuelve URL firmada. e2e 148 |
 | `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }`. **Desplegada en PROD recién el 2026-09-14** — antes no existía ahí y esas dos pantallas fallaban |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
 | `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock) |

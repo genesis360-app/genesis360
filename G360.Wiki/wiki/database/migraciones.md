@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-12
 ---
 
-# Historial de Migraciones (001-418, + correctivos 387b/387c)
+# Historial de Migraciones (001-419, + correctivos 387b/387c)
+
+**🗂️ Migración 419 — ✅ EN DEV Y EN PROD** (2026-09-14, antes del merge de `v1.221.0`). Paridad después: `cron` 2, `public` 230 y `storage` 38 policies, mismos hashes en los dos ambientes.
 
 **🗂️ Migraciones 417-418 — ✅ EN DEV Y EN PROD** (2026-09-14, con `v1.220.0`: la 417 antes del merge, la 418 después del frontend en PROD).
 
@@ -29,6 +31,7 @@ truncado quedó (`CASE WHEN v_seq < 100`) **y** que `SET search_path` sobrevivi�
 
 | # | Archivo | Qué hace |
 |---|---|---|
+| 419 | `419_storage_politicas_por_negocio.sql` | 🛑 **Archivos por negocio** en `empleados`, `etiquetas-envios` y `presupuestos-servicios`. PROD no tenía políticas para esos buckets (todo fallaba) y las de DEV eran cross-tenant (`auth.uid() IS NOT NULL`) o no cubrían `prestamos/`/`recibos/`. Políticas según la ruta real; RRHH con `auth_puede_acceder_rrhh` (decisión de GO: quien maneja RRHH + el propio empleado); helpers que devuelven solo booleanos (una fila de empleado expuesta por RPC habría filtrado sueldos). El transportista sube por la EF `transportista-subir-archivo`, no por políticas. e2e 148 mutante. Tras aplicarla, DEV = PROD en `storage`. |
 | 418 | `418_drop_recursos_ubicacion_texto.sql` | 🗑️ **Dropea `recursos.ubicacion` (texto libre)**: la ubicación de un recurso es `ubicacion_id` (catálogo de la mig 407). Backfill de textos sueltos al catálogo con guard, DROP de los 3 triggers/funciones que escribían el texto (migs 407-408) y de la columna. 🛑 **Después del frontend `v1.220.0`**: con el frontend viejo `DashInventarioArea` pedía la columna. Ver [[wiki/features/recursos]]. |
 | 417 | `417_recurso_ubicaciones_permiso_modulo.sql` | 🔐 **Quién crea ubicaciones de Recursos** — decisión de GO: dueño, admin o rol custom que lo permita. La policy de escritura de `recurso_ubicaciones` pasa de un allowlist fijo (DUEÑO/ADMIN/SUPER_USUARIO) a `auth_puede_editar_modulo('recursos')`, que suma el rol custom con permiso explícito. Compatible con el frontend anterior. e2e 147: SUPERVISOR 403, DUEÑO 201. |
 | 416 | `416_drop_tenants_afipsdk_token.sql` | 🗑️ **Dropea `tenants.afipsdk_token`**, la copia legacy del token de AfipSDK (secreto) que la mig 402 había vaciado y forzado a NULL con un trigger. ✅ **DEV y PROD 2026-09-14.** No era un DROP directo: `emitir-factura` todavía la pedía en el `select` y el trigger `trg_tenants_afipsdk_token_deprecado` escribía `NEW.afipsdk_token` en cada insert/update de `tenants` — se sacó la columna de la EF (DEV → e2e → PROD) **antes** de la migración, y la migración dropea trigger, función y columna, con guard si hubiera datos (0 filas en ambos). Smoke de PostgREST post-DROP con control negativo: `select=*` 200, la columna 400. `emisores_fiscales.afipsdk_token` y `platform_billers.afipsdk_token` intactas. e2e 141 verifica que ya no existe. |

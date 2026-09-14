@@ -466,6 +466,17 @@ Relevado con GO (HTML `relevamiento-envios-reglas-negocio.html`, secciones A-I).
 
 ---
 
+
+## 🛑 Archivos de envíos por negocio + el transportista sube por token (v1.221.0, mig 419) — 2026-09-14
+
+- En PROD el bucket `etiquetas-envios` **no tenía políticas**: la firma, las fotos de entrega y las facturas
+  de courier no se podían subir. En DEV la política dejaba leer archivos de **otros negocios**.
+- Ahora: `pod/<envio_id>/…` solo si el envío es del negocio; `facturas-courier/<tenant_id>/…` solo la propia.
+- **Transportista** (`/transporte/:token`, sin sesión): sube por la EF `transportista-subir-archivo`, que valida el
+  token y arma la ruta. Decisión de GO.
+- `EnviosPage` y `TransportistePage` **avisan** si la firma no se guardó (antes se ignoraba).
+- e2e 148 (mutante, incluye la pantalla del transportista sin sesión).
+
 ## Links relacionados
 
 - [[wiki/features/clientes-proveedores]]

@@ -8,7 +8,7 @@ updated: 2026-09-14
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.220.0`** (2026-09-14, migs 001-418) — detalle en las secciones de abajo.
+**Versión en PROD (actual): `v1.221.0`** (2026-09-14, migs 001-419) — detalle en las secciones de abajo.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -38,6 +38,14 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 `a37e6e6c`). Verificado además por `curl` contra `https://www.genesis360.pro/` (no solo el dashboard): el
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
+
+## 🚀 v1.221.0 — EN PROD (2026-09-14) — migs 001-**419**
+
+🛑 **Archivos por negocio.** PROD no tenía políticas para `empleados`, `etiquetas-envios` y
+`presupuestos-servicios` (fallaban RRHH, entregas y presupuestos de servicios) y las de DEV eran cross-tenant.
+Mig 419: políticas según la ruta; RRHH lo ven quien lo maneja y el propio empleado (decisión de GO). El
+transportista sube foto y firma por token (EF `transportista-subir-archivo`). e2e 148 mutante. DEV = PROD en
+`cron`, `public` y `storage`.
 
 ## 🚀 v1.220.0 — EN PROD (2026-09-14) — migs 001-**418**
 

@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-12
 ---
 
-# Historial de Migraciones (001-414, + correctivos 387b/387c)
+# Historial de Migraciones (001-416, + correctivos 387b/387c)
+
+**🗂️ Migraciones 415-416 — ✅ EN DEV Y EN PROD** (415 el 2026-09-14 con su frontend en `v1.219.0`; 416 el mismo día, después de sacar la columna de `emitir-factura`).
 
 **🗂️ Migraciones 407-414 — ✅ EN DEV Y EN PROD** (aplicadas el **2026-09-13** con el deploy de
 `v1.218.0`, **antes** del merge `dev→main`, como manda el "DDL aditivo primero"). Verificado
@@ -25,6 +27,7 @@ truncado quedó (`CASE WHEN v_seq < 100`) **y** que `SET search_path` sobrevivi�
 
 | # | Archivo | Qué hace |
 |---|---|---|
+| 416 | `416_drop_tenants_afipsdk_token.sql` | 🗑️ **Dropea `tenants.afipsdk_token`**, la copia legacy del token de AfipSDK (secreto) que la mig 402 había vaciado y forzado a NULL con un trigger. ✅ **DEV y PROD 2026-09-14.** No era un DROP directo: `emitir-factura` todavía la pedía en el `select` y el trigger `trg_tenants_afipsdk_token_deprecado` escribía `NEW.afipsdk_token` en cada insert/update de `tenants` — se sacó la columna de la EF (DEV → e2e → PROD) **antes** de la migración, y la migración dropea trigger, función y columna, con guard si hubiera datos (0 filas en ambos). Smoke de PostgREST post-DROP con control negativo: `select=*` 200, la columna 400. `emisores_fiscales.afipsdk_token` y `platform_billers.afipsdk_token` intactas. e2e 141 verifica que ya no existe. |
 | 415 | `415_crear_negocio_al_confirmar_mail.sql` | 🛑 **El negocio se crea al CONFIRMAR el mail, no cuando el navegador aterriza.** Trigger sobre `auth.users` (dos: `AFTER UPDATE OF email_confirmed_at` para PROD y `AFTER INSERT` para DEV, que autoconfirma). Lo motivó el **escáner de links de Gmail**: pre-carga la URL de confirmación (94 s después del envío, medido), Supabase confirma y **quema el token de un solo uso**, pero ningún navegador ejecuta la app → `provisionNegocio()` nunca corre y queda una cuenta confirmada **sin `users` y sin `tenants`**, imposible de recuperar. Mismo criterio que la REGLA #0 exige en lo fiscal: **guard server-side además de la UI**. Solo actúa sobre altas self-service (las únicas con `ob_nombre`+`ob_pais`): invitados, agentes del panel y cuentas del Portal de Proveedores quedan afuera. 🛑 **Nunca hace fallar la confirmación** — atrapa cualquier error y avisa; si propagara, la persona no podría ni confirmar. Probado en DEV con los 4 escenarios, incluidos los 3 que NO deben crear negocio. **DEV ✅ · PROD ✅ (2026-09-14)**; el frontend que lo acompaña viaja en el próximo deploy. |
 | 414 | `414_gasto_cotizacion_fiscal.sql` | `gastos.cotizacion_fiscal` + `_fecha` + `_fuente`: la tasa con la que un gasto en moneda extranjera entra al Libro IVA. ⚠️ **Criterio contable pendiente de validar con un contador matriculado.** 🛑 **No es la cotización operativa del tenant** (que va al dólar COMPRA): lo fiscal pide **BNA VENDEDOR del día hábil anterior** al comprobante. Se congela por gasto porque `tenants.cotizacion_usd*` es el valor de HOY. Sin backfill. ✅ **En uso desde `v1.218.0`**: el campo "Cotización para IVA" de `GastosPage` las escribe y el Libro IVA Compras las lee para incluir los gastos convertidos. Cubierto por el **e2e 146** (mutante). Ver [[wiki/features/gastos]]. |
 | 413 | `413_fix_loop_infinito_codigo_ubicacion.sql` | 🛑 **Bug real de inventario.** `trg_ubic_autogenerar_codigo` probaba `U01`, `U02`… con `lpad(v_seq::text, 2, '0')`, y **`lpad` TRUNCA** cuando el texto ya mide más que el ancho: en `v_seq=100` devolvía `U10` (que ya existe) y el **loop no salía nunca**. Un negocio con 99 ubicaciones raíz no podía crear la 100 — el INSERT giraba hasta el `statement_timeout`, sin error visible. Latente en PROD (máximo 4 raíces hoy), pero 100 racks es normal en un depósito real. Fix: ancho 2 hasta `U99` y después el número completo, + tope de 10.000 vueltas en los dos loops. Lo destapó la suite e2e: 4 specs con `57014` en la misma tabla, archivados como "lentitud de DEV". ⚠️ `CREATE OR REPLACE FUNCTION` **no conserva** `SET search_path` — hay que repetirlo. |
@@ -1018,6 +1021,8 @@ segunda clampeó a 4 — total 14, nunca 20 (hubiera violado `chk_cantidad_mayor
 solo mejoras sugeridas. **Estado real (al 2026-08-20): COMMITEADA (commit `310d9b3b`, tag `v1.171.0`) y EN
 PROD (PR #331, merge commit `4dbe7fdb`).** Ver
 [[wiki/features/inventario-stock]] → "Reservas de stock — race condition atómica".
+
+> 🛑 **Corrección 2026-09-14**: la MIGRACIÓN está en PROD desde el 20/08, pero la **EF `emitir-factura` de PROD no se redesplegó ese día** — siguió siendo la del 15/07, sin el lock, hasta el **2026-09-14**, cuando una auditoría de código desplegado vs repo lo encontró. Lo mismo con `tn-webhook`/`meli-webhook` y las RPCs atómicas de la 362 (en DEV y PROD). Ver `log.md` (2026-09-14, deploy v1.219.0).
 
 **361 (`361_emision_factura_lock.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
 (`jjffnbrdjchquexdfgwq`), código y migración COMMITEADOS (commit `310d9b3b`, tag `v1.171.0`), **EN PROD

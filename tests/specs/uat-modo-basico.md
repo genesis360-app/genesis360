@@ -2053,3 +2053,16 @@ extrae el IVA *contenido* (`monto − monto/1,21`), no le suma 21% encima. Sobre
 
 **Estado de los datos al momento del cambio:** DEV 210 gastos, **todos ARS**; PROD 1 gasto, ARS, sin
 IVA crédito. El bug del KPI (#138) estaba **latente**: no llegó a ensuciar ningún número real.
+
+## §1 — El código desplegado de las Edge Functions fiscales (2026-09-14)
+
+**Hallazgo**: la EF `emitir-factura` de PROD era la del 15/07 — sin el lock anti doble emisión (mig 361)
+que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edge Functions.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 1.1 | La EF fiscal de PROD es la del repo | `bash scripts/auditar-edge-functions.sh emitir-factura` → `0` en DEV y PROD | ✅ 2026-09-14 |
+| 1.2 | Doble click / reintento no emite dos CAE | e2e 21 y 42 contra DEV con la EF del repo (lock + cuarentena) | ✅ 12/12 y 45/45 |
+| 1.3 | `verify_jwt` preservado tras redesplegar | GET sin `Authorization` → `UNAUTHORIZED_NO_AUTH_HEADER` en `emitir-factura` | ✅ |
+| 1.4 | Dropear `tenants.afipsdk_token` no rompe la facturación | e2e 141 (la columna no existe) + 21/42 con CAE real después del DROP | ✅ |
+

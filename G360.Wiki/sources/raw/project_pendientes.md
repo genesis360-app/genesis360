@@ -6,17 +6,33 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 66) — PROD `v1.218.0` + **mig 415** · código `v1.219.0` sin deployar
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 67) — PROD = DEV = `v1.219.0` · migs 001-**416** · Edge Functions realineadas
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.218.0` | 001-**415** | app deployada el 13/09; **mig 415 aplicada el 14/09** |
-> | **DEV** | `v1.219.0` (sin deployar) | 001-**415** | el frontend del fix del alta, commiteado en `dev` |
+> | **PROD** | `v1.219.0` | 001-**416** | PR #346 el 14/09; mig 416 aplicada; Edge Functions = repo |
+> | **DEV** | `v1.219.0` | 001-**416** | igual que PROD |
 >
-> ⚠️ **La mig 415 está en PROD pero su frontend no.** Es deliberado y seguro: el trigger por sí solo
-> ya crea el negocio server-side (lo importante), y el frontend solo mejora el ruteo del login y
-> graba la versión de T&C. Pero **hasta que se deploye, un usuario sin negocio en PROD sigue viendo
-> el rebote a `/login` sin mensaje** si llega a caer en ese estado.
+> #### 🛑 Lo que apareció en esta sesión (cont. 67) — detalle en `log.md` (2026-09-14, deploy)
+>
+> 1. **El lock anti doble emisión de `emitir-factura` (mig 361) nunca había llegado a PROD.** El wiki lo
+>    daba "EN PROD desde 2026-08-20": ese deploy aplicó la migración y mergeó el frontend, pero la EF de
+>    PROD siguió siendo la del 15/07. Redesplegada tras e2e con CAE real. Sin daño (2 facturas, 0 duplicadas).
+> 2. **Auditoría de todas las Edge Functions** (desplegado vs repo): `tn-webhook`/`meli-webhook` sin reserva
+>    atómica de stock en DEV y PROD, `emitir-factura-plataforma` sin "NO reintentar", `scan-ticket`
+>    **no existía en PROD** (fallaba "Completar desde foto"), `wa-webhook` de PROD atrasada. Todo
+>    realineado, diff 0. Paso nuevo del deploy: **`bash scripts/auditar-edge-functions.sh`**.
+> 3. **Mig 416**: `tenants.afipsdk_token` dropeada en DEV y PROD (la EF y un trigger todavía la usaban:
+>    se sacaron primero).
+>
+> 🟥 **Decisiones para GO**:
+> - Funciones que existen **solo en PROD** y no en el repo o en DEV: `crear-suscripcion`,
+>   `marketplace-api`, `marketplace-webhook`, `data-api`, `birthday-notifications`, `process-aging`,
+>   `clever-handler`. ¿Se borran? (no se deshace)
+>
+> 🟥 **Siguiente técnico**: terminar de pasar `RecursosPage` al catálogo de ubicaciones (hoy escribe solo
+> `recursos.ubicacion` texto y nunca `ubicacion_id`, con una inconsistencia latente al editar) y recién
+> después dropear `recursos.ubicacion`.
 >
 > #### Qué se hizo en el deploy del 13/09, en orden
 >
@@ -42,9 +58,8 @@ type: project
 > **SOPORTE** (purgar desde el panel) y el del **CLIENTE** (darse de baja con el trial vencido — el
 > fix de `/mi-cuenta` viajaba en la app).
 >
-> 🟥 **Lo único que queda de este bloque**: dropear `tenants.afipsdk_token` y `recursos.ubicacion`,
-> que se dejaron a propósito hasta que PROD corriera el código nuevo. **Ahora ya lo corre**, así que
-> se puede hacer en la próxima sesión con una migración nueva.
+> ✅ `tenants.afipsdk_token` **dropeada** (mig 416, 2026-09-14). 🟥 `recursos.ubicacion` **no se puede
+> dropear todavía**: el frontend nunca pasó a `ubicacion_id` (ver el bloque de arriba).
 >
 > #### 🧪 Estado de la suite al cierre
 >
@@ -86,7 +101,7 @@ type: project
 > 2. **`gastos_fijos` no tiene cotización fiscal** (la mig 414 tocó solo `gastos`): un fijo en otra
 >    moneda cae afuera del libro, con aviso. Necesita migración si se quiere cerrar.
 >
-> #### 🟥 LO PRIMERO: deployar el frontend del fix del alta (`v1.219.0`)
+> #### ✅ HECHO (2026-09-14): el frontend del fix del alta (`v1.219.0`) está en PROD
 >
 > **La mig 415 ya está en DEV y PROD** y por sí sola corta el problema de raíz: el negocio se crea
 > server-side al confirmarse el mail. Lo que falta llevar es el **frontend** que la acompaña, que
@@ -97,14 +112,10 @@ type: project
 > 2. `OnboardingPage` — `ob_terminos_version` en el metadata del alta, para que el trigger grabe la
 >    versión de T&C aceptada en vez de dejarla en `NULL`.
 >
-> ✅ `APP_VERSION` ya bumpeado a `v1.219.0`, con tag y release creados (el release NO está marcado Latest:
-> v1.218.0 sigue siéndolo porque es lo que está en PROD). **Falta**: PR `dev→main`, merge, marcar
-> v1.219.0 como Latest, verificar Vercel.
+> ✅ PR #346 mergeado (`ec1fa54b`), release `v1.219.0` marcado Latest, Vercel production OK y smoke
+> real en PROD (login → dashboard con la versión y el negocio, 0 errores REST).
 >
-> 📦 **2 alertas HIGH de Dependabot abiertas en `main`** (del 11/09, sin PR), las dos en devDependencies
-> (no viajan en el bundle): **sharp** 0.35.1 → ya está en 0.35.4 en `dev`, se cierra sola con este deploy;
-> **js-yaml** 4.3.1 (vía eslint) → pide 4.3.2 y **no** está arreglada en `dev`: `npm update js-yaml` +
-> lint/tests. Ojo con el bug `edgesOut` de npm local (ver memoria de Dependabot).
+> 📦 ✅ Dependabot: **0 alertas abiertas** — js-yaml 4.3.2 y sharp 0.35.4 cerraron las dos HIGH con el merge.
 >
 > ##### El bug que esto arregla (por si hace falta el contexto)
 >
@@ -126,6 +137,8 @@ type: project
 > puede grabar video y capturar pantalla — de un navegador que maneja él (Playwright → MP4 720p con
 > `ffmpeg`), y las capturas además las puede **leer**. Lo que no puede: la pantalla de quien opera,
 > audio, puntero del mouse, y entrar a una casilla de correo.
+>
+> ⏸️ **SERIE EN PAUSA (2026-09-14)**: GO pidió no crear más videos hasta revisarlos con su socio.
 >
 > ✅ **6 videos hechos (1, 2, 3, 4, 5, 8)**, todos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
 > así que hay continuidad visual entre ellos. Quedan en `D:/Dev/genesis360-videos/` (fuera del repo,

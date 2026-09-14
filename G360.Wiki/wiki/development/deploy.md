@@ -94,7 +94,17 @@ supabase db dump --project-ref jjffnbrdjchquexdfgwq > supabase/migrations/schema
 ### Edge Functions (manual)
 ```bash
 supabase functions deploy nombre-funcion --project-ref jjffnbrdjchquexdfgwq
+# webhooks (Meta, TN, MELI, MODO, MP) — preservar verify_jwt=false:
+supabase functions deploy tn-webhook --project-ref jjffnbrdjchquexdfgwq --no-verify-jwt
 ```
+
+🛑 **Mergear `dev`→`main` NO despliega las Edge Functions.** En cada deploy a PROD, auditar que el código desplegado sea el del repo:
+
+```bash
+bash scripts/auditar-edge-functions.sh
+```
+
+Motivo: el 2026-09-14 la EF `emitir-factura` de PROD resultó ser la del 15/07, sin el lock anti doble emisión que el wiki daba por deployado desde el 20/08. Ver [[wiki/architecture/edge-functions]].
 
 ---
 

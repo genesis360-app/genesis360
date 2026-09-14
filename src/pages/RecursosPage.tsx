@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { puedeGestionarUbicacionesRecursos } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
@@ -34,7 +35,7 @@ const ESTADO_CFG: Record<Recurso['estado'], { label: string; color: string }> = 
 
 const FORM_EMPTY = {
   nombre: '', descripcion: '', categoria: 'Tecnología', estado: 'activo' as Recurso['estado'],
-  valor: '', fecha_adquisicion: '', proveedor_id: '', ubicacion: '',
+  valor: '', fecha_adquisicion: '', proveedor_id: '', ubicacion_id: '', ubicacion_nueva: '',
   numero_serie: '', garantia_hasta: '', notas: '',
   consumo_litros_100km: '',
   es_recurrente: false,
@@ -69,51 +70,53 @@ function proximoAlerta(r: Recurso): 'vencido' | 'proximo' | null {
   return null
 }
 
-// ISS-148 — Selector de ubicación de recurso.
-// Reemplaza al input de texto libre: las opciones salen del histórico de
-// ubicaciones ya cargadas por el tab "Ubicaciones" (filtradas por sucursal
-// activa vía applyFilter en la query principal de recursos). Si el operador
-// necesita una ubicación nueva, elige "+ Nueva..." y la tipea — pasa a estar
-// disponible en cuanto se guarda el recurso.
-function UbicacionPicker({ value, onChange, opciones, size = 'md', autoFocus = false }:
-  { value: string; onChange: (v: string) => void; opciones: string[]; size?: 'sm' | 'md'; autoFocus?: boolean }) {
-  const yaExiste = !value || opciones.includes(value)
-  const [modo, setModo] = useState<'select' | 'nueva'>(yaExiste ? 'select' : 'nueva')
+// Selector de ubicación de un recurso. Sale del CATÁLOGO `recurso_ubicaciones` (mig 407) y guarda el
+// id — antes era texto libre en `recursos.ubicacion`, y editar la ubicación de un recurso que ya tenía
+// FK cambiaba el texto pero no el id (renombrar o borrar la ubicación vieja le pisaba el cambio).
+//
+// "+ Nueva ubicación..." solo para quien puede gestionar el catálogo (decisión de GO, mig 417): dueño,
+// admin o rol custom que lo permita. La ubicación nueva se crea en el catálogo al guardar. El resto
+// elige de la lista.
+type OpcionUbicacion = { id: string; nombre: string }
+type ValorUbicacion = { id: string; nueva: string }
+
+function UbicacionPicker({ value, onChange, opciones, puedeCrear, size = 'md', autoFocus = false }:
+  { value: ValorUbicacion; onChange: (v: ValorUbicacion) => void; opciones: OpcionUbicacion[];
+    puedeCrear: boolean; size?: 'sm' | 'md'; autoFocus?: boolean }) {
+  const [modo, setModo] = useState<'select' | 'nueva'>(value.nueva ? 'nueva' : 'select')
   const cls = size === 'sm'
     ? 'text-xs border border-border-ds rounded px-2 py-1 bg-surface text-primary focus:outline-none focus:border-accent-text'
     : 'w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary'
 
-  if (modo === 'nueva') {
+  if (modo === 'nueva' && puedeCrear) {
     return (
       <div className="flex items-center gap-1">
         <input
           autoFocus={autoFocus}
-          value={value}
-          onChange={e => onChange(e.target.value)}
+          value={value.nueva}
+          onChange={e => onChange({ id: '', nueva: e.target.value })}
           placeholder="Nombre de la nueva ubicación"
           className={size === 'sm' ? `${cls} w-32` : cls}
         />
-        {opciones.length > 0 && (
-          <button type="button" onClick={() => { onChange(''); setModo('select') }}
-            className="text-[10px] text-muted hover:text-primary px-1" title="Volver al listado">↶</button>
-        )}
+        <button type="button" onClick={() => { onChange({ id: '', nueva: '' }); setModo('select') }}
+          className="text-[10px] text-muted hover:text-primary px-1" title="Volver al listado">↶</button>
       </div>
     )
   }
 
   return (
     <select
-      value={value}
+      value={value.id}
       onChange={e => {
         const v = e.target.value
-        if (v === '__nueva__') { onChange(''); setModo('nueva'); return }
-        onChange(v)
+        if (v === '__nueva__') { onChange({ id: '', nueva: '' }); setModo('nueva'); return }
+        onChange({ id: v, nueva: '' })
       }}
       className={cls}
     >
       <option value="">— Sin ubicación —</option>
-      {opciones.map(o => <option key={o} value={o}>{o}</option>)}
-      <option value="__nueva__">+ Nueva ubicación...</option>
+      {opciones.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+      {puedeCrear && <option value="__nueva__">+ Nueva ubicación...</option>}
     </select>
   )
 }
@@ -121,6 +124,7 @@ function UbicacionPicker({ value, onChange, opciones, size = 'md', autoFocus = f
 // ── Componente ────────────────────────────────────────────────────────────────
 export default function RecursosPage() {
   const { tenant, user } = useAuthStore()
+  const puedeGestionarUbic = puedeGestionarUbicacionesRecursos(user as any)
   const { applyFilter, sucursalId } = useSucursalFilter()
   const qc               = useQueryClient()
   const navigate         = useNavigate()
@@ -145,7 +149,7 @@ export default function RecursosPage() {
   const [ubicDescripcion, setUbicDescripcion] = useState('')
 
   // Inline edit de ubicación en tab Ubicaciones
-  const [editUbic, setEditUbic] = useState<{ id: string; valor: string } | null>(null)
+  const [editUbic, setEditUbic] = useState<{ id: string; ubicacion: ValorUbicacion } | null>(null)
 
   // ── Query ──────────────────────────────────────────────────────────────────
   const { data: recursos = [], isLoading } = useQuery({
@@ -173,6 +177,45 @@ export default function RecursosPage() {
     },
     enabled: !!tenant?.id,
   })
+
+  // ── Catalogo de ubicaciones (mig 407) ──────────────────────────────────────
+  // Se traen también las inactivas: un recurso puede apuntar a una y tiene que seguir mostrando el
+  // nombre. Para elegir, solo las activas.
+  const { data: catalogoUbic = [] } = useQuery({
+    queryKey: ['recurso-ubicaciones', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('recurso_ubicaciones')
+        .select('id, nombre, descripcion, activo')
+        .eq('tenant_id', tenant!.id)
+        .order('nombre')
+      if (error) throw error
+      return (data ?? []) as { id: string; nombre: string; descripcion: string | null; activo: boolean }[]
+    },
+    enabled: !!tenant,
+  })
+  const catalogoActivo = catalogoUbic.filter(u => u.activo)
+  const nombreUbicacion = (r: Recurso): string =>
+    (r.ubicacion_id && catalogoUbic.find(u => u.id === r.ubicacion_id)?.nombre) || ''
+
+  // Devuelve el id de la ubicación elegida. Si se tipeó una nueva, reusa la del catálogo con ese
+  // nombre (sin distinguir mayúsculas) o la crea — solo si el usuario puede gestionar el catálogo; la
+  // policy de la mig 417 lo exige igual del lado del servidor.
+  async function resolverUbicacion(v: ValorUbicacion): Promise<string | null> {
+    const nombre = v.nueva.trim()
+    if (!nombre) return v.id || null
+    const existente = catalogoUbic.find(u => u.nombre.trim().toLowerCase() === nombre.toLowerCase())
+    if (existente) return existente.id
+    if (!puedeGestionarUbic) {
+      throw new Error('No tenés permiso para crear ubicaciones. Elegí una de la lista o pedile al dueño que la cree.')
+    }
+    const id = crypto.randomUUID()
+    const { error } = await supabase.from('recurso_ubicaciones').insert({ id, tenant_id: tenant!.id, nombre })
+    if (error) {
+      throw new Error(/duplicate key|unique/i.test(error.message ?? '') ? 'Ya existe una ubicación con ese nombre' : error.message)
+    }
+    return id
+  }
 
   // Gastos asociados por recurso — Costo de mantenimiento + capitalización (Migration 134)
   const { data: gastosPorRecurso = {} } = useQuery({
@@ -220,7 +263,7 @@ export default function RecursosPage() {
     if (catFiltro && r.categoria !== catFiltro) return false
     if (search) {
       const s = search.toLowerCase()
-      if (!r.nombre.toLowerCase().includes(s) && !(r.ubicacion ?? '').toLowerCase().includes(s) && !(r.numero_serie ?? '').toLowerCase().includes(s)) return false
+      if (!r.nombre.toLowerCase().includes(s) && !nombreUbicacion(r).toLowerCase().includes(s) && !(r.numero_serie ?? '').toLowerCase().includes(s)) return false
     }
     return true
   })
@@ -231,7 +274,7 @@ export default function RecursosPage() {
   // Agrupar por ubicacion para tab Ubicaciones
   const recursosConUbicacion = recursos.filter(r => r.estado !== 'dado_de_baja')
   const gruposUbicacion = recursosConUbicacion.reduce<Record<string, Recurso[]>>((acc, r) => {
-    const key = r.ubicacion?.trim() || '—Sin ubicación—'
+    const key = nombreUbicacion(r) || '—Sin ubicación—'
     ;(acc[key] ??= []).push(r)
     return acc
   }, {})
@@ -240,24 +283,6 @@ export default function RecursosPage() {
     if (a === '—Sin ubicación—') return 1
     if (b === '—Sin ubicación—') return -1
     return a.localeCompare(b)
-  })
-
-  // ISS-148 — Catálogo derivado de ubicaciones ya cargadas (recursos visibles
-  // están filtrados por sucursal vía applyFilter en la query principal).
-  // ── Catalogo de ubicaciones (mig 407) ──────────────────────────────────────
-  const { data: catalogoUbic = [] } = useQuery({
-    queryKey: ['recurso-ubicaciones', tenant?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('recurso_ubicaciones')
-        .select('id, nombre, descripcion, activo')
-        .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
-        .order('nombre')
-      if (error) throw error
-      return (data ?? []) as { id: string; nombre: string; descripcion: string | null; activo: boolean }[]
-    },
-    enabled: !!tenant,
   })
 
   const guardarUbicacion = useMutation({
@@ -299,12 +324,7 @@ export default function RecursosPage() {
     onError: (e: any) => toast.error(e.message),
   })
 
-  // Las opciones salen del CATALOGO (mig 407). Se suman los textos sueltos que todavia no esten
-  // en el —recursos viejos cargados a mano— para no esconder ninguna ubicacion en uso.
-  const ubicacionesDisponibles = Array.from(new Set([
-    ...catalogoUbic.map(u => u.nombre),
-    ...recursos.map(r => r.ubicacion?.trim()).filter((v): v is string => !!v),
-  ])).sort((a, b) => a.localeCompare(b))
+  const opcionesUbicacion: OpcionUbicacion[] = catalogoActivo.map(u => ({ id: u.id, nombre: u.nombre }))
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const guardar = useMutation({
@@ -319,6 +339,7 @@ export default function RecursosPage() {
         ? (form.proximo_vencimiento || calcProximo(fv, form.frecuencia_unidad))
         : null
 
+      const ubicacionId = await resolverUbicacion({ id: form.ubicacion_id, nueva: form.ubicacion_nueva })
       const payload: any = {
         tenant_id:           tenant!.id,
         nombre:              form.nombre.trim(),
@@ -328,7 +349,7 @@ export default function RecursosPage() {
         valor:               form.valor ? parseFloat(form.valor) : null,
         fecha_adquisicion:   form.fecha_adquisicion || null,
         proveedor_id:        form.proveedor_id || null,
-        ubicacion:           form.ubicacion.trim() || null,
+        ubicacion_id:        ubicacionId,
         numero_serie:        form.numero_serie.trim() || null,
         garantia_hasta:      form.garantia_hasta || null,
         notas:               form.notas.trim() || null,
@@ -385,6 +406,7 @@ export default function RecursosPage() {
     onSuccess: () => {
       toast.success(editId ? 'Recurso actualizado' : 'Recurso agregado')
       qc.invalidateQueries({ queryKey: ['recursos'] })
+      qc.invalidateQueries({ queryKey: ['recurso-ubicaciones'] })
       cerrarModal()
     },
     onError: (e: any) => toast.error(e.message),
@@ -409,11 +431,17 @@ export default function RecursosPage() {
   })
 
   const actualizarUbicacion = useMutation({
-    mutationFn: async ({ id, ubicacion }: { id: string; ubicacion: string }) => {
-      const { error } = await supabase.from('recursos').update({ ubicacion: ubicacion.trim() || null }).eq('id', id)
+    mutationFn: async ({ id, ubicacion }: { id: string; ubicacion: ValorUbicacion }) => {
+      const ubicacionId = await resolverUbicacion(ubicacion)
+      const { error } = await supabase.from('recursos').update({ ubicacion_id: ubicacionId }).eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => { toast.success('Ubicación actualizada'); qc.invalidateQueries({ queryKey: ['recursos'] }); setEditUbic(null) },
+    onSuccess: () => {
+      toast.success('Ubicación actualizada')
+      qc.invalidateQueries({ queryKey: ['recursos'] })
+      qc.invalidateQueries({ queryKey: ['recurso-ubicaciones'] })
+      setEditUbic(null)
+    },
     onError: (e: any) => toast.error(e.message),
   })
 
@@ -434,7 +462,8 @@ export default function RecursosPage() {
       valor:               r.valor != null ? String(r.valor) : '',
       fecha_adquisicion:   r.fecha_adquisicion ?? '',
       proveedor_id:        r.proveedor_id ?? '',
-      ubicacion:           r.ubicacion ?? '',
+      ubicacion_id:        r.ubicacion_id ?? '',
+      ubicacion_nueva:     '',
       numero_serie:        r.numero_serie ?? '',
       garantia_hasta:      r.garantia_hasta ?? '',
       notas:               r.notas ?? '',
@@ -507,7 +536,7 @@ export default function RecursosPage() {
                 )}
               </span>
             )}
-            {r.ubicacion && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {r.ubicacion}</span>}
+            {nombreUbicacion(r) && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {nombreUbicacion(r)}</span>}
             {(r as any).proveedores?.nombre && <span>🏪 {(r as any).proveedores.nombre}</span>}
             {r.numero_serie && <span>S/N: {r.numero_serie}</span>}
             {r.garantia_hasta && <span>Garantía hasta {new Date(r.garantia_hasta + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>}
@@ -590,7 +619,7 @@ export default function RecursosPage() {
             <p className="text-xs text-muted">Patrimonio e inventario del negocio (no para vender)</p>
           </div>
         </div>
-        <button onClick={() => {
+        {(tab !== 'ubicaciones' || puedeGestionarUbic) && <button onClick={() => {
           if (tab === 'ubicaciones') {
             setUbicEditId(null)
             setUbicNombre('')
@@ -602,7 +631,7 @@ export default function RecursosPage() {
         }}
           className={`${BTN.primary} ${BTN.md} flex items-center gap-2`}>
           <Plus className="w-4 h-4" /> {tab === 'ubicaciones' ? 'Crear ubicación' : 'Agregar'}
-        </button>
+        </button>}
       </div>
 
       {/* Stats */}
@@ -709,17 +738,19 @@ export default function RecursosPage() {
               <div className="flex items-center gap-2 mb-2">
                 <MapPin className="w-4 h-4 text-accent-text" />
                 <h3 className="text-sm font-semibold text-primary">Ubicaciones</h3>
-                <span className="text-xs text-muted">({catalogoUbic.length})</span>
+                <span className="text-xs text-muted">({catalogoActivo.length})</span>
               </div>
-              {catalogoUbic.length === 0 ? (
+              {catalogoActivo.length === 0 ? (
                 <p className="text-sm text-muted pl-6">
-                  Todavía no hay ubicaciones. Creá la primera con <strong>Crear ubicación</strong> y después
-                  asignásela a los recursos desde la lista de abajo.
+                  {puedeGestionarUbic
+                    ? <>Todavía no hay ubicaciones. Creá la primera con <strong>Crear ubicación</strong> y después
+                      asignásela a los recursos desde la lista de abajo.</>
+                    : <>Todavía no hay ubicaciones. Las crea el dueño (o alguien con permiso para gestionarlas).</>}
                 </p>
               ) : (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 pl-6">
-                  {catalogoUbic.map(u => {
-                    const cuantos = recursos.filter(r => (r.ubicacion ?? '').trim() === u.nombre).length
+                  {catalogoActivo.map(u => {
+                    const cuantos = recursos.filter(r => r.ubicacion_id === u.id).length
                     return (
                       <div key={u.id} className="flex items-start gap-2 bg-page border border-border-ds rounded-lg px-3 py-2">
                         <div className="flex-1 min-w-0">
@@ -727,7 +758,7 @@ export default function RecursosPage() {
                           {u.descripcion && <p className="text-xs text-muted truncate">{u.descripcion}</p>}
                           <p className="text-xs text-muted">{cuantos} recurso{cuantos !== 1 ? 's' : ''}</p>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        {puedeGestionarUbic && <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={() => {
                               setUbicEditId(u.id); setUbicNombre(u.nombre)
@@ -753,7 +784,7 @@ export default function RecursosPage() {
                             className="p-1.5 rounded text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </div>
+                        </div>}
                       </div>
                     )
                   })}
@@ -803,11 +834,12 @@ export default function RecursosPage() {
                           <UbicacionPicker
                             size="sm"
                             autoFocus
-                            value={editUbic.valor}
-                            onChange={v => setEditUbic({ id: r.id, valor: v })}
-                            opciones={ubicacionesDisponibles}
+                            value={editUbic.ubicacion}
+                            onChange={v => setEditUbic({ id: r.id, ubicacion: v })}
+                            opciones={opcionesUbicacion}
+                            puedeCrear={puedeGestionarUbic}
                           />
-                          <button onClick={() => actualizarUbicacion.mutate({ id: r.id, ubicacion: editUbic.valor })}
+                          <button onClick={() => actualizarUbicacion.mutate({ id: r.id, ubicacion: editUbic.ubicacion })}
                             className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
                             <Check className="w-3.5 h-3.5" />
                           </button>
@@ -816,7 +848,7 @@ export default function RecursosPage() {
                           </button>
                         </div>
                       ) : (
-                        <button onClick={() => setEditUbic({ id: r.id, valor: r.ubicacion ?? '' })}
+                        <button onClick={() => setEditUbic({ id: r.id, ubicacion: { id: r.ubicacion_id ?? '', nueva: '' } })}
                           title="Editar ubicación"
                           className="shrink-0 p-1.5 rounded text-muted hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700">
                           <Pencil className="w-3.5 h-3.5" />
@@ -979,9 +1011,10 @@ export default function RecursosPage() {
                 <div>
                   <label className="text-xs font-medium text-muted mb-1 block">Ubicación</label>
                   <UbicacionPicker
-                    value={form.ubicacion}
-                    onChange={v => setForm(f => ({ ...f, ubicacion: v }))}
-                    opciones={ubicacionesDisponibles}
+                    value={{ id: form.ubicacion_id, nueva: form.ubicacion_nueva }}
+                    onChange={v => setForm(f => ({ ...f, ubicacion_id: v.id, ubicacion_nueva: v.nueva }))}
+                    opciones={opcionesUbicacion}
+                    puedeCrear={puedeGestionarUbic}
                   />
                 </div>
                 {form.estado !== 'pendiente_adquisicion' && (

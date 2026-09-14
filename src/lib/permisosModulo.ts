@@ -36,6 +36,19 @@ export function puedeEditarModulo(user: ConPermisos, modulo: string): boolean {
   return p !== 'ver' && p !== 'no_ver'
 }
 
+/** Puede crear, renombrar y borrar ubicaciones del catálogo de Recursos.
+ *  Decisión de GO (2026-09-14): "solo dueño o admin o alguien que el dueño le asigne un custom rol
+ *  que lo permita". Espejo exacto de la policy de la mig 417, que usa
+ *  `auth_puede_editar_modulo('recursos')`: si el rol custom tiene un permiso EXPLÍCITO para
+ *  'recursos', manda ese permiso; si no, solo DUEÑO / SUPER_USUARIO / ADMIN. Un SUPERVISOR, CAJERO,
+ *  etc. elige de la lista pero no crea. */
+export function puedeGestionarUbicacionesRecursos(user: ConPermisos): boolean {
+  const p = user?.permisos_custom?.recursos
+  if (p) return p === 'editar' || p === 'supervisa'
+  if (esLector(user)) return false
+  return user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO' || user?.rol === 'ADMIN'
+}
+
 // ─── Patrón "Pestaña de Supervisor" reusable (relevamiento derivado #2 hacia Repositores, ──────────
 // decisión C2 cerrada con GO 2026-08-09) — 4º nivel de permiso, DISTINTO del rol fijo ADMIN (staff de
 // soporte cross-tenant, ver reference_rol_admin_staff_aislamiento) por eso se llama 'supervisa' y no

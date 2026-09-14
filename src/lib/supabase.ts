@@ -737,7 +737,8 @@ export interface Recurso {
   valor?: number | null
   fecha_adquisicion?: string | null
   proveedor_id?: string | null
-  ubicacion?: string | null
+  /** FK al catálogo `recurso_ubicaciones` (mig 407). El texto libre `ubicacion` se dejó de usar. */
+  ubicacion_id?: string | null
   numero_serie?: string | null
   garantia_hasta?: string | null
   notas?: string | null

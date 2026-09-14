@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-14T14:21:07.783Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260914142022 · 168 tablas
+-- Generado 2026-09-14T16:12:39.185Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260914161137 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1818,7 +1818,6 @@ CREATE TABLE public.recursos (
   valor numeric(12,2),
   fecha_adquisicion date,
   proveedor_id uuid,
-  ubicacion text,
   numero_serie text,
   garantia_hasta date,
   notas text,
@@ -8481,50 +8480,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.fn_recurso_ubicacion_borrar_limpia_texto()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-  -- Se limpian los dos campos a la vez: el ON DELETE SET NULL de la FK se encarga de
-  -- `ubicacion_id`, pero el texto quedaría colgado y la pantalla lo volvería a mostrar.
-  UPDATE public.recursos
-     SET ubicacion = NULL, ubicacion_id = NULL
-   WHERE ubicacion_id = OLD.id;
-  RETURN OLD;
-END $function$
-
-
-CREATE OR REPLACE FUNCTION public.fn_recurso_ubicacion_propagar_nombre()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-  UPDATE public.recursos SET ubicacion = NEW.nombre WHERE ubicacion_id = NEW.id;
-  RETURN NULL;
-END $function$
-
-
-CREATE OR REPLACE FUNCTION public.fn_recursos_sync_ubicacion_texto()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-  IF NEW.ubicacion_id IS NULL THEN
-    RETURN NEW;   -- sin catalogo: se respeta el texto (compatibilidad con el form viejo)
-  END IF;
-  SELECT ru.nombre INTO NEW.ubicacion
-    FROM public.recurso_ubicaciones ru WHERE ru.id = NEW.ubicacion_id;
-  RETURN NEW;
-END $function$
-
-
 CREATE OR REPLACE FUNCTION public.fn_registrar_pago_manual(p_tenant_id uuid, p_monto numeric, p_medio text, p_referencia text, p_registrado_por uuid, p_mp_payment_id text, p_notas text)
  RETURNS timestamp with time zone
  LANGUAGE plpgsql
@@ -12232,10 +12187,7 @@ CREATE TRIGGER trg_productos_variante_atributos BEFORE INSERT OR UPDATE OF produ
 CREATE TRIGGER trg_updated_at_proveedor_accounts BEFORE UPDATE ON public.proveedor_accounts FOR EACH ROW EXECUTE FUNCTION fn_updated_at_proveedor_accounts();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
 CREATE TRIGGER trg_updated_at_recepcion BEFORE UPDATE ON public.recepciones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER trg_recurso_ubicacion_borrar_limpia_texto BEFORE DELETE ON public.recurso_ubicaciones FOR EACH ROW EXECUTE FUNCTION fn_recurso_ubicacion_borrar_limpia_texto();
-CREATE TRIGGER trg_recurso_ubicacion_propagar_nombre AFTER UPDATE OF nombre ON public.recurso_ubicaciones FOR EACH ROW WHEN ((old.nombre IS DISTINCT FROM new.nombre)) EXECUTE FUNCTION fn_recurso_ubicacion_propagar_nombre();
 CREATE TRIGGER trg_updated_at_recurso_ubicaciones BEFORE UPDATE ON public.recurso_ubicaciones FOR EACH ROW EXECUTE FUNCTION fn_updated_at_recurso_ubicaciones();
-CREATE TRIGGER trg_recursos_sync_ubicacion_texto BEFORE INSERT OR UPDATE OF ubicacion_id ON public.recursos FOR EACH ROW EXECUTE FUNCTION fn_recursos_sync_ubicacion_texto();
 CREATE TRIGGER trg_recursos_updated_at BEFORE UPDATE ON public.recursos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_asistencia_updated_at BEFORE UPDATE ON public.rrhh_asistencia FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_conceptos_updated_at BEFORE UPDATE ON public.rrhh_conceptos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -13048,8 +13000,8 @@ CREATE POLICY recepciones_tenant ON public.recepciones AS PERMISSIVE FOR ALL TO 
 CREATE POLICY recurso_ubicaciones_select ON public.recurso_ubicaciones AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY recurso_ubicaciones_write_gestion ON public.recurso_ubicaciones AS PERMISSIVE FOR ALL TO public
-  USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
-  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('recursos'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('recursos'::text)));
 CREATE POLICY recursos_tenant ON public.recursos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));

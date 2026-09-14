@@ -6,6 +6,46 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-13] update | 🎥 Video 1 grabado, y dos hallazgos del alta
+
+GO pidió intentar el primer video del guion. **Salió**, 33 s en 720p contra PROD: landing →
+"Empezar gratis" → paso 1 → paso 2 → "Crear negocio" → **"Revisá tu email"**.
+
+Antes: quedó corregida la afirmación de que Claude no podía grabar. **Sí puede** — Playwright graba
+un navegador que maneja él y `ffmpeg` (ya instalado) lo pasa a MP4 h264 720p; las capturas además
+las puede LEER. Lo que no puede: la pantalla de quien opera, audio, puntero del mouse, y entrar al
+correo. La frase contraria estuvo en 3 lugares del wiki arrastrada sin que nadie la probara.
+
+### 🛑 Hallazgo 1 — el alta con un mail YA registrado no manda al dashboard
+
+El guion decía que un mail que ya es dueño de un negocio "no repite el formulario: detecta que ya
+tiene tenant y lo manda al dashboard". **Falso.** Con `genesis360.ar@gmail.com` (dueño de "Don
+Ferretero") el formulario **corrió entero y terminó en "Revisá tu email"**, igual que un alta nueva.
+
+Es el anti-enumeración de Supabase: ante un mail registrado devuelve un éxito falso para no revelar
+quién tiene cuenta. Verificado en la base: **sin usuario duplicado, sin tenant nuevo (9, el último de
+agosto) y `confirmation_sent_at` en `null` — no se mandó ningún mail.** La grabación no tocó nada.
+
+**El costado que sí es un problema de producto:** a esa persona la pantalla le promete *"Confirmá tu
+cuenta desde ese email y tu negocio queda creado automáticamente"*. Para ella eso **no va a pasar
+nunca** — su negocio ya existe y no llega ningún mail. Queda esperando algo que no viene, sin
+ninguna vía de salida más que "Ir a Ingresar". No es fiscal ni de plata, pero es un callejón sin
+salida en la puerta de entrada del producto.
+
+### 🛑 Hallazgo 2 — el landing dice "+500 comercios"
+
+El hero de `genesis360.pro` afirma *"Más de 500 comercios ya controlan su stock con Genesis360"*.
+En PROD hay **9 tenants y ninguno es un cliente real** (son todos de prueba de GO). Queda anotado
+porque el video lo muestra en primer plano — decisión de GO qué hacer.
+
+### Lo que falta del Video 1
+
+De "Revisá tu email" en adelante: confirmar, el negocio creándose, la primera entrada al dashboard y
+el tour de bienvenida. Necesita un mail **realmente nuevo** (un alias `+algo` sirve) y que una
+persona abra el correo — Claude no entra a la casilla.
+
+---
+
 ## [2026-09-13] deploy | 🚀 v1.218.0 EN PROD — migs 407-414, EF y panel · PR #345 y #4
 
 GO autorizó el deploy completo ("Ok, pasa todo a PRD y actualiza todo"). Se llevó el batch que venía

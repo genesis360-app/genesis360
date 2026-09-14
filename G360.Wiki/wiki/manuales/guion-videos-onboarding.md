@@ -64,9 +64,23 @@ sí o sí contra `genesis360.pro`.
 
 ### 2. El mail tiene que ser realmente nuevo
 
-Si el mail ya es dueño de un negocio, el onboarding **no repite el formulario**: detecta que ya
-tiene tenant y lo manda al dashboard (así evita duplicados). Es exactamente lo que le pasó a GO
-con `genesis360.ar@gmail.com` el 12/09.
+⚠️ **Corregido el 2026-09-13, probado contra PROD.** Lo que este documento decía —"detecta que ya
+tiene tenant y lo manda al dashboard"— **no es lo que pasa en el alta**. Se registró con
+`genesis360.ar@gmail.com` (que ya es dueño de "Don Ferretero") y el formulario **corrió entero y
+terminó en la pantalla "Revisá tu email"**, igual que con un mail nuevo.
+
+Es el comportamiento anti-enumeración de Supabase: ante un mail ya registrado devuelve un éxito
+falso para no revelar quién tiene cuenta. Verificado en la base: **no se creó usuario duplicado, no
+se creó tenant, y `confirmation_sent_at` quedó en `null` — no se mandó ningún mail.**
+
+**Para el video eso es bueno y malo a la vez:**
+- ✅ Bueno: la pantalla *"Revisá tu email"* se puede grabar con un mail ya existente, **sin crear
+  nada en PROD**. Es exactamente lo que se hizo.
+- 🛑 Malo: el video **no puede seguir de ahí**. No llega ningún mail, así que no hay link que
+  clickear, ni negocio nuevo, ni primera entrada al dashboard, ni tour de bienvenida.
+
+Para grabar el tramo que falta hace falta un mail **realmente nuevo** (un alias `+algo` sirve) y que
+una persona abra el correo y confirme.
 
 Para repetir tomas hace falta un mail limpio cada vez. Dos caminos:
 - Usar alias (`algo+toma1@gmail.com`) — Gmail los entrega al mismo buzón.

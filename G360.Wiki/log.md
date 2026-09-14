@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | 🧹 Cierre de sesión (cont. 67) — PROD = DEV = v1.221.0, sin deploys pendientes
+
+Sesión larga, en este orden: efectos de click + Video 4 → **pausa de la serie de videos** (GO la revisa
+con su socio) → pendientes: **v1.219.0** (fix del alta) → hallazgo de **drift de Edge Functions** (el
+lock anti doble factura no estaba en PROD) → **v1.219.1** (mig 416) → **v1.220.0** (ubicaciones de
+Recursos, migs 417-418, 4 EF muertas borradas) → hallazgo de **policies de storage** → **v1.221.0**
+(mig 419 + transportista por token).
+
+**Estado final**: PROD = DEV = `v1.221.0`, migs 001-419, Edge Functions = repo (diff 0), policies
+idénticas en `cron`/`public`/`storage`, Dependabot sin alertas. Qué sigue: bloque "QUÉ SIGUE" de
+`sources/raw/project_pendientes.md`.
+
+**Lecciones que quedaron en memoria**: mergear a `main` no despliega Edge Functions (auditarlas en cada
+deploy); la paridad de policies hay que medirla por schema, `storage` incluido; un e2e de una página
+pública con el storageState del DUEÑO da falso verde.
+
+---
+
 ## [2026-09-14] deploy | 🚀 v1.221.0 — archivos por negocio (mig 419) + el transportista sube por token · DEV = PROD en los 3 schemas
 
 ### El hallazgo

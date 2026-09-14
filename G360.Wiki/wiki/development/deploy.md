@@ -104,6 +104,12 @@ supabase functions deploy tn-webhook --project-ref jjffnbrdjchquexdfgwq --no-ver
 bash scripts/auditar-edge-functions.sh
 ```
 
+Y la **paridad de policies por schema** (no solo `public`): el 2026-09-14 `public` y `cron` estaban idénticos, pero en `storage` a PROD le faltaban las políticas de 3 buckets (mig 419).
+
+```sql
+SELECT schemaname, count(*), md5(string_agg(tablename||policyname||cmd||coalesce(qual,'')||coalesce(with_check,''), '|' ORDER BY tablename, policyname)) FROM pg_policies GROUP BY schemaname ORDER BY schemaname;
+```
+
 Motivo: el 2026-09-14 la EF `emitir-factura` de PROD resultó ser la del 15/07, sin el lock anti doble emisión que el wiki daba por deployado desde el 20/08. Ver [[wiki/architecture/edge-functions]].
 
 ---

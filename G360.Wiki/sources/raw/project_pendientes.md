@@ -13,6 +13,26 @@ type: project
 > | **PROD** | `v1.221.0` | 001-**419** | PRs #346-#349 el 14/09; Edge Functions = repo; policies = DEV |
 > | **DEV** | `v1.221.0` | 001-**419** | igual que PROD |
 >
+> #### ▶️ QUÉ SIGUE (próxima sesión)
+>
+> **No hay deploy pendiente**: todo lo de cont. 67 está en PROD y verificado. Abierto, por prioridad:
+>
+> 1. ⏸️ **Videos de onboarding EN PAUSA** — GO los revisa con su socio (6 hechos: 1-5 y 8; el 4 con efectos de
+>    click). No retomar hasta que GO lo diga. Ver memoria `project_videos_onboarding_serie`.
+> 2. 🧪 **Coberturas que quedaron sin e2e**: rol custom con permiso de Recursos creando ubicaciones (UAT 55.5 —
+>    hoy solo unit + policy) y la **firma** del transportista por la pantalla (el e2e 148 cubre la foto).
+> 3. 🔌 **`marketplace-webhook` no tiene quién la llame**: el wiki dice "fire-and-forget desde el frontend" pero
+>    ningún código la invoca (0 negocios con marketplace activo). Decidir si se reconecta o se documenta como
+>    apagada.
+> 4. 🧾 **Registro del contador** (`wiki/business/consultas-contador.md`): 15 preguntas abiertas, incluida C-11
+>    (Monotributo: año calendario vs 12 meses).
+> 5. Decisiones de GO arrastradas: motivos de caja que nombran salidas en un modal de ingresos; el "+500
+>    comercios" del landing; purgar el tenant "Genesis360 Onboarding" **cuando termine la serie de videos**.
+> 6. `wa-embedded-signup-exchange` sigue solo en DEV (espera el App Review de Meta).
+>
+> 🛠️ **Nuevo en cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la
+> paridad de policies **por schema** (`public`, `storage`, `cron`) — `storage` no se estaba mirando.
+>
 > #### 🛑 Lo que apareció en esta sesión (cont. 67) — detalle en `log.md` (2026-09-14, deploy)
 >
 > 1. **El lock anti doble emisión de `emitir-factura` (mig 361) nunca había llegado a PROD.** El wiki lo
@@ -66,6 +86,9 @@ type: project
 > ✅ `tenants.afipsdk_token` **dropeada** (mig 416) y `recursos.ubicacion` **dropeada** (mig 418), los dos el 2026-09-14.
 >
 > #### 🧪 Estado de la suite al cierre
+>
+> **Al cierre de cont. 67 (2026-09-14): unit 1787 verdes; e2e nuevos 147 (Recursos, mutante) y 148 (storage +
+> transportista, mutante).** Lo de abajo es de la corrida completa del 13/09:
 >
 > **Unit 1763 verdes.** **e2e: las 7 fallas reales de la corrida completa quedaron cerradas** (4 eran
 > la mig 413, 2 eran specs rotos del harness —`20_caja` y `37_rrhh`—, 1 un browser caído). Queda

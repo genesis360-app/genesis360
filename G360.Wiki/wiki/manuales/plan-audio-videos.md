@@ -240,13 +240,31 @@ segundos. El cuerpo **siempre** tiene que terminar en `G` antes del `Dsus4`:
 > se puede escuchar, hay que hacer que lo audible sea **verificable de otra forma** (acá, la agenda
 > de acordes), y aun así el oído humano sigue siendo el juez.
 
+## 4.quater ✅ Aplicado a toda la serie (2026-09-14)
+
+GO: *"Sigamos con la propia que está buena"* → el sintetizador queda como la fuente de música de los
+videos. `postproducir.mjs` ahora importa `musica.mjs` (antes generaba senos con ffmpeg, que sonaban
+a pitido plano).
+
+**Los 5 videos re-renderizados.** Y al medirlos apareció algo que no era el objetivo del cambio:
+
+| | Antes | Ahora |
+|---|---|---|
+| Loudness | **−29,8 LUFS** | **−13,3 a −13,7 LUFS** |
+
+Los renders viejos estaban **16 dB por debajo** del objetivo. YouTube no sube lo que recibe bajo, así
+que habrían sonado anémicos contra cualquier otro video. **No era solo la melodía: el audio venía
+mal nivelado.** Los renders anteriores quedaron en `_anteriores/` por si hace falta comparar.
+
 ## 5. Qué falta decidir (GO)
 
 1. ✅ Afinación — **432**, decidido.
 2. ✅ Densidad — **cama de fondo**, decidido.
 3. ✅ Acentos — **rechazados**, decidido.
-4. 🟡 **La pregunta de fondo, todavía abierta**: ¿seguimos con síntesis propia, o se licencia una
-   pista?
+4. ✅ **Síntesis propia** — decidido ("está buena"). Queda como fuente de música de la serie.
+
+**Lo único que sigue pendiente** es el **diseño de sonido** de §3.1 (que se escuche que el producto
+responde: clic, chime al guardar, resolución cuando la caja cuadra). Es el próximo paso de audio.
 
 Sobre la 4, honestamente: **la síntesis propia tiene techo**. Llega a "corporativo correcto", no a
 "premium con instrumentos reales". Si el objetivo es que el video *venda*, puede convenir **licenciar

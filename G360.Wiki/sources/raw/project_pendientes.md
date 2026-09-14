@@ -128,6 +128,7 @@ type: project
 > |---|---|---|---|
 > | 1 | Onboarding | 70 s | landing → alta → "Revisá tu email" → negocio creado → dashboard → tour |
 > | 2 | Configuración inicial | 59 s | datos y modo Básico · lo que YA viene sembrado (métodos de pago, 16 categorías de gasto) · **las categorías de producto, lo único que hay que crear** · el equipo |
+> | 8 | Carga de inventario | 63 s | inventario en 0 con alerta → 2 ingresos con motivo → **la alerta se apaga sola** → el Historial con el rastro |
 > | 5 | Caja (rutina del día) | 79 s | cerrada → abrir con fondo → 2 ingresos → arqueo → cierre esperado vs contado, **sin diferencia** |
 > | 3 | Cargar productos | 50 s | catálogo vacío → 2 productos a mano (SKU autogenerado, categoría, stock mínimo) → **la alerta de stock crítico aparece sola** → Acciones → Importar |
 >
@@ -135,9 +136,14 @@ type: project
 > negocio. Los videos 3+ **escriben datos reales** en el tenant de prueba "Genesis360 Onboarding",
 > que se purga al terminar la serie.
 >
-> **El siguiente es el 4 — Vender** (`/ventas`). ⚠️ Sigue faltando **stock**: los 2 productos están
-> en 0. Y la caja quedó **cerrada** al final del video 5, así que hay que abrir una antes (o grabar
-> el 4 como "el día siguiente", que narrativamente cierra bien).
+> 🎧 **Los 5 videos están re-renderizados con la música nueva** (sintetizador propio, 432 Hz). Al
+> hacerlo apareció que los renders viejos estaban a **−29,8 LUFS**, o sea **16 dB por debajo** del
+> objetivo: sonaban anémicos y YouTube no los habría subido. Ahora todos entre −13,3 y −13,7. Los
+> renders viejos quedaron en `_anteriores/` por si hace falta comparar.
+>
+> **El siguiente es el 4 — Vender** (`/ventas`). ✅ **Ya hay stock** (48 y 24 unidades, cargado en el
+> video 8). ⚠️ Falta abrir una caja: quedó **cerrada** al final del video 5 — lo que narrativamente
+> funciona, el 4 puede arrancar como "el día siguiente".
 >
 > 🛑 **HALLAZGO del video 5 — motivos de caja que invitan a equivocarse con plata.** El modal de
 > movimiento **solo registra ingresos** (lo dice él mismo: los egresos se cargan desde Gastos), pero

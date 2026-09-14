@@ -19,12 +19,18 @@
 //    semitransparente como un rectángulo negro duro al costado.
 //
 // ── ⚠️ Sobre la música ───────────────────────────────────────────────────────────────────────
-// Se SINTETIZA acá (senos + tremolo + pasa-bajos) en vez de bajar una pista, para que no haya
-// ningún problema de licencia en un video que se va a publicar. Queda a −18 dB de pico para que
-// una voz encima no tenga que pelear.
+// La genera `musica.mjs` (sintetizador propio: ADSR, armónicos, detune, reverb Schroeder), no una
+// pista bajada — esto se publica y una licencia ajena es un problema esperando.
 //
-// 🛑 **Claude no puede escuchar el resultado.** Verifica duración y niveles, nada más. Si suena
-// mal, hay que reemplazarla: poner un `.wav`/`.mp3` propio y pasarlo en `guion.musica`.
+// Parámetros fijados por GO escuchando muestras (2026-09-14): **432 Hz**, densidad actual como cama
+// de fondo, y **sin acentos sincronizados** ("distraen, no suman"). Master a **-14 LUFS**, que es a
+// lo que normaliza YouTube. Todo el detalle y lo que se discutió del brief original está en
+// `G360.Wiki/wiki/manuales/plan-audio-videos.md`.
+//
+// Se puede pisar por guion: `musica` (ruta a un archivo propio) o `audio` (opciones del spec).
+//
+// 🛑 **Claude no escucha.** Verifica duración y niveles, nada más. El juicio estético es de quien
+// escucha — y ya pasó que un oído detectara en 30 s un corte de frase que ninguna medición mostraba.
 
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -32,6 +38,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import { construir, escribirWav } from './musica.mjs'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const PLANTILLA = resolve(AQUI, 'overlay.html')
@@ -41,36 +48,26 @@ const duracion = (f) =>
   parseFloat(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration',
     '-of', 'csv=p=0', f]).toString().trim())
 
-/** Acordes de la cama musical: Am – F – C – G. La 4ª nota va apenas desafinada: da calidez y le
- *  saca el "pitido" de un seno puro. */
-const ACORDES = [
-  [220, 261.63, 329.63, 440.7],
-  [174.61, 220, 261.63, 349.9],
-  [130.81, 164.81, 196.0, 262.1],
-  [196.0, 246.94, 293.66, 392.8],
-]
+// La cama musical la genera `musica.mjs` (sintetizador propio con ADSR, armónicos, detune y
+// reverb). Antes se hacía acá con `sine` de ffmpeg y sonaba a pitido plano.
+//
+// Parámetros fijados por GO escuchando muestras (2026-09-14):
+//   · afinación 432 Hz · densidad actual como cama de fondo · SIN acentos sincronizados
+// Ver `G360.Wiki/wiki/manuales/plan-audio-videos.md`.
+function musica(dir, segundos, opciones = {}) {
+  const salida = join(dir, 'cama.wav')
+  escribirWav(construir({
+    duracion: segundos,
+    bpm: 100, afinacion: 432, intro: 8, outro: 7,
+    arpegio: true, pulsoRitmico: true, destino: 'sinVoz', acentos: [],
+    ...opciones,
+  }), salida)
 
-function musica(dir, segundos) {
-  const partes = ACORDES.map((notas, i) => {
-    const salida = join(dir, `acorde${i}.wav`)
-    const entradas = notas.flatMap((f) => ['-f', 'lavfi', '-i', `sine=frequency=${f}:duration=8`])
-    ff([...entradas,
-      '-filter_complex',
-      '[0][1][2][3]amix=inputs=4:duration=longest:normalize=0,volume=0.25,lowpass=f=1400,' +
-      'tremolo=f=0.45:d=0.22,afade=t=in:st=0:d=1.2,afade=t=out:st=6.6:d=1.4',
-      '-ar', '44100', salida])
-    return salida
-  })
-  const lista = join(dir, 'acordes.txt')
-  writeFileSync(lista, partes.map((p) => `file '${p.replace(/\\/g, '/')}'`).join('\n'))
-  const loop = join(dir, 'loop32.wav')
-  ff(['-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', loop])
-
-  const salida = join(dir, 'musica.wav')
-  const vueltas = Math.ceil(segundos / 32)
-  ff(['-stream_loop', String(vueltas), '-i', loop, '-t', String(segundos),
-    '-af', `afade=t=in:st=0:d=2,afade=t=out:st=${Math.max(0, segundos - 3.5)}:d=3.5`, salida])
-  return salida
+  // Master: loudness medido al objetivo de la plataforma. Sin voz, la música ES el programa →
+  // -14 LUFS, que es a lo que normaliza YouTube (más bajo, YouTube no lo sube).
+  const master = join(dir, 'cama-master.wav')
+  ff(['-i', salida, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '44100', master])
+  return master
 }
 
 async function overlays(dir, guion) {
@@ -129,7 +126,7 @@ try {
     '-c:v', 'libx264', '-crf', '20', '-pix_fmt', 'yuv420p', base])
 
   const total = duracion(base)
-  const audio = guion.musica ? resolve(guion.musica) : musica(dir, total)
+  const audio = guion.musica ? resolve(guion.musica) : musica(dir, total, guion.audio ?? {})
 
   // 2. Rótulos. El desfase de la placa de entrada se suma acá, no en el guion.
   const offset = png.intro ? (guion.intro.segundos ?? 3) : 0
@@ -155,7 +152,7 @@ try {
     resolve(salida)])
 
   console.log(`OK ${salida} — ${duracion(resolve(salida)).toFixed(1)}s`)
-  console.log('⚠️  La música es sintetizada y NO fue escuchada por nadie. Verificala antes de publicar.')
+  console.log('⚠️  La música es sintetizada. Claude no la escucha: verificala antes de publicar.')
 } finally {
   rmSync(dir, { recursive: true, force: true })
 }

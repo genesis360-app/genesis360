@@ -120,8 +120,22 @@ type: project
 > `ffmpeg`), y las capturas además las puede **leer**. Lo que no puede: la pantalla de quien opera,
 > audio, puntero del mouse, y entrar a una casilla de correo.
 >
-> ✅ **Video 1 hecho**: 70 s, 720p, con placas de entrada/cierre, 6 rótulos numerados y música.
-> Queda en `D:/Dev/genesis360-videos/video1-onboarding/` (fuera del repo, es binario).
+> ✅ **Videos 1 y 2 hechos**, los dos contra PROD sobre el mismo negocio ("Genesis360 Onboarding"),
+> así que hay continuidad visual entre ellos. Quedan en `D:/Dev/genesis360-videos/` (fuera del repo,
+> son binarios):
+>
+> | | Video | Duración | Qué muestra |
+> |---|---|---|---|
+> | 1 | Onboarding | 70 s | landing → alta → "Revisá tu email" → negocio creado → dashboard → tour |
+> | 2 | Configuración inicial | 59 s | datos y modo Básico · lo que YA viene sembrado (métodos de pago, 16 categorías de gasto) · **las categorías de producto, lo único que hay que crear** · el equipo |
+>
+> **El siguiente por orden es el 3 — Cargar productos** (`/productos/nuevo`): alta manual, alta
+> **desde una foto** e importación por Excel.
+>
+> ⚠️ **Decisión pendiente para los videos 3-9**: hoy se graban contra **PROD** por la continuidad
+> visual, pero del 3 en adelante **escriben datos de verdad** (productos, ventas, movimientos de
+> caja, gastos). Es un tenant de prueba y se purga después, pero conviene decidirlo a conciencia —
+> la alternativa es mudarse a DEV y perder el hilo del mismo negocio.
 >
 > ⚠️ **La música es sintetizada y NADIE la escuchó** — Claude no puede. Si no sirve, se reemplaza
 > pasando un `.wav`/`.mp3` propio en el guion.

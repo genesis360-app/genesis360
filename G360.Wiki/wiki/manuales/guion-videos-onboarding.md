@@ -153,7 +153,15 @@ del negocio. Es el camino más corto y muchos lo van a usar.
 
 ---
 
-## 🎬 Video 2 — Configuración inicial (modo Básico)
+## 🎬 Video 2 — Configuración inicial (modo Básico) — ✅ GRABADO (59 s, 2026-09-14)
+
+> ✅ **Grabado contra PROD**, sobre el mismo negocio del Video 1 (continuidad visual).
+> `D:/Dev/genesis360-videos/video2-configuracion/`.
+>
+> **Confirmado con datos reales al grabarlo**: el negocio nuevo tenía **0 categorías de producto**
+> contra **5 métodos de pago** y **16 categorías de gasto** ya sembrados. O sea que lo que dice el
+> Paso 2 —que las categorías de producto son el único paso de configuración realmente obligatorio—
+> **es cierto y se puede afirmar en cámara**.
 
 **Punto de partida:** recién creado el negocio, dashboard con el tour cerrado.
 

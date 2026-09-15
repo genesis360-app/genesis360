@@ -37,7 +37,7 @@ deploy a PROD (GO: seguir acumulando).
   internas y adjuntos con link firmado de 1 h, `reportante` nombre/rol, `support.tickets.reply` acepta `interno`) y
   `billing-manual-avisar-pago` ("Ya transferí" crea el ticket con `usuario_id`/`tipo:'pago'`, así aparece en Mis
   consultas de quien avisó).
-- **Panel (`genesis360-admin`, rama `dev`, sin commitear todavía, build OK)**: filtro "Solo los que esperan
+- **Panel (`genesis360-admin`, commit `a9db285` en `origin/dev`, build OK)**: filtro "Solo los que esperan
   respuesta del equipo", marca "● Respuesta del cliente", quién abrió la consulta, notas internas en ámbar,
   adjuntos con link, casilla "Nota interna".
 - De paso, dos fixes ya commiteados en `dev` esta sesión (sin bump de versión propio, quedan bajo el mismo

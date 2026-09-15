@@ -11,7 +11,7 @@ type: project
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.221.0` | 001-**419** | compute **Micro** desde el 2026-09-15 (estaba en Nano); policies = DEV hasta la 419; Edge Functions = repo (incluye `send-email` hardeneada, ver abajo) **salvo `marketplace-webhook`** (código nuevo sin desplegar) y `admin-api`/`billing-manual-avisar-pago` (cambios de la mig 426 sin desplegar) |
-> | **DEV** | `v1.226.0` | 001-**426** | cont. 68 + 69 + 70 (Ayuda: "Reportar un problema" + Mis consultas, mig 426); prereleases `v1.222.0`-`v1.225.0` en GitHub, `v1.226.0` sin tag todavía — **GO: seguir acumulando antes de deployar** |
+> | **DEV** | `v1.226.0` | 001-**426** | cont. 68 + 69 + 70 (Ayuda: "Reportar un problema" + Mis consultas, mig 426); prereleases `v1.222.0`-`v1.226.0` en GitHub — **GO: seguir acumulando antes de deployar** |
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
 > DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que bloquea,
@@ -41,8 +41,7 @@ type: project
 >      redesplegar `billing-manual-avisar-pago`** (inserta columnas nuevas).
 > 2. PR `dev→main` con `v1.222.0` + `v1.223.0` + `v1.224.0` + `v1.225.0` + `v1.226.0` (merge commit, no squash);
 >    promover los releases (hoy prereleases, `v1.226.0` todavía sin tag) y marcar `v1.226.0` como Latest. **Panel de
->    soporte:** PR `dev→main` en `genesis360-admin` (commit `5ce8582` + los cambios de esta sesión — `adminApi.ts`,
->    `SupportPage.tsx` — sin commitear todavía).
+>    soporte:** PR `dev→main` en `genesis360-admin` (commits `5ce8582` y `a9db285`, ya en `origin/dev`).
 > 3. **Redeploy de Edge Functions en PROD**: `marketplace-webhook` con `verify_jwt: true` (hoy corre la versión que
 >    acepta llamadas sin auth; en DEV nunca estuvo desplegada) · `admin-api` (listado de tickets con
 >    `pendiente_equipo`/filtro, detalle con notas internas y adjuntos firmados) · `billing-manual-avisar-pago`
@@ -96,7 +95,7 @@ type: project
 >   consultas"; el resto sigue "próximamente"). Cada usuario ve las suyas, DUEÑO/SUPER_USUARIO ven todas las del
 >   negocio (ADMIN=staff no entra); el equipo se entera por mail (`send-email` tipo `soporte_consulta`, a soporte@) y
 >   por una marca en el panel. `admin-api` y `billing-manual-avisar-pago` (el "Ya transferí" ahora liga el ticket a
->   quien avisó) redeployadas en DEV; panel (`genesis360-admin`) con los cambios sin commitear todavía.
+>   quien avisó) redeployadas en DEV; panel (`genesis360-admin`) commiteado en `origin/dev` (`a9db285`).
 > - 🔒 **`send-email` ya no se puede usar como relay de mail** (commit `6dbaf377`, **deployada en DEV Y PROD**,
 >   autorizado por GO): tener `verify_jwt` encendido no alcanzaba, porque la anon key pública ya es un JWT válido —
 >   cualquiera podía mandar mail con el remitente de Genesis360, al destinatario que quisiera y con HTML propio.

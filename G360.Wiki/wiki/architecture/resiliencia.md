@@ -140,8 +140,19 @@ da más; el resto de las requests espera en la cola.
 
 ### Capacidad estimada de PROD (2026-09-14) — cuántos usuarios a la vez
 
-**Qué tiene PROD:** organización en plan **Pro**; la base tiene la configuración de la instancia **Micro**
-(`max_connections` 60, `shared_buffers` 224 MB, CPU ARM), **la misma que DEV** — así que el techo de E2 aplica.
+**Qué tiene cada proyecto.** ⚠️ Corregido el mismo día: la primera lectura miró solo `max_connections`, que es
+60 tanto en Nano como en Micro, y concluyó que PROD = DEV. No es así. La organización está en plan **Pro**, pero **el
+tamaño de instancia es por proyecto** y Supabase no lo sube solo al pasar de Free a Pro (lo reinicia):
+
+| | `effective_cache_size` | `shared_buffers` | `work_mem` | Instancia que corresponde |
+|---|---|---|---|---|
+| DEV | 768 MB | 256 MB | 3,5 MB | **Micro** (1 GB, 2-core ARM compartido) |
+| PROD | 384 MB | 224 MB | 2,2 MB | **Nano** (hasta 0,5 GB, CPU compartida) — inferido de la configuración; confirmar en Settings → Compute and Disk |
+
+Según la documentación de Supabase, en una organización paga **una Nano se cobra igual que una Micro**. Ninguna de
+las dos tiene CPU dedicada: la dedicada empieza en **Large** (2-core, 8 GB, ~USD 110/mes); Small (~USD 15) y Medium
+(~USD 60) suman RAM y conexiones, con CPU compartida. **El techo de E2 se midió en DEV (Micro)**: los números de abajo
+valen para PROD cuando PROD esté en Micro; hoy PROD tiene la mitad de memoria y rendiría menos.
 
 **Cuánto consume un usuario** — medido manejando la app real con Playwright contra DEV:
 
@@ -171,8 +182,10 @@ compartida. Tomarlo como orden de magnitud, no como garantía.
    `GET /auth/v1/user` en 8 cambios de pantalla). Cachearlo baja una parte grande de esas ~64 requests.
 2. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y el badge de alertas hace 6 conteos cada 30 s.
    Espaciarlos o dispararlos por evento baja el consumo en reposo.
-3. **Compute**: subir de Micro a una instancia mayor (precio a confirmar en Billing). Es la palanca directa sobre
-   el techo, porque ninguna consulta individual se destaca.
+3. **Compute**: primero **pasar PROD de Nano a Micro** (en una org paga cuesta lo mismo; reinicio breve). Después,
+   si hace falta: Small (~USD 15/mes, 2 GB) o Medium (~USD 60, 4 GB) suman RAM y conexiones con CPU compartida;
+   Large (~USD 110, 8 GB) es la primera con **CPU dedicada**. Es la palanca directa sobre el techo, porque ninguna
+   consulta individual se destaca. Precios de la documentación de Supabase al 2026-09-14; confirmar en Billing.
 
 Revisar cuando haya ~30 negocios activos o si el p95 de la API empieza a subir en el dashboard de Supabase.
 

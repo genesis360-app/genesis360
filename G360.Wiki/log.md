@@ -34,10 +34,13 @@ aviso no le llegó nunca a nadie**; en DEV, los 58 avisos de "OC vencida" de 30 
 DUEÑO y SUPER_USUARIO. Latente (sin clientes reales).
 
 ### 3 · Capacidad de PROD
-PROD: plan **Pro**, instancia **Micro** (misma configuración que DEV). Medido manejando la app real: un usuario con
-la pestaña quieta en el POS consume 0,59 req/s; cada cambio de pantalla, ~64 requests; una venta, 30. Contra el
-techo de E2 (~170 req/s, operando al 70 %): **~85 usuarios a la vez en hora pico, ~160 en uso tranquilo** (~40-80
-negocios). Supuestos, palancas y detalle en [[wiki/architecture/resiliencia]]. Hallazgo de paso: cada cambio de
+Plan **Pro**. ⚠️ **Corregido después, a partir de una pregunta de GO**: DEV está en **Micro** (1 GB) pero **PROD parece
+seguir en Nano** (hasta 0,5 GB: `effective_cache_size` 384 MB contra 768 MB de DEV). La primera lectura había mirado
+solo `max_connections`, que es 60 en las dos. Supabase no sube el tamaño al pasar de Free a Pro, y en una org paga
+una Nano se cobra como Micro. Ninguna tiene CPU dedicada (empieza en Large). Medido manejando la app real: un usuario
+con la pestaña quieta en el POS consume 0,59 req/s; cada cambio de pantalla, ~64 requests; una venta, 30. Contra el
+techo de E2 medido en DEV (~170 req/s, operando al 70 %), **con PROD en Micro**: ~85 usuarios a la vez en hora pico,
+~160 en uso tranquilo (~40-80 negocios). En Nano, menos. Supuestos, palancas y detalle en [[wiki/architecture/resiliencia]]. Hallazgo de paso: cada cambio de
 pantalla vuelve a pedir sesión, usuario, negocio y sucursales (32 `GET /auth/v1/user` en 8 pantallas).
 
 ---

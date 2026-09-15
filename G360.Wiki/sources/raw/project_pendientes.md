@@ -16,8 +16,10 @@ type: project
 > ✅ **Precio programado Fase 1 hecha en DEV** (mig 422, e2e 150). **Sigue: Fases 2-3** — tarea del repositor
 > anticipada (C1/C2), aviso al cajero + alerta de etiquetas vencidas (C3), aviso si ML/TN no publica (D2) — y
 > después el punto 3 (multimoneda, por relevamiento). 🛑 **Mig 421**: el aviso diario de CC/OC vencidas iba a roles
-> inexistentes (en PROD, a nadie). 📈 **Capacidad de PROD** (Pro + Micro): ~85 usuarios a la vez en hora pico, ~160
-> en uso tranquilo — ver `wiki/architecture/resiliencia.md`.
+> inexistentes (en PROD, a nadie). 📈 **Capacidad**: con Micro, ~85 usuarios a la vez en hora pico y ~160 en uso
+> tranquilo — ver `wiki/architecture/resiliencia.md`. 🟧 **PROD parece seguir en Nano** (la mitad de RAM que DEV, que
+> sí está en Micro; en una org paga la Nano se cobra como Micro): **pasar PROD a Micro** desde Settings → Compute and
+> Disk (reinicio breve) — acción de GO.
 >
 > #### ✅ DECISIONES DE GO — cont. 68 (2026-09-14), en este orden
 >

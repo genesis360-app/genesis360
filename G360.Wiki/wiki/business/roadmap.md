@@ -3,12 +3,17 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.221.0`** (2026-09-14, migs 001-419) — detalle en las secciones de abajo.
+**Versión en PROD (actual): `v1.221.0`** (2026-09-14, migs 001-419) — detalle en las secciones de abajo. Compute de
+PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+
+**En `dev`, sin deployar (GO: acumular)**: `v1.222.0` (reintegro al anular en USD y con vuelto, motivos de caja mig 420,
+`marketplace-webhook` apagado, landing, Monotributo a 12 meses) y `v1.223.0` (crédito a favor al anular, avisos de CC/OC
+al dueño mig 421, precio de venta programado Fase 1 mig 422). Los dos como prerelease en GitHub.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit

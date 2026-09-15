@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 🧹 Cierre de sesión (cont. 68) — DEV v1.223.0 (migs 420-422) · PROD v1.221.0 en Micro · Kalken, primer cliente real
+
+Sesión larga, en este orden: GO pidió "lo que falte definir" → 4 tandas de preguntas cerradas (todas las decisiones en
+la entrada "Sesión cont. 68") → **v1.222.0** (reintegro al anular + tanda chica, mig 420) → crédito a favor al anular +
+**E2 medido** → **v1.223.0** (mig 421 avisos al dueño, mig 422 precio programado Fase 1) → consumo real por usuario y
+capacidad → **PROD pasó de Nano a Micro**, después de verificar que Kalken no estuviera usando la app.
+
+**Estado final**: DEV `v1.223.0`, migs 001-422 (prereleases `v1.222.0` y `v1.223.0` en GitHub). PROD `v1.221.0`, migs
+001-419, compute Micro. **Nada de cont. 68 fue a PROD** (GO: acumular). Qué sigue y el checklist del deploy acumulado:
+bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md`.
+
+**Lecciones que quedaron en memoria**: el rol `'OWNER'` no existe (al filtrar por rol, verificar `distinct rol`); pasar
+la org a Pro no sube la instancia de cada proyecto y `max_connections` no distingue Nano de Micro; Kalken es cliente
+real, así que antes de algo disruptivo en PROD se revisa su actividad.
+
+---
+
 ## [2026-09-15] update | ⚙️ PROD pasa de Nano a Micro · 👤 Kalken, primer cliente real en PROD
 
 - GO avisó que **Kalken** (alta 2026-08-25, en PROD) es un cliente real probando la app. Antes del reinicio se

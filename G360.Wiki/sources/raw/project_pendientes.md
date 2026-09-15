@@ -6,32 +6,76 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 68) — DEV `v1.223.0` · migs 001-**422** · PROD `v1.221.0` (001-419)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cierre de cont. 68) — DEV `v1.223.0` · migs 001-**422** · PROD `v1.221.0` (001-419, compute **Micro**)
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.221.0` | 001-**419** | PRs #346-#349 el 14/09; policies = DEV; Edge Functions = repo **salvo `marketplace-webhook`** (código nuevo sin desplegar) |
-> | **DEV** | `v1.223.0` | 001-**422** | reintegro al anular + crédito a favor (REGLA #0), tanda chica, avisos de CC/OC al dueño (421), precio programado Fase 1 (422) — **GO: seguir acumulando antes de deployar** |
+> | **PROD** | `v1.221.0` | 001-**419** | compute **Micro** desde el 2026-09-15 (estaba en Nano); policies = DEV hasta la 419; Edge Functions = repo **salvo `marketplace-webhook`** (código nuevo sin desplegar) |
+> | **DEV** | `v1.223.0` | 001-**422** | todo lo de cont. 68 (prereleases `v1.222.0` y `v1.223.0` en GitHub) — **GO: seguir acumulando antes de deployar** |
 >
-> ✅ **Precio programado Fase 1 hecha en DEV** (mig 422, e2e 150). **Sigue: Fases 2-3** — tarea del repositor
-> anticipada (C1/C2), aviso al cajero + alerta de etiquetas vencidas (C3), aviso si ML/TN no publica (D2) — y
-> después el punto 3 (multimoneda, por relevamiento). 🛑 **Mig 421**: el aviso diario de CC/OC vencidas iba a roles
-> inexistentes (en PROD, a nadie). 📈 **Capacidad**: con Micro, ~85 usuarios a la vez en hora pico y ~160 en uso
-> tranquilo — ver `wiki/architecture/resiliencia.md`. ✅ **PROD pasó de Nano a Micro** el 2026-09-15 a las 00:01 AR
-> (GO, "Free Upgrade", mismo precio): verificado 768 MB / 256 MB, igual que DEV. Antes se verificó que Kalken no
-> estuviera usando la app. 👤 **Kalken es el primer cliente real en PROD** (alta 2026-08-25).
+> 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
+> DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que bloquea,
+> deploy) **revisar si lo está usando**: sesiones y refresh tokens en `auth`, últimos movimientos y `query_logs`
+> agrupando `edge_logs` por `request.sb.auth_user` (así se hizo el 2026-09-15). Nada de pruebas contra su tenant.
 >
-> #### ✅ DECISIONES DE GO — cont. 68 (2026-09-14), en este orden
+> #### 🟥 Deploy acumulado en `dev` (cuando GO diga)
+>
+> 1. **Migraciones 420-422 a PROD antes del merge** (ninguna rompe el frontend actual):
+>    - **420** motivos de caja: cambia la siembra y **desactiva "Extracción / Retiro" y "Gastos varios" en TODOS los
+>      negocios, Kalken incluido** (dejan de aparecer en "Ingreso de caja"; el historial no cambia).
+>    - **421** avisos diarios de CC/OC vencidas al DUEÑO/SUPER_USUARIO (en PROD hoy no le llegan a nadie).
+>    - **422** precio programado: tabla, funciones y **2 crons nuevos** (`aplicar-precios-programados` cada minuto,
+>      `notif-precios-programados-manana` 12:00 UTC). Verificar después: RLS, grants (`anon` sin nada), jobs activos.
+> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` (merge commit, no squash); promover los releases (hoy prereleases) y
+>    marcar `v1.223.0` como Latest.
+> 3. **Redeploy de `marketplace-webhook` en PROD** con `verify_jwt: true` (hoy corre la versión que acepta llamadas sin
+>    auth; en DEV nunca estuvo desplegada).
+> 4. Checklist de siempre: `bash scripts/auditar-edge-functions.sh`, paridad de policies **por schema** (`public` suma
+>    1 por `precios_programados`, más `storage` y `cron`) y smoke de PostgREST post-DDL (`precios_programados` 200 +
+>    columna inventada 400).
+>
+> #### ▶️ QUÉ SIGUE (orden de GO)
+>
+> 1. **Precio programado, Fases 2-3** (Fase 1 hecha: mig 422, e2e 150). C1/C2: tarea del repositor **anticipada**
+>    (ej. 1 h, configurable en Config → Repositores) con el precio nuevo, que **no se completa antes de la hora**
+>    (guard server-side + UI; `tareas_repositor` necesita `vigente_desde` y `precio_programado_id`). C3: **aviso al
+>    cajero** en el POS mientras la etiqueta siga pendiente (si el cliente reclama, la clave de supervisor que ya
+>    existe) + **alerta de etiquetas vencidas** (`useAlertas` y `AlertasPage` tienen que contar igual). D2: **aviso si
+>    ML/TN no publica** (hoy la cola reintenta 5 veces y queda `failed` sin avisar).
+> 2. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
+>    **relevamiento en HTML**. Ver el punto 3 de las decisiones de abajo.
+> 3. **Capacidad** (propuesto, sin decidir): cachear sesión/usuario/negocio/sucursales al navegar (hoy ~64 requests por
+>    pantalla, 32 `GET /auth/v1/user` en 8 pantallas) y espaciar el polling del POS y las alertas. Con Micro: ~85
+>    usuarios a la vez en hora pico, ~160 en uso tranquilo, ~80-120 clientes — `wiki/architecture/resiliencia.md`.
+> 4. ⏸️ **Videos de onboarding EN PAUSA** (GO los revisa con su socio; 6 hechos: 1-5 y 8). El video 1 muestra "+500
+>    comercios" y el 5 los motivos de caja viejos: regrabar esos tramos cuando se retome.
+> 5. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
+>    despacho de reserva con seña mixta (UAT 57.9) y fallo al aplicar un precio programado (UAT 59.7).
+> 6. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta
+>    (`wa-embedded-signup-exchange` solo en DEV), purgar "Genesis360 Onboarding" al terminar los videos, login-as del
+>    panel de soporte (sigue 501; GO: pendiente).
+>
+> 🛠️ **En cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la paridad de
+> policies **por schema** (`public`, `storage`, `cron`).
+>
+> #### 📋 Lo que se hizo en cont. 68 (2026-09-14/15) — detalle en `log.md`
+>
+> - **v1.222.0**: 🛑 reintegro al anular (dólares a la Caja USD, efectivo neto del vuelto, cualquier método de
+>   efectivo, seña mixta sin duplicar) · mig 420 motivos de caja · `marketplace-webhook` apagado · landing sin "+500
+>   comercios" · Monotributo a 12 meses móviles (y la suma ya no corta en 1.000 ventas).
+> - **v1.223.0**: 🛑 el crédito a favor vuelve al anular · 🛑 mig 421 avisos de CC/OC al dueño · precio programado Fase 1
+>   (mig 422).
+> - **E2 medido** (techo de DEV ~170 req/s de lectura, 0 errores hasta 400 sesiones), consumo real por usuario y
+>   **PROD pasó de Nano a Micro** (verificado; antes se confirmó que Kalken no estaba usando la app).
+> - e2e nuevos **149** (reintegro: USD, vuelto, crédito) y **150** (precio programado), los dos mutantes.
+>
+> #### ✅ DECISIONES DE GO — cont. 68 (2026-09-14)
 >
 > Relevadas con preguntas cerradas, verificando código y datos (DEV y PROD, solo lectura) antes de cada una.
-> Detalle en `log.md` (2026-09-14, "Sesión cont. 68").
->
-> ✅ **Hechos en DEV (`v1.222.0`, mig 420): puntos 1, 4, 5, 6 y 7** — ver `log.md` ("v1.222.0 en DEV"). El 2
-> queda cubierto por el 3. **Falta PROD** (mig 420 + frontend + redeploy de `marketplace-webhook`), esperando el
-> OK de GO. **Sigue: punto 8 (precio programado v1)** y después el 3 (multimoneda, arranca por relevamiento).
-> ✅ **Crédito a favor al anular — resuelto en DEV** (GO: que vuelva al saldo): `creditoARestituirPorAnulacion`,
-> e2e 149 C mutante. ✅ **E2 medido** en DEV: techo ~170 req/s de lectura, 0 errores hasta 400 sesiones (ver
-> `wiki/architecture/resiliencia.md`). **GO pidió seguir acumulando antes de deployar.**
+> Detalle en `log.md` (2026-09-14, "Sesión cont. 68"). **Estado de cada una**: ✅ hechos en DEV los puntos **1, 4, 5
+> (falta el redeploy de la EF en PROD), 6 y 7**, más el **crédito a favor al anular** (vuelve al saldo) · 🟨 **8**:
+> Fase 1 hecha, Fases 2-3 en "QUÉ SIGUE" · 🟨 **3**: pendiente, arranca por relevamiento · ↪️ **2**: se resuelve
+> dentro del 3 · **9**: cerrados sin construir.
 >
 > 1. 🛑 **REGLA #0 — anular venta/seña cobrada en Efectivo USD**: el reintegro solo cuenta `tipo === 'Efectivo'`
 >    (`VentasPage.tsx` ~5245), así que los dólares caen a un `egreso_informativo` en la caja de pesos y **la Caja
@@ -63,19 +107,6 @@ type: project
 >    sin sesión).
 > 9. Cerrados sin construir: **tope de descuento del DUEÑO** = no tiene (usa el tope por canal) · **Login-as** =
 >    sigue pendiente (501), sin cambios · **Contador** = todavía no; el registro sigue acumulando.
->
-> #### ▶️ QUÉ SIGUE (además de lo de arriba)
->
-> 1. ⏸️ **Videos de onboarding EN PAUSA** — GO los revisa con su socio (6 hechos: 1-5 y 8; el 4 con efectos de
->    click). No retomar hasta que GO lo diga. Ver memoria `project_videos_onboarding_serie`.
-> 2. 🧪 **Coberturas que quedaron sin e2e**: rol custom con permiso de Recursos creando ubicaciones (UAT 55.5 —
->    hoy solo unit + policy) y la **firma** del transportista por la pantalla (el e2e 148 cubre la foto).
-> 3. Purgar el tenant "Genesis360 Onboarding" **cuando termine la serie de videos**.
-> 4. `wa-embedded-signup-exchange` sigue solo en DEV (espera el App Review de Meta).
-> 5. ✅ **E2 (techo de instancia)** medido el 2026-09-14 — quedan sin medir el techo con escrituras y el de PROD.
->
-> 🛠️ **Nuevo en cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la
-> paridad de policies **por schema** (`public`, `storage`, `cron`) — `storage` no se estaba mirando.
 >
 > #### 🛑 Lo que apareció en esta sesión (cont. 67) — detalle en `log.md` (2026-09-14, deploy)
 >
@@ -389,6 +420,10 @@ type: project
 >    verdad y es editable.
 >
 > #### 🟡 Lo que sigue esperando definición de GO
+>
+> ⚠️ **Superado en cont. 68 (2026-09-14)**: GO decidió todos estos puntos (monedas, precio programado, tope de descuento
+> del DUEÑO, reintegro en USD al anular, login-as). El estado vigente está en el bloque "ARRANCÁ ACÁ" de arriba; esta
+> lista queda como registro histórico.
 >
 > 1. **Login-as read-only** en el panel de soporte — sigue **501 (Not Implemented)**. Necesita modo
 >    read-only real + token efímero en la app principal; merece diseño propio, no se resolvió acá.

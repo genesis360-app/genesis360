@@ -2,8 +2,8 @@
 title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375]
-updated: 2026-08-20
+sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375, 420]
+updated: 2026-09-15
 ---
 
 # Módulo Caja
@@ -102,14 +102,15 @@ La apertura **sugiere el monto del cierre anterior** de esa misma caja.
   en un reintento; no pasa por la caja — decisión de GO del 2026-09-14, antes el cliente lo perdía). Sin la caja de esa moneda abierta, la
   venta despachada no se deja anular (guard) y la reserva avisa "registralo manualmente". 🛑 Hasta el
   2026-09-14 los dólares no salían de la Caja USD y el efectivo se devolvía bruto, vuelto incluido (latente,
-  sin daño). UAT §57, e2e 149.
+  sin daño). UAT §57, e2e 149. ✅ **EN PROD desde el 2026-09-15** (`v1.222.0`, deploy acumulado).
 - **Al despachar desde reservada** → consulta si ya existe ingreso_reserva para evitar duplicado (`.limit(1)`:
   con una seña mixta hay dos filas y el `.maybeSingle()` anterior devolvía `null`, así que la seña se volvía a
   sumar en pesos; y solo suma el efectivo en pesos, nunca los dólares)
 - **Modal "Ingreso de caja"** → solo registra INGRESOS; los chips son los `motivos_movimiento` de `tipo='caja'` y
-  solo completan el concepto. Desde la mig 420 (2026-09-14) se siembran "Ingreso de efectivo", "Aporte del dueño" y
-  "Fondo de cambio"; "Extracción / Retiro" y "Gastos varios" quedaron desactivados porque invitaban a cargar un
-  egreso como ingreso. Las salidas van por Gastos, Caja Fuerte o traspasos.
+  solo completan el concepto. Desde la mig 420 (2026-09-14, ✅ **EN PROD desde el 2026-09-15**) se siembran "Ingreso
+  de efectivo", "Aporte del dueño" y "Fondo de cambio"; "Extracción / Retiro" y "Gastos varios" quedaron desactivados
+  en TODOS los negocios (Kalken incluido) porque invitaban a cargar un egreso como ingreso. Las salidas van por
+  Gastos, Caja Fuerte o traspasos.
 - **Cobranza CC** (v1.52.0, auditoría de procesos) → las 3 vías (ficha del cliente, POS, Caja → Cobranzas) registran el movimiento vía `cobrarDeudaCCFIFO`: Efectivo → `ingreso` real (entra al arqueo), otro método → `ingreso_informativo` `[Método] Cobranza CC — Cliente` (+cuenta de origen en POS). Sesión imputada: explícita (POS) > caja propia del usuario > única abierta; sin caja imputable y era efectivo → warning al operador. Antes la cobranza NO tocaba caja → descuadre de arqueo garantizado.
 - **🔴 Auditoría efectivo↔caja (v1.74.0):** regla unificada para TODO asiento de efectivo (despacho/reserva/saldo/devolución/cancelación): la caja imputada = **elegida ∥ activa ∥ única abierta** (fallback), el insert se **aguarda** (`await`, no `void`) y si falla se avisa con toast ("se procesó pero el efectivo no se asentó, registralo manual"). Origen: bug de la devolución en efectivo de la venta #26 (Kiosko) — el `egreso` era fire-and-forget y un fallo lo perdía en silencio; además el modal "Caja única" no fijaba la caja ni tenía fallback. Los `*_informativo` (no afectan saldo) quedan best-effort.
 

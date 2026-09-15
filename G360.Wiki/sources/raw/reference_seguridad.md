@@ -42,7 +42,7 @@ type: reference
 | MP Public Key | ✅ Nueva (PRD activado con genesis360.pro) `APP_USR-1edf...` |
 | MP Access Token | ✅ Nuevo `APP_USR-7675...` |
 | Resend API Key | ✅ Rotada `re_BYtz...` |
-| Supabase Access Token | 🔴 **NO rotado** — el `sbp_60df...` que figuraba como rotado el 2026-07-09 SIGUE FUNCIONANDO. Reverificado en uso varias veces desde entonces (2026-07-27 y 2026-07-28 al regenerar el schema del rediseño UoM, y de nuevo el **2026-08-25/26** al regenerar `schema_full.sql` para Compras/Gastos USD) — **sigue sin rotar de verdad, van ya varias sesiones re-flageando lo mismo**. Además estaba en texto plano en `.claude/settings.json` (local, NO en git). **Rotarlo de verdad en supabase.com/dashboard/account/tokens.** |
+| Supabase Access Token | 🟨 **En revisión (2026-09-15)** — el token en uso hoy es otro (`sbp_9bd2f…`, distinto del `sbp_60df...` filtrado documentado desde 2026-07-09). Falta **confirmar** que el viejo `sbp_60df…` quedó efectivamente revocado en supabase.com/dashboard/account/tokens (no alcanza con que ya no sea el que usa la sesión — varias sesiones anteriores lo re-flaguearon "sin rotar de verdad" porque seguía funcionando en paralelo). Verificar antes de dar esto por cerrado. |
 | GitHub Token | ✅ Rotado `ghp_dF2N...` |
 
 ### Supabase JWT Keys

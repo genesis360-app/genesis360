@@ -3,7 +3,7 @@ title: Marketplace Interno
 category: features
 tags: [marketplace, api, webhook, productos, publicacion]
 sources: [CLAUDE.md, supabase/functions/marketplace-api, supabase/functions/marketplace-webhook]
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # Marketplace Interno
@@ -74,8 +74,10 @@ nunca se configuró): cualquiera con un `producto_id` podía disparar un POST ha
 **Qué se hizo** (decisión de GO):
 - El campo "URL de webhook externo" salió de Configuración → Marketplace (la columna queda en la base).
 - La EF ahora exige un usuario autenticado **del mismo negocio** que el producto (401/403 si no).
-  ⚠️ El código nuevo está en el repo; en PROD se redespliega con el próximo deploy (`verify_jwt` pasa a
-  `true`). En DEV nunca estuvo desplegada.
+  ✅ **Redesplegada a PROD el 2026-09-15** (v20) con `verify_jwt: true`. 🐛 **Gotcha nuevo**: el deploy de una EF por
+  CLI **conserva** el `verify_jwt` que ya tenía la función — quedó en `false` pese al código nuevo, corregido con un
+  `PATCH` a la Management API (`/v1/projects/{ref}/functions/marketplace-webhook {"verify_jwt": true}`); verificado
+  sin auth → 401. Ver [[wiki/development/deploy]]. **Sigue sin existir en DEV, a propósito** (nadie la usa).
 - Si algún día se reconecta: hacerlo **server-side** (trigger sobre `movimientos_stock` + cola con
   reintentos + firma HMAC), nunca desde el navegador.
 

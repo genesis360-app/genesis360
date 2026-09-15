@@ -3,7 +3,7 @@ title: Deploy — Vercel + Supabase
 category: development
 tags: [deploy, vercel, supabase, produccion, dominios]
 sources: []
-updated: 2026-04-30
+updated: 2026-09-15
 ---
 
 # Deploy
@@ -97,6 +97,22 @@ supabase functions deploy nombre-funcion --project-ref jjffnbrdjchquexdfgwq
 # webhooks (Meta, TN, MELI, MODO, MP) — preservar verify_jwt=false:
 supabase functions deploy tn-webhook --project-ref jjffnbrdjchquexdfgwq --no-verify-jwt
 ```
+
+🐛 **El deploy de una Edge Function por CLI CONSERVA el `verify_jwt` que ya tenía la función desplegada** —
+(2026-09-15, deploy de `marketplace-webhook`). No importa lo que diga el código nuevo ni si se pasa o no
+`--no-verify-jwt`: `supabase functions deploy` no toca el flag si la función ya existía, hereda el que estaba
+configurado en el dashboard/proyecto. `marketplace-webhook` tenía `verify_jwt: false` desde que aceptaba llamadas
+sin auth (bug cerrado el 2026-09-14); tras redesplegar el código nuevo (que exige un usuario autenticado del mismo
+negocio) el flag **siguió en `false`** — la EF quedaba con el guard nuevo pero sin exigir el JWT de entrada.
+Se corrige con la **Management API**, no con la CLI:
+```bash
+curl -X PATCH "https://api.supabase.com/v1/projects/<project-ref>/functions/<function-slug>" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"verify_jwt": true}'
+```
+Verificar siempre con un GET/POST sin `Authorization`: `UNAUTHORIZED_NO_AUTH_HEADER` cuando `verify_jwt: true`
+está realmente activo (no alcanza con mirar el flag en el dashboard sin probar la llamada real).
 
 🛑 **Mergear `dev`→`main` NO despliega las Edge Functions.** En cada deploy a PROD, auditar que el código desplegado sea el del repo:
 

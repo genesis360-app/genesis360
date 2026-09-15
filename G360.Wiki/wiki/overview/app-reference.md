@@ -70,7 +70,7 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 | `/suscripcion` | Gestión de plan y pagos |
 | `/caja/panel` | Panel de cajero |
 | `/ayuda` | Centro de soporte — 2 tarjetas activas (Reportar un problema, Mis consultas) + 4 "próximamente" |
-| `/ayuda/consultas` | 🆕 **2026-09-15 (mig 426, EN DEV):** Mis consultas — lista + hilo + responder, con adjuntos. Fuera del `SubscriptionGuard` (como `/mi-cuenta`) |
+| `/ayuda/consultas` | 🆕 **2026-09-15 (mig 426, ✅ EN PROD desde el 2026-09-15):** Mis consultas — lista + hilo + responder, con adjuntos. Fuera del `SubscriptionGuard` (como `/mi-cuenta`) |
 | `/admin` | Panel de administración de plataforma (solo ADMIN global) |
 | `/onboarding` | Flujo de registro inicial |
 
@@ -875,9 +875,9 @@ Gestión del plan de pago.
 
 ### 4.11 Ayuda (`/ayuda`, `/ayuda/consultas`)
 
-Centro de soporte. 🆕 **2026-09-15 (mig 426, EN DEV): "Reportar un problema" y "Mis consultas" ya funcionan** —
-las otras 4 tarjetas (FAQ, chat, buenas prácticas, guías interactivas; "Cursos y recursos" es la Fase 2) siguen con
-badge "Próximamente".
+Centro de soporte. 🆕 **2026-09-15 (mig 426, ✅ EN PROD desde el 2026-09-15): "Reportar un problema" y "Mis
+consultas" ya funcionan** — las otras 4 tarjetas (FAQ, chat, buenas prácticas, guías interactivas; "Cursos y
+recursos" es la Fase 2, próxima en la cola de GO) siguen con badge "Próximamente".
 
 - **"Reportar un problema"** (tarjeta de `/ayuda` o botón `?` del header → `AyudaModal`): abre `NuevaConsultaForm`
   (tipo, urgencia, asunto, detalle, hasta 3 capturas/PDF de 5 MB) que crea un **ticket real** vía RPC

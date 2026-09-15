@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, src/pages/ProductosPage.tsx]
-updated: 2026-09-01
+sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, src/pages/ProductosPage.tsx]
+updated: 2026-09-15
 ---
 
 # Productos
@@ -469,7 +469,7 @@ Ver detalle técnico: [[wiki/features/escaneo-barcode]]
 
 ---
 
-## 🗓️ Precio de venta con fecha/hora de vigencia — Fase 1 (mig 422, 2026-09-14, EN DEV)
+## 🗓️ Precio de venta con fecha/hora de vigencia — Fase 1 (mig 422, 2026-09-14, ✅ EN PROD desde el 2026-09-15)
 
 Pedido de Fede. El relevamiento (`relevamiento-precio-programado-reglas-negocio.html`) lo respondió GO el
 2026-09-14; las respuestas completas están en `log.md` (sesión cont. 68).
@@ -503,7 +503,7 @@ masivos (v2).
 
 ---
 
-## 🏷️ Precio programado — Fases 2-3: la etiqueta de la góndola y el aviso de ML/TN (migs 423-424, 2026-09-15, EN DEV)
+## 🏷️ Precio programado — Fases 2-3: la etiqueta de la góndola y el aviso de ML/TN (migs 423-424, 2026-09-15, ✅ EN PROD desde el 2026-09-15)
 
 Cierra lo que quedaba del relevamiento. La parte de etiquetas es de modo avanzado: las tareas del repositor solo
 existen para productos con góndola asignada (ver [[wiki/features/repositores]]).
@@ -542,7 +542,10 @@ publicación falla, no cuando no se intentó.
 
 **Verificación:** 19 unit (`tests/unit/precioProgramado.test.ts`) · e2e **151** mutante (ver UAT §60) ·
 migraciones verificadas en DEV (grants por columna, `security_invoker`, acentos, orden del historial) y smoke de
-PostgREST con control negativo.
+PostgREST con control negativo. ✅ **Deploy a PROD el 2026-09-15** (migs 422-424 aplicadas antes del merge, junto con
+420-421/425-426; `md5(pg_get_functiondef)` idéntico DEV↔PROD, crons `aplicar-precios-programados` y
+`notif-precios-programados-manana` activos y corriendo sin fallos) — ver [[wiki/database/migraciones]] y
+`sources/raw/project_pendientes.md`.
 
 ---
 

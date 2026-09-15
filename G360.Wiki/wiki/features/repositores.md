@@ -2,8 +2,8 @@
 title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
-sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts, src/components/RepositoresReportes.tsx, supabase/functions/repositores-cierre-dia-sweep/index.ts, .github/workflows/repositores-cierre-dia-sweep.yml]
-updated: 2026-08-13
+sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, migration 423, migration 424, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts, src/components/RepositoresReportes.tsx, supabase/functions/repositores-cierre-dia-sweep/index.ts, .github/workflows/repositores-cierre-dia-sweep.yml]
+updated: 2026-09-15
 ---
 
 # Módulo Repositores
@@ -675,7 +675,7 @@ precio de siete cifras no puede pisar el nombre ni salirse de la etiqueta, y el 
 cambia bastante entre los 3 tamaños de hoja. Se prefiere achicar la fuente antes que recortar un
 número de plata.
 
-## 🗓️ Etiquetas de precios programados (migs 423-424, 2026-09-15, EN DEV)
+## 🗓️ Etiquetas de precios programados (migs 423-424, 2026-09-15, ✅ EN PROD desde el 2026-09-15)
 
 Con un precio de venta programado ([[wiki/features/productos]], sección "Precio programado — Fases 2-3"), la
 tarea de cambiar la etiqueta aparece **antes** de la hora (anticipación configurable en esta misma card de

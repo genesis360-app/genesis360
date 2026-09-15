@@ -6,6 +6,52 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 🏷️ Precio programado Fases 2-3 (migs 423-424): la etiqueta de la góndola y el aviso de ML/TN — v1.224.0 en DEV
+
+Sin deploy (GO: acumular). Implementa lo que quedaba del relevamiento (C1/C2, C3 y D2); las respuestas están en la
+entrada "Sesión cont. 68" y el detalle en [[wiki/features/productos]].
+
+### Qué se construyó
+- **Mig 423 — la etiqueta anticipada.** `fn_generar_tareas_precio_programado` (la llama el cron de cada minuto antes
+  de aplicar) crea la tarea `cambio_precio` cuando faltan `tenants.repositor_anticipacion_min` minutos o menos (1 h
+  por defecto; se elige en Config → Inventario → Repositores), con el precio nuevo y ligada al programado. Si ya había
+  una tarea de cartel sin hacer, la fusiona. El guard `fn_tarea_repositor_guard_completar` no deja completarla
+  mientras rija otro precio. Cancelar, reemplazar o no poder aplicar el programado desarma la tarea; un cambio manual
+  antes de la hora no le pisa la etiqueta.
+- **POS:** aviso al cajero (toast al agregar y línea en la fila del carrito) cuando la etiqueta de la góndola muestra
+  otro precio.
+- **Alertas:** "Etiquetas vencidas en góndola" (badge y página con la misma consulta); "Ver tarea" abre Repositores
+  con la tarea resaltada.
+- **Mig 424:** `trg_notificar_sync_precio_fallido` avisa al DUEÑO/SUPER_USUARIO cuando un `sync_precio` de ML/TN queda
+  `failed`, y junta en un aviso los del mismo canal de las últimas 6 horas.
+
+### 🛑 Hallazgos
+1. **`tareas_repositor` la podía escribir entera cualquier usuario del negocio** (INSERT, DELETE y UPDATE de todas las
+   columnas): así se salteaba el guard nuevo. La 423 saca INSERT/DELETE y deja el UPDATE por columna. El reviewer de
+   la Fase 3 de Repositores lo había anotado como bajo impacto.
+2. **`migration-reviewer` (APTA):** en `fn_aplicar_precios_programados` (desde la 422) la rama de error no tenía
+   subtransacción propia. Si fallaba el aviso de un precio que no se pudo aplicar, se revertían todos los precios ya
+   aplicados en ese minuto. Corregido en la 423, junto con un guard más duro ante una doble falla.
+3. **Alertas decía "¡Todo en orden!" con pedidos vencidos o sin avanzar** si eran las únicas alertas (el badge sí los
+   contaba y la página escondía sus secciones). Corregido.
+4. 🛑 **Latente, sin tocar (decisión para GO):** `integration_job_queue` la puede escribir cualquier usuario del negocio
+   (Config la usa para "forzar sync") y `meli-stock-worker` publica en el `meli_item_id` que viene en el job: con acceso
+   por REST se podría mandar el stock o el precio de un producto a otra publicación de la misma cuenta.
+5. **Límite conocido:** la publicación del precio en ML/TN solo se encola para productos con repricing o % de ajuste
+   por canal (`fn_enqueue_sync_precio`, mig 346, verificado en DEV). Con "Sync precio" solo, el precio publicado no
+   cambia, ni programado ni manual.
+
+### Verificación
+- 19 unit (`tests/unit/precioProgramado.test.ts`), typecheck y lint.
+- **e2e 151** (4 casos) verde: A y B contra el cron real de DEV. Mutantes: **D** falla sin la 424 y **C** falla sin el
+  cambio de `VentasPage`. El primer intento del mutante C falló por el motivo equivocado (el helper leía una columna
+  que todavía no existía) y se rehízo con la migración aplicada; A y B sin la 423 no tienen tarea ligada.
+- Migraciones en DEV: grants por columna, `security_invoker`, acentos (`DUEÑO` = `c391`), orden del historial y smoke
+  de PostgREST con control negativo. `schema_full.sql` regenerado por MCP, sin token: 169 tablas, 230 funciones,
+  112 triggers y 231 policies. UAT §60.
+
+---
+
 ## [2026-09-15] update | 🧹 Cierre de sesión (cont. 68) — DEV v1.223.0 (migs 420-422) · PROD v1.221.0 en Micro · Kalken, primer cliente real
 
 Sesión larga, en este orden: GO pidió "lo que falte definir" → 4 tandas de preguntas cerradas (todas las decisiones en

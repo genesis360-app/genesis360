@@ -52,6 +52,7 @@ import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from 
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
+import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
@@ -253,6 +254,32 @@ export default function VentasPage() {
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const { canalesActivos, reglaDe, clasificacionDe } = useCanalesVenta()  // VF2 (I1/I2)
+  // Precio programado Fases 2-3 (mig 423, C3): productos cuya etiqueta de góndola todavía muestra otro precio
+  // (`precio_anterior` de la tarea del repositor es lo que sigue impreso). Se avisa al cajero; se cobra el precio
+  // vigente. Solo avanzado (Repositores). Refresco espaciado a propósito: no suma polling fino al POS.
+  const { data: etiquetasDesactualizadas = {} } = useQuery({
+    queryKey: ['etiquetas-desactualizadas', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data, error } = await applyFilter(supabase.from('tareas_repositor')
+        .select('producto_id, tipo, estado, precio_anterior, precio_nuevo, productos(precio_venta)')
+        .eq('tenant_id', tenant!.id)
+        .eq('tipo', 'cambio_precio')
+        .in('estado', ['pendiente', 'en_curso']))
+      if (error) throw error
+      // null = con "Todas" las sucursales hay etiquetas del mismo producto con precios distintos: se avisa sin monto
+      // para no mostrarle al cajero el precio de la góndola de otra sucursal.
+      const mapa: Record<string, number | null> = {}
+      for (const t of (data ?? []) as any[]) {
+        if (!etiquetaDesactualizada(t, t.productos?.precio_venta)) continue
+        const precio = parseFloat(t.precio_anterior)
+        mapa[t.producto_id] = t.producto_id in mapa && mapa[t.producto_id] !== precio ? null : precio
+      }
+      return mapa
+    },
+    enabled: !!tenant && modoAvanzado,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  })
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
   const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
@@ -1762,6 +1789,14 @@ export default function VentasPage() {
     newItem.descuento_estado_monto = descEstado.monto
     newItem.descuento_estado_detalle = descEstado.detalle
     setCart(prev => [...prev, newItem])
+    // C3 (mig 423): la etiqueta de la góndola todavía muestra otro precio → que el cajero lo sepa antes de cobrar.
+    const etiquetaGondola = etiquetasDesactualizadas[p.id]
+    if (etiquetaGondola !== undefined && !esUSD) {
+      toast(etiquetaGondola === null
+        ? `La etiqueta de "${p.nombre}" en la góndola puede mostrar otro precio. Se cobra el precio vigente.`
+        : `La etiqueta de "${p.nombre}" en la góndola puede decir $${etiquetaGondola.toLocaleString('es-AR')}. Se cobra el precio vigente.`,
+        { icon: '🏷️', duration: 6000 })
+    }
   }
 
   // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. Fase 2-bis (mig 307): elegir
@@ -5825,6 +5860,18 @@ export default function VentasPage() {
                               )
                             })()}
                           </div>
+                          {/* C3 (mig 423): la etiqueta de la góndola todavía muestra otro precio */}
+                          {etiquetasDesactualizadas[item.producto_id] !== undefined && item.moneda_venta !== 'usd' && (
+                            <p data-etiqueta-desactualizada className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1 mt-0.5">
+                              <Tag size={12} className="mt-0.5 flex-shrink-0" />
+                              <span>
+                                Etiqueta de góndola sin actualizar: {etiquetasDesactualizadas[item.producto_id] === null
+                                  ? 'puede mostrar otro precio'
+                                  : `puede decir $${etiquetasDesactualizadas[item.producto_id]!.toLocaleString('es-AR')}`}.
+                                {' '}Se cobra el precio vigente; si el cliente reclama, la diferencia va como descuento autorizado por el supervisor.
+                              </span>
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
                             {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {

@@ -34,6 +34,7 @@ import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volu
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import { breadcrumbUbicacion, descendientesDeUbicacion, ordenarArbolUbicaciones } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
+import { ANTICIPACION_OPCIONES_MIN, etiquetaAnticipacion } from '@/lib/precioProgramado'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
@@ -1933,6 +1934,13 @@ export default function ConfigPage() {
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(hora ? 'Hora de aviso actualizada' : 'Aviso de impresión desactivado')
+  }
+  // Precio programado Fases 2-3 (mig 423, C1/C2): cuánto antes de la hora aparece la tarea de cambiar la etiqueta.
+  const actualizarAnticipacion = async (min: number) => {
+    const { data, error } = await supabase.from('tenants').update({ repositor_anticipacion_min: min }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Anticipación de etiquetas actualizada')
   }
 
   // A2 del relevamiento de Supervisor (mig 348): reglas de enrutamiento "tipo X -> Usuario A" para
@@ -4774,7 +4782,7 @@ export default function ConfigPage() {
               <Tag size={18} className="text-accent-text" />
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Repositores — Etiquetas de precio</h2>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tamaño de hoja</label>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cuántas etiquetas por hoja A4 al imprimir en tanda desde /repositores</p>
@@ -4792,6 +4800,20 @@ export default function ConfigPage() {
                   onChange={e => actualizarHoraImpresion(e.target.value)}
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200" />
               </div>
+            </div>
+            {/* Precio programado Fases 2-3 (mig 423, C1/C2) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etiquetas de precios programados</label>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
+                Cuánto antes de que rija un precio programado aparece la tarea de cambiar la etiqueta. Se imprime con el
+                precio nuevo, pero no se puede dar por puesta hasta que ese precio rija.
+              </p>
+              <select value={t289?.repositor_anticipacion_min ?? 60} onChange={e => actualizarAnticipacion(Number(e.target.value))}
+                className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                {Array.from(new Set<number>([...ANTICIPACION_OPCIONES_MIN, Number(t289?.repositor_anticipacion_min ?? 60)]))
+                  .sort((a, b) => a - b)
+                  .map(m => <option key={m} value={m}>{etiquetaAnticipacion(m)}</option>)}
+              </select>
             </div>
           </div>
 

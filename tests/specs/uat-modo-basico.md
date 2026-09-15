@@ -2139,5 +2139,24 @@ Decisiones de GO del 2026-09-14 (ver `log.md`, sesión cont. 68).
 | 59.8 | Aviso el día anterior (09:00) a DUEÑO, SUPER_USUARIO y SUPERVISOR | revisión + cron activo en DEV | ✅ código — sin e2e |
 | 59.9 | Producto con precio en USD → no se ofrece programar (A5: solo el minorista en pesos) | revisión | ✅ código |
 | 59.10 | Los avisos diarios de CC y OC vencidas le llegan al DUEÑO y al SUPER_USUARIO (antes a roles inexistentes: en PROD a nadie) | mig 421 verificada en DEV | ✅ DEV |
-| 59.11 | Fases siguientes: tarea del repositor anticipada que no se completa antes de la hora, aviso al cajero con etiqueta pendiente, alerta de etiquetas vencidas, aviso si ML/TN no publica | — | 🟨 pendiente |
+| 59.11 | Fases siguientes: tarea del repositor anticipada que no se completa antes de la hora, aviso al cajero con etiqueta pendiente, alerta de etiquetas vencidas, aviso si ML/TN no publica | ver §60 | ✅ |
+
+## 🏷️ §60 — Precio programado, Fases 2-3: la etiqueta de la góndola y el aviso de ML/TN (migs 423-424) — 2026-09-15
+
+Modo avanzado (las tareas del repositor existen solo para productos con góndola asignada), salvo 60.8 y 60.11.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 60.1 | Precio programado de un producto con góndola → la tarea de cambiar la etiqueta aparece ANTES de la hora (anticipación del negocio, 1 h por defecto) con el precio nuevo y "Rige desde…" | e2e 151 A (mutante: sin la 423 no aparece ninguna tarea) | ✅ |
+| 60.2 | Esa etiqueta no se da por puesta antes de que rija: el servidor la rechaza ("Todavía no…"), el botón está deshabilitado y no se destraba reescribiendo la tarea por REST | e2e 151 A | ✅ |
+| 60.3 | Un cambio de precio manual antes de la hora no le pisa la etiqueta al programado | e2e 151 A | ✅ |
+| 60.4 | Cancelar el programado: si la góndola seguía desactualizada, la tarea vuelve a pedir la etiqueta del precio vigente; si estaba al día, se cancela sola | e2e 151 A (las 2 ramas) | ✅ |
+| 60.5 | Reemplazar el programado (A2) desarma la etiqueta del anterior con la misma regla | revisión de `fn_programar_precio` (llama a la misma función que cancelar) | ✅ código |
+| 60.6 | Pasada la hora, la etiqueta sin hacer aparece en Alertas → "Etiquetas vencidas en góndola" (con "Ver tarea"); recién ahí se completa y la alerta se va | e2e 151 B (esperó al cron real de DEV) | ✅ |
+| 60.7 | POS: al agregar un producto cuya etiqueta muestra otro precio, el carrito avisa "Etiqueta de góndola sin actualizar: puede decir $X" | e2e 151 C (mutante: sin el cambio de `VentasPage` no avisa) | ✅ |
+| 60.8 | Un `sync_precio` de ML/TN que queda `failed` avisa al DUEÑO y al SUPER_USUARIO; un `sync_stock` fallido no | e2e 151 D (mutante: sin la 424 no hay aviso) | ✅ |
+| 60.9 | Varios precios que fallan en el mismo canal se juntan en un solo aviso sin leer ("N productos…") | revisión de `fn_notificar_sync_precio_fallido` | ✅ código — sin e2e |
+| 60.10 | Si aplicar un programado falla, su etiqueta anticipada se desarma, y un error al avisar no revierte los otros precios aplicados en ese minuto | revisión + `migration-reviewer` | ✅ código — sin e2e |
+| 60.11 | Config → Inventario → "Repositores — Etiquetas de precio": se elige la anticipación (a la hora, 15/30 min, 1/2/4/8 h, un día) | revisión | ✅ código |
+| 60.12 | Alertas: si las únicas alertas son pedidos con entrega vencida o sin avanzar, la página ya no dice "¡Todo en orden!" (el badge sí los contaba) | revisión de código | ✅ código |
 

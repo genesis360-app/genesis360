@@ -674,3 +674,15 @@ es donde el cliente lo busca al recorrer la góndola.
 precio de siete cifras no puede pisar el nombre ni salirse de la etiqueta, y el ancho disponible
 cambia bastante entre los 3 tamaños de hoja. Se prefiere achicar la fuente antes que recortar un
 número de plata.
+
+## 🗓️ Etiquetas de precios programados (migs 423-424, 2026-09-15, EN DEV)
+
+Con un precio de venta programado ([[wiki/features/productos]], sección "Precio programado — Fases 2-3"), la
+tarea de cambiar la etiqueta aparece **antes** de la hora (anticipación configurable en esta misma card de
+Config, 1 hora por defecto), con el precio nuevo y el aviso "Rige desde…". No se puede completar mientras rija el
+precio viejo: el servidor lo rechaza y el botón queda deshabilitado. Pasada la hora, si sigue sin hacerse, sale
+en Alertas como etiqueta vencida, y el POS le avisa al cajero que la góndola muestra otro precio.
+
+Cambió también quién puede escribir la tabla: `authenticated` ya no puede crear ni borrar tareas y solo
+actualiza estado, fechas, motivo, asignado y notas. Cierra la nota del reviewer de la Fase 3 ("`authenticated`
+igual tiene INSERT/DELETE ahí").

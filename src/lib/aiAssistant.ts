@@ -42,6 +42,7 @@ export const CONFIG_CAMPOS_IA: CampoConfigIA[] = [
   { campo: 'pedido_manual_habilitado', tipo: 'bool', descripcion: 'Permite crear pedidos manuales, además de los automáticos (venta/TN/MELI)' },
   { campo: 'pedido_cierre_automatico', tipo: 'bool', descripcion: 'El pedido se cierra automáticamente al entregar todo lo pendiente' },
   { campo: 'repositor_etiquetas_por_hoja', tipo: 'int', descripcion: 'Cantidad de etiquetas de precio por hoja al imprimir', valoresValidos: [4, 6, 12] },
+  { campo: 'repositor_anticipacion_min', tipo: 'int', descripcion: 'Minutos antes de un precio programado en que aparece la tarea del repositor para cambiar la etiqueta (0 = a la hora)', valoresValidos: [0, 15, 30, 60, 120, 240, 480, 1440] },
   { campo: 'pedido_numeracion', tipo: 'text', descripcion: 'Numeración de pedidos: por tenant completo o por sucursal', valoresValidos: ['tenant', 'sucursal'] },
 ]
 

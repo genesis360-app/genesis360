@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cierre de cont. 68) — DEV `v1.223.0` · migs 001-**422** · PROD `v1.221.0` (001-419, compute **Micro**)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cont. 69) — DEV `v1.224.0` · migs 001-**424** · PROD `v1.221.0` (001-419, compute **Micro**)
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.221.0` | 001-**419** | compute **Micro** desde el 2026-09-15 (estaba en Nano); policies = DEV hasta la 419; Edge Functions = repo **salvo `marketplace-webhook`** (código nuevo sin desplegar) |
-> | **DEV** | `v1.223.0` | 001-**422** | todo lo de cont. 68 (prereleases `v1.222.0` y `v1.223.0` en GitHub) — **GO: seguir acumulando antes de deployar** |
+> | **DEV** | `v1.224.0` | 001-**424** | cont. 68 + cont. 69 (precio programado Fases 2-3, migs 423-424); prereleases `v1.222.0`, `v1.223.0` y `v1.224.0` en GitHub — **GO: seguir acumulando antes de deployar** |
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
 > DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que bloquea,
@@ -20,28 +20,34 @@ type: project
 >
 > #### 🟥 Deploy acumulado en `dev` (cuando GO diga)
 >
-> 1. **Migraciones 420-422 a PROD antes del merge** (ninguna rompe el frontend actual):
+> 1. **Migraciones 420-424 a PROD antes del merge, en orden** (ninguna rompe el frontend actual):
 >    - **420** motivos de caja: cambia la siembra y **desactiva "Extracción / Retiro" y "Gastos varios" en TODOS los
 >      negocios, Kalken incluido** (dejan de aparecer en "Ingreso de caja"; el historial no cambia).
 >    - **421** avisos diarios de CC/OC vencidas al DUEÑO/SUPER_USUARIO (en PROD hoy no le llegan a nadie).
 >    - **422** precio programado: tabla, funciones y **2 crons nuevos** (`aplicar-precios-programados` cada minuto,
 >      `notif-precios-programados-manana` 12:00 UTC). Verificar después: RLS, grants (`anon` sin nada), jobs activos.
-> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` (merge commit, no squash); promover los releases (hoy prereleases) y
->    marcar `v1.223.0` como Latest.
+>    - **423** etiqueta anticipada: columnas en `tenants` y `tareas_repositor`, 2 funciones nuevas, 4 redefinidas,
+>      trigger del guard y **permisos por columna en `tareas_repositor`** (verificar `relacl` sin `a`/`w`/`d` para
+>      `authenticated` y UPDATE en 6 columnas). Depende de la 422.
+>    - **424** trigger `trg_notificar_sync_precio_fallido` en `integration_job_queue` (sin `EXECUTE` para
+>      `anon`/`authenticated`).
+> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` + `v1.224.0` (merge commit, no squash); promover los releases (hoy
+>    prereleases) y marcar `v1.224.0` como Latest.
 > 3. **Redeploy de `marketplace-webhook` en PROD** con `verify_jwt: true` (hoy corre la versión que acepta llamadas sin
 >    auth; en DEV nunca estuvo desplegada).
 > 4. Checklist de siempre: `bash scripts/auditar-edge-functions.sh`, paridad de policies **por schema** (`public` suma
->    1 por `precios_programados`, más `storage` y `cron`) y smoke de PostgREST post-DDL (`precios_programados` 200 +
->    columna inventada 400).
+>    1 por `precios_programados`; la 423-424 no agregan policies), más `storage` y `cron`) y smoke de PostgREST
+>    post-DDL (`precios_programados` 200, `tenants?select=repositor_anticipacion_min` 200 + columna inventada 400).
 >
 > #### ▶️ QUÉ SIGUE (orden de GO)
 >
-> 1. **Precio programado, Fases 2-3** (Fase 1 hecha: mig 422, e2e 150). C1/C2: tarea del repositor **anticipada**
->    (ej. 1 h, configurable en Config → Repositores) con el precio nuevo, que **no se completa antes de la hora**
->    (guard server-side + UI; `tareas_repositor` necesita `vigente_desde` y `precio_programado_id`). C3: **aviso al
->    cajero** en el POS mientras la etiqueta siga pendiente (si el cliente reclama, la clave de supervisor que ya
->    existe) + **alerta de etiquetas vencidas** (`useAlertas` y `AlertasPage` tienen que contar igual). D2: **aviso si
->    ML/TN no publica** (hoy la cola reintenta 5 veces y queda `failed` sin avisar).
+> 1. ✅ **Precio programado, Fases 2-3 — HECHO en cont. 69** (`v1.224.0`, migs 423-424, e2e 151, UAT §60). Queda E1
+>    (cambios masivos, v2).
+>    🛑 **Decisión para GO** (apareció de paso, REGLA #0, sin tocar): `integration_job_queue` la puede escribir
+>    cualquier usuario del negocio (Config la usa para "forzar sync") y `meli-stock-worker` publica en el
+>    `meli_item_id` que viene en el job. Un usuario con acceso por REST podría mandar el stock o el precio de un
+>    producto a otra publicación de la misma cuenta. Cerrarlo = pasar "forzar sync" a una RPC y sacar la escritura
+>    directa.
 > 2. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
 >    **relevamiento en HTML**. Ver el punto 3 de las decisiones de abajo.
 > 3. **Capacidad** (propuesto, sin decidir): cachear sesión/usuario/negocio/sucursales al navegar (hoy ~64 requests por
@@ -57,6 +63,16 @@ type: project
 >
 > 🛠️ **En cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la paridad de
 > policies **por schema** (`public`, `storage`, `cron`).
+>
+> #### 📋 Lo que se hizo en cont. 69 (2026-09-15) — detalle en `log.md`
+>
+> - **v1.224.0 — precio programado Fases 2-3** (migs 423-424): etiqueta del repositor anticipada que no se completa
+>   antes de la hora (guard server-side + botón), aviso al cajero en el POS, alerta "Etiquetas vencidas en góndola",
+>   aviso al dueño si ML/TN no toma el precio, anticipación configurable en Config → Inventario → Repositores.
+> - 🛑 `tareas_repositor` pasó a permisos por columna (antes cualquier usuario del negocio creaba, borraba y
+>   reescribía tareas); `migration-reviewer` encontró que un fallo al avisar revertía todos los precios del minuto
+>   (corregido); Alertas ya no dice "Todo en orden" con pedidos vencidos.
+> - e2e **151** (4 casos, mutante) verde contra el cron real de DEV; `schema_full.sql` regenerado por MCP sin token.
 >
 > #### 📋 Lo que se hizo en cont. 68 (2026-09-14/15) — detalle en `log.md`
 >

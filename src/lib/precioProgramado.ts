@@ -53,6 +53,61 @@ export function vigenciaSugerida(ahora: Date = new Date()): { fecha: string; hor
   return { fecha: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, hora: '08:00' }
 }
 
+// ── Fases 2-3 (mig 423): la etiqueta de la góndola ─────────────────────────────────────────────────
+
+/** Lo mínimo de una tarea de repositor (`tareas_repositor` / `vw_tareas_repositor`) que usan estas reglas. */
+export type TareaEtiqueta = {
+  tipo: string
+  estado: string
+  precio_anterior: unknown
+  precio_nuevo: unknown
+  precio_programado_id?: string | null
+  vigente_desde?: string | null
+}
+
+const TAREA_ACTIVA = ['pendiente', 'en_curso']
+
+/**
+ * C3 — ¿la góndola muestra un precio distinto del que se cobra? `precio_anterior` es lo que sigue impreso en la
+ * etiqueta. Antes de la hora de un precio programado da `false`: la etiqueta vieja todavía es la correcta.
+ */
+export function etiquetaDesactualizada(tarea: TareaEtiqueta, precioVigente: unknown): boolean {
+  if (tarea.tipo !== 'cambio_precio' || !TAREA_ACTIVA.includes(tarea.estado)) return false
+  if (tarea.precio_anterior == null || precioVigente == null) return false
+  return cambioDePrecio(tarea.precio_anterior, precioVigente)
+}
+
+/**
+ * C1/C2 — espejo del guard `fn_tarea_repositor_guard_completar`: la etiqueta de un precio programado no se da por
+ * puesta mientras siga rigiendo otro precio. Si alguien ya dejó el precio vigente igual al de la etiqueta, se puede.
+ */
+export function etiquetaAntesDeHora(tarea: TareaEtiqueta, precioVigente: unknown, ahora: Date = new Date()): boolean {
+  if (tarea.tipo !== 'cambio_precio' || !TAREA_ACTIVA.includes(tarea.estado)) return false
+  if (!tarea.precio_programado_id || !tarea.vigente_desde) return false
+  const desde = new Date(tarea.vigente_desde)
+  if (isNaN(desde.getTime()) || desde.getTime() <= ahora.getTime()) return false
+  return cambioDePrecio(precioVigente, tarea.precio_nuevo)
+}
+
+/** C3 — etiqueta de un precio programado cuya hora ya pasó y sigue sin cambiarse. */
+export function etiquetaVencida(tarea: TareaEtiqueta, ahora: Date = new Date()): boolean {
+  if (tarea.tipo !== 'cambio_precio' || !TAREA_ACTIVA.includes(tarea.estado)) return false
+  if (!tarea.precio_programado_id || !tarea.vigente_desde) return false
+  const desde = new Date(tarea.vigente_desde)
+  return !isNaN(desde.getTime()) && desde.getTime() <= ahora.getTime()
+}
+
+/** Opciones de anticipación de la tarea del repositor (minutos). `tenants.repositor_anticipacion_min` acepta 0-1440. */
+export const ANTICIPACION_OPCIONES_MIN = [0, 15, 30, 60, 120, 240, 480, 1440] as const
+
+export function etiquetaAnticipacion(min: number): string {
+  if (min <= 0) return 'A la hora del cambio'
+  if (min < 60) return `${min} minutos antes`
+  if (min === 1440) return 'Un día antes'
+  const h = min / 60
+  return Number.isInteger(h) ? `${h} hora${h === 1 ? '' : 's'} antes` : `${min} minutos antes`
+}
+
 /** 'dd/mm/aaaa hh:mm' en hora local. */
 export function formatearVigencia(valor: string | Date): string {
   const d = typeof valor === 'string' ? new Date(valor) : valor

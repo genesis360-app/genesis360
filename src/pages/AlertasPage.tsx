@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
-import { cajasSobreUmbralBovedaDelTenant } from '@/hooks/useAlertas'
+import { cajasSobreUmbralBovedaDelTenant, queryEtiquetasVencidas } from '@/hooks/useAlertas'
+import { formatearVigencia } from '@/lib/precioProgramado'
 import { Link, useNavigate } from 'react-router-dom'
 import { capacidadCrearOC } from '@/lib/comprasPermisos'
 import { armarOCsSugeridas } from '@/lib/ocSugerida'
@@ -301,6 +302,23 @@ export default function AlertasPage() {
   const pedidosSinAvanzar = pedidosSinAvanzarResult?.rows ?? []
   const pedidosSinAvanzarTotal = pedidosSinAvanzarResult?.total ?? 0
 
+  // Precio programado Fases 2-3 (mig 423, C3): etiquetas de góndola de un precio que ya rige y siguen sin
+  // cambiarse. Misma consulta que el badge (queryEtiquetasVencidas) para que cuenten igual. Solo avanzado.
+  const { data: etiquetasVencidasResult } = useQuery({
+    queryKey: ['etiquetas-vencidas', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data, error, count } = await queryEtiquetasVencidas(tenant!.id, sucursalId,
+        'id, precio_anterior, precio_nuevo, vigente_desde, productos(nombre, sku), sucursales(nombre)')
+        .order('vigente_desde', { ascending: true })
+        .limit(ALERTAS_DISPLAY_LIMIT)
+      if (error) throw error
+      return { rows: (data ?? []) as any[], total: (count ?? 0) as number }
+    },
+    enabled: !!tenant && modoAvanzado,
+  })
+  const etiquetasVencidas = etiquetasVencidasResult?.rows ?? []
+  const etiquetasVencidasTotal = etiquetasVencidasResult?.total ?? 0
+
   // Clientes con saldo pendiente (ventas pendientes/reservadas con deuda)
   const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
     queryKey: ['clientes-con-deuda', tenant?.id, sucursalId],
@@ -428,7 +446,10 @@ export default function AlertasPage() {
   // en AMBOS modos desde v1.126.0 (el tab de OC de Prov./Servicios ya no es solo avanzado).
   const totalAlertas = alertas.length + reservasViejasTotal + sinCategoria.length + clientesConDeuda.length + cajasSobreUmbral.length
     + ocsVencidasTotal + ocsProximasTotal
-    + (modoAvanzado ? lineasSinUbicacionTotal + lineasSinProveedorTotal + lpnsVencidosTotal : 0)
+    // Pedidos vencidos/sin avanzar faltaban acá aunque el badge sí los cuenta: si eran las únicas alertas, la
+    // página decía "¡Todo en orden!" y escondía sus secciones. Se suman junto con las etiquetas vencidas (mig 423).
+    + (modoAvanzado ? lineasSinUbicacionTotal + lineasSinProveedorTotal + lpnsVencidosTotal
+        + pedidosVencidosTotal + pedidosSinAvanzarTotal + etiquetasVencidasTotal : 0)
 
   // Estas 3 secciones agregan/filtran client-side (stock por sucursal, categoría por sucursal,
   // saldo por cliente) — el query trae el set COMPLETO para no falsear el cálculo (REGLA #0),
@@ -605,6 +626,46 @@ export default function AlertasPage() {
                     className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     Ver LPN
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* C3 (mig 423) — el precio programado ya rige y la etiqueta de la góndola sigue sin cambiar */}
+          {modoAvanzado && etiquetasVencidasTotal > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                  <Tag size={14} />
+                  Etiquetas vencidas en góndola ({etiquetasVencidasTotal})
+                </h2>
+                {etiquetasVencidasTotal > ALERTAS_DISPLAY_LIMIT && (
+                  <Link to="/repositores" className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline">Ver todas →</Link>
+                )}
+              </div>
+              {etiquetasVencidas.map((t: any) => (
+                <div key={t.id} data-etiqueta-vencida={t.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-900/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Tag size={18} className="text-red-500 dark:text-red-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                        {t.productos?.nombre ?? 'Producto'}
+                        {t.sucursales?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {t.sucursales.nombre}</span>}
+                      </p>
+                      <p className="text-xs text-red-500 dark:text-red-400">
+                        Rige ${Number(t.precio_nuevo ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })} desde {formatearVigencia(t.vigente_desde)}
+                        {' · '}la góndola sigue diciendo ${Number(t.precio_anterior ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/repositores?tarea=${t.id}`}
+                    className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    Ver tarea
                   </Link>
                 </div>
               ))}

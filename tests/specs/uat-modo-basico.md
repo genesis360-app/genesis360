@@ -2173,3 +2173,22 @@ Ambos modos. Pedido de GO: el cliente avisa "Ya transferí" desde Mi Cuenta y no
 | 61.5 | Panel: debajo del cuadro de respuesta dice si le llega al cliente o si es una nota interna; el botón dice "Responder al cliente" o "Guardar nota" | build del panel + revisión | ✅ código |
 | 61.6 | Las tablas de soporte ya no tienen privilegios para `anon` ni `authenticated` (antes solo las frenaba la RLS sin policies) | `relacl` en DEV + PostgREST con la anon key → 401 | ✅ DEV |
 
+## 💬 §62 — Ayuda: "Reportar un problema" y Mis consultas (mig 426) — 2026-09-15
+
+Ambos modos. Pedido de GO: terminar "Reportar un problema" (antes solo mandaba un mail, sin ticket) y que el cliente siga y responda su consulta. Decisiones de GO: cada usuario ve las suyas y el DUEÑO/SUPER_USUARIO todas las del negocio; el equipo se entera por mail y por una marca en el panel.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 62.1 | Ayuda → "Reportar un problema" → formulario con tipo, urgencia, asunto, detalle y hasta 3 capturas/PDF (5 MB) → al enviar aterriza en la consulta, con la captura en el hilo | e2e 152 A (mutante: creando sin adjuntos, la captura no aparece) | ✅ |
+| 62.2 | El cliente responde desde Mis consultas → el mensaje se suma al hilo; al equipo le sale un mail por la consulta y otro por la respuesta | e2e 152 A (mails interceptados) | ✅ |
+| 62.3 | El CAJERO y el SUPERVISOR ven, abren y responden solo sus consultas; el DUEÑO ve, abre y responde las de todo el negocio ("de {usuario}") | e2e 152 B, con control positivo en cada negativa | ✅ |
+| 62.4 | Capturas: cada uno sube solo a su carpeta; el DUEÑO abre las del negocio, el SUPERVISOR no abre las del cajero; no se puede adjuntar un archivo de otra carpeta, con `..` o que no se subió | e2e 152 B | ✅ |
+| 62.5 | Las tablas de soporte no se leen directo (ni el DUEÑO) y sin sesión no hay consultas: todo pasa por las RPC con guard | e2e 152 B + PostgREST con la anon key → 401 | ✅ |
+| 62.6 | Panel: una **nota interna** no le llega al cliente (0 avisos), no aparece en su hilo ni le cambia el estado, y la consulta sigue "esperando respuesta del equipo" | SQL en DEV con los triggers reales, impersonando al cajero | ✅ DEV |
+| 62.7 | Panel: la respuesta del equipo → aviso en la campanita con link a la consulta, deja de estar pendiente y el cliente la ve como "Te respondimos", firmada "Soporte Genesis360" | ídem | ✅ DEV |
+| 62.8 | El cliente escribe en una consulta resuelta → se reabre y vuelve a quedar pendiente del equipo; en una cerrada, el servidor lo rechaza ("abrí una nueva") | ídem | ✅ DEV |
+| 62.9 | "Ya transferí" (Mi Cuenta) crea la consulta de tipo pago a nombre de quien avisó → aparece en su Mis consultas y ahí ve la respuesta | revisión de `billing-manual-avisar-pago` + backfill de la 426 | ✅ código |
+| 62.10 | Mis consultas funciona con la suscripción vencida (está fuera del SubscriptionGuard, como Mi Cuenta) | revisión de `App.tsx` | ✅ código |
+| 62.11 | Topes anti-spam: 10 consultas por usuario cada 24 h y 30 mensajes por hora, contados de a un pedido por usuario (lock) | revisión + `migration-reviewer` | ✅ código — sin e2e |
+| 62.12 | Panel: filtro "Solo los que esperan respuesta del equipo", marca "● Respuesta del cliente", quién la abrió, capturas con link y casilla "Nota interna" | build del panel + revisión | ✅ código |
+

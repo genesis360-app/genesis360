@@ -48,6 +48,7 @@ const RrhhPage            = lazy(() => import('@/pages/RrhhPage'))
 const SucursalesPage      = lazy(() => import('@/pages/SucursalesPage'))
 const MiCuentaPage        = lazy(() => import('@/pages/MiCuentaPage'))
 const AyudaPage           = lazy(() => import('@/pages/AyudaPage'))
+const SoporteConsultasPage = lazy(() => import('@/pages/SoporteConsultasPage'))
 const ProveedoresPage     = lazy(() => import('@/pages/ProveedoresPage'))
 const BibliotecaPage      = lazy(() => import('@/pages/BibliotecaPage'))
 const RecursosPage        = lazy(() => import('@/pages/RecursosPage'))
@@ -165,6 +166,8 @@ function App() {
                   la app sigue cerrado: cualquier otra ruta rebota a /suscripcion. */}
               <Route element={<AppLayout />}>
                 <Route path="/mi-cuenta" element={<MiCuentaPage />} />
+                {/* Fuera del SubscriptionGuard como Mi Cuenta: con la suscripción vencida es cuando más se necesita soporte. */}
+                <Route path="/ayuda/consultas" element={<SoporteConsultasPage />} />
               </Route>
               <Route element={<SubscriptionGuard />}>
                 <Route element={<AppLayout />}>

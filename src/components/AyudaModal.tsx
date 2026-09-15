@@ -1,11 +1,10 @@
 import {
   X, Search, Bug, MessageCircle, Youtube,
-  ChevronDown, ChevronUp, Send,
+  ChevronDown, ChevronUp, MessageSquare,
 } from 'lucide-react'
 import { useState } from 'react'
-import toast from 'react-hot-toast'
-import { useAuthStore } from '@/store/authStore'
-import { supabase } from '@/lib/supabase'
+import { useNavigate } from 'react-router-dom'
+import { NuevaConsultaForm } from '@/components/soporte/NuevaConsultaForm'
 
 interface AyudaModalProps {
   isOpen: boolean
@@ -45,19 +44,10 @@ const FAQS: Record<string, Faq[]> = {
   ],
 }
 
-type ReportForm = {
-  tipo: string
-  urgencia: string
-  asunto: string
-  descripcion: string
-}
-
 export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) {
-  const { user, tenant } = useAuthStore()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
-  const [form, setForm] = useState<ReportForm>({ tipo: 'bug', urgencia: 'media', asunto: '', descripcion: '' })
-  const [sending, setSending] = useState(false)
 
   // FAQs del módulo actual o las default
   const moduleFaqs = FAQS[currentModule ?? ''] ?? FAQS.default
@@ -68,37 +58,9 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
       )
     : moduleFaqs
 
-  // El reporte se envía SERVER-SIDE a soporte@genesis360.pro vía la EF send-email
-  // (Resend), no por mailto: — así no depende de que el usuario tenga un cliente de
-  // correo configurado y el ticket llega siempre. Reusa el template `bug_report`.
-  const handleSendReport = async () => {
-    if (!form.asunto.trim() || !form.descripcion.trim()) {
-      toast.error('Completá asunto y descripción')
-      return
-    }
-    setSending(true)
-    const resumen = `[${form.tipo.toUpperCase()}] [urgencia: ${form.urgencia}] ${form.asunto}\n\n` +
-      `Descripción:\n${form.descripcion}\n\nMódulo: ${currentModule ?? 'N/A'}`
-    try {
-      const { error } = await supabase.functions.invoke('send-email', {
-        body: {
-          type: 'bug_report',
-          to: 'soporte@genesis360.pro',
-          data: {
-            usuario: user?.nombre_display ?? 'Usuario',
-            tenant: tenant?.nombre ?? '-',
-            resumen,
-          },
-        },
-      })
-      if (error) throw error
-      toast.success('¡Reporte enviado a soporte! Gracias.')
-      setForm({ tipo: 'bug', urgencia: 'media', asunto: '', descripcion: '' })
-    } catch {
-      toast.error('No se pudo enviar el reporte. Escribinos a soporte@genesis360.pro')
-    } finally {
-      setSending(false)
-    }
+  const irAConsultas = (ticketId?: string) => {
+    onClose()
+    navigate(ticketId ? `/ayuda/consultas?ticket=${ticketId}` : '/ayuda/consultas')
   }
 
   if (!isOpen) return null
@@ -178,7 +140,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
             )}
           </div>
 
-          {/* Cursos — placeholder */}
+          {/* Cursos — placeholder (fase 2 de Ayuda) */}
           <div className="px-4 py-3 border-t border-border-ds">
             <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Youtube size={12} /> Cursos y recursos
@@ -188,66 +150,21 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
             </div>
           </div>
 
-          {/* Reporte de problema */}
+          {/* Reportar un problema — crea una consulta que queda en Mis consultas (mig 426) */}
           <div className="px-4 py-4 border-t border-border-ds">
-            <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <Bug size={12} /> Reportar un problema
-            </h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-muted block mb-1">Tipo</label>
-                  <select
-                    value={form.tipo}
-                    onChange={e => setForm(p => ({ ...p, tipo: e.target.value }))}
-                    className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700"
-                  >
-                    <option value="bug">Bug</option>
-                    <option value="sugerencia">Sugerencia</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted block mb-1">Urgencia</label>
-                  <select
-                    value={form.urgencia}
-                    onChange={e => setForm(p => ({ ...p, urgencia: e.target.value }))}
-                    className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700"
-                  >
-                    <option value="baja">Baja</option>
-                    <option value="media">Media</option>
-                    <option value="alta">Alta</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted block mb-1">Asunto *</label>
-                <input
-                  value={form.asunto}
-                  onChange={e => setForm(p => ({ ...p, asunto: e.target.value }))}
-                  placeholder="Descripción breve del problema"
-                  className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted block mb-1">Descripción *</label>
-                <textarea
-                  value={form.descripcion}
-                  onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
-                  rows={3}
-                  placeholder="Describí el problema en detalle..."
-                  className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text resize-none"
-                />
-              </div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                <Bug size={12} /> Reportar un problema
+              </h3>
               <button
-                onClick={handleSendReport}
-                disabled={sending}
-                className="w-full bg-accent hover:bg-accent/90 text-white text-sm font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                type="button"
+                onClick={() => irAConsultas()}
+                className="inline-flex items-center gap-1 text-xs font-medium text-accent-text hover:underline"
               >
-                <Send size={14} />
-                {sending ? 'Enviando…' : 'Enviar reporte'}
+                <MessageSquare size={12} /> Ver mis consultas
               </button>
             </div>
+            <NuevaConsultaForm compacto modulo={currentModule} onCreada={(id) => irAConsultas(id)} />
           </div>
 
           {/* Contacto */}

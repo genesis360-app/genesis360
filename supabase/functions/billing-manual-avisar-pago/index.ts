@@ -54,6 +54,9 @@ serve(async (req) => {
       canal: 'in_app',
       estado: 'abierto',
       creado_por: null, // no es un agente — lo reporta el propio cliente
+      // Mig 426: queda en Ayuda → Mis consultas de quien avisó, que ahí ve la respuesta del equipo y puede contestar.
+      usuario_id: user.id,
+      tipo: 'pago',
     }).select('id').single()
     if (tErr || !ticket) {
       console.error('billing-manual-avisar-pago: no se pudo crear el ticket', tErr)

@@ -3638,6 +3638,9 @@ export default function ConfigPage() {
                       className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     <p className="text-xs text-gray-400 mt-0.5">Ventas ≥ este monto requieren DNI/CUIT del cliente</p>
                   </div>
+                  {/* Solo el circuito AfipSDK usa token. Con el propio (el de todos los negocios) el campo confundía:
+                      la guía de activación no lo menciona y no hace falta. */}
+                  {afipProviderEmisor === 'afipsdk' && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
                     <div className="relative">
@@ -3654,6 +3657,7 @@ export default function ConfigPage() {
                       {emisorDefault?.afipsdk_token_configurado && ' Por seguridad no se muestra: dejalo vacío para conservar el que está guardado.'}
                     </p>
                   </div>
+                  )}
                 </div>
                 {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
@@ -3735,7 +3739,9 @@ export default function ConfigPage() {
                     <CampoResumenFiscal label="Umbral Factura B" value={tAny.umbral_factura_b ? `$${Number(tAny.umbral_factura_b).toLocaleString('es-AR')}` : null} />
                     {/* El token no se puede leer desde el browser (mig 402): lo que llega es el
                         booleano de la columna generada. */}
-                    <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
+                    {afipProviderEmisor === 'afipsdk' && (
+                      <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
+                    )}
                     <CampoResumenFiscal label="Ingresos Brutos" value={tAny.ingresos_brutos} />
                     <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(tAny.inicio_actividades).toLocaleDateString('es-AR') : null} />
                     <CampoResumenFiscal label="Banco" value={tAny.banco} />
@@ -3774,7 +3780,9 @@ export default function ConfigPage() {
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                       {bizAfipProduccion
                         ? 'Cada emisión genera un CAE válido ante AFIP, con numeración correlativa oficial.'
-                        : 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción solo cuando completes el onboarding AFIP (CUIT activo + certificado + token de producción).'}
+                        : afipProviderEmisor === 'afipsdk'
+                          ? 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción solo cuando completes el onboarding AFIP (CUIT activo + certificado + token de producción).'
+                          : 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción cuando tengas cargados el punto de venta y el certificado de producción de ARCA.'}
                     </p>
                   </div>
                 </div>

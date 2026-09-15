@@ -6,6 +6,7 @@ import {
   calcularVuelto,
   calcularEfectivoCaja,
   calcularEfectivoPorMoneda,
+  calcularReintegroAnulacion,
   carritoAceptaUsd,
   elegirCotizacionReintegro,
   type ValidarDescuentosArgs,
@@ -296,6 +297,97 @@ describe('calcularEfectivoPorMoneda', () => {
     const r = calcularEfectivoPorMoneda(medios, 500, soloUsd, soloUsd)
     expect(r.usdIngreso).toBe(0)
     expect(r.arsNeto).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🛑 REGLA #0 — reintegro al anular una venta o cancelar una reserva con seña
+// ─────────────────────────────────────────────────────────────────────────────
+describe('calcularReintegroAnulacion', () => {
+  const efectivo = new Set(['Efectivo'])
+  const efectivoConUsd = new Set(['Efectivo', 'Efectivo USD'])
+  const soloUsd = new Set(['Efectivo USD'])
+
+  it('efectivo exacto: devuelve lo cobrado desde la caja en pesos', () => {
+    const r = calcularReintegroAnulacion(JSON.stringify([{ tipo: 'Efectivo', monto: 1234 }]), 1234, 1, efectivo, new Set())
+    expect(r).toEqual({ arsEfectivo: 1234, usd: 0, noEfectivo: [], creditoAFavor: 0, sinDetalle: false })
+  })
+
+  it('🔴 CLAVE: con vuelto devuelve el NETO que entró a la caja, no lo que entregó el cliente', () => {
+    // Venta de $10.000 pagada con $12.000: la caja se quedó con $10.000 (dio $2.000 de vuelto).
+    const r = calcularReintegroAnulacion([{ tipo: 'Efectivo', monto: 12000 }], 10000, 1, efectivo, new Set())
+    expect(r.arsEfectivo).toBe(10000)
+  })
+
+  it('🔴 CLAVE: los dólares vuelven en dólares desde la Caja USD, no como informativo en pesos', () => {
+    // $14.800 cobrados con US$10: `monto` es el equivalente en pesos, `monto_usd` los dólares reales.
+    const r = calcularReintegroAnulacion([{ tipo: 'Efectivo USD', monto: 14800, monto_usd: 10 }], 14800, 1, soloUsd, soloUsd)
+    expect(r.usd).toBe(10)
+    expect(r.arsEfectivo).toBe(0)
+    expect(r.noEfectivo).toEqual([])
+  })
+
+  it('pago combinado: cada parte vuelve por donde entró', () => {
+    const medios = [
+      { tipo: 'Efectivo', monto: 500 },
+      { tipo: 'Efectivo USD', monto: 800, monto_usd: 50 },
+      { tipo: 'Transferencia', monto: 700 },
+    ]
+    const r = calcularReintegroAnulacion(medios, 2000, 1, efectivoConUsd, soloUsd)
+    expect(r.arsEfectivo).toBe(500)
+    expect(r.usd).toBe(50)
+    expect(r.noEfectivo).toEqual([{ tipo: 'Transferencia', monto: 700 }])
+  })
+
+  it('dólares de más con vuelto en pesos: esos pesos vuelven a la caja (arsEfectivo negativo)', () => {
+    // Venta de $100 pagada con US$20 ($200): la caja en pesos pagó $100 de vuelto.
+    const r = calcularReintegroAnulacion([{ tipo: 'Efectivo USD', monto: 200, monto_usd: 20 }], 100, 1, soloUsd, soloUsd)
+    expect(r.usd).toBe(20)
+    expect(r.arsEfectivo).toBe(-100)
+  })
+
+  it('la penalidad de la seña se aplica a cada parte', () => {
+    // Seña de $3.000 sobre una venta de $10.000, penalidad 20 % → ratio 0,8.
+    const medios = [
+      { tipo: 'Efectivo', monto: 1000 },
+      { tipo: 'Efectivo USD', monto: 1500, monto_usd: 100 },
+      { tipo: 'Transferencia', monto: 500 },
+    ]
+    const r = calcularReintegroAnulacion(medios, 10000, 0.8, efectivoConUsd, soloUsd)
+    expect(r.arsEfectivo).toBe(800)
+    expect(r.usd).toBe(80)
+    expect(r.noEfectivo).toEqual([{ tipo: 'Transferencia', monto: 400 }])
+  })
+
+  it('🔴 CLAVE: reconoce el efectivo del negocio aunque no se llame "Efectivo"', () => {
+    const r = calcularReintegroAnulacion([{ tipo: 'Contado', monto: 900 }], 900, 1, new Set(['Contado']), new Set())
+    expect(r.arsEfectivo).toBe(900)
+    expect(r.noEfectivo).toEqual([])
+  })
+
+  it('Cuenta Corriente no se devuelve (no se cobró) y Crédito a favor no pasa por la caja', () => {
+    const medios = [
+      { tipo: 'Efectivo', monto: 400 },
+      { tipo: 'Cuenta Corriente', monto: 500 },
+      { tipo: 'Crédito a favor', monto: 100 },
+    ]
+    const r = calcularReintegroAnulacion(medios, 1000, 1, efectivo, new Set())
+    expect(r.arsEfectivo).toBe(400)
+    expect(r.noEfectivo).toEqual([])
+    // El crédito se informa aparte: vuelve al saldo a favor del cliente, no sale de la caja.
+    expect(r.creditoAFavor).toBe(100)
+  })
+
+  it('agrupa por tipo y normaliza el numeric que llega como string', () => {
+    const raw = '[{"tipo":"Transferencia","monto":"300.00"},{"tipo":"Transferencia","monto":"200.50"}]'
+    const r = calcularReintegroAnulacion(raw, 500.5, 1, efectivo, new Set())
+    expect(r.noEfectivo).toEqual([{ tipo: 'Transferencia', monto: 500.5 }])
+  })
+
+  it('sin detalle legible lo marca, en vez de devolver cero en silencio', () => {
+    for (const raw of [null, undefined, '', 'no-es-json', '{}', '[]', '[{"monto":100}]']) {
+      expect(calcularReintegroAnulacion(raw, 1000, 1, efectivo, new Set()).sinDetalle).toBe(true)
+    }
   })
 })
 

@@ -81,6 +81,9 @@
   del **Asistente IA** (`AiAssistant`) invoca `send-email` con el campo `tipo` cuando la EF espera `type` → la EF tira
   500, el mail **nunca se manda** y el UI igual dice "enviado" (falla silenciosa); además apunta a un gmail hardcodeado.
   **Fix propuesto:** ambos → `send-email` `type:'bug_report'` a `soporte@genesis360.pro` (una vez creada la regla).
+  **✅ Resueltos (2026-09-15):** (1) "Reportar un problema" crea una consulta real con ticket, capturas y respuesta en
+  Ayuda → Mis consultas, y avisa al equipo con `send-email` `type:'soporte_consulta'` (mig 426, UAT §62, e2e 152);
+  (2) el Asistente IA ya manda `type:'bug_report'` a soporte@, y la EF fuerza ese destinatario para cualquier reporte.
 
 ### 🟠/🟢 Menores NO-REGLA#0 (bajo riesgo, gating UX / labels)
 - `oc_numeracion` (etiqueta `S-OC-0001` por valor tenant/sucursal/proveedor), `recepcion_remito_obligatorio`

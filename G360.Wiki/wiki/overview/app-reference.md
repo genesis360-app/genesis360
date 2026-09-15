@@ -2,7 +2,7 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-07-22
+updated: 2026-09-15
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
@@ -69,7 +69,8 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 | `/mi-portal` | Portal del empleado (fichado / datos personales) — visible en sidebar según rol |
 | `/suscripcion` | Gestión de plan y pagos |
 | `/caja/panel` | Panel de cajero |
-| `/ayuda` | Centro de soporte (página placeholder; el flujo real es el `AyudaModal` del header) |
+| `/ayuda` | Centro de soporte — 2 tarjetas activas (Reportar un problema, Mis consultas) + 4 "próximamente" |
+| `/ayuda/consultas` | 🆕 **2026-09-15 (mig 426, EN DEV):** Mis consultas — lista + hilo + responder, con adjuntos. Fuera del `SubscriptionGuard` (como `/mi-cuenta`) |
 | `/admin` | Panel de administración de plataforma (solo ADMIN global) |
 | `/onboarding` | Flujo de registro inicial |
 
@@ -85,7 +86,7 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 - **Asistente IA** (ícono chat): panel flotante de chat con Groq (`openai/gpt-oss-120b`, ver "🐛 Modelo Groq roto" en `wiki/features/asistente-ia.md` — hasta el 2026-08-20 usaba `llama-3.3-70b-versatile`, descatalogado por Groq). Su conocimiento se genera desde ESTE documento (`npm run ai:knowledge`) y recibe el contexto real del usuario (rol, modo, menú visible, pantalla actual) para no indicar UI inexistente — detalle en `wiki/features/asistente-ia.md`. Tiene flujo de bug report que envía la conversación a soporte por email.
 - **Campana de notificaciones**: muestra alertas de stock crítico y cuotas de CC vencidas. Badge con contador de no leídas.
 - **Dark/Light mode**
-- **Botón ayuda** (ícono `?`): abre `/ayuda`
+- **Botón ayuda** (ícono `?`): abre el `AyudaModal` (panel lateral) — 🆕 2026-09-15 (mig 426): "Reportar un problema" crea un ticket real (no un mail suelto) + link "Ver mis consultas" a `/ayuda/consultas`
 - **Configuración** (ícono engranaje): acceso rápido a `/configuracion`
 - **Avatar / dropdown**: Mi cuenta (`/mi-cuenta`), cerrar sesión
 
@@ -872,11 +873,26 @@ Gestión del plan de pago.
 
 ---
 
-### 4.11 Ayuda (`/ayuda`)
+### 4.11 Ayuda (`/ayuda`, `/ayuda/consultas`)
 
-Centro de soporte. **La página `/ayuda` sigue siendo placeholder** — secciones con badge "Próximamente" (FAQ, chat, buenas prácticas, reportar problema, guías, cursos) + link a `soporte@genesis360.pro`.
+Centro de soporte. 🆕 **2026-09-15 (mig 426, EN DEV): "Reportar un problema" y "Mis consultas" ya funcionan** —
+las otras 4 tarjetas (FAQ, chat, buenas prácticas, guías interactivas; "Cursos y recursos" es la Fase 2) siguen con
+badge "Próximamente".
 
-> ⚠️ Distinción importante: el flujo de soporte **que sí funciona** es el **Centro de Ayuda del header** (`AyudaModal`, ícono `?`), no esta página. Ahí, "Reportar un problema" invoca `send-email` (`type: 'bug_report'`) → ticket **server-side** a `soporte@genesis360.pro` (con user/tenant de `useAuthStore`, botón "Enviando…", aviso si falla). El Asistente IA del header también puede derivar la conversación a soporte por el mismo canal.
+- **"Reportar un problema"** (tarjeta de `/ayuda` o botón `?` del header → `AyudaModal`): abre `NuevaConsultaForm`
+  (tipo, urgencia, asunto, detalle, hasta 3 capturas/PDF de 5 MB) que crea un **ticket real** vía RPC
+  (`fn_soporte_crear_consulta`) — ya no es un mail suelto. Al enviar, aterriza en la consulta creada.
+- **"Mis consultas"** (`/ayuda/consultas`, fuera del `SubscriptionGuard` como `/mi-cuenta`): lista + hilo + responder
+  con adjuntos. Cada usuario ve las suyas; **DUEÑO y SUPER_USUARIO** ven todas las del negocio (ADMIN=staff no
+  entra). `?ticket=<id>` abre una consulta puntual, `?nueva=1` abre el formulario directo.
+- El equipo se entera por **mail** (`send-email` tipo `soporte_consulta`, siempre a `soporte@genesis360.pro`) y por
+  una **marca en el panel** de soporte (`admin.genesis360.pro`).
+
+Detalle completo del circuito (notas internas, ciclo de vida del ticket, topes anti-spam, guards) en
+[[wiki/support/plataforma-soporte]] → sección 10.
+
+> El Asistente IA del header sigue con su propio flujo de reporte (`type: 'bug_report'` de `send-email`, directo a
+> `soporte@genesis360.pro`, sin ticket en `support_tickets`) — no pasa por Mis consultas.
 
 ---
 
@@ -1109,7 +1125,7 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 - Gestión de suscripciones Genesis360 (modelo preapproval — `init_point` construido en frontend).
 
 ### Resend
-- Emails transaccionales (bienvenida, ventas, alertas) + tickets de soporte (`type: 'bug_report'` del Centro de Ayuda / Asistente IA → `soporte@genesis360.pro`).
+- Emails transaccionales (bienvenida, ventas, alertas) + tickets de soporte: `type: 'bug_report'` (Asistente IA) y `type: 'soporte_consulta'` (Ayuda → Mis consultas, mig 426) → siempre a `soporte@genesis360.pro`. 🔒 2026-09-15: `send-email` ya no se puede usar como relay de mail (verify_jwt solo no alcanzaba — la anon key ya es un JWT válido); ver [[wiki/integrations/resend-email]].
 - **FROM = `noreply@genesis360.pro`** (dominio verificado, plantilla rebrandeada degradé violeta→cian). Ver [[resend-email]].
 
 ### Cloudflare Email Routing

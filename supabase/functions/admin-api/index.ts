@@ -245,6 +245,7 @@ async function inventarioTenant(svc: any, tenantId: string) {
 const BUCKETS_POR_TENANT = [
   'archivos-biblioteca', 'autorizaciones-fotos', 'certificados-afip', 'comprobantes-gastos',
   'logos', 'presupuestos-servicios', 'productos', 'remitos',
+  'soporte-adjuntos',  // mig 426: `<tenant>/<usuario>/<archivo>` de las consultas desde la app
 ] as const
 
 async function borrarStorageDelTenant(
@@ -1076,12 +1077,15 @@ Deno.serve(async (req) => {
 
       // ── Tickets ──────────────────────────────────────────────────────────
       case 'support.tickets.list': {
+        // Mig 426: primero lo que espera respuesta del equipo (el cliente escribió último).
         let q = svc.from('support_tickets')
-          .select('id, asunto, estado, prioridad, asignado_a, tenant_id, created_at, updated_at, tenants(nombre)')
+          .select('id, asunto, estado, prioridad, asignado_a, tenant_id, created_at, updated_at, canal, tipo, usuario_id, pendiente_equipo, ultimo_mensaje_at, tenants(nombre)')
+          .order('pendiente_equipo', { ascending: false })
           .order('updated_at', { ascending: false }).limit(200)
         if (p.estado) q = q.eq('estado', p.estado)
         if (p.tenantId) q = q.eq('tenant_id', p.tenantId)
         if (p.asignadoA === 'me') q = q.eq('asignado_a', uid)
+        if (p.pendientes === true) q = q.eq('pendiente_equipo', true)
         const { data, error } = await q
         if (error) throw error
         return json({ tickets: data ?? [] })
@@ -1094,9 +1098,24 @@ Deno.serve(async (req) => {
         if (error) throw error
         if (!ticket) return json({ error: 'Ticket no encontrado' }, 404)
         const { data: mensajes } = await svc.from('support_messages')
-          .select('id, autor_tipo, autor_id, cuerpo, created_at').eq('ticket_id', p.ticketId).order('created_at')
+          .select('id, autor_tipo, autor_id, cuerpo, created_at, interno, adjuntos').eq('ticket_id', p.ticketId).order('created_at')
+        // Mig 426: quién abrió la consulta desde la app (sin embed: users↔tenants tiene 2 relaciones).
+        let reportante: { nombre_display: string | null; rol: string | null } | null = null
+        if (ticket.usuario_id) {
+          const { data: u } = await svc.from('users').select('nombre_display, rol').eq('id', ticket.usuario_id).maybeSingle()
+          reportante = u ?? null
+        }
+        // Adjuntos: bucket privado → link firmado por una hora.
+        const conAdjuntos = await Promise.all((mensajes ?? []).map(async (m: any) => {
+          const adjuntos = Array.isArray(m.adjuntos) ? m.adjuntos : []
+          const firmados = await Promise.all(adjuntos.map(async (a: any) => {
+            const { data: s } = await svc.storage.from('soporte-adjuntos').createSignedUrl(String(a?.path ?? ''), 3600)
+            return { nombre: a?.nombre ?? 'archivo', tipo: a?.tipo ?? '', url: s?.signedUrl ?? null }
+          }))
+          return { ...m, adjuntos: firmados }
+        }))
         await audit({ ticketId: p.ticketId })
-        return json({ ticket, mensajes: mensajes ?? [] })
+        return json({ ticket: { ...ticket, reportante }, mensajes: conAdjuntos })
       }
 
       case 'support.tickets.create': {
@@ -1117,12 +1136,15 @@ Deno.serve(async (req) => {
 
       case 'support.tickets.reply': {
         if (!p.ticketId || !p.cuerpo?.trim()) return json({ error: 'Faltan ticketId y cuerpo' }, 400)
+        // Mig 426: `interno` = nota del equipo (el cliente no la ve ni recibe aviso). Sin nota interna, el trigger
+        // `trg_support_message_actualiza_ticket` saca la marca de "pendiente del equipo".
+        const interno = p.interno === true
         const { error } = await svc.from('support_messages').insert({
-          ticket_id: p.ticketId, autor_tipo: 'agente', autor_id: uid, cuerpo: p.cuerpo.trim(),
+          ticket_id: p.ticketId, autor_tipo: 'agente', autor_id: uid, cuerpo: p.cuerpo.trim(), interno,
         })
         if (error) throw error
         await svc.from('support_tickets').update({ updated_at: new Date().toISOString() }).eq('id', p.ticketId)
-        await audit({ ticketId: p.ticketId })
+        await audit({ ticketId: p.ticketId, interno })
         return json({ ok: true })
       }
 

@@ -29,6 +29,21 @@ export async function cajasSobreUmbralBovedaDelTenant(tenantId: string, umbral: 
   return cajasSobreUmbralBoveda(sesionesIn, (movs ?? []) as any[], umbral)
 }
 
+/** Precio programado Fases 2-3 (mig 423, C3): etiquetas de góndola de un precio programado cuya hora ya pasó y
+ *  siguen sin cambiarse. Compartido por el badge (useAlertas) y AlertasPage para que cuenten lo mismo. Solo modo
+ *  avanzado (las tareas del repositor no existen en básico). */
+export function queryEtiquetasVencidas(tenantId: string, sucursalId: string | null | undefined, select: string, head = false) {
+  let q: any = supabase.from('tareas_repositor')
+    .select(select, { count: 'exact', head })
+    .eq('tenant_id', tenantId)
+    .eq('tipo', 'cambio_precio')
+    .in('estado', ['pendiente', 'en_curso'])
+    .not('precio_programado_id', 'is', null)
+    .lte('vigente_desde', new Date().toISOString())
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+  return q
+}
+
 async function contarCajasSobreUmbral(tenantId: string, umbral: number | null | undefined, sucursalId?: string | null): Promise<number> {
   return (await cajasSobreUmbralBovedaDelTenant(tenantId, umbral, sucursalId)).length
 }
@@ -129,6 +144,8 @@ export function useAlertas() {
               .eq('tenant_id', tenant!.id)
               .eq('estado', 'en_preparacion')
               .lt('lanzado_at', hace24h),
+            // C3 (mig 423) — etiquetas de góndola de un precio programado que ya rige, sin cambiar
+            queryEtiquetasVencidas(tenant!.id, sucursalId, 'id', true),
           ]
         : []
 
@@ -145,6 +162,7 @@ export function useAlertas() {
       const countVencidos = (avanzadoRes[0] as any)?.count ?? 0
       const countPedidosVencidos = (avanzadoRes[1] as any)?.count ?? 0
       const countPedidosSinAvanzar = (avanzadoRes[2] as any)?.count ?? 0
+      const countEtiquetasVencidas = (avanzadoRes[3] as any)?.count ?? 0
       const countOcVencidas = countOcVencidasRaw ?? 0
       const countOcProximas = countOcProximasRaw ?? 0
 
@@ -158,7 +176,7 @@ export function useAlertas() {
       // H4 — efectivo en caja sobre el umbral de bóveda (ambos modos). Solo si el tenant lo configuró.
       const countBoveda = await contarCajasSobreUmbral(tenant!.id, (tenant as any)?.boveda_umbral_caja, sucursalId)
 
-      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda + countPedidosVencidos + countPedidosSinAvanzar
+      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda + countPedidosVencidos + countPedidosSinAvanzar + countEtiquetasVencidas
     },
     enabled: !!tenant,
     refetchInterval: 30000,

@@ -2,8 +2,8 @@
 title: Plataforma de Soporte (admin.genesis360.pro)
 category: support
 tags: [soporte, admin, panel, genesis360-admin, baja-tenant, auditoria, 2fa, billing]
-sources: [genesis360-admin (repo aparte), supabase/functions/admin-api, migration 221, migration 410, migration 411]
-updated: 2026-09-12
+sources: [genesis360-admin (repo aparte), supabase/functions/admin-api, migration 221, migration 410, migration 411, migration 425, migration 426]
+updated: 2026-09-15
 ---
 
 # Plataforma de Soporte (admin.genesis360.pro)
@@ -15,11 +15,14 @@ en el del panel. La EF valida al agente (`support_agents`, staff interno — **n
 tenant), autoriza por rol (`admin` vs `support`) y **audita cada acceso** en `admin_audit_log`
 (cimientos: mig 221, ver [[wiki/database/migraciones]]).
 
-**Estado al 2026-09-12.** El panel **ya está en PROD** (`admin.genesis360.pro`) desde antes, con
+**Estado al 2026-09-15.** El panel **ya está en PROD** (`admin.genesis360.pro`) desde antes, con
 dashboard, clientes, CRM, soporte y facturación. Lo que está **solo en DEV** es todo lo que se sumó
-esta jornada: la baja de tenant, la búsqueda por mail, la ficha ampliada, las notas internas, la
-auditoría, la búsqueda global, Analytics y el 2FA. Va junto con el resto del batch (migs 407-412 +
-código `v1.209.0`→`v1.214.0` + EF `admin-api` + el panel), a la espera del OK de GO.
+desde el 2026-09-12: la baja de tenant, la búsqueda por mail, la ficha ampliada, las notas internas, la
+auditoría, la búsqueda global, Analytics, el 2FA, y —más nuevo— que la respuesta de un ticket le llegue
+al cliente (mig 425, sección 9) y que el cliente pueda seguir y responder su consulta desde la app (mig
+426, sección 10). Va junto con el resto del batch acumulado (migs 407-426 + código hasta `v1.226.0` +
+EFs `admin-api`/`billing-manual-avisar-pago` + el panel), a la espera del OK de GO — detalle del deploy
+en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 Para probarlo contra DEV sin deployar: `npm run dev` en `genesis360-admin` (su `.env.local` ya
 apunta a DEV) e ingresar con un agente de rol `admin`.
@@ -134,6 +137,82 @@ vencidos. Ver [[wiki/features/pago-manual]] para el flujo completo de carga manu
 
 ---
 
+## 9. Tickets: la respuesta le llega al cliente (mig 425, 2026-09-15, EN DEV)
+
+**Antes:** el cliente avisaba "Ya transferí" desde Mi Cuenta (`billing-manual-avisar-pago` crea un ticket `in_app` con
+un mensaje `cliente`), el equipo respondía desde el panel y **la respuesta no le llegaba a nadie**:
+`support.tickets.reply` solo guarda el mensaje, y la app no tiene pantalla de tickets.
+
+**Ahora:** el trigger `trg_notificar_respuesta_soporte` (AFTER INSERT en `support_messages`, solo mensajes de agente)
+manda una notificación a la campanita del usuario que abrió el ticket: "Soporte respondió: {asunto}" con el texto
+(hasta 500 caracteres). Costo: un INSERT por respuesta; la campanita ya consulta cada 30 segundos.
+
+| Ticket | ¿Le llega al cliente? | Qué muestra el panel |
+|---|---|---|
+| Abierto por el cliente desde la app (tiene mensaje `cliente`) | Sí, cada respuesta | "Al cliente le llega como notificación…" · botón "Responder al cliente" |
+| Abierto por el equipo desde el panel | No: es un hilo interno | "El cliente no ve estos mensajes" · botón "Guardar nota" |
+
+⚠️ En un ticket del cliente **todo lo que escribe un agente le llega**: las notas internas van en las notas del
+cliente (mig 411), no en el hilo.
+
+De paso, `support_tickets` y `support_messages` quedaron sin privilegios para `anon`/`authenticated` (solo las frenaba la
+RLS sin policies). Verificación: UAT §61.
+
+---
+
+## 10. El cliente responde desde la app: Ayuda → Mis consultas (mig 426, 2026-09-15, EN DEV)
+
+Pedido de GO, evaluado y cerrado en la misma sesión que la 425 (ver "Pendiente" de esa sección, ahora resuelto). El
+"Reportar un problema" de Ayuda **ya no es un mail suelto**: crea un ticket real que el cliente puede seguir y
+responder desde `/ayuda/consultas`, fuera del `SubscriptionGuard` (como Mi Cuenta — con la suscripción vencida es
+justo cuando más hace falta hablar con soporte).
+
+**Quién ve qué** (decisión de GO): cada usuario ve las consultas que abrió; **DUEÑO y SUPER_USUARIO** ven **todas**
+las del negocio (el rol **ADMIN = staff NO entra**, mismo criterio que el resto de la app). El equipo se entera por
+**mail** (`send-email` tipo nuevo `soporte_consulta`, siempre a `soporte@genesis360.pro`, con link directo al ticket
+en `https://admin.genesis360.pro/support?ticket=<id>` — ver [[wiki/integrations/resend-email]]) y por una **marca en
+el panel** (`pendiente_equipo`, filtro "Solo los que esperan respuesta del equipo" + orden pendientes primero).
+
+**Notas internas vs. respuesta al cliente**: `support_messages.interno` — una nota interna no le llega al cliente,
+no aparece en su hilo y no le cambia el estado ni la marca de "pendiente". Solo una respuesta sin `interno` avisa a
+la campanita (reusa el trigger de la mig 425) y saca la marca de pendiente. El agente firma siempre "Soporte
+Genesis360" (el hilo no expone qué agente puntual respondió).
+
+**Ciclo de vida del ticket**: el cliente escribe en una consulta `esperando`/`resuelto` → se reabre (`abierto`) y
+vuelve a quedar pendiente del equipo; en una `cerrado` el servidor lo rechaza ("Esta consulta está cerrada, abrí una
+nueva"). Backfill de la 426: a los tickets existentes se les asigna `usuario_id` a partir del primer mensaje
+`cliente` que siga en el negocio — el ticket que ya existía de "Ya transferí" (Facturación → pago manual) pasó a
+aparecer en Mis consultas de quien avisó, coherente con lo que pidió GO.
+
+**Formulario** (`NuevaConsultaForm.tsx`, desde `AyudaModal` o `/ayuda/consultas?nueva=1`): tipo ("Algo no
+funciona"/"Tengo una duda"/"Quiero sugerir algo"), urgencia (baja/media/alta), asunto (3-120 caracteres), detalle
+(hasta 4000) y hasta **3 adjuntos** (imagen PNG/JPG/WEBP o PDF, **5 MB** cada uno) al bucket privado
+**`soporte-adjuntos`** (`<tenant>/<usuario>/<id>-<nombre>`, sin tildes ni `..`). El equipo los lee desde el panel con
+un **link firmado de 1 hora** (`admin-api`, `service_role`); el propio cliente y el DUEÑO/SUPER_USUARIO del negocio
+los leen directo por policy de storage.
+
+**Guards server-side** (RPC SECURITY DEFINER, las tablas siguen sin privilegios para `authenticated` desde la mig
+425): `fn_soporte_crear_consulta`, `fn_soporte_responder` (rechaza en `cerrado`), `fn_soporte_mis_consultas`,
+`fn_soporte_consulta` (nunca devuelve notas internas). **Topes anti-spam**: 10 consultas por usuario cada 24 h y 30
+mensajes por hora, contados de a un pedido por usuario (`pg_advisory_xact_lock`, para que una ráfaga concurrente no
+se cuele antes del `COUNT`).
+
+**Panel (`genesis360-admin`, rama `dev`, sin commitear todavía)**: filtro "Solo los que esperan respuesta del
+equipo", marca "● Respuesta del cliente", quién abrió cada consulta, notas internas resaltadas en ámbar, adjuntos
+con link, casilla "Nota interna" junto al botón de responder.
+
+**EFs**: `admin-api` (`support.tickets.list` con `pendiente_equipo`/`usuario_id`/orden pendientes primero,
+`support.tickets.detail` con `interno`/adjuntos firmados/`reportante`, `support.tickets.reply` acepta `interno` y lo
+audita; `soporte-adjuntos` sumado a `BUCKETS_POR_TENANT` de la baja de tenant) y `billing-manual-avisar-pago`
+("Ya transferí" ahora crea el ticket con `usuario_id` del que avisó y `tipo: 'pago'`).
+
+Verificación: **e2e 152** (3/3, mutante) contra DEV — pantalla (crear con captura, hilo, responder, mails
+interceptados) y servidor (cajero/supervisor solo lo suyo, DUEÑO todo el negocio, adjuntos solo propios, tablas no
+legibles directo, anon 401). SQL en DEV con los triggers reales, impersonando al cajero, cubre nota interna/reabrir/
+cerrada. UAT §62.
+
+---
+
 ## Testing
 
 **18/18 e2e contra DEV**, incluidos **tests de fuga**: el RPC que devuelve mails de usuarios y las
@@ -146,6 +225,12 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 
 - **Login-as read-only** — sigue **501 (Not Implemented)**. Requiere un modo read-only real +
   token efímero en la app principal; queda fuera de esta tanda, merece su propio diseño.
+- ✅ **Responder desde la app ("Mis consultas")** — CERRADO 2026-09-15 (mig 426, ver sección 10 arriba).
+- **Avisar al cliente cuando se registra su pago manual** — `fn_registrar_pago_manual` no notifica: el cliente que
+  avisó "Ya transferí" no se entera de que se le extendió el acceso salvo que el agente responda el ticket. Sigue
+  pendiente de decisión de GO.
+- **Ayuda, Fase 2** ("Cursos y recursos") — videos servidos desde un bucket público de Storage que GO sube a mano;
+  no toca este panel, ver [[wiki/overview/app-reference]] → "Ayuda" y `sources/raw/project_pendientes.md`.
 
 ---
 
@@ -157,6 +242,8 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 | 410 | `fn_admin_tenants_overview(p_q, p_limit)` y `fn_admin_tenant_cuentas(p_tenant_id)` — SECURITY DEFINER, `REVOKE` de `anon`/`authenticated` + `GRANT` solo a `service_role` |
 | 411 | `admin_customer_notes` (RLS sin policies, sin FK a `tenants`) + hardening de `admin_audit_log` (mismo `REVOKE` que faltaba desde la 221) |
 | 412 | `tenants.telefono` |
+| 425 | Trigger `trg_notificar_respuesta_soporte` — avisa a la campanita del cliente cuando responde un agente; `REVOKE` de `anon`/`authenticated` en `support_tickets`/`support_messages` |
+| 426 | Consultas de soporte desde la app: `usuario_id`/`tipo`/`modulo`/`pendiente_equipo` en `support_tickets`, `interno`/`adjuntos` en `support_messages`, 4 RPC con guard, bucket `soporte-adjuntos` — ver sección 10 arriba |
 
 Detalle completo de cada una en [[wiki/database/migraciones]].
 
@@ -236,5 +323,7 @@ archivos vuelven a quedar huérfanos en silencio.
 - [[wiki/features/facturacion-afip]]
 - [[wiki/features/autenticacion-onboarding]]
 - [[wiki/features/portal-proveedores]] — mismo patrón de envío de mail vía `send-email`
+- [[wiki/integrations/resend-email]] — tipo `soporte_consulta` + hardening anti-relay de `send-email` (2026-09-15)
+- [[wiki/overview/app-reference]] — "Ayuda" (`/ayuda`, `/ayuda/consultas`)
 - [[wiki/database/migraciones]]
 - [[wiki/architecture/guards-server-side]]

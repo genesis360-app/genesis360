@@ -115,21 +115,38 @@ export function DashFacturacionArea({ section, embedded }: { section?: DashSecti
       // 3. Posición
       const posicion = ivaDebito - ivaCredito
 
-      // 4. Facturación del año (para topes)
-      let qVentasAnio = supabase.from('ventas')
-        .select('total').eq('tenant_id', tenant!.id)
-        .in('estado', ['despachada', 'facturada']).gte('created_at', inicioAnio)
-      qVentasAnio = dashFilter(qVentasAnio)
-      const { data: ventasAnio = [] } = await qVentasAnio
-      const totalAnio = (ventasAnio ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
+      // 4. Facturación del año calendario (tarjeta del RI) y de los últimos 12 meses (tope de Monotributo).
+      // C-11 (2026-09-14, decisión de GO): el tope se mide sobre 12 meses MÓVILES, que es lo que mira ARCA
+      // al recategorizar. Medido desde el 1° de enero, en febrero marcaba casi cero aunque el negocio
+      // viniera al 95 % del tope. Sigue abierto con el contador: base facturado vs cobrado.
+      // De a páginas: PostgREST corta en 1.000 filas y la suma salía corta, sin ningún aviso.
+      const hace12Meses = new Date(hoy.getFullYear() - 1, hoy.getMonth(), hoy.getDate()).toISOString()
+      const desdeAnio = new Date(inicioAnio).getTime()
+      const PAGINA = 1000
+      let total12m = 0
+      let totalAnio = 0
+      for (let desde = 0; ; desde += PAGINA) {
+        let qVentas12m = supabase.from('ventas')
+          .select('total, created_at').eq('tenant_id', tenant!.id)
+          .in('estado', ['despachada', 'facturada']).gte('created_at', hace12Meses)
+        qVentas12m = dashFilter(qVentas12m)
+        const { data: pagina, error: errVentas12m } = await qVentas12m.order('id').range(desde, desde + PAGINA - 1)
+        if (errVentas12m) { console.error('[dash-facturacion] ventas 12 meses:', errVentas12m.message); break }
+        for (const v of (pagina ?? []) as any[]) {
+          const monto = Number(v.total) || 0
+          total12m += monto
+          if (new Date(v.created_at).getTime() >= desdeAnio) totalAnio += monto
+        }
+        if ((pagina ?? []).length < PAGINA) break
+      }
 
       // El tope de categoría de Monotributo NO aplica a un Responsable Inscripto.
       const condEmisor = String((tenant as any)?.condicion_iva_emisor ?? '')
       const esMonotributo = condEmisor.toLowerCase().startsWith('mono')
       const catMonotrib = esMonotributo
-        ? (MONOTRIB_LIMITES.find(c => totalAnio <= c.limite) ?? MONOTRIB_LIMITES[MONOTRIB_LIMITES.length - 1])
+        ? (MONOTRIB_LIMITES.find(c => total12m <= c.limite) ?? MONOTRIB_LIMITES[MONOTRIB_LIMITES.length - 1])
         : null
-      const pctLimite = catMonotrib ? Math.round((totalAnio / catMonotrib.limite) * 100) : 0
+      const pctLimite = catMonotrib ? Math.round((total12m / catMonotrib.limite) * 100) : 0
 
       // 5. Facturas con error (sin CAE o pendientes)
       const { data: ventasSinCAE = [] } = await supabase.from('ventas')
@@ -195,7 +212,7 @@ export function DashFacturacionArea({ section, embedded }: { section?: DashSecti
 
       return {
         ivaDebito, ivaCredito, posicion, netoVentas,
-        totalAnio, pctLimite, catMonotrib, esMonotributo, sinCAE,
+        totalAnio, total12m, pctLimite, catMonotrib, esMonotributo, sinCAE,
         evolData, alicData, saldoFavor,
       }
     },
@@ -280,10 +297,10 @@ export function DashFacturacionArea({ section, embedded }: { section?: DashSecti
         {fData?.esMonotributo ? (
           <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
             <div className="mb-3"><div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${(fData?.pctLimite ?? 0) >= 85 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}><AlertTriangle size={20} /></div></div>
-            <p className="text-sm font-medium text-muted">Proyección vs Tope Cat. {fData?.catMonotrib?.cat}</p>
+            <p className="text-sm font-medium text-muted">Últimos 12 meses vs Tope Cat. {fData?.catMonotrib?.cat}</p>
             <p className={`text-2xl font-semibold mt-1 tabular-nums ${(fData?.pctLimite ?? 0) >= 85 ? 'text-red-600 dark:text-red-400' : 'text-primary'}`}>{isLoading ? '—' : `${fData?.pctLimite ?? 0}%`}</p>
             <div className="mt-2 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, fData?.pctLimite ?? 0)}%`, backgroundColor: (fData?.pctLimite ?? 0) >= 90 ? '#EF4444' : (fData?.pctLimite ?? 0) >= 75 ? '#F59E0B' : '#22C55E' }} /></div>
-            <p className="text-xs text-muted mt-1">Tope estimado: {fmtCorto(fData?.catMonotrib?.limite ?? 0)}/año</p>
+            <p className="text-xs text-muted mt-1">Facturado en 12 meses: {fmtCorto(fData?.total12m ?? 0)} · tope estimado {fmtCorto(fData?.catMonotrib?.limite ?? 0)}</p>
           </div>
         ) : (
           <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">

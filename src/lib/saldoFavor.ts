@@ -41,3 +41,32 @@ export function montoSugeridoCredito(saldoDisponible: number, totalACobrar: numb
   const total = Math.max(0, Number(totalACobrar) || 0)
   return Math.round(Math.min(saldo, total) * 100) / 100
 }
+
+/** `origen` con que vuelve al saldo el crédito aplicado en una venta anulada. */
+export const ORIGEN_ANULACION_VENTA = 'anulacion_venta'
+
+export interface MovimientoCredito { monto: number | string | null; origen: string | null }
+
+/**
+ * 🛑 REGLA #0 — cuánto crédito a favor vuelve al cliente al anular una venta o cancelar una reserva con
+ * devolución (2026-09-14, decisión de GO). Anular deshace lo que la venta asentó: el crédito consumido
+ * (`consumo_venta`, negativo) vuelve al saldo, con la penalidad de la seña aplicada (`ratio`). Se descuenta lo
+ * ya restituido (`anulacion_venta`), así un reintento no lo devuelve dos veces.
+ *
+ * Fuente: los movimientos de `cliente_creditos` de ESA venta, no `ventas.medio_pago` — el ledger es lo que
+ * de verdad se consumió. El `numeric` puede llegar como string: se normaliza.
+ */
+export function creditoARestituirPorAnulacion(movimientos: MovimientoCredito[], ratio: number): number {
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''))
+    return Number.isFinite(n) ? n : 0
+  }
+  const consumido = movimientos
+    .filter(m => m.origen === 'consumo_venta')
+    .reduce((a, m) => a + Math.max(0, -num(m.monto)), 0)
+  const yaRestituido = movimientos
+    .filter(m => m.origen === ORIGEN_ANULACION_VENTA)
+    .reduce((a, m) => a + Math.max(0, num(m.monto)), 0)
+  const r = Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : 0
+  return Math.max(0, Math.round((consumido * r - yaRestituido) * 100) / 100)
+}

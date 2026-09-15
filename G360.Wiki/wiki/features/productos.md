@@ -469,6 +469,83 @@ Ver detalle técnico: [[wiki/features/escaneo-barcode]]
 
 ---
 
+## 🗓️ Precio de venta con fecha/hora de vigencia — Fase 1 (mig 422, 2026-09-14, EN DEV)
+
+Pedido de Fede. El relevamiento (`relevamiento-precio-programado-reglas-negocio.html`) lo respondió GO el
+2026-09-14; las respuestas completas están en `log.md` (sesión cont. 68).
+
+**Cómo se usa:** en la ficha del producto, al guardar un cambio del precio de venta aparece *"¿Desde cuándo
+rige el nuevo precio?"* con **Ahora** (por defecto) o **Programar fecha y hora** (propone mañana 08:00). Si se
+programa, el resto de la ficha se guarda y el precio que rige hoy **no cambia** hasta esa hora. Debajo del
+precio queda el aviso "Programado: $X desde…" con acceso a **Productos → Programados**, donde se ven los
+pendientes y los últimos 30 días, y se cancelan.
+
+| Regla (relevamiento) | Cómo quedó |
+|---|---|
+| A1 conviven | El precio vigente rige; el nuevo queda en `precios_programados` |
+| A2 uno por producto | Índice único parcial; programar otro cancela el anterior (con aviso en el modal) |
+| A3 cancelar/editar | Desde Programados; lo pueden los mismos roles que cambian precios |
+| A4 "ahora" por defecto | El modal abre en "Ahora" |
+| A5 solo minorista | Solo `precio_venta` en pesos; con precio en USD no se ofrece programar |
+| B1 carrito | Sin cambios: el POS congela el precio al agregar al carrito |
+| D1 ML/TN a la hora | Sale solo: el cron hace el mismo `UPDATE OF precio_venta` que dispara `fn_enqueue_sync_precio` |
+| E2 dónde se ven | Tab Programados + aviso el día anterior (09:00) a DUEÑO, SUPER_USUARIO y SUPERVISOR |
+| E3 local cerrado | Lo aplica pg_cron cada minuto, no el navegador |
+| E4 auditoría | `actividad_log`: `programar_precio`, `cancelar_precio_programado` y la aplicación (`precio de venta (programado)`) |
+
+**Del lado del servidor (REGLA #0):** la tabla solo se escribe por `fn_programar_precio` /
+`fn_cancelar_precio_programado`, que validan `auth_puede_editar_modulo('inventario')` — el mismo criterio que
+`fn_productos_rol_guard`. Importa porque al APLICAR el cron no tiene sesión y el guard de productos lo deja pasar:
+el control tiene que estar al programar. Si aplicar falla, queda `fallido` con el error y se avisa al dueño.
+
+**Fases siguientes:** C1/C2, C3 y D2 quedaron hechas en las Fases 2-3 (sección de abajo). Queda E1, cambios
+masivos (v2).
+
+---
+
+## 🏷️ Precio programado — Fases 2-3: la etiqueta de la góndola y el aviso de ML/TN (migs 423-424, 2026-09-15, EN DEV)
+
+Cierra lo que quedaba del relevamiento. La parte de etiquetas es de modo avanzado: las tareas del repositor solo
+existen para productos con góndola asignada (ver [[wiki/features/repositores]]).
+
+| Regla (relevamiento) | Cómo quedó |
+|---|---|
+| C1 la tarea aparece antes | El cron de cada minuto (`fn_aplicar_precios_programados`) llama primero a `fn_generar_tareas_precio_programado`: cuando faltan `tenants.repositor_anticipacion_min` minutos o menos, crea la tarea `cambio_precio` en cada sucursal con góndola, ligada al programado (`precio_programado_id`, `vigente_desde`). La anticipación se elige en Config → Inventario → "Repositores — Etiquetas de precio": a la hora, 15 o 30 minutos, 1, 2, 4 u 8 horas, o un día (por defecto, 1 hora) |
+| C2 qué precio lleva la etiqueta | El NUEVO. No se da por puesta mientras rija otro precio: lo rechaza el servidor (`fn_tarea_repositor_guard_completar`) y en Repositores el botón queda deshabilitado, con "Rige desde…" |
+| C3 aviso al cajero | El POS lee las tareas de cartel abiertas de la sucursal: si lo que dice la etiqueta (`precio_anterior`) no es el precio vigente, avisa al agregar el producto y en la fila del carrito. Se cobra el precio vigente; si el cliente reclama, la diferencia va como descuento autorizado por el supervisor |
+| C3 alerta | Alertas → "Etiquetas vencidas en góndola": tarea ligada a un programado cuya hora ya pasó y sigue abierta. El badge (`useAlertas`) y la página usan la misma consulta (`queryEtiquetasVencidas`). "Ver tarea" abre Repositores con la tarea resaltada |
+| D2 ML/TN no toma el precio | Trigger `trg_notificar_sync_precio_fallido` en `integration_job_queue`: cuando un `sync_precio` queda `failed` (después de reintentar a 1, 2, 4 y 8 minutos, o por un error que no se reintenta) avisa a DUEÑO y SUPER_USUARIO. Si ya tienen un aviso sin leer del mismo canal de las últimas 6 horas, se suma a ese ("N productos…") |
+
+**Casos borde decididos en el diseño:**
+- **Ya había una tarea de cartel sin hacer** (un cambio anterior que nadie puso): se fusiona. `precio_anterior` no se
+  toca (es lo que muestra la góndola) y se pone directamente la etiqueta del programado, a la hora: un solo viaje.
+  Mientras tanto el cajero ve el aviso.
+- **Cambio de precio manual antes de la hora:** no le pisa la etiqueta al programado.
+- **Cancelar, reemplazar o no poder aplicar el programado:** si la góndola ya muestra el precio vigente, la tarea se
+  cancela; si no, se desliga y vuelve a pedir la etiqueta del precio vigente.
+- **Cancelar a mano la tarea anticipada:** no se vuelve a crear; a la hora nace la tarea común del cambio de precio,
+  que queda como vencida si nadie la hace.
+- **Anticipación "a la hora del cambio":** la tarea aparece al aplicarse el precio y cuenta como vencida hasta que se
+  haga.
+
+**Del lado del servidor:** `authenticated` ya no tiene INSERT ni DELETE en `tareas_repositor`, y el UPDATE quedó
+por columna (estado, fechas, motivo, asignado y notas). Antes cualquier usuario del negocio podía crear, borrar o
+reescribir tareas por REST, y con eso se salteaba el guard. `migration-reviewer` las dio APTAS; se aplicó su
+recomendación (la rama de error del cron con subtransacción propia: sin eso, un aviso que falla revertía todos los
+precios ya aplicados en ese minuto) y el guard también frena una etiqueta de un programado que terminó fallido o
+cancelado sin poder desarmarse.
+
+**Límite que conviene saber:** al cambiar un precio (programado o manual) la publicación en ML/TN solo se encola
+para productos con repricing por margen o % de ajuste por canal (`fn_enqueue_sync_precio`, mig 346). Con el
+checkbox "Sync precio" solo, el precio publicado no cambia. Es el comportamiento de antes; D2 avisa cuando la
+publicación falla, no cuando no se intentó.
+
+**Verificación:** 19 unit (`tests/unit/precioProgramado.test.ts`) · e2e **151** mutante (ver UAT §60) ·
+migraciones verificadas en DEV (grants por columna, `security_invoker`, acentos, orden del historial) y smoke de
+PostgREST con control negativo.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/grupos-variantes]]

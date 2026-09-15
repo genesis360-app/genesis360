@@ -42,7 +42,7 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda, conservaMontoAlCambiarMedio } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, calcularReintegroAnulacion, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda, conservaMontoAlCambiarMedio } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { cuponVigente, montoDescuentoCupon } from '@/lib/cupones'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
@@ -50,8 +50,9 @@ import { convertirABase } from '@/lib/estructuras'
 import { mejorPrecioMayorista, precioBlendedTier, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
-import { montoSugeridoCredito } from '@/lib/saldoFavor'
+import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
+import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
@@ -253,6 +254,32 @@ export default function VentasPage() {
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const { canalesActivos, reglaDe, clasificacionDe } = useCanalesVenta()  // VF2 (I1/I2)
+  // Precio programado Fases 2-3 (mig 423, C3): productos cuya etiqueta de góndola todavía muestra otro precio
+  // (`precio_anterior` de la tarea del repositor es lo que sigue impreso). Se avisa al cajero; se cobra el precio
+  // vigente. Solo avanzado (Repositores). Refresco espaciado a propósito: no suma polling fino al POS.
+  const { data: etiquetasDesactualizadas = {} } = useQuery({
+    queryKey: ['etiquetas-desactualizadas', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data, error } = await applyFilter(supabase.from('tareas_repositor')
+        .select('producto_id, tipo, estado, precio_anterior, precio_nuevo, productos(precio_venta)')
+        .eq('tenant_id', tenant!.id)
+        .eq('tipo', 'cambio_precio')
+        .in('estado', ['pendiente', 'en_curso']))
+      if (error) throw error
+      // null = con "Todas" las sucursales hay etiquetas del mismo producto con precios distintos: se avisa sin monto
+      // para no mostrarle al cajero el precio de la góndola de otra sucursal.
+      const mapa: Record<string, number | null> = {}
+      for (const t of (data ?? []) as any[]) {
+        if (!etiquetaDesactualizada(t, t.productos?.precio_venta)) continue
+        const precio = parseFloat(t.precio_anterior)
+        mapa[t.producto_id] = t.producto_id in mapa && mapa[t.producto_id] !== precio ? null : precio
+      }
+      return mapa
+    },
+    enabled: !!tenant && modoAvanzado,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  })
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
   const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
@@ -1762,6 +1789,14 @@ export default function VentasPage() {
     newItem.descuento_estado_monto = descEstado.monto
     newItem.descuento_estado_detalle = descEstado.detalle
     setCart(prev => [...prev, newItem])
+    // C3 (mig 423): la etiqueta de la góndola todavía muestra otro precio → que el cajero lo sepa antes de cobrar.
+    const etiquetaGondola = etiquetasDesactualizadas[p.id]
+    if (etiquetaGondola !== undefined && !esUSD) {
+      toast(etiquetaGondola === null
+        ? `La etiqueta de "${p.nombre}" en la góndola puede mostrar otro precio. Se cobra el precio vigente.`
+        : `La etiqueta de "${p.nombre}" en la góndola puede decir $${etiquetaGondola.toLocaleString('es-AR')}. Se cobra el precio vigente.`,
+        { icon: '🏷️', duration: 6000 })
+    }
   }
 
   // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. Fase 2-bis (mig 307): elegir
@@ -5003,20 +5038,26 @@ export default function VentasPage() {
             // para reconocer cualquier método que el tenant haya marcado es_efectivo=true.
             const pagosSaldo = saldoMediosPago?.filter(m => mediosEfectivo.has(m.tipo) && parseFloat(m.monto) > 0) ?? []
             const efectivoSaldo = pagosSaldo.reduce((s, m) => s + parseFloat(m.monto), 0)
-            // Verificar si la seña ya fue registrada en caja al crear la reserva
-            const { data: senaEnCaja } = await supabase.from('caja_movimientos')
-              .select('monto').eq('tenant_id', tenant!.id)
+            // Verificar si la seña ya fue registrada en caja al crear la reserva.
+            // 🛑 REGLA #0 (2026-09-14): era `.maybeSingle()`, que con DOS filas (una seña mixta asienta una
+            // en pesos y otra en dólares) devuelve error y `data: null` → se leía "no está en caja" y la
+            // seña se volvía a sumar a la caja en pesos, dólares incluidos. Ahora: ¿existe al menos una?
+            const { data: senaRows, error: senaErr } = await supabase.from('caja_movimientos')
+              .select('id').eq('tenant_id', tenant!.id)
               .eq('tipo', 'ingreso_reserva')
               .eq('concepto', `Seña Venta #${venta.numero}`)
-              .maybeSingle()
-            // Si ya está en caja: no duplicar. Si no: incluir seña en el ingreso (reserva sin sesión activa)
+              .limit(1)
+            if (senaErr) throw new Error(`no se pudo verificar si la seña ya estaba en caja (${senaErr.message})`)
+            const senaEnCaja = (senaRows ?? []).length > 0
+            // Si ya está en caja: no duplicar. Si no: incluir seña en el ingreso (reserva sin sesión activa).
+            // Solo el efectivo EN PESOS: los dólares nunca entran a una caja en pesos.
             const efectivoOriginal = senaEnCaja
               ? 0
               : (() => {
                   if (venta.medio_pago) {
                     try {
                       const arr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
-                      return arr.filter(m => mediosEfectivo.has(m.tipo)).reduce((s, m) => s + (m.monto ?? 0), 0)
+                      return arr.filter(m => mediosEfectivo.has(m.tipo) && !mediosEfectivoUsd.has(m.tipo)).reduce((s, m) => s + (m.monto ?? 0), 0)
                     } catch { return 0 }
                   }
                   return 0
@@ -5061,7 +5102,13 @@ export default function VentasPage() {
                 usuario_id: user?.id,
               })
             }
-          } catch {}
+          } catch (e: any) {
+            // Antes: `catch {}`. Este bloque asienta el cobro en caja: si falla, se avisa (REGLA #0).
+            toast.error(
+              `La venta se despachó, pero el cobro NO se asentó en caja (${e?.message ?? 'error desconocido'}). Registralo manualmente.`,
+              { duration: 14000 },
+            )
+          }
         }
 
       } else if (nuevoEstado === 'cancelada') {
@@ -5070,12 +5117,21 @@ export default function VentasPage() {
         // (b) venta despachada con seña/pago efectivo → si NO hay caja abierta, bloquear y sugerir devolución/NC
         // (c) periodo contable cerrado → el trigger BD bloquea con SQLSTATE P0001
         if (venta.estado === 'despachada' && (venta.monto_pagado ?? 0) > 0) {
-          // 🛑 REGLA #0: el reintegro se asienta en PESOS, así que lo que hace falta es una caja
-          // en PESOS — no "cualquier caja abierta". Con solo una Caja USD abierta este guard
-          // pasaba y después el egreso no se podía asentar (ver el bloque de reintegro más abajo).
-          const hayCajaArs = sesionesArs.length > 0
-          if (!hayCajaArs) {
+          // 🛑 REGLA #0: cada parte del reintegro necesita una caja abierta EN SU MONEDA, no
+          // "cualquier caja abierta". Con solo una Caja USD abierta el guard viejo pasaba y el egreso
+          // en pesos no se podía asentar; y los dólares no tenían guard (tampoco egreso: 2026-09-14).
+          const reintegroGuard = calcularReintegroAnulacion(
+            venta.medio_pago, Number(venta.total ?? 0) + Number((venta as any).costo_envio ?? 0), 1,
+            mediosEfectivo, mediosEfectivoUsd,
+          )
+          const necesitaCajaArs = reintegroGuard.sinDetalle
+            || Math.abs(reintegroGuard.arsEfectivo) > 0.005
+            || reintegroGuard.noEfectivo.length > 0
+          if (necesitaCajaArs && sesionesArs.length === 0) {
             throw new Error('Esta venta fue despachada con cobro efectivo. Para anularla necesitás:\n• Abrir una caja EN PESOS para registrar el egreso de devolución, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito')
+          }
+          if (reintegroGuard.usd > 0.005 && sesionesUsd.length === 0) {
+            throw new Error(`Esta venta se cobró con US$${reintegroGuard.usd.toLocaleString('es-AR', { maximumFractionDigits: 2 })} en efectivo. Para anularla necesitás:\n• Abrir una Caja USD para registrar la devolución de los dólares, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito`)
           }
         }
         // Liberar reservas
@@ -5238,52 +5294,119 @@ export default function VentasPage() {
             // y con aviso si falla).
             const sesionArsCancel = (sesionesArs as any[]).find(s => s.id === sesionCajaId) ?? (sesionesArs as any[])[0] ?? null
             const cancelSesionId: string | null = sesionArsCancel?.id ?? null
+            // Los dólares vuelven a la Caja USD, elegida con el mismo criterio que la caja en pesos.
+            const sesionUsdCancel = (sesionesUsd as any[]).find(s => s.id === sesionCajaUsdId) ?? (sesionesUsd as any[])[0] ?? null
+            const cancelSesionUsdId: string | null = sesionUsdCancel?.id ?? null
+            const conceptoDev = `Dev. seña Venta #${venta.numero}${penalidadPct > 0 ? ` (penalidad ${penalidadPct}%)` : ''}`
             try {
-              const prevArr = venta.medio_pago
-                ? (typeof venta.medio_pago === 'string' ? JSON.parse(venta.medio_pago) : venta.medio_pago) as { tipo: string; monto: number }[]
-                : []
-              const efectivoCobrado = prevArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0) * ratio
-              const avisoManual = (monto: number, motivo: string) => toast.error(
-                `La cancelación se procesó, pero el reintegro de $${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} NO se asentó en caja (${motivo}). Registralo manualmente.`,
+              // 🛑 REGLA #0 (2026-09-14) — el reintegro se reconstruye con la MISMA cuenta que usó el
+              // cobro (`calcularReintegroAnulacion`): pesos netos del vuelto a la caja en pesos, dólares
+              // reales a la Caja USD y un informativo por medio no efectivo. Antes los dólares caían como
+              // informativo en pesos (la Caja USD quedaba inflada, en silencio) y el efectivo se devolvía
+              // bruto, con el vuelto incluido.
+              const reintegro = calcularReintegroAnulacion(
+                venta.medio_pago, Number(venta.total ?? 0) + Number((venta as any).costo_envio ?? 0), ratio,
+                mediosEfectivo, mediosEfectivoUsd,
+              )
+              const fmtArs = (n: number) => `$${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+              const fmtUsd = (n: number) => `US$${n.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+              const avisoManual = (monto: string, motivo: string) => toast.error(
+                `La cancelación se procesó, pero el reintegro de ${monto} NO se asentó en caja (${motivo}). Registralo manualmente.`,
                 { duration: 14000 },
               )
 
-              if (efectivoCobrado > 0.01) {
+              if (reintegro.sinDetalle) {
+                avisoManual(fmtArs(aDevolver), 'la venta no guarda con qué medios se cobró')
+              }
+
+              // Pesos en efectivo. Negativo = la venta pagó un vuelto en pesos con dólares de más: al
+              // deshacerla, esos pesos vuelven a la caja.
+              if (Math.abs(reintegro.arsEfectivo) > 0.005) {
+                const devuelvePesos = reintegro.arsEfectivo > 0
+                const montoArs = Math.abs(reintegro.arsEfectivo)
                 if (!cancelSesionId) {
-                  avisoManual(efectivoCobrado, 'no hay una caja EN PESOS abierta')
+                  avisoManual(fmtArs(montoArs), 'no hay una caja EN PESOS abierta')
                 } else {
                   const { error: refErr } = await supabase.from('caja_movimientos').insert({
                     tenant_id: tenant!.id,
                     sesion_id: cancelSesionId,
-                    tipo: 'egreso_devolucion_sena',
-                    concepto: `Dev. seña Venta #${venta.numero}${penalidadPct > 0 ? ` (penalidad ${penalidadPct}%)` : ''}`,
-                    monto: efectivoCobrado,
+                    tipo: devuelvePesos ? 'egreso_devolucion_sena' : 'ingreso',
+                    concepto: devuelvePesos ? conceptoDev : `Vuelto que devuelve el cliente — anulación Venta #${venta.numero}`,
+                    monto: montoArs,
+                    moneda: 'ARS',
                     usuario_id: user?.id,
                   })
-                  if (refErr) avisoManual(efectivoCobrado, refErr.message)
+                  if (refErr) avisoManual(fmtArs(montoArs), refErr.message)
+                  else if (!devuelvePesos) toast(`El cliente tiene que devolver ${fmtArs(montoArs)} del vuelto en pesos que recibió.`, { icon: '⚠️', duration: 14000 })
                 }
               }
 
-              const noCashCancelado = aDevolver - efectivoCobrado
-              if (noCashCancelado > 0.01) {
-                const noCashTipos = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))]
-                const noCashTypes = noCashTipos.join(' + ') || 'No efectivo'
-                if (!cancelSesionId) {
-                  avisoManual(noCashCancelado, 'no hay una caja EN PESOS abierta')
+              // Dólares reales, a la Caja USD.
+              if (reintegro.usd > 0.005) {
+                if (!cancelSesionUsdId) {
+                  avisoManual(fmtUsd(reintegro.usd), 'no hay una Caja USD abierta')
                 } else {
-                  // Awaiteado (antes era `void`): un movimiento de plata no se dispara y se olvida.
-                  const { error: infErr } = await supabase.from('caja_movimientos').insert({
+                  const { error: usdErr } = await supabase.from('caja_movimientos').insert({
                     tenant_id: tenant!.id,
-                    sesion_id: cancelSesionId,
-                    tipo: 'egreso_informativo',
-                    concepto: `[${noCashTypes}] Dev. seña Venta #${venta.numero}`,
-                    monto: noCashCancelado,
-                    cuenta_origen_id: noCashTipos[0] ? cuentaOrigenDeMetodo(noCashTipos[0]) : null,
+                    sesion_id: cancelSesionUsdId,
+                    tipo: 'egreso_devolucion_sena',
+                    concepto: conceptoDev,
+                    monto: reintegro.usd,
+                    moneda: 'USD',
                     usuario_id: user?.id,
                   })
-                  if (infErr) avisoManual(noCashCancelado, infErr.message)
+                  if (usdErr) avisoManual(fmtUsd(reintegro.usd), usdErr.message)
                 }
               }
+
+              // Medios no efectivo: un informativo por medio, igual que al cobrar.
+              for (const { tipo, monto } of reintegro.noEfectivo) {
+                if (!cancelSesionId) {
+                  avisoManual(fmtArs(monto), 'no hay una caja EN PESOS abierta')
+                  continue
+                }
+                // Awaiteado (antes era `void`): un movimiento de plata no se dispara y se olvida.
+                const { error: infErr } = await supabase.from('caja_movimientos').insert({
+                  tenant_id: tenant!.id,
+                  sesion_id: cancelSesionId,
+                  tipo: 'egreso_informativo',
+                  concepto: `[${tipo}] ${conceptoDev}`,
+                  monto,
+                  moneda: 'ARS',
+                  cuenta_origen_id: cuentaOrigenDeMetodo(tipo),
+                  usuario_id: user?.id,
+                })
+                if (infErr) avisoManual(fmtArs(monto), infErr.message)
+              }
+
+              // Crédito a favor aplicado en la venta: vuelve al saldo del cliente, no pasa por la caja
+              // (2026-09-14, decisión de GO — antes el cliente lo perdía). Sale del ledger de ESA venta, no
+              // de `medio_pago`, y descuenta lo ya restituido: un reintento no lo devuelve dos veces.
+              const { data: movsCredito, error: credLeerErr } = await supabase.from('cliente_creditos')
+                .select('cliente_id, monto, origen').eq('tenant_id', tenant!.id).eq('venta_id', ventaId)
+              if (credLeerErr) {
+                toast.error(`La cancelación se procesó, pero no se pudo verificar el crédito a favor usado en la venta (${credLeerErr.message}). Revisá el saldo del cliente.`, { duration: 14000 })
+              } else {
+                const aRestituir = creditoARestituirPorAnulacion(movsCredito ?? [], ratio)
+                const clienteDelCredito = (movsCredito ?? []).find((m: any) => m.origen === 'consumo_venta')?.cliente_id ?? null
+                if (aRestituir > 0.005 && clienteDelCredito) {
+                  const { error: credErr } = await supabase.from('cliente_creditos').insert({
+                    tenant_id: tenant!.id,
+                    cliente_id: clienteDelCredito,
+                    monto: aRestituir,
+                    origen: ORIGEN_ANULACION_VENTA,
+                    venta_id: ventaId,
+                    nota: `Anulación Venta #${venta.numero}: vuelve el crédito aplicado${penalidadPct > 0 ? ` (penalidad ${penalidadPct}%)` : ''}`,
+                    usuario_id: user?.id,
+                  })
+                  if (credErr) {
+                    toast.error(`La cancelación se procesó, pero ${fmtArs(aRestituir)} de crédito a favor NO volvieron al cliente (${credErr.message}). Acreditalos manualmente.`, { duration: 14000 })
+                  } else {
+                    toast.success(`${fmtArs(aRestituir)} volvieron al saldo a favor del cliente.`)
+                  }
+                }
+              }
+              qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
             } catch (e: any) {
               // Antes: `catch {}`. Un error acá dejaba la caja inflada sin que nadie se enterara.
               toast.error(
@@ -5737,6 +5860,18 @@ export default function VentasPage() {
                               )
                             })()}
                           </div>
+                          {/* C3 (mig 423): la etiqueta de la góndola todavía muestra otro precio */}
+                          {etiquetasDesactualizadas[item.producto_id] !== undefined && item.moneda_venta !== 'usd' && (
+                            <p data-etiqueta-desactualizada className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1 mt-0.5">
+                              <Tag size={12} className="mt-0.5 flex-shrink-0" />
+                              <span>
+                                Etiqueta de góndola sin actualizar: {etiquetasDesactualizadas[item.producto_id] === null
+                                  ? 'puede mostrar otro precio'
+                                  : `puede decir $${etiquetasDesactualizadas[item.producto_id]!.toLocaleString('es-AR')}`}.
+                                {' '}Se cobra el precio vigente; si el cliente reclama, la diferencia va como descuento autorizado por el supervisor.
+                              </span>
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
                             {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
@@ -8237,6 +8372,15 @@ export default function VentasPage() {
         const penalidadPct = parseFloat((tenant as any)?.reserva_penalidad_pct ?? 0) || 0
         const penalidad = sena * penalidadPct / 100
         const aDevolver = Math.max(0, sena - penalidad)
+        // Qué parte vuelve en dólares y cuánto vuelve al saldo a favor: la misma cuenta que usa la cancelación.
+        const reintegroPreview = sena > 0
+          ? calcularReintegroAnulacion(
+              v.medio_pago, Number(v.total ?? 0) + Number(v.costo_envio ?? 0), aDevolver / sena,
+              mediosEfectivo, mediosEfectivoUsd,
+            )
+          : null
+        const usdADevolver = reintegroPreview?.usd ?? 0
+        const creditoADevolver = reintegroPreview?.creditoAFavor ?? 0
         const tieneCliente = !!v.cliente_id
         const destino = cancelReservaModal.destino
         return (
@@ -8274,6 +8418,16 @@ export default function VentasPage() {
                         <div className="flex justify-between text-red-600 dark:text-red-400"><span>Penalidad ({penalidadPct}%) — se retiene</span><span>−${penalidad.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
                       )}
                       <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-1 mt-1 font-bold"><span>A devolver / acreditar</span><span className="text-primary">${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                      {usdADevolver > 0 && destino === 'devolucion' && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 pt-1">
+                          De eso, <strong>US${usdADevolver.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong> se devuelven en dólares, desde la Caja USD.
+                        </p>
+                      )}
+                      {creditoADevolver > 0 && destino === 'devolucion' && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 pt-1">
+                          De eso, <strong>${creditoADevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong> se pagaron con crédito a favor y vuelven a ese saldo, no a la mano del cliente.
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -8309,7 +8463,12 @@ export default function VentasPage() {
                         ? 'Reserva cancelada. Stock liberado.'
                         : destino === 'credito'
                           ? `Reserva cancelada. $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} acreditados al cliente.`
-                          : `Reserva cancelada. Devolvé $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente.`)
+                          // Lo que se pagó con crédito a favor vuelve a ese saldo: no se entrega en mano.
+                          : aDevolver - creditoADevolver < 0.5
+                            ? 'Reserva cancelada. La seña se había pagado con crédito a favor: vuelve a ese saldo.'
+                            : usdADevolver > 0
+                              ? `Reserva cancelada. Devolvé $${(aDevolver - creditoADevolver).toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente, de los cuales US$${usdADevolver.toLocaleString('es-AR', { maximumFractionDigits: 2 })} en dólares.`
+                              : `Reserva cancelada. Devolvé $${(aDevolver - creditoADevolver).toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente.`)
                       setCancelReservaModal(null); setVentaDetalle(null)
                     },
                   })

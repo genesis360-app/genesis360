@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarRetiroSaldoFavor, montoSugeridoCredito } from '../../src/lib/saldoFavor'
+import { validarRetiroSaldoFavor, montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '../../src/lib/saldoFavor'
 
 describe('validarRetiroSaldoFavor (cash-out de saldo a favor, espejo RPC mig 246)', () => {
   it('OK cuando hay saldo y efectivo suficientes', () => {
@@ -59,5 +59,37 @@ describe('montoSugeridoCredito (auto-sugerencia de crédito a favor en el POS)',
   it('nunca negativo y redondea a 2 decimales (numeric de PG)', () => {
     expect(montoSugeridoCredito(-100, 5000)).toBe(0)
     expect(montoSugeridoCredito(1200.005, 9999)).toBe(1200.01)
+  })
+})
+
+describe('creditoARestituirPorAnulacion (🛑 REGLA #0 — el crédito aplicado vuelve al anular)', () => {
+  it('🔴 CLAVE: vuelve todo el crédito que consumió la venta', () => {
+    expect(creditoARestituirPorAnulacion([{ origen: 'consumo_venta', monto: -500 }], 1)).toBe(500)
+  })
+
+  it('aplica la penalidad de la seña y normaliza el numeric que llega como string', () => {
+    expect(creditoARestituirPorAnulacion([{ origen: 'consumo_venta', monto: '-1000.00' }], 0.8)).toBe(800)
+  })
+
+  it('🔴 CLAVE: un reintento no lo devuelve dos veces', () => {
+    const movs = [
+      { origen: 'consumo_venta', monto: -500 },
+      { origen: ORIGEN_ANULACION_VENTA, monto: 500 },
+    ]
+    expect(creditoARestituirPorAnulacion(movs, 1)).toBe(0)
+  })
+
+  it('ignora los demás orígenes (devolución, cancelación de reserva, retiro en efectivo)', () => {
+    const movs = [
+      { origen: 'devolucion', monto: 300 },
+      { origen: 'cancelacion_reserva', monto: 200 },
+      { origen: 'retiro_efectivo', monto: -100 },
+    ]
+    expect(creditoARestituirPorAnulacion(movs, 1)).toBe(0)
+  })
+
+  it('sin movimientos o con un ratio inválido → 0', () => {
+    expect(creditoARestituirPorAnulacion([], 1)).toBe(0)
+    expect(creditoARestituirPorAnulacion([{ origen: 'consumo_venta', monto: -500 }], Number.NaN)).toBe(0)
   })
 })

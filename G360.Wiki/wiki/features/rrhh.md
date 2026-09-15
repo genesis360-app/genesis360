@@ -315,6 +315,19 @@ el backfill se resolvió con `(array_agg(id))[1]` para elegir una sucursal deter
 
 ---
 
+
+## 🔐 Quién ve los archivos de RRHH (v1.221.0, mig 419) — 2026-09-14
+
+Decisión de GO: *"solo quien maneja RRHH y el propio empleado desde Mi Portal. Y obviamente el dueño y algún
+custom role si es que se lo permiten en el rol."*
+
+- Bucket `empleados` (documentos, préstamos, recibos firmados, certificados de capacitación): **lee y escribe**
+  quien maneja RRHH (`auth_puede_acceder_rrhh`: DUEÑO, SUPER_USUARIO, ADMIN, rol RRHH, o rol custom con permiso de
+  RRHH — `ver` para leer, `editar`/`supervisa` para escribir); **el empleado vinculado lee lo suyo** (Mi Portal).
+- Antes: en PROD no había políticas (todo fallaba) y en DEV las rutas `prestamos/` y `recibos/` no pasaban.
+- e2e 148: RRHH sube, DUEÑO lee, SUPERVISOR y CAJERO (rol custom sin RRHH) no leen ni suben, el empleado vinculado
+  ve su recibo y no el de otro.
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

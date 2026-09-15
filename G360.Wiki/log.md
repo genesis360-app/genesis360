@@ -6,6 +6,412 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 💬 Ayuda: "Reportar un problema" + Mis consultas (mig 426) — v1.226.0 en DEV
+
+Pedido de GO: terminar "Reportar un problema" del panel de Ayuda (antes solo mandaba un mail a soporte, sin ticket, y
+el cliente no tenía dónde ver lo que había reportado ni la respuesta) y que pueda seguir y responder su consulta. Sin
+deploy a PROD (GO: seguir acumulando).
+
+### Qué se hizo
+- **Mig 426**: `support_tickets.usuario_id` (quién la abrió desde la app; NULL = ticket interno del equipo, la app no
+  lo muestra), `tipo` (problema/consulta/sugerencia/pago), `modulo`, `pendiente_equipo` (la marca del panel) y
+  `ultimo_mensaje_at`; `support_messages.interno` (nota del equipo que el cliente no ve ni recibe aviso) y
+  `adjuntos` jsonb. Backfill de los tickets existentes. Trigger `trg_support_message_actualiza_ticket`: si escribe el
+  cliente queda pendiente del equipo (y se reabre si estaba esperando/resuelta); si responde un agente sin nota
+  interna, deja de estar pendiente. `fn_notificar_respuesta_soporte` (de la mig 425) redefinida: ignora notas
+  internas, avisa a `usuario_id` y lleva a `/ayuda/consultas?ticket=`. RPC SECURITY DEFINER con guard (las tablas
+  siguen sin privilegios para `authenticated`): `fn_soporte_crear_consulta`, `fn_soporte_responder` (no en
+  cerradas), `fn_soporte_mis_consultas`, `fn_soporte_consulta` (sin notas internas; los agentes firman "Soporte
+  Genesis360"); helper `fn_soporte_ve_todas_del_negocio()`. Topes anti-spam (10 consultas/usuario/24h, 30
+  mensajes/hora) contados con `pg_advisory_xact_lock` por usuario. Bucket privado `soporte-adjuntos`
+  (png/jpeg/webp/pdf, 5 MB) con policies por carpeta `<negocio>/<usuario>/`. Revisada por `migration-reviewer`:
+  APTA, con sus 2 sugerencias aplicadas (lock en los topes, chequeo de usuario activo en las RPC de lectura).
+- **App**: página nueva `/ayuda/consultas` (lista + hilo + responder con adjuntos, `?ticket=<id>` abre una y
+  `?nueva=1` el formulario) — fuera del `SubscriptionGuard`, como Mi Cuenta: con la suscripción vencida también se
+  puede hablar con soporte. `AyudaModal` (panel lateral) usa el formulario nuevo + link "Ver mis consultas";
+  `AyudaPage` (Centro de Soporte) activa las tarjetas "Reportar un problema" y la nueva "Mis consultas" (el resto
+  sigue "próximamente"). Decisiones de GO: cada usuario ve las suyas, DUEÑO/SUPER_USUARIO ven todas las del negocio
+  (ADMIN=staff no entra); el equipo se entera por mail (`send-email` tipo nuevo `soporte_consulta`, a soporte@, con
+  link al panel) y por una marca en el panel.
+- **EFs en DEV**: `admin-api` (listado con `pendiente_equipo` primero + filtro "pendientes", detalle con notas
+  internas y adjuntos con link firmado de 1 h, `reportante` nombre/rol, `support.tickets.reply` acepta `interno`) y
+  `billing-manual-avisar-pago` ("Ya transferí" crea el ticket con `usuario_id`/`tipo:'pago'`, así aparece en Mis
+  consultas de quien avisó).
+- **Panel (`genesis360-admin`, commit `a9db285` en `origin/dev`, build OK)**: filtro "Solo los que esperan
+  respuesta del equipo", marca "● Respuesta del cliente", quién abrió la consulta, notas internas en ámbar,
+  adjuntos con link, casilla "Nota interna".
+- De paso, dos fixes ya commiteados en `dev` esta sesión (sin bump de versión propio, quedan bajo el mismo
+  `v1.226.0`):
+  - 🔒 **`send-email` ya no se puede usar como relay de mail** (commit `6dbaf377`, **deployada en DEV Y PROD**,
+    autorizado por GO). Tener `verify_jwt` encendido no alcanzaba: la clave anon pública de la app ya es un JWT
+    válido, así que cualquiera podía mandar mail con el remitente de Genesis360, al destinatario que quisiera y con
+    HTML propio en los datos (phishing con el dominio propio + consumo de la cuota de Resend). Ahora solo entran un
+    usuario con sesión real y fila en `users`, o el servidor (clave de servicio de las otras EF); destinatarios
+    según el tipo (reportes siempre a soporte@, welcome solo al propio usuario, invitación a proveedor solo desde
+    el servidor); negocio/usuario del mail salen de la base, no del pedido; todo lo que viene en `data` se escapa;
+    los links internos tienen que ser rutas de la app (`//evil.com`/`@evil.com` se rechazan); tope de destinatarios
+    y adjuntos. Reglas puras en `seguridad.ts` + 12 unit tests. Verificado en DEV y PROD sin mandar mails reales
+    (anon 401, tipo reservado 403, link externo 400, servicio 400 por validación). PROD queda en v30,
+    `verify_jwt: true`.
+  - 🧾 **ConfigPage ya no muestra "Token AfipSDK" ni "token de producción" con el circuito propio** (commit
+    `b480e81c`) — esos textos solo aparecen con `afip_provider='afipsdk'`; con el circuito propio la franja "Modo
+    PRUEBA" pide el punto de venta y el certificado de producción de ARCA. Sale en la guía y el video de activación
+    de facturación (pendiente, ver abajo).
+
+### Verificación
+- **e2e 152** (3/3 contra DEV, mutante): A pantalla DUEÑO (crear consulta con captura desde Ayuda, hilo, responder,
+  mails interceptados); B servidor (cajero/supervisor solo lo suyo, DUEÑO todo el negocio, adjuntos solo propios,
+  tablas no legibles directo, anon 401, cada negativa con su control positivo). Mutante A (crear sin adjuntos) falla
+  donde debe.
+- SQL en DEV con los triggers reales, impersonando al cajero: nota interna → 0 avisos y no aparece en su hilo, sigue
+  pendiente; respuesta del equipo → aviso con `action_url` a la consulta, deja de estar pendiente, el cliente ve
+  "Soporte Genesis360"; el cliente escribe en una resuelta → se reabre y queda pendiente; en una cerrada → rechazado.
+- tsc + eslint verdes, build del panel verde. UAT §62 (12 escenarios).
+- Datos de prueba borrados en DEV (tickets/mensajes/aviso "E2E-152"). ⚠️ Quedan ~5 PNG de 70 bytes en el bucket
+  `soporte-adjuntos` de DEV — Storage no deja borrar por SQL y no había service key local a mano; detalle menor.
+
+### Queda pendiente
+- **Ayuda, Fase 2**: "Cursos y recursos" con los videos servidos desde un bucket público de Supabase Storage que GO
+  sube a mano por el dashboard, en `AyudaModal` y `AyudaPage`.
+- **Video + guía HTML de activación de facturación** — se graba DESPUÉS del deploy, en PROD, contra el tenant
+  "Genesis360 Onboarding", con CUIT ficticio **20-12345678-9** (nunca un CUIT o certificado real en cámara).
+- 🛑 Decisiones de GO sin resolver: exponer o no la escritura de `integration_job_queue` a usuarios del tenant
+  (arrastrada de la sesión anterior), y avisar al cliente cuando el equipo registra su pago manual
+  (`fn_registrar_pago_manual` no notifica hoy).
+
+---
+
+## [2026-09-15] update | 🔔 La respuesta de soporte le llega al cliente (mig 425) — v1.225.0 en DEV
+
+GO avisó un pago desde Mi Cuenta ("Ya transferí") y respondió el ticket desde el panel: preguntó si al cliente le
+llegaba algo. **No le llegaba nada.** `billing-manual-avisar-pago` crea el ticket con un mensaje `cliente`, pero
+`admin-api` `support.tickets.reply` solo inserta el mensaje y actualiza la fecha: sin notificación, sin mail, y la app
+no tiene dónde ver tickets. Tampoco se avisa cuando el equipo registra el pago manual.
+
+### Qué se hizo
+- **Mig 425:** trigger en `support_messages` que, cuando responde un agente, inserta una notificación para el usuario
+  que abrió el ticket ("Soporte respondió: {asunto}", el texto recortado a 500 caracteres). Solo en tickets con mensaje
+  del cliente: los que abre el equipo desde el panel son hilos internos. Un INSERT por respuesta; la campanita ya
+  consulta cada 30 segundos, así que no suma carga. De paso, las tablas de soporte perdieron los privilegios de `anon`
+  y `authenticated` (solo las frenaba la RLS sin policies, igual que `admin_audit_log` hasta la mig 411).
+- **Panel (`genesis360-admin`, commit `5ce8582` en `dev`):** debajo del cuadro de respuesta dice si le llega al cliente o
+  es una nota interna; el botón dice "Responder al cliente" o "Guardar nota".
+
+### Verificación
+SQL en DEV con el trigger real dentro de un bloque que se revierte: sin la migración, 0 avisos; con la migración, el
+ticket del cliente da 2 avisos (el largo recortado a 498), el interno 0 y un autor de otro negocio 0. SECURITY DEFINER +
+`search_path`, sin `EXECUTE` público, acentos correctos, PostgREST con anon → 401. Build del panel verde. UAT §61.
+
+### Evaluado y no construido (decisión de GO)
+Responder desde la app ("Mis consultas": ver el hilo y contestar). Es chico del lado de la base (2 RPC con guard de
+negocio y un tope de mensajes) más una pantalla y la ruta; la carga es despreciable. El costo real: en cuanto el
+cliente puede leer el hilo, hace falta separar respuestas de notas internas, y el panel no avisa a los agentes cuando
+el cliente contesta (dependen de mirar la lista). Encaja con "Reportar un problema" de Ayuda, que figura como
+"próximamente". También quedó propuesto avisar al cliente cuando se registra su pago manual.
+
+---
+
+## [2026-09-15] update | 🏷️ Precio programado Fases 2-3 (migs 423-424): la etiqueta de la góndola y el aviso de ML/TN — v1.224.0 en DEV
+
+Sin deploy (GO: acumular). Implementa lo que quedaba del relevamiento (C1/C2, C3 y D2); las respuestas están en la
+entrada "Sesión cont. 68" y el detalle en [[wiki/features/productos]].
+
+### Qué se construyó
+- **Mig 423 — la etiqueta anticipada.** `fn_generar_tareas_precio_programado` (la llama el cron de cada minuto antes
+  de aplicar) crea la tarea `cambio_precio` cuando faltan `tenants.repositor_anticipacion_min` minutos o menos (1 h
+  por defecto; se elige en Config → Inventario → Repositores), con el precio nuevo y ligada al programado. Si ya había
+  una tarea de cartel sin hacer, la fusiona. El guard `fn_tarea_repositor_guard_completar` no deja completarla
+  mientras rija otro precio. Cancelar, reemplazar o no poder aplicar el programado desarma la tarea; un cambio manual
+  antes de la hora no le pisa la etiqueta.
+- **POS:** aviso al cajero (toast al agregar y línea en la fila del carrito) cuando la etiqueta de la góndola muestra
+  otro precio.
+- **Alertas:** "Etiquetas vencidas en góndola" (badge y página con la misma consulta); "Ver tarea" abre Repositores
+  con la tarea resaltada.
+- **Mig 424:** `trg_notificar_sync_precio_fallido` avisa al DUEÑO/SUPER_USUARIO cuando un `sync_precio` de ML/TN queda
+  `failed`, y junta en un aviso los del mismo canal de las últimas 6 horas.
+
+### 🛑 Hallazgos
+1. **`tareas_repositor` la podía escribir entera cualquier usuario del negocio** (INSERT, DELETE y UPDATE de todas las
+   columnas): así se salteaba el guard nuevo. La 423 saca INSERT/DELETE y deja el UPDATE por columna. El reviewer de
+   la Fase 3 de Repositores lo había anotado como bajo impacto.
+2. **`migration-reviewer` (APTA):** en `fn_aplicar_precios_programados` (desde la 422) la rama de error no tenía
+   subtransacción propia. Si fallaba el aviso de un precio que no se pudo aplicar, se revertían todos los precios ya
+   aplicados en ese minuto. Corregido en la 423, junto con un guard más duro ante una doble falla.
+3. **Alertas decía "¡Todo en orden!" con pedidos vencidos o sin avanzar** si eran las únicas alertas (el badge sí los
+   contaba y la página escondía sus secciones). Corregido.
+4. 🛑 **Latente, sin tocar (decisión para GO):** `integration_job_queue` la puede escribir cualquier usuario del negocio
+   (Config la usa para "forzar sync") y `meli-stock-worker` publica en el `meli_item_id` que viene en el job: con acceso
+   por REST se podría mandar el stock o el precio de un producto a otra publicación de la misma cuenta.
+5. **Límite conocido:** la publicación del precio en ML/TN solo se encola para productos con repricing o % de ajuste
+   por canal (`fn_enqueue_sync_precio`, mig 346, verificado en DEV). Con "Sync precio" solo, el precio publicado no
+   cambia, ni programado ni manual.
+
+### Verificación
+- 19 unit (`tests/unit/precioProgramado.test.ts`), typecheck y lint.
+- **e2e 151** (4 casos) verde: A y B contra el cron real de DEV. Mutantes: **D** falla sin la 424 y **C** falla sin el
+  cambio de `VentasPage`. El primer intento del mutante C falló por el motivo equivocado (el helper leía una columna
+  que todavía no existía) y se rehízo con la migración aplicada; A y B sin la 423 no tienen tarea ligada.
+- Migraciones en DEV: grants por columna, `security_invoker`, acentos (`DUEÑO` = `c391`), orden del historial y smoke
+  de PostgREST con control negativo. `schema_full.sql` regenerado por MCP, sin token: 169 tablas, 230 funciones,
+  112 triggers y 231 policies. UAT §60.
+
+---
+
+## [2026-09-15] update | 🧹 Cierre de sesión (cont. 68) — DEV v1.223.0 (migs 420-422) · PROD v1.221.0 en Micro · Kalken, primer cliente real
+
+Sesión larga, en este orden: GO pidió "lo que falte definir" → 4 tandas de preguntas cerradas (todas las decisiones en
+la entrada "Sesión cont. 68") → **v1.222.0** (reintegro al anular + tanda chica, mig 420) → crédito a favor al anular +
+**E2 medido** → **v1.223.0** (mig 421 avisos al dueño, mig 422 precio programado Fase 1) → consumo real por usuario y
+capacidad → **PROD pasó de Nano a Micro**, después de verificar que Kalken no estuviera usando la app.
+
+**Estado final**: DEV `v1.223.0`, migs 001-422 (prereleases `v1.222.0` y `v1.223.0` en GitHub). PROD `v1.221.0`, migs
+001-419, compute Micro. **Nada de cont. 68 fue a PROD** (GO: acumular). Qué sigue y el checklist del deploy acumulado:
+bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md`.
+
+**Lecciones que quedaron en memoria**: el rol `'OWNER'` no existe (al filtrar por rol, verificar `distinct rol`); pasar
+la org a Pro no sube la instancia de cada proyecto y `max_connections` no distingue Nano de Micro; Kalken es cliente
+real, así que antes de algo disruptivo en PROD se revisa su actividad.
+
+---
+
+## [2026-09-15] update | ⚙️ PROD pasa de Nano a Micro · 👤 Kalken, primer cliente real en PROD
+
+- GO avisó que **Kalken** (alta 2026-08-25, en PROD) es un cliente real probando la app. Antes del reinicio se
+  verificó que no estuviera usándola: último movimiento a las 18:03 AR, último login a las 20:41 sin renovación de
+  token, 0 requests de sus dos usuarios en la última hora y media (el tráfico era de negocios de prueba de GO). Su
+  "Caja Principal" quedó abierta desde las 17:35; el reinicio no la afecta.
+- GO cambió PROD de **Nano a Micro** desde Settings → Compute and Disk ("Free Upgrade": en una org paga la Nano se
+  cobra como Micro, así que no cambia el costo). Verificado después: Postgres reiniciado a las 03:01 UTC,
+  `effective_cache_size` 768 MB y `shared_buffers` 256 MB (igual que DEV); la API devolvió 2 respuestas 520 a las
+  03:02, durante el reinicio, y después solo 200; los tres crons de cada 5 minutos (`meli-stock-sync`,
+  `tn-stock-sync`, `tn-fulfillment-sync`) corrieron bien a las 03:05.
+- Con PROD en Micro, la capacidad estimada aplica a PROD: ~85 usuarios a la vez en hora pico y ~160 en uso tranquilo;
+  del orden de 80 a 120 clientes con uso normal. Ver [[wiki/architecture/resiliencia]].
+
+---
+
+## [2026-09-14] update | 🗓️ Precio programado Fase 1 (mig 422) + 🛑 avisos de CC/OC vencidas al dueño (mig 421) + capacidad de PROD — v1.223.0 en DEV
+
+Sin deploy (GO: seguir acumulando).
+
+### 1 · Precio de venta con fecha/hora de vigencia — Fase 1
+Implementa las respuestas de GO al relevamiento (ver la entrada "Sesión cont. 68").
+- **Mig 422**: tabla `precios_programados` (un pendiente por producto; RLS solo lectura, sin escritura directa),
+  `fn_programar_precio` / `fn_cancelar_precio_programado` (validan `auth_puede_editar_modulo('inventario')`, producto
+  del negocio y fecha futura ≤ 1 año; registran en `actividad_log`), `fn_aplicar_precios_programados` por **pg_cron
+  cada minuto** — el mismo `UPDATE OF precio_venta` que un cambio manual, así la tarea del repositor y la cola de
+  ML/TN disparan solas — y aviso el día anterior. Si aplicar falla: `fallido` + aviso al dueño.
+- **Frontend**: `PrecioVigenciaModal` al guardar la ficha cuando cambió el precio ("Ahora" por defecto), aviso
+  "Programado: $X desde…" bajo el precio, tab **Productos → Programados** (`PreciosProgramadosPanel`, abre también con
+  `?tab=programados`), lógica pura en `src/lib/precioProgramado.ts`.
+- **Verificación**: 10 unit; **e2e 150** (4 casos) — A mutante (sin el modal el precio se aplicaba al guardar), B
+  esperó al cron real de DEV y verificó precio, estado, precio anterior e historial, C cancela desde la pantalla, D
+  guards (sin INSERT directo, sin pasado, CAJERO rechazado). Migración verificada: RLS, grants, crons y acentos.
+- **Queda (Fases 2-3)**: tarea del repositor anticipada que no se completa antes de la hora (C1/C2), aviso al cajero
+  y alerta de etiquetas vencidas (C3), aviso si ML/TN no publica (D2: hoy la cola reintenta 5 veces y queda `failed`
+  sin avisar). Masivo en v2.
+
+### 2 · 🛑 Los avisos diarios de CC y OC vencidas nunca le llegaban al dueño (mig 421)
+Encontrado leyendo cómo se arman las notificaciones: `fn_notificar_cc_vencidas` (mig 091) buscaba destinatarios con
+rol `OWNER` o `ADMIN`. `OWNER` no existe y `ADMIN` es staff. **En PROD no hay ningún usuario con esos roles → el
+aviso no le llegó nunca a nadie**; en DEV, los 58 avisos de "OC vencida" de 30 días le llegaron solo al ADMIN. Pasa a
+DUEÑO y SUPER_USUARIO. Latente (sin clientes reales).
+
+### 3 · Capacidad de PROD
+Plan **Pro**. ⚠️ **Corregido después, a partir de una pregunta de GO**: DEV está en **Micro** (1 GB) pero **PROD parece
+seguir en Nano** (hasta 0,5 GB: `effective_cache_size` 384 MB contra 768 MB de DEV). La primera lectura había mirado
+solo `max_connections`, que es 60 en las dos. Supabase no sube el tamaño al pasar de Free a Pro, y en una org paga
+una Nano se cobra como Micro. Ninguna tiene CPU dedicada (empieza en Large). Medido manejando la app real: un usuario
+con la pestaña quieta en el POS consume 0,59 req/s; cada cambio de pantalla, ~64 requests; una venta, 30. Contra el
+techo de E2 medido en DEV (~170 req/s, operando al 70 %), **con PROD en Micro**: ~85 usuarios a la vez en hora pico,
+~160 en uso tranquilo (~40-80 negocios). En Nano, menos. Supuestos, palancas y detalle en [[wiki/architecture/resiliencia]]. Hallazgo de paso: cada cambio de
+pantalla vuelve a pedir sesión, usuario, negocio y sucursales (32 `GET /auth/v1/user` en 8 pantallas).
+
+---
+
+## [2026-09-14] update | 💳 El crédito a favor vuelve al anular + ✅ E2: el techo de DEV (sin deploy)
+
+GO: *"deploy después, sigamos juntando más"*. Nada fue a PROD.
+
+### 1 · El crédito a favor aplicado vuelve al cliente al anular
+Hallazgo de la tanda anterior (UAT 57.11): anular una venta pagada con "Crédito a favor" no devolvía ese
+crédito — quedaba afuera del reintegro (ni caja ni saldo) y el cliente lo perdía. GO: *"que se devuelva a saldo
+a favor, como debería ser"*.
+- `creditoARestituirPorAnulacion` (`src/lib/saldoFavor.ts`): parte de los movimientos de `cliente_creditos` de
+  **esa** venta (`consumo_venta`), aplica la penalidad de la seña y descuenta lo ya restituido
+  (`anulacion_venta`), así un reintento no lo duplica. Fuente = ledger, no `medio_pago`.
+- `VentasPage`: al anular o cancelar con destino "devolución" inserta el crédito de vuelta, awaiteado y con
+  aviso si falla. No pasa por la caja. El destino "crédito" de la reserva ya lo incluía (acredita todo
+  `aDevolver`), así que no se duplica.
+- El modal de cancelar reserva dice cuánto vuelve al saldo, y el aviso "Devolvé $X" ya no cuenta esa parte.
+
+**Verificación:** 5 unit nuevos (89/89 en `saldoFavor` + `ventasValidation`); **e2e 149 caso C mutante** — sin el
+fix el ledger del cliente quedó en +$500 / −$500 y nada de vuelta; con el fix vuelve la fila `anulacion_venta`
+de $500 y la caja no se mueve. A y B siguen verdes. Typecheck, ESLint y build en verde.
+
+### 2 · E2 — el techo de DEV (autorizado por GO)
+Rampa de 20 a 400 sesiones de lectura continua, 45 s por escalón. **Techo ~170 req/s, alcanzado ya con 20
+sesiones**; después el throughput no sube y la latencia crece casi lineal (p95: 198 ms con 20 → 8,6 s con 400).
+**0 errores en todos los escalones**: DEV no se cae, se encola. Cuello medido en vivo: PostgREST con 21
+conexiones, 19 activas en CPU, sin locks, `max_connections` 60 lejos. Detalle y cómo leerlo en
+[[wiki/architecture/resiliencia]] (E2). Siguen sin medir: escrituras y PROD.
+
+---
+
+## [2026-09-14] update | ✅ v1.222.0 en DEV — reintegro al anular (REGLA #0) + tanda chica (mig 420)
+
+Las dos primeras tandas del orden que fijó GO en la cont. 68. **Todo en DEV; PROD espera autorización.**
+
+### 1 · 🛑 El reintegro al anular sale por donde entró el cobro
+Tres agujeros latentes en el bloque de reintegro de `VentasPage` (anular venta despachada / cancelar reserva
+con seña), más uno al despachar una reserva:
+1. **Los dólares no salían de la Caja USD**: `efectivoCobrado` solo sumaba `tipo === 'Efectivo'`; "Efectivo USD"
+   caía en la pata no-efectivo.
+2. **El efectivo se devolvía bruto**: `medio_pago` guarda lo que entregó el cliente ($1.500 por una venta de
+   $1.234) y la caja había recibido el neto.
+3. **Solo se reconocía el método llamado literalmente "Efectivo"**, no los `es_efectivo` del negocio.
+4. **Al despachar una reserva con seña mixta** (pesos + USD), `.maybeSingle()` con dos filas devolvía `null` →
+   "la seña no está en caja" → se volvía a sumar en pesos. Y el bloque terminaba en `catch {}` silencioso.
+
+**Fix:** `calcularReintegroAnulacion` (`src/lib/ventasValidation.ts`) reconstruye el reintegro con la misma
+cuenta que el cobro (`calcularEfectivoPorMoneda`): pesos netos del vuelto a la caja en pesos, dólares a la Caja
+USD (`moneda='USD'`), un informativo por medio no efectivo, con la penalidad aplicada a cada parte. El guard de
+la venta despachada exige una caja abierta **en la moneda de cada parte**. El modal de cancelar reserva dice
+cuántos US$ se devuelven. El despacho usa `.limit(1)`, solo suma efectivo en pesos y avisa si falla.
+
+**Verificación:** 10 unit nuevos (72/72); **e2e 149 mutante** (anulación por aprobación de Supervisión, venta
+sembrada por REST). Con el código viejo la base mostró: venta #829 en USD **sin ningún egreso** y venta #830
+con **egreso de $1.500 por un cobro de $1.234** (quedan en el negocio de prueba: el ledger es inmutable). Con el
+nuevo, #827 y #828 cierran en cero. Typecheck, ESLint, build y e2e 84/86 en verde. Sin daño real: PROD nunca
+abrió una Caja USD.
+
+🟥 **Hallazgo abierto (UAT 57.11):** anular una venta pagada con "Crédito a favor" no le devuelve el crédito al
+cliente. Espera decisión de GO.
+
+### 2 · La tanda chica
+- **Motivos de caja (mig 420):** negocios nuevos siembran "Ingreso de efectivo", "Aporte del dueño" y "Fondo de
+  cambio"; en los existentes se desactivan "Extracción / Retiro" y "Gastos varios". El "drift" de
+  `fn_seed_tenant_defaults` entre DEV y PROD resultó ser **solo comentarios** (mismo código); PROD tiene además un
+  índice duplicado en `motivos_movimiento` (`idx_motivos_tenant`), cosmético.
+- **`marketplace-webhook` apagado:** salió el campo "URL de webhook" de Configuración y la EF exige usuario
+  autenticado del mismo negocio (antes aceptaba llamadas sin auth). Existe **solo en PROD**: se redespliega con el
+  deploy.
+- **Landing:** fuera "Más de 500 comercios".
+- **C-11 Monotributo:** la tarjeta ("Últimos 12 meses vs Tope Cat.") y las alertas de 75/90 % miden 12 meses
+  móviles. De paso: la suma leía como máximo **1.000 ventas y cortaba sin avisar** → ahora pagina.
+  `consultas-contador.md` actualizado (quedan base facturado/cobrado y frecuencia semestral vs cuatrimestral).
+
+### Pendiente para PROD
+Mig 420 · frontend `v1.222.0` · redeploy de `marketplace-webhook` con `verify_jwt: true` · auditoría de EFs y
+paridad de policies por schema.
+
+---
+
+## [2026-09-14] update | 🧭 Sesión cont. 68 — GO define todos los pendientes abiertos + 2 hallazgos REGLA #0 latentes
+
+Sin código. GO pidió "lo que falte definir" y se relevó en 4 tandas de preguntas cerradas; antes de cada una se
+verificó el código y los datos (DEV y PROD, solo lectura). Orden de trabajo en el bloque "DECISIONES DE GO" de
+`sources/raw/project_pendientes.md`.
+
+### 🛑 Hallazgos (latentes, sin daño)
+1. **Anular una venta o seña cobrada en Efectivo USD no saca los dólares de la Caja USD.** `efectivoCobrado`
+   solo suma `tipo === 'Efectivo'`; los USD caen en la pata no-efectivo como `egreso_informativo` en la caja de
+   pesos. El cajero devuelve dólares que el sistema nunca descuenta → faltante en el arqueo de la Caja USD, sin
+   aviso. Control: PROD nunca abrió una sesión de Caja USD; en DEV ninguna de las 71 canceladas tiene USD.
+2. **Negocio con moneda principal ≠ ARS.** "Familia Otranto De Porto" es CLP en DEV y en PROD, con
+   `cotizacion_usd` 1.400 / 1.420 (el dólar en pesos argentinos que trae dolarapi, no en CLP), y
+   `sumarPorMonedaNativa` (DashGastosArea) toma ARS como base fija: un gasto en CLP iría a "otras" y quedaría
+   afuera de todos los totales. Hoy sus gastos están grabados en ARS.
+
+### Decisiones
+| Tema | Decisión de GO |
+|---|---|
+| Anular con Efectivo USD | Devolver los mismos US$ desde la Caja USD abierta; sin Caja USD, aviso "registralo a mano" |
+| Motivos de caja | Seed solo con motivos de ingreso + desactivar "Extracción / Retiro" y "Gastos varios" en los existentes |
+| `marketplace-webhook` | Ocultar el campo en Configuración, cerrar la llamada sin auth, documentarla apagada |
+| Landing "+500 comercios" | Sacar la línea |
+| Monedas | Moneda principal configurable + cotización por moneda (auto dolarapi EUR/BRL/CLP/UYU + manual) + alcance total, incluido vender → relevamiento y fases |
+| Login-as (panel soporte) | Sigue pendiente, sin cambios |
+| Tope de descuento del DUEÑO | No tiene; usa el tope por canal |
+| C-11 Monotributo | Corregir ya a 12 meses móviles; base facturado/cobrado y frecuencia quedan para el contador |
+| Contador | Todavía no; el registro sigue acumulando |
+
+### Precio programado — respuestas del relevamiento (`relevamiento-precio-programado-reglas-negocio.html`)
+A1 conviven (el vigente rige, el nuevo queda agendado) · A2 uno por producto, programar otro reemplaza con aviso ·
+A3 editable y cancelable por los roles que hoy cambian precios · A4 "ahora" por defecto · A5 solo minorista en v1 ·
+**B1 congelado al entrar al carrito** · B2 la reserva respeta lo pactado · B3 el presupuesto respeta su validez ·
+**C1/C2 tarea anticipada (ej. 1 h, configurable) con el precio nuevo, que no se puede completar antes de la hora** ·
+**C3 aviso al cajero mientras la etiqueta esté pendiente (clave de supervisor si el cliente reclama) + alerta de
+etiquetas vencidas** · D1 ML/TN a la hora de vigencia · D2 reintento + aviso al dueño · D3 misma fecha que el
+local · E1 masivo en v2 · E2 lista en Productos + aviso el día anterior · E3 lo aplica el servidor · E4 queda quién
+programó y cuándo se aplicó · **F1 v1 por producto, sin masivo**.
+
+Verificado para el diseño: si el cron aplica el precio con el mismo `UPDATE OF precio_venta`,
+`fn_generar_tarea_repositor_precio` y `fn_enqueue_sync_precio` disparan solos, y `fn_productos_rol_guard` no lo
+frena (`auth_puede_editar_modulo` devuelve `true` sin sesión). Quién puede programar se controla al guardar el
+programado.
+
+---
+
+## [2026-09-14] update | 🧹 Cierre de sesión (cont. 67) — PROD = DEV = v1.221.0, sin deploys pendientes
+
+Sesión larga, en este orden: efectos de click + Video 4 → **pausa de la serie de videos** (GO la revisa
+con su socio) → pendientes: **v1.219.0** (fix del alta) → hallazgo de **drift de Edge Functions** (el
+lock anti doble factura no estaba en PROD) → **v1.219.1** (mig 416) → **v1.220.0** (ubicaciones de
+Recursos, migs 417-418, 4 EF muertas borradas) → hallazgo de **policies de storage** → **v1.221.0**
+(mig 419 + transportista por token).
+
+**Estado final**: PROD = DEV = `v1.221.0`, migs 001-419, Edge Functions = repo (diff 0), policies
+idénticas en `cron`/`public`/`storage`, Dependabot sin alertas. Qué sigue: bloque "QUÉ SIGUE" de
+`sources/raw/project_pendientes.md`.
+
+**Lecciones que quedaron en memoria**: mergear a `main` no despliega Edge Functions (auditarlas en cada
+deploy); la paridad de policies hay que medirla por schema, `storage` incluido; un e2e de una página
+pública con el storageState del DUEÑO da falso verde.
+
+---
+
+## [2026-09-14] deploy | 🚀 v1.221.0 — archivos por negocio (mig 419) + el transportista sube por token · DEV = PROD en los 3 schemas
+
+### El hallazgo
+Cerrando v1.220.0 se comparó la paridad de políticas DEV↔PROD por schema: `public` y `cron`
+idénticos, **`storage` no** (DEV 34, PROD 26).
+- **PROD no tenía políticas para `empleados`, `etiquetas-envios` ni `presupuestos-servicios`** → fallaban
+  documentos/préstamos/recibos de RRHH, firma, fotos de entrega y facturas de courier, y archivos de
+  presupuestos de servicios. Sin datos perdidos: PROD tenía 0 de cada cosa.
+- **Las de DEV no se podían copiar**: `etiquetas-envios` y `presupuestos-servicios` con
+  `auth.uid() IS NOT NULL` dejaban a un usuario de **otro negocio** leer (y en presupuestos borrar)
+  archivos ajenos; `empleados` no cubría `prestamos/` ni `recibos/` (fallaban hasta en DEV).
+- `EnviosPage` ignoraba si la firma no se subía; `TransportistePage` (pública) no podía subir nada.
+
+### Decisiones de GO
+1. Archivos de RRHH: *"solo quien maneja RRHH y el propio empleado desde Mi Portal. Y obviamente el
+   dueño y algún custom role si es que se lo permiten en el rol"*.
+2. El transportista sube foto y firma desde su link: *"si"*.
+
+### Qué se hizo
+- **Mig 419** (DEV y PROD): políticas por negocio según la ruta real de cada bucket. RRHH:
+  `auth_puede_acceder_rrhh` (permiso explícito del rol custom — `ver` para leer, `editar`/`supervisa`
+  para escribir — o DUEÑO/SUPER_USUARIO/ADMIN/RRHH) + el empleado vinculado ve lo suyo. 🛑 Las
+  funciones auxiliares devuelven **solo booleanos**: un primer borrador devolvía la fila del empleado
+  y, por ser SECURITY DEFINER, habría expuesto sueldos y CBU por RPC. `anon` no las ejecuta.
+- **EF `transportista-subir-archivo`** (`verify_jwt: false`): valida el token como `get_envio_by_token`,
+  rechaza envíos cerrados, solo PNG/JPEG ≤ 5 MB, ruta armada por el servidor.
+- Envíos, Transportista y Proveedores **avisan** si una subida falla.
+- `playwright.config.ts`: el `testIgnore` de `chromium` no estaba anclado y `4[89]_.*_mutante` ignoraba
+  en silencio al spec 148. Anclado (no cambia ningún otro spec).
+
+### Verificación
+- **e2e 148 mutante**: con las políticas viejas de DEV falla (sube a la carpeta de otro negocio; RRHH
+  no sube recibos); con la 419 pasa. Con la pantalla vieja del transportista **sin sesión** falla.
+  ⚠️ Un primer intento del caso de UI dio **falso verde**: corría con la sesión guardada del DUEÑO, que
+  sí puede subir. Se detectó corriendo la mutación; ahora usa un contexto sin sesión.
+- PROD con la cuenta de prueba: rutas propias 200, ajenas 400, lectura propia 200, limpieza OK. EF:
+  OPTIONS 200, token inválido 404.
+- **Paridad final: DEV y PROD idénticos en `cron`, `public` y `storage`** (2/230/38 policies, mismos hashes).
+
+---
+
 ## [2026-09-14] deploy | 🚀 v1.220.0 — la ubicación de un recurso es el catálogo (migs 417-418) + 4 Edge Functions muertas borradas
 
 GO respondió las dos decisiones que habían quedado abiertas.

@@ -106,10 +106,88 @@ contra PROD o con más de 20 sesiones sin `--si-se-que-hago`.
 Cero errores en las tres corridas. El p95 disparado a 20 concurrentes **era casi todo una sola
 consulta** (E4-h2); cerrada esa, el throughput se duplicó y el p95 bajó 7,6×.
 
-### E2 — techo: deliberadamente NO se buscó
+### E2 — techo ✅ (DEV, 2026-09-14, autorizado por GO)
 
-Saturar la instancia es destructivo y DEV es el ambiente de trabajo de GO. El instrumento ya admite
-la carga que se le pida (`--usuarios N --si-se-que-hago`) — falta acordar **cuándo** correrlo.
+Rampa de 20 a 400 sesiones, 45 s por escalón y 20 s de pausa entre escalones
+(`node scripts/stress-lectura.mjs --usuarios N --segundos 45 --si-se-que-hago`), con el mismo mix de
+lecturas y las 5 cuentas de rol de E1.
+
+| Sesiones | req/s | p50 | p95 | p99 | máx | Errores |
+|---|---|---|---|---|---|---|
+| 20 | 174,7 | 101 ms | 198 ms | 237 ms | 392 ms | 0 |
+| 50 | 168,4 | 268 ms | 591 ms | 805 ms | 1,5 s | 0 |
+| 100 | 162,0 | 446 ms | 1,67 s | 2,49 s | 5,3 s | 0 |
+| 200 | 156,5 | 855 ms | 3,74 s | 5,82 s | 9,6 s | 0 |
+| 400 | 145,9 | 1,76 s | 8,59 s | 12,8 s | 25,3 s | 0 |
+
+**El techo es de unos 170 req/s y ya se toca con 20 sesiones.** De ahí en adelante el throughput no sube
+(baja un poco) y lo que crece es la cola: la latencia escala casi lineal con la concurrencia. **No hubo ni
+un error** en ningún escalón: la instancia no se cae, se pone lenta.
+
+**El cuello**, medido en vivo con `pg_stat_activity` durante el escalón de 200: PostgREST con **21
+conexiones** (19 activas, todas en CPU, sin `wait_event`), **0 esperas por lock** y `max_connections` 60,
+lejos del tope. El pool de PostgREST (~20 conexiones) está lleno y la CPU de la instancia de DEV (MICRO) no
+da más; el resto de las requests espera en la cola.
+
+**Cómo leerlo:**
+- Estas sesiones leen **sin pausa**, una request atrás de otra. Un usuario real piensa entre clic y clic, así
+  que 170 req/s alcanzan para bastante más gente que 20 personas; cuánta, depende del ritmo real de uso, que
+  no se midió.
+- Son solo lecturas. Las escrituras (ventas, caja, stock con triggers) cuestan más CPU y bajarían el techo.
+- Es DEV. **El techo de PROD no se midió** (no se corre carga contra PROD) y depende de su compute.
+- Ninguna consulta se despega de las demás: en cada escalón todas tienen un p95 parecido. Si hace falta más
+  margen, la palanca es el **compute** (más CPU y un pool más grande), no optimizar una consulta puntual.
+
+### Capacidad estimada de PROD (2026-09-14) — cuántos usuarios a la vez
+
+**Qué tiene cada proyecto.** ⚠️ Corregido el mismo día: la primera lectura miró solo `max_connections`, que es
+60 tanto en Nano como en Micro, y concluyó que PROD = DEV. No es así. La organización está en plan **Pro**, pero **el
+tamaño de instancia es por proyecto** y Supabase no lo sube solo al pasar de Free a Pro (lo reinicia):
+
+| | `effective_cache_size` | `shared_buffers` | `work_mem` | Instancia que corresponde |
+|---|---|---|---|---|
+| DEV | 768 MB | 256 MB | 3,5 MB | **Micro** (1 GB, 2-core ARM compartido) |
+| PROD hasta el 2026-09-15 | 384 MB | 224 MB | 2,2 MB | **Nano** (hasta 0,5 GB, CPU compartida) |
+| **PROD desde el 2026-09-15** | 768 MB | 256 MB | — | **Micro** — GO lo cambió desde Settings → Compute and Disk ("Free Upgrade", mismo precio); verificado por configuración y por el reinicio de Postgres a las 03:01 UTC |
+
+Según la documentación de Supabase, en una organización paga **una Nano se cobra igual que una Micro**, así que el
+cambio no costó más. Ninguna de las dos tiene CPU dedicada: la dedicada empieza en **Large** (2-core, 8 GB, ~USD
+110/mes); Small (~USD 15) y Medium (~USD 60) suman RAM y conexiones, con CPU compartida. **Con PROD en Micro, el techo
+de E2 medido en DEV aplica a PROD.** Antes del reinicio se verificó que Kalken (cliente real) no estuviera usando la app.
+
+**Cuánto consume un usuario** — medido manejando la app real con Playwright contra DEV:
+
+| Qué hace | Requests |
+|---|---|
+| Pestaña abierta en el POS sin tocar nada | **0,59 req/s** (35/min: `caja_sesiones` cada 15 s, contadores de alertas cada 30 s, notificaciones, autorizaciones) |
+| Pestaña abierta en el Dashboard sin tocar nada | 0,49 req/s |
+| Cambiar de pantalla | **~64 requests por pantalla** (3,7 req/s navegando) |
+| Una venta completa, del carrito vacío al cobro | 30 requests |
+
+**La cuenta**, contra un techo de ~170 req/s y operando al ~70 % (~120 req/s) para absorber picos:
+
+| Perfil | Por usuario | Usuarios a la vez |
+|---|---|---|
+| Hora pico: una venta cada 2 min y un cambio de pantalla cada 2 min | ~1,4 req/s | **~85** (techo duro ~120) |
+| Uso tranquilo: app abierta, una venta y una pantalla cada 10 min | ~0,75 req/s | **~160** (techo duro ~225) |
+
+Con 2 usuarios por negocio (dueño + cajero) son **~40 negocios en hora pico** u **~80 en uso tranquilo**.
+Pasado ese punto no se cae (E2: 0 errores hasta 400 sesiones), **se pone lenta**.
+
+**Supuestos que hay que tener presentes:** el techo se midió solo con lecturas y con la base chica de DEV; las
+escrituras (ventas con triggers de stock y caja) y el volumen real cuestan más CPU, y la instancia Micro es de CPU
+compartida. Tomarlo como orden de magnitud, no como garantía.
+
+**Palancas, de la más barata a la más cara:**
+1. **Navegación**: cada pantalla vuelve a pedir la sesión, el usuario, el negocio y las sucursales (32
+   `GET /auth/v1/user` en 8 cambios de pantalla). Cachearlo baja una parte grande de esas ~64 requests.
+2. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y el badge de alertas hace 6 conteos cada 30 s.
+   Espaciarlos o dispararlos por evento baja el consumo en reposo.
+3. **Compute**: ✅ PROD ya pasó de Nano a Micro (2026-09-15, mismo precio). Si hace falta más: Small (~USD 15/mes, 2 GB) o Medium (~USD 60, 4 GB) suman RAM y conexiones con CPU compartida;
+   Large (~USD 110, 8 GB) es la primera con **CPU dedicada**. Es la palanca directa sobre el techo, porque ninguna
+   consulta individual se destaca. Precios de la documentación de Supabase al 2026-09-14; confirmar en Billing.
+
+Revisar cuando haya ~30 negocios activos o si el p95 de la API empieza a subir en el dashboard de Supabase.
 
 ### E3 — volumen: el resultado ES el hallazgo
 
@@ -204,7 +282,9 @@ corriendo la spec con los presupuestos en 0, para conocer el margen real.
 
 ## Lo que sigue abierto
 
-- **Tanda E**: E2 (el techo real de la instancia — el instrumento está, falta acordar cuándo correrlo).
+- **Tanda E**: ✅ E2 medido en DEV el 2026-09-14 (techo ~170 req/s de lectura, cuello = pool de PostgREST + CPU,
+  0 errores hasta 400 sesiones). Queda abierto: el techo con **escrituras** y el de **PROD** (no se corre carga
+  contra PROD).
 - **Tanda F**: F2 (matriz completa por rol) y el **umbral del SUPERVISOR** server-side, que necesita
   antes mover la aplicación de autorizaciones a un RPC — ver [[wiki/architecture/guards-server-side]].
 

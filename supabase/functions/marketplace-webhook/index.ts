@@ -11,54 +11,51 @@ const corsHeaders = {
  *
  * Body: { producto_id: string }
  *
- * Llamar desde el frontend (fire-and-forget) después de despachar una venta
- * o registrar un movimiento de stock.
- *
- * También puede configurarse como Supabase Database Webhook en la tabla
- * movimientos_stock (INSERT) → esta misma URL.
+ * 🔌 APAGADA (2026-09-14, decisión de GO): ningún código de la app la invoca y ningún negocio tiene
+ * el marketplace activo. La URL de webhook se sacó de Configuración. Se deja desplegada solo para
+ * llamadas AUTENTICADAS de un usuario del mismo negocio: el camino "sin Authorization" (pensado para un
+ * Database Webhook que nunca se configuró) dejaba que cualquiera con un `producto_id` disparara un POST
+ * hacia la URL configurada del negocio. Si algún día se reconecta, hacerlo server-side (trigger + cola
+ * con reintentos y firma HMAC), no desde el navegador.
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+
   try {
-    // Aceptar tanto llamadas autenticadas (frontend) como del DB webhook (sin auth)
     const authHeader = req.headers.get('Authorization')
+    if (!authHeader) return json({ error: 'No autenticado' }, 401)
+
     const supabaseServiceRole = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    )
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) return json({ error: 'No autenticado' }, 401)
 
-    let callerTenantId: string | null = null
-
-    // Si viene con JWT, validar y extraer tenant
-    if (authHeader) {
-      const userClient = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
-        { global: { headers: { Authorization: authHeader } } },
-      )
-      const { data: { user } } = await userClient.auth.getUser()
-      if (user) {
-        const { data: userRow } = await supabaseServiceRole
-          .from('users')
-          .select('tenant_id')
-          .eq('id', user.id)
-          .single()
-        callerTenantId = userRow?.tenant_id ?? null
-      }
-    }
+    const { data: userRow } = await supabaseServiceRole
+      .from('users')
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single()
+    const callerTenantId: string | null = userRow?.tenant_id ?? null
+    if (!callerTenantId) return json({ error: 'No autorizado' }, 403)
 
     const body = await req.json()
-    const productoId: string | undefined = body?.producto_id ?? body?.record?.producto_id
+    const productoId: string | undefined = body?.producto_id
 
-    if (!productoId) {
-      return new Response(JSON.stringify({ error: 'producto_id requerido' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!productoId) return json({ error: 'producto_id requerido' }, 400)
 
     // Obtener datos del producto
     const { data: producto, error: prodErr } = await supabaseServiceRole
@@ -71,26 +68,14 @@ serve(async (req) => {
       .eq('id', productoId)
       .single()
 
-    if (prodErr || !producto) {
-      return new Response(JSON.stringify({ error: 'Producto no encontrado' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (prodErr || !producto) return json({ error: 'Producto no encontrado' }, 404)
 
-    // Validar que el caller pertenece al mismo tenant (si viene autenticado)
-    if (callerTenantId && callerTenantId !== producto.tenant_id) {
-      return new Response(JSON.stringify({ error: 'No autorizado' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    // El producto tiene que ser del negocio de quien llama.
+    if (callerTenantId !== producto.tenant_id) return json({ error: 'No autorizado' }, 403)
 
     // Si el producto no está publicado, no hay nada que notificar
     if (!producto.publicado_marketplace) {
-      return new Response(JSON.stringify({ skipped: true, reason: 'Producto no publicado en marketplace' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return json({ skipped: true, reason: 'Producto no publicado en marketplace' })
     }
 
     // Obtener webhook_url del tenant
@@ -101,9 +86,7 @@ serve(async (req) => {
       .single()
 
     if (!tenant?.marketplace_activo || !tenant?.marketplace_webhook_url) {
-      return new Response(JSON.stringify({ skipped: true, reason: 'Marketplace no activo o sin webhook URL configurada' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return json({ skipped: true, reason: 'Marketplace no activo o sin webhook URL configurada' })
     }
 
     // Calcular stock disponible (reservas activas en inventario_lineas)
@@ -136,17 +119,8 @@ serve(async (req) => {
       signal: AbortSignal.timeout(10_000),
     })
 
-    return new Response(JSON.stringify({
-      ok: true,
-      webhook_status: webhookRes.status,
-      payload,
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return json({ ok: true, webhook_status: webhookRes.status, payload })
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return json({ error: String(err) }, 500)
   }
 })

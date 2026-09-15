@@ -29,12 +29,13 @@
  * NO incluye: notificaciones cross-app, reportes (quedan fuera del alcance de Repositores).
  */
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Tags, Flame, TrendingUp, Clock, Check, X, Tag, CircleDot, UserCog, User,
-  RefreshCw, MapPin, ArrowRight, PackageCheck, Printer, Bell,
+  RefreshCw, MapPin, ArrowRight, PackageCheck, Printer, Bell, CalendarClock, AlertTriangle,
 } from 'lucide-react'
+import { etiquetaAntesDeHora, etiquetaVencida, formatearVigencia } from '@/lib/precioProgramado'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -54,6 +55,9 @@ const MOTIVOS_CANCELACION = ['Ya no aplica', 'Producto retirado de góndola', 'E
 
 export default function RepositoresPage() {
   const navigate = useNavigate()
+  // Link desde Alertas → "Etiquetas vencidas" (mig 423): resalta la tarea puntual.
+  const [searchParams] = useSearchParams()
+  const tareaResaltada = searchParams.get('tarea')
   const { user, tenant } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -595,7 +599,8 @@ export default function RepositoresPage() {
       ) : seccion === 'carteles' ? (
         <div className="space-y-2">
           {(tareas as any[]).map(t => (
-            <div key={t.id} className="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700">
+            <div key={t.id} data-tarea-repositor={t.id}
+              className={`bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border ${tareaResaltada === t.id ? 'border-amber-400 ring-2 ring-amber-300 dark:ring-amber-700' : 'border-gray-100 dark:border-gray-700'}`}>
               <div className="flex items-start gap-3">
                 {filtro === 'activas' && puedeEditar && (
                   <input type="checkbox" checked={seleccionadas.has(t.id)} onChange={() => toggleSeleccion(t.id)}
@@ -622,6 +627,18 @@ export default function RepositoresPage() {
                       <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 inline-flex items-center gap-1">
                         <TrendingUp size={10} /> Precio subió
                       </span>
+                    )}
+                    {/* Precio programado (mig 423): antes de la hora se prepara, pasada la hora está vencida */}
+                    {t.vigente_desde && filtro === 'activas' && (
+                      etiquetaVencida(t) ? (
+                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 inline-flex items-center gap-1">
+                          <AlertTriangle size={10} /> Vencida: rige desde {formatearVigencia(t.vigente_desde)}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 inline-flex items-center gap-1">
+                          <CalendarClock size={10} /> Rige desde {formatearVigencia(t.vigente_desde)} — imprimila, ponela a esa hora
+                        </span>
+                      )
                     )}
                     {t.fecha_vencimiento && (
                       <span className="text-[11px] text-gray-400 dark:text-gray-500 inline-flex items-center gap-1">
@@ -658,8 +675,13 @@ export default function RepositoresPage() {
                         </button>
                       )
                     )}
-                    <button onClick={() => handleCompletar(t)} disabled={completarTarea.isPending}
-                      title="Marcar como lista"
+                    {/* C1/C2 (mig 423): la etiqueta de un precio programado no se da por puesta antes de que rija
+                        (el servidor también lo rechaza — fn_tarea_repositor_guard_completar) */}
+                    <button onClick={() => handleCompletar(t)}
+                      disabled={completarTarea.isPending || etiquetaAntesDeHora(t, t.precio_vigente)}
+                      title={etiquetaAntesDeHora(t, t.precio_vigente)
+                        ? `Se completa cuando rija el precio nuevo (${formatearVigencia(t.vigente_desde)})`
+                        : 'Marcar como lista'}
                       className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-50 transition-colors">
                       <Check size={16} />
                     </button>

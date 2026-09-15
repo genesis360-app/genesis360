@@ -2078,3 +2078,117 @@ que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edg
 | 55.6 | Sin permiso, la UI no ofrece "+ Nueva ubicación" ni crear/renombrar/borrar | revisión de `RecursosPage` | ✅ código |
 | 55.7 | Después del DROP la app no pide `recursos.ubicacion` | API `select=ubicacion` → 400 y `select=*` → 200; e2e dashboard | ✅ DEV |
 
+## 🛑 §56 — Archivos por negocio: RRHH, Envíos, presupuestos y el transportista (v1.221.0, mig 419) — 2026-09-14
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 56.1 | No se sube a la carpeta de otro negocio (presupuestos, POD, facturas de courier) | e2e 148 (mutante: con las políticas viejas de DEV pasaba) | ✅ |
+| 56.2 | RRHH sube préstamos y recibos (`prestamos/`, `recibos/`) | e2e 148 (antes fallaba hasta en DEV) | ✅ |
+| 56.3 | SUPERVISOR y rol custom sin RRHH no leen ni suben archivos de RRHH | e2e 148 | ✅ |
+| 56.4 | El empleado vinculado ve SU recibo y no el de otro, y no sube | e2e 148 (Mi Portal) | ✅ |
+| 56.5 | El transportista sube la foto desde `/transporte/:token` sin sesión | e2e 148 por UI, contexto sin sesión (mutante: con la pantalla vieja falla) | ✅ |
+| 56.6 | Token inválido o envío cerrado → la EF rechaza | e2e 148 (404) + smoke PROD | ✅ |
+| 56.7 | Si la firma no se guarda, la pantalla avisa | revisión de `EnviosPage`/`TransportistePage` | ✅ código |
+| 56.8 | En PROD, un usuario real: propio 200, ajeno rechazado | smoke con la cuenta de prueba | ✅ |
+
+## 🛑 §57 — El reintegro al anular sale por donde entró el cobro (sin migración) 🛑 PLATA — 2026-09-14
+
+El reintegro de una anulación (venta despachada o reserva con seña) se reconstruye con la misma cuenta
+que usó el cobro: `calcularReintegroAnulacion` en `src/lib/ventasValidation.ts`. Antes tenía tres agujeros
+latentes (sin daño en DEV ni PROD): los dólares no salían de la Caja USD, el efectivo se devolvía bruto
+(vuelto incluido) y solo se reconocía el método llamado "Efectivo".
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 57.1 | Anular una venta cobrada con Efectivo USD → egreso en DÓLARES en la Caja USD; la caja en pesos no se mueve | e2e 149 A (mutante: con el código viejo no había egreso en dólares) | ✅ |
+| 57.2 | Anular una venta en efectivo con vuelto ($1.500 por $1.234) → egreso por el neto, $1.234 | e2e 149 B (mutante: el código viejo sacaba $1.500) + unit | ✅ |
+| 57.3 | El método de efectivo del negocio tiene otro nombre ("Contado") → cuenta como efectivo al anular | unit `calcularReintegroAnulacion` | ✅ unit |
+| 57.4 | Pago combinado pesos + USD + transferencia → cada parte vuelve por su lado (egreso ARS, egreso USD, un informativo por medio) | unit | ✅ unit |
+| 57.5 | Dólares de más con vuelto en pesos → al anular, esos pesos vuelven a la caja (ingreso) y se avisa que el cliente los devuelve | unit | ✅ unit |
+| 57.6 | La penalidad de la seña se aplica a cada parte (pesos, dólares e informativos) | unit | ✅ unit |
+| 57.7 | Anular una venta con efectivo USD sin Caja USD abierta → bloquea con mensaje; sin detalle de medios → aviso "registralo manualmente" | revisión de código (guard + `sinDetalle`) | ✅ código |
+| 57.8 | Cancelar una reserva con seña en USD → el modal y el aviso dicen cuántos US$ se devuelven | revisión de código | ✅ código |
+| 57.9 | Despachar una reserva con seña mixta (pesos + USD) → la seña no se vuelve a sumar a la caja en pesos | revisión de código (`.limit(1)` en lugar de `.maybeSingle()`, que con 2 filas daba `null`) | ✅ código — sin e2e |
+| 57.10 | Falla al asentar el cobro de un despacho → aviso con monto (antes `catch {}` silencioso) | revisión de código | ✅ código |
+| 57.11 | Anular una venta pagada con "Crédito a favor" → el crédito vuelve al saldo del cliente (`cliente_creditos`, origen `anulacion_venta`), con la penalidad si era una seña, sin pasar por la caja y sin duplicarse en un reintento (decisión de GO, 2026-09-14; antes el cliente lo perdía) | e2e 149 C (mutante) + unit `creditoARestituirPorAnulacion` | ✅ |
+
+## 🧹 §58 — Motivos de caja, webhook del marketplace, landing y tope de Monotributo (mig 420) — 2026-09-14
+
+Decisiones de GO del 2026-09-14 (ver `log.md`, sesión cont. 68).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 58.1 | Negocio nuevo → los chips del modal "Ingreso de caja" son "Ingreso de efectivo", "Aporte del dueño" y "Fondo de cambio"; ninguno nombra una salida | mig 420 en DEV: `pg_get_functiondef` + bytes UTF-8 de "dueño" + `SECURITY DEFINER`/`search_path` | ✅ DEV |
+| 58.2 | Negocio existente → "Extracción / Retiro" y "Gastos varios" desactivados, los dos nuevos agregados, los motivos propios intactos y el historial de movimientos sin cambios | query en DEV: 7 negocios; "Ingreso de dinero" (motivo propio) intacto | ✅ DEV |
+| 58.3 | Configuración → Marketplace ya no ofrece "URL de webhook"; guardar solo cambia el toggle | revisión de código | ✅ código |
+| 58.4 | `marketplace-webhook` sin `Authorization` → 401; producto de otro negocio → 403 | revisión de código · ⚠️ falta redesplegar en PROD (no existe en DEV) | 🟡 pendiente deploy |
+| 58.5 | El landing ya no dice "Más de 500 comercios" | revisión de código | ✅ código |
+| 58.6 | Monotributo: la tarjeta y las alertas de 75/90 % miden los **últimos 12 meses**, y la suma no se corta en 1.000 ventas (paginada) | revisión de código; en DEV no hay diferencia visible (todas las ventas de Jorgito son de 2026) | ✅ código |
+
+## 🗓️ §59 — Precio de venta programado, Fase 1 (mig 422) + avisos de CC/OC vencidas al dueño (mig 421) — 2026-09-14
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 59.1 | Cambiar el precio de venta en la ficha → pregunta "¿Desde cuándo rige?", con "Ahora" por defecto | e2e 150 A (mutante: sin el modal el precio se aplicaba al guardar) | ✅ |
+| 59.2 | Programar → el precio que rige hoy NO cambia y queda un pendiente con la fecha y hora elegidas | e2e 150 A | ✅ |
+| 59.3 | Pasada la hora, el servidor aplica el precio (pg_cron cada minuto), guarda el anterior y lo registra en el historial | e2e 150 B (esperó al cron real de DEV) | ✅ |
+| 59.4 | Programar otro para el mismo producto reemplaza al pendiente (uno por producto) | índice único parcial + `fn_programar_precio` | ✅ código |
+| 59.5 | Productos → Programados lista los pendientes y los cancela; cancelar no toca el precio vigente | e2e 150 C | ✅ |
+| 59.6 | No se escribe la tabla directo por REST, no se programa al pasado y un CAJERO no puede programar | e2e 150 D | ✅ |
+| 59.7 | Si aplicar falla → queda "No se aplicó" con el error y se avisa al DUEÑO/SUPER_USUARIO | revisión de `fn_aplicar_precios_programados` | ✅ código — sin e2e |
+| 59.8 | Aviso el día anterior (09:00) a DUEÑO, SUPER_USUARIO y SUPERVISOR | revisión + cron activo en DEV | ✅ código — sin e2e |
+| 59.9 | Producto con precio en USD → no se ofrece programar (A5: solo el minorista en pesos) | revisión | ✅ código |
+| 59.10 | Los avisos diarios de CC y OC vencidas le llegan al DUEÑO y al SUPER_USUARIO (antes a roles inexistentes: en PROD a nadie) | mig 421 verificada en DEV | ✅ DEV |
+| 59.11 | Fases siguientes: tarea del repositor anticipada que no se completa antes de la hora, aviso al cajero con etiqueta pendiente, alerta de etiquetas vencidas, aviso si ML/TN no publica | ver §60 | ✅ |
+
+## 🏷️ §60 — Precio programado, Fases 2-3: la etiqueta de la góndola y el aviso de ML/TN (migs 423-424) — 2026-09-15
+
+Modo avanzado (las tareas del repositor existen solo para productos con góndola asignada), salvo 60.8 y 60.11.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 60.1 | Precio programado de un producto con góndola → la tarea de cambiar la etiqueta aparece ANTES de la hora (anticipación del negocio, 1 h por defecto) con el precio nuevo y "Rige desde…" | e2e 151 A (mutante: sin la 423 no aparece ninguna tarea) | ✅ |
+| 60.2 | Esa etiqueta no se da por puesta antes de que rija: el servidor la rechaza ("Todavía no…"), el botón está deshabilitado y no se destraba reescribiendo la tarea por REST | e2e 151 A | ✅ |
+| 60.3 | Un cambio de precio manual antes de la hora no le pisa la etiqueta al programado | e2e 151 A | ✅ |
+| 60.4 | Cancelar el programado: si la góndola seguía desactualizada, la tarea vuelve a pedir la etiqueta del precio vigente; si estaba al día, se cancela sola | e2e 151 A (las 2 ramas) | ✅ |
+| 60.5 | Reemplazar el programado (A2) desarma la etiqueta del anterior con la misma regla | revisión de `fn_programar_precio` (llama a la misma función que cancelar) | ✅ código |
+| 60.6 | Pasada la hora, la etiqueta sin hacer aparece en Alertas → "Etiquetas vencidas en góndola" (con "Ver tarea"); recién ahí se completa y la alerta se va | e2e 151 B (esperó al cron real de DEV) | ✅ |
+| 60.7 | POS: al agregar un producto cuya etiqueta muestra otro precio, el carrito avisa "Etiqueta de góndola sin actualizar: puede decir $X" | e2e 151 C (mutante: sin el cambio de `VentasPage` no avisa) | ✅ |
+| 60.8 | Un `sync_precio` de ML/TN que queda `failed` avisa al DUEÑO y al SUPER_USUARIO; un `sync_stock` fallido no | e2e 151 D (mutante: sin la 424 no hay aviso) | ✅ |
+| 60.9 | Varios precios que fallan en el mismo canal se juntan en un solo aviso sin leer ("N productos…") | revisión de `fn_notificar_sync_precio_fallido` | ✅ código — sin e2e |
+| 60.10 | Si aplicar un programado falla, su etiqueta anticipada se desarma, y un error al avisar no revierte los otros precios aplicados en ese minuto | revisión + `migration-reviewer` | ✅ código — sin e2e |
+| 60.11 | Config → Inventario → "Repositores — Etiquetas de precio": se elige la anticipación (a la hora, 15/30 min, 1/2/4/8 h, un día) | revisión | ✅ código |
+| 60.12 | Alertas: si las únicas alertas son pedidos con entrega vencida o sin avanzar, la página ya no dice "¡Todo en orden!" (el badge sí los contaba) | revisión de código | ✅ código |
+
+## 🔔 §61 — La respuesta de soporte le llega al cliente (mig 425) — 2026-09-15
+
+Ambos modos. Pedido de GO: el cliente avisa "Ya transferí" desde Mi Cuenta y no se enteraba de la respuesta del equipo.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 61.1 | Ticket abierto por el cliente desde la app → cada respuesta del agente le llega a la campanita del headbar: "Soporte respondió: {asunto}" con el texto | SQL en DEV con el trigger real, revertido (mutante: sin la 425, 0 avisos) | ✅ DEV |
+| 61.2 | Respuesta de más de 500 caracteres → el aviso se recorta con "…" | ídem (598 → 498 caracteres) | ✅ DEV |
+| 61.3 | Ticket abierto por el equipo desde el panel (sin mensaje del cliente) → el cliente no recibe nada | ídem | ✅ DEV |
+| 61.4 | El autor del mensaje "cliente" no es usuario de ese negocio → no se avisa a nadie | ídem | ✅ DEV |
+| 61.5 | Panel: debajo del cuadro de respuesta dice si le llega al cliente o si es una nota interna; el botón dice "Responder al cliente" o "Guardar nota" | build del panel + revisión | ✅ código |
+| 61.6 | Las tablas de soporte ya no tienen privilegios para `anon` ni `authenticated` (antes solo las frenaba la RLS sin policies) | `relacl` en DEV + PostgREST con la anon key → 401 | ✅ DEV |
+
+## 💬 §62 — Ayuda: "Reportar un problema" y Mis consultas (mig 426) — 2026-09-15
+
+Ambos modos. Pedido de GO: terminar "Reportar un problema" (antes solo mandaba un mail, sin ticket) y que el cliente siga y responda su consulta. Decisiones de GO: cada usuario ve las suyas y el DUEÑO/SUPER_USUARIO todas las del negocio; el equipo se entera por mail y por una marca en el panel.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 62.1 | Ayuda → "Reportar un problema" → formulario con tipo, urgencia, asunto, detalle y hasta 3 capturas/PDF (5 MB) → al enviar aterriza en la consulta, con la captura en el hilo | e2e 152 A (mutante: creando sin adjuntos, la captura no aparece) | ✅ |
+| 62.2 | El cliente responde desde Mis consultas → el mensaje se suma al hilo; al equipo le sale un mail por la consulta y otro por la respuesta | e2e 152 A (mails interceptados) | ✅ |
+| 62.3 | El CAJERO y el SUPERVISOR ven, abren y responden solo sus consultas; el DUEÑO ve, abre y responde las de todo el negocio ("de {usuario}") | e2e 152 B, con control positivo en cada negativa | ✅ |
+| 62.4 | Capturas: cada uno sube solo a su carpeta; el DUEÑO abre las del negocio, el SUPERVISOR no abre las del cajero; no se puede adjuntar un archivo de otra carpeta, con `..` o que no se subió | e2e 152 B | ✅ |
+| 62.5 | Las tablas de soporte no se leen directo (ni el DUEÑO) y sin sesión no hay consultas: todo pasa por las RPC con guard | e2e 152 B + PostgREST con la anon key → 401 | ✅ |
+| 62.6 | Panel: una **nota interna** no le llega al cliente (0 avisos), no aparece en su hilo ni le cambia el estado, y la consulta sigue "esperando respuesta del equipo" | SQL en DEV con los triggers reales, impersonando al cajero | ✅ DEV |
+| 62.7 | Panel: la respuesta del equipo → aviso en la campanita con link a la consulta, deja de estar pendiente y el cliente la ve como "Te respondimos", firmada "Soporte Genesis360" | ídem | ✅ DEV |
+| 62.8 | El cliente escribe en una consulta resuelta → se reabre y vuelve a quedar pendiente del equipo; en una cerrada, el servidor lo rechaza ("abrí una nueva") | ídem | ✅ DEV |
+| 62.9 | "Ya transferí" (Mi Cuenta) crea la consulta de tipo pago a nombre de quien avisó → aparece en su Mis consultas y ahí ve la respuesta | revisión de `billing-manual-avisar-pago` + backfill de la 426 | ✅ código |
+| 62.10 | Mis consultas funciona con la suscripción vencida (está fuera del SubscriptionGuard, como Mi Cuenta) | revisión de `App.tsx` | ✅ código |
+| 62.11 | Topes anti-spam: 10 consultas por usuario cada 24 h y 30 mensajes por hora, contados de a un pedido por usuario (lock) | revisión + `migration-reviewer` | ✅ código — sin e2e |
+| 62.12 | Panel: filtro "Solo los que esperan respuesta del equipo", marca "● Respuesta del cliente", quién la abrió, capturas con link y casilla "Nota interna" | build del panel + revisión | ✅ código |
+

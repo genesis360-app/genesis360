@@ -34,6 +34,7 @@ import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volu
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import { breadcrumbUbicacion, descendientesDeUbicacion, ordenarArbolUbicaciones } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
+import { ANTICIPACION_OPCIONES_MIN, etiquetaAnticipacion } from '@/lib/precioProgramado'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
@@ -432,14 +433,16 @@ function MarketplaceSection() {
   const { tenant, user, setTenant } = useAuthStore()
   const canEdit = user?.rol === 'DUEÑO'
   const [activo, setActivo] = useState(tenant?.marketplace_activo ?? false)
-  const [webhookUrl, setWebhookUrl] = useState(tenant?.marketplace_webhook_url ?? '')
   const [saving, setSaving] = useState(false)
   const [collapsed, setCollapsed] = useState(!tenant?.marketplace_activo)
 
+  // El webhook de stock quedó APAGADO (2026-09-14, decisión de GO): ningún código llama a la EF
+  // `marketplace-webhook`, así que el campo "URL de webhook" prometía un aviso que nunca llegaba.
+  // Se sacó de la pantalla; la columna `marketplace_webhook_url` sigue en la base, sin uso.
   const save = async () => {
     setSaving(true)
     const { data, error } = await supabase.from('tenants')
-      .update({ marketplace_activo: activo, marketplace_webhook_url: webhookUrl.trim() || null })
+      .update({ marketplace_activo: activo })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Marketplace actualizado') }
@@ -468,18 +471,6 @@ function MarketplaceSection() {
             <Toggle size="lg" disabled={!canEdit} checked={activo}
               onChange={() => setActivo(a => !a)} aria-label="Activar marketplace" />
           </div>
-          {activo && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                URL de webhook externo <span className="text-gray-400 dark:text-gray-500 font-normal">(opcional)</span>
-              </label>
-              <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)}
-                disabled={!canEdit}
-                placeholder="https://mi-sistema.com/webhook/stock"
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Recibís una notificación POST cada vez que cambia el stock de un producto publicado.</p>
-            </div>
-          )}
           {activo && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-1">
               <p className="text-xs font-medium text-gray-600 dark:text-gray-300">Endpoint público de tu catálogo:</p>
@@ -1943,6 +1934,13 @@ export default function ConfigPage() {
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(hora ? 'Hora de aviso actualizada' : 'Aviso de impresión desactivado')
+  }
+  // Precio programado Fases 2-3 (mig 423, C1/C2): cuánto antes de la hora aparece la tarea de cambiar la etiqueta.
+  const actualizarAnticipacion = async (min: number) => {
+    const { data, error } = await supabase.from('tenants').update({ repositor_anticipacion_min: min }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Anticipación de etiquetas actualizada')
   }
 
   // A2 del relevamiento de Supervisor (mig 348): reglas de enrutamiento "tipo X -> Usuario A" para
@@ -3640,6 +3638,9 @@ export default function ConfigPage() {
                       className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     <p className="text-xs text-gray-400 mt-0.5">Ventas ≥ este monto requieren DNI/CUIT del cliente</p>
                   </div>
+                  {/* Solo el circuito AfipSDK usa token. Con el propio (el de todos los negocios) el campo confundía:
+                      la guía de activación no lo menciona y no hace falta. */}
+                  {afipProviderEmisor === 'afipsdk' && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
                     <div className="relative">
@@ -3656,6 +3657,7 @@ export default function ConfigPage() {
                       {emisorDefault?.afipsdk_token_configurado && ' Por seguridad no se muestra: dejalo vacío para conservar el que está guardado.'}
                     </p>
                   </div>
+                  )}
                 </div>
                 {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
@@ -3737,7 +3739,9 @@ export default function ConfigPage() {
                     <CampoResumenFiscal label="Umbral Factura B" value={tAny.umbral_factura_b ? `$${Number(tAny.umbral_factura_b).toLocaleString('es-AR')}` : null} />
                     {/* El token no se puede leer desde el browser (mig 402): lo que llega es el
                         booleano de la columna generada. */}
-                    <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
+                    {afipProviderEmisor === 'afipsdk' && (
+                      <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
+                    )}
                     <CampoResumenFiscal label="Ingresos Brutos" value={tAny.ingresos_brutos} />
                     <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(tAny.inicio_actividades).toLocaleDateString('es-AR') : null} />
                     <CampoResumenFiscal label="Banco" value={tAny.banco} />
@@ -3776,7 +3780,9 @@ export default function ConfigPage() {
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                       {bizAfipProduccion
                         ? 'Cada emisión genera un CAE válido ante AFIP, con numeración correlativa oficial.'
-                        : 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción solo cuando completes el onboarding AFIP (CUIT activo + certificado + token de producción).'}
+                        : afipProviderEmisor === 'afipsdk'
+                          ? 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción solo cuando completes el onboarding AFIP (CUIT activo + certificado + token de producción).'
+                          : 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción cuando tengas cargados el punto de venta y el certificado de producción de ARCA.'}
                     </p>
                   </div>
                 </div>
@@ -4784,7 +4790,7 @@ export default function ConfigPage() {
               <Tag size={18} className="text-accent-text" />
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Repositores — Etiquetas de precio</h2>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tamaño de hoja</label>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cuántas etiquetas por hoja A4 al imprimir en tanda desde /repositores</p>
@@ -4802,6 +4808,20 @@ export default function ConfigPage() {
                   onChange={e => actualizarHoraImpresion(e.target.value)}
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200" />
               </div>
+            </div>
+            {/* Precio programado Fases 2-3 (mig 423, C1/C2) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etiquetas de precios programados</label>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
+                Cuánto antes de que rija un precio programado aparece la tarea de cambiar la etiqueta. Se imprime con el
+                precio nuevo, pero no se puede dar por puesta hasta que ese precio rija.
+              </p>
+              <select value={t289?.repositor_anticipacion_min ?? 60} onChange={e => actualizarAnticipacion(Number(e.target.value))}
+                className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                {Array.from(new Set<number>([...ANTICIPACION_OPCIONES_MIN, Number(t289?.repositor_anticipacion_min ?? 60)]))
+                  .sort((a, b) => a - b)
+                  .map(m => <option key={m} value={m}>{etiquetaAnticipacion(m)}</option>)}
+              </select>
             </div>
           </div>
 

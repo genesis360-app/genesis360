@@ -62,7 +62,7 @@ th { background: #f6f4fb; }
 <body>
 <header>
   <h1>Genesis360 &mdash; Consultas para el Contador</h1>
-  <p class="sub">Documento generado el 13 de septiembre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
+  <p class="sub">Documento generado el 14 de septiembre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
 </header>
 <h1>Consultas para el Contador</h1>
 <p><strong>Qué es esto:</strong> el registro <strong>vivo</strong> de todas las preguntas fiscales y contables que Genesis360</p>
@@ -298,21 +298,22 @@ th { background: #f6f4fb; }
 <h2>Bloque 4 — Monotributo</h2>
 <h3 class="pregunta"><span class="chip">C-11</span> 🐛 El indicador de tope de categoría mide el año calendario, ¿no deberían ser 12 meses móviles?</h3>
 <ul>
-<li><strong>Estado:</strong> 🟥 Abierta — <strong>y probablemente sea un error nuestro</strong></li>
+<li><strong>Estado:</strong> 🟥 Abierta — el período ya se corrigió (ver abajo); quedan la base y la frecuencia</li>
 <li><strong>Área:</strong> Monotributo — recategorización</li>
-<li><strong>Impacta en:</strong> <code>src/components/DashFacturacionArea.tsx</code> (tarjeta "Proyección vs Tope Cat." y las</li>
+<li><strong>Impacta en:</strong> <code>src/components/DashFacturacionArea.tsx</code> (tarjeta "Últimos 12 meses vs Tope Cat." y</li>
 </ul>
-<p>alertas de 75% / 90%)</p>
+<p>las alertas de 75% / 90%)</p>
 <ul>
-<li><strong>Criterio provisorio:</strong> el sistema suma las ventas <strong>desde el 1° de enero</strong> del año en curso y lo</li>
+<li><strong>Criterio provisorio:</strong> desde el 2026-09-14 (decisión de GO) el sistema suma las ventas</li>
 </ul>
-<p>compara contra el límite de la categoría.</p>
-<p><strong>Pregunta:</strong> ¿no debería medirse sobre los <strong>últimos 12 meses móviles</strong>, que es lo que mira AFIP en</p>
-<p>cada recategorización cuatrimestral?</p>
-<p><strong>Por qué importa:</strong> si es así, el indicador <strong>subestima sistemáticamente</strong> a principio de año. En</p>
-<p>febrero muestra casi cero aunque el negocio venga facturando al 95% del tope desde hace meses. Está</p>
-<p>rotulado como estimación en todos lados y no emite nada ni mueve plata — pero es un número sobre el</p>
-<p>que alguien podría decidir no recategorizarse.</p>
+<p>despachadas/facturadas de los <strong>últimos 12 meses móviles</strong> y lo compara contra el límite de la</p>
+<p>categoría. Antes sumaba <strong>desde el 1° de enero</strong>, y eso subestimaba sistemáticamente a principio de año:</p>
+<p>en febrero marcaba casi cero aunque el negocio viniera facturando al 95% del tope desde hacía meses.</p>
+<p><strong>Pregunta:</strong> ¿es correcto medir sobre los <strong>últimos 12 meses móviles</strong>, que es lo que mira ARCA en cada</p>
+<p>recategorización? ¿La recategorización es <strong>semestral</strong> (enero y julio) o <strong>cuatrimestral</strong>? Este registro</p>
+<p>decía cuatrimestral; creemos que es semestral desde 2017, pero no está validado.</p>
+<p><strong>Por qué importa:</strong> es un número rotulado como estimación que no emite nada ni mueve plata, pero sobre</p>
+<p>el que alguien podría decidir no recategorizarse.</p>
 <p><strong>Preguntar también:</strong> ¿la base son las ventas facturadas (devengado) o lo efectivamente cobrado</p>
 <p>(percibido)? Hoy el sistema suma el total de las ventas despachadas/facturadas.</p>
   <div class="respuesta">

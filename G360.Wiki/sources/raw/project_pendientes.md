@@ -21,7 +21,9 @@ type: project
 > ✅ **Hechos en DEV (`v1.222.0`, mig 420): puntos 1, 4, 5, 6 y 7** — ver `log.md` ("v1.222.0 en DEV"). El 2
 > queda cubierto por el 3. **Falta PROD** (mig 420 + frontend + redeploy de `marketplace-webhook`), esperando el
 > OK de GO. **Sigue: punto 8 (precio programado v1)** y después el 3 (multimoneda, arranca por relevamiento).
-> 🟥 **Nuevo hallazgo para GO:** anular una venta pagada con "Crédito a favor" no devuelve el crédito (UAT 57.11).
+> ✅ **Crédito a favor al anular — resuelto en DEV** (GO: que vuelva al saldo): `creditoARestituirPorAnulacion`,
+> e2e 149 C mutante. ✅ **E2 medido** en DEV: techo ~170 req/s de lectura, 0 errores hasta 400 sesiones (ver
+> `wiki/architecture/resiliencia.md`). **GO pidió seguir acumulando antes de deployar.**
 >
 > 1. 🛑 **REGLA #0 — anular venta/seña cobrada en Efectivo USD**: el reintegro solo cuenta `tipo === 'Efectivo'`
 >    (`VentasPage.tsx` ~5245), así que los dólares caen a un `egreso_informativo` en la caja de pesos y **la Caja
@@ -62,7 +64,7 @@ type: project
 >    hoy solo unit + policy) y la **firma** del transportista por la pantalla (el e2e 148 cubre la foto).
 > 3. Purgar el tenant "Genesis360 Onboarding" **cuando termine la serie de videos**.
 > 4. `wa-embedded-signup-exchange` sigue solo en DEV (espera el App Review de Meta).
-> 5. **E2 (techo de instancia)**: falta que GO elija una ventana para saturar DEV.
+> 5. ✅ **E2 (techo de instancia)** medido el 2026-09-14 — quedan sin medir el techo con escrituras y el de PROD.
 >
 > 🛠️ **Nuevo en cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la
 > paridad de policies **por schema** (`public`, `storage`, `cron`) — `storage` no se estaba mirando.

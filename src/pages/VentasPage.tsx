@@ -50,7 +50,7 @@ import { convertirABase } from '@/lib/estructuras'
 import { mejorPrecioMayorista, precioBlendedTier, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
-import { montoSugeridoCredito } from '@/lib/saldoFavor'
+import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -5343,6 +5343,34 @@ export default function VentasPage() {
                 })
                 if (infErr) avisoManual(fmtArs(monto), infErr.message)
               }
+
+              // Crédito a favor aplicado en la venta: vuelve al saldo del cliente, no pasa por la caja
+              // (2026-09-14, decisión de GO — antes el cliente lo perdía). Sale del ledger de ESA venta, no
+              // de `medio_pago`, y descuenta lo ya restituido: un reintento no lo devuelve dos veces.
+              const { data: movsCredito, error: credLeerErr } = await supabase.from('cliente_creditos')
+                .select('cliente_id, monto, origen').eq('tenant_id', tenant!.id).eq('venta_id', ventaId)
+              if (credLeerErr) {
+                toast.error(`La cancelación se procesó, pero no se pudo verificar el crédito a favor usado en la venta (${credLeerErr.message}). Revisá el saldo del cliente.`, { duration: 14000 })
+              } else {
+                const aRestituir = creditoARestituirPorAnulacion(movsCredito ?? [], ratio)
+                const clienteDelCredito = (movsCredito ?? []).find((m: any) => m.origen === 'consumo_venta')?.cliente_id ?? null
+                if (aRestituir > 0.005 && clienteDelCredito) {
+                  const { error: credErr } = await supabase.from('cliente_creditos').insert({
+                    tenant_id: tenant!.id,
+                    cliente_id: clienteDelCredito,
+                    monto: aRestituir,
+                    origen: ORIGEN_ANULACION_VENTA,
+                    venta_id: ventaId,
+                    nota: `Anulación Venta #${venta.numero}: vuelve el crédito aplicado${penalidadPct > 0 ? ` (penalidad ${penalidadPct}%)` : ''}`,
+                    usuario_id: user?.id,
+                  })
+                  if (credErr) {
+                    toast.error(`La cancelación se procesó, pero ${fmtArs(aRestituir)} de crédito a favor NO volvieron al cliente (${credErr.message}). Acreditalos manualmente.`, { duration: 14000 })
+                  } else {
+                    toast.success(`${fmtArs(aRestituir)} volvieron al saldo a favor del cliente.`)
+                  }
+                }
+              }
               qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
             } catch (e: any) {
               // Antes: `catch {}`. Un error acá dejaba la caja inflada sin que nadie se enterara.
@@ -8297,13 +8325,15 @@ export default function VentasPage() {
         const penalidadPct = parseFloat((tenant as any)?.reserva_penalidad_pct ?? 0) || 0
         const penalidad = sena * penalidadPct / 100
         const aDevolver = Math.max(0, sena - penalidad)
-        // Qué parte vuelve en dólares: la misma cuenta que usa la cancelación al asentar en caja.
-        const usdADevolver = sena > 0
+        // Qué parte vuelve en dólares y cuánto vuelve al saldo a favor: la misma cuenta que usa la cancelación.
+        const reintegroPreview = sena > 0
           ? calcularReintegroAnulacion(
               v.medio_pago, Number(v.total ?? 0) + Number(v.costo_envio ?? 0), aDevolver / sena,
               mediosEfectivo, mediosEfectivoUsd,
-            ).usd
-          : 0
+            )
+          : null
+        const usdADevolver = reintegroPreview?.usd ?? 0
+        const creditoADevolver = reintegroPreview?.creditoAFavor ?? 0
         const tieneCliente = !!v.cliente_id
         const destino = cancelReservaModal.destino
         return (
@@ -8346,6 +8376,11 @@ export default function VentasPage() {
                           De eso, <strong>US${usdADevolver.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong> se devuelven en dólares, desde la Caja USD.
                         </p>
                       )}
+                      {creditoADevolver > 0 && destino === 'devolucion' && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 pt-1">
+                          De eso, <strong>${creditoADevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong> se pagaron con crédito a favor y vuelven a ese saldo, no a la mano del cliente.
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -8381,9 +8416,12 @@ export default function VentasPage() {
                         ? 'Reserva cancelada. Stock liberado.'
                         : destino === 'credito'
                           ? `Reserva cancelada. $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} acreditados al cliente.`
-                          : usdADevolver > 0
-                            ? `Reserva cancelada. Devolvé $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente, de los cuales US$${usdADevolver.toLocaleString('es-AR', { maximumFractionDigits: 2 })} en dólares.`
-                            : `Reserva cancelada. Devolvé $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente.`)
+                          // Lo que se pagó con crédito a favor vuelve a ese saldo: no se entrega en mano.
+                          : aDevolver - creditoADevolver < 0.5
+                            ? 'Reserva cancelada. La seña se había pagado con crédito a favor: vuelve a ese saldo.'
+                            : usdADevolver > 0
+                              ? `Reserva cancelada. Devolvé $${(aDevolver - creditoADevolver).toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente, de los cuales US$${usdADevolver.toLocaleString('es-AR', { maximumFractionDigits: 2 })} en dólares.`
+                              : `Reserva cancelada. Devolvé $${(aDevolver - creditoADevolver).toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente.`)
                       setCancelReservaModal(null); setVentaDetalle(null)
                     },
                   })

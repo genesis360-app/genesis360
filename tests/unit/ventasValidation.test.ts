@@ -310,7 +310,7 @@ describe('calcularReintegroAnulacion', () => {
 
   it('efectivo exacto: devuelve lo cobrado desde la caja en pesos', () => {
     const r = calcularReintegroAnulacion(JSON.stringify([{ tipo: 'Efectivo', monto: 1234 }]), 1234, 1, efectivo, new Set())
-    expect(r).toEqual({ arsEfectivo: 1234, usd: 0, noEfectivo: [], sinDetalle: false })
+    expect(r).toEqual({ arsEfectivo: 1234, usd: 0, noEfectivo: [], creditoAFavor: 0, sinDetalle: false })
   })
 
   it('🔴 CLAVE: con vuelto devuelve el NETO que entró a la caja, no lo que entregó el cliente', () => {
@@ -374,6 +374,8 @@ describe('calcularReintegroAnulacion', () => {
     const r = calcularReintegroAnulacion(medios, 1000, 1, efectivo, new Set())
     expect(r.arsEfectivo).toBe(400)
     expect(r.noEfectivo).toEqual([])
+    // El crédito se informa aparte: vuelve al saldo a favor del cliente, no sale de la caja.
+    expect(r.creditoAFavor).toBe(100)
   })
 
   it('agrupa por tipo y normaliza el numeric que llega como string', () => {

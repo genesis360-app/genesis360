@@ -8,6 +8,8 @@
  *   "[Efectivo USD]" en la caja en pesos y la Caja USD quedaba inflada, sin ningún aviso.
  * Caso B — venta en efectivo con vuelto ($1.500 entregados por una venta de $1.234): el egreso es el
  *   NETO que quedó en la caja ($1.234). Con el código viejo salían $1.500.
+ * Caso C — venta pagada con Crédito a favor: el crédito VUELVE al saldo del cliente (`anulacion_venta`,
+ *   `creditoARestituirPorAnulacion`) y la caja no se toca. Con el código viejo el cliente perdía el crédito.
  *
  * La venta, su asiento de cobro y la solicitud de anulación se siembran por REST: lo que se prueba es
  * la anulación, no el cobro (que ya cubren otros specs). La anulación se ejecuta por UI, aprobando la
@@ -60,12 +62,13 @@ async function sesionAbierta(c: Ctx, nombre: string, moneda: 'ARS' | 'USD'): Pro
   return ((await alta.json()) as Array<{ id: string }>)[0].id
 }
 
-/** Venta despachada + su asiento de cobro en caja + la solicitud de anulación pendiente. */
+/** Venta despachada + (opcional) su asiento de cobro en caja + la solicitud de anulación pendiente. */
 async function sembrarVentaConSolicitud(c: Ctx, v: {
   total: number
   medioPago: object[]
   cotizacionUsd?: number
-  asiento: { sesionId: string; monto: number; moneda: 'ARS' | 'USD' }
+  clienteId?: string
+  asiento?: { sesionId: string; monto: number; moneda: 'ARS' | 'USD' }
 }): Promise<{ id: string; numero: number }> {
   const ventaRes = await c.request.post(`${SUPABASE_URL}/rest/v1/ventas`, {
     headers: c.headers,
@@ -74,19 +77,22 @@ async function sembrarVentaConSolicitud(c: Ctx, v: {
       medio_pago: JSON.stringify(v.medioPago), monto_pagado: v.total, usuario_id: c.userId,
       despachado_at: new Date().toISOString(),
       ...(v.cotizacionUsd ? { cotizacion_usd: v.cotizacionUsd } : {}),
+      ...(v.clienteId ? { cliente_id: v.clienteId } : {}),
     },
   })
   expect(ventaRes.ok(), `[149] no se pudo sembrar la venta: ${await ventaRes.text()}`).toBe(true)
   const [venta] = (await ventaRes.json()) as Array<{ id: string; numero: number }>
 
-  const asiento = await c.request.post(`${SUPABASE_URL}/rest/v1/caja_movimientos`, {
-    headers: c.headers,
-    data: {
-      tenant_id: c.tenantId, sesion_id: v.asiento.sesionId, tipo: 'ingreso', concepto: `Venta #${venta.numero}`,
-      monto: v.asiento.monto, moneda: v.asiento.moneda, usuario_id: c.userId,
-    },
-  })
-  expect(asiento.ok(), `[149] no se pudo sembrar el cobro en caja: ${await asiento.text()}`).toBe(true)
+  if (v.asiento) {
+    const asiento = await c.request.post(`${SUPABASE_URL}/rest/v1/caja_movimientos`, {
+      headers: c.headers,
+      data: {
+        tenant_id: c.tenantId, sesion_id: v.asiento.sesionId, tipo: 'ingreso', concepto: `Venta #${venta.numero}`,
+        monto: v.asiento.monto, moneda: v.asiento.moneda, usuario_id: c.userId,
+      },
+    })
+    expect(asiento.ok(), `[149] no se pudo sembrar el cobro en caja: ${await asiento.text()}`).toBe(true)
+  }
 
   const aut = await c.request.post(`${SUPABASE_URL}/rest/v1/autorizaciones`, {
     headers: c.headers,
@@ -186,5 +192,59 @@ test.describe('Ventas — reintegro al anular (REGLA #0, mutante)', () => {
     expect(egresos, `[149B] debía haber UN egreso. Movimientos: ${JSON.stringify(movs)}`).toHaveLength(1)
     expect(Number(egresos[0].monto), '[149B] el egreso debía ser el neto que entró a la caja, sin el vuelto').toBe(TOTAL)
     expect(egresos[0].moneda, '[149B] el egreso debía ser en pesos').toBe('ARS')
+  })
+
+  test('pagada con Crédito a favor: el crédito vuelve al saldo del cliente y la caja no se toca', async ({ page, request }) => {
+    test.setTimeout(120000)
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    const c = await contexto(page, request)
+
+    // Caja en pesos abierta a propósito (mismo motivo que en el caso A: el guard viejo la exigía).
+    await garantizarCajaAbierta(page)
+
+    const CREDITO = 500
+    const clienteRes = await c.request.post(`${SUPABASE_URL}/rest/v1/clientes`, {
+      headers: c.headers,
+      data: { tenant_id: c.tenantId, nombre: `E2E 149 Crédito ${Date.now()}` },
+    })
+    expect(clienteRes.ok(), `[149C] no se pudo crear el cliente: ${await clienteRes.text()}`).toBe(true)
+    const [cliente] = (await clienteRes.json()) as Array<{ id: string }>
+
+    const saldoInicial = await c.request.post(`${SUPABASE_URL}/rest/v1/cliente_creditos`, {
+      headers: c.headers,
+      data: { tenant_id: c.tenantId, cliente_id: cliente.id, monto: CREDITO, origen: 'ajuste_e2e', nota: 'E2E 149 — saldo inicial', usuario_id: c.userId },
+    })
+    expect(saldoInicial.ok(), `[149C] no se pudo sembrar el saldo a favor: ${await saldoInicial.text()}`).toBe(true)
+
+    const venta = await sembrarVentaConSolicitud(c, {
+      total: CREDITO, clienteId: cliente.id,
+      medioPago: [{ tipo: 'Crédito a favor', monto: CREDITO }],
+    })
+    // El consumo del crédito, tal como lo asienta registrarVenta.
+    const consumo = await c.request.post(`${SUPABASE_URL}/rest/v1/cliente_creditos`, {
+      headers: c.headers,
+      data: {
+        tenant_id: c.tenantId, cliente_id: cliente.id, monto: -CREDITO, origen: 'consumo_venta',
+        venta_id: venta.id, nota: `Aplicado en Venta #${venta.numero}`, usuario_id: c.userId,
+      },
+    })
+    expect(consumo.ok(), `[149C] no se pudo sembrar el consumo del crédito: ${await consumo.text()}`).toBe(true)
+
+    await aprobarAnulacion(page, venta.numero)
+
+    const credRes = await c.request.get(
+      `${SUPABASE_URL}/rest/v1/cliente_creditos?cliente_id=eq.${cliente.id}&select=origen,monto,venta_id`,
+      { headers: c.headers },
+    )
+    const creditos = (await credRes.json()) as Array<{ origen: string; monto: number | string; venta_id: string | null }>
+    const restituido = creditos.filter(m => m.origen === 'anulacion_venta' && m.venta_id === venta.id)
+    expect(restituido, `[149C] debía volver UN movimiento de crédito. Ledger: ${JSON.stringify(creditos)}`).toHaveLength(1)
+    expect(Number(restituido[0].monto), '[149C] debía volver el crédito completo').toBe(CREDITO)
+    const saldo = creditos.reduce((a, m) => a + Number(m.monto), 0)
+    expect(saldo, '[149C] el saldo a favor del cliente debía quedar como antes de la venta').toBe(CREDITO)
+
+    const movs = await movimientosDeLaAnulacion(c, venta.numero)
+    expect(movs, `[149C] el crédito no pasa por la caja. Movimientos: ${JSON.stringify(movs)}`).toHaveLength(0)
   })
 })

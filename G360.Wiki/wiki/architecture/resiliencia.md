@@ -106,10 +106,37 @@ contra PROD o con más de 20 sesiones sin `--si-se-que-hago`.
 Cero errores en las tres corridas. El p95 disparado a 20 concurrentes **era casi todo una sola
 consulta** (E4-h2); cerrada esa, el throughput se duplicó y el p95 bajó 7,6×.
 
-### E2 — techo: deliberadamente NO se buscó
+### E2 — techo ✅ (DEV, 2026-09-14, autorizado por GO)
 
-Saturar la instancia es destructivo y DEV es el ambiente de trabajo de GO. El instrumento ya admite
-la carga que se le pida (`--usuarios N --si-se-que-hago`) — falta acordar **cuándo** correrlo.
+Rampa de 20 a 400 sesiones, 45 s por escalón y 20 s de pausa entre escalones
+(`node scripts/stress-lectura.mjs --usuarios N --segundos 45 --si-se-que-hago`), con el mismo mix de
+lecturas y las 5 cuentas de rol de E1.
+
+| Sesiones | req/s | p50 | p95 | p99 | máx | Errores |
+|---|---|---|---|---|---|---|
+| 20 | 174,7 | 101 ms | 198 ms | 237 ms | 392 ms | 0 |
+| 50 | 168,4 | 268 ms | 591 ms | 805 ms | 1,5 s | 0 |
+| 100 | 162,0 | 446 ms | 1,67 s | 2,49 s | 5,3 s | 0 |
+| 200 | 156,5 | 855 ms | 3,74 s | 5,82 s | 9,6 s | 0 |
+| 400 | 145,9 | 1,76 s | 8,59 s | 12,8 s | 25,3 s | 0 |
+
+**El techo es de unos 170 req/s y ya se toca con 20 sesiones.** De ahí en adelante el throughput no sube
+(baja un poco) y lo que crece es la cola: la latencia escala casi lineal con la concurrencia. **No hubo ni
+un error** en ningún escalón: la instancia no se cae, se pone lenta.
+
+**El cuello**, medido en vivo con `pg_stat_activity` durante el escalón de 200: PostgREST con **21
+conexiones** (19 activas, todas en CPU, sin `wait_event`), **0 esperas por lock** y `max_connections` 60,
+lejos del tope. El pool de PostgREST (~20 conexiones) está lleno y la CPU de la instancia de DEV (MICRO) no
+da más; el resto de las requests espera en la cola.
+
+**Cómo leerlo:**
+- Estas sesiones leen **sin pausa**, una request atrás de otra. Un usuario real piensa entre clic y clic, así
+  que 170 req/s alcanzan para bastante más gente que 20 personas; cuánta, depende del ritmo real de uso, que
+  no se midió.
+- Son solo lecturas. Las escrituras (ventas, caja, stock con triggers) cuestan más CPU y bajarían el techo.
+- Es DEV. **El techo de PROD no se midió** (no se corre carga contra PROD) y depende de su compute.
+- Ninguna consulta se despega de las demás: en cada escalón todas tienen un p95 parecido. Si hace falta más
+  margen, la palanca es el **compute** (más CPU y un pool más grande), no optimizar una consulta puntual.
 
 ### E3 — volumen: el resultado ES el hallazgo
 
@@ -204,7 +231,9 @@ corriendo la spec con los presupuestos en 0, para conocer el margen real.
 
 ## Lo que sigue abierto
 
-- **Tanda E**: E2 (el techo real de la instancia — el instrumento está, falta acordar cuándo correrlo).
+- **Tanda E**: ✅ E2 medido en DEV el 2026-09-14 (techo ~170 req/s de lectura, cuello = pool de PostgREST + CPU,
+  0 errores hasta 400 sesiones). Queda abierto: el techo con **escrituras** y el de **PROD** (no se corre carga
+  contra PROD).
 - **Tanda F**: F2 (matriz completa por rol) y el **umbral del SUPERVISOR** server-side, que necesita
   antes mover la aplicación de autorizaciones a un RPC — ver [[wiki/architecture/guards-server-side]].
 

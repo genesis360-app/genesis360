@@ -6,6 +6,35 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | 💳 El crédito a favor vuelve al anular + ✅ E2: el techo de DEV (sin deploy)
+
+GO: *"deploy después, sigamos juntando más"*. Nada fue a PROD.
+
+### 1 · El crédito a favor aplicado vuelve al cliente al anular
+Hallazgo de la tanda anterior (UAT 57.11): anular una venta pagada con "Crédito a favor" no devolvía ese
+crédito — quedaba afuera del reintegro (ni caja ni saldo) y el cliente lo perdía. GO: *"que se devuelva a saldo
+a favor, como debería ser"*.
+- `creditoARestituirPorAnulacion` (`src/lib/saldoFavor.ts`): parte de los movimientos de `cliente_creditos` de
+  **esa** venta (`consumo_venta`), aplica la penalidad de la seña y descuenta lo ya restituido
+  (`anulacion_venta`), así un reintento no lo duplica. Fuente = ledger, no `medio_pago`.
+- `VentasPage`: al anular o cancelar con destino "devolución" inserta el crédito de vuelta, awaiteado y con
+  aviso si falla. No pasa por la caja. El destino "crédito" de la reserva ya lo incluía (acredita todo
+  `aDevolver`), así que no se duplica.
+- El modal de cancelar reserva dice cuánto vuelve al saldo, y el aviso "Devolvé $X" ya no cuenta esa parte.
+
+**Verificación:** 5 unit nuevos (89/89 en `saldoFavor` + `ventasValidation`); **e2e 149 caso C mutante** — sin el
+fix el ledger del cliente quedó en +$500 / −$500 y nada de vuelta; con el fix vuelve la fila `anulacion_venta`
+de $500 y la caja no se mueve. A y B siguen verdes. Typecheck, ESLint y build en verde.
+
+### 2 · E2 — el techo de DEV (autorizado por GO)
+Rampa de 20 a 400 sesiones de lectura continua, 45 s por escalón. **Techo ~170 req/s, alcanzado ya con 20
+sesiones**; después el throughput no sube y la latencia crece casi lineal (p95: 198 ms con 20 → 8,6 s con 400).
+**0 errores en todos los escalones**: DEV no se cae, se encola. Cuello medido en vivo: PostgREST con 21
+conexiones, 19 activas en CPU, sin locks, `max_connections` 60 lejos. Detalle y cómo leerlo en
+[[wiki/architecture/resiliencia]] (E2). Siguen sin medir: escrituras y PROD.
+
+---
+
 ## [2026-09-14] update | ✅ v1.222.0 en DEV — reintegro al anular (REGLA #0) + tanda chica (mig 420)
 
 Las dos primeras tandas del orden que fijó GO en la cont. 68. **Todo en DEV; PROD espera autorización.**

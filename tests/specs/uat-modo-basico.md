@@ -2110,7 +2110,7 @@ latentes (sin daño en DEV ni PROD): los dólares no salían de la Caja USD, el 
 | 57.8 | Cancelar una reserva con seña en USD → el modal y el aviso dicen cuántos US$ se devuelven | revisión de código | ✅ código |
 | 57.9 | Despachar una reserva con seña mixta (pesos + USD) → la seña no se vuelve a sumar a la caja en pesos | revisión de código (`.limit(1)` en lugar de `.maybeSingle()`, que con 2 filas daba `null`) | ✅ código — sin e2e |
 | 57.10 | Falla al asentar el cobro de un despacho → aviso con monto (antes `catch {}` silencioso) | revisión de código | ✅ código |
-| 57.11 | ⚠️ Anular una venta pagada con "Crédito a favor" → el crédito NO vuelve al saldo del cliente | hallazgo, pendiente de decisión de GO | 🟥 abierto |
+| 57.11 | Anular una venta pagada con "Crédito a favor" → el crédito vuelve al saldo del cliente (`cliente_creditos`, origen `anulacion_venta`), con la penalidad si era una seña, sin pasar por la caja y sin duplicarse en un reintento (decisión de GO, 2026-09-14; antes el cliente lo perdía) | e2e 149 C (mutante) + unit `creditoARestituirPorAnulacion` | ✅ |
 
 ## 🧹 §58 — Motivos de caja, webhook del marketplace, landing y tope de Monotributo (mig 420) — 2026-09-14
 

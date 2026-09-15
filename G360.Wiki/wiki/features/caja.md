@@ -97,7 +97,9 @@ La apertura **sugiere el monto del cierre anterior** de esa misma caja.
 - **Cancelar reserva señada o anular venta** → el reintegro se reconstruye con `calcularReintegroAnulacion`
   (`src/lib/ventasValidation.ts`), la misma cuenta que usó el cobro: efectivo en pesos **neto del vuelto** →
   `egreso_devolucion_sena` en la caja en pesos; **dólares → `egreso_devolucion_sena` con `moneda='USD'` en la
-  Caja USD**; medios no efectivo → un `egreso_informativo` por medio. Sin la caja de esa moneda abierta, la
+  Caja USD**; medios no efectivo → un `egreso_informativo` por medio; **crédito a favor aplicado → vuelve al
+  saldo del cliente** (`cliente_creditos`, origen `anulacion_venta`, sale del ledger de la venta y no se duplica
+  en un reintento; no pasa por la caja — decisión de GO del 2026-09-14, antes el cliente lo perdía). Sin la caja de esa moneda abierta, la
   venta despachada no se deja anular (guard) y la reserva avisa "registralo manualmente". 🛑 Hasta el
   2026-09-14 los dólares no salían de la Caja USD y el efectivo se devolvía bruto, vuelto incluido (latente,
   sin daño). UAT §57, e2e 149.

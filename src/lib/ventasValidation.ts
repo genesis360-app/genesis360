@@ -148,6 +148,9 @@ export interface ReintegroAnulacion {
   /** Medios no efectivo, en pesos, uno por tipo: son movimientos informativos. Sin Cuenta Corriente (no se
    *  cobró) ni Crédito a favor (no pasó por la caja). */
   noEfectivo: { tipo: string; monto: number }[]
+  /** Crédito a favor aplicado en la venta (con la penalidad), según `medio_pago`. Solo para MOSTRAR: lo que
+   *  vuelve de verdad al saldo sale del ledger (`creditoARestituirPorAnulacion`, src/lib/saldoFavor.ts). */
+  creditoAFavor: number
   /** `true` si `medio_pago` no tiene detalle legible: no hay con qué reconstruir el reintegro. */
   sinDetalle: boolean
 }
@@ -172,7 +175,7 @@ export function calcularReintegroAnulacion(
   mediosEfectivo: ReadonlySet<string> = MEDIOS_EFECTIVO_DEFAULT,
   mediosEfectivoUsd: ReadonlySet<string> = new Set(),
 ): ReintegroAnulacion {
-  const sinDetalle: ReintegroAnulacion = { arsEfectivo: 0, usd: 0, noEfectivo: [], sinDetalle: true }
+  const sinDetalle: ReintegroAnulacion = { arsEfectivo: 0, usd: 0, noEfectivo: [], creditoAFavor: 0, sinDetalle: true }
   let arr: unknown = medioPago
   if (typeof medioPago === 'string') {
     try { arr = JSON.parse(medioPago) } catch { return sinDetalle }
@@ -209,6 +212,7 @@ export function calcularReintegroAnulacion(
     arsEfectivo: aplicar(ef.arsNeto),
     usd: aplicar(ef.usdIngreso),
     noEfectivo: [...porTipo].map(([tipo, monto]) => ({ tipo, monto: aplicar(monto) })).filter(x => x.monto > 0.005),
+    creditoAFavor: aplicar(cobrados.filter(m => m.tipo === 'Crédito a favor').reduce((a, m) => a + num(m.monto), 0)),
     sinDetalle: false,
   }
 }

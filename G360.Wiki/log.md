@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | ⚙️ PROD pasa de Nano a Micro · 👤 Kalken, primer cliente real en PROD
+
+- GO avisó que **Kalken** (alta 2026-08-25, en PROD) es un cliente real probando la app. Antes del reinicio se
+  verificó que no estuviera usándola: último movimiento a las 18:03 AR, último login a las 20:41 sin renovación de
+  token, 0 requests de sus dos usuarios en la última hora y media (el tráfico era de negocios de prueba de GO). Su
+  "Caja Principal" quedó abierta desde las 17:35; el reinicio no la afecta.
+- GO cambió PROD de **Nano a Micro** desde Settings → Compute and Disk ("Free Upgrade": en una org paga la Nano se
+  cobra como Micro, así que no cambia el costo). Verificado después: Postgres reiniciado a las 03:01 UTC,
+  `effective_cache_size` 768 MB y `shared_buffers` 256 MB (igual que DEV); la API devolvió 2 respuestas 520 a las
+  03:02, durante el reinicio, y después solo 200; los tres crons de cada 5 minutos (`meli-stock-sync`,
+  `tn-stock-sync`, `tn-fulfillment-sync`) corrieron bien a las 03:05.
+- Con PROD en Micro, la capacidad estimada aplica a PROD: ~85 usuarios a la vez en hora pico y ~160 en uso tranquilo;
+  del orden de 80 a 120 clientes con uso normal. Ver [[wiki/architecture/resiliencia]].
+
+---
+
 ## [2026-09-14] update | 🗓️ Precio programado Fase 1 (mig 422) + 🛑 avisos de CC/OC vencidas al dueño (mig 421) + capacidad de PROD — v1.223.0 en DEV
 
 Sin deploy (GO: seguir acumulando).

@@ -86,7 +86,7 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 - **Asistente IA** (ícono chat): panel flotante de chat con Groq (`openai/gpt-oss-120b`, ver "🐛 Modelo Groq roto" en `wiki/features/asistente-ia.md` — hasta el 2026-08-20 usaba `llama-3.3-70b-versatile`, descatalogado por Groq). Su conocimiento se genera desde ESTE documento (`npm run ai:knowledge`) y recibe el contexto real del usuario (rol, modo, menú visible, pantalla actual) para no indicar UI inexistente — detalle en `wiki/features/asistente-ia.md`. Tiene flujo de bug report que envía la conversación a soporte por email.
 - **Campana de notificaciones**: muestra alertas de stock crítico y cuotas de CC vencidas. Badge con contador de no leídas.
 - **Dark/Light mode**
-- **Botón ayuda** (ícono `?`): abre el `AyudaModal` (panel lateral) — 🆕 2026-09-15 (mig 426): "Reportar un problema" crea un ticket real (no un mail suelto) + link "Ver mis consultas" a `/ayuda/consultas`
+- **Botón ayuda** (ícono `?`): abre el `AyudaModal` (panel lateral) — 🆕 2026-09-15 (mig 426): "Reportar un problema" crea un ticket real (no un mail suelto) + link "Ver mis consultas" a `/ayuda/consultas` · 🆕 2026-09-15 (mig 429, 🟡 solo DEV): hasta 3 videos de "Cursos y recursos" (primero los del módulo actual) + link "Ver todos" a `/ayuda/recursos`
 - **Configuración** (ícono engranaje): acceso rápido a `/configuracion`
 - **Avatar / dropdown**: Mi cuenta (`/mi-cuenta`), cerrar sesión
 
@@ -873,11 +873,12 @@ Gestión del plan de pago.
 
 ---
 
-### 4.11 Ayuda (`/ayuda`, `/ayuda/consultas`)
+### 4.11 Ayuda (`/ayuda`, `/ayuda/consultas`, `/ayuda/recursos`)
 
 Centro de soporte. 🆕 **2026-09-15 (mig 426, ✅ EN PROD desde el 2026-09-15): "Reportar un problema" y "Mis
-consultas" ya funcionan** — las otras 4 tarjetas (FAQ, chat, buenas prácticas, guías interactivas; "Cursos y
-recursos" es la Fase 2, próxima en la cola de GO) siguen con badge "Próximamente".
+consultas" ya funcionan.** 🆕 **2026-09-15, después del deploy (mig 429, 🟡 solo DEV): "Cursos y recursos" ya
+funciona** (ver más abajo) — las 3 tarjetas que quedan (FAQ, chat en vivo, guías interactivas) siguen con badge
+"Próximamente".
 
 - **"Reportar un problema"** (tarjeta de `/ayuda` o botón `?` del header → `AyudaModal`): abre `NuevaConsultaForm`
   (tipo, urgencia, asunto, detalle, hasta 3 capturas/PDF de 5 MB) que crea un **ticket real** vía RPC
@@ -893,6 +894,30 @@ Detalle completo del circuito (notas internas, ciclo de vida del ticket, topes a
 
 > El Asistente IA del header sigue con su propio flujo de reporte (`type: 'bug_report'` de `send-email`, directo a
 > `soporte@genesis360.pro`, sin ticket en `support_tickets`) — no pasa por Mis consultas.
+
+#### "Cursos y recursos" (mig 429, 2026-09-15, 🟡 solo DEV)
+
+Tabla `ayuda_recursos` (`titulo`, `descripcion`, `modulo` — ruta donde se sugiere primero —, `video_path`,
+`miniatura_path`, `duracion_seg`, `orden`, `publicado`), RLS SELECT solo filas `publicado=true`, **sin escritura
+para la app**. Bucket **público** `ayuda-recursos` (mp4/webm/imágenes, 50 MB), sin policies — se lee por URL
+pública, se carga solo desde el dashboard de Supabase.
+
+**Cómo publica GO un video** (los videos de onboarding siguen en pausa, esto es independiente):
+1. Storage → bucket `ayuda-recursos` → subir el archivo.
+2. Table Editor → `ayuda_recursos` → nueva fila con `titulo`, `video_path` (ruta dentro del bucket) y
+   `publicado = true` (opcionales: `descripcion`, `modulo`, `miniatura_path`, `duracion_seg`, `orden`).
+
+**App**: página `/ayuda/recursos` (tarjetas + reproductor con `?video=<id>`; vacía muestra "Próximamente"); el panel
+lateral de Ayuda (`AyudaModal`) muestra hasta 3 (primero los del módulo actual) + link "Ver todos"; la tarjeta
+"Cursos y recursos" de `/ayuda` deja de decir "Próximamente". Lógica pura en `src/lib/ayudaRecursos.ts` (8 unit
+tests), datos en `src/lib/ayudaRecursosApi.ts`.
+
+Deliberadamente vacía hoy: los videos de onboarding grabados (1-5 y 8) siguen en pausa hasta que GO los revise con
+su socio — no se publican acá todavía.
+
+⚠️ **Pendiente del próximo deploy que toque esto**: correr `npm run ai:knowledge` y redeployar la EF `ai-assistant`
+en DEV y PROD (el Asistente IA solo aprende contenido nuevo del wiki al redeployar) — ver
+`sources/raw/project_pendientes.md`.
 
 ---
 

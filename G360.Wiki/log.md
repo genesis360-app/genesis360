@@ -6,6 +6,92 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 🔒💳🎓 Cola de ML/TN solo desde el servidor, aviso de pago manual y Cursos y recursos (migs 427-429) — v1.227.0 en DEV
+
+Continuación de la misma sesión (cont. 71), después del deploy acumulado a PROD documentado en la entrada de abajo.
+GO tomó las 3 decisiones que quedaban en "QUÉ SIGUE" (ver esa entrada) y se construyeron y verificaron el mismo día
+**solo en DEV**: DEV pasa a `v1.227.0`, migs 001-429. **PROD sigue en `v1.226.0`, migs 001-426** — sin deploy.
+
+### 🔒 Mig 427 — ML/TN: cola de sincronización y vínculos solo desde el servidor
+`integration_job_queue`, `inventario_meli_map` e `inventario_tn_map` tenían policy `FOR ALL` por negocio (sin rol) +
+todos los privilegios de tabla para `anon`/`authenticated`: un CAJERO por REST podía encolar un job con cualquier
+`meli_item_id`/`tn_product_id` o reescribir un vínculo, y el worker mandaba el stock o el precio de un producto a
+otra publicación de la misma cuenta (`meli_credentials`/`tiendanube_credentials` ya estaban bien: escriben
+DUEÑO/ADMIN/SUPER_USUARIO y privilegio por columna). Ahora: cola solo lectura para la app (`job_queue_select`);
+vínculos con lectura de todo el negocio (`*_map_select`) y escritura solo quien puede editar Configuración
+(`*_map_write_configuracion`, `auth_puede_editar_modulo('configuracion')`); `anon` sin nada. "Forzar sync de stock"
+(Config → Conectividad, ML y TN) llama a la RPC nueva `fn_forzar_sync_stock(p_integracion)`: el servidor arma los
+jobs desde los vínculos, sin duplicar uno pendiente/en curso de la misma publicación, tope 500 por llamada
+(sugerencia del `migration-reviewer`).
+
+🛑 **Gotcha que evitó romper algo**: `fn_enqueue_sync_precio` (trigger de `productos`) NO era SECURITY DEFINER —
+corría con los permisos de quien guardaba el producto; con el REVOKE de INSERT, cambiar el precio de un producto
+vinculado habría fallado. Pasó a SECURITY DEFINER en la misma migración (verificado por SQL impersonando a un
+SUPERVISOR: 2 jobs `sync_precio` encolados, revertido).
+
+El e2e 151 D (creaba jobs por REST para probar el aviso de la mig 424) salió: el aviso se verifica por SQL (UAT
+60.8, actualizado: `sync_precio` fallido → aviso a los 2 DUEÑO; `sync_stock` → 0). e2e nuevo **153** (3 casos,
+mutante: corrido contra la base vieja, fallaron los 3 donde debían).
+
+Datos: en DEV Jorgito tiene ML/TN conectados; el cron `meli-stock-sync` está inactivo en DEV. En PROD la cola tuvo 0
+jobs en 30 días. ⚠️ **Orden en el deploy a PROD**: aplicar la 427 **junto con el merge del frontend** (el botón
+viejo de `ConfigPage` insertaba directo en la cola: entre la migración y el deploy de Vercel ese botón falla).
+Riesgo bajo (0 jobs en PROD en 30 días).
+
+### 💳 Mig 428 — pago manual registrado: el cliente se entera
+`fn_registrar_pago_manual` (única puerta del pago manual, mig 262; la llaman `admin-api`
+`billing.manual_record_payment` y `mp-webhook` rama `|manualpago|`): después de registrar, en una subtransacción (un
+aviso que falla no revierte el pago): (1) cada consulta tipo `pago` abierta ("Ya transferí") recibe mensaje del
+equipo "Registramos tu pago. Tu acceso quedó activo hasta el DD/MM/AAAA. ¡Gracias!" y queda `resuelto` → a quien
+avisó le llega por el trigger de las migs 425/426 con link a la consulta; (2) campanita "Recibimos tu pago" (link
+`/mi-cuenta`) a DUEÑO y SUPER_USUARIO activos que no se enteraron por la consulta.
+
+`admin-api` manda además el mail (`send-email` tipo `notificacion`) al dueño, super usuario y a quien avisó
+(deployada en DEV; **PROD pendiente**). El mail no se probó de punta a punta (requiere un agente del panel).
+
+Verificado por SQL en DEV (revertido): pago registrado y acceso extendido; reintento del mismo `mp_payment_id` sigue
+fallando por `unique_violation` (idempotencia de `mp-webhook` intacta); consulta resuelta con `pendiente_equipo`
+false; aviso al cajero con link a la consulta; 2 DUEÑO con "Recibimos tu pago"; el cajero no recibe doble aviso.
+`migration-reviewer`: APTA. Sale de "decisiones pendientes de GO" (ya decidido y construido).
+
+### 🎓 Mig 429 — Ayuda fase 2: "Cursos y recursos"
+Tabla `ayuda_recursos` (titulo, descripcion, modulo = ruta donde se sugiere primero, video_path, miniatura_path,
+duracion_seg, orden, publicado): RLS SELECT solo `publicado`, sin escritura para la app. Bucket **público**
+`ayuda-recursos` (mp4/webm/imágenes, 50 MB), sin policies (lectura por URL pública, carga desde el dashboard).
+
+**Cómo publica GO un video**: Storage → `ayuda-recursos` → subir archivo; Table Editor → `ayuda_recursos` → fila con
+`titulo`, `video_path` (ruta dentro del bucket) y `publicado = true` (opcional descripción, módulo, miniatura,
+duración, orden). Documentado en [[wiki/overview/app-reference]] → "Ayuda".
+
+App: página `/ayuda/recursos` (lista de tarjetas + reproductor `?video=<id>`; vacía dice "Próximamente"); panel
+lateral de Ayuda muestra hasta 3 (primero los del módulo actual) + "Ver todos"; tarjeta "Cursos y recursos" del
+Centro de Soporte activa. Lógica pura `src/lib/ayudaRecursos.ts` (8 unit tests), datos `src/lib/ayudaRecursosApi.ts`.
+
+Vacía a propósito: los videos de onboarding siguen EN PAUSA hasta que GO los revise con su socio.
+
+e2e **154** (2 casos); SQL impersonando al cajero: ve solo el publicado y no puede escribir (revertido); PostgREST:
+anon 401, DUEÑO 200 [], insert 403, columna inventada 400.
+
+### Verificación general
+tsc + build + eslint verdes; **1848 unit tests** (112 archivos); `schema_full.sql` regenerado (170 tablas, 239
+funciones, **234 policies**); UAT **§63** (cola/vínculos), **§64** (Cursos y recursos), **§65** (pago manual) y 60.8
+actualizado.
+
+### Policies
+DEV: `public` **234** (PROD 231: +2 por los vínculos ML/TN, +1 `ayuda_recursos`), `storage` 40, `cron` 2.
+
+### Para el próximo deploy a PROD
+Mig 427 **junto con el merge del frontend** (riesgo bajo); mig 428 + redeploy de `admin-api` en PROD (manda el mail
+del pago manual); mig 429 sin gotchas — después GO puede empezar a publicar videos. Se tocó
+`wiki/overview/app-reference.md` → correr `npm run ai:knowledge` + redeploy `ai-assistant` en DEV y PROD.
+
+### Estado final
+DEV `v1.227.0`, migs 001-429. **PROD sigue en `v1.226.0`, migs 001-426** — sin deploy esta sesión. Detalle completo
+en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71, después del deploy), `wiki/business/roadmap.md`,
+`wiki/database/migraciones.md`.
+
+---
+
 ## [2026-09-15] deploy | 🚀 PROD = DEV v1.226.0 (migs 420-426) — deploy acumulado v1.222–v1.226
 
 GO autorizó: *"Deploy acumulado a PROD"*. PROD salta de `v1.221.0` (001-419) a **`v1.226.0`** (001-426): **PROD = DEV**.

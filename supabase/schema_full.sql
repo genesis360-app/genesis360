@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-15T06:50:53.146Z desde gcmhzdedrkmmzfzfveig vía MCP execute_sql
--- Última migración aplicada: 426 (20260915063912) · 169 tablas
+-- Generado 2026-09-15T20:48:03.395Z desde gcmhzdedrkmmzfzfveig vía MCP execute_sql
+-- Última migración aplicada: 429 (20260915204122) · 170 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -223,6 +223,20 @@ CREATE TABLE public.autorizaciones_reglas_enrutamiento (
   tipo text NOT NULL,
   usuario_id uuid NOT NULL,
   created_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE public.ayuda_recursos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  titulo text NOT NULL,
+  descripcion text,
+  modulo text,
+  video_path text NOT NULL,
+  miniatura_path text,
+  duracion_seg integer,
+  orden integer NOT NULL DEFAULT 100,
+  publicado boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.billing_cancelaciones (
@@ -2878,6 +2892,10 @@ ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_motivo_blo
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_pkey PRIMARY KEY (id);
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_pkey PRIMARY KEY (id);
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ADD CONSTRAINT autorizaciones_reglas_enrutamiento_tenant_id_modulo_tipo_key UNIQUE (tenant_id, modulo, tipo);
+ALTER TABLE public.ayuda_recursos ADD CONSTRAINT ayuda_recursos_duracion_seg_check CHECK (((duracion_seg IS NULL) OR (duracion_seg > 0)));
+ALTER TABLE public.ayuda_recursos ADD CONSTRAINT ayuda_recursos_pkey PRIMARY KEY (id);
+ALTER TABLE public.ayuda_recursos ADD CONSTRAINT ayuda_recursos_titulo_check CHECK (((length(btrim(titulo)) >= 3) AND (length(btrim(titulo)) <= 120)));
+ALTER TABLE public.ayuda_recursos ADD CONSTRAINT ayuda_recursos_video_path_check CHECK ((length(btrim(video_path)) > 0));
 ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.billing_cancelaciones ADD CONSTRAINT billing_cancelaciones_tipo_check CHECK ((tipo = ANY (ARRAY['arrepentimiento'::text, 'cancelacion_estandar'::text])));
 ALTER TABLE public.billing_manual_pagos ADD CONSTRAINT billing_manual_pagos_medio_check CHECK ((medio = ANY (ARRAY['transferencia'::text, 'efectivo'::text, 'tarjeta_mp'::text, 'otro'::text])));
@@ -3814,6 +3832,7 @@ CREATE INDEX idx_autorizaciones_inventario_aprobado_por ON public.autorizaciones
 CREATE INDEX idx_autorizaciones_inventario_linea_id ON public.autorizaciones USING btree (linea_id);
 CREATE INDEX idx_autorizaciones_inventario_solicitado_por ON public.autorizaciones USING btree (solicitado_por);
 CREATE INDEX idx_autorizaciones_tenant_modulo_estado ON public.autorizaciones USING btree (tenant_id, modulo, estado);
+CREATE INDEX idx_ayuda_recursos_publicados ON public.ayuda_recursos USING btree (orden, created_at) WHERE publicado;
 CREATE INDEX idx_billing_cancelaciones_tenant ON public.billing_cancelaciones USING btree (tenant_id, created_at DESC);
 CREATE INDEX idx_billing_manual_pagos_registrado_por ON public.billing_manual_pagos USING btree (registrado_por);
 CREATE INDEX idx_billing_manual_pagos_tenant ON public.billing_manual_pagos USING btree (tenant_id, created_at DESC);
@@ -5898,6 +5917,7 @@ $function$
 CREATE OR REPLACE FUNCTION public.fn_enqueue_sync_precio()
  RETURNS trigger
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
 BEGIN
@@ -6215,6 +6235,73 @@ BEGIN
     END IF;
   END LOOP;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_forzar_sync_stock(p_integracion text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid    uuid := auth.uid();
+  v_tenant uuid := public.get_user_tenant_id();
+  v_n      integer := 0;
+BEGIN
+  IF v_uid IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT public.auth_puede_editar_modulo('configuracion') THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede sincronizar las integraciones.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF p_integracion = 'MercadoLibre' THEN
+    INSERT INTO public.integration_job_queue (tenant_id, sucursal_id, integracion, tipo, payload, status, next_attempt_at)
+    SELECT m.tenant_id, NULL, 'MercadoLibre', 'sync_stock',
+           jsonb_build_object('producto_id', m.producto_id, 'meli_item_id', m.meli_item_id,
+                              'meli_variation_id', m.meli_variation_id),
+           'pending', now()
+      FROM public.inventario_meli_map m
+     WHERE m.tenant_id = v_tenant
+       AND m.sync_stock = true
+       -- Un job por publicación: si ya hay uno en curso, no se agrega otro.
+       AND NOT EXISTS (
+         SELECT 1 FROM public.integration_job_queue q
+          WHERE q.tenant_id = v_tenant AND q.integracion = 'MercadoLibre' AND q.tipo = 'sync_stock'
+            AND q.status IN ('pending', 'processing')
+            AND q.payload->>'producto_id' = m.producto_id::text
+            AND q.payload->>'meli_item_id' = m.meli_item_id::text
+            AND coalesce(q.payload->>'meli_variation_id', '') = coalesce(m.meli_variation_id::text, ''))
+     -- Tope por llamada (migration-reviewer): un catálogo grande no le tira una ráfaga de golpe al worker; el resto
+     -- entra en el próximo "Forzar sync" gracias al dedupe.
+     LIMIT 500;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+  ELSIF p_integracion = 'TiendaNube' THEN
+    INSERT INTO public.integration_job_queue (tenant_id, sucursal_id, integracion, tipo, payload, status, next_attempt_at)
+    SELECT m.tenant_id, m.sucursal_id, 'TiendaNube', 'sync_stock',
+           jsonb_build_object('producto_id', m.producto_id, 'tn_product_id', m.tn_product_id,
+                              'tn_variant_id', m.tn_variant_id),
+           'pending', now()
+      FROM public.inventario_tn_map m
+     WHERE m.tenant_id = v_tenant
+       AND m.sync_stock = true
+       AND NOT EXISTS (
+         SELECT 1 FROM public.integration_job_queue q
+          WHERE q.tenant_id = v_tenant AND q.integracion = 'TiendaNube' AND q.tipo = 'sync_stock'
+            AND q.status IN ('pending', 'processing')
+            AND q.payload->>'producto_id' = m.producto_id::text
+            AND q.payload->>'tn_product_id' = m.tn_product_id::text
+            AND coalesce(q.payload->>'tn_variant_id', '') = coalesce(m.tn_variant_id::text, ''))
+     LIMIT 500;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+  ELSE
+    RAISE EXCEPTION 'Integración inválida.';
+  END IF;
+
+  RETURN v_n;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_gastos_iva_guard()
@@ -9001,6 +9088,9 @@ AS $function$
 DECLARE
   v_desde TIMESTAMPTZ;
   v_hasta TIMESTAMPTZ;
+  v_fecha    text;
+  v_ticket   RECORD;
+  v_avisados uuid[] := '{}';
 BEGIN
   SELECT GREATEST(now(), COALESCE(manual_paid_until, now())) INTO v_desde
     FROM public.tenants WHERE id = p_tenant_id FOR UPDATE;
@@ -9023,6 +9113,37 @@ BEGIN
     manual_ultimo_recordatorio_tipo = NULL,
     manual_ultimo_recordatorio_at = NULL
   WHERE id = p_tenant_id;
+
+  -- Mig 428: avisar al cliente.
+  v_fecha := to_char(v_hasta AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM/YYYY');
+  BEGIN
+    FOR v_ticket IN
+      SELECT id, usuario_id FROM public.support_tickets
+       WHERE tenant_id = p_tenant_id AND tipo = 'pago' AND estado NOT IN ('resuelto', 'cerrado')
+       ORDER BY created_at
+    LOOP
+      INSERT INTO public.support_messages (ticket_id, autor_tipo, autor_id, cuerpo)
+      VALUES (v_ticket.id, 'agente', p_registrado_por,
+              'Registramos tu pago. Tu acceso quedó activo hasta el ' || v_fecha || '. ¡Gracias!');
+      UPDATE public.support_tickets SET estado = 'resuelto', updated_at = now() WHERE id = v_ticket.id;
+      IF v_ticket.usuario_id IS NOT NULL THEN
+        v_avisados := v_avisados || v_ticket.usuario_id;
+      END IF;
+    END LOOP;
+
+    INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url, metadata)
+    SELECT p_tenant_id, u.id, 'info', 'Recibimos tu pago',
+           'Tu acceso quedó activo hasta el ' || v_fecha || '.',
+           '/mi-cuenta',
+           jsonb_build_object('origen', 'pago_manual', 'paid_until', v_hasta)
+      FROM public.users u
+     WHERE u.tenant_id = p_tenant_id
+       AND u.rol IN ('DUEÑO', 'SUPER_USUARIO')
+       AND coalesce(u.activo, true)
+       AND NOT (u.id = ANY (v_avisados));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '[fn_registrar_pago_manual] pago registrado para %, pero no se pudo avisar: %', p_tenant_id, SQLERRM;
+  END;
 
   RETURN v_hasta;
 END $function$
@@ -13130,6 +13251,7 @@ ALTER TABLE public.atributos_variante_valores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_cc ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_reglas_enrutamiento ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ayuda_recursos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_cancelaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_manual_pagos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.boveda_arqueos ENABLE ROW LEVEL SECURITY;
@@ -13372,6 +13494,8 @@ CREATE POLICY autorizaciones_reglas_enrutamiento_write ON public.autorizaciones_
   WITH CHECK (((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))));
+CREATE POLICY ayuda_recursos_select ON public.ayuda_recursos AS PERMISSIVE FOR SELECT TO authenticated
+  USING (publicado);
 CREATE POLICY billing_manual_pagos_select ON public.billing_manual_pagos AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) OR is_admin()));
 CREATE POLICY boveda_arqueos_solo_dueno ON public.boveda_arqueos AS PERMISSIVE FOR ALL TO public
@@ -13668,10 +13792,8 @@ CREATE POLICY hojas_ruta_tenant ON public.hojas_ruta AS PERMISSIVE FOR ALL TO pu
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY job_queue_tenant ON public.integration_job_queue AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY job_queue_select ON public.integration_job_queue AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY conteo_items_tenant ON public.inventario_conteo_items AS PERMISSIVE FOR ALL TO public
   USING ((conteo_id IN ( SELECT c.id
    FROM inventario_conteos c
@@ -13685,19 +13807,21 @@ CREATE POLICY conteos_tenant ON public.inventario_conteos AS PERMISSIVE FOR ALL 
 CREATE POLICY lineas_tenant ON public.inventario_lineas AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY meli_map_tenant ON public.inventario_meli_map AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY meli_map_select ON public.inventario_meli_map AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY meli_map_write_configuracion ON public.inventario_meli_map AS PERMISSIVE FOR ALL TO authenticated
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('configuracion'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('configuracion'::text)));
 CREATE POLICY series_tenant ON public.inventario_series AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (linea_id IS NULL) OR (EXISTS ( SELECT 1
    FROM inventario_lineas l
   WHERE ((l.id = inventario_series.linea_id) AND ((l.sucursal_id IS NULL) OR (l.sucursal_id = auth_user_sucursal()))))))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY tn_map_tenant ON public.inventario_tn_map AS PERMISSIVE FOR ALL TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY tn_map_select ON public.inventario_tn_map AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY tn_map_write_configuracion ON public.inventario_tn_map AS PERMISSIVE FOR ALL TO authenticated
+  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('configuracion'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('configuracion'::text)));
 CREATE POLICY kit_recetas_select ON public.kit_recetas AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY kit_recetas_write ON public.kit_recetas AS PERMISSIVE FOR ALL TO public
@@ -14223,6 +14347,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.au
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_reglas_enrutamiento TO service_role;
+GRANT SELECT ON public.ayuda_recursos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ayuda_recursos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.billing_cancelaciones TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.billing_manual_pagos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.billing_manual_pagos TO service_role;
@@ -14365,8 +14491,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ho
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.hojas_ruta TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.hojas_ruta TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.hojas_ruta TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.integration_job_queue TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.integration_job_queue TO authenticated;
+GRANT SELECT ON public.integration_job_queue TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.integration_job_queue TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_conteo_items TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_conteo_items TO authenticated;
@@ -14377,14 +14502,12 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.in
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_lineas TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_lineas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_lineas TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_meli_map TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_meli_map TO authenticated;
+GRANT DELETE, INSERT, SELECT, UPDATE ON public.inventario_meli_map TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_meli_map TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_series TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_series TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_series TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_tn_map TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_tn_map TO authenticated;
+GRANT DELETE, INSERT, SELECT, UPDATE ON public.inventario_tn_map TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.inventario_tn_map TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.kit_recetas TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.kit_recetas TO authenticated;

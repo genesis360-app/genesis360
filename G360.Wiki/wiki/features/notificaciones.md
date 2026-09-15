@@ -2,8 +2,8 @@
 title: Notificaciones
 category: features
 tags: [notificaciones, campana, alertas, push, email, v1.5.0]
-sources: [CLAUDE.md, migrations 373, 374]
-updated: 2026-08-19
+sources: [CLAUDE.md, migrations 373, 374, 421]
+updated: 2026-09-15
 ---
 
 # Notificaciones
@@ -66,9 +66,14 @@ const supervisores = await supabase
 | Evento | Tipo | Destinatarios | Acción en UI |
 |--------|------|--------------|--------------|
 | Diferencia apertura caja | `warning` | OWNER + SUPERVISOR | Ir → /caja |
-| CC clientes vencida | `warning` | OWNER + ADMIN | Ir → /clientes |
-| OC vencida sin pagar | `danger` | OWNER + ADMIN | Ir → /proveedores |
+| CC clientes vencida | `warning` | DUEÑO + SUPER_USUARIO | Ir → /clientes |
+| OC vencida sin pagar | `danger` | DUEÑO + SUPER_USUARIO | Ir → /proveedores |
 | Solicitud Caja Fuerte (CAJERO) | `warning` + `metadata` | OWNER + SUPERVISOR + SUPER_USUARIO | Aprobar / Rechazar (ejecuta transferencia real) |
+
+> 🛑 **mig 421 (2026-09-14, ✅ EN PROD desde el 2026-09-15):** los avisos diarios de CC y OC vencidas **nunca le
+> llegaban a nadie en PROD** — `fn_notificar_cc_vencidas` (mig 091) buscaba destinatarios con rol `OWNER`, que no
+> existe (`ADMIN` es staff, no dueño del negocio). En DEV le llegaba solo al usuario `ADMIN` (58 avisos en 30 días).
+> Corregido para avisar a **DUEÑO y SUPER_USUARIO**. Ver [[wiki/database/migraciones]] (mig 421).
 
 ### Notificaciones con metadata (v1.8.7+)
 

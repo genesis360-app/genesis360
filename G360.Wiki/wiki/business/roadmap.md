@@ -8,18 +8,41 @@ updated: 2026-09-15
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.221.0`** (2026-09-14, migs 001-419) — detalle en las secciones de abajo. Compute de
-PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.226.0`** (2026-09-15, migs 001-426). Compute de PROD: **Micro** desde el 2026-09-15
+(antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo: no estaba usando la app al momento del deploy,
+último login/refresh 2026-09-14 23:41 UTC, última venta 21:03 UTC).
 
-**En `dev`, sin deployar (GO: acumular)**: `v1.222.0` (reintegro al anular en USD y con vuelto, motivos de caja mig 420,
+🟡 **Versión en DEV (actual): `v1.227.0`** (2026-09-15, migs 001-429) — vuelve a haber brecha DEV≠PROD: las 3
+decisiones de GO que seguían tras el deploy de `v1.226.0` ya están construidas (cola/vínculos ML/TN solo desde el
+servidor, aviso de pago manual, Ayuda "Cursos y recursos" — detalle en la sección `## 🟡 v1.227.0` más abajo), sin
+deploy a PROD todavía.
+
+Migraciones 420-426 aplicadas en PROD antes del merge, en orden, con `apply_migration`; verificación
+`md5(pg_get_functiondef)` idéntico DEV↔PROD en todas las funciones tocadas (acentos incluidos), permisos por
+columna/RPC confirmados. Paridad de policies por schema DEV=PROD: `public` 231 (`d8325817…`), `storage` 40
+(`fd729ff1…`), `cron` 2 (`99253f46…`). PR app **#350** (merge `1d8e477d`) y panel `genesis360-admin` **#5** (merge
+`e647dd6`); releases `v1.222.0`-`v1.225.0` promovidos de prerelease a release, `v1.226.0` marcado **Latest**. Edge
+Functions redeployadas: `admin-api` (v12), `billing-manual-avisar-pago` (v2, después de la 426),
+`marketplace-webhook` (v20 — gotcha del `verify_jwt` conservado por el deploy vía CLI, corregido por Management
+API, ver [[wiki/development/deploy]]) y `ai-assistant` (v11, conocimiento regenerado desde el wiki). Detalle
+completo en `log.md` (2026-09-15, `deploy`) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71).
+
+Contenido del deploy: `v1.222.0` (reintegro al anular en USD y con vuelto, motivos de caja mig 420,
 `marketplace-webhook` apagado, landing, Monotributo a 12 meses), `v1.223.0` (crédito a favor al anular, avisos de CC/OC
-al dueño mig 421, precio de venta programado Fase 1 mig 422), `v1.224.0` (precio programado Fases 2-3, migs 423-424:
+al dueño mig 421 — nunca le habían llegado a nadie en PROD, buscaban el rol `OWNER` que no existe —, precio de venta
+programado Fase 1 mig 422), `v1.224.0` (precio programado Fases 2-3, migs 423-424:
 etiqueta anticipada que no se completa antes de la hora, aviso al cajero, alerta de etiquetas vencidas, aviso si ML/TN
 no toma el precio; Alertas ya no dice "Todo en orden" con pedidos vencidos), `v1.225.0` (la respuesta de soporte le
 llega al cliente como notificación, mig 425) y `v1.226.0` (Ayuda: "Reportar un problema" + Mis consultas, mig 426 —
 página `/ayuda/consultas`, RPC con guard, bucket de adjuntos; de paso, `send-email` ya no se puede usar como relay de
 mail —commit `6dbaf377`, **deployada en DEV y PROD**— y ConfigPage ya no pide el "Token AfipSDK" con el circuito
-propio). Los primeros cuatro como prerelease en GitHub; `v1.226.0` todavía sin tag (lo hace GO).
+propio).
+
+✅ **Las 3 decisiones de GO para `v1.227.0`, ya construidas en DEV** (migs 427-429, ver sección `## 🟡 v1.227.0` más
+abajo): 1) cerrar la escritura de `integration_job_queue` desde usuarios del negocio (RPC en vez de INSERT directo);
+2) avisar al cliente cuando el equipo registra su pago manual (campanita + mail); 3) Ayuda Fase 2 ("Cursos y
+recursos", vacía hasta que GO suba videos). Siguiente en la cola: video + guía HTML de activación de facturación (en
+PROD, tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9).
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -49,6 +72,54 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 `a37e6e6c`). Verificado además por `curl` contra `https://www.genesis360.pro/` (no solo el dashboard): el
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
+
+## 🟡 v1.227.0 — EN DEV (2026-09-15, cont. 71, después del deploy) — migs 001-**429**, sin PROD
+
+Las 3 decisiones de GO tomadas en cont. 71 tras el deploy de `v1.226.0` (ver sección de arriba, "Decisiones de GO"),
+construidas y verificadas el mismo día. **PROD sigue en `v1.226.0`, migs 001-426.**
+
+- 🔒 **Mig 427 — ML/TN: cola de sincronización y vínculos solo desde el servidor.** `integration_job_queue` pasa a
+  solo lectura para la app; `inventario_meli_map`/`inventario_tn_map` a lectura del negocio + escritura solo quien
+  edita Configuración; `anon` sin nada. "Forzar sync de stock" pasa a la RPC server-side `fn_forzar_sync_stock`.
+  🛑 Gotcha evitado en la misma migración: `fn_enqueue_sync_precio` (trigger de `productos`) no era `SECURITY
+  DEFINER` — con el REVOKE de INSERT directo, cambiar el precio de un producto vinculado habría fallado. Antes: un
+  CAJERO por REST podía encolar cualquier job o reescribir un vínculo, y el worker mandaba el stock/precio de un
+  producto a otra publicación de la misma cuenta (hallazgo REGLA #0 arrastrado de la mig 424/cont. 69). Ver
+  [[wiki/integrations/mercado-libre]].
+- 💳 **Mig 428 — pago manual registrado: el cliente se entera.** `fn_registrar_pago_manual` resuelve la consulta "Ya
+  transferí" con un mensaje del equipo (avisa a quien avisó) y manda campanita "Recibimos tu pago" a DUEÑO/SUPER_USUARIO
+  activos. `admin-api` manda además el mail — deployada en DEV, redeploy a PROD pendiente. Ver [[wiki/features/pago-manual]].
+- 🎓 **Mig 429 — Ayuda Fase 2: "Cursos y recursos".** Tabla `ayuda_recursos` + bucket público `ayuda-recursos`;
+  página `/ayuda/recursos`, vacía a propósito hasta que GO publique videos desde el dashboard. Ver
+  [[wiki/overview/app-reference]] → "Ayuda".
+
+Verificación: tsc + build + eslint verdes; **1848 unit tests** (112 archivos); `schema_full.sql` regenerado (170
+tablas, 239 funciones, **234 policies** — DEV; PROD sigue en 231); e2e nuevos **153** (ML/TN, mutante) y **154**
+(Cursos y recursos); UAT **§63/§64/§65** + 60.8 actualizado. Detalle completo: `log.md` (2026-09-15, `update`),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71, después del deploy).
+
+## 🚀 v1.226.0 — EN PROD (2026-09-15, cont. 71, PR #350) — migs 001-**426**
+
+**Deploy acumulado de `v1.222.0` → `v1.226.0`**, autorizado por GO ("Deploy acumulado a PROD"). **PROD = DEV.**
+
+Orden ejecutado: **migs 420-426 aplicadas a PROD ANTES del merge**, en orden, con `apply_migration` y el contenido
+exacto de los archivos. Verificación por función: `md5(pg_get_functiondef)` idéntico DEV↔PROD en todas las tocadas
+(acentos incluidos). Paridad sin drift: `public` 231 (`d8325817…`), `storage` 40 (`fd729ff1…`), `cron` 2
+(`99253f46…`) — mismos hashes en los dos ambientes. PR app **#350** (merge `1d8e477d`) y panel `genesis360-admin`
+**#5** (merge `e647dd6`); releases `v1.222.0`-`v1.225.0` promovidos de prerelease a release, `v1.226.0` **Latest**.
+EF `admin-api` → **v12**, `billing-manual-avisar-pago` → **v2** (después de la 426), `marketplace-webhook` → **v20**
+(con `verify_jwt: true`, tras el gotcha del CLI — ver [[wiki/development/deploy]]), `ai-assistant` → **v11**.
+
+Lo que llega a PROD: **reintegro al anular en USD/vuelto neto** (REGLA #0), **motivos de caja solo ingresos** (mig
+420), **avisos de CC/OC vencidas al dueño** (mig 421 — nunca le habían llegado a nadie), **precio de venta
+programado completo** (migs 422-424: fecha/hora de vigencia + etiqueta anticipada del repositor + aviso si ML/TN no
+toma el precio), **la respuesta de soporte le llega al cliente** (mig 425) y **Ayuda: "Reportar un problema" + Mis
+consultas** (mig 426).
+
+Pre-chequeo: Kalken (primer cliente real) no estaba usando la app al momento del deploy. Detalle completo: `log.md`
+(2026-09-15, tipo `deploy`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71). ✅ **Las decisiones de GO
+para `v1.227.0`** (cerrar la escritura de `integration_job_queue`, avisar al cliente cuando se registra su pago
+manual, Ayuda Fase 2) quedaron construidas el mismo día — ver `## 🟡 v1.227.0` arriba.
 
 ## 🚀 v1.221.0 — EN PROD (2026-09-14) — migs 001-**419**
 

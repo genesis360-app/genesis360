@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-08-27
+updated: 2026-09-15
 ---
 
 # Edge Functions (30 funciones Deno)
@@ -36,6 +36,10 @@ bash scripts/auditar-edge-functions.sh emitir-factura tn-webhook
 - 🛑 Al redesplegar, **respetar `verify_jwt`**: los webhooks (`tn-webhook`, `meli-webhook`,
   `wa-webhook`, `modo-*`, `mp-webhook`, `mp-ipn`) van con `--no-verify-jwt`. Verificar con un GET
   sin `Authorization`: el gateway responde `UNAUTHORIZED_NO_AUTH_HEADER` solo donde está activo.
+- 🐛 **Gotcha nuevo (2026-09-15):** el deploy por CLI **conserva** el `verify_jwt` que la función ya tenía — no lo
+  fuerza al que dice el flag/código nuevo. Pasó con `marketplace-webhook`: quedó en `false` pese a que el código
+  nuevo exige un usuario autenticado. Se corrige con un `PATCH` a la Management API (`verify_jwt: true`), no con la
+  CLI. Ver [[wiki/development/deploy]].
 - Drift de solo comentarios no justifica redesplegar una función de cobros.
 
 🗑️ **Funciones que existían solo en PROD** — GO: *"si no se usan para nada y no se van a usar,
@@ -49,9 +53,18 @@ eliminalas"* (2026-09-14). Revisadas una por una (código, workflows, cron, trig
 | `process-aging` | 🗑️ borrada | el wiki ya la daba por eliminada en v1.54.0 (código muerto: ConfigPage llama la RPC directo), pero seguía desplegada |
 | `birthday-notifications` | ✅ se queda | la llama un cron diario de GitHub Actions (corrió el mismo día) |
 | `data-api`, `marketplace-api` | ✅ se quedan | Configuración muestra sus endpoints a los usuarios |
-| `marketplace-webhook` | 🔌 apagada (2026-09-14) | nadie la llamaba; ahora exige usuario autenticado del mismo negocio. Código nuevo en el repo, **redesplegar en PROD con `verify_jwt: true`** en el próximo deploy. Ver [[wiki/features/marketplace]] |
+| `marketplace-webhook` | 🔌 apagada (2026-09-14), ✅ redesplegada a PROD el 2026-09-15 (v20) | nadie la llamaba; ahora exige usuario autenticado del mismo negocio. `verify_jwt: true` en PROD (requirió un `PATCH` de la Management API — el deploy por CLI lo había conservado en `false`). Sigue sin existir en DEV, a propósito. Ver [[wiki/features/marketplace]] |
 
 Antes de borrar se bajó el código de cada una a `D:/Dev/genesis360-backups/edge-functions-eliminadas-2026-09-14/`.
+
+🟨 **Pendiente menor (auditoría previa al deploy del 2026-09-15):** además de las 4 redesplegadas
+(`admin-api`, `billing-manual-avisar-pago`, `marketplace-webhook`, `ai-assistant`), quedan diferencias
+**solo de comentarios/formato** (sin cambio de código real, verificado bajando el código de cada una) en
+`mp-verificar-suscripcion` (PROD 8 líneas, DEV 4), `mp-ipn` (2/2), `marketplace-api` (PROD 21 líneas, DEV no
+desplegada), `birthday-notifications` (PROD 4 líneas, DEV no desplegada) y 2 líneas en
+`billing-manual-pagar`/`billing-manual-sweep`/`cancel-suscripcion` (del lado de DEV), `mp-addon-batch`,
+`tn-stock-worker`, `wa-briefing-sweep`. Redeploy cosmético cuando se toquen (no urgente). `wa-embedded-signup-exchange`
+sigue solo en DEV, a la espera de la App Review de Meta.
 
 ---
 
@@ -74,7 +87,7 @@ Antes de borrar se bajó el código de cada una a `D:/Dev/genesis360-backups/edg
 | `meli-search-items` | Busca productos en Mercado Libre |
 | `tn-oauth-callback` | Callback OAuth para conectar cuenta Tienda Nube |
 | `tn-webhook` | Procesa webhooks de Tienda Nube (stock sync) |
-| `marketplace-webhook` | Webhook de stock del marketplace interno — 🔌 apagado (2026-09-14), solo acepta usuarios autenticados |
+| `marketplace-webhook` | Webhook de stock del marketplace interno — 🔌 apagado (2026-09-14), solo acepta usuarios autenticados, ✅ EN PROD desde el 2026-09-15 (`verify_jwt: true`) |
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
 | `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |

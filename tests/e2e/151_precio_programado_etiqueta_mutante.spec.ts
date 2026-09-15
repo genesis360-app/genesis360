@@ -10,12 +10,11 @@
  *     se va. Mutación: sin la 423 la tarea no queda ligada al programado y Alertas no la muestra.
  * C · C3: el POS avisa al cajero cuando la etiqueta de un producto del carrito muestra otro precio.
  *     Mutación: sin el cambio de VentasPage el carrito no dice nada.
- * D · D2: un `sync_precio` de ML/TN que queda "failed" avisa al dueño; un `sync_stock` no.
- *     Mutación: sin la 424 no hay aviso.
+ * (D · D2, el aviso de la 424, salió de acá con la mig 427: la cola de ML/TN ya no se escribe desde la app. Se verifica
+ *  por SQL — UAT 60.8 — y el cierre de la cola, en el e2e 153.)
  *
  * Corre con el DUEÑO (chromium) contra DEV, Almacén Jorgito, Sucursal Norte (tiene góndolas de exhibición).
- * Productos NUEVOS por test y sin vínculo con ML/TN: ningún precio sale a un canal real. Los jobs del test D se
- * crean en "processing" (los workers solo toman "pending") con un ítem inventado.
+ * Productos NUEVOS por test y sin vínculo con ML/TN: ningún precio sale a un canal real.
  */
 import { test, expect, Page, APIRequestContext } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
@@ -301,58 +300,7 @@ test.describe('Precio programado — la etiqueta de la góndola y el aviso de ML
     await cancelarTarea(request, headers, t!.id)
   })
 
-  test('D · si Mercado Libre no toma el precio nuevo se avisa al dueño (y un sync de stock no)', async ({ page, request }) => {
-    test.setTimeout(90000)
-    await goto(page, '/dashboard')
-    await waitForApp(page)
-    const token = await tokenDesdeBrowser(page)
-    const headers = restHeaders(token)
-    const userId = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub as string
-    const tid = await tenantId(request, headers)
-
-    const prodRes = await request.get(`${SUPABASE_URL}/rest/v1/productos?select=id,nombre&limit=1`, { headers })
-    const [prod] = (await prodRes.json()) as Array<{ id: string; nombre: string }>
-    expect(prod, '[151D] el negocio de prueba no tiene productos').toBeTruthy()
-
-    const crearJobFallido = async (tipo: 'sync_precio' | 'sync_stock'): Promise<string> => {
-      const alta = await request.post(`${SUPABASE_URL}/rest/v1/integration_job_queue`, {
-        headers,
-        data: {
-          tenant_id: tid, integracion: 'MercadoLibre', tipo, status: 'processing',
-          payload: { producto_id: prod.id, meli_item_id: 'MLA-E2E-151-INEXISTENTE' },
-        },
-      })
-      expect(alta.ok(), `[151D] no se pudo crear el job ${tipo}: ${await alta.text()}`).toBe(true)
-      const [job] = (await alta.json()) as Array<{ id: string }>
-      const falla = await request.patch(`${SUPABASE_URL}/rest/v1/integration_job_queue?id=eq.${job.id}`, {
-        headers, data: { status: 'failed', retries: 5, error_last: 'E2E 151: la API no respondió' },
-      })
-      expect(falla.ok(), `[151D] no se pudo marcar el job como fallido: ${await falla.text()}`).toBe(true)
-      return job.id
-    }
-    const avisosDe = async (jobId: string) => {
-      const res = await request.get(
-        `${SUPABASE_URL}/rest/v1/notificaciones?user_id=eq.${userId}&metadata->>ultimo_job_id=eq.${jobId}` +
-          '&select=id,titulo,mensaje,tipo,action_url',
-        { headers },
-      )
-      expect(res.ok(), `[151D] no se pudieron leer las notificaciones: ${await res.text()}`).toBe(true)
-      return (await res.json()) as Array<{ id: string; titulo: string; mensaje: string; tipo: string; action_url: string }>
-    }
-
-    const jobStock = await crearJobFallido('sync_stock')
-    const jobPrecio = await crearJobFallido('sync_precio')
-
-    const avisoPrecio = await avisosDe(jobPrecio)
-    expect(avisoPrecio, '[151D] un precio que no se pudo publicar tenía que avisarle al dueño').toHaveLength(1)
-    expect(avisoPrecio[0].titulo).toMatch(/No se pudo actualizar un precio en Mercado Libre/)
-    expect(avisoPrecio[0].tipo).toBe('danger')
-    expect(avisoPrecio[0].action_url).toBe('/configuracion?tab=conectividad')
-    expect(await avisosDe(jobStock), '[151D] un sync de stock fallido no es un aviso de precio').toHaveLength(0)
-
-    // Limpieza. Ojo: el aviso también les llega a los otros DUEÑO/SUPER_USUARIO del negocio y la RLS no deja borrar
-    // los suyos desde acá (queda uno por corrida, con `ultimo_error` = "E2E 151: …").
-    await request.delete(`${SUPABASE_URL}/rest/v1/notificaciones?id=eq.${avisoPrecio[0].id}`, { headers })
-    await request.delete(`${SUPABASE_URL}/rest/v1/integration_job_queue?id=in.(${jobStock},${jobPrecio})`, { headers })
-  })
+  // D (aviso de la mig 424 cuando ML/TN no toma un precio) creaba y marcaba jobs por REST con la sesión del DUEÑO. Desde
+  // la mig 427 la cola ya no se escribe desde la app (a propósito): el aviso se verifica por SQL con los triggers reales
+  // (UAT 60.8) y el cierre de la cola lo cubre el e2e 153.
 })

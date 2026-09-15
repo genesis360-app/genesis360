@@ -3,7 +3,7 @@ title: Integración MercadoLibre (MELI)
 category: integrations
 tags: [mercadolibre, meli, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-08
+updated: 2026-09-15
 ---
 
 # Integración MercadoLibre (MELI)
@@ -55,6 +55,39 @@ CAJERO podía **desconectar la integración del comercio** con un PATCH directo.
 
 ⚠ Toda consulta nueva a `meli_credentials` debe usar **lista explícita de columnas**: con
 `select('*')` PostgREST expande a todas y devuelve 403. Ver [[wiki/architecture/guards-server-side]].
+
+## 🔒 La cola y los vínculos, solo desde el servidor (mig 427, 2026-09-15, **DEV**, sin PROD)
+
+`meli_credentials`/`tiendanube_credentials` ya estaban protegidas (mig 403/400), pero `integration_job_queue`,
+`inventario_meli_map` e `inventario_tn_map` seguían con policy `FOR ALL` por negocio (sin filtrar por rol) y
+todos los privilegios de tabla para `anon`/`authenticated`. Un CAJERO por REST podía encolar un job con
+cualquier `meli_item_id`/`tn_product_id` o reescribir un vínculo, y `meli-stock-worker`/`tn-stock-worker`
+publicaban el stock o el precio de un producto en **otra publicación de la misma cuenta**.
+
+**Ahora:**
+- `integration_job_queue`: solo lectura para la app (`job_queue_select`). Nadie del tenant inserta jobs
+  directo — los crea el servidor.
+- `inventario_meli_map` / `inventario_tn_map`: lectura de todo el negocio (`*_map_select`); escritura solo
+  quien puede editar Configuración (`*_map_write_configuracion`, `auth_puede_editar_modulo('configuracion')`).
+- `anon` sin privilegios en ninguna de las 3.
+- **"Forzar sync de stock"** (Config → Conectividad, tabs ML y TN) llama a la RPC nueva
+  `fn_forzar_sync_stock(p_integracion)` (SECURITY DEFINER): arma los jobs desde los vínculos del negocio en el
+  servidor, sin duplicar uno `pendiente`/`en_curso` de la misma publicación, tope **500 jobs por llamada**
+  (sugerencia del `migration-reviewer`).
+
+> [!BUG] **Gotcha evitado en la misma migración**: `fn_enqueue_sync_precio` (el trigger `trg_enqueue_sync_precio`
+> de `productos`) **no era `SECURITY DEFINER`** — corría con los permisos de quien guardaba el producto. Con el
+> REVOKE de INSERT directo sobre `integration_job_queue`, cambiar el precio de un producto vinculado habría
+> fallado para cualquiera que no fuera `service_role`. Se pasó a `SECURITY DEFINER` en la misma mig 427.
+> Verificado por SQL impersonando a un SUPERVISOR: 2 jobs `sync_precio` encolados correctamente (revertido).
+
+Verificación: e2e **153** (3 casos, mutante). El aviso de la mig 424 (dueño avisado si ML/TN no toma el
+precio) se sigue verificando por SQL, no por REST (UAT 60.8, actualizado — el e2e 151 D que creaba jobs por
+REST quedó sin sentido y salió). Datos: en DEV Jorgito tiene ML/TN conectados y el cron `meli-stock-sync`
+está inactivo; en PROD la cola tuvo **0 jobs en los últimos 30 días** (riesgo bajo para el deploy).
+
+⚠️ **Deploy a PROD**: aplicar la mig 427 **junto con el merge del frontend** — el botón viejo de `ConfigPage`
+insertaba directo en `integration_job_queue`; entre la migración y el deploy de Vercel ese botón fallaría.
 
 ## OAuth flow
 

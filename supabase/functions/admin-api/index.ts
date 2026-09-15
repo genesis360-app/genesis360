@@ -579,12 +579,52 @@ Deno.serve(async (req) => {
         if (!t) return json({ error: 'Tenant no encontrado' }, 404)
         if (t.billing_mode !== 'manual') return json({ error: 'Ese tenant no está en modo de pago manual.' }, 400)
 
+        // Mig 428: quién avisó "Ya transferí" (la función resuelve esas consultas al registrar el pago).
+        const { data: avisaron } = await svc.from('support_tickets').select('usuario_id')
+          .eq('tenant_id', tenantId).eq('tipo', 'pago').not('estado', 'in', '(resuelto,cerrado)')
+
         const { data: hasta, error: rpcErr } = await svc.rpc('fn_registrar_pago_manual', {
           p_tenant_id: tenantId, p_monto: monto, p_medio: medio,
           p_referencia: p.referencia ?? null, p_registrado_por: uid,
           p_mp_payment_id: null, p_notas: p.notas ?? null,
         })
         if (rpcErr) return json({ error: `No se pudo registrar el pago: ${rpcErr.message}` }, 500)
+
+        // Mig 428 (decisión de GO): mail al dueño, al super usuario y a quien avisó. La campanita la da la base.
+        // Fail-open: el pago ya quedó registrado.
+        try {
+          const { data: gestion } = await svc.from('users').select('id, activo')
+            .eq('tenant_id', tenantId).in('rol', ['DUEÑO', 'SUPER_USUARIO'])
+          const ids = new Set<string>([
+            ...(gestion ?? []).filter((u: any) => u.activo !== false).map((u: any) => u.id),
+            ...(avisaron ?? []).map((t: any) => t.usuario_id).filter(Boolean),
+          ])
+          const mails: string[] = []
+          for (const id of ids) {
+            const { data: au } = await svc.auth.admin.getUserById(id).catch(() => ({ data: null }))
+            const mail = au?.user?.email ? String(au.user.email).toLowerCase().trim() : null
+            if (mail && !mails.includes(mail)) mails.push(mail)
+          }
+          if (mails.length > 0 && hasta) {
+            const fecha = new Date(hasta as string).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })
+            const mailRes = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'notificacion',
+                to: mails,
+                data: {
+                  titulo: 'Recibimos tu pago',
+                  mensaje: `Registramos tu pago de ${t.nombre ?? 'tu negocio'}. Tu acceso quedó activo hasta el ${fecha}.`,
+                  action_url: '/mi-cuenta',
+                },
+              }),
+            })
+            if (!mailRes.ok) console.error('billing.manual_record_payment: send-email', mailRes.status, await mailRes.text())
+          }
+        } catch (e) {
+          console.error('billing.manual_record_payment: no se pudo mandar el mail del pago', e)
+        }
 
         // Facturación automática de plataforma (fail-open: no bloquea el registro del pago).
         try {

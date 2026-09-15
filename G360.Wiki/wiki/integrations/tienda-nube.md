@@ -3,7 +3,7 @@ title: Integración TiendaNube
 category: integrations
 tags: [tiendanube, tn, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-13
+updated: 2026-09-15
 ---
 
 # Integración TiendaNube
@@ -85,6 +85,13 @@ Token **permanente** — TiendaNube no expira access tokens.
 - Mapeo producto Genesis360 ↔ variante TN (tn_product_id + tn_variant_id)
 - Flags: `sync_stock`, `sync_precio`, `ultimo_sync_at`
 - Auto-complete por SKU con **EF `tn-search-products`**: busca productos en TN API
+
+> [!NOTE] **🔒 mig 427 (2026-09-15, DEV, sin PROD)**: `inventario_tn_map` e `integration_job_queue` pasan a
+> lectura de todo el negocio + escritura solo quien puede editar Configuración (antes cualquier
+> `anon`/`authenticated` podía reescribir el vínculo o encolar un job con cualquier `tn_product_id`). "Forzar
+> sync de stock" pasa a la RPC server-side `fn_forzar_sync_stock('tn')`. Detalle completo, gotcha del trigger
+> de precio y verificación en [[wiki/integrations/mercado-libre]] → "La cola y los vínculos, solo desde el
+> servidor".
 
 ---
 

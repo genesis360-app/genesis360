@@ -2,7 +2,7 @@
 title: Plataforma de Soporte (admin.genesis360.pro)
 category: support
 tags: [soporte, admin, panel, genesis360-admin, baja-tenant, auditoria, 2fa, billing]
-sources: [genesis360-admin (repo aparte), supabase/functions/admin-api, migration 221, migration 410, migration 411, migration 425, migration 426]
+sources: [genesis360-admin (repo aparte), supabase/functions/admin-api, migration 221, migration 410, migration 411, migration 425, migration 426, migration 428]
 updated: 2026-09-15
 ---
 
@@ -15,14 +15,15 @@ en el del panel. La EF valida al agente (`support_agents`, staff interno — **n
 tenant), autoriza por rol (`admin` vs `support`) y **audita cada acceso** en `admin_audit_log`
 (cimientos: mig 221, ver [[wiki/database/migraciones]]).
 
-**Estado al 2026-09-15.** El panel **ya está en PROD** (`admin.genesis360.pro`) desde antes, con
-dashboard, clientes, CRM, soporte y facturación. Lo que está **solo en DEV** es todo lo que se sumó
-desde el 2026-09-12: la baja de tenant, la búsqueda por mail, la ficha ampliada, las notas internas, la
-auditoría, la búsqueda global, Analytics, el 2FA, y —más nuevo— que la respuesta de un ticket le llegue
-al cliente (mig 425, sección 9) y que el cliente pueda seguir y responder su consulta desde la app (mig
-426, sección 10). Va junto con el resto del batch acumulado (migs 407-426 + código hasta `v1.226.0` +
-EFs `admin-api`/`billing-manual-avisar-pago` + el panel), a la espera del OK de GO — detalle del deploy
-en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+**Estado al 2026-09-15 (cont. 71, después del deploy).** ✅ **El panel está 100% EN PROD** (`admin.genesis360.pro`),
+incluido todo lo que se sumó desde el 2026-09-12: la baja de tenant, la búsqueda por mail, la ficha ampliada, las
+notas internas, la auditoría, la búsqueda global, Analytics, el 2FA, que la respuesta de un ticket le llegue al
+cliente (mig 425, sección 9) y que el cliente pueda seguir y responder su consulta desde la app (mig 426, sección
+10). Deploy acumulado a PROD el 2026-09-15 (GO: "Deploy acumulado a PROD"): migs 407-426 + código hasta `v1.226.0` +
+EFs `admin-api` (v12)/`billing-manual-avisar-pago` (v2) + panel (`genesis360-admin`, PR #5, merge `e647dd6`) —
+detalle del deploy en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71) y `log.md` (2026-09-15, `deploy`).
+🆕 **Después del deploy, mismo día**: mig 428 — el pago manual registrado resuelve la consulta y avisa (sección 11)
+— construida y verificada **solo en DEV**, `admin-api` con el mail pendiente de redeploy a PROD.
 
 Para probarlo contra DEV sin deployar: `npm run dev` en `genesis360-admin` (su `.env.local` ya
 apunta a DEV) e ingresar con un agente de rol `admin`.
@@ -137,7 +138,7 @@ vencidos. Ver [[wiki/features/pago-manual]] para el flujo completo de carga manu
 
 ---
 
-## 9. Tickets: la respuesta le llega al cliente (mig 425, 2026-09-15, EN DEV)
+## 9. Tickets: la respuesta le llega al cliente (mig 425, 2026-09-15, ✅ EN PROD desde el 2026-09-15)
 
 **Antes:** el cliente avisaba "Ya transferí" desde Mi Cuenta (`billing-manual-avisar-pago` crea un ticket `in_app` con
 un mensaje `cliente`), el equipo respondía desde el panel y **la respuesta no le llegaba a nadie**:
@@ -160,7 +161,7 @@ RLS sin policies). Verificación: UAT §61.
 
 ---
 
-## 10. El cliente responde desde la app: Ayuda → Mis consultas (mig 426, 2026-09-15, EN DEV)
+## 10. El cliente responde desde la app: Ayuda → Mis consultas (mig 426, 2026-09-15, ✅ EN PROD desde el 2026-09-15)
 
 Pedido de GO, evaluado y cerrado en la misma sesión que la 425 (ver "Pendiente" de esa sección, ahora resuelto). El
 "Reportar un problema" de Ayuda **ya no es un mail suelto**: crea un ticket real que el cliente puede seguir y
@@ -197,9 +198,9 @@ los leen directo por policy de storage.
 mensajes por hora, contados de a un pedido por usuario (`pg_advisory_xact_lock`, para que una ráfaga concurrente no
 se cuele antes del `COUNT`).
 
-**Panel (`genesis360-admin`, rama `dev`, sin commitear todavía)**: filtro "Solo los que esperan respuesta del
-equipo", marca "● Respuesta del cliente", quién abrió cada consulta, notas internas resaltadas en ámbar, adjuntos
-con link, casilla "Nota interna" junto al botón de responder.
+**Panel (`genesis360-admin`, commit `a9db285` en `dev`, ✅ EN PROD desde el 2026-09-15 — PR #5, merge `e647dd6`)**:
+filtro "Solo los que esperan respuesta del equipo", marca "● Respuesta del cliente", quién abrió cada consulta,
+notas internas resaltadas en ámbar, adjuntos con link, casilla "Nota interna" junto al botón de responder.
 
 **EFs**: `admin-api` (`support.tickets.list` con `pendiente_equipo`/`usuario_id`/orden pendientes primero,
 `support.tickets.detail` con `interno`/adjuntos firmados/`reportante`, `support.tickets.reply` acepta `interno` y lo
@@ -210,6 +211,22 @@ Verificación: **e2e 152** (3/3, mutante) contra DEV — pantalla (crear con cap
 interceptados) y servidor (cajero/supervisor solo lo suyo, DUEÑO todo el negocio, adjuntos solo propios, tablas no
 legibles directo, anon 401). SQL en DEV con los triggers reales, impersonando al cajero, cubre nota interna/reabrir/
 cerrada. UAT §62.
+
+---
+
+## 11. El pago manual registrado resuelve la consulta y avisa (mig 428, 2026-09-15, DEV, sin PROD)
+
+Cierra el pendiente que había quedado abierto en la sección 8/10: hasta ahora `fn_registrar_pago_manual` (la única
+puerta del pago manual, mig 262) extendía el acceso pero **no avisaba a nadie** — ni tocaba el ticket "Ya transferí"
+que había creado `billing-manual-avisar-pago`.
+
+**Ahora**, la misma función, en una subtransacción (un aviso que falla no revierte el pago): (1) resuelve cada
+consulta tipo `pago` abierta con un mensaje del equipo (*"Registramos tu pago. Tu acceso quedó activo hasta el
+DD/MM/AAAA. ¡Gracias!"*) — a quien avisó le llega por el mismo trigger de las secciones 9/10, con link a la consulta;
+(2) campanita **"Recibimos tu pago"** a DUEÑO y SUPER_USUARIO activos que no se enteraron por la consulta. `admin-api`
+(`billing.manual_record_payment`) manda además el mail correspondiente — deployada en DEV, **redeploy a PROD
+pendiente**; el mail no se probó de punta a punta (requiere un agente real operando el panel). Detalle completo,
+verificación por SQL y veredicto del `migration-reviewer` en [[wiki/features/pago-manual]].
 
 ---
 
@@ -225,12 +242,11 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 
 - **Login-as read-only** — sigue **501 (Not Implemented)**. Requiere un modo read-only real +
   token efímero en la app principal; queda fuera de esta tanda, merece su propio diseño.
-- ✅ **Responder desde la app ("Mis consultas")** — CERRADO 2026-09-15 (mig 426, ver sección 10 arriba).
-- **Avisar al cliente cuando se registra su pago manual** — `fn_registrar_pago_manual` no notifica: el cliente que
-  avisó "Ya transferí" no se entera de que se le extendió el acceso salvo que el agente responda el ticket. Sigue
-  pendiente de decisión de GO.
-- **Ayuda, Fase 2** ("Cursos y recursos") — videos servidos desde un bucket público de Storage que GO sube a mano;
-  no toca este panel, ver [[wiki/overview/app-reference]] → "Ayuda" y `sources/raw/project_pendientes.md`.
+- ✅ **Responder desde la app ("Mis consultas")** — CERRADO 2026-09-15 (mig 426, ver sección 10 arriba), ✅ EN PROD.
+- ✅ **Avisar al cliente cuando se registra su pago manual** — CERRADO en DEV 2026-09-15 (mig 428, ver sección 11
+  arriba). **Redeploy a PROD pendiente** (junto con `admin-api`, que manda el mail).
+- ✅ **Ayuda, Fase 2** ("Cursos y recursos") — CERRADO en DEV 2026-09-15 (mig 429). No toca este panel — ver
+  [[wiki/overview/app-reference]] → "Ayuda" y `sources/raw/project_pendientes.md`.
 
 ---
 
@@ -244,6 +260,7 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 | 412 | `tenants.telefono` |
 | 425 | Trigger `trg_notificar_respuesta_soporte` — avisa a la campanita del cliente cuando responde un agente; `REVOKE` de `anon`/`authenticated` en `support_tickets`/`support_messages` |
 | 426 | Consultas de soporte desde la app: `usuario_id`/`tipo`/`modulo`/`pendiente_equipo` en `support_tickets`, `interno`/`adjuntos` en `support_messages`, 4 RPC con guard, bucket `soporte-adjuntos` — ver sección 10 arriba |
+| 428 | `fn_registrar_pago_manual` resuelve la consulta "Ya transferí" y avisa por campanita a DUEÑO/SUPER_USUARIO — ver sección 11 arriba (🟡 solo DEV) |
 
 Detalle completo de cada una en [[wiki/database/migraciones]].
 

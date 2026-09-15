@@ -2154,7 +2154,7 @@ Modo avanzado (las tareas del repositor existen solo para productos con góndola
 | 60.5 | Reemplazar el programado (A2) desarma la etiqueta del anterior con la misma regla | revisión de `fn_programar_precio` (llama a la misma función que cancelar) | ✅ código |
 | 60.6 | Pasada la hora, la etiqueta sin hacer aparece en Alertas → "Etiquetas vencidas en góndola" (con "Ver tarea"); recién ahí se completa y la alerta se va | e2e 151 B (esperó al cron real de DEV) | ✅ |
 | 60.7 | POS: al agregar un producto cuya etiqueta muestra otro precio, el carrito avisa "Etiqueta de góndola sin actualizar: puede decir $X" | e2e 151 C (mutante: sin el cambio de `VentasPage` no avisa) | ✅ |
-| 60.8 | Un `sync_precio` de ML/TN que queda `failed` avisa al DUEÑO y al SUPER_USUARIO; un `sync_stock` fallido no | e2e 151 D (mutante: sin la 424 no hay aviso) | ✅ |
+| 60.8 | Un `sync_precio` de ML/TN que queda `failed` avisa al DUEÑO y al SUPER_USUARIO; un `sync_stock` fallido no | e2e 151 D (mutante: sin la 424 no hay aviso) hasta la mig 427; desde ahí la cola no se escribe desde la app y se verifica por SQL en DEV con el trigger real, revertido (2026-09-15) | ✅ DEV |
 | 60.9 | Varios precios que fallan en el mismo canal se juntan en un solo aviso sin leer ("N productos…") | revisión de `fn_notificar_sync_precio_fallido` | ✅ código — sin e2e |
 | 60.10 | Si aplicar un programado falla, su etiqueta anticipada se desarma, y un error al avisar no revierte los otros precios aplicados en ese minuto | revisión + `migration-reviewer` | ✅ código — sin e2e |
 | 60.11 | Config → Inventario → "Repositores — Etiquetas de precio": se elige la anticipación (a la hora, 15/30 min, 1/2/4/8 h, un día) | revisión | ✅ código |
@@ -2191,4 +2191,39 @@ Ambos modos. Pedido de GO: terminar "Reportar un problema" (antes solo mandaba u
 | 62.10 | Mis consultas funciona con la suscripción vencida (está fuera del SubscriptionGuard, como Mi Cuenta) | revisión de `App.tsx` | ✅ código |
 | 62.11 | Topes anti-spam: 10 consultas por usuario cada 24 h y 30 mensajes por hora, contados de a un pedido por usuario (lock) | revisión + `migration-reviewer` | ✅ código — sin e2e |
 | 62.12 | Panel: filtro "Solo los que esperan respuesta del equipo", marca "● Respuesta del cliente", quién la abrió, capturas con link y casilla "Nota interna" | build del panel + revisión | ✅ código |
+
+## 🔒 §63 — Mercado Libre / Tienda Nube: la cola de sincronización y los vínculos solo desde el servidor (mig 427) — 2026-09-15
+
+Modo avanzado con ML/TN conectados. Decisión de GO: cerrar la escritura de la cola desde la app. Antes cualquier usuario del negocio (un CAJERO, por REST) podía encolar un job con cualquier publicación o reescribir un vínculo producto ↔ publicación, y el worker mandaba el stock o el precio a otra publicación de la misma cuenta.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 63.1 | Ni el DUEÑO ni el CAJERO insertan, modifican ni borran jobs de la cola por REST; el DUEÑO la lee | e2e 153 A (mutante: antes de la 427 el DUEÑO encolaba, 201) | ✅ |
+| 63.2 | El DUEÑO crea y borra un vínculo; el CAJERO no crea (ML ni TN) ni reescribe uno existente, y sí lo lee | e2e 153 B (mutante: antes el CAJERO creaba, 201) | ✅ |
+| 63.3 | Config → Conectividad → "Forzar sync de stock" (ML y TN): el servidor arma los jobs desde los vínculos, sin duplicar uno en curso, hasta 500 por vez; el CAJERO recibe "No autorizado" | e2e 153 C (mutante: la función no existía) | ✅ |
+| 63.4 | Cambiar el precio de un producto vinculado (como SUPERVISOR) sigue encolando el `sync_precio`, aunque la cola ya no acepte escrituras de usuarios | SQL en DEV impersonando al SUPERVISOR, revertido (2 jobs) | ✅ DEV |
+| 63.5 | Sin sesión: la tabla, los vínculos y la función de forzar sync responden 401 | PostgREST con la anon key | ✅ DEV |
+
+## 🎓 §64 — Ayuda: "Cursos y recursos" (mig 429) — 2026-09-15
+
+Ambos modos. Decisión de GO: construirla ya, vacía; muestra solo los videos que el equipo publique (los de onboarding siguen en pausa). Se publica desde el dashboard: archivo en el bucket público `ayuda-recursos` + fila en `ayuda_recursos` con `publicado = true`.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 64.1 | Centro de Soporte → "Cursos y recursos" lleva a `/ayuda/recursos`; sin videos publicados dice "Próximamente" | e2e 154 A | ✅ |
+| 64.2 | Con videos publicados: una tarjeta por video (miniatura, duración) y al elegir uno se abre el reproductor | e2e 154 A (rama con datos) + revisión | ✅ código — sin videos publicados todavía |
+| 64.3 | Panel lateral de Ayuda: hasta 3 videos, primero los del módulo donde está el usuario, y "Ver todos" | unit `ayudaRecursos.test.ts` (orden por módulo) + revisión | ✅ código |
+| 64.4 | Un borrador (`publicado = false`) no lo ve ningún usuario de la app, y nadie publica desde la app | SQL en DEV impersonando al CAJERO, revertido + e2e 154 B + PostgREST (DUEÑO insert 403, anon 401) | ✅ DEV |
+
+## 💳 §65 — Pago manual registrado: el cliente se entera (mig 428) — 2026-09-15
+
+Negocios en modo de pago manual. Decisión de GO: campanita + mail al dueño y a quien avisó "Ya transferí".
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 65.1 | El equipo registra el pago → la consulta "Ya transferí" abierta recibe "Registramos tu pago. Tu acceso quedó activo hasta el DD/MM/AAAA" y queda resuelta; a quien avisó le llega a la campanita con link a la consulta | SQL en DEV con la función y los triggers reales, revertido | ✅ DEV |
+| 65.2 | DUEÑO y SUPER_USUARIO reciben "Recibimos tu pago" con link a Mi Cuenta; quien ya se enteró por la consulta no recibe un segundo aviso | ídem | ✅ DEV |
+| 65.3 | El pago y la extensión del acceso no cambian: un mes desde el mayor entre hoy y el vencimiento actual; un reintento del mismo pago de Mercado Pago sigue fallando por duplicado (idempotencia de `mp-webhook`) | ídem | ✅ DEV |
+| 65.4 | Si el aviso falla, el pago se registra igual | revisión + `migration-reviewer` (subtransacción) | ✅ código |
+| 65.5 | Mail "Recibimos tu pago" al dueño, al super usuario y a quien avisó, al registrar desde el panel | revisión de `admin-api` (sin prueba real: requiere un agente del panel) | ✅ código — sin prueba real |
 

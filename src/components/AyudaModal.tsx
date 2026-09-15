@@ -1,10 +1,13 @@
 import {
-  X, Search, Bug, MessageCircle, Youtube,
+  X, Search, Bug, MessageCircle, GraduationCap, PlayCircle,
   ChevronDown, ChevronUp, MessageSquare,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { NuevaConsultaForm } from '@/components/soporte/NuevaConsultaForm'
+import { listarRecursos } from '@/lib/ayudaRecursosApi'
+import { formatearDuracion, ordenarParaModulo } from '@/lib/ayudaRecursos'
 
 interface AyudaModalProps {
   isOpen: boolean
@@ -48,6 +51,14 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  // Mig 429: solo vuelven los recursos publicados. Se pide al abrir el panel, no en cada pantalla.
+  const { data: recursos = [], isLoading: cargandoRecursos } = useQuery({
+    queryKey: ['ayuda-recursos'],
+    queryFn: listarRecursos,
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+  })
+  const recursosSugeridos = ordenarParaModulo(recursos, currentModule).slice(0, 3)
 
   // FAQs del módulo actual o las default
   const moduleFaqs = FAQS[currentModule ?? ''] ?? FAQS.default
@@ -58,9 +69,9 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
       )
     : moduleFaqs
 
-  const irAConsultas = (ticketId?: string) => {
+  const ir = (ruta: string) => {
     onClose()
-    navigate(ticketId ? `/ayuda/consultas?ticket=${ticketId}` : '/ayuda/consultas')
+    navigate(ruta)
   }
 
   if (!isOpen) return null
@@ -140,14 +151,46 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
             )}
           </div>
 
-          {/* Cursos — placeholder (fase 2 de Ayuda) */}
+          {/* Cursos y recursos — videos publicados por el equipo (mig 429) */}
           <div className="px-4 py-3 border-t border-border-ds">
-            <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Youtube size={12} /> Cursos y recursos
-            </h3>
-            <div className="bg-page rounded-xl p-4 text-center border border-border-ds">
-              <p className="text-sm text-muted">Próximamente</p>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                <GraduationCap size={12} /> Cursos y recursos
+              </h3>
+              {recursos.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => ir('/ayuda/recursos')}
+                  className="text-xs font-medium text-accent-text hover:underline"
+                >
+                  Ver todos
+                </button>
+              )}
             </div>
+            {cargandoRecursos ? null : recursos.length === 0 ? (
+              <div className="bg-page rounded-xl p-4 text-center border border-border-ds">
+                <p className="text-sm text-muted">Próximamente</p>
+              </div>
+            ) : (
+              <ul className="space-y-1.5">
+                {recursosSugeridos.map((r) => {
+                  const duracion = formatearDuracion(r.duracion_seg)
+                  return (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        onClick={() => ir(`/ayuda/recursos?video=${r.id}`)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm border border-border-ds rounded-xl hover:border-accent-text transition-colors"
+                      >
+                        <PlayCircle size={16} className="flex-shrink-0 text-accent-text" />
+                        <span className="flex-1 truncate text-primary dark:text-white">{r.titulo}</span>
+                        {duracion && <span className="text-xs text-muted flex-shrink-0">{duracion}</span>}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
           </div>
 
           {/* Reportar un problema — crea una consulta que queda en Mis consultas (mig 426) */}
@@ -158,13 +201,13 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
               </h3>
               <button
                 type="button"
-                onClick={() => irAConsultas()}
+                onClick={() => ir('/ayuda/consultas')}
                 className="inline-flex items-center gap-1 text-xs font-medium text-accent-text hover:underline"
               >
                 <MessageSquare size={12} /> Ver mis consultas
               </button>
             </div>
-            <NuevaConsultaForm compacto modulo={currentModule} onCreada={(id) => irAConsultas(id)} />
+            <NuevaConsultaForm compacto modulo={currentModule} onCreada={(id) => ir(`/ayuda/consultas?ticket=${id}`)} />
           </div>
 
           {/* Contacto */}

@@ -6,6 +6,162 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 🔒💳🎓 Cola de ML/TN solo desde el servidor, aviso de pago manual y Cursos y recursos (migs 427-429) — v1.227.0 en DEV
+
+Continuación de la misma sesión (cont. 71), después del deploy acumulado a PROD documentado en la entrada de abajo.
+GO tomó las 3 decisiones que quedaban en "QUÉ SIGUE" (ver esa entrada) y se construyeron y verificaron el mismo día
+**solo en DEV**: DEV pasa a `v1.227.0`, migs 001-429. **PROD sigue en `v1.226.0`, migs 001-426** — sin deploy.
+
+### 🔒 Mig 427 — ML/TN: cola de sincronización y vínculos solo desde el servidor
+`integration_job_queue`, `inventario_meli_map` e `inventario_tn_map` tenían policy `FOR ALL` por negocio (sin rol) +
+todos los privilegios de tabla para `anon`/`authenticated`: un CAJERO por REST podía encolar un job con cualquier
+`meli_item_id`/`tn_product_id` o reescribir un vínculo, y el worker mandaba el stock o el precio de un producto a
+otra publicación de la misma cuenta (`meli_credentials`/`tiendanube_credentials` ya estaban bien: escriben
+DUEÑO/ADMIN/SUPER_USUARIO y privilegio por columna). Ahora: cola solo lectura para la app (`job_queue_select`);
+vínculos con lectura de todo el negocio (`*_map_select`) y escritura solo quien puede editar Configuración
+(`*_map_write_configuracion`, `auth_puede_editar_modulo('configuracion')`); `anon` sin nada. "Forzar sync de stock"
+(Config → Conectividad, ML y TN) llama a la RPC nueva `fn_forzar_sync_stock(p_integracion)`: el servidor arma los
+jobs desde los vínculos, sin duplicar uno pendiente/en curso de la misma publicación, tope 500 por llamada
+(sugerencia del `migration-reviewer`).
+
+🛑 **Gotcha que evitó romper algo**: `fn_enqueue_sync_precio` (trigger de `productos`) NO era SECURITY DEFINER —
+corría con los permisos de quien guardaba el producto; con el REVOKE de INSERT, cambiar el precio de un producto
+vinculado habría fallado. Pasó a SECURITY DEFINER en la misma migración (verificado por SQL impersonando a un
+SUPERVISOR: 2 jobs `sync_precio` encolados, revertido).
+
+El e2e 151 D (creaba jobs por REST para probar el aviso de la mig 424) salió: el aviso se verifica por SQL (UAT
+60.8, actualizado: `sync_precio` fallido → aviso a los 2 DUEÑO; `sync_stock` → 0). e2e nuevo **153** (3 casos,
+mutante: corrido contra la base vieja, fallaron los 3 donde debían).
+
+Datos: en DEV Jorgito tiene ML/TN conectados; el cron `meli-stock-sync` está inactivo en DEV. En PROD la cola tuvo 0
+jobs en 30 días. ⚠️ **Orden en el deploy a PROD**: aplicar la 427 **junto con el merge del frontend** (el botón
+viejo de `ConfigPage` insertaba directo en la cola: entre la migración y el deploy de Vercel ese botón falla).
+Riesgo bajo (0 jobs en PROD en 30 días).
+
+### 💳 Mig 428 — pago manual registrado: el cliente se entera
+`fn_registrar_pago_manual` (única puerta del pago manual, mig 262; la llaman `admin-api`
+`billing.manual_record_payment` y `mp-webhook` rama `|manualpago|`): después de registrar, en una subtransacción (un
+aviso que falla no revierte el pago): (1) cada consulta tipo `pago` abierta ("Ya transferí") recibe mensaje del
+equipo "Registramos tu pago. Tu acceso quedó activo hasta el DD/MM/AAAA. ¡Gracias!" y queda `resuelto` → a quien
+avisó le llega por el trigger de las migs 425/426 con link a la consulta; (2) campanita "Recibimos tu pago" (link
+`/mi-cuenta`) a DUEÑO y SUPER_USUARIO activos que no se enteraron por la consulta.
+
+`admin-api` manda además el mail (`send-email` tipo `notificacion`) al dueño, super usuario y a quien avisó
+(deployada en DEV; **PROD pendiente**). El mail no se probó de punta a punta (requiere un agente del panel).
+
+Verificado por SQL en DEV (revertido): pago registrado y acceso extendido; reintento del mismo `mp_payment_id` sigue
+fallando por `unique_violation` (idempotencia de `mp-webhook` intacta); consulta resuelta con `pendiente_equipo`
+false; aviso al cajero con link a la consulta; 2 DUEÑO con "Recibimos tu pago"; el cajero no recibe doble aviso.
+`migration-reviewer`: APTA. Sale de "decisiones pendientes de GO" (ya decidido y construido).
+
+### 🎓 Mig 429 — Ayuda fase 2: "Cursos y recursos"
+Tabla `ayuda_recursos` (titulo, descripcion, modulo = ruta donde se sugiere primero, video_path, miniatura_path,
+duracion_seg, orden, publicado): RLS SELECT solo `publicado`, sin escritura para la app. Bucket **público**
+`ayuda-recursos` (mp4/webm/imágenes, 50 MB), sin policies (lectura por URL pública, carga desde el dashboard).
+
+**Cómo publica GO un video**: Storage → `ayuda-recursos` → subir archivo; Table Editor → `ayuda_recursos` → fila con
+`titulo`, `video_path` (ruta dentro del bucket) y `publicado = true` (opcional descripción, módulo, miniatura,
+duración, orden). Documentado en [[wiki/overview/app-reference]] → "Ayuda".
+
+App: página `/ayuda/recursos` (lista de tarjetas + reproductor `?video=<id>`; vacía dice "Próximamente"); panel
+lateral de Ayuda muestra hasta 3 (primero los del módulo actual) + "Ver todos"; tarjeta "Cursos y recursos" del
+Centro de Soporte activa. Lógica pura `src/lib/ayudaRecursos.ts` (8 unit tests), datos `src/lib/ayudaRecursosApi.ts`.
+
+Vacía a propósito: los videos de onboarding siguen EN PAUSA hasta que GO los revise con su socio.
+
+e2e **154** (2 casos); SQL impersonando al cajero: ve solo el publicado y no puede escribir (revertido); PostgREST:
+anon 401, DUEÑO 200 [], insert 403, columna inventada 400.
+
+### Verificación general
+tsc + build + eslint verdes; **1848 unit tests** (112 archivos); `schema_full.sql` regenerado (170 tablas, 239
+funciones, **234 policies**); UAT **§63** (cola/vínculos), **§64** (Cursos y recursos), **§65** (pago manual) y 60.8
+actualizado.
+
+### Policies
+DEV: `public` **234** (PROD 231: +2 por los vínculos ML/TN, +1 `ayuda_recursos`), `storage` 40, `cron` 2.
+
+### Para el próximo deploy a PROD
+Mig 427 **junto con el merge del frontend** (riesgo bajo); mig 428 + redeploy de `admin-api` en PROD (manda el mail
+del pago manual); mig 429 sin gotchas — después GO puede empezar a publicar videos. Se tocó
+`wiki/overview/app-reference.md` → correr `npm run ai:knowledge` + redeploy `ai-assistant` en DEV y PROD.
+
+### Estado final
+DEV `v1.227.0`, migs 001-429. **PROD sigue en `v1.226.0`, migs 001-426** — sin deploy esta sesión. Detalle completo
+en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71, después del deploy), `wiki/business/roadmap.md`,
+`wiki/database/migraciones.md`.
+
+---
+
+## [2026-09-15] deploy | 🚀 PROD = DEV v1.226.0 (migs 420-426) — deploy acumulado v1.222–v1.226
+
+GO autorizó: *"Deploy acumulado a PROD"*. PROD salta de `v1.221.0` (001-419) a **`v1.226.0`** (001-426): **PROD = DEV**.
+
+### Pre-chequeo
+Kalken (primer cliente real) no estaba usando la app: último login y refresh 2026-09-14 23:41 UTC, última venta
+21:03 UTC. Build de `dev` verde.
+
+### Qué se hizo, en orden
+1. **Migraciones 420-426 aplicadas en PROD antes del merge**, una por una, con `apply_migration` y el contenido
+   exacto de los archivos. Verificación de cada una: `md5(pg_get_functiondef)` idéntico DEV↔PROD en TODAS las
+   funciones tocadas (seed de tenant, avisos CC/OC, las 8 de precio programado + vista `vw_tareas_repositor`,
+   `fn_notificar_sync_precio_fallido`, las 8 de soporte) — confirma también los acentos. Permisos verificados:
+   `tareas_repositor` sin INSERT/DELETE para `authenticated` y UPDATE solo en 6 columnas; `precios_programados` sin
+   nada para `anon`; RPC de soporte solo `authenticated`; `support_tickets`/`support_messages` sin grants para
+   `anon`/`authenticated`. Mig 420: 0 motivos viejos activos, 16 nuevos (8 negocios × 2) — "Extracción / Retiro" y
+   "Gastos varios" desactivados en TODOS los negocios, Kalken incluido. Crons activos:
+   `aplicar-precios-programados` corrió 15 veces en 15 minutos sin fallos; `notif-precios-programados-manana` y
+   `notif-cc-vencidas` activos. El único ticket de PROD ("Aviso de pago manual") quedó con `usuario_id` por el
+   backfill de la 426. PROD pasó a **396 filas en `schema_migrations`**.
+2. **Paridad de policies por schema, DEV = PROD**: `public` 231 (`d8325817…`), `storage` 40 (`fd729ff1…`), `cron` 2
+   (`99253f46…`).
+3. **Smoke de PostgREST en PROD** (anon key): `tenants?select=repositor_anticipacion_min` 200, columna inventada
+   400, `precios_programados`/`tareas_repositor`/`support_tickets` 401 (conocidas), RPC `fn_soporte_mis_consultas`
+   401, RPC inventada 404.
+4. **PRs mergeados con merge commit**: app **#350** (merge `1d8e477d` en `main`) y panel `genesis360-admin` **#5**
+   (merge `e647dd6`). CI unit tests verde, Vercel verde. Verificado con curl al bundle real: `app.genesis360.pro` y
+   `www.genesis360.pro` sirven `v1.226.0`; `admin.genesis360.pro` 200.
+5. **Releases**: `v1.222.0`-`v1.225.0` promovidos de prerelease a release; `v1.226.0` release **Latest**.
+6. **Edge Functions en PROD** (CLI `--use-api`): `admin-api` (v12), `billing-manual-avisar-pago` (v2, después de
+   aplicar la 426), `marketplace-webhook` (v20) y `ai-assistant` (v11, con `npm run ai:knowledge` regenerado desde
+   el wiki; también redeployada en DEV). 🐛 **Gotcha nuevo: el deploy por CLI conserva el `verify_jwt` que ya tenía
+   la función** — `marketplace-webhook` quedó en `false`; corregido con la Management API
+   (`PATCH /v1/projects/{ref}/functions/marketplace-webhook {"verify_jwt": true}`) → sin auth, 401. Las 4 rechazan
+   llamadas sin sesión (401). `bash scripts/auditar-edge-functions.sh` sobre las 4: diff 0 en PROD y DEV
+   (`marketplace-webhook` sigue sin existir en DEV, a propósito). Ver [[wiki/development/deploy]].
+7. **Auditoría completa de EFs** (previa al deploy): además de las 3 redesplegadas junto con `admin-api`, quedan
+   diferencias SOLO de comentarios/formato (sin cambio de código, verificado bajando el código de cada una) en
+   `mp-verificar-suscripcion` (PROD 8 líneas, DEV 4), `mp-ipn` (2/2), `marketplace-api` (PROD 21, DEV no
+   desplegada), `birthday-notifications` (PROD 4, DEV no desplegada) y 2 líneas en
+   `billing-manual-pagar`/`billing-manual-sweep`/`cancel-suscripcion` (del lado de DEV), `mp-addon-batch`,
+   `tn-stock-worker`, `wa-briefing-sweep`. `wa-embedded-signup-exchange` sigue solo en DEV (espera App Review de
+   Meta). Anotado como pendiente menor (redeploy cosmético cuando se toquen) en [[wiki/architecture/edge-functions]].
+
+Con la 420 corriendo en todos los negocios (Kalken incluido), "Extracción / Retiro" y "Gastos varios" no aparecen
+más en "Ingreso de caja".
+
+### Decisiones de GO de esta sesión (para `v1.227.0`, en este orden)
+1. **Cerrar la escritura de `integration_job_queue`** desde usuarios del negocio: "forzar sync" de Config pasa a una
+   función del servidor que valida producto y publicación; se saca la escritura directa (antes decisión pendiente,
+   ver mig 424).
+2. **Avisar al cliente cuando el equipo registra su pago manual**: campanita + mail, al dueño y a quien avisó "Ya
+   transferí" (antes decisión pendiente, ver mig 425).
+3. **Ayuda Fase 2 — "Cursos y recursos"**: construirla ya, vacía; muestra solo los videos que GO publique, y
+   mientras no haya ninguno dice "próximamente" (los videos de onboarding siguen en pausa hasta que GO los revise
+   con su socio).
+4. Después: **video + guía HTML de activación de facturación** (destrabado: se graba en PROD, tenant "Genesis360
+   Onboarding", CUIT ficticio 20-12345678-9), y el resto de "QUÉ SIGUE" como estaba (Multimoneda por relevamiento,
+   Capacidad, e2e pendientes, esperando terceros).
+
+### Seguridad
+Token de Supabase en uso hoy: `sbp_9bd2f…` (distinto del `sbp_60df…` filtrado documentado desde 2026-07-09). Falta
+confirmar que el viejo quedó revocado (menor) — actualizado [[reference_seguridad]].
+
+### Estado final
+PROD = DEV `v1.226.0`, migs 001-426. Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ",
+cont. 71), `wiki/business/roadmap.md`, `wiki/database/migraciones.md`.
+
+---
+
 ## [2026-09-15] update | 💬 Ayuda: "Reportar un problema" + Mis consultas (mig 426) — v1.226.0 en DEV
 
 Pedido de GO: terminar "Reportar un problema" del panel de Ayuda (antes solo mandaba un mail a soporte, sin ticket, y

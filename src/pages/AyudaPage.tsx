@@ -16,7 +16,7 @@ const secciones: Seccion[] = [
   { icon: BookOpen,       titulo: 'Preguntas frecuentes',   desc: 'Respuestas a las dudas más comunes por módulo.' },
   { icon: MessageCircle,  titulo: 'Chat de soporte',        desc: 'Contacto directo con el equipo de ' + BRAND.name + '.' },
   { icon: FileText,       titulo: 'Buenas prácticas',       desc: 'Guías de uso recomendado para sacar el máximo provecho.' },
-  { icon: GraduationCap,  titulo: 'Cursos y recursos',      desc: 'Videos, documentación y materiales de aprendizaje.' },
+  { icon: GraduationCap,  titulo: 'Cursos y recursos',      desc: 'Videos cortos para aprender a usar cada módulo.',                      to: '/ayuda/recursos' },
 ]
 
 export default function AyudaPage() {

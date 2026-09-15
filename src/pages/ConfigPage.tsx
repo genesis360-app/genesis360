@@ -2945,26 +2945,18 @@ export default function ConfigPage() {
   const [meliSearchResults, setMeliSearchResults] = useState<any[]>([])
   const [meliSearching, setMeliSearching] = useState(false)
 
+  // Mig 427: los jobs los arma el servidor desde los vínculos del negocio (la cola ya no se escribe desde la app).
   const forceSyncTN = async () => {
     setTnSyncing(true)
     try {
-      const { data: maps, error: mapsErr } = await supabase.from('inventario_tn_map')
-        .select('producto_id, tn_product_id, tn_variant_id, sucursal_id')
+      const { count, error: mapsErr } = await supabase.from('inventario_tn_map')
+        .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant!.id).eq('sync_stock', true)
       if (mapsErr) throw new Error(`Maps: ${mapsErr.message}`)
-      if (!maps || maps.length === 0) { toast.error('No hay productos mapeados con sync_stock activo'); setTnSyncing(false); return }
+      if (!count) { toast.error('No hay productos mapeados con sync_stock activo'); setTnSyncing(false); return }
 
-      const { error: insertErr } = await supabase.from('integration_job_queue').insert(
-        maps.map(m => ({
-          tenant_id: tenant!.id,
-          integracion: 'TiendaNube',
-          tipo: 'sync_stock',
-          payload: { producto_id: m.producto_id, tn_product_id: m.tn_product_id, tn_variant_id: m.tn_variant_id },
-          status: 'pending',
-          next_attempt_at: new Date().toISOString(),
-        }))
-      )
-      if (insertErr) throw new Error(`Queue: ${insertErr.message}`)
+      const { error: rpcErr } = await supabase.rpc('fn_forzar_sync_stock', { p_integracion: 'TiendaNube' })
+      if (rpcErr) throw new Error(rpcErr.message)
 
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tn-stock-worker`, {
@@ -2982,23 +2974,14 @@ export default function ConfigPage() {
   const forceSyncMELI = async () => {
     setMeliSyncing(true)
     try {
-      const { data: maps, error: mapsErr } = await supabase.from('inventario_meli_map')
-        .select('producto_id, meli_item_id, meli_variation_id')
+      const { count, error: mapsErr } = await supabase.from('inventario_meli_map')
+        .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant!.id).eq('sync_stock', true)
       if (mapsErr) throw new Error(`Maps: ${mapsErr.message}`)
-      if (!maps || maps.length === 0) { toast.error('No hay productos mapeados con sync_stock activo'); setMeliSyncing(false); return }
+      if (!count) { toast.error('No hay productos mapeados con sync_stock activo'); setMeliSyncing(false); return }
 
-      const { error: insertErr } = await supabase.from('integration_job_queue').insert(
-        maps.map(m => ({
-          tenant_id: tenant!.id,
-          integracion: 'MercadoLibre',
-          tipo: 'sync_stock',
-          payload: { producto_id: m.producto_id, meli_item_id: m.meli_item_id, meli_variation_id: m.meli_variation_id },
-          status: 'pending',
-          next_attempt_at: new Date().toISOString(),
-        }))
-      )
-      if (insertErr) throw new Error(`Queue: ${insertErr.message}`)
+      const { error: rpcErr } = await supabase.rpc('fn_forzar_sync_stock', { p_integracion: 'MercadoLibre' })
+      if (rpcErr) throw new Error(rpcErr.message)
 
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-stock-worker`, {

@@ -17,9 +17,9 @@ type: project
 > anticipada (C1/C2), aviso al cajero + alerta de etiquetas vencidas (C3), aviso si ML/TN no publica (D2) — y
 > después el punto 3 (multimoneda, por relevamiento). 🛑 **Mig 421**: el aviso diario de CC/OC vencidas iba a roles
 > inexistentes (en PROD, a nadie). 📈 **Capacidad**: con Micro, ~85 usuarios a la vez en hora pico y ~160 en uso
-> tranquilo — ver `wiki/architecture/resiliencia.md`. 🟧 **PROD parece seguir en Nano** (la mitad de RAM que DEV, que
-> sí está en Micro; en una org paga la Nano se cobra como Micro): **pasar PROD a Micro** desde Settings → Compute and
-> Disk (reinicio breve) — acción de GO.
+> tranquilo — ver `wiki/architecture/resiliencia.md`. ✅ **PROD pasó de Nano a Micro** el 2026-09-15 a las 00:01 AR
+> (GO, "Free Upgrade", mismo precio): verificado 768 MB / 256 MB, igual que DEV. Antes se verificó que Kalken no
+> estuviera usando la app. 👤 **Kalken es el primer cliente real en PROD** (alta 2026-08-25).
 >
 > #### ✅ DECISIONES DE GO — cont. 68 (2026-09-14), en este orden
 >

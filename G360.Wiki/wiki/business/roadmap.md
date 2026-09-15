@@ -13,10 +13,13 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: *
 
 **En `dev`, sin deployar (GO: acumular)**: `v1.222.0` (reintegro al anular en USD y con vuelto, motivos de caja mig 420,
 `marketplace-webhook` apagado, landing, Monotributo a 12 meses), `v1.223.0` (crédito a favor al anular, avisos de CC/OC
-al dueño mig 421, precio de venta programado Fase 1 mig 422) y `v1.224.0` (precio programado Fases 2-3, migs 423-424:
+al dueño mig 421, precio de venta programado Fase 1 mig 422), `v1.224.0` (precio programado Fases 2-3, migs 423-424:
 etiqueta anticipada que no se completa antes de la hora, aviso al cajero, alerta de etiquetas vencidas, aviso si ML/TN
-no toma el precio; Alertas ya no dice "Todo en orden" con pedidos vencidos) y `v1.225.0` (la respuesta de soporte le
-llega al cliente como notificación, mig 425). Los cuatro como prerelease en GitHub.
+no toma el precio; Alertas ya no dice "Todo en orden" con pedidos vencidos), `v1.225.0` (la respuesta de soporte le
+llega al cliente como notificación, mig 425) y `v1.226.0` (Ayuda: "Reportar un problema" + Mis consultas, mig 426 —
+página `/ayuda/consultas`, RPC con guard, bucket de adjuntos; de paso, `send-email` ya no se puede usar como relay de
+mail —commit `6dbaf377`, **deployada en DEV y PROD**— y ConfigPage ya no pide el "Token AfipSDK" con el circuito
+propio). Los primeros cuatro como prerelease en GitHub; `v1.226.0` todavía sin tag (lo hace GO).
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit

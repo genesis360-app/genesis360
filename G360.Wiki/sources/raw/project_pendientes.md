@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cont. 69) — DEV `v1.225.0` · migs 001-**425** · PROD `v1.221.0` (001-419, compute **Micro**)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cont. 70) — DEV `v1.226.0` · migs 001-**426** · PROD `v1.221.0` (001-419, compute **Micro**)
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.221.0` | 001-**419** | compute **Micro** desde el 2026-09-15 (estaba en Nano); policies = DEV hasta la 419; Edge Functions = repo **salvo `marketplace-webhook`** (código nuevo sin desplegar) |
-> | **DEV** | `v1.224.0` | 001-**424** | cont. 68 + cont. 69 (precio programado Fases 2-3, migs 423-424); prereleases `v1.222.0`, `v1.223.0` y `v1.224.0` en GitHub — **GO: seguir acumulando antes de deployar** |
+> | **PROD** | `v1.221.0` | 001-**419** | compute **Micro** desde el 2026-09-15 (estaba en Nano); policies = DEV hasta la 419; Edge Functions = repo (incluye `send-email` hardeneada, ver abajo) **salvo `marketplace-webhook`** (código nuevo sin desplegar) y `admin-api`/`billing-manual-avisar-pago` (cambios de la mig 426 sin desplegar) |
+> | **DEV** | `v1.226.0` | 001-**426** | cont. 68 + 69 + 70 (Ayuda: "Reportar un problema" + Mis consultas, mig 426); prereleases `v1.222.0`-`v1.225.0` en GitHub, `v1.226.0` sin tag todavía — **GO: seguir acumulando antes de deployar** |
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
 > DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que bloquea,
@@ -20,7 +20,7 @@ type: project
 >
 > #### 🟥 Deploy acumulado en `dev` (cuando GO diga)
 >
-> 1. **Migraciones 420-424 a PROD antes del merge, en orden** (ninguna rompe el frontend actual):
+> 1. **Migraciones 420-426 a PROD antes del merge, en orden** (ninguna rompe el frontend actual):
 >    - **420** motivos de caja: cambia la siembra y **desactiva "Extracción / Retiro" y "Gastos varios" en TODOS los
 >      negocios, Kalken incluido** (dejan de aparecer en "Ingreso de caja"; el historial no cambia).
 >    - **421** avisos diarios de CC/OC vencidas al DUEÑO/SUPER_USUARIO (en PROD hoy no le llegan a nadie).
@@ -33,14 +33,27 @@ type: project
 >      `anon`/`authenticated`).
 >    - **425** aviso de respuesta de soporte (trigger en `support_messages`) + REVOKE de `anon`/`authenticated` en las
 >      tablas de soporte. Verificar después: `relacl` solo `postgres`/`service_role` y que el panel siga respondiendo.
-> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` + `v1.224.0` + `v1.225.0` (merge commit, no squash); promover los
->    releases (hoy prereleases) y marcar `v1.225.0` como Latest. **Panel de soporte:** PR `dev→main` en
->    `genesis360-admin` (commit `5ce8582`, solo texto).
-> 3. **Redeploy de `marketplace-webhook` en PROD** con `verify_jwt: true` (hoy corre la versión que acepta llamadas sin
->    auth; en DEV nunca estuvo desplegada).
+>    - **426** consultas de soporte desde la app: `usuario_id`/`tipo`/`modulo`/`pendiente_equipo`/`ultimo_mensaje_at`
+>      en `support_tickets`, `interno`/`adjuntos` en `support_messages`, backfill, 4 RPC SECURITY DEFINER con guard
+>      (`fn_soporte_crear_consulta`/`fn_soporte_responder`/`fn_soporte_mis_consultas`/`fn_soporte_consulta`) y bucket
+>      `soporte-adjuntos` + 2 policies de storage. Verificar después: RPC ejecutables solo por `authenticated`,
+>      `support_tickets`/`support_messages` sin privilegios, `storage` suma 2 policies, acentos. **Aplicarla ANTES de
+>      redesplegar `billing-manual-avisar-pago`** (inserta columnas nuevas).
+> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` + `v1.224.0` + `v1.225.0` + `v1.226.0` (merge commit, no squash);
+>    promover los releases (hoy prereleases, `v1.226.0` todavía sin tag) y marcar `v1.226.0` como Latest. **Panel de
+>    soporte:** PR `dev→main` en `genesis360-admin` (commit `5ce8582` + los cambios de esta sesión — `adminApi.ts`,
+>    `SupportPage.tsx` — sin commitear todavía).
+> 3. **Redeploy de Edge Functions en PROD**: `marketplace-webhook` con `verify_jwt: true` (hoy corre la versión que
+>    acepta llamadas sin auth; en DEV nunca estuvo desplegada) · `admin-api` (listado de tickets con
+>    `pendiente_equipo`/filtro, detalle con notas internas y adjuntos firmados) · `billing-manual-avisar-pago`
+>    (agrega `usuario_id`/`tipo` al ticket) — **esta última recién después de aplicar la mig 426**. `send-email` ya
+>    está al día en PROD (hardening de relay, ver más abajo).
 > 4. Checklist de siempre: `bash scripts/auditar-edge-functions.sh`, paridad de policies **por schema** (`public` suma
->    1 por `precios_programados`; la 423-424 no agregan policies), más `storage` y `cron`) y smoke de PostgREST
->    post-DDL (`precios_programados` 200, `tenants?select=repositor_anticipacion_min` 200 + columna inventada 400).
+>    1 por `precios_programados` y 2 por `soporte-adjuntos`; la 423-424 no agregan policies), más `storage` y `cron`)
+>    y smoke de PostgREST post-DDL (`precios_programados` 200, `tenants?select=repositor_anticipacion_min` 200 +
+>    columna inventada 400).
+> 5. Esta sesión tocó `G360.Wiki/wiki/overview/app-reference.md` (sección Ayuda) → correr `npm run ai:knowledge` y
+>    redeployar la EF `ai-assistant` (DEV y PROD) — el Asistente IA solo aprende del wiki al redeployar.
 >
 > #### ▶️ QUÉ SIGUE (orden de GO)
 >
@@ -51,21 +64,50 @@ type: project
 >    `meli_item_id` que viene en el job. Un usuario con acceso por REST podría mandar el stock o el precio de un
 >    producto a otra publicación de la misma cuenta. Cerrarlo = pasar "forzar sync" a una RPC y sacar la escritura
 >    directa.
-> 2. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
+> 2. ✅ **Ayuda, Fase 1 ("Reportar un problema" + Mis consultas) — HECHO en cont. 70** (`v1.226.0`, mig 426, e2e 152,
+>    UAT §62). Queda **Fase 2**: "Cursos y recursos" con los videos servidos desde un bucket público de Supabase
+>    Storage que GO sube a mano, en `AyudaModal` y `AyudaPage`.
+>    🟨 **Decisión de GO pendiente**: avisar al cliente cuando el equipo registra su pago manual
+>    (`fn_registrar_pago_manual` no notifica hoy — el que avisó "Ya transferí" no se entera de que se le extendió el
+>    acceso salvo que el agente responda el ticket).
+> 3. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
 >    **relevamiento en HTML**. Ver el punto 3 de las decisiones de abajo.
-> 3. **Capacidad** (propuesto, sin decidir): cachear sesión/usuario/negocio/sucursales al navegar (hoy ~64 requests por
+> 4. **Capacidad** (propuesto, sin decidir): cachear sesión/usuario/negocio/sucursales al navegar (hoy ~64 requests por
 >    pantalla, 32 `GET /auth/v1/user` en 8 pantallas) y espaciar el polling del POS y las alertas. Con Micro: ~85
 >    usuarios a la vez en hora pico, ~160 en uso tranquilo, ~80-120 clientes — `wiki/architecture/resiliencia.md`.
-> 4. ⏸️ **Videos de onboarding EN PAUSA** (GO los revisa con su socio; 6 hechos: 1-5 y 8). El video 1 muestra "+500
->    comercios" y el 5 los motivos de caja viejos: regrabar esos tramos cuando se retome.
-> 5. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
+> 5. ⏸️ **Videos de onboarding EN PAUSA** (GO los revisa con su socio; 6 hechos: 1-5 y 8). El video 1 muestra "+500
+>    comercios" y el 5 los motivos de caja viejos: regrabar esos tramos cuando se retome. **Nuevo, distinto de la
+>    serie**: video + guía HTML de **activación de facturación** — se graba DESPUÉS del deploy, en PROD, contra el
+>    tenant "Genesis360 Onboarding", con CUIT ficticio **20-12345678-9** (nunca un CUIT o certificado real en cámara).
+> 6. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
 >    despacho de reserva con seña mixta (UAT 57.9) y fallo al aplicar un precio programado (UAT 59.7).
-> 6. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta
+> 7. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta
 >    (`wa-embedded-signup-exchange` solo en DEV), purgar "Genesis360 Onboarding" al terminar los videos, login-as del
 >    panel de soporte (sigue 501; GO: pendiente).
 >
 > 🛠️ **En cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la paridad de
 > policies **por schema** (`public`, `storage`, `cron`).
+>
+> #### 📋 Lo que se hizo en cont. 70 (2026-09-15) — detalle en `log.md`
+>
+> - **v1.226.0 — Ayuda: "Reportar un problema" + Mis consultas** (mig 426): página `/ayuda/consultas` (lista + hilo +
+>   responder con adjuntos), fuera del `SubscriptionGuard` como Mi Cuenta — con la suscripción vencida también se
+>   puede hablar con soporte. `AyudaModal`/`AyudaPage` activan las 2 tarjetas ("Reportar un problema", "Mis
+>   consultas"; el resto sigue "próximamente"). Cada usuario ve las suyas, DUEÑO/SUPER_USUARIO ven todas las del
+>   negocio (ADMIN=staff no entra); el equipo se entera por mail (`send-email` tipo `soporte_consulta`, a soporte@) y
+>   por una marca en el panel. `admin-api` y `billing-manual-avisar-pago` (el "Ya transferí" ahora liga el ticket a
+>   quien avisó) redeployadas en DEV; panel (`genesis360-admin`) con los cambios sin commitear todavía.
+> - 🔒 **`send-email` ya no se puede usar como relay de mail** (commit `6dbaf377`, **deployada en DEV Y PROD**,
+>   autorizado por GO): tener `verify_jwt` encendido no alcanzaba, porque la anon key pública ya es un JWT válido —
+>   cualquiera podía mandar mail con el remitente de Genesis360, al destinatario que quisiera y con HTML propio.
+>   Ahora solo entran un usuario con sesión real + fila en `users`, o el servidor; destinatarios acotados por tipo
+>   (reportes siempre a soporte@, welcome solo al propio mail, invitación a proveedor solo desde el servidor);
+>   negocio/usuario salen de la base, no del pedido; todo lo que viene en `data` se escapa; links internos
+>   validados. 12 unit tests.
+> - 🧾 **ConfigPage ya no pide "Token AfipSDK" ni "token de producción" con el circuito propio** (commit `b480e81c`).
+> - e2e **152** (3/3, mutante) verde contra DEV; UAT §62 (12 escenarios). Datos de prueba borrados en DEV; quedan ~5
+>   PNG de 70 bytes en el bucket `soporte-adjuntos` (Storage no se borra por SQL, sin service key a mano) — detalle
+>   menor.
 >
 > #### 📋 Lo que se hizo en cont. 69 (2026-09-15) — detalle en `log.md`
 >
@@ -78,8 +120,8 @@ type: project
 > - e2e **151** (4 casos, mutante) verde contra el cron real de DEV; `schema_full.sql` regenerado por MCP sin token.
 > - **v1.225.0 — la respuesta de soporte le llega al cliente** (mig 425): trigger que avisa a la campanita del usuario
 >   que abrió el ticket; el panel (`genesis360-admin` commit `5ce8582`, en `dev`) dice si la respuesta le llega o es
->   nota interna. 🟨 **Decisión de GO pendiente:** responder desde la app ("Mis consultas") y avisar al cliente cuando
->   se registra su pago manual — evaluación en `wiki/support/plataforma-soporte.md` → Pendiente.
+>   nota interna. ✅ **Decisión de GO resuelta en cont. 70**: responder desde la app ("Mis consultas") — mig 426. Sigue
+>   pendiente avisar al cliente cuando se registra su pago manual.
 >
 > #### 📋 Lo que se hizo en cont. 68 (2026-09-14/15) — detalle en `log.md`
 >

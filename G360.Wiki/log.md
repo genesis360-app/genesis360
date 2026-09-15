@@ -6,6 +6,81 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 💬 Ayuda: "Reportar un problema" + Mis consultas (mig 426) — v1.226.0 en DEV
+
+Pedido de GO: terminar "Reportar un problema" del panel de Ayuda (antes solo mandaba un mail a soporte, sin ticket, y
+el cliente no tenía dónde ver lo que había reportado ni la respuesta) y que pueda seguir y responder su consulta. Sin
+deploy a PROD (GO: seguir acumulando).
+
+### Qué se hizo
+- **Mig 426**: `support_tickets.usuario_id` (quién la abrió desde la app; NULL = ticket interno del equipo, la app no
+  lo muestra), `tipo` (problema/consulta/sugerencia/pago), `modulo`, `pendiente_equipo` (la marca del panel) y
+  `ultimo_mensaje_at`; `support_messages.interno` (nota del equipo que el cliente no ve ni recibe aviso) y
+  `adjuntos` jsonb. Backfill de los tickets existentes. Trigger `trg_support_message_actualiza_ticket`: si escribe el
+  cliente queda pendiente del equipo (y se reabre si estaba esperando/resuelta); si responde un agente sin nota
+  interna, deja de estar pendiente. `fn_notificar_respuesta_soporte` (de la mig 425) redefinida: ignora notas
+  internas, avisa a `usuario_id` y lleva a `/ayuda/consultas?ticket=`. RPC SECURITY DEFINER con guard (las tablas
+  siguen sin privilegios para `authenticated`): `fn_soporte_crear_consulta`, `fn_soporte_responder` (no en
+  cerradas), `fn_soporte_mis_consultas`, `fn_soporte_consulta` (sin notas internas; los agentes firman "Soporte
+  Genesis360"); helper `fn_soporte_ve_todas_del_negocio()`. Topes anti-spam (10 consultas/usuario/24h, 30
+  mensajes/hora) contados con `pg_advisory_xact_lock` por usuario. Bucket privado `soporte-adjuntos`
+  (png/jpeg/webp/pdf, 5 MB) con policies por carpeta `<negocio>/<usuario>/`. Revisada por `migration-reviewer`:
+  APTA, con sus 2 sugerencias aplicadas (lock en los topes, chequeo de usuario activo en las RPC de lectura).
+- **App**: página nueva `/ayuda/consultas` (lista + hilo + responder con adjuntos, `?ticket=<id>` abre una y
+  `?nueva=1` el formulario) — fuera del `SubscriptionGuard`, como Mi Cuenta: con la suscripción vencida también se
+  puede hablar con soporte. `AyudaModal` (panel lateral) usa el formulario nuevo + link "Ver mis consultas";
+  `AyudaPage` (Centro de Soporte) activa las tarjetas "Reportar un problema" y la nueva "Mis consultas" (el resto
+  sigue "próximamente"). Decisiones de GO: cada usuario ve las suyas, DUEÑO/SUPER_USUARIO ven todas las del negocio
+  (ADMIN=staff no entra); el equipo se entera por mail (`send-email` tipo nuevo `soporte_consulta`, a soporte@, con
+  link al panel) y por una marca en el panel.
+- **EFs en DEV**: `admin-api` (listado con `pendiente_equipo` primero + filtro "pendientes", detalle con notas
+  internas y adjuntos con link firmado de 1 h, `reportante` nombre/rol, `support.tickets.reply` acepta `interno`) y
+  `billing-manual-avisar-pago` ("Ya transferí" crea el ticket con `usuario_id`/`tipo:'pago'`, así aparece en Mis
+  consultas de quien avisó).
+- **Panel (`genesis360-admin`, rama `dev`, sin commitear todavía, build OK)**: filtro "Solo los que esperan
+  respuesta del equipo", marca "● Respuesta del cliente", quién abrió la consulta, notas internas en ámbar,
+  adjuntos con link, casilla "Nota interna".
+- De paso, dos fixes ya commiteados en `dev` esta sesión (sin bump de versión propio, quedan bajo el mismo
+  `v1.226.0`):
+  - 🔒 **`send-email` ya no se puede usar como relay de mail** (commit `6dbaf377`, **deployada en DEV Y PROD**,
+    autorizado por GO). Tener `verify_jwt` encendido no alcanzaba: la clave anon pública de la app ya es un JWT
+    válido, así que cualquiera podía mandar mail con el remitente de Genesis360, al destinatario que quisiera y con
+    HTML propio en los datos (phishing con el dominio propio + consumo de la cuota de Resend). Ahora solo entran un
+    usuario con sesión real y fila en `users`, o el servidor (clave de servicio de las otras EF); destinatarios
+    según el tipo (reportes siempre a soporte@, welcome solo al propio usuario, invitación a proveedor solo desde
+    el servidor); negocio/usuario del mail salen de la base, no del pedido; todo lo que viene en `data` se escapa;
+    los links internos tienen que ser rutas de la app (`//evil.com`/`@evil.com` se rechazan); tope de destinatarios
+    y adjuntos. Reglas puras en `seguridad.ts` + 12 unit tests. Verificado en DEV y PROD sin mandar mails reales
+    (anon 401, tipo reservado 403, link externo 400, servicio 400 por validación). PROD queda en v30,
+    `verify_jwt: true`.
+  - 🧾 **ConfigPage ya no muestra "Token AfipSDK" ni "token de producción" con el circuito propio** (commit
+    `b480e81c`) — esos textos solo aparecen con `afip_provider='afipsdk'`; con el circuito propio la franja "Modo
+    PRUEBA" pide el punto de venta y el certificado de producción de ARCA. Sale en la guía y el video de activación
+    de facturación (pendiente, ver abajo).
+
+### Verificación
+- **e2e 152** (3/3 contra DEV, mutante): A pantalla DUEÑO (crear consulta con captura desde Ayuda, hilo, responder,
+  mails interceptados); B servidor (cajero/supervisor solo lo suyo, DUEÑO todo el negocio, adjuntos solo propios,
+  tablas no legibles directo, anon 401, cada negativa con su control positivo). Mutante A (crear sin adjuntos) falla
+  donde debe.
+- SQL en DEV con los triggers reales, impersonando al cajero: nota interna → 0 avisos y no aparece en su hilo, sigue
+  pendiente; respuesta del equipo → aviso con `action_url` a la consulta, deja de estar pendiente, el cliente ve
+  "Soporte Genesis360"; el cliente escribe en una resuelta → se reabre y queda pendiente; en una cerrada → rechazado.
+- tsc + eslint verdes, build del panel verde. UAT §62 (12 escenarios).
+- Datos de prueba borrados en DEV (tickets/mensajes/aviso "E2E-152"). ⚠️ Quedan ~5 PNG de 70 bytes en el bucket
+  `soporte-adjuntos` de DEV — Storage no deja borrar por SQL y no había service key local a mano; detalle menor.
+
+### Queda pendiente
+- **Ayuda, Fase 2**: "Cursos y recursos" con los videos servidos desde un bucket público de Supabase Storage que GO
+  sube a mano por el dashboard, en `AyudaModal` y `AyudaPage`.
+- **Video + guía HTML de activación de facturación** — se graba DESPUÉS del deploy, en PROD, contra el tenant
+  "Genesis360 Onboarding", con CUIT ficticio **20-12345678-9** (nunca un CUIT o certificado real en cámara).
+- 🛑 Decisiones de GO sin resolver: exponer o no la escritura de `integration_job_queue` a usuarios del tenant
+  (arrastrada de la sesión anterior), y avisar al cliente cuando el equipo registra su pago manual
+  (`fn_registrar_pago_manual` no notifica hoy).
+
+---
+
 ## [2026-09-15] update | 🔔 La respuesta de soporte le llega al cliente (mig 425) — v1.225.0 en DEV
 
 GO avisó un pago desde Mi Cuenta ("Ya transferí") y respondió el ticket desde el panel: preguntó si al cliente le

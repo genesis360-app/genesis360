@@ -6,7 +6,7 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cont. 69) — DEV `v1.224.0` · migs 001-**424** · PROD `v1.221.0` (001-419, compute **Micro**)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-15, cont. 69) — DEV `v1.225.0` · migs 001-**425** · PROD `v1.221.0` (001-419, compute **Micro**)
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
@@ -31,8 +31,11 @@ type: project
 >      `authenticated` y UPDATE en 6 columnas). Depende de la 422.
 >    - **424** trigger `trg_notificar_sync_precio_fallido` en `integration_job_queue` (sin `EXECUTE` para
 >      `anon`/`authenticated`).
-> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` + `v1.224.0` (merge commit, no squash); promover los releases (hoy
->    prereleases) y marcar `v1.224.0` como Latest.
+>    - **425** aviso de respuesta de soporte (trigger en `support_messages`) + REVOKE de `anon`/`authenticated` en las
+>      tablas de soporte. Verificar después: `relacl` solo `postgres`/`service_role` y que el panel siga respondiendo.
+> 2. PR `dev→main` con `v1.222.0` + `v1.223.0` + `v1.224.0` + `v1.225.0` (merge commit, no squash); promover los
+>    releases (hoy prereleases) y marcar `v1.225.0` como Latest. **Panel de soporte:** PR `dev→main` en
+>    `genesis360-admin` (commit `5ce8582`, solo texto).
 > 3. **Redeploy de `marketplace-webhook` en PROD** con `verify_jwt: true` (hoy corre la versión que acepta llamadas sin
 >    auth; en DEV nunca estuvo desplegada).
 > 4. Checklist de siempre: `bash scripts/auditar-edge-functions.sh`, paridad de policies **por schema** (`public` suma
@@ -73,6 +76,10 @@ type: project
 >   reescribía tareas); `migration-reviewer` encontró que un fallo al avisar revertía todos los precios del minuto
 >   (corregido); Alertas ya no dice "Todo en orden" con pedidos vencidos.
 > - e2e **151** (4 casos, mutante) verde contra el cron real de DEV; `schema_full.sql` regenerado por MCP sin token.
+> - **v1.225.0 — la respuesta de soporte le llega al cliente** (mig 425): trigger que avisa a la campanita del usuario
+>   que abrió el ticket; el panel (`genesis360-admin` commit `5ce8582`, en `dev`) dice si la respuesta le llega o es
+>   nota interna. 🟨 **Decisión de GO pendiente:** responder desde la app ("Mis consultas") y avisar al cliente cuando
+>   se registra su pago manual — evaluación en `wiki/support/plataforma-soporte.md` → Pendiente.
 >
 > #### 📋 Lo que se hizo en cont. 68 (2026-09-14/15) — detalle en `log.md`
 >

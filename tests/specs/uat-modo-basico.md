@@ -2160,3 +2160,16 @@ Modo avanzado (las tareas del repositor existen solo para productos con góndola
 | 60.11 | Config → Inventario → "Repositores — Etiquetas de precio": se elige la anticipación (a la hora, 15/30 min, 1/2/4/8 h, un día) | revisión | ✅ código |
 | 60.12 | Alertas: si las únicas alertas son pedidos con entrega vencida o sin avanzar, la página ya no dice "¡Todo en orden!" (el badge sí los contaba) | revisión de código | ✅ código |
 
+## 🔔 §61 — La respuesta de soporte le llega al cliente (mig 425) — 2026-09-15
+
+Ambos modos. Pedido de GO: el cliente avisa "Ya transferí" desde Mi Cuenta y no se enteraba de la respuesta del equipo.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 61.1 | Ticket abierto por el cliente desde la app → cada respuesta del agente le llega a la campanita del headbar: "Soporte respondió: {asunto}" con el texto | SQL en DEV con el trigger real, revertido (mutante: sin la 425, 0 avisos) | ✅ DEV |
+| 61.2 | Respuesta de más de 500 caracteres → el aviso se recorta con "…" | ídem (598 → 498 caracteres) | ✅ DEV |
+| 61.3 | Ticket abierto por el equipo desde el panel (sin mensaje del cliente) → el cliente no recibe nada | ídem | ✅ DEV |
+| 61.4 | El autor del mensaje "cliente" no es usuario de ese negocio → no se avisa a nadie | ídem | ✅ DEV |
+| 61.5 | Panel: debajo del cuadro de respuesta dice si le llega al cliente o si es una nota interna; el botón dice "Responder al cliente" o "Guardar nota" | build del panel + revisión | ✅ código |
+| 61.6 | Las tablas de soporte ya no tienen privilegios para `anon` ni `authenticated` (antes solo las frenaba la RLS sin policies) | `relacl` en DEV + PostgREST con la anon key → 401 | ✅ DEV |
+

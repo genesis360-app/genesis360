@@ -15,7 +15,8 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: *
 `marketplace-webhook` apagado, landing, Monotributo a 12 meses), `v1.223.0` (crédito a favor al anular, avisos de CC/OC
 al dueño mig 421, precio de venta programado Fase 1 mig 422) y `v1.224.0` (precio programado Fases 2-3, migs 423-424:
 etiqueta anticipada que no se completa antes de la hora, aviso al cajero, alerta de etiquetas vencidas, aviso si ML/TN
-no toma el precio; Alertas ya no dice "Todo en orden" con pedidos vencidos). Los tres como prerelease en GitHub.
+no toma el precio; Alertas ya no dice "Todo en orden" con pedidos vencidos) y `v1.225.0` (la respuesta de soporte le
+llega al cliente como notificación, mig 425). Los cuatro como prerelease en GitHub.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit

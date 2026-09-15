@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-15T03:58:05.208Z desde gcmhzdedrkmmzfzfveig vía MCP execute_sql
--- Última migración aplicada: 20260915035038 · 169 tablas
+-- Generado 2026-09-15T05:40:00.682Z desde gcmhzdedrkmmzfzfveig vía MCP execute_sql
+-- Última migración aplicada: 20260915053720 · 169 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -7409,6 +7409,53 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_notificar_respuesta_soporte()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_ticket  RECORD;
+  v_cliente uuid;
+  v_cuerpo  text;
+BEGIN
+  SELECT id, tenant_id, asunto INTO v_ticket FROM public.support_tickets WHERE id = NEW.ticket_id;
+  IF NOT FOUND THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT m.autor_id INTO v_cliente
+    FROM public.support_messages m
+    JOIN public.users u ON u.id = m.autor_id AND u.tenant_id = v_ticket.tenant_id
+   WHERE m.ticket_id = NEW.ticket_id AND m.autor_tipo = 'cliente'
+   ORDER BY m.created_at
+   LIMIT 1;
+  IF v_cliente IS NULL THEN
+    RETURN NEW;  -- ticket interno del equipo o el usuario ya no está en el negocio
+  END IF;
+
+  v_cuerpo := btrim(NEW.cuerpo);
+  IF length(v_cuerpo) > 500 THEN
+    v_cuerpo := left(v_cuerpo, 497) || '…';
+  END IF;
+
+  INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url, metadata)
+  VALUES (v_ticket.tenant_id, v_cliente, 'info',
+          'Soporte respondió: ' || left(v_ticket.asunto, 80),
+          v_cuerpo,
+          NULL,
+          jsonb_build_object('origen', 'soporte', 'ticket_id', NEW.ticket_id, 'mensaje_id', NEW.id));
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- La respuesta del agente se guarda igual: un aviso que no sale no puede frenar el panel.
+  RAISE WARNING '[fn_notificar_respuesta_soporte] mensaje %: %', NEW.id, SQLERRM;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_notificar_sync_precio_fallido()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -12753,6 +12800,7 @@ CREATE TRIGGER trg_salarios_updated_at BEFORE UPDATE ON public.rrhh_salarios FOR
 CREATE TRIGGER trg_vac_sal_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_saldo FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_vac_sol_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_solicitud FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_enforce_sucursales BEFORE INSERT OR UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('sucursales');
+CREATE TRIGGER trg_notificar_respuesta_soporte AFTER INSERT ON public.support_messages FOR EACH ROW WHEN ((new.autor_tipo = 'agente'::text)) EXECUTE FUNCTION fn_notificar_respuesta_soporte();
 CREATE TRIGGER trg_tarea_repositor_asignado_valido_tenant BEFORE INSERT OR UPDATE OF usuario_asignado_id ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_asignado_valido_tenant();
 CREATE TRIGGER trg_tarea_repositor_guard_completar BEFORE UPDATE OF estado ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_guard_completar();
 CREATE TRIGGER tr_tenant_certificates_updated_at BEFORE UPDATE ON public.tenant_certificates FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -14248,11 +14296,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.su
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_agents TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_agents TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_agents TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_messages TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_messages TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_messages TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_tickets TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_tickets TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.support_tickets TO service_role;
 GRANT REFERENCES, SELECT, TRIGGER ON public.tareas_repositor TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tareas_repositor TO service_role;

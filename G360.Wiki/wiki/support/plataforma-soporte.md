@@ -134,6 +134,29 @@ vencidos. Ver [[wiki/features/pago-manual]] para el flujo completo de carga manu
 
 ---
 
+## 9. Tickets: la respuesta le llega al cliente (mig 425, 2026-09-15, EN DEV)
+
+**Antes:** el cliente avisaba "Ya transferí" desde Mi Cuenta (`billing-manual-avisar-pago` crea un ticket `in_app` con
+un mensaje `cliente`), el equipo respondía desde el panel y **la respuesta no le llegaba a nadie**:
+`support.tickets.reply` solo guarda el mensaje, y la app no tiene pantalla de tickets.
+
+**Ahora:** el trigger `trg_notificar_respuesta_soporte` (AFTER INSERT en `support_messages`, solo mensajes de agente)
+manda una notificación a la campanita del usuario que abrió el ticket: "Soporte respondió: {asunto}" con el texto
+(hasta 500 caracteres). Costo: un INSERT por respuesta; la campanita ya consulta cada 30 segundos.
+
+| Ticket | ¿Le llega al cliente? | Qué muestra el panel |
+|---|---|---|
+| Abierto por el cliente desde la app (tiene mensaje `cliente`) | Sí, cada respuesta | "Al cliente le llega como notificación…" · botón "Responder al cliente" |
+| Abierto por el equipo desde el panel | No: es un hilo interno | "El cliente no ve estos mensajes" · botón "Guardar nota" |
+
+⚠️ En un ticket del cliente **todo lo que escribe un agente le llega**: las notas internas van en las notas del
+cliente (mig 411), no en el hilo.
+
+De paso, `support_tickets` y `support_messages` quedaron sin privilegios para `anon`/`authenticated` (solo las frenaba la
+RLS sin policies). Verificación: UAT §61.
+
+---
+
 ## Testing
 
 **18/18 e2e contra DEV**, incluidos **tests de fuga**: el RPC que devuelve mails de usuarios y las
@@ -146,6 +169,12 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 
 - **Login-as read-only** — sigue **501 (Not Implemented)**. Requiere un modo read-only real +
   token efímero en la app principal; queda fuera de esta tanda, merece su propio diseño.
+- **Responder desde la app ("Mis consultas")** — evaluado el 2026-09-15, decisión de GO. Del lado de la base son 2 RPC
+  con guard de negocio y un tope de mensajes, más una pantalla y la ruta; la carga es despreciable. Antes de que el
+  cliente pueda leer el hilo hay que separar respuestas de notas internas, y el panel no avisa a los agentes cuando el
+  cliente contesta. Encaja con "Reportar un problema" de Ayuda (hoy "próximamente").
+- **Avisar al cliente cuando se registra su pago manual** — `fn_registrar_pago_manual` no notifica: el cliente que
+  avisó "Ya transferí" no se entera de que se le extendió el acceso salvo que el agente responda el ticket.
 
 ---
 

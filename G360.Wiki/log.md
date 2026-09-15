@@ -6,6 +6,36 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 🔔 La respuesta de soporte le llega al cliente (mig 425) — v1.225.0 en DEV
+
+GO avisó un pago desde Mi Cuenta ("Ya transferí") y respondió el ticket desde el panel: preguntó si al cliente le
+llegaba algo. **No le llegaba nada.** `billing-manual-avisar-pago` crea el ticket con un mensaje `cliente`, pero
+`admin-api` `support.tickets.reply` solo inserta el mensaje y actualiza la fecha: sin notificación, sin mail, y la app
+no tiene dónde ver tickets. Tampoco se avisa cuando el equipo registra el pago manual.
+
+### Qué se hizo
+- **Mig 425:** trigger en `support_messages` que, cuando responde un agente, inserta una notificación para el usuario
+  que abrió el ticket ("Soporte respondió: {asunto}", el texto recortado a 500 caracteres). Solo en tickets con mensaje
+  del cliente: los que abre el equipo desde el panel son hilos internos. Un INSERT por respuesta; la campanita ya
+  consulta cada 30 segundos, así que no suma carga. De paso, las tablas de soporte perdieron los privilegios de `anon`
+  y `authenticated` (solo las frenaba la RLS sin policies, igual que `admin_audit_log` hasta la mig 411).
+- **Panel (`genesis360-admin`, commit `5ce8582` en `dev`):** debajo del cuadro de respuesta dice si le llega al cliente o
+  es una nota interna; el botón dice "Responder al cliente" o "Guardar nota".
+
+### Verificación
+SQL en DEV con el trigger real dentro de un bloque que se revierte: sin la migración, 0 avisos; con la migración, el
+ticket del cliente da 2 avisos (el largo recortado a 498), el interno 0 y un autor de otro negocio 0. SECURITY DEFINER +
+`search_path`, sin `EXECUTE` público, acentos correctos, PostgREST con anon → 401. Build del panel verde. UAT §61.
+
+### Evaluado y no construido (decisión de GO)
+Responder desde la app ("Mis consultas": ver el hilo y contestar). Es chico del lado de la base (2 RPC con guard de
+negocio y un tope de mensajes) más una pantalla y la ruta; la carga es despreciable. El costo real: en cuanto el
+cliente puede leer el hilo, hace falta separar respuestas de notas internas, y el panel no avisa a los agentes cuando
+el cliente contesta (dependen de mirar la lista). Encaja con "Reportar un problema" de Ayuda, que figura como
+"próximamente". También quedó propuesto avisar al cliente cuando se registra su pago manual.
+
+---
+
 ## [2026-09-15] update | 🏷️ Precio programado Fases 2-3 (migs 423-424): la etiqueta de la góndola y el aviso de ML/TN — v1.224.0 en DEV
 
 Sin deploy (GO: acumular). Implementa lo que quedaba del relevamiento (C1/C2, C3 y D2); las respuestas están en la

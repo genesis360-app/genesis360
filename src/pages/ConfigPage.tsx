@@ -3726,7 +3726,9 @@ export default function ConfigPage() {
                       <CampoResumenFiscal label="Token AfipSDK" value={emisorDefault?.afipsdk_token_configurado ? 'Configurado' : null} />
                     )}
                     <CampoResumenFiscal label="Ingresos Brutos" value={tAny.ingresos_brutos} />
-                    <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(tAny.inicio_actividades).toLocaleDateString('es-AR') : null} />
+                    {/* `inicio_actividades` es DATE ('YYYY-MM-DD'): `new Date()` lo toma como medianoche UTC y en Argentina
+                        mostraba el día anterior (01/03 → 29/02). Se arma a medianoche local, como los PDF. */}
+                    <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(`${String(tAny.inicio_actividades).slice(0, 10)}T00:00:00`).toLocaleDateString('es-AR') : null} />
                     <CampoResumenFiscal label="Banco" value={tAny.banco} />
                     <CampoResumenFiscal label="CBU" value={tAny.cbu} mono />
                     <CampoResumenFiscal label="Alias CBU" value={tAny.alias_cbu} />

@@ -138,6 +138,44 @@ da más; el resto de las requests espera en la cola.
 - Ninguna consulta se despega de las demás: en cada escalón todas tienen un p95 parecido. Si hace falta más
   margen, la palanca es el **compute** (más CPU y un pool más grande), no optimizar una consulta puntual.
 
+### Capacidad estimada de PROD (2026-09-14) — cuántos usuarios a la vez
+
+**Qué tiene PROD:** organización en plan **Pro**; la base tiene la configuración de la instancia **Micro**
+(`max_connections` 60, `shared_buffers` 224 MB, CPU ARM), **la misma que DEV** — así que el techo de E2 aplica.
+
+**Cuánto consume un usuario** — medido manejando la app real con Playwright contra DEV:
+
+| Qué hace | Requests |
+|---|---|
+| Pestaña abierta en el POS sin tocar nada | **0,59 req/s** (35/min: `caja_sesiones` cada 15 s, contadores de alertas cada 30 s, notificaciones, autorizaciones) |
+| Pestaña abierta en el Dashboard sin tocar nada | 0,49 req/s |
+| Cambiar de pantalla | **~64 requests por pantalla** (3,7 req/s navegando) |
+| Una venta completa, del carrito vacío al cobro | 30 requests |
+
+**La cuenta**, contra un techo de ~170 req/s y operando al ~70 % (~120 req/s) para absorber picos:
+
+| Perfil | Por usuario | Usuarios a la vez |
+|---|---|---|
+| Hora pico: una venta cada 2 min y un cambio de pantalla cada 2 min | ~1,4 req/s | **~85** (techo duro ~120) |
+| Uso tranquilo: app abierta, una venta y una pantalla cada 10 min | ~0,75 req/s | **~160** (techo duro ~225) |
+
+Con 2 usuarios por negocio (dueño + cajero) son **~40 negocios en hora pico** u **~80 en uso tranquilo**.
+Pasado ese punto no se cae (E2: 0 errores hasta 400 sesiones), **se pone lenta**.
+
+**Supuestos que hay que tener presentes:** el techo se midió solo con lecturas y con la base chica de DEV; las
+escrituras (ventas con triggers de stock y caja) y el volumen real cuestan más CPU, y la instancia Micro es de CPU
+compartida. Tomarlo como orden de magnitud, no como garantía.
+
+**Palancas, de la más barata a la más cara:**
+1. **Navegación**: cada pantalla vuelve a pedir la sesión, el usuario, el negocio y las sucursales (32
+   `GET /auth/v1/user` en 8 cambios de pantalla). Cachearlo baja una parte grande de esas ~64 requests.
+2. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y el badge de alertas hace 6 conteos cada 30 s.
+   Espaciarlos o dispararlos por evento baja el consumo en reposo.
+3. **Compute**: subir de Micro a una instancia mayor (precio a confirmar en Billing). Es la palanca directa sobre
+   el techo, porque ninguna consulta individual se destaca.
+
+Revisar cuando haya ~30 negocios activos o si el p95 de la API empieza a subir en el dashboard de Supabase.
+
 ### E3 — volumen: el resultado ES el hallazgo
 
 La base **entera** de DEV (los 10 tenants juntos) tiene 881 productos, 821 ventas, 2.026 ítems de

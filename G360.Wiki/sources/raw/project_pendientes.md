@@ -6,12 +6,18 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 68) — DEV `v1.222.0` · migs 001-**420** · PROD `v1.221.0` (001-419)
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 68) — DEV `v1.223.0` · migs 001-**422** · PROD `v1.221.0` (001-419)
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.221.0` | 001-**419** | PRs #346-#349 el 14/09; policies = DEV; Edge Functions = repo **salvo `marketplace-webhook`** (código nuevo sin desplegar) |
-> | **DEV** | `v1.222.0` | 001-**420** | reintegro al anular (REGLA #0) + tanda chica — **deploy a PROD esperando el OK de GO** |
+> | **DEV** | `v1.223.0` | 001-**422** | reintegro al anular + crédito a favor (REGLA #0), tanda chica, avisos de CC/OC al dueño (421), precio programado Fase 1 (422) — **GO: seguir acumulando antes de deployar** |
+>
+> ✅ **Precio programado Fase 1 hecha en DEV** (mig 422, e2e 150). **Sigue: Fases 2-3** — tarea del repositor
+> anticipada (C1/C2), aviso al cajero + alerta de etiquetas vencidas (C3), aviso si ML/TN no publica (D2) — y
+> después el punto 3 (multimoneda, por relevamiento). 🛑 **Mig 421**: el aviso diario de CC/OC vencidas iba a roles
+> inexistentes (en PROD, a nadie). 📈 **Capacidad de PROD** (Pro + Micro): ~85 usuarios a la vez en hora pico, ~160
+> en uso tranquilo — ver `wiki/architecture/resiliencia.md`.
 >
 > #### ✅ DECISIONES DE GO — cont. 68 (2026-09-14), en este orden
 >

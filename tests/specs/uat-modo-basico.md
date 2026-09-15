@@ -2125,3 +2125,19 @@ Decisiones de GO del 2026-09-14 (ver `log.md`, sesión cont. 68).
 | 58.5 | El landing ya no dice "Más de 500 comercios" | revisión de código | ✅ código |
 | 58.6 | Monotributo: la tarjeta y las alertas de 75/90 % miden los **últimos 12 meses**, y la suma no se corta en 1.000 ventas (paginada) | revisión de código; en DEV no hay diferencia visible (todas las ventas de Jorgito son de 2026) | ✅ código |
 
+## 🗓️ §59 — Precio de venta programado, Fase 1 (mig 422) + avisos de CC/OC vencidas al dueño (mig 421) — 2026-09-14
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 59.1 | Cambiar el precio de venta en la ficha → pregunta "¿Desde cuándo rige?", con "Ahora" por defecto | e2e 150 A (mutante: sin el modal el precio se aplicaba al guardar) | ✅ |
+| 59.2 | Programar → el precio que rige hoy NO cambia y queda un pendiente con la fecha y hora elegidas | e2e 150 A | ✅ |
+| 59.3 | Pasada la hora, el servidor aplica el precio (pg_cron cada minuto), guarda el anterior y lo registra en el historial | e2e 150 B (esperó al cron real de DEV) | ✅ |
+| 59.4 | Programar otro para el mismo producto reemplaza al pendiente (uno por producto) | índice único parcial + `fn_programar_precio` | ✅ código |
+| 59.5 | Productos → Programados lista los pendientes y los cancela; cancelar no toca el precio vigente | e2e 150 C | ✅ |
+| 59.6 | No se escribe la tabla directo por REST, no se programa al pasado y un CAJERO no puede programar | e2e 150 D | ✅ |
+| 59.7 | Si aplicar falla → queda "No se aplicó" con el error y se avisa al DUEÑO/SUPER_USUARIO | revisión de `fn_aplicar_precios_programados` | ✅ código — sin e2e |
+| 59.8 | Aviso el día anterior (09:00) a DUEÑO, SUPER_USUARIO y SUPERVISOR | revisión + cron activo en DEV | ✅ código — sin e2e |
+| 59.9 | Producto con precio en USD → no se ofrece programar (A5: solo el minorista en pesos) | revisión | ✅ código |
+| 59.10 | Los avisos diarios de CC y OC vencidas le llegan al DUEÑO y al SUPER_USUARIO (antes a roles inexistentes: en PROD a nadie) | mig 421 verificada en DEV | ✅ DEV |
+| 59.11 | Fases siguientes: tarea del repositor anticipada que no se completa antes de la hora, aviso al cajero con etiqueta pendiente, alerta de etiquetas vencidas, aviso si ML/TN no publica | — | 🟨 pendiente |
+

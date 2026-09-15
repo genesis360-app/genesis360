@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-15T01:16:05.537Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260915011127 · 168 tablas
+-- Generado 2026-09-15T02:10:12.172Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260915020114 · 169 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1472,6 +1472,22 @@ CREATE TABLE public.platform_facturas (
 CREATE TABLE public.platform_facturas_claims (
   payment_ref text NOT NULL,
   claimed_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.precios_programados (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  producto_id uuid NOT NULL,
+  precio_venta numeric(12,2) NOT NULL,
+  vigente_desde timestamp with time zone NOT NULL,
+  estado text NOT NULL DEFAULT 'pendiente'::text,
+  precio_anterior numeric(12,2),
+  creado_por uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  aplicado_at timestamp with time zone,
+  cancelado_por uuid,
+  cancelado_at timestamp with time zone,
+  error text
 );
 
 CREATE TABLE public.producto_estructura_niveles (
@@ -3028,6 +3044,9 @@ ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_pkey PRIMARY
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_origen_pago_check CHECK ((origen_pago = ANY (ARRAY['mp_recurrente'::text, 'mp_manual'::text, 'manual_staff'::text])));
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_pkey PRIMARY KEY (id);
 ALTER TABLE public.platform_facturas_claims ADD CONSTRAINT platform_facturas_claims_pkey PRIMARY KEY (payment_ref);
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aplicado'::text, 'cancelado'::text, 'fallido'::text])));
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_pkey PRIMARY KEY (id);
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_precio_venta_check CHECK ((precio_venta >= (0)::numeric));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_alto_cm_check CHECK (((alto_cm IS NULL) OR (alto_cm > (0)::numeric)));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_ancho_cm_check CHECK (((ancho_cm IS NULL) OR (ancho_cm > (0)::numeric)));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_orden_key UNIQUE (estructura_id, orden);
@@ -3504,6 +3523,10 @@ ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_tipo_pedido_id_fkey FOREIGN KE
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_venta_origen_id_fkey FOREIGN KEY (venta_origen_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_biller_id_fkey FOREIGN KEY (biller_id) REFERENCES platform_billers(id) ON DELETE RESTRICT;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_tenant_origen_id_fkey FOREIGN KEY (tenant_origen_id) REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_cancelado_por_fkey FOREIGN KEY (cancelado_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
+ALTER TABLE public.precios_programados ADD CONSTRAINT precios_programados_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_fkey FOREIGN KEY (estructura_id) REFERENCES producto_estructuras(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE RESTRICT;
@@ -4044,6 +4067,8 @@ CREATE INDEX idx_pp_tenant ON public.producto_presentaciones USING btree (tenant
 CREATE UNIQUE INDEX idx_pp_una_base ON public.producto_presentaciones USING btree (producto_id) WHERE es_base;
 CREATE INDEX idx_ppm_presentacion ON public.producto_precios_mayorista USING btree (presentacion_id);
 CREATE INDEX idx_ppm_producto ON public.producto_precios_mayorista USING btree (producto_id);
+CREATE INDEX idx_precios_programados_a_aplicar ON public.precios_programados USING btree (vigente_desde) WHERE (estado = 'pendiente'::text);
+CREATE INDEX idx_precios_programados_tenant ON public.precios_programados USING btree (tenant_id, estado, vigente_desde);
 CREATE INDEX idx_presup_prov ON public.servicio_presupuestos USING btree (proveedor_id);
 CREATE INDEX idx_prod_ubic_suc_producto ON public.producto_ubicacion_sucursal USING btree (producto_id);
 CREATE INDEX idx_prod_ubic_suc_tenant ON public.producto_ubicacion_sucursal USING btree (tenant_id);
@@ -4274,6 +4299,7 @@ CREATE UNIQUE INDEX uq_cuentas_origen_efectivo_por_tenant_moneda ON public.cuent
 CREATE UNIQUE INDEX uq_emisores_fiscales_default ON public.emisores_fiscales USING btree (tenant_id) WHERE es_default;
 CREATE UNIQUE INDEX uq_emisores_fiscales_tenant_cuit ON public.emisores_fiscales USING btree (tenant_id, cuit);
 CREATE UNIQUE INDEX uq_nc_afip_pendientes_devolucion_activa ON public.nc_afip_pendientes USING btree (devolucion_id) WHERE (resuelto_at IS NULL);
+CREATE UNIQUE INDEX uq_precios_programados_pendiente ON public.precios_programados USING btree (producto_id) WHERE (estado = 'pendiente'::text);
 CREATE UNIQUE INDEX uq_puntos_venta_afip_emisor_numero ON public.puntos_venta_afip USING btree (tenant_id, COALESCE(emisor_id, '00000000-0000-0000-0000-000000000000'::uuid), numero);
 CREATE UNIQUE INDEX uq_tareas_repositor_activa ON public.tareas_repositor USING btree (producto_id, sucursal_id, tipo) WHERE (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text]));
 CREATE UNIQUE INDEX uq_tenant_addons_fijo_dim ON public.tenant_addons USING btree (tenant_id, dimension) WHERE (tipo = 'fijo'::text);
@@ -5190,6 +5216,60 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_aplicar_precios_programados()
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  r        RECORD;
+  v_n      integer := 0;
+  v_error  text;
+BEGIN
+  FOR r IN
+    SELECT pp.id, pp.tenant_id, pp.producto_id, pp.precio_venta, pp.creado_por,
+           p.precio_venta AS precio_actual, p.nombre AS producto_nombre
+      FROM public.precios_programados pp
+      JOIN public.productos p ON p.id = pp.producto_id
+     WHERE pp.estado = 'pendiente' AND pp.vigente_desde <= now()
+     ORDER BY pp.vigente_desde
+     LIMIT 500
+     FOR UPDATE OF pp SKIP LOCKED
+  LOOP
+    BEGIN
+      -- El mismo UPDATE que un cambio manual: dispara la tarea del repositor y la publicación en ML/TN.
+      UPDATE public.productos SET precio_venta = r.precio_venta WHERE id = r.producto_id;
+
+      UPDATE public.precios_programados
+         SET estado = 'aplicado', aplicado_at = now(), precio_anterior = r.precio_actual, error = NULL
+       WHERE id = r.id;
+
+      INSERT INTO public.actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre,
+                                        accion, campo, valor_anterior, valor_nuevo, pagina, producto_id)
+      VALUES (r.tenant_id, r.creado_por, 'Cambio de precio programado', 'producto', r.producto_id::text,
+              r.producto_nombre, 'editar', 'precio de venta (programado)', r.precio_actual::text,
+              r.precio_venta::text, '/productos', r.producto_id);
+
+      v_n := v_n + 1;
+    EXCEPTION WHEN OTHERS THEN
+      -- Nunca en silencio: queda marcado y se avisa al dueño.
+      v_error := SQLERRM;
+      UPDATE public.precios_programados SET estado = 'fallido', error = v_error WHERE id = r.id;
+      INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+      SELECT r.tenant_id, u.id, 'danger',
+             'No se pudo aplicar un precio programado',
+             r.producto_nombre || ': ' || v_error || '. El precio anterior sigue vigente.',
+             '/productos?tab=programados'
+        FROM public.users u
+       WHERE u.tenant_id = r.tenant_id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO');
+    END;
+  END LOOP;
+  RETURN v_n;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_autorizaciones_auto_asignar()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5276,6 +5356,54 @@ BEGIN
   WHERE pedido_id = p_pedido_id AND venta_id IS NULL AND estado NOT IN ('cancelado', 'entregado');
 
   UPDATE pedidos SET estado = 'cancelado', cancelado_at = now() WHERE id = p_pedido_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cancelar_precio_programado(p_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid       uuid := auth.uid();
+  v_tenant    uuid := public.get_user_tenant_id();
+  v_pp        RECORD;
+  v_nombre_us text;
+BEGIN
+  IF v_uid IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT public.auth_puede_editar_modulo('inventario') THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar precios de productos.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  SELECT pp.id, pp.tenant_id, pp.estado, pp.producto_id, pp.precio_venta, pp.vigente_desde, p.nombre AS producto_nombre
+    INTO v_pp
+    FROM public.precios_programados pp JOIN public.productos p ON p.id = pp.producto_id
+   WHERE pp.id = p_id
+   FOR UPDATE OF pp;
+  IF NOT FOUND OR v_pp.tenant_id <> v_tenant THEN
+    RAISE EXCEPTION 'Cambio programado no encontrado.';
+  END IF;
+  IF v_pp.estado <> 'pendiente' THEN
+    RAISE EXCEPTION 'Este cambio ya no está pendiente (estado: %).', v_pp.estado;
+  END IF;
+
+  UPDATE public.precios_programados
+     SET estado = 'cancelado', cancelado_por = v_uid, cancelado_at = now()
+   WHERE id = p_id;
+
+  SELECT nombre_display INTO v_nombre_us FROM public.users WHERE id = v_uid;
+  INSERT INTO public.actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre,
+                                    accion, campo, valor_anterior, pagina, producto_id)
+  VALUES (v_tenant, v_uid, v_nombre_us, 'producto', v_pp.producto_id::text, v_pp.producto_nombre,
+          'cancelar_precio_programado', 'precio de venta',
+          v_pp.precio_venta::text || ' desde ' ||
+            to_char(v_pp.vigente_desde AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM/YYYY HH24:MI'),
+          '/productos', v_pp.producto_id);
 END;
 $function$
 
@@ -7073,7 +7201,8 @@ BEGIN
       u.id                                                                                   AS user_id
     FROM ventas v
     JOIN clientes c ON c.id = v.cliente_id
-    JOIN users u ON u.tenant_id = v.tenant_id AND u.rol IN ('OWNER','ADMIN')
+    -- mig 421: antes ('OWNER','ADMIN'), que no incluía a ningún dueño.
+    JOIN users u ON u.tenant_id = v.tenant_id AND u.rol IN ('DUEÑO','SUPER_USUARIO')
     WHERE v.es_cuenta_corriente = true
       AND v.estado IN ('despachada', 'facturada')
       AND (v.total - COALESCE(v.monto_pagado, 0)) > 0.5
@@ -7111,7 +7240,8 @@ BEGIN
       u.id          AS user_id
     FROM ordenes_compra oc
     JOIN proveedores p ON p.id = oc.proveedor_id
-    JOIN users u ON u.tenant_id = oc.tenant_id AND u.rol IN ('OWNER','ADMIN')
+    -- mig 421: antes ('OWNER','ADMIN'), que no incluía a ningún dueño.
+    JOIN users u ON u.tenant_id = oc.tenant_id AND u.rol IN ('DUEÑO','SUPER_USUARIO')
     WHERE oc.fecha_vencimiento_pago IS NOT NULL
       AND oc.fecha_vencimiento_pago < CURRENT_DATE
       AND oc.estado_pago NOT IN ('pagada')
@@ -7136,6 +7266,48 @@ BEGIN
     END IF;
   END LOOP;
 
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_notificar_precios_programados_manana()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  r RECORD;
+  v_manana date := (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date + 1;
+BEGIN
+  FOR r IN
+    SELECT pp.tenant_id, u.id AS user_id, count(*) AS cantidad,
+           min(pp.vigente_desde) AS primero
+      FROM public.precios_programados pp
+      JOIN public.users u ON u.tenant_id = pp.tenant_id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR')
+     WHERE pp.estado = 'pendiente'
+       AND (pp.vigente_desde AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = v_manana
+     GROUP BY pp.tenant_id, u.id
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM public.notificaciones
+       WHERE user_id = r.user_id
+         AND action_url = '/productos?tab=programados'
+         AND titulo LIKE 'Mañana cambia%'
+         AND created_at::date = CURRENT_DATE
+    ) THEN
+      INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+      VALUES (
+        r.tenant_id, r.user_id, 'info',
+        CASE WHEN r.cantidad = 1 THEN 'Mañana cambia 1 precio programado'
+             ELSE 'Mañana cambian ' || r.cantidad || ' precios programados' END,
+        'El primero rige a las ' ||
+          to_char(r.primero AT TIME ZONE 'America/Argentina/Buenos_Aires', 'HH24:MI') ||
+          '. Revisalos en Productos → Programados.',
+        '/productos?tab=programados'
+      );
+    END IF;
+  END LOOP;
 END;
 $function$
 
@@ -8119,6 +8291,68 @@ BEGIN
 
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_programar_precio(p_producto_id uuid, p_precio_venta numeric, p_vigente_desde timestamp with time zone)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_uid       uuid := auth.uid();
+  v_tenant    uuid := public.get_user_tenant_id();
+  v_prod      RECORD;
+  v_id        uuid;
+  v_nombre_us text;
+BEGIN
+  IF v_uid IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT public.auth_puede_editar_modulo('inventario') THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar precios de productos.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  SELECT id, tenant_id, nombre, precio_venta INTO v_prod
+    FROM public.productos WHERE id = p_producto_id;
+  IF NOT FOUND OR v_prod.tenant_id <> v_tenant THEN
+    RAISE EXCEPTION 'Producto no encontrado.';
+  END IF;
+
+  IF p_precio_venta IS NULL OR p_precio_venta < 0 THEN
+    RAISE EXCEPTION 'El precio programado tiene que ser un número mayor o igual a cero.';
+  END IF;
+  IF p_vigente_desde IS NULL OR p_vigente_desde < now() + interval '1 minute' THEN
+    RAISE EXCEPTION 'La fecha y hora tienen que ser futuras. Para que el precio rija ya, guardá sin programar.';
+  END IF;
+  IF p_vigente_desde > now() + interval '366 days' THEN
+    RAISE EXCEPTION 'No se puede programar un precio a más de un año.';
+  END IF;
+
+  -- A2: programar otro reemplaza al pendiente.
+  UPDATE public.precios_programados
+     SET estado = 'cancelado', cancelado_por = v_uid, cancelado_at = now(),
+         error = 'Reemplazado por un cambio programado nuevo'
+   WHERE producto_id = p_producto_id AND estado = 'pendiente';
+
+  INSERT INTO public.precios_programados (tenant_id, producto_id, precio_venta, vigente_desde, creado_por)
+  VALUES (v_tenant, p_producto_id, round(p_precio_venta, 2), p_vigente_desde, v_uid)
+  RETURNING id INTO v_id;
+
+  -- E4: quién lo programó.
+  SELECT nombre_display INTO v_nombre_us FROM public.users WHERE id = v_uid;
+  INSERT INTO public.actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre,
+                                    accion, campo, valor_anterior, valor_nuevo, pagina, producto_id)
+  VALUES (v_tenant, v_uid, v_nombre_us, 'producto', p_producto_id::text, v_prod.nombre,
+          'programar_precio', 'precio de venta', v_prod.precio_venta::text,
+          round(p_precio_venta, 2)::text || ' desde ' ||
+            to_char(p_vigente_desde AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM/YYYY HH24:MI'),
+          '/productos', p_producto_id);
+
+  RETURN v_id;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_proveedor_portal_vinculo(p_proveedor_id uuid)
@@ -10227,6 +10461,67 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -10301,67 +10596,6 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -12406,6 +12640,7 @@ ALTER TABLE public.planes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.precios_programados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_estructura_niveles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_estructuras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_precios_mayorista ENABLE ROW LEVEL SECURITY;
@@ -12968,6 +13203,8 @@ CREATE POLICY pedidos_tenant ON public.pedidos AS PERMISSIVE FOR ALL TO public
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY planes_select_public ON public.planes AS PERMISSIVE FOR SELECT TO anon, authenticated
   USING (true);
+CREATE POLICY precios_programados_select ON public.precios_programados AS PERMISSIVE FOR SELECT TO public
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY pen_tenant ON public.producto_estructura_niveles AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -13629,6 +13866,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pl
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_billers TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas_claims TO service_role;
+GRANT REFERENCES, SELECT, TRIGGER, TRUNCATE ON public.precios_programados TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.precios_programados TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructura_niveles TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructura_niveles TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO anon;

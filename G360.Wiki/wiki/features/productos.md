@@ -469,6 +469,41 @@ Ver detalle técnico: [[wiki/features/escaneo-barcode]]
 
 ---
 
+## 🗓️ Precio de venta con fecha/hora de vigencia — Fase 1 (mig 422, 2026-09-14, EN DEV)
+
+Pedido de Fede. El relevamiento (`relevamiento-precio-programado-reglas-negocio.html`) lo respondió GO el
+2026-09-14; las respuestas completas están en `log.md` (sesión cont. 68).
+
+**Cómo se usa:** en la ficha del producto, al guardar un cambio del precio de venta aparece *"¿Desde cuándo
+rige el nuevo precio?"* con **Ahora** (por defecto) o **Programar fecha y hora** (propone mañana 08:00). Si se
+programa, el resto de la ficha se guarda y el precio que rige hoy **no cambia** hasta esa hora. Debajo del
+precio queda el aviso "Programado: $X desde…" con acceso a **Productos → Programados**, donde se ven los
+pendientes y los últimos 30 días, y se cancelan.
+
+| Regla (relevamiento) | Cómo quedó |
+|---|---|
+| A1 conviven | El precio vigente rige; el nuevo queda en `precios_programados` |
+| A2 uno por producto | Índice único parcial; programar otro cancela el anterior (con aviso en el modal) |
+| A3 cancelar/editar | Desde Programados; lo pueden los mismos roles que cambian precios |
+| A4 "ahora" por defecto | El modal abre en "Ahora" |
+| A5 solo minorista | Solo `precio_venta` en pesos; con precio en USD no se ofrece programar |
+| B1 carrito | Sin cambios: el POS congela el precio al agregar al carrito |
+| D1 ML/TN a la hora | Sale solo: el cron hace el mismo `UPDATE OF precio_venta` que dispara `fn_enqueue_sync_precio` |
+| E2 dónde se ven | Tab Programados + aviso el día anterior (09:00) a DUEÑO, SUPER_USUARIO y SUPERVISOR |
+| E3 local cerrado | Lo aplica pg_cron cada minuto, no el navegador |
+| E4 auditoría | `actividad_log`: `programar_precio`, `cancelar_precio_programado` y la aplicación (`precio de venta (programado)`) |
+
+**Del lado del servidor (REGLA #0):** la tabla solo se escribe por `fn_programar_precio` /
+`fn_cancelar_precio_programado`, que validan `auth_puede_editar_modulo('inventario')` — el mismo criterio que
+`fn_productos_rol_guard`. Importa porque al APLICAR el cron no tiene sesión y el guard de productos lo deja pasar:
+el control tiene que estar al programar. Si aplicar falla, queda `fallido` con el error y se avisa al dueño.
+
+**Pendiente (fases siguientes):** C1/C2 tarea del repositor anticipada que no se completa antes de la hora; C3
+aviso al cajero mientras la etiqueta siga pendiente + alerta de etiquetas vencidas; D2 aviso si la publicación
+en ML/TN falla (hoy la cola reintenta 5 veces con backoff y queda `failed`, sin aviso); E1 cambios masivos (v2).
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/grupos-variantes]]

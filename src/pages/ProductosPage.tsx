@@ -5,13 +5,14 @@ import {
   Edit2, Layers, X, Trash2, ChevronUp, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
   DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
-  SlidersHorizontal, ClipboardList, CheckCircle2, UserCog,
+  SlidersHorizontal, ClipboardList, CheckCircle2, UserCog, CalendarClock,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
+import { PreciosProgramadosPanel } from '@/components/PreciosProgramadosPanel'
 import { useSupervisorAutorizaciones, useSupervisionBadge, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
-import { puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { puedeSupervisarModulo, puedeEditarModulo } from '@/lib/permisosModulo'
 import { useConfirm } from '@/hooks/useConfirm'
 import { logActividad } from '@/lib/actividadLog'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -38,7 +39,7 @@ import { type Combinador } from '@/lib/pildorasFiltro'
 
 /** 'estructura' = pestaña de EMPAQUE (árbol de presentaciones, Fase 5 mig 310). Se conserva el
  *  id de la pestaña para no romper los deep-links y los tests que ya la referencian. */
-type Tab = 'productos' | 'estructura' | 'autorizaciones'
+type Tab = 'productos' | 'estructura' | 'autorizaciones' | 'programados'
 
 // 🐛 Bug real (Fede, 2026-08-20): un producto priceado en USD (moneda_venta/moneda_costo='usd',
 // rediseño mig 367 — ver ProductoFormPage.tsx) ya muestra su valor nativo en la ficha, pero esta
@@ -182,6 +183,10 @@ export default function ProductosPage() {
   // Deep-link desde AlertasPage ("Ver todos" de Productos sin categoría) — ?filterCat=__sin__
   // reusa el mismo sentinel que ya usa el select de categoría (GO, 2026-08-12).
   const [searchParams] = useSearchParams()
+  // Las notificaciones de precio programado (mig 422) llevan a /productos?tab=programados.
+  useEffect(() => {
+    if (searchParams.get('tab') === 'programados') setTab('programados')
+  }, [searchParams])
   const [filterCat, setFilterCat] = useState(() => searchParams.get('filterCat') ?? '')
   const [filterProv, setFilterProv] = useState('')
   const [filterMarca, setFilterMarca] = useState('')
@@ -789,6 +794,7 @@ export default function ProductosPage() {
       <PageTabs
         tabs={[
           { id: 'productos', label: 'Productos', icon: Package },
+          { id: 'programados', label: 'Programados', icon: CalendarClock },
           // Estructura (empaque unidad/caja/pallet) = WMS → solo modo avanzado
           ...(modoAvanzado ? [{ id: 'estructura', label: 'Estructura', icon: Layers }] : []),
           ...(puedeVerAutorizacionesProductos ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
@@ -897,8 +903,11 @@ export default function ProductosPage() {
         </SupervisionPanel>
       )}
 
-      {/* ════════════════════ TAB ESTRUCTURA ════════════════════ */}
-      {tab === 'estructura' ? (
+      {/* ════════════════════ TAB PROGRAMADOS (precio con vigencia, mig 422) ════════════════════ */}
+      {tab === 'programados' ? (
+        <PreciosProgramadosPanel puedeEditar={puedeEditarModulo(user, 'inventario')} />
+      ) : /* ════════════════════ TAB ESTRUCTURA ════════════════════ */
+      tab === 'estructura' ? (
         <div className="space-y-5">
           {/* Selector de producto */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">

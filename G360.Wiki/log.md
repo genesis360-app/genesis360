@@ -6,6 +6,42 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | 🗓️ Precio programado Fase 1 (mig 422) + 🛑 avisos de CC/OC vencidas al dueño (mig 421) + capacidad de PROD — v1.223.0 en DEV
+
+Sin deploy (GO: seguir acumulando).
+
+### 1 · Precio de venta con fecha/hora de vigencia — Fase 1
+Implementa las respuestas de GO al relevamiento (ver la entrada "Sesión cont. 68").
+- **Mig 422**: tabla `precios_programados` (un pendiente por producto; RLS solo lectura, sin escritura directa),
+  `fn_programar_precio` / `fn_cancelar_precio_programado` (validan `auth_puede_editar_modulo('inventario')`, producto
+  del negocio y fecha futura ≤ 1 año; registran en `actividad_log`), `fn_aplicar_precios_programados` por **pg_cron
+  cada minuto** — el mismo `UPDATE OF precio_venta` que un cambio manual, así la tarea del repositor y la cola de
+  ML/TN disparan solas — y aviso el día anterior. Si aplicar falla: `fallido` + aviso al dueño.
+- **Frontend**: `PrecioVigenciaModal` al guardar la ficha cuando cambió el precio ("Ahora" por defecto), aviso
+  "Programado: $X desde…" bajo el precio, tab **Productos → Programados** (`PreciosProgramadosPanel`, abre también con
+  `?tab=programados`), lógica pura en `src/lib/precioProgramado.ts`.
+- **Verificación**: 10 unit; **e2e 150** (4 casos) — A mutante (sin el modal el precio se aplicaba al guardar), B
+  esperó al cron real de DEV y verificó precio, estado, precio anterior e historial, C cancela desde la pantalla, D
+  guards (sin INSERT directo, sin pasado, CAJERO rechazado). Migración verificada: RLS, grants, crons y acentos.
+- **Queda (Fases 2-3)**: tarea del repositor anticipada que no se completa antes de la hora (C1/C2), aviso al cajero
+  y alerta de etiquetas vencidas (C3), aviso si ML/TN no publica (D2: hoy la cola reintenta 5 veces y queda `failed`
+  sin avisar). Masivo en v2.
+
+### 2 · 🛑 Los avisos diarios de CC y OC vencidas nunca le llegaban al dueño (mig 421)
+Encontrado leyendo cómo se arman las notificaciones: `fn_notificar_cc_vencidas` (mig 091) buscaba destinatarios con
+rol `OWNER` o `ADMIN`. `OWNER` no existe y `ADMIN` es staff. **En PROD no hay ningún usuario con esos roles → el
+aviso no le llegó nunca a nadie**; en DEV, los 58 avisos de "OC vencida" de 30 días le llegaron solo al ADMIN. Pasa a
+DUEÑO y SUPER_USUARIO. Latente (sin clientes reales).
+
+### 3 · Capacidad de PROD
+PROD: plan **Pro**, instancia **Micro** (misma configuración que DEV). Medido manejando la app real: un usuario con
+la pestaña quieta en el POS consume 0,59 req/s; cada cambio de pantalla, ~64 requests; una venta, 30. Contra el
+techo de E2 (~170 req/s, operando al 70 %): **~85 usuarios a la vez en hora pico, ~160 en uso tranquilo** (~40-80
+negocios). Supuestos, palancas y detalle en [[wiki/architecture/resiliencia]]. Hallazgo de paso: cada cambio de
+pantalla vuelve a pedir sesión, usuario, negocio y sucursales (32 `GET /auth/v1/user` en 8 pantallas).
+
+---
+
 ## [2026-09-14] update | 💳 El crédito a favor vuelve al anular + ✅ E2: el techo de DEV (sin deploy)
 
 GO: *"deploy después, sigamos juntando más"*. Nada fue a PROD.

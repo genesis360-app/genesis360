@@ -12,6 +12,8 @@ import { logActividad, nuevaTransaccion, diffCampos } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
+import { PrecioVigenciaModal, type EleccionVigencia } from '@/components/PrecioVigenciaModal'
+import { cambioDePrecio, formatearVigencia } from '@/lib/precioProgramado'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -122,6 +124,20 @@ export default function ProductoFormPage() {
   const [scanPhotoCount, setScanPhotoCount] = useState(0)
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false)
   const [skuTaken, setSkuTaken] = useState(false)
+  // Precio con fecha/hora de vigencia (mig 422): al guardar un cambio de precio de venta se pregunta desde
+  // cuándo rige. Si hay un cambio ya programado para este producto, se muestra acá y en el modal.
+  const [vigenciaModalAbierto, setVigenciaModalAbierto] = useState(false)
+  const { data: precioPendiente } = useQuery({
+    queryKey: ['precio-programado-pendiente', id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('precios_programados')
+        .select('id, precio_venta, vigente_desde')
+        .eq('producto_id', id!).eq('estado', 'pendiente').maybeSingle()
+      if (error) throw error
+      return data
+    },
+    enabled: isEditing,
+  })
 
 
   // Variantes madre/hijo (rediseño UoM Fase 3, mig 305)
@@ -505,6 +521,20 @@ export default function ProductoFormPage() {
       return
     }
 
+    // Precio con fecha/hora de vigencia (mig 422, A4): si cambió el precio de venta, se pregunta desde cuándo
+    // rige ("Ahora" por defecto). Solo el precio en pesos (A5: el precio en USD sale de la cotización) y solo
+    // al editar: un producto nuevo arranca con su precio.
+    const ofrecerProgramar = isEditing && !!productoData && canEdit && form.moneda_venta !== 'usd'
+      && cambioDePrecio(productoData.precio_venta, form.precio_venta)
+    if (ofrecerProgramar) {
+      setVigenciaModalAbierto(true)
+      return
+    }
+    await guardarProducto({ modo: 'ahora' })
+  }
+
+  const guardarProducto = async (vigencia: EleccionVigencia) => {
+    setVigenciaModalAbierto(false)
     setSaving(true)
     try {
       // Auto-generar SKU secuencial si está vacío
@@ -557,7 +587,10 @@ export default function ProductoFormPage() {
         ubicacion_id: form.ubicacion_id || null,
         estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
-        precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
+        // Precio programado (mig 422): si se programó, el precio que rige hoy no cambia hasta la fecha elegida.
+        precio_venta: vigencia.modo === 'programar' && productoData
+          ? Number(productoData.precio_venta)
+          : Math.max(0, parseFloat(form.precio_venta) || 0),
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
         precio_costo_usd: form.precio_costo_usd !== '' ? parseFloat(form.precio_costo_usd) : null,
@@ -683,6 +716,26 @@ export default function ProductoFormPage() {
             if (tiersErr) throw tiersErr
           }
         }
+      }
+
+      // Precio programado (mig 422): el resto del producto ya se guardó; ahora se agenda el precio nuevo.
+      // `fn_programar_precio` valida del lado del servidor el permiso, que el producto sea del negocio y que
+      // la fecha sea futura.
+      if (vigencia.modo === 'programar' && isEditing && id) {
+        const precioNuevo = Math.max(0, parseFloat(form.precio_venta) || 0)
+        const { error: progErr } = await supabase.rpc('fn_programar_precio', {
+          p_producto_id: id, p_precio_venta: precioNuevo, p_vigente_desde: vigencia.vigenteDesde.toISOString(),
+        })
+        qc.invalidateQueries({ queryKey: ['precio-programado-pendiente', id] })
+        qc.invalidateQueries({ queryKey: ['precios-programados'] })
+        if (progErr) {
+          toast.error(`El producto se guardó, pero el cambio de precio NO quedó programado (${progErr.message}). Sigue rigiendo el precio anterior.`, { duration: 12000 })
+          // Queda en la ficha para reintentar, con el precio que rige de verdad.
+          setForm(p => ({ ...p, precio_venta: String(productoData?.precio_venta ?? p.precio_venta) }))
+          qc.invalidateQueries({ queryKey: ['producto', id] })
+          return
+        }
+        toast.success(`Precio de venta programado: $${precioNuevo.toLocaleString('es-AR', { maximumFractionDigits: 2 })} desde el ${formatearVigencia(vigencia.vigenteDesde)}`)
       }
 
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -975,6 +1028,15 @@ export default function ProductoFormPage() {
       {showLimitModal && limits && (
         <PlanLimitModal tipo="producto" limits={limits} onClose={() => setShowLimitModal(false)} />
       )}
+      <PrecioVigenciaModal
+        abierto={vigenciaModalAbierto}
+        precioActual={Number(productoData?.precio_venta ?? 0)}
+        precioNuevo={Math.max(0, parseFloat(form.precio_venta) || 0)}
+        pendiente={precioPendiente ?? null}
+        guardando={saving}
+        onVolver={() => setVigenciaModalAbierto(false)}
+        onConfirmar={eleccion => { void guardarProducto(eleccion) }}
+      />
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/productos')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
           <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
@@ -1294,6 +1356,15 @@ export default function ProductoFormPage() {
                           {usdModoVenta
                             ? `= $${(parseFloat(form.precio_venta) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
                             : `≈ USD ${((parseFloat(form.precio_venta) || 0) / cotizNum).toFixed(2)}`}
+                        </p>
+                      )}
+                      {precioPendiente && (
+                        <p className="text-xs mt-1.5 rounded-lg px-2.5 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
+                          Programado: ${Number(precioPendiente.precio_venta).toLocaleString('es-AR', { maximumFractionDigits: 2 })} desde el{' '}
+                          {formatearVigencia(precioPendiente.vigente_desde)}.{' '}
+                          <button type="button" onClick={() => navigate('/productos?tab=programados')} className="underline">
+                            Ver o cancelar
+                          </button>
                         </p>
                       )}
                     </div>

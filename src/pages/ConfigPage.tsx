@@ -432,14 +432,16 @@ function MarketplaceSection() {
   const { tenant, user, setTenant } = useAuthStore()
   const canEdit = user?.rol === 'DUEÑO'
   const [activo, setActivo] = useState(tenant?.marketplace_activo ?? false)
-  const [webhookUrl, setWebhookUrl] = useState(tenant?.marketplace_webhook_url ?? '')
   const [saving, setSaving] = useState(false)
   const [collapsed, setCollapsed] = useState(!tenant?.marketplace_activo)
 
+  // El webhook de stock quedó APAGADO (2026-09-14, decisión de GO): ningún código llama a la EF
+  // `marketplace-webhook`, así que el campo "URL de webhook" prometía un aviso que nunca llegaba.
+  // Se sacó de la pantalla; la columna `marketplace_webhook_url` sigue en la base, sin uso.
   const save = async () => {
     setSaving(true)
     const { data, error } = await supabase.from('tenants')
-      .update({ marketplace_activo: activo, marketplace_webhook_url: webhookUrl.trim() || null })
+      .update({ marketplace_activo: activo })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Marketplace actualizado') }
@@ -468,18 +470,6 @@ function MarketplaceSection() {
             <Toggle size="lg" disabled={!canEdit} checked={activo}
               onChange={() => setActivo(a => !a)} aria-label="Activar marketplace" />
           </div>
-          {activo && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                URL de webhook externo <span className="text-gray-400 dark:text-gray-500 font-normal">(opcional)</span>
-              </label>
-              <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)}
-                disabled={!canEdit}
-                placeholder="https://mi-sistema.com/webhook/stock"
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Recibís una notificación POST cada vez que cambia el stock de un producto publicado.</p>
-            </div>
-          )}
           {activo && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-1">
               <p className="text-xs font-medium text-gray-600 dark:text-gray-300">Endpoint público de tu catálogo:</p>

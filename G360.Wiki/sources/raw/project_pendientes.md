@@ -6,29 +6,63 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 67) — PROD = DEV = `v1.221.0` · migs 001-**419** · DEV = PROD en policies y Edge Functions
+> ### ▶️ ARRANCÁ ACÁ (2026-09-14, cont. 68) — DEV `v1.222.0` · migs 001-**420** · PROD `v1.221.0` (001-419)
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.221.0` | 001-**419** | PRs #346-#349 el 14/09; Edge Functions = repo; policies = DEV |
-> | **DEV** | `v1.221.0` | 001-**419** | igual que PROD |
+> | **PROD** | `v1.221.0` | 001-**419** | PRs #346-#349 el 14/09; policies = DEV; Edge Functions = repo **salvo `marketplace-webhook`** (código nuevo sin desplegar) |
+> | **DEV** | `v1.222.0` | 001-**420** | reintegro al anular (REGLA #0) + tanda chica — **deploy a PROD esperando el OK de GO** |
 >
-> #### ▶️ QUÉ SIGUE (próxima sesión)
+> #### ✅ DECISIONES DE GO — cont. 68 (2026-09-14), en este orden
 >
-> **No hay deploy pendiente**: todo lo de cont. 67 está en PROD y verificado. Abierto, por prioridad:
+> Relevadas con preguntas cerradas, verificando código y datos (DEV y PROD, solo lectura) antes de cada una.
+> Detalle en `log.md` (2026-09-14, "Sesión cont. 68").
+>
+> ✅ **Hechos en DEV (`v1.222.0`, mig 420): puntos 1, 4, 5, 6 y 7** — ver `log.md` ("v1.222.0 en DEV"). El 2
+> queda cubierto por el 3. **Falta PROD** (mig 420 + frontend + redeploy de `marketplace-webhook`), esperando el
+> OK de GO. **Sigue: punto 8 (precio programado v1)** y después el 3 (multimoneda, arranca por relevamiento).
+> 🟥 **Nuevo hallazgo para GO:** anular una venta pagada con "Crédito a favor" no devuelve el crédito (UAT 57.11).
+>
+> 1. 🛑 **REGLA #0 — anular venta/seña cobrada en Efectivo USD**: el reintegro solo cuenta `tipo === 'Efectivo'`
+>    (`VentasPage.tsx` ~5245), así que los dólares caen a un `egreso_informativo` en la caja de pesos y **la Caja
+>    USD nunca registra la salida** (arqueo con faltante, en silencio). Latente: PROD nunca abrió una Caja USD y
+>    DEV no tiene canceladas con USD. **Decisión: devolver los mismos US$** (`monto_usd` × ratio de penalidad)
+>    desde la Caja USD abierta; sin Caja USD, aviso "registralo a mano", igual que con pesos.
+> 2. 🛑 **Moneda principal ≠ ARS (latente)**: el negocio CLP de prueba (DEV `4cf85bbb…`, PROD `5f05f3eb…`) tiene
+>    `cotizacion_usd` 1.400 / 1.420 (dólar en pesos ARGENTINOS) y `sumarPorMonedaNativa` toma ARS como base
+>    fija → un gasto en CLP queda afuera de los totales del Dashboard. Sin daño hoy (sus gastos están en ARS).
+> 3. 💱 **Multimoneda completa** — GO eligió: **moneda principal configurable** + **cotización por cada moneda**
+>    (automática desde dolarapi para EUR/BRL/CLP/UYU —verificado: publica esas 4 + USD, en ARS, Oficial— y
+>    manual para PYG/BOB/PEN/MXN/COP o si la API falla) + alcance **TODO, incluido vender** (gastos, Dashboard,
+>    cajas/cuentas, precios y cobros). Proyecto grande → **relevamiento → diseño → fases**. Nudos ya vistos:
+>    dolarapi da todo en ARS (con base CLP hay que cruzar tasas vía el oficial argentino), negocios fuera de AR no
+>    tienen AFIP (gatear facturación), `ventas.total` asume pesos, valuación al tipo comprador.
+> 4. **Motivos de caja**: el seed pasa a motivos de ingreso + migración que desactiva "Extracción / Retiro" y
+>    "Gastos varios" de sistema en los negocios existentes (el concepto se guarda como texto: el historial no cambia).
+> 5. **`marketplace-webhook`**: ocultar "Webhook URL" en Configuración, cerrar la llamada sin auth de la EF y
+>    documentarla como apagada. La API de consulta se queda.
+> 6. **Landing**: sacar "Más de 500 comercios" (`LandingPage.tsx:181`). El Video 1 la muestra: regrabar ese tramo
+>    cuando se retome la serie.
+> 7. **C-11 Monotributo**: "Proyección vs Tope Cat." y alertas 75/90 % a **12 meses móviles**. Para el contador
+>    queda: base facturado vs cobrado, y la frecuencia (la C-11 dice cuatrimestral; creemos que es semestral).
+> 8. **Precio programado — relevamiento RESPONDIDO**: B1 precio congelado al entrar al carrito · C1/C2 tarea
+>    anticipada (ej. 1 h, configurable) con el precio nuevo, que no se completa antes de la hora · C3 aviso al
+>    cajero mientras la etiqueta siga pendiente (clave de supervisor si el cliente reclama) + alerta de etiquetas
+>    vencidas · F1 v1 por producto, sin masivo. El resto, con los defaults del log. Diseño: el cron aplica el mismo
+>    `UPDATE` a la hora → los triggers de repositor y ML/TN disparan solos (`auth_puede_editar_modulo` deja pasar
+>    sin sesión).
+> 9. Cerrados sin construir: **tope de descuento del DUEÑO** = no tiene (usa el tope por canal) · **Login-as** =
+>    sigue pendiente (501), sin cambios · **Contador** = todavía no; el registro sigue acumulando.
+>
+> #### ▶️ QUÉ SIGUE (además de lo de arriba)
 >
 > 1. ⏸️ **Videos de onboarding EN PAUSA** — GO los revisa con su socio (6 hechos: 1-5 y 8; el 4 con efectos de
 >    click). No retomar hasta que GO lo diga. Ver memoria `project_videos_onboarding_serie`.
 > 2. 🧪 **Coberturas que quedaron sin e2e**: rol custom con permiso de Recursos creando ubicaciones (UAT 55.5 —
 >    hoy solo unit + policy) y la **firma** del transportista por la pantalla (el e2e 148 cubre la foto).
-> 3. 🔌 **`marketplace-webhook` no tiene quién la llame**: el wiki dice "fire-and-forget desde el frontend" pero
->    ningún código la invoca (0 negocios con marketplace activo). Decidir si se reconecta o se documenta como
->    apagada.
-> 4. 🧾 **Registro del contador** (`wiki/business/consultas-contador.md`): 15 preguntas abiertas, incluida C-11
->    (Monotributo: año calendario vs 12 meses).
-> 5. Decisiones de GO arrastradas: motivos de caja que nombran salidas en un modal de ingresos; el "+500
->    comercios" del landing; purgar el tenant "Genesis360 Onboarding" **cuando termine la serie de videos**.
-> 6. `wa-embedded-signup-exchange` sigue solo en DEV (espera el App Review de Meta).
+> 3. Purgar el tenant "Genesis360 Onboarding" **cuando termine la serie de videos**.
+> 4. `wa-embedded-signup-exchange` sigue solo en DEV (espera el App Review de Meta).
+> 5. **E2 (techo de instancia)**: falta que GO elija una ventana para saturar DEV.
 >
 > 🛠️ **Nuevo en cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la
 > paridad de policies **por schema** (`public`, `storage`, `cron`) — `storage` no se estaba mirando.

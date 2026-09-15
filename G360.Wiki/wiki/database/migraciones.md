@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-12
 ---
 
-# Historial de Migraciones (001-419, + correctivos 387b/387c)
+# Historial de Migraciones (001-420, + correctivos 387b/387c)
+
+**🗂️ Migración 420 — ✅ EN DEV · ⏳ PROD pendiente** (2026-09-14). Verificada en DEV: bytes UTF-8 de "dueño", `SECURITY DEFINER` + `search_path=public`, 7 negocios con los motivos nuevos y los dos viejos desactivados, motivos propios intactos. Sin dependencia con el frontend: se puede aplicar antes o después del merge.
 
 **🗂️ Migración 419 — ✅ EN DEV Y EN PROD** (2026-09-14, antes del merge de `v1.221.0`). Paridad después: `cron` 2, `public` 230 y `storage` 38 policies, mismos hashes en los dos ambientes.
 
@@ -31,6 +33,7 @@ truncado quedó (`CASE WHEN v_seq < 100`) **y** que `SET search_path` sobrevivi�
 
 | # | Archivo | Qué hace |
 |---|---|---|
+| 420 | `420_motivos_caja_solo_ingresos.sql` | 🧹 **Motivos de caja: solo ingresos** (decisión de GO). El modal "Ingreso de caja" solo suma plata, pero se sembraban "Extracción / Retiro" y "Gastos varios" (grabando el video 5, un flete quedó como ingreso dos veces). `fn_seed_tenant_defaults` pasa a sembrar "Ingreso de efectivo", "Aporte del dueño" y "Fondo de cambio" (CREATE OR REPLACE copiado de `pg_get_functiondef`, con SECURITY DEFINER + `search_path`); en los negocios existentes desactiva los dos motivos de sistema que nombran salidas y agrega los nuevos donde falten. Idempotente. El historial no cambia: el concepto se guarda como texto. Ver [[wiki/features/caja]]. |
 | 419 | `419_storage_politicas_por_negocio.sql` | 🛑 **Archivos por negocio** en `empleados`, `etiquetas-envios` y `presupuestos-servicios`. PROD no tenía políticas para esos buckets (todo fallaba) y las de DEV eran cross-tenant (`auth.uid() IS NOT NULL`) o no cubrían `prestamos/`/`recibos/`. Políticas según la ruta real; RRHH con `auth_puede_acceder_rrhh` (decisión de GO: quien maneja RRHH + el propio empleado); helpers que devuelven solo booleanos (una fila de empleado expuesta por RPC habría filtrado sueldos). El transportista sube por la EF `transportista-subir-archivo`, no por políticas. e2e 148 mutante. Tras aplicarla, DEV = PROD en `storage`. |
 | 418 | `418_drop_recursos_ubicacion_texto.sql` | 🗑️ **Dropea `recursos.ubicacion` (texto libre)**: la ubicación de un recurso es `ubicacion_id` (catálogo de la mig 407). Backfill de textos sueltos al catálogo con guard, DROP de los 3 triggers/funciones que escribían el texto (migs 407-408) y de la columna. 🛑 **Después del frontend `v1.220.0`**: con el frontend viejo `DashInventarioArea` pedía la columna. Ver [[wiki/features/recursos]]. |
 | 417 | `417_recurso_ubicaciones_permiso_modulo.sql` | 🔐 **Quién crea ubicaciones de Recursos** — decisión de GO: dueño, admin o rol custom que lo permita. La policy de escritura de `recurso_ubicaciones` pasa de un allowlist fijo (DUEÑO/ADMIN/SUPER_USUARIO) a `auth_puede_editar_modulo('recursos')`, que suma el rol custom con permiso explícito. Compatible con el frontend anterior. e2e 147: SUPERVISOR 403, DUEÑO 201. |

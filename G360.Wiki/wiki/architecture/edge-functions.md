@@ -49,7 +49,7 @@ eliminalas"* (2026-09-14). Revisadas una por una (código, workflows, cron, trig
 | `process-aging` | 🗑️ borrada | el wiki ya la daba por eliminada en v1.54.0 (código muerto: ConfigPage llama la RPC directo), pero seguía desplegada |
 | `birthday-notifications` | ✅ se queda | la llama un cron diario de GitHub Actions (corrió el mismo día) |
 | `data-api`, `marketplace-api` | ✅ se quedan | Configuración muestra sus endpoints a los usuarios |
-| `marketplace-webhook` | ✅ se queda | parte del marketplace, con código en el repo (hoy ningún negocio lo tiene activo) |
+| `marketplace-webhook` | 🔌 apagada (2026-09-14) | nadie la llamaba; ahora exige usuario autenticado del mismo negocio. Código nuevo en el repo, **redesplegar en PROD con `verify_jwt: true`** en el próximo deploy. Ver [[wiki/features/marketplace]] |
 
 Antes de borrar se bajó el código de cada una a `D:/Dev/genesis360-backups/edge-functions-eliminadas-2026-09-14/`.
 
@@ -74,7 +74,7 @@ Antes de borrar se bajó el código de cada una a `D:/Dev/genesis360-backups/edg
 | `meli-search-items` | Busca productos en Mercado Libre |
 | `tn-oauth-callback` | Callback OAuth para conectar cuenta Tienda Nube |
 | `tn-webhook` | Procesa webhooks de Tienda Nube (stock sync) |
-| `marketplace-webhook` | Webhook del marketplace interno |
+| `marketplace-webhook` | Webhook de stock del marketplace interno — 🔌 apagado (2026-09-14), solo acepta usuarios autenticados |
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
 | `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |

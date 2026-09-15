@@ -219,20 +219,21 @@ registrar el valor y las mejoras alcanza?
 
 ### C-11 · 🐛 El indicador de tope de categoría mide el año calendario, ¿no deberían ser 12 meses móviles?
 
-- **Estado:** 🟥 Abierta — **y probablemente sea un error nuestro**
+- **Estado:** 🟥 Abierta — el período ya se corrigió (ver abajo); quedan la base y la frecuencia
 - **Área:** Monotributo — recategorización
-- **Impacta en:** `src/components/DashFacturacionArea.tsx` (tarjeta "Proyección vs Tope Cat." y las
-  alertas de 75% / 90%)
-- **Criterio provisorio:** el sistema suma las ventas **desde el 1° de enero** del año en curso y lo
-  compara contra el límite de la categoría.
+- **Impacta en:** `src/components/DashFacturacionArea.tsx` (tarjeta "Últimos 12 meses vs Tope Cat." y
+  las alertas de 75% / 90%)
+- **Criterio provisorio:** desde el 2026-09-14 (decisión de GO) el sistema suma las ventas
+  despachadas/facturadas de los **últimos 12 meses móviles** y lo compara contra el límite de la
+  categoría. Antes sumaba **desde el 1° de enero**, y eso subestimaba sistemáticamente a principio de año:
+  en febrero marcaba casi cero aunque el negocio viniera facturando al 95% del tope desde hacía meses.
 
-**Pregunta:** ¿no debería medirse sobre los **últimos 12 meses móviles**, que es lo que mira AFIP en
-cada recategorización cuatrimestral?
+**Pregunta:** ¿es correcto medir sobre los **últimos 12 meses móviles**, que es lo que mira ARCA en cada
+recategorización? ¿La recategorización es **semestral** (enero y julio) o **cuatrimestral**? Este registro
+decía cuatrimestral; creemos que es semestral desde 2017, pero no está validado.
 
-**Por qué importa:** si es así, el indicador **subestima sistemáticamente** a principio de año. En
-febrero muestra casi cero aunque el negocio venga facturando al 95% del tope desde hace meses. Está
-rotulado como estimación en todos lados y no emite nada ni mueve plata — pero es un número sobre el
-que alguien podría decidir no recategorizarse.
+**Por qué importa:** es un número rotulado como estimación que no emite nada ni mueve plata, pero sobre
+el que alguien podría decidir no recategorizarse.
 
 **Preguntar también:** ¿la base son las ventas facturadas (devengado) o lo efectivamente cobrado
 (percibido)? Hoy el sistema suma el total de las ventas despachadas/facturadas.

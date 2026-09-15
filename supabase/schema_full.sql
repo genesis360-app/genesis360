@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-14T17:34:36.554Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260914173327 · 168 tablas
+-- Generado 2026-09-15T01:16:05.537Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260915011127 · 168 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -8734,6 +8734,9 @@ BEGIN
   INSERT INTO cajas (tenant_id, nombre, sucursal_id)
   VALUES (NEW.id, 'Caja Principal', v_sucursal_id);
 
+  -- mig 420: los motivos de tipo 'caja' son los chips del modal "Ingreso de caja", que SOLO suma plata.
+  -- Ninguno puede nombrar una salida ("Extracción / Retiro" y "Gastos varios" invitaban a cargar un
+  -- egreso como ingreso).
   INSERT INTO motivos_movimiento (tenant_id, nombre, tipo, es_sistema) VALUES
     (NEW.id, 'Compra a proveedor',     'ingreso', true),
     (NEW.id, 'Ingreso inicial',         'ingreso', true),
@@ -8743,8 +8746,8 @@ BEGIN
     (NEW.id, 'Consumo interno',         'rebaje', true),
     (NEW.id, 'Vencimiento',             'rebaje', true),
     (NEW.id, 'Ingreso de efectivo',     'caja',   true),
-    (NEW.id, 'Extracción / Retiro',     'caja',   true),
-    (NEW.id, 'Gastos varios',           'caja',   true),
+    (NEW.id, 'Aporte del dueño',        'caja',   true),
+    (NEW.id, 'Fondo de cambio',         'caja',   true),
     (NEW.id, 'Ajuste de inventario',    'ambos',  true);
 
   INSERT INTO estados_inventario (tenant_id, nombre, color, es_devolucion, es_disponible_venta, es_disponible_tn, es_disponible_meli) VALUES

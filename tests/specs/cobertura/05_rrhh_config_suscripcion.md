@@ -144,7 +144,7 @@ Archivos núcleo leídos: `src/pages/RrhhPage.tsx` (4840 ln), `src/pages/ConfigP
 | `session_timeout_minutes` | null (nunca) | `AppLayout.tsx:92` → `useInactivityTimeout` | >0: cierra sesión tras inactividad, avisa 1 min antes | null/0: no expira | 🔴gap |
 | `clave_maestra` (hash) | null | `ConfigPage.tsx:1028-1043` (setear); `verificar_clave_maestra` RPC en Caja/Clientes/Envíos/Gastos/Inventario/Ventas | con clave: gatea anular/incobrable/caja-ajena/diferencia/ajustes | null: acciones no piden clave | ✅e2e 41 (setear) · 🟡 gating en módulos (e2e 40 incobrable) |
 | `marketplace_activo` | false | `ConfigPage.tsx:315-323` | Expone catálogo vía `marketplace-api`; requiere `puede_marketplace` (plan) | false: API cerrada | 🔴gap |
-| `marketplace_webhook_url` | null | `ConfigPage.tsx:316,323` | URL de webhook de stock | null: sin webhook | 🔴gap |
+| `marketplace_webhook_url` | null | `ConfigPage.tsx:316,323` | URL de webhook de stock — campo **retirado de la UI** el 2026-09-14 (la EF quedó apagada) | n/a | ⚪ retirado |
 | `whatsapp_plantilla` | null | `ConfigPage.tsx:627,957` | Plantilla de mensajes WhatsApp (CC/notif) | null: usa default | 🔴gap |
 | `sitio_web` | null | `ConfigPage.tsx:615,862` | Sale en comprobantes (módulo facturación) | null: no aparece | (módulo facturación — otro agente) |
 | `cumple_notif_cliente` / `cumple_notif_duenio` | false | `ConfigPage.tsx:597-598,955-956` | Notifica cumpleaños al cliente / al dueño | false: no notifica | 🔴gap |

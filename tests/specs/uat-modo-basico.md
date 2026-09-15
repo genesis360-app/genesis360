@@ -2091,3 +2091,37 @@ que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edg
 | 56.7 | Si la firma no se guarda, la pantalla avisa | revisión de `EnviosPage`/`TransportistePage` | ✅ código |
 | 56.8 | En PROD, un usuario real: propio 200, ajeno rechazado | smoke con la cuenta de prueba | ✅ |
 
+## 🛑 §57 — El reintegro al anular sale por donde entró el cobro (sin migración) 🛑 PLATA — 2026-09-14
+
+El reintegro de una anulación (venta despachada o reserva con seña) se reconstruye con la misma cuenta
+que usó el cobro: `calcularReintegroAnulacion` en `src/lib/ventasValidation.ts`. Antes tenía tres agujeros
+latentes (sin daño en DEV ni PROD): los dólares no salían de la Caja USD, el efectivo se devolvía bruto
+(vuelto incluido) y solo se reconocía el método llamado "Efectivo".
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 57.1 | Anular una venta cobrada con Efectivo USD → egreso en DÓLARES en la Caja USD; la caja en pesos no se mueve | e2e 149 A (mutante: con el código viejo no había egreso en dólares) | ✅ |
+| 57.2 | Anular una venta en efectivo con vuelto ($1.500 por $1.234) → egreso por el neto, $1.234 | e2e 149 B (mutante: el código viejo sacaba $1.500) + unit | ✅ |
+| 57.3 | El método de efectivo del negocio tiene otro nombre ("Contado") → cuenta como efectivo al anular | unit `calcularReintegroAnulacion` | ✅ unit |
+| 57.4 | Pago combinado pesos + USD + transferencia → cada parte vuelve por su lado (egreso ARS, egreso USD, un informativo por medio) | unit | ✅ unit |
+| 57.5 | Dólares de más con vuelto en pesos → al anular, esos pesos vuelven a la caja (ingreso) y se avisa que el cliente los devuelve | unit | ✅ unit |
+| 57.6 | La penalidad de la seña se aplica a cada parte (pesos, dólares e informativos) | unit | ✅ unit |
+| 57.7 | Anular una venta con efectivo USD sin Caja USD abierta → bloquea con mensaje; sin detalle de medios → aviso "registralo manualmente" | revisión de código (guard + `sinDetalle`) | ✅ código |
+| 57.8 | Cancelar una reserva con seña en USD → el modal y el aviso dicen cuántos US$ se devuelven | revisión de código | ✅ código |
+| 57.9 | Despachar una reserva con seña mixta (pesos + USD) → la seña no se vuelve a sumar a la caja en pesos | revisión de código (`.limit(1)` en lugar de `.maybeSingle()`, que con 2 filas daba `null`) | ✅ código — sin e2e |
+| 57.10 | Falla al asentar el cobro de un despacho → aviso con monto (antes `catch {}` silencioso) | revisión de código | ✅ código |
+| 57.11 | ⚠️ Anular una venta pagada con "Crédito a favor" → el crédito NO vuelve al saldo del cliente | hallazgo, pendiente de decisión de GO | 🟥 abierto |
+
+## 🧹 §58 — Motivos de caja, webhook del marketplace, landing y tope de Monotributo (mig 420) — 2026-09-14
+
+Decisiones de GO del 2026-09-14 (ver `log.md`, sesión cont. 68).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 58.1 | Negocio nuevo → los chips del modal "Ingreso de caja" son "Ingreso de efectivo", "Aporte del dueño" y "Fondo de cambio"; ninguno nombra una salida | mig 420 en DEV: `pg_get_functiondef` + bytes UTF-8 de "dueño" + `SECURITY DEFINER`/`search_path` | ✅ DEV |
+| 58.2 | Negocio existente → "Extracción / Retiro" y "Gastos varios" desactivados, los dos nuevos agregados, los motivos propios intactos y el historial de movimientos sin cambios | query en DEV: 7 negocios; "Ingreso de dinero" (motivo propio) intacto | ✅ DEV |
+| 58.3 | Configuración → Marketplace ya no ofrece "URL de webhook"; guardar solo cambia el toggle | revisión de código | ✅ código |
+| 58.4 | `marketplace-webhook` sin `Authorization` → 401; producto de otro negocio → 403 | revisión de código · ⚠️ falta redesplegar en PROD (no existe en DEV) | 🟡 pendiente deploy |
+| 58.5 | El landing ya no dice "Más de 500 comercios" | revisión de código | ✅ código |
+| 58.6 | Monotributo: la tarjeta y las alertas de 75/90 % miden los **últimos 12 meses**, y la suma no se corta en 1.000 ventas (paginada) | revisión de código; en DEV no hay diferencia visible (todas las ventas de Jorgito son de 2026) | ✅ código |
+

@@ -177,9 +177,6 @@ export default function LandingPage() {
               Ver funciones
             </a>
           </div>
-          <p className="text-blue-200 text-sm mt-6">
-            Más de <strong className="text-white">500 comercios</strong> ya controlan su stock con {BRAND.name}
-          </p>
         </div>
       </section>
 

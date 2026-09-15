@@ -134,6 +134,85 @@ export function calcularEfectivoPorMoneda(
   }
 }
 
+/** Una fila de `ventas.medio_pago` tal como queda guardada: `monto` en pesos (el equivalente, incluso en
+ *  un medio en dólares) y `monto_usd` solo en los medios de efectivo en dólares. */
+export interface MedioPagoGuardado { tipo?: string | null; monto?: number | string | null; monto_usd?: number | string | null }
+
+export interface ReintegroAnulacion {
+  /** Pesos en efectivo que se devuelven desde la caja EN PESOS: lo que esa caja recibió, NETO del vuelto.
+   *  Negativo = en la venta la caja en pesos PAGÓ un vuelto financiado con dólares de más; al anular, esos
+   *  pesos vuelven a la caja. */
+  arsEfectivo: number
+  /** Dólares reales que se devuelven desde la Caja USD (nunca el equivalente en pesos). */
+  usd: number
+  /** Medios no efectivo, en pesos, uno por tipo: son movimientos informativos. Sin Cuenta Corriente (no se
+   *  cobró) ni Crédito a favor (no pasó por la caja). */
+  noEfectivo: { tipo: string; monto: number }[]
+  /** `true` si `medio_pago` no tiene detalle legible: no hay con qué reconstruir el reintegro. */
+  sinDetalle: boolean
+}
+
+/**
+ * 🛑 REGLA #0 — qué se devuelve, y desde qué caja, al anular una venta o cancelar una reserva con seña.
+ *
+ * Anular es deshacer lo que la venta asentó, así que el reintegro se reconstruye con la MISMA cuenta que
+ * usó el cobro (`calcularEfectivoPorMoneda`) sobre lo guardado en `ventas.medio_pago`, y después se aplica
+ * `ratio` (1 − penalidad de la seña). Reemplaza un cálculo con tres agujeros (2026-09-14):
+ *   1. Los dólares no salían de la Caja USD: "Efectivo USD" caía como informativo en la caja en pesos.
+ *   2. El efectivo en pesos se devolvía BRUTO: `medio_pago` guarda lo que entregó el cliente ($12.000 en una
+ *      venta de $10.000), pero la caja recibió el neto del vuelto ($10.000).
+ *   3. Solo reconocía el método llamado literalmente "Efectivo", no los que el negocio marcó `es_efectivo`.
+ *
+ * `totalACubrir` = lo que los medios de pago tenían que cubrir en la venta: `total + costo_envio`.
+ */
+export function calcularReintegroAnulacion(
+  medioPago: unknown,
+  totalACubrir: number,
+  ratio: number,
+  mediosEfectivo: ReadonlySet<string> = MEDIOS_EFECTIVO_DEFAULT,
+  mediosEfectivoUsd: ReadonlySet<string> = new Set(),
+): ReintegroAnulacion {
+  const sinDetalle: ReintegroAnulacion = { arsEfectivo: 0, usd: 0, noEfectivo: [], sinDetalle: true }
+  let arr: unknown = medioPago
+  if (typeof medioPago === 'string') {
+    try { arr = JSON.parse(medioPago) } catch { return sinDetalle }
+  }
+  if (!Array.isArray(arr)) return sinDetalle
+  // El `numeric` de Postgres puede llegar como string ("21.00"): normalizar antes de operar.
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''))
+    return Number.isFinite(n) ? n : 0
+  }
+  const medios: MedioPagoItem[] = (arr as MedioPagoGuardado[])
+    .filter(m => m && typeof m.tipo === 'string' && m.tipo.trim() !== '')
+    .map(m => ({
+      tipo: m.tipo as string,
+      monto: String(num(m.monto)),
+      ...(num(m.monto_usd) > 0 ? { montoUsd: String(num(m.monto_usd)) } : {}),
+    }))
+  if (medios.length === 0) return sinDetalle
+
+  const r = Number.isFinite(ratio) ? Math.min(1, Math.max(0, ratio)) : 0
+  const aplicar = (n: number) => Math.round(n * r * 100) / 100
+  // Igual que al cobrar: la Cuenta Corriente no se cobró, así que no cubre nada del vuelto.
+  const montoCC = medios.filter(m => m.tipo === 'Cuenta Corriente').reduce((a, m) => a + num(m.monto), 0)
+  const cobrados = medios.filter(m => m.tipo !== 'Cuenta Corriente')
+  const ef = calcularEfectivoPorMoneda(cobrados, Math.max(0, num(totalACubrir) - montoCC), mediosEfectivo, mediosEfectivoUsd)
+
+  const porTipo = new Map<string, number>()
+  for (const m of cobrados) {
+    if (mediosEfectivo.has(m.tipo) || m.tipo === 'Crédito a favor') continue
+    const monto = num(m.monto)
+    if (monto > 0) porTipo.set(m.tipo, (porTipo.get(m.tipo) ?? 0) + monto)
+  }
+  return {
+    arsEfectivo: aplicar(ef.arsNeto),
+    usd: aplicar(ef.usdIngreso),
+    noEfectivo: [...porTipo].map(([tipo, monto]) => ({ tipo, monto: aplicar(monto) })).filter(x => x.monto > 0.005),
+    sinDetalle: false,
+  }
+}
+
 /**
  * A2 del relevamiento G5 — un producto solo puede cobrarse en USD si YA está priceado en USD
  * (`moneda_venta='usd'`) o si el DUEÑO marcó explícitamente que acepta cualquier moneda

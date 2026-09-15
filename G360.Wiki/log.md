@@ -6,6 +6,101 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-14] update | ✅ v1.222.0 en DEV — reintegro al anular (REGLA #0) + tanda chica (mig 420)
+
+Las dos primeras tandas del orden que fijó GO en la cont. 68. **Todo en DEV; PROD espera autorización.**
+
+### 1 · 🛑 El reintegro al anular sale por donde entró el cobro
+Tres agujeros latentes en el bloque de reintegro de `VentasPage` (anular venta despachada / cancelar reserva
+con seña), más uno al despachar una reserva:
+1. **Los dólares no salían de la Caja USD**: `efectivoCobrado` solo sumaba `tipo === 'Efectivo'`; "Efectivo USD"
+   caía en la pata no-efectivo.
+2. **El efectivo se devolvía bruto**: `medio_pago` guarda lo que entregó el cliente ($1.500 por una venta de
+   $1.234) y la caja había recibido el neto.
+3. **Solo se reconocía el método llamado literalmente "Efectivo"**, no los `es_efectivo` del negocio.
+4. **Al despachar una reserva con seña mixta** (pesos + USD), `.maybeSingle()` con dos filas devolvía `null` →
+   "la seña no está en caja" → se volvía a sumar en pesos. Y el bloque terminaba en `catch {}` silencioso.
+
+**Fix:** `calcularReintegroAnulacion` (`src/lib/ventasValidation.ts`) reconstruye el reintegro con la misma
+cuenta que el cobro (`calcularEfectivoPorMoneda`): pesos netos del vuelto a la caja en pesos, dólares a la Caja
+USD (`moneda='USD'`), un informativo por medio no efectivo, con la penalidad aplicada a cada parte. El guard de
+la venta despachada exige una caja abierta **en la moneda de cada parte**. El modal de cancelar reserva dice
+cuántos US$ se devuelven. El despacho usa `.limit(1)`, solo suma efectivo en pesos y avisa si falla.
+
+**Verificación:** 10 unit nuevos (72/72); **e2e 149 mutante** (anulación por aprobación de Supervisión, venta
+sembrada por REST). Con el código viejo la base mostró: venta #829 en USD **sin ningún egreso** y venta #830
+con **egreso de $1.500 por un cobro de $1.234** (quedan en el negocio de prueba: el ledger es inmutable). Con el
+nuevo, #827 y #828 cierran en cero. Typecheck, ESLint, build y e2e 84/86 en verde. Sin daño real: PROD nunca
+abrió una Caja USD.
+
+🟥 **Hallazgo abierto (UAT 57.11):** anular una venta pagada con "Crédito a favor" no le devuelve el crédito al
+cliente. Espera decisión de GO.
+
+### 2 · La tanda chica
+- **Motivos de caja (mig 420):** negocios nuevos siembran "Ingreso de efectivo", "Aporte del dueño" y "Fondo de
+  cambio"; en los existentes se desactivan "Extracción / Retiro" y "Gastos varios". El "drift" de
+  `fn_seed_tenant_defaults` entre DEV y PROD resultó ser **solo comentarios** (mismo código); PROD tiene además un
+  índice duplicado en `motivos_movimiento` (`idx_motivos_tenant`), cosmético.
+- **`marketplace-webhook` apagado:** salió el campo "URL de webhook" de Configuración y la EF exige usuario
+  autenticado del mismo negocio (antes aceptaba llamadas sin auth). Existe **solo en PROD**: se redespliega con el
+  deploy.
+- **Landing:** fuera "Más de 500 comercios".
+- **C-11 Monotributo:** la tarjeta ("Últimos 12 meses vs Tope Cat.") y las alertas de 75/90 % miden 12 meses
+  móviles. De paso: la suma leía como máximo **1.000 ventas y cortaba sin avisar** → ahora pagina.
+  `consultas-contador.md` actualizado (quedan base facturado/cobrado y frecuencia semestral vs cuatrimestral).
+
+### Pendiente para PROD
+Mig 420 · frontend `v1.222.0` · redeploy de `marketplace-webhook` con `verify_jwt: true` · auditoría de EFs y
+paridad de policies por schema.
+
+---
+
+## [2026-09-14] update | 🧭 Sesión cont. 68 — GO define todos los pendientes abiertos + 2 hallazgos REGLA #0 latentes
+
+Sin código. GO pidió "lo que falte definir" y se relevó en 4 tandas de preguntas cerradas; antes de cada una se
+verificó el código y los datos (DEV y PROD, solo lectura). Orden de trabajo en el bloque "DECISIONES DE GO" de
+`sources/raw/project_pendientes.md`.
+
+### 🛑 Hallazgos (latentes, sin daño)
+1. **Anular una venta o seña cobrada en Efectivo USD no saca los dólares de la Caja USD.** `efectivoCobrado`
+   solo suma `tipo === 'Efectivo'`; los USD caen en la pata no-efectivo como `egreso_informativo` en la caja de
+   pesos. El cajero devuelve dólares que el sistema nunca descuenta → faltante en el arqueo de la Caja USD, sin
+   aviso. Control: PROD nunca abrió una sesión de Caja USD; en DEV ninguna de las 71 canceladas tiene USD.
+2. **Negocio con moneda principal ≠ ARS.** "Familia Otranto De Porto" es CLP en DEV y en PROD, con
+   `cotizacion_usd` 1.400 / 1.420 (el dólar en pesos argentinos que trae dolarapi, no en CLP), y
+   `sumarPorMonedaNativa` (DashGastosArea) toma ARS como base fija: un gasto en CLP iría a "otras" y quedaría
+   afuera de todos los totales. Hoy sus gastos están grabados en ARS.
+
+### Decisiones
+| Tema | Decisión de GO |
+|---|---|
+| Anular con Efectivo USD | Devolver los mismos US$ desde la Caja USD abierta; sin Caja USD, aviso "registralo a mano" |
+| Motivos de caja | Seed solo con motivos de ingreso + desactivar "Extracción / Retiro" y "Gastos varios" en los existentes |
+| `marketplace-webhook` | Ocultar el campo en Configuración, cerrar la llamada sin auth, documentarla apagada |
+| Landing "+500 comercios" | Sacar la línea |
+| Monedas | Moneda principal configurable + cotización por moneda (auto dolarapi EUR/BRL/CLP/UYU + manual) + alcance total, incluido vender → relevamiento y fases |
+| Login-as (panel soporte) | Sigue pendiente, sin cambios |
+| Tope de descuento del DUEÑO | No tiene; usa el tope por canal |
+| C-11 Monotributo | Corregir ya a 12 meses móviles; base facturado/cobrado y frecuencia quedan para el contador |
+| Contador | Todavía no; el registro sigue acumulando |
+
+### Precio programado — respuestas del relevamiento (`relevamiento-precio-programado-reglas-negocio.html`)
+A1 conviven (el vigente rige, el nuevo queda agendado) · A2 uno por producto, programar otro reemplaza con aviso ·
+A3 editable y cancelable por los roles que hoy cambian precios · A4 "ahora" por defecto · A5 solo minorista en v1 ·
+**B1 congelado al entrar al carrito** · B2 la reserva respeta lo pactado · B3 el presupuesto respeta su validez ·
+**C1/C2 tarea anticipada (ej. 1 h, configurable) con el precio nuevo, que no se puede completar antes de la hora** ·
+**C3 aviso al cajero mientras la etiqueta esté pendiente (clave de supervisor si el cliente reclama) + alerta de
+etiquetas vencidas** · D1 ML/TN a la hora de vigencia · D2 reintento + aviso al dueño · D3 misma fecha que el
+local · E1 masivo en v2 · E2 lista en Productos + aviso el día anterior · E3 lo aplica el servidor · E4 queda quién
+programó y cuándo se aplicó · **F1 v1 por producto, sin masivo**.
+
+Verificado para el diseño: si el cron aplica el precio con el mismo `UPDATE OF precio_venta`,
+`fn_generar_tarea_repositor_precio` y `fn_enqueue_sync_precio` disparan solos, y `fn_productos_rol_guard` no lo
+frena (`auth_puede_editar_modulo` devuelve `true` sin sesión). Quién puede programar se controla al guardar el
+programado.
+
+---
+
 ## [2026-09-14] update | 🧹 Cierre de sesión (cont. 67) — PROD = DEV = v1.221.0, sin deploys pendientes
 
 Sesión larga, en este orden: efectos de click + Video 4 → **pausa de la serie de videos** (GO la revisa

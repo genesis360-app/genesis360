@@ -382,3 +382,7 @@ pantalla.
 La app no lo esconde —la lista lo muestra en verde con `+$`, y al cerrar detectó el faltante de
 $12.400 y lo registró— pero el camino invita al error. **Anotado como hallazgo para GO**; no es un
 bug de código, es qué motivos se siembran.
+
+✅ **Resuelto (mig 420, 2026-09-14, decisión de GO):** los chips ahora son "Ingreso de efectivo",
+"Aporte del dueño" y "Fondo de cambio". En los negocios existentes se desactivaron "Extracción / Retiro"
+y "Gastos varios". ⚠️ **El video 5 grabado muestra los chips viejos**: si se publica, regrabar ese tramo.

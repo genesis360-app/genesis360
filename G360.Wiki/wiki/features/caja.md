@@ -94,8 +94,20 @@ La apertura **sugiere el monto del cierre anterior** de esa misma caja.
 
 - **Venta despachada** con efectivo → INSERT `ingreso` automático en `caja_movimientos`
 - **Reserva** con efectivo → INSERT `ingreso_reserva`
-- **Cancelar reserva señada** → INSERT `egreso_devolucion_sena`
-- **Al despachar desde reservada** → consulta si ya existe ingreso_reserva para evitar duplicado
+- **Cancelar reserva señada o anular venta** → el reintegro se reconstruye con `calcularReintegroAnulacion`
+  (`src/lib/ventasValidation.ts`), la misma cuenta que usó el cobro: efectivo en pesos **neto del vuelto** →
+  `egreso_devolucion_sena` en la caja en pesos; **dólares → `egreso_devolucion_sena` con `moneda='USD'` en la
+  Caja USD**; medios no efectivo → un `egreso_informativo` por medio. Sin la caja de esa moneda abierta, la
+  venta despachada no se deja anular (guard) y la reserva avisa "registralo manualmente". 🛑 Hasta el
+  2026-09-14 los dólares no salían de la Caja USD y el efectivo se devolvía bruto, vuelto incluido (latente,
+  sin daño). UAT §57, e2e 149.
+- **Al despachar desde reservada** → consulta si ya existe ingreso_reserva para evitar duplicado (`.limit(1)`:
+  con una seña mixta hay dos filas y el `.maybeSingle()` anterior devolvía `null`, así que la seña se volvía a
+  sumar en pesos; y solo suma el efectivo en pesos, nunca los dólares)
+- **Modal "Ingreso de caja"** → solo registra INGRESOS; los chips son los `motivos_movimiento` de `tipo='caja'` y
+  solo completan el concepto. Desde la mig 420 (2026-09-14) se siembran "Ingreso de efectivo", "Aporte del dueño" y
+  "Fondo de cambio"; "Extracción / Retiro" y "Gastos varios" quedaron desactivados porque invitaban a cargar un
+  egreso como ingreso. Las salidas van por Gastos, Caja Fuerte o traspasos.
 - **Cobranza CC** (v1.52.0, auditoría de procesos) → las 3 vías (ficha del cliente, POS, Caja → Cobranzas) registran el movimiento vía `cobrarDeudaCCFIFO`: Efectivo → `ingreso` real (entra al arqueo), otro método → `ingreso_informativo` `[Método] Cobranza CC — Cliente` (+cuenta de origen en POS). Sesión imputada: explícita (POS) > caja propia del usuario > única abierta; sin caja imputable y era efectivo → warning al operador. Antes la cobranza NO tocaba caja → descuadre de arqueo garantizado.
 - **🔴 Auditoría efectivo↔caja (v1.74.0):** regla unificada para TODO asiento de efectivo (despacho/reserva/saldo/devolución/cancelación): la caja imputada = **elegida ∥ activa ∥ única abierta** (fallback), el insert se **aguarda** (`await`, no `void`) y si falla se avisa con toast ("se procesó pero el efectivo no se asentó, registralo manual"). Origen: bug de la devolución en efectivo de la venta #26 (Kiosko) — el `egreso` era fire-and-forget y un fallo lo perdía en silencio; además el modal "Caja única" no fijaba la caja ni tenía fallback. Los `*_informativo` (no afectan saldo) quedan best-effort.
 

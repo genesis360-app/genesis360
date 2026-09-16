@@ -12,10 +12,11 @@ updated: 2026-09-15
 (antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo: no estaba usando la app al momento del deploy,
 último login/refresh 2026-09-14 23:41 UTC, última venta 21:03 UTC).
 
-🟡 **Versión en DEV (actual): `v1.227.0`** (2026-09-15, migs 001-429) — vuelve a haber brecha DEV≠PROD: las 3
-decisiones de GO que seguían tras el deploy de `v1.226.0` ya están construidas (cola/vínculos ML/TN solo desde el
-servidor, aviso de pago manual, Ayuda "Cursos y recursos" — detalle en la sección `## 🟡 v1.227.0` más abajo), sin
-deploy a PROD todavía.
+🧾 **Versión en DEV (actual): `v1.227.1`** (2026-09-15, migs 001-429, sin migración nueva) — vuelve a haber brecha
+DEV≠PROD: las 3 decisiones de GO que seguían tras el deploy de `v1.226.0` ya están construidas (cola/vínculos
+ML/TN solo desde el servidor, aviso de pago manual, Ayuda "Cursos y recursos" — detalle en la sección `## 🟡
+v1.227.0` más abajo), más un fix de display en el resumen fiscal de Facturación y el video + guía de activación de
+facturación (detalle en la sección `## 🧾 v1.227.1` más abajo), sin deploy a PROD todavía.
 
 Migraciones 420-426 aplicadas en PROD antes del merge, en orden, con `apply_migration`; verificación
 `md5(pg_get_functiondef)` idéntico DEV↔PROD en todas las funciones tocadas (acentos incluidos), permisos por
@@ -41,8 +42,10 @@ propio).
 ✅ **Las 3 decisiones de GO para `v1.227.0`, ya construidas en DEV** (migs 427-429, ver sección `## 🟡 v1.227.0` más
 abajo): 1) cerrar la escritura de `integration_job_queue` desde usuarios del negocio (RPC en vez de INSERT directo);
 2) avisar al cliente cuando el equipo registra su pago manual (campanita + mail); 3) Ayuda Fase 2 ("Cursos y
-recursos", vacía hasta que GO suba videos). Siguiente en la cola: video + guía HTML de activación de facturación (en
-PROD, tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9).
+recursos", vacía hasta que GO suba videos). ✅ **Siguiente punto de la cola, ya resuelto**: guía HTML de activación
+de facturación publicada y video grabado en PROD (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9) —
+ver sección `## 🧾 v1.227.1` más abajo. Queda un pendiente corto: deployar v1.227.1 a PROD y regrabar 2 tramos del
+video.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -72,6 +75,28 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 `a37e6e6c`). Verificado además por `curl` contra `https://www.genesis360.pro/` (no solo el dashboard): el
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
+
+## 🧾 v1.227.1 — EN DEV (2026-09-15, cont. 71) — sin migración nueva, sin PROD
+
+Fix de display + primer contenido de ayuda para activar facturación, construidos después de las migs 427-429 (ver
+sección de abajo). **PROD sigue en `v1.226.0`, migs 001-426.**
+
+- 🐛 **Fix: inicio de actividades un día antes en el resumen fiscal.** Config → Facturación, "Identidad fiscal del
+  emisor principal", mostraba el inicio de actividades un día antes del guardado (`inicio_actividades` es `DATE` y
+  `new Date(...)` lo toma como medianoche UTC, que en Argentina cae el día anterior). Se arma a medianoche local,
+  igual que ya hacían los PDF (`formatFecha`) — el dato guardado nunca estuvo mal, era solo esa pantalla. Sin
+  migración. Commit `ded42b61`.
+- 🎥 **Video "Activá la facturación electrónica"** (aparte de la serie de onboarding, que sigue en pausa) grabado
+  contra PROD (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9): datos fiscales, punto de venta y CSR
+  con el asistente, sin subir `.crt` ni tocar producción. `D:/Dev/genesis360-videos/video-facturacion/
+  video-facturacion-final.mp4` (78 s). A rehacer 2 tramos (fecha corrida + encuadre de "Modo PRUEBA") una vez
+  v1.227.1 esté en PROD.
+- 📄 **Guía HTML publicada** para clientes: artifact de Claude (https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg),
+  "Activar facturación en Genesis360" — 10 pasos alternando ARCA/Genesis360 hasta pasar a producción, 5 problemas
+  comunes.
+
+Ver [[wiki/features/facturacion-afip]] y [[wiki/manuales/guion-videos-onboarding]] (Video 10). Detalle completo:
+`log.md` (2026-09-15, `update`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71).
 
 ## 🟡 v1.227.0 — EN DEV (2026-09-15, cont. 71, después del deploy) — migs 001-**429**, sin PROD
 

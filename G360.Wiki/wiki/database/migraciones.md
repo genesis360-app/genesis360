@@ -16,6 +16,11 @@ que seguían tras el deploy a PROD, construidas el mismo día: DEV pasa a `v1.22
 (ML/TN, mutante) y **154** (Cursos y recursos). UAT **§63/§64/§65** + 60.8 actualizado. Detalle completo en
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71, después del deploy) y `log.md` (2026-09-15, `update`).
 
+🧾 **Después, misma sesión: DEV pasa a `v1.227.1`** (2026-09-15, cont. 71) — **sin migración nueva**, sigue en
+001-429. Fix de display (inicio de actividades corrido un día en el resumen fiscal de Facturación) + video y guía
+HTML de activación de facturación. Ver [[wiki/business/roadmap]] (sección `v1.227.1`), `log.md` (2026-09-15,
+"Video + guía de activación...").
+
 **🚀 Deploy acumulado a PROD (2026-09-15, cont. 71): PROD = DEV, migs 001-426.** GO: "Deploy acumulado a PROD".
 Migraciones 420→426 aplicadas en PROD en orden, antes del merge, con `apply_migration` y el contenido exacto de
 los archivos. Verificación por función: `md5(pg_get_functiondef)` idéntico DEV↔PROD en TODAS las funciones tocadas

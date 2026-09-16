@@ -6,6 +6,60 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-15] update | 🧾 Video + guía de activación de facturación · fix del inicio de actividades — v1.227.1 en DEV
+
+Continuación de la misma sesión (cont. 71), después de las migs 427-429 (ver entrada de abajo). Sin migración
+nueva — DEV pasa a `v1.227.1` (migs 001-429 sin cambios). **PROD sigue en `v1.226.0` (001-426)**, sin deploy.
+
+### 🐛 Fix de display — inicio de actividades un día antes en el resumen fiscal
+Config → Facturación, resumen "Identidad fiscal del emisor principal", mostraba el inicio de actividades **un día
+antes** del guardado (cargado 01/03/2024, mostraba 29/2/2024). Causa: `inicio_actividades` es `DATE`
+(`'YYYY-MM-DD'`) y `new Date(...)` lo toma como medianoche UTC → en Argentina cae al día anterior. Se arma a
+medianoche **local**, igual que ya hacían los PDF (`formatFecha` agrega `'T00:00:00'`) — el dato guardado nunca
+estuvo mal, era solo esa pantalla. **Sin migración.** Commit `ded42b61` en `origin/dev`. Scripts nuevos:
+`scripts/video/grabaciones/explorar-facturacion.mjs` (exploración de solo lectura de la pestaña Facturación) y
+`scripts/video/grabaciones/video-facturacion.mjs` (la toma del video; `DESDE=punto-venta` retoma una toma cortada
+sin reescribir datos). Verificado: tsc y eslint verdes.
+
+### 🎥 Video "Activá la facturación electrónica"
+Aparte de la serie de onboarding (que sigue en pausa). Grabado contra **PROD**, tenant "Genesis360 Onboarding", con
+CUIT de ejemplo **20-12345678-9** (el placeholder de la app; nunca un CUIT ni un certificado real en cámara). Se
+cargaron datos fiscales, punto de venta 2 y se generó el CSR con el asistente; **no** se subió ningún `.crt` y
+**no** se tocó producción; "Habilitada" quedó apagada al terminar.
+
+Salió en 2 tomas unidas con fundido (la primera se cortó justo después de guardar, por un locator del script).
+Resultado: `D:/Dev/genesis360-videos/video-facturacion/video-facturacion-final.mp4`, 78 s, con placas, rótulos,
+efectos de click y música (mismo pipeline que la serie de onboarding).
+
+⚠️ **Defectos del render actual, a rehacer**: se ve la fecha corrida del resumen (el fix es v1.227.1, falta PROD) y
+el cierre no encuadra el recuadro de "Modo PRUEBA". Los dos tramos se pueden regrabar navegando, **sin volver a
+escribir datos**, una vez que v1.227.1 esté en PROD.
+
+El negocio de prueba quedó con el emisor de ejemplo, el punto de venta 2 y la clave del CSR en storage: se limpia
+junto con el resto del tenant cuando se termine la serie.
+
+### 📄 Guía HTML para clientes — publicada
+Artifact: **https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg** — "Activar facturación en Genesis360". Es la guía
+paso a paso que GO pidió para pasarles a los clientes.
+
+Contenido: qué tener a mano (CUIT y Clave Fiscal nivel 3, condición IVA, razón social y domicilio como figuran en
+ARCA, inicio de actividades, Ingresos Brutos opcional) y 10 pasos alternando ARCA y Genesis360: punto de venta de
+**web service** en ARCA (Monotributo: "Factura Electrónica – Monotributo – Web Service"; RI/Exento: "RECE para
+aplicativo y web services") · adherir "Administración de Certificados Digitales" · datos fiscales en la app ·
+punto de venta en la app · generar el CSR con el asistente · crear el certificado en ARCA con ese CSR y bajar el
+`.crt` · **autorizar el certificado en Administrador de Relaciones → ARCA → WebServices → Facturación Electrónica**
+(el paso que más se olvida) · subir el `.crt` y activarlo · habilitar la facturación (arranca en modo PRUEBA) ·
+pasar a producción. Cierra con 5 problemas comunes y remite a **Ayuda → Reportar un problema**.
+
+Las capturas salen de la toma real, recortadas para que no se vea la fecha corrida; viven en
+`D:/Dev/genesis360-videos/video-facturacion/guia/`.
+
+### Wiki actualizado
+`sources/raw/project_pendientes.md` (DEV `v1.227.1`, "QUÉ SIGUE" actualizado), `log.md` (esta entrada),
+`wiki/business/roadmap.md` (sección `v1.227.1`), [[wiki/features/facturacion-afip]] (link a la guía + circuito de
+activación + el fix), [[wiki/manuales/guion-videos-onboarding]] (Video 10 grabado + defectos a rehacer), `index.md`
+(descripciones + pie).
+
 ## [2026-09-15] update | 🔒💳🎓 Cola de ML/TN solo desde el servidor, aviso de pago manual y Cursos y recursos (migs 427-429) — v1.227.0 en DEV
 
 Continuación de la misma sesión (cont. 71), después del deploy acumulado a PROD documentado en la entrada de abajo.

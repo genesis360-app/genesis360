@@ -6,14 +6,15 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-15, cont. 71, después del deploy) — 🔒💳🎓 DEV `v1.227.0` (migs 001-429): cola de
-> sincronización y vínculos ML/TN solo desde el servidor, aviso de pago manual y "Cursos y recursos". **PROD sigue en
-> `v1.226.0` (001-426)** — vuelve a haber brecha DEV≠PROD (3 migraciones + EF `admin-api`).
+> ### ✅ ARRANCÁ ACÁ (2026-09-15, cont. 71) — 🧾🎥 DEV `v1.227.1` (migs 001-429, sin migración nueva): fix del inicio
+> de actividades que se mostraba un día antes en el resumen fiscal de Facturación + video y guía HTML de activación
+> de facturación electrónica (guía publicada, video grabado con 2 tramos a rehacer). **PROD sigue en `v1.226.0`
+> (001-426)** — sigue la brecha DEV≠PROD: migs 427-429 + este fix, sin deployar.
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
 > | **PROD** | `v1.226.0` | 001-**426** | compute **Micro**; policies `public` 231 (`d8325817…`) / `storage` 40 (`fd729ff1…`) / `cron` 2 (`99253f46…`); Edge Functions: `admin-api` v12, `billing-manual-avisar-pago` v2, `marketplace-webhook` v20 (`verify_jwt: true`), `ai-assistant` v11 |
-> | **DEV** | `v1.227.0` | 001-**429** | commit en `origin/dev`, prerelease `v1.227.0` en GitHub; policies `public` **234** (+2 vínculos ML/TN mig 427, +1 `ayuda_recursos` mig 429) / `storage` 40 / `cron` 2; cron `meli-stock-sync` inactivo en DEV |
+> | **DEV** | `v1.227.1` | 001-**429** | commit `ded42b61` en `origin/dev`, sin release todavía (sigue publicado el prerelease `v1.227.0` en GitHub); policies `public` **234** (+2 vínculos ML/TN mig 427, +1 `ayuda_recursos` mig 429) / `storage` 40 / `cron` 2; cron `meli-stock-sync` inactivo en DEV |
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
 > DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
@@ -31,6 +32,9 @@ type: project
 >   `ayuda-recursos` + fila en `ayuda_recursos`).
 > - Se tocó `wiki/overview/app-reference.md` (sección Ayuda) → correr `npm run ai:knowledge` + redeploy EF
 >   `ai-assistant` en DEV y PROD (el Asistente IA aprende del wiki solo al redeployar).
+> - **v1.227.1** (fix de display, sin migración) — sin gotchas de orden, va junto con las migs 427-429. Después de
+>   deployar: regrabar los 2 tramos del video de facturación que quedaron con la fecha corrida y el cierre sin
+>   encuadrar el "Modo PRUEBA" (se navega de nuevo, sin reescribir datos).
 >
 > #### ▶️ QUÉ SIGUE (orden de GO, versión siguiente después del deploy)
 >
@@ -38,9 +42,11 @@ type: project
 > de arriba): cola de sincronización + vínculos ML/TN solo desde el servidor (mig 427), aviso al cliente cuando el
 > equipo registra su pago manual (mig 428) y Ayuda Fase 2 "Cursos y recursos" (mig 429, vacía a propósito).
 >
-> 1. **Video + guía HTML de activación de facturación** — destrabado: se graba en PROD, contra el tenant "Genesis360
->    Onboarding", con CUIT ficticio **20-12345678-9** (nunca un CUIT o certificado real en cámara). ⏸️ Los **videos
->    de onboarding** siguen EN PAUSA (GO los revisa con su socio; 6 hechos: 1-5 y 8). El video 1 muestra "+500
+> 1. ✅ **Guía HTML de activación de facturación publicada** (artifact de Claude) y **video grabado** contra PROD
+>    (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9) — ver [[wiki/manuales/guion-videos-onboarding]]
+>    ("Video 10"). Pendiente corto: **deployar v1.227.1 a PROD y regrabar 2 tramos** del video (fecha del inicio de
+>    actividades corrida + el cierre sin encuadrar "Modo PRUEBA"), sin reescribir datos. ⏸️ Los **videos de
+>    onboarding** siguen aparte, EN PAUSA (GO los revisa con su socio; 6 hechos: 1-5 y 8). El video 1 muestra "+500
 >    comercios" y el 5 los motivos de caja viejos: regrabar esos tramos cuando se retome.
 > 2. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
 >    **relevamiento en HTML**.
@@ -58,6 +64,42 @@ type: project
 >
 > 🛠️ **En cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la paridad de
 > policies **por schema** (`public`, `storage`, `cron`).
+>
+> #### 📋 Lo que se hizo en cont. 71 (video + fix de facturación, 2026-09-15) — v1.227.1 en DEV, sin PROD
+>
+> Continuación de la misma sesión (cont. 71), después de construir las migs 427-429 (ver bloque de abajo). Sin
+> migración nueva — 001-429 sigue siendo el tope.
+>
+> - 🐛 **v1.227.1 — fix de display: inicio de actividades un día antes en el resumen fiscal.** Config → Facturación,
+>   "Identidad fiscal del emisor principal", mostraba el inicio de actividades **un día antes** del guardado (cargado
+>   01/03/2024, mostraba 29/2/2024). Causa: `inicio_actividades` es `DATE` (`'YYYY-MM-DD'`) y `new Date(...)` lo toma
+>   como medianoche UTC → en Argentina cae al día anterior. Se arma a medianoche **local**, igual que ya hacían los
+>   PDF (`formatFecha` agrega `'T00:00:00'`) — el dato guardado nunca estuvo mal, era solo esa pantalla. **Sin
+>   migración.** Commit `ded42b61`, `origin/dev`, tsc + eslint verdes. Scripts nuevos:
+>   `scripts/video/grabaciones/explorar-facturacion.mjs` (exploración solo lectura de Facturación) y
+>   `scripts/video/grabaciones/video-facturacion.mjs` (la toma del video; `DESDE=punto-venta` retoma una toma cortada
+>   sin reescribir datos).
+> - 🎥 **Video "Activá la facturación electrónica"** (aparte de la serie de onboarding, que sigue en pausa) — grabado
+>   contra **PROD**, tenant "Genesis360 Onboarding", CUIT ficticio **20-12345678-9** (nunca un CUIT ni certificado
+>   real en cámara): datos fiscales, punto de venta 2, CSR generado con el asistente — **sin subir ningún `.crt`**,
+>   sin tocar producción, "Habilitada" quedó apagada al terminar. 2 tomas unidas con fundido (la primera se cortó
+>   justo después de guardar, por un locator del script). Resultado:
+>   `D:/Dev/genesis360-videos/video-facturacion/video-facturacion-final.mp4` (78 s, con placas, rótulos, efectos de
+>   click y música — mismo pipeline que la serie). ⚠️ **A rehacer**: se ve la fecha corrida del resumen (fix
+>   v1.227.1, falta PROD) y el cierre no encuadra el recuadro "Modo PRUEBA" — se puede regrabar navegando, sin
+>   reescribir datos, una vez que v1.227.1 esté en PROD. El tenant de prueba queda con el emisor de ejemplo, el
+>   punto de venta 2 y la clave del CSR en storage hasta que se limpie junto con el resto (purga pendiente, ver
+>   "Esperando a terceros o a GO" arriba).
+> - 📄 **Guía HTML para clientes publicada**: artifact de Claude
+>   (https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg), "Activar facturación en Genesis360" — qué tener a mano (CUIT
+>   y Clave Fiscal nivel 3, condición IVA, razón social y domicilio como figuran en ARCA, inicio de actividades,
+>   Ingresos Brutos opcional) y 10 pasos alternando ARCA/Genesis360 (punto de venta de **web service** en ARCA, según
+>   condición del emisor · adherir "Administración de Certificados Digitales" · datos fiscales y PV en la app ·
+>   generar el CSR con el asistente · crear el certificado en ARCA con ese CSR y bajar el `.crt` · **autorizar el
+>   certificado en Administrador de Relaciones → ARCA → WebServices → Facturación Electrónica** (el paso que más se
+>   olvida) · subir el `.crt` y activarlo · habilitar la facturación (arranca en modo PRUEBA) · pasar a producción),
+>   5 problemas comunes y remite a Ayuda → Reportar un problema. Capturas recortadas para que no se vea la fecha
+>   corrida, en `D:/Dev/genesis360-videos/video-facturacion/guia/`.
 >
 > #### 📋 Lo que se hizo en cont. 71 (después del deploy, 2026-09-15) — 🔒💳🎓 migs 427-429, v1.227.0 en DEV
 >

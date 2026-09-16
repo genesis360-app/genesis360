@@ -6,20 +6,24 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-15, cont. 71) — 🚀 SEGUNDO DEPLOY A PROD DEL DÍA: PROD = `v1.227.0` (migs 001-429) —
-> cola de ML/TN solo desde el servidor, aviso de pago manual y Cursos y recursos **YA EN PROD**. DEV sigue un paso
-> adelante, en `v1.227.1` (fix del inicio de actividades corrido un día en el resumen fiscal + video/guía de
-> activación de facturación, **sin migración nueva**, mismas 001-429) — falta deployar ese último paso.
+> ### ✅ ARRANCÁ ACÁ (2026-09-16, cont. 72) — 🚀 PROD = `v1.227.1` (migs 001-429) — **DEV = PROD**, no hay nada de
+> código esperando deploy. El deploy fue solo el fix del inicio de actividades corrido un día en el resumen fiscal,
+> **sin migraciones**.
 >
-> 🛑 **Dos decisiones abiertas de GO para retomar**: (a) deployar `v1.227.1` a PROD (sin migración) y recién ahí
-> regrabar los 2 tramos del video de facturación que quedaron con la fecha corrida; (b) cuándo limpiar el tenant de
-> prueba "Genesis360 Onboarding" (quedó con el emisor de ejemplo CUIT 20-12345678-9, el punto de venta 2 y la clave
-> del CSR en storage).
+> 🛑 **Decisiones abiertas de GO para retomar**: (a) **con qué feature seguir** (multimoneda arranca por
+> relevamiento HTML, o capacidad, o los 4 e2e); (b) cuándo limpiar el tenant de prueba "Genesis360 Onboarding"
+> (quedó con el emisor de ejemplo CUIT 20-12345678-9, el punto de venta 2 y la clave del CSR en storage);
+> (c) 📐 **pedido nuevo del 2026-09-16**: documento completo del producto + **diagramas de infraestructura**
+> (ver abajo, "Pedido nuevo de GO").
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.227.0` | 001-**429** | 399 filas en `schema_migrations`, última `429_ayuda_cursos_y_recursos`; compute **Micro**; policies `public` **234** (`3c7d0c745f57e8d161dea36b4a354bc0`) / `storage` 40 (`fd729ff17b258d8bcdda0481c1e45135`) / `cron` 2 (`99253f467c0e3919dad8823048ac1b94`) — idénticas a DEV; `app.genesis360.pro`/`www.genesis360.pro` sirven `v1.227.0`; release **Latest**; PR **#351** (merge `0b65bc45` en `main`); Edge Functions redeployadas: `admin-api` (mail pago manual), `ai-assistant` (`npm run ai:knowledge` regenerado) |
-> | **DEV** | `v1.227.1` | 001-**429** | commit `ded42b61` en `origin/dev`, sin release (ese código todavía no se deployó); policies `public` 234 / `storage` 40 / `cron` 2; cron `meli-stock-sync` inactivo en DEV |
+> | **PROD** | `v1.227.1` | 001-**429** | 399 filas en `schema_migrations`, última `429_ayuda_cursos_y_recursos`; compute **Micro**; policies `public` **234** / `storage` 40 / `cron` 2 — idénticas a DEV; `app.genesis360.pro` sirve `v1.227.1` (bundle `/assets/index-C5iOI7Dn.js`, verificado con `curl -L`); release `v1.227.1` **Latest**; PR **#352** (merge `58ff0e6c` en `main`); EF `ai-assistant` redeployada con el knowledge regenerado (diff 0, 401 sin sesión) |
+> | **DEV** | `v1.227.1` | 001-**429** | **igual que PROD**; policies `public` 234 / `storage` 40 / `cron` 2; EF `ai-assistant` redeployada (diff 0); cron `meli-stock-sync` inactivo en DEV |
+>
+> 🕵️ **Gotcha nuevo (2026-09-16)**: para verificar por `curl` qué versión sirve producción hay que **seguir el
+> redirect** — `https://app.genesis360.pro/` redirige a `/login` y sin `-L` el HTML no trae ninguna referencia a
+> `/assets/*.js`, lo que produce un **falso negativo** ("no está deployado" cuando sí lo está).
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
 > DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
@@ -28,15 +32,12 @@ type: project
 >
 > #### 🚀 Para el próximo deploy a PROD
 >
-> - **v1.227.1** (fix de display, sin migración) — único pendiente de código. Es solo el fix del inicio de
->   actividades corrido un día en el resumen fiscal (commit `ded42b61`), sin gotchas de orden.
-> - Va también el **knowledge del Asistente IA regenerado** (`npm run ai:knowledge`, ya commiteado): al corregir el
->   estado de PROD se tocó `wiki/overview/app-reference.md`, así que hay que **redeployar la EF `ai-assistant` en DEV y
->   PROD** con ese deploy (el Asistente aprende del wiki solo al redeployar).
-> - Después de deployarlo: **regrabar los 2 tramos** del video de facturación que quedaron con la fecha corrida y el
->   cierre sin encuadrar el "Modo PRUEBA" (se navega de nuevo, sin reescribir datos).
-> - Las migs 427-429 (ML/TN, pago manual, Cursos y recursos) **ya están en PROD** desde el segundo deploy de hoy —
->   ver "Lo que se hizo en cont. 71 (segundo deploy a PROD)" más abajo.
+> ✅ **Nada pendiente de código**: `v1.227.1` se deployó el 2026-09-16 (PR #352, merge `58ff0e6c`, release Latest,
+> sin migraciones) y con eso **DEV = PROD**. La EF `ai-assistant` quedó redeployada en los dos ambientes con el
+> knowledge regenerado (diff 0 en `scripts/auditar-edge-functions.sh`).
+>
+> Lo que sí quedó **desbloqueado** por ese deploy: **regrabar los 2 tramos** del video de facturación (la fecha del
+> inicio de actividades corrida y el cierre sin encuadrar "Modo PRUEBA") — se navega de nuevo, sin reescribir datos.
 >
 > #### ▶️ QUÉ SIGUE (orden de GO, versión siguiente después del deploy)
 >
@@ -47,10 +48,27 @@ type: project
 >
 > 1. ✅ **Guía HTML de activación de facturación publicada** (artifact de Claude) y **video grabado** contra PROD
 >    (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9) — ver [[wiki/manuales/guion-videos-onboarding]]
->    ("Video 10"). Pendiente corto: **deployar v1.227.1 a PROD y regrabar 2 tramos** del video (fecha del inicio de
->    actividades corrida + el cierre sin encuadrar "Modo PRUEBA"), sin reescribir datos. ⏸️ Los **videos de
->    onboarding** siguen aparte, EN PAUSA (GO los revisa con su socio; 6 hechos: 1-5 y 8). El video 1 muestra "+500
->    comercios" y el 5 los motivos de caja viejos: regrabar esos tramos cuando se retome.
+>    ("Video 10"). ✅ `v1.227.1` YA está en PROD (2026-09-16), así que lo único que queda es **regrabar los 2
+>    tramos** del video (fecha del inicio de actividades corrida + el cierre sin encuadrar "Modo PRUEBA"), sin
+>    reescribir datos. ⏸️ Los **videos de onboarding** siguen aparte, EN PAUSA (GO los revisa con su socio; 6 hechos:
+>    1-5 y 8). El video 1 muestra "+500 comercios" y el 5 los motivos de caja viejos: regrabar esos tramos cuando se
+>    retome.
+>
+> 📐 **PEDIDO NUEVO DE GO (2026-09-16) — documentación completa del producto + diagramas de INFRAESTRUCTURA.**
+>    Anotado para hacer después, **sin arrancar**. GO quiere "documentado todo sobre nuestra app" y, sobre todo,
+>    **dibujos**: el diagrama de la infra con servidores, bases de datos, qué se conecta con qué y **para qué sirve
+>    cada pieza**. Puede ser más de un documento.
+>    - **Lo que YA existe** (relevado el 2026-09-16, no rehacer): `G360.Wiki/diagrams/*.drawio` = 10 diagramas, pero
+>      todos de **procesos de negocio** (venta, compra, devolución, caja, pedido, facturación, RRHH, envíos, WMS,
+>      integraciones ML/TN); y `wiki/architecture/` = 9 páginas (`backend-supabase`, `frontend-stack`,
+>      `edge-functions`, `multi-tenant-rls`, `estado-global`, `escalabilidad`, `resiliencia`, `pwa-config`,
+>      `guards-server-side`).
+>    - **El hueco real**: esas 9 páginas son **texto puro, sin un solo diagrama** (0 matches de ```mermaid /
+>      graph TD / flowchart). **No existe ningún diagrama de infraestructura ni de topología**: Vercel ↔ Supabase
+>      (DEV/PROD) ↔ ~50 Edge Functions ↔ Postgres+RLS ↔ Storage ↔ pg_cron ↔ externos (ARCA/AFIP, Mercado Pago, MODO,
+>      Mercado Libre, Tienda Nube, Resend, Cloudflare, WhatsApp/Meta, Google), ni el panel aparte `genesis360-admin`.
+>    - **Cómo encararlo**: feature grande → por fases; inventariar desde el código y la DB real (170 tablas, 239
+>      funciones), no de memoria.
 > 2. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
 >    **relevamiento en HTML**.
 > 3. **Capacidad** (propuesto, sin decidir): cachear sesión/usuario/negocio/sucursales al navegar (hoy ~64 requests por

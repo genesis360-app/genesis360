@@ -659,7 +659,7 @@ prueba. El log de la EF muestra `[homologación]`.
 
 ---
 
-## Guía para clientes + video (2026-09-15, v1.227.1 EN DEV)
+## Guía para clientes + video (2026-09-15, v1.227.1 🚀 EN PROD desde 2026-09-16)
 
 **Guía HTML paso a paso publicada**, para pasarle al cliente que va a activar la facturación: artifact de Claude
 **https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg** — "Activar facturación en Genesis360". Qué tener a mano
@@ -678,13 +678,14 @@ pausa), tenant "Genesis360 Onboarding" con CUIT ficticio `20-12345678-9` — nun
 cámara. Sigue el mismo circuito que la guía; no se subió ningún `.crt` ni se tocó producción. Detalle completo,
 dónde vive el archivo y cómo se regraba: [[wiki/manuales/guion-videos-onboarding]] ("Video 10").
 
-🐛 **Fix v1.227.1 (2026-09-15, EN DEV, sin migración) — el resumen mostraba el inicio de actividades un día
-antes.** En Config → Facturación, el resumen "Identidad fiscal del emisor principal" armaba la fecha de
+🐛 **Fix v1.227.1 (2026-09-15, 🚀 EN PROD desde 2026-09-16, sin migración) — el resumen mostraba el inicio de
+actividades un día antes.** En Config → Facturación, el resumen "Identidad fiscal del emisor principal" armaba la fecha de
 `inicio_actividades` (columna `DATE`) con `new Date('YYYY-MM-DD')`, que JS interpreta como medianoche **UTC** — en
 Argentina (UTC-3) cae al día anterior (cargado 01/03/2024, mostraba 29/2/2024). Ahora se arma a medianoche
 **local**, igual que ya hacían los PDF (`formatFecha` agrega `'T00:00:00'` antes de parsear). **El dato guardado
 en la base y los comprobantes (factura, presupuesto, remito) nunca estuvieron mal** — era un bug de esa sola
-pantalla. Commit `ded42b61`, `origin/dev`, sin release todavía, **pendiente PROD**.
+pantalla. Commit `ded42b61`; **deployado a PROD el 2026-09-16** (cont. 72): PR **#352** `dev→main` (merge
+`58ff0e6c`), release `v1.227.1` marcado Latest, sin migración.
 
 ---
 

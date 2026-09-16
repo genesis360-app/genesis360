@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-16] deploy | 🚀 PROD = v1.227.1 — fix del inicio de actividades, sin migraciones (DEV = PROD)
+
+Sesión cont. 72. GO autorizó el deploy del único pendiente de código que quedaba. PROD pasa de `v1.227.0` a
+**`v1.227.1`**. **Sin migraciones**: DEV y PROD siguen en 001-429, última `429_ayuda_cursos_y_recursos` en ambos
+(verificado por SQL antes del merge). Con esto **DEV deja de estar un paso adelante**.
+
+### Qué se hizo, en orden
+1. **Pre-chequeo de Kalken** (primer cliente real): sin usar la app — DUEÑO con último login y refresh el
+   2026-09-14 23:41 UTC, el SUPER_USUARIO nunca ingresó.
+2. **Paridad de policies por schema, DEV = PROD**: `public` **234**, `storage` 40, `cron` 2 — mismo hash en los dos
+   ambientes. Migraciones parejas (429 en ambos) y el diff `dev↔main` no toca `supabase/migrations/`.
+3. **Build (tsc + vite) y ESLint (`--max-warnings 0`) verdes**; CI del PR con Unit Tests en verde (2m4s).
+4. **PR #352** `dev→main` mergeado con merge commit (**`58ff0e6c`** en `main`).
+5. **Release `v1.227.1`** creado sobre `main` y marcado **Latest**.
+6. **EF `ai-assistant` redeployada en DEV y PROD** con el knowledge regenerado desde el wiki.
+   `bash scripts/auditar-edge-functions.sh ai-assistant`: **diff 0 en los dos ambientes**. Smoke: 401 sin sesión en
+   DEV y PROD. `verify_jwt` verificado en `true` **antes** de redeployar (el CLI conserva el valor viejo).
+7. **Verificado en producción**: `app.genesis360.pro` sirve el bundle `/assets/index-C5iOI7Dn.js` con `v1.227.1`.
+
+### 🐛 Qué arregla
+Config → Facturación, resumen "Identidad fiscal del emisor principal", mostraba el inicio de actividades **un día
+antes** del guardado (cargado 01/03/2024, mostraba 29/2/2024): `inicio_actividades` es `DATE` y `new Date(...)` lo
+toma como medianoche UTC, que en Argentina cae al día anterior. Ahora se arma a medianoche **local**, como ya hacían
+los PDF. **El dato guardado y los comprobantes nunca estuvieron mal** — era solo esa pantalla.
+
+### 🕵️ Gotcha del día — verificar la URL de producción siguiendo redirects
+El chequeo automático de la versión servida dio un **falso negativo**: `https://app.genesis360.pro/` responde con un
+redirect a `/login`, y el `curl` sin `-L` devolvía un HTML sin referencias a `/assets/*.js`, así que el script
+concluyó "no sirve v1.227.1 todavía" cuando en realidad ya la servía. **Al verificar el bundle de producción por
+curl hay que seguir el redirect (`-L`)**; "sin output" nunca es evidencia de éxito ni de fracaso.
+
+### ✅ Desbloqueado
+Los **2 tramos del video** de activación de facturación (la fecha corrida y el cierre sin encuadrar "Modo PRUEBA")
+ya se pueden regrabar navegando, sin reescribir datos.
+
+### 📐 Pedido nuevo de GO (anotado, sin arrancar)
+Documentar **todo el producto** y, sobre todo, **dibujar la infraestructura**: servidores, bases de datos, qué se
+conecta con qué y para qué sirve cada pieza. Relevado el estado actual: los 10 `.drawio` de `G360.Wiki/diagrams/`
+son de **procesos de negocio**, y las 9 páginas de `wiki/architecture/` son **texto puro, sin un solo diagrama**
+(0 matches de ```mermaid / graph TD / flowchart). No existe ningún diagrama de infraestructura ni de topología.
+
+---
+
 ## [2026-09-15] deploy | 🚀 PROD = v1.227.0 (migs 427-429) — cola de ML/TN, aviso de pago manual y Cursos y recursos
 
 Segundo deploy a PROD del día (cont. 71), después del deploy acumulado a `v1.226.0` (ver entrada más abajo) y de

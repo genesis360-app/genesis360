@@ -244,8 +244,9 @@ rótulos, efectos de click y música, mismo pipeline que el resto de la serie). 
 `scripts/video/grabaciones/video-facturacion.mjs` (`DESDE=punto-venta` retoma sin reescribir datos) +
 `scripts/video/grabaciones/explorar-facturacion.mjs` (exploración previa de solo lectura).
 
-⚠️ **A rehacer, 2 tramos** (regrabables navegando, sin reescribir datos, una vez que **v1.227.1** llegue a PROD):
-- Se ve la fecha del inicio de actividades corrida un día en el resumen del emisor (fix ya en DEV, ver
+⚠️ **A rehacer, 2 tramos** — ✅ **ya se pueden regrabar**: `v1.227.1` está EN PROD desde el 2026-09-16, así que el
+bloqueo se levantó (se regraban navegando, sin reescribir datos):
+- Se ve la fecha del inicio de actividades corrida un día en el resumen del emisor (fix **ya en PROD**, ver
   [[wiki/features/facturacion-afip]] → "Guía para clientes + video").
 - El cierre no encuadra bien el recuadro de "Modo PRUEBA".
 

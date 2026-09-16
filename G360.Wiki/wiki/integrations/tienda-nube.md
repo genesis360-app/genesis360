@@ -86,7 +86,7 @@ Token **permanente** — TiendaNube no expira access tokens.
 - Flags: `sync_stock`, `sync_precio`, `ultimo_sync_at`
 - Auto-complete por SKU con **EF `tn-search-products`**: busca productos en TN API
 
-> [!NOTE] **🔒 mig 427 (2026-09-15, DEV, sin PROD)**: `inventario_tn_map` e `integration_job_queue` pasan a
+> [!NOTE] **🔒 mig 427 (2026-09-15, ✅ EN DEV Y EN PROD)**: `inventario_tn_map` e `integration_job_queue` pasan a
 > lectura de todo el negocio + escritura solo quien puede editar Configuración (antes cualquier
 > `anon`/`authenticated` podía reescribir el vínculo o encolar un job con cualquier `tn_product_id`). "Forzar
 > sync de stock" pasa a la RPC server-side `fn_forzar_sync_stock('tn')`. Detalle completo, gotcha del trigger

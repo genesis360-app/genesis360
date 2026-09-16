@@ -11,7 +11,7 @@ updated: 2026-09-15
 > Estado: **✅ 100% en PROD (mig 262 + EFs `billing-manual-pagar`/`billing-manual-avisar-pago`/
 > `billing-manual-sweep`, release v1.123.0)** — código mergeado a `main` (PR #278 + #279) +
 > tag/GitHub release publicados + Vercel `READY` en ambos proyectos, confirmado 2026-07-09. Ningún
-> tenant real está en modo manual todavía. 🆕 **Mig 428 (2026-09-15, DEV, sin PROD): el cliente se
+> tenant real está en modo manual todavía. 🆕 **Mig 428 (2026-09-15, ✅ EN DEV Y EN PROD): el cliente se
 > entera cuando el equipo registra su pago** — ver más abajo.
 
 ## Qué es
@@ -58,7 +58,7 @@ depender de que MP soporte todo (transferencia bancaria directa no pasa por MP e
 Las 3 formas, al confirmar un pago, disparan `emitir-factura-plataforma` (ver
 [[facturacion-plataforma]]) — Fede factura automáticamente cada cobro.
 
-## 💬 El cliente se entera cuando el equipo registra su pago (mig 428, 2026-09-15, **DEV**, sin PROD)
+## 💬 El cliente se entera cuando el equipo registra su pago (mig 428, 2026-09-15, ✅ EN DEV Y EN PROD)
 
 Antes, `fn_registrar_pago_manual` extendía el acceso pero no avisaba a nadie: el cliente se enteraba de casualidad
 (entrando a `/mi-cuenta`) o si alguien del equipo le escribía a mano. Decisión de GO: avisar siempre.
@@ -72,8 +72,9 @@ nunca al revés):
 2. Campanita **"Recibimos tu pago"** (link a `/mi-cuenta`) a **todos** los DUEÑO y SUPER_USUARIO activos del
    tenant que no se enteraron por la consulta (para que no dependa de que haya sido justo quien avisó).
 3. `admin-api` (`billing.manual_record_payment`) manda además un **mail** (`send-email` tipo `notificacion`) al
-   dueño, al super usuario y a quien avisó — deployada en **DEV**, redeploy a **PROD pendiente**. El mail no se
-   probó de punta a punta porque requiere un agente real operando el panel.
+   dueño, al super usuario y a quien avisó — **EN DEV Y EN PROD** desde el segundo deploy del 2026-09-15 (`admin-api`
+   redeployada en PROD ese mismo día). El mail no se probó de punta a punta porque requiere un agente real operando
+   el panel.
 
 Verificado por SQL en DEV (todo revertido después): pago registrado y `manual_paid_until` extendido; reintento
 del mismo `mp_payment_id` sigue fallando por `unique_violation` (la idempotencia de `mp-webhook` no se tocó);

@@ -217,7 +217,7 @@ menor fricción: **primero cargar, después vender, después medir.**
 | 7 | **Clientes y cuenta corriente** | `/clientes` | Alta de cliente, venta en cuenta corriente y cobranza |
 | 8 | **Stock** ✅ *grabado (carga de inventario)* | `/inventario` | Entradas, salidas, ajustes, y el stock mínimo disparando alertas |
 | 9 | **Métricas** | `/dashboard` → Métricas | Ventas, margen, rotación, productos sin movimiento |
-| 10 | **Facturar (AFIP)** | Configuración → Facturación | El video más delicado: ver abajo |
+| 10 | **Facturar (AFIP)** ✅ *grabado (78 s, 2026-09-15)* | Configuración → Facturación | El video más delicado: ver abajo |
 
 ### ⚠️ Video 10 (facturación) — las dos trabas reales
 
@@ -229,6 +229,32 @@ menor fricción: **primero cargar, después vender, después medir.**
 
 Para grabarlo hace falta un CUIT de prueba en homologación. **Nunca en cámara un CUIT real ni el
 certificado.**
+
+### ✅ Video 10 — "Activá la facturación electrónica" — GRABADO (78 s, 2026-09-15)
+
+Aparte de la serie de onboarding (que sigue en pausa) — GO pidió destrabarlo solo. Grabado contra **PROD**, tenant
+"Genesis360 Onboarding", con **CUIT de ejemplo 20-12345678-9** (el placeholder de la app; nunca un CUIT ni un
+certificado real en cámara). Recorrido: datos fiscales, punto de venta 2 y CSR generado con el asistente (ver
+[[wiki/features/multi-cuit]] → "Wizard self-service") — **sin subir ningún `.crt`**, sin tocar producción,
+"Habilitada" quedó apagada al terminar.
+
+Salió en 2 tomas unidas con fundido (la primera se cortó justo después de guardar, por un locator del script de
+grabación). Archivos: `D:/Dev/genesis360-videos/video-facturacion/video-facturacion-final.mp4` (con placas,
+rótulos, efectos de click y música, mismo pipeline que el resto de la serie). Toma guardada en
+`scripts/video/grabaciones/video-facturacion.mjs` (`DESDE=punto-venta` retoma sin reescribir datos) +
+`scripts/video/grabaciones/explorar-facturacion.mjs` (exploración previa de solo lectura).
+
+⚠️ **A rehacer, 2 tramos** (regrabables navegando, sin reescribir datos, una vez que **v1.227.1** llegue a PROD):
+- Se ve la fecha del inicio de actividades corrida un día en el resumen del emisor (fix ya en DEV, ver
+  [[wiki/features/facturacion-afip]] → "Guía para clientes + video").
+- El cierre no encuadra bien el recuadro de "Modo PRUEBA".
+
+El tenant de prueba queda con el emisor de ejemplo, el punto de venta 2 y la clave del CSR en storage — se limpia
+junto con el resto de "Genesis360 Onboarding" cuando se termine la serie completa.
+
+**Guía HTML complementaria publicada** (artifact de Claude, para pasarle al cliente):
+https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg — mismo circuito en 10 pasos + 5 problemas comunes. Detalle en
+[[wiki/features/facturacion-afip]].
 
 ---
 

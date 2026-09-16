@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375, migration 414]
-updated: 2026-09-13
+updated: 2026-09-15
 ---
 
 # Facturación Electrónica AFIP
@@ -656,6 +656,35 @@ prueba. El log de la EF muestra `[homologación]`.
 4. Banda **Modo de emisión** → **PRODUCCIÓN** (confirmar checkbox).
 5. **Smoke real:** emitir un comprobante de monto chico → verificar CAE en el PDF y en
    "Mis Comprobantes" de AFIP. El log de la EF muestra `[PRODUCCIÓN]`.
+
+---
+
+## Guía para clientes + video (2026-09-15, v1.227.1 EN DEV)
+
+**Guía HTML paso a paso publicada**, para pasarle al cliente que va a activar la facturación: artifact de Claude
+**https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg** — "Activar facturación en Genesis360". Qué tener a mano
+(CUIT y Clave Fiscal nivel 3, condición IVA, razón social y domicilio como figuran en ARCA, inicio de actividades,
+Ingresos Brutos opcional) y el circuito completo alternando ARCA/Genesis360: punto de venta de **web service** en
+ARCA según la condición del emisor (Monotributo: "Factura Electrónica – Monotributo – Web Service"; RI/Exento:
+"RECE para aplicativo y web services") → adherir "Administración de Certificados Digitales" → datos fiscales y
+punto de venta en la app → generar el CSR con el asistente (ver [[wiki/features/multi-cuit]] → "Wizard
+self-service") → crear el certificado en ARCA con ese CSR y bajar el `.crt` → **autorizar el certificado en
+Administrador de Relaciones → ARCA → WebServices → Facturación Electrónica** (el paso que más se olvida) → subir
+el `.crt` y activarlo → habilitar la facturación (arranca en modo PRUEBA) → pasar a producción. Cierra con 5
+problemas comunes y remite a Ayuda → Reportar un problema.
+
+**Video "Activá la facturación electrónica"** grabado contra PROD (aparte de la serie de onboarding, que sigue en
+pausa), tenant "Genesis360 Onboarding" con CUIT ficticio `20-12345678-9` — nunca un CUIT ni certificado real en
+cámara. Sigue el mismo circuito que la guía; no se subió ningún `.crt` ni se tocó producción. Detalle completo,
+dónde vive el archivo y cómo se regraba: [[wiki/manuales/guion-videos-onboarding]] ("Video 10").
+
+🐛 **Fix v1.227.1 (2026-09-15, EN DEV, sin migración) — el resumen mostraba el inicio de actividades un día
+antes.** En Config → Facturación, el resumen "Identidad fiscal del emisor principal" armaba la fecha de
+`inicio_actividades` (columna `DATE`) con `new Date('YYYY-MM-DD')`, que JS interpreta como medianoche **UTC** — en
+Argentina (UTC-3) cae al día anterior (cargado 01/03/2024, mostraba 29/2/2024). Ahora se arma a medianoche
+**local**, igual que ya hacían los PDF (`formatFecha` agrega `'T00:00:00'` antes de parsear). **El dato guardado
+en la base y los comprobantes (factura, presupuesto, remito) nunca estuvieron mal** — era un bug de esa sola
+pantalla. Commit `ded42b61`, `origin/dev`, sin release todavía, **pendiente PROD**.
 
 ---
 

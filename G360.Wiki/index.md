@@ -254,7 +254,23 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-16 (cont. 72) — 🚀 **PROD = `v1.227.1` (migs 001-429, sin migración nueva)**: se
+*Última actualización: 2026-09-16 (cont. 72, parte 2) — 📋🧪 **Relevamiento de Multimoneda + 2 de los 4 e2e
+pendientes**, sin cambio de versión ni migraciones. **Relevamiento publicado**
+(`relevamiento-multimoneda-reglas-negocio.html`, commit `aea1f6f8`), imprimible, para responder con Fede:
+hoy el negocio elige entre 11 monedas pero eso **solo cambia el símbolo**, hay **una sola cotización y es del
+dólar**, y `ventas` **no guarda moneda** (`total` siempre en pesos). 🛑 **Alerta A0**: el importador CSV
+escribe `precio_venta_moneda`/`precio_costo_moneda` (columnas **muertas**) y nunca `moneda_venta`/
+`moneda_costo` (las **vivas**, 50 usos) → un producto importado en USD se cobra en pesos; ningún trigger
+sincroniza los pares; falta la query de impacto real. **e2e**: **155** ✅ (55.5, rol custom y ubicaciones de
+Recursos) y **156** ✅ (56.7, aviso si la firma del transportista no se guarda); **157** 🚧 en `skip` (57.9: la
+reserva crea un Pedido y eso bloquea "Finalizar" a propósito); **59.7** 🛑 no cubrible como e2e, requiere
+`service_role`. 🎥 Video: script nuevo `regrabar-facturacion.mjs` + `.env.video` (falta que GO lo cree).
+🕵️ Gotchas: el `exit code` de `cmd | tail` es del `tail`; `toBeVisible()` no garantiza viewport; el Historial
+filtra por sucursal; una venta reservada genera un Pedido. 🧹 Se limpiaron los residuos de test (config de POD
+de Almacén Jorgito y 3 pedidos huérfanos). Ver `log.md` (2026-09-16, `update`) y
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 72).*
+
+Antes: *Última actualización: 2026-09-16 (cont. 72) — 🚀 **PROD = `v1.227.1` (migs 001-429, sin migración nueva)**: se
 deployó el fix del inicio de actividades corrido un día en el resumen fiscal de Facturación — PR **#352** `dev→main`
 (merge `58ff0e6c`), release `v1.227.1` **Latest**, CI verde. **DEV = PROD**, ya no hay código esperando deploy.
 Pre-chequeo: Kalken sin usar la app. Policies DEV = PROD (`public` 234 / `storage` 40 / `cron` 2) y misma última

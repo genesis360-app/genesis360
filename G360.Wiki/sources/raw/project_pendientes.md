@@ -10,11 +10,28 @@ type: project
 > código esperando deploy. El deploy fue solo el fix del inicio de actividades corrido un día en el resumen fiscal,
 > **sin migraciones**.
 >
-> 🛑 **Decisiones abiertas de GO para retomar**: (a) **con qué feature seguir** (multimoneda arranca por
-> relevamiento HTML, o capacidad, o los 4 e2e); (b) cuándo limpiar el tenant de prueba "Genesis360 Onboarding"
-> (quedó con el emisor de ejemplo CUIT 20-12345678-9, el punto de venta 2 y la clave del CSR en storage);
-> (c) 📐 **pedido nuevo del 2026-09-16**: documento completo del producto + **diagramas de infraestructura**
-> (ver abajo, "Pedido nuevo de GO").
+> 🛑 **Decisiones abiertas de GO para retomar**:
+> 1. 📋 **Responder el relevamiento de Multimoneda** con Fede — `relevamiento-multimoneda-reglas-negocio.html`
+>    (commit `aea1f6f8`), imprimible. Incluye la **pregunta A0**: si el bug del importador CSV se arregla ya
+>    por separado o va dentro del rediseño.
+> 2. 🎥 **Crear `scripts/video/.env.video`** (plantilla en `.env.video.example`) y correr las 2 tomas del
+>    video de facturación — es lo único que falta para regrabar los tramos.
+> 3. 🧪 **Qué hacer con UAT 59.7**: no es cubrible como e2e (ver abajo). Opciones: hacerlo con `service_role`
+>    cuando vuelva el conector de Supabase, o descartarlo.
+> 4. Cuándo limpiar el tenant de prueba "Genesis360 Onboarding" (quedó con el emisor de ejemplo
+>    CUIT 20-12345678-9, el punto de venta 2 y la clave del CSR en storage).
+> 5. 📐 **Pedido del 2026-09-16**: documento completo del producto + **diagramas de infraestructura**
+>    (ver abajo, "Pedido nuevo de GO").
+> 6. ⚡ **Capacidad** — es lo siguiente en el orden que dio GO, después de los e2e.
+>
+> #### 🧪 Estado de los 4 e2e pendientes (2026-09-16)
+>
+> | Escenario | Estado |
+> |---|---|
+> | **55.5** rol custom / ubicaciones de Recursos | ✅ **e2e 155** verde (`5aec8f9b`) |
+> | **56.7** aviso si la firma del transportista no se guarda | ✅ **e2e 156** verde (`b38194a4`) |
+> | **57.9** seña mixta al despachar | 🚧 **e2e 157 escrito, en `skip`**: la reserva crea un Pedido y eso bloquea "Finalizar" a propósito. Para cerrarlo hay que entregar el pedido por Picking antes de finalizar |
+> | **59.7** fallo al aplicar precio programado | 🛑 **No cubrible como e2e**: la rama vive en el `EXCEPTION` de `fn_aplicar_precios_programados` (100% SQL), `fn_programar_precio` valida precio ≥ 0 y fecha futura, `productos` no tiene CHECK sobre `precio_venta` y no hay lógica pura donde testearlo. **Requiere `service_role`** |
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|

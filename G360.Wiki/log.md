@@ -6,6 +6,71 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-16] update | 📋 Relevamiento de Multimoneda + 2 de los 4 e2e pendientes (155 y 156)
+
+Misma sesión (cont. 72), después del deploy de `v1.227.1`. **Sin cambios de versión ni migraciones**:
+todo es relevamiento, tests y scripts.
+
+### 📋 Relevamiento de Multimoneda (commit `aea1f6f8`)
+`relevamiento-multimoneda-reglas-negocio.html`, imprimible, para que GO lo responda con Fede. Secciones
+A-H: moneda principal, cotizaciones, alcance por módulo, totales/conversión, registros históricos, fiscal
+(va al contador), casos límite y prioridad. Marca aparte lo ya definido en relevamientos anteriores (USD a
+compra, vuelto en pesos, conversión solo por Bóveda, AFIP en pesos) para no repreguntarlo.
+
+Estado verificado contra el código, no contra la doc: el negocio elige entre **11 monedas**
+(`tenants.moneda`) pero eso **solo cambia el símbolo** (`formato.ts`: "no hace conversiones"); hay **una
+sola cotización y es del dólar**; `ventas` **no tiene moneda** (`ventas.total` siempre en pesos).
+
+🛑 **Alerta A0 del relevamiento — el importador CSV escribe columnas muertas.** `productos` tiene DOS
+pares de columnas de moneda: `moneda_venta`/`moneda_costo` (`'local'`/`'usd'`) son las **vivas** (50 usos
+en 9 archivos: POS, ficha, rentabilidad, costo de OC) y `precio_venta_moneda`/`precio_costo_moneda` son
+**muertas** (17 usos, todos del propio importador). El importador escribe las muertas y nunca setea las
+vivas → un producto importado con `precio_venta=100` + `USD` se vende a **$100 pesos**. Verificado que
+**ningún trigger sincroniza los pares**. ⚠️ Falta la query que dice si algún negocio real importó en USD
+(el conector de Supabase se desconectó a mitad de sesión). No es nuevo: estaba anotado desde el
+2026-08-18 esperando decisión de GO.
+
+### 🧪 e2e: 2 cerrados, 1 documentado, 1 inviable
+- **155 ✅ (UAT 55.5)** — rol custom con Recursos en `editar`/`supervisa` crea ubicaciones; con `ver` no.
+  Confirmado contra `auth_puede_editar_modulo`: si el rol custom trae permiso explícito del módulo, **ese
+  permiso manda**, así que del lado del servidor el rol custom SÍ amplía (al revés que la navegación).
+- **156 ✅ (UAT 56.7)** — si la firma del receptor no se guarda, la pantalla avisa. No escribe en la base:
+  intercepta `get_envio_by_token` para marcar la firma requerida solo en el navegador.
+- **157 🚧 (UAT 57.9)** — escrito y en `skip`. Sembrar una reserva crea un **Pedido** automáticamente y eso
+  bloquea "Finalizar (rebaja stock)" a propósito. Para cerrarlo hay que entregar el pedido por Picking.
+- **59.7 🛑 no cubrible como e2e** — la rama de fallo vive dentro del `EXCEPTION` de
+  `fn_aplicar_precios_programados` (100% SQL); `fn_programar_precio` valida precio ≥ 0 y fecha futura y
+  `productos` no tiene CHECK sobre `precio_venta`, así que no hay forma de hacer reventar el UPDATE desde
+  REST. Tampoco hay lógica pura donde cubrirlo. **Requiere `service_role`.**
+
+### 🎥 Video de facturación — destrabado del lado del código
+`scripts/video/grabaciones/regrabar-facturacion.mjs` (nuevo): `video-facturacion.mjs` no servía porque sus
+dos modos abortan si el negocio ya tiene datos fiscales o puntos de venta, y "Genesis360 Onboarding" quedó
+con ambos. El nuevo exige lo contrario y **no escribe** esos datos; lo único que toca es el toggle de
+habilitar (solo TRAMO B) y lo restaura en `finally`. Lee las credenciales de `scripts/video/.env.video`
+(en `.gitignore`, con plantilla `.env.video.example`). Falta que GO cree ese archivo y corra las 2 tomas.
+
+### 🕵️ Gotchas nuevos (los cuatro costaron tiempo real)
+1. **El `exit code` de `cmd | tail` es del `tail`**, no del test: un spec que fallaba figuraba como exit 0
+   y casi se reporta verde. Verificar siempre `passed`/`failed` en la salida.
+2. **`toBeVisible()` NO garantiza estar dentro del viewport** — solo que el elemento tiene caja y no está
+   oculto. Sin `scrollIntoViewIfNeeded()`, el `boundingBox()` da coordenadas fuera de vista y el mouse
+   dibuja en la nada (el pad de firma del 156).
+3. **El Historial filtra por sucursal**: una venta sembrada sin `sucursal_id` —o con la sucursal
+   equivocada— nunca aparece en la lista, y el fallo parece de locator. La API devuelve "Sucursal Sur"
+   primero, así que `sucursales?limit=1` no es la que la pantalla está filtrando.
+4. **Una venta `reservada` genera un Pedido automáticamente**, y con el pedido activo la app no deja
+   finalizar la venta desde la ficha.
+
+### 🧹 Basura de test que se generó y se limpió
+- La 1ª versión del 156 activaba la firma requerida con un PATCH a `tenants` y lo revertía en `finally`;
+  al pasarse del timeout Playwright cerró el contexto antes del revert y **`Almacén Jorgito` quedó
+  exigiendo firma en todas las entregas**. Restaurado, y el spec rehecho para no tocar la base.
+- Las 3 corridas del 157 dejaron **3 pedidos huérfanos** (#184, #185, #186, `venta_origen_id` NULL tras
+  borrarse la venta). Borrados, junto con sus ítems. Verificado: DEV sin residuos.
+
+---
+
 ## [2026-09-16] deploy | 🚀 PROD = v1.227.1 — fix del inicio de actividades, sin migraciones (DEV = PROD)
 
 Sesión cont. 72. GO autorizó el deploy del único pendiente de código que quedaba. PROD pasa de `v1.227.0` a

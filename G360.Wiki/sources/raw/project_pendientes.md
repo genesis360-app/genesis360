@@ -6,15 +6,20 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-15, cont. 71) — 🧾🎥 DEV `v1.227.1` (migs 001-429, sin migración nueva): fix del inicio
-> de actividades que se mostraba un día antes en el resumen fiscal de Facturación + video y guía HTML de activación
-> de facturación electrónica (guía publicada, video grabado con 2 tramos a rehacer). **PROD sigue en `v1.226.0`
-> (001-426)** — sigue la brecha DEV≠PROD: migs 427-429 + este fix, sin deployar.
+> ### ✅ ARRANCÁ ACÁ (2026-09-15, cont. 71) — 🚀 SEGUNDO DEPLOY A PROD DEL DÍA: PROD = `v1.227.0` (migs 001-429) —
+> cola de ML/TN solo desde el servidor, aviso de pago manual y Cursos y recursos **YA EN PROD**. DEV sigue un paso
+> adelante, en `v1.227.1` (fix del inicio de actividades corrido un día en el resumen fiscal + video/guía de
+> activación de facturación, **sin migración nueva**, mismas 001-429) — falta deployar ese último paso.
+>
+> 🛑 **Dos decisiones abiertas de GO para retomar**: (a) deployar `v1.227.1` a PROD (sin migración) y recién ahí
+> regrabar los 2 tramos del video de facturación que quedaron con la fecha corrida; (b) cuándo limpiar el tenant de
+> prueba "Genesis360 Onboarding" (quedó con el emisor de ejemplo CUIT 20-12345678-9, el punto de venta 2 y la clave
+> del CSR en storage).
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|
-> | **PROD** | `v1.226.0` | 001-**426** | compute **Micro**; policies `public` 231 (`d8325817…`) / `storage` 40 (`fd729ff1…`) / `cron` 2 (`99253f46…`); Edge Functions: `admin-api` v12, `billing-manual-avisar-pago` v2, `marketplace-webhook` v20 (`verify_jwt: true`), `ai-assistant` v11 |
-> | **DEV** | `v1.227.1` | 001-**429** | commit `ded42b61` en `origin/dev`, sin release todavía (sigue publicado el prerelease `v1.227.0` en GitHub); policies `public` **234** (+2 vínculos ML/TN mig 427, +1 `ayuda_recursos` mig 429) / `storage` 40 / `cron` 2; cron `meli-stock-sync` inactivo en DEV |
+> | **PROD** | `v1.227.0` | 001-**429** | 399 filas en `schema_migrations`, última `429_ayuda_cursos_y_recursos`; compute **Micro**; policies `public` **234** (`3c7d0c745f57e8d161dea36b4a354bc0`) / `storage` 40 (`fd729ff17b258d8bcdda0481c1e45135`) / `cron` 2 (`99253f467c0e3919dad8823048ac1b94`) — idénticas a DEV; `app.genesis360.pro`/`www.genesis360.pro` sirven `v1.227.0`; release **Latest**; PR **#351** (merge `0b65bc45` en `main`); Edge Functions redeployadas: `admin-api` (mail pago manual), `ai-assistant` (`npm run ai:knowledge` regenerado) |
+> | **DEV** | `v1.227.1` | 001-**429** | commit `ded42b61` en `origin/dev`, sin release (ese código todavía no se deployó); policies `public` 234 / `storage` 40 / `cron` 2; cron `meli-stock-sync` inactivo en DEV |
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
 > DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
@@ -23,24 +28,22 @@ type: project
 >
 > #### 🚀 Para el próximo deploy a PROD
 >
-> - **Mig 427** — aplicar **junto con el merge del frontend**: el botón viejo de `ConfigPage` insertaba directo en
->   `integration_job_queue`; entre la migración (REVOKE del INSERT directo) y el deploy de Vercel ese botón fallaría.
->   Riesgo bajo: la cola tuvo 0 jobs en PROD en los últimos 30 días.
-> - **Mig 428** — sin gotchas de orden; además redeployar `admin-api` en PROD (manda el mail al dueño/super usuario/
->   quien avisó — hoy solo deployada en DEV, sin probar de punta a punta porque requiere un agente del panel).
-> - **Mig 429** — sin gotchas; después de aplicarla GO puede empezar a publicar videos desde el dashboard (Storage
->   `ayuda-recursos` + fila en `ayuda_recursos`).
-> - Se tocó `wiki/overview/app-reference.md` (sección Ayuda) → correr `npm run ai:knowledge` + redeploy EF
->   `ai-assistant` en DEV y PROD (el Asistente IA aprende del wiki solo al redeployar).
-> - **v1.227.1** (fix de display, sin migración) — sin gotchas de orden, va junto con las migs 427-429. Después de
->   deployar: regrabar los 2 tramos del video de facturación que quedaron con la fecha corrida y el cierre sin
->   encuadrar el "Modo PRUEBA" (se navega de nuevo, sin reescribir datos).
+> - **v1.227.1** (fix de display, sin migración) — único pendiente de código. Es solo el fix del inicio de
+>   actividades corrido un día en el resumen fiscal (commit `ded42b61`), sin gotchas de orden.
+> - Va también el **knowledge del Asistente IA regenerado** (`npm run ai:knowledge`, ya commiteado): al corregir el
+>   estado de PROD se tocó `wiki/overview/app-reference.md`, así que hay que **redeployar la EF `ai-assistant` en DEV y
+>   PROD** con ese deploy (el Asistente aprende del wiki solo al redeployar).
+> - Después de deployarlo: **regrabar los 2 tramos** del video de facturación que quedaron con la fecha corrida y el
+>   cierre sin encuadrar el "Modo PRUEBA" (se navega de nuevo, sin reescribir datos).
+> - Las migs 427-429 (ML/TN, pago manual, Cursos y recursos) **ya están en PROD** desde el segundo deploy de hoy —
+>   ver "Lo que se hizo en cont. 71 (segundo deploy a PROD)" más abajo.
 >
 > #### ▶️ QUÉ SIGUE (orden de GO, versión siguiente después del deploy)
 >
-> ✅ **Los 3 puntos que seguían tras el deploy ya están construidos en DEV, pendientes de deploy a PROD** (ver bloque
-> de arriba): cola de sincronización + vínculos ML/TN solo desde el servidor (mig 427), aviso al cliente cuando el
-> equipo registra su pago manual (mig 428) y Ayuda Fase 2 "Cursos y recursos" (mig 429, vacía a propósito).
+> ✅ **Los 3 puntos que seguían tras el primer deploy quedaron EN PROD desde hoy** (segundo deploy del día, ver
+> sección "Lo que se hizo en cont. 71 (segundo deploy a PROD)" más abajo): cola de sincronización + vínculos ML/TN
+> solo desde el servidor (mig 427), aviso al cliente cuando el equipo registra su pago manual (mig 428) y Ayuda
+> Fase 2 "Cursos y recursos" (mig 429, vacía a propósito).
 >
 > 1. ✅ **Guía HTML de activación de facturación publicada** (artifact de Claude) y **video grabado** contra PROD
 >    (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9) — ver [[wiki/manuales/guion-videos-onboarding]]
@@ -64,6 +67,34 @@ type: project
 >
 > 🛠️ **En cada deploy a PROD**: `bash scripts/auditar-edge-functions.sh` (código desplegado = repo) y la paridad de
 > policies **por schema** (`public`, `storage`, `cron`).
+>
+> #### 📋 Lo que se hizo en cont. 71 (segundo deploy a PROD, 2026-09-15) — 🚀 PROD = `v1.227.0` (migs 427-429)
+>
+> GO autorizó también este segundo deploy del día (después del deploy acumulado a `v1.226.0` documentado más abajo).
+> Lleva a PROD las 3 decisiones construidas en DEV (migs 427-429, ver sección de abajo). El fix de display y el
+> video de `v1.227.1` (commit `ded42b61`) **NO** van en este deploy — siguen solo en DEV.
+>
+> - **Pre-chequeo**: Kalken sin usar la app (último login y refresh 2026-09-14 23:41 UTC).
+> - **Migraciones 427, 428 y 429 aplicadas en PROD en orden, antes del merge**, verificadas: `fn_enqueue_sync_precio`
+>   (ahora SECURITY DEFINER) y `fn_forzar_sync_stock` con el mismo `md5` que DEV; `fn_registrar_pago_manual` idem;
+>   grants — `integration_job_queue` solo `SELECT` para `authenticated` y nada para `anon`,
+>   `inventario_meli_map`/`inventario_tn_map` con sus 2 policies cada uno, `ayuda_recursos` solo lectura; bucket
+>   público `ayuda-recursos`; acentos OK.
+> - **PR #351** `dev→main` mergeado con merge commit (`0b65bc45` en `main`), CI verde.
+> - **Edge Functions redeployadas en PROD**: `admin-api` (mail del pago manual) y `ai-assistant` (con
+>   `npm run ai:knowledge` regenerado; también redeployada en DEV). `bash scripts/auditar-edge-functions.sh` sobre
+>   las dos: diff 0 en PROD y DEV.
+> - **Smoke PostgREST en PROD** (anon key): `ayuda_recursos` 401, columna inventada 400, `integration_job_queue`
+>   401, `inventario_meli_map` 401, RPC `fn_forzar_sync_stock` 401; `admin-api` y `ai-assistant` rechazan sin sesión
+>   (401).
+> - 🕐 **Gotcha del día**: durante el deploy hubo un **mantenimiento programado de la API de gestión de Supabase**
+>   (hasta 21:45 UTC) que hizo fallar temporalmente las consultas y la auditoría de EFs — se reintentó después y dio
+>   todo bien. Si la Management API devuelve "scheduled maintenance", reintentar: la base y PostgREST siguen
+>   andando.
+>
+> **Estado final de este deploy**: PROD `v1.227.0`, migs 001-429, policies `public` 234 / `storage` 40 / `cron` 2,
+> idénticas a DEV. DEV queda un paso adelante con `v1.227.1` (fix de display + video, sin migración) todavía sin
+> deployar.
 >
 > #### 📋 Lo que se hizo en cont. 71 (video + fix de facturación, 2026-09-15) — v1.227.1 en DEV, sin PROD
 >
@@ -101,10 +132,12 @@ type: project
 >   5 problemas comunes y remite a Ayuda → Reportar un problema. Capturas recortadas para que no se vea la fecha
 >   corrida, en `D:/Dev/genesis360-videos/video-facturacion/guia/`.
 >
-> #### 📋 Lo que se hizo en cont. 71 (después del deploy, 2026-09-15) — 🔒💳🎓 migs 427-429, v1.227.0 en DEV
+> #### 📋 Lo que se hizo en cont. 71 (después del primer deploy, 2026-09-15) — 🔒💳🎓 migs 427-429, construidas en DEV
 >
-> Las 3 decisiones de GO tomadas en cont. 71 (ver bloque de arriba), construidas en DEV — detalle completo en
-> `log.md`. No se deployó a PROD (solo DEV).
+> Las 3 decisiones de GO tomadas en cont. 71 (ver bloque de arriba), construidas y verificadas en DEV ese mismo día
+> — detalle completo en `log.md`. En ese momento no se había deployado a PROD todavía; **el mismo día, más tarde,
+> se hizo el segundo deploy que las llevó a PROD** — ver "Lo que se hizo en cont. 71 (segundo deploy a PROD)" más
+> arriba.
 >
 > - **Mig 427 — ML/TN: cola y vínculos solo desde el servidor.** Antes `integration_job_queue`,
 >   `inventario_meli_map` e `inventario_tn_map` tenían policy FOR ALL por negocio (sin rol) + todos los privilegios
@@ -128,8 +161,9 @@ type: project
 >   consulta tipo `pago` abierta ("Ya transferí") con un mensaje del equipo y ese aviso llega a quien avisó por el
 >   trigger de las migs 425/426; campanita "Recibimos tu pago" (link `/mi-cuenta`) a DUEÑO y SUPER_USUARIO activos
 >   que no se enteraron por la consulta. `admin-api` manda además el mail (`send-email` tipo `notificacion`) al
->   dueño, super usuario y a quien avisó — deployada en DEV, **PROD pendiente**; el mail no se probó de punta a
->   punta (requiere un agente del panel). Verificado por SQL en DEV (revertido): pago registrado y acceso
+>   dueño, super usuario y a quien avisó — en ese momento solo deployada en DEV (**el mismo día se redeployó también
+>   en PROD**, ver segundo deploy más arriba); el mail no se probó de punta a punta (requiere un agente del panel).
+>   Verificado por SQL en DEV (revertido): pago registrado y acceso
 >   extendido; reintento del mismo `mp_payment_id` sigue fallando por unique_violation (idempotencia de
 >   `mp-webhook` intacta); consulta resuelta; aviso al cajero con link a la consulta; 2 DUEÑO con "Recibimos tu
 >   pago"; el cajero no recibe doble aviso. `migration-reviewer`: APTA. Sale de "decisiones pendientes de GO".

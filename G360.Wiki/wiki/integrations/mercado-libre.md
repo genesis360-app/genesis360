@@ -56,7 +56,7 @@ CAJERO podía **desconectar la integración del comercio** con un PATCH directo.
 ⚠ Toda consulta nueva a `meli_credentials` debe usar **lista explícita de columnas**: con
 `select('*')` PostgREST expande a todas y devuelve 403. Ver [[wiki/architecture/guards-server-side]].
 
-## 🔒 La cola y los vínculos, solo desde el servidor (mig 427, 2026-09-15, **DEV**, sin PROD)
+## 🔒 La cola y los vínculos, solo desde el servidor (mig 427, 2026-09-15, ✅ EN DEV Y EN PROD)
 
 `meli_credentials`/`tiendanube_credentials` ya estaban protegidas (mig 403/400), pero `integration_job_queue`,
 `inventario_meli_map` e `inventario_tn_map` seguían con policy `FOR ALL` por negocio (sin filtrar por rol) y
@@ -86,8 +86,11 @@ precio) se sigue verificando por SQL, no por REST (UAT 60.8, actualizado — el 
 REST quedó sin sentido y salió). Datos: en DEV Jorgito tiene ML/TN conectados y el cron `meli-stock-sync`
 está inactivo; en PROD la cola tuvo **0 jobs en los últimos 30 días** (riesgo bajo para el deploy).
 
-⚠️ **Deploy a PROD**: aplicar la mig 427 **junto con el merge del frontend** — el botón viejo de `ConfigPage`
-insertaba directo en `integration_job_queue`; entre la migración y el deploy de Vercel ese botón fallaría.
+✅ **Deploy a PROD (2026-09-15, segundo deploy del día)**: mig 427 aplicada junto con el merge del frontend (PR
+#351, merge `0b65bc45`), como estaba previsto — el botón viejo de `ConfigPage` ya no existe, así que no hubo ventana
+donde insertara directo en `integration_job_queue`. Verificado por SQL: `fn_enqueue_sync_precio` y
+`fn_forzar_sync_stock` con el mismo `md5` que DEV, grants confirmados; smoke PostgREST con anon key:
+`integration_job_queue`/`inventario_meli_map` 401.
 
 ## OAuth flow
 

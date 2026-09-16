@@ -66,6 +66,10 @@ desplegada), `birthday-notifications` (PROD 4 líneas, DEV no desplegada) y 2 l�
 `tn-stock-worker`, `wa-briefing-sweep`. Redeploy cosmético cuando se toquen (no urgente). `wa-embedded-signup-exchange`
 sigue solo en DEV, a la espera de la App Review de Meta.
 
+✅ **Segundo deploy del mismo día (2026-09-15, migs 427-429)**: `admin-api` (manda el mail del pago manual, mig 428)
+y `ai-assistant` (`npm run ai:knowledge` regenerado desde el wiki) redeployadas otra vez en PROD, también en DEV.
+`bash scripts/auditar-edge-functions.sh` sobre las dos: diff 0 en PROD y DEV.
+
 ---
 
 ## Lista completa

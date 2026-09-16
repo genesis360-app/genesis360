@@ -8,44 +8,32 @@ updated: 2026-09-15
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.226.0`** (2026-09-15, migs 001-426). Compute de PROD: **Micro** desde el 2026-09-15
-(antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo: no estaba usando la app al momento del deploy,
-último login/refresh 2026-09-14 23:41 UTC, última venta 21:03 UTC).
+**Versión en PROD (actual): `v1.227.0`** (2026-09-15, migs 001-429). Compute de PROD: **Micro** desde el 2026-09-15
+(antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo antes de cada deploy del día: no estaba usando la
+app, último login/refresh 2026-09-14 23:41 UTC, última venta 21:03 UTC).
 
-🧾 **Versión en DEV (actual): `v1.227.1`** (2026-09-15, migs 001-429, sin migración nueva) — vuelve a haber brecha
-DEV≠PROD: las 3 decisiones de GO que seguían tras el deploy de `v1.226.0` ya están construidas (cola/vínculos
-ML/TN solo desde el servidor, aviso de pago manual, Ayuda "Cursos y recursos" — detalle en la sección `## 🟡
-v1.227.0` más abajo), más un fix de display en el resumen fiscal de Facturación y el video + guía de activación de
-facturación (detalle en la sección `## 🧾 v1.227.1` más abajo), sin deploy a PROD todavía.
+**Dos deploys a PROD el mismo día (cont. 71)**: primero `v1.226.0` (migs 420-426, detalle en la sección `## 🚀
+v1.226.0` más abajo) y, después, ya el mismo día, un segundo deploy a `v1.227.0` (migs 427-429: cola/vínculos ML/TN
+solo desde el servidor, aviso al cliente cuando el equipo registra su pago manual, Ayuda Fase 2 "Cursos y recursos" —
+detalle en la sección `## 🚀 v1.227.0` más abajo). Policies DEV = PROD en los tres schemas relevantes: `public`
+**234** (`3c7d0c745f57e8d161dea36b4a354bc0`), `storage` 40 (`fd729ff17b258d8bcdda0481c1e45135`), `cron` 2
+(`99253f467c0e3919dad8823048ac1b94`).
 
-Migraciones 420-426 aplicadas en PROD antes del merge, en orden, con `apply_migration`; verificación
-`md5(pg_get_functiondef)` idéntico DEV↔PROD en todas las funciones tocadas (acentos incluidos), permisos por
-columna/RPC confirmados. Paridad de policies por schema DEV=PROD: `public` 231 (`d8325817…`), `storage` 40
-(`fd729ff1…`), `cron` 2 (`99253f46…`). PR app **#350** (merge `1d8e477d`) y panel `genesis360-admin` **#5** (merge
-`e647dd6`); releases `v1.222.0`-`v1.225.0` promovidos de prerelease a release, `v1.226.0` marcado **Latest**. Edge
-Functions redeployadas: `admin-api` (v12), `billing-manual-avisar-pago` (v2, después de la 426),
-`marketplace-webhook` (v20 — gotcha del `verify_jwt` conservado por el deploy vía CLI, corregido por Management
-API, ver [[wiki/development/deploy]]) y `ai-assistant` (v11, conocimiento regenerado desde el wiki). Detalle
-completo en `log.md` (2026-09-15, `deploy`) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71).
-
-Contenido del deploy: `v1.222.0` (reintegro al anular en USD y con vuelto, motivos de caja mig 420,
+Contenido acumulado de los dos deploys: `v1.222.0` (reintegro al anular en USD y con vuelto, motivos de caja mig 420,
 `marketplace-webhook` apagado, landing, Monotributo a 12 meses), `v1.223.0` (crédito a favor al anular, avisos de CC/OC
 al dueño mig 421 — nunca le habían llegado a nadie en PROD, buscaban el rol `OWNER` que no existe —, precio de venta
 programado Fase 1 mig 422), `v1.224.0` (precio programado Fases 2-3, migs 423-424:
 etiqueta anticipada que no se completa antes de la hora, aviso al cajero, alerta de etiquetas vencidas, aviso si ML/TN
 no toma el precio; Alertas ya no dice "Todo en orden" con pedidos vencidos), `v1.225.0` (la respuesta de soporte le
-llega al cliente como notificación, mig 425) y `v1.226.0` (Ayuda: "Reportar un problema" + Mis consultas, mig 426 —
+llega al cliente como notificación, mig 425), `v1.226.0` (Ayuda: "Reportar un problema" + Mis consultas, mig 426 —
 página `/ayuda/consultas`, RPC con guard, bucket de adjuntos; de paso, `send-email` ya no se puede usar como relay de
 mail —commit `6dbaf377`, **deployada en DEV y PROD**— y ConfigPage ya no pide el "Token AfipSDK" con el circuito
-propio).
+propio) y `v1.227.0` (migs 427-429, ver sección de abajo).
 
-✅ **Las 3 decisiones de GO para `v1.227.0`, ya construidas en DEV** (migs 427-429, ver sección `## 🟡 v1.227.0` más
-abajo): 1) cerrar la escritura de `integration_job_queue` desde usuarios del negocio (RPC en vez de INSERT directo);
-2) avisar al cliente cuando el equipo registra su pago manual (campanita + mail); 3) Ayuda Fase 2 ("Cursos y
-recursos", vacía hasta que GO suba videos). ✅ **Siguiente punto de la cola, ya resuelto**: guía HTML de activación
-de facturación publicada y video grabado en PROD (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9) —
-ver sección `## 🧾 v1.227.1` más abajo. Queda un pendiente corto: deployar v1.227.1 a PROD y regrabar 2 tramos del
-video.
+🧾 **Versión en DEV (actual): `v1.227.1`** (2026-09-15, migs 001-429, sin migración nueva) — un paso adelante de
+PROD: fix de display en el resumen fiscal de Facturación + video y guía de activación de facturación (detalle en la
+sección `## 🧾 v1.227.1` más abajo). Pendiente corto: **deployar v1.227.1 a PROD (sin migración) y recién ahí
+regrabar 2 tramos** del video que quedaron con la fecha corrida y el cierre sin encuadrar "Modo PRUEBA".
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -79,7 +67,8 @@ bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle
 ## 🧾 v1.227.1 — EN DEV (2026-09-15, cont. 71) — sin migración nueva, sin PROD
 
 Fix de display + primer contenido de ayuda para activar facturación, construidos después de las migs 427-429 (ver
-sección de abajo). **PROD sigue en `v1.226.0`, migs 001-426.**
+sección de abajo). **PROD llegó a `v1.227.0` (migs 001-429) en el segundo deploy del mismo día** — este commit
+(`ded42b61`, fix + video) no viajó en ese deploy y sigue solo en DEV.
 
 - 🐛 **Fix: inicio de actividades un día antes en el resumen fiscal.** Config → Facturación, "Identidad fiscal del
   emisor principal", mostraba el inicio de actividades un día antes del guardado (`inicio_actividades` es `DATE` y
@@ -98,10 +87,11 @@ sección de abajo). **PROD sigue en `v1.226.0`, migs 001-426.**
 Ver [[wiki/features/facturacion-afip]] y [[wiki/manuales/guion-videos-onboarding]] (Video 10). Detalle completo:
 `log.md` (2026-09-15, `update`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71).
 
-## 🟡 v1.227.0 — EN DEV (2026-09-15, cont. 71, después del deploy) — migs 001-**429**, sin PROD
+## 🚀 v1.227.0 — EN PROD (2026-09-15, cont. 71, segundo deploy del día, PR #351) — migs 001-**429**
 
-Las 3 decisiones de GO tomadas en cont. 71 tras el deploy de `v1.226.0` (ver sección de arriba, "Decisiones de GO"),
-construidas y verificadas el mismo día. **PROD sigue en `v1.226.0`, migs 001-426.**
+Las 3 decisiones de GO tomadas en cont. 71 tras el primer deploy (`v1.226.0`, ver sección "Decisiones de GO" y
+sección `## 🚀 v1.226.0` más abajo), construidas y verificadas en DEV el mismo día y, más tarde ese mismo día,
+**deployadas a PROD** en un segundo deploy autorizado por GO.
 
 - 🔒 **Mig 427 — ML/TN: cola de sincronización y vínculos solo desde el servidor.** `integration_job_queue` pasa a
   solo lectura para la app; `inventario_meli_map`/`inventario_tn_map` a lectura del negocio + escritura solo quien
@@ -113,15 +103,27 @@ construidas y verificadas el mismo día. **PROD sigue en `v1.226.0`, migs 001-42
   [[wiki/integrations/mercado-libre]].
 - 💳 **Mig 428 — pago manual registrado: el cliente se entera.** `fn_registrar_pago_manual` resuelve la consulta "Ya
   transferí" con un mensaje del equipo (avisa a quien avisó) y manda campanita "Recibimos tu pago" a DUEÑO/SUPER_USUARIO
-  activos. `admin-api` manda además el mail — deployada en DEV, redeploy a PROD pendiente. Ver [[wiki/features/pago-manual]].
+  activos. `admin-api` manda además el mail. Ver [[wiki/features/pago-manual]].
 - 🎓 **Mig 429 — Ayuda Fase 2: "Cursos y recursos".** Tabla `ayuda_recursos` + bucket público `ayuda-recursos`;
   página `/ayuda/recursos`, vacía a propósito hasta que GO publique videos desde el dashboard. Ver
   [[wiki/overview/app-reference]] → "Ayuda".
 
-Verificación: tsc + build + eslint verdes; **1848 unit tests** (112 archivos); `schema_full.sql` regenerado (170
-tablas, 239 funciones, **234 policies** — DEV; PROD sigue en 231); e2e nuevos **153** (ML/TN, mutante) y **154**
-(Cursos y recursos); UAT **§63/§64/§65** + 60.8 actualizado. Detalle completo: `log.md` (2026-09-15, `update`),
-`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71, después del deploy).
+**Deploy**: migs 427-429 aplicadas en PROD antes del merge, verificadas (`fn_enqueue_sync_precio` y
+`fn_forzar_sync_stock` con el mismo `md5` que DEV, `fn_registrar_pago_manual` idem, grants por tabla confirmados).
+PR **#351** `dev→main` mergeado con merge commit `0b65bc45`, CI verde. Policies DEV = PROD: `public` **234**
+(`3c7d0c745f57e8d161dea36b4a354bc0`), `storage` 40 (`fd729ff17b258d8bcdda0481c1e45135`), `cron` 2
+(`99253f467c0e3919dad8823048ac1b94`). Edge Functions redeployadas en PROD: `admin-api` (mail del pago manual) y
+`ai-assistant` (`npm run ai:knowledge` regenerado desde el wiki; también redeployada en DEV) —
+`scripts/auditar-edge-functions.sh` diff 0 en las dos. Smoke PostgREST en PROD (anon key): `ayuda_recursos`,
+`integration_job_queue`, `inventario_meli_map` y la RPC `fn_forzar_sync_stock` todos 401. 🕐 Gotcha del día: un
+mantenimiento programado de la Management API de Supabase (hasta 21:45 UTC) hizo fallar consultas y auditoría
+temporalmente — se reintentó después y dio todo bien.
+
+Verificación previa (construcción en DEV): tsc + build + eslint verdes; **1848 unit tests** (112 archivos);
+`schema_full.sql` regenerado (170 tablas, 239 funciones, **234 policies**); e2e nuevos **153** (ML/TN, mutante) y
+**154** (Cursos y recursos); UAT **§63/§64/§65** + 60.8 actualizado. Detalle completo: `log.md` (2026-09-15, tipo
+`deploy`, "PROD = v1.227.0 (migs 427-429)"), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71, segundo
+deploy).
 
 ## 🚀 v1.226.0 — EN PROD (2026-09-15, cont. 71, PR #350) — migs 001-**426**
 
@@ -144,7 +146,8 @@ consultas** (mig 426).
 Pre-chequeo: Kalken (primer cliente real) no estaba usando la app al momento del deploy. Detalle completo: `log.md`
 (2026-09-15, tipo `deploy`), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71). ✅ **Las decisiones de GO
 para `v1.227.0`** (cerrar la escritura de `integration_job_queue`, avisar al cliente cuando se registra su pago
-manual, Ayuda Fase 2) quedaron construidas el mismo día — ver `## 🟡 v1.227.0` arriba.
+manual, Ayuda Fase 2) quedaron construidas el mismo día y, en un segundo deploy más tarde ese mismo día, **EN
+PROD** — ver `## 🚀 v1.227.0` arriba.
 
 ## 🚀 v1.221.0 — EN PROD (2026-09-14) — migs 001-**419**
 

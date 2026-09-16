@@ -15,15 +15,16 @@ en el del panel. La EF valida al agente (`support_agents`, staff interno — **n
 tenant), autoriza por rol (`admin` vs `support`) y **audita cada acceso** en `admin_audit_log`
 (cimientos: mig 221, ver [[wiki/database/migraciones]]).
 
-**Estado al 2026-09-15 (cont. 71, después del deploy).** ✅ **El panel está 100% EN PROD** (`admin.genesis360.pro`),
-incluido todo lo que se sumó desde el 2026-09-12: la baja de tenant, la búsqueda por mail, la ficha ampliada, las
-notas internas, la auditoría, la búsqueda global, Analytics, el 2FA, que la respuesta de un ticket le llegue al
-cliente (mig 425, sección 9) y que el cliente pueda seguir y responder su consulta desde la app (mig 426, sección
-10). Deploy acumulado a PROD el 2026-09-15 (GO: "Deploy acumulado a PROD"): migs 407-426 + código hasta `v1.226.0` +
-EFs `admin-api` (v12)/`billing-manual-avisar-pago` (v2) + panel (`genesis360-admin`, PR #5, merge `e647dd6`) —
-detalle del deploy en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71) y `log.md` (2026-09-15, `deploy`).
-🆕 **Después del deploy, mismo día**: mig 428 — el pago manual registrado resuelve la consulta y avisa (sección 11)
-— construida y verificada **solo en DEV**, `admin-api` con el mail pendiente de redeploy a PROD.
+**Estado al 2026-09-15 (cont. 71, después de los dos deploys del día).** ✅ **El panel está 100% EN PROD**
+(`admin.genesis360.pro`), incluido todo lo que se sumó desde el 2026-09-12: la baja de tenant, la búsqueda por mail,
+la ficha ampliada, las notas internas, la auditoría, la búsqueda global, Analytics, el 2FA, que la respuesta de un
+ticket le llegue al cliente (mig 425, sección 9), que el cliente pueda seguir y responder su consulta desde la app
+(mig 426, sección 10) y que el pago manual registrado resuelva la consulta y avise (mig 428, sección 11). Primer
+deploy a PROD el 2026-09-15 (GO: "Deploy acumulado a PROD"): migs 407-426 + código hasta `v1.226.0` + EFs
+`admin-api` (v12)/`billing-manual-avisar-pago` (v2) + panel (`genesis360-admin`, PR #5, merge `e647dd6`). **Segundo
+deploy, mismo día**: migs 427-429 + código hasta `v1.227.0` + EF `admin-api` redeployada (mail del pago manual) +
+PR app #351 (merge `0b65bc45`) — detalle de los dos deploys en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ",
+cont. 71) y `log.md` (2026-09-15, `deploy`).
 
 Para probarlo contra DEV sin deployar: `npm run dev` en `genesis360-admin` (su `.env.local` ya
 apunta a DEV) e ingresar con un agente de rol `admin`.
@@ -214,7 +215,7 @@ cerrada. UAT §62.
 
 ---
 
-## 11. El pago manual registrado resuelve la consulta y avisa (mig 428, 2026-09-15, DEV, sin PROD)
+## 11. El pago manual registrado resuelve la consulta y avisa (mig 428, 2026-09-15, EN DEV Y EN PROD)
 
 Cierra el pendiente que había quedado abierto en la sección 8/10: hasta ahora `fn_registrar_pago_manual` (la única
 puerta del pago manual, mig 262) extendía el acceso pero **no avisaba a nadie** — ni tocaba el ticket "Ya transferí"
@@ -224,9 +225,9 @@ que había creado `billing-manual-avisar-pago`.
 consulta tipo `pago` abierta con un mensaje del equipo (*"Registramos tu pago. Tu acceso quedó activo hasta el
 DD/MM/AAAA. ¡Gracias!"*) — a quien avisó le llega por el mismo trigger de las secciones 9/10, con link a la consulta;
 (2) campanita **"Recibimos tu pago"** a DUEÑO y SUPER_USUARIO activos que no se enteraron por la consulta. `admin-api`
-(`billing.manual_record_payment`) manda además el mail correspondiente — deployada en DEV, **redeploy a PROD
-pendiente**; el mail no se probó de punta a punta (requiere un agente real operando el panel). Detalle completo,
-verificación por SQL y veredicto del `migration-reviewer` en [[wiki/features/pago-manual]].
+(`billing.manual_record_payment`) manda además el mail correspondiente — **EN DEV Y EN PROD** desde el segundo
+deploy del 2026-09-15; el mail no se probó de punta a punta (requiere un agente real operando el panel). Detalle
+completo, verificación por SQL y veredicto del `migration-reviewer` en [[wiki/features/pago-manual]].
 
 ---
 
@@ -243,10 +244,10 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 - **Login-as read-only** — sigue **501 (Not Implemented)**. Requiere un modo read-only real +
   token efímero en la app principal; queda fuera de esta tanda, merece su propio diseño.
 - ✅ **Responder desde la app ("Mis consultas")** — CERRADO 2026-09-15 (mig 426, ver sección 10 arriba), ✅ EN PROD.
-- ✅ **Avisar al cliente cuando se registra su pago manual** — CERRADO en DEV 2026-09-15 (mig 428, ver sección 11
-  arriba). **Redeploy a PROD pendiente** (junto con `admin-api`, que manda el mail).
-- ✅ **Ayuda, Fase 2** ("Cursos y recursos") — CERRADO en DEV 2026-09-15 (mig 429). No toca este panel — ver
-  [[wiki/overview/app-reference]] → "Ayuda" y `sources/raw/project_pendientes.md`.
+- ✅ **Avisar al cliente cuando se registra su pago manual** — CERRADO y **EN PROD** desde el 2026-09-15 (mig 428,
+  ver sección 11 arriba; `admin-api` redeployada en PROD el mismo día).
+- ✅ **Ayuda, Fase 2** ("Cursos y recursos") — CERRADO y **EN PROD** desde el 2026-09-15 (mig 429). No toca este
+  panel — ver [[wiki/overview/app-reference]] → "Ayuda" y `sources/raw/project_pendientes.md`.
 
 ---
 
@@ -260,7 +261,7 @@ un usuario real de la app — solo vía `admin-api` con un agente de soporte aut
 | 412 | `tenants.telefono` |
 | 425 | Trigger `trg_notificar_respuesta_soporte` — avisa a la campanita del cliente cuando responde un agente; `REVOKE` de `anon`/`authenticated` en `support_tickets`/`support_messages` |
 | 426 | Consultas de soporte desde la app: `usuario_id`/`tipo`/`modulo`/`pendiente_equipo` en `support_tickets`, `interno`/`adjuntos` en `support_messages`, 4 RPC con guard, bucket `soporte-adjuntos` — ver sección 10 arriba |
-| 428 | `fn_registrar_pago_manual` resuelve la consulta "Ya transferí" y avisa por campanita a DUEÑO/SUPER_USUARIO — ver sección 11 arriba (🟡 solo DEV) |
+| 428 | `fn_registrar_pago_manual` resuelve la consulta "Ya transferí" y avisa por campanita a DUEÑO/SUPER_USUARIO — ver sección 11 arriba (✅ EN DEV Y EN PROD) |
 
 Detalle completo de cada una en [[wiki/database/migraciones]].
 

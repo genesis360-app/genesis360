@@ -25,8 +25,23 @@
 //   ffmpeg -ss <inicio> -to <fin> -i <video.webm> -r 25 -c:v libx264 -crf 18 -pix_fmt yuv420p tramoX.mp4
 
 import { chromium } from '@playwright/test'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { crearDirector, prepararContexto } from '../director.mjs'
+
+// Credenciales: se pueden exportar a mano (MAIL=… PW=…) o dejarlas en `scripts/video/.env.video`,
+// que está en .gitignore y nunca llega al repo. Formato del archivo, dos líneas:
+//   MAIL=cuenta@ejemplo.com
+//   PW=la-contraseña
+const ENV_VIDEO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env.video')
+if (existsSync(ENV_VIDEO)) {
+  for (const linea of readFileSync(ENV_VIDEO, 'utf8').split(/\r?\n/)) {
+    const m = linea.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+    // Lo exportado a mano gana sobre el archivo.
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
+  }
+}
 
 const OUT = process.argv[2]
 const TRAMO = (process.env.TRAMO ?? '').toUpperCase()

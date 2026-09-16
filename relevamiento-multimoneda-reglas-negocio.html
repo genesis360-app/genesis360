@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Multimoneda · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .cita { background: #eef2f7; border-left: 3px solid #8aa8c4; padding: 6pt 10pt; margin: 8pt 0; font-style: italic; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  .cerrado { background: #eaf7ee; border-left: 4px solid #27ae60; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .cerrado strong { color: #1d6f42; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+  code { background: #f2f4f7; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Multimoneda</h1>
+<div class="meta">
+  Genesis360 · v1.227.1 · Fecha: 16 de septiembre de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  Pedido de <strong>GO</strong>: <em>“moneda principal configurable + cotización por moneda + alcance total”</em>.
+  <p style="margin:8pt 0 0 0;">
+  Hoy la app <strong>ya maneja dos monedas de verdad</strong> (pesos y dólares) en Caja, Bóveda, Gastos, Compras
+  y precios de producto. Lo que <strong>no</strong> existe es multimoneda <em>general</em>: hay una sola
+  cotización, atada exclusivamente al dólar, y las otras 9 monedas que el sistema deja elegir son
+  <strong>solo una etiqueta visual</strong>. Este relevamiento define hasta dónde llega el alcance real.
+  </p>
+  <p style="margin:8pt 0 0 0;">
+  Las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span> (regla que hoy no existe),
+  <span class="tag tag-existente">EXISTENTE</span> (confirmar una regla que el código ya implementa) o
+  <span class="tag tag-cambio">CAMBIO</span> (el código actual contradice o tensiona lo pedido — hay que
+  resolverlo, no solo elegir una opción).
+  </p>
+</div>
+
+<div class="alerta-critica">
+  <strong>🛑 Hallazgo de integridad encontrado mientras se relevaba — requiere decisión, no es una pregunta de diseño</strong>
+  <p style="margin:6pt 0 0 0;">
+  La tabla <code>productos</code> tiene <strong>dos pares de columnas de moneda</strong>, y solo uno está vivo:
+  </p>
+  <table>
+    <tr><th>Columnas</th><th>Quién las usa</th><th>Default</th></tr>
+    <tr>
+      <td><code>moneda_venta</code> / <code>moneda_costo</code><br>(valores <code>'local'</code> / <code>'usd'</code>)</td>
+      <td><strong>VIVAS</strong> — POS, ficha de producto, rentabilidad, costo de OC, validación de ventas
+          (50 usos en 9 archivos)</td>
+      <td><code>'local'</code></td>
+    </tr>
+    <tr>
+      <td><code>precio_venta_moneda</code> / <code>precio_costo_moneda</code><br>(valores <code>'ARS'</code> / <code>'USD'</code>)</td>
+      <td><strong>MUERTAS</strong> — solo las escribe el importador CSV. Ninguna otra pantalla, función,
+          trigger ni vista las lee</td>
+      <td><code>'ARS'</code></td>
+    </tr>
+  </table>
+  <p style="margin:6pt 0 0 0;">
+  <strong>Consecuencia:</strong> un producto importado por CSV con <code>precio_venta = 100</code> y
+  <code>precio_venta_moneda = USD</code> se guarda con <code>moneda_venta = 'local'</code> (el default, porque
+  el importador nunca la setea). El POS lo vende a <strong>$100 pesos en lugar de US$100</strong>. La moneda
+  que se importó queda escrita en una columna que nadie mira. Es el mismo patrón del mirror que infló una
+  orden de compra 1500×, pero al revés: acá se cobra <strong>de menos</strong>.
+  </p>
+  <p style="margin:6pt 0 0 0;">
+  Verificado contra el código y el esquema: <strong>no existe ningún trigger que sincronice los dos pares</strong>
+  (esas columnas aparecen únicamente en la definición de la tabla). <strong>Falta verificar en la base</strong> si
+  algún negocio ya importó productos en USD — eso determina si el problema es solo latente o si ya hay precios
+  mal cargados. El importador además solo acepta <code>ARS</code> y <code>USD</code>, aunque la app deje elegir 11 monedas.
+  </p>
+  <div class="pregunta" style="margin-top:8pt;">
+    <span class="pregunta-codigo">⚠ A0</span>
+    <span class="pregunta-titulo">¿Se corrige ya, por separado, sin esperar a todo el proyecto de multimoneda?</span>
+  </div>
+  <ul class="opciones">
+    <li><strong>(a)</strong> Sí — arreglar el importador ya (que escriba las columnas vivas) y revisar si hay productos afectados.</li>
+    <li><strong>(b)</strong> Se arregla junto con el resto de multimoneda, como parte del rediseño.</li>
+    <li><strong>(c)</strong> Otra decisión: ____________</li>
+  </ul>
+  <div class="respuesta-libre">Respuesta:</div>
+</div>
+
+<h2>Estado actual, verificado contra el código (no contra memoria)</h2>
+
+<div class="seccion-resumen">
+  <strong>Lo que HOY existe:</strong>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li><strong>El negocio elige entre 11 monedas</strong> (<code>tenants.moneda</code>: ARS, USD, CLP, UYU, PYG,
+        BOB, BRL, PEN, MXN, COP, EUR). Pero eso <strong>solo cambia el símbolo y el formato numérico</strong>
+        (<code>formato.ts</code>: <em>“Etiqueta visual… No hace conversiones”</em>).</li>
+    <li><strong>Una sola cotización por negocio, y es del dólar</strong>: <code>cotizacion_usd</code>,
+        <code>cotizacion_usd_compra</code>, <code>cotizacion_usd_casa</code>. Se trae de <code>dolarapi.com</code>,
+        siempre Oficial del Banco Nación. <strong>No hay forma de cargar la cotización de ninguna otra moneda.</strong></li>
+    <li><strong>Tienen moneda propia</strong> (y el monto está expresado en esa moneda): <code>cajas</code>,
+        <code>caja_sesiones</code>, <code>caja_movimientos</code>, <code>caja_arqueos</code>,
+        <code>cuentas_origen</code>, <code>metodos_pago</code>, <code>gastos</code>, <code>gastos_fijos</code>,
+        <code>ordenes_compra</code>, <code>zonas</code>.</li>
+    <li><strong>NO tiene moneda: la venta.</strong> <code>ventas.total</code> está <strong>siempre en pesos</strong>,
+        incluso si se cobró en dólares. <code>venta_items</code> no tiene moneda.
+        <code>ventas.cotizacion_usd</code> solo marca que hubo una conversión. El único dólar real que guarda una
+        venta es <code>medio_pago[].monto_usd</code>, y solo en efectivo.</li>
+    <li><strong>Regla de totales vigente</strong>: el total va en la moneda del negocio; lo que está en otra
+        moneda <strong>no se suma ni se convierte</strong>, y se informa aparte.</li>
+  </ul>
+</div>
+
+<div class="cerrado">
+  <strong>✅ Ya definido en relevamientos anteriores — NO se vuelve a preguntar</strong>
+  <p style="margin:6pt 0 0 0;">Esto ya lo respondieron ustedes y está construido y en producción. Se lista para
+  que se vea que está contemplado, y porque el diseño nuevo <strong>tiene que respetarlo</strong>:</p>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li><strong>USD → pesos usa el dólar COMPRA</strong>; pesos → USD usa el de VENTA. Una sola tasa para precio
+        y pago (si no, sale vuelto fantasma).</li>
+    <li><strong>Solo Oficial BNA</strong>, sin Blue/MEP/Cripto (pedido de Fede, 2026-09-04).</li>
+    <li><strong>La conversión entre monedas se hace solo desde la Bóveda, y solo el DUEÑO.</strong></li>
+    <li><strong>El vuelto siempre se da en pesos.</strong> En caja, dólares solo billetes enteros.</li>
+    <li><strong>Sin redondeo</strong>, decimales exactos.</li>
+    <li><strong>Reportes y Dashboard nunca mezclan monedas</strong> en un total único (modos ARS / USD / REAL).</li>
+    <li><strong>La facturación AFIP es 100&nbsp;% en pesos</strong> y no se toca.</li>
+    <li><strong>Quién puede cargar la cotización a mano</strong>: DUEÑO siempre + roles habilitados; el resto solo refresca.</li>
+  </ul>
+</div>
+
+<h2>A · La moneda principal del negocio</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span>
+  <span class="pregunta-titulo">¿Qué significa exactamente “moneda principal configurable”?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Hoy <code>tenants.moneda</code> existe y se puede elegir entre 11, pero solo cambia el
+símbolo. Un negocio en CLP ve “CL$” y nada más: los totales, la cotización y la caja siguen razonando en pesos
+argentinos por dentro.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Que toda la plata del sistema se exprese y se opere en esa moneda (es la moneda “local” real del negocio).</li>
+  <li><strong>(b)</strong> Que sea solo la moneda de presentación por defecto, y por dentro se siga operando como hoy.</li>
+  <li><strong>(c)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span>
+  <span class="pregunta-titulo">¿Un negocio puede cambiar su moneda principal después de haber operado?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Es la pregunta más delicada del proyecto. Si un negocio operó 6 meses en pesos y pasa a
+dólares, sus ventas, cajas y gastos históricos quedaron expresados en pesos. Reescribirlos sería falsear
+registros contables (regla de oro: nunca se reescribe el histórico).</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> No — se elige al crear el negocio y queda fijo.</li>
+  <li><strong>(b)</strong> Sí, pero solo si todavía no hay movimientos registrados.</li>
+  <li><strong>(c)</strong> Sí, en cualquier momento: lo viejo queda en la moneda vieja (marcado) y lo nuevo arranca en la nueva.</li>
+  <li><strong>(d)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span>
+  <span class="pregunta-titulo">¿Cuántas monedas puede operar un mismo negocio a la vez?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Hoy son exactamente dos: la local y el dólar. Toda la lógica de caja, bóveda, pago
+combinado y conversión está escrita para dos. Pasar a “N monedas” no es agregar opciones a una lista: es
+rehacer esa lógica.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Dos: la principal y el dólar (lo de hoy, pero bien hecho para cualquier moneda principal).</li>
+  <li><strong>(b)</strong> Tres o cuatro fijas, que el negocio elige.</li>
+  <li><strong>(c)</strong> Todas las que quiera (multimoneda real, sin límite).</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span>
+  <span class="pregunta-titulo">¿Las 11 monedas de la lista actual son las que quieren, o hay que ampliar/recortar?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span>
+  <span class="pregunta-titulo">Si el negocio es, por ejemplo, chileno (CLP): ¿el dólar sigue teniendo un lugar especial?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy el dólar está cableado como “la otra moneda” en todos lados (Caja USD, Bóveda USD,
+pago combinado, cotización). Si la principal es CLP, hay que decidir si la segunda moneda sigue siendo el dólar
+o es configurable.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, el dólar siempre es la moneda secundaria universal.</li>
+  <li><strong>(b)</strong> No, la segunda moneda también se configura.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>B · Cotizaciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span>
+  <span class="pregunta-titulo">¿De dónde sale la cotización de una moneda que no sea el dólar?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy la única fuente automática es <code>dolarapi.com</code> (Oficial BNA), que solo sirve
+para el dólar en Argentina. No hay proveedor de cotizaciones para CLP, BRL, EUR, etc.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Se cargan siempre a mano (sin fuente automática).</li>
+  <li><strong>(b)</strong> Buscar un proveedor de cotizaciones multimoneda y traerlas automático.</li>
+  <li><strong>(c)</strong> Automático para el dólar (como hoy) y manual para el resto.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span>
+  <span class="pregunta-titulo">¿Cada moneda necesita cotización de compra y de venta, como el dólar?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">El dólar guarda las dos porque el negocio actúa como casa de cambio: recibe a compra,
+entrega a venta. Si cada moneda lleva dos valores, la carga manual se multiplica.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span>
+  <span class="pregunta-titulo">¿Con qué frecuencia se espera actualizar las cotizaciones, y qué pasa si están viejas?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy se guarda <code>cotizacion_usd_updated_at</code> pero <strong>nada bloquea ni avisa</strong>
+si la cotización es de hace un mes. Se sigue vendiendo con ese valor.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Solo mostrar desde cuándo es (como hoy).</li>
+  <li><strong>(b)</strong> Avisar en pantalla si tiene más de X horas/días.</li>
+  <li><strong>(c)</strong> Bloquear operaciones en esa moneda hasta actualizarla.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span>
+  <span class="pregunta-titulo">¿La cotización es por negocio o puede variar por sucursal?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy vive en <code>tenants</code>: es una sola para todo el negocio, todas las sucursales.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span>
+  <span class="pregunta-titulo">¿Se guarda un historial de cotizaciones?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy solo se guarda la cotización <em>actual</em>: cuando se actualiza, la anterior se
+pisa. Cada venta en dólares sí guarda la suya (<code>ventas.cotizacion_usd</code>), y cada conversión de bóveda
+también. Un historial permitiría reconstruir y auditar; sin él, no se puede responder “¿a cuánto estaba el
+dólar el martes pasado?”.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span>
+  <span class="pregunta-titulo">Cuando se registra una operación, ¿qué cotización manda: la del momento o una fija del día?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy es siempre “la que esté cargada en ese instante”. Si el dueño la actualiza a media
+mañana, las ventas de antes y después usan valores distintos.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B7</span>
+  <span class="pregunta-titulo">¿Quién puede cargar la cotización de las monedas nuevas?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Para el dólar ya está resuelto: DUEÑO siempre, más los roles que se habiliten; el resto
+solo puede refrescar desde la fuente automática. ¿Mismo criterio para todas?</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>C · Alcance — en qué módulos</h2>
+
+<div class="contexto" style="margin-left:0;">Para cada módulo: ¿tiene que poder operar en cualquier moneda, o
+alcanza con la moneda principal? Marcar lo que corresponda.</div>
+
+<table>
+  <tr><th>Módulo</th><th>Cómo está hoy</th><th>¿Multimoneda?</th></tr>
+  <tr><td><strong>C1 · Precios de producto</strong></td><td>Local o USD (2 opciones)</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C2 · Venta (POS)</strong></td><td>Cobra en local y USD. El total SIEMPRE se guarda en pesos</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C3 · Caja</strong></td><td>Cajas por moneda, ya funciona con ARS y USD</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C4 · Bóveda / capital</strong></td><td>Dos pestañas: ARS y USD</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C5 · Gastos</strong></td><td>Ya ofrece las 11 monedas, pero solo consolida ARS/USD</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C6 · Compras / OC</strong></td><td>OC con moneda propia</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C7 · Cuenta corriente</strong> (clientes y proveedores)</td><td>Sin moneda propia</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C8 · Sueldos / RRHH</strong></td><td>Sin moneda propia</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C9 · Envíos / tarifas</strong></td><td><code>zonas</code> tiene moneda</td><td>Sí / No / Solo USD</td></tr>
+  <tr><td><strong>C10 · Facturación AFIP</strong></td><td>100&nbsp;% pesos, sin excepción</td><td>(ver sección F)</td></tr>
+</table>
+<div class="respuesta-libre">Aclaraciones:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C11</span>
+  <span class="pregunta-titulo">La venta no guarda en qué moneda se hizo. ¿Hay que cambiarlo?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Es la limitación más grande que existe hoy. <code>ventas.total</code> siempre está en
+pesos y <code>venta_items</code> no tiene moneda: el sistema <strong>no sabe</strong> cuánta plata de una venta
+fue realmente en dólares (salvo el efectivo). Por eso los reportes informan el componente USD como “equivalente
+en pesos” y nunca como una cifra en dólares. Arreglarlo de fondo implica tocar el corazón de ventas.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí — la venta debe guardar su moneda y su monto real en esa moneda.</li>
+  <li><strong>(b)</strong> No — alcanza con el equivalente en moneda local, como hoy.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>D · Totales, conversión y reportes</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span>
+  <span class="pregunta-titulo">Con 3 o más monedas, ¿qué muestra un total?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">La regla actual (“el total va en la moneda del negocio; lo demás no se suma ni se
+convierte, se informa aparte”) funciona bien con dos monedas. Con cinco, un reporte podría terminar mostrando
+un total y cuatro renglones sueltos.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Mantener la regla: total en moneda local + el resto listado aparte.</li>
+  <li><strong>(b)</strong> Convertir todo a la moneda local usando la cotización de hoy (y avisar que es una vista, no plata real).</li>
+  <li><strong>(c)</strong> Que el usuario elija la vista, como hace hoy el Dashboard (ARS / USD / REAL).</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span>
+  <span class="pregunta-titulo">¿Se puede cobrar una sola venta en tres monedas a la vez?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy el pago combinado soporta local + USD en el mismo checkout, repartiendo entre dos
+sesiones de caja. Tres monedas implicaría tres cajas abiertas simultáneas.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span>
+  <span class="pregunta-titulo">El vuelto siempre en moneda local: ¿sigue valiendo con más monedas?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span>
+  <span class="pregunta-titulo">La conversión solo desde la Bóveda y solo el DUEÑO: ¿se mantiene?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Es hoy el único punto de conversión de todo el sistema, y es deliberado: evita que cada
+pantalla invente su propia tasa.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span>
+  <span class="pregunta-titulo">¿Qué pasa si hay que mostrar un total y falta la cotización de una moneda?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy: no se inventa una tasa, ese monto queda fuera del total y la pantalla lo avisa.
+Plata que desaparece en silencio de un total es lo peor que puede pasar.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>E · Registros históricos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span>
+  <span class="pregunta-titulo">Hay un negocio real configurado en CLP con gastos grabados como ARS. ¿Qué se hace?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Caso real: el negocio de prueba de GO (“Familia Otranto De Porto”) está en CLP, y tiene
+62 gastos en DEV y 1 en producción guardados como ARS, porque <code>gastos.moneda</code> tiene ARS por defecto.
+No se tocaron: reescribir la moneda de un gasto pasado es reescribir un registro contable.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Dejarlos como están (son de prueba, no vale la pena).</li>
+  <li><strong>(b)</strong> Corregirlos puntualmente, con decisión explícita del dueño.</li>
+  <li><strong>(c)</strong> Que el sistema los muestre marcados como “moneda dudosa”.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span>
+  <span class="pregunta-titulo">¿Los registros viejos se “migran” a la moneda nueva o quedan como nacieron?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">La regla actual del sistema es no reescribir nunca un registro fiscal o contable
+histórico. Confirmar que también aplica acá.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span>
+  <span class="pregunta-titulo">La Caja Fuerte de cada negocio nace siempre en ARS, aunque el negocio sea de otra moneda.</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Es un defecto ya detectado y documentado: la caja fuerte principal se crea con
+<code>'ARS'</code> fijo en lugar de tomar la moneda del negocio. En un negocio en CLP, la bóveda queda
+etiquetada en pesos argentinos. ¿Se corrige como parte de esto?</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span>
+  <span class="pregunta-titulo">¿Los precios de producto cargados en una moneda que después se desactiva, qué pasan a ser?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>F · Fiscal — va al contador, no se decide acá</h2>
+
+<div class="seccion-resumen">
+  <strong>Estas preguntas no las puede responder ni Fede ni el sistema.</strong> Se suman al registro de
+  consultas para el contador. Se listan para que quede claro que están contempladas y que
+  <strong>bloquean</strong> la parte fiscal del proyecto.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span>
+  <span class="pregunta-titulo">La factura electrónica sigue siendo siempre en pesos, ¿correcto?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy la facturación no informa moneda extranjera ni cotización a ARCA. ARCA permite
+facturar en moneda extranjera; hacerlo sería una decisión fiscal, no técnica.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span>
+  <span class="pregunta-titulo">Un gasto en moneda extranjera con IVA: ¿genera crédito fiscal, y a qué cotización?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Sigue abierta desde antes. Hasta tener respuesta, el Libro IVA Compras
+<strong>deja esos gastos afuera</strong> (avisando en pantalla) en lugar de declararlos con un criterio no
+validado. Las columnas para guardarlo ya existen (<code>gastos.cotizacion_fiscal</code>).</div>
+<div class="respuesta-libre">Respuesta del contador:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span>
+  <span class="pregunta-titulo">¿Qué cotización oficial corresponde usar para lo fiscal?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Esta pregunta ya estaba abierta y frenada esperando un contador. Es el último punto sin
+cerrar del proyecto de Caja USD.</div>
+<div class="respuesta-libre">Respuesta del contador:</div>
+
+<h2>G · Casos límite</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span>
+  <span class="pregunta-titulo">Un cliente debe en dólares y paga en pesos (o al revés). ¿A qué cotización se salda?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">La cuenta corriente no tiene moneda hoy. Si se le agrega, aparece de inmediato la
+pregunta de a qué tasa se cancela una deuda vieja: la del día de la deuda o la de hoy. La diferencia es
+ganancia o pérdida para el negocio.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span>
+  <span class="pregunta-titulo">Devoluciones: ¿se devuelve en la misma moneda en que se pagó?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy lo decide el cajero al devolver, sin importar cómo se pagó la venta original
+(se resolvió así a propósito, porque el sistema no guarda cuánto de cada línea se pagó en dólares).</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span>
+  <span class="pregunta-titulo">Mercado Libre y Tienda Nube publican en moneda local. ¿Qué pasa con un producto con precio en otra moneda?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El sincronizador de precios manda un número a la publicación. Si el precio del producto
+está en dólares, hay que definir qué número viaja y con qué cotización.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G4</span>
+  <span class="pregunta-titulo">Los planes y la facturación de Genesis360 al cliente, ¿siguen en pesos?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Si se apunta a negocios de otros países, cobrarles la suscripción en pesos argentinos
+puede no tener sentido. Es una decisión comercial, aparte del producto.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>H · Prioridad</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span>
+  <span class="pregunta-titulo">Si hubiera que hacerlo por partes, ¿qué va primero?</span>
+</div>
+<div class="contexto">El proyecto completo es grande y toca plata en todos lados. Se puede ordenar en fases.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Que la moneda principal funcione de verdad (hoy es solo un símbolo) — sin agregar monedas nuevas.</li>
+  <li><strong>(b)</strong> Que la venta guarde su moneda real (cerrar la limitación más grande).</li>
+  <li><strong>(c)</strong> Cotizaciones de varias monedas.</li>
+  <li><strong>(d)</strong> Todo junto, sin ir por partes.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span>
+  <span class="pregunta-titulo">¿Esto responde a un cliente concreto que lo necesita, o es para poder vender afuera?</span>
+</div>
+<div class="contexto">Cambia bastante el diseño: un cliente real trae restricciones concretas; “vender afuera”
+pide algo más general.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento de reglas de negocio — Multimoneda · 16 de septiembre de 2026<br>
+  Documento para responder offline. Todo lo afirmado sobre “cómo está hoy” fue verificado contra el código
+  y el esquema de la base, no contra documentación.
+</div>
+
+</body>
+</html>

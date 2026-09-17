@@ -675,8 +675,12 @@ problemas comunes y remite a Ayuda → Reportar un problema.
 
 **Video "Activá la facturación electrónica"** grabado contra PROD (aparte de la serie de onboarding, que sigue en
 pausa), tenant "Genesis360 Onboarding" con CUIT ficticio `20-12345678-9` — nunca un CUIT ni certificado real en
-cámara. Sigue el mismo circuito que la guía; no se subió ningún `.crt` ni se tocó producción. Detalle completo,
-dónde vive el archivo y cómo se regraba: [[wiki/manuales/guion-videos-onboarding]] ("Video 10").
+cámara. Sigue el mismo circuito que la guía; no se subió ningún `.crt` ni se tocó producción.
+
+✅ **Regrabado el 2026-09-16** (78,52 s): ya muestra el inicio de actividades correcto (1/3/2024, con el fix de
+`v1.227.1`) y el recuadro "Modo PRUEBA" bien encuadrado. Hubo que regrabar más de lo previsto — el resumen fiscal
+queda en pantalla mientras se carga el punto de venta, así que no alcanzaba con el tramo del resumen. Detalle
+completo, dónde vive el archivo y cómo se regraba: [[wiki/manuales/guion-videos-onboarding]] ("Video 10").
 
 🐛 **Fix v1.227.1 (2026-09-15, 🚀 EN PROD desde 2026-09-16, sin migración) — el resumen mostraba el inicio de
 actividades un día antes.** En Config → Facturación, el resumen "Identidad fiscal del emisor principal" armaba la fecha de

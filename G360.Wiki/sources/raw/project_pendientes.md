@@ -14,8 +14,11 @@ type: project
 > 1. 📋 **Responder el relevamiento de Multimoneda** con Fede — `relevamiento-multimoneda-reglas-negocio.html`
 >    (commit `aea1f6f8`), imprimible. Incluye la **pregunta A0**: si el bug del importador CSV se arregla ya
 >    por separado o va dentro del rediseño.
-> 2. 🎥 **Crear `scripts/video/.env.video`** (plantilla en `.env.video.example`) y correr las 2 tomas del
->    video de facturación — es lo único que falta para regrabar los tramos.
+> 2. ✅ **Video de facturación REGRABADO** (2026-09-16): `video-facturacion-final.mp4` = 78,52 s, con la fecha
+>    correcta y el recuadro "Modo PRUEBA" encuadrado. La credencial del negocio de prueba quedó en
+>    `scripts/video/.env.video` (gitignoreado). 🛑 Hubo que regrabar **más** de lo previsto: el resumen fiscal
+>    queda en pantalla mientras se carga el punto de venta, así que se reemplazó 16,83-34,63 completo (modo
+>    `TRAMO=PV`), no solo el resumen. Se detectó extrayendo cuadros del render, no leyendo el log.
 > 3. 🧪 **Qué hacer con UAT 59.7**: no es cubrible como e2e (ver abajo). Opciones: hacerlo con `service_role`
 >    cuando vuelva el conector de Supabase, o descartarlo.
 > 4. Cuándo limpiar el tenant de prueba "Genesis360 Onboarding" (quedó con el emisor de ejemplo

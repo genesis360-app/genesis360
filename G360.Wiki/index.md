@@ -254,7 +254,18 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-16 (cont. 72, parte 2) — 📋🧪 **Relevamiento de Multimoneda + 2 de los 4 e2e
+*Última actualización: 2026-09-16 (cont. 72, parte 3) — 🎥 **Video de facturación REGRABADO y cerrado**:
+`video-facturacion-final.mp4` = 78,52 s, con el inicio de actividades en **1/3/2024** (fix de `v1.227.1`) y el recuadro
+"Modo PRUEBA" entrando completo; el render anterior quedó en `_anteriores/` y se conservan `crudo-v3` + `guion-v3` +
+`clicks-v3` para regenerar sin volver a grabar. 🛑 **Regrabar "los 2 tramos" NO alcanzaba**: el resumen fiscal queda en
+pantalla mientras se carga el punto de venta, así que la fecha vieja seguía visible ~8 s en el medio — hubo que
+reemplazar 16,83-34,63 completo (modo `TRAMO=PV`, borrando y recreando el punto de venta 0002 del negocio de prueba,
+verificado por REST). 🛑 **Solo se detectó extrayendo cuadros del render**: el log del intento fallido decía "OK, 80.3s,
+5 stickers" con el video igualmente mal. También se resolvió el acceso al negocio de prueba (contraseña reseteada por
+Admin API y guardada en `scripts/video/.env.video`, gitignoreado). ⚠️ Pendiente de GO: **rotar la `service_role`**. Ver
+`log.md` (2026-09-16, "Video de facturación REGRABADO") y [[wiki/manuales/guion-videos-onboarding]].*
+
+Antes: *Última actualización: 2026-09-16 (cont. 72, parte 2) — 📋🧪 **Relevamiento de Multimoneda + 2 de los 4 e2e
 pendientes**, sin cambio de versión ni migraciones. **Relevamiento publicado**
 (`relevamiento-multimoneda-reglas-negocio.html`, commit `aea1f6f8`), imprimible, para responder con Fede:
 hoy el negocio elige entre 11 monedas pero eso **solo cambia el símbolo**, hay **una sola cotización y es del

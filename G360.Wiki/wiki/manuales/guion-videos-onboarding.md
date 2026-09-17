@@ -244,11 +244,16 @@ rótulos, efectos de click y música, mismo pipeline que el resto de la serie). 
 `scripts/video/grabaciones/video-facturacion.mjs` (`DESDE=punto-venta` retoma sin reescribir datos) +
 `scripts/video/grabaciones/explorar-facturacion.mjs` (exploración previa de solo lectura).
 
-⚠️ **A rehacer, 2 tramos** — ✅ **ya se pueden regrabar**: `v1.227.1` está EN PROD desde el 2026-09-16, así que el
-bloqueo se levantó (se regraban navegando, sin reescribir datos):
-- Se ve la fecha del inicio de actividades corrida un día en el resumen del emisor (fix **ya en PROD**, ver
-  [[wiki/features/facturacion-afip]] → "Guía para clientes + video").
-- El cierre no encuadra bien el recuadro de "Modo PRUEBA".
+✅ **REGRABADO el 2026-09-16 — los 2 defectos están corregidos.** `video-facturacion-final.mp4` pasó a 78,52 s, con el
+inicio de actividades en **1/3/2024** y el recuadro "Modo PRUEBA" entrando completo. El render anterior quedó en
+`_anteriores/`; se conservan `crudo-v3.mp4` + `guion-v3.json` + `clicks-v3.json` para regenerar sin volver a grabar.
+
+🛑 **Lo que se aprendió: regrabar "los 2 tramos" no alcanzaba.** El resumen fiscal **queda en pantalla mientras se carga
+el punto de venta**, así que reemplazar solo 16,83-24,12 dejaba la fecha vieja (29/2/2024, `v1.227.0`) visible ~8 s en
+el medio del video. Hubo que reemplazar **16,83-34,63 completo** — resumen + alta del punto de venta — con el modo
+`TRAMO=PV` de `scripts/video/grabaciones/regrabar-facturacion.mjs`; para eso se borró el punto de venta 0002 del negocio
+de prueba y la propia toma lo volvió a crear (verificado por REST antes y después). Y se detectó **solo extrayendo
+cuadros del render**: el log del intento fallido decía "OK, 80.3s, 5 stickers" con el video igualmente mal.
 
 El tenant de prueba queda con el emisor de ejemplo, el punto de venta 2 y la clave del CSR en storage — se limpia
 junto con el resto de "Genesis360 Onboarding" cuando se termine la serie completa.

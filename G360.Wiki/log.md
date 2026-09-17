@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-16] update | 🎥 Video de facturación REGRABADO — y por qué "2 tramos" no alcanzaban
+
+Cierre del pendiente que esperaba el deploy de `v1.227.1`. `video-facturacion-final.mp4` pasó de 78,32 s a
+**78,52 s**, con el inicio de actividades en **1/3/2024** y el recuadro "Modo PRUEBA" entrando completo. El render
+anterior quedó en `_anteriores/`. Se conservan `crudo-v3.mp4` + `guion-v3.json` + `clicks-v3.json`: alcanzan para
+regenerar sin volver a grabar. **Sin cambios de código de la app.**
+
+### 🛑 El hallazgo: regrabar "los 2 tramos" dejaba el defecto igual
+El plan era reemplazar 16,83-24,12 (resumen fiscal) y 65,13-70,97 (cierre). Se hizo, se armó el render… y **la fecha
+vieja seguía visible ~8 s en el medio del video**, con `v1.227.0` en el sidebar. Causa: **el resumen fiscal queda en
+pantalla mientras se carga el punto de venta**, o sea que el dato viejo no vivía solo en el tramo que se acotó. Hubo
+que reemplazar **16,83-34,63 completo** (resumen + alta del PV) con un modo nuevo `TRAMO=PV`.
+
+Para que la toma pudiera dar de alta el punto de venta se **borró el 0002** del negocio de prueba y la propia toma lo
+volvió a crear — verificado por REST antes (existía), después de borrar (`[]`) y al final (creado de nuevo, id nuevo).
+
+### 🛑 Solo se detectó mirando cuadros del render
+El log del intento fallido decía `OK — 80.3s · 5 stickers · 4 sacudidas` y el video estaba mal igual. La verificación
+que sirve es `ffmpeg -ss <t> -i final.mp4 -frames:v 1 x.png`, recortar la zona del dato y **mirarla**. Se barrió la
+franja 26-44 s de a 2 s para mapear hasta dónde llegaba el defecto.
+
+### Otros dos detalles del empalme
+- El `clicks.json` original tenía un click **"guardar" en t=17,67** que caía dentro del tramo regrabado, pero la toma
+  nueva **solo navega**: si se dejaba, el video mostraba un sticker de click sobre una pantalla donde nadie clickeó.
+  Se eliminó, y los 4 clicks del bloque viejo del PV se reemplazaron por los 4 reales de la toma nueva.
+- El tramo PV dura 15,92 s contra los 17,80 del hueco, así que del rótulo 4 en adelante todo se corrió **−1,87 s**.
+
+### Acceso al negocio de prueba — resuelto
+La contraseña de `genesis360.ar+video1@gmail.com` (dueño de "Genesis360 Onboarding") **no la tenía nadie**: la cuenta
+la creó Claude el 13/09 y no quedó anotada. Se **reseteó por Admin API** (`PUT /auth/v1/admin/users/{id}` con
+`service_role`) y se verificó con un login real. Quedó en `scripts/video/.env.video` (gitignoreado, plantilla en
+`.env.video.example`). 🛑 Dos gotchas: el panel de Supabase **no deja asignar contraseña desde la UI** (solo mandar
+links, y el escáner de Gmail quema los tokens de un solo uso), y en bash **`UID` es variable de solo lectura** — usarla
+para el user_id hace que la Admin API responda 404.
+
+⚠️ **Pendiente de GO**: rotar la `service_role`, que pasó por el chat.
+
+---
+
 ## [2026-09-16] update | 📋 Relevamiento de Multimoneda + 2 de los 4 e2e pendientes (155 y 156)
 
 Misma sesión (cont. 72), después del deploy de `v1.227.1`. **Sin cambios de versión ni migraciones**:

@@ -24,8 +24,21 @@ type: project
 >
 > 🛑 **Decisiones abiertas de GO para retomar**:
 > 1. 📋 **Responder el relevamiento de Multimoneda** con Fede — `relevamiento-multimoneda-reglas-negocio.html`
->    (commit `aea1f6f8`), imprimible. Incluye la **pregunta A0**: si el bug del importador CSV se arregla ya
->    por separado o va dentro del rediseño.
+>    (commit `aea1f6f8`), imprimible.
+>
+> 🔌 **APENAS VUELVA EL CONECTOR DE SUPABASE — dos queries pendientes** (GO dijo el 2026-09-17 que lo reconecta):
+> - **(1) Impacto real de la alerta A0** (importador CSV): contar productos con `precio_venta_moneda='USD'` o
+>   `precio_costo_moneda='USD'` **en PROD, en todos los negocios** (hace falta `service_role`: con RLS solo se ve el
+>   negocio de la sesión). ✅ En **DEV ya se midió: 0 productos** — nunca se usó el importador con USD.
+>   **Si PROD también da 0** → latente, va dentro del rediseño de Multimoneda, sin apuro. **Si da ≠ 0** → hay
+>   productos vendiéndose a ~1/1400 de su precio y hay que frenar y corregir. Ver
+>   [[project_bugs_producto_moneda_usd]].
+> - **(2) UAT 59.7**: forzar el fallo de `fn_aplicar_precios_programados` por SQL y verificar que quede
+>   `estado='fallido'` + la notificación al DUEÑO/SUPER_USUARIO. Es la única vía; no es cubrible como e2e.
+>
+> ✅ **Decisión de GO (2026-09-17) sobre la alerta A0**: *"si no es urgente dejémoslo para luego"* → **va dentro del
+> rediseño de Multimoneda, NO se arregla por separado**, condicionado al resultado de la query (1). Sale de las
+> preguntas abiertas del relevamiento.
 > 2. ✅ **Video de facturación REGRABADO** (2026-09-16): `video-facturacion-final.mp4` = 78,52 s, con la fecha
 >    correcta y el recuadro "Modo PRUEBA" encuadrado. La credencial del negocio de prueba quedó en
 >    `scripts/video/.env.video` (gitignoreado). 🛑 Hubo que regrabar **más** de lo previsto: el resumen fiscal

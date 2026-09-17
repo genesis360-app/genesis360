@@ -6,6 +6,25 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-17] update | ✅ Cierre: audio del video validado, A0 diferido y plan de Categorías definido
+
+Cierre de la sesión cont. 72 con las decisiones que tomó GO. **Sin cambios de código.**
+
+- 🎧 **GO validó el audio del video de facturación** ("se escucha ok") → el video queda **cerrado del todo**.
+  Recordatorio permanente: Claude no escucha, el visto bueno del sonido lo da siempre GO.
+- 🏷️ **Alerta A0 (importador CSV) — DIFERIDA por decisión de GO** (*"si no es urgente dejémoslo para luego"*):
+  **va dentro del rediseño de Multimoneda**, no se arregla por separado. Condicionada a una query: ✅ en **DEV se
+  midió 0 productos** afectados (el importador nunca se usó con USD), falta la misma en **PROD sobre todos los
+  negocios**, que necesita `service_role`. Si diera ≠ 0 se frena, porque serían productos vendiéndose a ~1/1400
+  de su precio.
+- 🔌 **Dos queries esperando el conector de Supabase** (GO lo reconecta): el impacto de A0 en PROD, y **UAT 59.7**
+  (forzar el fallo de `fn_aplicar_precios_programados` y verificar `estado='fallido'` + la notificación).
+- 🏷️ **Categorías de clientes**: GO pidió el plan antes de arrancar. Quedó definido y presentado — Fase 0 de
+  relevamiento con 7 secciones (la crítica es **A · Composición** con tiers/combos/estados de inventario) y 4 fases
+  de construcción. **Falta su OK para arrancar.** Detalle en `sources/raw/project_pendientes.md`.
+
+---
+
 ## [2026-09-16] update | 🎥 Video de facturación REGRABADO — y por qué "2 tramos" no alcanzaban
 
 Cierre del pendiente que esperaba el deploy de `v1.227.1`. `video-facturacion-final.mp4` pasó de 78,32 s a

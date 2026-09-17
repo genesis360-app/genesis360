@@ -254,7 +254,18 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-16 (cont. 72, parte 3) — 🎥 **Video de facturación REGRABADO y cerrado**:
+*Última actualización: 2026-09-17 (cierre de cont. 72) — ✅ **Decisiones de GO y handoff cerrado**, sin cambios de
+código. 🎧 **Audio del video validado por GO** ("se escucha ok") → el video de facturación queda cerrado del todo
+(Claude no escucha: el visto bueno del sonido lo da siempre GO). 🏷️ **Alerta A0 del importador CSV DIFERIDA** por
+decisión de GO: va dentro del rediseño de Multimoneda, no se arregla por separado — ✅ en **DEV se midió 0 productos**
+afectados, falta la misma query en **PROD sobre todos los negocios** (necesita `service_role`); si diera ≠ 0 se frena,
+porque serían productos vendiéndose a ~1/1400 de su precio. 🔌 **Dos queries esperan el conector de Supabase**: esa y
+**UAT 59.7** (forzar el fallo de `fn_aplicar_precios_programados`). 🏷️ **Categorías de clientes**: plan definido y
+presentado (Fase 0 de relevamiento con 7 secciones, la crítica es **A · Composición** con tiers/combos/estados), falta
+el OK de GO para arrancar. 🔴 **Sigue pendiente y es lo primero: rotar la `service_role` de PROD.** Ver `log.md`
+(2026-09-17) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").*
+
+Antes: *Última actualización: 2026-09-16 (cont. 72, parte 3) — 🎥 **Video de facturación REGRABADO y cerrado**:
 `video-facturacion-final.mp4` = 78,52 s, con el inicio de actividades en **1/3/2024** (fix de `v1.227.1`) y el recuadro
 "Modo PRUEBA" entrando completo; el render anterior quedó en `_anteriores/` y se conservan `crudo-v3` + `guion-v3` +
 `clicks-v3` para regenerar sin volver a grabar. 🛑 **Regrabar "los 2 tramos" NO alcanzaba**: el resumen fiscal queda en

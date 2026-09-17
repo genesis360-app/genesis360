@@ -51,9 +51,11 @@ type: project
 > 5. 📐 **Pedido del 2026-09-16**: documento completo del producto + **diagramas de infraestructura**
 >    (ver abajo, "Pedido nuevo de GO").
 > 6. ⚡ **Capacidad** — es lo siguiente en el orden que dio GO, después de los e2e.
-> 7. 🏷️ **Categorías de clientes (precios por producto + CC)** — pedido nuevo de GO del 2026-09-16, con spec
->    detallada. **Arranca por relevamiento**, pero 4 de las 8 preguntas abiertas ya se pueden responder
->    contra el código (ver abajo, "Categorías de clientes").
+> 7. 🏷️ **Categorías de clientes (precios por producto + CC)** — pedido nuevo de GO del 2026-09-16.
+>    ✅ **Fase 0 hecha el 2026-09-17**: `relevamiento-categorias-clientes-reglas-negocio.html` (raíz del repo,
+>    7 secciones / 22 preguntas). 🔴 **Esperando las respuestas de GO + Fede** — no se construye nada hasta
+>    que cierre la **sección A (composición con tier / estado / combo / cupón / promo de pago)**, porque
+>    cambiarla después implica re-facturar (ver abajo, "Categorías de clientes").
 >
 > #### 🏷️ Categorías de clientes — pedido del 2026-09-16 (mejoras a corto plazo)
 >

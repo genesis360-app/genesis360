@@ -6,6 +6,32 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-17] update | 🏷️ Categorías de clientes — Fase 0: relevamiento generado
+
+GO dio el OK para arrancar. Se generó `relevamiento-categorias-clientes-reglas-negocio.html` (raíz del repo,
+imprimible, para responder offline con Fede). **Sin cambios de código de la app.**
+
+- **7 secciones, 22 preguntas** (A1-A5 · B1-B5 · C1-C5 · D1-D4 · E1-E3 · F1-F3 · G1-G2). No se repreguntan
+  las 4 que ya se habían respondido contra el código (Etiquetas multi-tag, no hay descuento por cliente hoy,
+  defaults de CC en `tenants`, override de CC por cliente ya construido) — van en un recuadro verde aparte.
+- 🔴 **La sección A es la que bloquea todo**: hoy los descuentos **se apilan**, en 9 pasos verificados contra
+  el código — lista → tier por cantidad (`precioBlendedTier`, agregado por SKU) → redondeo (`precio_redondeo`,
+  de ahí sale el unitario efectivo del que deriva toda la plata) → descuento manual/combo de la línea →
+  descuento por estado de inventario → y sobre el total: descuento general → combos multi-SKU → cupón →
+  promo por método de pago. La **regla transversal de Fede** ("compiten, gana el mejor, nunca se acumulan")
+  **sigue diferida**, así que un descuento de categoría se sumaría a esa pila **en silencio**.
+  El ejemplo numérico del HTML: 12 bidones de un colocador salen **$768 u $960** según cómo se componga.
+- **Lo que define el tamaño del trabajo** (ya sabido, reconfirmado): el precio se resuelve en **dos motores
+  espejo** — `src/lib/tiers.ts` (POS) y `fn_precio_venta_efectivo(tenant, producto, cantidad)` (Pedidos,
+  `fn_pedido_generar_venta`) — y **ninguno recibe el cliente**. Pedidos además no aplica combos/cupones/
+  descuento general (H1), pero sí el descuento por estado (mig 319). ML/TN publican
+  `precio_venta × (1 + precio_ajuste_*_pct/100)`, sin cliente.
+- **Queda esperando las respuestas de GO + Fede.** Las fases de construcción (1 datos+CC · 2 🔴 precio ·
+  3 override+permisos · 4 auditoría) no arrancan hasta que la sección A esté cerrada: cambiarla después
+  implica re-facturar.
+
+---
+
 ## [2026-09-17] update | ✅ Cierre: audio del video validado, A0 diferido y plan de Categorías definido
 
 Cierre de la sesión cont. 72 con las decisiones que tomó GO. **Sin cambios de código.**

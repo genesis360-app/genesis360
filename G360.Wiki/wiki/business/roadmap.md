@@ -35,8 +35,8 @@ propio) y `v1.227.0` (migs 427-429, ver sección de abajo).
 🧾 **`v1.227.1` deployada a PROD el 2026-09-16** (cont. 72): fix de display en el resumen fiscal de Facturación +
 scripts del video y guía de activación (detalle en la sección `## 🧾 v1.227.1` más abajo). PR **#352** `dev→main`
 (merge `58ff0e6c`), release `v1.227.1` marcado Latest, sin migración. Con esto **DEV ya no está un paso adelante**.
-Quedó habilitado el pendiente que esperaba este deploy: **regrabar los 2 tramos** del video que salieron con la
-fecha corrida y el cierre sin encuadrar "Modo PRUEBA".
+✅ Y con eso se destrabó y **se completó** el pendiente que esperaba este deploy: los tramos del video que salieron con
+la fecha corrida y el cierre sin encuadrar "Modo PRUEBA" quedaron **regrabados el mismo 2026-09-16**.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -84,8 +84,9 @@ redeployada en DEV y PROD con el knowledge regenerado — `scripts/auditar-edge-
 - 🎥 **Video "Activá la facturación electrónica"** (aparte de la serie de onboarding, que sigue en pausa) grabado
   contra PROD (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9): datos fiscales, punto de venta y CSR
   con el asistente, sin subir `.crt` ni tocar producción. `D:/Dev/genesis360-videos/video-facturacion/
-  video-facturacion-final.mp4` (78 s). ✅ Los 2 tramos a rehacer (fecha corrida + encuadre de "Modo PRUEBA") **ya se
-  pueden regrabar**: v1.227.1 está en PROD desde el 2026-09-16.
+  video-facturacion-final.mp4`. ✅ **REGRABADO el 2026-09-16** (78,52 s): fecha correcta (1/3/2024) y recuadro "Modo
+  PRUEBA" bien encuadrado. 🛑 Hubo que regrabar más de lo previsto — el resumen fiscal queda en pantalla mientras se
+  carga el punto de venta, así que se reemplazó 16,83-34,63 completo, no solo el tramo del resumen.
 - 📄 **Guía HTML publicada** para clientes: artifact de Claude (https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg),
   "Activar facturación en Genesis360" — 10 pasos alternando ARCA/Genesis360 hasta pasar a producción, 5 problemas
   comunes.

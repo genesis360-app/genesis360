@@ -10,6 +10,18 @@ type: project
 > código esperando deploy. El deploy fue solo el fix del inicio de actividades corrido un día en el resumen fiscal,
 > **sin migraciones**.
 >
+> 🔴🔴 **LO PRIMERO, ANTES DE CUALQUIER OTRA COSA: ROTAR LA `service_role` DE PROD.** El 2026-09-16 GO la pegó en el
+> chat para que Claude pudiera resetear por Admin API la contraseña del negocio de prueba de los videos. Esa key
+> **saltea TODAS las reglas de seguridad** (RLS incluido): con ella se lee y escribe cualquier dato de cualquier
+> negocio de PROD, **Kalken incluido**. Rotarla en Supabase → Settings → API → *Generate new service_role key*, y
+> actualizar donde se use (Edge Functions, scripts). **Mientras no se rote, sigue viva.** Ver
+> [[reference_supabase_token_filtrado_sin_rotar]].
+>
+> 📦 **Sobre los ~15 commits que tiene `origin/dev` por encima de `main`**: son **tests, scripts y wiki**, NO tocan
+> `src/` — `APP_VERSION` sigue en `v1.227.1`, que ya está en PROD con su release. O sea que **no hay nada pendiente de
+> deployar**. Decisión abierta de GO: si igual quiere tag/release de la sesión, o si se deja para el próximo cambio
+> real de la app (la regla del CLAUDE.md dice "release en cada sesión que produzca código", pero acá la app no cambió).
+>
 > 🛑 **Decisiones abiertas de GO para retomar**:
 > 1. 📋 **Responder el relevamiento de Multimoneda** con Fede — `relevamiento-multimoneda-reglas-negocio.html`
 >    (commit `aea1f6f8`), imprimible. Incluye la **pregunta A0**: si el bug del importador CSV se arregla ya

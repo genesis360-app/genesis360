@@ -1,28 +1,34 @@
-// Regrabación de los 2 tramos del video "Activá la facturación electrónica" que salieron con defectos.
+// Regrabación de tramos del video "Activá la facturación electrónica".
 //
-//   MAIL=… PW=… TRAMO=A node scripts/video/grabaciones/regrabar-facturacion.mjs <carpeta-salida>
-//   MAIL=… PW=… TRAMO=B node scripts/video/grabaciones/regrabar-facturacion.mjs <carpeta-salida>
+//   MAIL=… PW=… TRAMO=A|B|PV node scripts/video/grabaciones/regrabar-facturacion.mjs <carpeta-salida>
+//
+// Las credenciales se pueden exportar a mano o dejarlas en `scripts/video/.env.video` (en .gitignore,
+// plantilla en `.env.video.example`).
 //
 // ⚠️ Es el complemento de `video-facturacion.mjs`, que NO sirve para esto: sus dos modos abortan a
 // propósito si el negocio ya tiene datos fiscales (`DESDE=datos`) o puntos de venta
-// (`DESDE=punto-venta`), y "Genesis360 Onboarding" quedó justamente con las dos cosas cargadas.
-// Este script hace lo contrario: **exige** que ya estén cargados y NO escribe ninguno de esos datos.
+// (`DESDE=punto-venta`), y "Genesis360 Onboarding" quedó con las dos cosas cargadas.
 //
-// Qué se regraba y por qué (defectos del render del 2026-09-15):
-//   · TRAMO A — el resumen "Identidad fiscal del emisor principal" mostraba el inicio de actividades
-//     un día antes (01/03/2024 → 29/2/2024). Lo arregla `v1.227.1`, EN PROD desde el 2026-09-16, así
-//     que ahora la misma pantalla se ve bien. Reemplaza 16,83 s → 24,12 s del crudo (rótulo 2).
-//   · TRAMO B — el cierre no encuadraba el recuadro "Modo PRUEBA (homologación)".
-//     Reemplaza 65,13 s → 70,97 s del crudo (rótulo 8).
+// ── Los tramos ───────────────────────────────────────────────────────────────────────────────────
+//   TRAMO=PV  (el bueno, 2026-09-16) — resumen fiscal + alta del punto de venta, de una sola toma.
+//     Reemplaza 16,83 → 34,63 s del crudo original (rótulos 2 y 3).
+//     🛑 Por qué reemplaza TODO ese bloque y no solo el resumen: el resumen fiscal **queda en pantalla
+//     mientras se carga el punto de venta**, así que regrabar solo 16,83→24,12 dejaba la fecha vieja
+//     (29/2/2024, v1.227.0) visible ~8 s en el medio del video. Se verificó extrayendo cuadros del
+//     render, no leyendo el log.
+//     ⚠️ ESCRIBE: da de alta el punto de venta. Exige que NO haya ninguno cargado (hay que borrarlo
+//     antes), porque si ya existe el alta falla y la toma se quema.
 //
-// 🛑 Lo único que este script puede escribir es el toggle "Habilitar facturación electrónica", y solo
-// en el TRAMO B: el recuadro de modo no se muestra con la facturación apagada. Replica el criterio de
-// la toma original — se prende para la toma y **se vuelve a apagar fuera de cámara**, en `finally`,
-// aunque la grabación falle. Si al llegar el recuadro ya estuviera visible, no toca nada.
-// NO sube ningún .crt, NO genera CSR y NO toca el switch de producción.
+//   TRAMO=A   — solo el resumen fiscal (sin escribir). Quedó corto: el rótulo 2 tapa justo la línea
+//     "Inicio de actividades", así que el dato corregido casi no se luce. Se conserva por si hace
+//     falta un complemento, pero para el arreglo real usar PV.
+//
+//   TRAMO=B   — el cierre, encuadrando completo el recuadro "Modo PRUEBA". Reemplaza 65,13 → 70,97 s.
+//     No escribió nada: el recuadro se muestra aun con la facturación deshabilitada, así que el
+//     `if (!yaVisible)` no llegó a encender el toggle. Si alguna vez lo enciende, lo apaga en `finally`.
 //
 // Deja el .webm y `clicks.json` con las marcas `inicio`/`fin` para cortar:
-//   ffmpeg -ss <inicio> -to <fin> -i <video.webm> -r 25 -c:v libx264 -crf 18 -pix_fmt yuv420p tramoX.mp4
+//   ffmpeg -ss <corte+inicio> -t <fin> -i <video.webm> -r 25 -c:v libx264 -crf 18 -pix_fmt yuv420p x.mp4
 
 import { chromium } from '@playwright/test'
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
@@ -30,23 +36,18 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { crearDirector, prepararContexto } from '../director.mjs'
 
-// Credenciales: se pueden exportar a mano (MAIL=… PW=…) o dejarlas en `scripts/video/.env.video`,
-// que está en .gitignore y nunca llega al repo. Formato del archivo, dos líneas:
-//   MAIL=cuenta@ejemplo.com
-//   PW=la-contraseña
 const ENV_VIDEO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.env.video')
 if (existsSync(ENV_VIDEO)) {
   for (const linea of readFileSync(ENV_VIDEO, 'utf8').split(/\r?\n/)) {
     const m = linea.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
-    // Lo exportado a mano gana sobre el archivo.
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
 }
 
 const OUT = process.argv[2]
 const TRAMO = (process.env.TRAMO ?? '').toUpperCase()
-if (!OUT || !process.env.MAIL || !process.env.PW || !['A', 'B'].includes(TRAMO)) {
-  console.error('uso: MAIL=… PW=… TRAMO=A|B node scripts/video/grabaciones/regrabar-facturacion.mjs <carpeta-salida>')
+if (!OUT || !process.env.MAIL || !process.env.PW || !['A', 'B', 'PV'].includes(TRAMO)) {
+  console.error('uso: MAIL=… PW=… TRAMO=A|B|PV node scripts/video/grabaciones/regrabar-facturacion.mjs <carpeta-salida>')
   process.exit(1)
 }
 mkdirSync(OUT, { recursive: true })
@@ -65,14 +66,20 @@ const alBorde = async (loc, margen = 90) => {
   await loc.first().evaluate((el, m) => { window.scrollBy({ top: el.getBoundingClientRect().top - m, behavior: 'smooth' }) }, margen)
   await p(900)
 }
+const escribir = async (loc, texto, delay = 90) => {
+  await dir.click(loc, { tipo: 'menor' })
+  await loc.first().press('Control+a')
+  await loc.first().pressSequentially(texto, { delay })
+}
 
 const resumenFiscal = page.getByText('Identidad fiscal del emisor principal', { exact: true }).first()
 const habilitar = page.getByLabel('Habilitar facturación electrónica (ARCA)')
 const recuadroModo = page.getByText('Modo PRUEBA (homologación)', { exact: false }).first()
 let prendimosNosotros = false
+let escribio = false
 
 try {
-  // ── Fuera de cámara: login y verificación de que el negocio ya está configurado
+  // ── Fuera de cámara: login y verificación del estado
   await page.goto(`${APP}/login`, { waitUntil: 'networkidle' })
   await page.locator('input[type="email"]').fill(process.env.MAIL)
   await page.locator('input[type="password"]').fill(process.env.PW)
@@ -81,29 +88,47 @@ try {
   if (await om.count().catch(() => 0)) { await om.click().catch(() => {}); await p(1200) }
   await page.goto(`${APP}/configuracion?tab=facturacion`, { waitUntil: 'networkidle' }); await p(4500)
 
-  // Al revés que `video-facturacion.mjs`: acá los datos TIENEN que estar. Si no, este script no
-  // aplica (habría que grabar la toma completa, no un tramo).
+  // Los datos fiscales TIENEN que estar (esto regraba tramos de una toma ya hecha).
   if (!(await resumenFiscal.count())) {
     throw new Error('el negocio NO tiene datos fiscales cargados: esto regraba tramos de una toma ya hecha')
   }
 
-  if (TRAMO === 'A') {
-    // ── TRAMO A · el resumen fiscal, ahora con la fecha correcta
+  if (TRAMO === 'PV') {
+    // ── Resumen fiscal + alta del punto de venta, de una sola toma ──
+    if (await page.getByText(/^[1-9]\d* configurados?$/).count()) {
+      throw new Error('ya hay un punto de venta cargado: borralo antes de grabar, o el alta falla y se quema la toma')
+    }
     await alBorde(resumenFiscal, 150); await p(600)
-    dir.empezar(); dir.marca('inicio')
-    await p(2500)
-    // Un paseo suave del cursor por el bloque para que la vista se sienta viva, sin clickear nada.
+    dir.empezar(); dir.marca('inicio'); await p(2200)
+    // El resumen con la fecha YA corregida (1/3/2024): se le da aire para que se lea.
+    await dir.mover(760, 330, 18); await p(2600)
+    await foto('PV-01-resumen-fiscal')
+
+    const encabezadoPv = page.getByRole('button', { name: /Puntos de venta AFIP/ })
+    await alBorde(encabezadoPv, 160)
+    dir.marca('punto-venta')
+    await dir.click(encabezadoPv, { tipo: 'abrir' }); await p(1200)
+    escribio = true
+    await escribir(page.getByPlaceholder('1', { exact: true }).first(), '2', 160); await p(400)
+    await escribir(page.getByPlaceholder('Ej: Local principal').first(), 'Local principal', 70); await p(600)
+    await dir.click(page.getByRole('button', { name: 'Agregar', exact: true }), { tipo: 'agregar' })
+    await page.getByText('0002', { exact: true }).waitFor({ timeout: 15000 }); await p(2000)
+    await foto('PV-02-punto-venta')
+    dir.marca('fin'); await p(800)
+    console.log('TRAMO PV grabado. Verificá en PV-01 que el inicio de actividades diga 1/3/2024, y en PV-02 el 0002.')
+  } else if (TRAMO === 'A') {
+    await alBorde(resumenFiscal, 150); await p(600)
+    dir.empezar(); dir.marca('inicio'); await p(2500)
     await dir.mover(760, 300, 18); await p(1400)
     await foto('A-01-resumen-fiscal')
     await dir.mover(760, 380, 14); await p(2600)
     await foto('A-02-inicio-actividades')
     dir.marca('fin'); await p(800)
-    console.log('TRAMO A grabado. Verificá en A-02 que el inicio de actividades diga 01/03/2024.')
+    console.log('TRAMO A grabado. Verificá en A-02 que el inicio de actividades diga 1/3/2024.')
   } else {
     // ── TRAMO B · el cierre, encuadrando bien el recuadro de modo
     const yaVisible = await recuadroModo.count().catch(() => 0)
     if (!yaVisible) {
-      // Fuera de cámara: prender para que exista el recuadro. Se apaga sí o sí en `finally`.
       await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' })); await p(1200)
       await habilitar.click()
       prendimosNosotros = true
@@ -112,8 +137,6 @@ try {
     await alBorde(recuadroModo, 200); await p(900)
     dir.empezar(); dir.marca('inicio'); await p(2000)
     await foto('B-01-modo-prueba')
-    // El defecto del render anterior fue el encuadre: se centra el recuadro en pantalla antes de
-    // acercar el cursor al switch de producción, y se le da aire para que se lea completo.
     await recuadroModo.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'smooth' })); await p(1400)
     await foto('B-02-encuadrado')
     const sw = page.getByLabel('Emitir contra AFIP producción real')
@@ -125,10 +148,9 @@ try {
     console.log('TRAMO B grabado. Verificá en B-02 que el recuadro "Modo PRUEBA" entre completo.')
   }
 } catch (e) {
-  console.log('ERROR:', e.message.slice(0, 300))
+  console.log('ERROR:', e.message.slice(0, 300), '· escribió datos:', escribio)
   await foto('z-error'); dir.marca('error')
 } finally {
-  // Dejar el negocio como estaba: si lo prendimos nosotros, se apaga aunque la toma haya fallado.
   if (prendimosNosotros) {
     try {
       await page.evaluate(() => window.scrollTo({ top: 0 })); await p(800)

@@ -155,14 +155,32 @@ cambio no costó más. Ninguna de las dos tiene CPU dedicada: la dedicada empiez
 110/mes); Small (~USD 15) y Medium (~USD 60) suman RAM y conexiones, con CPU compartida. **Con PROD en Micro, el techo
 de E2 medido en DEV aplica a PROD.** Antes del reinicio se verificó que Kalken (cliente real) no estuviera usando la app.
 
-**Cuánto consume un usuario** — medido manejando la app real con Playwright contra DEV:
+**Cuánto consume un usuario** — remedido el **2026-09-17** con un instrumento repetible
+(`npm run perf:navegacion`, `scripts/medir-navegacion.mjs`), contra DEV:
 
 | Qué hace | Requests |
 |---|---|
 | Pestaña abierta en el POS sin tocar nada | **0,59 req/s** (35/min: `caja_sesiones` cada 15 s, contadores de alertas cada 30 s, notificaciones, autorizaciones) |
 | Pestaña abierta en el Dashboard sin tocar nada | 0,49 req/s |
-| Cambiar de pantalla | **~64 requests por pantalla** (3,7 req/s navegando) |
+| **Abrir una pantalla DE CERO** (F5, pestaña nueva, PWA que arranca) | **64,3 por pantalla** |
+| **Cambiar de pantalla navegando** (clic en el menú, la app ya abierta) | **~11 (mediana)** |
+| **Aterrizar en el Dashboard** (Todo › Gráficos) navegando | **90** — monta las 9 áreas juntas |
 | Una venta completa, del carrito vacío al cobro | 30 requests |
+
+> ⚠️ **Corrección del 2026-09-17.** El "~64 requests por pantalla" que figuraba antes acá —y que
+> justificaba la palanca 1— **medía recargar la página, no navegar**. La sonda nueva reproduce ese número
+> clavado en modo recarga (64,3 y exactamente 32 `GET /auth/v1/user` en 8 pantallas, igual que la medición
+> vieja), y da **~11** cuando se navega clickeando el menú, que es lo que hace un usuario durante el día.
+> Las dos cifras son reales pero miden cosas distintas: **el costo alto es el ARRANQUE, no la navegación.**
+> Eso reordena las palancas (ver abajo). El reposo del POS sí se confirmó idéntico: 0,59 req/s.
+
+**De qué están hechas esas 64 requests de un arranque** (idéntico en las 8 pantallas medidas):
+
+| Concepto | Requests por arranque | Qué es |
+|---|---|---|
+| Identidad | **~19** | `loadUserData` corre **~5 veces por carga**: 4 `GET /auth/v1/user` + 5 `users` + 5 `tenants` + 5 `sucursales`, todas devolviendo lo mismo. `App.tsx` la dispara desde `getSession()` **y** desde `onAuthStateChange`, que se emite varias veces (sesión inicial, token refrescado). |
+| Badges del layout | **~20** | `useAlertas` (conteos sobre `ordenes_compra`, `pedidos`, `productos`, `inventario_lineas`, `ventas`…), notificaciones, badge de supervisión, estado de caja. Viven en `AppLayout`, así que se pagan una vez por arranque — y después siguen por polling. |
+| La pantalla en sí | ~10-25 | Lo único que depende de a dónde entraste. |
 
 **La cuenta**, contra un techo de ~170 req/s y operando al ~70 % (~120 req/s) para absorber picos:
 
@@ -178,11 +196,20 @@ Pasado ese punto no se cae (E2: 0 errores hasta 400 sesiones), **se pone lenta**
 escrituras (ventas con triggers de stock y caja) y el volumen real cuestan más CPU, y la instancia Micro es de CPU
 compartida. Tomarlo como orden de magnitud, no como garantía.
 
-**Palancas, de la más barata a la más cara:**
-1. **Navegación**: cada pantalla vuelve a pedir la sesión, el usuario, el negocio y las sucursales (32
-   `GET /auth/v1/user` en 8 cambios de pantalla). Cachearlo baja una parte grande de esas ~64 requests.
-2. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y el badge de alertas hace 6 conteos cada 30 s.
-   Espaciarlos o dispararlos por evento baja el consumo en reposo.
+**Palancas, reordenadas con la medición del 2026-09-17 (de la más barata a la más cara):**
+1. **`loadUserData` corre ~5 veces por arranque** en vez de una. Es el hallazgo más barato de todos:
+   deduplicar la carga (ignorar el evento si ya se cargó ese usuario) saca **~15 de las 64** requests de cada
+   arranque, sin cambiar ningún comportamiento. No aplica a la navegación, donde ya no se dispara.
+2. **El Dashboard cuesta 90 requests al aterrizar**: "Todo › Gráficos" monta **las 9 áreas** de una
+   (`MODULE_AREAS.map` en `DashboardPage.tsx`), y cada `Dash*Area` corre una `queryFn` con 5-10 consultas
+   **secuenciales** (`DashGastosArea` sola hace 9). Es la pantalla de entrada de todos los días. Cargar el
+   área visible primero —o al menos paralelizar dentro de cada queryFn— es el mayor ahorro por pantalla.
+3. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y los conteos del badge de alertas corren cada
+   30 s; en reposo son 0,59 req/s, de los cuales `caja_sesiones` es el más frecuente. Espaciarlos o
+   dispararlos por evento baja el consumo de una pestaña abierta todo el día.
+4. **Navegar entre pantallas ya es barato (~11)**: cachear identidad "al navegar" —la palanca que decía la
+   versión anterior de esta página— **no tiene casi nada que ahorrar ahí**. El layout no se remonta
+   (`AppLayout` es layout route) y los guards son lectura pura de Zustand, sin red.
 3. **Compute**: ✅ PROD ya pasó de Nano a Micro (2026-09-15, mismo precio). Si hace falta más: Small (~USD 15/mes, 2 GB) o Medium (~USD 60, 4 GB) suman RAM y conexiones con CPU compartida;
    Large (~USD 110, 8 GB) es la primera con **CPU dedicada**. Es la palanca directa sobre el techo, porque ninguna
    consulta individual se destaca. Precios de la documentación de Supabase al 2026-09-14; confirmar en Billing.

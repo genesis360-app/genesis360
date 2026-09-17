@@ -148,9 +148,18 @@ type: project
 >      funciones), no de memoria.
 > 2. **Multimoneda** (GO: moneda principal configurable + cotización por moneda + alcance total) → arranca por
 >    **relevamiento en HTML**.
-> 3. **Capacidad** (propuesto, sin decidir): cachear sesión/usuario/negocio/sucursales al navegar (hoy ~64 requests por
->    pantalla, 32 `GET /auth/v1/user` en 8 pantallas) y espaciar el polling del POS y las alertas. Con Micro: ~85
->    usuarios a la vez en hora pico, ~160 en uso tranquilo, ~80-120 clientes — `wiki/architecture/resiliencia.md`.
+> 3. ⚡ **Capacidad** — 🔬 **MEDIDO el 2026-09-17** con instrumento repetible (`npm run perf:navegacion`,
+>    `scripts/medir-navegacion.mjs`, guarda JSON y difea contra una corrida previa).
+>    🛑 El "~64 requests por pantalla" que decía esta línea **medía RECARGAR la página, no navegar**: navegando
+>    la mediana es **~11**; recargando da 64,3 — reproducido clavado, con los mismos 32 `GET /auth/v1/user` en
+>    8 pantallas. **El costo está en el ARRANQUE, no en la navegación** (`AppLayout` es layout route, no
+>    remonta; los guards son lectura pura de Zustand). Palancas reales, en orden: **(1)** `loadUserData` corre
+>    **~5 veces por arranque** (4 `/auth/v1/user` + 5 `users` + 5 `tenants` + 5 `sucursales`, todas con la misma
+>    respuesta) → deduplicar saca ~15 de esas 64 sin cambiar comportamiento; **(2)** el **Dashboard cuesta 90**
+>    al aterrizar (`MODULE_AREAS.map` monta las 9 áreas y cada `Dash*Area` corre 5-10 consultas **secuenciales**);
+>    **(3)** polling en reposo 0,59 req/s (`caja_sesiones` a la cabeza). Con Micro: ~85 usuarios a la vez en hora
+>    pico, ~160 en uso tranquilo, ~80-120 clientes — tablas en `wiki/architecture/resiliencia.md`.
+>    **Falta que GO decida qué se implementa de las 3.**
 > 4. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
 >    despacho de reserva con seña mixta (UAT 57.9) y fallo al aplicar un precio programado (UAT 59.7).
 > 5. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta

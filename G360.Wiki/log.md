@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-17] update | ⚡ Capacidad — el "~64 requests por pantalla" medía RECARGAR, no navegar
+
+GO eligió arrancar Capacidad mientras se responde el relevamiento de Categorías. Se empezó por medir, y la
+medición **corrigió el número que esta wiki documentaba**. **Sin cambios en la app todavía.**
+
+### 🔬 Instrumento nuevo: `npm run perf:navegacion` (`scripts/medir-navegacion.mjs`)
+
+El techo de la instancia ya estaba medido (Tanda E: ~170 req/s), pero del otro lado de la ecuación —cuánto
+consume UN usuario— solo había una corrida ad-hoc que no quedó guardada, así que no se podía repetir para
+comparar antes/después. La sonda nueva navega 8 pantallas con Playwright contando cada request a Supabase
+agrupada por endpoint, más una fase de reposo, y guarda un JSON (`--salida`) para difear (`--comparar`).
+Tiene guard anti-PROD y reusa la sesión de los e2e. Modo `spa` (clic en el menú) vs `recarga` (F5).
+
+### 🛑 El hallazgo: eran dos cosas distintas
+
+- **Modo recarga: 64,3 req/pantalla y exactamente 32 `GET /auth/v1/user` en 8 pantallas** — clavado al
+  número viejo. O sea que aquella medición **recargaba la página**.
+- **Modo spa (navegando): ~11 (mediana)**. El reposo del POS sí coincidió: **0,59 req/s**.
+- Conclusión: **el costo alto es el ARRANQUE, no la navegación.** `AppLayout` es layout route (no remonta) y
+  los guards son lectura pura de Zustand (cero red), así que navegar ya era barato.
+
+### Lo que sí hay que atacar (palancas reordenadas en `wiki/architecture/resiliencia.md`)
+
+1. **`loadUserData` corre ~5 veces por arranque**, no una: 4 `/auth/v1/user` + 5 `users` + 5 `tenants` +
+   5 `sucursales` por carga, todas con la misma respuesta. `App.tsx` la dispara desde `getSession()` **y**
+   desde `onAuthStateChange` (que se emite varias veces). Deduplicar saca ~15 de las 64, sin cambiar nada.
+   Verificado por eliminación: el único `select('*')` de `tenants` en el bootstrap es el de `authStore`.
+2. **El Dashboard cuesta 90 requests al aterrizar**: "Todo › Gráficos" monta las **9 áreas** juntas y cada
+   `Dash*Area` corre 5-10 consultas **secuenciales** (`DashGastosArea` sola, 9). Es la pantalla de entrada.
+3. **Polling** en reposo (0,59 req/s), con `caja_sesiones` a la cabeza.
+
+---
+
 ## [2026-09-17] update | 🏷️ Categorías de clientes — Fase 0: relevamiento generado
 
 GO dio el OK para arrancar. Se generó `relevamiento-categorias-clientes-reglas-negocio.html` (raíz del repo,

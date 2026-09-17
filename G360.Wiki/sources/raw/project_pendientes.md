@@ -23,6 +23,36 @@ type: project
 > 5. 📐 **Pedido del 2026-09-16**: documento completo del producto + **diagramas de infraestructura**
 >    (ver abajo, "Pedido nuevo de GO").
 > 6. ⚡ **Capacidad** — es lo siguiente en el orden que dio GO, después de los e2e.
+> 7. 🏷️ **Categorías de clientes (precios por producto + CC)** — pedido nuevo de GO del 2026-09-16, con spec
+>    detallada. **Arranca por relevamiento**, pero 4 de las 8 preguntas abiertas ya se pueden responder
+>    contra el código (ver abajo, "Categorías de clientes").
+>
+> #### 🏷️ Categorías de clientes — pedido del 2026-09-16 (mejoras a corto plazo)
+>
+> GO quiere una **lista de precios con descuento por producto** asignable a clientes: se edita la lista y
+> todos los clientes que la tienen cambian con ella. Más condiciones de cuenta corriente por categoría, y
+> override individual solo del DUEÑO. Spec completa en el pedido de GO (sesión cont. 72).
+>
+> **Lo que ya se verificó contra el código (responde 4 de las 8 preguntas abiertas de la spec):**
+> - 🛑 **`clientes.etiquetas` es `text[]` — MULTI-TAG — y se usa para segmentación de marketing**
+>   (`ClientesPage`: `segEtiqueta`, `filtroEtiqueta`, filtros + export, comentado como "C6"). El catálogo
+>   vive en `tenants.cliente_etiquetas_catalogo`. → **Reconvertir Etiquetas en Categoría rompería la
+>   segmentación**: Categoría tiene que ser una entidad NUEVA (1 por cliente), y Etiquetas seguir como está.
+> - **Hoy NO existe descuento por cliente**: `descuento_pct` solo aparece en `combos` y
+>   `estados_inventario`. → No hay un mecanismo paralelo que compita con el nuevo (pregunta 3).
+> - **Los defaults de CC ya existen en `tenants`** y son más ricos que lo que pide la spec:
+>   `limite_cc_default`, `cc_dias_vencimiento`, `cc_interes_mensual_pct`, `cc_enforcement_politica`
+>   (permitir/avisar/bloquear), `cc_morosidad_politica`, y los `cc_notif_*`. → El default sigue vivo como
+>   piso (pregunta 4).
+> - **El override de CC por cliente YA está construido**: `clientes.cuenta_corriente_habilitada`,
+>   `limite_credito`, `plazo_pago_dias`. → Media funcionalidad de CC ya existe; falta la capa "categoría".
+>
+> 🛑 **El punto técnico que define el tamaño del trabajo**: el precio se resuelve en **DOS motores espejo** —
+> `src/lib/tiers.ts` (TS, lo usa el POS) y `fn_precio_venta_efectivo` (SQL, lo usan Pedidos y
+> `fn_pedido_generar_venta`) — y **ninguno de los dos recibe el cliente**
+> (`fn_precio_venta_efectivo(p_tenant_id, p_producto_id, p_cantidad)`). Meter un descuento por cliente
+> obliga a cambiar la firma de ambos y mantenerlos sincronizados; ya hubo bugs de plata por desincronizarlos
+> (migs 330 y 367). Ver [[wiki/features/precios-tiers-empaque]].
 >
 > #### 🧪 Estado de los 4 e2e pendientes (2026-09-16)
 >

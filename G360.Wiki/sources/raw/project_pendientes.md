@@ -11,14 +11,31 @@ type: project
 > con `curl -L`: `app.genesis360.pro` pasó del bundle `index-C5iOI7Dn.js` (v1.227.1) a `index-BhDV1tFn.js`
 > (**v1.228.0**). CI verde antes del merge.
 >
-> ⚠️ **Lo que NO se pudo verificar en este deploy** (decirlo, no omitirlo):
-> - **Paridad de `pg_policies` DEV↔PROD**: el conector de Supabase no estaba disponible en la sesión. Riesgo bajo
->   porque el deploy **no trae migraciones**, pero el chequeo del checklist quedó sin hacer.
-> - **`scripts/auditar-edge-functions.sh` salió parcial**: el listado arranca en `mp-reconciliacion`, así que no
->   cubrió las primeras alfabéticamente (entre ellas `mp-addon-batch`, la única que tocó esta tanda — solo un
->   comentario). De lo que sí listó, el drift es el **cosmético ya conocido** (`mp-verificar-suscripcion` 8/4,
->   `tn-stock-worker` 2, `wa-briefing-sweep` 2) y `wa-embedded-signup-exchange` sigue sin desplegar en PROD a
->   propósito. **Conviene volver a correrlo entero.**
+> ⚠️ **Un punto del checklist quedó SIN hacer**: la **paridad de `pg_policies` DEV↔PROD por schema** — el conector
+> de Supabase no estaba disponible en la sesión. Riesgo bajo porque el deploy **no trae ni una migración**, pero el
+> chequeo no se hizo. **Correrlo al retomar.**
+>
+> ✅ **`scripts/auditar-edge-functions.sh` SÍ se corrió entero** (51 funciones). 🕵️ Antes acá decía que "salía
+> parcial": era falso, **lo truncaba un `| tail -40` mío** — ver [[feedback_grep_filtrado_oculta_fallas_de_comando]],
+> tercer caso. Para un listado, filtrar por señal (`grep -vE "(prod|dev) 0$"`), nunca por cantidad.
+>
+> **Estado real del drift de EFs** (ninguno atribuible a este deploy):
+>
+> | Función | PROD | DEV | Qué es |
+> |---|---|---|---|
+> | `marketplace-api` | 21 | NO_DESPLEGADA | drift preexistente, documentado como comentarios/formato |
+> | `mp-verificar-suscripcion` | 8 | 4 | ídem |
+> | `mp-addon-batch` | 6 | 6 | **el comentario que tocó esta tanda**, sin desplegar en ninguno — inocuo |
+> | `birthday-notifications` | 4 | NO_DESPLEGADA | preexistente |
+> | `mp-ipn` · `tn-stock-worker` · `wa-briefing-sweep` | 2 | 2 | preexistentes |
+> | `billing-manual-pagar` · `billing-manual-sweep` · `cancel-suscripcion` | 0 | 2 | solo DEV |
+> | `wa-embedded-signup-exchange` | NO_DESPLEGADA | 0 | a propósito (falta App Review de Meta) |
+> | `data-api` · `marketplace-webhook` | 0 | NO_DESPLEGADA | 🆕 **existen en PROD y NO en DEV** |
+>
+> 🆕 **Hallazgo**: **4 funciones están en PROD pero no desplegadas en DEV** (`data-api`, `marketplace-api`,
+> `marketplace-webhook`, `birthday-notifications`). No rompe PROD, pero significa que **en DEV no se pueden probar**.
+> ⚠️ No se verificó línea por línea que los diffs preexistentes sigan siendo solo cosméticos — se asume por lo ya
+> documentado.
 >
 > 📋 **Qué trae la tanda** (detalle por entrada en `log.md` del 2026-09-17/18):
 > 1. **Capacidad — las 3 palancas cerradas.** Arranque de pantalla −18,7 % (`ensureUserData` dedupe: `loadUserData`

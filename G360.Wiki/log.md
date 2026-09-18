@@ -20,14 +20,37 @@ se hace con `curl -L`: sin seguir el redirect da falso negativo (la home redirig
 **Pre-flight que valió la pena**: `origin/main` tenía 7 commits que `dev` no — resultaron ser **solo merge commits**
 de PRs anteriores, con diff de contenido **vacío**, así que no había divergencia real que reconciliar.
 
-### ⚠️ Dos puntos del checklist que NO se pudieron cerrar — quedan anotados
+### ⚠️ Un punto del checklist quedó sin cerrar
 
-1. **Paridad de `pg_policies` DEV↔PROD por schema**: el conector de Supabase no estaba disponible. Riesgo bajo (este
-   deploy no trae ni una migración), pero el chequeo no se hizo.
-2. **`auditar-edge-functions.sh` salió PARCIAL**: el listado arranca en `mp-reconciliacion`, o sea que no cubrió las
-   primeras alfabéticamente — incluida `mp-addon-batch`, la única EF que tocó esta tanda (y solo en un comentario).
-   De lo que sí listó: drift **cosmético ya conocido** (`mp-verificar-suscripcion` 8/4, `tn-stock-worker` 2,
-   `wa-briefing-sweep` 2) y `wa-embedded-signup-exchange` sin desplegar en PROD a propósito.
+**Paridad de `pg_policies` DEV↔PROD por schema**: el conector de Supabase no estaba disponible en la sesión.
+Riesgo bajo (este deploy no trae ni una migración), pero el chequeo no se hizo. Queda para el retome.
+
+### 🕵️ El "segundo hueco" que reporté no existía — era mi propio `tail`
+
+Primero escribí acá que `auditar-edge-functions.sh` "salía parcial" y no cubría todas las funciones. **Falso**:
+el script emite ~102 líneas (51 funciones × 2 ambientes) y estaba completo; **lo truncaba un `| tail -40` mío**, y
+`tail` corta el **principio**, que es justo lo que no se ve faltar. Peor que no verificar: dejé documentado un
+defecto inexistente en el handoff, que la próxima sesión habría creído. Corregido acá, en `project_pendientes.md`
+y en la memoria. Regla que quedó anotada: en un listado, **filtrar por señal** (`grep -vE "(prod|dev) 0$"`), nunca
+por cantidad — ver [[feedback_grep_filtrado_oculta_fallas_de_comando]], tercer caso.
+
+**Corrido entero, el drift real de EFs** — ninguno atribuible a este deploy:
+
+| Función | PROD | DEV | Qué es |
+|---|---|---|---|
+| `marketplace-api` | 21 | NO_DESPLEGADA | preexistente, documentado como comentarios/formato |
+| `mp-verificar-suscripcion` | 8 | 4 | ídem |
+| `mp-addon-batch` | 6 | 6 | **el comentario de esta tanda**, sin desplegar en ninguno — inocuo |
+| `birthday-notifications` | 4 | NO_DESPLEGADA | preexistente |
+| `mp-ipn` · `tn-stock-worker` · `wa-briefing-sweep` | 2 | 2 | preexistentes |
+| `billing-manual-pagar` · `billing-manual-sweep` · `cancel-suscripcion` | 0 | 2 | solo DEV |
+| `wa-embedded-signup-exchange` | NO_DESPLEGADA | 0 | a propósito (falta App Review) |
+| `data-api` · `marketplace-webhook` | 0 | NO_DESPLEGADA | 🆕 |
+
+🆕 **Hallazgo nuevo**: **4 funciones existen en PROD y NO están desplegadas en DEV** (`data-api`,
+`marketplace-api`, `marketplace-webhook`, `birthday-notifications`). No rompe producción, pero **en DEV no se
+pueden probar** — algo a tener en cuenta antes de tocarlas. ⚠️ No se verificó línea por línea que los diffs
+preexistentes sigan siendo cosméticos; se asume por lo ya documentado.
 
 ### 🔴 Sigue pendiente y es de GO
 

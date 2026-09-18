@@ -6,6 +6,37 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] update | 📐 Diagramas de infraestructura (Fase 1) — `architecture/` deja de ser texto puro
+
+Pedido de GO del 2026-09-16. Se hizo la **Fase 1 (diagramas)**; la Fase 2 (documento de producto) queda.
+
+**Contado contra el repo, no de memoria** — que era la instrucción anotada para este trabajo: Edge Functions
+sobre `supabase/functions/` (**51**), jobs de `pg_cron` con `cron.schedule(` en las migraciones (**6**),
+buckets sobre los `storage.from('…')` reales (**12**) y workflows sobre `.github/workflows/` (**13**).
+
+**Entregado**: `diagrams/11-infraestructura-topologia.drawio` + [[wiki/architecture/infraestructura]] con el
+Mermaid embebido. Sigue la convención existente (`.drawio` editable como formato principal + Mermaid
+versionado en la página). Los 10 diagramas previos son de **procesos de negocio**; éste abre una segunda
+familia, anotada en `diagrams/README.md`. Es **la primera página de `architecture/` con un diagrama**.
+
+**Validado, no asumido**: el `.drawio` se parseó como XML (34 celdas, **0 flechas colgadas** — se verificó que
+cada `source`/`target` apunte a un nodo que existe) y el Mermaid se **renderizó de verdad** headless con
+mermaid 11 (**32 nodos**, SVG de 119 KB). Un error de Mermaid no se ve hasta que alguien abre la página en
+GitHub, y un `.drawio` mal formado directamente no abre.
+
+### 🛑 Contar contra el repo destapó drift en 3 documentos
+
+| Dónde | Dice | Realidad |
+|---|---|---|
+| [[wiki/architecture/backend-supabase]] (30/04) | 83 migraciones · 26 EFs · rol `OWNER` | **429** · **51** · `OWNER` **no existe** |
+| [[wiki/architecture/edge-functions]] (15/09) | 30 funciones | **51** |
+| `sources/raw/genesis360_overview.html` (doc de producto v2.0) | 823 tests/55 archivos · 249 migraciones · **"pg_cron no habilitado"** | **1848/112** · **429** · **pg_cron SÍ, con 6 jobs** |
+
+El de `pg_cron` es el más serio: ese documento **va a externos** y afirma que una pieza de infraestructura
+que hoy corre 6 jobs no existe. Queda todo anotado en la página nueva y se corrige en la Fase 2.
+
+---
+
 ## [2026-09-18] update | ⚡ Capacidad — cerradas las 3 palancas: vuelta al Dashboard 92 → 0 y reposo −53 %
 
 Dos cambios chicos, los dos medidos antes y después.

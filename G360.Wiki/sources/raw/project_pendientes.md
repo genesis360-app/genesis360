@@ -48,8 +48,12 @@ type: project
 >    cuando vuelva el conector de Supabase, o descartarlo.
 > 4. Cuándo limpiar el tenant de prueba "Genesis360 Onboarding" (quedó con el emisor de ejemplo
 >    CUIT 20-12345678-9, el punto de venta 2 y la clave del CSR en storage).
-> 5. 📐 **Pedido del 2026-09-16**: documento completo del producto + **diagramas de infraestructura**
->    (ver abajo, "Pedido nuevo de GO").
+> 5. 📐 **Pedido del 2026-09-16** — 🟡 **Fase 1 HECHA (2026-09-18)**: diagrama de infraestructura
+>    (`diagrams/11-infraestructura-topologia.drawio` + Mermaid en [[wiki/architecture/infraestructura]], la
+>    primera página de `architecture/` con un diagrama). **Falta la Fase 2**: actualizar el documento de
+>    producto `sources/raw/genesis360_overview.html`, hoy **v2.0 de julio sobre la app v1.100.0** (vamos por
+>    v1.227.1) — su sección de arquitectura afirma cosas falsas hoy, incluida **"pg_cron no habilitado"**
+>    cuando hay 6 jobs corriendo, y es un documento que va a externos.
 > 6. ⚡ **Capacidad** — es lo siguiente en el orden que dio GO, después de los e2e.
 > 7. 🏷️ **Categorías de clientes (precios por producto + CC)** — pedido nuevo de GO del 2026-09-16.
 >    ✅ **Fase 0 hecha el 2026-09-17**: `relevamiento-categorias-clientes-reglas-negocio.html` (raíz del repo,

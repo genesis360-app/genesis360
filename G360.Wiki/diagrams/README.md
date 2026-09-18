@@ -35,6 +35,20 @@ comportamiento real de la app a la fecha de creación (2026-08-13).
 | `09-wms-reabastecimiento-umbral.drawio` | WMS — Reabastecimiento por umbral | [[wiki/features/wms]] |
 | `10-integraciones-ml-tn.drawio` | Integraciones ML/TN — Webhook → Venta → Sync stock | [[wiki/integrations/tienda-nube]] (+ pointer en [[wiki/integrations/mercado-libre]]) |
 
+## Infraestructura (categoría nueva, 2026-09-18)
+
+Los 10 de arriba son **procesos de negocio**. A partir del 11 hay una segunda familia: cómo está armado
+el sistema por debajo. Misma convención (`.drawio` + Mermaid embebido), numeración continua.
+
+| Archivo | Diagrama | Página de wiki con el Mermaid embebido |
+|---|---|---|
+| `11-infraestructura-topologia.drawio` | Topología: Vercel ↔ Supabase (Auth/Postgres/Storage/Edge Functions/pg_cron) ↔ externos, + panel `genesis360-admin` | [[wiki/architecture/infraestructura]] |
+
+Se construyó **contando contra el repo**, no de memoria: Edge Functions sobre `supabase/functions/`, jobs
+de `pg_cron` con `cron.schedule(` en `supabase/migrations/`, buckets sobre los `storage.from('…')` reales
+y workflows sobre `.github/workflows/`. Ese conteo destapó drift en 3 documentos — ver la tabla "Drift
+detectado" en [[wiki/architecture/infraestructura]].
+
 ## Mantenimiento
 
 Estos diagramas **no se actualizan solos** cuando cambia el código — a diferencia del resto del

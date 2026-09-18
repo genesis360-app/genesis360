@@ -6,6 +6,41 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] deploy | 🚀 v1.228.0 EN PROD — capacidad, diagrama de infra y documento de producto
+
+GO: *"pasa todo lo que estaba pendiente a PRD"*. Se deployó la tanda acumulada de 12 commits.
+
+**Sin migraciones** (001-429 en ambos). PR **#353** `dev→main` con **merge commit** (no squash, para no reabrir la
+divergencia `main`↔`dev`), merge `693c72b9`, release `v1.228.0` **Latest**.
+
+**Verificado en vivo, no asumido**: se capturó el bundle que servía PROD **antes** del merge
+(`index-C5iOI7Dn.js` = v1.227.1) y después se esperó a que cambiara → `index-BhDV1tFn.js` = **v1.228.0**. El chequeo
+se hace con `curl -L`: sin seguir el redirect da falso negativo (la home redirige a `/login`).
+
+**Pre-flight que valió la pena**: `origin/main` tenía 7 commits que `dev` no — resultaron ser **solo merge commits**
+de PRs anteriores, con diff de contenido **vacío**, así que no había divergencia real que reconciliar.
+
+### ⚠️ Dos puntos del checklist que NO se pudieron cerrar — quedan anotados
+
+1. **Paridad de `pg_policies` DEV↔PROD por schema**: el conector de Supabase no estaba disponible. Riesgo bajo (este
+   deploy no trae ni una migración), pero el chequeo no se hizo.
+2. **`auditar-edge-functions.sh` salió PARCIAL**: el listado arranca en `mp-reconciliacion`, o sea que no cubrió las
+   primeras alfabéticamente — incluida `mp-addon-batch`, la única EF que tocó esta tanda (y solo en un comentario).
+   De lo que sí listó: drift **cosmético ya conocido** (`mp-verificar-suscripcion` 8/4, `tn-stock-worker` 2,
+   `wa-briefing-sweep` 2) y `wa-embedded-signup-exchange` sin desplegar en PROD a propósito.
+
+### 🔴 Sigue pendiente y es de GO
+
+**Rotar la `service_role` de PROD.** Se verificó dónde habría que actualizarla después: **en ninguna parte del
+código**. Las Edge Functions la leen de `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`, que Supabase inyecta sola; los 13
+workflows de GitHub Actions usan `secrets.SUPABASE_ANON_KEY`; el frontend y Vercel solo tienen la anon key; y ninguno
+de los tres `.env` locales tiene una variable `SERVICE_ROLE` (los tres gitignoreados). ⚠️ **La salvedad importante**:
+si el proyecto solo ofrece rotar el **JWT secret** (modelo legacy), eso **también invalida la anon key** → habría que
+actualizar `VITE_SUPABASE_ANON_KEY` en Vercel y en los `.env` locales y redeployar, o la app deja de funcionar para
+todos. Si en cambio ofrece rotar la **secret key** sola (modelo nuevo de API keys), el impacto en la app es cero.
+
+---
+
 ## [2026-09-18] update | 💰 El add-on de CUIT ya se cobraba pese a decir "no exponer" — precio confirmado
 
 Cierre de las dos decisiones que habían quedado abiertas del documento de producto.

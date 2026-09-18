@@ -6,16 +6,19 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-18, cierre) — 🚀 PROD = `v1.227.1` (migs 001-429) · 🟡 **AHORA SÍ HAY CÓDIGO ESPERANDO**
-> **10 commits en el `dev` LOCAL, sin pushear a `origin/dev`** — decisión explícita de GO: *"juntemos un poco más y
-> luego pasamos todo"*. **Sin migraciones nuevas** (siguen 001-429).
+> ### ✅ ARRANCÁ ACÁ (2026-09-18) — 🚀 **PROD = DEV = `v1.228.0`** (migs 001-429) · **deployado, nada pendiente**
+> PR **#353** `dev→main` (merge `693c72b9`), release `v1.228.0` **Latest**, **sin migraciones**. Verificado en vivo
+> con `curl -L`: `app.genesis360.pro` pasó del bundle `index-C5iOI7Dn.js` (v1.227.1) a `index-BhDV1tFn.js`
+> (**v1.228.0**). CI verde antes del merge.
 >
-> 🛑 **A diferencia de las sesiones anteriores, esta tanda SÍ toca `src/`** (no es solo tests/wiki):
-> `authStore.ts`, `App.tsx`, `DashboardPage.tsx`, las 9 `Dash*Area.tsx`, `VentasVsGastosChart`, `MixCajaChart`,
-> `useAlertas`, `useSupervisorAutorizaciones`, `NotificacionesButton` y `config/brand.ts`.
-> ⚠️ **`APP_VERSION` sigue en `v1.227.1`** → antes de deployar hay que **bumpearla** (propuesto `v1.228.0`) y recién
-> ahí PR `dev → main` + release. Verde al cierre: `tsc` + `build` + **1848 tests unitarios** + e2e del Dashboard y
-> multi-rol.
+> ⚠️ **Lo que NO se pudo verificar en este deploy** (decirlo, no omitirlo):
+> - **Paridad de `pg_policies` DEV↔PROD**: el conector de Supabase no estaba disponible en la sesión. Riesgo bajo
+>   porque el deploy **no trae migraciones**, pero el chequeo del checklist quedó sin hacer.
+> - **`scripts/auditar-edge-functions.sh` salió parcial**: el listado arranca en `mp-reconciliacion`, así que no
+>   cubrió las primeras alfabéticamente (entre ellas `mp-addon-batch`, la única que tocó esta tanda — solo un
+>   comentario). De lo que sí listó, el drift es el **cosmético ya conocido** (`mp-verificar-suscripcion` 8/4,
+>   `tn-stock-worker` 2, `wa-briefing-sweep` 2) y `wa-embedded-signup-exchange` sigue sin desplegar en PROD a
+>   propósito. **Conviene volver a correrlo entero.**
 >
 > 📋 **Qué trae la tanda** (detalle por entrada en `log.md` del 2026-09-17/18):
 > 1. **Capacidad — las 3 palancas cerradas.** Arranque de pantalla −18,7 % (`ensureUserData` dedupe: `loadUserData`

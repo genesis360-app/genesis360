@@ -89,7 +89,7 @@ Supervisión efectivamente muta `stock_actual` (gap de cobertura de tests, no bu
 | [[wiki/architecture/backend-supabase]] | PostgreSQL, Auth, RLS, Storage, Edge Functions, proyectos | ✅ |
 | [[wiki/architecture/multi-tenant-rls]] | Modelo multi-tenant, RLS, roles, onboarding | ✅ |
 | [[wiki/architecture/estado-global]] | authStore Zustand, usePlanLimits, useSucursalFilter, hooks | ✅ |
-| [[wiki/architecture/edge-functions]] | **🛑 2026-09-14: auditoría de código desplegado vs repo** — `emitir-factura` de PROD era la del 15/07, sin el lock anti doble emisión que figuraba EN PROD; también TN/MELI sin reserva atómica y `scan-ticket` sin desplegar en PROD. Todo realineado + `scripts/auditar-edge-functions.sh` · 29 funciones Deno · scan-ticket (v1.8.38) · **🆕 2026-08-27, solo DEV: `wa-briefing-sweep`** (Asistente WhatsApp Fase 4, disparada por GitHub Actions, no HTTP directo) · lista y propósito de cada una | ✅ |
+| [[wiki/architecture/edge-functions]] | **🛑 2026-09-14: auditoría de código desplegado vs repo** — `emitir-factura` de PROD era la del 15/07, sin el lock anti doble emisión que figuraba EN PROD; también TN/MELI sin reserva atómica y `scan-ticket` sin desplegar en PROD. Todo realineado + `scripts/auditar-edge-functions.sh` · **51 funciones Deno** (contadas sobre el repo el 2026-09-18; decía 29) · scan-ticket (v1.8.38) · **🆕 2026-08-27, solo DEV: `wa-briefing-sweep`** (Asistente WhatsApp Fase 4, disparada por GitHub Actions, no HTTP directo) · lista y propósito de cada una | ✅ |
 | [[wiki/architecture/pwa-config]] | Service Worker, manifest, WASM, SPA routing Vercel · **registerSW forzado (v1.112.0)**: chequeo cada 30min + al volver el foco, anti-caché-vieja (caso Fede) | ✅ |
 | [[wiki/architecture/escalabilidad]] | Costos infra, capacidad escala, cola jobs, Sentry, cloud vs DC | ✅ |
 | [[wiki/architecture/infraestructura]] | **🆕 2026-09-18 — la PRIMERA página de `architecture/` con un diagrama** (`diagrams/11-infraestructura-topologia.drawio` + Mermaid embebido; los 10 previos son de procesos de negocio). Topología: Vercel ↔ Supabase (Auth · Postgres+RLS · Storage 12 buckets · **51** Edge Functions · pg_cron) ↔ externos (ARCA vía AfipSDK, Mercado Pago, MODO, ML, TiendaNube, Resend, Cloudflare Email, WhatsApp/Meta, Claude, Google Maps) + el panel aparte `genesis360-admin`. Incluye **los 2 relojes** y qué dispara cada uno: **6 jobs de `pg_cron`** (dentro de Postgres) vs **13 workflows de GitHub Actions** (curl a Edge Functions). Todo contado contra el repo, no de memoria — y ese conteo **destapó drift**: `backend-supabase` dice 83 migs/26 EFs (son 429/51), `edge-functions` dice 30, y el doc de producto afirma **"pg_cron no habilitado"** cuando corre 6 jobs | ✅ |
@@ -301,10 +301,14 @@ migración `429_ayuda_cursos_y_recursos` en ambos. EF `ai-assistant` redeployada
 regenerado (`scripts/auditar-edge-functions.sh`: **diff 0**; 401 sin sesión). Verificado que `app.genesis360.pro`
 sirve `v1.227.1` (bundle `/assets/index-C5iOI7Dn.js`). 🕵️ Gotcha: verificar la versión servida por `curl` **exige
 `-L`** — la home redirige a `/login` y sin seguir el redirect da un falso negativo. ✅ Desbloqueado: regrabar los 2
-tramos del video de facturación. 📐 **Pedido de GO — Fase 1 HECHA (2026-09-18)**: los **diagramas de infraestructura** ya existen —
-`11-infraestructura-topologia.drawio` + Mermaid embebido en [[wiki/architecture/infraestructura]], la primera
-página de `architecture/` con un diagrama. Falta la **Fase 2**: actualizar el documento de producto
-(`sources/raw/genesis360_overview.html`, hoy v2.0 de julio sobre la app v1.100.0).*
+tramos del video de facturación. 📐 **Pedido de GO — COMPLETO (2026-09-18)**: **Fase 1**, diagrama de infraestructura
+(`11-infraestructura-topologia.drawio` + Mermaid en [[wiki/architecture/infraestructura]], la primera página de
+`architecture/` con un diagrama). **Fase 2**, documento de producto actualizado a **v2.1 · App v1.227.1**
+(venía de v2.0 de julio sobre v1.100.0). 🛑 El drift más grave estaba en **precios**: publicaba Básico $4.900 /
+Pro $9.900 cuando la fuente de verdad (`brand.ts`) marca **$54.000 / $90.000** — un orden de magnitud, en el
+documento que va a clientes. También: trial 7 días (real **30**, mig 257), el modelo de límites ya no es
+"movimientos" sino **comprobantes**, y los add-ons eran otros. ⚠ **Pendiente de GO**: confirmar los precios del
+add-on de CUIT, marcados como PROVISORIOS en `brand.ts`.*
 
 Antes: *Última actualización: 2026-09-15 (cont. 71, segundo deploy del día) — 🚀 **PROD = `v1.227.0` (migs 001-429)**: la
 cola de ML/TN solo desde el servidor (mig 427), el aviso al cliente cuando el equipo registra su pago manual (mig

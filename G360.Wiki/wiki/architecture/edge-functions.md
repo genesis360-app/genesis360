@@ -6,7 +6,11 @@ sources: []
 updated: 2026-09-15
 ---
 
-# Edge Functions (30 funciones Deno)
+# Edge Functions (51 funciones Deno)
+
+> ⚠️ **Contado el 2026-09-18 sobre `supabase/functions/` del repo: son 51.** El título decía 30 y el índice
+> 29 — ambos quedaron viejos. La topología de dónde encaja cada una está en
+> [[wiki/architecture/infraestructura]].
 
 Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican validando el JWT de Supabase en cada request.
 

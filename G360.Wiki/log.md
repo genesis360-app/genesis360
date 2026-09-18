@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] update | 📄 Documento de producto (Fase 2) — publicaba precios 10× más baratos que los reales
+
+Segunda mitad del pedido de GO. `sources/raw/genesis360_overview.html` pasa de **v2.0 (julio, app v1.100.0)**
+a **v2.1 (app v1.227.1)**. Es el documento "presentable para externos", así que el drift acá no era cosmético.
+
+### 🛑 Lo más grave: los precios
+
+El documento publicaba **Básico $4.900 / Pro $9.900**. La fuente de verdad (`src/config/brand.ts`, que el
+propio wiki declara como tal) marca **Básico $54.000 con débito / $60.000 de lista** y **Pro $90.000 /
+$100.000**. Un **orden de magnitud**, en el papel que se le muestra a un cliente. Corregido con los dos
+precios y los descuentos reales (−10 % débito automático, −30 % anual).
+
+Y el **modelo de cobro había cambiado y el documento no**: la dimensión medida ya no son los *movimientos de
+stock* (hoy son telemetría, `-1`) sino los **comprobantes**, con enforcement **suave** — pasarse nunca bloquea
+una venta. Los límites por plan y los add-ons también eran otros (el doc ofrecía un único pack de "+500
+movimientos $990"; hoy hay packs de SKU, comprobantes, sucursales, usuarios y CUIT).
+
+### Otros dos datos falsos que veía el cliente
+
+- **Trial**: el doc decía 7 días y `backend-supabase.md` decía 14. **Son 30** (mig 257, confirmado en
+  `schema_full.sql`). Las dos versiones documentadas estaban mal.
+- **"pg_cron no habilitado"**: falso, corre **6 jobs** (verificado con `cron.schedule(` en las migraciones).
+
+### El resto
+
+Arquitectura (1.848 tests/112 archivos, 429 migraciones, 51 EFs), integraciones que faltaban (**MODO**,
+**ML/TN**, **WhatsApp**), **7 módulos** en PROD que el documento no mencionaba (Pedidos/Picking, Comercial,
+Repositores, canales online + Marketplace API, Asistente IA/WhatsApp, supervisión/roles propios/multi-CUIT,
+portal de proveedores) y backlog vencido movido a implementado (**WSFE propio**, **hard-delete con grace**,
+**roles parametrizables**, **WhatsApp/IA**). De paso se corrigió `backend-supabase.md` (83→429 migraciones,
+26→51 EFs, trial, y el rol **`OWNER` que no existe** — es `DUEÑO`) y el contador de EFs en `edge-functions.md`
+y el índice (29/30 → **51**).
+
+**Verificado renderizando el HTML**, no leyéndolo: 6 secciones, 38 tarjetas, **0 errores de página**, los 11
+chequeos de contenido nuevo en OK y los 6 de contenido viejo limpios.
+
+⚠️ **Queda para GO**: confirmar el precio del add-on de **CUIT adicional** (marcado `PROVISORIO` en
+`brand.ts`), decidir si destacar el precio con débito o el de lista, y cerrar dos ítems de backlog que no se
+pudieron verificar (*Courier B2B*, *cobro MP real e2e*).
+
+---
+
 ## [2026-09-18] update | 📐 Diagramas de infraestructura (Fase 1) — `architecture/` deja de ser texto puro
 
 Pedido de GO del 2026-09-16. Se hizo la **Fase 1 (diagramas)**; la Fase 2 (documento de producto) queda.

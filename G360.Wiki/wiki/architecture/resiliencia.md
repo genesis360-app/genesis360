@@ -197,9 +197,19 @@ escrituras (ventas con triggers de stock y caja) y el volumen real cuestan más 
 compartida. Tomarlo como orden de magnitud, no como garantía.
 
 **Palancas, reordenadas con la medición del 2026-09-17 (de la más barata a la más cara):**
-1. **`loadUserData` corre ~5 veces por arranque** en vez de una. Es el hallazgo más barato de todos:
-   deduplicar la carga (ignorar el evento si ya se cargó ese usuario) saca **~15 de las 64** requests de cada
-   arranque, sin cambiar ningún comportamiento. No aplica a la navegación, donde ya no se dispara.
+1. ✅ **HECHO (2026-09-17) — `loadUserData` corría ~5 veces por arranque.** Se agregó `ensureUserData` al
+   `authStore`: comparte la promesa en vuelo (los dos caminos disparan casi juntos, antes de que el estado
+   esté seteado) y saltea si ese usuario ya está cargado. `App.tsx` la usa en sus dos caminos de bootstrap.
+   🛑 **El dedupe vive solo ahí**: `loadUserData` sigue recargando SIEMPRE, porque las otras 8 llamadas de la
+   app son refrescos deliberados tras una mutación (alta de negocio, crear/borrar sucursal, activar la
+   suscripción, avatar, nombre, cancelar la baja) y tienen que traer datos frescos.
+   **Medido con la sonda, no estimado: 514 → 418 requests en 8 arranques (−96, −18,7 %)**, de 64,3 a 52,3 por
+   pantalla. `users` 41→17, `tenants` 40→16, `sucursales` 43→19, y `GET /auth/v1/user` (32) desaparece del
+   top de repetidos. Verificado también contra el **build de producción** (51,3) y con el login real por UI
+   (`--project=setup-owner`, verde).
+   ⚠️ **Queda un remanente sin explicar**: bajó de ~5 cargas por arranque a **~2, no a 1** (≈2,1 `users` por
+   pantalla). **No es StrictMode** — el build de producción da el mismo número. Cerrar ese segundo disparo
+   ahorraría otras ~30 requests cada 8 arranques; sin diagnosticar todavía.
 2. **El Dashboard cuesta 90 requests al aterrizar**: "Todo › Gráficos" monta **las 9 áreas** de una
    (`MODULE_AREAS.map` en `DashboardPage.tsx`), y cada `Dash*Area` corre una `queryFn` con 5-10 consultas
    **secuenciales** (`DashGastosArea` sola hace 9). Es la pantalla de entrada de todos los días. Cargar el

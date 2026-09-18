@@ -155,11 +155,12 @@ type: project
 >    8 pantallas. **El costo está en el ARRANQUE, no en la navegación** (`AppLayout` es layout route, no
 >    remonta; los guards son lectura pura de Zustand). Palancas reales, en orden: **(1)** `loadUserData` corre
 >    **~5 veces por arranque** (4 `/auth/v1/user` + 5 `users` + 5 `tenants` + 5 `sucursales`, todas con la misma
->    respuesta) → deduplicar saca ~15 de esas 64 sin cambiar comportamiento; **(2)** el **Dashboard cuesta 90**
+>    respuesta) → ✅ **HECHO**: deduplicado con `ensureUserData`, medido **514→418 (−18,7 %)**, build de PROD y
+>    login real verdes; queda un remanente de ~2 cargas (no 1) sin diagnosticar; **(2)** el **Dashboard cuesta 90**
 >    al aterrizar (`MODULE_AREAS.map` monta las 9 áreas y cada `Dash*Area` corre 5-10 consultas **secuenciales**);
 >    **(3)** polling en reposo 0,59 req/s (`caja_sesiones` a la cabeza). Con Micro: ~85 usuarios a la vez en hora
 >    pico, ~160 en uso tranquilo, ~80-120 clientes — tablas en `wiki/architecture/resiliencia.md`.
->    **Falta que GO decida qué se implementa de las 3.**
+>    **GO eligió implementar solo la (1) — ya está hecha. Las (2) y (3) quedan medidas y sin decidir.**
 > 4. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
 >    despacho de reserva con seña mixta (UAT 57.9) y fallo al aplicar un precio programado (UAT 59.7).
 > 5. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta

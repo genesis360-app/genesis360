@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-17] update | ⚡ Capacidad palanca 1 — `ensureUserData`: −18,7 % de requests por arranque
+
+GO eligió implementar **solo la palanca 1** de las 3 medidas. Hecha, medida y verificada.
+
+**El cambio** (`src/store/authStore.ts` + `src/App.tsx`): `ensureUserData` nuevo, que comparte la promesa en
+vuelo y saltea si ese usuario ya está cargado. `App.tsx` lo usa en sus dos caminos de bootstrap
+(`getSession()` y `onAuthStateChange`), que se pisaban entre sí.
+
+🛑 **Por qué el dedupe NO va adentro de `loadUserData`**: se revisaron las 8 llamadas de la app y **todas**
+son refrescos deliberados después de una mutación (alta de negocio en el onboarding, crear/borrar sucursal,
+activar la suscripción, cambiar avatar o nombre, cancelar la baja). Deduplicarlas habría dejado datos viejos
+en pantalla justo después de cambiarlos. `loadUserData` sigue recargando siempre.
+
+**Medido, no estimado** (`npm run perf:navegacion --modo recarga --comparar`):
+**514 → 418 requests en 8 arranques (−96, −18,7 %)**, de 64,3 a 52,3 por pantalla. `users` 41→17,
+`tenants` 40→16, `sucursales` 43→19; `GET /auth/v1/user` (32) sale del top de repetidos.
+Verde: `tsc` + `build` + login real por UI (`--project=setup-owner`).
+
+⚠️ **Remanente honesto**: bajó de ~5 cargas por arranque a **~2, no a 1**, y **no es StrictMode** (el build de
+producción da 51,3, igual que dev). Cerrar ese segundo disparo ahorraría otras ~30 requests cada 8 arranques.
+**Sin diagnosticar** — anotado, no vendido como cerrado.
+
+---
+
 ## [2026-09-17] update | ⚡ Capacidad — el "~64 requests por pantalla" medía RECARGAR, no navegar
 
 GO eligió arrancar Capacidad mientras se responde el relevamiento de Categorías. Se empezó por medir, y la

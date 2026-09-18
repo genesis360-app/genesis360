@@ -20,7 +20,21 @@ interface AuthState {
   setSucursal: (id: string | null) => void
   signOut: () => Promise<void>
   loadUserData: (authUserId: string) => Promise<void>
+  /** Igual que `loadUserData` pero NO repite trabajo ya hecho. Solo para el bootstrap de auth. */
+  ensureUserData: (authUserId: string) => Promise<void>
 }
+
+// Dedupe del bootstrap de auth (medido el 2026-09-17 con `npm run perf:navegacion`): `loadUserData`
+// corría ~5 veces por carga de página —4 `GET /auth/v1/user` + 5 `users` + 5 `tenants` +
+// 5 `sucursales`, todas devolviendo lo mismo— porque `App.tsx` la dispara desde `getSession()` **y**
+// desde `onAuthStateChange`, que se emite varias veces (sesión inicial, token refrescado). Son ~15 de
+// las ~64 requests que cuesta abrir una pantalla de cero.
+//
+// 🛑 El dedupe vive SOLO en `ensureUserData`, el camino del bootstrap. `loadUserData` sigue
+// recargando SIEMPRE: las otras llamadas de la app son refrescos deliberados después de una mutación
+// (alta de negocio en el onboarding, crear/borrar sucursal, activar la suscripción, cambiar avatar o
+// nombre, cancelar la baja) y tienen que seguir trayendo datos frescos.
+let cargaEnCurso: { authUserId: string; promesa: Promise<void> } | null = null
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -113,6 +127,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.error('Error en loadUserData:', err)
       set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: false })
     }
+  },
+
+  ensureUserData: async (authUserId: string) => {
+    // Misma carga ya en vuelo: `getSession()` y `onAuthStateChange` disparan casi juntos, antes de
+    // que el estado esté seteado, así que mirar el store no alcanza — hay que compartir la promesa.
+    if (cargaEnCurso?.authUserId === authUserId) return cargaEnCurso.promesa
+    // Ya está cargado ESE usuario → no hay nada que pedir. Se mira el store (no un flag aparte) para
+    // que sea auto-correctivo: si la sesión se cerró, `user` quedó en null y vuelve a cargar.
+    const { user, initialized } = get()
+    if (initialized && user?.id === authUserId) return
+    const promesa = get().loadUserData(authUserId).finally(() => {
+      if (cargaEnCurso?.authUserId === authUserId) cargaEnCurso = null
+    })
+    cargaEnCurso = { authUserId, promesa }
+    return promesa
   },
 
   signOut: async () => {

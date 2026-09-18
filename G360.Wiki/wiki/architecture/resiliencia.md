@@ -207,9 +207,14 @@ compartida. Tomarlo como orden de magnitud, no como garantía.
    pantalla. `users` 41→17, `tenants` 40→16, `sucursales` 43→19, y `GET /auth/v1/user` (32) desaparece del
    top de repetidos. Verificado también contra el **build de producción** (51,3) y con el login real por UI
    (`--project=setup-owner`, verde).
-   ⚠️ **Queda un remanente sin explicar**: bajó de ~5 cargas por arranque a **~2, no a 1** (≈2,1 `users` por
-   pantalla). **No es StrictMode** — el build de producción da el mismo número. Cerrar ese segundo disparo
-   ahorraría otras ~30 requests cada 8 arranques; sin diagnosticar todavía.
+   ✅ **Sin remanente — `loadUserData` corre exactamente 1 vez por arranque.** Contado por
+   **`GET /auth/v1/user`, que es el único endpoint con un solo llamador**: da **1 en cada una de las 8
+   pantallas**, en dev y en el build de producción (antes: 4). Las 2 lecturas que quedan de `users`,
+   `tenants` y `sucursales` **no son la carga repetida**, son consumidores distintos y legítimos:
+   `usePlanLimits` hace `count exact head` sobre `users` y `sucursales`, y `useCotizacion` lee `tenants`.
+   > 🕵️ **Lección de método**: contar por TABLA engaña cuando varios hooks leen la misma tabla con queries
+   > distintas. Para medir "¿cuántas veces corrió esta función?" hay que contar por un endpoint que solo
+   > ella toque. Una primera lectura de estos mismos datos concluyó "quedan ~2 cargas" y era falso.
 2. **El Dashboard cuesta 90 requests al aterrizar**: "Todo › Gráficos" monta **las 9 áreas** de una
    (`MODULE_AREAS.map` en `DashboardPage.tsx`), y cada `Dash*Area` corre una `queryFn` con 5-10 consultas
    **secuenciales** (`DashGastosArea` sola hace 9). Es la pantalla de entrada de todos los días. Cargar el

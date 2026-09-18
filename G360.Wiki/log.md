@@ -24,9 +24,19 @@ en pantalla justo después de cambiarlos. `loadUserData` sigue recargando siempr
 `tenants` 40→16, `sucursales` 43→19; `GET /auth/v1/user` (32) sale del top de repetidos.
 Verde: `tsc` + `build` + login real por UI (`--project=setup-owner`).
 
-⚠️ **Remanente honesto**: bajó de ~5 cargas por arranque a **~2, no a 1**, y **no es StrictMode** (el build de
-producción da 51,3, igual que dev). Cerrar ese segundo disparo ahorraría otras ~30 requests cada 8 arranques.
-**Sin diagnosticar** — anotado, no vendido como cerrado.
+### 🕵️ Un remanente que resultó ser un error de medición MÍO
+
+En la primera lectura se anotó "bajó a ~2 cargas por arranque, no a 1, sin diagnosticar". **Era falso**, y lo
+era por contar mal: se dedujo de que `users`/`tenants`/`sucursales` seguían apareciendo 2 veces por pantalla.
+Pero esas tablas **las leen otros hooks**: `usePlanLimits` hace `count exact head` sobre `users` y
+`sucursales`, y `useCotizacion` lee `tenants`.
+
+El contador honesto es **`GET /auth/v1/user`, el único endpoint con un solo llamador**: da **1 en cada una de
+las 8 pantallas**, en dev y en el build de producción (antes: 4). → **`loadUserData` corre exactamente una vez
+por arranque; no queda remanente.**
+
+**Lección de método**: para medir "¿cuántas veces corrió esta función?", contar por TABLA engaña si varios
+hooks leen la misma tabla con queries distintas — hay que contar por un endpoint que solo ella toque.
 
 ---
 

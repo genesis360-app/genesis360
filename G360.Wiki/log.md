@@ -6,6 +6,472 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] update | 💰 El add-on de CUIT ya se cobraba pese a decir "no exponer" — precio confirmado
+
+Cierre de las dos decisiones que habían quedado abiertas del documento de producto.
+
+### 🛑 El hallazgo: un comentario no es un guard
+
+Al ir a "confirmar el precio del add-on de CUIT" apareció que **ya estaba cobrando end-to-end**:
+`ADDON_FIJO_ENABLED = true`, `SuscripcionPage` arma los `packs_objetivo` **genéricamente**
+(`Object.entries`, sin lista blanca que excluya `cuits`) y el **espejo server-side de `mp-addon-batch`** —
+que es el que revalida y termina cobrando por delta sobre el preapproval de MP— incluye `cuits` a
+$20.000/$35.000/$45.000 y lo acepta.
+
+Y sin embargo **los dos lugares decían lo contrario**: `brand.ts` (*"precio a confirmar antes de exponer el
+pack"*) y la propia EF (*"GO confirma el precio final antes de PROD"*). La guarda existía solo como
+comentario, así que nunca se cumplió. Alcance real hoy: chico (el configurador solo lo ven tenants con
+suscripción MP real), pero el mecanismo estaba activo.
+
+### Decisiones de GO
+
+- **Precio del add-on de CUIT**: se **confirman los actuales** (+1 $20.000 · +2 $35.000 · +3 $45.000).
+  Elegido a propósito **no cambiar ningún valor**, para que a nadie que lo tenga contratado le mueva el
+  cobro. Referencia: la competencia recién bundlea multi-razón-social en planes de ~$96k-$390k; acá un CUIT
+  extra sobre Pro ($90.000) es ~22 % de recargo. Se sacó el cartel de PROVISORIO **de los dos lugares**, con
+  una nota cruzada de que están duplicados y se tocan juntos.
+- **Qué precio destaca el documento**: el de **débito automático** ($54.000 / $90.000), que es el que más
+  conviene. El de lista pasa a aclaración chica ("con otro medio de pago"). Verificado renderizando: la
+  columna "Precio de lista" ya no existe y el callout prioriza el débito.
+
+### Lo que queda
+
+Del documento de producto solo siguen abiertos dos ítems de backlog que no se pudieron verificar:
+*Courier B2B* y *cobro MP real e2e*. **Sin push ni release todavía** — decisión de GO: *"juntemos un poco
+más y luego pasamos todo"*.
+
+---
+
+## [2026-09-18] update | 📄 Documento de producto (Fase 2) — publicaba precios 10× más baratos que los reales
+
+Segunda mitad del pedido de GO. `sources/raw/genesis360_overview.html` pasa de **v2.0 (julio, app v1.100.0)**
+a **v2.1 (app v1.227.1)**. Es el documento "presentable para externos", así que el drift acá no era cosmético.
+
+### 🛑 Lo más grave: los precios
+
+El documento publicaba **Básico $4.900 / Pro $9.900**. La fuente de verdad (`src/config/brand.ts`, que el
+propio wiki declara como tal) marca **Básico $54.000 con débito / $60.000 de lista** y **Pro $90.000 /
+$100.000**. Un **orden de magnitud**, en el papel que se le muestra a un cliente. Corregido con los dos
+precios y los descuentos reales (−10 % débito automático, −30 % anual).
+
+Y el **modelo de cobro había cambiado y el documento no**: la dimensión medida ya no son los *movimientos de
+stock* (hoy son telemetría, `-1`) sino los **comprobantes**, con enforcement **suave** — pasarse nunca bloquea
+una venta. Los límites por plan y los add-ons también eran otros (el doc ofrecía un único pack de "+500
+movimientos $990"; hoy hay packs de SKU, comprobantes, sucursales, usuarios y CUIT).
+
+### Otros dos datos falsos que veía el cliente
+
+- **Trial**: el doc decía 7 días y `backend-supabase.md` decía 14. **Son 30** (mig 257, confirmado en
+  `schema_full.sql`). Las dos versiones documentadas estaban mal.
+- **"pg_cron no habilitado"**: falso, corre **6 jobs** (verificado con `cron.schedule(` en las migraciones).
+
+### El resto
+
+Arquitectura (1.848 tests/112 archivos, 429 migraciones, 51 EFs), integraciones que faltaban (**MODO**,
+**ML/TN**, **WhatsApp**), **7 módulos** en PROD que el documento no mencionaba (Pedidos/Picking, Comercial,
+Repositores, canales online + Marketplace API, Asistente IA/WhatsApp, supervisión/roles propios/multi-CUIT,
+portal de proveedores) y backlog vencido movido a implementado (**WSFE propio**, **hard-delete con grace**,
+**roles parametrizables**, **WhatsApp/IA**). De paso se corrigió `backend-supabase.md` (83→429 migraciones,
+26→51 EFs, trial, y el rol **`OWNER` que no existe** — es `DUEÑO`) y el contador de EFs en `edge-functions.md`
+y el índice (29/30 → **51**).
+
+**Verificado renderizando el HTML**, no leyéndolo: 6 secciones, 38 tarjetas, **0 errores de página**, los 11
+chequeos de contenido nuevo en OK y los 6 de contenido viejo limpios.
+
+⚠️ **Queda para GO**: confirmar el precio del add-on de **CUIT adicional** (marcado `PROVISORIO` en
+`brand.ts`), decidir si destacar el precio con débito o el de lista, y cerrar dos ítems de backlog que no se
+pudieron verificar (*Courier B2B*, *cobro MP real e2e*).
+
+---
+
+## [2026-09-18] update | 📐 Diagramas de infraestructura (Fase 1) — `architecture/` deja de ser texto puro
+
+Pedido de GO del 2026-09-16. Se hizo la **Fase 1 (diagramas)**; la Fase 2 (documento de producto) queda.
+
+**Contado contra el repo, no de memoria** — que era la instrucción anotada para este trabajo: Edge Functions
+sobre `supabase/functions/` (**51**), jobs de `pg_cron` con `cron.schedule(` en las migraciones (**6**),
+buckets sobre los `storage.from('…')` reales (**12**) y workflows sobre `.github/workflows/` (**13**).
+
+**Entregado**: `diagrams/11-infraestructura-topologia.drawio` + [[wiki/architecture/infraestructura]] con el
+Mermaid embebido. Sigue la convención existente (`.drawio` editable como formato principal + Mermaid
+versionado en la página). Los 10 diagramas previos son de **procesos de negocio**; éste abre una segunda
+familia, anotada en `diagrams/README.md`. Es **la primera página de `architecture/` con un diagrama**.
+
+**Validado, no asumido**: el `.drawio` se parseó como XML (34 celdas, **0 flechas colgadas** — se verificó que
+cada `source`/`target` apunte a un nodo que existe) y el Mermaid se **renderizó de verdad** headless con
+mermaid 11 (**32 nodos**, SVG de 119 KB). Un error de Mermaid no se ve hasta que alguien abre la página en
+GitHub, y un `.drawio` mal formado directamente no abre.
+
+### 🛑 Contar contra el repo destapó drift en 3 documentos
+
+| Dónde | Dice | Realidad |
+|---|---|---|
+| [[wiki/architecture/backend-supabase]] (30/04) | 83 migraciones · 26 EFs · rol `OWNER` | **429** · **51** · `OWNER` **no existe** |
+| [[wiki/architecture/edge-functions]] (15/09) | 30 funciones | **51** |
+| `sources/raw/genesis360_overview.html` (doc de producto v2.0) | 823 tests/55 archivos · 249 migraciones · **"pg_cron no habilitado"** | **1848/112** · **429** · **pg_cron SÍ, con 6 jobs** |
+
+El de `pg_cron` es el más serio: ese documento **va a externos** y afirma que una pieza de infraestructura
+que hoy corre 6 jobs no existe. Queda todo anotado en la página nueva y se corrige en la Fase 2.
+
+---
+
+## [2026-09-18] update | ⚡ Capacidad — cerradas las 3 palancas: vuelta al Dashboard 92 → 0 y reposo −53 %
+
+Dos cambios chicos, los dos medidos antes y después.
+
+### 1 · Las 18 requests que sobrevivían a la vuelta al Dashboard → **0**
+
+Causa (diagnosticada en la sesión anterior): `DashboardPage` inicializaba `customHasta` con
+`new Date().toISOString()` — **timestamp nuevo en cada montaje**— y ese valor vive en el `queryKey` de
+`dash-kpis`/`dash-fugas` y viaja como prop a `VentasVsGastosChart`/`MixCajaChart`. Con la key cambiando en
+cada vuelta, **ningún `staleTime` puede acertar**.
+
+**Fix**: inicializarlo al **fin del día**, que es exactamente lo que ya usan todos los demás períodos
+(`getFechasDashboard` hace `hasta.setHours(23,59,59,999)`). **No cambia ningún número**: se verificó en
+`FilterBar.tsx` que tanto `getFechasDashboard` como `getFechasAnteriores` arrancan con
+`if (periodo === 'custom' && custom)` → fuera de "custom" ese valor ni se lee.
+**Medido: volver al Dashboard 18 → 0 requests**, con la primera visita intacta (102).
+
+### 2 · Palanca 3 — polling en reposo: **0,59 → 0,28 req/s (−53 %)**
+
+🛑 **Criterio que puso GO**: *"que no pierda velocidad el sistema ni buen rendimiento"*. Se tocaron **solo
+contadores de fondo**: `useAlertas` 30→120 s (el mayor consumo en reposo: ~11 conteos, alimenta solo el
+número del badge), supervisión y notificaciones 30→60 s (más cortos a propósito: hay alguien esperando).
+**NO se tocó** lo que habilita operar: las cajas abiertas del POS (15 s, decide si se puede cobrar) ni el
+polling de pago MODO/MP mientras el QR está en pantalla (4 s, se corta solo al llegar el pago). Por eso
+`caja_sesiones` queda como el consumo dominante en reposo: es deliberado.
+
+### ✅ Verificación
+
+`tsc` + `build` · **unitarios 112 archivos / 1848 tests, 0 fallas** · **17 e2e del Dashboard verdes**
+(incluye `14_coherencia_numeros`: el badge de alertas sigue coincidiendo con AlertasPage y "Productos
+activos" con ProductosPage → el caché no desincronizó números) · **período "Custom" probado en navegador**
+(se aplica y quedan las mismas 10 secciones y 31 gráficos, 0 errores) — era el único camino cuya semántica
+se tocaba.
+
+### 🕵️ Dos defectos de la SONDA, no de la app (los dos me habrían hecho reportar un número falso)
+
+1. Tras un re-login por sesión vencida, el login **aterriza en `/dashboard`** y deja su caché caliente → las
+   dos visitas del recorrido medían **0** y parecía que la pantalla no pedía nada. Es el mismo defecto que
+   ya se había corregido en el `goto` de arranque, entrando por otra puerta. Ahora sale a `/mi-cuenta`.
+2. Correr la sonda **en paralelo con los e2e** invalida la medición: comparten
+   `tests/e2e/.auth/session.json` y `setup-owner` lo reescribe, así que la sonda corre deslogueada y mide
+   0 en todo (ni siquiera polling). **Medir siempre con la suite quieta.**
+
+---
+
+## [2026-09-17] update | ⚡ Capacidad palanca 2 — volver al Dashboard: 92 → 18 requests (−80 %)
+
+GO planteó el miedo correcto: *"que funcione mal el dashboard, o que no se vea tan bien como ahora"*. Por eso
+**no** se hizo la variante que él temía. Se le presentaron las tres versiones posibles de la palanca 2 y eligió
+la única invisible:
+
+- **2a paralelizar las queryFn** — descartada: no baja el conteo (90 siguen siendo 90) y concentraría el burst
+  contra un pool de ~20 conexiones. Mejora la sensación de velocidad de UNO, no la capacidad.
+- **2b no montar las 9 áreas** — descartada por ahora: sí baja la primera carga, pero cambia lo que se ve.
+- **2c ✅ ventana de frescura de 60 s** — hecha. El layout, el orden de carga y la primera visita no cambian.
+
+**Qué se tocó**: las 9 `Dash*Area` + las 6 consultas propias de `DashboardPage` + los 2 gráficos que monta
+aparte (`VentasVsGastosChart`, `MixCajaChart`). Todas tenían `staleTime: 0` — heredado del default global, sin
+ningún comentario que lo justificara; se confirmó por `git log` que entraron así en los commits que crearon las
+áreas (`f322d02a`, 12/05), no en un fix posterior.
+
+**Medido**: volver al Dashboard **92 → 18 requests (−80 %)**. La primera carga **no cambia** (~102): la ventana
+evita recalcular, nunca evita la primera consulta. **Verificado en navegador** (no solo por contador): 10/10
+secciones, 31 gráficos SVG, 0 errores de consola, nada colgado en "Cargando…" — y **idéntico tras ir a
+Productos y volver**.
+
+### ✅ Verificación con suites reales (2026-09-18), no solo typecheck
+
+- **Unitarios**: `npx vitest run` → **112 archivos, 1848 tests, 0 fallas** (285 s). ⚠️ Esto **desmiente** la nota
+  que decía que la suite completa no corría acá por OOM de jsdom: corre.
+- **e2e Dashboard/navegación (owner)**: **30 passed** — `12_navegacion_sidebar` (las 13 rutas sin 500),
+  `14_coherencia_numeros` (**el badge de alertas coincide con AlertasPage** y **"Productos activos" con
+  ProductosPage** → el caché nuevo NO desincronizó números), `84_dashboard_subtabs` (recorre **todas** las
+  áreas × sub-pestañas sin error boundary ni crash).
+- **e2e multi-rol**: **77 passed / 5 skipped** con **login real por UI de 4 usuarios distintos** (CAJERO,
+  SUPERVISOR, DEPOSITO, CONTADOR). Es la prueba directa de `ensureUserData`: cada rol ve lo suyo y las rutas
+  restringidas siguen redirigiendo, o sea que el store se pobló bien con rol y tenant en cada login.
+- **Cerrar sesión y volver a entrar con el MISMO usuario** (el único caso que se había razonado sin probar,
+  porque el guard mira `user?.id === authUserId`): login → signOut por UI → login otra vez → **10 secciones
+  las dos veces, sidebar y datos del negocio OK, 0 errores**. El guard es auto-correctivo como se esperaba.
+- Verde también: `tsc` + `build`.
+
+### 🕵️ Dos errores míos en el camino, anotados para no repetirlos
+
+1. **La sonda se mentía sola.** Hacía `goto('/dashboard')` para chequear la sesión, así que la primera columna
+   del recorrido ya era una VUELTA. Con la ventana puesta daba 31 en vez de 92 y **parecía que la primera carga
+   había mejorado** — no había mejorado nada. Corregido: ahora entra por `/mi-cuenta`.
+2. **Diagnostiqué mal el residuo.** Atribuí las 18 requests que sobreviven a los 2 gráficos, les puse la ventana
+   y **el número no se movió ni en dev ni en el build de producción**. La causa real: `DashboardPage`
+   inicializa `customHasta` con `new Date().toISOString()` — **timestamp nuevo en cada montaje**— y ese valor
+   está en el `queryKey` de `dash-kpis`/`dash-fugas` y viaja como prop a los gráficos. **Con la key cambiando
+   en cada vuelta el caché no puede acertar, por más ventana que tenga.** Encaja exacto con el residuo medido.
+   Los comentarios que había escrito afirmando lo contrario quedaron corregidos en el código.
+   **Arreglarlo** (sacar el valor inestable de la key cuando el período no es "custom") llevaría la vuelta cerca
+   de 0 — **cambio aparte, sin decidir**.
+
+---
+
+## [2026-09-17] update | ⚡ Capacidad palanca 1 — `ensureUserData`: −18,7 % de requests por arranque
+
+GO eligió implementar **solo la palanca 1** de las 3 medidas. Hecha, medida y verificada.
+
+**El cambio** (`src/store/authStore.ts` + `src/App.tsx`): `ensureUserData` nuevo, que comparte la promesa en
+vuelo y saltea si ese usuario ya está cargado. `App.tsx` lo usa en sus dos caminos de bootstrap
+(`getSession()` y `onAuthStateChange`), que se pisaban entre sí.
+
+🛑 **Por qué el dedupe NO va adentro de `loadUserData`**: se revisaron las 8 llamadas de la app y **todas**
+son refrescos deliberados después de una mutación (alta de negocio en el onboarding, crear/borrar sucursal,
+activar la suscripción, cambiar avatar o nombre, cancelar la baja). Deduplicarlas habría dejado datos viejos
+en pantalla justo después de cambiarlos. `loadUserData` sigue recargando siempre.
+
+**Medido, no estimado** (`npm run perf:navegacion --modo recarga --comparar`):
+**514 → 418 requests en 8 arranques (−96, −18,7 %)**, de 64,3 a 52,3 por pantalla. `users` 41→17,
+`tenants` 40→16, `sucursales` 43→19; `GET /auth/v1/user` (32) sale del top de repetidos.
+Verde: `tsc` + `build` + login real por UI (`--project=setup-owner`).
+
+### 🕵️ Un remanente que resultó ser un error de medición MÍO
+
+En la primera lectura se anotó "bajó a ~2 cargas por arranque, no a 1, sin diagnosticar". **Era falso**, y lo
+era por contar mal: se dedujo de que `users`/`tenants`/`sucursales` seguían apareciendo 2 veces por pantalla.
+Pero esas tablas **las leen otros hooks**: `usePlanLimits` hace `count exact head` sobre `users` y
+`sucursales`, y `useCotizacion` lee `tenants`.
+
+El contador honesto es **`GET /auth/v1/user`, el único endpoint con un solo llamador**: da **1 en cada una de
+las 8 pantallas**, en dev y en el build de producción (antes: 4). → **`loadUserData` corre exactamente una vez
+por arranque; no queda remanente.**
+
+**Lección de método**: para medir "¿cuántas veces corrió esta función?", contar por TABLA engaña si varios
+hooks leen la misma tabla con queries distintas — hay que contar por un endpoint que solo ella toque.
+
+---
+
+## [2026-09-17] update | ⚡ Capacidad — el "~64 requests por pantalla" medía RECARGAR, no navegar
+
+GO eligió arrancar Capacidad mientras se responde el relevamiento de Categorías. Se empezó por medir, y la
+medición **corrigió el número que esta wiki documentaba**. **Sin cambios en la app todavía.**
+
+### 🔬 Instrumento nuevo: `npm run perf:navegacion` (`scripts/medir-navegacion.mjs`)
+
+El techo de la instancia ya estaba medido (Tanda E: ~170 req/s), pero del otro lado de la ecuación —cuánto
+consume UN usuario— solo había una corrida ad-hoc que no quedó guardada, así que no se podía repetir para
+comparar antes/después. La sonda nueva navega 8 pantallas con Playwright contando cada request a Supabase
+agrupada por endpoint, más una fase de reposo, y guarda un JSON (`--salida`) para difear (`--comparar`).
+Tiene guard anti-PROD y reusa la sesión de los e2e. Modo `spa` (clic en el menú) vs `recarga` (F5).
+
+### 🛑 El hallazgo: eran dos cosas distintas
+
+- **Modo recarga: 64,3 req/pantalla y exactamente 32 `GET /auth/v1/user` en 8 pantallas** — clavado al
+  número viejo. O sea que aquella medición **recargaba la página**.
+- **Modo spa (navegando): ~11 (mediana)**. El reposo del POS sí coincidió: **0,59 req/s**.
+- Conclusión: **el costo alto es el ARRANQUE, no la navegación.** `AppLayout` es layout route (no remonta) y
+  los guards son lectura pura de Zustand (cero red), así que navegar ya era barato.
+
+### Lo que sí hay que atacar (palancas reordenadas en `wiki/architecture/resiliencia.md`)
+
+1. **`loadUserData` corre ~5 veces por arranque**, no una: 4 `/auth/v1/user` + 5 `users` + 5 `tenants` +
+   5 `sucursales` por carga, todas con la misma respuesta. `App.tsx` la dispara desde `getSession()` **y**
+   desde `onAuthStateChange` (que se emite varias veces). Deduplicar saca ~15 de las 64, sin cambiar nada.
+   Verificado por eliminación: el único `select('*')` de `tenants` en el bootstrap es el de `authStore`.
+2. **El Dashboard cuesta 90 requests al aterrizar**: "Todo › Gráficos" monta las **9 áreas** juntas y cada
+   `Dash*Area` corre 5-10 consultas **secuenciales** (`DashGastosArea` sola, 9). Es la pantalla de entrada.
+3. **Polling** en reposo (0,59 req/s), con `caja_sesiones` a la cabeza.
+
+---
+
+## [2026-09-17] update | 🏷️ Categorías de clientes — Fase 0: relevamiento generado
+
+GO dio el OK para arrancar. Se generó `relevamiento-categorias-clientes-reglas-negocio.html` (raíz del repo,
+imprimible, para responder offline con Fede). **Sin cambios de código de la app.**
+
+- **7 secciones, 22 preguntas** (A1-A5 · B1-B5 · C1-C5 · D1-D4 · E1-E3 · F1-F3 · G1-G2). No se repreguntan
+  las 4 que ya se habían respondido contra el código (Etiquetas multi-tag, no hay descuento por cliente hoy,
+  defaults de CC en `tenants`, override de CC por cliente ya construido) — van en un recuadro verde aparte.
+- 🔴 **La sección A es la que bloquea todo**: hoy los descuentos **se apilan**, en 9 pasos verificados contra
+  el código — lista → tier por cantidad (`precioBlendedTier`, agregado por SKU) → redondeo (`precio_redondeo`,
+  de ahí sale el unitario efectivo del que deriva toda la plata) → descuento manual/combo de la línea →
+  descuento por estado de inventario → y sobre el total: descuento general → combos multi-SKU → cupón →
+  promo por método de pago. La **regla transversal de Fede** ("compiten, gana el mejor, nunca se acumulan")
+  **sigue diferida**, así que un descuento de categoría se sumaría a esa pila **en silencio**.
+  El ejemplo numérico del HTML: 12 bidones de un colocador salen **$768 u $960** según cómo se componga.
+- **Lo que define el tamaño del trabajo** (ya sabido, reconfirmado): el precio se resuelve en **dos motores
+  espejo** — `src/lib/tiers.ts` (POS) y `fn_precio_venta_efectivo(tenant, producto, cantidad)` (Pedidos,
+  `fn_pedido_generar_venta`) — y **ninguno recibe el cliente**. Pedidos además no aplica combos/cupones/
+  descuento general (H1), pero sí el descuento por estado (mig 319). ML/TN publican
+  `precio_venta × (1 + precio_ajuste_*_pct/100)`, sin cliente.
+- **Queda esperando las respuestas de GO + Fede.** Las fases de construcción (1 datos+CC · 2 🔴 precio ·
+  3 override+permisos · 4 auditoría) no arrancan hasta que la sección A esté cerrada: cambiarla después
+  implica re-facturar.
+
+---
+
+## [2026-09-17] update | ✅ Cierre: audio del video validado, A0 diferido y plan de Categorías definido
+
+Cierre de la sesión cont. 72 con las decisiones que tomó GO. **Sin cambios de código.**
+
+- 🎧 **GO validó el audio del video de facturación** ("se escucha ok") → el video queda **cerrado del todo**.
+  Recordatorio permanente: Claude no escucha, el visto bueno del sonido lo da siempre GO.
+- 🏷️ **Alerta A0 (importador CSV) — DIFERIDA por decisión de GO** (*"si no es urgente dejémoslo para luego"*):
+  **va dentro del rediseño de Multimoneda**, no se arregla por separado. Condicionada a una query: ✅ en **DEV se
+  midió 0 productos** afectados (el importador nunca se usó con USD), falta la misma en **PROD sobre todos los
+  negocios**, que necesita `service_role`. Si diera ≠ 0 se frena, porque serían productos vendiéndose a ~1/1400
+  de su precio.
+- 🔌 **Dos queries esperando el conector de Supabase** (GO lo reconecta): el impacto de A0 en PROD, y **UAT 59.7**
+  (forzar el fallo de `fn_aplicar_precios_programados` y verificar `estado='fallido'` + la notificación).
+- 🏷️ **Categorías de clientes**: GO pidió el plan antes de arrancar. Quedó definido y presentado — Fase 0 de
+  relevamiento con 7 secciones (la crítica es **A · Composición** con tiers/combos/estados de inventario) y 4 fases
+  de construcción. **Falta su OK para arrancar.** Detalle en `sources/raw/project_pendientes.md`.
+
+---
+
+## [2026-09-16] update | 🎥 Video de facturación REGRABADO — y por qué "2 tramos" no alcanzaban
+
+Cierre del pendiente que esperaba el deploy de `v1.227.1`. `video-facturacion-final.mp4` pasó de 78,32 s a
+**78,52 s**, con el inicio de actividades en **1/3/2024** y el recuadro "Modo PRUEBA" entrando completo. El render
+anterior quedó en `_anteriores/`. Se conservan `crudo-v3.mp4` + `guion-v3.json` + `clicks-v3.json`: alcanzan para
+regenerar sin volver a grabar. **Sin cambios de código de la app.**
+
+### 🛑 El hallazgo: regrabar "los 2 tramos" dejaba el defecto igual
+El plan era reemplazar 16,83-24,12 (resumen fiscal) y 65,13-70,97 (cierre). Se hizo, se armó el render… y **la fecha
+vieja seguía visible ~8 s en el medio del video**, con `v1.227.0` en el sidebar. Causa: **el resumen fiscal queda en
+pantalla mientras se carga el punto de venta**, o sea que el dato viejo no vivía solo en el tramo que se acotó. Hubo
+que reemplazar **16,83-34,63 completo** (resumen + alta del PV) con un modo nuevo `TRAMO=PV`.
+
+Para que la toma pudiera dar de alta el punto de venta se **borró el 0002** del negocio de prueba y la propia toma lo
+volvió a crear — verificado por REST antes (existía), después de borrar (`[]`) y al final (creado de nuevo, id nuevo).
+
+### 🛑 Solo se detectó mirando cuadros del render
+El log del intento fallido decía `OK — 80.3s · 5 stickers · 4 sacudidas` y el video estaba mal igual. La verificación
+que sirve es `ffmpeg -ss <t> -i final.mp4 -frames:v 1 x.png`, recortar la zona del dato y **mirarla**. Se barrió la
+franja 26-44 s de a 2 s para mapear hasta dónde llegaba el defecto.
+
+### Otros dos detalles del empalme
+- El `clicks.json` original tenía un click **"guardar" en t=17,67** que caía dentro del tramo regrabado, pero la toma
+  nueva **solo navega**: si se dejaba, el video mostraba un sticker de click sobre una pantalla donde nadie clickeó.
+  Se eliminó, y los 4 clicks del bloque viejo del PV se reemplazaron por los 4 reales de la toma nueva.
+- El tramo PV dura 15,92 s contra los 17,80 del hueco, así que del rótulo 4 en adelante todo se corrió **−1,87 s**.
+
+### Acceso al negocio de prueba — resuelto
+La contraseña de `genesis360.ar+video1@gmail.com` (dueño de "Genesis360 Onboarding") **no la tenía nadie**: la cuenta
+la creó Claude el 13/09 y no quedó anotada. Se **reseteó por Admin API** (`PUT /auth/v1/admin/users/{id}` con
+`service_role`) y se verificó con un login real. Quedó en `scripts/video/.env.video` (gitignoreado, plantilla en
+`.env.video.example`). 🛑 Dos gotchas: el panel de Supabase **no deja asignar contraseña desde la UI** (solo mandar
+links, y el escáner de Gmail quema los tokens de un solo uso), y en bash **`UID` es variable de solo lectura** — usarla
+para el user_id hace que la Admin API responda 404.
+
+⚠️ **Pendiente de GO**: rotar la `service_role`, que pasó por el chat.
+
+---
+
+## [2026-09-16] update | 📋 Relevamiento de Multimoneda + 2 de los 4 e2e pendientes (155 y 156)
+
+Misma sesión (cont. 72), después del deploy de `v1.227.1`. **Sin cambios de versión ni migraciones**:
+todo es relevamiento, tests y scripts.
+
+### 📋 Relevamiento de Multimoneda (commit `aea1f6f8`)
+`relevamiento-multimoneda-reglas-negocio.html`, imprimible, para que GO lo responda con Fede. Secciones
+A-H: moneda principal, cotizaciones, alcance por módulo, totales/conversión, registros históricos, fiscal
+(va al contador), casos límite y prioridad. Marca aparte lo ya definido en relevamientos anteriores (USD a
+compra, vuelto en pesos, conversión solo por Bóveda, AFIP en pesos) para no repreguntarlo.
+
+Estado verificado contra el código, no contra la doc: el negocio elige entre **11 monedas**
+(`tenants.moneda`) pero eso **solo cambia el símbolo** (`formato.ts`: "no hace conversiones"); hay **una
+sola cotización y es del dólar**; `ventas` **no tiene moneda** (`ventas.total` siempre en pesos).
+
+🛑 **Alerta A0 del relevamiento — el importador CSV escribe columnas muertas.** `productos` tiene DOS
+pares de columnas de moneda: `moneda_venta`/`moneda_costo` (`'local'`/`'usd'`) son las **vivas** (50 usos
+en 9 archivos: POS, ficha, rentabilidad, costo de OC) y `precio_venta_moneda`/`precio_costo_moneda` son
+**muertas** (17 usos, todos del propio importador). El importador escribe las muertas y nunca setea las
+vivas → un producto importado con `precio_venta=100` + `USD` se vende a **$100 pesos**. Verificado que
+**ningún trigger sincroniza los pares**. ⚠️ Falta la query que dice si algún negocio real importó en USD
+(el conector de Supabase se desconectó a mitad de sesión). No es nuevo: estaba anotado desde el
+2026-08-18 esperando decisión de GO.
+
+### 🧪 e2e: 2 cerrados, 1 documentado, 1 inviable
+- **155 ✅ (UAT 55.5)** — rol custom con Recursos en `editar`/`supervisa` crea ubicaciones; con `ver` no.
+  Confirmado contra `auth_puede_editar_modulo`: si el rol custom trae permiso explícito del módulo, **ese
+  permiso manda**, así que del lado del servidor el rol custom SÍ amplía (al revés que la navegación).
+- **156 ✅ (UAT 56.7)** — si la firma del receptor no se guarda, la pantalla avisa. No escribe en la base:
+  intercepta `get_envio_by_token` para marcar la firma requerida solo en el navegador.
+- **157 🚧 (UAT 57.9)** — escrito y en `skip`. Sembrar una reserva crea un **Pedido** automáticamente y eso
+  bloquea "Finalizar (rebaja stock)" a propósito. Para cerrarlo hay que entregar el pedido por Picking.
+- **59.7 🛑 no cubrible como e2e** — la rama de fallo vive dentro del `EXCEPTION` de
+  `fn_aplicar_precios_programados` (100% SQL); `fn_programar_precio` valida precio ≥ 0 y fecha futura y
+  `productos` no tiene CHECK sobre `precio_venta`, así que no hay forma de hacer reventar el UPDATE desde
+  REST. Tampoco hay lógica pura donde cubrirlo. **Requiere `service_role`.**
+
+### 🎥 Video de facturación — destrabado del lado del código
+`scripts/video/grabaciones/regrabar-facturacion.mjs` (nuevo): `video-facturacion.mjs` no servía porque sus
+dos modos abortan si el negocio ya tiene datos fiscales o puntos de venta, y "Genesis360 Onboarding" quedó
+con ambos. El nuevo exige lo contrario y **no escribe** esos datos; lo único que toca es el toggle de
+habilitar (solo TRAMO B) y lo restaura en `finally`. Lee las credenciales de `scripts/video/.env.video`
+(en `.gitignore`, con plantilla `.env.video.example`). Falta que GO cree ese archivo y corra las 2 tomas.
+
+### 🕵️ Gotchas nuevos (los cuatro costaron tiempo real)
+1. **El `exit code` de `cmd | tail` es del `tail`**, no del test: un spec que fallaba figuraba como exit 0
+   y casi se reporta verde. Verificar siempre `passed`/`failed` en la salida.
+2. **`toBeVisible()` NO garantiza estar dentro del viewport** — solo que el elemento tiene caja y no está
+   oculto. Sin `scrollIntoViewIfNeeded()`, el `boundingBox()` da coordenadas fuera de vista y el mouse
+   dibuja en la nada (el pad de firma del 156).
+3. **El Historial filtra por sucursal**: una venta sembrada sin `sucursal_id` —o con la sucursal
+   equivocada— nunca aparece en la lista, y el fallo parece de locator. La API devuelve "Sucursal Sur"
+   primero, así que `sucursales?limit=1` no es la que la pantalla está filtrando.
+4. **Una venta `reservada` genera un Pedido automáticamente**, y con el pedido activo la app no deja
+   finalizar la venta desde la ficha.
+
+### 🧹 Basura de test que se generó y se limpió
+- La 1ª versión del 156 activaba la firma requerida con un PATCH a `tenants` y lo revertía en `finally`;
+  al pasarse del timeout Playwright cerró el contexto antes del revert y **`Almacén Jorgito` quedó
+  exigiendo firma en todas las entregas**. Restaurado, y el spec rehecho para no tocar la base.
+- Las 3 corridas del 157 dejaron **3 pedidos huérfanos** (#184, #185, #186, `venta_origen_id` NULL tras
+  borrarse la venta). Borrados, junto con sus ítems. Verificado: DEV sin residuos.
+
+---
+
+## [2026-09-16] deploy | 🚀 PROD = v1.227.1 — fix del inicio de actividades, sin migraciones (DEV = PROD)
+
+Sesión cont. 72. GO autorizó el deploy del único pendiente de código que quedaba. PROD pasa de `v1.227.0` a
+**`v1.227.1`**. **Sin migraciones**: DEV y PROD siguen en 001-429, última `429_ayuda_cursos_y_recursos` en ambos
+(verificado por SQL antes del merge). Con esto **DEV deja de estar un paso adelante**.
+
+### Qué se hizo, en orden
+1. **Pre-chequeo de Kalken** (primer cliente real): sin usar la app — DUEÑO con último login y refresh el
+   2026-09-14 23:41 UTC, el SUPER_USUARIO nunca ingresó.
+2. **Paridad de policies por schema, DEV = PROD**: `public` **234**, `storage` 40, `cron` 2 — mismo hash en los dos
+   ambientes. Migraciones parejas (429 en ambos) y el diff `dev↔main` no toca `supabase/migrations/`.
+3. **Build (tsc + vite) y ESLint (`--max-warnings 0`) verdes**; CI del PR con Unit Tests en verde (2m4s).
+4. **PR #352** `dev→main` mergeado con merge commit (**`58ff0e6c`** en `main`).
+5. **Release `v1.227.1`** creado sobre `main` y marcado **Latest**.
+6. **EF `ai-assistant` redeployada en DEV y PROD** con el knowledge regenerado desde el wiki.
+   `bash scripts/auditar-edge-functions.sh ai-assistant`: **diff 0 en los dos ambientes**. Smoke: 401 sin sesión en
+   DEV y PROD. `verify_jwt` verificado en `true` **antes** de redeployar (el CLI conserva el valor viejo).
+7. **Verificado en producción**: `app.genesis360.pro` sirve el bundle `/assets/index-C5iOI7Dn.js` con `v1.227.1`.
+
+### 🐛 Qué arregla
+Config → Facturación, resumen "Identidad fiscal del emisor principal", mostraba el inicio de actividades **un día
+antes** del guardado (cargado 01/03/2024, mostraba 29/2/2024): `inicio_actividades` es `DATE` y `new Date(...)` lo
+toma como medianoche UTC, que en Argentina cae al día anterior. Ahora se arma a medianoche **local**, como ya hacían
+los PDF. **El dato guardado y los comprobantes nunca estuvieron mal** — era solo esa pantalla.
+
+### 🕵️ Gotcha del día — verificar la URL de producción siguiendo redirects
+El chequeo automático de la versión servida dio un **falso negativo**: `https://app.genesis360.pro/` responde con un
+redirect a `/login`, y el `curl` sin `-L` devolvía un HTML sin referencias a `/assets/*.js`, así que el script
+concluyó "no sirve v1.227.1 todavía" cuando en realidad ya la servía. **Al verificar el bundle de producción por
+curl hay que seguir el redirect (`-L`)**; "sin output" nunca es evidencia de éxito ni de fracaso.
+
+### ✅ Desbloqueado
+Los **2 tramos del video** de activación de facturación (la fecha corrida y el cierre sin encuadrar "Modo PRUEBA")
+ya se pueden regrabar navegando, sin reescribir datos.
+
+### 📐 Pedido nuevo de GO (anotado, sin arrancar)
+Documentar **todo el producto** y, sobre todo, **dibujar la infraestructura**: servidores, bases de datos, qué se
+conecta con qué y para qué sirve cada pieza. Relevado el estado actual: los 10 `.drawio` de `G360.Wiki/diagrams/`
+son de **procesos de negocio**, y las 9 páginas de `wiki/architecture/` son **texto puro, sin un solo diagrama**
+(0 matches de ```mermaid / graph TD / flowchart). No existe ningún diagrama de infraestructura ni de topología.
+
+---
+
 ## [2026-09-15] deploy | 🚀 PROD = v1.227.0 (migs 427-429) — cola de ML/TN, aviso de pago manual y Cursos y recursos
 
 Segundo deploy a PROD del día (cont. 71), después del deploy acumulado a `v1.226.0` (ver entrada más abajo) y de

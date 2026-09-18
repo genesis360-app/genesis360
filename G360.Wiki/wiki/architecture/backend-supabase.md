@@ -16,11 +16,11 @@ Genesis360 usa Supabase como backend completo. No hay servidor propio.
 
 | Servicio | Uso |
 |----------|-----|
-| PostgreSQL | Base de datos principal (83 migraciones) |
+| PostgreSQL | Base de datos principal (**429 migraciones**) |
 | Auth | Google OAuth + Email/Password |
 | Row Level Security (RLS) | Aislamiento multi-tenant |
 | Storage | Imágenes de productos |
-| Edge Functions | Lógica serverless (26 funciones Deno) |
+| Edge Functions | Lógica serverless (**51 funciones Deno**) |
 | Realtime | (no usado activamente, disponible) |
 
 ---
@@ -42,14 +42,18 @@ Genesis360 usa Supabase como backend completo. No hay servidor propio.
 
 - **Google OAuth** + Email/Password
 - Flow de creación automática de usuario en primer login Google
-- Trial de 14 días para negocios nuevos
+- Trial de **30 días** para negocios nuevos (`tenants.trial_ends_at`, default fijado en la mig 257 — antes eran 7)
 - Gating por suscripción en `AuthGuard.tsx` (`SubscriptionGuard`)
 
-Roles de usuario: `OWNER · SUPERVISOR · CAJERO · RRHH · ADMIN · CONTADOR · DEPOSITO`
+Roles de usuario: `DUEÑO · SUPER_USUARIO · SUPERVISOR · CAJERO · DEPOSITO · RRHH · CONTADOR · VIEWER · ADMIN`
+
+> 🛑 **`OWNER` no existe** y nunca existió en el código — el rol del dueño es `DUEÑO`. Esta página lo listó
+> mal hasta el 2026-09-18. `ADMIN` **no es del tenant**: es staff de Genesis360. Además de los roles fijos,
+> el DUEÑO puede definir **roles propios** por módulo (`roles_custom`), con los guards aplicados server-side.
 
 ---
 
-## Edge Functions (26 total)
+## Edge Functions (51 total)
 
 Todas en Deno/TypeScript. Lista completa en [[wiki/architecture/edge-functions]].
 

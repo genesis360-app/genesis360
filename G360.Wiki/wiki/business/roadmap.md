@@ -8,9 +8,11 @@ updated: 2026-09-15
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.227.0`** (2026-09-15, migs 001-429). Compute de PROD: **Micro** desde el 2026-09-15
-(antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo antes de cada deploy del día: no estaba usando la
-app, último login/refresh 2026-09-14 23:41 UTC, última venta 21:03 UTC).
+**Versión en PROD (actual): `v1.227.1`** (2026-09-16, migs 001-429 — **sin migración nueva**, deploy solo de código).
+Compute de PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo
+antes de cada deploy: no estaba usando la app, último login/refresh 2026-09-14 23:41 UTC).
+
+✅ **DEV = PROD**: las dos en `v1.227.1`, migs 001-429, última `429_ayuda_cursos_y_recursos`.
 
 **Dos deploys a PROD el mismo día (cont. 71)**: primero `v1.226.0` (migs 420-426, detalle en la sección `## 🚀
 v1.226.0` más abajo) y, después, ya el mismo día, un segundo deploy a `v1.227.0` (migs 427-429: cola/vínculos ML/TN
@@ -30,10 +32,11 @@ página `/ayuda/consultas`, RPC con guard, bucket de adjuntos; de paso, `send-em
 mail —commit `6dbaf377`, **deployada en DEV y PROD**— y ConfigPage ya no pide el "Token AfipSDK" con el circuito
 propio) y `v1.227.0` (migs 427-429, ver sección de abajo).
 
-🧾 **Versión en DEV (actual): `v1.227.1`** (2026-09-15, migs 001-429, sin migración nueva) — un paso adelante de
-PROD: fix de display en el resumen fiscal de Facturación + video y guía de activación de facturación (detalle en la
-sección `## 🧾 v1.227.1` más abajo). Pendiente corto: **deployar v1.227.1 a PROD (sin migración) y recién ahí
-regrabar 2 tramos** del video que quedaron con la fecha corrida y el cierre sin encuadrar "Modo PRUEBA".
+🧾 **`v1.227.1` deployada a PROD el 2026-09-16** (cont. 72): fix de display en el resumen fiscal de Facturación +
+scripts del video y guía de activación (detalle en la sección `## 🧾 v1.227.1` más abajo). PR **#352** `dev→main`
+(merge `58ff0e6c`), release `v1.227.1` marcado Latest, sin migración. Con esto **DEV ya no está un paso adelante**.
+✅ Y con eso se destrabó y **se completó** el pendiente que esperaba este deploy: los tramos del video que salieron con
+la fecha corrida y el cierre sin encuadrar "Modo PRUEBA" quedaron **regrabados el mismo 2026-09-16**.
 
 **Histórico — versión en PROD al 2026-09-04:** v1.195.4 (código — 🚀 DEPLOYADO A PROD el 2026-09-04: PR #340 "v1.195.4 — ESLint
 100% + UX chicas + deps (react-router v7) + fix invitar-proveedor" mergeado `dev`→`main` (merge commit
@@ -64,11 +67,14 @@ Trae a PROD, todo código/dependencias, sin cambios de esquema ni de comportamie
 bundle `assets/index-DZyAUxNg.js` servido contiene el string `v1.195.4`. Detalle completo:
 `G360.Wiki/sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `log.md` (2026-09-04, tipo `deploy`).
 
-## 🧾 v1.227.1 — EN DEV (2026-09-15, cont. 71) — sin migración nueva, sin PROD
+## 🧾 v1.227.1 — 🚀 EN PROD (construida 2026-09-15 cont. 71, deployada 2026-09-16 cont. 72) — sin migración nueva
 
 Fix de display + primer contenido de ayuda para activar facturación, construidos después de las migs 427-429 (ver
-sección de abajo). **PROD llegó a `v1.227.0` (migs 001-429) en el segundo deploy del mismo día** — este commit
-(`ded42b61`, fix + video) no viajó en ese deploy y sigue solo en DEV.
+sección de abajo). El commit `ded42b61` no viajó en el segundo deploy del 15 (que dejó PROD en `v1.227.0`) y salió
+al día siguiente en un deploy propio: PR **#352** `dev→main` (merge `58ff0e6c`), release `v1.227.1` Latest, CI
+verde, **sin migraciones** (DEV y PROD siguen en 001-429, verificado por SQL antes del merge). EF `ai-assistant`
+redeployada en DEV y PROD con el knowledge regenerado — `scripts/auditar-edge-functions.sh`: **diff 0 en ambos**, y
+401 sin sesión en los dos ambientes. Pre-chequeo: Kalken sin usar la app.
 
 - 🐛 **Fix: inicio de actividades un día antes en el resumen fiscal.** Config → Facturación, "Identidad fiscal del
   emisor principal", mostraba el inicio de actividades un día antes del guardado (`inicio_actividades` es `DATE` y
@@ -78,8 +84,9 @@ sección de abajo). **PROD llegó a `v1.227.0` (migs 001-429) en el segundo depl
 - 🎥 **Video "Activá la facturación electrónica"** (aparte de la serie de onboarding, que sigue en pausa) grabado
   contra PROD (tenant "Genesis360 Onboarding", CUIT ficticio 20-12345678-9): datos fiscales, punto de venta y CSR
   con el asistente, sin subir `.crt` ni tocar producción. `D:/Dev/genesis360-videos/video-facturacion/
-  video-facturacion-final.mp4` (78 s). A rehacer 2 tramos (fecha corrida + encuadre de "Modo PRUEBA") una vez
-  v1.227.1 esté en PROD.
+  video-facturacion-final.mp4`. ✅ **REGRABADO el 2026-09-16** (78,52 s): fecha correcta (1/3/2024) y recuadro "Modo
+  PRUEBA" bien encuadrado. 🛑 Hubo que regrabar más de lo previsto — el resumen fiscal queda en pantalla mientras se
+  carga el punto de venta, así que se reemplazó 16,83-34,63 completo, no solo el tramo del resumen.
 - 📄 **Guía HTML publicada** para clientes: artifact de Claude (https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg),
   "Activar facturación en Genesis360" — 10 pasos alternando ARCA/Genesis360 hasta pasar a producción, 5 problemas
   comunes.

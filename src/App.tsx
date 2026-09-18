@@ -80,12 +80,15 @@ const queryClient = new QueryClient({
 })
 
 function App() {
-  const { loadUserData, setUser, initialized, user } = useAuthStore()
+  const { ensureUserData, setUser, initialized, user } = useAuthStore()
 
   useEffect(() => {
+    // `ensureUserData` y no `loadUserData`: estos dos caminos se pisan (`getSession` resuelve casi
+    // junto con el primer `onAuthStateChange`, y este último además se emite de nuevo en cada
+    // refresco de token), y cargaban los mismos 4 datos ~5 veces por arranque. Ver `authStore.ts`.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        loadUserData(session.user.id)
+        ensureUserData(session.user.id)
       } else {
         useAuthStore.setState({ loading: false, initialized: true })
       }
@@ -93,7 +96,7 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        loadUserData(session.user.id)
+        ensureUserData(session.user.id)
       } else {
         setUser(null)
         useAuthStore.setState({ tenant: null })
@@ -101,7 +104,7 @@ function App() {
     })
 
     return () => subscription.unsubscribe()
-    // Bootstrap de auth: se suscribe UNA sola vez al montar. Agregar `loadUserData`/`setUser`
+    // Bootstrap de auth: se suscribe UNA sola vez al montar. Agregar `ensureUserData`/`setUser`
     // reabriría/cerraría la suscripción a onAuthStateChange en cada render — riesgo real para
     // el flujo de login de toda la app, sin beneficio (son acciones estables de Zustand).
     // eslint-disable-next-line react-hooks/exhaustive-deps

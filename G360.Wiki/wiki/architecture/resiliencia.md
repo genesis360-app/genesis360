@@ -155,14 +155,32 @@ cambio no costó más. Ninguna de las dos tiene CPU dedicada: la dedicada empiez
 110/mes); Small (~USD 15) y Medium (~USD 60) suman RAM y conexiones, con CPU compartida. **Con PROD en Micro, el techo
 de E2 medido en DEV aplica a PROD.** Antes del reinicio se verificó que Kalken (cliente real) no estuviera usando la app.
 
-**Cuánto consume un usuario** — medido manejando la app real con Playwright contra DEV:
+**Cuánto consume un usuario** — remedido el **2026-09-17** con un instrumento repetible
+(`npm run perf:navegacion`, `scripts/medir-navegacion.mjs`), contra DEV:
 
 | Qué hace | Requests |
 |---|---|
 | Pestaña abierta en el POS sin tocar nada | **0,59 req/s** (35/min: `caja_sesiones` cada 15 s, contadores de alertas cada 30 s, notificaciones, autorizaciones) |
 | Pestaña abierta en el Dashboard sin tocar nada | 0,49 req/s |
-| Cambiar de pantalla | **~64 requests por pantalla** (3,7 req/s navegando) |
+| **Abrir una pantalla DE CERO** (F5, pestaña nueva, PWA que arranca) | **64,3 por pantalla** |
+| **Cambiar de pantalla navegando** (clic en el menú, la app ya abierta) | **~11 (mediana)** |
+| **Aterrizar en el Dashboard** (Todo › Gráficos) navegando | **90** — monta las 9 áreas juntas |
 | Una venta completa, del carrito vacío al cobro | 30 requests |
+
+> ⚠️ **Corrección del 2026-09-17.** El "~64 requests por pantalla" que figuraba antes acá —y que
+> justificaba la palanca 1— **medía recargar la página, no navegar**. La sonda nueva reproduce ese número
+> clavado en modo recarga (64,3 y exactamente 32 `GET /auth/v1/user` en 8 pantallas, igual que la medición
+> vieja), y da **~11** cuando se navega clickeando el menú, que es lo que hace un usuario durante el día.
+> Las dos cifras son reales pero miden cosas distintas: **el costo alto es el ARRANQUE, no la navegación.**
+> Eso reordena las palancas (ver abajo). El reposo del POS sí se confirmó idéntico: 0,59 req/s.
+
+**De qué están hechas esas 64 requests de un arranque** (idéntico en las 8 pantallas medidas):
+
+| Concepto | Requests por arranque | Qué es |
+|---|---|---|
+| Identidad | **~19** | `loadUserData` corre **~5 veces por carga**: 4 `GET /auth/v1/user` + 5 `users` + 5 `tenants` + 5 `sucursales`, todas devolviendo lo mismo. `App.tsx` la dispara desde `getSession()` **y** desde `onAuthStateChange`, que se emite varias veces (sesión inicial, token refrescado). |
+| Badges del layout | **~20** | `useAlertas` (conteos sobre `ordenes_compra`, `pedidos`, `productos`, `inventario_lineas`, `ventas`…), notificaciones, badge de supervisión, estado de caja. Viven en `AppLayout`, así que se pagan una vez por arranque — y después siguen por polling. |
+| La pantalla en sí | ~10-25 | Lo único que depende de a dónde entraste. |
 
 **La cuenta**, contra un techo de ~170 req/s y operando al ~70 % (~120 req/s) para absorber picos:
 
@@ -178,11 +196,69 @@ Pasado ese punto no se cae (E2: 0 errores hasta 400 sesiones), **se pone lenta**
 escrituras (ventas con triggers de stock y caja) y el volumen real cuestan más CPU, y la instancia Micro es de CPU
 compartida. Tomarlo como orden de magnitud, no como garantía.
 
-**Palancas, de la más barata a la más cara:**
-1. **Navegación**: cada pantalla vuelve a pedir la sesión, el usuario, el negocio y las sucursales (32
-   `GET /auth/v1/user` en 8 cambios de pantalla). Cachearlo baja una parte grande de esas ~64 requests.
-2. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y el badge de alertas hace 6 conteos cada 30 s.
-   Espaciarlos o dispararlos por evento baja el consumo en reposo.
+**Palancas, reordenadas con la medición del 2026-09-17 (de la más barata a la más cara):**
+1. ✅ **HECHO (2026-09-17) — `loadUserData` corría ~5 veces por arranque.** Se agregó `ensureUserData` al
+   `authStore`: comparte la promesa en vuelo (los dos caminos disparan casi juntos, antes de que el estado
+   esté seteado) y saltea si ese usuario ya está cargado. `App.tsx` la usa en sus dos caminos de bootstrap.
+   🛑 **El dedupe vive solo ahí**: `loadUserData` sigue recargando SIEMPRE, porque las otras 8 llamadas de la
+   app son refrescos deliberados tras una mutación (alta de negocio, crear/borrar sucursal, activar la
+   suscripción, avatar, nombre, cancelar la baja) y tienen que traer datos frescos.
+   **Medido con la sonda, no estimado: 514 → 418 requests en 8 arranques (−96, −18,7 %)**, de 64,3 a 52,3 por
+   pantalla. `users` 41→17, `tenants` 40→16, `sucursales` 43→19, y `GET /auth/v1/user` (32) desaparece del
+   top de repetidos. Verificado también contra el **build de producción** (51,3) y con el login real por UI
+   (`--project=setup-owner`, verde).
+   ✅ **Sin remanente — `loadUserData` corre exactamente 1 vez por arranque.** Contado por
+   **`GET /auth/v1/user`, que es el único endpoint con un solo llamador**: da **1 en cada una de las 8
+   pantallas**, en dev y en el build de producción (antes: 4). Las 2 lecturas que quedan de `users`,
+   `tenants` y `sucursales` **no son la carga repetida**, son consumidores distintos y legítimos:
+   `usePlanLimits` hace `count exact head` sobre `users` y `sucursales`, y `useCotizacion` lee `tenants`.
+   > 🕵️ **Lección de método**: contar por TABLA engaña cuando varios hooks leen la misma tabla con queries
+   > distintas. Para medir "¿cuántas veces corrió esta función?" hay que contar por un endpoint que solo
+   > ella toque. Una primera lectura de estos mismos datos concluyó "quedan ~2 cargas" y era falso.
+2. ✅ **HECHO (2026-09-17) — el Dashboard se recalculaba ENTERO cada vez que se volvía a él.**
+   "Todo › Gráficos" monta **las 9 áreas** de una (`MODULE_AREAS.map` en `DashboardPage.tsx`) y cada
+   `Dash*Area` corre una `queryFn` con 5-10 consultas **secuenciales** (`DashGastosArea` sola hace 9).
+   Con `staleTime: 0` en todas, **volver costaba lo mismo que entrar**.
+   **Se puso una ventana de 60 s** en las 9 áreas + las 6 consultas propias de `DashboardPage` + los 2
+   gráficos que monta aparte. **Medido: volver pasó de 92 → 18 requests (−80 %)**; la **primera** carga
+   no cambia (~102, por diseño: la ventana solo evita recalcular, nunca evita la primera consulta).
+   **Elegido por GO** entre las tres variantes posibles, justamente porque es la única invisible: no
+   cambia el layout ni el orden de carga. Verificado en navegador: 10/10 secciones, 31 gráficos, 0
+   errores de consola, nada colgado en "Cargando…" — **idéntico tras ir a otra pantalla y volver**.
+   ⚠️ **No se hizo** "no montar las 9 áreas" (sí bajaría la primera carga, pero cambia lo que se ve) ni
+   "paralelizar las queryFn" (no baja el conteo y concentraría el burst contra un pool de ~20 conexiones).
+
+   🕵️ **Por qué quedan 18 y no 0** — diagnosticado, no adivinado: `DashboardPage` inicializa
+   `customHasta` con `new Date().toISOString()`, o sea **un timestamp nuevo en cada montaje**. Ese valor
+   está en el `queryKey` de `dash-kpis` y `dash-fugas`, y viaja como prop a `VentasVsGastosChart` y
+   `MixCajaChart`. **Con la key cambiando en cada vuelta, el caché no puede acertar por más ventana que
+   tenga.** Encaja exacto con el residuo medido (`ventas` 5, `gastos` 4, `venta_items` 3,
+   `caja_movimientos` 2, `caja_sesiones` 2, `cajas` 1, `devoluciones` 1 — todas del bloque de `dash-kpis`).
+   Las consultas cuya key NO lo incluye (`dashboard-stats`, `movimientos-recientes`, `top-productos`) sí
+   cachean.
+   ✅ **CERRADO el 2026-09-18**: `customHasta` ahora se inicializa al **fin del día** en vez de `new Date()`
+   — que es exactamente lo que ya usaban todos los demás períodos (`hasta.setHours(23,59,59,999)`) — así el
+   valor es estable dentro del día y las 4 keys aciertan. **No cambia ningún número**: verificado en
+   `FilterBar.tsx` que tanto `getFechasDashboard` como `getFechasAnteriores` arrancan con
+   `if (periodo === 'custom' && custom)`, o sea que fuera de "custom" ese valor ni se lee.
+   **Medido: volver al Dashboard pasa de 18 a 0 requests.** Con la primera visita intacta (102).
+   El camino "custom" se probó en navegador: se aplica el período y quedan las mismas 10 secciones y 31
+   gráficos, sin errores.
+3. ✅ **HECHO (2026-09-18) — polling en reposo: 0,59 → 0,28 req/s (−53 %).**
+   🛑 **Criterio, puesto por GO** (*"que no pierda velocidad el sistema ni buen rendimiento"*): se tocaron
+   **solo contadores de fondo**, nunca algo que habilite una operación.
+   - `useAlertas` **30 s → 120 s**: era el mayor consumo de una pestaña quieta (su `queryFn` hace ~11
+     conteos sobre `ordenes_compra`, `pedidos`, `productos`, `inventario_lineas`, `ventas`, `alertas`…) y
+     alimenta **solo el número del badge** del sidebar: no bloquea ni habilita nada.
+   - `useSupervisorAutorizaciones` **30 s → 60 s** y `NotificacionesButton` **30 s → 60 s**: se dejan más
+     cortos que alertas a propósito, porque del otro lado hay alguien esperando. Notificaciones conserva
+     `refetchOnWindowFocus`, que es lo que la gente usa de verdad (volver a la pestaña actualiza al toque).
+   - **NO se tocó**: las cajas abiertas del POS (15 s — decide si se puede cobrar) ni el polling de pago
+     MODO/MP mientras el QR está en pantalla (4 s, se corta solo al llegar el pago). Ahí la frescura **es**
+     la función. Por eso `caja_sesiones` queda ahora como el consumo dominante en reposo: es deliberado.
+4. **Navegar entre pantallas ya es barato (~11)**: cachear identidad "al navegar" —la palanca que decía la
+   versión anterior de esta página— **no tiene casi nada que ahorrar ahí**. El layout no se remonta
+   (`AppLayout` es layout route) y los guards son lectura pura de Zustand, sin red.
 3. **Compute**: ✅ PROD ya pasó de Nano a Micro (2026-09-15, mismo precio). Si hace falta más: Small (~USD 15/mes, 2 GB) o Medium (~USD 60, 4 GB) suman RAM y conexiones con CPU compartida;
    Large (~USD 110, 8 GB) es la primera con **CPU dedicada**. Es la palanca directa sobre el techo, porque ninguna
    consulta individual se destaca. Precios de la documentación de Supabase al 2026-09-14; confirmar en Billing.

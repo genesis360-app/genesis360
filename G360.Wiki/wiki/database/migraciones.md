@@ -22,10 +22,11 @@ DEV, grants por tabla confirmados, PR **#351** (merge `0b65bc45` en `main`), Edg
 401 en las tablas/RPC nuevas. Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71) y
 `log.md` (2026-09-15, `deploy`, "PROD = v1.227.0 (migs 427-429)").
 
-🧾 **Después, misma sesión: DEV pasa a `v1.227.1`** (2026-09-15, cont. 71) — **sin migración nueva**, sigue en
-001-429; ese código (fix de display del inicio de actividades corrido un día en el resumen fiscal de Facturación +
-video y guía HTML de activación de facturación) **no viajó** en el segundo deploy y sigue solo en DEV. Ver
-[[wiki/business/roadmap]] (sección `v1.227.1`), `log.md` (2026-09-15, "Video + guía de activación...").
+🧾 **`v1.227.1` — 🚀 EN PROD desde el 2026-09-16 (cont. 72), sin migración nueva.** Construida el 2026-09-15 (cont.
+71) y deployada al día siguiente: el fix de display del inicio de actividades corrido un día en el resumen fiscal de
+Facturación + los scripts del video/guía de activación. **El tope de migraciones no se movió: DEV y PROD siguen en
+001-429**, última `429_ayuda_cursos_y_recursos` en ambos (verificado por SQL antes del deploy). Ver
+[[wiki/business/roadmap]] (sección `v1.227.1`), `log.md` (2026-09-16, `deploy`).
 
 **🚀 Deploy acumulado a PROD (2026-09-15, cont. 71): PROD = DEV, migs 001-426.** GO: "Deploy acumulado a PROD".
 Migraciones 420→426 aplicadas en PROD en orden, antes del merge, con `apply_migration` y el contenido exacto de

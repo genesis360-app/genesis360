@@ -102,7 +102,7 @@
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">RRHH</span>
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Dashboard / Insights</span>
   </div>
-  <div class="version">Versión del documento: v2.0 — Julio 2026 · App v1.100.0</div>
+  <div class="version">Versión del documento: v2.1 — Septiembre 2026 · App v1.227.1</div>
   <div class="meta">Genesis360 · app.genesis360.pro · Confidencial</div>
 </div>
 
@@ -162,12 +162,12 @@
     <div>
       <h4>Backend / Infra</h4>
       <ul>
-        <li>Supabase (PostgreSQL + Auth)</li>
+        <li>Supabase (PostgreSQL + Auth) — <strong>429 migraciones</strong> versionadas</li>
         <li>Row Level Security (RLS) en toda la data</li>
-        <li>Edge Functions (Deno)</li>
-        <li>Storage privado (imágenes / documentos)</li>
-        <li>Vercel (deploy frontend)</li>
-        <li>Mercado Pago · Resend · Cloudflare · AfipSDK · Google Maps</li>
+        <li><strong>51 Edge Functions</strong> (Deno) + <strong>pg_cron</strong> (6 jobs)</li>
+        <li>Storage privado — 12 buckets (imágenes / documentos / certificados)</li>
+        <li>Vercel (deploy frontend) · GitHub Actions (CI + 13 sweeps)</li>
+        <li>AfipSDK · Mercado Pago · MODO · Mercado Libre · TiendaNube · Resend · Cloudflare · WhatsApp (Meta) · Claude · Google Maps</li>
       </ul>
     </div>
   </div>
@@ -211,17 +211,20 @@
   <h2>2. Planes y precios</h2>
 
   <table>
-    <tr><th>Plan</th><th>Precio</th><th>Usuarios</th><th>Productos</th><th>Movimientos/mes</th><th>Cajas</th></tr>
+    <tr><th>Plan</th><th>Precio mensual</th><th>Usuarios</th><th>Productos (SKU)</th><th>Comprobantes/mes</th><th>Sucursales</th></tr>
     <tr><td><span class="badge badge-gray">Free</span></td><td>$0</td><td>1</td><td>50</td><td>200</td><td>1</td></tr>
-    <tr><td><span class="badge badge-blue">Básico</span></td><td>$4.900 ARS/mes</td><td>2</td><td>500</td><td>2.000</td><td>2</td></tr>
-    <tr><td><span class="badge badge-purple">Pro</span></td><td>$9.900 ARS/mes</td><td>10</td><td>5.000</td><td>Ilimitados</td><td>3</td></tr>
-    <tr><td><span class="badge badge-amber">Enterprise</span></td><td>A consultar</td><td>Ilimitados</td><td>Ilimitados</td><td>Ilimitados</td><td>10</td></tr>
+    <tr><td><span class="badge badge-blue">Básico</span></td><td><strong style="font-size:12pt;">$54.000</strong> ARS/mes<br><span style="font-size:8.5pt;color:#6b7280;">con débito automático · $60.000 con otro medio de pago</span></td><td>5</td><td>2.000</td><td>6.000</td><td>1</td></tr>
+    <tr><td><span class="badge badge-purple">Pro</span></td><td><strong style="font-size:12pt;">$90.000</strong> ARS/mes<br><span style="font-size:8.5pt;color:#6b7280;">con débito automático · $100.000 con otro medio de pago</span></td><td>15</td><td>8.000</td><td>14.000</td><td>4</td></tr>
+    <tr><td><span class="badge badge-amber">Enterprise</span></td><td>A consultar</td><td>Ilimitados</td><td>Ilimitados</td><td>Ilimitados</td><td>Ilimitadas</td></tr>
   </table>
+  <div class="callout">
+    <strong>El precio de referencia es con débito automático</strong> — es la forma de pago recomendada y ya tiene aplicado el <strong>−10 %</strong>. Con pago anual el descuento es del <strong>−30 %</strong>. Todos los planes incluyen <strong>1 CUIT</strong>; las razones sociales adicionales van por add-on.
+  </div>
 
   <div class="callout-info callout">
-    <strong>Trial:</strong> 7 días gratis con acceso completo para nuevos negocios. Se activa al completar el onboarding (registro del negocio). Al vencer, se solicita suscripción vía Mercado Pago.
+    <strong>Trial:</strong> <strong>30 días</strong> gratis con acceso completo para nuevos negocios. Se activa al completar el onboarding (registro del negocio). Al vencer, se solicita suscripción vía Mercado Pago o pago manual.
   </div>
-  <p style="font-size:9pt;color:#6b7280;">Un <strong>movimiento</strong> = una fila en <code>movimientos_stock</code> (solo inventario: venta/rebaje, ingreso, ajuste, traslado, devolución, kits). Facturar y registrar gastos <strong>no</strong> consumen movimientos. Cada <strong>variante</strong> (talla/color) cuenta como un producto separado.</p>
+  <p style="font-size:9pt;color:#6b7280;">La dimensión medida de flujo es el <strong>comprobante</strong> (toda venta finalizada del mes; los presupuestos y las canceladas no cuentan), con control <strong>suave</strong>: pasarse del límite <strong>nunca bloquea una venta</strong>. Los <em>movimientos de stock</em> dejaron de ser un límite y quedan solo como telemetría. Cada <strong>variante</strong> (talle/color) cuenta como un producto separado.</p>
 
   <h3>Matriz de funcionalidades por plan</h3>
   <table>
@@ -240,15 +243,21 @@
   <p style="font-size:9pt;color:#6b7280;">Multi-sucursal está disponible en todos los planes (según cantidad de usuarios). Los límites de plan se aplican hoy en el cliente; se están reforzando con guards server-side.</p>
 
   <h3>Add-ons disponibles</h3>
-  <ul>
-    <li><strong>+500 movimientos/mes</strong> — $990 ARS (acumulable), pago único vía Mercado Pago. Para planes con límite de movimientos (Free y Básico).</li>
-  </ul>
+  <p style="font-size:10pt;">Cada dimensión se amplía por packs que <strong>se suman al límite del plan</strong>. Los de SKU, sucursales, usuarios y CUIT son <strong>recurrentes</strong> (un pack por dimensión: el nuevo reemplaza al anterior). Los de comprobantes pueden ser recurrentes o <strong>temporales</strong> (pago único, vencen a los 30 días, pensados para un pico puntual; ésos sí se acumulan).</p>
+  <table>
+    <tr><th>Add-on</th><th>Packs disponibles</th></tr>
+    <tr><td><strong>Productos (SKU)</strong></td><td>+500 → $5.000 · +2.000 → $10.000 · +8.000 → $25.000</td></tr>
+    <tr><td><strong>Comprobantes/mes</strong></td><td>+1.000 → $10.000 · +5.000 → $30.000 · +10.000 → $50.000</td></tr>
+    <tr><td><strong>Sucursales</strong></td><td>+1 → $15.000 · +3 → $35.000 · +5 → $55.000</td></tr>
+    <tr><td><strong>Usuarios</strong></td><td>+1 → $5.000 · +3 → $10.000 · +5 → $15.000</td></tr>
+    <tr><td><strong>CUIT adicional</strong> (multi-razón social)</td><td>+1 → $20.000 · +2 → $35.000 · +3 → $45.000</td></tr>
+  </table>
 </div>
 
 <!-- 3. MÓDULOS ACTUALES -->
 <div class="section page-break">
   <h2>3. Módulos actuales</h2>
-  <p style="font-size:9pt;color:#6b7280;margin-bottom:16px;"><em>Todo lo listado en esta sección está implementado y en producción (v1.100.0), salvo aclaración expresa.</em></p>
+  <p style="font-size:9pt;color:#6b7280;margin-bottom:16px;"><em>Todo lo listado en esta sección está implementado y en producción (v1.227.1), salvo aclaración expresa.</em></p>
 
   <div class="module-card">
     <h3>📦 Inventario / WMS</h3>
@@ -473,6 +482,65 @@
       <li><strong>Plataforma interna</strong> (admin.genesis360.pro, repo separado): gestión de tenants y soporte por el staff de Genesis360</li>
     </ul>
   </div>
+
+  <h3 style="margin-top:28px;">Módulos incorporados después de la versión anterior de este documento</h3>
+  <p style="font-size:9pt;color:#6b7280;margin-bottom:12px;"><em>Todo lo de este bloque está en producción, salvo donde se aclare.</em></p>
+
+  <div class="module-card">
+    <h3>📋 Pedidos + Picking</h3>
+    <ul>
+      <li>Pedido con estados propios (borrador → confirmado → preparación → entregado), armado por <strong>picking</strong> y entrega parcial</li>
+      <li>Una reserva de venta genera su pedido automáticamente; el precio se resuelve del lado del servidor con la misma regla que el mostrador</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🏷️ Comercial — combos, cupones y precios</h3>
+    <ul>
+      <li>Combos por producto o por conjunto · <strong>cupones</strong> de descuento fijo con código único y vigencia</li>
+      <li>Precios mayoristas por cantidad (incluido el descuento por pallet/caja) y <strong>precios programados</strong> con fecha y hora de entrada</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🧍 Repositores</h3>
+    <ul>
+      <li>Tareas de reposición a góndola con prioridad, asignación y cierre del día</li>
+      <li>Etiquetas de precio: se imprimen las que cambiaron, y el POS avisa al cajero si la góndola quedó con un precio viejo</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🛒 Canales de venta online</h3>
+    <ul>
+      <li><strong>Mercado Libre</strong> y <strong>TiendaNube</strong>: los pedidos entran solos por webhook, reservan stock y generan el envío</li>
+      <li>Sincronización de stock en ambos sentidos y publicación de precio con ajuste por canal · <strong>Marketplace API</strong> propia por negocio</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🤖 Asistente IA + WhatsApp</h3>
+    <ul>
+      <li>Asistente que responde sobre el negocio con los datos reales del tenant</li>
+      <li>Bot de WhatsApp: registra un gasto desde la <strong>foto del comprobante</strong> (con doble confirmación antes de tocar la contabilidad) y manda el resumen diario al dueño <span class="badge badge-amber">pendiente App Review de Meta</span></li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🔐 Supervisión, roles propios y multi-CUIT</h3>
+    <ul>
+      <li>Autorizaciones de supervisor transversales (inventario, precios, clientes, envíos, pedidos, RRHH) con aprobación y rechazo trazados</li>
+      <li><strong>Roles propios</strong> por módulo definidos por el dueño, con los permisos aplicados en la base y no solo en la pantalla</li>
+      <li><strong>Multi-CUIT</strong>: varias razones sociales en un mismo negocio, cada una con su certificado, su numeración y sus libros</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🗂️ Portal de proveedores</h3>
+    <ul>
+      <li>El proveedor entra con su propia cuenta a ver órdenes de compra y su cuenta corriente, sin acceso al resto del sistema</li>
+    </ul>
+  </div>
 </div>
 
 <!-- 4. REGLAS DE NEGOCIO -->
@@ -530,7 +598,7 @@
 <div class="section page-break">
   <h2>5. Roadmap</h2>
 
-  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v1.100.0 · Julio 2026. La app pasó de v0.75 (Abril) a v1.100 con ~25 releases de features grandes. Las marcadas ✅ están en PROD.</em></p>
+  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v1.227.1 · Septiembre 2026. La app pasó de v0.75 (Abril) a v1.227 con más de 100 releases de features grandes. Las marcadas ✅ están en PROD.</em></p>
 
   <h3>Hitos implementados desde v0.76 (todos en PROD, salvo aclaración)</h3>
 
@@ -589,9 +657,9 @@
 
   <div class="two-col">
     <div class="module-card">
-      <h4>🧾 Facturación WSFE 100% propia</h4>
-      <p>Migrar de AfipSDK a integración directa con AFIP (TRA + firma CMS → WSAA → WSFEv1 SOAP), sin terceros. Homologación primero, después producción.</p>
-      <span class="badge badge-amber">Backlog priorizado</span>
+      <h4>🧾 Facturación WSFE 100 % propia ✅</h4>
+      <p>Integración directa con AFIP (TRA + firma CMS → WSAA → WSFEv1 SOAP), sin terceros. <strong>Motor propio en producción y activo para todos los negocios</strong>, con CAE real emitido. AfipSDK queda solo como alternativa.</p>
+      <span class="badge badge-green">Implementado</span>
     </div>
     <div class="module-card">
       <h4>📄 T&C / Privacidad / marketing → PROD</h4>
@@ -609,19 +677,19 @@
       <span class="badge badge-gray">Bloqueado (terceros)</span>
     </div>
     <div class="module-card">
-      <h4>🗑️ Hard-delete de tenant + grace period</h4>
-      <p><code>delete_scheduled_at</code> + CASCADE vía sweep externo (pg_cron no habilitado en el proyecto).</p>
-      <span class="badge badge-gray">Backlog</span>
+      <h4>🗑️ Hard-delete de tenant + grace period ✅</h4>
+      <p>Baja programada con período de gracia y borrado en cascada por sweep. <strong>Implementado y en producción.</strong></p>
+      <span class="badge badge-green">Implementado</span>
     </div>
     <div class="module-card">
-      <h4>🔐 Permisos por rol parametrizables</h4>
-      <p>Que el DUEÑO configure qué puede hacer cada rol dentro de su tenant (hoy los permisos son fijos por rol).</p>
-      <span class="badge badge-gray">Backlog (feature grande)</span>
+      <h4>🔐 Permisos por rol parametrizables ✅</h4>
+      <p>El DUEÑO define roles propios y qué puede ver/editar cada uno por módulo (<code>roles_custom</code>), con los guards aplicados <strong>server-side</strong>, no solo en la interfaz. <strong>Implementado.</strong></p>
+      <span class="badge badge-green">Implementado</span>
     </div>
     <div class="module-card">
-      <h4>💬 WhatsApp / IA chat / benchmark</h4>
-      <p>Resumen diario y alertas por WhatsApp · asistente conversacional del negocio · benchmark por rubro.</p>
-      <span class="badge badge-gray">Ideas</span>
+      <h4>💬 WhatsApp / Asistente IA ✅</h4>
+      <p>Asistente IA del negocio en producción, y bot de WhatsApp que registra gastos desde una foto del comprobante y manda el resumen diario al dueño. <strong>Falta solo la App Review de Meta</strong> para habilitarlo a todos los clientes.</p>
+      <span class="badge badge-green">Implementado (pendiente App Review)</span>
     </div>
     <div class="module-card">
       <h4>⚡ Performance DB</h4>
@@ -656,8 +724,11 @@
   <h3>Integraciones</h3>
   <table>
     <tr><th>Servicio</th><th>Uso</th><th>Estado</th></tr>
-    <tr><td>Mercado Pago</td><td>Suscripciones (preapproval) + add-ons (pago único), verificación server-side</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>Mercado Pago</td><td>Suscripciones (preapproval) + add-ons (pago único), verificación server-side · link de pago y QR para cobrar al cliente</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>MODO</td><td>Cobro por QR en el punto de venta</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
     <tr><td>AfipSDK</td><td>Emisión de comprobantes electrónicos ante AFIP/ARCA (CAE)</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>Mercado Libre · TiendaNube</td><td>OAuth, ingesta de pedidos por webhook y sincronización de stock/precio en ambos sentidos</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>WhatsApp Cloud API (Meta)</td><td>Bot que registra gastos desde la foto del comprobante + resumen diario al dueño</td><td><span class="badge badge-amber">Pendiente App Review</span></td></tr>
     <tr><td>Resend</td><td>Emails transaccionales (FROM noreply@genesis360.pro, dominio verificado)</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
     <tr><td>Cloudflare Email Routing</td><td>Recepción de correo (soporte@ → Google Group; hola@)</td><td><span class="badge badge-green">Activo</span></td></tr>
     <tr><td>Claude (Anthropic)</td><td>Scan de producto por imagen + Asistente IA</td><td><span class="badge badge-green">Activo</span></td></tr>
@@ -670,21 +741,22 @@
   <ul>
     <li><strong>Triggers</strong>: recálculo de <code>stock_actual</code>, número de venta secuencial por tenant, totales de nómina, seed de alta de tenant (SECURITY DEFINER), guard de activación de suscripción</li>
     <li><strong>Funciones/RPC</strong>: registrar venta, devolver saldo a favor, pagar nómina, aprobar vacación, aging profiles, kitting atómico, sweeps cross-tenant (vía EF <code>cron-sweeps</code>)</li>
-    <li><strong>Nota:</strong> pg_cron / pg_net no habilitados → los jobs programados corren por sweep lazy o cron externo (GitHub Actions)</li>
+    <li><strong>Dos relojes</strong>: <strong>pg_cron</strong> con <strong>6 jobs</strong> dentro de la base (precios programados, avisos de cuenta corriente, limpieza de colas y tokens, sync de fulfillment) + <strong>13 workflows de GitHub Actions</strong> que invocan Edge Functions como respaldo externo</li>
   </ul>
 
   <h3>Testing</h3>
   <ul>
-    <li><strong>Unit</strong> (Vitest): <strong>823 tests</strong> en 55 archivos sobre lógica pura (<code>src/lib</code>), incluyendo espejos JS de RPCs SQL de plata/fiscal</li>
-    <li><strong>E2E</strong> (Playwright): specs contra entorno DEV con usuario real (metodología mutante: aserción positiva + efecto en DB)</li>
-    <li><strong>Base de datos</strong>: 249 migraciones versionadas · auditoría de paridad DEV↔PROD por hash antes de cada alta</li>
+    <li><strong>Unit</strong> (Vitest): <strong>1.848 tests</strong> en <strong>112 archivos</strong> sobre lógica pura (<code>src/lib</code>), incluyendo espejos JS de RPCs SQL de plata/fiscal</li>
+    <li><strong>E2E</strong> (Playwright): ~160 specs contra entorno DEV con usuario real (metodología mutante: aserción positiva + efecto verificado en la base)</li>
+    <li><strong>Base de datos</strong>: <strong>429 migraciones</strong> versionadas · auditoría de paridad DEV↔PROD por hash antes de cada alta</li>
+    <li><strong>Carga</strong>: techo de la instancia medido con sonda propia (~170 req/s de lectura) + medición repetible del consumo por usuario</li>
     <li><strong>CI</strong>: GitHub Actions ejecuta los unit tests en cada push a <code>dev</code></li>
   </ul>
 </div>
 
 <!-- FOOTER -->
 <div class="footer">
-  Genesis360 · Documento de producto v2.0 · Julio 2026 · App v1.100.0 · Confidencial · app.genesis360.pro
+  Genesis360 · Documento de producto v2.1 · Septiembre 2026 · App v1.227.1 · Confidencial · app.genesis360.pro
 </div>
 
 </body>

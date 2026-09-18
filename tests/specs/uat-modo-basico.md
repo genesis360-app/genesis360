@@ -2074,7 +2074,7 @@ que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edg
 | 55.2 | La pestaña Ubicaciones cuenta los recursos por id | e2e 147 ("1 recurso") | ✅ |
 | 55.3 | SUPERVISOR no crea ubicaciones del catálogo | e2e 147 por API → 403 | ✅ |
 | 55.4 | DUEÑO sí (control positivo) | e2e 147 por API → 201 | ✅ |
-| 55.5 | Rol custom con Recursos en `editar`/`supervisa` puede; con `ver` no | unit `puedeGestionarUbicacionesRecursos` + policy con `auth_puede_editar_modulo('recursos')` | ✅ unit · e2e con usuario de rol custom pendiente |
+| 55.5 | Rol custom con Recursos en `editar`/`supervisa` puede; con `ver` no | unit `puedeGestionarUbicacionesRecursos` + **e2e 155** (mutante, por API con el SUPERVISOR + rol custom: `editar`→201, `supervisa`→201, `ver`→403, y control de partida sin rol custom→403) | ✅ |
 | 55.6 | Sin permiso, la UI no ofrece "+ Nueva ubicación" ni crear/renombrar/borrar | revisión de `RecursosPage` | ✅ código |
 | 55.7 | Después del DROP la app no pide `recursos.ubicacion` | API `select=ubicacion` → 400 y `select=*` → 200; e2e dashboard | ✅ DEV |
 
@@ -2088,7 +2088,7 @@ que el wiki daba por deployado desde el 20/08. Mergear a `main` no despliega Edg
 | 56.4 | El empleado vinculado ve SU recibo y no el de otro, y no sube | e2e 148 (Mi Portal) | ✅ |
 | 56.5 | El transportista sube la foto desde `/transporte/:token` sin sesión | e2e 148 por UI, contexto sin sesión (mutante: con la pantalla vieja falla) | ✅ |
 | 56.6 | Token inválido o envío cerrado → la EF rechaza | e2e 148 (404) + smoke PROD | ✅ |
-| 56.7 | Si la firma no se guarda, la pantalla avisa | revisión de `EnviosPage`/`TransportistePage` | ✅ código |
+| 56.7 | Si la firma no se guarda, la pantalla avisa | **e2e 156** (mutante, contexto sin sesión: se hace fallar `transportista-subir-archivo` solo para `tipo=firma` y se espera el aviso "La firma no se guardó". No escribe en la base: la firma se marca requerida interceptando `get_envio_by_token`, y `update_envio_by_token` queda bloqueada para que el envío no cambie de estado) | ✅ |
 | 56.8 | En PROD, un usuario real: propio 200, ajeno rechazado | smoke con la cuenta de prueba | ✅ |
 
 ## 🛑 §57 — El reintegro al anular sale por donde entró el cobro (sin migración) 🛑 PLATA — 2026-09-14
@@ -2108,7 +2108,7 @@ latentes (sin daño en DEV ni PROD): los dólares no salían de la Caja USD, el 
 | 57.6 | La penalidad de la seña se aplica a cada parte (pesos, dólares e informativos) | unit | ✅ unit |
 | 57.7 | Anular una venta con efectivo USD sin Caja USD abierta → bloquea con mensaje; sin detalle de medios → aviso "registralo manualmente" | revisión de código (guard + `sinDetalle`) | ✅ código |
 | 57.8 | Cancelar una reserva con seña en USD → el modal y el aviso dicen cuántos US$ se devuelven | revisión de código | ✅ código |
-| 57.9 | Despachar una reserva con seña mixta (pesos + USD) → la seña no se vuelve a sumar a la caja en pesos | revisión de código (`.limit(1)` en lugar de `.maybeSingle()`, que con 2 filas daba `null`) | ✅ código — sin e2e |
+| 57.9 | Despachar una reserva con seña mixta (pesos + USD) → la seña no se vuelve a sumar a la caja en pesos | revisión de código (`.limit(1)` en lugar de `.maybeSingle()`, que con 2 filas daba `null`) · 🚧 e2e **157 escrito pero en `skip`**: sembrar una venta `reservada` crea un **Pedido** automáticamente y, mientras ese pedido está activo, `VentasPage` reemplaza "Finalizar (rebaja stock)" por el aviso "Esta venta tiene el Pedido #N en curso" (deliberado). Como la query del pedido es async, el botón existe en el primer render: el click entra, no hace nada, y el fallo aparece después como "la venta no llegó a despacharse". Para cerrarlo hay que entregar el pedido (Pedidos → Picking) antes de finalizar, o sembrar la reserva sin que genere pedido | ✅ código — sin e2e |
 | 57.10 | Falla al asentar el cobro de un despacho → aviso con monto (antes `catch {}` silencioso) | revisión de código | ✅ código |
 | 57.11 | Anular una venta pagada con "Crédito a favor" → el crédito vuelve al saldo del cliente (`cliente_creditos`, origen `anulacion_venta`), con la penalidad si era una seña, sin pasar por la caja y sin duplicarse en un reintento (decisión de GO, 2026-09-14; antes el cliente lo perdía) | e2e 149 C (mutante) + unit `creditoARestituirPorAnulacion` | ✅ |
 

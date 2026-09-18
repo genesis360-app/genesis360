@@ -8,6 +8,12 @@ updated: 2026-07-17
 
 # Planes y Pricing
 
+> ✅ **Add-on de CUIT adicional — precio CONFIRMADO por GO el 2026-09-18**: +1 **$20.000** · +2 **$35.000** ·
+> +3 **$45.000** (recurrente, solo tipo `fijo`). Se dejaron los valores que ya estaban vivos, para no moverle
+> el cobro a nadie que lo tenga contratado. 🛑 Se descubrió que el pack **ya se cobraba end-to-end** aunque
+> `brand.ts` y la EF `mp-addon-batch` decían *"precio a confirmar antes de exponer el pack"*: el precio vive
+> duplicado en los dos lugares y el espejo de la EF es el que revalida y cobra — tocar ambos en el mismo commit.
+>
 > ✅ **Pricing v2 IMPLEMENTADO en `brand.ts` y EN PROD** (desde v1.115.0, 2026-07-06): Básico **$60.000** / Pro **$100.000** (precio de lista; $54.000/$90.000 con el −10% de débito automático). La sección "Tabla de planes (LEGACY)" más abajo con $4.900/$9.900 es **historia** — esos números NO existen más en el código, quedan solo de referencia de cómo arrancó el pricing. La fuente de verdad siempre es `src/config/brand.ts` (`PLANES`, `PLAN_BASE_LIMITS`, `ADDON_PACKS`, `FEATURES_POR_PLAN`).
 
 ---

@@ -131,7 +131,10 @@ export function useSupervisionBadge(modulosPermitidos: string[]) {
       return count ?? 0
     },
     enabled: !!tenant && modulosPermitidos.length > 0,
-    refetchInterval: 30000,
+    // Capacidad (2026-09-18): 30 s → 60 s. Es un `count` para el badge de supervisión. Se deja más
+    // corto que el de alertas (120 s) a propósito: acá hay alguien esperando del otro lado (un
+    // empleado pidió autorización), así que se baja el consumo sin volverlo perezoso.
+    refetchInterval: 60_000,
   })
   return { count: data ?? 0 }
 }

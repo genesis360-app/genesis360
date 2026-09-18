@@ -31,7 +31,10 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
       return data ?? []
     },
     enabled: !!user?.id,
-    refetchInterval: 30_000,
+    // Capacidad (2026-09-18): 30 s → 60 s. Trae las últimas 30 notificaciones para el badge. Se
+    // mantiene `refetchOnWindowFocus`, que es lo que de verdad usa la gente: al volver a la pestaña
+    // la lista se actualiza al instante, sin depender del intervalo.
+    refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
 

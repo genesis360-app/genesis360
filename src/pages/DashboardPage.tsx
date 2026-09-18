@@ -158,7 +158,18 @@ export default function DashboardPage() {
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
   const [moneda, setMoneda] = useState<Moneda>('ARS')
   const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-  const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
+  // 🛑 Fin del día, NO `new Date()`. Este valor entra en el `queryKey` de `dash-kpis`/`dash-fugas` y
+  // viaja como prop a VentasVsGastosChart/MixCajaChart: con la hora exacta cambiaba en CADA montaje,
+  // así que la key era distinta cada vez y el caché no podía acertar nunca (medido: 18 requests que
+  // se repetían en cada vuelta al Dashboard pese al staleTime). Fin del día es además lo que ya usan
+  // TODOS los demás períodos (`getFechasDashboard` hace `hasta.setHours(23,59,59,999)`), y cuando el
+  // período no es "custom" este valor ni se lee — verificado en `FilterBar.tsx`: tanto
+  // `getFechasDashboard` como `getFechasAnteriores` arrancan con `if (periodo === 'custom' && custom)`.
+  const [customHasta, setCustomHasta] = useState(() => {
+    const h = new Date()
+    h.setHours(23, 59, 59, 999)
+    return h.toISOString()
+  })
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
   const { cotizacion } = useCotizacion()
@@ -332,6 +343,9 @@ export default function DashboardPage() {
       }
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   const { data: movRecientes = [] } = useQuery({
@@ -344,6 +358,9 @@ export default function DashboardPage() {
       return data ?? []
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   const { data: topProductos = [] } = useQuery({
@@ -366,6 +383,9 @@ export default function DashboardPage() {
       return Object.values(ranking).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5)
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   // ─── KPIs período (Ingreso Neto / Margen / Burn Rate / IVA) ─────────────────
@@ -534,6 +554,9 @@ export default function DashboardPage() {
       }
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   // ─── Fugas y Movimientos (top 8 por monto) ───────────────────────────────────
@@ -574,6 +597,9 @@ export default function DashboardPage() {
       return rows.sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto)).slice(0, 8)
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   // ─── Stock inmovilizado (solo se carga en subTab insights del área todo) ─────
@@ -607,6 +633,9 @@ export default function DashboardPage() {
       return { unidades, valor, porEstado: Object.values(map).sort((a, b) => b.unidades - a.unidades) }
     },
     enabled: !!tenant && area === 'todo' && subTab === 'insights',
+    // Capacidad (2026-09-17): misma ventana que las demás. Esta solo corre en la sub-pestaña
+    // Insights, así que no pesa al aterrizar — pero evita recalcular al ir y volver entre pestañas.
+    staleTime: 60_000,
   })
 
   // ─── Insights ────────────────────────────────────────────────────────────────

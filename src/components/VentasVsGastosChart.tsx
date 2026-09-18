@@ -123,6 +123,10 @@ export function VentasVsGastosChart({ periodo, moneda, cotizacion, customDesde, 
       }))
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que el resto del Dashboard, por consistencia.
+    // ⚠ Medido: el residuo de ~18 requests al volver NO sale de acá — poner o sacar esta ventana
+    // no cambió el número. Se deja igual porque el criterio del tablero es uniforme.
+    staleTime: 60_000,
   })
 
   const sym = moneda === 'USD' ? 'U$D ' : '$'

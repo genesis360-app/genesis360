@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Categorías de clientes · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .cita { background: #eef2f7; border-left: 3px solid #8aa8c4; padding: 6pt 10pt; margin: 8pt 0; font-style: italic; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  .cerrado { background: #eaf7ee; border-left: 4px solid #27ae60; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .cerrado strong { color: #1d6f42; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  td.num { text-align: right; white-space: nowrap; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+  code { background: #f2f4f7; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Categorías de clientes</h1>
+<div class="meta">
+  Genesis360 · v1.227.1 · Fecha: 17 de septiembre de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  Pedido de <strong>GO</strong> (16/09/2026): una <strong>categoría de cliente</strong> que defina un
+  <strong>descuento % por producto</strong> (producto por producto, no por rubro) y las
+  <strong>condiciones de cuenta corriente</strong>. Se asigna a los clientes y, al editar la categoría,
+  <strong>todos los que la tienen cambian con ella</strong> (por referencia, no por copia). El DUEÑO puede
+  pisar la configuración de un cliente puntual, y ahí ese cliente deja de heredar.
+  <p style="margin:8pt 0 0 0;">
+  Este documento <strong>no vuelve a preguntar</strong> lo que ya se pudo responder leyendo el código (ver el
+  recuadro verde). Se concentra en lo que <strong>ninguna línea de código puede decidir</strong>: cómo se
+  combina este descuento nuevo con los cuatro mecanismos de descuento que ya existen y funcionan en producción.
+  </p>
+  <p style="margin:8pt 0 0 0;">
+  Las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span> (regla que hoy no existe),
+  <span class="tag tag-existente">EXISTENTE</span> (confirmar una regla que el código ya implementa) o
+  <span class="tag tag-cambio">CAMBIO</span> (el código actual contradice o tensiona lo pedido — hay que
+  resolverlo, no solo elegir una opción).
+  </p>
+</div>
+
+<div class="cerrado">
+  <strong>✅ Ya respondido contra el código — NO hace falta que lo contesten</strong>
+  <p style="margin:6pt 0 0 0;">Cuatro de las dudas que habían quedado abiertas se resolvieron leyendo el
+  código y el esquema de la base. Se listan para que se vea que están contempladas:</p>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li><strong>Las Etiquetas de cliente NO se reconvierten en Categoría.</strong>
+        <code>clientes.etiquetas</code> es una lista (un cliente puede tener varias) y hoy se usa para
+        <strong>segmentación de marketing</strong> (filtros y exportación en la pantalla de Clientes; el
+        catálogo vive en <code>tenants.cliente_etiquetas_catalogo</code>). Reutilizarlas rompería ese uso.
+        <strong>Categoría va a ser una entidad nueva, una sola por cliente</strong>, y las Etiquetas siguen
+        como están.</li>
+    <li><strong>Hoy no existe ningún descuento por cliente</strong>, así que no hay un mecanismo viejo que
+        compita con el nuevo ni datos que migrar.</li>
+    <li><strong>Los valores por defecto de cuenta corriente del negocio ya existen</strong> y son más ricos
+        que lo pedido: límite, días de vencimiento, interés mensual, política ante exceso
+        (permitir / avisar / bloquear), política de morosidad y notificaciones.</li>
+    <li><strong>El override de cuenta corriente por cliente ya está construido</strong> (habilitada sí/no,
+        límite de crédito y plazo de pago propios). Falta solamente la capa intermedia "categoría".</li>
+  </ul>
+</div>
+
+<h2>Estado actual, verificado contra el código (no contra documentación)</h2>
+
+<p>Hoy un producto puede llegar a la venta con <strong>cinco descuentos distintos aplicados</strong>, y
+<strong>se apilan uno sobre otro</strong> en este orden exacto. Esto es lo que el descuento por categoría
+tiene que venir a integrar:</p>
+
+<table>
+  <tr><th style="width:4%;">#</th><th style="width:30%;">Mecanismo</th><th>Cómo se aplica hoy</th></tr>
+  <tr><td class="num">1</td><td><strong>Precio de lista</strong></td><td>El precio del producto. Punto de partida de todo.</td></tr>
+  <tr><td class="num">2</td><td><strong>Tier por cantidad</strong><br>(precio mayorista)</td>
+      <td>Según la cantidad <strong>total de ese producto en el carrito</strong> (no por línea). Puede ser un
+          precio fijo, un % sobre la lista o un monto en dólares. Gana el primero que cumple la regla.</td></tr>
+  <tr><td class="num">3</td><td><strong>Redondeo</strong></td>
+      <td>Se aplica el redondeo configurado por el negocio. <strong>De acá sale el "precio unitario efectivo",
+          y de ese número deriva toda la plata</strong>: subtotal, IVA, factura.</td></tr>
+  <tr><td class="num">4</td><td><strong>Descuento manual o combo</strong><br>(por línea)</td>
+      <td>% o $ sobre la línea. Solo lo pueden aplicar DUEÑO / SUPERVISOR / ADMIN (el SUPERVISOR con un tope
+          de % configurable). El cajero lo tiene bloqueado.</td></tr>
+  <tr><td class="num">5</td><td><strong>Descuento por estado de inventario</strong></td>
+      <td>Automático: si la mercadería sale de un lote en un estado con descuento (ej. "Próximo a vencer"),
+          se descuenta <strong>solo esa porción</strong>. Se resta <strong>encima</strong> del precio ya
+          bajado por el tier.</td></tr>
+  <tr><td colspan="3" style="background:#f7f9fb;"><em>— hasta acá, por línea. Lo que sigue es sobre el total de la venta —</em></td></tr>
+  <tr><td class="num">6</td><td><strong>Descuento general</strong></td><td>% o $ sobre el total. Mismo gate de roles que el punto 4.</td></tr>
+  <tr><td class="num">7</td><td><strong>Combos de varios productos</strong></td><td>Monto fijo al completarse el combo.</td></tr>
+  <tr><td class="num">8</td><td><strong>Cupón</strong></td><td>$ fijos sobre el total.</td></tr>
+  <tr><td class="num">9</td><td><strong>Promoción por método de pago</strong></td><td>% según cómo paga (se calcula sobre lo que queda después del cupón).</td></tr>
+</table>
+
+<div class="alerta-critica">
+  <strong>🛑 El punto que hay que cerrar SÍ o SÍ antes de escribir una línea de código</strong>
+  <p style="margin:6pt 0 0 0;">
+  Cuando Fede mandó el backlog de julio, pidió una <strong>regla transversal</strong>: que tier, empaque, combo
+  y descuento por estado <strong>compitan entre sí y gane el mejor precio, en vez de acumularse</strong>. Esa
+  regla <strong>quedó diferida a propósito</strong> — es un cambio de arquitectura grande. Hoy, entonces,
+  <strong>los descuentos se acumulan</strong>.
+  </p>
+  <p style="margin:6pt 0 0 0;">
+  Si el descuento por categoría se agrega sin decidir esto, <strong>se suma a la pila en silencio</strong>. Un
+  cliente con categoría que además compra por volumen, de un lote con descuento, pagando con una tarjeta en
+  promo, puede terminar pagando la mitad sin que nadie lo haya decidido. <strong>Cambiar esto después implica
+  re-facturar</strong>, por eso es la sección A y por eso no se puede empezar a construir sin esa respuesta.
+  </p>
+</div>
+
+<h2>A · Composición: cómo se combina con lo que ya existe <span style="color:#c0392b;">🔴 la pregunta más importante</span></h2>
+
+<div class="seccion-resumen">
+  <strong>El ejemplo que se usa en toda esta sección.</strong> Un bidón de 20 litros:
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li>Precio de lista: <strong>$100</strong> por bidón.</li>
+    <li>Tier por cantidad ya cargado: <strong>llevando 10 o más, $80</strong> por bidón.</li>
+    <li>Categoría nueva "Colocadores": <strong>20&nbsp;% de descuento</strong> en ese producto.</li>
+    <li>Un colocador entra y <strong>lleva 12 bidones</strong>.</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span>
+  <span class="pregunta-titulo">El colocador lleva 12 bidones. ¿Cuánto paga cada uno?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Es la decisión de plata más grande del proyecto: entre la opción más cara y la más barata
+hay un 36 % de diferencia sobre la misma venta.</div>
+<table>
+  <tr><th style="width:8%;">Opción</th><th>Cómo se calcula</th><th style="width:18%;">Precio por bidón</th><th style="width:16%;">Total de la venta</th></tr>
+  <tr><td><strong>(a)</strong></td><td><strong>El descuento se aplica sobre el precio ya rebajado por el tier</strong> (se acumulan, igual que hoy hacen los demás descuentos): $80 − 20 %</td><td class="num"><strong>$64,00</strong></td><td class="num"><strong>$768</strong></td></tr>
+  <tr><td><strong>(b)</strong></td><td><strong>Compiten y gana el más barato para el cliente</strong>: el tier da $80, la categoría sobre lista da $80 → empatan</td><td class="num"><strong>$80,00</strong></td><td class="num"><strong>$960</strong></td></tr>
+  <tr><td><strong>(c)</strong></td><td><strong>La categoría reemplaza al tier</strong>: si el cliente tiene categoría, el precio mayorista por cantidad no se mira</td><td class="num"><strong>$80,00</strong></td><td class="num"><strong>$960</strong></td></tr>
+  <tr><td><strong>(d)</strong></td><td><strong>El tier manda</strong>: si aplica un precio por volumen, la categoría no se suma</td><td class="num"><strong>$80,00</strong></td><td class="num"><strong>$960</strong></td></tr>
+</table>
+<ul class="opciones">
+  <li><strong>(e)</strong> Otra regla: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span>
+  <span class="pregunta-titulo">Mismo caso, pero 4 de esos 12 bidones salen de un lote "Próximo a vencer" que tiene 15 % de descuento propio. ¿Esos 4 bidones acumulan los dos descuentos?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy el descuento por estado se resta SIEMPRE encima del precio que quedó del tier, sin
+preguntar nada. Si además hay categoría, esos 4 bidones se van a $54,40 (un 45 % abajo del precio de lista)
+salvo que ustedes digan otra cosa.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, se acumulan — el lote está por vencer, se quiere que salga.</li>
+  <li><strong>(b)</strong> No: se aplica el mayor de los dos, nunca los dos juntos.</li>
+  <li><strong>(c)</strong> El descuento por estado solo se aplica a clientes SIN categoría (el mayorista ya tiene su precio).</li>
+  <li><strong>(d)</strong> Otra regla: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span>
+  <span class="pregunta-titulo">¿Un cliente con categoría puede además recibir descuento manual del cajero, cupón y promoción por método de pago?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy esos tres se restan sobre el total y son independientes entre sí. Sumados al descuento
+de categoría, el acumulado puede pasar el 50 % sin que nadie lo apruebe explícitamente.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, todo se acumula — el que tiene la categoría es un cliente como cualquier otro para el resto de los descuentos.</li>
+  <li><strong>(b)</strong> Sí, pero con un <strong>tope máximo de descuento acumulado</strong> por venta (ver A4).</li>
+  <li><strong>(c)</strong> No: un cliente con categoría ya tiene su precio, no recibe descuentos adicionales del cajero.</li>
+  <li><strong>(d)</strong> Otra regla: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span>
+  <span class="pregunta-titulo">¿Quieren un tope máximo de descuento acumulado por venta?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy no existe ningún techo global: cada mecanismo tiene su propio límite, pero nadie controla
+la suma. Es la red de seguridad más barata de construir y la que evita el "¿cómo salió esto a este precio?".</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, un % máximo configurable por negocio; si se pasa, se bloquea la venta.</li>
+  <li><strong>(b)</strong> Sí, pero solo avisa (el DUEÑO puede seguir igual).</li>
+  <li><strong>(c)</strong> Sí, y por encima del tope pide autorización de supervisor (como ya funciona en otros casos).</li>
+  <li><strong>(d)</strong> No hace falta.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span>
+  <span class="pregunta-titulo">¿El descuento de categoría se ve como "precio más bajo" o como "descuento" en la pantalla y en el ticket?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">No es solo estético: si va como línea de descuento, el cliente lo ve en la factura y puede
+reclamarlo; si va plegado en el precio, el mayorista nunca se entera de cuánto le descontaron. Hoy el tier va
+plegado en el precio y el resto va como descuento.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Plegado en el precio unitario (el cliente ve $80 y listo, como el precio mayorista de hoy).</li>
+  <li><strong>(b)</strong> Como línea de descuento visible ("Categoría Colocadores: −20 %").</li>
+  <li><strong>(c)</strong> Visible en la pantalla del cajero, plegado en la factura.</li>
+  <li><strong>(d)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>B · Alcance: dónde aplica el precio de categoría</h2>
+
+<div class="seccion-resumen">
+  <strong>Dato que condiciona esta sección:</strong> el precio se calcula hoy en <strong>dos motores
+  distintos que tienen que dar el mismo número</strong> — uno para el mostrador y otro, del lado del servidor,
+  para los Pedidos. <strong>Ninguno de los dos sabe quién es el cliente.</strong> Ese es el trabajo técnico
+  grande de esta feature, y ya hubo errores de plata por desincronizar esos dos motores.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span>
+  <span class="pregunta-titulo">¿En qué pantallas tiene que aplicar el precio de la categoría?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Marquen todas las que correspondan. Cada una es trabajo distinto: Pedidos usa el motor del
+servidor, los presupuestos salen del mismo carrito que la venta.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Venta por mostrador (POS).</li>
+  <li><strong>(b)</strong> Pedidos.</li>
+  <li><strong>(c)</strong> Presupuestos.</li>
+  <li><strong>(d)</strong> Ventas recurrentes (las que se generan solas de una plantilla).</li>
+  <li><strong>(e)</strong> Portal de clientes / pedidos que el cliente se arma solo.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span>
+  <span class="pregunta-titulo">En Mercado Libre y Tienda Nube no hay cliente identificado al publicar. ¿Qué precio se publica?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy a cada canal se le publica el precio de lista, opcionalmente con un % de ajuste propio
+del canal. No hay forma de publicar "un precio por cliente" en una publicación pública.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sigue publicándose el precio de lista con su ajuste por canal — la categoría no toca los canales.</li>
+  <li><strong>(b)</strong> Si la venta del canal se termina asociando a un cliente que tiene categoría, se le respeta el descuento igual (el precio publicado queda como referencia).</li>
+  <li><strong>(c)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span>
+  <span class="pregunta-titulo">¿El % de la categoría se aplica sobre el precio con IVA incluido o sin IVA?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Un 20 % sobre el precio final y un 20 % sobre el neto dan el mismo resultado proporcional,
+pero el número que ve el cliente en la góndola y el que se factura cambian de lugar. Hoy el precio del producto
+se maneja como precio final.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sobre el precio final, como se ve en la góndola (lo más intuitivo para el cajero).</li>
+  <li><strong>(b)</strong> Sobre el neto sin IVA.</li>
+  <li><strong>(c)</strong> No estamos seguros — lo consultamos con el contador.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span>
+  <span class="pregunta-titulo">Una venta sin cliente identificado ("consumidor final"), ¿puede llevar precio de categoría?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Si el cajero puede elegir una categoría sin elegir un cliente, el control se pierde: cualquiera
+puede cobrar precio mayorista. Si no puede, el mayorista que viene apurado obliga a cargarlo primero.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> No: sin cliente cargado no hay precio de categoría. Punto.</li>
+  <li><strong>(b)</strong> Sí, el cajero puede elegir la categoría a mano (queda registrado quién lo hizo).</li>
+  <li><strong>(c)</strong> Sí, pero requiere autorización de supervisor.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span>
+  <span class="pregunta-titulo">¿La categoría puede tener un descuento "general" para todos los productos, además del producto por producto?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El pedido dice producto por producto. Pero con un catálogo de cientos de productos, cargar
+uno por uno es un trabajo enorme, y un producto nuevo entra sin descuento hasta que alguien se acuerde (ver C4).</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Solo producto por producto, como se pidió.</li>
+  <li><strong>(b)</strong> Un % general para toda la categoría, y excepciones producto por producto donde haga falta.</li>
+  <li><strong>(c)</strong> Un % por rubro/categoría de producto, y excepciones puntuales.</li>
+  <li><strong>(d)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>C · Ciclo de vida de la categoría</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span>
+  <span class="pregunta-titulo">Se edita el descuento de una categoría que tiene 40 clientes. ¿Qué pasa con lo que ya está en curso?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El pedido es explícito en que al editar la categoría cambian todos los clientes. La duda es
+qué pasa con los documentos ya emitidos y los que están a mitad de camino.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Las ventas ya hechas no se tocan nunca; los pedidos y presupuestos pendientes se recalculan al entregarse.</li>
+  <li><strong>(b)</strong> Las ventas no se tocan y los pedidos/presupuestos ya armados <strong>conservan el precio con el que se armaron</strong>.</li>
+  <li><strong>(c)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span>
+  <span class="pregunta-titulo">Se quiere borrar una categoría que tiene clientes asignados. ¿Qué pasa?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> No se puede borrar: primero hay que reasignar esos clientes.</li>
+  <li><strong>(b)</strong> Se puede desactivar (deja de aplicar, no se pierde el historial) pero no borrar.</li>
+  <li><strong>(c)</strong> Se borra y los clientes quedan sin categoría (pasan a precio de lista).</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span>
+  <span class="pregunta-titulo">El DUEÑO le puso un precio especial a un cliente puntual. Después ese cliente tiene que volver a la categoría. ¿Cómo?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El pedido dice que cuando el DUEÑO pisa la configuración, el cliente deja de heredar. Falta
+definir el camino de vuelta, y si el override es de TODA la categoría o de un producto puntual.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Un botón "volver a la categoría" que borra todos los valores propios de golpe.</li>
+  <li><strong>(b)</strong> El override es <strong>por producto</strong>: el cliente sigue heredando todo lo demás, y se quita producto por producto.</li>
+  <li><strong>(c)</strong> El override es de toda la categoría: o hereda todo, o nada.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span>
+  <span class="pregunta-titulo">Se da de alta un producto nuevo. ¿Con qué descuento entra en las categorías existentes?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Sin una regla acá, un producto nuevo se le vende al mayorista a precio de lista y nadie se da
+cuenta hasta que el cliente reclama.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sin descuento (0 %) hasta que alguien lo cargue.</li>
+  <li><strong>(b)</strong> Con el % general de la categoría, si existe (ver B5).</li>
+  <li><strong>(c)</strong> Sin descuento, pero avisando en Alertas que hay productos sin cargar en las categorías.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span>
+  <span class="pregunta-titulo">¿Un cliente puede tener más de una categoría?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El pedido dice una sola y así está planificado. Se confirma para poder cerrarlo — si fueran
+varias, habría que definir cuál gana en cada producto.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Una sola categoría por cliente (confirmado).</li>
+  <li><strong>(b)</strong> Varias, y gana el mejor descuento para el cliente.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>D · Cuenta corriente</h2>
+
+<div class="seccion-resumen">
+  <strong>Cómo está hoy:</strong> hay <strong>dos niveles</strong> — el default del negocio (límite, días de
+  vencimiento, interés mensual, qué hacer cuando se pasa del límite: permitir / avisar / bloquear, política de
+  morosidad) y el <strong>override por cliente</strong> (habilitada sí/no, límite propio, plazo propio). La
+  categoría sería un <strong>tercer nivel en el medio</strong>.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span>
+  <span class="pregunta-titulo">Con tres niveles, ¿quién gana?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Hoy el cliente pisa al negocio. Metiendo la categoría en el medio hay que decidir el orden, y
+también qué pasa con los clientes que YA tienen un límite propio cargado el día que se les asigna una categoría.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Cliente &gt; Categoría &gt; Negocio (lo puntual siempre gana; la categoría es un default mejor).</li>
+  <li><strong>(b)</strong> Categoría &gt; Cliente &gt; Negocio (asignar una categoría pisa lo que el cliente tenía).</li>
+  <li><strong>(c)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span>
+  <span class="pregunta-titulo">Un cliente ya tiene límite de crédito propio de $500.000. Se le asigna una categoría cuyo límite es $200.000. ¿Qué pasa?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Esto va a pasar el primer día, porque ya hay clientes con límites cargados a mano. Es la
+única pregunta de esta sección que toca plata que ya está prestada.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Conserva sus $500.000 (lo cargado a mano se respeta siempre).</li>
+  <li><strong>(b)</strong> Pasa a $200.000, avisando antes de guardar.</li>
+  <li><strong>(c)</strong> Se pregunta caso por caso al asignar la categoría.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span>
+  <span class="pregunta-titulo">¿Qué condiciones de cuenta corriente define la categoría?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Marquen las que quieran. Todas existen ya a nivel negocio o cliente, así que agregarlas a la
+categoría es trabajo parejo.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Habilitar o no la cuenta corriente.</li>
+  <li><strong>(b)</strong> Límite de crédito.</li>
+  <li><strong>(c)</strong> Plazo de pago en días.</li>
+  <li><strong>(d)</strong> Interés por mora.</li>
+  <li><strong>(e)</strong> Qué hacer al pasarse del límite (permitir / avisar / bloquear).</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span>
+  <span class="pregunta-titulo">¿Puede existir una categoría que dé descuento pero NO habilite cuenta corriente (o al revés)?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Define si son una sola cosa o dos que viajan juntas: "Colocadores" (precio especial, paga al
+contado) vs. "Cuenta corriente 30 días" (sin descuento, pero financiado).</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, cada parte es opcional — una categoría puede tener solo precio, solo cuenta corriente, o las dos.</li>
+  <li><strong>(b)</strong> No, siempre van juntas.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>E · Permisos</h2>
+
+<div class="seccion-resumen">
+  <strong>Cómo está hoy:</strong> los descuentos en la venta los pueden aplicar DUEÑO, SUPERVISOR y ADMIN (el
+  SUPERVISOR con un tope de % configurable; el DUEÑO sin tope). El cajero los tiene bloqueados. La cuenta
+  corriente de un cliente la pueden gestionar DUEÑO, SUPERVISOR y ADMIN.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span>
+  <span class="pregunta-titulo">¿Quién puede crear y editar categorías (definir los descuentos)?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Es la decisión de precios más sensible del sistema: una sola edición cambia lo que pagan
+decenas de clientes.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Solo el DUEÑO.</li>
+  <li><strong>(b)</strong> DUEÑO y SUPERVISOR.</li>
+  <li><strong>(c)</strong> DUEÑO, SUPERVISOR y ADMIN (igual que los descuentos de hoy).</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span>
+  <span class="pregunta-titulo">¿Quién puede asignarle una categoría a un cliente?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Es distinto de crearlas: asignar no cambia el precio de nadie más, pero le da a ESE cliente
+un precio mejor.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Solo el DUEÑO.</li>
+  <li><strong>(b)</strong> DUEÑO y SUPERVISOR.</li>
+  <li><strong>(c)</strong> Cualquiera que pueda editar clientes.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span>
+  <span class="pregunta-titulo">El pedido dice que el override por cliente lo hace solo el DUEÑO. ¿Se confirma?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, solo el DUEÑO.</li>
+  <li><strong>(b)</strong> El DUEÑO siempre, y el SUPERVISOR hasta un tope de %.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>F · Auditoría</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span>
+  <span class="pregunta-titulo">¿Se guarda quién cambió el descuento de una categoría, cuándo y de cuánto a cuánto?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Recomendado. Una sola edición cambia el precio de muchos clientes de golpe; sin registro no
+hay forma de reconstruir por qué una venta salió a determinado precio el mes pasado.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, historial completo de cambios de la categoría.</li>
+  <li><strong>(b)</strong> Alcanza con el registro de actividad general que ya existe.</li>
+  <li><strong>(c)</strong> No hace falta.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span>
+  <span class="pregunta-titulo">En una venta ya hecha, ¿se puede ver qué categoría se le aplicó y con qué % en ese momento?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">La categoría puede cambiar después. Sin una foto guardada en la venta, dentro de seis meses
+nadie puede explicar el precio de esa factura.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, la venta guarda la categoría y el % que se aplicó (recomendado).</li>
+  <li><strong>(b)</strong> Alcanza con saber qué categoría tiene el cliente hoy.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span>
+  <span class="pregunta-titulo">¿Quieren un reporte de cuánto se dejó de facturar por descuentos de categoría?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí, por período y por categoría.</li>
+  <li><strong>(b)</strong> Sí, y también por cliente.</li>
+  <li><strong>(c)</strong> No por ahora.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>G · Prioridad</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span>
+  <span class="pregunta-titulo">Si hubiera que hacerlo por partes, ¿qué va primero?</span>
+</div>
+<div class="contexto">La parte de cuenta corriente es de bajo riesgo y se apoya en lo que ya existe. La parte de
+precio toca los dos motores de cálculo y es donde está todo el riesgo de plata.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Primero la categoría con las condiciones de cuenta corriente (se puede usar enseguida), después el precio.</li>
+  <li><strong>(b)</strong> Primero el descuento por producto, que es lo que más se pide.</li>
+  <li><strong>(c)</strong> Todo junto, aunque tarde más.</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span>
+  <span class="pregunta-titulo">¿Cuántas categorías y cuántos clientes se esperan al inicio? ¿Hay alguna lista de precios ya armada (en papel o Excel) para cargar?</span>
+</div>
+<div class="contexto">Define si hace falta una carga masiva desde el día uno o alcanza con cargar a mano.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento de reglas de negocio — Categorías de clientes · 17 de septiembre de 2026<br>
+  Documento para responder offline. Todo lo afirmado sobre “cómo está hoy” fue verificado contra el código
+  y el esquema de la base, no contra documentación.
+</div>
+
+</body>
+</html>

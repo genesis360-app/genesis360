@@ -29,3 +29,7 @@ desktop.ini
 
 # Basura de sincronización de Google Drive en el wiki (aparece y desaparece sola)
 G360.Wiki/.tmp.driveupload/
+
+# Credenciales locales para grabar videos (nunca se commitean)
+scripts/video/.env.video
+scripts/video/.env*.local

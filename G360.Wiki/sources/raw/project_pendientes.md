@@ -6,9 +6,28 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-09-16, cont. 72) — 🚀 PROD = `v1.227.1` (migs 001-429) — **DEV = PROD**, no hay nada de
-> código esperando deploy. El deploy fue solo el fix del inicio de actividades corrido un día en el resumen fiscal,
-> **sin migraciones**.
+> ### ✅ ARRANCÁ ACÁ (2026-09-18, cierre) — 🚀 PROD = `v1.227.1` (migs 001-429) · 🟡 **AHORA SÍ HAY CÓDIGO ESPERANDO**
+> **10 commits en el `dev` LOCAL, sin pushear a `origin/dev`** — decisión explícita de GO: *"juntemos un poco más y
+> luego pasamos todo"*. **Sin migraciones nuevas** (siguen 001-429).
+>
+> 🛑 **A diferencia de las sesiones anteriores, esta tanda SÍ toca `src/`** (no es solo tests/wiki):
+> `authStore.ts`, `App.tsx`, `DashboardPage.tsx`, las 9 `Dash*Area.tsx`, `VentasVsGastosChart`, `MixCajaChart`,
+> `useAlertas`, `useSupervisorAutorizaciones`, `NotificacionesButton` y `config/brand.ts`.
+> ⚠️ **`APP_VERSION` sigue en `v1.227.1`** → antes de deployar hay que **bumpearla** (propuesto `v1.228.0`) y recién
+> ahí PR `dev → main` + release. Verde al cierre: `tsc` + `build` + **1848 tests unitarios** + e2e del Dashboard y
+> multi-rol.
+>
+> 📋 **Qué trae la tanda** (detalle por entrada en `log.md` del 2026-09-17/18):
+> 1. **Capacidad — las 3 palancas cerradas.** Arranque de pantalla −18,7 % (`ensureUserData` dedupe: `loadUserData`
+>    corría ~5 veces por carga). Volver al Dashboard **92 → 0 requests**. Reposo **0,59 → 0,28 req/s**.
+>    Instrumento nuevo repetible: `npm run perf:navegacion`.
+> 2. **Relevamiento de Categorías de clientes** (Fase 0) — HTML de 22 preguntas, esperando respuestas.
+> 3. **Diagrama de infraestructura** (`diagrams/11`) + página nueva [[wiki/architecture/infraestructura]].
+> 4. **Documento de producto a v2.1** — publicaba precios **10× más baratos** que los reales.
+> 5. **Precio del add-on de CUIT confirmado** por GO (sin cambiar valores).
+>
+> ⚠️ **Drift cosmético nuevo de EF**: `mp-addon-batch` quedó con un comentario distinto al desplegado (solo
+> comentario, no amerita redeploy) — va a aparecer en `scripts/auditar-edge-functions.sh`.
 >
 > 🔴🔴 **LO PRIMERO, ANTES DE CUALQUIER OTRA COSA: ROTAR LA `service_role` DE PROD.** El 2026-09-16 GO la pegó en el
 > chat para que Claude pudiera resetear por Admin API la contraseña del negocio de prueba de los videos. Esa key
@@ -17,10 +36,9 @@ type: project
 > actualizar donde se use (Edge Functions, scripts). **Mientras no se rote, sigue viva.** Ver
 > [[reference_supabase_token_filtrado_sin_rotar]].
 >
-> 📦 **Sobre los ~15 commits que tiene `origin/dev` por encima de `main`**: son **tests, scripts y wiki**, NO tocan
-> `src/` — `APP_VERSION` sigue en `v1.227.1`, que ya está en PROD con su release. O sea que **no hay nada pendiente de
-> deployar**. Decisión abierta de GO: si igual quiere tag/release de la sesión, o si se deja para el próximo cambio
-> real de la app (la regla del CLAUDE.md dice "release en cada sesión que produzca código", pero acá la app no cambió).
+> 📦 **Los commits que `origin/dev` tiene por encima de `main`** eran tests/scripts/wiki hasta el 2026-09-17. **Desde
+> esta tanda ya NO**: hay cambios reales de `src/` esperando (ver arriba). Cuando GO diga de pasar todo: bumpear
+> `APP_VERSION`, pushear, PR `dev → main`, release, y correr `scripts/auditar-edge-functions.sh`.
 >
 > 🛑 **Decisiones abiertas de GO para retomar**:
 > 1. 📋 **Responder el relevamiento de Multimoneda** con Fede — `relevamiento-multimoneda-reglas-negocio.html`

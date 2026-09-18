@@ -536,6 +536,33 @@ desaparezca de la pantalla sin explicación.
 > 📌 **Pendiente de negocio**: si el comercio va a operar de verdad en otra moneda, hace falta
 > **cotización por moneda**, no solo la del dólar.
 
+## ⚡ Ventana de frescura de 60 s — volver al Dashboard ya no lo recalcula (2026-09-18)
+
+**El problema medido**: "Todo › Gráficos" monta **las 9 áreas de una** (`MODULE_AREAS.map`) y cada
+`Dash*Area` corre una `queryFn` con 5-10 consultas **secuenciales** (`DashGastosArea` sola hace 9). Con
+`staleTime: 0` en todas, **volver al Dashboard costaba lo mismo que entrar**: 92 requests cada vez.
+
+**Qué se hizo**: `staleTime: 60_000` en las 9 áreas + las 6 consultas propias de `DashboardPage` + los 2
+gráficos que monta aparte (`VentasVsGastosChart`, `MixCajaChart`). **Volver pasó de 92 a 0 requests.** La
+**primera** carga no cambia (~102): la ventana evita recalcular, nunca evita la primera consulta.
+
+> ⚠️ **Lo que el usuario nota**: si hace una venta y vuelve al Dashboard **dentro del minuto**, los números
+> todavía no la reflejan. Es un tablero analítico y fue una decisión consciente de GO, que eligió esta
+> variante entre tres justamente por ser **invisible** (no cambia el layout ni el orden de carga). **El POS y
+> la caja NO usan esto** — ahí la frescura es la función.
+
+🛑 **Un `queryKey` con `new Date()` adentro anula cualquier caché.** `DashboardPage` inicializaba
+`customHasta` con `new Date().toISOString()` — timestamp nuevo en cada montaje— y ese valor vive en el
+`queryKey` de `dash-kpis`/`dash-fugas` y viaja como prop a los dos gráficos. Con la key cambiando en cada
+vuelta, el `staleTime` no servía para nada (18 requests sobrevivían). Se arregló inicializándolo al **fin del
+día**, que es lo que ya usaban todos los demás períodos; no cambia ningún número porque
+`getFechasDashboard`/`getFechasAnteriores` ignoran el rango custom salvo que el período sea "custom".
+
+**Verificado**: 1848 tests unitarios · 17 e2e del Dashboard (incluye `14_coherencia_numeros`: el badge de
+alertas sigue coincidiendo con AlertasPage y "Productos activos" con ProductosPage → el caché **no**
+desincronizó números) · período "Custom" probado en navegador · 10 secciones y 31 gráficos idénticos al ir y
+volver. Detalle del método en [[wiki/architecture/resiliencia]].
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]

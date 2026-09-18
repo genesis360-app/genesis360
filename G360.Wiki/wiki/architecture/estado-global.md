@@ -37,14 +37,37 @@ Genesis360 usa dos capas de estado diferenciadas:
 
 ```typescript
 loadUserData(userId: string)
-  // Carga user, tenant, sucursales, plan desde DB
+  // Carga user, tenant, sucursales, plan desde DB — SIEMPRE recarga
   // Valida que sucursalId en localStorage siga siendo válido
   // Llama ANTES de navigate() en onboarding
+
+ensureUserData(userId: string)   // 🆕 2026-09-18
+  // Igual, pero NO repite trabajo ya hecho. SOLO para el bootstrap de auth.
 
 setSucursal(id: string | null)
   // Persiste en localStorage
   // Usado por SucursalSelector en el header
 ```
+
+### 🛑 `ensureUserData` vs `loadUserData` — cuál usar (Capacidad, 2026-09-18)
+
+`App.tsx` dispara la carga desde **dos** caminos (`getSession()` y `onAuthStateChange`, que además se emite
+de nuevo en cada refresco de token). Medido: **`loadUserData` corría ~5 veces por carga de página** —
+4 `GET /auth/v1/user` + 5 `users` + 5 `tenants` + 5 `sucursales`, todas devolviendo lo mismo: **~15 de las
+~64 requests** que cuesta abrir una pantalla de cero.
+
+`ensureUserData` comparte la **promesa en vuelo** (los dos caminos disparan casi juntos, antes de que el
+estado esté seteado, así que mirar el store no alcanza) y saltea si ese usuario ya está cargado. El chequeo
+lee el store en vez de un flag aparte para que sea **auto-correctivo**: si la sesión se cerró, `user` quedó
+en `null` y vuelve a cargar.
+
+> 🛑 **El dedupe vive SOLO ahí.** Las otras 8 llamadas de la app son **refrescos deliberados después de una
+> mutación** (alta de negocio en el onboarding, crear/borrar sucursal, activar la suscripción, cambiar avatar
+> o nombre, cancelar la baja): ésas tienen que seguir usando `loadUserData`, que recarga siempre.
+> Deduplicarlas dejaría datos viejos en pantalla justo después de cambiarlos.
+
+**Resultado medido**: 514 → 418 requests en 8 arranques (**−18,7 %**), y `/auth/v1/user` pasó de 4 a **1 por
+pantalla**. Detalle y método en [[wiki/architecture/resiliencia]].
 
 ### Avatar
 

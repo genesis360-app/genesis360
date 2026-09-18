@@ -6,6 +6,51 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] update | 🔌 Volvió el conector: cerrados los 3 pendientes que lo esperaban, los 3 limpios
+
+GO reconectó Supabase y pidió reintentar lo que había quedado bloqueado. **Los tres dieron bien.**
+
+### 1 · Paridad `pg_policies` DEV↔PROD — el último punto del checklist del deploy
+
+| Schema | Policies | Hash |
+|---|---|---|
+| `public` | 234 | `262d70f1…` **idéntico en DEV y PROD** |
+| `storage` | 40 | `1db3b546…` **idéntico** |
+| `cron` | 2 | `5f216ecb…` **idéntico** |
+
+**Cero drift.** Con esto el checklist de `v1.228.0` queda completo. ⚠️ El hash solo es comparable contra la
+**misma formulación de query** — no contra los valores anotados en sesiones previas, que usaban otro `string_agg`.
+
+### 2 · Alerta A0 (importador CSV) en PROD — **0 productos afectados**
+
+Sobre los **27 productos de PROD y todos los negocios**: `precio_venta_moneda`/`precio_costo_moneda` en `'USD'`
+= **0**, negocios tocados = **0**, y la columna viva `moneda_venta='usd'` también 0. Igual que en DEV.
+
+O sea: **el bug es latente puro, no hay plata mal cargada en ningún negocio real**. Confirma que la decisión de
+GO de diferirlo al rediseño de Multimoneda era segura — era la condición que él mismo había puesto.
+
+### 3 · UAT 59.7 — verificado, y sin dejar rastro
+
+La rama de error de `fn_aplicar_precios_programados` no tiene disparador natural: se descartó la vía de precisión
+(ambas columnas son `numeric(12,2)`, así que un precio absurdo falla al insertarlo, no adentro de la función) y
+la de FK/nulabilidad (`actividad_log.usuario_id` admite NULL). Forzarlo pedía romper algo del esquema.
+
+**Solución sin residuo**: todo dentro de **una transacción que termina en rollback**, con un constraint temporal
+y una `RAISE EXCEPTION` final que devuelve el resultado en el mensaje de error. Resultado: `estado='fallido'` ·
+error registrado · **el precio del producto NO cambió** (lo que de verdad importa: un programado que falla no se
+aplica a medias) · **2 notificaciones** generadas.
+
+Verificado después que no quedó nada: sin constraint, sin fila centinela, precio intacto en 2500.00 y **0 filas
+en estado `fallido`** en toda la tabla. `tests/specs/uat-modo-basico.md` §59.7 pasa de "sin e2e" a verificado.
+
+### 🛠️ Gotcha de la sesión: no editar archivos UTF-8 con `perl -0777 -i -pe`
+
+Insertar esta misma entrada con `perl` **corrompió `log.md` entero** (`# Log â Genesis360 Wiki`,
+`cronolÃ³gico`): el one-liner leyó el fragmento como UTF-8 y reescribió el resto sin capa de codificación,
+duplicando la codificación de cada acento. Se revirtió con `git checkout --` y se rehízo con
+`head` + `cat` + `tail`, que trabajan a nivel de **bytes** y no transforman nada.
+
+---
 ## [2026-09-18] deploy | 🚀 v1.228.0 EN PROD — capacidad, diagrama de infra y documento de producto
 
 GO: *"pasa todo lo que estaba pendiente a PRD"*. Se deployó la tanda acumulada de 12 commits.

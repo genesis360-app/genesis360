@@ -11,9 +11,8 @@ type: project
 > con `curl -L`: `app.genesis360.pro` pasó del bundle `index-C5iOI7Dn.js` (v1.227.1) a `index-BhDV1tFn.js`
 > (**v1.228.0**). CI verde antes del merge.
 >
-> ⚠️ **Un punto del checklist quedó SIN hacer**: la **paridad de `pg_policies` DEV↔PROD por schema** — el conector
-> de Supabase no estaba disponible en la sesión. Riesgo bajo porque el deploy **no trae ni una migración**, pero el
-> chequeo no se hizo. **Correrlo al retomar.**
+> ✅ **Checklist del deploy COMPLETO**: la **paridad de `pg_policies` DEV↔PROD por schema** se verificó el 2026-09-18
+> apenas volvió el conector — `public` **234**, `storage` **40**, `cron` **2**, con **hash idéntico en los tres**. Cero drift.
 >
 > ✅ **`scripts/auditar-edge-functions.sh` SÍ se corrió entero** (51 funciones). 🕵️ Antes acá decía que "salía
 > parcial": era falso, **lo truncaba un `| tail -40` mío** — ver [[feedback_grep_filtrado_oculta_fallas_de_comando]],
@@ -64,15 +63,14 @@ type: project
 > 1. 📋 **Responder el relevamiento de Multimoneda** con Fede — `relevamiento-multimoneda-reglas-negocio.html`
 >    (commit `aea1f6f8`), imprimible.
 >
-> 🔌 **APENAS VUELVA EL CONECTOR DE SUPABASE — dos queries pendientes** (GO dijo el 2026-09-17 que lo reconecta):
-> - **(1) Impacto real de la alerta A0** (importador CSV): contar productos con `precio_venta_moneda='USD'` o
->   `precio_costo_moneda='USD'` **en PROD, en todos los negocios** (hace falta `service_role`: con RLS solo se ve el
->   negocio de la sesión). ✅ En **DEV ya se midió: 0 productos** — nunca se usó el importador con USD.
->   **Si PROD también da 0** → latente, va dentro del rediseño de Multimoneda, sin apuro. **Si da ≠ 0** → hay
->   productos vendiéndose a ~1/1400 de su precio y hay que frenar y corregir. Ver
->   [[project_bugs_producto_moneda_usd]].
-> - **(2) UAT 59.7**: forzar el fallo de `fn_aplicar_precios_programados` por SQL y verificar que quede
->   `estado='fallido'` + la notificación al DUEÑO/SUPER_USUARIO. Es la única vía; no es cubrible como e2e.
+> ✅ **LAS DOS QUERIES QUE ESPERABAN EL CONECTOR — HECHAS el 2026-09-18, las dos dieron bien**:
+> - **(1) Alerta A0 (importador CSV) en PROD: 0 productos afectados**, sobre los 27 de PROD y todos los negocios
+>   (`precio_venta_moneda`/`precio_costo_moneda` en `USD` = 0; la columna viva `moneda_venta='usd'` también 0).
+>   O sea: **bug latente puro, sin plata mal cargada en ningún lado**. Confirma que diferirlo al rediseño de
+>   Multimoneda era seguro. Ver [[project_bugs_producto_moneda_usd]].
+> - **(2) UAT 59.7: VERIFICADO.** Se forzó el fallo en DEV **dentro de una transacción con rollback** (constraint
+>   temporal + `RAISE EXCEPTION` final para devolver el resultado), así que no quedó ni un rastro: `estado='fallido'`,
+>   error registrado, **el precio del producto NO cambió** (lo importante) y se generaron 2 notificaciones.
 >
 > ✅ **Decisión de GO (2026-09-17) sobre la alerta A0**: *"si no es urgente dejémoslo para luego"* → **va dentro del
 > rediseño de Multimoneda, NO se arregla por separado**, condicionado al resultado de la query (1). Sale de las
@@ -82,8 +80,8 @@ type: project
 >    `scripts/video/.env.video` (gitignoreado). 🛑 Hubo que regrabar **más** de lo previsto: el resumen fiscal
 >    queda en pantalla mientras se carga el punto de venta, así que se reemplazó 16,83-34,63 completo (modo
 >    `TRAMO=PV`), no solo el resumen. Se detectó extrayendo cuadros del render, no leyendo el log.
-> 3. 🧪 **Qué hacer con UAT 59.7**: no es cubrible como e2e (ver abajo). Opciones: hacerlo con `service_role`
->    cuando vuelva el conector de Supabase, o descartarlo.
+> 3. ✅ **UAT 59.7 RESUELTO (2026-09-18)**: verificado por SQL en DEV con transacción + rollback. Ya no hay que
+>    elegir entre hacerlo o descartarlo.
 > 4. Cuándo limpiar el tenant de prueba "Genesis360 Onboarding" (quedó con el emisor de ejemplo
 >    CUIT 20-12345678-9, el punto de venta 2 y la clave del CSR en storage).
 > 5. 📐 **Pedido del 2026-09-16 — ✅ COMPLETO (2026-09-18)**. **Fase 1**: diagrama de infraestructura
@@ -140,7 +138,7 @@ type: project
 > | **55.5** rol custom / ubicaciones de Recursos | ✅ **e2e 155** verde (`5aec8f9b`) |
 > | **56.7** aviso si la firma del transportista no se guarda | ✅ **e2e 156** verde (`b38194a4`) |
 > | **57.9** seña mixta al despachar | 🚧 **e2e 157 escrito, en `skip`**: la reserva crea un Pedido y eso bloquea "Finalizar" a propósito. Para cerrarlo hay que entregar el pedido por Picking antes de finalizar |
-> | **59.7** fallo al aplicar precio programado | 🛑 **No cubrible como e2e**: la rama vive en el `EXCEPTION` de `fn_aplicar_precios_programados` (100% SQL), `fn_programar_precio` valida precio ≥ 0 y fecha futura, `productos` no tiene CHECK sobre `precio_venta` y no hay lógica pura donde testearlo. **Requiere `service_role`** |
+> | **59.7** fallo al aplicar precio programado | ✅ **VERIFICADO por SQL (2026-09-18)**, no por e2e: la rama vive en el `EXCEPTION` de `fn_aplicar_precios_programados` (100% SQL). Se forzó en DEV **dentro de una transacción con rollback** → `estado='fallido'`, error registrado, **precio del producto intacto**, 2 notificaciones. Cero residuo |
 >
 > | | Código | Migraciones | Estado |
 > |---|---|---|---|

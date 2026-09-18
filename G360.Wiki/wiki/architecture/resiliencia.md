@@ -235,11 +235,27 @@ compartida. Tomarlo como orden de magnitud, no como garantía.
    tenga.** Encaja exacto con el residuo medido (`ventas` 5, `gastos` 4, `venta_items` 3,
    `caja_movimientos` 2, `caja_sesiones` 2, `cajas` 1, `devoluciones` 1 — todas del bloque de `dash-kpis`).
    Las consultas cuya key NO lo incluye (`dashboard-stats`, `movimientos-recientes`, `top-productos`) sí
-   cachean. **Arreglarlo** (sacar el valor inestable de la key cuando el período no es "custom") llevaría
-   la vuelta cerca de 0, y es un cambio aparte: **sin decidir**.
-3. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y los conteos del badge de alertas corren cada
-   30 s; en reposo son 0,59 req/s, de los cuales `caja_sesiones` es el más frecuente. Espaciarlos o
-   dispararlos por evento baja el consumo de una pestaña abierta todo el día.
+   cachean.
+   ✅ **CERRADO el 2026-09-18**: `customHasta` ahora se inicializa al **fin del día** en vez de `new Date()`
+   — que es exactamente lo que ya usaban todos los demás períodos (`hasta.setHours(23,59,59,999)`) — así el
+   valor es estable dentro del día y las 4 keys aciertan. **No cambia ningún número**: verificado en
+   `FilterBar.tsx` que tanto `getFechasDashboard` como `getFechasAnteriores` arrancan con
+   `if (periodo === 'custom' && custom)`, o sea que fuera de "custom" ese valor ni se lee.
+   **Medido: volver al Dashboard pasa de 18 a 0 requests.** Con la primera visita intacta (102).
+   El camino "custom" se probó en navegador: se aplica el período y quedan las mismas 10 secciones y 31
+   gráficos, sin errores.
+3. ✅ **HECHO (2026-09-18) — polling en reposo: 0,59 → 0,28 req/s (−53 %).**
+   🛑 **Criterio, puesto por GO** (*"que no pierda velocidad el sistema ni buen rendimiento"*): se tocaron
+   **solo contadores de fondo**, nunca algo que habilite una operación.
+   - `useAlertas` **30 s → 120 s**: era el mayor consumo de una pestaña quieta (su `queryFn` hace ~11
+     conteos sobre `ordenes_compra`, `pedidos`, `productos`, `inventario_lineas`, `ventas`, `alertas`…) y
+     alimenta **solo el número del badge** del sidebar: no bloquea ni habilita nada.
+   - `useSupervisorAutorizaciones` **30 s → 60 s** y `NotificacionesButton` **30 s → 60 s**: se dejan más
+     cortos que alertas a propósito, porque del otro lado hay alguien esperando. Notificaciones conserva
+     `refetchOnWindowFocus`, que es lo que la gente usa de verdad (volver a la pestaña actualiza al toque).
+   - **NO se tocó**: las cajas abiertas del POS (15 s — decide si se puede cobrar) ni el polling de pago
+     MODO/MP mientras el QR está en pantalla (4 s, se corta solo al llegar el pago). Ahí la frescura **es**
+     la función. Por eso `caja_sesiones` queda ahora como el consumo dominante en reposo: es deliberado.
 4. **Navegar entre pantallas ya es barato (~11)**: cachear identidad "al navegar" —la palanca que decía la
    versión anterior de esta página— **no tiene casi nada que ahorrar ahí**. El layout no se remonta
    (`AppLayout` es layout route) y los guards son lectura pura de Zustand, sin red.

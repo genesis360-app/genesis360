@@ -156,6 +156,10 @@ if (new URL(page.url()).pathname.startsWith('/login')) {
   await page.evaluate(() => localStorage.setItem('genesis360_walkthrough_v1', 'seen'))
   fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true })
   await contexto.storageState({ path: SESSION_FILE })
+  // 🛑 El login aterriza en /dashboard, y eso deja su caché CALIENTE: si el recorrido lo visita
+  // después, mide 0 requests y parece que la pantalla no pide nada. Hay que salir de ahí antes de
+  // empezar a contar. Es el mismo defecto que tenía el `goto` de arranque, por otra puerta.
+  await page.goto('/mi-cuenta')
   await asentar(page)
 }
 

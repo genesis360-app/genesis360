@@ -179,7 +179,13 @@ export function useAlertas() {
       return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda + countPedidosVencidos + countPedidosSinAvanzar + countEtiquetasVencidas
     },
     enabled: !!tenant,
-    refetchInterval: 30000,
+    // Capacidad (2026-09-18): era 30 s y es el mayor consumo de una pestaña quieta — esta queryFn
+    // corre ~11 conteos sobre ordenes_compra, pedidos, productos, inventario_lineas, ventas, alertas…
+    // Alimenta SOLO el número del badge del sidebar: no habilita ninguna operación ni bloquea nada,
+    // así que enterarse 1-2 min más tarde no cambia lo que el usuario puede hacer. A propósito NO se
+    // tocó nada que sí gatille una operación (las cajas abiertas del POS cada 15 s, el polling de
+    // pago MODO/MP del QR cada 4 s): ahí la frescura ES la función.
+    refetchInterval: 120_000,
   })
 
   return { count: data ?? 0 }

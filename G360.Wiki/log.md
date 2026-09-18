@@ -6,6 +6,51 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] update | ⚡ Capacidad — cerradas las 3 palancas: vuelta al Dashboard 92 → 0 y reposo −53 %
+
+Dos cambios chicos, los dos medidos antes y después.
+
+### 1 · Las 18 requests que sobrevivían a la vuelta al Dashboard → **0**
+
+Causa (diagnosticada en la sesión anterior): `DashboardPage` inicializaba `customHasta` con
+`new Date().toISOString()` — **timestamp nuevo en cada montaje**— y ese valor vive en el `queryKey` de
+`dash-kpis`/`dash-fugas` y viaja como prop a `VentasVsGastosChart`/`MixCajaChart`. Con la key cambiando en
+cada vuelta, **ningún `staleTime` puede acertar**.
+
+**Fix**: inicializarlo al **fin del día**, que es exactamente lo que ya usan todos los demás períodos
+(`getFechasDashboard` hace `hasta.setHours(23,59,59,999)`). **No cambia ningún número**: se verificó en
+`FilterBar.tsx` que tanto `getFechasDashboard` como `getFechasAnteriores` arrancan con
+`if (periodo === 'custom' && custom)` → fuera de "custom" ese valor ni se lee.
+**Medido: volver al Dashboard 18 → 0 requests**, con la primera visita intacta (102).
+
+### 2 · Palanca 3 — polling en reposo: **0,59 → 0,28 req/s (−53 %)**
+
+🛑 **Criterio que puso GO**: *"que no pierda velocidad el sistema ni buen rendimiento"*. Se tocaron **solo
+contadores de fondo**: `useAlertas` 30→120 s (el mayor consumo en reposo: ~11 conteos, alimenta solo el
+número del badge), supervisión y notificaciones 30→60 s (más cortos a propósito: hay alguien esperando).
+**NO se tocó** lo que habilita operar: las cajas abiertas del POS (15 s, decide si se puede cobrar) ni el
+polling de pago MODO/MP mientras el QR está en pantalla (4 s, se corta solo al llegar el pago). Por eso
+`caja_sesiones` queda como el consumo dominante en reposo: es deliberado.
+
+### ✅ Verificación
+
+`tsc` + `build` · **unitarios 112 archivos / 1848 tests, 0 fallas** · **17 e2e del Dashboard verdes**
+(incluye `14_coherencia_numeros`: el badge de alertas sigue coincidiendo con AlertasPage y "Productos
+activos" con ProductosPage → el caché no desincronizó números) · **período "Custom" probado en navegador**
+(se aplica y quedan las mismas 10 secciones y 31 gráficos, 0 errores) — era el único camino cuya semántica
+se tocaba.
+
+### 🕵️ Dos defectos de la SONDA, no de la app (los dos me habrían hecho reportar un número falso)
+
+1. Tras un re-login por sesión vencida, el login **aterriza en `/dashboard`** y deja su caché caliente → las
+   dos visitas del recorrido medían **0** y parecía que la pantalla no pedía nada. Es el mismo defecto que
+   ya se había corregido en el `goto` de arranque, entrando por otra puerta. Ahora sale a `/mi-cuenta`.
+2. Correr la sonda **en paralelo con los e2e** invalida la medición: comparten
+   `tests/e2e/.auth/session.json` y `setup-owner` lo reescribe, así que la sonda corre deslogueada y mide
+   0 en todo (ni siquiera polling). **Medir siempre con la suite quieta.**
+
+---
+
 ## [2026-09-17] update | ⚡ Capacidad palanca 2 — volver al Dashboard: 92 → 18 requests (−80 %)
 
 GO planteó el miedo correcto: *"que funcione mal el dashboard, o que no se vea tan bien como ahora"*. Por eso

@@ -158,7 +158,18 @@ export default function DashboardPage() {
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
   const [moneda, setMoneda] = useState<Moneda>('ARS')
   const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-  const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
+  // 🛑 Fin del día, NO `new Date()`. Este valor entra en el `queryKey` de `dash-kpis`/`dash-fugas` y
+  // viaja como prop a VentasVsGastosChart/MixCajaChart: con la hora exacta cambiaba en CADA montaje,
+  // así que la key era distinta cada vez y el caché no podía acertar nunca (medido: 18 requests que
+  // se repetían en cada vuelta al Dashboard pese al staleTime). Fin del día es además lo que ya usan
+  // TODOS los demás períodos (`getFechasDashboard` hace `hasta.setHours(23,59,59,999)`), y cuando el
+  // período no es "custom" este valor ni se lee — verificado en `FilterBar.tsx`: tanto
+  // `getFechasDashboard` como `getFechasAnteriores` arrancan con `if (periodo === 'custom' && custom)`.
+  const [customHasta, setCustomHasta] = useState(() => {
+    const h = new Date()
+    h.setHours(23, 59, 59, 999)
+    return h.toISOString()
+  })
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
   const { cotizacion } = useCotizacion()

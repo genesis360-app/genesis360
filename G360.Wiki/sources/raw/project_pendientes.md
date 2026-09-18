@@ -167,8 +167,13 @@ type: project
 >    idéntico al ir y volver). 🕵️ **Quedan 18 por una causa ya diagnosticada**: `customHasta` se inicializa
 >    con `new Date().toISOString()` (timestamp nuevo por montaje) y está en el `queryKey` de `dash-kpis`/
 >    `dash-fugas` → la key cambia en cada vuelta y el caché no puede acertar. Sacarlo de la key cuando el
->    período no es "custom" llevaría la vuelta cerca de 0: **cambio aparte, sin decidir.**
->    La **(3) polling** sigue medida y sin decidir.
+>    período no es "custom" — ✅ **HECHO el 2026-09-18**: `customHasta` se inicializa al fin del día (lo mismo
+>    que ya usaban los demás períodos) → **volver al Dashboard pasa de 18 a 0 requests**, primera visita
+>    intacta, sin cambiar ningún número.
+>    ✅ **(3) polling HECHA**: reposo **0,59 → 0,28 req/s (−53 %)**. Solo contadores de fondo (`useAlertas`
+>    30→120 s, supervisión y notificaciones 30→60 s). **NO se tocó** lo que habilita operar: cajas abiertas
+>    del POS (15 s) ni el polling de pago MODO/MP del QR (4 s).
+>    **Las 3 palancas de Capacidad quedan cerradas.**
 > 4. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
 >    despacho de reserva con seña mixta (UAT 57.9) y fallo al aplicar un precio programado (UAT 59.7).
 > 5. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta

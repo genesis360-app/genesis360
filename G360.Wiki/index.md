@@ -307,8 +307,10 @@ tramos del video de facturación. 📐 **Pedido de GO — COMPLETO (2026-09-18)*
 (venía de v2.0 de julio sobre v1.100.0). 🛑 El drift más grave estaba en **precios**: publicaba Básico $4.900 /
 Pro $9.900 cuando la fuente de verdad (`brand.ts`) marca **$54.000 / $90.000** — un orden de magnitud, en el
 documento que va a clientes. También: trial 7 días (real **30**, mig 257), el modelo de límites ya no es
-"movimientos" sino **comprobantes**, y los add-ons eran otros. ⚠ **Pendiente de GO**: confirmar los precios del
-add-on de CUIT, marcados como PROVISORIOS en `brand.ts`.*
+"movimientos" sino **comprobantes**, y los add-ons eran otros. ✅ **Cerrado por GO el 2026-09-18**: el add-on de
+CUIT queda con los precios que ya estaban vivos (+1 $20.000 · +2 $35.000 · +3 $45.000) y el documento
+destaca el precio **con débito automático**. 🛑 Hallazgo del camino: ese pack **ya se cobraba**, pese a que
+`brand.ts` y la EF decían "precio a confirmar antes de exponer el pack" — un comentario no es un guard.*
 
 Antes: *Última actualización: 2026-09-15 (cont. 71, segundo deploy del día) — 🚀 **PROD = `v1.227.0` (migs 001-429)**: la
 cola de ML/TN solo desde el servidor (mig 427), el aviso al cliente cuando el equipo registra su pago manual (mig

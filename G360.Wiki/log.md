@@ -6,6 +6,42 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-18] update | 💰 El add-on de CUIT ya se cobraba pese a decir "no exponer" — precio confirmado
+
+Cierre de las dos decisiones que habían quedado abiertas del documento de producto.
+
+### 🛑 El hallazgo: un comentario no es un guard
+
+Al ir a "confirmar el precio del add-on de CUIT" apareció que **ya estaba cobrando end-to-end**:
+`ADDON_FIJO_ENABLED = true`, `SuscripcionPage` arma los `packs_objetivo` **genéricamente**
+(`Object.entries`, sin lista blanca que excluya `cuits`) y el **espejo server-side de `mp-addon-batch`** —
+que es el que revalida y termina cobrando por delta sobre el preapproval de MP— incluye `cuits` a
+$20.000/$35.000/$45.000 y lo acepta.
+
+Y sin embargo **los dos lugares decían lo contrario**: `brand.ts` (*"precio a confirmar antes de exponer el
+pack"*) y la propia EF (*"GO confirma el precio final antes de PROD"*). La guarda existía solo como
+comentario, así que nunca se cumplió. Alcance real hoy: chico (el configurador solo lo ven tenants con
+suscripción MP real), pero el mecanismo estaba activo.
+
+### Decisiones de GO
+
+- **Precio del add-on de CUIT**: se **confirman los actuales** (+1 $20.000 · +2 $35.000 · +3 $45.000).
+  Elegido a propósito **no cambiar ningún valor**, para que a nadie que lo tenga contratado le mueva el
+  cobro. Referencia: la competencia recién bundlea multi-razón-social en planes de ~$96k-$390k; acá un CUIT
+  extra sobre Pro ($90.000) es ~22 % de recargo. Se sacó el cartel de PROVISORIO **de los dos lugares**, con
+  una nota cruzada de que están duplicados y se tocan juntos.
+- **Qué precio destaca el documento**: el de **débito automático** ($54.000 / $90.000), que es el que más
+  conviene. El de lista pasa a aclaración chica ("con otro medio de pago"). Verificado renderizando: la
+  columna "Precio de lista" ya no existe y el callout prioriza el débito.
+
+### Lo que queda
+
+Del documento de producto solo siguen abiertos dos ítems de backlog que no se pudieron verificar:
+*Courier B2B* y *cobro MP real e2e*. **Sin push ni release todavía** — decisión de GO: *"juntemos un poco
+más y luego pasamos todo"*.
+
+---
+
 ## [2026-09-18] update | 📄 Documento de producto (Fase 2) — publicaba precios 10× más baratos que los reales
 
 Segunda mitad del pedido de GO. `sources/raw/genesis360_overview.html` pasa de **v2.0 (julio, app v1.100.0)**

@@ -54,10 +54,13 @@ type: project
 >    **v2.1 · App v1.227.1** (venía de v2.0/julio sobre v1.100.0) — precios, límites, add-ons, trial,
 >    arquitectura, backlog vencido y 7 módulos que faltaban. Render verificado (6 secciones, 38 tarjetas,
 >    0 errores; sin rastros de los números viejos).
->    ⚠️ **Lo único que queda y es decisión de GO**: (a) confirmar el precio del **add-on de CUIT adicional**,
->    marcado `PROVISORIO` en `brand.ts`; (b) decidir si el documento debe destacar el precio **con débito
->    automático** o el de **lista** (hoy muestra los dos); (c) dos ítems del backlog que no pude verificar y
->    dejé como estaban: *Courier B2B* y *cobro MP real e2e*.
+>    ✅ **(a) y (b) cerradas por GO el 2026-09-18**: el **add-on de CUIT** queda con los precios que ya
+>    estaban vivos (+1 $20.000 · +2 $35.000 · +3 $45.000 — no cambia el cobro de nadie), y el documento
+>    destaca el precio **con débito automático** (el que más conviene). 🛑 **Hallazgo**: ese pack **ya se
+>    cobraba end-to-end** (`ADDON_FIJO_ENABLED=true`, `SuscripcionPage` arma los packs genéricamente y el
+>    espejo de `mp-addon-batch` lo valida y cobra) pese a que los DOS lugares decían *"precio a confirmar
+>    antes de exponer el pack"* — **un comentario no es un guard**.
+>    ⏳ Queda solo (c): dos ítems del backlog que no se pudieron verificar — *Courier B2B* y *cobro MP real e2e*.
 > 6. ⚡ **Capacidad** — es lo siguiente en el orden que dio GO, después de los e2e.
 > 7. 🏷️ **Categorías de clientes (precios por producto + CC)** — pedido nuevo de GO del 2026-09-16.
 >    ✅ **Fase 0 hecha el 2026-09-17**: `relevamiento-categorias-clientes-reglas-negocio.html` (raíz del repo,

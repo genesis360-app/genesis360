@@ -36,7 +36,9 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
 // Espejo server-side de ADDON_PACKS (src/config/brand.ts) — solo packs FIJOS del batch.
-// ⚠ 'cuits' (multi-CUIT F6): precio PROVISORIO — GO confirma el precio final antes de PROD.
+// ✅ 'cuits' (multi-CUIT F6): precio CONFIRMADO por GO el 2026-09-18 (+1 $20.000 · +2 $35.000 ·
+// +3 $45.000). Este espejo es el que REVALIDA y cobra — mantenerlo en sync con ADDON_PACKS de
+// src/config/brand.ts en el mismo commit.
 const ADDON_PACKS: Record<string, Array<{ cantidad: number; precio: number }>> = {
   sku:          [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }],
   sucursales:   [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }],

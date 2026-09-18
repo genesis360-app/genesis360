@@ -263,9 +263,13 @@ export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number
 // reemplaza, no se acumulan). Comprobantes = 'fijo' o 'temporal' (pago único, vence 30d, para
 // picos puntuales; los temporales SÍ se acumulan). Los packs de movimientos se eliminaron
 // (pricing v2) — las filas históricas `dimension='movimientos'` en tenant_addons no se tocan.
-// ⚠ Los precios de `cuits` son PROVISORIOS (GO define el precio final del add-on premium —
-// referencia de competencia: solo se ofrece en planes de ~$150-300k). SOLO 'fijo' (recurrente,
-// una razón social extra es un costo permanente). Precio a confirmar antes de exponer el pack.
+// ✅ Precios de `cuits` CONFIRMADOS por GO el 2026-09-18: se dejaron los que YA estaban vivos y
+// cobrando (+1 $20.000 · +2 $35.000 · +3 $45.000), justamente para que a nadie que lo tenga
+// contratado le cambie el cobro. Referencia: la competencia recién bundlea multi-razón-social en
+// planes de ~$96k-$390k; acá un CUIT extra sobre Pro ($90.000) es ~22 % de recargo.
+// SOLO 'fijo' (recurrente: una razón social extra es un costo permanente).
+// 🛑 Estos precios están DUPLICADOS en el espejo server-side de la EF `mp-addon-batch`, que es el
+// que revalida y termina cobrando. Si se tocan acá, tocarlos allá EN EL MISMO COMMIT.
 export const ADDON_PACKS: Record<string, { tipos: Array<'fijo' | 'temporal'>; packs: Array<{ cantidad: number; precio: number }> }> = {
   sku:          { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
   sucursales:   { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },

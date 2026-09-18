@@ -418,7 +418,9 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       }
     },
     enabled: !!tenant,
-    staleTime: 0,
+    // Capacidad (2026-09-17): volver al Dashboard recalculaba las ~90 consultas de cero. Ventana
+    // de 1 min → volver dentro de ese rato sale 0 requests. Tablero analítico; el POS no usa esto.
+    staleTime: 60_000,
   })
 
   // ─── Filtros locales aplicados post-query ────────────────────────────────────

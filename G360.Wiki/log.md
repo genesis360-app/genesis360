@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-17] update | ⚡ Capacidad palanca 2 — volver al Dashboard: 92 → 18 requests (−80 %)
+
+GO planteó el miedo correcto: *"que funcione mal el dashboard, o que no se vea tan bien como ahora"*. Por eso
+**no** se hizo la variante que él temía. Se le presentaron las tres versiones posibles de la palanca 2 y eligió
+la única invisible:
+
+- **2a paralelizar las queryFn** — descartada: no baja el conteo (90 siguen siendo 90) y concentraría el burst
+  contra un pool de ~20 conexiones. Mejora la sensación de velocidad de UNO, no la capacidad.
+- **2b no montar las 9 áreas** — descartada por ahora: sí baja la primera carga, pero cambia lo que se ve.
+- **2c ✅ ventana de frescura de 60 s** — hecha. El layout, el orden de carga y la primera visita no cambian.
+
+**Qué se tocó**: las 9 `Dash*Area` + las 6 consultas propias de `DashboardPage` + los 2 gráficos que monta
+aparte (`VentasVsGastosChart`, `MixCajaChart`). Todas tenían `staleTime: 0` — heredado del default global, sin
+ningún comentario que lo justificara; se confirmó por `git log` que entraron así en los commits que crearon las
+áreas (`f322d02a`, 12/05), no en un fix posterior.
+
+**Medido**: volver al Dashboard **92 → 18 requests (−80 %)**. La primera carga **no cambia** (~102): la ventana
+evita recalcular, nunca evita la primera consulta. **Verificado en navegador** (no solo por contador): 10/10
+secciones, 31 gráficos SVG, 0 errores de consola, nada colgado en "Cargando…" — y **idéntico tras ir a
+Productos y volver**. Verde: `tsc` + `build`.
+
+### 🕵️ Dos errores míos en el camino, anotados para no repetirlos
+
+1. **La sonda se mentía sola.** Hacía `goto('/dashboard')` para chequear la sesión, así que la primera columna
+   del recorrido ya era una VUELTA. Con la ventana puesta daba 31 en vez de 92 y **parecía que la primera carga
+   había mejorado** — no había mejorado nada. Corregido: ahora entra por `/mi-cuenta`.
+2. **Diagnostiqué mal el residuo.** Atribuí las 18 requests que sobreviven a los 2 gráficos, les puse la ventana
+   y **el número no se movió ni en dev ni en el build de producción**. La causa real: `DashboardPage`
+   inicializa `customHasta` con `new Date().toISOString()` — **timestamp nuevo en cada montaje**— y ese valor
+   está en el `queryKey` de `dash-kpis`/`dash-fugas` y viaja como prop a los gráficos. **Con la key cambiando
+   en cada vuelta el caché no puede acertar, por más ventana que tenga.** Encaja exacto con el residuo medido.
+   Los comentarios que había escrito afirmando lo contrario quedaron corregidos en el código.
+   **Arreglarlo** (sacar el valor inestable de la key cuando el período no es "custom") llevaría la vuelta cerca
+   de 0 — **cambio aparte, sin decidir**.
+
+---
+
 ## [2026-09-17] update | ⚡ Capacidad palanca 1 — `ensureUserData`: −18,7 % de requests por arranque
 
 GO eligió implementar **solo la palanca 1** de las 3 medidas. Hecha, medida y verificada.

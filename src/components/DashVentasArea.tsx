@@ -448,7 +448,9 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       }
     },
     enabled: !!tenant,
-    staleTime: 0,
+    // Capacidad (2026-09-17): volver al Dashboard recalculaba las ~90 consultas de cero. Ventana
+    // de 1 min → volver dentro de ese rato sale 0 requests. Tablero analítico; el POS no usa esto.
+    staleTime: 60_000,
   })
 
   // G1 "modo real" — qué bloque de plata mira la UI. En Real, SOLO las ventas nativas en pesos:

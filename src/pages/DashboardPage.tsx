@@ -332,6 +332,9 @@ export default function DashboardPage() {
       }
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   const { data: movRecientes = [] } = useQuery({
@@ -344,6 +347,9 @@ export default function DashboardPage() {
       return data ?? []
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   const { data: topProductos = [] } = useQuery({
@@ -366,6 +372,9 @@ export default function DashboardPage() {
       return Object.values(ranking).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5)
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   // ─── KPIs período (Ingreso Neto / Margen / Burn Rate / IVA) ─────────────────
@@ -534,6 +543,9 @@ export default function DashboardPage() {
       }
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   // ─── Fugas y Movimientos (top 8 por monto) ───────────────────────────────────
@@ -574,6 +586,9 @@ export default function DashboardPage() {
       return rows.sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto)).slice(0, 8)
     },
     enabled: !!tenant,
+    // Capacidad (2026-09-17): misma ventana que las 9 áreas (ver Dash*Area.tsx). Sin esto, volver
+    // al Dashboard seguía costando 31 consultas aunque las áreas ya estuvieran cacheadas.
+    staleTime: 60_000,
   })
 
   // ─── Stock inmovilizado (solo se carga en subTab insights del área todo) ─────
@@ -607,6 +622,9 @@ export default function DashboardPage() {
       return { unidades, valor, porEstado: Object.values(map).sort((a, b) => b.unidades - a.unidades) }
     },
     enabled: !!tenant && area === 'todo' && subTab === 'insights',
+    // Capacidad (2026-09-17): misma ventana que las demás. Esta solo corre en la sub-pestaña
+    // Insights, así que no pesa al aterrizar — pero evita recalcular al ir y volver entre pestañas.
+    staleTime: 60_000,
   })
 
   // ─── Insights ────────────────────────────────────────────────────────────────

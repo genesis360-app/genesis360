@@ -161,7 +161,14 @@ type: project
 >    al aterrizar (`MODULE_AREAS.map` monta las 9 áreas y cada `Dash*Area` corre 5-10 consultas **secuenciales**);
 >    **(3)** polling en reposo 0,59 req/s (`caja_sesiones` a la cabeza). Con Micro: ~85 usuarios a la vez en hora
 >    pico, ~160 en uso tranquilo, ~80-120 clientes — tablas en `wiki/architecture/resiliencia.md`.
->    **GO eligió implementar solo la (1) — ya está hecha. Las (2) y (3) quedan medidas y sin decidir.**
+>    **(1) y (2) HECHAS.** La (2) se hizo en la variante invisible que eligió GO: ventana de 60 s en las 9
+>    áreas + las 6 consultas de `DashboardPage` + los 2 gráficos → **volver al Dashboard: 92 → 18 requests
+>    (−80 %)**, primera carga sin cambios, verificado en navegador (10/10 secciones, 31 gráficos, 0 errores,
+>    idéntico al ir y volver). 🕵️ **Quedan 18 por una causa ya diagnosticada**: `customHasta` se inicializa
+>    con `new Date().toISOString()` (timestamp nuevo por montaje) y está en el `queryKey` de `dash-kpis`/
+>    `dash-fugas` → la key cambia en cada vuelta y el caché no puede acertar. Sacarlo de la key cuando el
+>    período no es "custom" llevaría la vuelta cerca de 0: **cambio aparte, sin decidir.**
+>    La **(3) polling** sigue medida y sin decidir.
 > 4. 🧪 **e2e pendientes**: rol custom creando ubicaciones de Recursos (UAT 55.5), firma del transportista por pantalla,
 >    despacho de reserva con seña mixta (UAT 57.9) y fallo al aplicar un precio programado (UAT 59.7).
 > 5. **Esperando a terceros o a GO**: contador (15 consultas; GO: todavía no), App Review de Meta

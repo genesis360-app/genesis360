@@ -215,10 +215,28 @@ compartida. Tomarlo como orden de magnitud, no como garantía.
    > 🕵️ **Lección de método**: contar por TABLA engaña cuando varios hooks leen la misma tabla con queries
    > distintas. Para medir "¿cuántas veces corrió esta función?" hay que contar por un endpoint que solo
    > ella toque. Una primera lectura de estos mismos datos concluyó "quedan ~2 cargas" y era falso.
-2. **El Dashboard cuesta 90 requests al aterrizar**: "Todo › Gráficos" monta **las 9 áreas** de una
-   (`MODULE_AREAS.map` en `DashboardPage.tsx`), y cada `Dash*Area` corre una `queryFn` con 5-10 consultas
-   **secuenciales** (`DashGastosArea` sola hace 9). Es la pantalla de entrada de todos los días. Cargar el
-   área visible primero —o al menos paralelizar dentro de cada queryFn— es el mayor ahorro por pantalla.
+2. ✅ **HECHO (2026-09-17) — el Dashboard se recalculaba ENTERO cada vez que se volvía a él.**
+   "Todo › Gráficos" monta **las 9 áreas** de una (`MODULE_AREAS.map` en `DashboardPage.tsx`) y cada
+   `Dash*Area` corre una `queryFn` con 5-10 consultas **secuenciales** (`DashGastosArea` sola hace 9).
+   Con `staleTime: 0` en todas, **volver costaba lo mismo que entrar**.
+   **Se puso una ventana de 60 s** en las 9 áreas + las 6 consultas propias de `DashboardPage` + los 2
+   gráficos que monta aparte. **Medido: volver pasó de 92 → 18 requests (−80 %)**; la **primera** carga
+   no cambia (~102, por diseño: la ventana solo evita recalcular, nunca evita la primera consulta).
+   **Elegido por GO** entre las tres variantes posibles, justamente porque es la única invisible: no
+   cambia el layout ni el orden de carga. Verificado en navegador: 10/10 secciones, 31 gráficos, 0
+   errores de consola, nada colgado en "Cargando…" — **idéntico tras ir a otra pantalla y volver**.
+   ⚠️ **No se hizo** "no montar las 9 áreas" (sí bajaría la primera carga, pero cambia lo que se ve) ni
+   "paralelizar las queryFn" (no baja el conteo y concentraría el burst contra un pool de ~20 conexiones).
+
+   🕵️ **Por qué quedan 18 y no 0** — diagnosticado, no adivinado: `DashboardPage` inicializa
+   `customHasta` con `new Date().toISOString()`, o sea **un timestamp nuevo en cada montaje**. Ese valor
+   está en el `queryKey` de `dash-kpis` y `dash-fugas`, y viaja como prop a `VentasVsGastosChart` y
+   `MixCajaChart`. **Con la key cambiando en cada vuelta, el caché no puede acertar por más ventana que
+   tenga.** Encaja exacto con el residuo medido (`ventas` 5, `gastos` 4, `venta_items` 3,
+   `caja_movimientos` 2, `caja_sesiones` 2, `cajas` 1, `devoluciones` 1 — todas del bloque de `dash-kpis`).
+   Las consultas cuya key NO lo incluye (`dashboard-stats`, `movimientos-recientes`, `top-productos`) sí
+   cachean. **Arreglarlo** (sacar el valor inestable de la key cuando el período no es "custom") llevaría
+   la vuelta cerca de 0, y es un cambio aparte: **sin decidir**.
 3. **Polling**: el POS pregunta por las cajas abiertas cada 15 s y los conteos del badge de alertas corren cada
    30 s; en reposo son 0,59 req/s, de los cuales `caja_sesiones` es el más frecuente. Espaciarlos o
    dispararlos por evento baja el consumo de una pestaña abierta todo el día.

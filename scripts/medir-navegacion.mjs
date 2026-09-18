@@ -74,16 +74,25 @@ if (SUPABASE_URL.includes(PROD_REF) && !CONFIRMADO) {
 // Las 8 pantallas del recorrido: las que un dueño/cajero toca en el día, mezclando livianas
 // (dashboard) con pesadas (inventario, ventas). El orden importa poco; lo que se mide es el costo
 // de CADA cambio de pantalla con la app ya booteada.
-const PANTALLAS = [
-  ['Dashboard', '/dashboard'],
-  ['Productos', '/productos'],
-  ['Inventario', '/inventario'],
-  ['Ventas (POS)', '/ventas'],
-  ['Clientes', '/clientes'],
-  ['Caja', '/caja'],
-  ['Gastos', '/gastos'],
-  ['Reportes', '/reportes'],
-]
+// Modo `vuelta`: mide el costo de VOLVER a una pantalla ya visitada en la misma sesión, que es lo
+// que ataca el `staleTime` del Dashboard. El recorrido normal lo visita una sola vez, así que no
+// puede ver la diferencia. Las dos visitas al Dashboard tienen que dar distinto.
+const PANTALLAS = MODO === 'vuelta'
+  ? [
+      ['Dashboard 1a vez', '/dashboard'],
+      ['Productos', '/productos'],
+      ['Dashboard vuelta', '/dashboard'],
+    ]
+  : [
+      ['Dashboard', '/dashboard'],
+      ['Productos', '/productos'],
+      ['Inventario', '/inventario'],
+      ['Ventas (POS)', '/ventas'],
+      ['Clientes', '/clientes'],
+      ['Caja', '/caja'],
+      ['Gastos', '/gastos'],
+      ['Reportes', '/reportes'],
+    ]
 
 /** Normaliza una URL de Supabase a un identificador estable para agrupar y comparar corridas. */
 function clasificar(url) {
@@ -126,7 +135,11 @@ page.on('request', r => contar(r.url()))
 console.log(`Midiendo contra ${BASE_URL} → ${new URL(SUPABASE_URL).host}`)
 
 // ── Arranque: la sesión guardada de los e2e puede haber vencido ──────────────────────────────
-await page.goto('/dashboard')
+// 🛑 Se entra por `/mi-cuenta`, NO por el Dashboard: este `goto` de chequeo también monta la
+// pantalla, así que arrancar en el Dashboard lo dejaba ya visitado y la primera columna del
+// recorrido medía en realidad una VUELTA. Con `staleTime` en las áreas eso daba 31 en vez de 92 y
+// parecía que la primera carga había mejorado, cuando la primera carga no cambió en nada.
+await page.goto('/mi-cuenta')
 await asentar(page)
 
 if (new URL(page.url()).pathname.startsWith('/login')) {

@@ -25,7 +25,23 @@ ningún comentario que lo justificara; se confirmó por `git log` que entraron a
 **Medido**: volver al Dashboard **92 → 18 requests (−80 %)**. La primera carga **no cambia** (~102): la ventana
 evita recalcular, nunca evita la primera consulta. **Verificado en navegador** (no solo por contador): 10/10
 secciones, 31 gráficos SVG, 0 errores de consola, nada colgado en "Cargando…" — y **idéntico tras ir a
-Productos y volver**. Verde: `tsc` + `build`.
+Productos y volver**.
+
+### ✅ Verificación con suites reales (2026-09-18), no solo typecheck
+
+- **Unitarios**: `npx vitest run` → **112 archivos, 1848 tests, 0 fallas** (285 s). ⚠️ Esto **desmiente** la nota
+  que decía que la suite completa no corría acá por OOM de jsdom: corre.
+- **e2e Dashboard/navegación (owner)**: **30 passed** — `12_navegacion_sidebar` (las 13 rutas sin 500),
+  `14_coherencia_numeros` (**el badge de alertas coincide con AlertasPage** y **"Productos activos" con
+  ProductosPage** → el caché nuevo NO desincronizó números), `84_dashboard_subtabs` (recorre **todas** las
+  áreas × sub-pestañas sin error boundary ni crash).
+- **e2e multi-rol**: **77 passed / 5 skipped** con **login real por UI de 4 usuarios distintos** (CAJERO,
+  SUPERVISOR, DEPOSITO, CONTADOR). Es la prueba directa de `ensureUserData`: cada rol ve lo suyo y las rutas
+  restringidas siguen redirigiendo, o sea que el store se pobló bien con rol y tenant en cada login.
+- **Cerrar sesión y volver a entrar con el MISMO usuario** (el único caso que se había razonado sin probar,
+  porque el guard mira `user?.id === authUserId`): login → signOut por UI → login otra vez → **10 secciones
+  las dos veces, sidebar y datos del negocio OK, 0 errores**. El guard es auto-correctivo como se esperaba.
+- Verde también: `tsc` + `build`.
 
 ### 🕵️ Dos errores míos en el camino, anotados para no repetirlos
 

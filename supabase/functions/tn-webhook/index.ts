@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-// Secrets requeridos: ninguno propio (usa service role de Supabase)
+// Secrets requeridos: TN_CLIENT_SECRET (para validar la firma HMAC de cada webhook)
 // Env vars auto-inyectadas: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 //
 // Ciclo de vida de un pedido TN:
@@ -15,6 +15,27 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const TN_API_BASE = 'https://api.tiendanube.com/v1'
 const TN_USER_AGENT = 'Genesis360 (gaston.otranto@gmail.com)'
+
+// GUARD-FIRMA (auditoria de seguridad 2026-09-20). TiendaNube firma cada webhook con HMAC-SHA256
+// del cuerpo crudo usando el client secret de la app, en el header `x-linkedstore-hmac-sha256`.
+// Hasta ahora no se validaba: con un `store_id` (semi-publico) y un numero de pedido, cualquiera
+// podia postear `order/cancelled` y —esa rama corre ANTES del fetch autoritativo a TN— cancelar
+// una venta real y liberar el stock reservado. Eso es ventas + inventario, o sea REGLA #0.
+// Comparacion en tiempo constante para no filtrar la firma byte a byte por timing.
+async function firmaTnValida(cuerpoCrudo: string, firmaRecibida: string, secret: string): Promise<boolean> {
+  if (!firmaRecibida) return false
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(cuerpoCrudo))
+  const esperada = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('')
+  const recibida = firmaRecibida.trim().toLowerCase()
+  if (esperada.length !== recibida.length) return false
+  let diff = 0
+  for (let i = 0; i < esperada.length; i++) diff |= esperada.charCodeAt(i) ^ recibida.charCodeAt(i)
+  return diff === 0
+}
 
 // Crea el envío + domicilio automáticamente a partir de una orden pagada — best-effort,
 // nunca lanza (el llamador decide si loguear). Campos de order.shipping_address
@@ -73,10 +94,24 @@ serve(async (req) => {
     return new Response('Method not allowed', { status: 405 })
   }
 
+  // El cuerpo se lee CRUDO porque la firma se calcula sobre los bytes exactos que mandó TN:
+  // re-serializar el JSON cambiaría el HMAC.
+  const cuerpoCrudo = await req.text()
+  const tnSecret = Deno.env.get('TN_CLIENT_SECRET') ?? ''
+  if (!tnSecret) {
+    console.error('tn-webhook: falta TN_CLIENT_SECRET — no se puede validar la firma, se rechaza')
+    return new Response('Webhook mal configurado', { status: 503 })
+  }
+  const firma = req.headers.get('x-linkedstore-hmac-sha256') ?? ''
+  if (!(await firmaTnValida(cuerpoCrudo, firma, tnSecret))) {
+    console.warn('tn-webhook: firma HMAC invalida o ausente — descartado')
+    return new Response('Firma invalida', { status: 401 })
+  }
+
   // Payload de TN: { store_id: number, event: string, id: number }
   let payload: { store_id: number; event: string; id: number }
   try {
-    payload = await req.json()
+    payload = JSON.parse(cuerpoCrudo)
   } catch {
     return new Response('Invalid JSON', { status: 400 })
   }

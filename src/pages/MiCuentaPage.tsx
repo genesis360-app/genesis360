@@ -177,7 +177,7 @@ export default function MiCuentaPage() {
   // ── Password change ────────────────────────────────────────────────────────
   const handlePasswordChange = async () => {
     if (!pwForm.nueva.trim()) { toast.error('Escribí la nueva contraseña'); return }
-    if (pwForm.nueva.length < 8) { toast.error('Mínimo 8 caracteres'); return }
+    if (pwForm.nueva.length < 10) { toast.error('Mínimo 10 caracteres'); return }
     if (pwForm.nueva !== pwForm.confirmar) { toast.error('Las contraseñas no coinciden'); return }
     setSavingPw(true)
     try {
@@ -670,7 +670,7 @@ export default function MiCuentaPage() {
             <div className="relative">
               <input
                 type={showPw ? 'text' : 'password'}
-                placeholder="Nueva contraseña (mín. 8 caracteres)"
+                placeholder="Nueva contraseña (mín. 10 caracteres)"
                 value={pwForm.nueva}
                 onChange={e => setPwForm(p => ({ ...p, nueva: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm pr-10"

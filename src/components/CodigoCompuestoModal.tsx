@@ -3,6 +3,7 @@ import bwipjs from 'bwip-js/browser'
 import { ScanBarcode, Download, X, Printer } from 'lucide-react'
 import { BRAND } from '../config/brand'
 import { buildGS1ElementString, gtinCheckDigit, isValidGtin, type GS1Fields } from '../lib/gs1'
+import { escaparHtml } from '@/lib/escaparHtml'
 
 export interface Perfil {
   id: string
@@ -101,7 +102,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
     const win = window.open('', '_blank')
     if (!win) return
     win.document.write(`
-      <html><head><title>Código ${lpn}</title>
+      <html><head><title>Código ${escaparHtml(lpn)}</title>
       <style>
         body { font-family: sans-serif; display: flex; flex-direction: column;
                align-items: center; justify-content: center; min-height: 100vh;
@@ -114,9 +115,9 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
       </style>
       </head><body>
         <img src="${dataUrl}" />
-        <p class="lpn">${lpn}</p>
-        <p class="nombre">${productoNombre}</p>
-        <p class="sku">${sku}</p>
+        <p class="lpn">${escaparHtml(lpn)}</p>
+        <p class="nombre">${escaparHtml(productoNombre)}</p>
+        <p class="sku">${escaparHtml(sku)}</p>
         <script>window.onload = () => { window.print(); window.close(); }</script>
       </body></html>
     `)

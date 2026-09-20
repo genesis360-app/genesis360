@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-15T20:48:03.395Z desde gcmhzdedrkmmzfzfveig vía MCP execute_sql
--- Última migración aplicada: 429 (20260915204122) · 170 tablas
+-- Generado 2026-09-20T20:51:05.558Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260920203318 · 170 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -5950,6 +5950,7 @@ CREATE OR REPLACE FUNCTION public.fn_enqueue_tn_fulfillment_sync()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
+ SET search_path TO 'public'
 AS $function$
 DECLARE
   v_tn_order_id bigint;

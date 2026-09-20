@@ -4,6 +4,7 @@ import { ScanBarcode, Printer, X, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { BRAND } from '../config/brand'
 import { buildGS1ElementString, isValidGtin, type GS1Fields } from '../lib/gs1'
+import { escaparHtml } from '@/lib/escaparHtml'
 
 interface LineaEtiqueta {
   lpn: string
@@ -96,8 +97,8 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
     const cards = ok.map(e => `
       <div class="card">
         <img src="${e.dataUrl}" />
-        <p class="lpn">${e.lpn}</p>
-        <p class="nombre">${e.nombre}</p>
+        <p class="lpn">${escaparHtml(e.lpn)}</p>
+        <p class="nombre">${escaparHtml(e.nombre)}</p>
       </div>`).join('')
     win.document.write(`
       <html><head><title>Etiquetas GS1 (${ok.length})</title>

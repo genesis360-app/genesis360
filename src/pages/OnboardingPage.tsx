@@ -102,8 +102,8 @@ export default function OnboardingPage() {
 
   const handleAccountSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (accountData.password.length < 8) {
-      toast.error('La contraseña debe tener al menos 8 caracteres')
+    if (accountData.password.length < 10) {
+      toast.error('La contraseña debe tener al menos 10 caracteres')
       return
     }
     setStep('business')

@@ -137,7 +137,7 @@ export default function PortalProveedoresPage() {
   }
 
   const guardarPassword = async () => {
-    if (nuevaPass.length < 6) { toast.error('La contraseña debe tener al menos 6 caracteres'); return }
+    if (nuevaPass.length < 10) { toast.error('La contraseña debe tener al menos 10 caracteres'); return }
     setPassSaving(true)
     const { error } = await supabase.auth.updateUser({ password: nuevaPass })
     setPassSaving(false)
@@ -207,7 +207,7 @@ export default function PortalProveedoresPage() {
         <div className="max-w-xl mx-auto mt-4 px-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-2 flex-wrap">
             <input type="password" value={nuevaPass} onChange={e => setNuevaPass(e.target.value)}
-              placeholder="Nueva contraseña (mín. 6 caracteres)"
+              placeholder="Nueva contraseña (mín. 10 caracteres)"
               className="flex-1 min-w-[200px] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:border-accent-text" />
             <button onClick={guardarPassword} disabled={passSaving}
               className="bg-accent hover:bg-accent/90 text-white text-sm font-medium px-3 py-2 rounded-lg disabled:opacity-50">

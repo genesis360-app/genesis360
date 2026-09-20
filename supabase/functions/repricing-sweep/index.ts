@@ -13,6 +13,26 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // GUARD-CRON (auditoria de seguridad 2026-09-20): esta funcion la dispara GitHub Actions
+  // o alguna otra Edge Function, nunca un navegador. Antes el unico filtro era `verify_jwt`,
+  // que se satisface con la ANON KEY — y la anon key viaja en el bundle que descarga
+  // cualquiera, asi que la funcion estaba abierta a internet. Exige CRON_SECRET (workflows)
+  // o la service key (llamadas EF -> EF). Sin CRON_SECRET cargado, solo entra la service key.
+  {
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? ''
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const enviado = req.headers.get('x-cron-secret') ?? ''
+    const auth = req.headers.get('Authorization') ?? ''
+    const autorizado =
+      (cronSecret !== '' && enviado === cronSecret) ||
+      (serviceKey !== '' && auth.includes(serviceKey))
+    if (!autorizado) {
+      return new Response(JSON.stringify({ error: 'No autorizado' }), {
+        status: 401, headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,

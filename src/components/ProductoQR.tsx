@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { QrCode, Download, X, Printer } from 'lucide-react'
 import { BRAND } from '../config/brand'
+import { escaparHtml } from '@/lib/escaparHtml'
 
 interface Props {
   productoId: string
@@ -41,7 +42,7 @@ export function ProductoQR({ nombre, sku, onClose }: Props) {
     const win = window.open('', '_blank')
     if (!win) return
     win.document.write(`
-      <html><head><title>QR ${nombre}</title>
+      <html><head><title>QR ${escaparHtml(nombre)}</title>
       <style>
         body { font-family: sans-serif; display: flex; flex-direction: column;
                align-items: center; justify-content: center; min-height: 100vh;
@@ -53,8 +54,8 @@ export function ProductoQR({ nombre, sku, onClose }: Props) {
       </style>
       </head><body>
         <img src="${dataUrl}" />
-        <p class="nombre">${nombre}</p>
-        <p class="sku">${sku}</p>
+        <p class="nombre">${escaparHtml(nombre)}</p>
+        <p class="sku">${escaparHtml(sku)}</p>
         <script>window.onload = () => { window.print(); window.close(); }</script>
       </body></html>
     `)

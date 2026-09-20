@@ -391,6 +391,10 @@ Alternativa independiente:
 - Actualiza `id_pago_externo` + `money_release_date`
 - Idempotencia via `ventas_externas_logs` con clave `mp-preventa-{id}`
 
+> 🟨 **Hallazgo ABIERTO (auditoría de seguridad 2026-09-20, backlog, sin cerrar)**: si el POST no trae
+> `user_id`, hace `.limit(1)` y agarra una credencial de **cualquier tenant** en vez de rechazar. Debería
+> devolver 400. Ver [[wiki/architecture/guards-server-side]] ("Tanda G", hallazgos abiertos).
+
 ---
 
 ## OAuth para sellers (Integraciones)

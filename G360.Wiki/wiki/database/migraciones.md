@@ -3,10 +3,19 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-15
+updated: 2026-09-20
 ---
 
-# Historial de Migraciones (001-429, + correctivos 387b/387c)
+# Historial de Migraciones (001-430, + correctivos 387b/387c)
+
+🛡️ **Migración 430 — SOLO EN DEV, 🔴 FALTA APLICAR EN PROD** (2026-09-20, commit `f55fbf0f`). Cierra la fuga de
+Storage que apareció en la auditoría de seguridad completa de esa sesión (`archivos-biblioteca` con policies
+SIEMPRE TRUE + `productos` sin filtrar tenant + `search_path` de `fn_enqueue_tn_fulfillment_sync`). No es la
+única corrección de esa auditoría: los otros 7 hallazgos (guard `CRON_SECRET` en 15 sweeps, validación real de
+`modo-webhook`/`tn-webhook`/`meli-webhook`, auth en `scan-product`/`scan-ticket`, XSS en impresión de QR,
+política de contraseñas) son código de Edge Functions/frontend/Auth, sin migración de DB propia. `APP_VERSION`
+sigue en `v1.228.0`, sin release para esta tanda. Detalle completo en [[wiki/architecture/guards-server-side]]
+("Tanda G") y `log.md` (2026-09-20).
 
 **✅ Migraciones 427-429 — EN DEV Y EN PROD** (2026-09-15, cont. 71). Las 3 decisiones de GO que seguían tras el
 primer deploy del día se construyeron y verificaron en DEV (`v1.227.0`, migs 001-429) y, más tarde ese mismo día, se
@@ -84,6 +93,7 @@ truncado quedó (`CASE WHEN v_seq < 100`) **y** que `SET search_path` sobrevivi�
 
 | # | Archivo | Qué hace |
 |---|---|---|
+| 430 | `430_storage_aislamiento_por_negocio_y_search_path.sql` | 🛡️ **Tanda G — cierra la fuga real de Storage encontrada en la auditoría de seguridad del 2026-09-20** (commit `f55fbf0f`). `archivos-biblioteca`: las policies de SELECT y DELETE tenían condición SIEMPRE TRUE (nunca miraban `name`, donde vive la carpeta del tenant) — **un usuario del negocio A leía archivos del negocio B**, fuga de lectura real verificada en DEV. `productos`: INSERT/UPDATE pasaban de `auth.uid() IS NOT NULL` a secas a carpeta-del-propio-tenant + rol de gestión (se podía pisar fotos de otro negocio). `fn_enqueue_tn_fulfillment_sync` (SECURITY DEFINER) fijado con `search_path`. Verificado post-fix con 6/6 chequeos (ataques bloqueados, lo legítimo intacto). ✅ **EN DEV, 🔴 FALTA EN PROD**. Ver [[wiki/architecture/guards-server-side]] ("Tanda G"). |
 | 429 | `429_ayuda_recursos.sql` | 🎓 **Ayuda Fase 2: "Cursos y recursos"** (pedido de GO, construida vacía a propósito — los videos de onboarding siguen en pausa). Tabla `ayuda_recursos` (`titulo`, `descripcion`, `modulo`, `video_path`, `miniatura_path`, `duracion_seg`, `orden`, `publicado`) — RLS SELECT solo `publicado=true`, sin escritura para la app. Bucket **público** `ayuda-recursos` (mp4/webm/imágenes, 50 MB), sin policies (lectura por URL pública; GO carga los videos a mano desde el dashboard). ✅ **EN DEV Y EN PROD** (segundo deploy, 2026-09-15). Ver [[wiki/overview/app-reference]] → "Ayuda". |
 | 428 | `428_pago_manual_avisa_resuelve_consulta.sql` | 💳 **Pago manual registrado: el cliente se entera** (pedido de GO). `fn_registrar_pago_manual` (mig 262, única puerta del pago manual), en una subtransacción después de registrar el pago (un aviso que falla no revierte el pago): resuelve cada consulta tipo `pago` abierta ("Ya transferí") con un mensaje del equipo — avisa a quien avisó por el mismo trigger de las migs 425/426 — y manda campanita "Recibimos tu pago" a DUEÑO/SUPER_USUARIO activos que no se enteraron por la consulta. `admin-api` manda además el mail. `migration-reviewer`: APTA. ✅ **EN DEV Y EN PROD** (segundo deploy, 2026-09-15 — `admin-api` redeployada en PROD el mismo día). Ver [[wiki/features/pago-manual]] y [[wiki/support/plataforma-soporte]]. |
 | 427 | `427_ml_tn_cola_vinculos_solo_servidor.sql` | 🔒 **ML/TN: cola de sincronización y vínculos solo desde el servidor** (REGLA #0, hallazgo arrastrado de la mig 424/cont. 69). `integration_job_queue` pasa a solo lectura (`job_queue_select`) — nadie del tenant inserta jobs directo; `inventario_meli_map`/`inventario_tn_map` a lectura de todo el negocio + escritura solo quien puede editar Configuración (`auth_puede_editar_modulo('configuracion')`); `anon` sin privilegios en las 3. RPC nueva `fn_forzar_sync_stock(p_integracion)` (SECURITY DEFINER, tope 500 jobs) arma los jobs en el servidor para el botón "Forzar sync de stock". 🛑 `fn_enqueue_sync_precio` (trigger de `productos`) pasa a `SECURITY DEFINER` en la misma migración — no lo era, y con el REVOKE de INSERT directo cambiar el precio de un producto vinculado habría fallado para cualquiera que no fuera `service_role` (gotcha encontrado y corregido antes de aplicar). ✅ **EN DEV Y EN PROD** (segundo deploy, 2026-09-15, junto con el merge del frontend). Ver [[wiki/integrations/mercado-libre]] → "La cola y los vínculos, solo desde el servidor". |

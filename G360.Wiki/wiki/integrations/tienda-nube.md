@@ -98,6 +98,12 @@ Token **permanente** — TiendaNube no expira access tokens.
 ## Webhooks de órdenes
 
 **EF `tn-webhook`** (sin JWT):
+
+> 🔒 **2026-09-20** (commit `f55fbf0f`, EN DEV): antes no validaba nada — la rama `order/cancelled` dejaba
+> cancelar ventas y liberar stock desde afuera con solo conocer la URL del webhook. Ahora valida el
+> **HMAC-SHA256** de TiendaNube sobre el cuerpo crudo (secret `TN_CLIENT_SECRET`, ya existía). Ver
+> [[wiki/architecture/guards-server-side]] ("Tanda G").
+
 - `order/created` → crea venta `pendiente`
 - `order/paid` → si existe venta `pendiente` la actualiza a `reservada`; si no existe, la crea directamente como `reservada`
 - **Idempotencia**: clave `{store_id}-{event}-{orderId}` en `ventas_externas_logs`

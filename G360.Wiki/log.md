@@ -6,6 +6,142 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-20] update | 🛡️ Auditoría de seguridad completa — 8 hallazgos cerrados (commit `f55fbf0f`, en `dev`, sin deploy a PROD) + backup de Storage
+
+Auditoría exhaustiva con pruebas ejecutadas contra PROD y DEV (no solo lectura de código).
+
+### Lo que se verificó BIEN, con números
+
+- **170 de 170 tablas de `public` con RLS activo. 234 policies.**
+- Impersonando un usuario real y recorriendo las **155 tablas con `tenant_id`**: cero filas de otro negocio, cero tablas inaccesibles por error.
+- Como `anon`: de 170 tablas, **55 ni siquiera accesibles** y las otras 115 devuelven cero filas, salvo `planes` (precios públicos, a propósito). Solo 1 policy da acceso a `anon`.
+- Sin escalada de privilegios: DEPÓSITO no puede ascenderse a DUEÑO, ni mudarse de negocio, ni insertar en otro (los tres bloqueados).
+- 28 tablas con policies por sucursal.
+- Las SECURITY DEFINER sensibles tienen control interno propio, probado como `anon`: `fn_sueldos_agregado` rechaza ("tu rol no puede ver el costo laboral"), `fn_empleados_basico` da 0 filas, `aprobar_cambio_estado_inventario` valida rol y pertenencia al negocio.
+- API keys propias (data-api/marketplace): 192 bits, hasheadas SHA-256, la key en claro nunca persiste, el tenant sale del registro de la key. Todos los tokens de links públicos usan `crypto.randomUUID()`.
+- `npm audit`: 0 vulnerabilidades. Cero `dangerouslySetInnerHTML`/`eval` en `src/`. Cero secretos en el bundle.
+- Las 8 Edge Functions que reciben `tenant_id` por parámetro validan las 8 la pertenencia del usuario.
+
+### 8 hallazgos cerrados en el commit `f55fbf0f`
+
+1. **mig 430** (`430_storage_aislamiento_por_negocio_y_search_path.sql`, ✅ EN DEV, 🔴 FALTA EN PROD): `archivos-biblioteca` tenía policies de SELECT y DELETE con condición SIEMPRE TRUE (nunca miraban `name`) — **un usuario del negocio A leía archivos del negocio B**. Fuga de lectura real, verificada en DEV; latente en PROD porque el bucket está vacío. `productos` tenía INSERT/UPDATE en `auth.uid() IS NOT NULL` a secas — se podía pisar fotos de otro negocio. `fn_enqueue_tn_fulfillment_sync` (SECURITY DEFINER) sin `search_path` fijo. Verificado post-fix: 6/6 chequeos (ataques bloqueados, lo legítimo sigue andando).
+2. **GUARD-CRON en 15 sweeps/workers**: lo único que los filtraba era `verify_jwt`, que se satisface con la anon key (pública) — se podían disparar desde afuera reintentos de NC AFIP, dejar negocios sin acceso, recalcular intereses de CC o liberar reservas de stock de todos los negocios. Ahora exigen `CRON_SECRET` o la service key; los 13 workflows mandan el header `x-cron-secret`.
+3. **`modo-webhook`**: el comentario decía que validaba contra `modo_credentials` — era falso, no había una sola línea. Cualquiera con el UUID de una venta la marcaba pagada por el importe que quisiera. Ahora exige `MODO_WEBHOOK_SECRET` y el monto sale del total de NUESTRA venta, nunca del body (409 si hay discrepancia). GO pidió explícitamente conservar MODO, no eliminarlo.
+4. **`tn-webhook`**: ahora valida el HMAC-SHA256 de TiendaNube sobre el cuerpo crudo — antes no validaba nada y `order/cancelled` permitía cancelar ventas y liberar stock desde afuera. Usa el secret `TN_CLIENT_SECRET`, que ya existía.
+5. **`meli-webhook`**: `resource` del body se concatenaba crudo a la URL de un fetch que lleva el access_token del vendedor — un `resource` con `@` desviaba la llamada (y el token) al servidor del atacante. Ahora se valida contra `/^\/orders\/\d+$/`.
+6. **`scan-product`/`scan-ticket`**: no validaban nada, cualquiera quemaba la cuota de `ANTHROPIC_API_KEY`. Ahora exigen sesión de usuario.
+7. **XSS** en las 4 pantallas de impresión de etiquetas/QR (`LpnQR`, `ProductoQR`, `CodigoCompuestoModal`, `CodigoMasivoModal`): interpolaban nombre/SKU/LPN sin escapar en un `document.write` que hereda el origin de la app — y esos nombres entran por el importador CSV y por el sync de ML/TiendaNube. Nuevo helper `src/lib/escaparHtml.ts`, 13 interpolaciones escapadas.
+8. **Política de contraseñas** (aplicada por API, ✅ YA ACTIVA en DEV y PROD): mínimo 10 caracteres + protección de contraseñas filtradas (HaveIBeenPwned). Los mínimos del cliente se alinearon a 10 en MiCuenta, Onboarding y Portal de Proveedores. **NO** se activó `security_update_password_require_reauthentication`: se probó, pero la app cambia la clave con `updateUser({password})` sin el paso de re-autenticación, así que habría roto el cambio de contraseña en Mi Cuenta y en el portal — queda pendiente hasta implementar el flujo de nonce.
+
+### Hallazgos ABIERTOS — van al backlog de pendientes
+
+- `mp-webhook`: la firma HMAC está implementada pero en modo LOG-ONLY; falta cargar `MP_WEBHOOK_SECRET` para hacerla bloqueante (mitigado porque re-consulta la API de MP).
+- `mp-ipn`: si el POST no trae `user_id`, hace `.limit(1)` y agarra una credencial de CUALQUIER tenant — debería devolver 400.
+- `cuenta_token` (estado de cuenta del cliente): no vence nunca y no se puede rotar desde la app. Comparar con `token_transportista`, que sí tiene expiración + limpieza a 30 días.
+- `verificar_otp_envio`: OTP de 6 dígitos generado con `random()` de Postgres (no criptográfico), invocable por `anon` sin límite de intentos.
+- Rate limiting de las EFs públicas en memoria del isolate — se resetea en cada cold start.
+- SSL no forzado en conexiones directas a la base; base accesible desde cualquier IP (0.0.0.0/0).
+- Sin captcha en login/alta.
+- 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos`): cualquiera con la URL lee el archivo.
+
+### Backups — verificado, y un hueco crítico para lo que se promete al cliente
+
+Organización "Argentum Business Group" en plan **Pro** (cubre PROD us-east-1 y DEV sa-east-1). **Backup diario
+automático, 7 días de retención** (medido: 9 backups guardados, el más viejo del 13/09). **PITR disponible pero
+NO activo** (add-on: ~USD 100/mes por 7 días, 200 por 14, 400 por 28).
+
+🛑 **El backup NO incluye los archivos de Storage.** Textual de Supabase: *"Database backups do not include
+objects you store via the Storage API"* — no se respaldan fotos de productos, certificados AFIP, comprobantes
+de gastos, legajos de empleados, remitos ni adjuntos de soporte. Tampoco se puede restaurar un cliente solo (el
+restore es del proyecto entero y lo deja caído mientras dura), y borrar el proyecto borra también los backups
+(irreversible).
+
+**Mitigación implementada**: nuevo workflow `.github/workflows/backup-storage.yml` que baja todos los buckets a
+diario y los guarda como artifact de GitHub con **90 días de retención**. Usa el CLI con el token de cuenta a
+propósito, para no guardar una key de datos en GitHub Actions. Comandos verificados contra PROD: la ruta lleva
+TRES barras (`ss:///bucket`) y `--experimental` es obligatorio. Necesita los secrets `SUPABASE_ACCESS_TOKEN` y
+`SUPABASE_PROJECT_REF`.
+
+### Dominio propio — pedido de GO, NO hecho
+
+GO quiere dominio propio para que el login no muestre `jjff…supabase.co`. Verificado: el add-on **Custom Domain
+NO está contratado** (~USD 10/mes por proyecto). Requiere: contratar el add-on, elegir subdominio (sugerido
+`api.genesis360.pro`), cargar CNAME+TXT en el DNS, activar, y después actualizar `VITE_SUPABASE_URL` en Vercel
+(los 2 proyectos) + `.env.local` + el secret `SUPABASE_URL` de GitHub, y **actualizar el redirect URI de Google
+OAuth** en Google Cloud Console. Queda como pendiente priorizado, sin empezar.
+
+### Estado de versión al cierre
+
+`APP_VERSION` sigue en `v1.228.0` (PROD, deployado el 2026-09-18). Todo lo de esta entrada vive en `dev`, commit
+`f55fbf0f`, **sin release ni tag**. Migraciones: PROD sigue en 001-429, DEV tiene hasta la **430** — drift a
+propósito hasta el próximo deploy.
+
+Ver [[wiki/architecture/guards-server-side]], [[wiki/architecture/edge-functions]],
+[[wiki/architecture/infraestructura]] y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
+## [2026-09-20] update | 🔑 Migración de API keys legacy — cómo se rota la `service_role` filtrada de verdad
+
+Retomando el pendiente que arrastraba desde el 2026-09-16 (la `service_role` de PROD quedó expuesta en el chat
+para resetear por Admin API la contraseña del negocio de prueba de los videos).
+
+### El hallazgo que cambia lo que decía el wiki
+
+**No existe el botón "Generate new service_role key".** La `service_role` legacy es un JWT firmado con el JWT
+secret del proyecto: solo muere de dos formas — rotando el **JWT secret** entero (rompe también la `anon`:
+deslogueo masivo + PWA cacheada rota) o **desactivando las legacy keys**, que es todo-o-nada (anon + service_role
+juntas, un solo botón "Disable JWT-based API keys"). Confirmado contra la Management API: el único control es
+`PUT /api-keys/legacy?enabled=true|false`, no hay control por key individual.
+
+### Estado real encontrado (verificado, no asumido)
+
+- DEV y PROD **ya tenían** las keys nuevas (`sb_publishable_…` y `sb_secret_…`) creadas desde el 2026-03-06.
+- Supabase ya había remapeado el CONTENIDO de las variables que inyecta en las Edge Functions:
+  `SUPABASE_SERVICE_ROLE_KEY` trae hoy la SECRET nueva y `SUPABASE_ANON_KEY` la PUBLISHABLE nueva. Comprobado con
+  una EF de diagnóstico temporal (ya borrada) y con los logs del gateway: las 1004 llamadas del Edge Runtime
+  salieron con prefijo `sb_secret_`. **Conclusión: las 51 Edge Functions no necesitan ningún cambio de código.**
+- La key nueva en `Authorization: Bearer` contra una EF con `verify_jwt=true` da 200 — contra lo que sugería la
+  doc de Supabase. Por eso los 13 workflows de GitHub tampoco necesitan cambios de header.
+- Los 8 jobs de `pg_cron` de PROD y las funciones de DB: ninguno tiene JWT hardcodeado. El repo tampoco.
+
+### La trampa del botón "Disable legacy keys"
+
+Avisa *"This disables API keys when used in the apikey header. They remain valid as a JWT"*. Verificado con datos
+en DEV: tras desactivar, la key vieja en el header `apikey` da 401, pero **la key vieja mandada como
+`Authorization: Bearer` (junto con la publishable en `apikey`) sigue dando 200** — y una firma falsa da 401, o
+sea que valida firmas de verdad. **Desactivar las legacy NO alcanza para matar la key filtrada: falta revocar la
+JWT signing key vieja** (la HS256 que figura como "previously used") en Settings → JWT Keys. Es seguro: DEV y
+PROD ya migraron a signing keys (ES256 `in_use`, HS256 `previously_used`) desde 2026-03-06, así que revocarla no
+desloguea a nadie.
+
+### Gotchas operativos (costaron tiempo real)
+
+- La variable de entorno de Vercel **solo entra al bundle cuando se construye de nuevo ESE branch** — se
+  redeployó `main` creyendo que arreglaba el sitio de DEV, que se sirve del branch `dev`. "Preview" es el
+  ENTORNO, `dev` es la RAMA: son cosas distintas.
+- Tras el redeploy correcto, el navegador siguió fallando por el **service worker de la PWA**: el hard-refresh
+  no lo da de baja. Confirmado con los logs (cero pedidos del navegador con la key nueva). Solución: DevTools →
+  Application → Service Workers → Unregister + Clear site data, o incógnito.
+- Orden correcto en PROD: cambiar la key en Vercel → redeploy → **verificar que se puede iniciar sesión** →
+  recién después desactivar la vieja. Nunca al revés. Las dos keys conviven, así que los primeros pasos no
+  rompen nada.
+
+### Estado al cierre
+
+| | Legacy keys | Verificado |
+|---|---|---|
+| **DEV** | DESACTIVADAS | login real OK, RLS intacta, EFs OK, 1848 tests verdes. Falta revocar la HS256 |
+| **PROD** | ACTIVAS todavía | `VITE_SUPABASE_ANON_KEY` → publishable en Vercel (proyecto `genesis360`, verificado en el bundle) y en el secret `SUPABASE_ANON_KEY` de GitHub. 🔴 **`genesis360-admin` todavía sirve la key vieja — falta redeployarlo** |
+
+Plan para PROD: esperar 3-5 días a que las PWA cacheadas se actualicen solas, medir en los logs del gateway
+cuántos navegadores siguen mandando la key vieja, y recién cuando dé cero, desactivar legacy + revocar la HS256
+en DEV y PROD.
+
+Ver [[wiki/architecture/infraestructura]] y [[wiki/development/deploy]].
+
+---
+
 ## [2026-09-18] update | 🔌 Volvió el conector: cerrados los 3 pendientes que lo esperaban, los 3 limpios
 
 GO reconectó Supabase y pidió reintentar lo que había quedado bloqueado. **Los tres dieron bien.**

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-20T20:51:05.558Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260920203318 · 170 tablas
+-- Generado 2026-09-20T21:21:32.054Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260920211412 · 170 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -512,7 +512,8 @@ CREATE TABLE public.clientes (
   motivo_baja text,
   baja_at timestamp with time zone,
   baja_por uuid,
-  cuenta_token text
+  cuenta_token text,
+  cuenta_token_creado_at timestamp with time zone
 );
 
 CREATE TABLE public.codigo_perfiles (
@@ -833,7 +834,9 @@ CREATE TABLE public.envio_otp (
   telefono text,
   enviado_at timestamp with time zone DEFAULT now(),
   verificado_at timestamp with time zone,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  intentos integer NOT NULL DEFAULT 0,
+  invalidado_at timestamp with time zone
 );
 
 CREATE TABLE public.envio_pod_fotos (
@@ -2485,7 +2488,8 @@ CREATE TABLE public.tenants (
   reintegro_usd_cotizacion_original boolean NOT NULL DEFAULT false,
   compras_cotizacion_roles_permitidos jsonb,
   telefono text,
-  repositor_anticipacion_min integer NOT NULL DEFAULT 60
+  repositor_anticipacion_min integer NOT NULL DEFAULT 60,
+  cuenta_token_dias integer NOT NULL DEFAULT 90
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -10523,7 +10527,18 @@ DECLARE v_id UUID; v_tenant UUID; v_tel TEXT; v_cod TEXT; BEGIN
   LEFT JOIN clientes cl ON cl.id = v.cliente_id
   WHERE e.token_transportista = p_token;
   IF v_id IS NULL THEN RETURN jsonb_build_object('ok', false); END IF;
-  v_cod := lpad((floor(random()*1000000))::int::text, 6, '0');
+
+  -- Un solo codigo activo por envio: pedir uno nuevo invalida los anteriores. Ademas de ser
+  -- mas claro, es lo que desbloquea a alguien que agoto los 5 intentos.
+  UPDATE envio_otp SET invalidado_at = NOW()
+   WHERE envio_id = v_id AND verificado_at IS NULL AND invalidado_at IS NULL;
+
+  -- 4 bytes criptograficos -> entero -> 6 digitos. `abs` sobre bigint para que el signo del
+  -- int4 no rompa el modulo, y no hay overflow porque |int4| entra holgado en bigint.
+  v_cod := lpad(
+    mod(abs(('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::int::bigint), 1000000)::text,
+    6, '0');
+
   INSERT INTO envio_otp(tenant_id, envio_id, codigo, telefono, enviado_at)
     VALUES (v_tenant, v_id, v_cod, v_tel, NOW());
   UPDATE envios SET pod_otp_verificado = false WHERE id = v_id;
@@ -10553,11 +10568,21 @@ CREATE OR REPLACE FUNCTION public.get_cuenta_cliente_by_token(p_token text)
 AS $function$
 DECLARE v_cli RECORD; v_ventas JSONB; BEGIN
   SELECT c.id, c.nombre, c.telefono, c.email, c.tenant_id,
-         t.nombre AS tenant_nombre, t.moneda
+         c.cuenta_token_creado_at,
+         t.nombre AS tenant_nombre, t.moneda,
+         COALESCE(t.cuenta_token_dias, 90) AS token_dias
   INTO v_cli
   FROM clientes c JOIN tenants t ON t.id = c.tenant_id
   WHERE c.cuenta_token = p_token;
   IF NOT FOUND THEN RETURN NULL; END IF;
+
+  -- Vencido: se responde igual que un token inexistente, a proposito — no confirmarle a quien
+  -- prueba un link viejo que ese token alguna vez existio.
+  IF v_cli.token_dias > 0
+     AND v_cli.cuenta_token_creado_at IS NOT NULL
+     AND v_cli.cuenta_token_creado_at < NOW() - (v_cli.token_dias || ' days')::interval THEN
+    RETURN NULL;
+  END IF;
 
   SELECT jsonb_agg(jsonb_build_object(
     'numero',      v.numero,
@@ -12233,6 +12258,19 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_clientes_cuenta_token_fechado()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.cuenta_token IS DISTINCT FROM OLD.cuenta_token AND NEW.cuenta_token IS NOT NULL THEN
+    NEW.cuenta_token_creado_at := NOW();
+  END IF;
+  RETURN NEW;
+END;$function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_envio_entregado_sincroniza_pedido()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -13099,20 +13137,37 @@ CREATE OR REPLACE FUNCTION public.verificar_otp_envio(p_token text, p_codigo tex
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-DECLARE v_ok BOOLEAN; BEGIN
-  SELECT EXISTS(
-    SELECT 1 FROM envio_otp o JOIN envios e ON e.id = o.envio_id
-    WHERE e.token_transportista = p_token AND o.codigo = p_codigo
-      AND o.verificado_at IS NULL AND o.enviado_at > NOW() - INTERVAL '24 hours'
-  ) INTO v_ok;
-  IF v_ok THEN
-    UPDATE envio_otp o SET verificado_at = NOW()
-      FROM envios e
-      WHERE e.id = o.envio_id AND e.token_transportista = p_token
-        AND o.codigo = p_codigo AND o.verificado_at IS NULL;
-    UPDATE envios SET pod_otp_verificado = true WHERE token_transportista = p_token;
-  END IF;
-  RETURN v_ok;
+DECLARE
+  v_otp_id   UUID;
+  v_codigo   TEXT;
+  v_intentos INTEGER;
+BEGIN
+  -- El unico OTP activo del envio (los anteriores los invalida `generar_otp_envio`).
+  -- `FOR UPDATE` para que dos intentos en paralelo no se pisen el contador.
+  SELECT o.id, o.codigo, o.intentos
+    INTO v_otp_id, v_codigo, v_intentos
+  FROM envio_otp o
+  JOIN envios e ON e.id = o.envio_id
+  WHERE e.token_transportista = p_token
+    AND o.verificado_at IS NULL
+    AND o.invalidado_at IS NULL
+    AND o.enviado_at > NOW() - INTERVAL '24 hours'
+  ORDER BY o.enviado_at DESC, o.id DESC
+  LIMIT 1
+  FOR UPDATE OF o;
+
+  IF v_otp_id IS NULL THEN RETURN false; END IF;
+
+  -- Bloqueado: ni siquiera se compara. Para desbloquear hay que pedir un codigo nuevo.
+  IF v_intentos >= 5 THEN RETURN false; END IF;
+
+  UPDATE envio_otp SET intentos = intentos + 1 WHERE id = v_otp_id;
+
+  IF v_codigo IS DISTINCT FROM p_codigo THEN RETURN false; END IF;
+
+  UPDATE envio_otp SET verificado_at = NOW() WHERE id = v_otp_id;
+  UPDATE envios SET pod_otp_verificado = true WHERE token_transportista = p_token;
+  RETURN true;
 END;$function$
 
 -- ============================================================
@@ -13132,6 +13187,7 @@ CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_tr
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_cheques_monto_guard BEFORE UPDATE ON public.cheques FOR EACH ROW EXECUTE FUNCTION fn_cheques_monto_guard();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
+CREATE TRIGGER clientes_cuenta_token_fechado BEFORE UPDATE OF cuenta_token ON public.clientes FOR EACH ROW EXECUTE FUNCTION trg_clientes_cuenta_token_fechado();
 CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();

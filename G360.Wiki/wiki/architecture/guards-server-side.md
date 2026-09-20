@@ -293,5 +293,114 @@ De paso, la 405 **corrigió un supuesto de la 404**: ahí se dejaron los cheques
 
 ---
 
+## 🛡️ Tanda G — auditoría de seguridad completa (2026-09-20, commit `f55fbf0f` en `dev`, SIN deploy a PROD)
+
+A diferencia de la Tanda F (foco en RLS por rol), esta auditoría fue **de punta a punta**: RLS, aislamiento de
+Storage, guards de las Edge Functions públicas (webhooks/sweeps), XSS en el frontend, política de contraseñas de
+Auth y el estado real de los backups. Con pruebas ejecutadas contra PROD y DEV, no solo lectura de código.
+
+### Lo que se verificó BIEN (con los números que dio la auditoría)
+
+- **170 de 170 tablas de `public` con RLS activo. 234 policies.**
+- Impersonando un usuario real de un negocio y recorriendo las **155 tablas con `tenant_id`**: **cero** filas de
+  otro negocio, cero tablas inaccesibles por error (ni de más, ni de menos).
+- Como `anon`: de 170 tablas, **55 ni siquiera accesibles** y las otras 115 devuelven cero filas, salvo `planes`
+  (precios públicos, a propósito). **Solo 1 policy** en todo el esquema da acceso a `anon`, y es esa.
+- Sin escalada de privilegios: un usuario rol DEPÓSITO no puede ascenderse a DUEÑO, ni mudarse de negocio, ni
+  insertar en otro negocio — los tres vectores probados y bloqueados.
+- **28 tablas** con policies por sucursal (ver la segunda capa en [[wiki/architecture/multi-tenant-rls]]).
+- Las funciones SECURITY DEFINER sensibles tienen control interno propio, probado como `anon`:
+  `fn_sueldos_agregado` responde "tu rol no puede ver el costo laboral", `fn_empleados_basico` devuelve 0 filas,
+  `aprobar_cambio_estado_inventario` valida rol Y pertenencia al negocio.
+- Las API keys propias de la app (`data-api`/marketplace): 192 bits, hasheadas SHA-256, la key en claro nunca se
+  persiste, y el tenant sale del registro de la key, no de un parámetro. Todos los tokens de links públicos usan
+  `crypto.randomUUID()`.
+- `npm audit`: 0 vulnerabilidades. Cero `dangerouslySetInnerHTML`/`eval` en `src/`. Cero secretos en el bundle.
+- Las 8 Edge Functions que reciben `tenant_id` por parámetro validan las 8 la pertenencia del usuario que llama.
+
+### G1 — Aislamiento de Storage roto (mig 430, ✅ DEV, 🔴 FALTA EN PROD)
+
+`archivos-biblioteca` tenía policies de **SELECT y DELETE con condición SIEMPRE TRUE** (nunca miraban `name`,
+que es donde vive la carpeta del tenant): **un usuario del negocio A podía leer archivos del negocio B.** Fuga
+de lectura real, verificada en DEV. Latente en PROD porque el bucket está vacío ahí — pero el hueco existía
+igual.
+
+`productos` tenía INSERT y UPDATE en `auth.uid() IS NOT NULL` a secas — cualquier usuario logueado (de
+cualquier negocio) podía subir y pisar fotos de productos de otro tenant.
+
+De paso, `fn_enqueue_tn_fulfillment_sync` (SECURITY DEFINER) sin `search_path` fijo — mismo patrón de riesgo que
+ya se había cerrado en otras funciones de la Tanda F.
+
+Verificado post-fix con 6/6 chequeos: los ataques quedan bloqueados y lo legítimo sigue funcionando igual.
+
+### G2 — 15 sweeps/workers abiertos a internet (GUARD-CRON)
+
+Las 15 Edge Functions que corren como sweeps/workers (reintentos de NC AFIP, recálculo de intereses de CC,
+liberación de reservas de stock, etc.) solo estaban protegidas por `verify_jwt` — que se satisface con la **anon
+key**, que es pública. Cualquiera podía dispararlas manualmente desde afuera y, por ejemplo, reintentar NC AFIP
+de cualquier negocio, dejar negocios sin acceso, recalcular intereses de cuenta corriente o liberar reservas de
+stock de todos los tenants a la vez.
+
+**Fix**: ahora exigen el header `x-cron-secret` con `CRON_SECRET`, o la service key. Los 13 workflows de GitHub
+Actions ya mandan ese header. ⚠️ **Antes de desplegar estas EFs hay que cargar `CRON_SECRET`** en los secrets de
+Edge Functions (DEV y PROD) y en los secrets de GitHub — si no, los sweeps se caen en silencio.
+
+### G3-G5 — Webhooks públicos que no validaban lo que decían validar
+
+| EF | Antes | Ahora |
+|---|---|---|
+| `modo-webhook` | El comentario decía que validaba contra `modo_credentials` — **no había una sola línea que lo hiciera**. Cualquiera con el UUID de una venta la marcaba pagada por el importe que quisiera | Exige `MODO_WEBHOOK_SECRET`; el monto sale del total de NUESTRA venta, nunca del body (409 si hay discrepancia). GO pidió explícitamente conservar MODO, no eliminarlo |
+| `tn-webhook` | No validaba nada — la rama `order/cancelled` dejaba cancelar ventas y liberar stock desde afuera | Valida el **HMAC-SHA256** de TiendaNube sobre el cuerpo crudo, con el secret `TN_CLIENT_SECRET` (ya existía) |
+| `meli-webhook` | `resource` del body se concatenaba **crudo** a la URL de un fetch que lleva el `access_token` del vendedor — un `resource` con `@` desviaba la llamada (y el token) al servidor del atacante | Se valida contra `/^\/orders\/\d+$/` antes de usarlo |
+
+> 🛑 **Un comentario que dice "valida X" no es una garantía de que valide** (mismo patrón que el add-on de CUIT
+> de `v1.228.0`, o el comentario de `certificados-afip` que decía `service_role-only` y no lo era, mig 402). Se
+> verifica leyendo el código, no el comentario.
+
+### G6 — IA pública sin sesión
+
+`scan-product` y `scan-ticket` no validaban nada — cualquiera podía llamarlas sin sesión y quemar la cuota de
+`ANTHROPIC_API_KEY` del negocio. Ahora exigen sesión de usuario autenticado.
+
+### G7 — XSS en impresión de etiquetas/QR
+
+Las 4 pantallas de impresión (`LpnQR`, `ProductoQR`, `CodigoCompuestoModal`, `CodigoMasivoModal`) interpolaban
+nombre/SKU/LPN sin escapar dentro de un `document.write` que hereda el **origin de la app** — y esos nombres
+entran por el importador CSV y por el sync de ML/TiendaNube, o sea que un catálogo con un nombre de producto
+malicioso podía ejecutar JS en la sesión de quien imprime la etiqueta. Fix: helper nuevo `src/lib/escaparHtml.ts`,
+13 interpolaciones escapadas en las 4 pantallas. Ver [[wiki/features/inventario-stock]].
+
+### G8 — Política de contraseñas de Auth (✅ YA ACTIVA en DEV y PROD, aplicada por API)
+
+Mínimo **10 caracteres** + protección de contraseñas filtradas (HaveIBeenPwned) activada. Los mínimos del lado
+cliente se alinearon a 10 en MiCuenta, Onboarding y Portal de Proveedores.
+
+**NO se activó** `security_update_password_require_reauthentication`: se probó, pero la app cambia la clave con
+`updateUser({password})` sin un paso de re-autenticación, así que activarlo habría roto el cambio de contraseña
+en Mi Cuenta y en el Portal de Proveedores. Queda pendiente hasta implementar el flujo de nonce.
+
+### 🟥 Hallazgos ABIERTOS — backlog de seguridad, sin cerrar
+
+| # | Qué | Mitigación actual |
+|---|---|---|
+| 1 | `mp-webhook`: firma HMAC implementada pero en modo **LOG-ONLY** | Re-consulta la API de MP igual, así que no es explotable a ciegas — falta cargar `MP_WEBHOOK_SECRET` para hacerla bloqueante |
+| 2 | `mp-ipn`: si el POST no trae `user_id`, hace `.limit(1)` y agarra una credencial de **CUALQUIER** tenant | Ninguna — debería devolver 400 |
+| 3 | `cuenta_token` (estado de cuenta del cliente) no vence nunca y no se puede rotar desde la app | Comparar con `token_transportista`, que sí expira + limpia a 30 días |
+| 4 | `verificar_otp_envio`: OTP de 6 dígitos con `random()` de Postgres (no criptográfico), invocable por `anon` sin límite de intentos | Ninguna |
+| 5 | Rate limiting de las EFs públicas vive en memoria del isolate | Se resetea en cada cold start — no es un límite real bajo carga sostenida |
+| 6 | SSL no forzado en conexiones directas a la base; base accesible desde **cualquier IP** (0.0.0.0/0) | Ninguna |
+| 7 | Sin captcha en login/alta | Ninguna |
+| 8 | 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos`) | Por diseño — cualquiera con la URL lee el archivo (son assets no sensibles) |
+
+### Estado de deploy
+
+Todo esto vive en `dev`, commit `f55fbf0f`, mig **430** solo en DEV. `APP_VERSION` sigue en `v1.228.0` — sin
+release ni tag para esta tanda. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", 2026-09-20) para la lista
+completa de pendientes antes de deployar (cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 en PROD,
+redesplegar las EFs tocadas).
+
+---
+
 Ver también: [[wiki/architecture/multi-tenant-rls]] · [[wiki/architecture/resiliencia]] ·
-[[wiki/development/testing]] · `tests/specs/uat-app.md` (Tanda F)
+[[wiki/architecture/edge-functions]] · [[wiki/architecture/infraestructura]] · [[wiki/development/testing]] ·
+`tests/specs/uat-app.md` (Tanda F)

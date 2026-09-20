@@ -162,7 +162,7 @@ export default function ClientesPage() {
   const [incobrableClave, setIncobrableClave] = useState('')
   const [savingIncobrable, setSavingIncobrable] = useState(false)
   // B8 — link público de estado de cuenta
-  const [linkCuenta, setLinkCuenta] = useState<{ nombre: string; url: string } | null>(null)
+  const [linkCuenta, setLinkCuenta] = useState<{ nombre: string; url: string; cliente: any } | null>(null)
   // H2 — CONTADOR entra read-only (ve CC, historial, fiscales; no crea/edita/borra)
   const esContador = user?.rol === 'CONTADOR'
   const puedeEditar = !esContador
@@ -676,16 +676,22 @@ export default function ClientesPage() {
     })
   }
 
-  const generarLinkCuenta = async (c: any) => {
+  // El link vence (mig 431 — por defecto a los 90 días, configurable por negocio). `rotar`
+  // genera un token nuevo y deja muerto al anterior: es la única forma de cortar el acceso a
+  // un link que se compartió de más, porque del otro lado lo lee cualquiera que lo tenga.
+  const generarLinkCuenta = async (c: any, rotar = false) => {
     let token = c.cuenta_token
-    if (!token) {
+    if (!token || rotar) {
       token = crypto.randomUUID()
-      const { error } = await supabase.from('clientes').update({ cuenta_token: token }).eq('id', c.id)
+      const { error } = await supabase.from('clientes')
+        .update({ cuenta_token: token, cuenta_token_creado_at: new Date().toISOString() })
+        .eq('id', c.id)
       if (error) { toast.error('No se pudo generar el link: ' + error.message); return }
       qc.invalidateQueries({ queryKey: ['clientes-cc'] })
+      if (rotar) toast.success('Link regenerado — el anterior dejó de funcionar')
     }
     const base = (import.meta as any).env?.VITE_APP_URL ?? window.location.origin
-    setLinkCuenta({ nombre: c.nombre, url: `${base}/cuenta/${token}` })
+    setLinkCuenta({ nombre: c.nombre, url: `${base}/cuenta/${token}`, cliente: { ...c, cuenta_token: token } })
   }
 
   // A6/A5 (relevamiento Supervisión, Fede 2026-08-20) — la baja de cliente (soft delete, conserva
@@ -2342,8 +2348,21 @@ export default function ClientesPage() {
                 <button onClick={() => { navigator.clipboard.writeText(linkCuenta.url); toast.success('Link copiado') }}
                   className="bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium">Copiar</button>
               </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Cualquiera que tenga el link ve el estado de cuenta, así que vence solo
+                (por defecto a los 90 días). Si se compartió de más, regeneralo: el anterior deja
+                de funcionar al instante.
+              </p>
             </div>
-            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-between gap-2">
+              <button
+                onClick={async () => {
+                  if (!(await confirmar('¿Regenerar el link? El anterior va a dejar de funcionar.'))) return
+                  generarLinkCuenta(linkCuenta.cliente, true)
+                }}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                Regenerar link
+              </button>
               <button onClick={() => setLinkCuenta(null)}
                 className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">Cerrar</button>
             </div>

@@ -106,15 +106,30 @@ serve(async (req) => {
   }
 
   try {
-    // WH-SIG (2026-07-08) — modo LOG-ONLY a propósito: MP_WEBHOOK_SECRET (el secret de
-    // firma del panel de MP, no configurado todavía) falta cargarse en Supabase. Mientras
-    // tanto solo se loguea el resultado, nunca se bloquea el webhook — pasar a bloqueante
-    // (early return 401 si !valid) recién cuando los logs muestren `OK` consistente contra
-    // tráfico real de MP.
+    // WH-SIG (2026-07-08, actualizado en la auditoría 2026-09-20) — rollout en dos pasos, a
+    // propósito: primero se observa, después se bloquea. Es el criterio de siempre para no
+    // cortar tráfico real de MP por un detalle de formato de la firma.
+    //
+    //   Paso 1 · cargar MP_WEBHOOK_SECRET (el secret de firma del panel de MP) en Supabase.
+    //            Con eso la firma se verifica y se LOGUEA, pero no bloquea nada.
+    //   Paso 2 · cuando los logs muestren `OK` consistente contra tráfico real, poner
+    //            MP_WEBHOOK_SIG_ENFORCE=true y pasa a rechazar con 401 lo que no valide.
+    //
+    // Riesgo residual mientras no bloquee: solo replay/reprocesamiento. No se puede inyectar
+    // un monto, porque las dos ramas (suscripciones y pagos) RE-CONSULTAN la API de MP y usan
+    // `payment.external_reference` autoritativo en vez de confiar en el body.
     const webhookSecret = Deno.env.get('MP_WEBHOOK_SECRET')
+    const bloquearFirmaInvalida = Deno.env.get('MP_WEBHOOK_SIG_ENFORCE') === 'true'
     if (webhookSecret) {
       const firma = await verificarFirmaMp(req, webhookSecret)
       console.log('MP Webhook firma:', firma.valid ? 'OK' : `INVALIDA (${firma.reason})`)
+      if (!firma.valid && bloquearFirmaInvalida) {
+        return new Response(JSON.stringify({ error: 'Firma invalida' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    } else {
+      console.warn('MP Webhook: MP_WEBHOOK_SECRET sin cargar — la firma NO se está verificando')
     }
 
     const body = await req.text()

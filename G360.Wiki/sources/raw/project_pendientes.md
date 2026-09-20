@@ -6,6 +6,95 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🔒 ARRANCÁ ACÁ (2026-09-20) — Migración de API keys legacy + auditoría de seguridad completa (8 hallazgos
+> cerrados) + backup de Storage · **EN `dev`, commit `f55fbf0f`, SIN deploy a PROD**
+>
+> 🚀 **Último release**: sigue siendo `v1.228.0` en PROD (deployado el 2026-09-18, sin cambios desde entonces).
+> Esta sesión **no bumpeó `APP_VERSION` ni creó tag/release** — todo lo de acá vive en `dev`, esperando el
+> próximo deploy.
+>
+> | | Código | Migraciones | Branch | Vercel / Legacy keys |
+> |---|---|---|---|---|
+> | **PROD** | `v1.228.0` | 001-**429** | `main` | sirve `v1.228.0`; `VITE_SUPABASE_ANON_KEY` ya es la **publishable** en el proyecto `genesis360` (verificado en el bundle) y en el secret de GitHub — 🔴 `genesis360-admin` **todavía sirve la key vieja**; legacy keys de Supabase **ACTIVAS todavía** |
+> | **DEV** | `v1.228.0` + `f55fbf0f` sin versionar | 001-**430** | `dev` | legacy keys de Supabase **DESACTIVADAS**, app verificada funcionando (login real, RLS, EFs, 1848 tests) |
+>
+> #### 🔑 TEMA 1 — Migración de API keys legacy (la rotación de la `service_role` filtrada el 2026-09-16)
+>
+> **Hallazgo que cambia lo que decía el wiki: NO existe el botón "Generate new service_role key".** La
+> `service_role` legacy es un JWT firmado con el JWT secret del proyecto; solo muere rotando el JWT secret entero
+> (rompe también la `anon` → deslogueo masivo + PWA rota) o **desactivando las legacy keys**, todo-o-nada
+> (anon+service_role juntas). Confirmado contra la Management API: único control `PUT
+> /api-keys/legacy?enabled=true|false`, sin control por key.
+>
+> **Estado real verificado (no asumido)**: DEV y PROD ya tenían las keys nuevas (`sb_publishable_…`/
+> `sb_secret_…`) desde el 2026-03-06, y Supabase ya remapeó el CONTENIDO de las variables inyectadas en las Edge
+> Functions (`SUPABASE_SERVICE_ROLE_KEY` = SECRET nueva, `SUPABASE_ANON_KEY` = PUBLISHABLE nueva — comprobado con
+> una EF de diagnóstico temporal y los logs del gateway: 1004 llamadas con prefijo `sb_secret_`). **Las 51 Edge
+> Functions no necesitan cambio de código.** La key nueva en `Authorization: Bearer` contra `verify_jwt=true` da
+> 200 (los 13 workflows tampoco necesitan tocar headers). Ni los 8 jobs de `pg_cron` ni el repo tienen JWT
+> hardcodeado.
+>
+> **La trampa**: el botón de desactivar legacy avisa *"remain valid as a JWT"*. Verificado en DEV: la key vieja
+> en `apikey` da 401 tras desactivar, pero **como `Authorization: Bearer` sigue dando 200** (firma falsa → 401,
+> o sea valida de verdad). **Desactivar legacy NO mata la key filtrada: falta revocar la JWT signing key vieja**
+> (HS256 "previously used") en Settings → JWT Keys. Seguro de hacer: DEV y PROD ya migraron a signing keys (ES256
+> `in_use`/HS256 `previously_used`) desde 2026-03-06.
+>
+> **Gotchas operativos**: la env var de Vercel solo entra al bundle al reconstruir **ese branch** ("Preview" es
+> el ENTORNO, `dev` es la RAMA — son cosas distintas); el **service worker de la PWA** no se da de baja con
+> hard-refresh (hay que Unregister + Clear site data, o incógnito). Orden correcto en PROD: cambiar key en
+> Vercel → redeploy → **verificar login** → recién después desactivar la vieja (las dos keys conviven).
+>
+> #### 🛡️ TEMA 2 — Auditoría de seguridad completa (commit `f55fbf0f`) + backup de Storage
+>
+> **Verificado BIEN, con números**: 170/170 tablas de `public` con RLS · 234 policies · impersonando un usuario
+> real sobre las 155 tablas con `tenant_id`: cero filas de otro negocio · como `anon`: 55/170 tablas inaccesibles,
+> las otras 115 dan cero filas salvo `planes` · sin escalada de privilegios (3 vectores probados, los 3
+> bloqueados) · 28 tablas con policy por sucursal · SECURITY DEFINER sensibles con control interno propio
+> (probado como `anon`) · API keys propias: 192 bits, SHA-256, nunca en claro · `npm audit` 0 vulnerabilidades,
+> 0 `dangerouslySetInnerHTML`/`eval`, 0 secretos en el bundle · las 8 EFs con `tenant_id` por parámetro validan
+> pertenencia.
+>
+> **8 hallazgos cerrados**:
+> 1. **mig 430** (`430_storage_aislamiento_por_negocio_y_search_path.sql`, ✅ DEV, 🔴 FALTA EN PROD): fuga real de
+>    lectura entre negocios en `archivos-biblioteca` (policy SIEMPRE TRUE) + `productos` con INSERT/UPDATE sin
+>    filtrar tenant + `fn_enqueue_tn_fulfillment_sync` sin `search_path` fijo.
+> 2. **GUARD-CRON en 15 sweeps/workers**: solo los protegía `verify_jwt` (se satisface con la anon key pública) →
+>    ahora exigen `CRON_SECRET` o la service key.
+> 3. **`modo-webhook`**: el comentario decía que validaba y no validaba nada — cualquiera con el UUID de una
+>    venta la marcaba pagada por lo que quisiera. Ahora exige `MODO_WEBHOOK_SECRET` + monto server-side.
+> 4. **`tn-webhook`**: ahora valida HMAC-SHA256 de TiendaNube (antes `order/cancelled` cancelaba ventas desde
+>    afuera).
+> 5. **`meli-webhook`**: `resource` del body se concatenaba crudo a una URL con el access_token del vendedor
+>    (SSRF/exfiltración de token) — ahora se valida con regex.
+> 6. **`scan-product`/`scan-ticket`**: ahora exigen sesión (antes cualquiera quemaba la cuota de Anthropic).
+> 7. **XSS** en 4 pantallas de impresión de QR/etiquetas (`document.write` sin escapar, alimentado por importador
+>    CSV y sync ML/TN) — helper nuevo `src/lib/escaparHtml.ts`.
+> 8. **Política de contraseñas** (✅ YA ACTIVA en DEV y PROD): mínimo 10 + HaveIBeenPwned. **NO** se activó
+>    re-autenticación obligatoria (rompería el cambio de clave actual sin un flujo de nonce previo).
+>
+> Detalle completo, hallazgos ABIERTOS (backlog) y el estado de Backups/Custom Domain: `log.md` (2026-09-20, las
+> 2 entradas de hoy) y [[wiki/architecture/guards-server-side]] / [[wiki/architecture/edge-functions]] /
+> [[wiki/architecture/infraestructura]].
+>
+> #### 🔴 Pendientes que hay que dejar bien visibles (9)
+>
+> 1. Redeployar `genesis360-admin` en Vercel (sigue sirviendo la key vieja).
+> 2. Cargar `CRON_SECRET` en los secrets de Edge Functions de Supabase (DEV y PROD) y en los secrets de GitHub —
+>    **ANTES** de desplegar las EFs con el guard, o los sweeps se caen en silencio.
+> 3. Cargar `MODO_WEBHOOK_SECRET` (si no, `modo-webhook` queda cerrado a propósito con 503).
+> 4. Cargar `SUPABASE_PROJECT_REF` en los secrets de GitHub para el backup de Storage.
+> 5. Aplicar la mig 430 en PROD.
+> 6. Deployar las EFs tocadas (no se despliegan solas al mergear — `bash scripts/auditar-edge-functions.sh`).
+> 7. Esperar/medir las PWA de PROD y recién después: desactivar legacy en PROD + revocar la JWT signing key HS256
+>    en DEV y PROD.
+> 8. Dominio propio (decisión de compra de GO, ~USD 10/mes, add-on Custom Domain).
+> 9. Backlog de seguridad abierto: `mp-webhook` en modo log-only, `mp-ipn` sin `user_id` agarra credencial de
+>    cualquier tenant, `cuenta_token` sin vencimiento, `verificar_otp_envio` no criptográfico, rate limiting en
+>    memoria del isolate, SSL no forzado + DB sin restricción de IP, sin captcha, 4 buckets públicos.
+>
+> ---
+>
 > ### ✅ ARRANCÁ ACÁ (2026-09-18) — 🚀 **PROD = DEV = `v1.228.0`** (migs 001-429) · **deployado, nada pendiente**
 > PR **#353** `dev→main` (merge `693c72b9`), release `v1.228.0` **Latest**, **sin migraciones**. Verificado en vivo
 > con `curl -L`: `app.genesis360.pro` pasó del bundle `index-C5iOI7Dn.js` (v1.227.1) a `index-BhDV1tFn.js`

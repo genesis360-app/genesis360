@@ -3,7 +3,7 @@ title: Políticas RLS
 category: database
 tags: [rls, postgresql, seguridad, multi-tenant, policies]
 sources: [CLAUDE.md]
-updated: 2026-07-08
+updated: 2026-09-20
 ---
 
 # Políticas RLS (Row Level Security)
@@ -104,6 +104,13 @@ DELETE ONLY IF split_part(name, '/', 1) = tenant_id_del_usuario
 
 Buckets con RLS por tenant: `productos`, `empleados`, `archivos-biblioteca`, `certificados-afip`, `comprobantes-gastos`, `etiquetas-envios`.
 
+> 🔒 **`archivos-biblioteca` y `productos` NO estaban aislados de verdad hasta la mig 430** (auditoría de
+> seguridad 2026-09-20, ✅ DEV, 🔴 falta en PROD). `archivos-biblioteca` tenía SELECT/DELETE con condición
+> SIEMPRE TRUE (nunca miraba `name`, la carpeta del tenant) — un usuario del negocio A leía archivos del negocio
+> B. `productos` tenía INSERT/UPDATE en `auth.uid() IS NOT NULL` a secas — se podía pisar fotos de otro negocio.
+> El fix real (carpeta-del-propio-tenant + rol de gestión) recién queda como el patrón correcto desde esa
+> migración. Ver [[wiki/architecture/guards-server-side]] ("Tanda G").
+
 Bucket `avatares`: RLS por `auth.uid()` (cada usuario solo ve/edita el suyo).
 
 ### Edge Functions públicas (sin JWT)
@@ -113,6 +120,11 @@ Las Edge Functions que reciben webhooks externos no validan JWT:
 - `mp-oauth-callback`, `birthday-notifications`, `monitoring-check`, `marketplace-api`
 
 Estas usan `SUPABASE_SERVICE_ROLE_KEY` internamente para acceder a los datos con bypass de RLS.
+
+> 🔒 **`verify_jwt` solo no alcanza para las que corren como sweep/worker sin trigger externo real** — se
+> satisface con la anon key, que es pública. Auditoría 2026-09-20: 15 de estas EFs pasaron a exigir además el
+> header `x-cron-secret` (`CRON_SECRET`) o la service key. Ver [[wiki/architecture/guards-server-side]] ("Tanda
+> G", G2).
 
 ---
 

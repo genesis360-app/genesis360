@@ -71,6 +71,10 @@ Scans rápidos del mismo producto se encolan con `scanQueueRef` + `scanProcessin
 
 > [!WARNING] Requiere `ANTHROPIC_API_KEY` válida con créditos en console.anthropic.com.
 
+> 🔒 **2026-09-20** (commit `f55fbf0f`, EN DEV): `scan-product` no validaba nada — cualquiera sin sesión podía
+> llamarla y quemar la cuota de `ANTHROPIC_API_KEY` del negocio. Ahora exige sesión de usuario autenticado.
+> Mismo fix en `scan-ticket` (abajo). Ver [[wiki/architecture/guards-server-side]] ("Tanda G", G6).
+
 ---
 
 ## Escaneo de ticket de compra (v1.8.38)

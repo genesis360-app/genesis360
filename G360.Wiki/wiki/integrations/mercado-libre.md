@@ -127,6 +127,12 @@ Auto-complete por SKU/nombre con **EF `meli-search-items`**: busca items en MELI
 ## Webhooks de órdenes
 
 **EF `meli-webhook`** (sin JWT):
+
+> 🔒 **2026-09-20** (commit `f55fbf0f`, EN DEV): el `resource` del body se concatenaba **crudo** a la URL de un
+> fetch que lleva el `access_token` del vendedor — un `resource` con `@` desviaba la llamada (y el token) al
+> servidor del atacante. Ahora se valida contra `/^\/orders\/\d+$/` antes de usarlo. Ver
+> [[wiki/architecture/guards-server-side]] ("Tanda G").
+
 - Evento `orders_v2` → crea venta `reservada` o `pendiente`
 - **Idempotencia**: clave `meli-order-{id}` en `ventas_externas_logs`
 - Mapeo de producto: por `inventario_meli_map`, fallback por título ML en `notas`

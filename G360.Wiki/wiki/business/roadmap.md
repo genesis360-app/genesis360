@@ -11,7 +11,13 @@ updated: 2026-09-15
 **Versión en PROD (actual): `v1.228.0`** (2026-09-18, migs 001-429 — **sin migración nueva**, deploy solo de código).
 Compute de PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **DEV = PROD**: las dos en `v1.228.0`, migs 001-429, última `429_ayuda_cursos_y_recursos`.
+✅ **DEV = PROD** en código y versión (`v1.228.0`), pero **DEV va un paso adelante en DB y seguridad**: commit
+`f55fbf0f` (2026-09-20, sin bump de versión ni release) trae la migración **430** — solo en DEV — y una
+auditoría de seguridad completa que cerró 8 hallazgos (aislamiento de Storage, guard `CRON_SECRET` en 15
+sweeps/workers, validación real de `modo-webhook`/`tn-webhook`/`meli-webhook`, auth en `scan-product`/
+`scan-ticket`, XSS en impresión de QR, política de contraseñas). Detalle en
+[[wiki/architecture/guards-server-side]] ("Tanda G") y `log.md` (2026-09-20). Pendiente antes de llevarlo a
+PROD: cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 y redesplegar las Edge Functions tocadas.
 
 ## 🚀 v1.228.0 — Capacidad (3 palancas), diagrama de infraestructura y documento de producto v2.1
 

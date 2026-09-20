@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-09-15
+updated: 2026-09-20
 ---
 
 # Edge Functions (51 funciones Deno)
@@ -76,29 +76,42 @@ y `ai-assistant` (`npm run ai:knowledge` regenerado desde el wiki) redeployadas 
 
 ---
 
+## 🛡️ Auditoría de seguridad 2026-09-20 (commit `f55fbf0f` en `dev`, SIN deploy a PROD)
+
+Detalle completo en [[wiki/architecture/guards-server-side]] (sección "Tanda G"). Resumen de lo que cambia en
+esta página:
+
+- **15 sweeps/workers** (los que antes solo dependían de `verify_jwt`, satisfecho por la anon key pública) ahora
+  exigen el header `x-cron-secret` con `CRON_SECRET`, o la service key. ⚠️ Cargar `CRON_SECRET` en los secrets
+  de Edge Functions (DEV y PROD) **antes** de desplegar, o los sweeps se caen en silencio.
+- `modo-webhook`, `tn-webhook` y `meli-webhook` pasan de "sin validar nada real" a validar de verdad (detalle en
+  la tabla de abajo, dentro de la lista completa).
+- `scan-product` y `scan-ticket` pasan de sin auth a exigir sesión de usuario.
+- Mig **430** (aislamiento de Storage por negocio + `search_path`) — ✅ DEV, 🔴 falta en PROD.
+
 ## Lista completa
 
 | Función | Propósito |
 |---------|-----------|
-| `mp-webhook` | Recibe webhooks de Mercado Pago (pagos de suscripción) |
-| `mp-ipn` | Mercado Pago IPN (notificación instantánea de pagos) |
+| `mp-webhook` | Recibe webhooks de Mercado Pago (pagos de suscripción). 🟨 Auditoría 2026-09-20: la firma HMAC está implementada pero en modo **LOG-ONLY** — falta cargar `MP_WEBHOOK_SECRET` para bloquear de verdad (mitigado porque igual re-consulta la API de MP, ver [[wiki/architecture/guards-server-side]]) |
+| `mp-ipn` | Mercado Pago IPN (notificación instantánea de pagos). 🟨 Auditoría 2026-09-20: si el POST no trae `user_id`, hace `.limit(1)` y agarra una credencial de cualquier tenant — debería devolver 400 (abierto, backlog) |
 | `crear-suscripcion` | Inicia el flow de alta de suscripción en Mercado Pago |
 | `invite-user` | Envía invitación por email a nuevo usuario del tenant |
 | `emitir-factura` | Emisión de facturas electrónicas vía AFIP |
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
-| `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts |
+| `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts. 🔒 **Ahora exige sesión de usuario** (fix 2026-09-20, commit `f55fbf0f`, EN DEV) — antes cualquiera sin auth podía quemar la cuota de `ANTHROPIC_API_KEY` |
 | `transportista-subir-archivo` | 🆕 2026-09-14 (v1.221.0, DEV y PROD) · `verify_jwt: false` — el transportista sube foto o firma de entrega desde `/transporte/:token` (página pública, sin sesión). Valida el token como `get_envio_by_token`, rechaza envíos entregados/cancelados, acepta PNG/JPEG ≤ 5 MB, arma la ruta `pod/<envio_id>/…` y sube con service_role; devuelve URL firmada. e2e 148 |
-| `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }`. **Desplegada en PROD recién el 2026-09-14** — antes no existía ahí y esas dos pantallas fallaban |
+| `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }`. **Desplegada en PROD recién el 2026-09-14** — antes no existía ahí y esas dos pantallas fallaban. 🔒 **Ahora exige sesión de usuario** (fix 2026-09-20, commit `f55fbf0f`, EN DEV) — antes cualquiera sin auth podía quemar la cuota de `ANTHROPIC_API_KEY` |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
-| `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock) |
+| `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock). 🔒 Fix 2026-09-20 (commit `f55fbf0f`, EN DEV): `resource` del body se concatenaba crudo a la URL de un fetch que lleva el `access_token` del vendedor — un `resource` con `@` desviaba la llamada (y el token) al servidor del atacante. Ahora se valida contra `/^\/orders\/\d+$/` |
 | `meli-search-items` | Busca productos en Mercado Libre |
 | `tn-oauth-callback` | Callback OAuth para conectar cuenta Tienda Nube |
-| `tn-webhook` | Procesa webhooks de Tienda Nube (stock sync) |
+| `tn-webhook` | Procesa webhooks de Tienda Nube (stock sync). 🔒 Fix 2026-09-20 (commit `f55fbf0f`, EN DEV): antes no validaba nada (`order/cancelled` dejaba cancelar ventas y liberar stock desde afuera) — ahora valida el **HMAC-SHA256** de TiendaNube sobre el cuerpo crudo, con el secret `TN_CLIENT_SECRET` (ya existía) |
 | `marketplace-webhook` | Webhook de stock del marketplace interno — 🔌 apagado (2026-09-14), solo acepta usuarios autenticados, ✅ EN PROD desde el 2026-09-15 (`verify_jwt: true`) |
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
 | `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
-| `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
+| `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD). 🔒 Fix 2026-09-20 (commit `f55fbf0f`, EN DEV): el comentario decía que validaba contra `modo_credentials` y era falso — cualquiera con el UUID de una venta la marcaba pagada por el importe que quisiera. Ahora exige `MODO_WEBHOOK_SECRET` y el monto sale del total de NUESTRA venta, nunca del body (409 si hay discrepancia). GO pidió conservar MODO, no eliminarlo |
 | `wa-webhook` | `verify_jwt: false` (Meta no manda JWT de Supabase, la seguridad la da la firma HMAC). **✅ EN PROD desde 2026-08-27** (PR #334, merge `867d651a`, DORMIDA — 0 filas en `whatsapp_credentials` en PROD), commiteada v1.181.0/v1.182.0/v1.183.0 — webhook de WhatsApp Cloud API (Meta), responde consultas de stock/precio con Claude Sonnet 5 (Fase 1, tool-calling) + arma borradores de gasto con doble confirmación (Fase 2, `proponer_gasto` + botones interactivos) + acepta FOTOS (Claude Sonnet 5 multimodal) y AUDIO (transcripto con Groq Whisper) como formas nuevas de disparar `proponer_gasto` (Fase 3, verificada solo parcialmente — falta el happy path real, ver la página). Ver [[wiki/features/asistente-whatsapp]] |
 | `wa-briefing-sweep` | `verify_jwt: false`. **✅ EN PROD desde 2026-08-27** (PR #334, merge `867d651a`, DORMIDA), commiteada v1.184.0 — disparada por **GitHub Actions** (`.github/workflows/wa-briefing-sweep.yml`, `schedule: '*/15 * * * *'` + `workflow_dispatch`, clon del molde de `repositores-cierre-dia-sweep`), NO por HTTP directo de un cliente; en `main` el trigger `schedule:` corre de verdad cada 15 min contra PROD. Asistente de WhatsApp Fase 4 (briefing diario proactivo): por cada sucursal activa con WhatsApp conectado y `whatsapp_credentials.numero_notificaciones` configurado, evalúa horario de apertura/cierre (`sucursales.horario_apertura`/`horario_cierre`) y manda un mensaje por **plantilla pre-aprobada de Meta** (`briefing_apertura_dia`/`briefing_cierre_dia`, business-initiated, no comparte código con `wa-webhook`) con el resumen de ventas/gastos del día. Verificada solo parcialmente — todo el código confirmado correcto contra la API real de Meta, pero el envío real está bloqueado por la aprobación PENDIENTE de las 2 plantillas. Ver [[wiki/features/asistente-whatsapp]] |
 | `wa-embedded-signup-exchange` | 🆕 2026-08-27 (v1.185.0, commit `7c1e1a45`), **CÓDIGO VALIDADO end-to-end 2026-08-28 (v1.186.0, misma conversación sin `/clear`) — solo DEV, sin deploy a PROD** — `verify_jwt: true` (a diferencia de `wa-webhook`, esta la invoca un usuario logueado de Genesis360 desde el frontend, no Meta; guard de identidad JWT→`auth.getUser`→pertenencia al `tenant_id`, mismo patrón que `generar-csr`). Recibe `{tenant_id, code, waba_id, phone_number_id}` del popup de Embedded Signup de Meta: intercambia el `code` por el token propio de ESE cliente, registra el `phone_number_id`, suscribe la WABA a la app y hace upsert en `whatsapp_credentials` (mig 382, sin migración nueva). Confirmado con GO en vivo, probando por 3 caminos distintos con datos reales de Meta, que el código funciona correcto — el `code` de Meta se recibe e intercambia bien. **🛑 Bloqueada para completar el registro real de un WABA**: no por código, sino por la Verificación del Negocio de Meta (pendiente, 100% externo — documentos a cargo de Fede). Fix defensivo agregado: timeout de 3 min en `iniciarConexionWhatsapp` para no dejar el botón colgado sin error cuando Meta no completa el flujo. Ver [[wiki/features/asistente-whatsapp]] → "Embedded Signup" |

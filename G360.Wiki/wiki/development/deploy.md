@@ -3,7 +3,7 @@ title: Deploy — Vercel + Supabase
 category: development
 tags: [deploy, vercel, supabase, produccion, dominios]
 sources: []
-updated: 2026-09-20
+updated: 2026-09-22
 ---
 
 # Deploy
@@ -67,24 +67,38 @@ Configuradas en el dashboard de Vercel (no en el repo):
 
 Configuradas en Supabase Dashboard → Settings → Edge Functions:
 - `MP_ACCESS_TOKEN`
-- `MP_WEBHOOK_SECRET` — 🟨 cargada pero la validación sigue en modo LOG-ONLY en `mp-webhook` (ver [[wiki/architecture/guards-server-side]], "Tanda G")
+- `MP_WEBHOOK_SECRET` — 🔴 sin cargar todavía en Supabase DEV/PROD; sin ella `mp-webhook` no valida nada (log-only)
+- `MP_WEBHOOK_SIG_ENFORCE` — 🆕 2026-09-22 (mig 431), interruptor: en `true` (y con `MP_WEBHOOK_SECRET` cargado) `mp-webhook` pasa de LOG-ONLY a bloquear con 401 (ver [[wiki/architecture/guards-server-side]], "Segunda tanda")
 - `MP_PRICE_ID`
 - `MODO_WEBHOOK_SECRET` — 🆕 2026-09-20, requerida por `modo-webhook` para validar el pago (antes no validaba nada). 🔴 Si no está cargada, la EF responde 503 a propósito
-- `CRON_SECRET` — 🆕 2026-09-20, requerida por los 15 sweeps/workers (header `x-cron-secret`, que ya mandan los 13 workflows de GitHub Actions). 🔴 **Cargar en DEV y PROD, y en los secrets de GitHub, ANTES de desplegar esas EFs** — si no, los sweeps se caen en silencio
+- `CRON_SECRET` — 🆕 2026-09-20, ✅ **cargada en DEV y PROD (Supabase) y en GitHub Actions**, verificada en PROD (los 8 sweeps probados dan 401 con la anon key, el workflow real `tn-stock-sync` corrido desde `main` dio success) — requerida por los 15 sweeps/workers (header `x-cron-secret`, que mandan los 13 workflows de GitHub Actions)
 - `TN_CLIENT_SECRET` — ya existía; ahora también la usa `tn-webhook` para validar el HMAC-SHA256 del body
+- `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_REF` — 🆕 2026-09-20, ✅ **cargadas en GitHub** (secrets del repo, no de Supabase), usadas por el workflow de backup de Storage
 - Claves de Resend, AFIP, MeLi, TN, Anthropic
 
 ---
 
-## Backup de Storage (GitHub Actions, 2026-09-20)
+## Backup de Storage (GitHub Actions, 2026-09-20, ✅ corrida real verificada 2026-09-22)
 
-Los backups automáticos de Supabase **no incluyen Storage** (solo la base). Mitigación:
+Los backups automáticos de Supabase **no incluyen Storage** (textual de su doc: *"Database backups do not
+include objects you store via the Storage API"*) — solo la base. Ni certificados AFIP, ni comprobantes, ni
+fotos, ni legajos se recuperan con un `restore` de Supabase. Tampoco se puede restaurar **un cliente solo**: el
+restore es del proyecto entero y lo deja caído mientras dura. Mitigación:
 `.github/workflows/backup-storage.yml` baja todos los buckets a diario con el CLI de Supabase y los deja como
-artifact de GitHub, **90 días de retención**. Usa el `SUPABASE_ACCESS_TOKEN` (token de cuenta, no una key de
-datos) para no exponer una credencial de acceso a datos del negocio en GitHub Actions. Necesita los secrets
-`SUPABASE_ACCESS_TOKEN` y `SUPABASE_PROJECT_REF` (🔴 pendiente de cargar). Gotchas de la CLI verificados contra
-PROD: la ruta de storage lleva **tres barras** (`ss:///bucket`) y `--experimental` es obligatorio. Detalle
-completo en [[wiki/architecture/infraestructura]] ("Backups y continuidad").
+artifact de GitHub, **90 días de retención** (contra los 7 del plan Pro). Usa el `SUPABASE_ACCESS_TOKEN` (token
+de cuenta, no una key de datos) para no exponer una credencial de acceso a datos del negocio en GitHub Actions.
+Secrets `SUPABASE_ACCESS_TOKEN` y `SUPABASE_PROJECT_REF` ✅ **cargados**. Corrida real verificada: **13 buckets,
+8 archivos**. Gotchas de la CLI verificados contra PROD: la ruta de storage lleva **tres barras** (`ss:///bucket`)
+y `--experimental` es obligatorio.
+
+🩸 **Gotcha de la primera corrida real (2026-09-22)**: el listado de buckets se parseaba como JSON, pero el CLI
+de Supabase **no devuelve lo mismo en todos lados** — en una terminal local escupe `{"paths":[...]}` y en el
+runner de GitHub escupe **texto plano**, un bucket por línea; parsear siempre como JSON con `jq` daba 0 aunque
+el listado mostrara los 13 buckets. Encima, la primera corrida murió **muda**: con `bash -e` + `pipefail`,
+`grep -v '^$'` devuelve 1 ante una entrada vacía y mataba el script antes de llegar al mensaje que iba a explicar
+el problema. Se resolvió: el workflow **imprime la salida cruda** antes de parsear, contempla los dos formatos, y
+**pinea la versión del CLI de Supabase** (con `@latest`, un cambio de formato futuro lo rompería otra vez en
+silencio). Detalle completo en [[wiki/architecture/infraestructura]] ("Backups y continuidad").
 
 ---
 
@@ -136,6 +150,22 @@ curl -X PATCH "https://api.supabase.com/v1/projects/<project-ref>/functions/<fun
 ```
 Verificar siempre con un GET/POST sin `Authorization`: `UNAUTHORIZED_NO_AUTH_HEADER` cuando `verify_jwt: true`
 está realmente activo (no alcanza con mirar el flag en el dashboard sin probar la llamada real).
+
+🛑 **Los workflows PROGRAMADOS de GitHub corren SIEMPRE la versión del archivo que está en `main`** (2026-09-22,
+auditoría de seguridad `v1.229.0`) — no la de la rama donde vive el código, aunque el `workflow_dispatch` manual
+sí pueda apuntarse a otra rama. Desplegar Edge Functions con un guard nuevo (por ejemplo, exigir el header
+`x-cron-secret`) **antes** de mergear a `main` deja a los sweeps **programados** de GitHub Actions llamando sin
+el secreto → 401 → **dejan de correr en silencio**, reintentos de NC de AFIP incluidos. Se frenó a tiempo antes
+de ese deploy.
+
+**Orden obligatorio cuando un cambio toca Edge Functions + workflows de GitHub juntos:**
+```
+1. Migraciones aditivas (nunca rompen lo que ya corre)
+2. Merge a main (el workflow programado YA lee el header/secret nuevo)
+3. Deploy de las Edge Functions con el guard nuevo
+4. Verificar con un workflow REAL: gh workflow run <wf> --ref main
+   (elegir uno que hoy sea no-op, p.ej. tn-stock-sync con 0 tiendas conectadas)
+```
 
 🛑 **Mergear `dev`→`main` NO despliega las Edge Functions.** En cada deploy a PROD, auditar que el código desplegado sea el del repo:
 

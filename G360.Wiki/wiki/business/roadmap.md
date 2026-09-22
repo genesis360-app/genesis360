@@ -3,21 +3,18 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-15
+updated: 2026-09-22
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.228.0`** (2026-09-18, migs 001-429 — **sin migración nueva**, deploy solo de código).
-Compute de PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.229.0`** (2026-09-22, migs 001-**431**). Compute de PROD: **Micro** desde el
+2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **DEV = PROD** en código y versión (`v1.228.0`), pero **DEV va un paso adelante en DB y seguridad**: commit
-`f55fbf0f` (2026-09-20, sin bump de versión ni release) trae la migración **430** — solo en DEV — y una
-auditoría de seguridad completa que cerró 8 hallazgos (aislamiento de Storage, guard `CRON_SECRET` en 15
-sweeps/workers, validación real de `modo-webhook`/`tn-webhook`/`meli-webhook`, auth en `scan-product`/
-`scan-ticket`, XSS en impresión de QR, política de contraseñas). Detalle en
-[[wiki/architecture/guards-server-side]] ("Tanda G") y `log.md` (2026-09-20). Pendiente antes de llevarlo a
-PROD: cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 y redesplegar las Edge Functions tocadas.
+✅ **DEV = PROD** en código, versión y migraciones (`v1.229.0`, 001-431). PR **#354** `dev→main` (merge
+commit) + release **Latest**, y PR **#355** (`v1.229.1` de título, solo CI — el fix del backup no bumpea
+`APP_VERSION`). Paridad `pg_policies` DEV=PROD verificada: `public` 234 · `storage` 40 · `cron` 2, hashes
+idénticos. Detalle completo en `log.md` (2026-09-22).
 
 ### v1.229.0 — Auditoría de seguridad (2026-09-22)
 

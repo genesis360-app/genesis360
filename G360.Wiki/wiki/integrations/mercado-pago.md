@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-07-09
+updated: 2026-09-22
 ---
 
 # Integración Mercado Pago
@@ -391,9 +391,10 @@ Alternativa independiente:
 - Actualiza `id_pago_externo` + `money_release_date`
 - Idempotencia via `ventas_externas_logs` con clave `mp-preventa-{id}`
 
-> 🟨 **Hallazgo ABIERTO (auditoría de seguridad 2026-09-20, backlog, sin cerrar)**: si el POST no trae
-> `user_id`, hace `.limit(1)` y agarra una credencial de **cualquier tenant** en vez de rechazar. Debería
-> devolver 400. Ver [[wiki/architecture/guards-server-side]] ("Tanda G", hallazgos abiertos).
+> ✅ **Fix (mig 431, auditoría de seguridad 2026-09-20/22, EN PROD desde `v1.229.0`)**: si el POST no trae
+> `user_id`, ahora responde **400** — antes hacía `.limit(1)` y agarraba una credencial de **cualquier
+> tenant** (sin orden determinístico) en vez de rechazar. Ver [[wiki/architecture/guards-server-side]]
+> ("Segunda tanda", G11-G12).
 
 ---
 
@@ -458,6 +459,12 @@ Eventos: Pagos ✅ + Planes y suscripciones ✅
 > `MP_ACCESS_TOKEN`/`MP_CLIENT_SECRET`) en Supabase DEV y PROD, dejarlo correr en log-only contra
 > tráfico real un tiempo, y recién con logs `OK` consistentes agregar el early-return 401 si
 > `!valid` (hoy el código ya calcula el resultado pero no lo usa para bloquear).
+>
+> **🔒 Interruptor agregado (auditoría de seguridad 2026-09-20/22, EN PROD desde `v1.229.0`):** en vez de
+> tocar código para pasar a bloqueante, ahora existe `MP_WEBHOOK_SIG_ENFORCE=true` — con el secret cargado
+> y ese flag en `true`, `mp-webhook` responde **401** ante una firma inválida. Sigue en LOG-ONLY porque
+> ninguno de los dos secrets está cargado todavía. Ver [[wiki/architecture/guards-server-side]] ("Segunda
+> tanda", G11-G12).
 
 ---
 

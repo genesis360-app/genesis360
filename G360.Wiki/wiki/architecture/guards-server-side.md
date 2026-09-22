@@ -293,7 +293,7 @@ De paso, la 405 **corrigió un supuesto de la 404**: ahí se dejaron los cheques
 
 ---
 
-## 🛡️ Tanda G — auditoría de seguridad completa (2026-09-20, commit `f55fbf0f` en `dev`, SIN deploy a PROD)
+## 🛡️ Tanda G — auditoría de seguridad completa (2026-09-20) — ✅ **EN PROD** desde `v1.229.0` (2026-09-22)
 
 A diferencia de la Tanda F (foco en RLS por rol), esta auditoría fue **de punta a punta**: RLS, aislamiento de
 Storage, guards de las Edge Functions públicas (webhooks/sweeps), XSS en el frontend, política de contraseñas de
@@ -318,7 +318,7 @@ Auth y el estado real de los backups. Con pruebas ejecutadas contra PROD y DEV, 
 - `npm audit`: 0 vulnerabilidades. Cero `dangerouslySetInnerHTML`/`eval` en `src/`. Cero secretos en el bundle.
 - Las 8 Edge Functions que reciben `tenant_id` por parámetro validan las 8 la pertenencia del usuario que llama.
 
-### G1 — Aislamiento de Storage roto (mig 430, ✅ DEV, 🔴 FALTA EN PROD)
+### G1 — Aislamiento de Storage roto (mig 430, ✅ **EN DEV Y EN PROD**)
 
 `archivos-biblioteca` tenía policies de **SELECT y DELETE con condición SIEMPRE TRUE** (nunca miraban `name`,
 que es donde vive la carpeta del tenant): **un usuario del negocio A podía leer archivos del negocio B.** Fuga
@@ -379,25 +379,105 @@ cliente se alinearon a 10 en MiCuenta, Onboarding y Portal de Proveedores.
 `updateUser({password})` sin un paso de re-autenticación, así que activarlo habría roto el cambio de contraseña
 en Mi Cuenta y en el Portal de Proveedores. Queda pendiente hasta implementar el flujo de nonce.
 
+---
+
+## 🛡️ Segunda tanda (mig 431, 2026-09-20/22) — ✅ EN PROD desde `v1.229.0`
+
+Misma auditoría, cerrando lo que quedaba abierto en la lista de abajo. Diseño y SQL completos en
+`supabase/migrations/431_otp_entrega_y_vencimiento_link_cuenta.sql`.
+
+### G9 — OTP de entrega deja de ser adivinable
+
+El código de 6 dígitos que el cliente lee por teléfono para confirmar el POD salía de `random()` de
+Postgres — un PRNG **no criptográfico**, determinístico y sembrado por sesión. Y `verificar_otp_envio`
+tiene GRANT a `anon` sin límite de intentos: 1.000.000 de combinaciones de 6 dígitos son
+fuerza-bruteables sin ningún freno.
+
+**Fix**: el código sale ahora de `extensions.gen_random_bytes` (pgcrypto vive en el schema
+`extensions`, por eso va calificado — estas funciones tienen `search_path='public'`), verificado con
+500 códigos distintos sobre 500 generados. Columnas nuevas `intentos` e `invalidado_at`: **máximo 5
+intentos** por código (antes ninguno), con `FOR UPDATE` sobre la fila del OTP activo para que el
+límite no se saltee mandando varios pedidos en paralelo, y **un solo código activo por envío** (pedir
+uno nuevo invalida los anteriores).
+
+🩸 **Gotcha que salió de la prueba, no del diseño**: la 1ª versión elegía "el OTP más reciente" por
+`enviado_at DESC`. Dos OTP creados dentro de la **misma transacción** comparten `enviado_at` (`NOW()`
+es el arranque de la transacción, no el reloj de pared) → el desempate quedaba indefinido, y pedir un
+código nuevo **no desbloqueaba** a quien había agotado los 5 intentos. Se resolvió invalidando
+explícitamente los anteriores en vez de confiar en el orden.
+
+### G10 — El link de estado de cuenta del cliente ya vence
+
+`clientes.cuenta_token` (un `crypto.randomUUID()` sólido) no vencía nunca y no se podía rotar desde la
+app — a diferencia de `token_transportista`, que ya tenía política de expiración + limpieza a 30 días
+(migs 129/143/191). Del otro lado, `get_cuenta_cliente_by_token` es `SECURITY DEFINER` con GRANT a
+`anon` y devuelve nombre, teléfono, email y el detalle completo de la cuenta corriente: un link
+reenviado por WhatsApp meses atrás seguía abriendo la cuenta hoy.
+
+**Fix**: `clientes.cuenta_token_creado_at` + `tenants.cuenta_token_dias` (default **90**, configurable
+por negocio, **0 = no vence**). Vencido, la función responde `NULL` — **igual que un token
+inexistente**, a propósito, para no confirmarle a quien prueba un link viejo que alguna vez existió.
+
+🩸 **Gotcha que marcó el `migration-reviewer` antes de aplicar**: fechar `cuenta_token_creado_at` solo
+desde el frontend (al generar el link) dejaba los links **NUEVOS** sin fecha — y el chequeo de
+vencimiento (que exige `IS NOT NULL`) nunca se hubiera cumplido, o sea el bug original intacto y en
+silencio, justo para los tokens que se generaran de ahí en más. Se cerró con el trigger
+**`clientes_cuenta_token_fechado`** (`BEFORE UPDATE OF cuenta_token`), que fecha desde la DB sin
+importar qué código toque la columna hoy o mañana. Los tokens que ya existían se fechan a HOY, no al
+pasado — poner el reloj en hora sin cortarle el link a un cliente que lo está usando ahora mismo.
+
+**UI**: botón **"Regenerar link"** en la ficha del cliente (`ClientesPage.tsx`) y el campo de días en
+**Config → Clientes** ("Vencimiento del link de estado de cuenta", 0 = no vence). Ver
+[[wiki/features/clientes-proveedores]].
+
+### G11-G12 — Los dos hallazgos de Mercado Pago que quedaban abiertos
+
+- **`mp-webhook`**: la firma HMAC sigue el rollout en dos pasos, pero ahora tiene el interruptor
+  **`MP_WEBHOOK_SIG_ENFORCE=true`** para pasar de log-only a bloqueante. Sigue sin activarse: falta
+  cargar ese secret y `MP_WEBHOOK_SECRET` en Supabase (DEV y PROD).
+- **`mp-ipn`**: si el POST llegaba sin `user_id`, hacía `.limit(1)` y se quedaba con **una credencial
+  cualquiera** — de cualquier tenant, sin orden determinístico. Ahora responde **400** si falta.
+
+Ver [[wiki/integrations/mercado-pago]].
+
+### G13 — SSL forzado en la base (✅ YA ACTIVO en DEV y PROD)
+
+Sumado al mismo lote que la política de contraseñas (G8): las conexiones directas a la base ahora
+exigen SSL, aplicado por API. Sigue sin resolver que la base es accesible desde **cualquier IP**
+(0.0.0.0/0) — es una decisión, no un pendiente (ver tabla de abajo).
+
 ### 🟥 Hallazgos ABIERTOS — backlog de seguridad, sin cerrar
+
+Cerrados en la segunda tanda (mig 431): `mp-ipn` sin validar `user_id` (G12), `cuenta_token` sin
+vencimiento (G10), OTP no criptográfico sin límite de intentos (G9), SSL no forzado (G13).
 
 | # | Qué | Mitigación actual |
 |---|---|---|
-| 1 | `mp-webhook`: firma HMAC implementada pero en modo **LOG-ONLY** | Re-consulta la API de MP igual, así que no es explotable a ciegas — falta cargar `MP_WEBHOOK_SECRET` para hacerla bloqueante |
-| 2 | `mp-ipn`: si el POST no trae `user_id`, hace `.limit(1)` y agarra una credencial de **CUALQUIER** tenant | Ninguna — debería devolver 400 |
-| 3 | `cuenta_token` (estado de cuenta del cliente) no vence nunca y no se puede rotar desde la app | Comparar con `token_transportista`, que sí expira + limpia a 30 días |
-| 4 | `verificar_otp_envio`: OTP de 6 dígitos con `random()` de Postgres (no criptográfico), invocable por `anon` sin límite de intentos | Ninguna |
-| 5 | Rate limiting de las EFs públicas vive en memoria del isolate | Se resetea en cada cold start — no es un límite real bajo carga sostenida |
-| 6 | SSL no forzado en conexiones directas a la base; base accesible desde **cualquier IP** (0.0.0.0/0) | Ninguna |
-| 7 | Sin captcha en login/alta | Ninguna |
-| 8 | 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos`) | Por diseño — cualquiera con la URL lee el archivo (son assets no sensibles) |
+| 1 | `mp-webhook`: firma HMAC implementada, con interruptor `MP_WEBHOOK_SIG_ENFORCE` para bloquear | Sigue en modo **LOG-ONLY** — falta cargar `MP_WEBHOOK_SECRET` y poner el interruptor en `true` (mitigado porque igual re-consulta la API de MP, no es explotable a ciegas) |
+| 2 | Rate limiting de las EFs públicas vive en memoria del isolate | Se resetea en cada cold start — no es un límite real bajo carga sostenida |
+| 3 | Base accesible desde **cualquier IP** (0.0.0.0/0) | Decisión, no pendiente — el SSL sí está forzado (G13) |
+| 4 | Sin captcha en login/alta | Ninguna — necesita que GO abra cuenta en hCaptcha/Turnstile y pase la key |
+| 5 | 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos`) | Por diseño — cualquiera con la URL lee el archivo (son assets no sensibles) |
 
 ### Estado de deploy
 
-Todo esto vive en `dev`, commit `f55fbf0f`, mig **430** solo en DEV. `APP_VERSION` sigue en `v1.228.0` — sin
-release ni tag para esta tanda. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", 2026-09-20) para la lista
-completa de pendientes antes de deployar (cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 en PROD,
-redesplegar las EFs tocadas).
+✅ **EN PROD desde `v1.229.0` (2026-09-22).** Las dos migraciones (**430** aislamiento de Storage,
+**431** OTP + vencimiento de `cuenta_token`) y las 22 Edge Functions tocadas se desplegaron juntas, en
+el orden que evitó romper los sweeps (ver el gotcha abajo). Verificado en PROD: disparar los 8
+sweeps/workers representativos con la key pública da **401**, el workflow real `tn-stock-sync` corrido
+desde `main` dio **success** (prueba que `CRON_SECRET` coincide en GitHub y Supabase), y `pg_policies`
+DEV=PROD da el mismo hash en los 3 schemas (`public` 234 · `storage` 40 · `cron` 2).
+
+🛑 **El gotcha de orden que casi rompe los sweeps**: los workflows **programados** de GitHub Actions
+corren siempre la versión del archivo que está en `main`, no la de la rama donde vive el código.
+Desplegar las EFs con el guard `CRON_SECRET` **antes** del merge a `main` habría dejado a los sweeps
+llamando sin el secreto → 401 → dejan de correr **en silencio** (reintentos de NC de AFIP incluidos).
+Orden correcto, el que se siguió: migraciones aditivas → merge a `main` → deploy de las EFs → verificar
+con un workflow real (`gh workflow run <wf> --ref main`, eligiendo uno que hoy sea no-op). Ver
+[[wiki/development/deploy]].
+
+Detalle completo de la verificación en `log.md` (2026-09-20 ×2 y 2026-09-22) y
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 

@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-09-20
+updated: 2026-09-22
 ---
 
 # Edge Functions (51 funciones Deno)
@@ -74,27 +74,40 @@ sigue solo en DEV, a la espera de la App Review de Meta.
 y `ai-assistant` (`npm run ai:knowledge` regenerado desde el wiki) redeployadas otra vez en PROD, también en DEV.
 `bash scripts/auditar-edge-functions.sh` sobre las dos: diff 0 en PROD y DEV.
 
+🟨 **Drift medido de nuevo tras el deploy `v1.229.0` (2026-09-22, 22 EFs desplegadas, `auditar-edge-functions.sh`
+completa: 102 líneas, 91 en 0):** este deploy **limpió 5** funciones que venían con diferencias de comentarios
+(`birthday-notifications`, `mp-ipn`, `tn-stock-worker`, `wa-briefing-sweep`, `billing-manual-sweep` pasaron a 0
+líneas de diff) y **no introdujo drift nuevo**. Lo que queda, todo preexistente y sin urgencia: `marketplace-api`
+(prod **21** líneas — la más grande, revisar qué cambió antes de redeployar), `mp-verificar-suscripcion` (prod
+**8** / dev **4**), `mp-addon-batch` (**6** en ambos), `billing-manual-pagar` (dev **2**), `cancel-suscripcion`
+(dev **2**). Además, **3 funciones existen solo en PROD** (`data-api`, `marketplace-api`, `marketplace-webhook`
+— no se pueden probar en DEV) y `wa-embedded-signup-exchange` es al revés **a propósito** (solo DEV, a la espera
+de la App Review de Meta).
+
 ---
 
-## 🛡️ Auditoría de seguridad 2026-09-20 (commit `f55fbf0f` en `dev`, SIN deploy a PROD)
+## 🛡️ Auditoría de seguridad 2026-09-20 — ✅ **EN PROD** desde el deploy `v1.229.0` (2026-09-22)
 
-Detalle completo en [[wiki/architecture/guards-server-side]] (sección "Tanda G"). Resumen de lo que cambia en
-esta página:
+Detalle completo en [[wiki/architecture/guards-server-side]] (secciones "Tanda G" y "Segunda tanda").
+Resumen de lo que cambia en esta página:
 
 - **15 sweeps/workers** (los que antes solo dependían de `verify_jwt`, satisfecho por la anon key pública) ahora
-  exigen el header `x-cron-secret` con `CRON_SECRET`, o la service key. ⚠️ Cargar `CRON_SECRET` en los secrets
-  de Edge Functions (DEV y PROD) **antes** de desplegar, o los sweeps se caen en silencio.
+  exigen el header `x-cron-secret` con `CRON_SECRET`, o la service key. Verificado en PROD: 8 sweeps
+  representativos devuelven **401** con la anon key.
 - `modo-webhook`, `tn-webhook` y `meli-webhook` pasan de "sin validar nada real" a validar de verdad (detalle en
   la tabla de abajo, dentro de la lista completa).
 - `scan-product` y `scan-ticket` pasan de sin auth a exigir sesión de usuario.
-- Mig **430** (aislamiento de Storage por negocio + `search_path`) — ✅ DEV, 🔴 falta en PROD.
+- `mp-webhook` suma el interruptor `MP_WEBHOOK_SIG_ENFORCE` (sigue en log-only, falta cargar el secret) y
+  `mp-ipn` devuelve **400** si el POST no trae `user_id` (antes agarraba una credencial de cualquier tenant).
+- Migs **430** (aislamiento de Storage por negocio + `search_path`) y **431** (OTP de entrega criptográfico +
+  vencimiento del link de estado de cuenta del cliente) — ✅ **EN DEV Y EN PROD**.
 
 ## Lista completa
 
 | Función | Propósito |
 |---------|-----------|
-| `mp-webhook` | Recibe webhooks de Mercado Pago (pagos de suscripción). 🟨 Auditoría 2026-09-20: la firma HMAC está implementada pero en modo **LOG-ONLY** — falta cargar `MP_WEBHOOK_SECRET` para bloquear de verdad (mitigado porque igual re-consulta la API de MP, ver [[wiki/architecture/guards-server-side]]) |
-| `mp-ipn` | Mercado Pago IPN (notificación instantánea de pagos). 🟨 Auditoría 2026-09-20: si el POST no trae `user_id`, hace `.limit(1)` y agarra una credencial de cualquier tenant — debería devolver 400 (abierto, backlog) |
+| `mp-webhook` | Recibe webhooks de Mercado Pago (pagos de suscripción). 🟨 Auditoría 2026-09-20/22 (mig 431): la firma HMAC está implementada y ahora tiene interruptor `MP_WEBHOOK_SIG_ENFORCE` para pasar a bloqueante — sigue en modo **LOG-ONLY**, falta cargar `MP_WEBHOOK_SECRET` (mitigado porque igual re-consulta la API de MP, ver [[wiki/architecture/guards-server-side]]) |
+| `mp-ipn` | Mercado Pago IPN (notificación instantánea de pagos). ✅ Fix 2026-09-22 (mig 431, EN PROD): si el POST no trae `user_id`, ahora responde **400** — antes hacía `.limit(1)` y agarraba una credencial de cualquier tenant |
 | `crear-suscripcion` | Inicia el flow de alta de suscripción en Mercado Pago |
 | `invite-user` | Envía invitación por email a nuevo usuario del tenant |
 | `emitir-factura` | Emisión de facturas electrónicas vía AFIP |

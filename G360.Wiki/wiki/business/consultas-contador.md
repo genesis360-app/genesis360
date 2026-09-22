@@ -2,8 +2,8 @@
 title: Consultas para el Contador
 category: business
 tags: [fiscal, contable, iva, afip, monotributo, ganancias, pendientes, consultas]
-sources: [relevamiento USD/Caja C2, mig 414, cotizacionFiscal.ts, DashFacturacionArea.tsx]
-updated: 2026-09-13
+sources: [relevamiento USD/Caja C2, mig 414, cotizacionFiscal.ts, DashFacturacionArea.tsx, respuestas relevamiento Multimoneda 2026-09-20 (RG ARCA 5616/2024)]
+updated: 2026-09-22
 ---
 
 # Consultas para el Contador
@@ -33,7 +33,7 @@ las responda de una vez.
 
 | Estado | Cantidad |
 |---|---|
-| 🟥 Abiertas | 15 |
+| 🟥 Abiertas | 18 |
 | ✅ Respondidas por un matriculado | 0 |
 
 ⚠️ **Ninguna respondida todavía.** La C-01 y sus derivadas tienen una respuesta **de una IA que se
@@ -298,6 +298,64 @@ de cerrado el período (por ejemplo, datos no contables como una nota o una cate
 
 **Pregunta:** desde el punto de vista de un matriculado, ¿ese texto alcanza? ¿Hay algo que la app
 muestre hoy y que **no debería mostrar** sin la firma de un profesional?
+
+---
+
+### C-16 · Venta cobrada en dólares, factura emitida en pesos: ¿qué cotización se usa?
+
+- **Estado:** 🟥 Abierta
+- **Área:** Facturación electrónica / tipo de cambio
+- **Impacta en:** `src/lib/cotizacionFiscal.ts`, `supabase/functions/emitir-factura`, y toda la
+  conversión USD → ARS del POS
+- **Criterio provisorio actual:** la app convierte con el **dólar COMPRA** de la cotización operativa
+  que cargó el negocio (una sola tasa, para que no aparezca vuelto fantasma).
+
+**Pregunta:** cuando la venta se cobra en dólares pero la factura se emite en **pesos** (que es la
+decisión de producto), ¿qué cotización corresponde para pasar esos dólares a pesos: la que usó el
+negocio en el mostrador, o la del BNA del día hábil anterior? ¿Y comprador o **vendedor divisa**?
+
+**Por qué importa:** la RG ARCA 5616/2024 fija, para comprobantes **emitidos en moneda extranjera**,
+el **tipo de cambio vendedor divisa del BNA al cierre del día hábil cambiario anterior**. No se
+encontró norma que fije lo mismo para el caso inverso (factura en pesos de una venta cobrada en
+dólares), que es justo el caso de Genesis360. **La app hoy usa COMPRA, no vendedor.** Si el criterio
+está mal, quedan mal declarados los importes de todas las facturas de ventas cobradas en dólares.
+
+---
+
+### C-17 · Gasto en moneda extranjera con IVA: ¿crédito fiscal y a qué cotización?
+
+- **Estado:** 🟥 Abierta
+- **Área:** IVA Compras / crédito fiscal
+- **Impacta en:** módulo Gastos, `gastos.cotizacion_fiscal`, Libro IVA Compras
+- **Criterio provisorio actual:** el Libro IVA Compras **deja afuera** los gastos en moneda
+  extranjera y lo avisa en pantalla (decisión F2 del relevamiento de Multimoneda: mantener lo actual).
+
+**Pregunta:** un gasto en moneda extranjera con IVA discriminado, ¿genera crédito fiscal computable?
+Y si genera, ¿a qué cotización se valúa: la de la **fecha de la factura del proveedor** o la de la
+**fecha de pago**?
+
+**Por qué importa:** si genera crédito y hoy lo estamos dejando afuera, el negocio está pagando IVA
+de más. Ver también [[reference_iva_gasto_moneda_extranjera]]: el criterio que sostiene hoy este
+bloque **lo dio una IA**, no un matriculado.
+
+---
+
+### C-18 · ¿Qué cotización oficial corresponde para lo fiscal, en general?
+
+- **Estado:** 🟥 Abierta
+- **Área:** Tipo de cambio fiscal
+- **Impacta en:** `gastos.cotizacion_fiscal_fuente`, y el diseño del módulo de cotizaciones del
+  rediseño Multimoneda (fuente, histórico por fecha)
+- **Criterio provisorio actual:** cotización del **día hábil anterior**, tomada de la fuente que hoy
+  usa la app para el dólar.
+
+**Pregunta:** para lo fiscal en general, ¿qué cotización corresponde: qué **tipo** (comprador /
+vendedor / divisa / billete), de qué **banco u organismo** (BNA, ARCA), y de qué **día**?
+
+**Por qué importa:** define de dónde tiene que salir el dato y si necesitamos una fuente con
+**histórico por fecha** (hoy la app solo guarda la cotización del momento). También define qué pasa
+con las monedas que el BNA no cotiza: la RG 5616/2024 dice que ahí el emisor informa el tipo de
+cambio que usó, y hay que decidir cuál y cómo se justifica.
 
 ---
 

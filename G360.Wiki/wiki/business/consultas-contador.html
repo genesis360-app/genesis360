@@ -62,7 +62,7 @@ th { background: #f6f4fb; }
 <body>
 <header>
   <h1>Genesis360 &mdash; Consultas para el Contador</h1>
-  <p class="sub">Documento generado el 14 de septiembre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
+  <p class="sub">Documento generado el 22 de septiembre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
 </header>
 <h1>Consultas para el Contador</h1>
 <p><strong>Qué es esto:</strong> el registro <strong>vivo</strong> de todas las preguntas fiscales y contables que Genesis360</p>
@@ -90,7 +90,7 @@ th { background: #f6f4fb; }
 <hr>
 <h2>Estado</h2>
 <table><thead><tr><th>Estado</th><th>Cantidad</th></tr></thead><tbody>
-<tr><td>🟥 Abiertas</td><td>15</td></tr>
+<tr><td>🟥 Abiertas</td><td>18</td></tr>
 <tr><td>✅ Respondidas por un matriculado</td><td>0</td></tr>
 </tbody></table>
 <p>⚠️ <strong>Ninguna respondida todavía.</strong> La C-01 y sus derivadas tienen una respuesta **de una IA que se</p>
@@ -391,6 +391,74 @@ th { background: #f6f4fb; }
 </div>
 <p><strong>Pregunta:</strong> desde el punto de vista de un matriculado, ¿ese texto alcanza? ¿Hay algo que la app</p>
 <p>muestre hoy y que <strong>no debería mostrar</strong> sin la firma de un profesional?</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-16</span> Venta cobrada en dólares, factura emitida en pesos: ¿qué cotización se usa?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Facturación electrónica / tipo de cambio</li>
+<li><strong>Impacta en:</strong> <code>src/lib/cotizacionFiscal.ts</code>, <code>supabase/functions/emitir-factura</code>, y toda la</li>
+</ul>
+<p>conversión USD → ARS del POS</p>
+<ul>
+<li><strong>Criterio provisorio actual:</strong> la app convierte con el <strong>dólar COMPRA</strong> de la cotización operativa</li>
+</ul>
+<p>que cargó el negocio (una sola tasa, para que no aparezca vuelto fantasma).</p>
+<p><strong>Pregunta:</strong> cuando la venta se cobra en dólares pero la factura se emite en <strong>pesos</strong> (que es la</p>
+<p>decisión de producto), ¿qué cotización corresponde para pasar esos dólares a pesos: la que usó el</p>
+<p>negocio en el mostrador, o la del BNA del día hábil anterior? ¿Y comprador o <strong>vendedor divisa</strong>?</p>
+<p><strong>Por qué importa:</strong> la RG ARCA 5616/2024 fija, para comprobantes <strong>emitidos en moneda extranjera</strong>,</p>
+<p>el <strong>tipo de cambio vendedor divisa del BNA al cierre del día hábil cambiario anterior</strong>. No se</p>
+<p>encontró norma que fije lo mismo para el caso inverso (factura en pesos de una venta cobrada en</p>
+<p>dólares), que es justo el caso de Genesis360. <strong>La app hoy usa COMPRA, no vendedor.</strong> Si el criterio</p>
+<p>está mal, quedan mal declarados los importes de todas las facturas de ventas cobradas en dólares.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-17</span> Gasto en moneda extranjera con IVA: ¿crédito fiscal y a qué cotización?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> IVA Compras / crédito fiscal</li>
+<li><strong>Impacta en:</strong> módulo Gastos, <code>gastos.cotizacion_fiscal</code>, Libro IVA Compras</li>
+<li><strong>Criterio provisorio actual:</strong> el Libro IVA Compras <strong>deja afuera</strong> los gastos en moneda</li>
+</ul>
+<p>extranjera y lo avisa en pantalla (decisión F2 del relevamiento de Multimoneda: mantener lo actual).</p>
+<p><strong>Pregunta:</strong> un gasto en moneda extranjera con IVA discriminado, ¿genera crédito fiscal computable?</p>
+<p>Y si genera, ¿a qué cotización se valúa: la de la <strong>fecha de la factura del proveedor</strong> o la de la</p>
+<p><strong>fecha de pago</strong>?</p>
+<p><strong>Por qué importa:</strong> si genera crédito y hoy lo estamos dejando afuera, el negocio está pagando IVA</p>
+<p>de más. Ver también <span class="ref">reference_iva_gasto_moneda_extranjera</span>: el criterio que sostiene hoy este</p>
+<p>bloque <strong>lo dio una IA</strong>, no un matriculado.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-18</span> ¿Qué cotización oficial corresponde para lo fiscal, en general?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Área:</strong> Tipo de cambio fiscal</li>
+<li><strong>Impacta en:</strong> <code>gastos.cotizacion_fiscal_fuente</code>, y el diseño del módulo de cotizaciones del</li>
+</ul>
+<p>rediseño Multimoneda (fuente, histórico por fecha)</p>
+<ul>
+<li><strong>Criterio provisorio actual:</strong> cotización del <strong>día hábil anterior</strong>, tomada de la fuente que hoy</li>
+</ul>
+<p>usa la app para el dólar.</p>
+<p><strong>Pregunta:</strong> para lo fiscal en general, ¿qué cotización corresponde: qué <strong>tipo</strong> (comprador /</p>
+<p>vendedor / divisa / billete), de qué <strong>banco u organismo</strong> (BNA, ARCA), y de qué <strong>día</strong>?</p>
+<p><strong>Por qué importa:</strong> define de dónde tiene que salir el dato y si necesitamos una fuente con</p>
+<p><strong>histórico por fecha</strong> (hoy la app solo guarda la cotización del momento). También define qué pasa</p>
+<p>con las monedas que el BNA no cotiza: la RG 5616/2024 dice que ahí el emisor informa el tipo de</p>
+<p>cambio que usó, y hay que decidir cuál y cómo se justifica.</p>
   <div class="respuesta">
     <p class="respuesta-label">Respuesta del contador</p>
     <div class="lineas"></div>

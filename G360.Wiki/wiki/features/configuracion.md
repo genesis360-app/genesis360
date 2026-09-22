@@ -384,7 +384,11 @@ por margen".
 - API de datos externa (solo lectura)
 - Genera claves `g360_xxxxx` con hash SHA-256
 - Endpoints: productos, clientes, proveedores, inventario
-- Rate limit: 120 req/min
+- Rate limit: 120 req/min por key. 🔒 **2026-09-22 (mig 432): pasa a ser persistente** (tabla
+  `rate_limit_contadores`, antes vivía en memoria del isolate) + cubo nuevo de 20 intentos fallidos/min por
+  IP (antes probar API keys al azar era gratis, el límite corría después de validar la key). `data-api` se
+  desplegó en DEV por primera vez con este fix (antes solo existía en PROD). ✅ EN DEV, 🔴 falta PROD. Ver
+  [[wiki/architecture/edge-functions]].
 
 ---
 

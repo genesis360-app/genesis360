@@ -80,9 +80,43 @@ completa: 102 líneas, 91 en 0):** este deploy **limpió 5** funciones que vení
 líneas de diff) y **no introdujo drift nuevo**. Lo que queda, todo preexistente y sin urgencia: `marketplace-api`
 (prod **21** líneas — la más grande, revisar qué cambió antes de redeployar), `mp-verificar-suscripcion` (prod
 **8** / dev **4**), `mp-addon-batch` (**6** en ambos), `billing-manual-pagar` (dev **2**), `cancel-suscripcion`
-(dev **2**). Además, **3 funciones existen solo en PROD** (`data-api`, `marketplace-api`, `marketplace-webhook`
-— no se pueden probar en DEV) y `wa-embedded-signup-exchange` es al revés **a propósito** (solo DEV, a la espera
-de la App Review de Meta).
+(dev **2**). Verificado línea por línea el 2026-09-22 (2ª sesión): **los 5 son 100% cosméticos** (comentarios,
+formato de separadores), ninguna diferencia funcional — incluida `marketplace-api`, donde el rate limiting YA
+estaba vivo en PROD (`RATE_LIMIT = 60`, `status: 429`), solo faltaba su comentario. `wa-embedded-signup-exchange`
+sigue solo en DEV **a propósito** (a la espera de la App Review de Meta).
+
+## 🔒⏱️ Rate limiting persistente (mig 432, 2026-09-22) — ✅ EN DEV (`v1.230.0`), 🔴 falta en PROD
+
+Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20 (ver "Backlog abierto" en
+[[wiki/architecture/guards-server-side]]). `marketplace-api` (60 req/min por IP), `data-api` (120 req/min por
+API key) y `transportista-subir-archivo` (30 req/min por IP) llevaban la cuenta en un `Map` en memoria del
+isolate de Deno — se pierde en cada cold start, y Supabase corre varios isolates de la misma función en
+paralelo, cada uno con su propio `Map`, así que el límite efectivo era 60 × (cantidad de isolates), un número
+que no se controla ni se conoce.
+
+**Fix**: el contador pasa a vivir en `public.rate_limit_contadores` (sin `tenant_id` a propósito — es
+infraestructura del borde) + `fn_rate_limit_consumir` (atómica vía `INSERT … ON CONFLICT DO UPDATE …
+RETURNING`, `SECURITY DEFINER`, `EXECUTE` solo `service_role`) + cron horario `cleanup_rate_limit_contadores`.
+Módulo compartido nuevo **`supabase/functions/_shared/rateLimit.ts`** (primer `_shared` del repo):
+`ipDelCliente(req)`, `consumirRateLimit(...)`, `respuesta429(...)`. Mantiene el `Map` local como **piso** (frena
+una ráfaga del mismo isolate sin ir a la base) y hace **fail-open** contra la base a propósito — un hipo de la
+base no tiene que tirar abajo la API pública entera.
+
+**Dos hallazgos nuevos, encontrados y corregidos en el camino**:
+1. El límite se esquivaba del todo: las tres resolvían la IP como `x-forwarded-for ?? cf-connecting-ip`, un
+   header que **prefija el cliente** — mandando un valor distinto en cada request se estrenaba cubo cada vez.
+   Ahora prioriza `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable), después `x-real-ip`, y
+   del `x-forwarded-for` toma el **último** hop.
+2. `data-api`: probar API keys al azar era gratis (el límite corría DESPUÉS de validar la key). Cubo nuevo de
+   intentos **fallidos** por IP (20/min).
+
+**Verificado en DEV con tráfico real**: 70 requests a `marketplace-api` (10 en paralelo) → exactamente 60
+pasan/10 dan 429, una sola fila de contador 70 (prueba la atomicidad). `data-api` con 25 API keys inventadas →
+20×401+5×429. `transportista-subir-archivo`, 35 POST → 30×400+5×429.
+
+**`marketplace-api` y `data-api` se desplegaron en DEV por primera vez** (antes solo existían en PROD, no se
+podían probar) — con esto queda **1 sola función solo-PROD**: `marketplace-webhook`. Detalle completo en
+`log.md` (2026-09-22, `update`) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 
@@ -114,7 +148,7 @@ Resumen de lo que cambia en esta página:
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
 | `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts. 🔒 **Ahora exige sesión de usuario** (fix 2026-09-20, commit `f55fbf0f`, EN DEV) — antes cualquiera sin auth podía quemar la cuota de `ANTHROPIC_API_KEY` |
-| `transportista-subir-archivo` | 🆕 2026-09-14 (v1.221.0, DEV y PROD) · `verify_jwt: false` — el transportista sube foto o firma de entrega desde `/transporte/:token` (página pública, sin sesión). Valida el token como `get_envio_by_token`, rechaza envíos entregados/cancelados, acepta PNG/JPEG ≤ 5 MB, arma la ruta `pod/<envio_id>/…` y sube con service_role; devuelve URL firmada. e2e 148 |
+| `transportista-subir-archivo` | 🆕 2026-09-14 (v1.221.0, DEV y PROD) · `verify_jwt: false` — el transportista sube foto o firma de entrega desde `/transporte/:token` (página pública, sin sesión). Valida el token como `get_envio_by_token`, rechaza envíos entregados/cancelados, acepta PNG/JPEG ≤ 5 MB, arma la ruta `pod/<envio_id>/…` y sube con service_role; devuelve URL firmada. e2e 148. 🔒 **2026-09-22 (mig 432): rate limiting pasa a ser persistente** (30 req/min por IP, antes en memoria del isolate) — ✅ EN DEV, 🔴 falta en PROD |
 | `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }`. **Desplegada en PROD recién el 2026-09-14** — antes no existía ahí y esas dos pantallas fallaban. 🔒 **Ahora exige sesión de usuario** (fix 2026-09-20, commit `f55fbf0f`, EN DEV) — antes cualquiera sin auth podía quemar la cuota de `ANTHROPIC_API_KEY` |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
 | `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock). 🔒 Fix 2026-09-20 (commit `f55fbf0f`, EN DEV): `resource` del body se concatenaba crudo a la URL de un fetch que lleva el `access_token` del vendedor — un `resource` con `@` desviaba la llamada (y el token) al servidor del atacante. Ahora se valida contra `/^\/orders\/\d+$/` |
@@ -140,7 +174,7 @@ Resumen de lo que cambia en esta página:
 | `emitir-factura` | JWT | AFIP factura electrónica |
 | `crear-suscripcion` | JWT-less | MP preapproval |
 | `mp-webhook` | JWT-less | Webhooks MP suscripciones |
-| `data-api` | JWT | API pull externa (API keys) |
+| `data-api` | JWT | API pull externa (API keys). 🔒 **2026-09-22 (mig 432): rate limiting persistente** (120 req/min por key + 20 req/min de intentos fallidos por IP, antes en memoria del isolate) — ✅ EN DEV (recién deployada ahí por primera vez), 🔴 falta en PROD |
 | `tn-stock-worker` | JWT-less | Sync stock TiendaNube |
 | `meli-stock-worker` | JWT-less | Sync stock MercadoLibre |
 | `mp-crear-link-pago` | JWT | Link de pago MP para ventas |

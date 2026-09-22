@@ -3,7 +3,7 @@ title: Marketplace Interno
 category: features
 tags: [marketplace, api, webhook, productos, publicacion]
 sources: [CLAUDE.md, supabase/functions/marketplace-api, supabase/functions/marketplace-webhook]
-updated: 2026-09-15
+updated: 2026-09-22
 ---
 
 # Marketplace Interno
@@ -12,8 +12,9 @@ Genesis360 tiene un marketplace propio (independiente de MeLi/TN) que permite ex
 
 > [!NOTE]
 > **Estado al 2026-09-14:** ningún negocio lo tiene activo (0 en DEV y PROD, 0 productos publicados).
-> Las dos Edge Functions existen **solo en PROD**. El **webhook de stock quedó apagado** por decisión de
-> GO: ver más abajo.
+> El **webhook de stock quedó apagado** por decisión de GO: ver más abajo. 🔒 **Actualizado 2026-09-22
+> (2ª sesión, mig 432)**: `marketplace-api` se desplegó en DEV por primera vez (antes solo existía en
+> PROD, no se podía probar); `marketplace-webhook` sigue solo en PROD.
 
 ---
 
@@ -56,7 +57,13 @@ stock_disponible = stock_actual - stock_reservado_marketplace
                  - SUM(cantidad_reservada en inventario_lineas)
 ```
 
-- Rate limiting: 60 req/min por IP (en memoria del isolate Deno)
+- Rate limiting: 60 req/min por IP. 🔒 **2026-09-22 (mig 432): pasa a ser persistente** — antes vivía en un
+  `Map` en memoria del isolate de Deno (se perdía en cada cold start y no se compartía entre los isolates en
+  paralelo que corre Supabase de la misma función, así que el límite efectivo real era mucho más alto que
+  60). Ahora cuenta en la tabla `rate_limit_contadores` vía `fn_rate_limit_consumir` (atómica). De paso se
+  cerró que el límite se podía esquivar del todo falseando el header `x-forwarded-for` — ahora prioriza
+  `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable). ✅ EN DEV, 🔴 falta desplegar a PROD.
+  Ver [[wiki/architecture/edge-functions]] y [[wiki/architecture/guards-server-side]] ("G14").
 - CORS abierto (cualquier origen puede consultar)
 
 Es la forma de integrarse que sigue vigente: el sistema externo **consulta** el stock cuando lo necesita.

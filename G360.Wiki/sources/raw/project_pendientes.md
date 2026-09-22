@@ -6,30 +6,76 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-09-22) — **PROD = DEV = `v1.229.0`** (migs 001-**431**) · auditoría de
-> seguridad deployada y verificada
+> ### 🛑 ARRANCÁ ACÁ (2026-09-22, 2ª sesión) — PROD `v1.229.0` (migs 001-**431**) · DEV `v1.230.0`
+> (migs 001-**432**) — rate limiting persistente CERRADO EN DEV, falta deployar a PROD
 >
-> 🚀 **Último release**: **`v1.229.0`** en PROD (2026-09-22). PR **#354** `dev→main` (merge commit),
-> release **Latest**, + PR **#355** con el fix del backup (solo CI, **sin** bump de `APP_VERSION` —
-> por eso el título del PR dice `v1.229.1` pero la app sigue en `v1.229.0`).
+> 🚀 **Último release**: **`v1.230.0`**, commits `2b585f31` (el fix) + `0a2c30b1` (el bump),
+> `origin/dev`. Tag + release **Latest** ya publicados. **NO deployado a PROD** — espera autorización
+> de GO.
 >
 > | | Código | Migraciones | Legacy keys de Supabase |
 > |---|---|---|---|
 > | **PROD** | `v1.229.0` ✅ servida | 001-**431** | 🔶 **ACTIVAS todavía** (a propósito, ver pendiente 1) |
-> | **DEV** | `v1.229.0` | 001-**431** | **DESACTIVADAS** |
+> | **DEV** | `v1.230.0` | 001-**432** | **DESACTIVADAS** |
 >
-> ✅ **Paridad `pg_policies` DEV=PROD**: public 234 · storage 40 · cron 2, los tres hashes idénticos.
-> ✅ **22 Edge Functions** desplegadas en ambos ambientes. ✅ `auditar-edge-functions.sh` corrida
-> entera: **102 líneas, 91 en 0**.
+> ✅ **Paridad `pg_policies` DEV=PROD sigue intacta**: public 234 · storage 40 · cron 2 — la mig 432
+> agrega una tabla con RLS **sin policies** (deny-all), no suma ninguna.
 >
-> **Verificado en PROD, medido**: disparar los sweeps con la key pública devuelve **401** en los ocho
-> probados (incluidos NC de AFIP y baja de negocios), y el workflow real `tn-stock-sync` desde `main`
-> dio **success** — que es lo que prueba que el `CRON_SECRET` de GitHub y el de Supabase coinciden.
-> El backup de Storage corrió de verdad: **13 buckets, 8 archivos**, artifact a 90 días.
+> Detalle completo en `log.md` (entrada del 2026-09-22, `update`, "Rate limiting persistente...").
 >
-> Detalle completo en `log.md` (entradas del 2026-09-20 ×2 y del 2026-09-22).
+> #### 🔒 Qué se cerró esta sesión: rate limiting persistente (mig 432)
 >
-> #### 🛑 El gotcha que casi rompe los sweeps (no repetir)
+> Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20. `marketplace-api`
+> (60 req/min por IP), `data-api` (120 req/min por API key) y `transportista-subir-archivo` (30
+> req/min por IP) llevaban la cuenta en un `Map` en memoria del isolate de Deno — se perdía en cada
+> cold start, y Supabase corre varios isolates en paralelo, cada uno con su propio `Map`, así que el
+> límite efectivo era 60 × (cantidad de isolates), un número que no se controla ni se conoce.
+>
+> Ahora el contador vive en `public.rate_limit_contadores` (tabla nueva, **sin `tenant_id` a
+> propósito**: es infraestructura del borde) + `fn_rate_limit_consumir` (atómica vía
+> `INSERT … ON CONFLICT DO UPDATE … RETURNING`, `SECURITY DEFINER`, `EXECUTE` solo `service_role`) +
+> cron horario `cleanup_rate_limit_contadores`. Módulo compartido nuevo (primer `_shared` del repo):
+> `supabase/functions/_shared/rateLimit.ts`.
+>
+> 🩸 **Gotcha del `migration-reviewer`, corregido antes de aplicar**: el `DELETE` del cron compara
+> contra `ventana_inicio` (cuándo la ventana ABRIÓ, no cuándo cerró) — el margen tiene que ser MAYOR
+> que la ventana más larga que acepta la función. `p_ventana_seg` queda acotado a 3600 y el margen del
+> cron es de 2 horas; si algún día se sube el tope hay que subir el margen en el mismo commit, o el
+> cleanup borra contadores de ventanas todavía abiertas y el límite se reinicia solo, en silencio.
+>
+> **Dos hallazgos de seguridad nuevos, encontrados y corregidos en el camino:**
+> 1. **El límite se esquivaba del todo**: las tres funciones resolvían la IP como
+>    `x-forwarded-for ?? cf-connecting-ip`. Ese header lo **prefija el cliente** (el proxy le agrega la
+>    IP real al final, no la reemplaza) — mandando un valor distinto en cada request se estrenaba cubo
+>    cada vez. Ahora se prefiere `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable),
+>    después `x-real-ip`, y del `x-forwarded-for` se toma el **último** hop.
+> 2. **`data-api`: probar API keys al azar era gratis** — el límite iba por key y corría DESPUÉS de
+>    validarla. Cubo nuevo de intentos **fallidos** por IP (20/min), que solo se consume cuando la key
+>    no valida.
+>
+> **Verificado en DEV, medido**: 70 requests a `marketplace-api` (10 en paralelo) → exactamente **60
+> pasan, 10 dan 429**, una sola fila en la tabla con contador 70 (prueba la atomicidad). 4
+> `x-forwarded-for` falseados distintos caen en un solo cubo. `data-api` con 25 API keys inventadas →
+> **20×401 + 5×429**. `transportista-subir-archivo`, 35 POST → **30×400 + 5×429**. Build verde,
+> `schema_full.sql` regenerado: **171 tablas** (era 170), 241 funciones, policies siguen en **234**.
+>
+> **EFs desplegadas en DEV** (con `--no-verify-jwt`, igual que en PROD): `marketplace-api`, `data-api`,
+> `transportista-subir-archivo`. Drift DEV = 0 en las tres. `marketplace-api` y `data-api` **no
+> existían en DEV** — de paso queda **1 sola** función solo-PROD (`marketplace-webhook`), no 3.
+>
+> Detalle completo en [[wiki/architecture/guards-server-side]] ("Tanda G — backlog") y
+> [[wiki/architecture/edge-functions]].
+>
+> #### ✅ También esta sesión: el drift "cosmético" de 5 EFs, verificado línea por línea (pendiente 2
+> de la sesión anterior — CERRADO)
+>
+> Confirmado que los 5 son **100% cosméticos**, sin una sola diferencia funcional — incluida
+> `marketplace-api` (la de mayor drift): el rate limiting YA estaba vivo en PROD, solo faltaba su
+> comentario. Ninguna de las funciones de cobro (`mp-verificar-suscripcion`, `mp-addon-batch`,
+> `billing-manual-pagar`, `cancel-suscripcion`) tiene lógica distinta desplegada — ese redeploy sigue
+> pendiente, pero es higiene, no riesgo abierto.
+>
+> #### 🛑 El gotcha que casi rompe los sweeps (de la sesión anterior — sigue valiendo, no repetir)
 >
 > Los workflows **programados** de GitHub corren SIEMPRE la versión del archivo que está en `main`,
 > no la de la rama donde vive el código. El header `x-cron-secret` estaba en `dev`. Desplegar las EFs
@@ -51,28 +97,18 @@ type: project
 > `Authorization: Bearer`. Lo que la mata es revocar la HS256. Seguro: las sesiones ya usan ES256
 > desde 2026-03-06, nadie se desloguea.
 >
-> **2 · Alinear el drift de Edge Functions que quedó (preexistente, no de este deploy).**
-> Este deploy **limpió 5** (`birthday-notifications`, `mp-ipn`, `tn-stock-worker`, `wa-briefing-sweep`,
-> `billing-manual-sweep` pasaron a 0) y **no introdujo ninguno**. Queda:
+> **2 · Deployar a PROD lo de esta sesión (nuevo, esperando autorización de GO).**
+> Mig 432 + las 3 EFs (`marketplace-api`, `data-api`, `transportista-subir-archivo`, respetando
+> `--no-verify-jwt`) para que PROD tenga rate limiting real. De paso, los 5 redeploys de higiene del
+> drift cosmético confirmado (`marketplace-api`, `mp-verificar-suscripcion`, `mp-addon-batch`,
+> `billing-manual-pagar`, `cancel-suscripcion`) — correr `bash scripts/auditar-edge-functions.sh`
+> después. 🕵️ Lanzarla **sin `| tail`**: en background solo guarda la cola (pasó dos veces ya).
 >
-> | Función | Drift | Nota |
-> |---|---|---|
-> | `marketplace-api` | prod 21 | el más grande; revisar qué cambió antes de redeployar |
-> | `mp-verificar-suscripcion` | prod 8 · dev 4 | distinto en cada ambiente |
-> | `mp-addon-batch` | 6 en ambos | es el comentario de una tanda vieja, sin desplegar |
-> | `billing-manual-pagar` | dev 2 | |
-> | `cancel-suscripcion` | dev 2 | |
->
-> Al redesplegar: **respetar el `verify_jwt` de cada una** (`--no-verify-jwt` explícito en las que
-> están en false) y correr `bash scripts/auditar-edge-functions.sh` después.
-> 🕵️ Lanzarla **sin `| tail`**: en background solo guarda la cola (me pasó de nuevo el 22/09, perdí
-> 77 de 102 líneas).
->
-> **3 · Backlog de seguridad abierto** (de la auditoría, todo de severidad menor):
+> **3 · Backlog de seguridad abierto** (de la auditoría, todo de severidad menor — el rate limiting
+> SALE de esta lista, cerrado en DEV, ver pendiente 2 arriba):
 > captcha en login/alta (**necesita que GO abra cuenta en hCaptcha o Turnstile y pase la key**) ·
-> rate limiting de las EFs públicas en memoria del isolate (se resetea en cada cold start; el fix es
-> una tabla) · 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos` — es a
-> propósito) · base accesible desde cualquier IP (decisión, no pendiente) ·
+> 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos` — es a propósito) · base
+> accesible desde cualquier IP (decisión, no pendiente) ·
 > **`MP_WEBHOOK_SECRET` sin cargar**: la firma de MercadoPago está implementada y ahora tiene
 > interruptor — cargar el secret (lo da el panel de MP) y después poner `MP_WEBHOOK_SIG_ENFORCE=true`
 > para que bloquee · **`MODO_WEBHOOK_SECRET`** cuando se active MODO (hoy la función queda cerrada
@@ -92,25 +128,27 @@ type: project
 > toca ventas, caja, CC y comprobantes con plata real adentro.
 > 🛑 **Precio programado YA ESTÁ CONSTRUIDO** (migs 422-424): no es un proyecto nuevo, es un
 > contraste de media jornada contra las respuestas de Fede.
+> 🛑 **Los PDF de los 3 relevamientos respondidos NO están en el repo** — GO los va a volver a pasar
+> como archivos.
 >
 > **5 · Consultas al contador: 18 abiertas, 0 respondidas por un matriculado.**
-> Nuevas de esta sesión: **C-16** (venta cobrada en dólares y factura en pesos: la app usa dólar
-> **compra** y la RG ARCA 5616/2024 fija **vendedor divisa** del día hábil anterior) · **C-17** (IVA
-> de gasto en moneda extranjera) · **C-18** (qué cotización oficial para lo fiscal en general).
+> Nuevas de la sesión anterior: **C-16** (venta cobrada en dólares y factura en pesos: la app usa
+> dólar **compra** y la RG ARCA 5616/2024 fija **vendedor divisa** del día hábil anterior) · **C-17**
+> (IVA de gasto en moneda extranjera) · **C-18** (qué cotización oficial para lo fiscal en general).
 > Imprimible: `npm run contador:doc`.
 >
 > #### ⚠️ Cosas a tener a mano
 >
-> - **3 funciones existen solo en PROD**: `data-api`, `marketplace-api`, `marketplace-webhook` — **no
->   se pueden probar en DEV**. (`wa-embedded-signup-exchange` es al revés y a propósito: solo DEV,
->   falta el App Review de Meta.)
+> - **1 función existe solo en PROD**: `marketplace-webhook` (antes eran 3 — `marketplace-api` y
+>   `data-api` ya se pueden probar en DEV desde esta sesión). (`wa-embedded-signup-exchange` es al
+>   revés y a propósito: solo DEV, falta el App Review de Meta.)
 > - **Vercel**: una variable con prefijo público (`VITE_`) **no se puede guardar como tipo Secret** —
 >   Vercel lo rechaza y el Save no hace nada. Tiene que ser **Config**. Y la variable solo entra al
 >   bundle al reconstruir **ese branch** ("Preview" es el entorno, `dev` es la rama).
 > - **El service worker de la PWA no se da de baja con hard-refresh**: DevTools → Application →
 >   Service Workers → Unregister + Clear site data, o incógnito.
-> - **Regla de trabajo nueva de GO (2026-09-22)**: los **puntos abiertos** de un relevamiento **nunca**
->   se deciden solos — se consultan siempre, salvo autorización explícita para ese punto puntual.
+> - **Regla de trabajo de GO (2026-09-22)**: los **puntos abiertos** de un relevamiento **nunca** se
+>   deciden solos — se consultan siempre, salvo autorización explícita para ese punto puntual.
 >
 > ### ✅ ARRANCÁ ACÁ (2026-09-18) — 🚀 **PROD = DEV = `v1.228.0`** (migs 001-429) · **deployado, nada pendiente**
 > PR **#353** `dev→main` (merge `693c72b9`), release `v1.228.0` **Latest**, **sin migraciones**. Verificado en vivo

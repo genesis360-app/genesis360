@@ -446,18 +446,52 @@ Sumado al mismo lote que la política de contraseñas (G8): las conexiones direc
 exigen SSL, aplicado por API. Sigue sin resolver que la base es accesible desde **cualquier IP**
 (0.0.0.0/0) — es una decisión, no un pendiente (ver tabla de abajo).
 
+### G14 — Rate limiting deja de vivir en memoria del isolate (mig 432, 2026-09-22) — ✅ EN DEV, 🔴 falta en PROD
+
+Cerraba el pendiente 2 de la tabla de abajo. `marketplace-api`, `data-api` y `transportista-subir-archivo`
+contaban en un `Map` en memoria del isolate de Deno: se pierde en cada cold start, y Supabase corre varios
+isolates de la misma función en paralelo, cada uno con su propio `Map` — el límite efectivo era 60 ×
+(cantidad de isolates), un número que no se controla ni se conoce.
+
+**Fix**: tabla `public.rate_limit_contadores` (sin `tenant_id` a propósito — es infraestructura del borde,
+la identidad IP/hash de API key existe antes de saber de qué negocio se trata) + `fn_rate_limit_consumir`
+(atómica vía `INSERT … ON CONFLICT DO UPDATE … RETURNING`, `SECURITY DEFINER` + `search_path`, `EXECUTE`
+solo `service_role`, RLS sin policies + `REVOKE ALL` a `anon`/`authenticated`) + cron horario de limpieza.
+Módulo compartido nuevo `supabase/functions/_shared/rateLimit.ts` (primer `_shared` del repo): mantiene el
+`Map` local como piso y consume la base en modo **fail-open** a propósito (un hipo de la base no tiene que
+tirar abajo la API pública entera).
+
+🩸 **Gotcha del `migration-reviewer`, corregido antes de aplicar**: el cron de limpieza compara contra
+`ventana_inicio` (cuándo la ventana ABRIÓ, no cuándo cerró) — su margen (2 horas) tiene que ser MAYOR que la
+ventana más larga que acepta la función (tope 3600 seg). Si algún día se sube ese tope hay que subir el
+margen en el mismo commit, o el cleanup borra contadores de ventanas todavía abiertas y el límite se
+reinicia solo, en silencio.
+
+**Dos hallazgos nuevos, encontrados y corregidos en el camino**:
+- El límite se esquivaba del todo falseando `x-forwarded-for` (header que **prefija el cliente**, no lo
+  reemplaza) — ahora se prioriza `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable).
+- `data-api`: probar API keys al azar era gratis (el límite corría DESPUÉS de validar la key) — nuevo cubo
+  de intentos **fallidos** por IP (20/min).
+
+**Verificado en DEV con tráfico real**: 70 requests a `marketplace-api` (10 en paralelo) → exactamente 60
+pasan/10 dan 429 con una sola fila de contador 70 (prueba la atomicidad); `data-api` con 25 API keys
+inventadas → 20×401+5×429; `transportista-subir-archivo`, 35 POST → 30×400+5×429. `marketplace-api` y
+`data-api` se desplegaron en DEV por primera vez (antes solo existían en PROD) — queda **1 sola función
+solo-PROD**: `marketplace-webhook`. Paridad `pg_policies` DEV=PROD sigue intacta (la tabla es deny-all, no
+agrega policies). Detalle en `log.md` (2026-09-22, `update`) y [[wiki/architecture/edge-functions]].
+
 ### 🟥 Hallazgos ABIERTOS — backlog de seguridad, sin cerrar
 
 Cerrados en la segunda tanda (mig 431): `mp-ipn` sin validar `user_id` (G12), `cuenta_token` sin
-vencimiento (G10), OTP no criptográfico sin límite de intentos (G9), SSL no forzado (G13).
+vencimiento (G10), OTP no criptográfico sin límite de intentos (G9), SSL no forzado (G13). Cerrado el
+2026-09-22 (2ª sesión, mig 432, ✅ EN DEV / 🔴 falta en PROD): rate limiting en memoria del isolate (G14).
 
 | # | Qué | Mitigación actual |
 |---|---|---|
 | 1 | `mp-webhook`: firma HMAC implementada, con interruptor `MP_WEBHOOK_SIG_ENFORCE` para bloquear | Sigue en modo **LOG-ONLY** — falta cargar `MP_WEBHOOK_SECRET` y poner el interruptor en `true` (mitigado porque igual re-consulta la API de MP, no es explotable a ciegas) |
-| 2 | Rate limiting de las EFs públicas vive en memoria del isolate | Se resetea en cada cold start — no es un límite real bajo carga sostenida |
-| 3 | Base accesible desde **cualquier IP** (0.0.0.0/0) | Decisión, no pendiente — el SSL sí está forzado (G13) |
-| 4 | Sin captcha en login/alta | Ninguna — necesita que GO abra cuenta en hCaptcha/Turnstile y pase la key |
-| 5 | 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos`) | Por diseño — cualquiera con la URL lee el archivo (son assets no sensibles) |
+| 2 | Base accesible desde **cualquier IP** (0.0.0.0/0) | Decisión, no pendiente — el SSL sí está forzado (G13) |
+| 3 | Sin captcha en login/alta | Ninguna — necesita que GO abra cuenta en hCaptcha/Turnstile y pase la key |
+| 4 | 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos`) | Por diseño — cualquiera con la URL lee el archivo (son assets no sensibles) |
 
 ### Estado de deploy
 
@@ -478,6 +512,10 @@ con un workflow real (`gh workflow run <wf> --ref main`, eligiendo uno que hoy s
 
 Detalle completo de la verificación en `log.md` (2026-09-20 ×2 y 2026-09-22) y
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+🔶 **G14 (rate limiting persistente, mig 432) queda un paso atrás**: ✅ EN DEV (`v1.230.0`, 2026-09-22, 2ª
+sesión), 🔴 falta desplegar la migración y las 3 EFs (`marketplace-api`, `data-api`,
+`transportista-subir-archivo`) a PROD — esperando autorización de GO. Ver la sección "G14" arriba.
 
 ---
 

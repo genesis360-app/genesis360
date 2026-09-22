@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-20T21:21:32.054Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260920211412 · 170 tablas
+-- Generado 2026-09-22T23:07:01.192Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260922230325 · 171 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1797,6 +1797,13 @@ CREATE TABLE public.puntos_venta_afip (
   emisor_id uuid
 );
 
+CREATE TABLE public.rate_limit_contadores (
+  bucket text NOT NULL,
+  identidad text NOT NULL,
+  ventana_inicio timestamp with time zone NOT NULL,
+  contador integer NOT NULL DEFAULT 0
+);
+
 CREATE TABLE public.recepcion_items (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   recepcion_id uuid NOT NULL,
@@ -3138,6 +3145,7 @@ ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tenant_id_id_key UNIQUE (tenant_id, id);
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tipo_check CHECK ((tipo = ANY (ARRAY['proveedor'::text, 'servicio'::text])));
 ALTER TABLE public.puntos_venta_afip ADD CONSTRAINT puntos_venta_afip_pkey PRIMARY KEY (id);
+ALTER TABLE public.rate_limit_contadores ADD CONSTRAINT rate_limit_contadores_pkey PRIMARY KEY (bucket, identidad, ventana_inicio);
 ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmada'::text, 'cancelada'::text])));
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_pkey PRIMARY KEY (id);
@@ -4148,6 +4156,7 @@ CREATE INDEX idx_psmss_tenant ON public.producto_stock_minimo_sucursal USING btr
 CREATE INDEX idx_puntos_venta_afip_emisor_id ON public.puntos_venta_afip USING btree (emisor_id);
 CREATE INDEX idx_puntos_venta_afip_sucursal_id ON public.puntos_venta_afip USING btree (sucursal_id);
 CREATE INDEX idx_pv_afip_tenant ON public.puntos_venta_afip USING btree (tenant_id);
+CREATE INDEX idx_rate_limit_contadores_ventana ON public.rate_limit_contadores USING btree (ventana_inicio);
 CREATE INDEX idx_recepcion_items_estado_id ON public.recepcion_items USING btree (estado_id);
 CREATE INDEX idx_recepcion_items_inventario_linea_id ON public.recepcion_items USING btree (inventario_linea_id);
 CREATE INDEX idx_recepcion_items_oc_item_id ON public.recepcion_items USING btree (oc_item_id);
@@ -8707,6 +8716,57 @@ AS $function$
     AND pat.activo = true
     AND pat.tenant_id = public.get_user_tenant_id()
   LIMIT 1;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_rate_limit_consumir(p_bucket text, p_identidad text, p_limite integer, p_ventana_seg integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_ventana   timestamptz;
+  v_identidad text;
+  v_contador  integer;
+BEGIN
+  IF p_bucket IS NULL OR p_bucket = '' THEN
+    RAISE EXCEPTION 'bucket requerido.';
+  END IF;
+  IF p_limite IS NULL OR p_limite < 1 THEN
+    RAISE EXCEPTION 'limite inválido: %', p_limite;
+  END IF;
+  -- Tope de 1 hora, atado al margen del cron de limpieza (punto 3): si se permitieran ventanas más
+  -- largas, el cleanup borraría el contador de una ventana TODAVÍA ABIERTA y el límite se
+  -- reiniciaría solo, en silencio. Esto es rate limiting de borde, no cuotas diarias.
+  IF p_ventana_seg IS NULL OR p_ventana_seg < 1 OR p_ventana_seg > 3600 THEN
+    RAISE EXCEPTION 'ventana inválida: % segundos (máximo 3600)', p_ventana_seg;
+  END IF;
+
+  -- La identidad viene de un header: se recorta para que nadie infle la fila mandando 8 KB de
+  -- x-forwarded-for, y un NULL cae en un cubo común en vez de saltearse el límite.
+  v_identidad := left(coalesce(nullif(p_identidad, ''), 'desconocido'), 200);
+
+  -- Alineada a múltiplos de la ventana: todos los isolates calculan el mismo arranque.
+  v_ventana := to_timestamp(floor(extract(epoch FROM now()) / p_ventana_seg) * p_ventana_seg);
+
+  INSERT INTO public.rate_limit_contadores AS r (bucket, identidad, ventana_inicio, contador)
+  VALUES (p_bucket, v_identidad, v_ventana, 1)
+  ON CONFLICT (bucket, identidad, ventana_inicio)
+  DO UPDATE SET contador = r.contador + 1
+  RETURNING r.contador INTO v_contador;
+
+  RETURN jsonb_build_object(
+    'permitido',       v_contador <= p_limite,
+    'contador',        v_contador,
+    'limite',          p_limite,
+    'reinicia_en',     v_ventana + make_interval(secs => p_ventana_seg),
+    'retry_after_seg', GREATEST(
+      1,
+      CEIL(EXTRACT(EPOCH FROM (v_ventana + make_interval(secs => p_ventana_seg)) - now()))::integer
+    )
+  );
+END;
 $function$
 
 
@@ -13405,6 +13465,7 @@ ALTER TABLE public.proveedor_cuentas_bancarias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_productos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.puntos_venta_afip ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rate_limit_contadores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recepcion_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recepciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recurso_ubicaciones ENABLE ROW LEVEL SECURITY;
@@ -14660,6 +14721,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pr
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.puntos_venta_afip TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.puntos_venta_afip TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.puntos_venta_afip TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.rate_limit_contadores TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recepcion_items TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recepcion_items TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recepcion_items TO service_role;

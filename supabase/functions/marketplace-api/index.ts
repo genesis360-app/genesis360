@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { consumirRateLimit, ipDelCliente, respuesta429 } from '../_shared/rateLimit.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,35 +8,23 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 }
 
-// Rate limiting básico: max 60 req/min por IP (en memoria del isolate)
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+// Rate limiting: 60 req/min por IP. El contador vive en la base (mig 432) — ver _shared/rateLimit.ts.
 const RATE_LIMIT = 60
-const RATE_WINDOW_MS = 60_000
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const entry = rateLimitMap.get(ip)
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS })
-    return true
-  }
-  if (entry.count >= RATE_LIMIT) return false
-  entry.count++
-  return true
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('cf-connecting-ip') ?? 'unknown'
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
 
-  if (!checkRateLimit(ip)) {
-    return new Response(JSON.stringify({ error: 'Rate limit exceeded. Max 60 requests/minute.' }), {
-      status: 429,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' },
-    })
+  // Antes de mirar el tenant, a propósito: así enumerar tenants tampoco es gratis.
+  const limite = await consumirRateLimit(supabase, 'marketplace-api', ipDelCliente(req), RATE_LIMIT)
+  if (!limite.permitido) {
+    return respuesta429(limite, `Rate limit exceeded. Max ${RATE_LIMIT} requests/minute.`, corsHeaders)
   }
 
   try {
@@ -48,11 +37,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
 
     // Verificar que el tenant existe y tiene marketplace activo
     const { data: tenant, error: tenantErr } = await supabase

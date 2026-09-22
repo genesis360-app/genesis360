@@ -16,6 +16,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { consumirRateLimit, ipDelCliente, respuesta429 } from '../_shared/rateLimit.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,16 +29,8 @@ const MAX_BYTES = 5 * 1024 * 1024
 const EXTENSION: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg' }
 const UN_ANIO = 60 * 60 * 24 * 365
 
-// Freno básico contra abuso por IP (en memoria del isolate), como `marketplace-api`.
-const intentos = new Map<string, { n: number; hasta: number }>()
-function dentroDelLimite(ip: string): boolean {
-  const ahora = Date.now()
-  const e = intentos.get(ip)
-  if (!e || ahora > e.hasta) { intentos.set(ip, { n: 1, hasta: ahora + 60_000 }); return true }
-  if (e.n >= 30) return false
-  e.n++
-  return true
-}
+// Freno contra abuso por IP. El contador vive en la base (mig 432) — ver _shared/rateLimit.ts.
+const LIMITE_POR_IP = 30
 
 const responder = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -46,8 +39,14 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return responder(405, { error: 'Método no permitido' })
 
-  const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('cf-connecting-ip') ?? 'desconocida'
-  if (!dentroDelLimite(ip)) return responder(429, { error: 'Demasiados intentos. Probá en un minuto.' })
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+
+  const limite = await consumirRateLimit(
+    supabase, 'transportista-subir-archivo', ipDelCliente(req), LIMITE_POR_IP,
+  )
+  if (!limite.permitido) {
+    return respuesta429(limite, 'Demasiados intentos. Probá en un minuto.', corsHeaders)
+  }
 
   let form: FormData
   try {
@@ -66,8 +65,6 @@ serve(async (req) => {
   const extension = EXTENSION[archivo.type]
   if (!extension) return responder(400, { error: 'Solo se aceptan imágenes PNG o JPEG' })
   if (archivo.size === 0 || archivo.size > MAX_BYTES) return responder(400, { error: 'La imagen tiene que pesar hasta 5 MB' })
-
-  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   const { data: envio, error: envioErr } = await supabase
     .from('envios')

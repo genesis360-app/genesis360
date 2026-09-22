@@ -60,7 +60,14 @@ jobs:
           echo "── stdout del listado ──"; cat ls.out || true
           echo "── stderr del listado ──"; cat ls.err || true
 
-          jq -R -r 'fromjson? // empty | .paths[]?' < ls.out | sed 's#/$##' | grep -v '^$' > buckets.txt || true
+          # ⚠️ El CLI NO devuelve lo mismo en todos lados: en una terminal local escupe JSON
+          # (`{"paths":["productos/",...]}`) y en el runner de GitHub escupe TEXTO PLANO, un
+          # bucket por línea. Lo descubrimos acá: la corrida del 2026-09-22 listó los 13 buckets
+          # en stdout y aun así `jq` devolvía 0. Se contemplan los dos formatos y se deduplica.
+          {
+            jq -R -r 'fromjson? // empty | .paths[]?' < ls.out
+            sed -n 's#^\([A-Za-z0-9._-][A-Za-z0-9._-]*\)/\?$#\1#p' < ls.out
+          } | sed 's#/$##' | sort -u | grep -v '^$' > buckets.txt || true
           rm -f ls.out ls.err
 
           echo "Buckets encontrados: $(wc -l < buckets.txt)"

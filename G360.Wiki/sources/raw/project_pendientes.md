@@ -7,16 +7,16 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🔒 ARRANCÁ ACÁ (2026-09-20) — Migración de API keys legacy + auditoría de seguridad completa (8 hallazgos
-> cerrados) + backup de Storage · **EN `dev`, commit `f55fbf0f`, SIN deploy a PROD**
+> cerrados) + backup de Storage · **EN `dev`, commits `f55fbf0f` + `17171223`, SIN deploy a PROD**
 >
 > 🚀 **Último release**: sigue siendo `v1.228.0` en PROD (deployado el 2026-09-18, sin cambios desde entonces).
-> Esta sesión **no bumpeó `APP_VERSION` ni creó tag/release** — todo lo de acá vive en `dev`, esperando el
+> Esta sesión (2 tandas de seguridad) **no bumpeó `APP_VERSION` ni creó tag/release** — todo lo de acá vive en `dev`, esperando el
 > próximo deploy.
 >
 > | | Código | Migraciones | Branch | Vercel / Legacy keys |
 > |---|---|---|---|---|
 > | **PROD** | `v1.228.0` | 001-**429** | `main` | sirve `v1.228.0`; `VITE_SUPABASE_ANON_KEY` ya es la **publishable** en el proyecto `genesis360` (verificado en el bundle) y en el secret de GitHub — 🔴 `genesis360-admin` **todavía sirve la key vieja**; legacy keys de Supabase **ACTIVAS todavía** |
-> | **DEV** | `v1.228.0` + `f55fbf0f` sin versionar | 001-**430** | `dev` | legacy keys de Supabase **DESACTIVADAS**, app verificada funcionando (login real, RLS, EFs, 1848 tests) |
+> | **DEV** | `v1.228.0` + `f55fbf0f` sin versionar | 001-**431** | `dev` | legacy keys de Supabase **DESACTIVADAS**, app verificada funcionando (login real, RLS, EFs, 1848 tests) |
 >
 > #### 🔑 TEMA 1 — Migración de API keys legacy (la rotación de la `service_role` filtrada el 2026-09-16)
 >

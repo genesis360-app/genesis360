@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-20] update | 🛡️ Auditoría de seguridad, 2ª tanda — OTP de entrega, vencimiento del link de cuenta, MP (commit `17171223`, en `dev`)
+
+Cierra el backlog que había quedado abierto de la auditoría. **Mig 431 aplicada y verificada en DEV, falta en PROD.**
+
+### OTP de entrega (mig 431)
+- El código salía de `random()` de Postgres, que **no es criptográfico**. Ahora sale de
+  `extensions.gen_random_bytes` — calificado con el schema porque pgcrypto vive en `extensions` y las funciones
+  tienen `search_path='public'`. Verificado en DEV: **500 códigos distintos de 500**.
+- `verificar_otp_envio` tiene GRANT a `anon` y **no contaba intentos**: 1.000.000 de combinaciones de 6 dígitos
+  fuerza-bruteables sin freno. Ahora **máximo 5 intentos**, con `FOR UPDATE` para que el límite no se saltee
+  mandando los pedidos de a muchos al mismo tiempo.
+- Pedir un código nuevo invalida los anteriores: **un solo código activo por envío**.
+
+🩸 **Gotcha que salió de la PRUEBA, no del diseño**: la primera versión elegía "el OTP más reciente" por
+`enviado_at`, pero dos OTP creados en la misma transacción **comparten timestamp** (`NOW()` es el arranque de la
+transacción, no el reloj), el desempate quedaba indefinido y pedir un código nuevo **NO desbloqueaba**. En PROD no
+se hubiera notado, pero era una fragilidad esperando el mismo tick. Se resolvió con `invalidado_at` explícito.
+
+### Vencimiento del link público de estado de cuenta (mig 431)
+`clientes.cuenta_token` **no vencía nunca** y no se podía rotar desde la app, mientras del otro lado
+`get_cuenta_cliente_by_token` (SECURITY DEFINER, GRANT a `anon`) devuelve nombre, teléfono, email y toda la cuenta
+corriente. Ahora vence a los **90 días** por defecto (`tenants.cuenta_token_dias`, 0 = no vence) y se puede
+**regenerar desde la ficha del cliente**.
+
+El fechado va por **trigger** (`clientes_cuenta_token_fechado`) además de por el front: si un token nuevo quedara
+sin fecha, el chequeo de vencimiento —que exige `IS NOT NULL`— no se cumpliría nunca y el link volvería a ser
+eterno, o sea **el bug original intacto y en silencio, justo para los links nuevos**. Lo marcó el
+`migration-reviewer` y tenía razón. Los tokens ya existentes se fechan HOY, no en el pasado: poner el reloj en
+hora, no romperle el link a un cliente que lo está usando.
+
+### MercadoPago
+- **`mp-webhook`**: la firma HMAC seguía en LOG-ONLY. Se mantiene el rollout en dos pasos (primero observar,
+  después bloquear) pero ahora hay interruptor: con `MP_WEBHOOK_SIG_ENFORCE=true` rechaza con 401 lo que no valide.
+  Además avisa por log si `MP_WEBHOOK_SECRET` no está cargado, que era el estado real y no se veía.
+- **`mp-ipn`**: si el POST no traía `user_id` hacía `.limit(1)` y se quedaba con **una credencial cualquiera** —
+  consultaba MP con el access_token de otro negocio y podía asentar el log de idempotencia bajo el tenant
+  equivocado. Ahora devuelve 400: sin `user_id` no hay forma de saber de quién es el aviso, y adivinar es peor.
+
+### Plataforma
+- **SSL forzado** en las conexiones directas a la base (estaba en `false`), aplicado por API y **ya activo en DEV y
+  PROD**.
+- Política de contraseñas (de la 1ª tanda): mínimo **10** y HaveIBeenPwned **activado**, ya vivo en DEV y PROD.
+
+### Backlog que sigue abierto
+Rate limiting en memoria del isolate · captcha en login/alta (necesita keys de hCaptcha/Turnstile) · 4 buckets
+públicos · base accesible desde cualquier IP · `MP_WEBHOOK_SECRET` sin cargar.
+
+Build verde, 1848 tests pasando.
+
+---
 ## [2026-09-20] update | 🛡️ Auditoría de seguridad completa — 8 hallazgos cerrados (commit `f55fbf0f`, en `dev`, sin deploy a PROD) + backup de Storage
 
 Auditoría exhaustiva con pruebas ejecutadas contra PROD y DEV (no solo lectura de código).

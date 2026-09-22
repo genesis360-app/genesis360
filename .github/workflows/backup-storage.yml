@@ -40,17 +40,31 @@ jobs:
           mkdir -p backup-storage
           cd backup-storage
 
+          # Versión del CLI PINEADA a propósito: con `@latest`, una versión nueva que cambie el
+          # formato de salida rompe el backup en silencio y nadie se entera hasta que hace falta.
+          CLI="supabase@2.117.0"
+
           # Los buckets se listan en vivo: si mañana se agrega uno nuevo, entra solo al backup.
-          npx --yes supabase@latest storage ls "ss:///" --project-ref "$REF" --experimental \
-            | jq -r '.paths[]' | sed 's#/$##' | grep -v '^$' > buckets.txt
+          #
+          # El `jq -R 'fromjson? // empty'` no es adorno: el CLI mezcla líneas que NO son JSON con
+          # la línea de datos (avisos de npx, notas de versión), y un `jq -r` directo muere con
+          # "Invalid numeric literal" — que es exactamente como falló la primera corrida real.
+          # Así se ignora todo lo que no parsee y se queda solo con el JSON.
+          npx --yes "$CLI" storage ls "ss:///" --project-ref "$REF" --experimental \
+            | jq -R -r 'fromjson? // empty | .paths[]?' | sed 's#/$##' | grep -v '^$' > buckets.txt
 
           echo "Buckets encontrados: $(wc -l < buckets.txt)"
           cat buckets.txt
 
+          if [ ! -s buckets.txt ]; then
+            echo "::error::No se pudo listar ningún bucket — revisar el token o el project-ref."
+            exit 1
+          fi
+
           while read -r b; do
             [ -z "$b" ] && continue
             echo "── bajando $b"
-            npx --yes supabase@latest storage cp -r "ss:///$b" "$b" --project-ref "$REF" --experimental
+            npx --yes "$CLI" storage cp -r "ss:///$b" "$b" --project-ref "$REF" --experimental
           done < buckets.txt
 
           rm -f buckets.txt

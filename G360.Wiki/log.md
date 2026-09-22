@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-22] deploy | 🚀 v1.229.0 EN PROD — la auditoría de seguridad completa
+
+GO: *"ok autorizo todo"*. Release de las dos tandas. PR **#354** `dev→main` con **merge commit**,
+release `v1.229.0` **Latest**, y un **#355** (`v1.229.1`) con el fix del backup.
+
+### 🛑 La trampa de orden que casi rompe los sweeps
+
+Los workflows **programados** de GitHub corren SIEMPRE la versión del archivo que está en `main`, y
+el header `x-cron-secret` vivía en `dev`. Deployar las Edge Functions con el guard **antes** del
+merge habría dejado a los sweeps programados llamando sin el secreto → 401 → **dejan de correr en
+silencio**, incluidos los reintentos de NC de AFIP. Se frenó el deploy a tiempo.
+
+**Orden correcto, el que se siguió**: migraciones aditivas → merge a `main` → deploy de las EFs →
+verificar con un workflow real.
+
+### Qué se hizo, en orden
+
+| # | Paso | Resultado |
+|---|---|---|
+| 1 | Migraciones **430** y **431** en PROD | ✅ PROD pasa de 429 a **431** |
+| 2 | PR #354 `dev→main` + release `v1.229.0` | ✅ |
+| 3 | **22 Edge Functions** a PROD (y a DEV) | ✅ 22/22, respetando el `verify_jwt` de cada una |
+| 4 | Workflow real `tn-stock-sync` desde `main` | ✅ **success** — prueba que el `CRON_SECRET` de GitHub y el de Supabase coinciden |
+| 5 | Backup de Storage | ✅ 13 buckets, **8 archivos**, artifact a 90 días |
+
+### Verificación del guard (medida, no asumida)
+
+Disparar los sweeps de **PROD** con la key pública —lo que hasta hoy podía hacer cualquiera—
+devuelve **401** en los ocho probados: `tn-stock-worker`, `meli-stock-worker`, `cron-sweeps`,
+`nc-afip-retry-sweep`, `tenant-hard-delete-sweep`, `billing-manual-sweep`, `repricing-sweep` y
+`monitoring-check`. En DEV, además, con un secreto inventado también da 401, y `scan-product` /
+`scan-ticket` sin sesión dan 401.
+
+### Paridad `pg_policies` DEV↔PROD
+
+| Schema | Policies | Hash |
+|---|---|---|
+| `public` | 234 | `89d2295d…` **idéntico** |
+| `storage` | 40 | `c9a5c495…` **idéntico** |
+| `cron` | 2 | `f7b4e084…` **idéntico** |
+
+**Cero drift** después de las dos migraciones.
+
+### 🩸 El backup falló en su primera corrida real (y el diagnóstico costó dos intentos)
+
+El listado de buckets se parseaba como JSON, pero **el CLI de Supabase no devuelve lo mismo en
+todos lados**: en una terminal local escupe `{"paths":[...]}` y en el runner de GitHub escupe
+**texto plano**, un bucket por línea. Encima, la primera corrida murió **muda**: con `bash -e` +
+`pipefail`, `grep -v '^$'` devuelve 1 con entrada vacía y mataba el script antes del chequeo que
+iba a explicar el problema.
+
+Se resolvió haciendo que el workflow **imprima la salida cruda** antes de parsear — ahí se vio de
+una. Ahora contempla los dos formatos, tiene la versión del CLI **pineada** (con `@latest` un cambio
+de formato lo rompe en silencio) y corta explícito si el listado sale vacío.
+
+### Lo que queda pendiente
+
+Las keys legacy de Supabase **siguen activas en PROD**: falta esperar a que las PWA cacheadas se
+actualicen solas, **medir** en los logs del gateway cuántos navegadores siguen mandando la vieja, y
+recién cuando dé cero apagarlas y **revocar la JWT signing key HS256**. Ver
+[[reference_supabase_token_filtrado_sin_rotar]] en la memoria.
+
+---
 ## [2026-09-20] update | 🛡️ Auditoría de seguridad, 2ª tanda — OTP de entrega, vencimiento del link de cuenta, MP (commit `17171223`, en `dev`)
 
 Cierra el backlog que había quedado abierto de la auditoría. **Mig 431 aplicada y verificada en DEV, falta en PROD.**

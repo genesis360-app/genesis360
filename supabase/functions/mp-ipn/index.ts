@@ -85,14 +85,25 @@ serve(async (req) => {
   )
 
   // 1. Buscar credencial MP por seller_id
-  const query = supabase
+  //
+  // AUDITORÍA 2026-09-20: antes, si el POST no traía `user_id`, esto hacía `.limit(1)` y se
+  // quedaba con UNA CREDENCIAL CUALQUIERA (la primera que devolviera Postgres, sin orden
+  // determinístico) — o sea que consultaba MercadoPago con el access_token de OTRO negocio y
+  // podía asentar el log de idempotencia bajo el tenant equivocado. Sin `user_id` no hay forma
+  // de saber de quién es el aviso: se rechaza en vez de adivinar.
+  if (!user_id) {
+    console.warn('mp-ipn: aviso sin user_id — no se puede identificar el vendedor, se rechaza')
+    return new Response(JSON.stringify({ error: 'Falta user_id' }), {
+      status: 400, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const { data: cred, error: credErr } = await supabase
     .from('mercadopago_credentials')
     .select('tenant_id, sucursal_id, access_token')
     .eq('conectado', true)
-
-  const { data: cred, error: credErr } = user_id
-    ? await query.eq('seller_id', user_id).maybeSingle()
-    : await query.limit(1).maybeSingle()
+    .eq('seller_id', user_id)
+    .maybeSingle()
 
   if (credErr || !cred) {
     console.error('MP credential not found for seller_id:', user_id, credErr?.message)

@@ -95,6 +95,17 @@ serve(async (req) => {
     const sellerId = event.user_id
     const resource = event.resource
 
+    // GUARD-SSRF (auditoria de seguridad 2026-09-20): `resource` viene del body del webhook y
+    // mas abajo se concatena crudo a MELI_API para un fetch que lleva el access_token DEL
+    // VENDEDOR en la cabecera. Un `resource` como "@atacante.com/x" produce la URL
+    // "https://api.mercadolibre.com@atacante.com/x", donde el dominio de ML queda como
+    // *userinfo* y el host real es el del atacante: el token del cliente se le entrega servido.
+    // Con topic 'orders_v2' el unico formato legitimo es /orders/<numero>.
+    if (typeof resource !== 'string' || !/^\/orders\/\d+$/.test(resource)) {
+      console.warn('meli-webhook: resource con formato invalido, descartado')
+      return new Response(JSON.stringify({ ok: true, skipped: 'resource_invalido' }), { status: 200 })
+    }
+
     // Puede haber múltiples tenants con el mismo seller en testing — procesar todos
     const { data: creds } = await supabase
       .from('meli_credentials')

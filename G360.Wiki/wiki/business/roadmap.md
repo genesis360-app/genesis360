@@ -8,11 +8,47 @@ updated: 2026-09-15
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.227.1`** (2026-09-16, migs 001-429 — **sin migración nueva**, deploy solo de código).
-Compute de PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken** (pre-chequeo
-antes de cada deploy: no estaba usando la app, último login/refresh 2026-09-14 23:41 UTC).
+**Versión en PROD (actual): `v1.228.0`** (2026-09-18, migs 001-429 — **sin migración nueva**, deploy solo de código).
+Compute de PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **DEV = PROD**: las dos en `v1.227.1`, migs 001-429, última `429_ayuda_cursos_y_recursos`.
+✅ **DEV = PROD** en código y versión (`v1.228.0`), pero **DEV va un paso adelante en DB y seguridad**: commit
+`f55fbf0f` (2026-09-20, sin bump de versión ni release) trae la migración **430** — solo en DEV — y una
+auditoría de seguridad completa que cerró 8 hallazgos (aislamiento de Storage, guard `CRON_SECRET` en 15
+sweeps/workers, validación real de `modo-webhook`/`tn-webhook`/`meli-webhook`, auth en `scan-product`/
+`scan-ticket`, XSS en impresión de QR, política de contraseñas). Detalle en
+[[wiki/architecture/guards-server-side]] ("Tanda G") y `log.md` (2026-09-20). Pendiente antes de llevarlo a
+PROD: cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 y redesplegar las Edge Functions tocadas.
+
+## 🚀 v1.228.0 — Capacidad (3 palancas), diagrama de infraestructura y documento de producto v2.1
+
+PR **#353** `dev→main` (merge `693c72b9`), release **Latest**, **sin migraciones**. Verificado en vivo siguiendo el
+redirect: `app.genesis360.pro` pasó del bundle `index-C5iOI7Dn.js` (v1.227.1) a `index-BhDV1tFn.js` (**v1.228.0**).
+
+**⚡ Capacidad — medido antes y después con un instrumento repetible nuevo** (`npm run perf:navegacion`), que de paso
+corrigió el número que documentaba el wiki: el "~64 requests por pantalla" **medía recargar la página, no navegar**.
+
+| | Antes | Después |
+|---|---|---|
+| Abrir una pantalla de cero | 64,3 req | **52,3** (−18,7 %) |
+| Volver al Dashboard | 92 req | **0** |
+| Pestaña quieta en el POS | 0,59 req/s | **0,28** (−53 %) |
+
+- **`ensureUserData`** — `loadUserData` corría **~5 veces por arranque**. El dedupe vive **solo** en el bootstrap de
+  auth: las otras 8 llamadas son refrescos deliberados post-mutación y deduplicarlas dejaría datos viejos en pantalla.
+- **Dashboard** — ventana de frescura de 60 s, elegida por GO entre tres variantes por ser la única **invisible** (no
+  cambia layout ni orden de carga; la primera carga queda igual). De paso se arregló un `queryKey` con `new Date()`
+  adentro, que anulaba cualquier caché.
+- **Polling** — solo contadores de fondo. **NO se tocó** lo que habilita operar: cajas abiertas del POS (15 s) ni el
+  polling de pago MODO/MP del QR (4 s).
+
+**📐 Documentación**: diagrama de infraestructura (`diagrams/11` + [[wiki/architecture/infraestructura]], primera
+página de `architecture/` con un diagrama) · **documento de producto a v2.1**, que publicaba **Básico $4.900 / Pro
+$9.900** cuando son **$54.000 / $90.000**, más trial (7 → **30** días), metering (movimientos → **comprobantes**) y
+"pg_cron no habilitado" (corre **6 jobs**) · relevamiento de **Categorías de clientes** Fase 0 · precio del add-on de
+CUIT confirmado.
+
+**Verde**: `tsc` + `build` · **1848 tests unitarios (112 archivos)** · e2e de Dashboard (17) y multi-rol con login real
+de 4 usuarios · período "Custom" en navegador.
 
 **Dos deploys a PROD el mismo día (cont. 71)**: primero `v1.226.0` (migs 420-426, detalle en la sección `## 🚀
 v1.226.0` más abajo) y, después, ya el mismo día, un segundo deploy a `v1.227.0` (migs 427-429: cola/vínculos ML/TN

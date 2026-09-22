@@ -13,4 +13,5 @@ jobs:
         run: |
           curl -s -o /dev/null -w "%{http_code}" \
             -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/tn-fulfillment-worker" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

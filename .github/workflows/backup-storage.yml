@@ -1,0 +1,76 @@
+name: Backup de archivos de Storage (PROD)
+
+# Por qué existe (auditoría de seguridad 2026-09-20): el backup diario de Supabase NO incluye
+# los archivos. Es textual de su documentación: "Database backups do not include objects you
+# store via the Storage API". O sea que fotos de productos, CERTIFICADOS AFIP, comprobantes de
+# gastos, documentos de empleados, remitos y adjuntos de soporte NO se recuperan con un restore.
+#
+# Este workflow baja todos los buckets y los guarda como artifact de GitHub, con 90 días de
+# retención — bastante más que los 7 días de backup de base que da el plan Pro.
+#
+# Secrets que necesita (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN   — token de cuenta (supabase.com/dashboard/account/tokens)
+#   SUPABASE_PROJECT_REF    — jjffnbrdjchquexdfgwq
+#
+# Usa el CLI con el token de cuenta a propósito: así NO hace falta guardar una key de datos
+# (service_role / secret key) en GitHub Actions. Los comandos están verificados contra PROD
+# el 2026-09-20 (la ruta lleva TRES barras: `ss:///bucket`, y `--experimental` es obligatorio).
+
+on:
+  schedule:
+    # 05:30 UTC = 02:30 Argentina, después del backup diario de Supabase (~04:50 UTC)
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Fecha del backup
+        id: fecha
+        run: echo "hoy=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Bajar todos los buckets
+        run: |
+          set -euo pipefail
+          mkdir -p backup-storage
+          cd backup-storage
+
+          # Los buckets se listan en vivo: si mañana se agrega uno nuevo, entra solo al backup.
+          npx --yes supabase@latest storage ls "ss:///" --project-ref "$REF" --experimental \
+            | jq -r '.paths[]' | sed 's#/$##' | grep -v '^$' > buckets.txt
+
+          echo "Buckets encontrados: $(wc -l < buckets.txt)"
+          cat buckets.txt
+
+          while read -r b; do
+            [ -z "$b" ] && continue
+            echo "── bajando $b"
+            npx --yes supabase@latest storage cp -r "ss:///$b" "$b" --project-ref "$REF" --experimental
+          done < buckets.txt
+
+          rm -f buckets.txt
+          rm -rf supabase   # basura que deja el CLI (.temp), no va al backup
+
+      - name: Verificar que bajó algo
+        run: |
+          # Un backup vacío que se sube igual es peor que ninguno: da falsa tranquilidad.
+          n=$(find backup-storage -type f | wc -l)
+          echo "archivos: $n"
+          du -sh backup-storage || true
+          if [ "$n" -eq 0 ]; then
+            echo "::error::El backup quedó VACÍO (0 archivos). Revisar el token o el project-ref."
+            exit 1
+          fi
+
+      - name: Guardar como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-prod-${{ steps.fecha.outputs.hoy }}
+          path: backup-storage
+          retention-days: 90
+          if-no-files-found: error

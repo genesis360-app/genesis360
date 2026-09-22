@@ -913,6 +913,8 @@ export default function ConfigPage() {
   // EN3 — reparto
   const [bizTokenPolitica, setBizTokenPolitica] = useState<string>((tenant as any)?.envio_token_politica ?? 'al_entregar')
   const [bizTokenDias, setBizTokenDias] = useState<string>(String((tenant as any)?.envio_token_dias ?? 30))
+  // Vencimiento del link público de estado de cuenta del cliente (mig 431). 0 = no vence.
+  const [bizCuentaTokenDias, setBizCuentaTokenDias] = useState<string>(String((tenant as any)?.cuenta_token_dias ?? 90))
   const [bizIdentidadModo, setBizIdentidadModo] = useState<string>((tenant as any)?.envio_identidad_modo ?? 'anonimo')
   const [bizNotifEnCamino, setBizNotifEnCamino] = useState<string>((tenant as any)?.envio_notif_en_camino ?? 'wa')
   const [bizHojaRutaModo, setBizHojaRutaModo] = useState<string>((tenant as any)?.envio_hoja_ruta_modo ?? 'agrupada')
@@ -1370,6 +1372,13 @@ export default function ConfigPage() {
       // EN3 — reparto
       envio_token_politica: bizTokenPolitica,
       envio_token_dias: parseInt(bizTokenDias) || 30,
+      // Ojo: acá NO va `|| 90`. El 0 es un valor válido y con significado ("no vence"), y un
+      // `||` lo convertiría en 90 en silencio. Si lo que se tipeó no es un número, se cae al
+      // default seguro (90 días) en vez de dejar el link eterno.
+      cuenta_token_dias: (() => {
+        const n = parseInt(bizCuentaTokenDias, 10)
+        return Number.isFinite(n) && n >= 0 ? n : 90
+      })(),
       envio_identidad_modo: bizIdentidadModo,
       envio_notif_en_camino: bizNotifEnCamino,
       envio_hoja_ruta_modo: bizHojaRutaModo,
@@ -8331,6 +8340,23 @@ export default function ConfigPage() {
                       className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se calcula sobre el saldo vencido, proporcional a los días de atraso. 0 = sin interés.</p>
                   </div>
+                </div>
+                <div className="pt-3 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Vencimiento del link de estado de cuenta
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input type="number" onWheel={e => e.currentTarget.blur()}
+                      value={bizCuentaTokenDias} onChange={e => setBizCuentaTokenDias(e.target.value)}
+                      min="0" step="1" disabled={!canEdit}
+                      className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                    <span className="text-sm text-gray-500 dark:text-gray-400">días (0 = no vence)</span>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    El link que le compartís a un cliente para que vea su cuenta lo puede abrir
+                    cualquiera que lo tenga, sin contraseña. Por eso vence. Desde la ficha del
+                    cliente podés regenerarlo cuando quieras: el anterior deja de funcionar.
+                  </p>
                 </div>
                 {canEdit && (
                   <div className="flex justify-end">

@@ -2135,7 +2135,7 @@ Decisiones de GO del 2026-09-14 (ver `log.md`, sesión cont. 68).
 | 59.4 | Programar otro para el mismo producto reemplaza al pendiente (uno por producto) | índice único parcial + `fn_programar_precio` | ✅ código |
 | 59.5 | Productos → Programados lista los pendientes y los cancela; cancelar no toca el precio vigente | e2e 150 C | ✅ |
 | 59.6 | No se escribe la tabla directo por REST, no se programa al pasado y un CAJERO no puede programar | e2e 150 D | ✅ |
-| 59.7 | Si aplicar falla → queda "No se aplicó" con el error y se avisa al DUEÑO/SUPER_USUARIO | revisión de `fn_aplicar_precios_programados` | ✅ código — sin e2e |
+| 59.7 | Si aplicar falla → queda "No se aplicó" con el error y se avisa al DUEÑO/SUPER_USUARIO | revisión de `fn_aplicar_precios_programados` | ✅ **VERIFICADO por SQL (2026-09-18)** — forzado en DEV dentro de una transacción con rollback: `estado='fallido'`, error registrado, **el precio del producto NO cambió** y se generaron 2 notificaciones. Cero residuo |
 | 59.8 | Aviso el día anterior (09:00) a DUEÑO, SUPER_USUARIO y SUPERVISOR | revisión + cron activo en DEV | ✅ código — sin e2e |
 | 59.9 | Producto con precio en USD → no se ofrece programar (A5: solo el minorista en pesos) | revisión | ✅ código |
 | 59.10 | Los avisos diarios de CC y OC vencidas le llegan al DUEÑO y al SUPER_USUARIO (antes a roles inexistentes: en PROD a nadie) | mig 421 verificada en DEV | ✅ DEV |

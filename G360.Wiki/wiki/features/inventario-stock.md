@@ -482,6 +482,13 @@ Componente `LpnQR.tsx` en `LpnAccionesModal`:
 - Descarga PNG
 - Ventana imprimible
 
+> 🔒 **XSS cerrado 2026-09-20** (commit `f55fbf0f`, EN DEV): la ventana imprimible arma el HTML con
+> `document.write` e interpolaba nombre/SKU/LPN **sin escapar** — esos valores entran por el importador CSV y
+> por el sync de ML/TiendaNube, así que un nombre de producto malicioso podía ejecutar JS en el origin de la app.
+> Mismo hueco en `ProductoQR`, `CodigoCompuestoModal` y `CodigoMasivoModal`. Fix: helper nuevo
+> `src/lib/escaparHtml.ts`, 13 interpolaciones escapadas en las 4 pantallas. Detalle en
+> [[wiki/architecture/guards-server-side]] ("Tanda G", G7).
+
 ---
 
 ## Series overflow (v0.82.0)

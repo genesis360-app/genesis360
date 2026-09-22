@@ -3,7 +3,7 @@ title: Deploy — Vercel + Supabase
 category: development
 tags: [deploy, vercel, supabase, produccion, dominios]
 sources: []
-updated: 2026-09-15
+updated: 2026-09-20
 ---
 
 # Deploy
@@ -49,9 +49,17 @@ Configurado en `vercel.json`:
 
 Configuradas en el dashboard de Vercel (no en el repo):
 - `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_ANON_KEY` — 🔑 **2026-09-20**: en el proyecto `genesis360` (app) ya apunta a la **publishable
+  key nueva** (`sb_publishable_…`), verificado en el bundle servido. 🔴 **El proyecto `genesis360-admin` todavía
+  sirve la key vieja** — pendiente redeploy. ⚠️ Cambiar esta variable **solo entra al bundle al reconstruir ESE
+  branch** — "Preview" es el ENTORNO, `dev`/`main` son las RAMAS, no confundirlas. Ver
+  [[wiki/architecture/infraestructura]] ("API keys de Supabase").
 - `VITE_MP_PUBLIC_KEY`
 - `VITE_APP_URL`
+
+> 🐛 **Tras cambiar `VITE_SUPABASE_ANON_KEY` y redeployar, un browser ya logueado puede seguir fallando por el
+> service worker de la PWA** (no se da de baja con hard-refresh). Confirmar en DevTools → Application → Service
+> Workers → Unregister + Clear site data, o probar en incógnito, antes de asumir que el cambio "no sirvió".
 
 ---
 
@@ -59,9 +67,24 @@ Configuradas en el dashboard de Vercel (no en el repo):
 
 Configuradas en Supabase Dashboard → Settings → Edge Functions:
 - `MP_ACCESS_TOKEN`
-- `MP_WEBHOOK_SECRET`
+- `MP_WEBHOOK_SECRET` — 🟨 cargada pero la validación sigue en modo LOG-ONLY en `mp-webhook` (ver [[wiki/architecture/guards-server-side]], "Tanda G")
 - `MP_PRICE_ID`
+- `MODO_WEBHOOK_SECRET` — 🆕 2026-09-20, requerida por `modo-webhook` para validar el pago (antes no validaba nada). 🔴 Si no está cargada, la EF responde 503 a propósito
+- `CRON_SECRET` — 🆕 2026-09-20, requerida por los 15 sweeps/workers (header `x-cron-secret`, que ya mandan los 13 workflows de GitHub Actions). 🔴 **Cargar en DEV y PROD, y en los secrets de GitHub, ANTES de desplegar esas EFs** — si no, los sweeps se caen en silencio
+- `TN_CLIENT_SECRET` — ya existía; ahora también la usa `tn-webhook` para validar el HMAC-SHA256 del body
 - Claves de Resend, AFIP, MeLi, TN, Anthropic
+
+---
+
+## Backup de Storage (GitHub Actions, 2026-09-20)
+
+Los backups automáticos de Supabase **no incluyen Storage** (solo la base). Mitigación:
+`.github/workflows/backup-storage.yml` baja todos los buckets a diario con el CLI de Supabase y los deja como
+artifact de GitHub, **90 días de retención**. Usa el `SUPABASE_ACCESS_TOKEN` (token de cuenta, no una key de
+datos) para no exponer una credencial de acceso a datos del negocio en GitHub Actions. Necesita los secrets
+`SUPABASE_ACCESS_TOKEN` y `SUPABASE_PROJECT_REF` (🔴 pendiente de cargar). Gotchas de la CLI verificados contra
+PROD: la ruta de storage lleva **tres barras** (`ss:///bucket`) y `--experimental` es obligatorio. Detalle
+completo en [[wiki/architecture/infraestructura]] ("Backups y continuidad").
 
 ---
 
@@ -146,3 +169,5 @@ npm run lint         # TypeScript + ESLint
 - [[wiki/development/workflow-git]]
 - [[wiki/development/supabase-dev-vs-prod]]
 - [[wiki/architecture/backend-supabase]]
+- [[wiki/architecture/infraestructura]] — API keys legacy vs nuevas, backups y continuidad
+- [[wiki/architecture/guards-server-side]] — auditoría de seguridad completa (Tanda G)

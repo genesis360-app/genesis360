@@ -3,7 +3,7 @@ title: Supabase DEV vs PROD
 category: development
 tags: [supabase, dev, prod, migraciones, ambiente]
 sources: [WORKFLOW.md, CLAUDE.md]
-updated: 2026-09-04
+updated: 2026-09-20
 ---
 
 # Supabase DEV vs PROD
@@ -145,7 +145,12 @@ ANTHROPIC_API_KEY      # para scan-product (Claude Haiku)
 RESEND_API_KEY         # para send-email + monitoring-check
 APP_URL                # DEV o PROD según proyecto
 SUPABASE_URL           # automático en Supabase
-SUPABASE_SERVICE_ROLE_KEY  # automático en Supabase
+SUPABASE_SERVICE_ROLE_KEY  # automático en Supabase — 🔑 desde 2026-03-06 el CONTENIDO que Supabase inyecta acá
+                           # es la SECRET key nueva (sb_secret_…), no la service_role legacy. Ver
+                           # [[wiki/architecture/infraestructura]] ("API keys de Supabase")
+CRON_SECRET             # 🆕 2026-09-20 — exigido por los 15 sweeps/workers (header x-cron-secret). Cargar en
+                         # DEV y PROD ANTES de desplegar esas EFs, o se caen en silencio
+MODO_WEBHOOK_SECRET      # 🆕 2026-09-20 — exigido por modo-webhook para validar el monto del pago
 ```
 
 ---

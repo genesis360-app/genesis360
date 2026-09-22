@@ -36,21 +36,52 @@ jobs:
 
       - name: Bajar todos los buckets
         run: |
-          set -euo pipefail
+          # Sin `set -e` a propósito en el listado: si el CLI falla queremos VER qué devolvió,
+          # no que el paso muera mudo. La primera corrida real se cayó sin imprimir una sola
+          # línea porque `grep -v '^$'` devuelve 1 cuando la entrada está vacía, y con
+          # `set -e` + `pipefail` eso mataba el script antes de llegar al chequeo.
+          set -uo pipefail
           mkdir -p backup-storage
           cd backup-storage
 
+          # Versión del CLI PINEADA a propósito: con `@latest`, una versión nueva que cambie el
+          # formato de salida rompe el backup en silencio y nadie se entera hasta que hace falta.
+          CLI="supabase@2.117.0"
+
           # Los buckets se listan en vivo: si mañana se agrega uno nuevo, entra solo al backup.
-          npx --yes supabase@latest storage ls "ss:///" --project-ref "$REF" --experimental \
-            | jq -r '.paths[]' | sed 's#/$##' | grep -v '^$' > buckets.txt
+          #
+          # El `jq -R 'fromjson? // empty'` no es adorno: el CLI mezcla líneas que NO son JSON con
+          # la línea de datos (avisos de npx, notas de versión), y un `jq -r` directo muere con
+          # "Invalid numeric literal" — que es exactamente como falló la primera corrida real.
+          # Así se ignora todo lo que no parsee y se queda solo con el JSON.
+          npx --yes "$CLI" storage ls "ss:///" --project-ref "$REF" --experimental > ls.out 2> ls.err
+          rc=$?
+          echo "exit del CLI: $rc"
+          echo "── stdout del listado ──"; cat ls.out || true
+          echo "── stderr del listado ──"; cat ls.err || true
+
+          # ⚠️ El CLI NO devuelve lo mismo en todos lados: en una terminal local escupe JSON
+          # (`{"paths":["productos/",...]}`) y en el runner de GitHub escupe TEXTO PLANO, un
+          # bucket por línea. Lo descubrimos acá: la corrida del 2026-09-22 listó los 13 buckets
+          # en stdout y aun así `jq` devolvía 0. Se contemplan los dos formatos y se deduplica.
+          {
+            jq -R -r 'fromjson? // empty | .paths[]?' < ls.out
+            sed -n 's#^\([A-Za-z0-9._-][A-Za-z0-9._-]*\)/\?$#\1#p' < ls.out
+          } | sed 's#/$##' | sort -u | grep -v '^$' > buckets.txt || true
+          rm -f ls.out ls.err
 
           echo "Buckets encontrados: $(wc -l < buckets.txt)"
           cat buckets.txt
 
+          if [ ! -s buckets.txt ]; then
+            echo "::error::No se pudo listar ningún bucket — mirar el stdout/stderr de arriba."
+            exit 1
+          fi
+
           while read -r b; do
             [ -z "$b" ] && continue
             echo "── bajando $b"
-            npx --yes supabase@latest storage cp -r "ss:///$b" "$b" --project-ref "$REF" --experimental
+            npx --yes "$CLI" storage cp -r "ss:///$b" "$b" --project-ref "$REF" --experimental
           done < buckets.txt
 
           rm -f buckets.txt

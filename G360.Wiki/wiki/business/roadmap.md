@@ -19,6 +19,26 @@ sweeps/workers, validación real de `modo-webhook`/`tn-webhook`/`meli-webhook`, 
 [[wiki/architecture/guards-server-side]] ("Tanda G") y `log.md` (2026-09-20). Pendiente antes de llevarlo a
 PROD: cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 y redesplegar las Edge Functions tocadas.
 
+### v1.229.0 — Auditoría de seguridad (2026-09-22)
+
+Dos tandas de la auditoría del 2026-09-20, con **pruebas ejecutadas** contra PROD y DEV, no solo
+lectura de código. Migraciones **430** y **431**.
+
+**Lo que se verificó bien:** 170/170 tablas con RLS · un usuario logueado no ve **ni una fila** de
+otro negocio en las **155 tablas con dueño** · un anónimo solo ve la tabla de planes · sin escalada
+de privilegios · API keys propias hasheadas SHA-256 · `npm audit` en 0.
+
+**Hallazgos cerrados:** fuga de lectura entre negocios en el bucket `archivos-biblioteca` (mig 430) ·
+**15 sweeps abiertos a internet** porque el único filtro era la anon key, que es pública (ahora
+exigen `CRON_SECRET`) · `modo-webhook` permitía marcar una venta como pagada por el importe que
+quisiera quien conociera su UUID · firma HMAC en `tn-webhook` · robo del access_token del vendedor en
+`meli-webhook` · `scan-*` sin auth · XSS en las 4 pantallas de etiquetas · OTP de entrega sin límite
+de intentos y con `random()` no criptográfico · link de estado de cuenta que no vencía nunca (mig
+431) · `mp-ipn` tomaba credenciales de cualquier negocio.
+
+**Plataforma:** contraseñas de mínimo 10 + HaveIBeenPwned · SSL forzado en la base · **backup diario
+de los archivos de Storage** (90 días), que el backup de Supabase no cubre.
+
 ## 🚀 v1.228.0 — Capacidad (3 palancas), diagrama de infraestructura y documento de producto v2.1
 
 PR **#353** `dev→main` (merge `693c72b9`), release **Latest**, **sin migraciones**. Verificado en vivo siguiendo el

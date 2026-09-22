@@ -36,7 +36,11 @@ jobs:
 
       - name: Bajar todos los buckets
         run: |
-          set -euo pipefail
+          # Sin `set -e` a propósito en el listado: si el CLI falla queremos VER qué devolvió,
+          # no que el paso muera mudo. La primera corrida real se cayó sin imprimir una sola
+          # línea porque `grep -v '^$'` devuelve 1 cuando la entrada está vacía, y con
+          # `set -e` + `pipefail` eso mataba el script antes de llegar al chequeo.
+          set -uo pipefail
           mkdir -p backup-storage
           cd backup-storage
 
@@ -50,14 +54,20 @@ jobs:
           # la línea de datos (avisos de npx, notas de versión), y un `jq -r` directo muere con
           # "Invalid numeric literal" — que es exactamente como falló la primera corrida real.
           # Así se ignora todo lo que no parsee y se queda solo con el JSON.
-          npx --yes "$CLI" storage ls "ss:///" --project-ref "$REF" --experimental \
-            | jq -R -r 'fromjson? // empty | .paths[]?' | sed 's#/$##' | grep -v '^$' > buckets.txt
+          npx --yes "$CLI" storage ls "ss:///" --project-ref "$REF" --experimental > ls.out 2> ls.err
+          rc=$?
+          echo "exit del CLI: $rc"
+          echo "── stdout del listado ──"; cat ls.out || true
+          echo "── stderr del listado ──"; cat ls.err || true
+
+          jq -R -r 'fromjson? // empty | .paths[]?' < ls.out | sed 's#/$##' | grep -v '^$' > buckets.txt || true
+          rm -f ls.out ls.err
 
           echo "Buckets encontrados: $(wc -l < buckets.txt)"
           cat buckets.txt
 
           if [ ! -s buckets.txt ]; then
-            echo "::error::No se pudo listar ningún bucket — revisar el token o el project-ref."
+            echo "::error::No se pudo listar ningún bucket — mirar el stdout/stderr de arriba."
             exit 1
           fi
 

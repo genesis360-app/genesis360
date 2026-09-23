@@ -2227,3 +2227,17 @@ Negocios en modo de pago manual. Decisión de GO: campanita + mail al dueño y a
 | 65.4 | Si el aviso falla, el pago se registra igual | revisión + `migration-reviewer` (subtransacción) | ✅ código |
 | 65.5 | Mail "Recibimos tu pago" al dueño, al super usuario y a quien avisó, al registrar desde el panel | revisión de `admin-api` (sin prueba real: requiere un agente del panel) | ✅ código — sin prueba real |
 
+
+## 💵 §66 — A0: el importador CSV y las columnas de moneda — 2026-09-22
+
+Ambos modos. Respuesta de Fede al relevamiento de Multimoneda (2026-09-20): *"arreglarlo ya, por separado, sin esperar al proyecto multimoneda"*. Hasta acá el importador escribía `precio_venta_moneda`/`precio_costo_moneda` (columnas **muertas**, solo él las leía) y nunca `moneda_venta`/`moneda_costo` (las **vivas**), así que un CSV con `precio_venta=100` + `USD` se vendía a **$100 pesos**. Medido antes de tocar nada: **0 productos afectados en DEV y en PROD**, sobre todos los negocios — bug latente puro, sin plata mal cargada.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 66.1 | Un CSV con `precio_venta=100` + `USD` deja el producto en dólares: `moneda_venta='usd'`, `precio_usd=100` y `precio_venta` = 100 × cotización (el espejo en pesos que leen margen y reportes) | INSERT del payload real en DEV, revertido: `precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67` | ✅ DEV |
+| 66.2 | La conversión usa la cotización de **COMPRA** (`tasaUsdAArs`), la misma con la que el POS valúa el producto al cobrarlo — no la de venta | unit `importarProductosMoneda.test.ts` + revisión de `VentasPage:1730` | ✅ |
+| 66.3 | Sin cotización cargada, una fila en USD **da error y no se importa** — nunca se guarda el monto en dólares como si fueran pesos (D5: no se inventa una tasa) | unit (4 casos: 0, negativa, NaN, Infinity) + guard en el envío | ✅ |
+| 66.4 | Reimportar en ARS un producto que estaba en dólares lo devuelve a pesos y limpia `precio_usd`. Antes `moneda_venta` quedaba en `'usd'` y el POS seguía cobrando el precio viejo, ignorando la importación | unit | ✅ |
+| 66.5 | Un CSV que mezcla monedas (costo en ARS, precio en USD) se rechaza en la vista previa con un mensaje claro, en vez de morir con un `numeric field overflow` de Postgres | unit + validación por fila | ✅ |
+| 66.6 | 🛑 **Límite preexistente, no de A0**: `productos.margen_ganancia` es GENERATED `numeric(5,2)`, así que **ningún producto con más de 999,99 % de markup se puede guardar**, ni por CSV ni desde la ficha | medido en DEV: el INSERT falla con `numeric field overflow` | 🔴 abierto — avisado a GO |
+| 66.7 | 🛑 **Hallazgo aparte**: la ficha de producto calcula el espejo en pesos con la cotización de **venta** (`ProductoFormPage:66`), mientras el POS cobra a la de **compra**. Es la mitad que quedó afuera del fix del 2026-09-08 | revisión de `useCotizacion` + `VentasPage:1730` vs `ProductoFormPage:66`; hoy latente (0 productos en USD en PROD) | 🔴 abierto — avisado a GO |

@@ -7,6 +7,8 @@ import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileS
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useCotizacion } from '@/hooks/useCotizacion'
+import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
@@ -72,6 +74,10 @@ export default function ImportarProductosPage() {
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
+  // A0 (respuesta de Fede al relevamiento de Multimoneda, 2026-09-20). Es la tasa de COMPRA: la misma
+  // con la que el POS valúa un producto en USD al cobrarlo (ver `tasaUsdAArs`). Usar la de venta acá
+  // dejaría el espejo en pesos por encima de lo que realmente se cobra.
+  const { cotizacionUsdAArs } = useCotizacion()
 
   // El importador crea y actualiza productos (incluidos PRECIOS), pero no tenía ningún gate de rol
   // — a diferencia de `ProductoFormPage`, que deshabilita todo el formulario salvo para
@@ -128,7 +134,9 @@ export default function ImportarProductosPage() {
       ],
       [
         'Pintura blanca 4L','PINT-0001','','Pinturas','',
-        4.5,'USD',1200,'ARS',
+        // Ejemplo en USD: costo y precio en la MISMA moneda. Mezclarlas deja un margen disparatado
+        // y la fila se rechaza (`margen_ganancia` no admite más de 999,99 %).
+        4.5,'USD',9.9,'USD',
         5,'litro','','',
         10.5,35,
         'NO','NO','NO',
@@ -167,9 +175,9 @@ export default function ImportarProductosPage() {
       ['categoria','no','Debe existir en Configuración → Categorías (error si no existe)'],
       ['proveedor','no','Debe existir en Configuración → Proveedores (error si no existe)'],
       ['precio_costo','no','Número. Ej: 1500 o 4.5 (si USD)'],
-      ['precio_costo_moneda','no','ARS (default) o USD'],
+      ['precio_costo_moneda','no','ARS (default) o USD. En USD el producto queda en dólares y se convierte al cambio del día'],
       ['precio_venta','no','Número. Ej: 2500'],
-      ['precio_venta_moneda','no','ARS (default) o USD'],
+      ['precio_venta_moneda','no','ARS (default) o USD. Requiere cotización cargada, si no la fila da error'],
       ['stock_minimo','no','Entero. Ej: 5'],
       ['unidad_medida','no','unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
       ['descripcion','no','Texto libre (descripción del producto)'],
@@ -290,6 +298,25 @@ export default function ImportarProductosPage() {
           if (unidad && !UNIDADES_VALIDAS.includes(unidad)) errores.push(`Unidad "${unidad}" no válida`)
           if (!MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push('Moneda costo inválida')
           if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push('Moneda venta inválida')
+          // D5 del relevamiento de Multimoneda: sin cotización es ERROR, nunca se inventa una tasa.
+          // Antes esta fila entraba igual y el monto en dólares se guardaba como si fueran pesos.
+          if ((precio_costo_moneda === 'USD' || precio_venta_moneda === 'USD') && !(cotizacionUsdAArs > 0)) {
+            errores.push('Hay precios en USD pero no hay cotización cargada — cargala en el panel de cotización')
+          } else {
+            // `margen_ganancia` es GENERATED numeric(5,2): más de 999,99 % no entra y la base
+            // responde con un "numeric field overflow" ilegible. Se avisa acá, en la vista previa,
+            // antes de importar. Se toca sobre todo con un CSV que mezcla monedas (costo en ARS
+            // contra precio en USD, que queda multiplicado por la cotización).
+            const c = monedaProductoImportada(precio_costo, precio_costo_moneda, cotizacionUsdAArs)
+            const v = monedaProductoImportada(precio_venta, precio_venta_moneda, cotizacionUsdAArs)
+            if (c && v && !margenEntraEnLaBase(c.precioArs, v.precioArs)) {
+              const m = margenGenerado(c.precioArs, v.precioArs)
+              errores.push(
+                `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT}%` +
+                (precio_costo_moneda !== precio_venta_moneda ? ' — revisá que el costo y el precio estén en la misma moneda' : ''),
+              )
+            }
+          }
 
           return {
             idx, nombre,
@@ -353,6 +380,16 @@ export default function ImportarProductosPage() {
           ? ((proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())?.id ?? null)
           : null
 
+        // ── A0 · Las columnas que el resto de la app realmente lee ──────────────────────────
+        // Ver `src/lib/importarProductosMoneda.ts` para el porqué. Las columnas muertas
+        // (`precio_*_moneda`) se siguen escribiendo para no romper la vista previa ni el histórico;
+        // se eliminan dentro del rediseño de Multimoneda, no acá.
+        const costo = monedaProductoImportada(fila.precio_costo, fila.precio_costo_moneda, cotizacionUsdAArs)
+        const venta = monedaProductoImportada(fila.precio_venta, fila.precio_venta_moneda, cotizacionUsdAArs)
+        // La fila ya se marcó con error en la validación, pero el guard va igual: sin cotización NO
+        // se importa, nunca se guarda un monto en dólares como si fueran pesos.
+        if (!costo || !venta) throw new Error('Hay precios en USD pero no hay cotización cargada')
+
         const payload = {
           tenant_id: tenant!.id,
           nombre: fila.nombre,
@@ -360,9 +397,13 @@ export default function ImportarProductosPage() {
           codigo_barras: fila.codigo_barras ?? null,
           categoria_id,
           proveedor_id,
-          precio_costo: fila.precio_costo,
+          precio_costo: costo.precioArs,
+          precio_costo_usd: costo.precioUsd,
+          moneda_costo: costo.moneda,
           precio_costo_moneda: fila.precio_costo_moneda,
-          precio_venta: fila.precio_venta,
+          precio_venta: venta.precioArs,
+          precio_usd: venta.precioUsd,
+          moneda_venta: venta.moneda,
           precio_venta_moneda: fila.precio_venta_moneda,
           stock_minimo: fila.stock_minimo,
           unidad_medida: fila.unidad_medida,

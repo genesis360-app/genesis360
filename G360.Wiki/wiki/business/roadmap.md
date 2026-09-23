@@ -8,15 +8,15 @@ updated: 2026-09-22
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.229.0`** (2026-09-22, migs 001-**431**). Compute de PROD: **Micro** desde el
-2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.230.0`** (2026-09-22, noche, migs 001-**432**). Compute de PROD: **Micro**
+desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-🔶 **DEV va un paso adelante: `v1.230.0` (migs 001-432), NO deployado a PROD.** Commits `2b585f31` (el fix)
-+ `0a2c30b1` (el bump), `origin/dev`, tag + release **Latest** ya publicados. Espera autorización de GO.
-Paridad `pg_policies` sigue intacta (`public` 234 · `storage` 40 · `cron` 2 — la mig 432 no agrega
-policies). Detalle completo en `log.md` (2026-09-22, `update`).
+✅ **PROD = DEV**, sin diferencia de código ni de migraciones. PR **#356** `dev→main`, merge commit
+**`f8d0ae3e`**, release **`v1.230.0` Latest**. Paridad `pg_policies` intacta (`public` 234 · `storage` 40
+· `cron` 2, hashes idénticos en DEV y PROD — la mig 432 no agrega policies). Detalle completo en `log.md`
+(2026-09-22, `deploy`).
 
-### v1.230.0 — Rate limiting persistente para las EFs públicas (2026-09-22, EN DEV, falta PROD)
+## 🚀 v1.230.0 — Rate limiting persistente para las EFs públicas (2026-09-22, EN PROD)
 
 Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20. Migración **432**.
 
@@ -34,9 +34,19 @@ pasan y 10 dan 429. `data-api` con 25 API keys inventadas → 20×401+5×429. `t
 35 POST → 30×400+5×429. `marketplace-api` y `data-api` se desplegaron en DEV por primera vez (antes solo
 existían en PROD) — queda 1 sola función solo-PROD (`marketplace-webhook`), no 3.
 
-De paso se verificó línea por línea el drift "cosmético" de 5 Edge Functions que quedaba pendiente del
-deploy anterior: **confirmado que las 5 son 100% cosméticas** (comentarios/formato), sin una sola
-diferencia funcional. Ver [[wiki/architecture/guards-server-side]] y [[wiki/architecture/edge-functions]].
+**Deployado a PROD la misma noche** (PR #356, merge `f8d0ae3e`) y **verificado con tráfico real contra
+PROD**: 70 requests a `marketplace-api` → **64×403 + 6×429**, reconciliando exacto contra la tabla
+(ventana de las 02:15 cerró con contador 66, los últimos 4 cayeron en la ventana de las 02:16 ya limpia).
+🩸 Gotcha de la verificación: la primera corrida (65 requests) cayó a caballo del cambio de minuto y
+quedó partida 27+38 entre dos ventanas — ninguna llegó a 60, comportamiento correcto de una ventana FIJA
+(no deslizante). Las filas de prueba se borraron en los dos ambientes.
+
+Este deploy también limpió **3 drifts más de Edge Functions**: `marketplace-api` pasó de prod 21 → 0, y
+`data-api`/`transportista-subir-archivo` de 34/25 → 0. De paso se había verificado línea por línea el
+drift "cosmético" de 5 Edge Functions que quedaba pendiente del deploy anterior: **confirmado que son
+100% cosméticas** (comentarios/formato), sin una sola diferencia funcional — de esas, quedan 4 sin
+redeployar (higiene, no riesgo). Ver [[wiki/architecture/guards-server-side]] y
+[[wiki/architecture/edge-functions]].
 
 ## 🚀 v1.229.0 — Auditoría de seguridad (2026-09-22)
 

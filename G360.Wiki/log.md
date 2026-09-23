@@ -6,6 +6,84 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-22] deploy | 🚀 v1.230.0 EN PROD — rate limiting persistente, verificado con tráfico real
+
+**PROD = DEV = `v1.230.0`** (migs 001-**432**), deployado y verificado la noche del 2026-09-22. PR
+**#356** `dev→main`, merge commit **`f8d0ae3e`**, release **`v1.230.0` Latest** con las notas
+actualizadas a "EN PRODUCCIÓN". Cierra del todo el pendiente 3 de la auditoría de seguridad del
+2026-09-20 (ver la entrada `update` de más abajo, la de la primera mitad del trabajo en DEV).
+
+### Checklist del deploy, todo verificado
+
+| Paso | Resultado |
+|---|---|
+| Mig 432 en PROD | ✅ `schema_migrations` = **402 filas**, última `20260923020424`. Verificado: acentos intactos en `prosrc`, `SECURITY DEFINER` + `search_path=public`, `anon`/`authenticated` sin EXECUTE ni acceso a la tabla, `service_role` sí, cron `cleanup_rate_limit_contadores` activo |
+| PR #356 `dev→main` | ✅ CI verde (1848 tests unitarios), merge commit `f8d0ae3e` |
+| Edge Functions a PROD | ✅ **4**: `marketplace-api`, `data-api` y `transportista-subir-archivo` con `--no-verify-jwt`; `ai-assistant` con JWT (por el conocimiento regenerado) |
+| Paridad `pg_policies` DEV↔PROD | ✅ `public` **234** · `storage` **40** · `cron` **2** — los tres hashes IDÉNTICOS (`public` `cdd75687…`, `storage` `cfe4c40b…`, `cron` `5467ba24…`) |
+| `auditar-edge-functions.sh` | ✅ corrida entera: **102 líneas, 94 en 0** |
+| Versión servida | ✅ `curl -L https://app.genesis360.pro/` → bundle `/assets/index-C_Py4GuO.js` → contiene **v1.230.0** |
+
+### El rate limiting, verificado EN PROD con tráfico real (medido en vivo, no asumido)
+
+70 requests a `marketplace-api` de PROD → **64×403 + 6×429**. Reconcilia exacto contra la tabla: la
+ventana de las 02:15 quedó con **contador 66** (los requests 61 a 66 fueron los bloqueados) y los 4
+últimos cayeron en la ventana de las 02:16 ya limpia → 60+4 = los 64 que pasaron.
+
+🛑 **Gotcha que vale documentar**: la primera corrida de prueba en PROD (65 requests) dio **65×403 y
+ningún 429**, y NO era un bug: la ráfaga cayó a caballo del cambio de minuto y quedó partida **27+38**
+entre dos ventanas, ninguna llegó a 60. Es el comportamiento correcto de una ventana FIJA (no
+deslizante). Para verificar un límite de ventana fija hay que asegurarse de que la ráfaga entre entera
+en una sola ventana, si no se lee como falso negativo.
+
+Las filas de prueba se borraron de la tabla en los dos ambientes (queda en 0).
+
+### Drift de Edge Functions, actualizado — este deploy limpió 3 más
+
+`marketplace-api` pasó de **prod 21 → 0**, y `data-api` y `transportista-subir-archivo` de **34** y
+**25** a **0**.
+
+Lo que queda, los **4 que ya están verificados como 100% cosméticos** (comentarios y formato, cero
+diferencia funcional):
+
+| Función | Drift | Qué es |
+|---|---|---|
+| `mp-verificar-suscripcion` | prod 8 · dev 4 | la cantidad de guiones `─` en 4 separadores de comentario |
+| `mp-addon-batch` | 6 en ambos | el comentario viejo "precio PROVISORIO" vs. el nuevo "CONFIRMADO por GO 18/09" |
+| `billing-manual-pagar` · `cancel-suscripcion` | dev 2 | largo del separador del encabezado |
+
+Más los dos esperados: `marketplace-webhook` NO_DESPLEGADA en DEV (la única solo-PROD) y
+`wa-embedded-signup-exchange` NO_DESPLEGADA en PROD (a propósito, falta el App Review de Meta).
+
+### Pendientes actualizados
+
+1. **Rotación de las keys legacy de Supabase** — sin cambios, sigue esperando 3-5 días a que se
+   actualicen las PWA cacheadas, después medir en los logs del gateway y recién ahí apagar legacy +
+   revocar la JWT signing key HS256.
+2. **Backlog de seguridad**: el rate limiting queda **CERRADO Y EN PROD**, sale de la lista de abiertos.
+   Siguen abiertos: captcha en login/alta (necesita que GO abra cuenta en hCaptcha o Turnstile), los 4
+   buckets públicos (a propósito), base accesible desde cualquier IP (decisión), `MP_WEBHOOK_SECRET` sin
+   cargar y `MODO_WEBHOOK_SECRET` para cuando se active MODO.
+3. **Los 3 relevamientos de Fede YA LLEGARON** como PDF (`respuestas-relevamiento-{categorias-clientes,
+   multimoneda,precio-programado}.md.pdf`), texto extraído y leído. Se cierra la nota anterior de que
+   los PDF no estaban en el repo. Lo siguiente en el orden acordado es **A0** (el importador de moneda),
+   que Fede pidió arreglar ya, por separado, sin esperar al proyecto multimoneda: (a) la consulta de
+   solo lectura ya dio 0 afectados en DEV y PROD (18/09); (b) corregir el importador para que escriba
+   las columnas VIVAS (`moneda_venta`/`moneda_costo`); (c) no aplica lista para el dueño (0 afectados);
+   (d) las columnas muertas se eliminan dentro del rediseño multimoneda. Fix mínimo, sin complicar la
+   migración posterior.
+4. **Los 3 relevamientos dejan 27 puntos abiertos** que Fede marcó explícitamente como "para que Tonga
+   proponga o resuelva": 11 en Multimoneda, 9 en Categorías de clientes, 7 en Precio programado (detalle
+   completo en `sources/raw/project_pendientes.md`, "ARRANCÁ ACÁ"). 🛑 Esos puntos **no se deciden
+   solos: se consultan con GO siempre** (regla de trabajo del 2026-09-22).
+5. **Consultas al contador**: 18 abiertas, 0 respondidas por un matriculado. Sin cambios.
+
+Detalle completo del fix (mig 432, los dos hallazgos de seguridad nuevos, el módulo `_shared/rateLimit.ts`)
+en la entrada `update` de más abajo (misma fecha) y en `sources/raw/project_pendientes.md` ("ARRANCÁ
+ACÁ").
+
+---
+
 ## [2026-09-22] update | 🔒⏱️ Rate limiting persistente en las 3 EFs públicas (mig 432, `v1.230.0`, EN DEV — falta PROD)
 
 Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20: el rate limiting de

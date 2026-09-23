@@ -2,7 +2,7 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-09-15
+updated: 2026-09-22
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
@@ -1165,7 +1165,8 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 - `api_keys` table: claves generadas en `/configuracion` → tab API.
 - `data-api` Edge Function: permite consultas de datos por sistemas externos (solo lectura). 🔒
   **2026-09-22 (mig 432)**: rate limiting persistente (120 req/min por key + 20 intentos fallidos/min por
-  IP), antes en memoria del isolate — ✅ EN DEV, 🔴 falta PROD. Ver [[wiki/architecture/edge-functions]].
+  IP), antes en memoria del isolate — ✅ **EN DEV Y EN PROD** (deploy `v1.230.0`, PR #356, verificado con
+  tráfico real contra PROD). Ver [[wiki/architecture/edge-functions]].
 
 ### MODO (v1.8.25 — framework listo, pendiente credenciales)
 - Tabla modo_credentials por tenant (merchant_id, api_key, ambiente test/prod)

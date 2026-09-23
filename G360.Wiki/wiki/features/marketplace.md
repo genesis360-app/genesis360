@@ -13,8 +13,10 @@ Genesis360 tiene un marketplace propio (independiente de MeLi/TN) que permite ex
 > [!NOTE]
 > **Estado al 2026-09-14:** ningún negocio lo tiene activo (0 en DEV y PROD, 0 productos publicados).
 > El **webhook de stock quedó apagado** por decisión de GO: ver más abajo. 🔒 **Actualizado 2026-09-22
-> (2ª sesión, mig 432)**: `marketplace-api` se desplegó en DEV por primera vez (antes solo existía en
-> PROD, no se podía probar); `marketplace-webhook` sigue solo en PROD.
+> (mig 432)**: `marketplace-api` se desplegó en DEV por primera vez (antes solo existía en PROD, no se
+> podía probar) y su rate limiting pasó a ser persistente — **deployado a PROD la misma noche**
+> (`v1.230.0`, PR #356, verificado con tráfico real: 70 requests → 64×403+6×429). `marketplace-webhook`
+> sigue solo en PROD.
 
 ---
 
@@ -62,7 +64,8 @@ stock_disponible = stock_actual - stock_reservado_marketplace
   paralelo que corre Supabase de la misma función, así que el límite efectivo real era mucho más alto que
   60). Ahora cuenta en la tabla `rate_limit_contadores` vía `fn_rate_limit_consumir` (atómica). De paso se
   cerró que el límite se podía esquivar del todo falseando el header `x-forwarded-for` — ahora prioriza
-  `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable). ✅ EN DEV, 🔴 falta desplegar a PROD.
+  `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable). ✅ **EN DEV Y EN PROD** (deploy
+  `v1.230.0`, 2026-09-22, PR #356) — verificado con tráfico real contra PROD: 70 requests → 64×403+6×429.
   Ver [[wiki/architecture/edge-functions]] y [[wiki/architecture/guards-server-side]] ("G14").
 - CORS abierto (cualquier origen puede consultar)
 

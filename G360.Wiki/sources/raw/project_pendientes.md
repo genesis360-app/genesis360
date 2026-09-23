@@ -6,22 +6,56 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-22, 2ª sesión) — PROD `v1.229.0` (migs 001-**431**) · DEV `v1.230.0`
-> (migs 001-**432**) — rate limiting persistente CERRADO EN DEV, falta deployar a PROD
+> ### 🛑 ARRANCÁ ACÁ (2026-09-22, 2ª sesión, cont.) — 🚀 **PROD = DEV = `v1.230.0`** (migs 001-**432**) —
+> rate limiting persistente YA DEPLOYADO A PROD (noche), deploy completo y verificado
 >
-> 🚀 **Último release**: **`v1.230.0`**, commits `2b585f31` (el fix) + `0a2c30b1` (el bump),
-> `origin/dev`. Tag + release **Latest** ya publicados. **NO deployado a PROD** — espera autorización
-> de GO.
+> 🚀 **Último release**: **`v1.230.0`**, PR **#356** `dev→main`, merge commit **`f8d0ae3e`**, release
+> **`v1.230.0` Latest** con las notas ya actualizadas a "EN PRODUCCIÓN". Commits `2b585f31` (el fix) +
+> `0a2c30b1` (el bump).
 >
 > | | Código | Migraciones | Legacy keys de Supabase |
 > |---|---|---|---|
-> | **PROD** | `v1.229.0` ✅ servida | 001-**431** | 🔶 **ACTIVAS todavía** (a propósito, ver pendiente 1) |
+> | **PROD** | `v1.230.0` ✅ servida | 001-**432** | 🔶 **ACTIVAS todavía** (a propósito, ver pendiente 1) |
 > | **DEV** | `v1.230.0` | 001-**432** | **DESACTIVADAS** |
 >
-> ✅ **Paridad `pg_policies` DEV=PROD sigue intacta**: public 234 · storage 40 · cron 2 — la mig 432
+> ✅ **Paridad `pg_policies` DEV=PROD sigue intacta**: `public` **234** · `storage` **40** · `cron` **2** —
+> los tres hashes IDÉNTICOS (`public` `cdd75687…`, `storage` `cfe4c40b…`, `cron` `5467ba24…`). La mig 432
 > agrega una tabla con RLS **sin policies** (deny-all), no suma ninguna.
 >
-> Detalle completo en `log.md` (entrada del 2026-09-22, `update`, "Rate limiting persistente...").
+> #### ✅ Checklist del deploy, todo verificado
+>
+> | Paso | Resultado |
+> |---|---|
+> | Mig 432 en PROD | ✅ `schema_migrations` = **402 filas**, última `20260923020424`. Verificado: acentos intactos en `prosrc`, `SECURITY DEFINER` + `search_path=public`, `anon`/`authenticated` sin EXECUTE ni acceso a la tabla, `service_role` sí, cron `cleanup_rate_limit_contadores` activo |
+> | PR #356 `dev→main` | ✅ CI verde (1848 tests unitarios), merge commit `f8d0ae3e` |
+> | Edge Functions a PROD | ✅ **4**: `marketplace-api`, `data-api` y `transportista-subir-archivo` con `--no-verify-jwt`; `ai-assistant` con JWT (por el conocimiento regenerado) |
+> | Paridad `pg_policies` DEV↔PROD | ✅ `public` **234** · `storage` **40** · `cron` **2** — los tres hashes IDÉNTICOS |
+> | `auditar-edge-functions.sh` | ✅ corrida entera: **102 líneas, 94 en 0** |
+> | Versión servida | ✅ `curl -L https://app.genesis360.pro/` → bundle `/assets/index-C_Py4GuO.js` → contiene **v1.230.0** |
+>
+> #### 🔒⏱️ Rate limiting, verificado EN PROD con tráfico real (no solo en DEV)
+>
+> 70 requests a `marketplace-api` de PROD → **64×403 + 6×429**. Reconcilia exacto contra la tabla: la
+> ventana de las 02:15 quedó con **contador 66** (los requests 61-66 fueron los bloqueados) y los 4
+> últimos cayeron en la ventana de las 02:16 ya limpia → 60+4 = los 64 que pasaron.
+>
+> 🩸 **Gotcha de la verificación**: la 1ª corrida (65 requests) dio **65×403 y ningún 429** — NO era un
+> bug: la ráfaga cayó a caballo del cambio de minuto y quedó partida **27+38** entre dos ventanas, ninguna
+> llegó a 60. Es el comportamiento correcto de una ventana **FIJA** (no deslizante): para verificar un
+> límite de ventana fija hay que asegurarse de que la ráfaga entre entera en una sola ventana, si no se
+> lee como falso negativo. Las filas de prueba se borraron de la tabla en los dos ambientes (queda en 0).
+>
+> #### 🧹 Drift de Edge Functions — este deploy limpió 3 más
+>
+> `marketplace-api` pasó de **prod 21 → 0**, y `data-api` y `transportista-subir-archivo` de **34** y
+> **25** a **0**. Quedan **4**, los mismos ya verificados como 100% cosméticos (comentarios y formato,
+> cero diferencia funcional): `mp-verificar-suscripcion` (prod 8 · dev 4), `mp-addon-batch` (6 en ambos —
+> comentario viejo "precio PROVISORIO" vs. el nuevo "CONFIRMADO por GO 18/09"), `billing-manual-pagar` ·
+> `cancel-suscripcion` (dev 2). Más los dos esperados: `marketplace-webhook` NO_DESPLEGADA en DEV (la
+> única solo-PROD) y `wa-embedded-signup-exchange` NO_DESPLEGADA en PROD (a propósito, falta el App
+> Review de Meta).
+>
+> Detalle completo en `log.md` (entrada del 2026-09-22, `deploy`, "v1.230.0 EN PROD").
 >
 > #### 🔒 Qué se cerró esta sesión: rate limiting persistente (mig 432)
 >
@@ -97,15 +131,8 @@ type: project
 > `Authorization: Bearer`. Lo que la mata es revocar la HS256. Seguro: las sesiones ya usan ES256
 > desde 2026-03-06, nadie se desloguea.
 >
-> **2 · Deployar a PROD lo de esta sesión (nuevo, esperando autorización de GO).**
-> Mig 432 + las 3 EFs (`marketplace-api`, `data-api`, `transportista-subir-archivo`, respetando
-> `--no-verify-jwt`) para que PROD tenga rate limiting real. De paso, los 5 redeploys de higiene del
-> drift cosmético confirmado (`marketplace-api`, `mp-verificar-suscripcion`, `mp-addon-batch`,
-> `billing-manual-pagar`, `cancel-suscripcion`) — correr `bash scripts/auditar-edge-functions.sh`
-> después. 🕵️ Lanzarla **sin `| tail`**: en background solo guarda la cola (pasó dos veces ya).
->
-> **3 · Backlog de seguridad abierto** (de la auditoría, todo de severidad menor — el rate limiting
-> SALE de esta lista, cerrado en DEV, ver pendiente 2 arriba):
+> **2 · Backlog de seguridad abierto** (de la auditoría, todo de severidad menor — el rate limiting queda
+> **CERRADO Y EN PROD**, sale de esta lista):
 > captcha en login/alta (**necesita que GO abra cuenta en hCaptcha o Turnstile y pase la key**) ·
 > 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos` — es a propósito) · base
 > accesible desde cualquier IP (decisión, no pendiente) ·
@@ -114,24 +141,47 @@ type: project
 > para que bloquee · **`MODO_WEBHOOK_SECRET`** cuando se active MODO (hoy la función queda cerrada
 > con 503 a propósito: 0 tenants con MODO).
 >
-> **4 · Tres relevamientos respondidos por Fede (2026-09-20), esperando arrancar.**
-> Categorías de clientes · Multimoneda · Precio programado. **Orden propuesto y aceptado por GO**:
+> **3 · Los 3 relevamientos de Fede YA LLEGARON (como PDF) — siguiente paso: A0.**
+> GO los pasó como PDF: `respuestas-relevamiento-{categorias-clientes,multimoneda,precio-programado}.md.pdf`
+> (`E:\OneDrive\Documentos\`). Texto ya extraído y leído. Categorías de clientes · Multimoneda · Precio
+> programado. **Orden propuesto y aceptado por GO**:
 >
-> 1. Cerrar seguridad (pendiente 1) · 2. **A0**: el importador de moneda (chico, ya medido: 0
+> 1. Cerrar seguridad (pendiente 1, en curso) · 2. **A0**: el importador de moneda (chico, ya medido: 0
 > productos afectados) · 3. **Multimoneda, fase cimiento** (moneda explícita en productos, ventas,
 > pagos, gastos, caja) · 4. **Categorías Etapa 1** (categoría + CC + permisos + auditoría; NO toca
 > precio) · 5. contraste de Precio programado · 6. **unificar los dos motores de precio** · 7.
 > Multimoneda completo + Categorías Etapa 2 (precio), juntas.
+>
+> 🎯 **A0 — reglas explícitas de Fede** ("arreglarlo ya, por separado, sin esperar al proyecto
+> multimoneda"): (a) consulta de solo lectura para contar productos importados por CSV con moneda USD —
+> **ya hecha el 18/09, dio 0 en DEV y en PROD**; (b) corregir el importador para que escriba las columnas
+> VIVAS (`moneda_venta`/`moneda_costo`) según la moneda del CSV; (c) si hubiera afectados en negocios
+> reales, armar lista para el dueño, **no** corregir automático (no aplica, son 0); (d) las columnas
+> muertas (`precio_venta_moneda`/`precio_costo_moneda`) se eliminan **dentro** del rediseño multimoneda,
+> no ahora. El fix debe ser **mínimo** y no complicar la migración posterior.
 >
 > 🪟 **Por qué Multimoneda va temprano**: el cimiento hoy es **28 filas** (27 productos en `'local'`
 > + 1 gasto) y `ventas` **no tiene columna de moneda**. Con clientes operando, la misma migración
 > toca ventas, caja, CC y comprobantes con plata real adentro.
 > 🛑 **Precio programado YA ESTÁ CONSTRUIDO** (migs 422-424): no es un proyecto nuevo, es un
 > contraste de media jornada contra las respuestas de Fede.
-> 🛑 **Los PDF de los 3 relevamientos respondidos NO están en el repo** — GO los va a volver a pasar
-> como archivos.
 >
-> **5 · Consultas al contador: 18 abiertas, 0 respondidas por un matriculado.**
+> 🛑 **Los 3 relevamientos dejan 27 puntos abiertos** que Fede marcó explícitamente como "para que Tonga
+> proponga o resuelva" — **NO se deciden solos, se consultan con GO siempre** (regla de trabajo del
+> 2026-09-22):
+> - **11 en Multimoneda**: cobertura de cotizaciones por par de monedas en dolarapi, mecánica del
+>   "inicio del día", fuente de la cotización fiscal, qué pasa al cambiar la moneda principal, reportes
+>   por moneda con ventas de 2 monedas, monedas desactivadas con histórico, gasto con saldo insuficiente,
+>   consolidación de medios de pago con moneda propia, dashboard, diferencia de cambio en CC, orden de
+>   implementación.
+> - **9 en Categorías de clientes**: importación de la lista de descuentos, capa de IA del cartel, regla
+>   de comparación, unificación de los dos motores de precio, tope de descuento acumulado, asignación
+>   masiva, override por cliente, portal de clientes, volumen.
+> - **7 en Precio programado**: aprobación del repositor, anticipación de la tarea, cambio inmediato
+>   sobre uno programado pendiente, ventas en espera, mayorista y combos, diseño conjunto con
+>   Multimoneda, etapas y estimación.
+>
+> **4 · Consultas al contador: 18 abiertas, 0 respondidas por un matriculado.**
 > Nuevas de la sesión anterior: **C-16** (venta cobrada en dólares y factura en pesos: la app usa
 > dólar **compra** y la RG ARCA 5616/2024 fija **vendedor divisa** del día hábil anterior) · **C-17**
 > (IVA de gasto en moneda extranjera) · **C-18** (qué cotización oficial para lo fiscal en general).

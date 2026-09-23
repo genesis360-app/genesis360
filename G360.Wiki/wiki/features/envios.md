@@ -492,13 +492,15 @@ en la misma transacción **comparten timestamp** (`NOW()` es el arranque de la t
 quedaba indefinido y pedir un código nuevo no desbloqueaba. Se resolvió invalidando explícito. Detalle completo
 en [[wiki/architecture/guards-server-side]] ("Segunda tanda", G9).
 
-## 🔒⏱️ `transportista-subir-archivo`: rate limiting persistente (mig 432, 2026-09-22) — ✅ EN DEV, 🔴 falta PROD
+## 🔒⏱️ `transportista-subir-archivo`: rate limiting persistente (mig 432, 2026-09-22) — ✅ EN PROD (`v1.230.0`)
 
 La EF que usa la página pública `/transporte/:token` (sin sesión) limitaba a 30 req/min por IP con un `Map`
 en memoria del isolate de Deno — se perdía en cada cold start y no se compartía entre los isolates en
 paralelo que corre Supabase de la misma función. Ahora cuenta en la tabla `rate_limit_contadores` vía
 `fn_rate_limit_consumir` (atómica). Verificado en DEV: 35 POST → 30×400 + 5×429. Cierra el pendiente 3 del
-backlog de la auditoría de seguridad del 2026-09-20. Ver [[wiki/architecture/edge-functions]] y
+backlog de la auditoría de seguridad del 2026-09-20. **Deployado a PROD la noche del 2026-09-22** (PR #356,
+merge `f8d0ae3e`), junto con `marketplace-api` y `data-api` — verificado con tráfico real contra PROD
+(70 requests a `marketplace-api` → 64×403+6×429). Ver [[wiki/architecture/edge-functions]] y
 [[wiki/architecture/guards-server-side]] ("G14").
 
 ## Links relacionados

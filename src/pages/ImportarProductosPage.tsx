@@ -300,7 +300,8 @@ export default function ImportarProductosPage() {
           if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push('Moneda venta inválida')
           // D5 del relevamiento de Multimoneda: sin cotización es ERROR, nunca se inventa una tasa.
           // Antes esta fila entraba igual y el monto en dólares se guardaba como si fueran pesos.
-          if ((precio_costo_moneda === 'USD' || precio_venta_moneda === 'USD') && !(cotizacionUsdAArs > 0)) {
+          const cotizUsable = Number.isFinite(cotizacionUsdAArs) && cotizacionUsdAArs > 0
+          if ((precio_costo_moneda === 'USD' || precio_venta_moneda === 'USD') && !cotizUsable) {
             errores.push('Hay precios en USD pero no hay cotización cargada — cargala en el panel de cotización')
           } else {
             // `margen_ganancia` es GENERATED numeric(5,2): más de 999,99 % no entra y la base

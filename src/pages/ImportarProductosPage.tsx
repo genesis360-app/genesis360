@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
+import { columnasConValor, payloadParaActualizar, precioAmbiguo } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
@@ -48,6 +49,8 @@ interface FilaProducto {
   tiene_vencimiento: boolean
   regla_inventario?: string
   es_kit: boolean
+  /** Solo se usa si el archivo trae la columna `activo`; si no, un alta nace activa. */
+  activo: boolean
   estr_nombre?: string
   estr_unidades_por_caja?: number
   estr_cajas_por_pallet?: number
@@ -67,6 +70,8 @@ interface FilaProducto {
   // eliminaron los overrides estr_precio_* de Caja/Pallet. El precio por volumen es un tier.
   estado: 'nuevo' | 'existente' | 'error'
   errores: string[]
+  /** Columnas que ESTA fila trae con valor. Al actualizar solo se escribe lo que está acá (D-3). */
+  columnas: string[]
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -229,13 +234,22 @@ export default function ImportarProductosPage() {
         if (!rows.length) { toast.error('El archivo está vacío'); return }
 
         const skus = rows.map(r => String(r.sku || '').trim().toUpperCase()).filter(Boolean)
-        const { data: existentes } = await supabase.from('productos').select('sku').eq('tenant_id', tenant!.id).in('sku', skus)
+        // `moneda_venta`/`moneda_costo` se traen para poder rechazar un precio ambiguo: actualizar el
+        // precio de un producto que está en dólares SIN decir la moneda no se puede resolver solo.
+        const { data: existentes } = await supabase.from('productos')
+          .select('sku, moneda_venta, moneda_costo').eq('tenant_id', tenant!.id).in('sku', skus)
         const skusExistentes = new Set((existentes ?? []).map((p: any) => p.sku.toUpperCase()))
+        const monedaPorSku = new Map<string, { venta: string | null; costo: string | null }>(
+          (existentes ?? []).map((p: any) => [p.sku.toUpperCase(), { venta: p.moneda_venta, costo: p.moneda_costo }]),
+        )
 
         setFilasProducto(rows.map((row, idx) => {
           const errores: string[] = []
+          // D-3: qué trae ESTA fila. Al actualizar solo se escribe esto; el resto no se toca.
+          const columnas = columnasConValor(row)
           const nombre = String(row.nombre || '').trim()
           const sku = String(row.sku || '').trim().toUpperCase()
+          const yaExiste = !!sku && skusExistentes.has(sku)
           const precio_costo = parseFloat(String(row.precio_costo || '0').replace(',', '.')) || 0
           const precio_costo_moneda = String(row.precio_costo_moneda || 'ARS').trim().toUpperCase()
           const precio_venta = parseFloat(String(row.precio_venta || '0').replace(',', '.')) || 0
@@ -292,10 +306,23 @@ export default function ImportarProductosPage() {
             errores.push(`Proveedor "${provNombre}" no existe — crealo primero en Configuración`)
           }
 
-          if (!nombre) errores.push('Nombre requerido')
+          // Solo es obligatorio para CREAR. Actualizar con un archivo de sku + precio es el caso normal.
+          if (!nombre && !yaExiste) errores.push('Nombre requerido')
           if (precio_costo < 0) errores.push('Precio costo inválido')
           if (precio_venta < 0) errores.push('Precio venta inválido')
           if (unidad && !UNIDADES_VALIDAS.includes(unidad)) errores.push(`Unidad "${unidad}" no válida`)
+          // 🛑 REGLA #0. Si el producto está en dólares y el archivo trae el precio SIN la columna de
+          // moneda, el número es ambiguo (¿100 pesos o 100 dólares?). Asumir pesos lo convertiría en
+          // silencio a ~1/1400 de su valor. Se rechaza la fila en vez de adivinar.
+          if (yaExiste) {
+            const m = monedaPorSku.get(sku)
+            if (precioAmbiguo(columnas, m?.venta, 'venta')) {
+              errores.push('Este producto está en dólares: para cambiarle el precio incluí también la columna precio_venta_moneda')
+            }
+            if (precioAmbiguo(columnas, m?.costo, 'costo')) {
+              errores.push('El costo de este producto está en dólares: incluí también la columna precio_costo_moneda')
+            }
+          }
           if (!MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push('Moneda costo inválida')
           if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push('Moneda venta inválida')
           // D5 del relevamiento de Multimoneda: sin cotización es ERROR, nunca se inventa una tasa.
@@ -321,6 +348,7 @@ export default function ImportarProductosPage() {
 
           return {
             idx, nombre,
+            columnas: Array.from(columnas),
             sku: sku || `AUTO-${String(idx + 1).padStart(4, '0')}`,
             codigo_barras: String(row.codigo_barras || '').trim() || undefined,
             categoria: String(row.categoria || '').trim() || undefined,
@@ -334,6 +362,7 @@ export default function ImportarProductosPage() {
             descripcion: String(row.descripcion || '').trim() || undefined,
             notas: String(row.notas || '').trim() || undefined,
             alicuota_iva: ALICUOTAS_VALIDAS.includes(alicuota_iva) ? alicuota_iva : 21,
+            activo: parseBool(row.activo),
             margen_objetivo,
             tiene_series: parseBool(row.tiene_series),
             tiene_lote: parseBool(row.tiene_lote),
@@ -410,7 +439,7 @@ export default function ImportarProductosPage() {
           unidad_medida: fila.unidad_medida,
           descripcion: fila.descripcion ?? null,
           notas: fila.notas ?? null,
-          activo: true,
+          activo: fila.columnas.includes('activo') ? fila.activo : true,
           alicuota_iva: fila.alicuota_iva,
           margen_objetivo: fila.margen_objetivo ?? null,
           tiene_series: fila.tiene_series,
@@ -425,12 +454,20 @@ export default function ImportarProductosPage() {
         let productoId: string | null = null
 
         if (fila.estado === 'nuevo') {
+          // Crear: el archivo define el producto entero, con los valores por defecto para lo que no trae.
           const { data: inserted, error: errIns } = await supabase.from('productos').insert(payload).select('id').single()
           if (errIns) throw errIns
           productoId = inserted?.id ?? null
           creados++
         } else {
-          const { error: errUpd } = await supabase.from('productos').update(payload).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
+          // Actualizar (D-3): SOLO las columnas que el archivo trae. Lo que no viene, no se toca —
+          // antes se reescribía la fila entera y se perdían proveedor, descripción, código de barras,
+          // alícuota de IVA y las marcas de trazabilidad.
+          const parcial = payloadParaActualizar(payload, new Set(fila.columnas))
+          if (Object.keys(parcial).length === 0) {
+            throw new Error('La fila no trae ninguna columna para actualizar')
+          }
+          const { error: errUpd } = await supabase.from('productos').update(parcial).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
           if (errUpd) throw errUpd
           if (hasEstr) {
             const { data: p } = await supabase.from('productos').select('id').eq('sku', fila.sku).eq('tenant_id', tenant!.id).single()

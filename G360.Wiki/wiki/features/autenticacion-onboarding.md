@@ -303,3 +303,39 @@ versión de T&C — o sea, falsear un consentimiento legal.
 No manda el mail de bienvenida (eso lo dispara el frontend con la EF `send-email`). Si la persona
 nunca aterriza, tiene su negocio pero no recibe ese mail. Detalle menor frente a quedarse sin
 negocio, y evita meter `pg_net` en el camino de la confirmación.
+
+
+---
+
+## 📄 Guía para clientes: "Primeros pasos, de cero a tu primera venta" (2026-09-23)
+
+**Artifact**: https://claude.ai/artifact/WBZVSEjGy623cSE9urXV1T · **PDF** en
+`E:\OneDrive\Documentos\Primeros pasos en Genesis360.pdf` (7 páginas, generado con el Chromium de
+Playwright y verificado página por página).
+
+Pedido de GO: una guía de inicio con las configuraciones principales para poder operar y hacer las
+primeras ventas. **No existía** — los `manual-*-genesis360.html` son por rubro y cubren el flujo
+completo, no el arranque.
+
+**Fundada en el código, no en supuestos**: el bloqueo real de la primera venta salió de
+`VentasPage.tsx` (*"No hay caja abierta. Abrí una caja antes de registrar ventas o reservas (incluso
+en cuenta corriente)"*), lo que ya viene sembrado salió de `fn_seed_tenant_defaults`
+(`schema_full.sql`), y los roles y las descripciones de los modos son literalmente los de
+`UsuariosPage.tsx` y `ConfigPage.tsx`.
+
+**Estructura**: arranca con *"Esto ya está hecho, no lo busques"* (sucursal, Caja Principal, 5 métodos
+de pago, motivos, estados, unidades y cuentas de origen — todo del seed), después 8 pasos con código
+de color (violeta = configuración de una sola vez · verde = rutina diaria): modo Básico/Avanzado →
+datos del negocio → métodos de pago → productos → equipo y roles → **abrir la caja** → primera venta
+→ cierre con arqueo. Cierra con qué sumar después y 5 problemas comunes.
+
+⚠️ **Contiene una advertencia atada a un hallazgo abierto**: en el paso de cargar productos avisa que
+el archivo de *Exportar productos* **no sirve para reimportar**. Es el hallazgo D-3
+(`tests/specs/uat-modo-basico.md` §66.8). **Cuando se arregle, sacar esa advertencia de la guía.**
+
+🚧 **Le faltan capturas de pantalla** — la de facturación las tiene porque salieron de una sesión
+grabada. Pendiente: grabarlas contra el tenant de prueba (Modo de operación, Métodos de pago, Abrir
+caja, POS).
+
+Ver [[wiki/features/facturacion-afip]] ("Guía para clientes + video") para la otra guía, y
+[[wiki/manuales/guion-videos-onboarding]].

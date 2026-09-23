@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-23] update | 📄 Guía de inicio para clientes + el PDF de la de facturación, por fin imprimible
+
+### Guía nueva: "Primeros pasos: de cero a tu primera venta"
+
+Pedido de GO. **No existía**: los `manual-*-genesis360.html` son por rubro y cubren el flujo completo,
+no el arranque. Artifact https://claude.ai/artifact/WBZVSEjGy623cSE9urXV1T + PDF de 7 páginas en
+`E:\OneDrive\Documentos`. Detalle en [[wiki/features/autenticacion-onboarding]].
+
+Se fundó en el código, no en supuestos: el bloqueo real de la primera venta salió de `VentasPage.tsx`
+(*"No hay caja abierta… incluso en cuenta corriente"*), lo ya sembrado de `fn_seed_tenant_defaults`, y
+los roles y modos de `UsuariosPage.tsx` / `ConfigPage.tsx`.
+
+### 🛑 Por qué la guía de facturación no se podía imprimir bien (y no era el CSS)
+
+GO reportó dos veces que al imprimir quedaba todo encimado y los títulos cortados al pie. **La causa
+no era el CSS: estaba imprimiendo desde el visor de claude.ai, que mete la guía en un iframe.** El
+navegador pagina ese iframe como un bloque único, así que los saltos de página de adentro se ignoran.
+Se ve en la captura: cada página es una tarjeta blanca redondeada sobre fondo oscuro, que es el marco
+del visor.
+
+**La salida fue generar el PDF acá**, con el Chromium de Playwright sobre el documento suelto
+(`page.pdf()` con `printBackground`), y **renderizar cada página a PNG con pdf.js para MIRARLA** — no
+hay LibreOffice ni `pdftoppm` en esta máquina, así que hasta ese momento se estaba escribiendo CSS de
+impresión a ciegas.
+
+### Gotchas de impresión que valen para cualquier HTML que publiquemos
+
+| Síntoma | Causa | Fix |
+|---|---|---|
+| Un paso se parte al medio pese a `break-inside: avoid` | 🛑 **Chrome y Edge lo IGNORAN en elementos `display: list-item`** | `display: block` en print (solo donde no rompa la viñeta o el grid) |
+| El título queda colgado al pie | `break-after: avoid` solo evita el corte inmediato, no empuja la sección | `break-before: page` en la sección: determinístico |
+| Se corta por la derecha | El contenedor de 760 px es más ancho que el área imprimible de una A4 | `.hoja { max-width: 100% }` en print |
+| PDF con fondo negro | El navegador en modo oscuro | Forzar las variables claras dentro de `@media print` |
+| Números de paso blancos sobre blanco | Chrome descarta los fondos de color | `print-color-adjust: exact` |
+| Pelea con el papel elegido | `@page { size: A4 }` | No declarar `size`: respetar la elección del usuario |
+
+También se entregó la guía de facturación en **.docx** (docx-js, con las 6 capturas embebidas), antes
+de descubrir que el PDF se podía generar bien.
+
 ## [2026-09-23] update | ✅ A0 cerrado en `dev` — el importador CSV ya escribe las columnas de moneda que la app lee (SIN deploy)
 
 **Continuación de la sesión que deployó `v1.230.0` a PROD (2026-09-22, noche).** PROD sigue exactamente en

@@ -441,6 +441,8 @@ pendiente corto: deploy de v1.227.1 + regrabar 2 tramos). Ver `log.md` (2026-09-
 facturación..."), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", cont. 71), [[wiki/features/facturacion-afip]],
 [[wiki/manuales/guion-videos-onboarding]], `wiki/business/roadmap.md`.*
 
+*2026-09-23 — **Guía de inicio para clientes publicada**: "Primeros pasos: de cero a tu primera venta" (artifact https://claude.ai/artifact/WBZVSEjGy623cSE9urXV1T + PDF de 7 páginas). No existía; los `manual-*-genesis360.html` son por rubro. 8 pasos desde elegir modo Básico/Avanzado hasta el cierre de caja con arqueo, fundada en el código real (el bloqueo de "no hay caja abierta", el seed de `fn_seed_tenant_defaults` y los roles de `UsuariosPage`). Le faltan capturas. Ver [[wiki/features/autenticacion-onboarding]].*
+
 Antes: *Última actualización: 2026-09-15 (cont. 71, después del deploy) — 🔒💳🎓 **DEV `v1.227.0` (migs 001-**429**), PROD
 sigue en `v1.226.0` (001-426)** — sin deploy esta sesión. Las 3 decisiones de GO que quedaban tras el deploy anterior
 (ver entrada de abajo), construidas y verificadas el mismo día: **mig 427** — `integration_job_queue`,

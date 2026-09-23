@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, src/pages/ProductosPage.tsx]
-updated: 2026-09-15
+sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, src/pages/ProductosPage.tsx, src/lib/importarProductosMoneda.ts]
+updated: 2026-09-23
 ---
 
 # Productos
@@ -260,6 +260,12 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > decidir si el importador pasa a convertir a ARS al importar (como hace el resto de la app) o si se
 > migra al patrón `precio_costo_usd`/`moneda_costo` nuevo.
 >
+> ✅ **CERRADO — A0 (2026-09-23, EN `dev`, SIN deploy)**: (a) confirmado, **0 tenants en PROD** usaron
+> esa columna (medido el 18/09); (b) resuelto migrando el importador al patrón vivo
+> (`moneda_venta`/`moneda_costo`), no al de convertir a ARS. Detalle completo, los 2 bugs que cierra y
+> los 3 hallazgos nuevos que dejó (D-1/D-2/D-3) en la sección dedicada abajo: "Importador CSV — columnas
+> de moneda (A0)".
+>
 > **🛑 Fix relacionado, distinto (2026-08-20, reportado por Fede): la LISTA de Productos (esta
 > ficha ya estaba bien) ignoraba `moneda_venta`/`moneda_costo`.** `ProductosPage.tsx` mostraba
 > SIEMPRE el mirror en ARS (`precio_venta`/`precio_costo`, la fuente para margen/reportes/POS) con
@@ -340,6 +346,59 @@ Visible solo si el tenant tiene `marketplace_activo = true`.
   "Remera Básica" → "Remera Básica — S"); si el valor cambia se despega el sufijo viejo antes de
   agregar el nuevo. Antes solo pasaba al usar "Generar variantes" desde el modal del grupo — vincular
   un producto YA EXISTENTE no lo aplicaba. Detalle y motivo en [[wiki/features/grupos-variantes]].
+
+---
+
+## Importador CSV — columnas de moneda (A0, 2026-09-23, EN `dev`, SIN deploy)
+
+Commits `870d3e36` + `ca2f08f2` en `origin/dev`. **Sin migración nueva** (sigue 001-432) y **sin deploy a
+PROD** — `dev` queda con este fix por encima de PROD, sin bump de `APP_VERSION` todavía. Pedido explícito
+de Fede: arreglarlo ya, por separado, sin esperar al rediseño de Multimoneda.
+
+**El bug que cierra**: `ImportarProductosPage.tsx` escribía `precio_venta_moneda`/`precio_costo_moneda`
+(varchar `'ARS'|'USD'`, mig 007 — columnas **muertas**, las escribía y leía solo él mismo) y **nunca**
+tocaba `moneda_venta`/`moneda_costo` (`'local'|'usd'`, las **vivas** que miran el POS, esta misma ficha, la
+rentabilidad y el costo de OC — ver nota de mig 367 arriba). No hay trigger que sincronice el par. Un CSV
+con `precio_venta=100` + `USD` quedaba guardado tal cual y se vendía a **$100 pesos**, ~1/1400 de su
+precio real. **Medido antes de tocar nada: 0 productos afectados en DEV y en PROD** (27 productos, 5
+negocios) — bug latente puro, sin plata mal cargada en ningún lado.
+
+**Segundo bug, también cerrado**: al ACTUALIZAR por CSV un producto que estaba en USD con un precio en
+pesos, se pisaba `precio_venta` pero `moneda_venta` seguía en `'usd'` — y como el POS recalcula
+`precio_usd × cotización` e ignora `precio_venta` cuando la moneda es `'usd'`, la importación **no
+cambiaba lo que se cobraba**. Ahora el CSV manda.
+
+**Cómo quedó el fix**: lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa)
+con **22 tests** (`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
+(`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
+cobrarlo. **Sin cotización, la fila no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
+validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
+escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el camino
+en pesos produce el mismo payload que antes.
+
+Verificado contra la base real en DEV con el payload exacto (revertido después): costo 60 USD / precio
+100 USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
+`precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
+
+> [!NOTE] **🛑 Tres hallazgos nuevos, esperando decisión de GO** (suman a los 27 puntos abiertos de los
+> 3 relevamientos → 30, con propuesta para cada uno en
+> `puntos-abiertos-multimoneda-categorias-precio-programado.html`, commit `a7fc1124`):
+>
+> - **D-1**: `ProductoFormPage.tsx:66` sigue destructurando `{ cotizacion }` (la de VENTA) para calcular
+>   el espejo en pesos de Card 3 — es la mitad que quedó afuera del fix del 2026-09-08, cuando el POS
+>   pasó a usar la cotización de COMPRA (`tasaUsdAArs`) porque le cobraba de más al cliente. Hoy
+>   latente: 0 productos en USD en PROD.
+> - **D-2**: `productos.margen_ganancia` es `GENERATED numeric(5,2)` — ningún producto con markup >
+>   999,99 % se puede guardar, ni por CSV ni desde esta ficha (`numeric field overflow`). Preexistente;
+>   el importador ya valida esto con mensaje claro, la ficha sigue sin protección.
+> - **D-3** 🛑: el archivo que genera **"Exportar productos" NO sirve para reimportar**: emite solo `id,
+>   nombre, sku, precio_venta, precio_costo, stock_actual, stock_minimo, unidad_medida, activo,
+>   categoria`, y el importador pisa todo el resto del payload con los defaults. Los dos botones están
+>   uno al lado del otro, así que "exporto → corrijo en Excel → reimporto" es el flujo natural. Medido
+>   sobre los 27 productos de PROD: se perderían **19** proveedores, **19** descripciones, **12**
+>   códigos de barras, **9** productos con trazabilidad (series/lote/vencimiento), 5 márgenes objetivo,
+>   2 reglas de inventario y 1 kit. El IVA zafa de casualidad (los 27 están en 21 %, el default) pero la
+>   misma vía lo resetearía, y eso sí es fiscal. Preexistente; A0 solo sumó la moneda a esa lista.
 
 ---
 

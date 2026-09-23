@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-22
+updated: 2026-09-23
 ---
 
 # Roadmap y Versiones
@@ -11,10 +11,15 @@ updated: 2026-09-22
 **Versión en PROD (actual): `v1.230.0`** (2026-09-22, noche, migs 001-**432**). Compute de PROD: **Micro**
 desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **PROD = DEV**, sin diferencia de código ni de migraciones. PR **#356** `dev→main`, merge commit
-**`f8d0ae3e`**, release **`v1.230.0` Latest**. Paridad `pg_policies` intacta (`public` 234 · `storage` 40
-· `cron` 2, hashes idénticos en DEV y PROD — la mig 432 no agrega policies). Detalle completo en `log.md`
-(2026-09-22, `deploy`).
+✅ **PROD = DEV en migraciones** (001-432, paridad `pg_policies` intacta: `public` 234 · `storage` 40 ·
+`cron` 2, hashes idénticos — la mig 432 no agrega policies). PR **#356** `dev→main`, merge commit
+**`f8d0ae3e`**, release **`v1.230.0` Latest**. Detalle completo en `log.md` (2026-09-22, `deploy`).
+
+🆕 **Desde el 2026-09-23, `dev` tiene código por encima de PROD, sin bump de versión**: A0 (commits
+`870d3e36`+`ca2f08f2`) — el importador CSV ya escribe las columnas vivas de moneda
+(`moneda_venta`/`moneda_costo`). **Sin migración nueva** y **sin deploy a PROD** — `APP_VERSION` sigue en
+`v1.230.0` en los dos ambientes, PROD sigue sirviendo exactamente lo del release de arriba. Detalle en
+[[wiki/features/productos]] → "Importador CSV — columnas de moneda (A0)" y `log.md` (2026-09-23, `update`).
 
 ## 🚀 v1.230.0 — Rate limiting persistente para las EFs públicas (2026-09-22, EN PROD)
 

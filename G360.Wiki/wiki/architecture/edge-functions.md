@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-09-22
+updated: 2026-09-23
 ---
 
 # Edge Functions (51 funciones Deno)
@@ -92,6 +92,12 @@ sigue solo en DEV **a propósito** (a la espera de la App Review de Meta).
 manual-pagar` · `cancel-suscripcion` (dev 2). Más los dos esperados: `marketplace-webhook` NO_DESPLEGADA
 en DEV (la única solo-PROD) y `wa-embedded-signup-exchange` NO_DESPLEGADA en PROD (a propósito, falta el
 App Review de Meta).
+
+✅ **2026-09-23 (EN DEV, sin tocar PROD): drift de DEV a CERO.** Se redesplegaron en DEV
+`billing-manual-pagar`, `cancel-suscripcion`, `mp-verificar-suscripcion` y `mp-addon-batch` (todas
+`verify_jwt=true`). **DEV = 0 drift en todo.** En PROD quedan **solo 2**: `mp-verificar-suscripcion`
+(8 líneas) y `mp-addon-batch` (6 líneas), los dos ya verificados 100% cosméticos (guiones de separadores
+y un comentario) — son funciones de cobro, el redeploy a PROD espera autorización de GO.
 
 ## 🔒⏱️ Rate limiting persistente (mig 432, 2026-09-22) — ✅ EN PROD (`v1.230.0`)
 

@@ -130,6 +130,10 @@ type: project
 > ⚠️ Desactivar las legacy **NO alcanza**: verificado en DEV, la key vieja sigue viva como
 > `Authorization: Bearer`. Lo que la mata es revocar la HS256. Seguro: las sesiones ya usan ES256
 > desde 2026-03-06, nadie se desloguea.
+> 🆕 **(2026-09-23)**: pasó **1 día** de los 3-5 que hay que esperar. Cambio respecto de lo que decía
+> antes: el endpoint de logs del conector **no expone `edge_logs`**, así que la medición de cuántos
+> navegadores siguen mandando la key vieja **la tiene que hacer GO desde el panel de Supabase** (Logs),
+> no desde acá.
 >
 > **2 · Backlog de seguridad abierto** (de la auditoría, todo de severidad menor — el rate limiting queda
 > **CERRADO Y EN PROD**, sale de esta lista):
@@ -141,16 +145,17 @@ type: project
 > para que bloquee · **`MODO_WEBHOOK_SECRET`** cuando se active MODO (hoy la función queda cerrada
 > con 503 a propósito: 0 tenants con MODO).
 >
-> **3 · Los 3 relevamientos de Fede YA LLEGARON (como PDF) — siguiente paso: A0.**
+> **3 · Los 3 relevamientos de Fede YA LLEGARON (como PDF) — A0 ✅ CERRADO, siguiente paso: Multimoneda
+> fase cimiento (paso 3), esperando que GO responda el documento de los 30 puntos.**
 > GO los pasó como PDF: `respuestas-relevamiento-{categorias-clientes,multimoneda,precio-programado}.md.pdf`
 > (`E:\OneDrive\Documentos\`). Texto ya extraído y leído. Categorías de clientes · Multimoneda · Precio
 > programado. **Orden propuesto y aceptado por GO**:
 >
-> 1. Cerrar seguridad (pendiente 1, en curso) · 2. **A0**: el importador de moneda (chico, ya medido: 0
-> productos afectados) · 3. **Multimoneda, fase cimiento** (moneda explícita en productos, ventas,
-> pagos, gastos, caja) · 4. **Categorías Etapa 1** (categoría + CC + permisos + auditoría; NO toca
-> precio) · 5. contraste de Precio programado · 6. **unificar los dos motores de precio** · 7.
-> Multimoneda completo + Categorías Etapa 2 (precio), juntas.
+> 1. Cerrar seguridad (pendiente 1, en curso) · 2. ✅ **A0 CERRADO** (2026-09-23, en `dev`, sin deploy):
+> el importador de moneda — ver detalle arriba · 3. **Multimoneda, fase cimiento** (moneda explícita en
+> productos, ventas, pagos, gastos, caja) · 4. **Categorías Etapa 1** (categoría + CC + permisos +
+> auditoría; NO toca precio) · 5. contraste de Precio programado · 6. **unificar los dos motores de
+> precio** · 7. Multimoneda completo + Categorías Etapa 2 (precio), juntas.
 >
 > 🎯 **A0 — reglas explícitas de Fede** ("arreglarlo ya, por separado, sin esperar al proyecto
 > multimoneda"): (a) consulta de solo lectura para contar productos importados por CSV con moneda USD —
@@ -160,15 +165,62 @@ type: project
 > muertas (`precio_venta_moneda`/`precio_costo_moneda`) se eliminan **dentro** del rediseño multimoneda,
 > no ahora. El fix debe ser **mínimo** y no complicar la migración posterior.
 >
+> ✅ **A0 CERRADO (2026-09-23), en `dev`, SIN deploy.** Commits `870d3e36` + `ca2f08f2` en `origin/dev`.
+> **Sin migración nueva** (sigue 001-**432**) y PROD sigue exactamente en `v1.230.0` — `dev` queda con A0
+> por encima de PROD, sin bump de versión todavía.
+>
+> **El bug que cierra**: el importador escribía `precio_venta_moneda`/`precio_costo_moneda` (varchar
+> `'ARS'|'USD'`, columnas **muertas**, mig 007 — las escribía y leía solo él mismo) y nunca tocaba
+> `moneda_venta`/`moneda_costo` (`'local'|'usd'`, las **vivas**: las miran el POS, la ficha, la
+> rentabilidad y el costo de OC). Sin trigger que sincronizara el par. Un CSV con `precio_venta=100` +
+> `USD` quedaba guardado tal cual y se vendía a **$100 pesos**, ~1/1400 de su precio real. **Medido antes
+> de tocar nada: 0 productos afectados en DEV y en PROD** (27 productos, 5 negocios) — bug latente puro,
+> sin plata mal cargada, por eso no hizo falta armar ninguna lista para ningún dueño.
+>
+> **Segundo bug, también cerrado**: al ACTUALIZAR por CSV un producto que estaba en USD con un precio en
+> pesos, se pisaba `precio_venta` pero `moneda_venta` seguía en `'usd'` — y como el POS recalcula
+> `precio_usd × cotización` e ignora `precio_venta` cuando la moneda es `'usd'`, la importación **no
+> cambiaba lo que se cobraba**. Ahora el CSV manda.
+>
+> **Cómo quedó**: lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa) con
+> **22 tests** (`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
+> (`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
+> cobrarlo. **Sin cotización, la fila no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
+> validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
+> escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el
+> camino en pesos produce el mismo payload que antes.
+>
+> Verificado contra la base real en DEV con el payload exacto (revertido después): costo 60 USD / precio
+> 100 USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
+> `precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
+>
+> **Tres hallazgos nuevos, sin resolver, esperando decisión de GO** (ya suman a los 27 puntos abiertos de
+> abajo → 30, con propuesta en el documento nuevo, ver más abajo):
+> - **D-1**: `ProductoFormPage.tsx:66` sigue destructurando `{ cotizacion }` (la de VENTA) para calcular
+>   el espejo en pesos — es la mitad que quedó afuera del fix del 2026-09-08 (el POS ya usa compra desde
+>   entonces). Hoy latente: 0 productos en USD en PROD.
+> - **D-2**: `productos.margen_ganancia` es `GENERATED numeric(5,2)` — ningún producto con markup >
+>   999,99 % se puede guardar, ni por CSV ni desde la ficha (`numeric field overflow`). Preexistente; el
+>   importador ya valida esto con mensaje claro, la ficha sigue sin protección.
+> - **D-3** 🛑: el archivo de **"Exportar productos" NO sirve para reimportar**: solo emite `id, nombre,
+>   sku, precio_venta, precio_costo, stock_actual, stock_minimo, unidad_medida, activo, categoria`, y el
+>   importador pisa todo el resto con los defaults. Medido sobre los 27 de PROD: se perderían **19**
+>   proveedores, **19** descripciones, **12** códigos de barras, **9** productos con trazabilidad
+>   (series/lote/vencimiento), 5 márgenes objetivo, 2 reglas de inventario y 1 kit. El IVA zafa de
+>   casualidad (los 27 están en 21 %, que es lo que pone el default) pero la misma vía lo resetearía, y
+>   eso sí es fiscal. Preexistente; A0 solo sumó la moneda a esa lista.
+>
+> Detalle completo en [[wiki/features/productos]] → "Importador CSV — columnas de moneda (A0)".
+>
 > 🪟 **Por qué Multimoneda va temprano**: el cimiento hoy es **28 filas** (27 productos en `'local'`
 > + 1 gasto) y `ventas` **no tiene columna de moneda**. Con clientes operando, la misma migración
 > toca ventas, caja, CC y comprobantes con plata real adentro.
 > 🛑 **Precio programado YA ESTÁ CONSTRUIDO** (migs 422-424): no es un proyecto nuevo, es un
 > contraste de media jornada contra las respuestas de Fede.
 >
-> 🛑 **Los 3 relevamientos dejan 27 puntos abiertos** que Fede marcó explícitamente como "para que Tonga
-> proponga o resuelva" — **NO se deciden solos, se consultan con GO siempre** (regla de trabajo del
-> 2026-09-22):
+> 🛑 **Los 3 relevamientos + A0 dejan 30 puntos abiertos** que Fede marcó (o que salieron de A0) como
+> "para que Tonga proponga o resuelva" — **NO se deciden solos, se consultan con GO siempre** (regla de
+> trabajo del 2026-09-22):
 > - **11 en Multimoneda**: cobertura de cotizaciones por par de monedas en dolarapi, mecánica del
 >   "inicio del día", fuente de la cotización fiscal, qué pasa al cambiar la moneda principal, reportes
 >   por moneda con ventas de 2 monedas, monedas desactivadas con histórico, gasto con saldo insuficiente,
@@ -180,6 +232,20 @@ type: project
 > - **7 en Precio programado**: aprobación del repositor, anticipación de la tarea, cambio inmediato
 >   sobre uno programado pendiente, ventas en espera, mayorista y combos, diseño conjunto con
 >   Multimoneda, etapas y estimación.
+> - **3 de A0** (D-1/D-2/D-3, ver detalle arriba): la ficha usa la cotización de venta en vez de compra ·
+>   `margen_ganancia` no admite markup > 999,99 % · "Exportar productos" no sirve para reimportar (borra
+>   8 campos).
+>
+> 📋 **(2026-09-23) Documento nuevo, ya entregado a GO**:
+> `puntos-abiertos-multimoneda-categorias-precio-programado.html` (raíz del repo, commit `a7fc1124`),
+> imprimible, mismo formato que los relevamientos — junta los 30 puntos, **cada uno con una propuesta
+> concreta** y espacio para la respuesta.
+>
+> 🛑 **Dato duro que cambia el diseño de Multimoneda, medido contra la API el 2026-09-22**:
+> `dolarapi.com/v1/cotizaciones` devuelve, contra el peso argentino, **solo 5 monedas**: USD, EUR, BRL,
+> CLP y UYU. De las **11** que la app ofrece, quedan **5 sin cotización automática**: PYG, BOB, PEN, MXN
+> y COP. Derivar vía USD (ej. guaraní → USD → peso) **es** inventar una tasa, justo lo que prohíbe la
+> regla D5. Propuesta en el documento: carga manual obligatoria para esas 5, avisando al habilitarlas.
 >
 > **4 · Consultas al contador: 18 abiertas, 0 respondidas por un matriculado.**
 > Nuevas de la sesión anterior: **C-16** (venta cobrada en dólares y factura en pesos: la app usa
@@ -192,6 +258,11 @@ type: project
 > - **1 función existe solo en PROD**: `marketplace-webhook` (antes eran 3 — `marketplace-api` y
 >   `data-api` ya se pueden probar en DEV desde esta sesión). (`wa-embedded-signup-exchange` es al
 >   revés y a propósito: solo DEV, falta el App Review de Meta.)
+> - 🆕 **(2026-09-23) Drift de Edge Functions — DEV a CERO**: redesplegadas en DEV
+>   `billing-manual-pagar`, `cancel-suscripcion`, `mp-verificar-suscripcion` y `mp-addon-batch` (todas
+>   `verify_jwt=true`). **DEV = 0 drift en todo.** En PROD quedan **solo 2**: `mp-verificar-suscripcion`
+>   (8) y `mp-addon-batch` (6), los dos ya verificados 100% cosméticos (guiones de separadores y un
+>   comentario) — son funciones de cobro, el redeploy a PROD espera autorización de GO.
 > - **Vercel**: una variable con prefijo público (`VITE_`) **no se puede guardar como tipo Secret** —
 >   Vercel lo rechaza y el Save no hace nada. Tiene que ser **Config**. Y la variable solo entra al
 >   bundle al reconstruir **ese branch** ("Preview" es el entorno, `dev` es la rama).

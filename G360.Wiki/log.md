@@ -6,6 +6,98 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-23] update | ✅ A0 cerrado en `dev` — el importador CSV ya escribe las columnas de moneda que la app lee (SIN deploy)
+
+**Continuación de la sesión que deployó `v1.230.0` a PROD (2026-09-22, noche).** PROD sigue exactamente en
+`v1.230.0` (migs 001-**432**) — nada de esta entrada llegó a producción. Commits `870d3e36` + `ca2f08f2` en
+`origin/dev`. **Sin migración nueva** — `dev` queda con A0 por encima de PROD, sin bump de `APP_VERSION`
+todavía.
+
+### A0 — el bug que cierra
+
+El importador (`ImportarProductosPage.tsx`) escribía `precio_venta_moneda`/`precio_costo_moneda` (varchar
+`'ARS'|'USD'`, columnas **muertas** desde la mig 007 — las escribía y leía solo él mismo) y **nunca** tocaba
+`moneda_venta`/`moneda_costo` (`'local'|'usd'`, las **vivas**, las que miran el POS, la ficha y la
+rentabilidad, y el costo de OC). No hay trigger que sincronice el par. Un CSV con `precio_venta=100` +
+`USD` quedaba guardado tal cual y se vendía a **$100 pesos**, ~1/1400 de su precio real.
+
+**Medido antes de tocar nada: 0 productos afectados en DEV y en PROD** (27 productos, 5 negocios) — bug
+latente puro, sin plata mal cargada en ningún lado, así que no hizo falta armar ninguna lista para ningún
+dueño.
+
+**Segundo bug, también cerrado**: al ACTUALIZAR por CSV un producto que estaba en USD con un precio en
+pesos, se pisaba `precio_venta` pero `moneda_venta` seguía en `'usd'` — y como el POS recalcula
+`precio_usd × cotización` e ignora `precio_venta` cuando la moneda es `'usd'`, la importación **no cambiaba
+lo que se cobraba**. Ahora el CSV manda.
+
+### Cómo quedó el fix
+
+Lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa) con **22 tests**
+(`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
+(`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
+cobrarlo. **Sin cotización, la fila no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
+validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
+escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el camino
+en pesos produce el mismo payload que antes.
+
+Verificado contra la base real en DEV con el payload exacto (revertido después): costo 60 USD / precio 100
+USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
+`precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
+
+### Tres hallazgos nuevos, esperando decisión de GO
+
+- **D-1**: `ProductoFormPage.tsx:66` sigue destructurando `{ cotizacion }` (la de VENTA) para calcular el
+  espejo en pesos — es la mitad que quedó afuera del fix del 2026-09-08 (el POS ya usa compra desde
+  entonces). Hoy latente: 0 productos en USD en PROD.
+- **D-2**: `productos.margen_ganancia` es `GENERATED numeric(5,2)` — ningún producto con markup >
+  999,99 % se puede guardar, ni por CSV ni desde la ficha (`numeric field overflow`). Preexistente; el
+  importador ya valida esto con mensaje claro, la ficha sigue sin protección.
+- **D-3** 🛑: el archivo de **"Exportar productos" NO sirve para reimportar**: solo emite `id, nombre,
+  sku, precio_venta, precio_costo, stock_actual, stock_minimo, unidad_medida, activo, categoria`, y el
+  importador pisa todo el resto con los defaults. Medido sobre los 27 de PROD: se perderían **19**
+  proveedores, **19** descripciones, **12** códigos de barras, **9** productos con trazabilidad
+  (series/lote/vencimiento), 5 márgenes objetivo, 2 reglas de inventario y 1 kit. El IVA zafa de
+  casualidad (los 27 están en 21 %) pero la misma vía lo resetearía, y eso sí es fiscal. Preexistente; A0
+  solo sumó la moneda a esa lista.
+
+### Documento nuevo: los 30 puntos abiertos, cada uno con una propuesta
+
+`puntos-abiertos-multimoneda-categorias-precio-programado.html` (raíz del repo, commit `a7fc1124`),
+imprimible, mismo formato que los relevamientos. Junta los **27 puntos** que Fede marcó "para que Tonga
+proponga o resuelva" (11 Multimoneda + 9 Categorías + 7 Precio programado) **más los 3 hallazgos de A0**
+= **30**, cada uno con una propuesta concreta y espacio para la respuesta. Ya entregado a GO.
+
+🛑 **Dato duro que cambia el diseño de Multimoneda, medido contra la API el 2026-09-22**:
+`dolarapi.com/v1/cotizaciones` devuelve, contra el peso argentino, **solo 5 monedas**: USD, EUR, BRL, CLP
+y UYU. De las **11** que la app ofrece, quedan **5 sin cotización automática**: PYG, BOB, PEN, MXN y COP.
+Derivar vía USD (ej. guaraní → USD → peso) **es** inventar una tasa, justo lo que prohíbe la regla D5.
+Propuesta: carga manual obligatoria para esas 5, avisando al habilitarlas.
+
+### Drift de Edge Functions — DEV a CERO
+
+Redesplegadas en DEV `billing-manual-pagar`, `cancel-suscripcion`, `mp-verificar-suscripcion` y
+`mp-addon-batch` (todas `verify_jwt=true`). **DEV = 0 drift en todo.** En PROD quedan **solo 2**:
+`mp-verificar-suscripcion` (8) y `mp-addon-batch` (6), los dos ya verificados 100% cosméticos (guiones de
+separadores y un comentario) — son funciones de cobro, el redeploy a PROD espera autorización de GO.
+
+### Pendientes actualizados
+
+1. **Rotación de las keys legacy de Supabase** — pasó **1 día** de los 3-5. Cambio respecto de lo que
+   decía antes: el endpoint de logs del conector **no expone `edge_logs`**, así que la medición de
+   cuántos navegadores siguen mandando la key vieja **la tiene que hacer GO desde el panel de Supabase**,
+   no desde acá.
+2. **A0 sale de la lista de "siguiente paso"**: queda ✅ CERRADO en `dev`. El orden acordado con GO sigue
+   en pie — sigue **Multimoneda, fase cimiento** (paso 3), esperando que GO responda el documento de los
+   30 puntos.
+3. **Los 3 relevamientos + A0 dejan 30 puntos abiertos** (antes 27) — documento nuevo con propuesta para
+   cada uno, ya entregado a GO.
+4. **Consultas al contador**: 18 abiertas, 0 respondidas por un matriculado. Sin cambios.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y [[wiki/features/productos]] →
+"Importador CSV — columnas de moneda (A0)".
+
+---
+
 ## [2026-09-22] deploy | 🚀 v1.230.0 EN PROD — rate limiting persistente, verificado con tráfico real
 
 **PROD = DEV = `v1.230.0`** (migs 001-**432**), deployado y verificado la noche del 2026-09-22. PR

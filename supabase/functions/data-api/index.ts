@@ -1,27 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { consumirRateLimit, ipDelCliente, respuesta429 } from '../_shared/rateLimit.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'x-api-key, content-type',
 }
 
-// Rate limiting: Map en memoria del isolate (se resetea en cold start — suficiente para v1)
-const rateLimitMap = new Map<string, { count: number; windowStart: number }>()
+// Rate limiting: el contador vive en la base (mig 432) — ver _shared/rateLimit.ts.
 const RATE_LIMIT = 120       // req/min por key
-const WINDOW_MS  = 60_000
-
-function checkRateLimit(keyHash: string): boolean {
-  const now = Date.now()
-  const entry = rateLimitMap.get(keyHash)
-  if (!entry || now - entry.windowStart > WINDOW_MS) {
-    rateLimitMap.set(keyHash, { count: 1, windowStart: now })
-    return true
-  }
-  if (entry.count >= RATE_LIMIT) return false
-  entry.count++
-  return true
-}
+const LIMITE_FALLIDOS = 20   // intentos con key inválida por minuto y por IP
 
 async function hashKey(key: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
@@ -70,16 +58,24 @@ serve(async (req) => {
     .maybeSingle()
 
   if (keyErr || !keyRow) {
+    // El límite de abajo va por key, así que no cubre a quien prueba keys al azar: sin este tope
+    // por IP, probar claves es gratis e ilimitado. Se cuenta solo el intento FALLIDO, así que el
+    // tráfico legítimo no paga ni una ida más a la base.
+    const fallidos = await consumirRateLimit(
+      supabase, 'data-api:auth-fallida', ipDelCliente(req), LIMITE_FALLIDOS,
+    )
+    if (!fallidos.permitido) {
+      return respuesta429(fallidos, 'Demasiados intentos con API key inválida.', corsHeaders)
+    }
     return new Response(JSON.stringify({ error: 'API key inválida o revocada' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 
   // Rate limit
-  if (!checkRateLimit(keyHash)) {
-    return new Response(JSON.stringify({ error: 'Rate limit excedido: 120 req/min' }), {
-      status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
+  const limite = await consumirRateLimit(supabase, 'data-api', keyHash, RATE_LIMIT)
+  if (!limite.permitido) {
+    return respuesta429(limite, `Rate limit excedido: ${RATE_LIMIT} req/min`, corsHeaders)
   }
 
   // Actualizar last_used_at (fire-and-forget)

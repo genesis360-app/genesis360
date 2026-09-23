@@ -1163,7 +1163,9 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 
 ### API externa
 - `api_keys` table: claves generadas en `/configuracion` → tab API.
-- `data-api` Edge Function: permite consultas de datos por sistemas externos (solo lectura).
+- `data-api` Edge Function: permite consultas de datos por sistemas externos (solo lectura). 🔒
+  **2026-09-22 (mig 432)**: rate limiting persistente (120 req/min por key + 20 intentos fallidos/min por
+  IP), antes en memoria del isolate — ✅ EN DEV, 🔴 falta PROD. Ver [[wiki/architecture/edge-functions]].
 
 ### MODO (v1.8.25 — framework listo, pendiente credenciales)
 - Tabla modo_credentials por tenant (merchant_id, api_key, ambiente test/prod)

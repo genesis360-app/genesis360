@@ -6,94 +6,149 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🔒 ARRANCÁ ACÁ (2026-09-20) — Migración de API keys legacy + auditoría de seguridad completa (8 hallazgos
-> cerrados) + backup de Storage · **EN `dev`, commits `f55fbf0f` + `17171223`, SIN deploy a PROD**
+> ### 🛑 ARRANCÁ ACÁ (2026-09-22, 2ª sesión) — PROD `v1.229.0` (migs 001-**431**) · DEV `v1.230.0`
+> (migs 001-**432**) — rate limiting persistente CERRADO EN DEV, falta deployar a PROD
 >
-> 🚀 **Último release**: **`v1.229.0`** en PROD (2026-09-22) — las dos tandas de la auditoría de seguridad.
-> Esta sesión (2 tandas de seguridad) **no bumpeó `APP_VERSION` ni creó tag/release** — todo lo de acá vive en `dev`, esperando el
-> próximo deploy.
+> 🚀 **Último release**: **`v1.230.0`**, commits `2b585f31` (el fix) + `0a2c30b1` (el bump),
+> `origin/dev`. Tag + release **Latest** ya publicados. **NO deployado a PROD** — espera autorización
+> de GO.
 >
-> | | Código | Migraciones | Branch | Vercel / Legacy keys |
-> |---|---|---|---|---|
-> | **PROD** | `v1.229.0` | 001-**431** | `main` | sirve `v1.228.0`; `VITE_SUPABASE_ANON_KEY` ya es la **publishable** en el proyecto `genesis360` (verificado en el bundle) y en el secret de GitHub — 🔴 `genesis360-admin` **todavía sirve la key vieja**; legacy keys de Supabase **ACTIVAS todavía** |
-> | **DEV** | `v1.229.0` | 001-**431** | `dev` | legacy keys de Supabase **DESACTIVADAS**, app verificada funcionando (login real, RLS, EFs, 1848 tests) |
+> | | Código | Migraciones | Legacy keys de Supabase |
+> |---|---|---|---|
+> | **PROD** | `v1.229.0` ✅ servida | 001-**431** | 🔶 **ACTIVAS todavía** (a propósito, ver pendiente 1) |
+> | **DEV** | `v1.230.0` | 001-**432** | **DESACTIVADAS** |
 >
-> #### 🔑 TEMA 1 — Migración de API keys legacy (la rotación de la `service_role` filtrada el 2026-09-16)
+> ✅ **Paridad `pg_policies` DEV=PROD sigue intacta**: public 234 · storage 40 · cron 2 — la mig 432
+> agrega una tabla con RLS **sin policies** (deny-all), no suma ninguna.
 >
-> **Hallazgo que cambia lo que decía el wiki: NO existe el botón "Generate new service_role key".** La
-> `service_role` legacy es un JWT firmado con el JWT secret del proyecto; solo muere rotando el JWT secret entero
-> (rompe también la `anon` → deslogueo masivo + PWA rota) o **desactivando las legacy keys**, todo-o-nada
-> (anon+service_role juntas). Confirmado contra la Management API: único control `PUT
-> /api-keys/legacy?enabled=true|false`, sin control por key.
+> Detalle completo en `log.md` (entrada del 2026-09-22, `update`, "Rate limiting persistente...").
 >
-> **Estado real verificado (no asumido)**: DEV y PROD ya tenían las keys nuevas (`sb_publishable_…`/
-> `sb_secret_…`) desde el 2026-03-06, y Supabase ya remapeó el CONTENIDO de las variables inyectadas en las Edge
-> Functions (`SUPABASE_SERVICE_ROLE_KEY` = SECRET nueva, `SUPABASE_ANON_KEY` = PUBLISHABLE nueva — comprobado con
-> una EF de diagnóstico temporal y los logs del gateway: 1004 llamadas con prefijo `sb_secret_`). **Las 51 Edge
-> Functions no necesitan cambio de código.** La key nueva en `Authorization: Bearer` contra `verify_jwt=true` da
-> 200 (los 13 workflows tampoco necesitan tocar headers). Ni los 8 jobs de `pg_cron` ni el repo tienen JWT
-> hardcodeado.
+> #### 🔒 Qué se cerró esta sesión: rate limiting persistente (mig 432)
 >
-> **La trampa**: el botón de desactivar legacy avisa *"remain valid as a JWT"*. Verificado en DEV: la key vieja
-> en `apikey` da 401 tras desactivar, pero **como `Authorization: Bearer` sigue dando 200** (firma falsa → 401,
-> o sea valida de verdad). **Desactivar legacy NO mata la key filtrada: falta revocar la JWT signing key vieja**
-> (HS256 "previously used") en Settings → JWT Keys. Seguro de hacer: DEV y PROD ya migraron a signing keys (ES256
-> `in_use`/HS256 `previously_used`) desde 2026-03-06.
+> Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20. `marketplace-api`
+> (60 req/min por IP), `data-api` (120 req/min por API key) y `transportista-subir-archivo` (30
+> req/min por IP) llevaban la cuenta en un `Map` en memoria del isolate de Deno — se perdía en cada
+> cold start, y Supabase corre varios isolates en paralelo, cada uno con su propio `Map`, así que el
+> límite efectivo era 60 × (cantidad de isolates), un número que no se controla ni se conoce.
 >
-> **Gotchas operativos**: la env var de Vercel solo entra al bundle al reconstruir **ese branch** ("Preview" es
-> el ENTORNO, `dev` es la RAMA — son cosas distintas); el **service worker de la PWA** no se da de baja con
-> hard-refresh (hay que Unregister + Clear site data, o incógnito). Orden correcto en PROD: cambiar key en
-> Vercel → redeploy → **verificar login** → recién después desactivar la vieja (las dos keys conviven).
+> Ahora el contador vive en `public.rate_limit_contadores` (tabla nueva, **sin `tenant_id` a
+> propósito**: es infraestructura del borde) + `fn_rate_limit_consumir` (atómica vía
+> `INSERT … ON CONFLICT DO UPDATE … RETURNING`, `SECURITY DEFINER`, `EXECUTE` solo `service_role`) +
+> cron horario `cleanup_rate_limit_contadores`. Módulo compartido nuevo (primer `_shared` del repo):
+> `supabase/functions/_shared/rateLimit.ts`.
 >
-> #### 🛡️ TEMA 2 — Auditoría de seguridad completa (commit `f55fbf0f`) + backup de Storage
+> 🩸 **Gotcha del `migration-reviewer`, corregido antes de aplicar**: el `DELETE` del cron compara
+> contra `ventana_inicio` (cuándo la ventana ABRIÓ, no cuándo cerró) — el margen tiene que ser MAYOR
+> que la ventana más larga que acepta la función. `p_ventana_seg` queda acotado a 3600 y el margen del
+> cron es de 2 horas; si algún día se sube el tope hay que subir el margen en el mismo commit, o el
+> cleanup borra contadores de ventanas todavía abiertas y el límite se reinicia solo, en silencio.
 >
-> **Verificado BIEN, con números**: 170/170 tablas de `public` con RLS · 234 policies · impersonando un usuario
-> real sobre las 155 tablas con `tenant_id`: cero filas de otro negocio · como `anon`: 55/170 tablas inaccesibles,
-> las otras 115 dan cero filas salvo `planes` · sin escalada de privilegios (3 vectores probados, los 3
-> bloqueados) · 28 tablas con policy por sucursal · SECURITY DEFINER sensibles con control interno propio
-> (probado como `anon`) · API keys propias: 192 bits, SHA-256, nunca en claro · `npm audit` 0 vulnerabilidades,
-> 0 `dangerouslySetInnerHTML`/`eval`, 0 secretos en el bundle · las 8 EFs con `tenant_id` por parámetro validan
-> pertenencia.
+> **Dos hallazgos de seguridad nuevos, encontrados y corregidos en el camino:**
+> 1. **El límite se esquivaba del todo**: las tres funciones resolvían la IP como
+>    `x-forwarded-for ?? cf-connecting-ip`. Ese header lo **prefija el cliente** (el proxy le agrega la
+>    IP real al final, no la reemplaza) — mandando un valor distinto en cada request se estrenaba cubo
+>    cada vez. Ahora se prefiere `cf-connecting-ip` (lo escribe el borde de Cloudflare, no falseable),
+>    después `x-real-ip`, y del `x-forwarded-for` se toma el **último** hop.
+> 2. **`data-api`: probar API keys al azar era gratis** — el límite iba por key y corría DESPUÉS de
+>    validarla. Cubo nuevo de intentos **fallidos** por IP (20/min), que solo se consume cuando la key
+>    no valida.
 >
-> **8 hallazgos cerrados**:
-> 1. **mig 430** (`430_storage_aislamiento_por_negocio_y_search_path.sql`, ✅ DEV, 🔴 FALTA EN PROD): fuga real de
->    lectura entre negocios en `archivos-biblioteca` (policy SIEMPRE TRUE) + `productos` con INSERT/UPDATE sin
->    filtrar tenant + `fn_enqueue_tn_fulfillment_sync` sin `search_path` fijo.
-> 2. **GUARD-CRON en 15 sweeps/workers**: solo los protegía `verify_jwt` (se satisface con la anon key pública) →
->    ahora exigen `CRON_SECRET` o la service key.
-> 3. **`modo-webhook`**: el comentario decía que validaba y no validaba nada — cualquiera con el UUID de una
->    venta la marcaba pagada por lo que quisiera. Ahora exige `MODO_WEBHOOK_SECRET` + monto server-side.
-> 4. **`tn-webhook`**: ahora valida HMAC-SHA256 de TiendaNube (antes `order/cancelled` cancelaba ventas desde
->    afuera).
-> 5. **`meli-webhook`**: `resource` del body se concatenaba crudo a una URL con el access_token del vendedor
->    (SSRF/exfiltración de token) — ahora se valida con regex.
-> 6. **`scan-product`/`scan-ticket`**: ahora exigen sesión (antes cualquiera quemaba la cuota de Anthropic).
-> 7. **XSS** en 4 pantallas de impresión de QR/etiquetas (`document.write` sin escapar, alimentado por importador
->    CSV y sync ML/TN) — helper nuevo `src/lib/escaparHtml.ts`.
-> 8. **Política de contraseñas** (✅ YA ACTIVA en DEV y PROD): mínimo 10 + HaveIBeenPwned. **NO** se activó
->    re-autenticación obligatoria (rompería el cambio de clave actual sin un flujo de nonce previo).
+> **Verificado en DEV, medido**: 70 requests a `marketplace-api` (10 en paralelo) → exactamente **60
+> pasan, 10 dan 429**, una sola fila en la tabla con contador 70 (prueba la atomicidad). 4
+> `x-forwarded-for` falseados distintos caen en un solo cubo. `data-api` con 25 API keys inventadas →
+> **20×401 + 5×429**. `transportista-subir-archivo`, 35 POST → **30×400 + 5×429**. Build verde,
+> `schema_full.sql` regenerado: **171 tablas** (era 170), 241 funciones, policies siguen en **234**.
 >
-> Detalle completo, hallazgos ABIERTOS (backlog) y el estado de Backups/Custom Domain: `log.md` (2026-09-20, las
-> 2 entradas de hoy) y [[wiki/architecture/guards-server-side]] / [[wiki/architecture/edge-functions]] /
-> [[wiki/architecture/infraestructura]].
+> **EFs desplegadas en DEV** (con `--no-verify-jwt`, igual que en PROD): `marketplace-api`, `data-api`,
+> `transportista-subir-archivo`. Drift DEV = 0 en las tres. `marketplace-api` y `data-api` **no
+> existían en DEV** — de paso queda **1 sola** función solo-PROD (`marketplace-webhook`), no 3.
 >
-> #### 🔴 Pendientes que hay que dejar bien visibles (9)
+> Detalle completo en [[wiki/architecture/guards-server-side]] ("Tanda G — backlog") y
+> [[wiki/architecture/edge-functions]].
 >
-> 1. Redeployar `genesis360-admin` en Vercel (sigue sirviendo la key vieja).
-> 2. Cargar `CRON_SECRET` en los secrets de Edge Functions de Supabase (DEV y PROD) y en los secrets de GitHub —
->    **ANTES** de desplegar las EFs con el guard, o los sweeps se caen en silencio.
-> 3. Cargar `MODO_WEBHOOK_SECRET` (si no, `modo-webhook` queda cerrado a propósito con 503).
-> 4. Cargar `SUPABASE_PROJECT_REF` en los secrets de GitHub para el backup de Storage.
-> 5. Aplicar la mig 430 en PROD.
-> 6. Deployar las EFs tocadas (no se despliegan solas al mergear — `bash scripts/auditar-edge-functions.sh`).
-> 7. Esperar/medir las PWA de PROD y recién después: desactivar legacy en PROD + revocar la JWT signing key HS256
->    en DEV y PROD.
-> 8. Dominio propio (decisión de compra de GO, ~USD 10/mes, add-on Custom Domain).
-> 9. Backlog de seguridad abierto: `mp-webhook` en modo log-only, `mp-ipn` sin `user_id` agarra credencial de
->    cualquier tenant, `cuenta_token` sin vencimiento, `verificar_otp_envio` no criptográfico, rate limiting en
->    memoria del isolate, SSL no forzado + DB sin restricción de IP, sin captcha, 4 buckets públicos.
+> #### ✅ También esta sesión: el drift "cosmético" de 5 EFs, verificado línea por línea (pendiente 2
+> de la sesión anterior — CERRADO)
 >
-> ---
+> Confirmado que los 5 son **100% cosméticos**, sin una sola diferencia funcional — incluida
+> `marketplace-api` (la de mayor drift): el rate limiting YA estaba vivo en PROD, solo faltaba su
+> comentario. Ninguna de las funciones de cobro (`mp-verificar-suscripcion`, `mp-addon-batch`,
+> `billing-manual-pagar`, `cancel-suscripcion`) tiene lógica distinta desplegada — ese redeploy sigue
+> pendiente, pero es higiene, no riesgo abierto.
+>
+> #### 🛑 El gotcha que casi rompe los sweeps (de la sesión anterior — sigue valiendo, no repetir)
+>
+> Los workflows **programados** de GitHub corren SIEMPRE la versión del archivo que está en `main`,
+> no la de la rama donde vive el código. El header `x-cron-secret` estaba en `dev`. Desplegar las EFs
+> con el guard **antes** del merge habría dejado a los sweeps llamando sin el secreto → 401 → **dejan
+> de correr en silencio**, reintentos de NC de AFIP incluidos.
+>
+> **Orden obligatorio cuando un cambio toca EFs + workflows juntos**: migraciones aditivas → merge a
+> `main` → deploy de las EFs → verificar con un workflow real (`gh workflow run <wf> --ref main`),
+> eligiendo uno que hoy sea no-op (`tn-stock-sync`: 0 tiendas conectadas).
+>
+> #### 🔴 PENDIENTES, por orden
+>
+> **1 · Cerrar la rotación de las keys viejas (lo único a medio camino).**
+> Las legacy siguen **activas en PROD** a propósito: falta que las PWA cacheadas de los usuarios se
+> actualicen solas. Secuencia: esperar 3-5 días → **medir en los logs del gateway** cuántos
+> navegadores siguen mandando la key vieja → cuando dé **cero**, GO apaga las legacy y **revoca la
+> JWT signing key HS256** (Settings → JWT Keys) en **DEV y PROD**.
+> ⚠️ Desactivar las legacy **NO alcanza**: verificado en DEV, la key vieja sigue viva como
+> `Authorization: Bearer`. Lo que la mata es revocar la HS256. Seguro: las sesiones ya usan ES256
+> desde 2026-03-06, nadie se desloguea.
+>
+> **2 · Deployar a PROD lo de esta sesión (nuevo, esperando autorización de GO).**
+> Mig 432 + las 3 EFs (`marketplace-api`, `data-api`, `transportista-subir-archivo`, respetando
+> `--no-verify-jwt`) para que PROD tenga rate limiting real. De paso, los 5 redeploys de higiene del
+> drift cosmético confirmado (`marketplace-api`, `mp-verificar-suscripcion`, `mp-addon-batch`,
+> `billing-manual-pagar`, `cancel-suscripcion`) — correr `bash scripts/auditar-edge-functions.sh`
+> después. 🕵️ Lanzarla **sin `| tail`**: en background solo guarda la cola (pasó dos veces ya).
+>
+> **3 · Backlog de seguridad abierto** (de la auditoría, todo de severidad menor — el rate limiting
+> SALE de esta lista, cerrado en DEV, ver pendiente 2 arriba):
+> captcha en login/alta (**necesita que GO abra cuenta en hCaptcha o Turnstile y pase la key**) ·
+> 4 buckets públicos (`avatares`, `logos`, `productos`, `ayuda-recursos` — es a propósito) · base
+> accesible desde cualquier IP (decisión, no pendiente) ·
+> **`MP_WEBHOOK_SECRET` sin cargar**: la firma de MercadoPago está implementada y ahora tiene
+> interruptor — cargar el secret (lo da el panel de MP) y después poner `MP_WEBHOOK_SIG_ENFORCE=true`
+> para que bloquee · **`MODO_WEBHOOK_SECRET`** cuando se active MODO (hoy la función queda cerrada
+> con 503 a propósito: 0 tenants con MODO).
+>
+> **4 · Tres relevamientos respondidos por Fede (2026-09-20), esperando arrancar.**
+> Categorías de clientes · Multimoneda · Precio programado. **Orden propuesto y aceptado por GO**:
+>
+> 1. Cerrar seguridad (pendiente 1) · 2. **A0**: el importador de moneda (chico, ya medido: 0
+> productos afectados) · 3. **Multimoneda, fase cimiento** (moneda explícita en productos, ventas,
+> pagos, gastos, caja) · 4. **Categorías Etapa 1** (categoría + CC + permisos + auditoría; NO toca
+> precio) · 5. contraste de Precio programado · 6. **unificar los dos motores de precio** · 7.
+> Multimoneda completo + Categorías Etapa 2 (precio), juntas.
+>
+> 🪟 **Por qué Multimoneda va temprano**: el cimiento hoy es **28 filas** (27 productos en `'local'`
+> + 1 gasto) y `ventas` **no tiene columna de moneda**. Con clientes operando, la misma migración
+> toca ventas, caja, CC y comprobantes con plata real adentro.
+> 🛑 **Precio programado YA ESTÁ CONSTRUIDO** (migs 422-424): no es un proyecto nuevo, es un
+> contraste de media jornada contra las respuestas de Fede.
+> 🛑 **Los PDF de los 3 relevamientos respondidos NO están en el repo** — GO los va a volver a pasar
+> como archivos.
+>
+> **5 · Consultas al contador: 18 abiertas, 0 respondidas por un matriculado.**
+> Nuevas de la sesión anterior: **C-16** (venta cobrada en dólares y factura en pesos: la app usa
+> dólar **compra** y la RG ARCA 5616/2024 fija **vendedor divisa** del día hábil anterior) · **C-17**
+> (IVA de gasto en moneda extranjera) · **C-18** (qué cotización oficial para lo fiscal en general).
+> Imprimible: `npm run contador:doc`.
+>
+> #### ⚠️ Cosas a tener a mano
+>
+> - **1 función existe solo en PROD**: `marketplace-webhook` (antes eran 3 — `marketplace-api` y
+>   `data-api` ya se pueden probar en DEV desde esta sesión). (`wa-embedded-signup-exchange` es al
+>   revés y a propósito: solo DEV, falta el App Review de Meta.)
+> - **Vercel**: una variable con prefijo público (`VITE_`) **no se puede guardar como tipo Secret** —
+>   Vercel lo rechaza y el Save no hace nada. Tiene que ser **Config**. Y la variable solo entra al
+>   bundle al reconstruir **ese branch** ("Preview" es el entorno, `dev` es la rama).
+> - **El service worker de la PWA no se da de baja con hard-refresh**: DevTools → Application →
+>   Service Workers → Unregister + Clear site data, o incógnito.
+> - **Regla de trabajo de GO (2026-09-22)**: los **puntos abiertos** de un relevamiento **nunca** se
+>   deciden solos — se consultan siempre, salvo autorización explícita para ese punto puntual.
 >
 > ### ✅ ARRANCÁ ACÁ (2026-09-18) — 🚀 **PROD = DEV = `v1.228.0`** (migs 001-429) · **deployado, nada pendiente**
 > PR **#353** `dev→main` (merge `693c72b9`), release `v1.228.0` **Latest**, **sin migraciones**. Verificado en vivo

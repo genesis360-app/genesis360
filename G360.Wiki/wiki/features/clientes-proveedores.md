@@ -2,8 +2,8 @@
 title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
-sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-08-31
+sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
+updated: 2026-09-22
 ---
 
 # Clientes y Proveedores
@@ -414,6 +414,14 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 ### CL3 — Incobrables + estado de cuenta (mig 173) · v1.20.0
 - **Incobrables (B6):** botón "Incobrable" en el tab CC (DUEÑO/ADMIN/SUPER_USUARIO) → modal con motivo + **clave maestra** del dueño (si está configurada). Condona toda la deuda CC del cliente (tag `Incobrable`, excluido de ingresos) + genera **gasto automático "Deudores incobrables"** + audit (`actividad_log`).
 - **Estado de cuenta (B8):** **PDF** descargable (`src/lib/estadoCuentaPDF.ts`) desde la ficha + **portal público** `/cuenta/:token` (`CuentaClientePage`, sin login) vía `clientes.cuenta_token` + RPC `get_cuenta_cliente_by_token` (SECURITY DEFINER, anon). Botón "Link cliente" genera/copia el link.
+  - **🔒 El link ya vence (mig 431, 2026-09-22, ✅ EN PROD):** hasta esta migración el link no vencía nunca ni
+    se podía rotar, mientras la RPC (SECURITY DEFINER, GRANT a `anon`) devuelve nombre, teléfono, email y toda
+    la CC — un link reenviado por WhatsApp meses atrás seguía abriendo la cuenta hoy. Ahora
+    `clientes.cuenta_token_creado_at` + `tenants.cuenta_token_dias` (default **90 días**, 0 = no vence,
+    configurable en **Config → Clientes**); vencido, la RPC responde `NULL` igual que un token inexistente
+    (no confirma que el link existió). Botón **"Regenerar link"** en la ficha del cliente invalida el anterior.
+    Hallazgo de la auditoría de seguridad completa (2026-09-20) — ver
+    [[wiki/architecture/guards-server-side]] ("Segunda tanda", G10).
 
 ### CL4 — Notificaciones (mig 175) · v1.23.0
 - **C1/C4:** email automático al registrar deuda CC y al registrar un pago (las 3 vías) — `src/lib/notificacionesCC.ts`, event-driven vía Edge Function `send-email`.

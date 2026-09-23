@@ -3,23 +3,42 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-15
+updated: 2026-09-22
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.228.0`** (2026-09-18, migs 001-429 — **sin migración nueva**, deploy solo de código).
-Compute de PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.229.0`** (2026-09-22, migs 001-**431**). Compute de PROD: **Micro** desde el
+2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **DEV = PROD** en código y versión (`v1.228.0`), pero **DEV va un paso adelante en DB y seguridad**: commit
-`f55fbf0f` (2026-09-20, sin bump de versión ni release) trae la migración **430** — solo en DEV — y una
-auditoría de seguridad completa que cerró 8 hallazgos (aislamiento de Storage, guard `CRON_SECRET` en 15
-sweeps/workers, validación real de `modo-webhook`/`tn-webhook`/`meli-webhook`, auth en `scan-product`/
-`scan-ticket`, XSS en impresión de QR, política de contraseñas). Detalle en
-[[wiki/architecture/guards-server-side]] ("Tanda G") y `log.md` (2026-09-20). Pendiente antes de llevarlo a
-PROD: cargar `CRON_SECRET`/`MODO_WEBHOOK_SECRET`, aplicar la mig 430 y redesplegar las Edge Functions tocadas.
+🔶 **DEV va un paso adelante: `v1.230.0` (migs 001-432), NO deployado a PROD.** Commits `2b585f31` (el fix)
++ `0a2c30b1` (el bump), `origin/dev`, tag + release **Latest** ya publicados. Espera autorización de GO.
+Paridad `pg_policies` sigue intacta (`public` 234 · `storage` 40 · `cron` 2 — la mig 432 no agrega
+policies). Detalle completo en `log.md` (2026-09-22, `update`).
 
-### v1.229.0 — Auditoría de seguridad (2026-09-22)
+### v1.230.0 — Rate limiting persistente para las EFs públicas (2026-09-22, EN DEV, falta PROD)
+
+Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20. Migración **432**.
+
+`marketplace-api`, `data-api` y `transportista-subir-archivo` limitaban con un `Map` en memoria del
+isolate de Deno — se pierde en cada cold start y no se comparte entre los isolates en paralelo que corre
+Supabase de la misma función. Ahora el contador vive en la tabla `rate_limit_contadores` (sin `tenant_id`
+a propósito) + `fn_rate_limit_consumir` (atómica, `SECURITY DEFINER`, solo `service_role`).
+
+**De paso, dos hallazgos nuevos cerrados**: el límite se podía esquivar del todo falseando
+`x-forwarded-for` (ahora se prioriza `cf-connecting-ip`, que no es falseable), y en `data-api` probar API
+keys al azar no chocaba con ningún tope (nuevo cubo de intentos fallidos por IP).
+
+**Verificado en DEV con tráfico real**: 70 requests a `marketplace-api` (10 en paralelo) → exactamente 60
+pasan y 10 dan 429. `data-api` con 25 API keys inventadas → 20×401+5×429. `transportista-subir-archivo`,
+35 POST → 30×400+5×429. `marketplace-api` y `data-api` se desplegaron en DEV por primera vez (antes solo
+existían en PROD) — queda 1 sola función solo-PROD (`marketplace-webhook`), no 3.
+
+De paso se verificó línea por línea el drift "cosmético" de 5 Edge Functions que quedaba pendiente del
+deploy anterior: **confirmado que las 5 son 100% cosméticas** (comentarios/formato), sin una sola
+diferencia funcional. Ver [[wiki/architecture/guards-server-side]] y [[wiki/architecture/edge-functions]].
+
+## 🚀 v1.229.0 — Auditoría de seguridad (2026-09-22)
 
 Dos tandas de la auditoría del 2026-09-20, con **pruebas ejecutadas** contra PROD y DEV, no solo
 lectura de código. Migraciones **430** y **431**.

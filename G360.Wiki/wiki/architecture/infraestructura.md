@@ -3,7 +3,7 @@ title: Infraestructura — topología y jobs programados
 category: architecture
 tags: [infraestructura, topologia, vercel, supabase, edge-functions, pg_cron, diagramas, backups, api-keys]
 sources: [supabase/functions, supabase/migrations, .github/workflows, src/lib/supabase.ts]
-updated: 2026-09-20
+updated: 2026-09-22
 ---
 
 # Infraestructura — topología y jobs programados
@@ -141,12 +141,22 @@ significa que sin mitigación **no había respaldo** de fotos de productos, cert
 gastos, legajos de empleados, remitos ni adjuntos de soporte — todo lo que vive en los 12 buckets del diagrama de
 arriba.
 
-**Mitigación implementada (2026-09-20)**: `.github/workflows/backup-storage.yml` — baja **todos los buckets** a
-diario con el CLI de Supabase y los guarda como **artifact de GitHub, 90 días de retención**. Usa a propósito el
-**token de cuenta** (`SUPABASE_ACCESS_TOKEN`), no una key de datos del proyecto, para no dejar una credencial de
-acceso a datos en GitHub Actions. Dos gotchas de la CLI verificados contra PROD: la ruta de storage lleva **TRES
-barras** (`ss:///bucket`, no `ss://bucket`) y el flag `--experimental` es **obligatorio**. Secrets nuevos que
-necesita: `SUPABASE_ACCESS_TOKEN` y `SUPABASE_PROJECT_REF` (🔴 pendiente de cargar en GitHub).
+**Mitigación implementada (2026-09-20, ✅ corrida real verificada 2026-09-22)**: `.github/workflows/backup-storage.yml`
+— baja **todos los buckets** a diario con el CLI de Supabase y los guarda como **artifact de GitHub, 90 días de
+retención**. Usa a propósito el **token de cuenta** (`SUPABASE_ACCESS_TOKEN`), no una key de datos del proyecto,
+para no dejar una credencial de acceso a datos en GitHub Actions. Dos gotchas de la CLI verificados contra PROD:
+la ruta de storage lleva **TRES barras** (`ss:///bucket`, no `ss://bucket`) y el flag `--experimental` es
+**obligatorio**. Secrets `SUPABASE_ACCESS_TOKEN` y `SUPABASE_PROJECT_REF` ✅ **cargados en GitHub**. Primera
+corrida real: **13 buckets, 8 archivos**, artifact generado OK.
+
+🩸 **La primera corrida real murió, y el diagnóstico costó dos intentos.** El CLI de Supabase **no devuelve el
+mismo formato en todos lados**: en una terminal local el listado de buckets sale como JSON (`{"paths":[...]}`),
+pero en el runner de GitHub sale **texto plano**, un bucket por línea — parsear siempre con `jq` daba 0 buckets
+aunque el listado los mostrara los 13. Encima la corrida murió **muda**: con `bash -e` + `pipefail`, un
+`grep -v '^$'` sobre una entrada vacía devuelve exit 1 y mataba el script antes de imprimir el mensaje que iba a
+explicar el problema. Se resolvió haciendo que el workflow **imprima la salida cruda antes de parsear**,
+contemplando los dos formatos, y **pineando la versión del CLI** (con `@latest`, un cambio de formato futuro lo
+volvería a romper en silencio).
 
 ## 🌐 Dominio propio para Supabase (pedido de GO, NO hecho)
 

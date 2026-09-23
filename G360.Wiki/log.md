@@ -6,6 +6,167 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-22] update | 🔒⏱️ Rate limiting persistente en las 3 EFs públicas (mig 432, `v1.230.0`, EN DEV — falta PROD)
+
+Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20: el rate limiting de
+`marketplace-api` (60 req/min por IP), `data-api` (120 req/min por API key) y
+`transportista-subir-archivo` (30 req/min por IP) vivía en un `Map` en memoria del isolate de Deno.
+Eso no limitaba nada real: el contador se pierde en cada cold start, y Supabase corre varios isolates
+de la misma función en paralelo, cada uno con su propio `Map` — el límite efectivo era 60 ×
+(cantidad de isolates), un número que no se controla ni se conoce.
+
+### Mig 432 — `rate_limit_contadores` + `fn_rate_limit_consumir` (✅ EN DEV, 🔴 falta en PROD)
+
+- Tabla `public.rate_limit_contadores` (bucket, identidad, ventana_inicio, contador), PK compuesta.
+  **Sin `tenant_id` a propósito**: es infraestructura del borde, la identidad (IP o hash de API key)
+  existe antes de saber de qué negocio se trata.
+- `fn_rate_limit_consumir(p_bucket, p_identidad, p_limite, p_ventana_seg)` → `jsonb`, `SECURITY
+  DEFINER` + `search_path='public'`. Incrementa atómicamente con
+  `INSERT … ON CONFLICT DO UPDATE … RETURNING`: dos isolates concurrentes no pueden leer el mismo
+  contador y pisarse.
+- RLS habilitado **sin policies** (deny-all) + `REVOKE ALL` explícito a `anon`/`authenticated`
+  (revocar de PUBLIC no alcanza para `anon`). `EXECUTE` **solo** para `service_role`.
+- Cron horario `cleanup_rate_limit_contadores` que borra ventanas vencidas.
+
+🩸 **Gotcha que marcó el `migration-reviewer` antes de aplicar**: el `DELETE` del cron compara contra
+`ventana_inicio` (cuándo la ventana ABRIÓ, no cuándo cerró), así que el margen del cron tiene que ser
+MAYOR que la ventana más larga que acepta la función. Por eso `p_ventana_seg` está acotado a 3600 y
+el margen del cron es de 2 horas. Si algún día se sube el tope, hay que subir el margen en el mismo
+commit — si no, el cleanup borra contadores de ventanas abiertas y el límite se reinicia solo, en
+silencio.
+
+### Módulo compartido nuevo: `supabase/functions/_shared/rateLimit.ts`
+
+Primer `_shared` del repo — `ipDelCliente(req)`, `consumirRateLimit(...)`, `respuesta429(...)`.
+Mantiene el `Map` local como **piso** (frena una ráfaga del mismo isolate sin ir a la base). El
+consumo contra la base es **fail-open** a propósito: un hipo de la base no tiene que tirar abajo la
+API pública entera.
+
+### Dos hallazgos de seguridad nuevos, encontrados y corregidos en el camino
+
+1. **El límite se podía esquivar del todo**: las tres funciones resolvían la IP como
+   `x-forwarded-for ?? cf-connecting-ip`. Ese header lo **prefija el cliente** (el proxy le agrega la
+   IP real al final, no la reemplaza), así que mandando un valor distinto en cada request se
+   estrenaba cubo cada vez. Ahora se prefiere `cf-connecting-ip` (lo escribe el borde de Cloudflare,
+   no falseable), después `x-real-ip`, y del `x-forwarded-for` se toma el **último** hop.
+2. **`data-api`: probar API keys era gratis.** El límite iba por key y corría DESPUÉS de validarla,
+   así que quien probaba claves al azar no chocaba nunca con ningún tope. Se agregó un cubo de
+   intentos **fallidos** por IP (20/min) que solo se consume cuando la key no valida — el tráfico
+   legítimo no paga ni una ida más a la base.
+
+### Verificación en DEV (medida, no asumida)
+
+- 70 requests a `marketplace-api` con 10 en paralelo: exactamente **60 pasan y 10 dan 429**, y en la
+  tabla queda UNA sola fila con contador 70 — prueba la atomicidad bajo concurrencia real.
+- 4 requests con 4 `x-forwarded-for` falseados distintos: caen todos en **un solo cubo** con la IP
+  real.
+- `data-api` con 25 API keys inventadas distintas: **20 × 401 y después 5 × 429**.
+- `transportista-subir-archivo`, 35 POST: **30 × 400 y después 5 × 429**.
+- A nivel función: límite 3 con 5 llamadas da true,true,true,false,false. Identidad nula y vacía caen
+  en el mismo cubo en vez de zafar. Ventana de 86400 rechazada. Acentos intactos en `prosrc`. `anon` y
+  `authenticated` no pueden ni ejecutarla ni tocar la tabla.
+- Build verde. `schema_full.sql` regenerado: **171 tablas** (era 170), 241 funciones, **policies
+  siguen en 234** — la tabla nueva no agrega policies, así que la paridad de `pg_policies` con PROD no
+  se toca.
+
+### Edge Functions desplegadas en DEV (con `--no-verify-jwt`, el que ya tenían en PROD)
+
+`marketplace-api`, `data-api`, `transportista-subir-archivo`. Drift DEV = **0** en las tres.
+`marketplace-api` y `data-api` **no existían en DEV**: esto cierra de paso el hueco documentado de
+que no se podían probar fuera de producción — ahora quedan **2 funciones solo-PROD en vez de 3**
+(`marketplace-webhook` sigue solo en PROD). El drift de PROD en esas tres es ahora alto **a
+propósito** — es el deploy pendiente.
+
+### Otro hallazgo de esta sesión: el drift "cosmético" pendiente, verificado línea por línea
+
+Se verificó línea por línea el drift de Edge Functions que estaba pendiente del deploy anterior
+(hasta ahora marcado como "se asume cosmético, no verificado"). **Confirmado: los 5 son 100%
+cosméticos**, sin una sola diferencia funcional:
+
+- `marketplace-api` (prod 21): el `.select()` en una línea vs. multilínea, el `Math.max()` ídem, y 4
+  comentarios que faltan. **El rate limiting SÍ estaba vivo en PROD** (`RATE_LIMIT = 60`,
+  `status: 429`) — solo faltaba su comentario.
+- `mp-verificar-suscripcion` (prod 8 · dev 4): la cantidad de guiones `─` en 4 separadores de
+  comentario.
+- `mp-addon-batch` (6 en ambos): el comentario viejo "precio PROVISORIO" vs. el nuevo "CONFIRMADO por
+  GO 18/09".
+- `billing-manual-pagar` · `cancel-suscripcion` (dev 2): largo del separador del encabezado.
+
+Ninguna de las tres funciones de cobro tiene lógica distinta desplegada. Ese redeploy es higiene, no
+riesgo abierto — sigue pendiente el redeploy a PROD.
+
+### Estado
+
+`v1.230.0`, commits `2b585f31` (el fix) + `0a2c30b1` (el bump), `origin/dev`. Tag + release
+**Latest** ya publicados. **Todo en `dev` y en Supabase DEV — NO en PROD** (PROD sigue en `v1.229.0`,
+migs 001-431, con las Edge Functions viejas). Falta autorización de GO para deployar la mig 432 + las
+3 EFs a PROD.
+
+---
+
+## [2026-09-22] deploy | 🚀 v1.229.0 EN PROD — la auditoría de seguridad completa
+
+GO: *"ok autorizo todo"*. Release de las dos tandas. PR **#354** `dev→main` con **merge commit**,
+release `v1.229.0` **Latest**, y un **#355** (`v1.229.1`) con el fix del backup.
+
+### 🛑 La trampa de orden que casi rompe los sweeps
+
+Los workflows **programados** de GitHub corren SIEMPRE la versión del archivo que está en `main`, y
+el header `x-cron-secret` vivía en `dev`. Deployar las Edge Functions con el guard **antes** del
+merge habría dejado a los sweeps programados llamando sin el secreto → 401 → **dejan de correr en
+silencio**, incluidos los reintentos de NC de AFIP. Se frenó el deploy a tiempo.
+
+**Orden correcto, el que se siguió**: migraciones aditivas → merge a `main` → deploy de las EFs →
+verificar con un workflow real.
+
+### Qué se hizo, en orden
+
+| # | Paso | Resultado |
+|---|---|---|
+| 1 | Migraciones **430** y **431** en PROD | ✅ PROD pasa de 429 a **431** |
+| 2 | PR #354 `dev→main` + release `v1.229.0` | ✅ |
+| 3 | **22 Edge Functions** a PROD (y a DEV) | ✅ 22/22, respetando el `verify_jwt` de cada una |
+| 4 | Workflow real `tn-stock-sync` desde `main` | ✅ **success** — prueba que el `CRON_SECRET` de GitHub y el de Supabase coinciden |
+| 5 | Backup de Storage | ✅ 13 buckets, **8 archivos**, artifact a 90 días |
+
+### Verificación del guard (medida, no asumida)
+
+Disparar los sweeps de **PROD** con la key pública —lo que hasta hoy podía hacer cualquiera—
+devuelve **401** en los ocho probados: `tn-stock-worker`, `meli-stock-worker`, `cron-sweeps`,
+`nc-afip-retry-sweep`, `tenant-hard-delete-sweep`, `billing-manual-sweep`, `repricing-sweep` y
+`monitoring-check`. En DEV, además, con un secreto inventado también da 401, y `scan-product` /
+`scan-ticket` sin sesión dan 401.
+
+### Paridad `pg_policies` DEV↔PROD
+
+| Schema | Policies | Hash |
+|---|---|---|
+| `public` | 234 | `89d2295d…` **idéntico** |
+| `storage` | 40 | `c9a5c495…` **idéntico** |
+| `cron` | 2 | `f7b4e084…` **idéntico** |
+
+**Cero drift** después de las dos migraciones.
+
+### 🩸 El backup falló en su primera corrida real (y el diagnóstico costó dos intentos)
+
+El listado de buckets se parseaba como JSON, pero **el CLI de Supabase no devuelve lo mismo en
+todos lados**: en una terminal local escupe `{"paths":[...]}` y en el runner de GitHub escupe
+**texto plano**, un bucket por línea. Encima, la primera corrida murió **muda**: con `bash -e` +
+`pipefail`, `grep -v '^$'` devuelve 1 con entrada vacía y mataba el script antes del chequeo que
+iba a explicar el problema.
+
+Se resolvió haciendo que el workflow **imprima la salida cruda** antes de parsear — ahí se vio de
+una. Ahora contempla los dos formatos, tiene la versión del CLI **pineada** (con `@latest` un cambio
+de formato lo rompe en silencio) y corta explícito si el listado sale vacío.
+
+### Lo que queda pendiente
+
+Las keys legacy de Supabase **siguen activas en PROD**: falta esperar a que las PWA cacheadas se
+actualicen solas, **medir** en los logs del gateway cuántos navegadores siguen mandando la vieja, y
+recién cuando dé cero apagarlas y **revocar la JWT signing key HS256**. Ver
+[[reference_supabase_token_filtrado_sin_rotar]] en la memoria.
+
+---
 ## [2026-09-20] update | 🛡️ Auditoría de seguridad, 2ª tanda — OTP de entrega, vencimiento del link de cuenta, MP (commit `17171223`, en `dev`)
 
 Cierra el backlog que había quedado abierto de la auditoría. **Mig 431 aplicada y verificada en DEV, falta en PROD.**

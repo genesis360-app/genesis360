@@ -2,8 +2,8 @@
 title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360, 386, src/pages/EnviosPage.tsx]
-updated: 2026-08-31
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360, 386, 431, src/pages/EnviosPage.tsx]
+updated: 2026-09-22
 ---
 
 # Módulo Envíos
@@ -476,6 +476,30 @@ Relevado con GO (HTML `relevamiento-envios-reglas-negocio.html`, secciones A-I).
   token y arma la ruta. Decisión de GO.
 - `EnviosPage` y `TransportistePage` **avisan** si la firma no se guardó (antes se ignoraba).
 - e2e 148 (mutante, incluye la pantalla del transportista sin sesión).
+
+## 🔒 OTP de entrega endurecido (mig 431, 2026-09-22) — ✅ EN PROD desde `v1.229.0`
+
+El código de 6 dígitos del OTP (EN2/D3, arriba) salía de `random()` de Postgres — **no criptográfico** — y
+`verificar_otp_envio` tiene GRANT a `anon` sin límite de intentos: 1.000.000 de combinaciones de 6 dígitos eran
+fuerza-bruteables sin ningún freno. Hallazgo de la auditoría de seguridad completa del 2026-09-20.
+
+**Ahora:** el código sale de `extensions.gen_random_bytes` (fuente criptográfica), **máximo 5 intentos** por
+código (con `FOR UPDATE` para que el límite no se saltee con pedidos en paralelo), y **un solo código activo
+por envío** — pedir uno nuevo invalida los anteriores en vez de convivir con ellos.
+
+🩸 Gotcha de la prueba en DEV: la 1ª versión elegía "el OTP más reciente" por `enviado_at`, pero dos OTP creados
+en la misma transacción **comparten timestamp** (`NOW()` es el arranque de la transacción) → el desempate
+quedaba indefinido y pedir un código nuevo no desbloqueaba. Se resolvió invalidando explícito. Detalle completo
+en [[wiki/architecture/guards-server-side]] ("Segunda tanda", G9).
+
+## 🔒⏱️ `transportista-subir-archivo`: rate limiting persistente (mig 432, 2026-09-22) — ✅ EN DEV, 🔴 falta PROD
+
+La EF que usa la página pública `/transporte/:token` (sin sesión) limitaba a 30 req/min por IP con un `Map`
+en memoria del isolate de Deno — se perdía en cada cold start y no se compartía entre los isolates en
+paralelo que corre Supabase de la misma función. Ahora cuenta en la tabla `rate_limit_contadores` vía
+`fn_rate_limit_consumir` (atómica). Verificado en DEV: 35 POST → 30×400 + 5×429. Cierra el pendiente 3 del
+backlog de la auditoría de seguridad del 2026-09-20. Ver [[wiki/architecture/edge-functions]] y
+[[wiki/architecture/guards-server-side]] ("G14").
 
 ## Links relacionados
 

@@ -15,6 +15,8 @@ interface AuthState {
   loading: boolean
   initialized: boolean
   needsOnboarding: boolean
+  /** El usuario existe pero está dado de baja (mig 433): tiene sesión y no puede ver nada. */
+  accesoRevocado: boolean
   setUser: (user: User | null) => void
   setTenant: (tenant: Tenant | null) => void
   setSucursal: (id: string | null) => void
@@ -47,6 +49,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   needsOnboarding: false,
+  accesoRevocado: false,
 
   setUser: (user) => set({ user }),
   setTenant: (tenant) => set({ tenant }),
@@ -73,7 +76,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // resuelve fuera de este store: PortalProveedoresPage valida su propia sesión.
         const { data: cuentaProveedor } = await supabase.from('proveedor_accounts')
           .select('id').eq('id', authUserId).maybeSingle()
-        set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: !cuentaProveedor })
+
+        // 🛑 Mig 433: un usuario DADO DE BAJA tampoco puede leer su propia fila (la policy
+        // `users_select` pasa por `get_user_tenant_id()`, que ya no resuelve para él). Sin este
+        // chequeo se lo confundiría con "no tiene negocio" y se lo mandaría a crear uno nuevo con su
+        // misma identidad — que choca contra su fila vieja y muere con un error crudo de SQL.
+        // `fn_estado_usuario_actual` responde solo sobre uno mismo, así que no filtra nada.
+        let revocado = false
+        if (!cuentaProveedor) {
+          const { data: estado } = await supabase.rpc('fn_estado_usuario_actual')
+          revocado = estado === 'inactivo'
+        }
+
+        set({
+          user: null, tenant: null, loading: false, initialized: true,
+          needsOnboarding: !cuentaProveedor && !revocado,
+          accesoRevocado: revocado,
+        })
         return
       }
 

@@ -68,7 +68,7 @@ test('dar de baja corta el acceso de verdad, y "Reactivar" lo devuelve', async (
       await pageContador.goto('/login')
       await pageContador.getByLabel(/email/i).fill(CONTADOR_EMAIL!)
       await pageContador.getByLabel(/contraseña|password/i).fill(CONTADOR_PASSWORD!)
-      await pageContador.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+      await pageContador.getByRole('button', { name: 'Ingresar', exact: true }).click()
 
       // Aserción POSITIVA: la pantalla que explica qué pasó.
       await expect(pageContador.getByRole('heading', { name: 'Tu acceso fue dado de baja' }))
@@ -98,7 +98,7 @@ test('dar de baja corta el acceso de verdad, y "Reactivar" lo devuelve', async (
       await pageVuelta.goto('/login')
       await pageVuelta.getByLabel(/email/i).fill(CONTADOR_EMAIL!)
       await pageVuelta.getByLabel(/contraseña|password/i).fill(CONTADOR_PASSWORD!)
-      await pageVuelta.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+      await pageVuelta.getByRole('button', { name: 'Ingresar', exact: true }).click()
       await pageVuelta.waitForURL('**/dashboard', { timeout: 20000 })
       await expect(pageVuelta.getByRole('heading', { name: 'Tu acceso fue dado de baja' })).toHaveCount(0)
     } finally {

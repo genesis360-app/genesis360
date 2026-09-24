@@ -90,7 +90,7 @@ async function loginContextoNuevo(browser: any, email: string, password: string)
   await pg.goto('/login')
   await pg.getByLabel(/email/i).fill(email)
   await pg.getByLabel(/contraseña|password/i).fill(password)
-  await pg.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+  await pg.getByRole('button', { name: 'Ingresar', exact: true }).click()
   await pg.waitForURL((url: URL) => !url.pathname.startsWith('/login'), { timeout: 15000 })
   // Primer login de este usuario en un contexto nuevo → dispara el tour de bienvenida.
   await pg.evaluate(() => localStorage.setItem('genesis360_walkthrough_v1', 'seen'))

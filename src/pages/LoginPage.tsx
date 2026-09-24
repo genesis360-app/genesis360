@@ -1,8 +1,9 @@
 import { BRAND } from '@/config/brand'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Mail, Lock, Chrome } from 'lucide-react'
+import { Mail, Lock, Chrome, Store, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { emailInterno, normalizarUsuario, normalizarCodigoNegocio } from '@/lib/usuarioLocal'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
@@ -10,15 +11,21 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  // Mig 434: los empleados sin correo entran con el código del negocio + su usuario. La app compone
+  // la dirección interna de Auth de este lado; ellos nunca la ven ni la escriben.
+  const [modoUsuario, setModoUsuario] = useState(false)
+  const [codigoNegocio, setCodigoNegocio] = useState('')
+  const [usuario, setUsuario] = useState('')
   const navigate = useNavigate()
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const identidad = modoUsuario ? emailInterno(usuario, codigoNegocio) : email
+    const { data, error } = await supabase.auth.signInWithPassword({ email: identidad, password })
     if (error) {
       toast.error(error.message === 'Invalid login credentials'
-        ? 'Email o contraseña incorrectos'
+        ? (modoUsuario ? 'Negocio, usuario o contraseña incorrectos' : 'Email o contraseña incorrectos')
         : error.message)
     } else {
       // 🛑 `await` ANTES de navegar. Es el mismo gotcha que el CLAUDE.md documenta para Google
@@ -74,27 +81,72 @@ export default function LoginPage() {
               <div className="w-full border-t border-gray-200 dark:border-gray-700" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-3 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-400">o ingresá con tu email</span>
+              <span className="px-3 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-400">
+                {modoUsuario ? 'o ingresá con tu usuario' : 'o ingresá con tu email'}
+              </span>
             </div>
           </div>
 
           {/* Email form */}
           <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div>
-              <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-              <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
-                <input
-                  id="login-email"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  placeholder="tu@email.com"
-                  className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
-                />
+            {modoUsuario ? (
+              // Mig 434: dos campos en vez de la dirección. El usuario solo tiene que ser único
+              // DENTRO del negocio, así que el código es lo que dice de qué negocio se trata.
+              <>
+                <div>
+                  <label htmlFor="login-negocio" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código del negocio</label>
+                  <div className="relative">
+                    <Store size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                    <input
+                      id="login-negocio"
+                      type="text"
+                      value={codigoNegocio}
+                      onChange={e => setCodigoNegocio(normalizarCodigoNegocio(e.target.value))}
+                      required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      placeholder="elcodigodetunegocio"
+                      className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Te lo da el dueño del negocio.</p>
+                </div>
+
+                <div>
+                  <label htmlFor="login-usuario" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Usuario</label>
+                  <div className="relative">
+                    <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                    <input
+                      id="login-usuario"
+                      type="text"
+                      value={usuario}
+                      onChange={e => setUsuario(normalizarUsuario(e.target.value))}
+                      required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      placeholder="tuusuario"
+                      className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div>
+                <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                  <input
+                    id="login-email"
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                    placeholder="tu@email.com"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contraseña</label>
@@ -120,6 +172,14 @@ export default function LoginPage() {
               {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={() => setModoUsuario(m => !m)}
+            className="w-full mt-4 text-sm text-accent-text font-medium hover:underline"
+          >
+            {modoUsuario ? 'Entrar con un email' : 'No tengo email: entrar con usuario'}
+          </button>
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             ¿No tenés cuenta?{' '}

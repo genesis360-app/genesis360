@@ -33,7 +33,7 @@ setup('autenticar usuario de prueba', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel(/email/i).fill(email)
   await page.getByLabel(/contraseña|password/i).fill(password)
-  await page.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+  await page.getByRole('button', { name: 'Ingresar', exact: true }).click()
 
   // Esperar redirección al dashboard
   await page.waitForURL('**/dashboard', { timeout: 15000 })

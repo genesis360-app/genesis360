@@ -165,7 +165,7 @@ test.describe('LpnAccionesModal → Mover a OTRA sucursal genera traslado (mutan
     await pageSur.goto('/login')
     await pageSur.getByLabel(/email/i).fill(emailSur!)
     await pageSur.getByLabel(/contraseña|password/i).fill(passwordSur!)
-    await pageSur.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+    await pageSur.getByRole('button', { name: 'Ingresar', exact: true }).click()
     await pageSur.waitForURL('**/inventario', { timeout: 15000 })
     // Primer login de este usuario en un contexto nuevo → dispara el tour de bienvenida
     // (mismo dismiss que usan auth.*.setup.ts para los demás roles de prueba).

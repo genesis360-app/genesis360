@@ -49,6 +49,11 @@ export type MovimientoTipo =
 export interface Tenant {
   id: string
   nombre: string
+  /**
+   * Código corto e INMUTABLE del negocio (mig 434). Lo escribe el empleado al ingresar sin correo,
+   * junto con su usuario. Cambiarlo dejaría afuera a todos esos usuarios, así que no se edita.
+   */
+  codigo: string
   tipo_comercio?: string
   pais: string
   subscription_status: SubscriptionStatus
@@ -118,6 +123,10 @@ export interface User {
   puede_ver_todas?: boolean
   /** Caja predeterminada del usuario (mig 239): se auto-selecciona en POS/Caja/traspasos */
   caja_preferida_id?: string | null
+  /** Nombre de usuario para entrar sin correo (mig 434). NULL = entra con su email real. */
+  usuario?: string | null
+  /** true = la contraseña la puso el dueño y hay que cambiarla antes de usar la app (mig 434) */
+  debe_cambiar_password?: boolean
   /** Permisos cargados en runtime desde roles_custom.permisos — no existe en DB directamente */
   permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null
   created_at: string

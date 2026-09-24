@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-24T05:36:22.400Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260924051852 · 171 tablas
+-- Generado 2026-09-24T23:43:59.240Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260924225750 · 171 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -3817,6 +3817,7 @@ CREATE INDEX actividad_log_serie_idx ON public.actividad_log USING btree (tenant
 CREATE INDEX actividad_log_tenant_idx ON public.actividad_log USING btree (tenant_id, created_at DESC);
 CREATE INDEX actividad_log_transaccion_idx ON public.actividad_log USING btree (transaccion_id);
 CREATE INDEX actividad_log_usuario_idx ON public.actividad_log USING btree (tenant_id, usuario_id);
+CREATE UNIQUE INDEX caja_sesiones_una_abierta_por_caja ON public.caja_sesiones USING btree (caja_id) WHERE (estado = 'abierta'::text);
 CREATE UNIQUE INDEX clientes_dni_tenant ON public.clientes USING btree (tenant_id, dni) WHERE (dni IS NOT NULL);
 CREATE UNIQUE INDEX empleados_tenant_user_unique ON public.empleados USING btree (tenant_id, user_id) WHERE (user_id IS NOT NULL);
 CREATE INDEX idx_actividad_log_usuario_id ON public.actividad_log USING btree (usuario_id);
@@ -7242,6 +7243,35 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_una_sesion_abierta()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_quien text;
+BEGIN
+  IF NEW.estado <> 'abierta' THEN RETURN NEW; END IF;
+
+  SELECT coalesce(u.nombre_display, 'otro usuario') INTO v_quien
+    FROM caja_sesiones cs
+    LEFT JOIN users u ON u.id = cs.usuario_id
+   WHERE cs.caja_id = NEW.caja_id
+     AND cs.estado = 'abierta'
+     AND cs.id <> NEW.id
+   LIMIT 1;
+
+  IF FOUND THEN
+    RAISE EXCEPTION 'Esa caja ya tiene una sesión abierta (la abrió %). Cerrala antes de abrir otra.', v_quien
+      USING ERRCODE = 'unique_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_iniciar_armado_kit_auto(p_tenant_id uuid, p_kit_producto_id uuid, p_cantidad numeric, p_canal text, p_sucursal_id uuid DEFAULT NULL::uuid, p_origen_ref text DEFAULT NULL::text, p_notas text DEFAULT NULL::text)
@@ -13379,6 +13409,7 @@ CREATE TRIGGER trg_caja_mov_cierre BEFORE DELETE OR UPDATE ON public.caja_movimi
 CREATE TRIGGER trg_validar_moneda_cuenta_origen BEFORE INSERT OR UPDATE OF moneda, cuenta_origen_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_cuenta_origen();
 CREATE TRIGGER trg_validar_moneda_movimiento BEFORE INSERT OR UPDATE OF moneda, sesion_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_sesion();
 CREATE TRIGGER trg_caja_ses_cierre BEFORE DELETE OR UPDATE ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION trg_caja_ses_periodo_cerrado();
+CREATE TRIGGER trg_guard_una_sesion_abierta BEFORE INSERT OR UPDATE OF estado ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_guard_una_sesion_abierta();
 CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_set_caja_sesion_numero();
 CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
 CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();

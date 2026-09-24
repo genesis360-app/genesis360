@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { monedaProductoImportada, margenGenerado, margenEntraEnLaBase } from '@/lib/importarProductosMoneda'
+import { monedaProductoImportada, margenGenerado, margenEntraEnLaBase, montoYMonedaParaExportar } from '@/lib/importarProductosMoneda'
 
 // A0 — el importador de productos y las columnas de moneda.
 // Contexto en `src/lib/importarProductosMoneda.ts` y en
@@ -128,5 +128,36 @@ describe('margenGenerado / margenEntraEnLaBase', () => {
     // La columna es numeric(5,2): -999.99 es el piso. No se puede perder más del 100% igual,
     // pero el guard es simétrico a propósito, por si algún día el costo llega negativo.
     expect(margenEntraEnLaBase(100, -999999)).toBe(false)
+  })
+})
+
+// ── Ida y vuelta: exportar productos → volver a importar ─────────────────────
+describe('montoYMonedaParaExportar', () => {
+  it('un producto en pesos sale con su precio y ARS', () => {
+    expect(montoYMonedaParaExportar(2500, null, 'local')).toEqual({ monto: 2500, moneda: 'ARS' })
+  })
+
+  it('🛑 un producto en dólares sale con el monto en DÓLARES, no con el espejo en pesos', () => {
+    // Exportar 140000 con moneda USD lo volvería a multiplicar por la cotización al reimportar.
+    expect(montoYMonedaParaExportar(140000, 100, 'usd')).toEqual({ monto: 100, moneda: 'USD' })
+  })
+
+  it('tolera nulos sin romper', () => {
+    expect(montoYMonedaParaExportar(null, null, 'local')).toEqual({ monto: 0, moneda: 'ARS' })
+    expect(montoYMonedaParaExportar(null, null, 'usd')).toEqual({ monto: 0, moneda: 'USD' })
+  })
+
+  it('EL IDA Y VUELTA NO DEFORMA NADA: exportar → importar devuelve lo mismo', () => {
+    for (const original of [
+      { ars: 2500,   usd: null, moneda: 'local' },
+      { ars: 140000, usd: 100,  moneda: 'usd'   },
+      { ars: 84000,  usd: 60,   moneda: 'usd'   },
+    ]) {
+      const exportado = montoYMonedaParaExportar(original.ars, original.usd, original.moneda)
+      const reimportado = monedaProductoImportada(exportado.monto, exportado.moneda, COTIZ)!
+      expect(reimportado.moneda).toBe(original.moneda)
+      expect(reimportado.precioUsd).toBe(original.usd)
+      expect(reimportado.precioArs).toBe(original.ars)
+    }
   })
 })

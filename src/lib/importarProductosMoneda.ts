@@ -88,3 +88,22 @@ export function margenEntraEnLaBase(precioCostoArs: number, precioVentaArs: numb
   if (m === null) return true // la base guarda 0 cuando el costo es 0: nunca desborda
   return Math.abs(m) <= MARGEN_MAX_PCT
 }
+
+/**
+ * La inversa de `monedaProductoImportada`: cómo sale un precio al EXPORTAR productos, para que el
+ * archivo se pueda volver a importar sin deformarse.
+ *
+ * 🛑 Si el producto está en dólares hay que exportar el **monto en dólares** (`precio_usd`), no el
+ * espejo en pesos: el importador interpreta la columna según `precio_*_moneda`, así que exportar el
+ * espejo con la moneda en `USD` lo multiplicaría por la cotización en cada ida y vuelta.
+ */
+export function montoYMonedaParaExportar(
+  precioArs: number | null | undefined,
+  precioUsd: number | null | undefined,
+  moneda: string | null | undefined,
+): { monto: number; moneda: 'ARS' | 'USD' } {
+  if (moneda === 'usd') {
+    return { monto: Number(precioUsd) || 0, moneda: 'USD' }
+  }
+  return { monto: Number(precioArs) || 0, moneda: 'ARS' }
+}

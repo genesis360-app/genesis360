@@ -18,6 +18,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { montoYMonedaParaExportar } from '@/lib/importarProductosMoneda'
 import { puedeVerCosto } from '@/lib/permisosCosto'
 import { formatMoneda, fmtPesos } from '@/lib/formato'
 import toast from 'react-hot-toast'
@@ -728,14 +729,41 @@ export default function ProductosPage() {
     }
   }
 
+  // El archivo exportado usa LAS MISMAS COLUMNAS que la plantilla del importador, así que se puede
+  // editar en Excel y volver a subir sin perder nada (D-3). Antes emitía solo 10 columnas.
+  // `id` y `stock_actual` van de yapa para leerlo: el importador los ignora (el stock se mueve por
+  // inventario, nunca por esta planilla).
   const exportarProductos = (format: 'json' | 'csv') => {
-    const rows = filtered.map(p => ({
-      id: p.id, nombre: p.nombre, sku: p.sku,
-      precio_venta: p.precio_venta, precio_costo: p.precio_costo,
-      stock_actual: p.stock_actual, stock_minimo: p.stock_minimo,
-      unidad_medida: p.unidad_medida, activo: p.activo,
-      categoria: (p as any).categorias?.nombre ?? '',
-    }))
+    const siNo = (v: unknown) => (v ? 'SI' : 'NO')
+    const rows = filtered.map(p => {
+      const costo = montoYMonedaParaExportar(p.precio_costo, (p as any).precio_costo_usd, (p as any).moneda_costo)
+      const venta = montoYMonedaParaExportar(p.precio_venta, (p as any).precio_usd, (p as any).moneda_venta)
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        sku: p.sku,
+        codigo_barras: (p as any).codigo_barras ?? '',
+        categoria: (p as any).categorias?.nombre ?? '',
+        proveedor: (p as any).proveedores?.nombre ?? '',
+        precio_costo: costo.monto,
+        precio_costo_moneda: costo.moneda,
+        precio_venta: venta.monto,
+        precio_venta_moneda: venta.moneda,
+        stock_actual: p.stock_actual,
+        stock_minimo: p.stock_minimo,
+        unidad_medida: p.unidad_medida,
+        descripcion: (p as any).descripcion ?? '',
+        notas: (p as any).notas ?? '',
+        alicuota_iva: (p as any).alicuota_iva ?? '',
+        margen_objetivo: (p as any).margen_objetivo ?? '',
+        tiene_series: siNo((p as any).tiene_series),
+        tiene_lote: siNo((p as any).tiene_lote),
+        tiene_vencimiento: siNo((p as any).tiene_vencimiento),
+        regla_inventario: (p as any).regla_inventario ?? '',
+        es_kit: siNo((p as any).es_kit),
+        activo: siNo(p.activo),
+      }
+    })
     if (format === 'json') {
       const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob)

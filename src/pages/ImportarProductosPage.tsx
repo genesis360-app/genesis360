@@ -236,11 +236,18 @@ export default function ImportarProductosPage() {
         const skus = rows.map(r => String(r.sku || '').trim().toUpperCase()).filter(Boolean)
         // `moneda_venta`/`moneda_costo` se traen para poder rechazar un precio ambiguo: actualizar el
         // precio de un producto que está en dólares SIN decir la moneda no se puede resolver solo.
+        // `moneda_*` para rechazar un precio ambiguo, y `precio_*` porque el chequeo de margen
+        // necesita el lado que el archivo NO trae: si no, con un CSV de una sola columna se compara
+        // contra 0 y el aviso nunca salta.
         const { data: existentes } = await supabase.from('productos')
-          .select('sku, moneda_venta, moneda_costo').eq('tenant_id', tenant!.id).in('sku', skus)
+          .select('sku, moneda_venta, moneda_costo, precio_costo, precio_venta').eq('tenant_id', tenant!.id).in('sku', skus)
         const skusExistentes = new Set((existentes ?? []).map((p: any) => p.sku.toUpperCase()))
-        const monedaPorSku = new Map<string, { venta: string | null; costo: string | null }>(
-          (existentes ?? []).map((p: any) => [p.sku.toUpperCase(), { venta: p.moneda_venta, costo: p.moneda_costo }]),
+        const actualPorSku = new Map<string, { venta: string | null; costo: string | null; precioCostoArs: number; precioVentaArs: number }>(
+          (existentes ?? []).map((p: any) => [p.sku.toUpperCase(), {
+            venta: p.moneda_venta, costo: p.moneda_costo,
+            precioCostoArs: Number(p.precio_costo) || 0,
+            precioVentaArs: Number(p.precio_venta) || 0,
+          }]),
         )
 
         setFilasProducto(rows.map((row, idx) => {
@@ -323,7 +330,7 @@ export default function ImportarProductosPage() {
           // moneda, el número es ambiguo (¿100 pesos o 100 dólares?). Asumir pesos lo convertiría en
           // silencio a ~1/1400 de su valor. Se rechaza la fila en vez de adivinar.
           if (yaExiste) {
-            const m = monedaPorSku.get(sku)
+            const m = actualPorSku.get(sku)
             const pv = problemaDePrecio(columnas, m?.venta, 'venta')
             if (pv === 'sin-moneda') errores.push('Este producto está en dólares: para cambiarle el precio incluí también la columna precio_venta_moneda')
             if (pv === 'sin-precio') errores.push('Trajiste precio_venta_moneda sin precio_venta: así el precio quedaría en 0. Incluí las dos columnas')
@@ -345,8 +352,16 @@ export default function ImportarProductosPage() {
             // contra precio en USD, que queda multiplicado por la cotización).
             const c = monedaProductoImportada(precio_costo, precio_costo_moneda, cotizacionUsdAArs)
             const v = monedaProductoImportada(precio_venta, precio_venta_moneda, cotizacionUsdAArs)
-            if (c && v && !margenEntraEnLaBase(c.precioArs, v.precioArs)) {
-              const m = margenGenerado(c.precioArs, v.precioArs)
+            // 🛑 En una actualización parcial el archivo trae un solo lado del par. Comparar contra 0
+            // hacía que el aviso NUNCA saltara (con costo 0 el margen "siempre entra"), y el overflow
+            // aparecía recién como error crudo de Postgres al confirmar — justo con el CSV de una
+            // columna que este cambio promueve. Se usa el valor que ya está en la base.
+            const actual = yaExiste ? actualPorSku.get(sku) : undefined
+            const costoParaMargen = columnas.has('precio_costo') || !actual ? c?.precioArs : actual.precioCostoArs
+            const ventaParaMargen = columnas.has('precio_venta') || !actual ? v?.precioArs : actual.precioVentaArs
+            if (c && v && costoParaMargen !== undefined && ventaParaMargen !== undefined
+                && !margenEntraEnLaBase(costoParaMargen, ventaParaMargen)) {
+              const m = margenGenerado(costoParaMargen, ventaParaMargen)
               errores.push(
                 `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT}%` +
                 (precio_costo_moneda !== precio_venta_moneda ? ' — revisá que el costo y el precio estén en la misma moneda' : ''),
@@ -457,8 +472,9 @@ export default function ImportarProductosPage() {
           es_kit: fila.es_kit,
         }
 
-        const hasEstr = !!(fila.estr_nombre || fila.estr_unidades_por_caja || fila.estr_cajas_por_pallet ||
-          fila.estr_peso_unidad || fila.estr_alto_unidad || fila.estr_peso_caja || fila.estr_peso_pallet)
+        // Desde las columnas del archivo, no desde una lista fija: la anterior cubría 7 de las 14
+        // columnas `estr_*`, así que una fila con solo `estr_largo_unidad` fallaba entera.
+        const hasEstr = fila.columnas.some(c => c.startsWith('estr_'))
         let productoId: string | null = null
 
         if (fila.estado === 'nuevo') {

@@ -729,8 +729,10 @@ export default function ProductosPage() {
     }
   }
 
-  // El archivo exportado usa LAS MISMAS COLUMNAS que la plantilla del importador, así que se puede
-  // editar en Excel y volver a subir sin perder nada (D-3). Antes emitía solo 10 columnas.
+  // El archivo exportado trae las columnas de PRODUCTO de la plantilla del importador, así que se
+  // puede editar en Excel y volver a subir sin perder nada (D-3). Antes emitía solo 10.
+  // NO incluye las 14 columnas `estr_*` (empaque): eso vive en otra tabla y se carga aparte. Como una
+  // columna ausente significa "no tocar", reimportar este archivo no borra el empaque de nadie.
   // `id` y `stock_actual` van de yapa para leerlo: el importador los ignora (el stock se mueve por
   // inventario, nunca por esta planilla).
   const exportarProductos = (format: 'json' | 'csv') => {

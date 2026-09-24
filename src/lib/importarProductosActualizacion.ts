@@ -92,18 +92,33 @@ export function payloadParaActualizar<T extends Record<string, unknown>>(
 }
 
 /**
- * ¿Actualizar el precio de este producto es ambiguo?
+ * Qué le falta a esta fila para poder tocar el precio (o el costo) sin adivinar.
  *
- * 🛑 REGLA #0. Si el producto está hoy en dólares y el archivo trae el precio SIN la columna de
- * moneda, el número es ambiguo: no se sabe si son 100 pesos o 100 dólares. Asumir pesos lo
- * convertiría en silencio a ~1/1400 de su valor; asumir dólares sería inventar. Se rechaza la fila.
+ * 🛑 REGLA #0, las dos direcciones:
+ *
+ * - `'sin-moneda'`: el producto está hoy en dólares y el archivo trae el precio SIN la columna de
+ *   moneda. El número es ambiguo — ¿100 pesos o 100 dólares? Asumir pesos lo dejaría a ~1/1400 de su
+ *   valor; asumir dólares sería inventar.
+ * - `'sin-precio'`: el archivo trae la columna de moneda SIN el precio. Como el precio y su moneda se
+ *   escriben en grupo, y una columna ausente se parsea como 0, esto **zerorearía el precio** de un
+ *   producto existente en silencio. Pasa con el CSV más natural del mundo: "quiero corregirle solo la
+ *   moneda a este producto".
+ *
+ * Devuelve `null` si no hay nada que objetar.
  */
-export function precioAmbiguo(
+export function problemaDePrecio(
   columnas: Set<string>,
   monedaActual: string | null | undefined,
   cual: 'venta' | 'costo',
-): boolean {
+): 'sin-moneda' | 'sin-precio' | null {
   const colPrecio = cual === 'venta' ? 'precio_venta' : 'precio_costo'
   const colMoneda = cual === 'venta' ? 'precio_venta_moneda' : 'precio_costo_moneda'
-  return monedaActual === 'usd' && columnas.has(colPrecio) && !columnas.has(colMoneda)
+
+  const tienePrecio = columnas.has(colPrecio)
+  const tieneMoneda = columnas.has(colMoneda)
+
+  // La moneda sola nunca alcanza, sea cual sea la moneda actual del producto.
+  if (tieneMoneda && !tienePrecio) return 'sin-precio'
+  if (tienePrecio && !tieneMoneda && monedaActual === 'usd') return 'sin-moneda'
+  return null
 }

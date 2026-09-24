@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  celdaTieneValor, columnasConValor, payloadParaActualizar, precioAmbiguo,
+  celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio,
 } from '@/lib/importarProductosActualizacion'
 
 // D-3 (`tests/specs/uat-modo-basico.md` §66.8): al actualizar, el importador reescribía la fila
@@ -138,28 +138,44 @@ describe('payloadParaActualizar — el fix de D-3', () => {
   })
 })
 
-describe('precioAmbiguo — REGLA #0', () => {
-  it('producto en dólares + precio sin moneda = ambiguo', () => {
-    // ¿100 pesos o 100 dólares? Asumir pesos lo dejaría a ~1/1400 de su valor.
-    expect(precioAmbiguo(new Set(['precio_venta']), 'usd', 'venta')).toBe(true)
+describe('problemaDePrecio — REGLA #0, las dos direcciones', () => {
+  describe('precio sin moneda', () => {
+    it('producto en dólares = ambiguo', () => {
+      // ¿100 pesos o 100 dólares? Asumir pesos lo dejaría a ~1/1400 de su valor.
+      expect(problemaDePrecio(new Set(['precio_venta']), 'usd', 'venta')).toBe('sin-moneda')
+    })
+
+    it('si el archivo aclara la moneda, no hay problema', () => {
+      expect(problemaDePrecio(new Set(['precio_venta', 'precio_venta_moneda']), 'usd', 'venta')).toBeNull()
+    })
+
+    it('un producto en pesos nunca es ambiguo', () => {
+      expect(problemaDePrecio(new Set(['precio_venta']), 'local', 'venta')).toBeNull()
+      expect(problemaDePrecio(new Set(['precio_venta']), null, 'venta')).toBeNull()
+    })
   })
 
-  it('si el archivo aclara la moneda, no hay ambigüedad', () => {
-    expect(precioAmbiguo(new Set(['precio_venta', 'precio_venta_moneda']), 'usd', 'venta')).toBe(false)
+  describe('🛑 moneda sin precio — zerorearía el precio', () => {
+    it('traer solo la columna de moneda se rechaza, esté el producto en pesos o en dólares', () => {
+      // El precio y su moneda se escriben en grupo, y una columna ausente se parsea como 0: sin este
+      // chequeo, "quiero corregirle solo la moneda" dejaba el producto en $0 sin ningún aviso.
+      expect(problemaDePrecio(new Set(['precio_venta_moneda']), 'local', 'venta')).toBe('sin-precio')
+      expect(problemaDePrecio(new Set(['precio_venta_moneda']), 'usd', 'venta')).toBe('sin-precio')
+      expect(problemaDePrecio(new Set(['precio_venta_moneda']), null, 'venta')).toBe('sin-precio')
+    })
+
+    it('con las dos columnas no hay problema', () => {
+      expect(problemaDePrecio(new Set(['precio_venta', 'precio_venta_moneda']), 'local', 'venta')).toBeNull()
+    })
   })
 
-  it('un producto en pesos nunca es ambiguo', () => {
-    expect(precioAmbiguo(new Set(['precio_venta']), 'local', 'venta')).toBe(false)
-    expect(precioAmbiguo(new Set(['precio_venta']), null, 'venta')).toBe(false)
-  })
-
-  it('si el archivo no toca el precio, no hay nada que decidir', () => {
-    expect(precioAmbiguo(new Set(['descripcion']), 'usd', 'venta')).toBe(false)
+  it('si el archivo no toca ni el precio ni la moneda, no hay nada que decidir', () => {
+    expect(problemaDePrecio(new Set(['descripcion']), 'usd', 'venta')).toBeNull()
   })
 
   it('el costo se evalúa por separado de la venta', () => {
-    const cols = new Set(['precio_costo'])
-    expect(precioAmbiguo(cols, 'usd', 'costo')).toBe(true)
-    expect(precioAmbiguo(cols, 'usd', 'venta')).toBe(false)
+    expect(problemaDePrecio(new Set(['precio_costo']), 'usd', 'costo')).toBe('sin-moneda')
+    expect(problemaDePrecio(new Set(['precio_costo']), 'usd', 'venta')).toBeNull()
+    expect(problemaDePrecio(new Set(['precio_costo_moneda']), 'local', 'costo')).toBe('sin-precio')
   })
 })

@@ -745,8 +745,10 @@ export default function ProductosPage() {
         codigo_barras: (p as any).codigo_barras ?? '',
         categoria: (p as any).categorias?.nombre ?? '',
         proveedor: (p as any).proveedores?.nombre ?? '',
-        precio_costo: costo.monto,
-        precio_costo_moneda: costo.moneda,
+        // El costo y el margen están ocultos en la grilla para CAJERO/DEPÓSITO/RRHH (`verCosto`);
+        // el export los entregaba igual. Ocultar en la UI y no en la descarga no es ocultar nada.
+        precio_costo: verCosto ? costo.monto : '',
+        precio_costo_moneda: verCosto ? costo.moneda : '',
         precio_venta: venta.monto,
         precio_venta_moneda: venta.moneda,
         stock_actual: p.stock_actual,
@@ -755,7 +757,7 @@ export default function ProductosPage() {
         descripcion: (p as any).descripcion ?? '',
         notas: (p as any).notas ?? '',
         alicuota_iva: (p as any).alicuota_iva ?? '',
-        margen_objetivo: (p as any).margen_objetivo ?? '',
+        margen_objetivo: verCosto ? ((p as any).margen_objetivo ?? '') : '',
         tiene_series: siNo((p as any).tiene_series),
         tiene_lote: siNo((p as any).tiene_lote),
         tiene_vencimiento: siNo((p as any).tiene_vencimiento),
@@ -772,7 +774,9 @@ export default function ProductosPage() {
       const headers = Object.keys(rows[0] ?? {})
       const lines = rows.map(r => headers.map(h => {
         const v = String((r as any)[h] ?? '')
-        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
+        // El salto de linea importa: `descripcion` y `notas` son texto libre, y un Enter partia
+        // la fila del CSV en dos: al reimportar, eso corre todas las columnas siguientes.
+        return /[,"\n\r]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v
       }).join(','))
       const csv = '﻿' + [headers.join(','), ...lines].join('\n')
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })

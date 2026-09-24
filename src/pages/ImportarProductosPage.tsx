@@ -9,7 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
-import { columnasConValor, payloadParaActualizar, precioAmbiguo } from '@/lib/importarProductosActualizacion'
+import { celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
@@ -257,15 +257,23 @@ export default function ImportarProductosPage() {
           const unidad = String(row.unidad_medida || 'unidad').trim().toLowerCase()
 
           // alicuota_iva
-          const ivaRaw = parseFloat(String(row.alicuota_iva || '21').replace(',', '.'))
-          const alicuota_iva = isNaN(ivaRaw) ? 21 : ivaRaw
+          // 🛑 Antes: `String(row.alicuota_iva || '21')`. Con 0 (Exento), el `||` devolvía '21' y el
+          // producto se importaba con IVA 21% SIN ningún error visible, porque 21 es un valor válido.
+          // Mismo patrón que ya usaba `ProductoFormPage` (`Number.isFinite`, no `||`).
+          const ivaRaw = celdaTieneValor(row.alicuota_iva)
+            ? parseFloat(String(row.alicuota_iva).replace(',', '.'))
+            : 21
+          const alicuota_iva = Number.isFinite(ivaRaw) ? ivaRaw : 21
           if (row.alicuota_iva !== '' && row.alicuota_iva != null && !ALICUOTAS_VALIDAS.includes(alicuota_iva)) {
             errores.push(`IVA "${row.alicuota_iva}" inválido (0/10.5/21/27)`)
           }
 
           // margen_objetivo
-          const margenStr = String(row.margen_objetivo || '').trim()
-          const margen_objetivo = margenStr ? (parseFloat(margenStr.replace(',', '.')) || undefined) : undefined
+          // Mismo cuidado que con el IVA: un `0` explícito es un valor, no un vacío.
+          const margenNum = celdaTieneValor(row.margen_objetivo)
+            ? parseFloat(String(row.margen_objetivo).replace(',', '.'))
+            : NaN
+          const margen_objetivo = Number.isFinite(margenNum) ? margenNum : undefined
           if (margen_objetivo !== undefined && (margen_objetivo < 0 || margen_objetivo > 100)) {
             errores.push('Margen objetivo debe ser entre 0 y 100')
           }
@@ -316,12 +324,12 @@ export default function ImportarProductosPage() {
           // silencio a ~1/1400 de su valor. Se rechaza la fila en vez de adivinar.
           if (yaExiste) {
             const m = monedaPorSku.get(sku)
-            if (precioAmbiguo(columnas, m?.venta, 'venta')) {
-              errores.push('Este producto está en dólares: para cambiarle el precio incluí también la columna precio_venta_moneda')
-            }
-            if (precioAmbiguo(columnas, m?.costo, 'costo')) {
-              errores.push('El costo de este producto está en dólares: incluí también la columna precio_costo_moneda')
-            }
+            const pv = problemaDePrecio(columnas, m?.venta, 'venta')
+            if (pv === 'sin-moneda') errores.push('Este producto está en dólares: para cambiarle el precio incluí también la columna precio_venta_moneda')
+            if (pv === 'sin-precio') errores.push('Trajiste precio_venta_moneda sin precio_venta: así el precio quedaría en 0. Incluí las dos columnas')
+            const pc = problemaDePrecio(columnas, m?.costo, 'costo')
+            if (pc === 'sin-moneda') errores.push('El costo de este producto está en dólares: incluí también la columna precio_costo_moneda')
+            if (pc === 'sin-precio') errores.push('Trajiste precio_costo_moneda sin precio_costo: así el costo quedaría en 0. Incluí las dos columnas')
           }
           if (!MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push('Moneda costo inválida')
           if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push('Moneda venta inválida')
@@ -464,11 +472,15 @@ export default function ImportarProductosPage() {
           // antes se reescribía la fila entera y se perdían proveedor, descripción, código de barras,
           // alícuota de IVA y las marcas de trazabilidad.
           const parcial = payloadParaActualizar(payload, new Set(fila.columnas))
-          if (Object.keys(parcial).length === 0) {
+          // Una fila puede traer SOLO columnas de empaque (`estr_*`), que no viven en `productos`:
+          // ahí no hay UPDATE que hacer, pero el empaque de más abajo sí se aplica.
+          if (Object.keys(parcial).length === 0 && !hasEstr) {
             throw new Error('La fila no trae ninguna columna para actualizar')
           }
-          const { error: errUpd } = await supabase.from('productos').update(parcial).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
-          if (errUpd) throw errUpd
+          if (Object.keys(parcial).length > 0) {
+            const { error: errUpd } = await supabase.from('productos').update(parcial).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
+            if (errUpd) throw errUpd
+          }
           if (hasEstr) {
             const { data: p } = await supabase.from('productos').select('id').eq('sku', fila.sku).eq('tenant_id', tenant!.id).single()
             productoId = p?.id ?? null

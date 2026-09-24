@@ -437,8 +437,20 @@ export default function UsuariosPage() {
         )}
       </div>
 
-      {/* Barra de uso */}
-      {limits && limits.max_usuarios < 999 && (
+      {/* Barra de uso.
+          `max_usuarios = -1` es el centinela de "sin límite", y `-1 < 999` da true: sin este caso
+          aparte, un plan ilimitado mostraba "13 de -1 usuarios · 0%". Mismo tratamiento que ya le
+          daba ProductosPage a `max_productos`. */}
+      {limits && limits.max_usuarios === -1 && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm">
+          <User size={15} className="text-gray-400 dark:text-gray-500" />
+          <span className="text-gray-500 dark:text-gray-400 font-medium">
+            {limits.usuarios_actuales} usuario{limits.usuarios_actuales !== 1 ? 's' : ''}
+          </span>
+          <span className="text-xs text-green-600 dark:text-green-400">· Sin límite en tu plan</span>
+        </div>
+      )}
+      {limits && limits.max_usuarios !== -1 && limits.max_usuarios < 999 && (
         <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm
           ${limits.pct_usuarios >= 90 ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700'}`}>
           <User size={15} className={limits.pct_usuarios >= 90 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'} />

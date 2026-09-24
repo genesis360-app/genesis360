@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-22T23:07:01.192Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260922230325 · 171 tablas
+-- Generado 2026-09-24T05:36:22.400Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260924051852 · 171 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2496,7 +2496,8 @@ CREATE TABLE public.tenants (
   compras_cotizacion_roles_permitidos jsonb,
   telefono text,
   repositor_anticipacion_min integer NOT NULL DEFAULT 60,
-  cuenta_token_dias integer NOT NULL DEFAULT 90
+  cuenta_token_dias integer NOT NULL DEFAULT 90,
+  codigo text NOT NULL
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2631,7 +2632,9 @@ CREATE TABLE public.users (
   rol_custom_id uuid,
   sucursal_id uuid,
   puede_ver_todas boolean NOT NULL DEFAULT false,
-  caja_preferida_id uuid
+  caja_preferida_id uuid,
+  usuario text,
+  debe_cambiar_password boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.venta_auditoria (
@@ -3222,6 +3225,7 @@ ALTER TABLE public.tenants ADD CONSTRAINT tenants_cc_enforcement_chk CHECK ((cc_
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_cc_morosidad_chk CHECK ((cc_morosidad_politica = ANY (ARRAY['permitir'::text, 'bloqueo_cc'::text, 'bloqueo_total'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_cliente_datos_minimos_check CHECK ((cliente_datos_minimos = ANY (ARRAY['nombre'::text, 'nombre_dni'::text, 'nombre_dni_email'::text, 'todos'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_cliente_obligatorio_check CHECK ((cliente_obligatorio = ANY (ARRAY['siempre'::text, 'reservas'::text, 'nunca'::text])));
+ALTER TABLE public.tenants ADD CONSTRAINT tenants_codigo_formato CHECK ((codigo ~ '^[a-z0-9]{3,20}$'::text));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_conteo_modo_check CHECK ((conteo_modo = ANY (ARRAY['rapido'::text, 'guiado'::text, 'elegir'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_envio_peso_fuente_chk CHECK ((envio_peso_fuente = ANY (ARRAY['manual'::text, 'producto'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_gastos_dias_alerta_anticipo_oc_check CHECK (((gastos_dias_alerta_anticipo_oc >= 1) AND (gastos_dias_alerta_anticipo_oc <= 365)));
@@ -3260,6 +3264,7 @@ ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisica
 ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisicas_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 ALTER TABLE public.users ADD CONSTRAINT users_rol_check CHECK ((rol = ANY (ARRAY['DUEÑO'::text, 'SUPER_USUARIO'::text, 'SUPERVISOR'::text, 'CAJERO'::text, 'ADMIN'::text, 'RRHH'::text, 'DEPOSITO'::text, 'CONTADOR'::text, 'VIEWER'::text])));
+ALTER TABLE public.users ADD CONSTRAINT users_usuario_formato CHECK (((usuario IS NULL) OR (usuario ~ '^[a-z0-9][a-z0-9_-]{2,29}$'::text)));
 ALTER TABLE public.venta_auditoria ADD CONSTRAINT venta_auditoria_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_check CHECK ((cantidad > (0)::numeric));
@@ -4339,6 +4344,7 @@ CREATE INDEX idx_wms_tareas_tenant ON public.wms_tareas USING btree (tenant_id);
 CREATE INDEX idx_wms_tareas_tenant_estado_usuario ON public.wms_tareas USING btree (tenant_id, estado, usuario_asignado_id);
 CREATE INDEX idx_zonas_sucursal ON public.zonas USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_zonas_tenant ON public.zonas USING btree (tenant_id);
+CREATE UNIQUE INDEX tenants_codigo_key ON public.tenants USING btree (codigo);
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
 CREATE UNIQUE INDEX uq_addon_batch_programado ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = ANY (ARRAY['programado'::text, 'esperando_cobro'::text]));
@@ -4356,6 +4362,7 @@ CREATE UNIQUE INDEX uq_tenant_addons_mp_payment ON public.tenant_addons USING bt
 CREATE UNIQUE INDEX uq_tenant_certificates_emisor ON public.tenant_certificates USING btree (emisor_id);
 CREATE UNIQUE INDEX uq_tenant_certificates_tenant_legacy ON public.tenant_certificates USING btree (tenant_id) WHERE (emisor_id IS NULL);
 CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));
+CREATE UNIQUE INDEX users_tenant_usuario_key ON public.users USING btree (tenant_id, usuario) WHERE (usuario IS NOT NULL);
 -- ============================================================
 -- FUNCIONES
 -- ============================================================
@@ -6104,6 +6111,21 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_estado_usuario_actual()
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT CASE
+    WHEN auth.uid() IS NULL THEN 'sin_sesion'
+    WHEN EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND coalesce(activo, true)) THEN 'activo'
+    WHEN EXISTS (SELECT 1 FROM users WHERE id = auth.uid()) THEN 'inactivo'
+    ELSE 'sin_usuario'
+  END
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_estructura_guardar_niveles(p_estructura_id uuid, p_niveles jsonb)
  RETURNS void
  LANGUAGE plpgsql
@@ -6406,6 +6428,38 @@ BEGIN
 
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_generar_codigo_tenant(p_nombre text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_base   text := coalesce(public.fn_slug_codigo(p_nombre), 'negocio');
+  v_cand   text;
+  v_i      int := 1;
+BEGIN
+  -- El CHECK exige 3 caracteres como mínimo: "SA" o "3D" son nombres de negocio perfectamente
+  -- posibles, y sin esto el INSERT moriría con un error de constraint en medio del alta.
+  IF length(v_base) < 3 THEN v_base := v_base || 'neg'; END IF;
+
+  v_cand := v_base;
+  WHILE EXISTS (SELECT 1 FROM tenants WHERE codigo = v_cand) LOOP
+    v_i := v_i + 1;
+    IF v_i <= 999 THEN
+      v_cand := left(v_base, 14) || v_i::text;                          -- 14 + 3 = 17, entra en el CHECK
+    ELSE
+      -- Tope: con un sufijo numérico creciente, el candidato n° 1.000.000 mediría 21 caracteres y
+      -- violaría `tenants_codigo_formato`. Al azar mide siempre 6 (14 + 6 = 20, el máximo exacto).
+      v_cand := left(v_base, 14) || substr(md5(random()::text), 1, 6);
+    END IF;
+  END LOOP;
+
+  RETURN v_cand;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_generar_tarea_repositor_estado()
@@ -7093,6 +7147,57 @@ BEGIN
   END LOOP;
 
   RETURN;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_baja_usuario()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Solo interesa la transición activo -> inactivo.
+  IF coalesce(NEW.activo, true) OR NOT coalesce(OLD.activo, true) THEN
+    RETURN NEW;
+  END IF;
+
+  -- `auth.uid()` es NULL cuando corre con service_role (panel de plataforma, scripts): ahí no aplica.
+  IF auth.uid() IS NOT NULL AND NEW.id = auth.uid() THEN
+    RAISE EXCEPTION 'No podés darte de baja a vos mismo. Pedíselo a otro DUEÑO.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF OLD.rol = 'DUEÑO' AND NOT EXISTS (
+    SELECT 1 FROM users u
+     WHERE u.tenant_id = OLD.tenant_id
+       AND u.rol = 'DUEÑO'
+       AND u.id <> OLD.id
+       AND coalesce(u.activo, true)
+  ) THEN
+    RAISE EXCEPTION 'Es el único DUEÑO activo del negocio: nombrá otro antes de darlo de baja.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_debe_cambiar_password()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Solo la transición true -> false, y solo fuera del servidor.
+  IF NEW.debe_cambiar_password = false AND auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'La contraseña inicial se cambia desde la app: no alcanza con bajar la marca.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
 END;
 $function$
 
@@ -9499,6 +9604,24 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_slug_codigo(p_texto text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT nullif(
+    left(
+      regexp_replace(
+        lower(translate(coalesce(p_texto, ''),
+          'áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ',
+          'aaaaaeeeeiiiiooooouuuuncAAAAAEEEEIIIIOOOOOUUUUNC')),
+        '[^a-z0-9]', '', 'g'),
+      14),
+    '')
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_soporte_adjuntos_validos(p_adjuntos jsonb, p_tenant uuid, p_usuario uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -9886,6 +10009,21 @@ BEGIN
        WHERE id = t.id;
     END IF;
   END LOOP;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_tenant_codigo()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.codigo IS NULL THEN
+    NEW.codigo := public.fn_generar_codigo_tenant(NEW.nombre);
+  END IF;
+  RETURN NEW;
 END;
 $function$
 
@@ -10815,7 +10953,7 @@ CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-  SELECT tenant_id FROM users WHERE id = auth.uid()
+  SELECT tenant_id FROM users WHERE id = auth.uid() AND coalesce(activo, true)
 $function$
 
 
@@ -10902,7 +11040,7 @@ CREATE OR REPLACE FUNCTION public.is_admin()
  SET search_path TO 'public'
 AS $function$
   SELECT EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND rol = 'ADMIN'
+    SELECT 1 FROM users WHERE id = auth.uid() AND rol = 'ADMIN' AND coalesce(activo, true)
   )
 $function$
 
@@ -13325,6 +13463,7 @@ CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH 
 CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tipos_pedido_new_tenant();
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
+CREATE TRIGGER trg_tenant_codigo BEFORE INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenant_codigo();
 CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
@@ -13333,6 +13472,8 @@ CREATE TRIGGER trg_ubic_guard_padre_operativo BEFORE INSERT OR UPDATE OF padre_u
 CREATE TRIGGER trg_ubic_no_ciclo BEFORE INSERT OR UPDATE OF padre_ubicacion_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_no_ciclo();
 CREATE TRIGGER trg_ubic_tipo_logico_guard BEFORE INSERT OR UPDATE OF tipo_logico, subtipo_almacenamiento ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_tipo_logico_guard();
 CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('usuarios');
+CREATE TRIGGER trg_guard_baja_usuario BEFORE UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_baja_usuario();
+CREATE TRIGGER trg_guard_debe_cambiar_password BEFORE UPDATE OF debe_cambiar_password ON public.users FOR EACH ROW WHEN ((new.debe_cambiar_password IS DISTINCT FROM old.debe_cambiar_password)) EXECUTE FUNCTION fn_guard_debe_cambiar_password();
 CREATE TRIGGER trg_guard_rol_admin BEFORE INSERT OR UPDATE OF rol ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_rol_admin();
 CREATE TRIGGER trg_venta_items_auto_pedido AFTER INSERT ON public.venta_items REFERENCING NEW TABLE AS nuevas FOR EACH STATEMENT EXECUTE FUNCTION trg_venta_items_sync_pedido();
 CREATE TRIGGER trg_venta_items_sucursal BEFORE INSERT OR UPDATE OF venta_id ON public.venta_items FOR EACH ROW EXECUTE FUNCTION fn_venta_items_set_sucursal();

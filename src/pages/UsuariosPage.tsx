@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserPlus, Trash2, Shield, User, Mail,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -219,6 +219,27 @@ export default function UsuariosPage() {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       qc.invalidateQueries({ queryKey: ['plan-limits'] })
     },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Mig 433: desde que dar de baja corta el acceso DE VERDAD, tiene que poder deshacerse desde la
+  // app. Sin esto una baja por error es un candado sin llave: el usuario inactivo no renderiza
+  // ningún control y no hay otra forma de volver atrás. La policy `users_update_owner` sí lo
+  // permite (compara el tenant_id de la FILA, que queda intacto al dar de baja).
+  const reactivar = useMutation({
+    mutationFn: async (userId: string) => {
+      const u = (usuarios as any[]).find(x => x.id === userId)
+      const { error } = await supabase.from('users').update({ activo: true }).eq('id', userId)
+      if (error) throw error
+      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: u?.nombre_display, accion: 'editar', campo: 'activo', valor_nuevo: 'true', pagina: '/usuarios' })
+    },
+    onSuccess: () => {
+      toast.success('Usuario reactivado')
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      qc.invalidateQueries({ queryKey: ['plan-limits'] })
+    },
+    // Reactivar vuelve a ocupar un lugar del plan: si ya está en el límite, `trg_enforce_usuarios`
+    // lo rechaza y ese mensaje es el que hay que mostrar, no uno genérico.
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -566,12 +587,27 @@ export default function UsuariosPage() {
                         <Sliders size={15} />
                       </button>
                       {!esMiUsuario && (
-                        <button onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}?`, { danger: true })) desactivar.mutate(u.id) }}
+                        <button
+                          title="Desactivar — pierde el acceso a la app"
+                          onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}? Deja de tener acceso a la app hasta que lo reactives.`, { danger: true })) desactivar.mutate(u.id) }}
                           className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Trash2 size={15} />
                         </button>
                       )}
                     </div>
+                  )}
+
+                  {/* Mig 433: un usuario dado de baja no tiene acceso, así que la única acción que
+                      le queda —y que antes no existía— es volver a darle el alta. */}
+                  {canManage && !u.activo && (
+                    <button
+                      title="Reactivar — vuelve a tener acceso a la app"
+                      disabled={reactivar.isPending}
+                      onClick={async () => { if (await confirmar(`¿Reactivar a ${u.nombre_display ?? 'este usuario'}? Vuelve a tener acceso con el rol que tenía.`)) reactivar.mutate(u.id) }}
+                      className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-accent-text bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors disabled:opacity-50">
+                      <RotateCcw size={13} />
+                      Reactivar
+                    </button>
                   )}
                 </div>
               )

@@ -3,13 +3,14 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
-# Edge Functions (51 funciones Deno)
+# Edge Functions (52 funciones Deno)
 
-> ⚠️ **Contado el 2026-09-18 sobre `supabase/functions/` del repo: son 51.** El título decía 30 y el índice
-> 29 — ambos quedaron viejos. La topología de dónde encaja cada una está en
+> ⚠️ **Contado el 2026-09-18 sobre `supabase/functions/` del repo: eran 51.** El título decía 30 y el
+> índice 29 — ambos quedaron viejos. **2026-09-24: pasan a 52** con `usuarios-sin-correo` (mig 434,
+> deploy `v1.231.0`, DEV y PROD). La topología de dónde encaja cada una está en
 > [[wiki/architecture/infraestructura]].
 
 Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican validando el JWT de Supabase en cada request.
@@ -172,6 +173,7 @@ Resumen de lo que cambia en esta página:
 | `mp-ipn` | Mercado Pago IPN (notificación instantánea de pagos). ✅ Fix 2026-09-22 (mig 431, EN PROD): si el POST no trae `user_id`, ahora responde **400** — antes hacía `.limit(1)` y agarraba una credencial de cualquier tenant |
 | `crear-suscripcion` | Inicia el flow de alta de suscripción en Mercado Pago |
 | `invite-user` | Envía invitación por email a nuevo usuario del tenant |
+| `usuarios-sin-correo` | 🆕 2026-09-24 (mig 434, `v1.231.0`, DEV y PROD) · `verify_jwt: true` — empleados con nombre y contraseña, sin correo. Acciones `crear`/`resetear-password`/`cambiar-password-propia`; código de negocio y `tenant_id` salen del perfil del llamador, nunca del body. Reponer contraseña solo en cuentas sin correo. Ver [[wiki/features/autenticacion-onboarding]] |
 | `emitir-factura` | Emisión de facturas electrónicas vía AFIP |
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
@@ -197,6 +199,7 @@ Resumen de lo que cambia en esta página:
 | EF | auth | Descripción |
 |---|---|---|
 | `invite-user` | JWT-less | Invita usuario |
+| `usuarios-sin-correo` | JWT | Crea/gestiona empleados sin correo (mig 434) |
 | `ai-assistant` | JWT-less | Groq/`openai/gpt-oss-120b` — chat + bug report + propuesta de config (Plan IA Fase 2) + memoria persistente por tenant (Plan IA Fase 3, mig 377-378) |
 | `cancel-suscripcion` | JWT | PATCH preapproval MP |
 | `emitir-factura` | JWT | AFIP factura electrónica |

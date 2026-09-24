@@ -6,7 +6,118 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-24) — 🚀 **PROD sigue en `v1.230.0`** (migs 001-**432**) — nada de esta
+> ### 🛑 ARRANCÁ ACÁ (2026-09-24, 2ª sesión) — 🚀 **PROD YA EN `v1.231.0`** (migs 001-**434**) — deploy
+> completo y verificado, DEV = PROD
+>
+> 🚀 **Último release**: **`v1.231.0`**, PR **#357** `dev→main`, merge commit **`313b7f6d`**, release
+> **`v1.231.0` Latest** (`--latest`).
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.231.0` ✅ servida | 001-**434** |
+> | **DEV** | `v1.231.0` | 001-**434** |
+>
+> ✅ **Paridad `pg_policies` DEV=PROD, por schema**: `public` **234** · `storage` **40** · `cron` **2** —
+> los tres hashes IDÉNTICOS. `schema_full.sql`: **171 tablas · 247 funciones · 118 triggers · 234
+> policies · 9 vistas**. Antes de esta sesión: PROD en `v1.230.0`, migs 001-432.
+>
+> #### 1 · 🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad — ✅ APLICADA Y PROBADA, EN PROD
+>
+> Quedó escrita y revisada la sesión anterior, **sin aplicar** (se cayó el conector de Supabase). Esta
+> sesión: fuente real verificada antes de reemplazar, aplicada en DEV (los 26 usuarios de DEV estaban en
+> `activo = true`, ningún `NULL` — aplicarla no le cortó el acceso a nadie) y probada de punta a punta:
+> - Impersonando al supervisor con `SET LOCAL ROLE` + `request.jwt.claims`: antes de la baja veía 26
+>   productos / 4 ventas / 2 clientes / su propia fila; después, **0/0/0/0** y `get_user_tenant_id() =
+>   NULL`.
+> - Spec e2e nuevo `158_acceso_revocado_mutante`: el DUEÑO da de baja al contador desde `/usuarios`, el
+>   contador entra con su contraseña y ve "Tu acceso fue dado de baja" (y NO `/onboarding`), lo
+>   reactivan, vuelve a entrar normal.
+> - Los dos candados del trigger (auto-baja, último DUEÑO activo) rebotan con su mensaje.
+>
+> 🛑 **La propia migración abría un agujero**: no había forma de deshacer una baja. `UsuariosPage`
+> gateaba TODAS las acciones con `canManage && u.activo`, y no existía "Reactivar" en ningún lado — con
+> la 433 aplicada, una baja por error quedaba como un candado sin llave. Se agregó el botón (solo
+> DUEÑO).
+>
+> Auditoría de que el corte es completo: de las 234 policies de `public`, las únicas que no pasan por
+> `tenant_id`/`get_user_tenant_id()` son 3 de catálogo público sin datos del negocio (`planes`,
+> `consumo_tarifas`, `ayuda_recursos` publicados).
+>
+> UAT §67: **9/10 ✅** (67.10 queda 🟡 — límite del plan no ejercitable, el tenant de pruebas es
+> ilimitado). Detalle: [[wiki/features/autenticacion-onboarding]], [[wiki/architecture/multi-tenant-rls]],
+> [[wiki/database/rls-policies]].
+>
+> #### 2 · 🔑 Mig 434 — empleados con nombre y contraseña, SIN correo — ✅ EN PROD
+>
+> Pedido de GO. Las dos decisiones que tomó (2026-09-24): el empleado ingresa con **código del negocio +
+> usuario**, no una dirección; la contraseña que le pone el dueño es **de un solo uso** (cambio forzado
+> en el primer ingreso). Identidad real de Auth: `<usuario>.<codigo>@u.genesis360.pro`, dominio que no
+> recibe correo, compuesto por la app (`src/lib/usuarioLocal.ts`, 16 tests). `tenants.codigo` único e
+> **INMUTABLE** (backfill de los 9 negocios de DEV sin colisiones: Kalken → `kalken`, Familia Otranto De
+> Porto → `familiaotranto`). Edge Function nueva `usuarios-sin-correo` (DEV y PROD, `verify_jwt: true`).
+>
+> 🛑 **Dos agujeros cerrados antes de aplicar**:
+> 1. `users_update_owner` le da al DUEÑO `UPDATE` sin restricción de columna: podía apagar
+>    `debe_cambiar_password` con un PATCH directo a PostgREST, sin rotar la contraseña —lo encontró
+>    `migration-reviewer`, mi comentario en la migración afirmaba lo contrario—. Cerrado con el trigger
+>    `trg_guard_debe_cambiar_password` (patrón mig 247) + los `REVOKE` que faltaban (`anon` hereda
+>    `EXECUTE` de `PUBLIC` por default).
+> 2. Cambiar la contraseña con la Admin API **revoca TODAS las sesiones del usuario, incluida la
+>    suya** — lo encontró el spec e2e `159_usuario_sin_correo_mutante`, no la revisión de código.
+>    Resuelto reautenticando con la contraseña nueva.
+>
+> Reponer contraseña funciona SOLO para cuentas sin correo (pisarle la contraseña a alguien con casilla
+> propia sería quedarse con su cuenta). El código del negocio es inmutable: cambiarlo dejaría afuera a
+> todos los usuarios sin correo de ese negocio.
+>
+> **Validación visual completa** (Playwright, 20 capturas revisadas a ojo): todo correcto salvo un bug
+> cosmético preexistente — la barra de uso del plan mostraba "13 de -1 usuarios · 0%" con plan
+> ilimitado (`max_usuarios = -1`); ahora dice "Sin límite en tu plan". Cerrado en el mismo release.
+>
+> UAT §69: **11/13 ✅** (2 🟡 sin test — límite de plan `-1`). Detalle:
+> [[wiki/features/autenticacion-onboarding]].
+>
+> #### 3 · También en este release (venía de la sesión anterior, sin deployar)
+>
+> **Productos — A0 completo** (commits `870d3e36`, `ca2f08f2`, `93448deb`, `c8e7649c`, `02568b64`,
+> `470525c6`, sin migración propia): importador CSV con columnas vivas de moneda; actualizar por archivo
+> escribe SOLO lo que el archivo trae; ficha con cotización de compra igual que el POS; export
+> reimportable (10→22 columnas). Dos bugs 🔴 que 1.900 tests no vieron: IVA Exento (0%) se convertía en
+> 21% al importar, y traer la columna de moneda sin el precio dejaba el precio en 0 — los dos cerrados.
+> Detalle: [[wiki/features/productos]].
+>
+> **Spec fiscal `146_gasto_cotizacion_fiscal_mutante`**: corría contra el tenant Monotributista además
+> del Responsable Inscripto (donde correctamente no se ofrece "Factura A"), dejando 3 rojos permanentes.
+> Excluido del proyecto `chromium`; contra el tenant RI corre 4/4.
+>
+> #### ✅ Checklist del deploy, todo verificado
+>
+> | Paso | Resultado |
+> |---|---|
+> | Migs 433+434 en PROD | ✅ aplicadas, `schema_full.sql` regenerado (171 tablas, 247 funciones, 234 policies) |
+> | PR #357 `dev→main` | ✅ merge commit `313b7f6d` |
+> | Release GitHub | ✅ `v1.231.0`, tag + `--latest` |
+> | Edge Functions a PROD | ✅ `usuarios-sin-correo` nueva (52 EFs totales) |
+> | Paridad `pg_policies` DEV↔PROD | ✅ `public` **234** · `storage` **40** · `cron` **2** — hashes IDÉNTICOS |
+> | Tests unitarios | ✅ 1915/1915 |
+> | e2e nuevos | ✅ `158_acceso_revocado_mutante`, `159_usuario_sin_correo_mutante` |
+> | UAT | ✅ §67 (9/10), §69 (11/13) |
+>
+> #### 🔴 PENDIENTES, por orden
+>
+> 1. **🔴 Lista de Productos corta en 1000 registros sin avisar** (nuevo, 2026-09-24): la query de
+>    `ProductosPage` no pagina y PostgREST topea en 1000 filas — medido: `Content-Range: 0-999/1177` en
+>    el tenant de pruebas. El buscador filtra sobre lo ya cargado, así que un producto más allá del corte
+>    no aparece ni buscándolo. Impacto hoy: cero (el negocio más grande en PROD tiene 13 productos). El
+>    mismo patrón puede estar en otras listas (clientes, ventas, movimientos) — falta auditarlo. GO
+>    todavía no decidió la prioridad. Detalle: [[wiki/features/productos]].
+> 2. **D-2 sigue ABIERTO** (decisión de GO pendiente): el tope de 999,99 % de `margen_ganancia`
+>    (`GENERATED numeric(5,2)`) — ampliar la columna es la decisión que falta.
+> 3. Sacar del PDF "Primeros pasos" la advertencia sobre reimportar (quedó obsoleta, D-3 ya se cerró).
+> 4. Los 27 puntos abiertos de los relevamientos (Multimoneda/Categorías/Precio programado) + D-2 (28 en
+>    total), rotación de keys legacy (esperando al 25/09, lo mide GO), 2 EFs con drift cosmético en PROD.
+>
+> ### 🛑 ARRANCÁ ACÁ (2026-09-24, 1ª sesión) — 🚀 **PROD sigue en `v1.230.0`** (migs 001-**432**) — nada de esta
 > sesión se deployó. `dev` queda **11 commits** por encima de `origin/main` (verificado con `git log
 > --oneline origin/main..dev`), sin bump de `APP_VERSION`.
 >

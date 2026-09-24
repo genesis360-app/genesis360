@@ -25,7 +25,8 @@ import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
-import { ListaConteoFooter } from '@/components/ListaConteoFooter'
+import { usePaginacionLista } from '@/hooks/usePaginacionLista'
+import { traerTodo } from '@/lib/traerTodo'
 import toast from 'react-hot-toast'
 
 interface FilaCliente {
@@ -189,14 +190,26 @@ export default function ClientesPage() {
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes', tenant?.id, search, verInactivos],
     queryFn: async () => {
-      let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
-      if (!verInactivos) q = q.eq('activo', true)   // A6 — ocultar dados de baja por defecto
-      if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
-      const { data, error } = await q
-      if (error) throw error
-      return data ?? []
+      // Sin tope: PostgREST corta en 1000 filas sin avisar (ver `traerTodo`).
+      return await traerTodo<any>((desde, hasta) => {
+        let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
+        if (!verInactivos) q = q.eq('activo', true)   // A6 — ocultar dados de baja por defecto
+        if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
+        return q.range(desde, hasta)
+      })
     },
     enabled: !!tenant,
+  })
+
+  // Sube acá desde el JSX: el paginado es un hook y adentro de un `(() => {...})()` dentro de un
+  // ternario sería una llamada condicional.
+  const clientesFiltrados = (clientes as any[]).filter(c =>
+    !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
+  )
+  // Paginado del listado (pedido de GO 2026-09-24).
+  const visiblesClientes = usePaginacionLista(clientesFiltrados, 'cliente', {
+    total: (clientes as any[]).length,
+    claveFiltros: `${search}|${filtroEtiqueta}|${verInactivos}`,
   })
 
   // Scrollea a la ficha del deep-link una vez que la lista terminó de cargar (antes no había
@@ -1567,12 +1580,9 @@ export default function ClientesPage() {
           <button onClick={() => abrirModal()} className="mt-3 text-accent-text text-sm font-medium hover:underline">Crear el primero</button>
         </div>
       ) : (() => {
-        const clientesFiltrados = (clientes as any[]).filter(c =>
-          !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
-        )
         return (
         <div className="space-y-2">
-          {clientesFiltrados.map((c: any) => {
+          {visiblesClientes.map((c: any) => {
             const stats = statsMap[c.id]
             const isExpanded = expandedId === c.id
             const esDeepLink = deepLinkClienteId === c.id
@@ -1936,7 +1946,6 @@ export default function ClientesPage() {
               </div>
             )
           })}
-          <ListaConteoFooter mostrados={clientesFiltrados.length} total={clientes.length} entidad="cliente" />
         </div>
         )
       })()}

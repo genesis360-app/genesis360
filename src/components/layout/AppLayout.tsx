@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useListaConteoStore } from '@/store/listaConteoStore'
+import { TAMANOS_PAGINA } from '@/hooks/usePaginacionLista'
 import { useAlertas } from '@/hooks/useAlertas'
 import { useSupervisionBadge } from '@/hooks/useSupervisorAutorizaciones'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
@@ -704,17 +705,57 @@ export function AppLayout() {
             el contenido de arriba se achica para dejarle lugar, nunca queda tapado por ella (ver
             useListaConteoStore/ListaConteoFooter). Solo aparece en páginas que publican un conteo. */}
         {listaConteo && (() => {
-          const { mostrados, total, entidad, totalTruncado } = listaConteo
+          const { mostrados, total, entidad, totalTruncado, paginacion } = listaConteo
           const plural = (n: number) => `${entidad}${n === 1 ? '' : 's'}`
+          const num = (n: number) => n.toLocaleString('es-AR')
+          const btn = 'px-2 py-0.5 rounded text-[11px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
           return (
-            <div className="flex-shrink-0 flex items-center justify-end px-4 lg:px-6 py-1 border-t border-gray-100 dark:border-gray-700 bg-surface">
+            <div className="flex-shrink-0 flex items-center justify-end gap-3 flex-wrap px-4 lg:px-6 py-1 border-t border-gray-100 dark:border-gray-700 bg-surface">
+              {/* Cuántos registros mostrar por página (pedido de GO 2026-09-24) */}
+              {paginacion && (
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                  <span>Mostrar</span>
+                  <div className="flex gap-0.5">
+                    {TAMANOS_PAGINA.map(t => (
+                      <button key={t} onClick={() => paginacion.setTamano(t)}
+                        className={`${btn} ${paginacion.tamano === t
+                          ? 'bg-accent text-white'
+                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <span className="text-[11px] text-gray-400 dark:text-gray-500">
                 {totalTruncado
-                  ? `Mostrando ${mostrados} de los últimos ${total} ${plural(total)}`
-                  : mostrados === total
-                    ? `${mostrados} ${plural(mostrados)}`
-                    : `Mostrando ${mostrados} de ${total} ${plural(total)}`}
+                  ? `Mostrando ${num(mostrados)} de los últimos ${num(total)} ${plural(total)}`
+                  : paginacion
+                    // Con paginado hay dos números que importan: qué tramo se está viendo y
+                    // cuántos hay en total con el filtro puesto.
+                    ? `${num(paginacion.desde)}-${num(paginacion.hasta)} de ${num(total)} ${plural(total)}`
+                    : mostrados === total
+                      ? `${num(mostrados)} ${plural(mostrados)}`
+                      : `Mostrando ${num(mostrados)} de ${num(total)} ${plural(total)}`}
               </span>
+
+              {paginacion && paginacion.totalPaginas > 1 && (
+                <div className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
+                  <button onClick={() => paginacion.setPagina(paginacion.pagina - 1)} disabled={paginacion.pagina === 0}
+                    className={`${btn} border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50`}>
+                    ‹ Anterior
+                  </button>
+                  <span className="px-1 tabular-nums">
+                    {paginacion.pagina + 1} / {paginacion.totalPaginas}
+                  </span>
+                  <button onClick={() => paginacion.setPagina(paginacion.pagina + 1)}
+                    disabled={paginacion.pagina >= paginacion.totalPaginas - 1}
+                    className={`${btn} border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50`}>
+                    Siguiente ›
+                  </button>
+                </div>
+              )}
             </div>
           )
         })()}

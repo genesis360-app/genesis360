@@ -8,31 +8,63 @@ updated: 2026-09-24
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.230.0`** (2026-09-22, noche, migs 001-**432**). Compute de PROD: **Micro**
+**Versión en PROD (actual): `v1.231.0`** (2026-09-24, migs 001-**434**). Compute de PROD: **Micro**
 desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **PROD = DEV en migraciones** (001-432, paridad `pg_policies` intacta: `public` 234 · `storage` 40 ·
-`cron` 2, hashes idénticos — la mig 432 no agrega policies). PR **#356** `dev→main`, merge commit
-**`f8d0ae3e`**, release **`v1.230.0` Latest**. Detalle completo en `log.md` (2026-09-22, `deploy`).
+✅ **PROD = DEV en migraciones** (001-434, paridad `pg_policies` intacta por schema: `public` **234** ·
+`storage` **40** · `cron` **2**, hashes idénticos). PR **#357** `dev→main`, merge commit **`313b7f6d`**,
+release **`v1.231.0` Latest**. Detalle completo en `log.md` (2026-09-24, `deploy`).
 
-🆕 **Al 2026-09-24, `dev` queda 11 commits por encima de `origin/main`, sin bump de versión.**
-`APP_VERSION` sigue en `v1.230.0` en los dos ambientes; PROD sigue sirviendo exactamente lo del release
-de arriba. Nada de lo siguiente se deployó:
+## 🚀 v1.231.0 — Usuarios sin correo, y "Desactivar" que corta el acceso de verdad (2026-09-24, EN PROD)
 
-- **Productos — A0 completo** (commits `870d3e36`, `ca2f08f2`, `93448deb`, `c8e7649c`, `02568b64`,
-  `470525c6`): el importador CSV ya escribe las columnas vivas de moneda (`moneda_venta`/
-  `moneda_costo`); al **actualizar por archivo se escribe solo lo que el archivo trae** (antes se
-  perdían proveedor, descripción, código de barras e IVA); la ficha ya usa la cotización de **compra**,
-  igual que el POS; "Exportar productos" pasó de 10 a 22 columnas y ya es reimportable. Dos pasadas de
-  `code-reviewer` encontraron **2 bugs 🔴 que 1.900 tests no vieron**: IVA Exento (0 %) se convertía en
-  21 % al importar, y traer la columna de moneda sin el precio dejaba el precio en 0 — los dos ya
-  cerrados. **Sin migración nueva.** Detalle en [[wiki/features/productos]] y `log.md` (2026-09-24,
-  `update`).
-- **🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad** — ⚠️ **escrita, revisada
-  (`migration-reviewer`: APTA), pero SIN APLICAR ni en DEV ni en PROD** (el conector de Supabase se
-  desconectó a mitad de sesión). Hasta ahora dar de baja a un empleado no le quitaba ningún acceso. No
-  va a PROD sin aplicarla y probarla a mano en DEV primero. Detalle en
-  [[wiki/features/autenticacion-onboarding]].
+PR **#357**, merge `313b7f6d`. Dos migraciones nuevas, **433** y **434**, más los fixes de Productos que
+venían de la sesión anterior sin deployar.
+
+**🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad.** Hasta ahora dar de baja a un
+empleado (`UsuariosPage` → "Desactivar", la única acción que existe, no hay eliminar) no le quitaba
+nada: `get_user_tenant_id()` —gobierna el `USING` de casi todas las policies de `public`— no miraba
+`users.activo`. La migración había quedado **escrita y revisada la sesión anterior, sin aplicar** (se
+cayó el conector de Supabase); esta sesión se aplicó y probó de punta a punta en DEV antes de llevarla a
+PROD: impersonando al supervisor con `SET LOCAL ROLE`, antes de la baja veía 26 productos/4 ventas/2
+clientes/su fila, después 0/0/0/0; spec e2e nuevo `158_acceso_revocado_mutante` con dos usuarios reales.
+🛑 La propia migración abría un agujero: no había forma de deshacer una baja por error — se agregó el
+botón **"Reactivar"** (solo DUEÑO). UAT §67: 9/10 ✅.
+
+**🔑 Mig 434 — empleados con nombre y contraseña, SIN correo** (pedido de GO): un negocio chico no tiene
+mail propio para cada empleado. El empleado ingresa con **código del negocio + usuario** (no una
+dirección) y la contraseña que le pone el dueño es **de un solo uso** (cambio forzado al primer
+ingreso). Identidad real de Auth: `<usuario>.<codigo>@u.genesis360.pro`, dominio que no recibe correo.
+`tenants.codigo` único e **INMUTABLE**. Edge Function nueva `usuarios-sin-correo` (DEV y PROD). Dos
+agujeros cerrados antes de aplicar: `users_update_owner` dejaba al DUEÑO apagar
+`debe_cambiar_password` sin rotar la contraseña (encontrado por `migration-reviewer`), y cambiar la
+contraseña con la Admin API revocaba TODAS las sesiones del usuario, incluida la suya (encontrado por el
+spec e2e `159_usuario_sin_correo_mutante`, no por revisión de código). UAT §69: 11/13 ✅. De paso, fix
+cosmético: la barra de uso del plan en Usuarios mostraba "13 de -1 usuarios · 0%" con plan ilimitado.
+
+**Productos — A0 completo** (commits `870d3e36`, `ca2f08f2`, `93448deb`, `c8e7649c`, `02568b64`,
+`470525c6`, sin migración propia): el importador CSV ya escribe las columnas vivas de moneda
+(`moneda_venta`/`moneda_costo`); al **actualizar por archivo se escribe solo lo que el archivo trae**
+(antes se perdían proveedor, descripción, código de barras e IVA); la ficha ya usa la cotización de
+**compra**, igual que el POS; "Exportar productos" pasó de 10 a 22 columnas y ya es reimportable. Dos
+pasadas de `code-reviewer` encontraron **2 bugs 🔴 que 1.900 tests no vieron**: IVA Exento (0 %) se
+convertía en 21 % al importar, y traer la columna de moneda sin el precio dejaba el precio en 0 — los
+dos ya cerrados.
+
+**También en este release**: se corrigió el spec fiscal `146_gasto_cotizacion_fiscal_mutante`, que
+corría contra el tenant Monotributista además del Responsable Inscripto (donde correctamente no se
+ofrece "Factura A") y dejaba 3 rojos permanentes — excluido del proyecto `chromium`, ahora 4/4.
+
+**Tests**: 1915/1915 unitarios verdes, e2e nuevos `158` y `159`, UAT nuevas §67 (10 escenarios) y §69
+(13 escenarios). Edge Functions: 52 (nueva `usuarios-sin-correo`).
+
+🔴 **Pendiente abierto que queda anotado**: la lista de Productos corta en **1000 registros sin avisar**
+(PostgREST topea ahí y la query no pagina) — impacto cero hoy (el negocio más grande en PROD tiene 13
+productos), pero latente para el primer cliente con catálogo grande; puede repetirse en otras listas sin
+auditar. GO no decidió prioridad. Detalle en [[wiki/features/productos]].
+
+Detalle completo: [[wiki/features/autenticacion-onboarding]], [[wiki/features/productos]],
+[[wiki/architecture/multi-tenant-rls]], [[wiki/database/rls-policies]], [[wiki/database/migraciones]],
+`log.md` (2026-09-24, `deploy`).
 
 ## 🚀 v1.230.0 — Rate limiting persistente para las EFs públicas (2026-09-22, EN PROD)
 

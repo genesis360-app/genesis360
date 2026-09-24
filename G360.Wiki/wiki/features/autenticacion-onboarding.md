@@ -329,9 +329,11 @@ de color (violeta = configuración de una sola vez · verde = rutina diaria): mo
 datos del negocio → métodos de pago → productos → equipo y roles → **abrir la caja** → primera venta
 → cierre con arqueo. Cierra con qué sumar después y 5 problemas comunes.
 
-⚠️ **Contiene una advertencia atada a un hallazgo abierto**: en el paso de cargar productos avisa que
-el archivo de *Exportar productos* **no sirve para reimportar**. Es el hallazgo D-3
-(`tests/specs/uat-modo-basico.md` §66.8). **Cuando se arregle, sacar esa advertencia de la guía.**
+✅ **La advertencia que traía sobre reimportar quedó obsoleta.** Contenía un aviso de que el archivo de
+*Exportar productos* no servía para reimportar (hallazgo D-3, `tests/specs/uat-modo-basico.md` §66.8).
+D-3 se cerró el 2026-09-24 y está **EN PROD desde v1.231.0**: el export ya es reimportable de punta a
+punta. **Pendiente menor: sacar esa advertencia de la guía** (no se tocó el PDF en esta sesión). Ver
+[[wiki/features/productos]] → "Importador CSV — columnas de moneda (A0)".
 
 🚧 **Le faltan capturas de pantalla** — la de facturación las tiene porque salieron de una sesión
 grabada. Pendiente: grabarlas contra el tenant de prueba (Modo de operación, Métodos de pago, Abrir
@@ -342,7 +344,13 @@ Ver [[wiki/features/facturacion-afip]] ("Guía para clientes + video") para la o
 
 ---
 
-## 🔐 "Desactivar" un usuario le corta el acceso de verdad (mig 433, 2026-09-24) — ⚠️ ESCRITA, SIN APLICAR
+## 🔐🔑 v1.231.0 — "Desactivar" corta el acceso de verdad (mig 433) + Usuarios sin correo (mig 434) — 🚀 EN PROD desde 2026-09-24
+
+PR **#357**, merge commit **`313b7f6d`**, release **`v1.231.0`** (`--latest`). Migraciones **001-434**,
+aplicadas y verificadas en DEV y en PROD. Paridad de policies DEV=PROD por hash **por schema**: `public`
+**234** · `storage` **40** · `cron` **2**, hashes idénticos. Antes: PROD en `v1.230.0` (migs 001-432).
+
+## 🔐 "Desactivar" un usuario le corta el acceso de verdad (mig 433, 2026-09-24) — ✅ APLICADA Y PROBADA EN DEV Y EN PROD
 
 Salió contestando una pregunta de GO sobre cómo conviene manejar las cuentas de los empleados.
 
@@ -393,27 +401,142 @@ acceso fue dado de baja"** con el botón de cerrar sesión, evaluado ANTES del r
 - **El alta de un negocio nuevo**: los triggers de seed usan `NEW.id`, no llaman a
   `get_user_tenant_id()`.
 
-### Estado real al 2026-09-24
+### ✅ Aplicada y probada en DEV (2026-09-24, 2ª sesión) — luego a PROD
 
-⚠️ **La mig 433 quedó ESCRITA y revisada (`migration-reviewer`: APTA para DEV), pero SIN APLICAR ni en
-DEV ni en PROD** — el conector de Supabase se desconectó a mitad de sesión. **No debe ir a PROD sin la
-prueba manual** (desactivar un usuario real en DEV, intentar entrar, confirmar la pantalla): Kalken
-tiene empleados reales. UAT `tests/specs/uat-modo-basico.md` §67 — 7 escenarios, 4 en rojo por eso
-mismo.
+La sesión anterior la había dejado **escrita, revisada por `migration-reviewer` (APTA), pero SIN
+APLICAR**: el conector de Supabase se había desconectado a mitad de sesión. Esta sesión: fuente real
+verificada antes de reemplazar (`get_user_tenant_id()`/`is_admin()` estaban exactamente como decía la
+migración), los 26 usuarios de DEV estaban en `activo = true` (ningún `NULL`), así que aplicarla **no le
+cortó el acceso a nadie**. Acentos verificados post-aplicación con `prosrc LIKE` (gotcha conocido de
+`apply_migration`).
 
-### 🆕 Pendiente relacionado: crear usuarios sin correo
+Probado contra DEV, UAT §67:
+- **67.1** — impersonando al supervisor con `SET LOCAL ROLE` + `request.jwt.claims`: antes de la baja
+  veía 26 productos / 4 ventas / 2 clientes / su propia fila; después, **0 / 0 / 0 / 0** y
+  `get_user_tenant_id() = NULL`. Todo dentro de una transacción descartada: no quedó nadie de baja.
+- **67.5** — los dos candados del trigger rebotan con su mensaje. El de "darse de baja a uno mismo"
+  saltó incluso sin buscarlo: el `UPDATE` de prueba corría con el `auth.uid()` del propio usuario.
+- **67.2** — spec e2e nuevo `158_acceso_revocado_mutante`, con dos usuarios reales: el DUEÑO da de baja
+  al contador desde `/usuarios`, el contador entra con su contraseña en un contexto limpio y ve **"Tu
+  acceso fue dado de baja"** (y NO `/onboarding`), lo reactivan, vuelve a entrar normal.
 
-GO quiere arrancar una feature nueva: crear empleados con **nombre y contraseña, sin correo** — hoy
-`invite-user` exige mail (`inviteUserByEmail`). Es lo correcto para un kiosco: le saca de encima el
-malabar con Gmail al dueño. Propuesta técnica (sin construir todavía): `admin.createUser` + contraseña
-sin invitación, la app genera por dentro una dirección que nunca recibe correo (subdominio propio, ej.
-`@u.genesis360.pro`), y el dueño restablece la contraseña desde Usuarios con cambio forzado en el
-primer ingreso.
+🛑 **El agujero que abría la propia migración: no se podía deshacer una baja.** `UsuariosPage` gateaba
+TODAS las acciones con `canManage && u.activo`, y no existía "Reactivar" en ningún lado del archivo —
+mientras la baja era cosmética daba igual; con la 433 aplicada, una baja por error quedaba como un
+**candado sin llave** (la app tampoco tiene "eliminar usuario"). Se agregó la mutación `reactivar` + su
+botón, solo DUEÑO — la policy `users_update_owner` ya lo permitía porque compara el `tenant_id` de la
+FILA, que la baja no toca. El confirm de "Desactivar" ahora avisa que la persona pierde el acceso.
 
-**Mientras tanto**, la recomendación para clientes sin dominio propio: una sola cuenta
-`negocio@gmail.com` con direcciones `+` por empleado (`negocio+juan@gmail.com`) — Gmail las entrega
-todas a la misma casilla, así que el dueño controla la recuperación de todos, sin cuentas extra.
-Contras: la invitación le llega al dueño, el empleado no recibe avisos propios, y el nombre que muestra
-la app sale de lo que está antes del `@`.
+**Auditoría de que el corte es completo** (UAT §67.9): de las 234 policies de `public`, las únicas que
+no pasan por `tenant_id`/`get_user_tenant_id()` son 3 de catálogo público sin datos del negocio
+(`planes`, `consumo_tarifas`, `ayuda_recursos` publicados). `get_user_role()` sigue sin mirar `activo`,
+pero toda policy que lo usa lo acompaña de `tenant_id = get_user_tenant_id()`, que ya da `NULL`.
 
-Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-09-24, `update`).
+UAT `tests/specs/uat-modo-basico.md` §67: **9/10 ✅** (67.10 queda 🟡 — el límite del plan no se
+ejercita porque el tenant de pruebas tiene límite `-1`, ilimitado). **🚀 EN PROD desde v1.231.0** (PR
+#357, merge `313b7f6d`), aplicada y verificada también ahí.
+
+---
+
+## 🔑 Usuarios sin correo — empleados con nombre y contraseña (mig 434, 2026-09-24) — 🚀 EN PROD desde v1.231.0
+
+Pedido de GO. En un negocio chico los empleados no tienen mail propio, o tienen uno que no revisan
+nunca, y `invite-user` exigía una dirección real (`inviteUserByEmail` manda un magic link) — el dueño
+terminaba inventando casillas o usando la suya para todo el equipo (ver la recomendación de Gmail `+`
+más abajo, que sigue vigente para quien no adopte esta feature).
+
+**Las dos decisiones que tomó GO el 2026-09-24** (el resto sale de ahí):
+1. Al ingresar, el empleado escribe el **código del negocio + su usuario**, no una dirección — por eso
+   el nombre de usuario solo tiene que ser único DENTRO del negocio.
+2. La contraseña que le pone el dueño es **de un solo uso**: está obligado a cambiarla en el primer
+   ingreso, así la sabe únicamente el empleado, y el log de actividad es indiscutiblemente suyo.
+
+Por dentro, la identidad de Supabase Auth es `<usuario>.<codigo>@u.genesis360.pro`, un dominio que no
+recibe correo. El empleado nunca la ve ni la escribe: la compone la app (`src/lib/usuarioLocal.ts`, 16
+tests, incluido uno que verifica que todo lo que el frontend da por válido pasa también el CHECK de la
+base).
+
+### La migración (`434_usuarios_sin_correo.sql`)
+
+- **`tenants.codigo`**: único e **INMUTABLE**, generado del nombre del negocio por el trigger
+  `trg_tenant_codigo` (`BEFORE INSERT`, `SECURITY DEFINER` — mismo gotcha de la mig 166: corre antes de
+  que exista la fila en `users`, si no el SELECT de colisión lo filtra RLS y siempre reporta "libre").
+  Backfill de los 9 negocios de DEV sin colisiones (ej. Kalken → `kalken`, Familia Otranto De Porto →
+  `familiaotranto`). ⚠️ **Cambiarlo dejaría afuera a todos los usuarios sin correo de ese negocio**,
+  porque su dirección de Auth ya quedó fija — por eso es inmutable, no editable desde ningún lado.
+- **`users.usuario`**: `NULL` para las cuentas con correo real, único **por tenant** (índice parcial) —
+  no global: dos negocios distintos pueden tener cada uno su "juan".
+- **`users.debe_cambiar_password`** + su guard (ver agujero 1 abajo).
+
+### Edge Function `usuarios-sin-correo` (deployada en DEV y en PROD, `verify_jwt: true`)
+
+Acciones `crear` / `resetear-password` / `cambiar-password-propia`. El código del negocio y el
+`tenant_id` salen del perfil del LLAMADOR, nunca del body — así un dueño no puede crear usuarios dentro
+del negocio de otro. Mismo whitelist de roles que `invite-user` (`ADMIN` no se puede asignar). **Reponer
+contraseña funciona SOLO para cuentas sin correo** — pisarle la contraseña a alguien que tiene casilla
+propia sería quedarse con su cuenta, no administrar un empleado; esas cuentas se recuperan con "Olvidé
+mi contraseña", que les llega a ELLAS. Si el INSERT en `users` falla —el caso real es el límite de
+usuarios del plan— borra la cuenta de `auth.users` recién creada, para no dejar el nombre tomado por un
+huérfano invisible.
+
+### Frontend
+
+- **`LoginPage`**: modo "sin correo" con dos campos (código del negocio + usuario). El botón nuevo
+  rompió los locators laxos (`/ingresar|iniciar sesion|login/i`) de **12 archivos** `*.setup.ts` —
+  reescrito a `'Ingresar'` exacto.
+- **`AuthGuard`**: pantalla de cambio obligatorio, evaluada ANTES de cualquier ruta (no se saltea por
+  URL).
+- **`UsuariosPage`**: alta "Sin email" con el código del negocio a la vista, chip del usuario, marca
+  "Contraseña sin estrenar", botón para reponer contraseña (solo en cuentas sin correo), y el par
+  Desactivar/Reactivar de la mig 433.
+
+### Los dos agujeros que aparecieron, y quién los encontró
+
+1. 🛑 **`users_update_owner` le da al DUEÑO `UPDATE` sin restricción de columna** sobre las filas de su
+   negocio — podía apagar `debe_cambiar_password` con un PATCH directo a PostgREST, sin rotar ninguna
+   contraseña, y seguir sabiendo la de su empleado para siempre (justo la garantía que la marca existe
+   para dar). **Lo encontró `migration-reviewer`**; el comentario original en la migración afirmaba lo
+   contrario y estaba mal. Se cerró con el trigger `trg_guard_debe_cambiar_password` (mismo patrón que
+   la mig 247): la marca solo BAJA desde `service_role`. También faltaban los `REVOKE` de las funciones
+   nuevas — por defecto Postgres da `EXECUTE` a `PUBLIC`, y `anon` está adentro (`fn_generar_codigo_tenant`
+   es `SECURITY DEFINER` y lee `tenants` salteándose RLS).
+2. 🛑 **Cambiar la contraseña con la Admin API revoca TODAS las sesiones del usuario, incluida la
+   suya.** Esto **no lo podía ver ninguna revisión de código** — el código era correcto, el efecto está
+   en GoTrue — y solo apareció cuando el spec e2e manejó la app como un empleado real: elegía su
+   contraseña nueva y la app lo escupía al login sin una palabra (la bandera quedaba bien en `false`, la
+   captura mostraba `/login`). Se cerró reautenticándolo con la contraseña nueva; el reingreso queda
+   invisible.
+
+### Validado con la interfaz real, no solo con specs (v1.231.0)
+
+Revisión visual completa manejando la app como usuario (Playwright, 20 capturas revisadas a ojo): los
+dos modos de la pantalla de ingreso, el alta "Sin email", la fila del empleado con su marca, el cambio
+obligatorio con sus dos validaciones, el reingreso, el modal de reponer contraseña, que una cuenta CON
+correo **no** ofrezca reponer (UAT 69.7), y el par Desactivar/Reactivar. Todo correcto.
+
+🐛 **Lo único que salió mal**: la barra de uso del plan en Usuarios mostraba **"13 de -1 usuarios ·
+0%"** — `max_usuarios = -1` es el centinela de "sin límite" y `-1 < 999` da `true`, así que entraba en
+la barra normal (`ProductosPage` ya trataba ese caso aparte; `UsuariosPage` no). Ahora dice "13 usuarios
+· Sin límite en tu plan". Bug preexistente, cosmético, cerrado en el mismo release.
+
+Typecheck limpio, build verde, specs `158` y `159` verdes. UAT `tests/specs/uat-modo-basico.md` §69:
+**11/13 ✅** (69.7 y 69.11 quedan 🟡, sin test automatizado — el tenant de pruebas tiene límite de plan
+`-1`).
+
+**Mientras tanto**, la recomendación para quien no adopte esta feature (clientes sin dominio propio):
+una sola cuenta `negocio@gmail.com` con direcciones `+` por empleado (`negocio+juan@gmail.com`) — Gmail
+las entrega todas a la misma casilla. Contras: la invitación le llega al dueño, el empleado no recibe
+avisos propios, y el nombre que muestra la app sale de lo que está antes del `@`.
+
+---
+
+## 🧪 De paso: el spec fiscal 146 corría contra el tenant equivocado (2026-09-24)
+
+`146_gasto_cotizacion_fiscal_mutante` (IVA crédito de gastos en moneda extranjera) es del tenant
+RESPONSABLE INSCRIPTO y ya tenía su propio proyecto Playwright, `chromium-ri` — pero el `testIgnore` del
+proyecto `chromium` no lo excluía, así que corría TAMBIÉN contra el tenant principal (Monotributista),
+donde correctamente no se ofrece "Factura A" (no discrimina IVA). Eso dejaba **3 rojos permanentes**, y
+un rojo permanente enseña a ignorar los rojos — justo en el único spec que cubre IVA crédito de compras.
+Excluido del proyecto `chromium` en `playwright.config.ts`; contra el tenant RI corre 4/4.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-09-24, `deploy`).

@@ -2,7 +2,7 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-09-22
+updated: 2026-09-24
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
@@ -670,9 +670,13 @@ Gestión de accesos. Solo DUEÑO y ADMIN.
 - **Ícono Globe**: toggle `puede_ver_todas`. Azul = puede ver todas las sucursales. Gris = restringido. Solo visible cuando el tenant tiene sucursales.
 - **Selector de sucursal** (aparece cuando Globe está gris): asigna la sucursal asignada al usuario.
 - **Ícono Sliders**: modal de permisos granulares por módulo (No ver / Ver / Editar) para ese usuario.
-- **Ícono Trash**: desactiva usuario (sin eliminar datos).
+- **Ícono Trash — "Desactivar"**: pone `activo = false`. 🆕 **Desde v1.231.0 (mig 433, 2026-09-24) esto corta el acceso de verdad**: el usuario dado de baja no puede leer ni escribir ningún dato del negocio (RLS lo bloquea vía `get_user_tenant_id()`), y si intenta entrar ve "Tu acceso fue dado de baja". No se puede desactivar a uno mismo ni al último DUEÑO activo del negocio.
+- **Botón "Reactivar"** (🆕 v1.231.0, solo visible en usuarios inactivos, solo DUEÑO): revierte una baja. Si el negocio está en el límite de usuarios del plan, se rechaza con el mensaje del límite.
+- 🔒 **Reponer contraseña** (🆕 v1.231.0, solo en cuentas "Sin email"): el DUEÑO le pone una contraseña nueva de un solo uso al empleado, que queda obligado a cambiarla en su próximo ingreso. No existe para cuentas con correo real (esas se recuperan solas con "Olvidé mi contraseña").
 
-**Invitar usuario:** email + rol → envía email con link (Resend).
+**Invitar usuario:** dos modos, elegibles al crear.
+- **Con email** (el de siempre): email + rol → envía invitación con link (Resend).
+- 🆕 **Sin email (v1.231.0, mig 434)**: nombre + **usuario** + contraseña + rol, sin mandar ningún mail. Pensado para empleados sin casilla propia (kioscos, comercios chicos). El empleado ingresa desde `/login` en el modo "Entrar con usuario" tipeando el **código del negocio** (`tenants.codigo`, único e inmutable, visible en esta misma pantalla) + su usuario + la contraseña que le dio el dueño — está obligado a cambiarla en el primer ingreso. Por dentro es una cuenta de Supabase Auth normal con email sintético `<usuario>.<codigo>@u.genesis360.pro` (dominio que no recibe correo), pero eso es un detalle interno: el usuario nunca lo ve ni lo escribe. El rol `ADMIN` no se puede asignar por ninguno de los dos modos.
 
 **Roles del sistema:**
 | Rol | Descripción | `puedeVerTodas` por defecto | Restringible |

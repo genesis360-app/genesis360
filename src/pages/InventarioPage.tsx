@@ -45,7 +45,8 @@ import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralCo
 import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
 import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
-import { ListaConteoFooter } from '@/components/ListaConteoFooter'
+import { usePaginacionLista } from '@/hooks/usePaginacionLista'
+import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import {
   parsearPildora as parsearPildoraInv, evaluarPildorasLinea, productoMatcheaPildoras,
   CAMPOS_FILTRO_INVENTARIO, type PildoraInventario,
@@ -566,14 +567,14 @@ export default function InventarioPage() {
     // desde cualquier otro archivo sigue invalidando ambas por prefix-match.
     queryKey: ['productos', 'inventario', tenant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Sin tope: PostgREST corta en 1000 filas sin avisar (ver `traerTodo`).
+      return await traerTodo<any>((desde, hasta) => supabase
         .from('productos')
         .select('*, categorias(id, nombre), proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
-      if (error) throw error
-      return data ?? []
+        .range(desde, hasta))
     },
     enabled: !!tenant && tab === 'inventario',
   })
@@ -581,15 +582,18 @@ export default function InventarioPage() {
   const { data: lineasData = { byProducto: {} as Record<string, any[]>, byUbicacion: {} as Record<string, any[]> }, isLoading: lineasLoading } = useQuery({
     queryKey: ['inventario_lineas_all', tenant?.id, sucursalId],
     queryFn: async () => {
-      let q = supabase
-        .from('inventario_lineas')
-        .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida), producto_estructuras(nombre)')
-        .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
-        .order('created_at', { ascending: true })
-      q = applyFilter(q)
-      const { data, error } = await q
-      if (error) throw error
+      // 🛑 REGLA #0: acá el tope de 1000 de PostgREST no se vería como "faltan filas" sino como
+      // STOCK EQUIVOCADO — estas líneas son las que se suman por producto. Va sí o sí completo.
+      const data = await traerTodo<any>((desde, hasta) => {
+        let q = supabase
+          .from('inventario_lineas')
+          .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida), producto_estructuras(nombre)')
+          .eq('tenant_id', tenant!.id)
+          .eq('activo', true)
+          .order('created_at', { ascending: true })
+        q = applyFilter(q)
+        return q.range(desde, hasta)
+      })
       const byProducto: Record<string, any[]> = {}
       const byUbicacion: Record<string, any[]> = {}
       for (const l of data ?? []) {
@@ -614,7 +618,7 @@ export default function InventarioPage() {
         .select('id, nombre, sku, stock_actual, unidad_medida, es_kit, precio_venta')
         .eq('tenant_id', tenant!.id).eq('activo', true).eq('es_kit', true).order('nombre')
       if (kitSearch) q = q.or(`nombre.ilike.%${kitSearch}%,sku.ilike.%${kitSearch}%`)
-      const { data } = await q
+      const { data } = await traerTodoConError<any>((desde, hasta) => q.range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && tab === 'kits',
@@ -717,8 +721,11 @@ export default function InventarioPage() {
   const { data: productosParaConteo = [] } = useQuery({
     queryKey: ['productos-para-conteo', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      // Sin tope: con 1.156 productos activos, el selector se quedaba sin todo lo que cae despues
+      // de la fila 1000 ("Elite Panuelos", posicion 1071, no aparecia en la lista).
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('id, nombre, sku').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+        .range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && tab === 'conteo',
@@ -762,9 +769,10 @@ export default function InventarioPage() {
   const { data: productosABC = [] } = useQuery({
     queryKey: ['productos-abc', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('id, nombre, sku, clase_abc, clase_abc_manual, ultimo_conteo_at')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+        .range(desde, hasta))
       return (data ?? []) as any[]
     },
     enabled: !!tenant && tab === 'conteo',
@@ -2714,6 +2722,14 @@ export default function InventarioPage() {
     return true
   })
 
+  // Paginado del listado (pedido de GO 2026-09-24): la barra de abajo trae el selector de cuántos
+  // registros mostrar y los botones de página. Se pagina lo que se DIBUJA — los filtros y las sumas
+  // de stock siguen corriendo sobre el set completo.
+  const visiblesInv = usePaginacionLista(filteredInv, 'producto', {
+    total: productos.length,
+    claveFiltros: `${pildorasEfectivasInv.length}|${combinadorInv}|${filterCat}|${filterProv}|${filterUbic}|${filterEstado}|${filterAlerta}`,
+  })
+
   const stockCritico = productos.filter(p => getStockTotal(p) <= (p as any).stock_minimo).length
 
   const tieneSeries = selectedProduct && (selectedProduct as any).tiene_series
@@ -4430,7 +4446,7 @@ export default function InventarioPage() {
               </div>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
-                {filteredInv.map(p => {
+                {visiblesInv.map(p => {
                   const lineas = lineasMap[p.id] ?? []
                   const stockTotal = getStockTotal(p)
                   const stockDisp = getStockDisponible(p)
@@ -4699,9 +4715,6 @@ export default function InventarioPage() {
                   )
                 })}
               </div>
-            )}
-            {!(invLoading || lineasLoading) && (
-              <ListaConteoFooter mostrados={filteredInv.length} total={productos.length} entidad="producto" />
             )}
           </div>
 

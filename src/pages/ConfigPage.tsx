@@ -9,6 +9,7 @@ import { descuentoDeConfig, etiquetaPromo, DIAS_SEMANA_CORTOS } from '@/lib/prom
 import { normalizarReglasGratis, describirReglaGratis, type ReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, enumLegacyDeCampos } from '@/lib/clienteCampos'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { PageTabs } from '@/components/PageTabs'
 import { InfoTip } from '@/components/InfoTip'
 import { Toggle } from '@/components/Toggle'
@@ -3052,12 +3053,13 @@ export default function ConfigPage() {
   const { data: productosMap = [] } = useQuery({
     queryKey: ['productos_for_map', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase
         .from('productos')
         .select('id, nombre, sku')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
+        .range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && tab === 'conectividad',

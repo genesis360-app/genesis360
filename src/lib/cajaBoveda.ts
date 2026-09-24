@@ -61,15 +61,35 @@ export async function ensureFuerteSesionId(
   moneda: 'ARS' | 'USD',
   usuarioId: string,
 ): Promise<string> {
-  const { data: existente } = await supabase.from('caja_sesiones')
-    .select('id').eq('caja_id', cajaFuerteId).eq('es_permanente', true)
-    .order('created_at', { ascending: false }).limit(1).maybeSingle()
-  if (existente?.id) return existente.id as string
+  // 🛑 `estado = 'abierta'` no estaba y hace falta: sin él, una sesión permanente YA CERRADA se
+  // devolvía como si siguiera abierta.
+  const buscar = async () => {
+    const { data } = await supabase.from('caja_sesiones')
+      .select('id').eq('caja_id', cajaFuerteId).eq('es_permanente', true).eq('estado', 'abierta')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    return (data?.id as string | undefined) ?? null
+  }
+
+  const existente = await buscar()
+  if (existente) return existente
+
   const { data: nueva, error } = await supabase.from('caja_sesiones').insert({
     tenant_id: tenantId, caja_id: cajaFuerteId,
     estado: 'abierta', es_permanente: true, moneda,
     usuario_id: usuarioId, monto_apertura: 0,
   }).select('id').single()
-  if (error) throw error
+
+  if (error) {
+    // 🛑 Este get-or-create es el que dejó 6 sesiones abiertas a la vez en la Bóveda de un negocio
+    // real: dos llamadas en paralelo hacen el mismo SELECT, ninguna encuentra nada, las dos
+    // insertan. Desde la mig 435 el índice único corta la carrera — pero el que la pierde recibe un
+    // 23505, y tirarle ese error en la cara sería cambiar un bug silencioso por uno ruidoso.
+    // La sesión que ganó es la buena: se la devolvemos.
+    if ((error as any)?.code === '23505') {
+      const ganadora = await buscar()
+      if (ganadora) return ganadora
+    }
+    throw error
+  }
   return nueva.id as string
 }

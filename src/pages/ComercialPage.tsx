@@ -19,6 +19,7 @@ import {
   Gift, Tag, Plus, X, Trash2, ChevronDown, ChevronUp, Copy, ToggleLeft, ToggleRight, Percent,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
@@ -66,8 +67,9 @@ export default function ComercialPage() {
   const { data: productosAll = [] } = useQuery({
     queryKey: ['productos-all', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos').select('id, nombre, sku')
-        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
+        .select('id, nombre, sku')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && comercialTab === 'combos',
@@ -227,7 +229,8 @@ export default function ComercialPage() {
         .select('id, lpn, cantidad, fecha_vencimiento, estado_id, productos(nombre, sku)')
         .eq('tenant_id', tenant!.id).eq('activo', true).in('estado_id', idsEstadosConDescuento).gt('cantidad', 0)
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
-      const { data } = await q.order('fecha_vencimiento', { ascending: true, nullsFirst: false })
+      const qOrd = q.order('fecha_vencimiento', { ascending: true, nullsFirst: false })
+      const { data } = await traerTodoConError<any>((desde, hasta) => qOrd.range(desde, hasta))
       return (data ?? []) as any[]
     },
     enabled: !!tenant && comercialTab === 'descuentos-estado' && idsEstadosConDescuento.length > 0,

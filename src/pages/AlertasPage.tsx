@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart, Vault, Bell } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
@@ -117,13 +118,14 @@ export default function AlertasPage() {
   const { data: sinCategoria = [], isLoading: loadingSinCategoria } = useQuery({
     queryKey: ['productos-sin-categoria', tenant?.id, sucursalId, modoAvanzado],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await traerTodoConError<any>((desde, hasta) => supabase
         .from('productos')
         .select('id, nombre, sku')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .is('categoria_id', null)
         .order('nombre')
+        .range(desde, hasta))
       if (error) throw error
       const all = data ?? []
       if (!sucursalId || all.length === 0) return all

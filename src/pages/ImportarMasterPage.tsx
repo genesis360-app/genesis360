@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, FileSpreadsheet, RefreshCw, Tag, Truck, MapPin, CircleDot, MessageSquare, Gift, Timer, Layers } from 'lucide-react'
 // xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
@@ -61,7 +62,7 @@ export default function ImportarMasterPage() {
   const { data: combos = [] }      = useQuery({ queryKey: ['combos', tenant?.id],      queryFn: async () => { const { data } = await supabase.from('combos').select('id,nombre').eq('tenant_id', tenant!.id).eq('activo', true); return data ?? [] }, enabled: !!tenant })
   const { data: agingProfiles = [] }= useQuery({ queryKey: ['aging_profiles', tenant?.id], queryFn: async () => { const { data } = await supabase.from('aging_profiles').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
   const { data: gruposEstados = [] } = useQuery({ queryKey: ['grupos_estados', tenant?.id], queryFn: async () => { const { data } = await supabase.from('grupos_estados').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: productos = [] }   = useQuery({ queryKey: ['productos-sku', tenant?.id], queryFn: async () => { const { data } = await supabase.from('productos').select('id,nombre,sku').eq('tenant_id', tenant!.id).eq('activo', true); return data ?? [] }, enabled: !!tenant && tipoMaster === 'combos' })
+  const { data: productos = [] }   = useQuery({ queryKey: ['productos-sku', tenant?.id], queryFn: async () => { const { data } = await traerTodoConError<any>((d, h) => supabase.from('productos').select('id,nombre,sku').eq('tenant_id', tenant!.id).eq('activo', true).range(d, h)); return data ?? [] }, enabled: !!tenant && tipoMaster === 'combos' })
 
   const getExistentesMap = (tipo: TipoMaster): Record<string, boolean> => {
     const map: Record<string, boolean> = {}

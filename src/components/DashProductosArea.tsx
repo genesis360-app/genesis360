@@ -10,6 +10,7 @@ import {
   AlertTriangle, CheckCircle, Clock, BarChart2, Star, Target, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -183,7 +184,8 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       const qProds = supabase.from('productos')
         .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, activo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-      const { data: todosProductos = [] } = await qProds
+      // Sin tope: esto alimenta el capital dormido, o sea plata.
+      const { data: todosProductos = [] } = await traerTodoConError<any>((desde, hasta) => qProds.range(desde, hasta))
 
       // 4. Productos con ventas en los últimos 90 días (para dormancy)
       const hace90 = new Date(Date.now() - 90 * 86400000).toISOString()

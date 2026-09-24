@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink, AlertTriangle } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
 import { puedeVerCosto } from '@/lib/permisosCosto'
@@ -559,11 +560,14 @@ export default function ProductoFormPage() {
       // Auto-generar SKU secuencial si está vacío
       let skuFinal = form.sku.trim().toUpperCase()
       if (!skuFinal) {
-        const { data: skuRows } = await supabase
+        // 🛑 Sin tope: con mas de 1000 SKU-*, la lista llegaba recortada y el "siguiente" SKU
+        // salia repetido — un SKU duplicado en el catalogo.
+        const { data: skuRows } = await traerTodoConError<any>((desde, hasta) => supabase
           .from('productos')
           .select('sku')
           .eq('tenant_id', tenant!.id)
           .like('sku', 'SKU-%')
+          .range(desde, hasta))
         skuFinal = calcularSiguienteSKU((skuRows ?? []).map((r: any) => r.sku))
         setForm(p => ({ ...p, sku: skuFinal }))
       }

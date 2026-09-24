@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, Boxes } from 'lucide-react'
 // xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
@@ -77,7 +78,9 @@ export default function ImportarInventarioPage() {
   const { data: productosMap = {} } = useQuery({
     queryKey: ['productos-sku-map', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos').select('id, nombre, sku, precio_costo, stock_actual, tiene_series').eq('tenant_id', tenant!.id).eq('activo', true)
+      // Sin tope: si el mapa de SKU llega recortado, el importador trata productos existentes
+      // como nuevos.
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos').select('id, nombre, sku, precio_costo, stock_actual, tiene_series').eq('tenant_id', tenant!.id).eq('activo', true).range(desde, hasta))
       const map: Record<string, any> = {}
       ;(data ?? []).forEach(p => { map[p.sku.toUpperCase()] = p })
       return map

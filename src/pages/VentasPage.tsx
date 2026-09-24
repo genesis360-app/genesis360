@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
@@ -1230,10 +1231,13 @@ export default function VentasPage() {
 
       // Madres agrupadoras (con hijos) = NO vendibles (rediseño UoM Fase 3, mig 305). Se venden
       // los hijos, no la madre. Regla #0: nunca dejar vender un agrupador (precio 0). Se excluyen.
-      const { data: madresData } = await supabase.from('productos')
+      // 🛑 Sin tope: si esta lista llega recortada en 1000, una madre agrupadora queda fuera del
+      // filtro y se vuelve vendible a precio 0 — justo lo que el comentario de arriba prohibe.
+      const { data: madresData } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('producto_padre_id')
         .eq('tenant_id', tenant!.id)
         .not('producto_padre_id', 'is', null)
+        .range(desde, hasta))
       const madreIds = [...new Set((madresData ?? []).map((r: any) => r.producto_padre_id).filter(Boolean))]
 
       // Buscar productos

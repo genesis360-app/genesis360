@@ -740,7 +740,7 @@ export default function InventarioPage() {
         .select('productos!inner(marca)').eq('tenant_id', tenant!.id).eq('activo', true)
         .not('productos.marca', 'is', null)
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
-      const { data } = await q
+      const { data } = await traerTodoConError<any>((desde, hasta) => q.range(desde, hasta))
       const set = new Set<string>()
       for (const r of (data ?? []) as any[]) { const m = String(r.productos?.marca ?? '').trim(); if (m) set.add(m) }
       return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))
@@ -754,7 +754,7 @@ export default function InventarioPage() {
         .select('productos!inner(categoria_id, categorias(id,nombre))').eq('tenant_id', tenant!.id).eq('activo', true)
         .not('productos.categoria_id', 'is', null)
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
-      const { data } = await q
+      const { data } = await traerTodoConError<any>((desde, hasta) => q.range(desde, hasta))
       const map = new Map<string, string>()
       for (const r of (data ?? []) as any[]) {
         const cid = r.productos?.categoria_id; const nom = r.productos?.categorias?.nombre

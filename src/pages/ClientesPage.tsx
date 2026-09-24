@@ -26,7 +26,7 @@ import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
 import { usePaginacionLista } from '@/hooks/usePaginacionLista'
-import { traerTodo } from '@/lib/traerTodo'
+import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import toast from 'react-hot-toast'
 
 interface FilaCliente {
@@ -226,7 +226,8 @@ export default function ClientesPage() {
     queryKey: ['cliente-etiquetas-catalogo', tenant?.id],
     queryFn: async () => {
       const predef: string[] = ((tenant as any)?.cliente_etiquetas_catalogo ?? []) as string[]
-      const { data } = await supabase.from('clientes').select('etiquetas').eq('tenant_id', tenant!.id)
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
+        .select('etiquetas').eq('tenant_id', tenant!.id).range(desde, hasta))
       const usadas = new Set<string>()
       for (const row of (data ?? []) as any[]) (row.etiquetas ?? []).forEach((e: string) => e && usadas.add(e))
       return Array.from(new Set([...predef, ...usadas])).sort((a, b) => a.localeCompare(b))
@@ -314,11 +315,12 @@ export default function ClientesPage() {
   const { data: clientesCC = [] } = useQuery({
     queryKey: ['clientes-cc', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('clientes')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
         .select('id, nombre, telefono, email, plazo_pago_dias, limite_credito, cuenta_token')
         .eq('tenant_id', tenant!.id)
         .eq('cuenta_corriente_habilitada', true)
         .order('nombre')
+        .range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && (pageTab === 'cc' || pageTab === 'reportes'),
@@ -830,8 +832,10 @@ export default function ClientesPage() {
         if (!rows.length) { toast.error('El archivo está vacío'); return }
 
         // A5 — detección de duplicados contra TODA la base (por DNI, teléfono o nombre)
-        const { data: existentes } = await supabase.from('clientes')
-          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id)
+        // Sin tope: "contra TODA la base" tiene que ser toda de verdad. Con mas de 1000 clientes,
+        // PostgREST devolvia 1000 y el importador no veia los duplicados del resto.
+        const { data: existentes } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
+          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id).range(desde, hasta))
         const norm = (s: string) => (s ?? '').replace(/\D/g, '')
         const porDni = new Map<string, string>()
         const porTel = new Map<string, string>()

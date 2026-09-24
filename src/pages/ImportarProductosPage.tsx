@@ -7,6 +7,9 @@ import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileS
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useCotizacion } from '@/hooks/useCotizacion'
+import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
+import { celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
@@ -46,6 +49,8 @@ interface FilaProducto {
   tiene_vencimiento: boolean
   regla_inventario?: string
   es_kit: boolean
+  /** Solo se usa si el archivo trae la columna `activo`; si no, un alta nace activa. */
+  activo: boolean
   estr_nombre?: string
   estr_unidades_por_caja?: number
   estr_cajas_por_pallet?: number
@@ -65,6 +70,8 @@ interface FilaProducto {
   // eliminaron los overrides estr_precio_* de Caja/Pallet. El precio por volumen es un tier.
   estado: 'nuevo' | 'existente' | 'error'
   errores: string[]
+  /** Columnas que ESTA fila trae con valor. Al actualizar solo se escribe lo que está acá (D-3). */
+  columnas: string[]
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -72,6 +79,10 @@ export default function ImportarProductosPage() {
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
+  // A0 (respuesta de Fede al relevamiento de Multimoneda, 2026-09-20). Es la tasa de COMPRA: la misma
+  // con la que el POS valúa un producto en USD al cobrarlo (ver `tasaUsdAArs`). Usar la de venta acá
+  // dejaría el espejo en pesos por encima de lo que realmente se cobra.
+  const { cotizacionUsdAArs } = useCotizacion()
 
   // El importador crea y actualiza productos (incluidos PRECIOS), pero no tenía ningún gate de rol
   // — a diferencia de `ProductoFormPage`, que deshabilita todo el formulario salvo para
@@ -128,7 +139,9 @@ export default function ImportarProductosPage() {
       ],
       [
         'Pintura blanca 4L','PINT-0001','','Pinturas','',
-        4.5,'USD',1200,'ARS',
+        // Ejemplo en USD: costo y precio en la MISMA moneda. Mezclarlas deja un margen disparatado
+        // y la fila se rechaza (`margen_ganancia` no admite más de 999,99 %).
+        4.5,'USD',9.9,'USD',
         5,'litro','','',
         10.5,35,
         'NO','NO','NO',
@@ -167,9 +180,9 @@ export default function ImportarProductosPage() {
       ['categoria','no','Debe existir en Configuración → Categorías (error si no existe)'],
       ['proveedor','no','Debe existir en Configuración → Proveedores (error si no existe)'],
       ['precio_costo','no','Número. Ej: 1500 o 4.5 (si USD)'],
-      ['precio_costo_moneda','no','ARS (default) o USD'],
+      ['precio_costo_moneda','no','ARS (default) o USD. En USD el producto queda en dólares y se convierte al cambio del día'],
       ['precio_venta','no','Número. Ej: 2500'],
-      ['precio_venta_moneda','no','ARS (default) o USD'],
+      ['precio_venta_moneda','no','ARS (default) o USD. Requiere cotización cargada, si no la fila da error'],
       ['stock_minimo','no','Entero. Ej: 5'],
       ['unidad_medida','no','unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
       ['descripcion','no','Texto libre (descripción del producto)'],
@@ -221,13 +234,29 @@ export default function ImportarProductosPage() {
         if (!rows.length) { toast.error('El archivo está vacío'); return }
 
         const skus = rows.map(r => String(r.sku || '').trim().toUpperCase()).filter(Boolean)
-        const { data: existentes } = await supabase.from('productos').select('sku').eq('tenant_id', tenant!.id).in('sku', skus)
+        // `moneda_venta`/`moneda_costo` se traen para poder rechazar un precio ambiguo: actualizar el
+        // precio de un producto que está en dólares SIN decir la moneda no se puede resolver solo.
+        // `moneda_*` para rechazar un precio ambiguo, y `precio_*` porque el chequeo de margen
+        // necesita el lado que el archivo NO trae: si no, con un CSV de una sola columna se compara
+        // contra 0 y el aviso nunca salta.
+        const { data: existentes } = await supabase.from('productos')
+          .select('sku, moneda_venta, moneda_costo, precio_costo, precio_venta').eq('tenant_id', tenant!.id).in('sku', skus)
         const skusExistentes = new Set((existentes ?? []).map((p: any) => p.sku.toUpperCase()))
+        const actualPorSku = new Map<string, { venta: string | null; costo: string | null; precioCostoArs: number; precioVentaArs: number }>(
+          (existentes ?? []).map((p: any) => [p.sku.toUpperCase(), {
+            venta: p.moneda_venta, costo: p.moneda_costo,
+            precioCostoArs: Number(p.precio_costo) || 0,
+            precioVentaArs: Number(p.precio_venta) || 0,
+          }]),
+        )
 
         setFilasProducto(rows.map((row, idx) => {
           const errores: string[] = []
+          // D-3: qué trae ESTA fila. Al actualizar solo se escribe esto; el resto no se toca.
+          const columnas = columnasConValor(row)
           const nombre = String(row.nombre || '').trim()
           const sku = String(row.sku || '').trim().toUpperCase()
+          const yaExiste = !!sku && skusExistentes.has(sku)
           const precio_costo = parseFloat(String(row.precio_costo || '0').replace(',', '.')) || 0
           const precio_costo_moneda = String(row.precio_costo_moneda || 'ARS').trim().toUpperCase()
           const precio_venta = parseFloat(String(row.precio_venta || '0').replace(',', '.')) || 0
@@ -235,15 +264,23 @@ export default function ImportarProductosPage() {
           const unidad = String(row.unidad_medida || 'unidad').trim().toLowerCase()
 
           // alicuota_iva
-          const ivaRaw = parseFloat(String(row.alicuota_iva || '21').replace(',', '.'))
-          const alicuota_iva = isNaN(ivaRaw) ? 21 : ivaRaw
+          // 🛑 Antes: `String(row.alicuota_iva || '21')`. Con 0 (Exento), el `||` devolvía '21' y el
+          // producto se importaba con IVA 21% SIN ningún error visible, porque 21 es un valor válido.
+          // Mismo patrón que ya usaba `ProductoFormPage` (`Number.isFinite`, no `||`).
+          const ivaRaw = celdaTieneValor(row.alicuota_iva)
+            ? parseFloat(String(row.alicuota_iva).replace(',', '.'))
+            : 21
+          const alicuota_iva = Number.isFinite(ivaRaw) ? ivaRaw : 21
           if (row.alicuota_iva !== '' && row.alicuota_iva != null && !ALICUOTAS_VALIDAS.includes(alicuota_iva)) {
             errores.push(`IVA "${row.alicuota_iva}" inválido (0/10.5/21/27)`)
           }
 
           // margen_objetivo
-          const margenStr = String(row.margen_objetivo || '').trim()
-          const margen_objetivo = margenStr ? (parseFloat(margenStr.replace(',', '.')) || undefined) : undefined
+          // Mismo cuidado que con el IVA: un `0` explícito es un valor, no un vacío.
+          const margenNum = celdaTieneValor(row.margen_objetivo)
+            ? parseFloat(String(row.margen_objetivo).replace(',', '.'))
+            : NaN
+          const margen_objetivo = Number.isFinite(margenNum) ? margenNum : undefined
           if (margen_objetivo !== undefined && (margen_objetivo < 0 || margen_objetivo > 100)) {
             errores.push('Margen objetivo debe ser entre 0 y 100')
           }
@@ -284,15 +321,57 @@ export default function ImportarProductosPage() {
             errores.push(`Proveedor "${provNombre}" no existe — crealo primero en Configuración`)
           }
 
-          if (!nombre) errores.push('Nombre requerido')
+          // Solo es obligatorio para CREAR. Actualizar con un archivo de sku + precio es el caso normal.
+          if (!nombre && !yaExiste) errores.push('Nombre requerido')
           if (precio_costo < 0) errores.push('Precio costo inválido')
           if (precio_venta < 0) errores.push('Precio venta inválido')
           if (unidad && !UNIDADES_VALIDAS.includes(unidad)) errores.push(`Unidad "${unidad}" no válida`)
+          // 🛑 REGLA #0. Si el producto está en dólares y el archivo trae el precio SIN la columna de
+          // moneda, el número es ambiguo (¿100 pesos o 100 dólares?). Asumir pesos lo convertiría en
+          // silencio a ~1/1400 de su valor. Se rechaza la fila en vez de adivinar.
+          if (yaExiste) {
+            const m = actualPorSku.get(sku)
+            const pv = problemaDePrecio(columnas, m?.venta, 'venta')
+            if (pv === 'sin-moneda') errores.push('Este producto está en dólares: para cambiarle el precio incluí también la columna precio_venta_moneda')
+            if (pv === 'sin-precio') errores.push('Trajiste precio_venta_moneda sin precio_venta: así el precio quedaría en 0. Incluí las dos columnas')
+            const pc = problemaDePrecio(columnas, m?.costo, 'costo')
+            if (pc === 'sin-moneda') errores.push('El costo de este producto está en dólares: incluí también la columna precio_costo_moneda')
+            if (pc === 'sin-precio') errores.push('Trajiste precio_costo_moneda sin precio_costo: así el costo quedaría en 0. Incluí las dos columnas')
+          }
           if (!MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push('Moneda costo inválida')
           if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push('Moneda venta inválida')
+          // D5 del relevamiento de Multimoneda: sin cotización es ERROR, nunca se inventa una tasa.
+          // Antes esta fila entraba igual y el monto en dólares se guardaba como si fueran pesos.
+          const cotizUsable = Number.isFinite(cotizacionUsdAArs) && cotizacionUsdAArs > 0
+          if ((precio_costo_moneda === 'USD' || precio_venta_moneda === 'USD') && !cotizUsable) {
+            errores.push('Hay precios en USD pero no hay cotización cargada — cargala en el panel de cotización')
+          } else {
+            // `margen_ganancia` es GENERATED numeric(5,2): más de 999,99 % no entra y la base
+            // responde con un "numeric field overflow" ilegible. Se avisa acá, en la vista previa,
+            // antes de importar. Se toca sobre todo con un CSV que mezcla monedas (costo en ARS
+            // contra precio en USD, que queda multiplicado por la cotización).
+            const c = monedaProductoImportada(precio_costo, precio_costo_moneda, cotizacionUsdAArs)
+            const v = monedaProductoImportada(precio_venta, precio_venta_moneda, cotizacionUsdAArs)
+            // 🛑 En una actualización parcial el archivo trae un solo lado del par. Comparar contra 0
+            // hacía que el aviso NUNCA saltara (con costo 0 el margen "siempre entra"), y el overflow
+            // aparecía recién como error crudo de Postgres al confirmar — justo con el CSV de una
+            // columna que este cambio promueve. Se usa el valor que ya está en la base.
+            const actual = yaExiste ? actualPorSku.get(sku) : undefined
+            const costoParaMargen = columnas.has('precio_costo') || !actual ? c?.precioArs : actual.precioCostoArs
+            const ventaParaMargen = columnas.has('precio_venta') || !actual ? v?.precioArs : actual.precioVentaArs
+            if (c && v && costoParaMargen !== undefined && ventaParaMargen !== undefined
+                && !margenEntraEnLaBase(costoParaMargen, ventaParaMargen)) {
+              const m = margenGenerado(costoParaMargen, ventaParaMargen)
+              errores.push(
+                `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT}%` +
+                (precio_costo_moneda !== precio_venta_moneda ? ' — revisá que el costo y el precio estén en la misma moneda' : ''),
+              )
+            }
+          }
 
           return {
             idx, nombre,
+            columnas: Array.from(columnas),
             sku: sku || `AUTO-${String(idx + 1).padStart(4, '0')}`,
             codigo_barras: String(row.codigo_barras || '').trim() || undefined,
             categoria: String(row.categoria || '').trim() || undefined,
@@ -306,6 +385,7 @@ export default function ImportarProductosPage() {
             descripcion: String(row.descripcion || '').trim() || undefined,
             notas: String(row.notas || '').trim() || undefined,
             alicuota_iva: ALICUOTAS_VALIDAS.includes(alicuota_iva) ? alicuota_iva : 21,
+            activo: parseBool(row.activo),
             margen_objetivo,
             tiene_series: parseBool(row.tiene_series),
             tiene_lote: parseBool(row.tiene_lote),
@@ -353,6 +433,16 @@ export default function ImportarProductosPage() {
           ? ((proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())?.id ?? null)
           : null
 
+        // ── A0 · Las columnas que el resto de la app realmente lee ──────────────────────────
+        // Ver `src/lib/importarProductosMoneda.ts` para el porqué. Las columnas muertas
+        // (`precio_*_moneda`) se siguen escribiendo para no romper la vista previa ni el histórico;
+        // se eliminan dentro del rediseño de Multimoneda, no acá.
+        const costo = monedaProductoImportada(fila.precio_costo, fila.precio_costo_moneda, cotizacionUsdAArs)
+        const venta = monedaProductoImportada(fila.precio_venta, fila.precio_venta_moneda, cotizacionUsdAArs)
+        // La fila ya se marcó con error en la validación, pero el guard va igual: sin cotización NO
+        // se importa, nunca se guarda un monto en dólares como si fueran pesos.
+        if (!costo || !venta) throw new Error('Hay precios en USD pero no hay cotización cargada')
+
         const payload = {
           tenant_id: tenant!.id,
           nombre: fila.nombre,
@@ -360,15 +450,19 @@ export default function ImportarProductosPage() {
           codigo_barras: fila.codigo_barras ?? null,
           categoria_id,
           proveedor_id,
-          precio_costo: fila.precio_costo,
+          precio_costo: costo.precioArs,
+          precio_costo_usd: costo.precioUsd,
+          moneda_costo: costo.moneda,
           precio_costo_moneda: fila.precio_costo_moneda,
-          precio_venta: fila.precio_venta,
+          precio_venta: venta.precioArs,
+          precio_usd: venta.precioUsd,
+          moneda_venta: venta.moneda,
           precio_venta_moneda: fila.precio_venta_moneda,
           stock_minimo: fila.stock_minimo,
           unidad_medida: fila.unidad_medida,
           descripcion: fila.descripcion ?? null,
           notas: fila.notas ?? null,
-          activo: true,
+          activo: fila.columnas.includes('activo') ? fila.activo : true,
           alicuota_iva: fila.alicuota_iva,
           margen_objetivo: fila.margen_objetivo ?? null,
           tiene_series: fila.tiene_series,
@@ -378,18 +472,31 @@ export default function ImportarProductosPage() {
           es_kit: fila.es_kit,
         }
 
-        const hasEstr = !!(fila.estr_nombre || fila.estr_unidades_por_caja || fila.estr_cajas_por_pallet ||
-          fila.estr_peso_unidad || fila.estr_alto_unidad || fila.estr_peso_caja || fila.estr_peso_pallet)
+        // Desde las columnas del archivo, no desde una lista fija: la anterior cubría 7 de las 14
+        // columnas `estr_*`, así que una fila con solo `estr_largo_unidad` fallaba entera.
+        const hasEstr = fila.columnas.some(c => c.startsWith('estr_'))
         let productoId: string | null = null
 
         if (fila.estado === 'nuevo') {
+          // Crear: el archivo define el producto entero, con los valores por defecto para lo que no trae.
           const { data: inserted, error: errIns } = await supabase.from('productos').insert(payload).select('id').single()
           if (errIns) throw errIns
           productoId = inserted?.id ?? null
           creados++
         } else {
-          const { error: errUpd } = await supabase.from('productos').update(payload).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
-          if (errUpd) throw errUpd
+          // Actualizar (D-3): SOLO las columnas que el archivo trae. Lo que no viene, no se toca —
+          // antes se reescribía la fila entera y se perdían proveedor, descripción, código de barras,
+          // alícuota de IVA y las marcas de trazabilidad.
+          const parcial = payloadParaActualizar(payload, new Set(fila.columnas))
+          // Una fila puede traer SOLO columnas de empaque (`estr_*`), que no viven en `productos`:
+          // ahí no hay UPDATE que hacer, pero el empaque de más abajo sí se aplica.
+          if (Object.keys(parcial).length === 0 && !hasEstr) {
+            throw new Error('La fila no trae ninguna columna para actualizar')
+          }
+          if (Object.keys(parcial).length > 0) {
+            const { error: errUpd } = await supabase.from('productos').update(parcial).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
+            if (errUpd) throw errUpd
+          }
           if (hasEstr) {
             const { data: p } = await supabase.from('productos').select('id').eq('sku', fila.sku).eq('tenant_id', tenant!.id).single()
             productoId = p?.id ?? null

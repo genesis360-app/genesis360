@@ -6,6 +6,7 @@ import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Spa
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
 import { puedeVerCosto } from '@/lib/permisosCosto'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad, nuevaTransaccion, diffCampos } from '@/lib/actividadLog'
@@ -63,7 +64,12 @@ export default function ProductoFormPage() {
   const { tenant, user, sucursales } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
-  const { cotizacion: cotizacionNum } = useCotizacion()
+  // 🛑 D-1 (2026-09-23). Antes tomaba `cotizacion`, que es la de VENTA. El 2026-09-08 Fede detectó
+  // que el POS convertía al dólar venta y le cobraba de más al cliente, y se arregló para que use
+  // COMPRA (`tasaUsdAArs`) — pero esta pantalla quedó sin actualizar. Resultado: el POS cobraba a una
+  // tasa y el espejo en pesos que leen margen y reportes se calculaba con otra. Ahora las tres
+  // puertas (POS, ficha e importador) usan la misma.
+  const { cotizacionUsdAArs: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showQR, setShowQR] = useState(false)
 
@@ -514,6 +520,19 @@ export default function ProductoFormPage() {
     if (moduloSoloLectura(user, 'inventario')) return toast.error('Tu rol tiene acceso de solo lectura en Productos.')
     if (!form.nombre.trim()) return toast.error('El nombre es obligatorio')
     if (skuTaken) return toast.error('El SKU ya está en uso. Elegí otro o dejalo vacío para autogenerar.')
+
+    // D-2: `productos.margen_ganancia` es una columna GENERATED `numeric(5,2)`, así que no admite más
+    // de 999,99 % de markup. Sin este chequeo la base responde un "numeric field overflow" crudo que
+    // no le dice nada a nadie. Se mira contra los precios EN PESOS, que son los que ve la columna
+    // (cuando el producto va en dólares, `precio_costo`/`precio_venta` son el espejo convertido).
+    const costoArs = parseFloat(form.precio_costo) || 0
+    const ventaArs = parseFloat(form.precio_venta) || 0
+    if (!margenEntraEnLaBase(costoArs, ventaArs)) {
+      const m = margenGenerado(costoArs, ventaArs)
+      return toast.error(
+        `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT}%. Revisá el costo y el precio.`,
+      )
+    }
 
     // Verificar límite de productos solo al crear (no al editar)
     if (!isEditing && limits && !limits.puede_crear_producto) {

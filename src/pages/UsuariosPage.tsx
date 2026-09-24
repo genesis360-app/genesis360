@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserPlus, Trash2, Shield, User, Mail,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw, KeyRound,
 } from 'lucide-react'
+import { normalizarUsuario, validarUsuario } from '@/lib/usuarioLocal'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -88,6 +89,14 @@ export default function UsuariosPage() {
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [invEmail, setInvEmail] = useState('')
   const [invRol, setInvRol] = useState<UserRole>('CAJERO')
+  // Mig 434: el alta sin correo. El dueño pone usuario + contraseña y no se manda ningún mail.
+  const [invModo, setInvModo] = useState<'email' | 'usuario'>('email')
+  const [invUsuario, setInvUsuario] = useState('')
+  const [invNombre, setInvNombre] = useState('')
+  const [invPassword, setInvPassword] = useState('')
+  // Reseteo de contraseña de un usuario sin correo (no hay casilla donde mandarle un link).
+  const [resetTarget, setResetTarget] = useState<any | null>(null)
+  const [resetPassword, setResetPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [filterRol, setFilterRol] = useState<UserRole | 'TODOS'>('TODOS')
   const [showPermisos, setShowPermisos] = useState(false)
@@ -127,6 +136,66 @@ export default function UsuariosPage() {
     },
     enabled: !!tenant,
   })
+
+  // Mig 434: alta de un empleado sin correo. No manda ningún mail: la cuenta nace con la contraseña
+  // que pone el dueño, y el empleado está obligado a cambiarla en su primer ingreso.
+  const handleCrearSinCorreo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const problemaUsuario = validarUsuario(invUsuario)
+    if (problemaUsuario) { toast.error(problemaUsuario); return }
+    if (invPassword.length < 8) { toast.error('La contraseña necesita al menos 8 caracteres'); return }
+    setSaving(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('usuarios-sin-correo', {
+        body: {
+          accion: 'crear',
+          usuario: invUsuario,
+          nombre: invNombre.trim(),
+          rol: invRol,
+          password: invPassword,
+        },
+      })
+      if (error) {
+        const body = await (error as any).context?.json?.().catch(() => null)
+        throw new Error(body?.error ?? error.message)
+      }
+      if (data?.error) throw new Error(data.error)
+      toast.success(`Usuario "${invUsuario}" creado. Pasale el código del negocio y su contraseña.`)
+      logActividad({ entidad: 'usuario', entidad_nombre: invNombre.trim() || invUsuario, accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })
+      setInvUsuario(''); setInvNombre(''); setInvPassword(''); setShowInvitar(false)
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      qc.invalidateQueries({ queryKey: ['plan-limits'] })
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al crear el usuario')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Sin casilla no hay "olvidé mi contraseña" posible: la repone el dueño, y vuelve a ser de un solo uso.
+  const handleResetearPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (resetPassword.length < 8) { toast.error('La contraseña necesita al menos 8 caracteres'); return }
+    setSaving(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('usuarios-sin-correo', {
+        body: { accion: 'resetear-password', user_id: resetTarget.id, password: resetPassword },
+      })
+      if (error) {
+        const body = await (error as any).context?.json?.().catch(() => null)
+        throw new Error(body?.error ?? error.message)
+      }
+      if (data?.error) throw new Error(data.error)
+      toast.success(`Contraseña repuesta. ${resetTarget.nombre_display ?? resetTarget.usuario} la va a tener que cambiar al entrar.`)
+      logActividad({ entidad: 'usuario', entidad_id: resetTarget.id, entidad_nombre: resetTarget.nombre_display, accion: 'editar', campo: 'password', pagina: '/usuarios' })
+      setResetTarget(null); setResetPassword('')
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al reponer la contraseña')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleInvitar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -219,6 +288,27 @@ export default function UsuariosPage() {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       qc.invalidateQueries({ queryKey: ['plan-limits'] })
     },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Mig 433: desde que dar de baja corta el acceso DE VERDAD, tiene que poder deshacerse desde la
+  // app. Sin esto una baja por error es un candado sin llave: el usuario inactivo no renderiza
+  // ningún control y no hay otra forma de volver atrás. La policy `users_update_owner` sí lo
+  // permite (compara el tenant_id de la FILA, que queda intacto al dar de baja).
+  const reactivar = useMutation({
+    mutationFn: async (userId: string) => {
+      const u = (usuarios as any[]).find(x => x.id === userId)
+      const { error } = await supabase.from('users').update({ activo: true }).eq('id', userId)
+      if (error) throw error
+      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: u?.nombre_display, accion: 'editar', campo: 'activo', valor_nuevo: 'true', pagina: '/usuarios' })
+    },
+    onSuccess: () => {
+      toast.success('Usuario reactivado')
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      qc.invalidateQueries({ queryKey: ['plan-limits'] })
+    },
+    // Reactivar vuelve a ocupar un lugar del plan: si ya está en el límite, `trg_enforce_usuarios`
+    // lo rechaza y ese mensaje es el que hay que mostrar, no uno genérico.
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -347,8 +437,20 @@ export default function UsuariosPage() {
         )}
       </div>
 
-      {/* Barra de uso */}
-      {limits && limits.max_usuarios < 999 && (
+      {/* Barra de uso.
+          `max_usuarios = -1` es el centinela de "sin límite", y `-1 < 999` da true: sin este caso
+          aparte, un plan ilimitado mostraba "13 de -1 usuarios · 0%". Mismo tratamiento que ya le
+          daba ProductosPage a `max_productos`. */}
+      {limits && limits.max_usuarios === -1 && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm">
+          <User size={15} className="text-gray-400 dark:text-gray-500" />
+          <span className="text-gray-500 dark:text-gray-400 font-medium">
+            {limits.usuarios_actuales} usuario{limits.usuarios_actuales !== 1 ? 's' : ''}
+          </span>
+          <span className="text-xs text-green-600 dark:text-green-400">· Sin límite en tu plan</span>
+        </div>
+      )}
+      {limits && limits.max_usuarios !== -1 && limits.max_usuarios < 999 && (
         <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm
           ${limits.pct_usuarios >= 90 ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700'}`}>
           <User size={15} className={limits.pct_usuarios >= 90 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'} />
@@ -371,17 +473,77 @@ export default function UsuariosPage() {
 
       {/* Formulario nuevo usuario */}
       {showInvitar && (
-        <form onSubmit={handleInvitar} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent-text/30 space-y-4">
+        <form onSubmit={invModo === 'email' ? handleInvitar : handleCrearSinCorreo}
+          className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent-text/30 space-y-4">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300">Nuevo usuario</h2>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email *</label>
-            <div className="relative">
-              <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
-              <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
-                placeholder="usuario@email.com" required
-                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
-            </div>
+
+          {/* Mig 434: los dos caminos de alta. El de abajo existe porque en un negocio chico los
+              empleados no tienen mail propio, y sin él el dueño terminaba inventando casillas. */}
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { modo: 'email' as const, titulo: 'Con email', desc: 'Le llega una invitación' },
+              { modo: 'usuario' as const, titulo: 'Sin email', desc: 'Usuario y contraseña' },
+            ]).map(op => (
+              <button key={op.modo} type="button" onClick={() => setInvModo(op.modo)}
+                className={`px-3 py-2.5 rounded-xl border-2 text-left transition-all
+                  ${invModo === op.modo ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'}`}>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{op.titulo}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">{op.desc}</p>
+              </button>
+            ))}
           </div>
+
+          {invModo === 'email' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email *</label>
+              <div className="relative">
+                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
+                  placeholder="usuario@email.com" required
+                  className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre y apellido</label>
+                <div className="relative">
+                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                  <input type="text" value={invNombre} onChange={e => setInvNombre(e.target.value)}
+                    placeholder="Juan Pérez"
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Es el que se ve en la app y en el historial.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Usuario *</label>
+                <div className="relative">
+                  <Shield size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                  <input type="text" value={invUsuario} autoCapitalize="none" autoCorrect="off"
+                    onChange={e => setInvUsuario(normalizarUsuario(e.target.value))}
+                    placeholder="juan" required
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Con esto entra a la app. Solo tiene que ser distinto dentro de tu negocio.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contraseña inicial *</label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                  <input type="text" value={invPassword} onChange={e => setInvPassword(e.target.value)}
+                    placeholder="mínimo 8 caracteres" required minLength={8}
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Se la pasás vos. La primera vez que entre va a tener que cambiarla.
+                </p>
+              </div>
+            </>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rol</label>
             <div className="grid grid-cols-3 gap-2">
@@ -399,10 +561,21 @@ export default function UsuariosPage() {
                 ))}
             </div>
           </div>
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
-            <Mail size={13} className="mt-0.5 flex-shrink-0" />
-            El usuario recibirá un email con un link para crear su contraseña.
-          </div>
+          {invModo === 'email' ? (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
+              <Mail size={13} className="mt-0.5 flex-shrink-0" />
+              El usuario recibirá un email con un link para crear su contraseña.
+            </div>
+          ) : (
+            // El código del negocio es la otra mitad de lo que el empleado necesita para entrar.
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
+              <Shield size={13} className="mt-0.5 flex-shrink-0" />
+              <span>
+                Para entrar necesita dos cosas: el código de tu negocio —<strong>{tenant?.codigo}</strong>— y su
+                usuario. No se le manda ningún mail.
+              </span>
+            </div>
+          )}
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={() => setShowInvitar(false)}
               className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl text-sm hover:border-gray-300 dark:hover:border-gray-500">
@@ -410,7 +583,7 @@ export default function UsuariosPage() {
             </button>
             <button type="submit" disabled={saving}
               className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm disabled:opacity-50">
-              {saving ? 'Enviando...' : 'Enviar invitación'}
+              {saving ? 'Guardando...' : invModo === 'email' ? 'Enviar invitación' : 'Crear usuario'}
             </button>
           </div>
         </form>
@@ -484,7 +657,19 @@ export default function UsuariosPage() {
                             </button>
                           )}
                           {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-400">(vos)</span>}
+                          {/* Mig 434: entra sin correo. Se muestra para que el dueño sepa qué usuario
+                              tiene que dictarle si se lo olvida. */}
+                          {u.usuario && (
+                            <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded font-mono">
+                              {u.usuario}
+                            </span>
+                          )}
                           {!u.activo && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Inactivo</span>}
+                          {u.debe_cambiar_password && (
+                            <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                              Contraseña sin estrenar
+                            </span>
+                          )}
                         </>
                       )}
                     </div>
@@ -565,13 +750,38 @@ export default function UsuariosPage() {
                         className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                         <Sliders size={15} />
                       </button>
+                      {/* Mig 434: solo las cuentas sin correo. Las que tienen casilla propia la
+                          recuperan con "Olvidé mi contraseña", que les llega a ELLAS — que el dueño
+                          del negocio pudiera pisarles la contraseña sería quedarse con su cuenta. */}
+                      {u.usuario && (
+                        <button onClick={() => { setResetTarget(u); setResetPassword('') }}
+                          title="Reponer la contraseña — no tiene correo para recuperarla por su cuenta"
+                          className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
+                          <KeyRound size={15} />
+                        </button>
+                      )}
                       {!esMiUsuario && (
-                        <button onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}?`, { danger: true })) desactivar.mutate(u.id) }}
+                        <button
+                          title="Desactivar — pierde el acceso a la app"
+                          onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}? Deja de tener acceso a la app hasta que lo reactives.`, { danger: true })) desactivar.mutate(u.id) }}
                           className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Trash2 size={15} />
                         </button>
                       )}
                     </div>
+                  )}
+
+                  {/* Mig 433: un usuario dado de baja no tiene acceso, así que la única acción que
+                      le queda —y que antes no existía— es volver a darle el alta. */}
+                  {canManage && !u.activo && (
+                    <button
+                      title="Reactivar — vuelve a tener acceso a la app"
+                      disabled={reactivar.isPending}
+                      onClick={async () => { if (await confirmar(`¿Reactivar a ${u.nombre_display ?? 'este usuario'}? Vuelve a tener acceso con el rol que tenía.`)) reactivar.mutate(u.id) }}
+                      className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-accent-text bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors disabled:opacity-50">
+                      <RotateCcw size={13} />
+                      Reactivar
+                    </button>
                   )}
                 </div>
               )
@@ -824,6 +1034,42 @@ export default function UsuariosPage() {
           </div>
         )}
       </div>
+
+      {/* Mig 434 · Reponer la contraseña de un usuario sin correo.
+          No hay link de recuperación posible: la dirección interna no recibe nada. */}
+      {resetTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setResetTarget(null)}>
+          <form onSubmit={handleResetearPassword} onClick={e => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="font-semibold text-gray-800 dark:text-gray-100">
+              Reponer la contraseña de {resetTarget.nombre_display ?? resetTarget.usuario}
+            </h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contraseña nueva</label>
+              <div className="relative">
+                <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                <input type="text" autoFocus value={resetPassword} onChange={e => setResetPassword(e.target.value)}
+                  placeholder="mínimo 8 caracteres" required minLength={8}
+                  className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-900 dark:text-gray-100" />
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Se la pasás vos y la va a tener que cambiar en cuanto entre. Sus sesiones abiertas no se cierran.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setResetTarget(null)}
+                className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl text-sm hover:border-gray-300 dark:hover:border-gray-500">
+                Cancelar
+              </button>
+              <button type="submit" disabled={saving}
+                className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm disabled:opacity-50">
+                {saving ? 'Guardando...' : 'Reponer'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

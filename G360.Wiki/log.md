@@ -6,6 +6,338 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-24] update | 🧾🔐 Dos pasadas de `code-reviewer` encontraron 2 bugs 🔴 (uno fiscal) en el importador + mig 433 escrita para cortar el acceso de un usuario dado de baja (SIN aplicar)
+
+**PROD sigue en `v1.230.0`** (migs 001-**432**). **Nada de esta entrada se deployó.** `dev` queda **11
+commits** por encima de `origin/main` (verificado: `git log --oneline origin/main..dev`). `APP_VERSION`
+sigue sin bump.
+
+⚠️ **La mig 433 quedó ESCRITA, REVISADA (`migration-reviewer`: APTA para DEV) y con su mitad de
+frontend lista, pero SIN APLICAR ni en DEV ni en PROD**: el conector de Supabase se desconectó a mitad
+de sesión.
+
+### 1 · Productos — 4 hallazgos más de A0, cerrados sin deploy (commits `93448deb`, `c8e7649c`, `02568b64`, `470525c6`)
+
+**D-3** — al actualizar por archivo se escribe SOLO lo que el archivo trae. Antes el UPDATE reescribía
+las 26 columnas del payload con los defaults: perdía proveedor, descripción, código de barras, alícuota
+de IVA y trazabilidad. Medido en PROD: 19 proveedores, 19 descripciones, 12 códigos de barras y 9
+productos con trazabilidad se perderían con solo exportar y reimportar sin tocar nada. Decisión de GO:
+*"lo que el archivo trae manda; lo que no trae, no se toca"*. Módulo nuevo
+`src/lib/importarProductosActualizacion.ts`.
+🛑 **La prueba de que sumarle columnas al export no alcanzaba**: `activo` YA estaba en el archivo
+exportado y se pisaba igual —el payload lo escribía fijo en `true`— así que exportar y reimportar
+**reactivaba productos dados de baja**.
+
+**D-1** ✅ resuelto — la ficha calculaba el espejo en pesos con la cotización de **venta**, mientras el
+POS cobra a la de **compra**. Era la mitad que había quedado afuera del fix del 2026-09-08. Ahora POS,
+ficha e importador usan la misma tasa.
+
+**D-2** 🟡 mitigado, no cerrado — la ficha ahora avisa el tope de margen con un mensaje claro en vez del
+`numeric field overflow` crudo. ⚠️ **El tope de 999,99 % sigue existiendo**: ampliar la columna
+`margen_ganancia` (`GENERATED numeric(5,2)`) es una decisión de GO todavía ABIERTA.
+
+**Export reimportable** — de 10 a 22 columnas. 🛑 Con el cuidado de que un producto en dólares sale con
+su **monto en dólares**, no el espejo en pesos (si no, cada ida y vuelta lo multiplicaría por la
+cotización). Función `montoYMonedaParaExportar` + test de identidad exportar→importar.
+
+### 2 · Lo que encontraron las DOS pasadas de `code-reviewer` — 2 bugs 🔴 que 1.900 tests no vieron
+
+**🔴🧾 IVA Exento (0 %) se convertía en 21 %** (`02568b64`). `String(row.alicuota_iva || '21')`: con 0,
+el `||` devuelve `'21'`, y como 21 es un valor válido, entraba en silencio. Es literalmente el gotcha
+del CLAUDE.md ("un `||default` sobre 0 convierte Exento en 21 %"). Ya estaba resuelto en
+`ProductoFormPage` con `Number.isFinite`; el importador es un archivo hermano que nunca recibió el
+mismo arreglo. Un producto exento exportado y reimportado sin tocar nada facturaba IVA fantasma.
+
+**🔴 Traer la columna de moneda SIN el precio dejaba el precio en 0** (`02568b64`). El precio y su
+moneda se escriben en grupo; una columna ausente se parsea como 0, así que una fila con solo `sku` +
+`precio_venta_moneda` escribía `precio_venta: 0` sobre un producto real, sin error en la vista previa.
+Era el CSV más natural: *"le corrijo solo la moneda"*.
+
+**🟡 Segunda pasada** (`470525c6`): el aviso de margen quedaba **ciego en las actualizaciones
+parciales** (comparaba contra 0 para el lado que el archivo no trae, así que nunca saltaba) y `hasEstr`
+miraba **7 de las 14** columnas `estr_*`.
+
+Más 4 menores: `margen_objetivo = 0` se leía como vacío y borraba el margen; una fila de "solo empaque"
+fallaba entera; 🔒 el export entregaba costo y margen a CAJERO/DEPÓSITO/RRHH, que no los ven en la
+grilla; y el escape del CSV no contemplaba saltos de línea.
+
+Detalle completo, con los 26 escenarios del UAT: [[wiki/features/productos]] → "Importador CSV —
+columnas de moneda (A0)" y `tests/specs/uat-modo-basico.md` §66/§68.
+
+### 3 · 🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad (ESCRITA, SIN APLICAR)
+
+Salió contestando una pregunta de GO sobre cómo manejar las cuentas de los empleados.
+
+🛑 **El agujero**: dar de baja a alguien NO le quitaba nada. `get_user_tenant_id()` —la función que
+gobierna el `USING` de casi todas las policies de RLS— no miraba `activo`; tampoco lo hacía
+`users_select`, ni `loadUserData`, ni ningún guard del frontend. Y "Desactivar" es la única acción que
+existe sobre un usuario (no hay eliminar): desde la app no había forma de cortarle el acceso a un
+empleado que se fue.
+
+La migración: (1) `get_user_tenant_id()` e `is_admin()` dejan de resolver para un usuario dado de baja;
+(2) trigger que impide darse de baja a uno mismo o dar de baja al último DUEÑO activo; (3)
+`fn_estado_usuario_actual()` para que la app pueda explicar qué pasó.
+
+⚠️ `users.activo` es NULLABLE (`boolean DEFAULT true`): las tres funciones y el trigger usan
+`coalesce(activo, true)`, el mismo criterio que ya aplica `fn_soporte_ticket_detalle`. Con `AND activo`
+a secas, cualquier fila con NULL habría perdido el acceso.
+
+**El frontend era la mitad imprescindible** (`authStore` + `AuthGuard`): sin él, el usuario dado de
+baja tampoco puede leer SU PROPIA fila, así que la app lo tomaba por "no tiene negocio" y lo mandaba a
+crear un negocio nuevo con su misma identidad. Ahora ve "Tu acceso fue dado de baja".
+
+La revisión confirmó que `admin.genesis360.pro` **no se ve afectado** (autentica contra
+`support_agents` con service_role, no por `is_admin()`) y que el alta de negocio tampoco (los triggers
+de seed usan `NEW.id`).
+
+**UAT §67**: 7 escenarios, **4 en rojo** porque necesitan la prueba real en DEV (falta el conector).
+
+Detalle: [[wiki/features/autenticacion-onboarding]] → "Desactivar corta el acceso de verdad" y
+[[wiki/architecture/multi-tenant-rls]].
+
+### 4 · 🛑 La lección de la sesión: la lógica de parseo sin test es lógica sin cobertura
+
+Los dos bugs 🔴 vivían en la lógica de PARSEO de los componentes (`ImportarProductosPage.tsx`), que
+**no tiene test unitario**. Lo mismo `ProductoFormPage.tsx` y `ProductosPage.tsx`. Lo que sí está
+cubierto son las funciones puras extraídas a `src/lib/` (51 tests) — y ahí no hubo ningún bug.
+
+Peor: el test que cubría el precio en grupo **usaba un fixture con el precio ya puesto a mano**, así
+que nunca ejercitaba el camino real donde el precio sale en 0 por ausencia de columna. Un test que no
+prueba el camino real da una sensación de cobertura que no existe.
+
+**Conclusión**: la lógica de parseo de un archivo hay que extraerla a `src/lib` y testearla ahí, y los
+fixtures tienen que salir del parseo real, no armarse a mano. Ver UAT §68.
+
+### Pendientes actualizados
+
+1. **🔴 Aplicar y probar la mig 433** — necesita el conector de Supabase de vuelta. **No debe ir a PROD
+   sin la prueba manual** (desactivar un usuario en DEV, intentar entrar, confirmar la pantalla): Kalken
+   tiene empleados reales.
+2. **🆕 Feature nueva a arrancar**: crear usuarios con nombre y contraseña, SIN correo — hoy
+   `invite-user` exige mail (`inviteUserByEmail`). Idea: el dueño crea al empleado, la app genera por
+   dentro una dirección que nunca recibe correo (`@u.genesis360.pro`), y el dueño restablece la
+   contraseña desde Usuarios. Es lo correcto para un kiosco.
+3. **Mientras tanto**, la recomendación para clientes sin dominio propio: una sola cuenta
+   `negocio@gmail.com` con direcciones `+` por empleado (`negocio+juan@gmail.com`) — Gmail las entrega
+   todas a la misma casilla. Contras: la invitación le llega al dueño, el empleado no recibe avisos
+   propios, y el nombre que muestra la app sale de lo que está antes del `@`.
+4. **Deploy pendiente**: los 5 cambios de productos no llevan migración y podrían ir solos; lo de
+   usuarios necesita la 433 aplicada y probada primero.
+5. Los de siempre: rotación de keys legacy (esperando al 25/09), los 27 puntos abiertos de los
+   relevamientos + D-2 (28 en total — D-1 y D-3 de A0 ya se resolvieron esta sesión), 2 EFs con drift
+   cosmético en PROD.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+## [2026-09-23] update | 📄 Guía de inicio para clientes + el PDF de la de facturación, por fin imprimible
+
+### Guía nueva: "Primeros pasos: de cero a tu primera venta"
+
+Pedido de GO. **No existía**: los `manual-*-genesis360.html` son por rubro y cubren el flujo completo,
+no el arranque. Artifact https://claude.ai/artifact/WBZVSEjGy623cSE9urXV1T + PDF de 7 páginas en
+`E:\OneDrive\Documentos`. Detalle en [[wiki/features/autenticacion-onboarding]].
+
+Se fundó en el código, no en supuestos: el bloqueo real de la primera venta salió de `VentasPage.tsx`
+(*"No hay caja abierta… incluso en cuenta corriente"*), lo ya sembrado de `fn_seed_tenant_defaults`, y
+los roles y modos de `UsuariosPage.tsx` / `ConfigPage.tsx`.
+
+### 🛑 Por qué la guía de facturación no se podía imprimir bien (y no era el CSS)
+
+GO reportó dos veces que al imprimir quedaba todo encimado y los títulos cortados al pie. **La causa
+no era el CSS: estaba imprimiendo desde el visor de claude.ai, que mete la guía en un iframe.** El
+navegador pagina ese iframe como un bloque único, así que los saltos de página de adentro se ignoran.
+Se ve en la captura: cada página es una tarjeta blanca redondeada sobre fondo oscuro, que es el marco
+del visor.
+
+**La salida fue generar el PDF acá**, con el Chromium de Playwright sobre el documento suelto
+(`page.pdf()` con `printBackground`), y **renderizar cada página a PNG con pdf.js para MIRARLA** — no
+hay LibreOffice ni `pdftoppm` en esta máquina, así que hasta ese momento se estaba escribiendo CSS de
+impresión a ciegas.
+
+### Gotchas de impresión que valen para cualquier HTML que publiquemos
+
+| Síntoma | Causa | Fix |
+|---|---|---|
+| Un paso se parte al medio pese a `break-inside: avoid` | 🛑 **Chrome y Edge lo IGNORAN en elementos `display: list-item`** | `display: block` en print (solo donde no rompa la viñeta o el grid) |
+| El título queda colgado al pie | `break-after: avoid` solo evita el corte inmediato, no empuja la sección | `break-before: page` en la sección: determinístico |
+| Se corta por la derecha | El contenedor de 760 px es más ancho que el área imprimible de una A4 | `.hoja { max-width: 100% }` en print |
+| PDF con fondo negro | El navegador en modo oscuro | Forzar las variables claras dentro de `@media print` |
+| Números de paso blancos sobre blanco | Chrome descarta los fondos de color | `print-color-adjust: exact` |
+| Pelea con el papel elegido | `@page { size: A4 }` | No declarar `size`: respetar la elección del usuario |
+
+También se entregó la guía de facturación en **.docx** (docx-js, con las 6 capturas embebidas), antes
+de descubrir que el PDF se podía generar bien.
+
+## [2026-09-23] update | ✅ A0 cerrado en `dev` — el importador CSV ya escribe las columnas de moneda que la app lee (SIN deploy)
+
+**Continuación de la sesión que deployó `v1.230.0` a PROD (2026-09-22, noche).** PROD sigue exactamente en
+`v1.230.0` (migs 001-**432**) — nada de esta entrada llegó a producción. Commits `870d3e36` + `ca2f08f2` en
+`origin/dev`. **Sin migración nueva** — `dev` queda con A0 por encima de PROD, sin bump de `APP_VERSION`
+todavía.
+
+### A0 — el bug que cierra
+
+El importador (`ImportarProductosPage.tsx`) escribía `precio_venta_moneda`/`precio_costo_moneda` (varchar
+`'ARS'|'USD'`, columnas **muertas** desde la mig 007 — las escribía y leía solo él mismo) y **nunca** tocaba
+`moneda_venta`/`moneda_costo` (`'local'|'usd'`, las **vivas**, las que miran el POS, la ficha y la
+rentabilidad, y el costo de OC). No hay trigger que sincronice el par. Un CSV con `precio_venta=100` +
+`USD` quedaba guardado tal cual y se vendía a **$100 pesos**, ~1/1400 de su precio real.
+
+**Medido antes de tocar nada: 0 productos afectados en DEV y en PROD** (27 productos, 5 negocios) — bug
+latente puro, sin plata mal cargada en ningún lado, así que no hizo falta armar ninguna lista para ningún
+dueño.
+
+**Segundo bug, también cerrado**: al ACTUALIZAR por CSV un producto que estaba en USD con un precio en
+pesos, se pisaba `precio_venta` pero `moneda_venta` seguía en `'usd'` — y como el POS recalcula
+`precio_usd × cotización` e ignora `precio_venta` cuando la moneda es `'usd'`, la importación **no cambiaba
+lo que se cobraba**. Ahora el CSV manda.
+
+### Cómo quedó el fix
+
+Lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa) con **22 tests**
+(`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
+(`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
+cobrarlo. **Sin cotización, la fila no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
+validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
+escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el camino
+en pesos produce el mismo payload que antes.
+
+Verificado contra la base real en DEV con el payload exacto (revertido después): costo 60 USD / precio 100
+USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
+`precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
+
+### Tres hallazgos nuevos, esperando decisión de GO
+
+- **D-1**: `ProductoFormPage.tsx:66` sigue destructurando `{ cotizacion }` (la de VENTA) para calcular el
+  espejo en pesos — es la mitad que quedó afuera del fix del 2026-09-08 (el POS ya usa compra desde
+  entonces). Hoy latente: 0 productos en USD en PROD.
+- **D-2**: `productos.margen_ganancia` es `GENERATED numeric(5,2)` — ningún producto con markup >
+  999,99 % se puede guardar, ni por CSV ni desde la ficha (`numeric field overflow`). Preexistente; el
+  importador ya valida esto con mensaje claro, la ficha sigue sin protección.
+- **D-3** 🛑: el archivo de **"Exportar productos" NO sirve para reimportar**: solo emite `id, nombre,
+  sku, precio_venta, precio_costo, stock_actual, stock_minimo, unidad_medida, activo, categoria`, y el
+  importador pisa todo el resto con los defaults. Medido sobre los 27 de PROD: se perderían **19**
+  proveedores, **19** descripciones, **12** códigos de barras, **9** productos con trazabilidad
+  (series/lote/vencimiento), 5 márgenes objetivo, 2 reglas de inventario y 1 kit. El IVA zafa de
+  casualidad (los 27 están en 21 %) pero la misma vía lo resetearía, y eso sí es fiscal. Preexistente; A0
+  solo sumó la moneda a esa lista.
+
+### Documento nuevo: los 30 puntos abiertos, cada uno con una propuesta
+
+`puntos-abiertos-multimoneda-categorias-precio-programado.html` (raíz del repo, commit `a7fc1124`),
+imprimible, mismo formato que los relevamientos. Junta los **27 puntos** que Fede marcó "para que Tonga
+proponga o resuelva" (11 Multimoneda + 9 Categorías + 7 Precio programado) **más los 3 hallazgos de A0**
+= **30**, cada uno con una propuesta concreta y espacio para la respuesta. Ya entregado a GO.
+
+🛑 **Dato duro que cambia el diseño de Multimoneda, medido contra la API el 2026-09-22**:
+`dolarapi.com/v1/cotizaciones` devuelve, contra el peso argentino, **solo 5 monedas**: USD, EUR, BRL, CLP
+y UYU. De las **11** que la app ofrece, quedan **5 sin cotización automática**: PYG, BOB, PEN, MXN y COP.
+Derivar vía USD (ej. guaraní → USD → peso) **es** inventar una tasa, justo lo que prohíbe la regla D5.
+Propuesta: carga manual obligatoria para esas 5, avisando al habilitarlas.
+
+### Drift de Edge Functions — DEV a CERO
+
+Redesplegadas en DEV `billing-manual-pagar`, `cancel-suscripcion`, `mp-verificar-suscripcion` y
+`mp-addon-batch` (todas `verify_jwt=true`). **DEV = 0 drift en todo.** En PROD quedan **solo 2**:
+`mp-verificar-suscripcion` (8) y `mp-addon-batch` (6), los dos ya verificados 100% cosméticos (guiones de
+separadores y un comentario) — son funciones de cobro, el redeploy a PROD espera autorización de GO.
+
+### Pendientes actualizados
+
+1. **Rotación de las keys legacy de Supabase** — pasó **1 día** de los 3-5. Cambio respecto de lo que
+   decía antes: el endpoint de logs del conector **no expone `edge_logs`**, así que la medición de
+   cuántos navegadores siguen mandando la key vieja **la tiene que hacer GO desde el panel de Supabase**,
+   no desde acá.
+2. **A0 sale de la lista de "siguiente paso"**: queda ✅ CERRADO en `dev`. El orden acordado con GO sigue
+   en pie — sigue **Multimoneda, fase cimiento** (paso 3), esperando que GO responda el documento de los
+   30 puntos.
+3. **Los 3 relevamientos + A0 dejan 30 puntos abiertos** (antes 27) — documento nuevo con propuesta para
+   cada uno, ya entregado a GO.
+4. **Consultas al contador**: 18 abiertas, 0 respondidas por un matriculado. Sin cambios.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y [[wiki/features/productos]] →
+"Importador CSV — columnas de moneda (A0)".
+
+---
+
+## [2026-09-22] deploy | 🚀 v1.230.0 EN PROD — rate limiting persistente, verificado con tráfico real
+
+**PROD = DEV = `v1.230.0`** (migs 001-**432**), deployado y verificado la noche del 2026-09-22. PR
+**#356** `dev→main`, merge commit **`f8d0ae3e`**, release **`v1.230.0` Latest** con las notas
+actualizadas a "EN PRODUCCIÓN". Cierra del todo el pendiente 3 de la auditoría de seguridad del
+2026-09-20 (ver la entrada `update` de más abajo, la de la primera mitad del trabajo en DEV).
+
+### Checklist del deploy, todo verificado
+
+| Paso | Resultado |
+|---|---|
+| Mig 432 en PROD | ✅ `schema_migrations` = **402 filas**, última `20260923020424`. Verificado: acentos intactos en `prosrc`, `SECURITY DEFINER` + `search_path=public`, `anon`/`authenticated` sin EXECUTE ni acceso a la tabla, `service_role` sí, cron `cleanup_rate_limit_contadores` activo |
+| PR #356 `dev→main` | ✅ CI verde (1848 tests unitarios), merge commit `f8d0ae3e` |
+| Edge Functions a PROD | ✅ **4**: `marketplace-api`, `data-api` y `transportista-subir-archivo` con `--no-verify-jwt`; `ai-assistant` con JWT (por el conocimiento regenerado) |
+| Paridad `pg_policies` DEV↔PROD | ✅ `public` **234** · `storage` **40** · `cron` **2** — los tres hashes IDÉNTICOS (`public` `cdd75687…`, `storage` `cfe4c40b…`, `cron` `5467ba24…`) |
+| `auditar-edge-functions.sh` | ✅ corrida entera: **102 líneas, 94 en 0** |
+| Versión servida | ✅ `curl -L https://app.genesis360.pro/` → bundle `/assets/index-C_Py4GuO.js` → contiene **v1.230.0** |
+
+### El rate limiting, verificado EN PROD con tráfico real (medido en vivo, no asumido)
+
+70 requests a `marketplace-api` de PROD → **64×403 + 6×429**. Reconcilia exacto contra la tabla: la
+ventana de las 02:15 quedó con **contador 66** (los requests 61 a 66 fueron los bloqueados) y los 4
+últimos cayeron en la ventana de las 02:16 ya limpia → 60+4 = los 64 que pasaron.
+
+🛑 **Gotcha que vale documentar**: la primera corrida de prueba en PROD (65 requests) dio **65×403 y
+ningún 429**, y NO era un bug: la ráfaga cayó a caballo del cambio de minuto y quedó partida **27+38**
+entre dos ventanas, ninguna llegó a 60. Es el comportamiento correcto de una ventana FIJA (no
+deslizante). Para verificar un límite de ventana fija hay que asegurarse de que la ráfaga entre entera
+en una sola ventana, si no se lee como falso negativo.
+
+Las filas de prueba se borraron de la tabla en los dos ambientes (queda en 0).
+
+### Drift de Edge Functions, actualizado — este deploy limpió 3 más
+
+`marketplace-api` pasó de **prod 21 → 0**, y `data-api` y `transportista-subir-archivo` de **34** y
+**25** a **0**.
+
+Lo que queda, los **4 que ya están verificados como 100% cosméticos** (comentarios y formato, cero
+diferencia funcional):
+
+| Función | Drift | Qué es |
+|---|---|---|
+| `mp-verificar-suscripcion` | prod 8 · dev 4 | la cantidad de guiones `─` en 4 separadores de comentario |
+| `mp-addon-batch` | 6 en ambos | el comentario viejo "precio PROVISORIO" vs. el nuevo "CONFIRMADO por GO 18/09" |
+| `billing-manual-pagar` · `cancel-suscripcion` | dev 2 | largo del separador del encabezado |
+
+Más los dos esperados: `marketplace-webhook` NO_DESPLEGADA en DEV (la única solo-PROD) y
+`wa-embedded-signup-exchange` NO_DESPLEGADA en PROD (a propósito, falta el App Review de Meta).
+
+### Pendientes actualizados
+
+1. **Rotación de las keys legacy de Supabase** — sin cambios, sigue esperando 3-5 días a que se
+   actualicen las PWA cacheadas, después medir en los logs del gateway y recién ahí apagar legacy +
+   revocar la JWT signing key HS256.
+2. **Backlog de seguridad**: el rate limiting queda **CERRADO Y EN PROD**, sale de la lista de abiertos.
+   Siguen abiertos: captcha en login/alta (necesita que GO abra cuenta en hCaptcha o Turnstile), los 4
+   buckets públicos (a propósito), base accesible desde cualquier IP (decisión), `MP_WEBHOOK_SECRET` sin
+   cargar y `MODO_WEBHOOK_SECRET` para cuando se active MODO.
+3. **Los 3 relevamientos de Fede YA LLEGARON** como PDF (`respuestas-relevamiento-{categorias-clientes,
+   multimoneda,precio-programado}.md.pdf`), texto extraído y leído. Se cierra la nota anterior de que
+   los PDF no estaban en el repo. Lo siguiente en el orden acordado es **A0** (el importador de moneda),
+   que Fede pidió arreglar ya, por separado, sin esperar al proyecto multimoneda: (a) la consulta de
+   solo lectura ya dio 0 afectados en DEV y PROD (18/09); (b) corregir el importador para que escriba
+   las columnas VIVAS (`moneda_venta`/`moneda_costo`); (c) no aplica lista para el dueño (0 afectados);
+   (d) las columnas muertas se eliminan dentro del rediseño multimoneda. Fix mínimo, sin complicar la
+   migración posterior.
+4. **Los 3 relevamientos dejan 27 puntos abiertos** que Fede marcó explícitamente como "para que Tonga
+   proponga o resuelva": 11 en Multimoneda, 9 en Categorías de clientes, 7 en Precio programado (detalle
+   completo en `sources/raw/project_pendientes.md`, "ARRANCÁ ACÁ"). 🛑 Esos puntos **no se deciden
+   solos: se consultan con GO siempre** (regla de trabajo del 2026-09-22).
+5. **Consultas al contador**: 18 abiertas, 0 respondidas por un matriculado. Sin cambios.
+
+Detalle completo del fix (mig 432, los dos hallazgos de seguridad nuevos, el módulo `_shared/rateLimit.ts`)
+en la entrada `update` de más abajo (misma fecha) y en `sources/raw/project_pendientes.md` ("ARRANCÁ
+ACÁ").
+
+---
+
 ## [2026-09-22] update | 🔒⏱️ Rate limiting persistente en las 3 EFs públicas (mig 432, `v1.230.0`, EN DEV — falta PROD)
 
 Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20: el rate limiting de

@@ -3,7 +3,7 @@ title: Autenticación y Onboarding
 category: features
 tags: [auth, onboarding, google-oauth, trial, suscripcion, guard]
 sources: [CLAUDE.md]
-updated: 2026-09-12
+updated: 2026-09-24
 ---
 
 # Autenticación y Onboarding
@@ -303,3 +303,117 @@ versión de T&C — o sea, falsear un consentimiento legal.
 No manda el mail de bienvenida (eso lo dispara el frontend con la EF `send-email`). Si la persona
 nunca aterriza, tiene su negocio pero no recibe ese mail. Detalle menor frente a quedarse sin
 negocio, y evita meter `pg_net` en el camino de la confirmación.
+
+
+---
+
+## 📄 Guía para clientes: "Primeros pasos, de cero a tu primera venta" (2026-09-23)
+
+**Artifact**: https://claude.ai/artifact/WBZVSEjGy623cSE9urXV1T · **PDF** en
+`E:\OneDrive\Documentos\Primeros pasos en Genesis360.pdf` (7 páginas, generado con el Chromium de
+Playwright y verificado página por página).
+
+Pedido de GO: una guía de inicio con las configuraciones principales para poder operar y hacer las
+primeras ventas. **No existía** — los `manual-*-genesis360.html` son por rubro y cubren el flujo
+completo, no el arranque.
+
+**Fundada en el código, no en supuestos**: el bloqueo real de la primera venta salió de
+`VentasPage.tsx` (*"No hay caja abierta. Abrí una caja antes de registrar ventas o reservas (incluso
+en cuenta corriente)"*), lo que ya viene sembrado salió de `fn_seed_tenant_defaults`
+(`schema_full.sql`), y los roles y las descripciones de los modos son literalmente los de
+`UsuariosPage.tsx` y `ConfigPage.tsx`.
+
+**Estructura**: arranca con *"Esto ya está hecho, no lo busques"* (sucursal, Caja Principal, 5 métodos
+de pago, motivos, estados, unidades y cuentas de origen — todo del seed), después 8 pasos con código
+de color (violeta = configuración de una sola vez · verde = rutina diaria): modo Básico/Avanzado →
+datos del negocio → métodos de pago → productos → equipo y roles → **abrir la caja** → primera venta
+→ cierre con arqueo. Cierra con qué sumar después y 5 problemas comunes.
+
+⚠️ **Contiene una advertencia atada a un hallazgo abierto**: en el paso de cargar productos avisa que
+el archivo de *Exportar productos* **no sirve para reimportar**. Es el hallazgo D-3
+(`tests/specs/uat-modo-basico.md` §66.8). **Cuando se arregle, sacar esa advertencia de la guía.**
+
+🚧 **Le faltan capturas de pantalla** — la de facturación las tiene porque salieron de una sesión
+grabada. Pendiente: grabarlas contra el tenant de prueba (Modo de operación, Métodos de pago, Abrir
+caja, POS).
+
+Ver [[wiki/features/facturacion-afip]] ("Guía para clientes + video") para la otra guía, y
+[[wiki/manuales/guion-videos-onboarding]].
+
+---
+
+## 🔐 "Desactivar" un usuario le corta el acceso de verdad (mig 433, 2026-09-24) — ⚠️ ESCRITA, SIN APLICAR
+
+Salió contestando una pregunta de GO sobre cómo conviene manejar las cuentas de los empleados.
+
+🛑 **El agujero que tenía la app**: dar de baja a alguien no le quitaba nada. La cadena completa,
+verificada:
+
+- El botón **"Desactivar"** de `UsuariosPage` escribe `users.activo = false` y nada más — es la
+  **única** acción que existe sobre un usuario, no hay eliminar.
+- `get_user_tenant_id()` era `SELECT tenant_id FROM users WHERE id = auth.uid()`, **sin mirar
+  `activo`** — y esa función gobierna el `USING` de casi todas las policies de RLS del schema
+  `public`. El usuario dado de baja seguía viendo y escribiendo todo lo de su rol.
+- `users_select` tampoco filtraba, ni `loadUserData` en el frontend. `user.activo` no se consultaba en
+  **ningún** lado de la app.
+
+O sea que desde la app **no había forma de cortarle el acceso a un empleado que se fue**.
+
+### La migración (`433_desactivar_usuario_corta_acceso.sql`)
+
+1. **`get_user_tenant_id()` e `is_admin()` dejan de resolver** para un usuario dado de baja. Una sola
+   función y queda cerrado para todas las tablas a la vez, del lado del servidor (ver
+   [[wiki/architecture/multi-tenant-rls]] y [[wiki/database/rls-policies]]).
+2. **Trigger `trg_guard_baja_usuario`** (`BEFORE UPDATE OF activo`): impide que alguien se dé de baja a
+   sí mismo, o que se dé de baja al **último DUEÑO activo** del negocio. Antes era un error cosmético
+   sin consecuencia; ahora sería un candado sin llave.
+3. **`fn_estado_usuario_actual()`** (`'activo' | 'inactivo' | 'sin_usuario' | 'sin_sesion'`), para que
+   la app pueda explicar qué pasó — devuelve información solo sobre uno mismo, no filtra nada de nadie.
+
+⚠️ **`users.activo` es NULLABLE** (`boolean DEFAULT true`): las tres funciones y el trigger usan
+`coalesce(activo, true)`, el mismo criterio que ya aplica `fn_soporte_ticket_detalle`. Con `AND activo`
+a secas, cualquier fila con NULL habría perdido el acceso — un bug nuevo tapando al viejo.
+
+### El frontend era la mitad imprescindible (`authStore` + `AuthGuard`)
+
+Sin este lado, el usuario dado de baja tampoco puede leer **su propia fila** (la policy `users_select`
+ya no lo deja), así que `loadUserData` lo confundiría con "no tiene negocio" y `AuthGuard` lo mandaría
+a `/onboarding` — ofreciéndole **crear un negocio nuevo con su misma identidad** (el INSERT chocaría
+contra su fila vieja y moriría con un error crudo de SQL). Lo marcó el `migration-reviewer` como el
+hallazgo más importante de la revisión.
+
+Ahora `authStore.loadUserData` llama a `fn_estado_usuario_actual()` cuando no encuentra `users` ni
+`proveedor_accounts`, y distingue `accesoRevocado` de `needsOnboarding`. `AuthGuard` muestra **"Tu
+acceso fue dado de baja"** con el botón de cerrar sesión, evaluado ANTES del redirect a onboarding.
+
+### Lo que NO se ve afectado (confirmado por `migration-reviewer`)
+
+- **`admin.genesis360.pro`** (panel de plataforma): autentica contra `support_agents` con
+  `service_role`, no pasa por `is_admin()`.
+- **El alta de un negocio nuevo**: los triggers de seed usan `NEW.id`, no llaman a
+  `get_user_tenant_id()`.
+
+### Estado real al 2026-09-24
+
+⚠️ **La mig 433 quedó ESCRITA y revisada (`migration-reviewer`: APTA para DEV), pero SIN APLICAR ni en
+DEV ni en PROD** — el conector de Supabase se desconectó a mitad de sesión. **No debe ir a PROD sin la
+prueba manual** (desactivar un usuario real en DEV, intentar entrar, confirmar la pantalla): Kalken
+tiene empleados reales. UAT `tests/specs/uat-modo-basico.md` §67 — 7 escenarios, 4 en rojo por eso
+mismo.
+
+### 🆕 Pendiente relacionado: crear usuarios sin correo
+
+GO quiere arrancar una feature nueva: crear empleados con **nombre y contraseña, sin correo** — hoy
+`invite-user` exige mail (`inviteUserByEmail`). Es lo correcto para un kiosco: le saca de encima el
+malabar con Gmail al dueño. Propuesta técnica (sin construir todavía): `admin.createUser` + contraseña
+sin invitación, la app genera por dentro una dirección que nunca recibe correo (subdominio propio, ej.
+`@u.genesis360.pro`), y el dueño restablece la contraseña desde Usuarios con cambio forzado en el
+primer ingreso.
+
+**Mientras tanto**, la recomendación para clientes sin dominio propio: una sola cuenta
+`negocio@gmail.com` con direcciones `+` por empleado (`negocio+juan@gmail.com`) — Gmail las entrega
+todas a la misma casilla, así que el dueño controla la recuperación de todos, sin cuentas extra.
+Contras: la invitación le llega al dueño, el empleado no recibe avisos propios, y el nombre que muestra
+la app sale de lo que está antes del `@`.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-09-24, `update`).

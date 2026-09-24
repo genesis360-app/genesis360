@@ -3,7 +3,7 @@ title: Políticas RLS
 category: database
 tags: [rls, postgresql, seguridad, multi-tenant, policies]
 sources: [CLAUDE.md]
-updated: 2026-09-20
+updated: 2026-09-24
 ---
 
 # Políticas RLS (Row Level Security)
@@ -55,6 +55,12 @@ get_supervisor_team_ids()
 -- Usado en políticas SUPERVISOR para limitar vista a su equipo
 -- STABLE para que PostgreSQL pueda cachearla en la query
 ```
+
+> [!WARNING] **Mig 433 (2026-09-24, ⚠️ ESCRITA, SIN APLICAR)**: `get_user_tenant_id()` e `is_admin()`
+> ahora exigen `coalesce(activo, true)` — un usuario dado de baja (`users.activo = false`) deja de
+> resolver tenant y deja de ser admin, así que **todas** las policies que dependen de esas funciones lo
+> rechazan de una sola vez. Antes "Desactivar" (la única acción sobre un usuario, no hay eliminar) no le
+> cortaba nada. Ver [[wiki/features/autenticacion-onboarding]] y [[wiki/architecture/multi-tenant-rls]].
 
 ---
 

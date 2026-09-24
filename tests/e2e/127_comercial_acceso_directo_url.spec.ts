@@ -109,7 +109,7 @@ test.describe('Comercial — acceso directo por URL según rol', () => {
       await pg.goto('/login')
       await pg.getByLabel(/email/i).fill(process.env.E2E_CONTADOR_EMAIL!)
       await pg.getByLabel(/contraseña|password/i).fill(process.env.E2E_CONTADOR_PASSWORD!)
-      await pg.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+      await pg.getByRole('button', { name: 'Ingresar', exact: true }).click()
       await pg.waitForURL((url: URL) => !url.pathname.startsWith('/login'), { timeout: 15000 })
       await pg.evaluate(() => localStorage.setItem('genesis360_walkthrough_v1', 'seen'))
 

@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-09-22
+updated: 2026-09-23
 ---
 
 # Edge Functions (51 funciones Deno)
@@ -85,7 +85,21 @@ formato de separadores), ninguna diferencia funcional — incluida `marketplace-
 estaba vivo en PROD (`RATE_LIMIT = 60`, `status: 429`), solo faltaba su comentario. `wa-embedded-signup-exchange`
 sigue solo en DEV **a propósito** (a la espera de la App Review de Meta).
 
-## 🔒⏱️ Rate limiting persistente (mig 432, 2026-09-22) — ✅ EN DEV (`v1.230.0`), 🔴 falta en PROD
+✅ **Deploy `v1.230.0` (2026-09-22, noche, PR #356, merge `f8d0ae3e`): limpió 3 drifts más.**
+`marketplace-api` pasó de PROD **21 → 0**, y `data-api`/`transportista-subir-archivo` de **34/25 → 0**
+(`auditar-edge-functions.sh` completo: 102 líneas, 94 en 0). Quedan **4**, los mismos ya verificados como
+100% cosméticos: `mp-verificar-suscripcion` (prod 8 · dev 4), `mp-addon-batch` (6 en ambos), `billing-
+manual-pagar` · `cancel-suscripcion` (dev 2). Más los dos esperados: `marketplace-webhook` NO_DESPLEGADA
+en DEV (la única solo-PROD) y `wa-embedded-signup-exchange` NO_DESPLEGADA en PROD (a propósito, falta el
+App Review de Meta).
+
+✅ **2026-09-23 (EN DEV, sin tocar PROD): drift de DEV a CERO.** Se redesplegaron en DEV
+`billing-manual-pagar`, `cancel-suscripcion`, `mp-verificar-suscripcion` y `mp-addon-batch` (todas
+`verify_jwt=true`). **DEV = 0 drift en todo.** En PROD quedan **solo 2**: `mp-verificar-suscripcion`
+(8 líneas) y `mp-addon-batch` (6 líneas), los dos ya verificados 100% cosméticos (guiones de separadores
+y un comentario) — son funciones de cobro, el redeploy a PROD espera autorización de GO.
+
+## 🔒⏱️ Rate limiting persistente (mig 432, 2026-09-22) — ✅ EN PROD (`v1.230.0`)
 
 Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20 (ver "Backlog abierto" en
 [[wiki/architecture/guards-server-side]]). `marketplace-api` (60 req/min por IP), `data-api` (120 req/min por
@@ -115,8 +129,22 @@ pasan/10 dan 429, una sola fila de contador 70 (prueba la atomicidad). `data-api
 20×401+5×429. `transportista-subir-archivo`, 35 POST → 30×400+5×429.
 
 **`marketplace-api` y `data-api` se desplegaron en DEV por primera vez** (antes solo existían en PROD, no se
-podían probar) — con esto queda **1 sola función solo-PROD**: `marketplace-webhook`. Detalle completo en
-`log.md` (2026-09-22, `update`) y `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+podían probar) — con esto queda **1 sola función solo-PROD**: `marketplace-webhook`.
+
+**Deployado a PROD la misma noche** (2026-09-22, PR #356, merge `f8d0ae3e`, release `v1.230.0` Latest) y
+**verificado con tráfico real contra PROD**: 70 requests a `marketplace-api` → **64×403 + 6×429**,
+reconciliando exacto contra la tabla (la ventana de las 02:15 quedó con contador 66 — los requests 61-66
+fueron los bloqueados — y los 4 últimos cayeron en la ventana de las 02:16 ya limpia → 60+4 = los 64 que
+pasaron).
+
+🩸 **Gotcha de la verificación en PROD**: la primera corrida (65 requests) dio 65×403 y ningún 429 — no
+era un bug, la ráfaga cayó a caballo del cambio de minuto y quedó partida 27+38 entre dos ventanas,
+ninguna llegó a 60. Comportamiento correcto de una ventana FIJA (no deslizante): para verificar un límite
+de ventana fija hay que asegurarse de que la ráfaga entre entera en una sola ventana, si no se lee como
+falso negativo. Las filas de prueba se borraron de la tabla en los dos ambientes.
+
+Detalle completo en `log.md` (2026-09-22, `deploy` y `update`) y `sources/raw/project_pendientes.md`
+("ARRANCÁ ACÁ").
 
 ---
 
@@ -148,7 +176,7 @@ Resumen de lo que cambia en esta página:
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
 | `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts. 🔒 **Ahora exige sesión de usuario** (fix 2026-09-20, commit `f55fbf0f`, EN DEV) — antes cualquiera sin auth podía quemar la cuota de `ANTHROPIC_API_KEY` |
-| `transportista-subir-archivo` | 🆕 2026-09-14 (v1.221.0, DEV y PROD) · `verify_jwt: false` — el transportista sube foto o firma de entrega desde `/transporte/:token` (página pública, sin sesión). Valida el token como `get_envio_by_token`, rechaza envíos entregados/cancelados, acepta PNG/JPEG ≤ 5 MB, arma la ruta `pod/<envio_id>/…` y sube con service_role; devuelve URL firmada. e2e 148. 🔒 **2026-09-22 (mig 432): rate limiting pasa a ser persistente** (30 req/min por IP, antes en memoria del isolate) — ✅ EN DEV, 🔴 falta en PROD |
+| `transportista-subir-archivo` | 🆕 2026-09-14 (v1.221.0, DEV y PROD) · `verify_jwt: false` — el transportista sube foto o firma de entrega desde `/transporte/:token` (página pública, sin sesión). Valida el token como `get_envio_by_token`, rechaza envíos entregados/cancelados, acepta PNG/JPEG ≤ 5 MB, arma la ruta `pod/<envio_id>/…` y sube con service_role; devuelve URL firmada. e2e 148. 🔒 **2026-09-22 (mig 432): rate limiting pasa a ser persistente** (30 req/min por IP, antes en memoria del isolate) — ✅ EN DEV Y EN PROD (deploy `v1.230.0`, PR #356) |
 | `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }`. **Desplegada en PROD recién el 2026-09-14** — antes no existía ahí y esas dos pantallas fallaban. 🔒 **Ahora exige sesión de usuario** (fix 2026-09-20, commit `f55fbf0f`, EN DEV) — antes cualquiera sin auth podía quemar la cuota de `ANTHROPIC_API_KEY` |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
 | `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock). 🔒 Fix 2026-09-20 (commit `f55fbf0f`, EN DEV): `resource` del body se concatenaba crudo a la URL de un fetch que lleva el `access_token` del vendedor — un `resource` con `@` desviaba la llamada (y el token) al servidor del atacante. Ahora se valida contra `/^\/orders\/\d+$/` |
@@ -174,7 +202,7 @@ Resumen de lo que cambia en esta página:
 | `emitir-factura` | JWT | AFIP factura electrónica |
 | `crear-suscripcion` | JWT-less | MP preapproval |
 | `mp-webhook` | JWT-less | Webhooks MP suscripciones |
-| `data-api` | JWT | API pull externa (API keys). 🔒 **2026-09-22 (mig 432): rate limiting persistente** (120 req/min por key + 20 req/min de intentos fallidos por IP, antes en memoria del isolate) — ✅ EN DEV (recién deployada ahí por primera vez), 🔴 falta en PROD |
+| `data-api` | JWT | API pull externa (API keys). 🔒 **2026-09-22 (mig 432): rate limiting persistente** (120 req/min por key + 20 req/min de intentos fallidos por IP, antes en memoria del isolate) — ✅ EN DEV Y EN PROD (deploy `v1.230.0`, PR #356; verificado con tráfico real contra PROD) |
 | `tn-stock-worker` | JWT-less | Sync stock TiendaNube |
 | `meli-stock-worker` | JWT-less | Sync stock MercadoLibre |
 | `mp-crear-link-pago` | JWT | Link de pago MP para ventas |

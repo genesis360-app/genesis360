@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Puntos abiertos — Multimoneda · Categorías de clientes · Precio programado · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 24pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 16pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .punto { margin: 14pt 0 4pt 0; page-break-inside: avoid; }
+  .punto-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .punto-titulo { font-weight: 600; }
+  .contexto { font-size: 9.5pt; color: #555; margin: 4pt 0 6pt 18pt; }
+  .propuesta { margin: 6pt 0 6pt 18pt; padding: 7pt 10pt; background: #eaf7ee; border-left: 3px solid #27ae60; border-radius: 0 4pt 4pt 0; font-size: 10pt; }
+  .propuesta strong.tit { color: #1d6f42; }
+  .respuesta-libre { margin: 6pt 0 12pt 18pt; padding: 8pt 10pt; border: 1px dashed #aaa; min-height: 30pt; font-size: 9.5pt; color: #999; font-style: italic; border-radius: 3pt; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; font-weight: 600; }
+  .tag-bloquea { background: #f8d7da; color: #721c24; }
+  .tag-plata { background: #ffe0b2; color: #7a4100; }
+  .tag-diseno { background: #d6e4f7; color: #1a3f66; }
+  .tag-investigar { background: #e7d6f7; color: #4a2170; }
+  code { background: #f2f4f7; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Puntos abiertos — Multimoneda, Categorías de clientes y Precio programado</h1>
+<div class="meta">
+  Genesis360 · app <strong>v1.230.0</strong> · 23 de septiembre de 2026 · Para responder con Fede
+</div>
+
+<div class="intro">
+  Fede respondió los <strong>tres relevamientos</strong> el 20/09 y dejó <strong>27 puntos</strong> marcados
+  explícitamente <em>“para que Tonga proponga o resuelva”</em>. Este documento los junta en un solo lugar,
+  <strong>con una propuesta concreta para cada uno</strong>, para que los cierren de una sentada.
+  <p style="margin:8pt 0 0 0;">
+  Al final se suman <strong>3 hallazgos más</strong> que aparecieron al implementar A0 y que también necesitan
+  decisión (total: <strong>30</strong>).
+  </p>
+  <p style="margin:8pt 0 0 0;">
+  <strong>Cómo leerlo:</strong> cada punto trae el contexto, una <span style="background:#eaf7ee;padding:1pt 4pt;border-radius:3pt;">propuesta</span>
+  y un espacio para la respuesta. Si la propuesta les cierra, alcanza con escribir “ok”.
+  </p>
+  <p style="margin:8pt 0 0 0;">
+  Las etiquetas marcan de qué se trata:
+  <span class="tag tag-bloquea">BLOQUEA</span> sin esto no se puede empezar ·
+  <span class="tag tag-plata">PLATA</span> afecta lo que se cobra o se reporta ·
+  <span class="tag tag-diseno">DISEÑO</span> decisión de producto ·
+  <span class="tag tag-investigar">INVESTIGAR</span> necesito averiguar algo antes de proponer en firme.
+  </p>
+</div>
+
+<h2>A · Multimoneda — 11 puntos</h2>
+
+<div class="alerta-critica">
+  <strong>🛑 El dato que cambia el diseño: dolarapi NO cubre 5 de las 11 monedas</strong>
+  <p style="margin:6pt 0 0 0;">
+  Medido contra la API el 22/09. El endpoint <code>/v1/cotizaciones</code> devuelve, contra el peso argentino,
+  <strong>solo 5 monedas</strong>:
+  </p>
+  <table>
+    <tr><th>Con cotización automática</th><th>SIN cotización automática</th></tr>
+    <tr>
+      <td><strong>USD</strong> (dólar) · <strong>EUR</strong> (euro) · <strong>BRL</strong> (real) ·
+          <strong>CLP</strong> (peso chileno) · <strong>UYU</strong> (peso uruguayo)</td>
+      <td><strong>PYG</strong> (guaraní) · <strong>BOB</strong> (boliviano) · <strong>PEN</strong> (sol) ·
+          <strong>MXN</strong> (peso mexicano) · <strong>COP</strong> (peso colombiano)</td>
+    </tr>
+  </table>
+  <p style="margin:6pt 0 0 0;">
+  O sea: <strong>la mitad de las monedas que la app ofrece hoy no tienen de dónde sacar el precio solas.</strong>
+  Y la regla que ya definieron (<strong>D5</strong>) dice que sin cotización es error, nunca se inventa una tasa.
+  </p>
+</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-1</span><span class="punto-titulo">Cobertura de cotizaciones: qué hacemos con las 5 monedas que dolarapi no cubre</span>
+  <span class="tag tag-bloquea">BLOQUEA</span><span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  Hay una segunda parte: para PYG, BOB, PEN, MXN y COP se podría <em>derivar</em> la tasa pasando por el dólar
+  (guaraní→USD→peso). Pero eso choca de frente con D5: una tasa derivada de dos pares <strong>es</strong> una tasa
+  inventada, y el error se multiplica.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> <strong>no derivar nunca.</strong> Las 5 monedas sin fuente quedan en
+  <strong>carga manual obligatoria</strong> (que ya está previsto en B7), con la cotización marcada como “cargada a mano”
+  y su fecha bien visible. Y, más importante: <strong>que la app no deje habilitar una moneda sin explicar antes que
+  esa hay que cargarla a mano todos los días.</strong> Hoy las 11 se ofrecen como si fueran equivalentes, y no lo son.
+  <br><br>
+  <em>Alternativa si prefieren simplificar:</em> dejar habilitables solo las 6 con fuente automática (ARS + las 5) y
+  sumar el resto cuando haya de dónde sacarlas.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-2</span><span class="punto-titulo">Mecánica del “inicio del día”: horario, zona horaria y qué pasa si falla</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="contexto">
+  B3 dice “actualizar la cotización al iniciar el día; avisar si está vieja”. Falta el detalle operativo.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> la actualización la dispara <strong>el primer usuario que entra</strong> cada día
+  (no un cron), en zona horaria del negocio. Si la API falla: <strong>no se rompe nada</strong>, se sigue con la última
+  cotización conocida y aparece un aviso persistente <em>“Cotización del DD/MM — actualizala”</em> hasta que se actualice.
+  Bloquear la operación por una API caída sería peor que operar con la tasa de ayer.
+  <br><br>
+  <strong>Qué sí se bloquea:</strong> cargar un precio o cobrar en una moneda <em>que nunca tuvo cotización</em> (D5).
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-3</span><span class="punto-titulo">Fuente de la cotización fiscal (vendedor divisa BNA del día hábil anterior)</span>
+  <span class="tag tag-investigar">INVESTIGAR</span><span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  Es una cotización <strong>distinta</strong> de la operativa: la RG ARCA 5616/2024 exige el tipo de cambio
+  <strong>vendedor divisa</strong> del BNA al cierre del <strong>día hábil anterior</strong>. dolarapi devuelve el valor
+  de <em>hoy</em>, no un histórico por fecha. Es la consulta <strong>C-16</strong> al contador.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> guardar la cotización fiscal <strong>en una tabla propia, un registro por día</strong>,
+  alimentada automáticamente todos los días (así el “día hábil anterior” sale de nuestro propio histórico y no dependemos
+  de que la fuente tenga histórico). Arrancar con el valor del BNA y contrastar contra ARCA.
+  <br><br>
+  🛑 <strong>Esto no se cierra sin el contador.</strong> Van 18 consultas abiertas y ninguna respondida por un matriculado.
+  Mi recomendación es no construir facturación en moneda extranjera hasta tener esa respuesta por escrito.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-4</span><span class="punto-titulo">Cambiar la moneda principal cuando la nueva es la secundaria actual</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> <strong>se intercambian solas</strong> (si ARS es principal y USD secundaria, y
+  elegís USD como principal, ARS pasa a secundaria). Es lo que espera cualquiera y evita un paso extra. Pedir elegir una
+  secundaria nueva solo tendría sentido si quisieran sacar a ARS del juego, que no es el caso.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-5</span><span class="punto-titulo">Reportes: cómo se reparte una venta cobrada en dos monedas, y cómo se calcula la rentabilidad</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  Son dos preguntas distintas. Ya está definido que los reportes van por pestañas de moneda, sin mezclar ni convertir
+  (D1), y que una venta admite hasta 2 monedas (D2).
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta (reparto):</strong> cada pestaña muestra <strong>lo efectivamente cobrado en esa moneda</strong>.
+  Una venta de $50.000 + USD 30 aparece en las dos pestañas, con su parte en cada una. Nunca se duplica el total.
+  <br><br>
+  <strong class="tit">Propuesta (rentabilidad):</strong> usar la <strong>cotización guardada en la venta</strong>
+  (<code>ventas.cotizacion_usd</code>, que ya se guarda). Es la única tasa que no se inventa: es la que regía cuando se
+  hizo esa venta. Recalcular con la cotización de hoy haría que la rentabilidad de una venta de marzo cambie sola cada día.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-6</span><span class="punto-titulo">Monedas desactivadas: ¿su histórico sigue apareciendo en los reportes?</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="contexto">
+  Ya está definido (E4) que una moneda solo se puede desactivar cuando no queda <em>nada vivo</em> en esa moneda.
+  Pero el histórico ya cerrado sigue existiendo.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> <strong>sí, el histórico se sigue viendo siempre.</strong> Desactivar una moneda
+  significa “no la uso más de acá en adelante”, no “borrá lo que pasó”. La pestaña de esa moneda aparece solo si hay
+  movimientos en el período consultado. Esconder el histórico sería falsear los reportes.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-7</span><span class="punto-titulo">Gasto pagado en una moneda donde el medio de pago no tiene saldo</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> <strong>se bloquea</strong>, igual que hoy se bloquea sacar de una caja sin fondos.
+  Si hay que pagar en dólares y no hay dólares, el camino es convertir primero desde la Bóveda (D4) y después pagar.
+  Dejarlo pasar generaría un saldo negativo en una moneda, que es exactamente el tipo de cosa que después no cuadra.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-8</span><span class="punto-titulo">Medios de pago y cuentas que HOY tienen moneda propia: cómo se consolidan al quitársela</span>
+  <span class="tag tag-bloquea">BLOQUEA</span><span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  Decidieron que los medios de pago dejan de tener moneda (la moneda se elige al registrar cada pago). Pero hoy
+  <strong>sí la tienen</strong>: <code>cajas</code>, <code>caja_sesiones</code>, <code>caja_movimientos</code>,
+  <code>caja_arqueos</code>, <code>cuentas_origen</code>, <code>metodos_pago</code>, <code>gastos</code>,
+  <code>gastos_fijos</code>, <code>ordenes_compra</code> y <code>zonas</code>. Y hay un trigger
+  (<code>fn_validar_moneda_coincide_sesion</code>) que valida justamente esa coincidencia.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> distinguir dos cosas que hoy están mezcladas:
+  <ul>
+    <li><strong>El medio de pago</strong> (“Efectivo”, “Transferencia”) pierde la moneda. Existe una sola vez.</li>
+    <li><strong>La caja / cuenta donde entra la plata</strong> <u>mantiene</u> su moneda: una caja de dólares es una
+        caja de dólares, y un arqueo tiene que cuadrar contra algo. Mezclar monedas en una misma caja hace que no cuadre nunca.</li>
+  </ul>
+  O sea: “Efectivo en USD” deja de ser un medio de pago distinto y pasa a ser <em>el medio Efectivo + la moneda USD</em>,
+  que cae en la caja de dólares. Los duplicados actuales se consolidan en uno, conservando el histórico.
+  <br><br>
+  🛑 Es el punto más delicado de todo el proyecto: toca caja, arqueos y conciliación con plata real adentro.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-9</span><span class="punto-titulo">Dashboard: cómo reemplazan los modos ARS / USD / REAL por pestañas</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> el modo <strong>“Real”</strong> <u>no</u> es una moneda y no debería volverse pestaña:
+  es una forma de <em>valuar</em>. Propongo separarlo en dos controles: <strong>pestañas por moneda</strong> (lo que
+  efectivamente entró en cada una, sin convertir) y, aparte, un interruptor <strong>“ajustar por inflación”</strong> para
+  comparar contra meses anteriores. Convertir todo a una sola moneda para el dashboard contradice la regla de no mezclar.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-10</span><span class="punto-titulo">Diferencia de cambio en cuenta corriente: ¿se registra aparte?</span>
+  <span class="tag tag-plata">PLATA</span><span class="tag tag-investigar">INVESTIGAR</span>
+</div>
+<div class="contexto">
+  El caso: un cliente te debe USD 100 cuando el dólar estaba a 1.400 y te paga cuando está a 1.500. ¿Canceló la deuda o
+  te debe $10.000 más?
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> <strong>la deuda en dólares se cancela con dólares.</strong> Si debía USD 100 y paga
+  USD 100, queda en cero, sin importar cómo se movió la cotización. La diferencia se registra como
+  <strong>“diferencia de cambio”</strong>, visible aparte, sin tocar el saldo del cliente. Si paga en pesos, se convierte
+  a la cotización <strong>del día del pago</strong> y ahí sí puede quedar un saldo.
+  <br><br>
+  🧾 <strong>Esto necesita al contador</strong> (tratamiento de la diferencia de cambio). Va como consulta nueva.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">A-11</span><span class="punto-titulo">Orden de implementación y estimación</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta — 4 fases, cada una entregable y sin romper lo anterior:</strong>
+  <table>
+    <tr><th>Fase</th><th>Qué entra</th><th>Por qué en ese orden</th></tr>
+    <tr><td><strong>1 · Cimiento</strong></td>
+        <td>Moneda explícita (código ISO) en productos, ventas, pagos, gastos y caja, en vez de <code>'local'</code>/<code>'usd'</code>. Sin cambios visibles.</td>
+        <td>Es el único momento barato: hoy son <strong>28 filas</strong> en juego. Con clientes operando, la misma migración toca ventas y caja con plata adentro.</td></tr>
+    <tr><td><strong>2 · Config</strong></td>
+        <td>Lista de monedas habilitadas, principal y secundaria, cotización por moneda + historial.</td>
+        <td>No mueve plata. Deja lista la base para todo lo demás.</td></tr>
+    <tr><td><strong>3 · Operación</strong></td>
+        <td>Venta, caja, cuenta corriente y gastos en cualquier moneda habilitada. Consolidación de medios de pago (A-8).</td>
+        <td>Acá se mueve plata de verdad. Es la fase larga.</td></tr>
+    <tr><td><strong>4 · Reportes y fiscal</strong></td>
+        <td>Pestañas por moneda, dashboard, rentabilidad, cotización fiscal.</td>
+        <td>Depende de que los datos ya tengan moneda explícita.</td></tr>
+  </table>
+  <strong>Arrancar por la 1 cuanto antes</strong>, aunque el resto espere: es la que se encarece con el tiempo.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>B · Categorías de clientes — 9 puntos</h2>
+
+<div class="seccion-resumen">
+  <strong>Recordatorio del hallazgo que ordena esta sección:</strong> hoy el precio se resuelve en
+  <strong>dos motores espejo</strong> — <code>src/lib/tiers.ts</code> (lo usa el POS) y
+  <code>fn_precio_venta_efectivo</code> (SQL, lo usan Pedidos) — y <strong>ninguno de los dos recibe el cliente</strong>.
+  Ya hubo <strong>dos bugs de plata</strong> por desincronizarlos (migraciones 330 y 367).
+</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-1</span><span class="punto-titulo">Unificar los dos motores de precio: ¿una sola lógica o dos con batería de pruebas compartida?</span>
+  <span class="tag tag-bloquea">BLOQUEA</span><span class="tag tag-plata">PLATA</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta: una sola lógica, en SQL, y que el POS la consulte.</strong> Mantener dos espejos “con
+  tests compartidos” ya se probó y falló dos veces: el test compartido detecta que difieren <em>después</em> de que
+  alguien tocó uno solo, y mientras tanto se cobró mal.
+  <br><br>
+  El costo de mi propuesta es una ida a la base para calcular el precio en el POS. Se puede mitigar pidiendo los precios
+  del carrito de una sola vez. <strong>Mi recomendación es pagar ese costo:</strong> es la causa raíz de dos bugs de plata,
+  y agregarle el descuento por cliente sin unificar los motores los multiplica.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-2</span><span class="punto-titulo">Regla de comparación: cómo conviven categoría, tier y estado</span>
+  <span class="tag tag-bloquea">BLOQUEA</span><span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  🛑 Hoy los descuentos <strong>se apilan en 9 pasos</strong>. Si esto no se cierra, la categoría se suma a la pila en
+  silencio y un cliente puede terminar comprando por debajo del costo sin que nadie lo note.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta: gana el mejor precio, no se apilan.</strong> Para un cliente con categoría se calculan
+  todos los precios posibles (lista, categoría, tier por cantidad, estado del inventario) y <strong>se cobra el más bajo</strong>,
+  mostrando cuál ganó. Los que sí se suman aparte son los que el vendedor aplica a mano (descuento manual, cupón), y esos
+  quedan sujetos al tope de B-5.
+  <br><br>
+  Para un cliente <strong>sin categoría</strong> todo sigue exactamente como hoy, para no cambiarle el precio a nadie de un día para el otro.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-3</span><span class="punto-titulo">Importar la lista de descuentos por categoría: formato, identificación y errores</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> misma plantilla Excel que el resto del sistema, identificando el producto por
+  <strong>SKU</strong> (no por nombre, que se repite). Vista previa antes de aplicar, como el importador de productos.
+  Un producto que no existe <strong>no se crea</strong>: se marca error en su fila y las demás entran igual.
+  <br><br>
+  🛑 <strong>Ojo con esto:</strong> acabo de encontrar que el importador de productos <em>pisa con valores por defecto</em>
+  todo lo que el archivo no trae (ver <strong>D-3</strong> al final). La lista de descuentos tiene que actualizar
+  <u>solo</u> las filas que vengan en el archivo, para no repetir ese problema.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-4</span><span class="punto-titulo">Capa de IA del cartel: alcance, texto de respaldo, latencia y qué datos se le mandan</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> la IA <strong>solo redacta</strong>, nunca calcula ni decide el precio. El texto
+  se genera <strong>antes</strong>, al guardar la promoción, no en el momento de la venta: el POS no puede quedar esperando
+  a un modelo. Si la IA falla, sale la plantilla fija (<em>“Precio especial para clientes Mayoristas”</em>) y nadie se entera.
+  <br><br>
+  <strong>Qué se le manda:</strong> nombre del producto, nombre de la categoría y el porcentaje. <strong>Nunca</strong>
+  datos del cliente, ni costos, ni márgenes.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-5</span><span class="punto-titulo">Tope de descuento acumulado: qué cuenta y dónde se configura</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> el tope se mide sobre <strong>el precio de lista</strong> y cuenta
+  <strong>todo junto</strong> lo que llegó al precio final. Se configura en Configuración → Ventas, con un valor por negocio
+  y la posibilidad de que el DUEÑO lo saltee dejando constancia de quién autorizó.
+  <br><br>
+  <strong>Falta definir algo que no puedo decidir yo:</strong> ¿el DUEÑO también tiene tope? Ya lo habían preguntado en
+  julio y quedó sin respuesta.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-6</span><span class="punto-titulo">Asignación masiva de categoría: ¿se guarda al instante o junto con el resto?</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> se guarda <strong>al confirmar</strong>, en una sola operación, con un resumen
+  previo (<em>“vas a cambiar la categoría de 43 clientes”</em>). Si falla, no queda la mitad hecha.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-7</span><span class="punto-titulo">Override por cliente: ¿se amplía más allá de habilitada, límite y plazo?</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> <strong>no por ahora.</strong> Esos tres campos ya existen y alcanzan. Un
+  descuento por producto y por cliente sería un cuarto mecanismo compitiendo con los otros, justo lo que B-2 viene a
+  ordenar. Si más adelante hace falta, se agrega sobre una base ya limpia.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-8</span><span class="punto-titulo">Portal de clientes: cómo se identifica al cliente que arma su propio pedido</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> el pedido del portal sale <strong>siempre</strong> con el cliente identificado
+  (el portal ya entra por un link con token asociado a un cliente), y pasa por <strong>el mismo motor único</strong> de B-1.
+  Si el motor queda duplicado, el portal sería un tercer lugar donde el precio puede diferir.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">B-9</span><span class="punto-titulo">Volumen: límites razonables de diseño, sin datos reales todavía</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> diseñar para <strong>~20 categorías</strong> y <strong>listas de hasta 10.000
+  productos</strong> por categoría. Está holgado para cualquier cliente que tengan hoy y no obliga a arquitectura
+  complicada. Si algún día se queda corto, se revisa con datos reales en la mano en vez de adivinar ahora.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>C · Precio programado — 7 puntos</h2>
+
+<div class="seccion-resumen">
+  <strong>Recordar:</strong> esto <strong>ya está construido</strong> (migraciones 422-424) y funcionando. Estos 7 puntos
+  son un contraste de lo que hay contra lo que respondió Fede, no un proyecto nuevo.
+</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-1</span><span class="punto-titulo">Aprobación del repositor: semántica, espera máxima y cómo se llama hoy</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> el precio cambia cuando se cumplen <strong>las dos condiciones</strong>: llegó la
+  hora <u>y</u> el repositor confirmó que cambió la etiqueta en la góndola. <strong>Sin tope de espera:</strong> si el
+  repositor no confirmó, el precio de la góndola y el del sistema no coinciden, y aplicarlo igual haría que le cobres al
+  cliente distinto de lo que dice el cartel. Lo que sí propongo es <strong>avisar</strong> cuando pasaron más de X horas.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-2</span><span class="punto-titulo">Cuándo se le crea la tarea al repositor</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> al <strong>programar</strong> el cambio (es el valor por defecto que ya está
+  construido). Así el repositor puede organizar el recorrido con tiempo. Configurable por negocio si alguno prefiere que
+  aparezca el mismo día.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-3</span><span class="punto-titulo">Cambio de precio inmediato sobre un producto que ya tiene uno programado</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> la app <strong>avisa y pregunta</strong> (es la propuesta que ya trae el documento
+  de Fede, y me parece correcta). Por defecto, <strong>cancelar el programado</strong>: si acabás de poner un precio a mano,
+  lo último que querés es que mañana se pise solo con uno que programaste la semana pasada y ya te olvidaste.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-4</span><span class="punto-titulo">Ventas en espera abiertas durante un cambio de precio</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> la venta en espera <strong>mantiene el precio que tenía cuando se armó</strong>,
+  y al retomarla avisa <em>“cambió el precio de 2 productos”</em> con la opción de actualizar. Cambiar precios en silencio
+  debajo de una venta abierta es la peor de las opciones: el cliente vio un total en pantalla.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-5</span><span class="punto-titulo">Programar tramos mayoristas y precios de combos</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> dejarlo para <strong>después</strong> de B-1 (motor único). Programar un tramo
+  mayorista significa programar un cambio en el motor de precios; hacerlo mientras hay dos espejos garantiza que queden
+  desincronizados. <strong>Es un caso donde conviene esperar.</strong>
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-6</span><span class="punto-titulo">Diseño conjunto con Multimoneda</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> un precio programado guarda <strong>su moneda</strong>, igual que cualquier otro
+  precio. Depende de la <strong>fase 1</strong> de A-11 (moneda explícita), así que sale solo cuando esa esté hecha.
+  Hasta entonces, los precios programados siguen en la moneda del negocio, como ahora.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">C-7</span><span class="punto-titulo">¿Se entrega por etapas?</span>
+  <span class="tag tag-diseno">DISEÑO</span>
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> lo que está construido <strong>ya cubre el caso principal</strong>. Propongo cerrar
+  C-1 a C-4 (que son ajustes chicos sobre lo que existe) y dejar C-5 y C-6 atados a sus dependencias. No amerita un proyecto aparte.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>D · Tres hallazgos que aparecieron al implementar A0</h2>
+
+<div class="alerta-critica">
+  <strong>No son preguntas de diseño: son cosas que hoy están mal.</strong> Ninguna las toqué por mi cuenta porque son
+  caminos de plata y Fede pidió que el fix de A0 fuera mínimo. Las tres están medidas contra producción.
+</div>
+
+<div class="punto">
+  <span class="punto-codigo">D-1</span><span class="punto-titulo">La ficha de producto usa una cotización y el POS cobra con otra</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  El 08/09 Fede detectó que el POS convertía al dólar <strong>venta</strong> y le cobraba de más al cliente. Se arregló
+  para que use <strong>compra</strong>. Pero la ficha de producto quedó sin actualizar: sigue calculando el precio en pesos
+  de un producto en dólares con la tasa de <strong>venta</strong>. Es la mitad que quedó afuera de aquel fix.
+  <br><strong>Hoy es latente: 0 productos en dólares en producción.</strong> El importador de A0 ya usa la correcta.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> alinear la ficha a la tasa de <strong>compra</strong>. Es una línea. No cambia
+  ningún precio existente (no hay productos en dólares), y deja los tres caminos —POS, ficha e importador— con la misma tasa.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">D-2</span><span class="punto-titulo">Ningún producto puede tener más de 999,99 % de markup</span>
+  <span class="tag tag-plata">PLATA</span>
+</div>
+<div class="contexto">
+  La columna que guarda el margen admite hasta 999,99 %. Un producto con costo $100 y precio $1.200
+  <strong>no se puede guardar</strong>, ni por archivo ni desde la ficha, y el error que aparece es un mensaje técnico de
+  la base que no le dice nada a nadie. Es preexistente. En el importador ya le puse un mensaje claro;
+  <strong>la ficha sigue sin protección</strong>.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> ampliar la columna para que acepte cualquier margen. ¿Les parece un límite
+  razonable o hay rubros donde 1.000 % de markup es normal? (En algunos lo es: bijouterie, accesorios, ciertos repuestos.)
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="punto">
+  <span class="punto-codigo">D-3</span><span class="punto-titulo">🛑 El archivo que exporta la app NO sirve para reimportar: borra 8 campos</span>
+  <span class="tag tag-plata">PLATA</span><span class="tag tag-bloquea">BLOQUEA</span>
+</div>
+<div class="contexto">
+  El botón “Exportar productos” genera un archivo con 10 columnas. El importador <strong>sobrescribe todo</strong> con
+  valores por defecto para lo que el archivo no trae. Y los dos botones están uno al lado del otro, así que el flujo
+  “exporto, corrijo algo en Excel, reimporto” es el natural.
+  <br><br>
+  <strong>Medido en producción, sobre los 27 productos que hay hoy</strong>, se perderían:
+  <table>
+    <tr><th>Qué se borra</th><th>Productos afectados</th></tr>
+    <tr><td>Proveedor</td><td><strong>19</strong></td></tr>
+    <tr><td>Descripción</td><td><strong>19</strong></td></tr>
+    <tr><td>Código de barras</td><td><strong>12</strong></td></tr>
+    <tr><td>Trazabilidad (series / lote / vencimiento)</td><td><strong>9</strong></td></tr>
+    <tr><td>Margen objetivo</td><td>5</td></tr>
+    <tr><td>Regla de inventario</td><td>2</td></tr>
+    <tr><td>Es kit</td><td>1</td></tr>
+    <tr><td><strong>Alícuota de IVA</strong> (se resetea a 21 %)</td><td>0 hoy — <em>los 27 están en 21 %</em></td></tr>
+  </table>
+  El IVA zafa <strong>de casualidad</strong>: si un negocio carga un producto al 10,5 % y pasa por este flujo, se lo cambia a 21 %.
+</div>
+<div class="propuesta">
+  <strong class="tit">Propuesta:</strong> que el importador actualice <strong>solo las columnas que el archivo trae</strong>.
+  Es lo que cualquiera espera y cierra el problema de raíz para todos los campos de una vez.
+  <br><br>
+  <em>Alternativa más chica</em> (si prefieren no tocar el comportamiento del importador): que el export emita
+  <strong>todas</strong> las columnas de la plantilla. Cierra el caso del ida y vuelta, pero deja abierto el de un archivo
+  armado a mano.
+  <br><br>
+  <strong>Mi recomendación es la primera.</strong> Es la que evita que esto vuelva a aparecer con cada columna nueva.
+</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<h2>Resumen: qué destraba cada respuesta</h2>
+
+<table>
+  <tr><th>Si responden…</th><th>Se destraba</th></tr>
+  <tr><td><strong>A-1</strong> (monedas sin cotización)</td><td>Toda la configuración de Multimoneda</td></tr>
+  <tr><td><strong>A-8</strong> (medios de pago con moneda)</td><td>La fase de operación: caja, arqueos, conciliación</td></tr>
+  <tr><td><strong>A-11</strong> (orden de fases)</td><td>Arrancar la fase 1, que es la que se encarece con el tiempo</td></tr>
+  <tr><td><strong>B-1</strong> + <strong>B-2</strong> (motor único y regla de comparación)</td><td>Categorías enteras, y además C-5</td></tr>
+  <tr><td><strong>D-3</strong> (export / reimport)</td><td>Se puede cerrar un agujero que hoy borra datos reales</td></tr>
+</table>
+
+<div class="footer">
+  Genesis360 · Documento generado el 23 de septiembre de 2026 sobre la app v1.230.0<br>
+  Fuentes: <code>G360.Wiki/sources/raw/relevamiento_{multimoneda,categorias_clientes,precio_programado}_respuestas.md</code>
+  · <code>tests/specs/uat-modo-basico.md</code> §66
+</div>
+
+</body>
+</html>

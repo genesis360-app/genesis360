@@ -446,7 +446,7 @@ Sumado al mismo lote que la política de contraseñas (G8): las conexiones direc
 exigen SSL, aplicado por API. Sigue sin resolver que la base es accesible desde **cualquier IP**
 (0.0.0.0/0) — es una decisión, no un pendiente (ver tabla de abajo).
 
-### G14 — Rate limiting deja de vivir en memoria del isolate (mig 432, 2026-09-22) — ✅ EN DEV, 🔴 falta en PROD
+### G14 — Rate limiting deja de vivir en memoria del isolate (mig 432, 2026-09-22) — ✅ EN PROD (`v1.230.0`)
 
 Cerraba el pendiente 2 de la tabla de abajo. `marketplace-api`, `data-api` y `transportista-subir-archivo`
 contaban en un `Map` en memoria del isolate de Deno: se pierde en cada cold start, y Supabase corre varios
@@ -478,13 +478,23 @@ pasan/10 dan 429 con una sola fila de contador 70 (prueba la atomicidad); `data-
 inventadas → 20×401+5×429; `transportista-subir-archivo`, 35 POST → 30×400+5×429. `marketplace-api` y
 `data-api` se desplegaron en DEV por primera vez (antes solo existían en PROD) — queda **1 sola función
 solo-PROD**: `marketplace-webhook`. Paridad `pg_policies` DEV=PROD sigue intacta (la tabla es deny-all, no
-agrega policies). Detalle en `log.md` (2026-09-22, `update`) y [[wiki/architecture/edge-functions]].
+agrega policies).
+
+**Deployado a PROD la misma noche** (PR #356, merge `f8d0ae3e`, release `v1.230.0` Latest) y **verificado
+con tráfico real contra PROD**: 70 requests a `marketplace-api` → **64×403 + 6×429**, reconciliando exacto
+contra la tabla (la ventana de las 02:15 cerró con contador 66, los últimos 4 cayeron en la ventana de las
+02:16 ya limpia). 🩸 Gotcha de la verificación: la primera corrida (65 requests) cayó a caballo del cambio
+de minuto y quedó partida 27+38 entre dos ventanas — ninguna llegó a 60, comportamiento correcto de una
+ventana FIJA (no deslizante), no un bug. Las filas de prueba se borraron en los dos ambientes. De paso el
+deploy limpió 3 drifts más de Edge Functions (`marketplace-api` prod 21→0, `data-api`/
+`transportista-subir-archivo` 34/25→0). Detalle en `log.md` (2026-09-22, `deploy`) y
+[[wiki/architecture/edge-functions]].
 
 ### 🟥 Hallazgos ABIERTOS — backlog de seguridad, sin cerrar
 
 Cerrados en la segunda tanda (mig 431): `mp-ipn` sin validar `user_id` (G12), `cuenta_token` sin
 vencimiento (G10), OTP no criptográfico sin límite de intentos (G9), SSL no forzado (G13). Cerrado el
-2026-09-22 (2ª sesión, mig 432, ✅ EN DEV / 🔴 falta en PROD): rate limiting en memoria del isolate (G14).
+2026-09-22 (mig 432, ✅ EN PROD desde `v1.230.0`): rate limiting en memoria del isolate (G14).
 
 | # | Qué | Mitigación actual |
 |---|---|---|
@@ -513,9 +523,10 @@ con un workflow real (`gh workflow run <wf> --ref main`, eligiendo uno que hoy s
 Detalle completo de la verificación en `log.md` (2026-09-20 ×2 y 2026-09-22) y
 `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
-🔶 **G14 (rate limiting persistente, mig 432) queda un paso atrás**: ✅ EN DEV (`v1.230.0`, 2026-09-22, 2ª
-sesión), 🔴 falta desplegar la migración y las 3 EFs (`marketplace-api`, `data-api`,
-`transportista-subir-archivo`) a PROD — esperando autorización de GO. Ver la sección "G14" arriba.
+✅ **G14 (rate limiting persistente, mig 432) alcanzó a las demás**: deployada a PROD la noche del
+2026-09-22 (PR #356, merge `f8d0ae3e`, release `v1.230.0` Latest), junto con las 3 EFs (`marketplace-api`,
+`data-api`, `transportista-subir-archivo`) y verificada con tráfico real contra PROD (64×403+6×429 sobre
+70 requests a `marketplace-api`). Ver la sección "G14" arriba.
 
 ---
 

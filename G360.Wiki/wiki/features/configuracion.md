@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299, 370]
-updated: 2026-08-25
+updated: 2026-09-22
 ---
 
 # Módulo Configuración
@@ -387,8 +387,8 @@ por margen".
 - Rate limit: 120 req/min por key. 🔒 **2026-09-22 (mig 432): pasa a ser persistente** (tabla
   `rate_limit_contadores`, antes vivía en memoria del isolate) + cubo nuevo de 20 intentos fallidos/min por
   IP (antes probar API keys al azar era gratis, el límite corría después de validar la key). `data-api` se
-  desplegó en DEV por primera vez con este fix (antes solo existía en PROD). ✅ EN DEV, 🔴 falta PROD. Ver
-  [[wiki/architecture/edge-functions]].
+  desplegó en DEV por primera vez con este fix (antes solo existía en PROD). ✅ **EN DEV Y EN PROD** (deploy
+  `v1.230.0`, PR #356, verificado con tráfico real contra PROD). Ver [[wiki/architecture/edge-functions]].
 
 ---
 

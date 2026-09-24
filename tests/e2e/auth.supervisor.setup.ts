@@ -27,7 +27,7 @@ setup('autenticar supervisor', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel(/email/i).fill(email)
   await page.getByLabel(/contraseña|password/i).fill(password)
-  await page.getByRole('button', { name: /ingresar|iniciar sesión|login/i }).click()
+  await page.getByRole('button', { name: 'Ingresar', exact: true }).click()
 
   // SUPERVISOR aterriza en /dashboard (no redirige)
   await page.waitForURL('**/dashboard', { timeout: 15000 })

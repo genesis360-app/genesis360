@@ -2274,3 +2274,23 @@ Ambos modos. Salió contestando una pregunta de GO sobre cómo conviene manejar 
 | 67.5 | Nadie puede **darse de baja a sí mismo** ni dar de baja al **último DUEÑO activo** del negocio: antes era un error cosmético, ahora sería un candado sin llave | trigger `trg_guard_baja_usuario`; 🔴 falta probarlo en DEV | 🔴 |
 | 67.6 | Un ADMIN de plataforma dado de baja tampoco entra por `/admin` dentro de la app. El panel `admin.genesis360.pro` **no se ve afectado**: autentica contra `support_agents` y usa service_role, no `is_admin()` | revisión del `migration-reviewer` sobre `genesis360-admin` y `admin-api` | ✅ código |
 | 67.7 | El alta de negocio no se ve afectada: los triggers de seed usan `NEW.id` y no llaman a `get_user_tenant_id()`, y el insert de `users` pasa por `users_insert_self` | revisión del `migration-reviewer` | ✅ código |
+
+## 🕳️ §68 — El hueco de cobertura que dejó pasar 2 bugs 🔴 — 2026-09-24
+
+🛑 **Por qué esto existe**: en la tanda del importador (§66) dos revisiones independientes encontraron **2 bugs rojos que la suite de 1.900 tests no vio**, uno de ellos fiscal (IVA Exento → 21 %). Los dos vivían en la **lógica de parseo del componente** `ImportarProductosPage.tsx`, que no tiene test propio. Lo que sí estaba cubierto —las funciones puras de `src/lib/`, 51 tests— no tuvo ni un bug.
+
+Peor: el test que cubría "el precio y su moneda viajan en grupo" **usaba un fixture con el precio ya puesto a mano**, así que nunca ejercitaba el camino real, donde el precio sale en 0 porque la columna no vino. Un test que no prueba el camino real da una sensación de cobertura que no existe.
+
+**Lo que hay que hacer** (no se hizo todavía): extraer a `src/lib` la función que convierte una fila cruda del archivo (`row`) en `FilaProducto` —con sus defaults, sus validaciones y sus errores— y testearla ahí, **con filas crudas como las que produce `XLSX.utils.sheet_to_json`**, no con objetos armados a mano.
+
+| # | Escenario que FALTA cubrir | Qué bug habría cazado | Estado |
+|---|---|---|---|
+| 68.1 | Parsear una fila cruda con `alicuota_iva: 0` y verificar que llega **0** al payload, no 21 | 🔴 el del IVA Exento, directo | 🔴 falta |
+| 68.2 | Parsear una fila cruda **sin** la columna `precio_venta` y verificar qué valor toma: hoy 0, y ese 0 es el que se escribía | 🔴 el del precio zeroreado | 🔴 falta |
+| 68.3 | Una fila con `margen_objetivo: 0` conserva el 0 y no lo borra | 🟡 el del margen borrado | 🔴 falta |
+| 68.4 | Recorrer **todos** los campos del parseo buscando el patrón `\|\| '<default>'` donde el 0 sea un valor válido | la clase entera de bug, no un caso | 🔴 falta |
+| 68.5 | e2e: importar un CSV de `sku` + `precio_venta` sobre un producto con proveedor, descripción, código de barras y trazabilidad, y verificar que **nada de eso se perdió** | D-3 completo, end-to-end | 🔴 falta |
+| 68.6 | e2e: exportar productos → reimportar el archivo **sin tocarlo** → el producto queda idéntico (incluido uno en dólares y uno exento) | el ciclo completo que este deploy habilita | 🔴 falta |
+| 68.7 | La ficha de producto en USD muestra el mismo precio en pesos que cobra el POS | D-1; hoy `ProductoFormPage` no tiene ningún test | 🔴 falta |
+
+**Regla que sale de acá, para la próxima**: si una lógica decide sobre plata o sobre lo fiscal y vive dentro de un `.tsx`, **no está testeada** — por más verde que esté la suite. Hay que sacarla a `src/lib` antes de confiar en ella.

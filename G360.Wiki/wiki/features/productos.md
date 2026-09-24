@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, src/pages/ProductosPage.tsx, src/lib/importarProductosMoneda.ts]
-updated: 2026-09-23
+sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, src/pages/ProductosPage.tsx, src/lib/importarProductosMoneda.ts, src/lib/importarProductosActualizacion.ts]
+updated: 2026-09-24
 ---
 
 # Productos
@@ -380,25 +380,115 @@ Verificado contra la base real en DEV con el payload exacto (revertido después)
 100 USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
 `precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
 
-> [!NOTE] **🛑 Tres hallazgos nuevos, esperando decisión de GO** (suman a los 27 puntos abiertos de los
-> 3 relevamientos → 30, con propuesta para cada uno en
-> `puntos-abiertos-multimoneda-categorias-precio-programado.html`, commit `a7fc1124`):
->
-> - **D-1**: `ProductoFormPage.tsx:66` sigue destructurando `{ cotizacion }` (la de VENTA) para calcular
->   el espejo en pesos de Card 3 — es la mitad que quedó afuera del fix del 2026-09-08, cuando el POS
->   pasó a usar la cotización de COMPRA (`tasaUsdAArs`) porque le cobraba de más al cliente. Hoy
->   latente: 0 productos en USD en PROD.
-> - **D-2**: `productos.margen_ganancia` es `GENERATED numeric(5,2)` — ningún producto con markup >
->   999,99 % se puede guardar, ni por CSV ni desde esta ficha (`numeric field overflow`). Preexistente;
->   el importador ya valida esto con mensaje claro, la ficha sigue sin protección.
-> - **D-3** 🛑: el archivo que genera **"Exportar productos" NO sirve para reimportar**: emite solo `id,
->   nombre, sku, precio_venta, precio_costo, stock_actual, stock_minimo, unidad_medida, activo,
->   categoria`, y el importador pisa todo el resto del payload con los defaults. Los dos botones están
->   uno al lado del otro, así que "exporto → corrijo en Excel → reimporto" es el flujo natural. Medido
->   sobre los 27 productos de PROD: se perderían **19** proveedores, **19** descripciones, **12**
->   códigos de barras, **9** productos con trazabilidad (series/lote/vencimiento), 5 márgenes objetivo,
->   2 reglas de inventario y 1 kit. El IVA zafa de casualidad (los 27 están en 21 %, el default) pero la
->   misma vía lo resetearía, y eso sí es fiscal. Preexistente; A0 solo sumó la moneda a esa lista.
+> [!NOTE] **Tres hallazgos que dejó A0 — estado al 2026-09-24**: ✅ **D-1 y D-3 RESUELTOS**, sin esperar
+> respuesta de GO (eran aplicación directa de reglas ya decididas, no puntos a relevar). 🟡 **D-2
+> mitigado, no cerrado**. Detalle completo en la sección de abajo, "Actualización por archivo — D-3,
+> D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24)".
+
+---
+
+## Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24, EN `dev`, SIN deploy)
+
+Commits `93448deb`, `c8e7649c`, `02568b64`, `470525c6` en `origin/dev`. **Sin migración nueva** (sigue
+001-**432**) y **sin deploy a PROD** — `dev` queda con estos 4 cambios por encima de PROD, sin bump de
+`APP_VERSION` todavía. Cierra los 3 hallazgos que dejó A0 (arriba) más 2 bugs 🔴 nuevos que encontraron
+dos pasadas independientes de `code-reviewer`.
+
+### D-3 ✅ — al actualizar por archivo se escribe SOLO lo que el archivo trae
+
+Antes, actualizar por CSV/Excel reescribía las **26 columnas** del payload con los defaults de la fila,
+sin importar si el archivo las traía o no. Medido sobre los 27 productos de PROD: se habrían perdido
+**19** proveedores, **19** descripciones, **12** códigos de barras y **9** productos con trazabilidad
+(series/lote/vencimiento) con solo exportar y reimportar sin tocar nada — y el IVA se habría resetado a
+21 % en cualquier producto exento.
+
+**Decisión de GO**: *"lo que el archivo trae manda; lo que no trae, no se toca."* Módulo nuevo
+`src/lib/importarProductosActualizacion.ts` (patrón ccLogic), con `celdaTieneValor` decidiendo por
+columna si el archivo la trajo (para que un `0` válido —IVA exento, margen objetivo en 0— no se
+confunda con "vacío").
+
+🛑 **La prueba de que no alcanzaba con sumarle columnas al export**: `activo` YA estaba en el archivo
+que emitía "Exportar productos", y **se pisaba igual** — el payload viejo lo escribía fijo en `true`.
+Exportar y reimportar sin tocar nada **reactivaba productos dados de baja**. Sumar columnas al export
+sin cambiar el motor de actualización no alcanza.
+
+### D-1 ✅ — la ficha ya usa la cotización de COMPRA, la misma que el POS
+
+`ProductoFormPage.tsx:66` calculaba el espejo en pesos de Card 3 con la cotización de **venta**,
+mientras el POS cobra a la de **compra** desde el fix del 2026-09-08 — era la mitad que había quedado
+afuera de ese fix. Una línea. Ahora POS, ficha e importador usan la misma tasa. Hoy latente: 0
+productos en USD en PROD.
+
+### D-2 🟡 mitigado — aviso claro del tope de margen, el tope en sí sigue abierto
+
+Cargar un producto que superara el margen guardable devolvía un `numeric field overflow` crudo de
+Postgres, en la ficha y en el importador. Ahora los dos avisan con un mensaje claro antes de intentar
+guardar (`margenEntraEnLaBase`). ⚠️ **El tope de 999,99 % sigue existiendo**: `productos.margen_ganancia`
+es `GENERATED numeric(5,2)`, así que ningún producto con markup mayor todavía se puede guardar.
+**Ampliar la columna es una decisión de GO todavía ABIERTA.**
+
+### Export reimportable — de 10 a 22 columnas
+
+El export de "Exportar productos" pasó a emitir las columnas de producto de la plantilla del
+importador (booleanos como SI/NO), para poder editar en Excel y reimportar sin perder nada. No incluye
+las 14 columnas `estr_*` de empaque (otra tabla): como una columna ausente significa "no tocar",
+reimportar tampoco borra el empaque.
+
+🛑 **El ida y vuelta no deforma los precios en dólares**: un producto en USD exporta con su **monto en
+dólares** en la columna de precio, no con el espejo en pesos — si no, cada ida y vuelta lo multiplicaría
+por la cotización otra vez. Función `montoYMonedaParaExportar` + test de identidad exportar→importar
+sobre 3 productos (uno en ARS, uno en USD, uno exento).
+
+🔒 El export deja de entregar costo y margen objetivo a los roles que no los ven en la grilla (CAJERO /
+DEPÓSITO / RRHH): ocultar en la UI y no en la descarga no es ocultar nada.
+
+### 🔴🔴 Los 2 bugs que encontró `code-reviewer` — la suite de 1.900 tests no los vio
+
+Dos revisiones independientes de `code-reviewer` sobre el diff completo (2 pasadas) encontraron **2
+bugs 🔴 en la lógica de PARSEO** de `ImportarProductosPage.tsx`, uno de ellos fiscal:
+
+1. **IVA Exento (0 %) se convertía en 21 % al importar.** `String(row.alicuota_iva || '21')`: con `0`,
+   el operador `||` devuelve `'21'` — y como 21 es un valor válido, la fila entraba **sin ningún
+   error**. Es literalmente el gotcha escrito en el CLAUDE.md ("un `||default` sobre 0 convierte
+   Exento en 21 %"). Ya estaba resuelto en `ProductoFormPage` con `Number.isFinite`; el importador es
+   un archivo hermano que nunca recibió el mismo arreglo. Un producto exento exportado y reimportado
+   sin tocar nada facturaba IVA fantasma.
+2. **Traer la columna de moneda SIN el precio dejaba el precio en 0, en silencio.** El precio y su
+   moneda se escriben en grupo, y una columna ausente se parsea como 0 — así que una fila con solo
+   `sku` + `precio_venta_moneda` escribía `precio_venta: 0` sobre un producto real, sin ningún error en
+   la vista previa. Era el CSV más natural: *"le corrijo solo la moneda a este producto"*.
+
+**Segunda pasada** (3 hallazgos más): el aviso de margen (D-2, arriba) quedaba **ciego en las
+actualizaciones parciales** — comparaba contra 0 para el lado que el archivo no trae, así que nunca
+saltaba, y una fila de `sku`+`precio_venta` con un cero de más pasaba la vista previa y recién
+explotaba al confirmar. Ahora el lado ausente se toma del valor real ya guardado. Y `hasEstr` (decide
+si una fila trae empaque) miraba solo **7 de las 14** columnas `estr_*` — una fila con solo
+`estr_largo_unidad` fallaba entera.
+
+**4 hallazgos menores, también cerrados**: `margen_objetivo = 0` sufría el mismo `||` y la
+reimportación lo borraba en vez de dejarlo en 0 · una fila que solo trae columnas de empaque sobre un
+producto existente ya no falla entera · el escape del CSV contempla saltos de línea (`descripcion`/
+`notas` con Enter partían la fila) · ver también el punto 🔒 de roles, arriba.
+
+### 🛑 La lección: la lógica de parseo sin test es lógica sin cobertura
+
+Los 2 bugs 🔴 vivían en un `.tsx` (`ImportarProductosPage.tsx`), que no tiene test unitario propio —
+igual que `ProductoFormPage.tsx` y `ProductosPage.tsx`. Lo que sí está cubierto son las funciones puras
+de `src/lib/` (51 tests entre `importarProductosMoneda.test.ts` e
+`importarProductosActualizacion.test.ts`): ahí no hubo ningún bug.
+
+Peor: el test que cubría "precio y moneda viajan en grupo" **usaba un fixture con el precio ya puesto a
+mano**, así que nunca ejercitó el camino real donde el precio sale en 0 por ausencia de columna. Un
+test que no prueba el camino real da una sensación de cobertura que no existe.
+
+**Regla para la próxima**: si una lógica decide sobre plata o sobre lo fiscal y vive dentro de un
+`.tsx`, no está testeada por más verde que esté la suite — hay que sacarla a `src/lib` antes de
+confiar en ella, con fixtures que salgan del parseo real (`XLSX.utils.sheet_to_json`), no armados a
+mano.
+
+**Verificación**: UAT §66 (26 escenarios) · §67 (mig 433, ver [[wiki/features/autenticacion-onboarding]])
+· §68 (7 escenarios de cobertura que faltan, `tests/specs/uat-modo-basico.md`). Typecheck limpio, build
+verde.
 
 ---
 

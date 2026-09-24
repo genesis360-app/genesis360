@@ -6,6 +6,129 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-24] update | 🧾🔐 Dos pasadas de `code-reviewer` encontraron 2 bugs 🔴 (uno fiscal) en el importador + mig 433 escrita para cortar el acceso de un usuario dado de baja (SIN aplicar)
+
+**PROD sigue en `v1.230.0`** (migs 001-**432**). **Nada de esta entrada se deployó.** `dev` queda **11
+commits** por encima de `origin/main` (verificado: `git log --oneline origin/main..dev`). `APP_VERSION`
+sigue sin bump.
+
+⚠️ **La mig 433 quedó ESCRITA, REVISADA (`migration-reviewer`: APTA para DEV) y con su mitad de
+frontend lista, pero SIN APLICAR ni en DEV ni en PROD**: el conector de Supabase se desconectó a mitad
+de sesión.
+
+### 1 · Productos — 4 hallazgos más de A0, cerrados sin deploy (commits `93448deb`, `c8e7649c`, `02568b64`, `470525c6`)
+
+**D-3** — al actualizar por archivo se escribe SOLO lo que el archivo trae. Antes el UPDATE reescribía
+las 26 columnas del payload con los defaults: perdía proveedor, descripción, código de barras, alícuota
+de IVA y trazabilidad. Medido en PROD: 19 proveedores, 19 descripciones, 12 códigos de barras y 9
+productos con trazabilidad se perderían con solo exportar y reimportar sin tocar nada. Decisión de GO:
+*"lo que el archivo trae manda; lo que no trae, no se toca"*. Módulo nuevo
+`src/lib/importarProductosActualizacion.ts`.
+🛑 **La prueba de que sumarle columnas al export no alcanzaba**: `activo` YA estaba en el archivo
+exportado y se pisaba igual —el payload lo escribía fijo en `true`— así que exportar y reimportar
+**reactivaba productos dados de baja**.
+
+**D-1** ✅ resuelto — la ficha calculaba el espejo en pesos con la cotización de **venta**, mientras el
+POS cobra a la de **compra**. Era la mitad que había quedado afuera del fix del 2026-09-08. Ahora POS,
+ficha e importador usan la misma tasa.
+
+**D-2** 🟡 mitigado, no cerrado — la ficha ahora avisa el tope de margen con un mensaje claro en vez del
+`numeric field overflow` crudo. ⚠️ **El tope de 999,99 % sigue existiendo**: ampliar la columna
+`margen_ganancia` (`GENERATED numeric(5,2)`) es una decisión de GO todavía ABIERTA.
+
+**Export reimportable** — de 10 a 22 columnas. 🛑 Con el cuidado de que un producto en dólares sale con
+su **monto en dólares**, no el espejo en pesos (si no, cada ida y vuelta lo multiplicaría por la
+cotización). Función `montoYMonedaParaExportar` + test de identidad exportar→importar.
+
+### 2 · Lo que encontraron las DOS pasadas de `code-reviewer` — 2 bugs 🔴 que 1.900 tests no vieron
+
+**🔴🧾 IVA Exento (0 %) se convertía en 21 %** (`02568b64`). `String(row.alicuota_iva || '21')`: con 0,
+el `||` devuelve `'21'`, y como 21 es un valor válido, entraba en silencio. Es literalmente el gotcha
+del CLAUDE.md ("un `||default` sobre 0 convierte Exento en 21 %"). Ya estaba resuelto en
+`ProductoFormPage` con `Number.isFinite`; el importador es un archivo hermano que nunca recibió el
+mismo arreglo. Un producto exento exportado y reimportado sin tocar nada facturaba IVA fantasma.
+
+**🔴 Traer la columna de moneda SIN el precio dejaba el precio en 0** (`02568b64`). El precio y su
+moneda se escriben en grupo; una columna ausente se parsea como 0, así que una fila con solo `sku` +
+`precio_venta_moneda` escribía `precio_venta: 0` sobre un producto real, sin error en la vista previa.
+Era el CSV más natural: *"le corrijo solo la moneda"*.
+
+**🟡 Segunda pasada** (`470525c6`): el aviso de margen quedaba **ciego en las actualizaciones
+parciales** (comparaba contra 0 para el lado que el archivo no trae, así que nunca saltaba) y `hasEstr`
+miraba **7 de las 14** columnas `estr_*`.
+
+Más 4 menores: `margen_objetivo = 0` se leía como vacío y borraba el margen; una fila de "solo empaque"
+fallaba entera; 🔒 el export entregaba costo y margen a CAJERO/DEPÓSITO/RRHH, que no los ven en la
+grilla; y el escape del CSV no contemplaba saltos de línea.
+
+Detalle completo, con los 26 escenarios del UAT: [[wiki/features/productos]] → "Importador CSV —
+columnas de moneda (A0)" y `tests/specs/uat-modo-basico.md` §66/§68.
+
+### 3 · 🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad (ESCRITA, SIN APLICAR)
+
+Salió contestando una pregunta de GO sobre cómo manejar las cuentas de los empleados.
+
+🛑 **El agujero**: dar de baja a alguien NO le quitaba nada. `get_user_tenant_id()` —la función que
+gobierna el `USING` de casi todas las policies de RLS— no miraba `activo`; tampoco lo hacía
+`users_select`, ni `loadUserData`, ni ningún guard del frontend. Y "Desactivar" es la única acción que
+existe sobre un usuario (no hay eliminar): desde la app no había forma de cortarle el acceso a un
+empleado que se fue.
+
+La migración: (1) `get_user_tenant_id()` e `is_admin()` dejan de resolver para un usuario dado de baja;
+(2) trigger que impide darse de baja a uno mismo o dar de baja al último DUEÑO activo; (3)
+`fn_estado_usuario_actual()` para que la app pueda explicar qué pasó.
+
+⚠️ `users.activo` es NULLABLE (`boolean DEFAULT true`): las tres funciones y el trigger usan
+`coalesce(activo, true)`, el mismo criterio que ya aplica `fn_soporte_ticket_detalle`. Con `AND activo`
+a secas, cualquier fila con NULL habría perdido el acceso.
+
+**El frontend era la mitad imprescindible** (`authStore` + `AuthGuard`): sin él, el usuario dado de
+baja tampoco puede leer SU PROPIA fila, así que la app lo tomaba por "no tiene negocio" y lo mandaba a
+crear un negocio nuevo con su misma identidad. Ahora ve "Tu acceso fue dado de baja".
+
+La revisión confirmó que `admin.genesis360.pro` **no se ve afectado** (autentica contra
+`support_agents` con service_role, no por `is_admin()`) y que el alta de negocio tampoco (los triggers
+de seed usan `NEW.id`).
+
+**UAT §67**: 7 escenarios, **4 en rojo** porque necesitan la prueba real en DEV (falta el conector).
+
+Detalle: [[wiki/features/autenticacion-onboarding]] → "Desactivar corta el acceso de verdad" y
+[[wiki/architecture/multi-tenant-rls]].
+
+### 4 · 🛑 La lección de la sesión: la lógica de parseo sin test es lógica sin cobertura
+
+Los dos bugs 🔴 vivían en la lógica de PARSEO de los componentes (`ImportarProductosPage.tsx`), que
+**no tiene test unitario**. Lo mismo `ProductoFormPage.tsx` y `ProductosPage.tsx`. Lo que sí está
+cubierto son las funciones puras extraídas a `src/lib/` (51 tests) — y ahí no hubo ningún bug.
+
+Peor: el test que cubría el precio en grupo **usaba un fixture con el precio ya puesto a mano**, así
+que nunca ejercitaba el camino real donde el precio sale en 0 por ausencia de columna. Un test que no
+prueba el camino real da una sensación de cobertura que no existe.
+
+**Conclusión**: la lógica de parseo de un archivo hay que extraerla a `src/lib` y testearla ahí, y los
+fixtures tienen que salir del parseo real, no armarse a mano. Ver UAT §68.
+
+### Pendientes actualizados
+
+1. **🔴 Aplicar y probar la mig 433** — necesita el conector de Supabase de vuelta. **No debe ir a PROD
+   sin la prueba manual** (desactivar un usuario en DEV, intentar entrar, confirmar la pantalla): Kalken
+   tiene empleados reales.
+2. **🆕 Feature nueva a arrancar**: crear usuarios con nombre y contraseña, SIN correo — hoy
+   `invite-user` exige mail (`inviteUserByEmail`). Idea: el dueño crea al empleado, la app genera por
+   dentro una dirección que nunca recibe correo (`@u.genesis360.pro`), y el dueño restablece la
+   contraseña desde Usuarios. Es lo correcto para un kiosco.
+3. **Mientras tanto**, la recomendación para clientes sin dominio propio: una sola cuenta
+   `negocio@gmail.com` con direcciones `+` por empleado (`negocio+juan@gmail.com`) — Gmail las entrega
+   todas a la misma casilla. Contras: la invitación le llega al dueño, el empleado no recibe avisos
+   propios, y el nombre que muestra la app sale de lo que está antes del `@`.
+4. **Deploy pendiente**: los 5 cambios de productos no llevan migración y podrían ir solos; lo de
+   usuarios necesita la 433 aplicada y probada primero.
+5. Los de siempre: rotación de keys legacy (esperando al 25/09), los 27 puntos abiertos de los
+   relevamientos + D-2 (28 en total — D-1 y D-3 de A0 ya se resolvieron esta sesión), 2 EFs con drift
+   cosmético en PROD.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
 ## [2026-09-23] update | 📄 Guía de inicio para clientes + el PDF de la de facturación, por fin imprimible
 
 ### Guía nueva: "Primeros pasos: de cero a tu primera venta"

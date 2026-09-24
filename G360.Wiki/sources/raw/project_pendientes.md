@@ -6,6 +6,105 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-24) — 🚀 **PROD sigue en `v1.230.0`** (migs 001-**432**) — nada de esta
+> sesión se deployó. `dev` queda **11 commits** por encima de `origin/main` (verificado con `git log
+> --oneline origin/main..dev`), sin bump de `APP_VERSION`.
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.230.0` | 001-**432** |
+> | **DEV** | `v1.230.0` + 11 commits sin release (5 cambios de productos + mig 433 escrita) | 001-**432** — la 433 quedó **ESCRITA, SIN APLICAR** |
+>
+> ⚠️ **La mig 433 NO está aplicada ni en DEV ni en PROD**: el conector de Supabase se desconectó a
+> mitad de sesión. Queda escrita, revisada (`migration-reviewer`: APTA para DEV) y con su mitad de
+> frontend lista. **Primer pendiente de la próxima sesión: aplicarla y probarla en DEV.**
+>
+> #### 1 · Productos — los 3 hallazgos de A0 (D-1/D-2/D-3), y 2 bugs 🔴 nuevos que encontró `code-reviewer`
+>
+> ✅ **D-1 y D-3 RESUELTOS** (commits `c8e7649c` + `93448deb`), sin esperar respuesta de GO — eran
+> aplicación directa de reglas ya decididas, no puntos a relevar:
+> - **D-3**: al actualizar por archivo ahora se escribe SOLO lo que el archivo trae (antes el UPDATE
+>   pisaba las 26 columnas del payload con los defaults — medido en PROD: 19 proveedores, 19
+>   descripciones, 12 códigos de barras y 9 productos con trazabilidad se habrían perdido con solo
+>   exportar y reimportar). Decisión de GO: *"lo que el archivo trae manda; lo que no trae, no se
+>   toca"*. Módulo nuevo `src/lib/importarProductosActualizacion.ts`.
+>   🛑 `activo` YA estaba en el archivo exportado y se pisaba igual (el payload lo escribía fijo en
+>   `true`) — exportar y reimportar **reactivaba productos dados de baja**. Es la prueba de que
+>   sumarle columnas al export no alcanzaba.
+> - **D-1**: la ficha calculaba el espejo en pesos con la cotización de VENTA en vez de COMPRA (la que
+>   usa el POS). Ahora POS, ficha e importador usan la misma tasa.
+> - **Export reimportable**: de 10 a 22 columnas, con `montoYMonedaParaExportar` cuidando que un
+>   producto en USD salga con su monto en dólares (no el espejo en pesos, que se multiplicaría cada
+>   ida y vuelta).
+>
+> 🟡 **D-2 sigue ABIERTO** (decisión de GO pendiente): la ficha ahora avisa el tope de margen con un
+> mensaje claro en vez del `numeric field overflow` crudo, pero **el tope de 999,99 % de
+> `margen_ganancia` (`GENERATED numeric(5,2)`) sigue existiendo** — ampliar la columna es la decisión
+> que falta.
+>
+> 🔴🔴 **Dos revisiones de `code-reviewer` sobre el diff completo encontraron 2 bugs que la suite de
+> 1.900 tests no vio**, uno FISCAL:
+> - **IVA Exento (0 %) se convertía en 21 %**: `String(row.alicuota_iva || '21')` — con 0 el `||`
+>   devuelve `'21'`, valor válido, entra sin error. Es el gotcha del CLAUDE.md. Ya estaba resuelto en
+>   `ProductoFormPage` con `Number.isFinite`; el importador nunca recibió el mismo arreglo.
+> - **Traer la columna de moneda sin el precio dejaba el precio en 0**: el precio y su moneda se
+>   escriben en grupo; una columna ausente se parsea como 0. El CSV más natural ("corrijo solo la
+>   moneda") zeroeaba un precio real, sin error en la vista previa.
+>
+> Segunda pasada: el aviso de margen quedaba ciego en actualizaciones parciales, y `hasEstr` miraba 7
+> de las 14 columnas `estr_*`. Más 4 hallazgos menores (`margen_objetivo=0` se borraba, fila de "solo
+> empaque" fallaba entera, export entregaba costo/margen a roles que no los ven, escape de CSV sin
+> saltos de línea). Los 2 bugs 🔴 quedaron cerrados junto con todo lo demás, sin deploy todavía.
+>
+> **Lección para dejar anotada**: los 2 bugs 🔴 vivían en la lógica de PARSEO de
+> `ImportarProductosPage.tsx`, que no tiene test unitario propio (a diferencia de las funciones puras
+> de `src/lib/`, 51 tests, 0 bugs). Y el test que sí existía para "precio+moneda en grupo" usaba un
+> fixture con el precio puesto A MANO, así que nunca ejercitó el camino real donde el precio sale en 0
+> por ausencia de columna. **Para la próxima**: la lógica de parseo de un archivo va a `src/lib`, con
+> fixtures que salgan del parseo real. Ver UAT §68.
+>
+> Detalle completo: [[wiki/features/productos]] → "Importador CSV — columnas de moneda (A0)",
+> `tests/specs/uat-modo-basico.md` §66/§67/§68, `log.md` (2026-09-24, `update`).
+>
+> #### 2 · 🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad
+>
+> Salió contestando una pregunta de GO sobre cómo manejar las cuentas de los empleados. 🛑 **El
+> agujero**: dar de baja a alguien NO le quitaba nada — `get_user_tenant_id()` (gobierna el `USING` de
+> casi todas las policies de RLS) no miraba `activo`, tampoco `users_select`, `loadUserData` ni ningún
+> guard del frontend. Y "Desactivar" es la única acción que existe sobre un usuario (no hay eliminar).
+>
+> La migración (SIN APLICAR, ver arriba): (1) `get_user_tenant_id()` e `is_admin()` dejan de resolver
+> para un usuario dado de baja (`coalesce(activo, true)`, porque `users.activo` es NULLABLE); (2)
+> trigger que impide darse de baja a uno mismo o al último DUEÑO activo; (3)
+> `fn_estado_usuario_actual()` para que la app explique qué pasó. El frontend (`authStore` +
+> `AuthGuard`) era la mitad imprescindible: sin él, el usuario dado de baja no puede leer ni su propia
+> fila y la app lo mandaría a crear un negocio nuevo con su misma identidad. Ahora ve "Tu acceso fue
+> dado de baja". `admin.genesis360.pro` y el alta de negocio NO se ven afectados (verificado por
+> `migration-reviewer`). UAT §67: 7 escenarios, 4 en rojo por falta de la prueba real en DEV.
+>
+> Detalle: [[wiki/features/autenticacion-onboarding]], [[wiki/architecture/multi-tenant-rls]],
+> [[wiki/database/rls-policies]].
+>
+> #### 🔴 PENDIENTES nuevos de esta sesión, por orden
+>
+> 1. **Aplicar y probar la mig 433 en DEV** (necesita el conector de Supabase) — **no va a PROD sin la
+>    prueba manual**: Kalken tiene empleados reales.
+> 2. **🆕 Feature nueva a arrancar (pedido de GO)**: crear usuarios con nombre y contraseña, SIN correo.
+>    Hoy `invite-user` exige mail (`inviteUserByEmail`). Propuesta: el dueño crea al empleado, la app
+>    genera por dentro una dirección que nunca recibe correo (subdominio propio, ej.
+>    `@u.genesis360.pro`), y el dueño restablece la contraseña desde Usuarios — con el cambio forzado
+>    en el primer ingreso. Va con `admin.createUser` + contraseña, sin invitación.
+> 3. **Mientras tanto**, recomendación para clientes sin dominio propio: una sola cuenta
+>    `negocio@gmail.com` con direcciones `+` por empleado (`negocio+juan@gmail.com`) — Gmail las
+>    entrega todas a la misma casilla, el dueño controla la recuperación de todos. Contras: la
+>    invitación le llega al dueño, el empleado no recibe avisos propios, y el nombre que muestra la app
+>    sale de lo que está antes del `@`.
+> 4. **Deploy pendiente**: los 5 cambios de productos no llevan migración y podrían ir solos a PROD; lo
+>    de usuarios necesita la 433 aplicada y probada primero.
+> 5. Los 27 puntos abiertos de los relevamientos + D-2 (28 en total — D-1 y D-3 de A0 ya se resolvieron
+>    esta sesión, bajan de 30 a 28), rotación de keys legacy (esperando al 25/09, lo mide GO), 2 EFs
+>    con drift cosmético en PROD.
+>
 > ### 🛑 ARRANCÁ ACÁ (2026-09-22, 2ª sesión, cont.) — 🚀 **PROD = DEV = `v1.230.0`** (migs 001-**432**) —
 > rate limiting persistente YA DEPLOYADO A PROD (noche), deploy completo y verificado
 >
@@ -194,21 +293,11 @@ type: project
 > 100 USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
 > `precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
 >
-> **Tres hallazgos nuevos, sin resolver, esperando decisión de GO** (ya suman a los 27 puntos abiertos de
-> abajo → 30, con propuesta en el documento nuevo, ver más abajo):
-> - **D-1**: `ProductoFormPage.tsx:66` sigue destructurando `{ cotizacion }` (la de VENTA) para calcular
->   el espejo en pesos — es la mitad que quedó afuera del fix del 2026-09-08 (el POS ya usa compra desde
->   entonces). Hoy latente: 0 productos en USD en PROD.
-> - **D-2**: `productos.margen_ganancia` es `GENERATED numeric(5,2)` — ningún producto con markup >
->   999,99 % se puede guardar, ni por CSV ni desde la ficha (`numeric field overflow`). Preexistente; el
->   importador ya valida esto con mensaje claro, la ficha sigue sin protección.
-> - **D-3** 🛑: el archivo de **"Exportar productos" NO sirve para reimportar**: solo emite `id, nombre,
->   sku, precio_venta, precio_costo, stock_actual, stock_minimo, unidad_medida, activo, categoria`, y el
->   importador pisa todo el resto con los defaults. Medido sobre los 27 de PROD: se perderían **19**
->   proveedores, **19** descripciones, **12** códigos de barras, **9** productos con trazabilidad
->   (series/lote/vencimiento), 5 márgenes objetivo, 2 reglas de inventario y 1 kit. El IVA zafa de
->   casualidad (los 27 están en 21 %, que es lo que pone el default) pero la misma vía lo resetearía, y
->   eso sí es fiscal. Preexistente; A0 solo sumó la moneda a esa lista.
+> **Tres hallazgos que dejó A0** (sumaban a los 27 puntos abiertos de abajo → 30, ver documento):
+> ✅ **D-1 y D-3 RESUELTOS el 2026-09-24, en `dev`, sin deploy** (commits `c8e7649c`+`93448deb`) — ver
+> el bloque "ARRANCÁ ACÁ" al principio de este archivo para el detalle completo. Bajan el total de 30 a
+> **28**. 🟡 **D-2 sigue ABIERTO**: se agregó un aviso claro del tope en la ficha, pero ampliar la
+> columna `margen_ganancia` (999,99 % de tope) sigue siendo una decisión de GO pendiente.
 >
 > Detalle completo en [[wiki/features/productos]] → "Importador CSV — columnas de moneda (A0)".
 >

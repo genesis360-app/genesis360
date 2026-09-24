@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
 # Roadmap y Versiones
@@ -15,11 +15,24 @@ desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 `cron` 2, hashes idénticos — la mig 432 no agrega policies). PR **#356** `dev→main`, merge commit
 **`f8d0ae3e`**, release **`v1.230.0` Latest**. Detalle completo en `log.md` (2026-09-22, `deploy`).
 
-🆕 **Desde el 2026-09-23, `dev` tiene código por encima de PROD, sin bump de versión**: A0 (commits
-`870d3e36`+`ca2f08f2`) — el importador CSV ya escribe las columnas vivas de moneda
-(`moneda_venta`/`moneda_costo`). **Sin migración nueva** y **sin deploy a PROD** — `APP_VERSION` sigue en
-`v1.230.0` en los dos ambientes, PROD sigue sirviendo exactamente lo del release de arriba. Detalle en
-[[wiki/features/productos]] → "Importador CSV — columnas de moneda (A0)" y `log.md` (2026-09-23, `update`).
+🆕 **Al 2026-09-24, `dev` queda 11 commits por encima de `origin/main`, sin bump de versión.**
+`APP_VERSION` sigue en `v1.230.0` en los dos ambientes; PROD sigue sirviendo exactamente lo del release
+de arriba. Nada de lo siguiente se deployó:
+
+- **Productos — A0 completo** (commits `870d3e36`, `ca2f08f2`, `93448deb`, `c8e7649c`, `02568b64`,
+  `470525c6`): el importador CSV ya escribe las columnas vivas de moneda (`moneda_venta`/
+  `moneda_costo`); al **actualizar por archivo se escribe solo lo que el archivo trae** (antes se
+  perdían proveedor, descripción, código de barras e IVA); la ficha ya usa la cotización de **compra**,
+  igual que el POS; "Exportar productos" pasó de 10 a 22 columnas y ya es reimportable. Dos pasadas de
+  `code-reviewer` encontraron **2 bugs 🔴 que 1.900 tests no vieron**: IVA Exento (0 %) se convertía en
+  21 % al importar, y traer la columna de moneda sin el precio dejaba el precio en 0 — los dos ya
+  cerrados. **Sin migración nueva.** Detalle en [[wiki/features/productos]] y `log.md` (2026-09-24,
+  `update`).
+- **🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad** — ⚠️ **escrita, revisada
+  (`migration-reviewer`: APTA), pero SIN APLICAR ni en DEV ni en PROD** (el conector de Supabase se
+  desconectó a mitad de sesión). Hasta ahora dar de baja a un empleado no le quitaba ningún acceso. No
+  va a PROD sin aplicarla y probarla a mano en DEV primero. Detalle en
+  [[wiki/features/autenticacion-onboarding]].
 
 ## 🚀 v1.230.0 — Rate limiting persistente para las EFs públicas (2026-09-22, EN PROD)
 

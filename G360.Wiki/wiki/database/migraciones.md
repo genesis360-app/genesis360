@@ -6,7 +6,39 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-24
 ---
 
-# Historial de Migraciones (001-434, + correctivos 387b/387c)
+# Historial de Migraciones (001-435, + correctivos 387b/387c)
+
+🛑 **Migración 435 — ✅ EN DEV Y EN PROD** (deploy `v1.232.0`, 2026-09-24, PR #358, merge `5a294934`):
+una caja no puede tener dos sesiones abiertas a la vez (REGLA #0). Los movimientos se cuelgan de una
+sesión y la app lee la MÁS RECIENTE (`order('abierta_at',desc).limit(1)`): con dos sesiones abiertas, la
+plata entra por una mientras el arqueo se cierra sobre la otra. **Medido**: PROD tenía un negocio con
+**6 sesiones abiertas a la vez** en su Caja Fuerte (creadas entre las 05:30 y 05:34 del 2026-06-20, todas
+vacías); en DEV, Caja1 con 2 abiertas y plata en las DOS (#54 con 189 movimientos, #56 con 17). Agrega un
+**índice único parcial `(caja_id) WHERE estado='abierta'`** (lo único que cierra la carrera de verdad) +
+trigger con mensaje entendible + saneamiento que cierra SOLO los duplicados VACÍOS (apertura 0, sin
+movimientos) — con plata adentro el índice falla a propósito, obligando a resolver a mano (en PROD cerró
+5 duplicados vacíos; en DEV la #56 con plata se cerró a mano con su saldo real: 5000 + 9353 − 3018 =
+11335, sin mover ningún movimiento). Revisión previa encontró que `trg_caja_ses_periodo_cerrado` dispara
+en CUALQUIER UPDATE de `caja_sesiones` y habría abortado el saneamiento sobre una sesión de un período
+contable cerrado — verificado antes de aplicar que el tenant afectado no tiene ninguno. Del lado del
+frontend (mismo release, sin migración propia): `CajaPage` ya no ofrece "Abrir caja" mientras la query de
+sesión viaja (spinner en su lugar), el guard de apertura pasó de `.maybeSingle()` (falla con 2+ filas) a
+`.limit(2)` + rechaza cualquier sesión abierta (antes solo rechazaba la de OTRO usuario), y
+`ensureFuerteSesionId` atrapa el `23505` de la carrera del get-or-create + filtra `estado='abierta'` (le
+faltaba, devolvía como abierta una sesión permanente ya cerrada). Ver [[wiki/features/caja]] "Una caja no
+puede tener dos sesiones abiertas".
+
+🚀 **Deploy `v1.232.0` a PROD (2026-09-24, segunda entrega del día)**: PR **#358** `dev→main`, merge
+commit **`5a294934`**, release **`v1.232.0`** (`--latest`). Incluye la mig 435 de arriba + (sin migración
+propia) **el tope de 1000 de PostgREST CERRADO** — `src/lib/traerTodo.ts` (nuevo, 7 tests) trae de a
+tandas de 1000 en las 27 queries de mayor riesgo (`inventario_lineas` sumaba stock recortado, SKU
+siguiente sobre lista recortada, importadores duplicando por mapa incompleto) — y el **paginador real al
+pie** de Productos/Inventario/Clientes/Envíos (`usePaginacionLista.ts`). También se cerraron las 9 fallas
+de la suite e2e que estaban archivadas como "flakiness" (ninguna lo era: 3 eran el spec fiscal 146 en el
+tenant equivocado, 5 eran el tope de 1000, 1 la carrera de apertura de caja) — **388/388 e2e en verde por
+primera vez**, unit 1922/1922. Paridad de policies DEV=PROD por hash **por schema**: `public` **234** ·
+`storage` **40** · `cron` **2**, hashes idénticos. Antes: PROD en `v1.231.0` (migs 001-434). Detalle
+completo en `log.md` (2026-09-24, `deploy`).
 
 🔑 **Migración 434 — ✅ EN DEV Y EN PROD** (deploy `v1.231.0`, 2026-09-24, PR #357, merge `313b7f6d`):
 empleados con nombre y contraseña, SIN correo. Pedido de GO: en un negocio chico los empleados no tienen

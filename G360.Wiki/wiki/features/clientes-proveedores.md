@@ -3,7 +3,7 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
 sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-09-22
+updated: 2026-09-24
 ---
 
 # Clientes y Proveedores
@@ -37,6 +37,12 @@ fecha_nacimiento, etiquetas TEXT[], codigo_fiscal, regimen_fiscal  ← v1.3.0
   [[wiki/features/productos]], [[wiki/features/inventario-stock]], [[wiki/features/envios]].
   🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle en
   [[wiki/features/inventario-stock]] "Footer de conteo de registros".
+- **🆕 Paginador real (2026-09-24, ✅ EN PROD desde v1.232.0):** la misma barra suma "Mostrar 50 · 100 ·
+  500" + tramo visible + Anterior/Siguiente (`usePaginacionLista.ts`) — pagina lo que se DIBUJA, el
+  buscador y las cuentas de CC siguen operando sobre el listado completo. De paso se cerró el tope de
+  1000 filas de PostgREST que podía dejar clientes invisibles (sin aparecer ni buscándolos) en un
+  negocio con más de 1000 clientes — ver [[wiki/features/inventario-stock]] "El tope de 1000 de
+  PostgREST".
 
 ### Sub-tabs en ficha del cliente
 

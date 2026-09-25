@@ -6,6 +6,116 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-24] deploy | 🚀 v1.232.0 EN PROD — el tope de 1000 de PostgREST CERRADO (`traerTodo.ts`) + paginador en los listados + mig 435 (una caja no puede tener dos sesiones abiertas) + suite e2e 388/0 por primera vez
+
+**PROD pasa de `v1.231.0` (migs 001-434) a `v1.232.0` (migs 001-435).** Segunda entrega del día — encadena
+directo con la sesión anterior (v1.231.0, usuarios sin correo). PR **#358** `dev→main`, merge commit
+**`5a294934`**, release **`v1.232.0` Latest** (`--latest`). Paridad `pg_policies` DEV=PROD por schema:
+`public` **234** · `storage` **40** · `cron` **2**, hashes idénticos.
+
+### 1 · 🔴 El tope de 1000 de PostgREST — CERRADO (el pendiente anotado horas antes en la sesión de v1.231.0)
+
+PostgREST corta TODA respuesta en 1000 filas sin fallar y sin avisar. Medido contra la API real:
+`Content-Range: 0-999/1177` en el catálogo de pruebas — **177 productos que la app no mostraba nunca**, y
+como el buscador de píldoras filtra sobre lo ya cargado client-side, un producto más allá del corte no
+aparecía ni buscándolo por nombre.
+
+Eran **27 queries** sin `.range()`. Las de mayor riesgo: `inventario_lineas` (esas líneas se SUMAN por
+producto → el corte se veía como **stock equivocado**, REGLA #0), `ProductoFormPage` (el SKU siguiente se
+calculaba sobre una lista recortada → **SKU duplicado**), `VentasPage` (la lista de "madres" agrupadoras,
+no vendibles, precio 0, recortada → **una madre podía venderse a $0**), Dashboard/Métricas (valorizado de
+stock y capital dormido), los importadores de productos/inventario/clientes (el mapa de existentes decide
+CREA vs ACTUALIZA; recortado, duplica), reportes exportables, selectores de Conteos/ABC/kits/combos,
+clientes con CC, etiquetas.
+
+**Solución**: `src/lib/traerTodo.ts` (nuevo, 7 tests) — pide de a tandas de 1000 hasta que la base
+devuelve menos de lo pedido, con un techo de seguridad que AVISA por consola (un corte nunca puede ser
+silencioso). `traerTodoConError` devuelve `{data, error}` para convertir una query existente cambiando una
+línea. Verificado contra DEV antes de replicar el patrón: reusar el mismo builder de supabase-js para
+tandas sucesivas trae todo (1254 filas, todas distintas) — nunca se había ejercitado más de una vuelta del
+loop. Detalle: [[wiki/features/inventario-stock]] "El tope de 1000 de PostgREST".
+
+### 2 · 🆕 Paginador al pie de los listados (pedido de GO)
+
+En Productos, Inventario, Clientes y Envíos, la barra del pie ahora trae "Mostrar 50 · 100 · 500", el
+tramo visible ("501-1.000 de 1.177 productos") y Anterior/Siguiente con número de página.
+`src/hooks/usePaginacionLista.ts` (nuevo) + la barra que ya pintaba `AppLayout` (`listaConteoStore`
+extendido). **Pagina lo que se DIBUJA, no lo que se trae**: filtros, buscador y sumas de stock siguen sobre
+el set completo — si el paginado fuera de la query, el buscador solo buscaría dentro de la página actual.
+En la vista AGRUPADA de Productos va apagado a propósito (partir una madre de sus variantes entre páginas
+sería peor).
+
+🛑 **Aclaración para el historial: esto no se había borrado.** GO recordaba haberlo pedido antes y que
+había desaparecido; verificado con `git log -S`: el commit original (`b8d12b87`, 2026-08-06) agregó SOLO
+el contador. El selector vivía en Historial y en el tab Supervisión de esos mismos módulos (retrofit
+v1.189-190), que es casi seguro donde lo vio.
+
+### 3 · 🛑 Mig 435 — una caja no puede tener dos sesiones abiertas (REGLA #0)
+
+Los movimientos se cuelgan de una sesión y la app lee la MÁS RECIENTE
+(`order('abierta_at',desc).limit(1)`): con dos abiertas, la plata entra por una mientras el arqueo se
+cierra sobre la otra. **Medido**: en PROD había un negocio con **6 sesiones abiertas a la vez** en su Caja
+Fuerte (creadas entre las 05:30 y 05:34 del 2026-06-20, todas vacías). En DEV, Caja1 con 2 abiertas y
+plata en las DOS (#54 con 189 movimientos, #56 con 17).
+
+Tres agujeros encadenados, los tres cerrados:
+1. `CajaPage` pintaba "Caja cerrada" + botón "Abrir caja" **mientras la query de la sesión viajaba** → el
+   que clickeaba ahí abría una segunda sesión. Ahora muestra un spinner y no ofrece nada hasta saber.
+2. El guard solo rechazaba si la sesión era de OTRO usuario, y usaba `.maybeSingle()` que **falla con 2+
+   abiertas** (se caía justo cuando más falta hacía). Ahora usa `.limit(2)` y rechaza cualquier sesión
+   abierta.
+3. `ensureFuerteSesionId` (get-or-create de la Bóveda) hacía SELECT + INSERT sin cerrar la carrera. Ahora
+   atrapa el 23505 y devuelve la sesión ganadora. De paso se le agregó el filtro `estado='abierta'`, que
+   faltaba: devolvía como abierta una sesión permanente ya cerrada.
+
+La migración: índice único parcial `(caja_id) WHERE estado='abierta'` (lo único que cierra una carrera) +
+trigger con mensaje entendible + saneamiento que cierra SOLO los duplicados vacíos (apertura 0 y sin
+movimientos). Con plata adentro no se toca y el índice falla a propósito, obligando a resolverlo a mano.
+En PROD cerró 5; en DEV el caso con plata se resolvió a mano cerrando la #56 con su saldo real (5000 +
+9353 − 3018 = 11335, con la fórmula de `cajaSaldo.ts`), sin mover ningún movimiento.
+
+Hallazgo de la revisión que evitó un problema: el trigger `trg_caja_ses_periodo_cerrado` dispara en
+CUALQUIER UPDATE de `caja_sesiones` y habría abortado el saneamiento si alguna sesión caía en un período
+contable cerrado. Verificado con datos antes de aplicar: el tenant afectado no tiene períodos cerrados.
+Detalle: [[wiki/features/caja]] "Una caja no puede tener dos sesiones abiertas".
+
+### 4 · Las 9 fallas de la suite: ninguna era "flakiness" — lección para dejar anotada
+
+La suite arrastraba 9 fallas archivadas como flaky. Ninguna lo era:
+- **3** eran el spec fiscal `146_gasto_cotizacion_fiscal_mutante` corriendo contra el tenant
+  **Monotributista** además del Responsable Inscripto (ahí "Factura A" correctamente no se ofrece). Se lo
+  excluyó del proyecto `chromium` en `playwright.config.ts` → pasó a 4/4.
+- **5** eran el tope de 1000: cada spec moría en un picker distinto (conteo, OC, autorización) porque los
+  11 "Elite Pañuelos" del tenant de pruebas caen en las posiciones 1071-1081.
+- **1** era la carrera de apertura de caja (punto 3, arriba).
+- Y `02_inventario` tenía además un `if (isVisible)` que **salteaba el filtrado en silencio**: con pocos
+  productos pasaba igual.
+
+Resultado: **388 pasados, 0 fallados** — la suite e2e completa en verde por primera vez. Unit: 1922/1922.
+Ver [[wiki/development/testing]] "Nueve fallas archivadas como flakiness, ninguna lo era".
+
+### ✅ Checklist del deploy, verificado
+
+| Paso | Resultado |
+|---|---|
+| Mig 435 en PROD | ✅ aplicada, `schema_full.sql` regenerado |
+| PR #358 `dev→main` | ✅ merge commit `5a294934` |
+| Release GitHub | ✅ `v1.232.0`, tag + `--latest` |
+| Paridad `pg_policies` DEV↔PROD | ✅ `public` 234 · `storage` 40 · `cron` 2 — hashes idénticos |
+| Tests unitarios | ✅ 1922/1922 |
+| e2e completo | ✅ 388/388 (0 fallados, primera vez) |
+
+### Pendientes actualizados
+
+1. **✅ CERRADO — el corte de 1000 de PostgREST** (anotado horas antes en la sesión de v1.231.0): ya no
+   queda ningún pendiente abierto sobre este tema.
+2. **D-2 sigue ABIERTO**: el tope de 999,99 % de `margen_ganancia` (`GENERATED numeric(5,2)`) — ampliar la
+   columna es la decisión de GO que falta.
+3. Los de siempre: los 27 puntos abiertos de los relevamientos + D-2 (28 en total), rotación de keys
+   legacy (esperando al 25/09), 2 EFs con drift cosmético en PROD.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
 ## [2026-09-24] deploy | 🚀 v1.231.0 EN PROD — usuarios sin correo (mig 434) + "Desactivar" que corta el acceso de verdad (mig 433, aplicada y probada)
 
 **PROD pasa de `v1.230.0` (migs 001-432) a `v1.231.0` (migs 001-434).** PR **#357** `dev→main`, merge

@@ -3,7 +3,7 @@ title: Testing — Unit + E2E
 category: development
 tags: [testing, vitest, playwright, e2e, unit-tests]
 sources: [CLAUDE.md]
-updated: 2026-08-08
+updated: 2026-09-24
 ---
 
 # Testing
@@ -455,4 +455,28 @@ tabla*, todos con *el mismo código de error*. **El ruido no se concentra.**
   escribir "flaky".
 - `57014` en un INSERT chico no es carga: es un lock o algo que no termina. Mirá los triggers
   `BEFORE` de esa tabla.
+
+## 🐛 Las 9 fallas "flaky" archivadas de la suite — ninguna lo era (2026-09-24, v1.232.0)
+
+Misma lección que la de arriba, confirmada de nuevo a mayor escala: la suite arrastraba **9 fallas**
+anotadas como flakiness. Se investigó cada una en vez de re-correrlas hasta que dieran verde, y **ninguna**
+era ruido:
+
+- **3** eran el spec fiscal `146_gasto_cotizacion_fiscal_mutante` corriendo contra el tenant
+  **Monotributista** además del **Responsable Inscripto** — ahí correctamente no se ofrece "Factura A"
+  (no discrimina IVA), así que el spec fallaba por diseño cada vez que le tocaba ese tenant. Excluido del
+  proyecto `chromium` en `playwright.config.ts` (ya corría aparte contra `chromium-ri`) → 4/4 verde.
+- **5** eran, todas, el **tope de 1000 filas de PostgREST** (ver [[wiki/features/inventario-stock]] "El
+  tope de 1000 de PostgREST") — cada spec moría en un picker distinto (conteo, OC, autorización) porque
+  los 11 productos "Elite Pañuelos" del tenant de pruebas caen en las posiciones 1071-1081 del listado sin
+  paginar. Mismo patrón que la lección de arriba: *el ruido no se concentra* — 5 specs distintos, todos
+  muriendo por la misma causa raíz, no son 5 casualidades.
+- **1** era una carrera real de apertura de caja (mig 435, ver [[wiki/features/caja]] "Una caja no puede
+  tener dos sesiones abiertas") — el spec exponía la misma condición de carrera que existía en producción.
+- Y `02_inventario.spec.ts` tenía además un `if (isVisible)` que **salteaba el filtrado en silencio** en
+  vez de fallar — con pocos productos de prueba pasaba igual, ocultando que el assert nunca se ejecutaba.
+
+**Resultado, con las 9 causas reales cerradas**: **388 pasados, 0 fallados** — la suite e2e completa en
+verde por primera vez. Unit: 1922/1922. Ver `log.md` (2026-09-24, `deploy`) y
+`sources/raw/project_pendientes.md`.
 - Reproducir el INSERT a mano por SQL, fuera del test, separa producto de harness en un minuto.

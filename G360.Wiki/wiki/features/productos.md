@@ -29,14 +29,15 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 - Botón píldora **"Filtros"** con popover (✅ v1.138.0, EN PROD desde el 2026-07-22 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
 
-> [!WARNING] 🔴 **PENDIENTE ABIERTO (2026-09-24): la lista corta en 1000 registros sin avisar.** "Se trae
-> el catálogo del tenant una vez" (arriba) no pagina, y PostgREST topea en **1000 filas** por default —
-> medido contra la API real: `Content-Range: 0-999/1177` en el tenant de pruebas. El buscador de píldoras
-> filtra sobre lo ya cargado client-side, así que un producto más allá del corte **no aparece ni
-> buscándolo**. **Impacto hoy: cero** — el negocio más grande en PROD (Kalken) tiene 13 productos. Es
-> latente, pero le va a pegar al primer cliente con catálogo grande, y el mismo patrón (sin paginar,
-> tope de 1000 de PostgREST) puede estar en otras listas (clientes, ventas, movimientos) — falta
-> auditarlo. GO todavía no decidió la prioridad. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+> [!NOTE] ✅ **CERRADO (2026-09-24, 🚀 EN PROD desde v1.232.0).** "Se trae el catálogo del tenant una vez"
+> (arriba) no paginaba, y PostgREST topea en **1000 filas** por default — medido contra la API real:
+> `Content-Range: 0-999/1177` en el tenant de pruebas, 177 productos que la app no mostraba nunca (ni
+> buscándolos por nombre, porque el buscador de píldoras filtra sobre lo ya cargado client-side). Era un
+> patrón repetido en **27 queries** de toda la app, algunas de mayor riesgo que esta (`inventario_lineas`
+> se suma por producto → se veía como stock equivocado, REGLA #0). Cerrado con `src/lib/traerTodo.ts`
+> (nuevo, 7 tests): trae de a tandas de 1000 hasta que la base devuelve menos de lo pedido, con un techo
+> de seguridad que avisa por consola si algún día no alcanza. Detalle completo:
+> [[wiki/features/inventario-stock]] → "El tope de 1000 de PostgREST", `log.md` (2026-09-24, `deploy`).
 
 ### Footer de conteo de registros (🆕 2026-08-06, ✅ PROD desde v1.159.0)
 
@@ -47,6 +48,13 @@ tenant:
 - **Con filtro:** "Mostrando N de M productos".
 - 🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle completo en
   [[wiki/features/inventario-stock]] "Footer de conteo de registros".
+- 🆕 **Paginador real (2026-09-24, ✅ EN PROD desde v1.232.0):** la misma barra suma "Mostrar 50 · 100 ·
+  500", el tramo visible ("501-1.000 de 1.177 productos") y Anterior/Siguiente con número de página
+  (`src/hooks/usePaginacionLista.ts`, nuevo). **Pagina lo que se DIBUJA, no lo que se trae** — filtros,
+  buscador de píldoras y sumas de stock siguen operando sobre el set completo del tenant; si el paginado
+  fuera de la query, el buscador solo encontraría resultados dentro de la página actual. **Apagado a
+  propósito en la vista agrupada** (partir una madre de sus variantes entre dos páginas sería peor que no
+  paginar). Detalle completo: [[wiki/features/inventario-stock]] "El tope de 1000 de PostgREST".
 
 Reusado también en Inventario (tab Inventario), Clientes y Envíos — ver
 [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]], [[wiki/features/envios]].

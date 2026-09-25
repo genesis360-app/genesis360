@@ -2,8 +2,8 @@
 title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375, 420]
-updated: 2026-09-15
+sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375, 420, 435]
+updated: 2026-09-24
 ---
 
 # Módulo Caja
@@ -56,6 +56,45 @@ flowchart TD
 ### Integridad del efectivo (no caja negativa) — CAJ-18 (v1.76.0)
 
 Todo egreso de efectivo (gasto, devolución, traspaso) se **bloquea si supera el saldo** de la sesión → la caja nunca queda en negativo. El saldo se calcula con `src/lib/cajaSaldo.ts` (`calcularSaldoEfectivo` puro + `saldoEfectivoSesion`), considerando solo los tipos que mueven efectivo real (`ingreso`/`ingreso_reserva`/`ingreso_traspaso` − `egreso`/`egreso_devolucion_sena`/`egreso_traspaso`). Caja **no tiene egreso manual**: los egresos entran por Gastos / traspaso / devolución (el traspaso ya validaba saldo desde antes). Además, todo asiento de efectivo va **`await`eado + toast si falla** (clase bug #26, v1.74.0/v1.76.0) — nunca se pierde del arqueo en silencio.
+
+### 🛑 Una caja no puede tener dos sesiones abiertas — mig 435 (REGLA #0, ✅ EN PROD desde v1.232.0, 2026-09-24)
+
+Los movimientos se cuelgan de una sesión y la app lee la **MÁS RECIENTE**
+(`order('abierta_at',desc).limit(1)`): con dos sesiones abiertas a la vez para la misma caja, la plata
+podía entrar por una mientras el arqueo se cerraba sobre la otra, sin que nada lo detectara.
+
+**Medido antes de tocar nada**: en PROD había un negocio con **6 sesiones abiertas a la vez** en su Caja
+Fuerte (creadas entre las 05:30 y 05:34 del 2026-06-20, todas vacías). En DEV, "Caja1" tenía **2 sesiones
+abiertas con plata en las DOS** (#54 con 189 movimientos, #56 con 17).
+
+**Tres agujeros encadenados, los tres cerrados en la misma sesión:**
+
+1. `CajaPage` pintaba "Caja cerrada" + botón "Abrir caja" **mientras la query de la sesión todavía
+   viajaba** — el usuario que clickeaba justo ahí terminaba abriendo una segunda sesión. Ahora muestra un
+   spinner y no ofrece ninguna acción hasta saber el estado real.
+2. El guard de apertura solo rechazaba si la sesión existente era de **OTRO** usuario, y usaba
+   `.maybeSingle()` — que **falla justo cuando hay 2+ filas** (se rompía exactamente en el caso que más
+   necesitaba detectar). Ahora usa `.limit(2)` y rechaza **cualquier** sesión abierta de esa caja, sea de
+   quien sea.
+3. `ensureFuerteSesionId` (el get-or-create de la sesión permanente de la Bóveda, `src/lib/cajaBoveda.ts`)
+   hacía `SELECT` + `INSERT` sin cerrar la carrera entre ambos pasos. Ahora atrapa el `23505` (violación de
+   unicidad) y devuelve la sesión que ganó la carrera. De paso se le agregó el filtro `estado='abierta'`,
+   que faltaba: podía devolver como "abierta" una sesión permanente que ya estaba cerrada.
+
+**La migración 435**: índice único parcial **`(caja_id) WHERE estado='abierta'`** — lo único que cierra la
+carrera de verdad a nivel DB — + trigger con un mensaje entendible cuando se viola, + un saneamiento que
+cierra **SOLO** los duplicados **vacíos** (monto de apertura 0 y sin ningún movimiento). Con plata adentro
+no se toca nada y el índice falla a propósito, obligando a resolverlo a mano: en PROD el saneamiento cerró
+5 duplicados vacíos; en DEV el caso con plata (Caja1) se resolvió a mano cerrando la sesión #56 con su
+saldo real (`5000 + 9353 − 3018 = 11335`, con la fórmula de `calcularSaldoEfectivo`/`cajaSaldo.ts`), sin
+mover ningún movimiento de una sesión a otra.
+
+**Hallazgo de la revisión que evitó un problema**: el trigger `trg_caja_ses_periodo_cerrado` dispara en
+CUALQUIER `UPDATE` de `caja_sesiones` y habría abortado el saneamiento si alguna de las sesiones duplicadas
+caía dentro de un período contable ya cerrado. Verificado con una query contra datos reales antes de
+aplicar: el tenant afectado no tenía ningún período cerrado.
+
+Ver [[wiki/database/migraciones]] (mig 435), `log.md` (2026-09-24, `deploy`).
 
 ---
 

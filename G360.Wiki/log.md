@@ -6,6 +6,50 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-25] update | D-2 — margen hasta 999.999,99 % (mig 436, DEV)
+
+Segunda sesión del día: se ejecutó lo que la sesión anterior había dejado decidido pero sin escribir.
+**Solo en DEV** — PROD sigue en `v1.232.0` (migs 001-435), sin bump de `APP_VERSION` (no hubo deploy).
+Commit `70e257ce` en `origin/dev`.
+
+### Mig 436 — `productos.margen_ganancia` y `margen_objetivo` a `numeric(8,2)`
+
+`436_margen_producto_numeric_8_2.sql`: las dos columnas pasan de `numeric(5,2)` a `numeric(8,2)`.
+Techo viejo **999,99 %** → nuevo **999.999,99 %**. `margen_ganancia` es **GENERADA**
+(`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`); el `ALTER` funciona aun siendo
+generada, verificado antes en una transacción descartada. Aplicada en Supabase DEV vía Management
+API (`/database/migrations`), queda en `schema_migrations` como `20260925143456`. Probada: costo $30
+/ precio $1.500 guarda margen `4900.00`. Sin vistas dependientes (verificado en DEV y PROD). **NO
+aplicada en PROD todavía.** Las demás `numeric(5,2)` del esquema (`descuento_pct`, `comision_pct`,
+`repricing_tope_pct`, `reserva_*_pct`, `precio_ajuste_meli_pct`/`_tn_pct`) no se tocaron a propósito:
+son descuentos y comisiones, ahí 100 % es un techo legítimo.
+
+### Importador — el techo viejo se mantiene como alerta de monedas mezcladas
+
+`src/lib/importarProductosMoneda.ts`: `MARGEN_MAX_PCT` pasa a `999999.99` (sigue el techo real de la
+columna) + nueva constante `MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99` y la función
+`margenSospechosoPorMonedas()`. El importador conserva el umbral viejo **solo** para filas con costo
+y precio en monedas distintas, porque el techo de la columna frenaba de rebote un CSV con costo en
+ARS y precio en USD (margen de **93.233 %**) — sin ese freno específico, esa fila entraría con un
+margen inflado en silencio (REGLA #0: fiscal/contable/inventario no tolera errores latentes).
+
+### `ProductoFormPage` — el input tenía `max="100"` de más
+
+El campo "Margen objetivo %" tenía `max="100"` en el HTML: la validación nativa del navegador
+bloqueaba cargar un objetivo de markup > 100 %, aunque `margen_objetivo` es markup sobre costo
+(`fn_precio_para_margen = costo × (1 + m/100)`), no un porcentaje que deba tope en 100. Ahora
+`max = MARGEN_MAX_PCT` + guard agregado en `handleSubmit`.
+
+### Tests y UAT
+
+Unit 1927/1927 verdes, build verde. UAT §66: 66.6 y 66.16 actualizados, nuevos 66.27 y 66.28.
+
+### Pendiente
+
+Llevar la mig 436 a PROD en el próximo deploy, junto con el bump de `APP_VERSION` correspondiente.
+
+---
+
 ## [2026-09-25] update | 🤖 El Asistente IA aprende los usuarios sin correo · 🧹 limpieza del tenant de pruebas · 🟡 D-2 (tope de margen) medido y explicado
 
 Cierre de los pendientes que quedaban abiertos tras los dos deploys del 24/09. **Sin cambios de

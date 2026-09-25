@@ -6,6 +6,47 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-25, 2ª sesión) — 🟡 D-2 EJECUTADO EN DEV (mig 436), falta PROD
+>
+> Mismo día que el cierre de abajo, sesión siguiente: se escribió y aplicó la migración de D-2
+> (decidida en la sesión anterior). **Quedó en DEV, sin deploy a PROD ni bump de `APP_VERSION`.**
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.232.0` | 001-**435** |
+> | **DEV** | `v1.232.0` (sin bump) | 001-**436** |
+>
+> #### ✅ D-2 — el margen admite hasta 999.999,99 % (mig 436)
+>
+> `436_margen_producto_numeric_8_2.sql`: `productos.margen_ganancia` (GENERADA) y
+> `productos.margen_objetivo` pasan de `numeric(5,2)` a `numeric(8,2)`. Techo viejo **999,99 %** →
+> nuevo **999.999,99 %**. Aplicada en Supabase DEV vía Management API (`/database/migrations`,
+> queda registrada en `schema_migrations` como `20260925143456`) y probada: costo $30 / precio
+> $1.500 guarda margen `4900.00` (verificado en una transacción descartada, luego aplicada en
+> firme). **NO aplicada en PROD todavía.** Sin vistas dependientes (verificado en los dos
+> ambientes). Las demás `numeric(5,2)` (descuentos, comisiones) no se tocaron, a propósito.
+>
+> Efectos en código (mismo commit, sin migración propia):
+> - `src/lib/importarProductosMoneda.ts`: `MARGEN_MAX_PCT` pasa a `999999.99` + nueva
+>   `MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99` con `margenSospechosoPorMonedas()` — el
+>   importador conserva el umbral viejo SOLO para filas con costo y precio en monedas distintas,
+>   porque el techo viejo de la columna frenaba de rebote un CSV con costo en ARS y precio en USD
+>   (93.233 %) que, sin ese freno, entraría inflado en silencio (REGLA #0).
+> - `ProductoFormPage`: el input "Margen objetivo %" tenía `max="100"` (validación nativa del
+>   navegador bloqueaba un objetivo de markup > 100 %, aunque es markup sobre costo:
+>   `fn_precio_para_margen = costo × (1+m/100)`). Ahora `max = MARGEN_MAX_PCT` + guard en
+>   `handleSubmit`.
+> - Tests: unit 1927/1927 verdes, build verde. UAT §66: 66.6 y 66.16 actualizados, nuevos 66.27 y
+>   66.28.
+>
+> Commit `70e257ce` en `origin/dev`, **sin bump de `APP_VERSION`** (no hubo deploy).
+>
+> #### ▶️ Falta para la próxima sesión
+> - Llevar la mig 436 a PROD en el próximo deploy, junto con el bump de versión correspondiente.
+> - El resto de los pendientes sigue igual que en el cierre de abajo (27 puntos de Fede, rotación
+>   de keys, backlog de auditoría de procesos).
+
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-25) — ✅ **PROD = DEV = `v1.232.0`** (migs 001-**435**), todo cerrado
 >
 > Sin cambios de versión respecto del cierre del 24/09: esta sesión cerró los pendientes que habían
@@ -24,33 +65,20 @@ type: project
 >    Pañuelos" duplicados `REC-*`). El catálogo bajó de 1.328 a 1.272. Ninguno había participado en
 >    una venta. 13 specs verdes después.
 >
-> #### ▶️ LO PRIMERO DE LA PRÓXIMA SESIÓN: D-2 — ampliar el tope de margen (YA DECIDIDO)
+> #### ✅ D-2 — ampliar el tope de margen: decidido acá, EJECUTADO en la sesión siguiente (ver arriba)
 >
 > `productos.margen_ganancia` es columna **GENERADA** `numeric(5,2)` → techo **999,99 %** (vender a
 > más de ~11× el costo). 🛑 Al pasarse, **el producto no se puede guardar** (`numeric field
 > overflow`): la app rechaza un precio legítimo, no es solo un número mal mostrado.
 >
-> **Medido hoy**: PROD máximo **200 %** · DEV máximo **400 %**. Nadie cerca del techo → **no hay
+> **Medido hoy**: PROD máximo **200 %** · DEV máximo **400 %**. Nadie cerca del techo → **no había
 > urgencia**. Pero el caso que lo rompe es cotidiano: un café de $30 vendido a $1.500 = **4.900 %**.
 > Cualquier cafetería, kiosco o rubro de markup alto lo toca el primer día.
 >
-> **✅ DECIDIDO por GO (2026-09-25)**: *"si claro, ampliemos la columna como indicas"*. **No hay nada
-> que volver a consultar.** La migración que siga (~436), en DEV → probar → PROD:
->
-> ```sql
-> ALTER TABLE public.productos ALTER COLUMN margen_ganancia TYPE numeric(8,2);
-> ALTER TABLE public.productos ALTER COLUMN margen_objetivo  TYPE numeric(8,2);
-> ```
->
-> - ✅ Verificado que el `ALTER` funciona **aun siendo columna generada** (era la única duda técnica).
-> - **Las dos columnas**: `margen_objetivo` es manual y tiene el mismo techo.
-> - 🛑 **NO tocar las demás `numeric(5,2)`** (`descuento_pct`, `comision_pct`, `repricing_tope_pct`,
->   `reserva_*_pct`, `precio_ajuste_meli_pct`/`_tn_pct`): son descuentos y comisiones, ahí 100 % es un
->   techo legítimo.
-> - Después: revisar que ninguna pantalla asuma 4 dígitos al formatear el margen y cerrar el
->   escenario en el UAT §66 (hallazgo D-2).
-> - La migración **no está escrita a propósito**: un `NNN_*.sql` sin aplicar en el repo fue lo que
->   generó confusión con la 433. Se escribe y se aplica en la misma sesión.
+> **✅ DECIDIDO por GO (2026-09-25)**: *"si claro, ampliemos la columna como indicas"*. **Ejecutado
+> en la sesión siguiente, mismo día**: mig **436**, `margen_ganancia` y `margen_objetivo` a
+> `numeric(8,2)`, en DEV (falta PROD). Detalle completo, con los cambios de código que acompañaron
+> la migración, en el bloque de arriba.
 >
 > #### 🔴 Pendientes que siguen abiertos (sin cambios)
 > - Los **27 puntos** de los relevamientos de Fede (multimoneda / categorías / precio programado).

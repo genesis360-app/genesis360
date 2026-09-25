@@ -3,10 +3,31 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
-# Historial de Migraciones (001-435, + correctivos 387b/387c)
+# Historial de Migraciones (001-436, + correctivos 387b/387c)
+
+📐 **Migración 436 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `70e257ce` en `dev`, sin
+deploy ni bump de `APP_VERSION`): `productos.margen_ganancia` (columna **GENERADA**,
+`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`) y `productos.margen_objetivo`
+(manual) pasan de `numeric(5,2)` a `numeric(8,2)`. Hallazgo D-2 del importador: el techo viejo era
+**999,99 %** (vender a poco más de 11× el costo) y, al pasarse, **el producto no se podía guardar**
+(`numeric field overflow`) — no un número mal mostrado, un precio legítimo rechazado. Un café que
+cuesta $30 y se vende a $1.500 ya son 4.900 %; cualquier rubro de markup alto (cafetería, kiosco) lo
+toca el primer día. Techo nuevo: **999.999,99 %**. Decidido por GO el 2026-09-25 (sesión anterior),
+ejecutado en la sesión siguiente el mismo día. Aplicada en Supabase DEV vía Management API
+(`/database/migrations`, queda en `schema_migrations` como `20260925143456`) y probada: costo $30 /
+precio $1.500 guarda margen `4900.00`. El `ALTER` funciona aun siendo columna generada (verificado
+antes en una transacción descartada). Sin vistas dependientes (verificado en DEV y PROD). Las demás
+`numeric(5,2)` del esquema (`descuento_pct`, `comision_pct`, `repricing_tope_pct`, `reserva_*_pct`,
+`precio_ajuste_meli_pct`/`_tn_pct`) **no se tocaron a propósito**: son descuentos y comisiones, ahí
+100 % es un techo legítimo. Acompañan (mismo commit, sin migración propia): `MARGEN_MAX_PCT` de
+`src/lib/importarProductosMoneda.ts` sube a `999999.99` + nueva
+`MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99` que conserva el umbral viejo solo como alerta para
+filas con costo y precio en monedas distintas (REGLA #0); y el input "Margen objetivo %" de
+`ProductoFormPage`, que tenía `max="100"` bloqueando un markup legítimo > 100 %. Ver
+[[wiki/features/productos]] "Margen: tope numeric(8,2)".
 
 🛑 **Migración 435 — ✅ EN DEV Y EN PROD** (deploy `v1.232.0`, 2026-09-24, PR #358, merge `5a294934`):
 una caja no puede tener dos sesiones abiertas a la vez (REGLA #0). Los movimientos se cuelgan de una

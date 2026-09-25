@@ -6,6 +6,146 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-24] deploy | 🚀 v1.231.0 EN PROD — usuarios sin correo (mig 434) + "Desactivar" que corta el acceso de verdad (mig 433, aplicada y probada)
+
+**PROD pasa de `v1.230.0` (migs 001-432) a `v1.231.0` (migs 001-434).** PR **#357** `dev→main`, merge
+commit **`313b7f6d`**, release **`v1.231.0` Latest** (`--latest`). Paridad `pg_policies` DEV=PROD por
+schema: `public` **234** · `storage` **40** · `cron` **2**, hashes idénticos. `schema_full.sql`: **171
+tablas · 247 funciones · 118 triggers · 234 policies · 9 vistas**.
+
+### 1 · 🔐 Mig 433 — "Desactivar" un usuario le corta el acceso de verdad (APLICADA Y PROBADA)
+
+La sesión anterior la había dejado escrita y revisada (`migration-reviewer`: APTA), pero **sin
+aplicar** — el conector de Supabase se había desconectado a mitad de sesión. Esta sesión: fuente real
+verificada antes de reemplazar (`get_user_tenant_id()`/`is_admin()` estaban exactamente como decía la
+migración), aplicada en DEV — los 26 usuarios de DEV estaban en `activo = true` (ningún `NULL`), así que
+aplicarla no le cortó el acceso a nadie — y probada de punta a punta:
+
+- **UAT 67.1** — impersonando al supervisor con `SET LOCAL ROLE` + `request.jwt.claims`: antes de la
+  baja veía 26 productos / 4 ventas / 2 clientes / su propia fila; después, **0/0/0/0** y
+  `get_user_tenant_id() = NULL`. Todo dentro de una transacción descartada.
+- **UAT 67.5** — los dos candados del trigger rebotan con su mensaje; el de "darse de baja a uno mismo"
+  saltó incluso sin buscarlo, porque el `UPDATE` de prueba corría con el `auth.uid()` del propio usuario.
+- **UAT 67.2** — spec e2e nuevo `158_acceso_revocado_mutante`, con dos usuarios reales: el DUEÑO da de
+  baja al contador desde `/usuarios`, el contador entra con su contraseña en un contexto limpio y ve
+  "Tu acceso fue dado de baja" (y NO `/onboarding`), lo reactivan, vuelve a entrar normal.
+
+🛑 **El agujero que abría la propia migración: no se podía deshacer una baja.** `UsuariosPage` gateaba
+TODAS las acciones con `canManage && u.activo`, y no existía "Reactivar" en ningún lado del archivo —
+mientras la baja era cosmética daba igual; con la 433 aplicada, una baja por error quedaba como un
+candado sin llave. Se agregó la mutación `reactivar` + su botón, solo DUEÑO — la policy
+`users_update_owner` ya lo permitía porque compara el `tenant_id` de la FILA, que la baja no toca.
+
+**Auditoría de que el corte es completo** (UAT 67.9): de las 234 policies de `public`, las únicas que
+no pasan por `tenant_id`/`get_user_tenant_id()` son 3 de catálogo público sin datos del negocio
+(`planes`, `consumo_tarifas`, `ayuda_recursos` publicados).
+
+UAT §67: **9/10 ✅** (67.10 queda 🟡 — el límite del plan no se ejercita porque el tenant de pruebas
+tiene límite `-1`, ilimitado).
+
+### 2 · 🔑 Mig 434 — empleados con nombre y contraseña, SIN correo
+
+Pedido de GO. En un negocio chico los empleados no tienen mail propio, o tienen uno que no revisan
+nunca, y `invite-user` exigía una dirección real (`inviteUserByEmail` manda un magic link) — el dueño
+terminaba inventando casillas o usando la suya para todo el equipo.
+
+**Las dos decisiones que tomó GO** (el resto sale de ahí): al ingresar, el empleado escribe el **código
+del negocio + su usuario**, no una dirección (por eso el usuario solo tiene que ser único DENTRO del
+negocio); y la contraseña que le pone el dueño es **de un solo uso**, obligado a cambiarla en el primer
+ingreso. Por dentro, la identidad de Auth es `<usuario>.<codigo>@u.genesis360.pro`, un dominio que no
+recibe correo — la compone la app (`src/lib/usuarioLocal.ts`, 16 tests), el empleado nunca la ve.
+
+**La migración**: `tenants.codigo` único e **INMUTABLE** (generado del nombre por el trigger
+`trg_tenant_codigo`, `SECURITY DEFINER` — mismo gotcha de la mig 166; backfill de los 9 negocios de DEV
+sin colisiones, ej. Kalken → `kalken`, Familia Otranto De Porto → `familiaotranto`), `users.usuario`
+(NULL para cuentas con correo real, único por tenant) y `users.debe_cambiar_password` + su guard.
+
+**Edge Function nueva `usuarios-sin-correo`** (DEV y PROD, `verify_jwt: true`): `crear` /
+`resetear-password` / `cambiar-password-propia`. El código del negocio y el `tenant_id` salen del
+perfil del LLAMADOR, nunca del body. Mismo whitelist de roles que `invite-user` (`ADMIN` no se puede
+asignar). Reponer contraseña funciona **solo para cuentas sin correo** — pisarle la contraseña a
+alguien con casilla propia sería quedarse con su cuenta, no administrar un empleado.
+
+**Los dos agujeros que aparecieron, y quién los encontró**:
+
+1. 🛑 `users_update_owner` le da al DUEÑO `UPDATE` sin restricción de columna sobre las filas de su
+   negocio: podía apagar `debe_cambiar_password` con un PATCH directo a PostgREST, sin rotar ninguna
+   contraseña. **Lo encontró `migration-reviewer`** — el comentario original en la migración afirmaba lo
+   contrario y estaba mal. Cerrado con el trigger `trg_guard_debe_cambiar_password` (patrón mig 247): la
+   marca solo BAJA desde `service_role`. También faltaban los `REVOKE` de las funciones nuevas —
+   Postgres da `EXECUTE` a `PUBLIC` por default, y `anon` está adentro.
+2. 🛑 Cambiar la contraseña con la Admin API **revoca TODAS las sesiones del usuario, incluida la
+   suya**. **Lo encontró el spec e2e, no la revisión de código**: la bandera quedaba bien en `false` y
+   la captura mostraba `/login`. El empleado elegía su contraseña y la app lo escupía al login sin una
+   palabra. Se cerró reautenticándolo con la contraseña nueva; el reingreso queda invisible.
+
+**Validación visual completa** (Playwright, 20 capturas revisadas a ojo, manejando la app como usuario):
+los dos modos de la pantalla de ingreso, el alta "Sin email", la fila del empleado con su marca, el
+cambio obligatorio, el reingreso, el modal de reponer contraseña, que una cuenta CON correo **no**
+ofrezca reponer (UAT 69.7), y el par Desactivar/Reactivar de la mig 433. Todo correcto.
+
+🐛 **Lo único que salió mal**: la barra de uso del plan en Usuarios mostraba **"13 de -1 usuarios ·
+0%"** — `max_usuarios = -1` es el centinela de "sin límite" y `-1 < 999` da `true` (`ProductosPage` ya
+trataba ese caso aparte; `UsuariosPage` no). Ahora dice "13 usuarios · Sin límite en tu plan". Bug
+preexistente, cosmético, cerrado en el mismo release.
+
+UAT §69: **11/13 ✅** (69.7 y 69.11 quedan 🟡, sin test automatizado — el tenant de pruebas tiene límite
+de plan `-1`).
+
+### 3 · También en este release: los fixes de Productos que venían de la sesión anterior, sin deployar
+
+**A0 completo** (commits `870d3e36`, `ca2f08f2`, `93448deb`, `c8e7649c`, `02568b64`, `470525c6`, sin
+migración propia): el importador CSV ya escribe las columnas vivas de moneda; al **actualizar por
+archivo se escribe solo lo que el archivo trae**; la ficha usa la cotización de **compra**, igual que
+el POS; "Exportar productos" pasó de 10 a 22 columnas y ya es reimportable. **Dos bugs 🔴 que 1.900
+tests no vieron, uno fiscal**: IVA Exento (0 %) se convertía en 21 % al importar
+(`String(alicuota_iva || '21')`, el gotcha del CLAUDE.md), y traer la columna de moneda sin el precio
+dejaba el precio en 0 en silencio — los dos ya cerrados. Detalle completo en
+[[wiki/features/productos]] y en la entrada del `log.md` del 2026-09-24 anterior (`update`).
+
+### 4 · Test fiscal `146_gasto_cotizacion_fiscal_mutante` corría contra el tenant equivocado
+
+Es del tenant RESPONSABLE INSCRIPTO y ya tenía su propio proyecto Playwright, `chromium-ri`, pero el
+`testIgnore` del proyecto `chromium` no lo excluía: corría TAMBIÉN contra el tenant Monotributista, donde
+correctamente no se ofrece "Factura A" (no discrimina IVA) — eso dejaba **3 rojos permanentes**. Un rojo
+permanente enseña a ignorar los rojos, justo en el único spec que cubre IVA crédito de compras.
+Verificado: contra el tenant RI corre 4/4. Excluido del proyecto `chromium` en `playwright.config.ts`.
+
+### 5 · 🔴 Pendiente nuevo que queda anotado: la lista de Productos corta en 1000 registros sin avisar
+
+La query de `ProductosPage` no pagina y PostgREST topea en 1000 filas por default — medido contra la API
+real: `Content-Range: 0-999/1177` en el tenant de pruebas. El buscador de píldoras filtra sobre lo ya
+cargado client-side, así que un producto más allá del corte **no aparece ni buscándolo**. **Impacto
+hoy: cero** — el negocio más grande en PROD (Kalken) tiene 13 productos. Es un bug latente que le va a
+pegar al primer cliente con catálogo grande, y el mismo patrón puede estar en otras listas (clientes,
+ventas, movimientos) — falta auditarlo. GO todavía no decidió la prioridad.
+
+### Checklist del deploy, verificado
+
+| Paso | Resultado |
+|---|---|
+| Migs 433+434 en PROD | ✅ aplicadas, `schema_full.sql` regenerado (171 tablas, 247 funciones, 234 policies) |
+| PR #357 `dev→main` | ✅ merge commit `313b7f6d` |
+| Release GitHub | ✅ `v1.231.0`, tag + `--latest` |
+| Edge Functions | ✅ `usuarios-sin-correo` nueva, DEV y PROD (52 EFs totales) |
+| Paridad `pg_policies` DEV↔PROD | ✅ `public` 234 · `storage` 40 · `cron` 2 — hashes idénticos |
+| Tests unitarios | ✅ 1915/1915 |
+| e2e nuevos | ✅ `158_acceso_revocado_mutante`, `159_usuario_sin_correo_mutante` |
+| UAT | ✅ §67 (9/10), §69 (11/13) |
+
+### Pendientes actualizados
+
+1. **🔴 Nuevo — lista de Productos corta en 1000 registros sin avisar** (ver punto 5 arriba). GO no
+   decidió prioridad.
+2. **D-2 sigue ABIERTO**: el tope de 999,99 % de `margen_ganancia` (`GENERATED numeric(5,2)`) — ampliar
+   la columna es la decisión de GO que falta.
+3. Sacar del PDF "Primeros pasos" la advertencia sobre reimportar productos (quedó obsoleta, D-3 ya se
+   cerró).
+4. Los de siempre: los 27 puntos abiertos de los relevamientos + D-2 (28 en total), rotación de keys
+   legacy (esperando al 25/09), 2 EFs con drift cosmético en PROD.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
 ## [2026-09-24] update | 🧾🔐 Dos pasadas de `code-reviewer` encontraron 2 bugs 🔴 (uno fiscal) en el importador + mig 433 escrita para cortar el acceso de un usuario dado de baja (SIN aplicar)
 
 **PROD sigue en `v1.230.0`** (migs 001-**432**). **Nada de esta entrada se deployó.** `dev` queda **11

@@ -20,7 +20,7 @@ Genesis360 usa Supabase como backend completo. No hay servidor propio.
 | Auth | Google OAuth + Email/Password |
 | Row Level Security (RLS) | Aislamiento multi-tenant |
 | Storage | Imágenes de productos |
-| Edge Functions | Lógica serverless (**51 funciones Deno**) |
+| Edge Functions | Lógica serverless (**52 funciones Deno**, ver [[wiki/architecture/edge-functions]]) |
 | Realtime | (no usado activamente, disponible) |
 
 ---
@@ -53,7 +53,7 @@ Roles de usuario: `DUEÑO · SUPER_USUARIO · SUPERVISOR · CAJERO · DEPOSITO �
 
 ---
 
-## Edge Functions (51 total)
+## Edge Functions (52 total, ver [[wiki/architecture/edge-functions]] para la lista completa y actualizada)
 
 Todas en Deno/TypeScript. Lista completa en [[wiki/architecture/edge-functions]].
 
@@ -63,6 +63,7 @@ Principales:
 | `mp-webhook` | Webhook Mercado Pago (pagos) |
 | `crear-suscripcion` | Flow de alta de suscripción |
 | `invite-user` | Invitación de usuarios por email |
+| `usuarios-sin-correo` | Empleados con nombre y contraseña, sin correo (mig 434, `v1.231.0`) |
 | `emitir-factura` | Emisión AFIP |
 | `send-email` | Emails transaccionales (Resend) |
 | `scan-product` | AI: imagen → barcode (Claude Haiku) |

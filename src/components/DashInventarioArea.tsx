@@ -9,6 +9,7 @@ import {
   AlertTriangle, CheckCircle, BarChart2, Layers, TrendingUp, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { formatMoneda } from '@/lib/formato'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -175,16 +176,17 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
     queryKey: ['dash-inv-area', tenant?.id, sucursalId],
     queryFn: async () => {
       // 1. Todos los productos activos
-      const { data: productos = [] } = await supabase.from('productos')
+      const { data: productos = [] } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, es_kit')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .eq('tenant_id', tenant!.id).eq('activo', true).range(desde, hasta))
 
       // 2. Inventario_lineas activas con ubicacion + estado
       let qLineas = supabase.from('inventario_lineas')
         .select('id, producto_id, cantidad, cantidad_reservada, estado_id, ubicacion_id, created_at, sucursal_id, productos(precio_costo, nombre)')
         .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
       qLineas = dashFilter(qLineas)
-      const { data: lineas = [] } = await qLineas
+      // 🛑 Sin tope: estas lineas se suman para el valorizado del stock (REGLA #0).
+      const { data: lineas = [] } = await traerTodoConError<any>((desde, hasta) => qLineas.range(desde, hasta))
 
       // 3. Recursos
       let qRecursos = supabase.from('recursos')

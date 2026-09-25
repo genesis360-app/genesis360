@@ -6,21 +6,54 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-24
 ---
 
-# Historial de Migraciones (001-433, + correctivos 387b/387c)
+# Historial de Migraciones (001-434, + correctivos 387b/387c)
 
-🔐 **Migración 433 — ⚠️ ESCRITA, SIN APLICAR (ni DEV ni PROD)** (2026-09-24, commit `34053f00`):
+🔑 **Migración 434 — ✅ EN DEV Y EN PROD** (deploy `v1.231.0`, 2026-09-24, PR #357, merge `313b7f6d`):
+empleados con nombre y contraseña, SIN correo. Pedido de GO: en un negocio chico los empleados no tienen
+mail propio, y `invite-user` exigía una dirección real. Las dos decisiones de GO: el empleado ingresa con
+**código del negocio + usuario** (no una dirección), y la contraseña que le pone el dueño es **de un
+solo uso** (cambio forzado al primer ingreso). Agrega `tenants.codigo` (único e **INMUTABLE**, generado
+del nombre por el trigger `trg_tenant_codigo`, `SECURITY DEFINER`, con backfill de los 9 negocios de
+DEV), `users.usuario` (NULL para cuentas con correo real, único por tenant) y
+`users.debe_cambiar_password` con su guard. La identidad real de Auth es
+`<usuario>.<codigo>@u.genesis360.pro`, un dominio que no recibe correo — la compone la app
+(`src/lib/usuarioLocal.ts`, 16 tests), el empleado nunca la ve. Edge Function nueva
+`usuarios-sin-correo` (`crear`/`resetear-password`/`cambiar-password-propia`, DEV y PROD,
+`verify_jwt: true`). Dos agujeros cerrados antes de aplicar: (1) `users_update_owner` dejaba al DUEÑO
+apagar `debe_cambiar_password` con un PATCH directo a PostgREST sin rotar la contraseña —lo encontró
+`migration-reviewer`— cerrado con el trigger `trg_guard_debe_cambiar_password` (patrón mig 247) + los
+`REVOKE` que faltaban (`anon` hereda `EXECUTE` de `PUBLIC` por default); (2) cambiar la contraseña con la
+Admin API revoca TODAS las sesiones del usuario, incluida la suya —lo encontró el spec e2e
+`159_usuario_sin_correo_mutante`, no la revisión de código— resuelto reautenticando con la contraseña
+nueva. UAT §69: 11/13 ✅ (2 🟡, sin test — límite de plan `-1` en el tenant de pruebas). Ver
+[[wiki/features/autenticacion-onboarding]].
+
+🔐 **Migración 433 — ✅ EN DEV Y EN PROD** (deploy `v1.231.0`, 2026-09-24, PR #357, merge `313b7f6d`):
 "Desactivar" un usuario le corta el acceso de verdad. Salió contestando una pregunta de GO sobre las
 cuentas de los empleados. El agujero: `get_user_tenant_id()` —gobierna el `USING` de casi todas las
 policies de `public`— no miraba `users.activo`, así que dar de baja a alguien (única acción existente,
 no hay eliminar) no le quitaba nada. La migración agrega `coalesce(activo, true)` a
 `get_user_tenant_id()` e `is_admin()` (`activo` es NULLABLE), un trigger que bloquea la auto-baja y la
 baja del último DUEÑO activo, y `fn_estado_usuario_actual()` para que la app explique qué pasó.
-Revisada por `migration-reviewer`: APTA para DEV. **El conector de Supabase se desconectó a mitad de
-sesión** y quedó sin aplicar en ningún ambiente — **no debe ir a PROD sin antes aplicarla y probarla a
-mano en DEV** (Kalken tiene empleados reales). El frontend (`authStore`+`AuthGuard`, pantalla "Tu acceso
-fue dado de baja") ya está commiteado y espera a la migración. UAT §67 (7 escenarios, 4 en rojo por
-falta de la prueba real). Ver [[wiki/features/autenticacion-onboarding]],
+Revisada por `migration-reviewer`: APTA para DEV. ⚠️ Había quedado **escrita sin aplicar** en la sesión
+anterior (el conector de Supabase se desconectó a mitad de sesión); esta sesión se **aplicó y probó de
+punta a punta en DEV** antes de llevarla a PROD: impersonando al supervisor con `SET LOCAL ROLE`, antes
+de la baja veía 26 productos/4 ventas/2 clientes/su fila, después 0/0/0/0 y `get_user_tenant_id() =
+NULL`; spec e2e nuevo `158_acceso_revocado_mutante` con dos usuarios reales. 🛑 La propia migración abría
+un agujero nuevo: no existía forma de deshacer una baja (`UsuariosPage` no renderizaba ningún botón para
+un usuario inactivo) — se agregó el botón **"Reactivar"** (solo DUEÑO). UAT §67: 9/10 ✅ (1 🟡, límite de
+plan no ejercitable). Ver [[wiki/features/autenticacion-onboarding]],
 [[wiki/architecture/multi-tenant-rls]] y [[wiki/database/rls-policies]].
+
+🚀 **Deploy `v1.231.0` a PROD (2026-09-24)**: PR **#357** `dev→main`, merge commit **`313b7f6d`**,
+release **`v1.231.0`** (`--latest`). Incluye las migs 433 y 434 de arriba + (sin migración propia) los
+fixes del importador CSV de productos — [[wiki/features/productos]] "Importador CSV — columnas de
+moneda (A0)" y "Actualización por archivo". Paridad de policies DEV=PROD por hash **por schema**:
+`public` **234** · `storage` **40** · `cron` **2**, hashes idénticos. `schema_full.sql`: **171 tablas ·
+247 funciones · 118 triggers · 234 policies · 9 vistas**. Tests: 1915/1915 unitarios verdes, e2e nuevos
+`158`/`159`, y de paso se corrigió el spec fiscal `146_gasto_cotizacion_fiscal_mutante` que corría contra
+el tenant equivocado (Monotributista además del Responsable Inscripto) y dejaba 3 rojos permanentes.
+Antes: PROD en `v1.230.0` (migs 001-432). Detalle completo en `log.md` (2026-09-24, `deploy`).
 
 🔒⏱️ **Migración 432 — ✅ EN DEV Y EN PROD** (deploy `v1.230.0`, 2026-09-22, PR #356, merge `f8d0ae3e`):
 rate limiting persistente para las Edge Functions públicas. Cierra el pendiente 3 del backlog de la

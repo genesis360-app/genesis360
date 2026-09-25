@@ -31,7 +31,8 @@ import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { PresentacionesEditor } from '@/components/PresentacionesEditor'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
-import { ListaConteoFooter } from '@/components/ListaConteoFooter'
+import { usePaginacionLista } from '@/hooks/usePaginacionLista'
+import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import {
   parsearPildora, evaluarPildorasProducto, CAMPOS_FILTRO_PRODUCTOS,
   type PildoraProducto,
@@ -268,13 +269,14 @@ export default function ProductosPage() {
     // que invalidateQueries(['productos']) desde cualquier otro archivo sigue invalidando ambas.
     queryKey: ['productos', 'catalogo', tenant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // 🛑 `traerTodo`, no una query suelta: PostgREST corta en 1000 filas sin avisar, y un
+      // catálogo de 1.177 productos se mostraba como 1.000 — el resto no aparecía ni buscándolo.
+      return await traerTodo<any>((desde, hasta) => supabase
         .from('productos')
         .select('*, categorias(nombre), proveedores(nombre), estados_inventario(nombre), ubicaciones!productos_ubicacion_id_fkey(nombre)')
         .eq('tenant_id', tenant!.id)
         .order('nombre')
-      if (error) throw error
-      return data ?? []
+        .range(desde, hasta))
     },
     enabled: !!tenant,
   })
@@ -311,7 +313,10 @@ export default function ProductosPage() {
         .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       if (evIds.length > 0) q = q.in('estado_id', evIds)
-      const { data: lineas } = await applyFilter(q)
+      // 🛑 Sin tope: estas lineas se SUMAN por producto. Recortarlas en 1000 no se veria como
+      // "faltan filas" sino como stock disponible equivocado (REGLA #0).
+      const qf = applyFilter(q)
+      const { data: lineas } = await traerTodoConError<any>((desde, hasta) => qf.range(desde, hasta))
       const map: Record<string, number> = {}
       for (const l of lineas ?? []) {
         const pid = (l as any).producto_id
@@ -351,7 +356,7 @@ export default function ProductosPage() {
         .eq('activo', true)
         .order('nombre')
       if (estrSearch) q = q.ilike('nombre', `%${estrSearch}%`)
-      const { data, error } = await q
+      const { data, error } = await traerTodoConError<any>((desde, hasta) => q.range(desde, hasta))
       if (error) throw error
       return data ?? []
     },
@@ -584,6 +589,18 @@ export default function ProductosPage() {
   // La vista plana no lista las madres agrupadoras (no vendibles): sus variantes se ven como
   // productos normales, y la madre se administra desde la vista agrupada / su ficha.
   const filteredFlat = filtered.filter(p => !esMadre(p))
+
+  // Paginado del listado (pedido de GO 2026-09-24). En la vista AGRUPADA va apagado: partir una
+  // madre de sus variantes entre dos páginas sería peor que una lista larga.
+  const visibles = usePaginacionLista(
+    viewMode === 'flat' ? filteredFlat : filtered,
+    'producto',
+    {
+      total: productos.length,
+      habilitado: viewMode === 'flat',
+      claveFiltros: `${pildorasEfectivas.length}|${combinador}|${filterCat}|${filterProv}|${filterMarca}|${filterActivo}|${filterEstructura}|${filterAlerta}|${filterAtributos.join(',')}`,
+    },
+  )
 
   const filtrosActivos =
     (filterActivo !== 'activos' ? 1 : 0) + (filterEstructura ? 1 : 0) + (filterCat ? 1 : 0) +
@@ -1452,7 +1469,7 @@ export default function ProductosPage() {
                     </button>
                   )}
                 </div>
-                {filteredFlat.map(p => {
+                {visibles.map(p => {
                   const stock      = (p as any).stock_actual ?? 0
                   const disponible = stockDisponibleMap[p.id] ?? 0
                   const critDisp   = disponible <= (p as any).stock_minimo
@@ -1701,7 +1718,6 @@ export default function ProductosPage() {
           </div>
           )}
 
-          {!isLoading && <ListaConteoFooter mostrados={filtered.length} total={productos.length} entidad="producto" />}
         </>
       )}
 

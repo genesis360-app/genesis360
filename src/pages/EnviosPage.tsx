@@ -35,7 +35,7 @@ import { TIPOS_ENVIO, sugerirCourierPorCp, plazoDespachoVencido } from '@/lib/en
 import { costoCombustible, kmAcumuladoNuevo, desgloseIvaCombustible } from '@/lib/enviosRecurso'
 import { generarEtiquetasA4PDF, type EtiquetaEnvio, type EtiquetasPorHoja } from '@/lib/etiquetasEnvioPDF'
 import EnviosReportesPanel from '@/components/EnviosReportesPanel'
-import { ListaConteoFooter } from '@/components/ListaConteoFooter'
+import { usePaginacionLista } from '@/hooks/usePaginacionLista'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
@@ -1273,6 +1273,15 @@ export default function EnviosPage() {
     return cliente.includes(s) || num.includes(s) || tracking.includes(s)
   })
 
+  // Paginado del listado (pedido de GO 2026-09-24). Acá la query trae a propósito solo los últimos
+  // 100 envíos, así que el paginado casi nunca se enciende — pero el selector queda disponible y la
+  // barra sigue avisando que el total puede estar truncado.
+  const visiblesEnvios = usePaginacionLista(enviosFiltrados, 'envío', {
+    total: (envios as any[]).length,
+    totalTruncado: (envios as any[]).length === 100,
+    claveFiltros: `${busqueda}|${filtroEstado}|${filtroCourier}|${filtroCanal}|${filtroDesde}|${filtroHasta}`,
+  })
+
   const hayFiltros = filtroEstado || filtroCourier || filtroCanal || filtroDesde || filtroHasta
 
   // ── Helpers form ─────────────────────────────────────────────────────────────
@@ -1568,7 +1577,7 @@ export default function EnviosPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {enviosFiltrados.map((e: any) => {
+                    {visiblesEnvios.map((e: any) => {
                       const cfg = ESTADO_CFG[e.estado as EstadoEnvio] ?? ESTADO_CFG.pendiente
                       const sigEstado = ESTADO_SIGUIENTE[e.estado as EstadoEnvio]
                       const dom = e.cliente_domicilios
@@ -1931,12 +1940,6 @@ export default function EnviosPage() {
                   </tbody>
                 </table>
               </div>
-              <ListaConteoFooter
-                mostrados={enviosFiltrados.length}
-                total={(envios as any[]).length}
-                entidad="envío"
-                totalTruncado={(envios as any[]).length === 100}
-              />
             </div>
           )}
         </div>

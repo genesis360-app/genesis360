@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 
 export type RecomendacionTipo = 'danger' | 'warning' | 'success' | 'info'
@@ -57,9 +58,9 @@ export function useRecomendaciones() {
         ventas90d,
         empleadosMes,
       ] = await Promise.all([
-        supabase.from('productos')
+        traerTodoConError<any>((desde, hasta) => supabase.from('productos')
           .select('id, nombre, precio_venta, precio_costo, stock_actual, stock_minimo, activo')
-          .eq('tenant_id', tenant!.id).eq('activo', true),
+          .eq('tenant_id', tenant!.id).eq('activo', true).range(desde, hasta)),
 
         supabase.from('movimientos_stock')
           .select('producto_id')

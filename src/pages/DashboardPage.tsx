@@ -7,6 +7,7 @@ import {
   Wallet, Flame, Calculator, Activity, SlidersHorizontal, X, LayoutDashboard,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Link } from 'react-router-dom'
@@ -238,7 +239,7 @@ export default function DashboardPage() {
       if (sucursalId) ventasMesCostoQ = ventasMesCostoQ.eq('ventas.sucursal_id', sucursalId)
 
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas, gastosMes, ventasMesCosto] = await Promise.all([
-        supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
+        traerTodoConError<any>((desde, hasta) => supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true).range(desde, hasta)),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
         bySuc(supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias)),
         bySuc(supabase.from('ventas').select('total, cotizacion_usd').eq('tenant_id', tenant!.id).in('estado', ESTADOS_CONFIRMADOS).gte('created_at', inicioMes)),
@@ -618,7 +619,8 @@ export default function DashboardPage() {
         .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
         .in('estado_id', eIds)
       if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
-      const { data: lineas } = await lineasQ
+      // 🛑 Sin tope: de esto sale el valorizado del stock inmovilizado (REGLA #0).
+      const { data: lineas } = await traerTodoConError<any>((desde, hasta) => lineasQ.range(desde, hasta))
 
       const unidades = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad), 0)
       const valor    = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad) * Number(l.productos?.precio_costo ?? 0), 0)

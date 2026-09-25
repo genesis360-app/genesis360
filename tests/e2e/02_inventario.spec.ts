@@ -87,11 +87,15 @@ test.describe('Productos (maestro)', () => {
     await page.waitForURL('**/productos', { timeout: 12000 }).catch(() => {})
     await waitForApp(page)
 
-    // Buscar el producto recién creado
-    const buscador = page.getByPlaceholder(/buscar/i).first()
-    if (await buscador.isVisible().catch(() => false)) {
-      await buscador.fill(nombre)
-    }
+    // Buscar el producto recién creado.
+    // 🛑 Antes esto era `getByPlaceholder(/buscar/i).first()` adentro de un `if (isVisible)`: si el
+    // locator no daba con el buscador, el test SALTEABA el filtrado en silencio y pasaba igual
+    // porque con pocos productos el recién creado se veía sin filtrar. Con un catálogo real —y con
+    // el listado paginado de a 100— eso dejó de ser cierto y el test se cayó sin motivo aparente.
+    // Ahora el buscador es explícito y obligatorio: si no está, el test tiene que fallar ahí.
+    const buscador = page.getByPlaceholder(/Buscar por nombre/i)
+    await expect(buscador).toBeVisible({ timeout: 10000 })
+    await buscador.fill(nombre)
     await expect(page.getByText(nombre).first()).toBeVisible({ timeout: 10000 })
 
     // Cleanup best-effort: eliminar el producto (sin stock → eliminable).

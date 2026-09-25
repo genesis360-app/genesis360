@@ -71,7 +71,7 @@ is_rrhh() → boolean
 
 Estas funciones se usan en políticas que requieren permisos específicos (ej: solo ADMIN puede ver datos de nómina).
 
-> [!WARNING] **Mig 433 (2026-09-24, ⚠️ ESCRITA, SIN APLICAR ni en DEV ni en PROD)**: hasta esta
+> [!WARNING] **Mig 433 — ✅ EN DEV Y EN PROD desde v1.231.0 (2026-09-24, PR #357)**: hasta esta
 > migración, `get_user_tenant_id()` —la subquery/función que gobierna el `USING` de casi todas las
 > policies del schema `public`— **no miraba `users.activo`**. Dar de baja a un usuario (`UsuariosPage` →
 > "Desactivar", la única acción que existe, no hay eliminar) no le cortaba el acceso: seguía viendo y
@@ -80,8 +80,9 @@ Estas funciones se usan en políticas que requieren permisos específicos (ej: s
 > fila con NULL) + un trigger que bloquea auto-baja y baja del último DUEÑO activo. El frontend
 > (`authStore`/`AuthGuard`) necesitó su propio fix: sin `fn_estado_usuario_actual()`, un usuario dado de
 > baja no puede leer ni su propia fila y la app lo mandaría a crear un negocio nuevo con su misma
-> identidad. Detalle completo en [[wiki/features/autenticacion-onboarding]] ("Desactivar corta el
-> acceso de verdad").
+> identidad. Probada en DEV impersonando con `SET LOCAL ROLE` (26 productos/4 ventas/2 clientes/su fila
+> → 0/0/0/0 tras la baja) y con el spec e2e `158_acceso_revocado_mutante`. Detalle completo en
+> [[wiki/features/autenticacion-onboarding]] ("Desactivar corta el acceso de verdad").
 
 ---
 

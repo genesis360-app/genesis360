@@ -6,6 +6,7 @@ import {
   Target, ArrowUpDown, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { BRAND } from '@/config/brand'
@@ -111,9 +112,9 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   const { data: productos = [] } = useQuery({
     queryKey: ['metricas-productos', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at, categoria_id, margen_objetivo, alicuota_iva')
-        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant,
@@ -165,9 +166,10 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   const { data: stockUbicaciones = [] } = useQuery({
     queryKey: ['metricas-stock-ubicaciones', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('inventario_lineas')
+      // Sin tope: de aca sale el stock valorizado por ubicacion.
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('inventario_lineas')
         .select('cantidad, ubicacion_id, ubicaciones(nombre), productos(precio_costo)')
-        .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
+        .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0).range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant,

@@ -531,7 +531,7 @@ export default function CajaPage() {
   const cajaActual = cajasOperativas.find((c: any) => c.id === cajaSeleccionada) ?? cajasOperativas[0] ?? null
   const cajaId = cajaActual?.id ?? null
 
-  const { data: sesionActiva } = useQuery({
+  const { data: sesionActiva, isPending: sesionCargando } = useQuery({
     queryKey: ['sesion-activa', cajaId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
@@ -692,14 +692,26 @@ export default function CajaPage() {
           throw new Error('Ese cajero ya tiene una caja abierta. Cerrá esa primero.')
         }
       }
-      // Verificar que no haya otra sesión abierta por otro usuario en la misma caja
-      const { data: existente } = await supabase.from('caja_sesiones')
+      // 🛑 Esta caja no puede tener DOS sesiones abiertas (mig 435). Antes acá había dos agujeros:
+      //   · Solo se rechazaba si la sesión era de OTRO usuario. El mismo usuario abriendo de nuevo
+      //     —doble click, dos pestañas, o el panel mostrando "Abrir caja" mientras la query de la
+      //     sesión todavía viajaba— insertaba una segunda sesión, y desde ahí los movimientos
+      //     entraban por una mientras el arqueo se cerraba sobre la otra.
+      //   · `.maybeSingle()` FALLA cuando ya hay 2 o más abiertas, así que el chequeo se caía justo
+      //     cuando más falta hacía y dejaba abrir una tercera.
+      // Medido en PROD antes de arreglarlo: un negocio con 6 sesiones abiertas en su Caja Fuerte.
+      // Esto es el aviso amable; el candado real es el índice único parcial de la mig 435, que es
+      // lo único que cierra la carrera entre dos clicks simultáneos.
+      const { data: abiertas } = await supabase.from('caja_sesiones')
         .select('id, usuario_id, abrio:usuario_id(nombre_display)')
         .eq('caja_id', cajaId).eq('estado', 'abierta')
-        .maybeSingle()
-      if (existente && existente.usuario_id !== usuarioPropietarioId) {
-        const nombre = (existente as any).abrio?.nombre_display ?? 'otro usuario'
-        throw new Error(`Esta caja ya está abierta por ${nombre}`)
+        .limit(2)
+      const existente = abiertas?.[0]
+      if (existente) {
+        const nombre = existente.usuario_id === usuarioPropietarioId
+          ? 'vos mismo'
+          : ((existente as any).abrio?.nombre_display ?? 'otro usuario')
+        throw new Error(`Esta caja ya está abierta por ${nombre}. Refrescá la pantalla: no hace falta volver a abrirla.`)
       }
       const montoReal = parseFloat(montoApertura) || 0
       const difApertura = calcularDiferenciaApertura(montoReal, montoSugerido)
@@ -1760,6 +1772,17 @@ export default function CajaPage() {
                 className="mt-4 text-sm text-accent-text hover:underline">
                 Ir a configuración →
               </button>
+            </div>
+          ) : sesionCargando ? (
+            /* 🛑 Mientras la sesión viaja NO se decide nada. Antes acá se pintaba "Caja cerrada"
+               con su botón "Abrir caja" sobre una caja que en realidad ya estaba abierta: el que
+               llegaba a clickear en esa ventana abria una SEGUNDA sesión, y desde ahí la plata
+               entraba por una mientras el arqueo se cerraba sobre la otra. Así se llenaron de
+               sesiones duplicadas cajas reales (6 en una Bóveda en PROD). La mig 435 lo bloquea en
+               la base; esto es que ni siquiera se ofrezca. */
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-3">Viendo cómo está la caja…</p>
             </div>
           ) : !sesionActiva ? (
             /* Caja cerrada */

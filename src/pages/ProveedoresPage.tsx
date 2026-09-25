@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/comprasPermisos'
@@ -596,7 +597,9 @@ export default function ProveedoresPage() {
   const { data: productos = [] } = useQuery({
     queryKey: ['productos-activos', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase
+      // Sin tope: el buscador de productos de la OC dejaba afuera todo lo que cae despues de la
+      // fila 1000 del catalogo, y el producto simplemente "no existia" al armar la orden.
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase
         .from('productos')
         // `precio_costo_usd` y `moneda_costo` son imprescindibles: sin ellas, el costo sugerido de
         // una OC en dólares cae al mirror en ARS — el bug de Fede del 2026-09-11. Ver src/lib/ocCosto.ts.
@@ -604,6 +607,7 @@ export default function ProveedoresPage() {
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
+        .range(desde, hasta))
       // El tipo `Producto` de supabase.ts no declara las columnas de costo en USD (existen en la
       // tabla desde la mig 367); se tipan acá para que el costo sugerido no dependa de un `as any`.
       return (data ?? []) as (Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida' | 'precio_costo'>
@@ -743,9 +747,10 @@ export default function ProveedoresPage() {
   const { data: productosAll = [] } = useQuery({
     queryKey: ['productos-todos', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('id, nombre, sku, unidad_medida, precio_costo')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+        .range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && (!!showProdProvForm || !!expandedProvId),

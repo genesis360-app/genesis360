@@ -5,6 +5,7 @@ import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileS
 // xlsx se importa dinámicamente en descargarPlantillaProductos/procesarArchivoProductos
 // (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
@@ -239,8 +240,11 @@ export default function ImportarProductosPage() {
         // `moneda_*` para rechazar un precio ambiguo, y `precio_*` porque el chequeo de margen
         // necesita el lado que el archivo NO trae: si no, con un CSV de una sola columna se compara
         // contra 0 y el aviso nunca salta.
-        const { data: existentes } = await supabase.from('productos')
+        // Sin tope: un archivo de mas de 1000 filas dejaba la respuesta recortada, y los SKU que
+        // no entraban se tomaban como inexistentes — se creaban duplicados en vez de actualizar.
+        const { data: existentes } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
           .select('sku, moneda_venta, moneda_costo, precio_costo, precio_venta').eq('tenant_id', tenant!.id).in('sku', skus)
+          .range(desde, hasta))
         const skusExistentes = new Set((existentes ?? []).map((p: any) => p.sku.toUpperCase()))
         const actualPorSku = new Map<string, { venta: string | null; costo: string | null; precioCostoArs: number; precioVentaArs: number }>(
           (existentes ?? []).map((p: any) => [p.sku.toUpperCase(), {

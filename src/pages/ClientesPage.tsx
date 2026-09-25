@@ -25,7 +25,8 @@ import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
-import { ListaConteoFooter } from '@/components/ListaConteoFooter'
+import { usePaginacionLista } from '@/hooks/usePaginacionLista'
+import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import toast from 'react-hot-toast'
 
 interface FilaCliente {
@@ -189,14 +190,26 @@ export default function ClientesPage() {
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes', tenant?.id, search, verInactivos],
     queryFn: async () => {
-      let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
-      if (!verInactivos) q = q.eq('activo', true)   // A6 — ocultar dados de baja por defecto
-      if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
-      const { data, error } = await q
-      if (error) throw error
-      return data ?? []
+      // Sin tope: PostgREST corta en 1000 filas sin avisar (ver `traerTodo`).
+      return await traerTodo<any>((desde, hasta) => {
+        let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
+        if (!verInactivos) q = q.eq('activo', true)   // A6 — ocultar dados de baja por defecto
+        if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
+        return q.range(desde, hasta)
+      })
     },
     enabled: !!tenant,
+  })
+
+  // Sube acá desde el JSX: el paginado es un hook y adentro de un `(() => {...})()` dentro de un
+  // ternario sería una llamada condicional.
+  const clientesFiltrados = (clientes as any[]).filter(c =>
+    !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
+  )
+  // Paginado del listado (pedido de GO 2026-09-24).
+  const visiblesClientes = usePaginacionLista(clientesFiltrados, 'cliente', {
+    total: (clientes as any[]).length,
+    claveFiltros: `${search}|${filtroEtiqueta}|${verInactivos}`,
   })
 
   // Scrollea a la ficha del deep-link una vez que la lista terminó de cargar (antes no había
@@ -213,7 +226,8 @@ export default function ClientesPage() {
     queryKey: ['cliente-etiquetas-catalogo', tenant?.id],
     queryFn: async () => {
       const predef: string[] = ((tenant as any)?.cliente_etiquetas_catalogo ?? []) as string[]
-      const { data } = await supabase.from('clientes').select('etiquetas').eq('tenant_id', tenant!.id)
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
+        .select('etiquetas').eq('tenant_id', tenant!.id).range(desde, hasta))
       const usadas = new Set<string>()
       for (const row of (data ?? []) as any[]) (row.etiquetas ?? []).forEach((e: string) => e && usadas.add(e))
       return Array.from(new Set([...predef, ...usadas])).sort((a, b) => a.localeCompare(b))
@@ -301,11 +315,12 @@ export default function ClientesPage() {
   const { data: clientesCC = [] } = useQuery({
     queryKey: ['clientes-cc', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('clientes')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
         .select('id, nombre, telefono, email, plazo_pago_dias, limite_credito, cuenta_token')
         .eq('tenant_id', tenant!.id)
         .eq('cuenta_corriente_habilitada', true)
         .order('nombre')
+        .range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant && (pageTab === 'cc' || pageTab === 'reportes'),
@@ -817,8 +832,10 @@ export default function ClientesPage() {
         if (!rows.length) { toast.error('El archivo está vacío'); return }
 
         // A5 — detección de duplicados contra TODA la base (por DNI, teléfono o nombre)
-        const { data: existentes } = await supabase.from('clientes')
-          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id)
+        // Sin tope: "contra TODA la base" tiene que ser toda de verdad. Con mas de 1000 clientes,
+        // PostgREST devolvia 1000 y el importador no veia los duplicados del resto.
+        const { data: existentes } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
+          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id).range(desde, hasta))
         const norm = (s: string) => (s ?? '').replace(/\D/g, '')
         const porDni = new Map<string, string>()
         const porTel = new Map<string, string>()
@@ -1567,12 +1584,9 @@ export default function ClientesPage() {
           <button onClick={() => abrirModal()} className="mt-3 text-accent-text text-sm font-medium hover:underline">Crear el primero</button>
         </div>
       ) : (() => {
-        const clientesFiltrados = (clientes as any[]).filter(c =>
-          !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
-        )
         return (
         <div className="space-y-2">
-          {clientesFiltrados.map((c: any) => {
+          {visiblesClientes.map((c: any) => {
             const stats = statsMap[c.id]
             const isExpanded = expandedId === c.id
             const esDeepLink = deepLinkClienteId === c.id
@@ -1936,7 +1950,6 @@ export default function ClientesPage() {
               </div>
             )
           })}
-          <ListaConteoFooter mostrados={clientesFiltrados.length} total={clientes.length} entidad="cliente" />
         </div>
         )
       })()}

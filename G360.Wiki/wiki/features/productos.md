@@ -29,6 +29,15 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 - Botón píldora **"Filtros"** con popover (✅ v1.138.0, EN PROD desde el 2026-07-22 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
 
+> [!WARNING] 🔴 **PENDIENTE ABIERTO (2026-09-24): la lista corta en 1000 registros sin avisar.** "Se trae
+> el catálogo del tenant una vez" (arriba) no pagina, y PostgREST topea en **1000 filas** por default —
+> medido contra la API real: `Content-Range: 0-999/1177` en el tenant de pruebas. El buscador de píldoras
+> filtra sobre lo ya cargado client-side, así que un producto más allá del corte **no aparece ni
+> buscándolo**. **Impacto hoy: cero** — el negocio más grande en PROD (Kalken) tiene 13 productos. Es
+> latente, pero le va a pegar al primer cliente con catálogo grande, y el mismo patrón (sin paginar,
+> tope de 1000 de PostgREST) puede estar en otras listas (clientes, ventas, movimientos) — falta
+> auditarlo. GO todavía no decidió la prioridad. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
 ### Footer de conteo de registros (🆕 2026-08-06, ✅ PROD desde v1.159.0)
 
 Componente nuevo `src/components/ListaConteoFooter.tsx` (commit `b8d12b87`) — barra fina al pie del
@@ -260,10 +269,10 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > decidir si el importador pasa a convertir a ARS al importar (como hace el resto de la app) o si se
 > migra al patrón `precio_costo_usd`/`moneda_costo` nuevo.
 >
-> ✅ **CERRADO — A0 (2026-09-23, EN `dev`, SIN deploy)**: (a) confirmado, **0 tenants en PROD** usaron
-> esa columna (medido el 18/09); (b) resuelto migrando el importador al patrón vivo
-> (`moneda_venta`/`moneda_costo`), no al de convertir a ARS. Detalle completo, los 2 bugs que cierra y
-> los 3 hallazgos nuevos que dejó (D-1/D-2/D-3) en la sección dedicada abajo: "Importador CSV — columnas
+> ✅ **CERRADO — A0 (2026-09-23), 🚀 EN PROD desde v1.231.0 (2026-09-24, PR #357)**: (a) confirmado, **0
+> tenants en PROD** usaron esa columna (medido el 18/09); (b) resuelto migrando el importador al patrón
+> vivo (`moneda_venta`/`moneda_costo`), no al de convertir a ARS. Detalle completo, los 2 bugs que cierra
+> y los 3 hallazgos nuevos que dejó (D-1/D-2/D-3) en la sección dedicada abajo: "Importador CSV — columnas
 > de moneda (A0)".
 >
 > **🛑 Fix relacionado, distinto (2026-08-20, reportado por Fede): la LISTA de Productos (esta
@@ -349,11 +358,12 @@ Visible solo si el tenant tiene `marketplace_activo = true`.
 
 ---
 
-## Importador CSV — columnas de moneda (A0, 2026-09-23, EN `dev`, SIN deploy)
+## Importador CSV — columnas de moneda (A0, 2026-09-23) — 🚀 EN PROD desde v1.231.0
 
-Commits `870d3e36` + `ca2f08f2` en `origin/dev`. **Sin migración nueva** (sigue 001-432) y **sin deploy a
-PROD** — `dev` queda con este fix por encima de PROD, sin bump de `APP_VERSION` todavía. Pedido explícito
-de Fede: arreglarlo ya, por separado, sin esperar al rediseño de Multimoneda.
+Commits `870d3e36` + `ca2f08f2`. **Sin migración propia** (sigue 001-432 al momento del fix). **🚀
+Deployado a PROD el 2026-09-24** junto con el resto de esta tanda de Productos y las migs 433/434 (PR
+#357, merge `313b7f6d`, release `v1.231.0`). Pedido explícito de Fede: arreglarlo ya, por separado, sin
+esperar al rediseño de Multimoneda.
 
 **El bug que cierra**: `ImportarProductosPage.tsx` escribía `precio_venta_moneda`/`precio_costo_moneda`
 (varchar `'ARS'|'USD'`, mig 007 — columnas **muertas**, las escribía y leía solo él mismo) y **nunca**
@@ -380,19 +390,20 @@ Verificado contra la base real en DEV con el payload exacto (revertido después)
 100 USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
 `precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
 
-> [!NOTE] **Tres hallazgos que dejó A0 — estado al 2026-09-24**: ✅ **D-1 y D-3 RESUELTOS**, sin esperar
-> respuesta de GO (eran aplicación directa de reglas ya decididas, no puntos a relevar). 🟡 **D-2
-> mitigado, no cerrado**. Detalle completo en la sección de abajo, "Actualización por archivo — D-3,
-> D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24)".
+> [!NOTE] **Tres hallazgos que dejó A0 — estado al 2026-09-24, 🚀 EN PROD desde v1.231.0**: ✅ **D-1 y
+> D-3 RESUELTOS**, sin esperar respuesta de GO (eran aplicación directa de reglas ya decididas, no puntos
+> a relevar). 🟡 **D-2 mitigado, no cerrado** (el tope de 999,99% de margen sigue una decisión ABIERTA de
+> GO). Detalle completo en la sección de abajo, "Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴
+> que encontró `code-reviewer` (2026-09-24)".
 
 ---
 
-## Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24, EN `dev`, SIN deploy)
+## Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24) — 🚀 EN PROD desde v1.231.0
 
-Commits `93448deb`, `c8e7649c`, `02568b64`, `470525c6` en `origin/dev`. **Sin migración nueva** (sigue
-001-**432**) y **sin deploy a PROD** — `dev` queda con estos 4 cambios por encima de PROD, sin bump de
-`APP_VERSION` todavía. Cierra los 3 hallazgos que dejó A0 (arriba) más 2 bugs 🔴 nuevos que encontraron
-dos pasadas independientes de `code-reviewer`.
+Commits `93448deb`, `c8e7649c`, `02568b64`, `470525c6`. **Sin migración propia** (sigue 001-**432** al
+momento del fix). **🚀 Deployado a PROD el 2026-09-24** (PR #357, merge `313b7f6d`, release `v1.231.0`,
+junto con las migs 433/434 de usuarios). Cierra los 3 hallazgos que dejó A0 (arriba) más 2 bugs 🔴 nuevos
+que encontraron dos pasadas independientes de `code-reviewer`.
 
 ### D-3 ✅ — al actualizar por archivo se escribe SOLO lo que el archivo trae
 

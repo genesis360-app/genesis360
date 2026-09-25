@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CreditCard, DollarSign, MessageCircle, CheckCircle, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
@@ -41,8 +42,8 @@ export default function CajaCobranzasCC() {
   const { data: clientes = [] } = useQuery({
     queryKey: ['caja-cobranzas-clientes', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('clientes')
-        .select('id, nombre, telefono').eq('tenant_id', tenant!.id)
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
+        .select('id, nombre, telefono').eq('tenant_id', tenant!.id).range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant,

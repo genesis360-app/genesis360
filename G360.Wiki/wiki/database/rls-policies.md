@@ -56,11 +56,14 @@ get_supervisor_team_ids()
 -- STABLE para que PostgreSQL pueda cachearla en la query
 ```
 
-> [!WARNING] **Mig 433 (2026-09-24, ⚠️ ESCRITA, SIN APLICAR)**: `get_user_tenant_id()` e `is_admin()`
-> ahora exigen `coalesce(activo, true)` — un usuario dado de baja (`users.activo = false`) deja de
-> resolver tenant y deja de ser admin, así que **todas** las policies que dependen de esas funciones lo
-> rechazan de una sola vez. Antes "Desactivar" (la única acción sobre un usuario, no hay eliminar) no le
-> cortaba nada. Ver [[wiki/features/autenticacion-onboarding]] y [[wiki/architecture/multi-tenant-rls]].
+> [!WARNING] **Mig 433 — ✅ EN DEV Y EN PROD desde v1.231.0 (2026-09-24, PR #357)**: `get_user_tenant_id()`
+> e `is_admin()` ahora exigen `coalesce(activo, true)` — un usuario dado de baja (`users.activo = false`)
+> deja de resolver tenant y deja de ser admin, así que **todas** las policies que dependen de esas
+> funciones lo rechazan de una sola vez. Antes "Desactivar" (la única acción sobre un usuario, no hay
+> eliminar) no le cortaba nada. Auditadas las 234 policies de `public`: las únicas que no dependen de
+> `tenant_id`/`get_user_tenant_id()` son 3 de catálogo público sin datos del negocio (`planes`,
+> `consumo_tarifas`, `ayuda_recursos` publicados). Ver [[wiki/features/autenticacion-onboarding]] y
+> [[wiki/architecture/multi-tenant-rls]].
 
 ---
 

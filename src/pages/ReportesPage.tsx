@@ -10,6 +10,7 @@ import {
   Terminal, Play, Trash2, Info, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en cada handler de export (auditoría
@@ -137,9 +138,10 @@ export default function ReportesPage() {
   const { data: productos = [] } = useQuery({
     queryKey: ['reporte-productos', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      // Sin tope: un reporte que se exporta no puede venir recortado en silencio.
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('*, categorias(nombre), proveedores(nombre), ubicaciones!productos_ubicacion_id_fkey(nombre)')
-        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant,
@@ -148,9 +150,9 @@ export default function ReportesPage() {
   const { data: lineas = [] } = useQuery({
     queryKey: ['reporte-lineas', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('inventario_lineas')
+      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('inventario_lineas')
         .select('*, estados_inventario(nombre), ubicaciones(nombre), productos(nombre, sku, precio_costo, precio_venta, tiene_series), inventario_series(nro_serie, activo)')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .eq('tenant_id', tenant!.id).eq('activo', true).range(desde, hasta))
       return data ?? []
     },
     enabled: !!tenant,

@@ -24,7 +24,7 @@ type: project
 >    Pañuelos" duplicados `REC-*`). El catálogo bajó de 1.328 a 1.272. Ninguno había participado en
 >    una venta. 13 specs verdes después.
 >
-> #### 🟡 LA ÚNICA DECISIÓN ABIERTA: D-2 — el tope de margen
+> #### ▶️ LO PRIMERO DE LA PRÓXIMA SESIÓN: D-2 — ampliar el tope de margen (YA DECIDIDO)
 >
 > `productos.margen_ganancia` es columna **GENERADA** `numeric(5,2)` → techo **999,99 %** (vender a
 > más de ~11× el costo). 🛑 Al pasarse, **el producto no se puede guardar** (`numeric field
@@ -34,8 +34,23 @@ type: project
 > urgencia**. Pero el caso que lo rompe es cotidiano: un café de $30 vendido a $1.500 = **4.900 %**.
 > Cualquier cafetería, kiosco o rubro de markup alto lo toca el primer día.
 >
-> **Verificado**: `ALTER COLUMN margen_ganancia TYPE numeric(8,2)` funciona aun siendo generada →
-> ampliarla es una migración de una línea. Las opciones y el detalle, en `log.md` (2026-09-25).
+> **✅ DECIDIDO por GO (2026-09-25)**: *"si claro, ampliemos la columna como indicas"*. **No hay nada
+> que volver a consultar.** La migración que siga (~436), en DEV → probar → PROD:
+>
+> ```sql
+> ALTER TABLE public.productos ALTER COLUMN margen_ganancia TYPE numeric(8,2);
+> ALTER TABLE public.productos ALTER COLUMN margen_objetivo  TYPE numeric(8,2);
+> ```
+>
+> - ✅ Verificado que el `ALTER` funciona **aun siendo columna generada** (era la única duda técnica).
+> - **Las dos columnas**: `margen_objetivo` es manual y tiene el mismo techo.
+> - 🛑 **NO tocar las demás `numeric(5,2)`** (`descuento_pct`, `comision_pct`, `repricing_tope_pct`,
+>   `reserva_*_pct`, `precio_ajuste_meli_pct`/`_tn_pct`): son descuentos y comisiones, ahí 100 % es un
+>   techo legítimo.
+> - Después: revisar que ninguna pantalla asuma 4 dígitos al formatear el margen y cerrar el
+>   escenario en el UAT §66 (hallazgo D-2).
+> - La migración **no está escrita a propósito**: un `NNN_*.sql` sin aplicar en el repo fue lo que
+>   generó confusión con la 433. Se escribe y se aplica en la misma sesión.
 >
 > #### 🔴 Pendientes que siguen abiertos (sin cambios)
 > - Los **27 puntos** de los relevamientos de Fede (multimoneda / categorías / precio programado).

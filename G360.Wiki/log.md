@@ -50,7 +50,14 @@ Una cafetería, un kiosco o cualquier rubro de markup alto lo tocan el primer d�
 
 Verificado (en una transacción descartada) que `ALTER COLUMN margen_ganancia TYPE numeric(8,2)`
 **funciona aun siendo columna generada** — ampliarla a 999.999,99 % es una migración de una línea.
-**Falta la decisión de GO**; ver `project_pendientes.md`.
+
+**✅ GO decidió ampliarla** (misma sesión): la migración que siga toca **las dos** columnas de
+`productos` —`margen_ganancia` (generada) y `margen_objetivo` (manual, mismo techo)— y **ninguna
+otra**: las demás `numeric(5,2)` del esquema son descuentos y comisiones (`descuento_pct`,
+`comision_pct`, `repricing_tope_pct`, `reserva_*_pct`, `precio_ajuste_meli_pct`/`_tn_pct`), donde
+100 % es un techo legítimo. Queda para ejecutar en la próxima sesión; la migración **no se escribió
+todavía a propósito**, porque un archivo `NNN_*.sql` sin aplicar en el repo fue justamente lo que
+generó confusión con la 433.
 
 ---
 

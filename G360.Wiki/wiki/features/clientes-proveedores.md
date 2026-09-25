@@ -414,6 +414,15 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 ### CL2 — Cuenta corriente: límite/vencimiento/interés/morosidad (mig 172)
 - **Enforcement de límite (B1):** `tenants.cc_enforcement_politica` (permitir/avisar/bloquear). Límite por cliente = `clientes.limite_credito`, fallback `tenants.limite_cc_default`. El POS controla al despachar a CC.
 - **Vencimiento + interés (B3):** `ventas.fecha_vencimiento_cc` (= hoy + `tenants.cc_dias_vencimiento`). Interés de mora `tenants.cc_interes_mensual_pct` → `ventas.interes_cc`, recalculado por **`recalcular_intereses_cc(tenant)`** (sweep-lazy; pg_cron no habilitado). El tab CC muestra interés + vencimiento real.
+
+> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `recalcular_intereses_cc(p_tenant)`
+> **ya validaba** que el parámetro coincidiera con el tenant del usuario (no tenía el hueco
+> cross-tenant que sí tenían otros dos sweeps, ver abajo), pero con un `EXISTS` sobre `users` que no
+> miraba `activo` — un usuario dado de baja (mig 433) todavía podía dispararla. Ahora resuelve el
+> tenant con `get_user_tenant_id()`, igual que el resto de la app. De paso, `liberar_reservas_vencidas`
+> (que acredita la seña en `cliente_creditos` al vencer una reserva) sí tenía un hueco real: aceptaba
+> el tenant de OTRO negocio. Ver [[wiki/architecture/guards-server-side]] ("G15") y
+> [[wiki/features/ventas-pos]] ("Vencimiento + liberación automática").
 - **Morosidad (B4):** `tenants.cc_morosidad_politica` (permitir/bloqueo_cc/bloqueo_total). RPC **`cliente_cc_estado(cliente)`** (deuda_total/deuda_vencida/interes_total).
 - **Cobranza (B5):** FIFO desde las 3 vías — ficha del cliente, **POS** (botón "Deuda CC" en el chip del cliente) y **Caja** (tab "Cobranzas CC" masivo). Helper `src/lib/cobranzaCC.ts`. **Desde v1.52.0 SÍ genera movimiento de caja** (auditoría de procesos #1): Efectivo → `ingreso` real al arqueo, otro método → `ingreso_informativo`; sin caja imputable → warning al operador. Ver [[wiki/features/caja]] → "Flujo ventas ↔ caja".
 

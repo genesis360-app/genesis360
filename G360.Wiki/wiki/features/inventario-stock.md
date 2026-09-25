@@ -669,7 +669,17 @@ Filtros en tab Historial:
 - Asignado por SKU en ProductoFormPage
 - Función SQL `process_aging_profiles()` SECURITY DEFINER: calcula días restantes, aplica regla, cambia estado, inserta en actividad_log
 - EF `process-aging` + botón manual en ConfigPage → Aging Profiles
-- Pendiente: scheduler diario (pg_cron)
+- Pendiente: scheduler diario (pg_cron) — decisión de GO pendiente (cambiaría estados de inventario sin click; ver "🔒 Mig 437" abajo)
+
+> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `process_aging_profiles(p_tenant_id)`
+> es `SECURITY DEFINER` con `EXECUTE` para `authenticated` y **no comparaba el parámetro con el
+> tenant del usuario que llama** — cualquier usuario logueado podía pasar el UUID de OTRO negocio y
+> forzarle un cambio de `estado_id` en su inventario. Fix: con sesión de usuario se exige
+> `p_tenant_id = get_user_tenant_id()` (mira `activo`, mig 433); sin sesión (service_role/cron) sigue
+> igual. `process_aging_profile_single` también pasa a `get_user_tenant_id()` (antes resolvía el
+> tenant con un `SELECT` a `users` que no miraba `activo`). Encontrado revisando el backlog de
+> auditoría de procesos, no en una auditoría de seguridad dedicada. Ver
+> [[wiki/architecture/guards-server-side]] ("G15").
 - **Distinto del descuento automático por estado en la venta** (v1.139.0, migs 284-285 — backlog
   Fede punto 3): Aging Profiles solo **mueve** una línea a otro `estado_id` según días a vencer,
   sin aplicar ningún descuento por sí solo. El feature nuevo aplica un % **al vender** stock que

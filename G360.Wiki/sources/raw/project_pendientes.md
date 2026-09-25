@@ -6,15 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-25, 2ª sesión) — 🟡 D-2 EJECUTADO EN DEV (mig 436), falta PROD
+> ### 🛑 ARRANCÁ ACÁ (2026-09-25, 2ª+3ª sesión) — 🟡 D-2 (mig 436) + 🔒 mig 437 (sweeps cross-tenant) EJECUTADOS EN DEV, falta PROD
 >
-> Mismo día que el cierre de abajo, sesión siguiente: se escribió y aplicó la migración de D-2
-> (decidida en la sesión anterior). **Quedó en DEV, sin deploy a PROD ni bump de `APP_VERSION`.**
+> Mismo día que el cierre de abajo, dos sesiones siguientes: primero se escribió y aplicó la
+> migración de D-2 (decidida en la sesión anterior); después, revisando el ítem 7 del backlog de
+> auditoría de procesos, salió un hueco de aislamiento entre negocios (mig 437). **Las dos quedaron
+> en DEV, sin deploy a PROD ni bump de `APP_VERSION`.**
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.232.0` | 001-**435** |
-> | **DEV** | `v1.232.0` (sin bump) | 001-**436** |
+> | **DEV** | `v1.232.0` (sin bump) | 001-**437** |
 >
 > #### ✅ D-2 — el margen admite hasta 999.999,99 % (mig 436)
 >
@@ -41,10 +43,45 @@ type: project
 >
 > Commit `70e257ce` en `origin/dev`, **sin bump de `APP_VERSION`** (no hubo deploy).
 >
+> #### 🔒 Mig 437 — los sweeps con tenant por parámetro aceptaban el de OTRO negocio
+>
+> Encontrado revisando el ítem 7 del backlog de la auditoría de procesos ("cron para sweeps lazy"),
+> no una auditoría de seguridad dedicada. `process_aging_profiles(p_tenant_id)` y
+> `liberar_reservas_vencidas(p_tenant_id)` son `SECURITY DEFINER` con `EXECUTE` otorgado a
+> `authenticated` (verificado igual en DEV y PROD) y **no comparaban el parámetro con el negocio del
+> usuario que llama**: cualquier usuario logueado podía pasar el UUID de OTRO negocio y cambiarle
+> estados de inventario (aging), o cancelar sus reservas vencidas —liberando el stock reservado y
+> acreditando la seña en `cliente_creditos`— de ese negocio ajeno. Daño acotado a adelantar algo que
+> ese sweep ya iba a hacer solo según la config del tenant afectado (no inventa datos), pero es
+> **escritura cross-tenant**, y la REGLA #0 no tolera eso "acotado" o no.
+>
+> **Fix** (`437_sweeps_aislamiento_tenant.sql`): con sesión de usuario se exige
+> `p_tenant_id = get_user_tenant_id()` (que ya mira `activo`, mig 433); sin sesión (`service_role`,
+> la EF `cron-sweeps` vía `liberar_reservas_vencidas_all`) sigue pasando igual que antes. De paso,
+> `process_aging_profile_single` (resolvía el tenant con un `SELECT` a `users` que no miraba
+> `activo`) y `recalcular_intereses_cc` (ya validaba el tenant, pero con el mismo problema del
+> `activo`) pasan también a `get_user_tenant_id()` — un usuario dado de baja ya no puede disparar
+> ninguna de las cuatro.
+>
+> Cuerpos tomados con `pg_get_functiondef` de PROD (idénticos a DEV, sin drift). Revisada por
+> `migration-reviewer` (apta). Probada en DEV impersonando al DUEÑO del tenant dev: pedir aging de
+> OTRO tenant → `{"error": "Tenant no encontrado", "cambios": 0}`; el propio tenant sigue funcionando
+> igual que antes; el camino sin usuario (service_role) también. Commit `e16df8c7` en `origin/dev`.
+>
+> **Estado del ítem 7 del backlog, re-verificado de paso:** intereses de CC y reservas vencidas YA
+> corren diario (`.github/workflows/sweeps.yml` → EF `cron-sweeps` → `*_all()`). "Servicios
+> recurrentes" no es un sweep (solo un aviso en Proveedores, a propósito). **Sigue faltando solo
+> AGING en el cron** (hoy únicamente por botón en Config; en PROD: 1 negocio con 1 producto usándolo)
+> — decisión pendiente de GO, porque correrlo solo cambia estados de inventario sin que nadie haga
+> click.
+>
 > #### ▶️ Falta para la próxima sesión
-> - Llevar la mig 436 a PROD en el próximo deploy, junto con el bump de versión correspondiente.
+> - Llevar las migs **436 y 437** a PROD en el próximo deploy, junto con el bump de versión
+>   correspondiente.
+> - Backlog de auditoría de procesos: solo queda **decidir si el aging entra al cron diario** (el
+>   resto del ítem 7, y los ítems 1-6, ya estaban cerrados).
 > - El resto de los pendientes sigue igual que en el cierre de abajo (27 puntos de Fede, rotación
->   de keys, backlog de auditoría de procesos).
+>   de keys).
 
 
 > ### 🛑 ARRANCÁ ACÁ (2026-09-25) — ✅ **PROD = DEV = `v1.232.0`** (migs 001-**435**), todo cerrado

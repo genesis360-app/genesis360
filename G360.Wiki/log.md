@@ -6,6 +6,50 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-25] update | Mig 437 — sweeps aceptaban el negocio de otro (DEV)
+
+Tercera sesión del día. Revisando el ítem 7 del backlog de la auditoría de procesos ("cron para
+sweeps lazy") salió un hueco de aislamiento entre negocios. **Solo en DEV** — PROD sigue en
+`v1.232.0` (migs 001-435), sin bump de `APP_VERSION` (no hubo deploy). DEV pasa a 001-**437**.
+Commit `e16df8c7` en `origin/dev`.
+
+### Mig 437 — `process_aging_profiles`/`liberar_reservas_vencidas` aceptaban el tenant de OTRO negocio
+
+`process_aging_profiles(p_tenant_id)` y `liberar_reservas_vencidas(p_tenant_id)` son `SECURITY
+DEFINER` con `EXECUTE` otorgado a `authenticated` (verificado igual en DEV y PROD) y **no
+comparaban `p_tenant_id` contra el negocio del usuario que llama**: cualquier usuario logueado
+podía pasar el UUID de OTRO negocio y (1) cambiarle estados de inventario vía aging, o (2) cancelar
+sus reservas vencidas, liberando stock reservado y acreditando la seña en `cliente_creditos` de ese
+negocio ajeno. Daño acotado —adelanta algo que ese sweep ya iba a hacer solo, según la config del
+tenant afectado— pero es escritura cross-tenant, y la REGLA #0 no tolera eso ni "acotado".
+
+`437_sweeps_aislamiento_tenant.sql`: con sesión de usuario se exige `p_tenant_id =
+get_user_tenant_id()` (que ya mira `activo`, mig 433); sin sesión (`service_role`, la EF
+`cron-sweeps` vía `liberar_reservas_vencidas_all`) pasa igual que antes. De paso,
+`process_aging_profile_single` (resolvía el tenant con un `SELECT` a `users` que no miraba
+`activo`) y `recalcular_intereses_cc` (ya validaba el tenant, pero con el mismo problema del
+`activo`) pasan también a `get_user_tenant_id()`.
+
+Cuerpos tomados con `pg_get_functiondef` de PROD (idénticos a DEV, sin drift). Revisada por
+`migration-reviewer` (apta). Probada en DEV impersonando al DUEÑO del tenant dev: pedir aging de
+OTRO tenant → `{"error": "Tenant no encontrado", "cambios": 0}`, 0 cambios; el propio tenant sigue
+funcionando igual que antes; el camino sin usuario (service_role) también.
+
+### Ítem 7 del backlog de auditoría de procesos, re-verificado de paso
+
+Intereses de CC y reservas vencidas YA corren diario (`.github/workflows/sweeps.yml` → EF
+`cron-sweeps` → `*_all()`). "Servicios recurrentes" no es un sweep (solo un aviso en Proveedores, a
+propósito). Sigue faltando solo **AGING en el cron** (hoy únicamente por botón en Config; en PROD:
+1 negocio con 1 producto usándolo) — decisión pendiente de GO, porque correrlo solo cambia estados
+de inventario sin que nadie haga click.
+
+### Pendiente
+
+Llevar las migs 436 y 437 a PROD en el próximo deploy, junto con el bump de `APP_VERSION`
+correspondiente.
+
+---
+
 ## [2026-09-25] update | D-2 — margen hasta 999.999,99 % (mig 436, DEV)
 
 Segunda sesión del día: se ejecutó lo que la sesión anterior había dejado decidido pero sin escribir.

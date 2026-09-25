@@ -6,7 +6,27 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-25
 ---
 
-# Historial de Migraciones (001-436, + correctivos 387b/387c)
+# Historial de Migraciones (001-437, + correctivos 387b/387c)
+
+🔒 **Migración 437 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `e16df8c7` en `dev`, sin
+deploy ni bump de `APP_VERSION`): `437_sweeps_aislamiento_tenant.sql` — dos sweeps `SECURITY
+DEFINER` que reciben el tenant **por parámetro** y son ejecutables por `authenticated`,
+`process_aging_profiles(p_tenant_id)` y `liberar_reservas_vencidas(p_tenant_id)`, **no comparaban
+ese parámetro contra el negocio del usuario que llama**: cualquier usuario logueado podía pasar el
+UUID de OTRO negocio y cambiarle estados de inventario (aging), o cancelar sus reservas vencidas
+—liberando stock reservado y acreditando la seña en `cliente_creditos`— de ese negocio ajeno.
+Encontrado revisando el ítem 7 del backlog de la auditoría de procesos ("cron para sweeps lazy"),
+no en una auditoría de seguridad dedicada. Daño acotado a adelantar algo que ese sweep ya iba a
+hacer solo según la config del tenant afectado, pero es escritura cross-tenant (REGLA #0). Fix: con
+sesión de usuario se exige `p_tenant_id = get_user_tenant_id()` (que ya mira `activo`, mig 433); sin
+sesión (`service_role`, la EF `cron-sweeps` vía `liberar_reservas_vencidas_all`) sigue igual. De
+paso, `process_aging_profile_single` (resolvía el tenant con un `SELECT` a `users` sin mirar
+`activo`) y `recalcular_intereses_cc` (ya validaba el tenant, mismo problema del `activo`) pasan
+también a `get_user_tenant_id()`. Cuerpos tomados con `pg_get_functiondef` de PROD (idénticos a
+DEV). Revisada por `migration-reviewer` (apta). Probada en DEV impersonando al DUEÑO: aging de otro
+tenant → `{"error": "Tenant no encontrado", "cambios": 0}`; lo propio y el camino sin usuario siguen
+funcionando igual. Ver [[wiki/architecture/guards-server-side]] "G15" y
+[[wiki/architecture/multi-tenant-rls]].
 
 📐 **Migración 436 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `70e257ce` en `dev`, sin
 deploy ni bump de `APP_VERSION`): `productos.margen_ganancia` (columna **GENERADA**,

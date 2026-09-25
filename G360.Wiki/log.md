@@ -6,6 +6,54 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-25] update | 🤖 El Asistente IA aprende los usuarios sin correo · 🧹 limpieza del tenant de pruebas · 🟡 D-2 (tope de margen) medido y explicado
+
+Cierre de los pendientes que quedaban abiertos tras los dos deploys del 24/09. **Sin cambios de
+versión**: PROD sigue en `v1.232.0` (migs 001-435).
+
+### 🤖 Asistente IA actualizado (DEV y PROD)
+
+`npm run ai:knowledge` (44 secciones, 74 KB) + redeploy de la EF `ai-assistant` en los dos ambientes.
+**El Asistente aprende del wiki SOLO al redeployar**, así que hasta ahora no sabía nada de la feature
+de usuarios sin correo pese a estar documentada. Verificado preguntándole: ya responde que para un
+empleado sin mail hay que usar la opción **"Sin email"** de Usuarios.
+
+### 🧹 Limpieza del tenant de pruebas (Almacén Jorgito, DEV)
+
+Se fueron **56 productos basura** que venían dejando las corridas: 45 `TESTPROD_test_*` (sin una sola
+referencia en ninguna tabla) y los **11 "Elite Pañuelos" duplicados con SKU `REC-*`** — los que
+hacían fallar 5 specs al competir por nombre en los pickers. Con ellos, 11 movimientos de stock, 11
+líneas, 11 ítems y 11 recepciones de test que quedaban con cero ítems.
+
+**Ninguno había participado en una venta** (0 filas en `venta_items`), así que no se tocó ningún
+registro contable. Queda un solo "Elite Pañuelos", el original `SKU-0001`, con su stock intacto
+(168). El catálogo de pruebas bajó de 1.328 a **1.272** productos. 13 specs verdes después.
+
+> [!WARNING]
+> **Gotcha confirmado**: al borrar `inventario_lineas`, un trigger **reinserta alertas** de "sin
+> stock" que después bloquean el `DELETE` de productos por FK. Hay que borrar las alertas **después**
+> de las líneas y **antes** de los productos. El primer intento murió justo ahí.
+
+### 🟡 D-2 — el tope de 999,99 % de `margen_ganancia`, medido
+
+`productos.margen_ganancia` es una columna **GENERADA** `numeric(5,2)`:
+`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`. El techo es **999,99 %**, o sea
+vender a poco más de **11 veces** el costo.
+
+🛑 Lo importante: cuando se pasa, **el producto no se puede guardar** (`numeric field overflow`). No
+es que el margen se muestre mal — es que la app rechaza un precio legítimo.
+
+Medido hoy: en PROD el margen máximo es **200 %** (27 productos con costo, 6 sin costo); en DEV,
+**400 %** sobre 929. **Nadie está cerca del techo**, así que no hay urgencia — pero el caso que lo
+rompe es de lo más común en el rubro: un café que cuesta $30 y se vende a $1.500 son **4.900 %**.
+Una cafetería, un kiosco o cualquier rubro de markup alto lo tocan el primer día.
+
+Verificado (en una transacción descartada) que `ALTER COLUMN margen_ganancia TYPE numeric(8,2)`
+**funciona aun siendo columna generada** — ampliarla a 999.999,99 % es una migración de una línea.
+**Falta la decisión de GO**; ver `project_pendientes.md`.
+
+---
+
 ## [2026-09-24] deploy | 🚀 v1.232.0 EN PROD — el tope de 1000 de PostgREST CERRADO (`traerTodo.ts`) + paginador en los listados + mig 435 (una caja no puede tener dos sesiones abiertas) + suite e2e 388/0 por primera vez
 
 **PROD pasa de `v1.231.0` (migs 001-434) a `v1.232.0` (migs 001-435).** Segunda entrega del día — encadena

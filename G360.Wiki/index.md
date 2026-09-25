@@ -256,7 +256,7 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-09-24 (3ª sesión, segunda entrega del día) · **🚀 PROD YA EN `v1.232.0` (migs
+*Última actualización: 2026-09-25 · **Cierre de sesión, sin cambios de versión** — 🤖 Asistente IA redeployado en DEV y PROD (`ai:knowledge` + EF `ai-assistant`): ya conoce los usuarios sin correo; recordá que **aprende del wiki SOLO al redeployar**. 🧹 Tenant de pruebas limpio: 56 productos basura menos (45 `TESTPROD_*` + 11 "Elite Pañuelos" duplicados que hacían fallar 5 specs), catálogo de 1.328 → 1.272, ninguno había participado en una venta. 🟡 **D-2 medido y esperando decisión de GO**: `margen_ganancia` es `numeric(5,2)` generada → techo 999,99 %, y al pasarse **el producto no se puede guardar**; hoy el máximo real es 200 % en PROD y 400 % en DEV, pero un café de $30 vendido a $1.500 son 4.900 %. Ampliarla a `numeric(8,2)` está verificado que funciona. Ver `log.md` (2026-09-25). Antes: *Última actualización: 2026-09-24 (3ª sesión, segunda entrega del día) · **🚀 PROD YA EN `v1.232.0` (migs
 001-435)** — PR **#358** `dev→main`, merge commit **`5a294934`**, release **`v1.232.0` Latest**. Paridad
 `pg_policies` DEV=PROD por hash: `public` **234** · `storage` **40** · `cron` **2** (sin cambios de
 policies esta sesión). 🔴✅ **El tope de 1000 de PostgREST, CERRADO** — 27 queries sin `.range()` cortaban

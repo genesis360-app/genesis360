@@ -6,6 +6,43 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-25) — ✅ **PROD = DEV = `v1.232.0`** (migs 001-**435**), todo cerrado
+>
+> Sin cambios de versión respecto del cierre del 24/09: esta sesión cerró los pendientes que habían
+> quedado abiertos, no tocó código de la app.
+>
+> | | Código | Migraciones | Asistente IA |
+> |---|---|---|---|
+> | **PROD** | `v1.232.0` | 001-**435** | ✅ al día (redeploy 25/09) |
+> | **DEV** | `v1.232.0` | 001-**435** | ✅ al día |
+>
+> #### ✅ Lo que se cerró
+> 1. **Asistente IA actualizado** en DEV y PROD (`ai:knowledge` + redeploy). Ya sabe de los usuarios
+>    sin correo. ⚠️ Recordatorio permanente: **el Asistente aprende del wiki SOLO al redeployar la
+>    EF** — tocar `app-reference.md` sin redeployar no le enseña nada.
+> 2. **Tenant de pruebas limpio**: 56 productos basura borrados (45 `TESTPROD_*` + 11 "Elite
+>    Pañuelos" duplicados `REC-*`). El catálogo bajó de 1.328 a 1.272. Ninguno había participado en
+>    una venta. 13 specs verdes después.
+>
+> #### 🟡 LA ÚNICA DECISIÓN ABIERTA: D-2 — el tope de margen
+>
+> `productos.margen_ganancia` es columna **GENERADA** `numeric(5,2)` → techo **999,99 %** (vender a
+> más de ~11× el costo). 🛑 Al pasarse, **el producto no se puede guardar** (`numeric field
+> overflow`): la app rechaza un precio legítimo, no es solo un número mal mostrado.
+>
+> **Medido hoy**: PROD máximo **200 %** · DEV máximo **400 %**. Nadie cerca del techo → **no hay
+> urgencia**. Pero el caso que lo rompe es cotidiano: un café de $30 vendido a $1.500 = **4.900 %**.
+> Cualquier cafetería, kiosco o rubro de markup alto lo toca el primer día.
+>
+> **Verificado**: `ALTER COLUMN margen_ganancia TYPE numeric(8,2)` funciona aun siendo generada →
+> ampliarla es una migración de una línea. Las opciones y el detalle, en `log.md` (2026-09-25).
+>
+> #### 🔴 Pendientes que siguen abiertos (sin cambios)
+> - Los **27 puntos** de los relevamientos de Fede (multimoneda / categorías / precio programado).
+> - Rotación de las keys legacy de Supabase en PROD.
+> - Backlog: traslados, cheques, EFs huérfanas, cron (auditoría de procesos).
+
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-24, 3ª sesión) — 🚀 **PROD YA EN `v1.232.0`** (migs 001-**435**) — deploy
 > completo y verificado, DEV = PROD, segunda entrega del día
 >

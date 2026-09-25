@@ -66,15 +66,22 @@ export function monedaProductoImportada(
  * Tope del margen que la base puede guardar.
  *
  * 🛑 `productos.margen_ganancia` es una columna GENERATED ALWAYS —
- * `((precio_venta - precio_costo) / precio_costo) * 100`— declarada `numeric(5,2)`, así que **no
- * admite más de 999,99 %**. Un producto por encima de eso no se puede guardar y Postgres tira un
- * `numeric field overflow` crudo, que no le dice nada a nadie.
- *
- * Es un límite preexistente (pasa igual cargando a mano y con precios en pesos), pero se vuelve
- * mucho más fácil de tocar con un CSV que mezcla monedas: costo en ARS y precio en USD deja un
- * costo chico contra un precio multiplicado por la cotización.
+ * `((precio_venta - precio_costo) / precio_costo) * 100`— declarada `numeric(8,2)` (mig 436; antes
+ * `numeric(5,2)`, con techo 999,99 %, que rechazaba precios legítimos: un café de $30 a $1.500 da
+ * 4.900 %). Por encima de 999.999,99 % Postgres tira un `numeric field overflow` crudo, que no le
+ * dice nada a nadie: a ese nivel es un error de carga, no un precio.
  */
-export const MARGEN_MAX_PCT = 999.99
+export const MARGEN_MAX_PCT = 999999.99
+
+/**
+ * Red de seguridad del importador para filas con el costo y el precio en monedas DISTINTAS.
+ *
+ * Hasta la mig 436 el techo de la columna (999,99 %) frenaba de rebote el error típico de un CSV que
+ * mezcla monedas: costo en ARS contra precio en USD deja el precio multiplicado por la cotización
+ * (150 ARS contra 100 USD a 1400 = 93.233 %). Al ampliar la columna esa fila habría entrado en
+ * silencio con un precio inflado, así que se conserva el mismo umbral SOLO para ese caso.
+ */
+export const MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99
 
 /** El margen que va a calcular la base, en %. `null` si no se puede calcular (costo 0 o negativo). */
 export function margenGenerado(precioCostoArs: number, precioVentaArs: number): number | null {
@@ -82,11 +89,18 @@ export function margenGenerado(precioCostoArs: number, precioVentaArs: number): 
   return Math.round(((precioVentaArs - precioCostoArs) / precioCostoArs) * 100 * 100) / 100
 }
 
-/** ¿Este par de precios entra en `numeric(5,2)`? */
+/** ¿Este par de precios entra en `margen_ganancia` (`numeric(8,2)`)? */
 export function margenEntraEnLaBase(precioCostoArs: number, precioVentaArs: number): boolean {
   const m = margenGenerado(precioCostoArs, precioVentaArs)
   if (m === null) return true // la base guarda 0 cuando el costo es 0: nunca desborda
   return Math.abs(m) <= MARGEN_MAX_PCT
+}
+
+/** Fila con monedas mezcladas cuyo margen delata que el costo y el precio no están en la misma moneda. */
+export function margenSospechosoPorMonedas(precioCostoArs: number, precioVentaArs: number): boolean {
+  const m = margenGenerado(precioCostoArs, precioVentaArs)
+  if (m === null) return false
+  return Math.abs(m) > MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT
 }
 
 /**

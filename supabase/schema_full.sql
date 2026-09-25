@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-24T23:43:59.240Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260924225750 · 171 tablas
+-- Generado 2026-09-25T14:46:03.656Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260925143456 · 171 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1619,7 +1619,7 @@ CREATE TABLE public.productos (
   estado_id uuid,
   precio_costo numeric(12,2) DEFAULT 0,
   precio_venta numeric(12,2) DEFAULT 0,
-  margen_ganancia numeric(5,2) DEFAULT 
+  margen_ganancia numeric(8,2) DEFAULT 
 CASE
     WHEN (precio_costo > (0)::numeric) THEN round((((precio_venta - precio_costo) / precio_costo) * (100)::numeric), 2)
     ELSE (0)::numeric
@@ -1639,7 +1639,7 @@ END,
   precio_venta_moneda character varying(3) NOT NULL DEFAULT 'ARS'::character varying,
   regla_inventario text,
   aging_profile_id uuid,
-  margen_objetivo numeric(5,2),
+  margen_objetivo numeric(8,2),
   publicado_marketplace boolean DEFAULT false,
   precio_marketplace numeric(12,2),
   stock_reservado_marketplace integer DEFAULT 0,

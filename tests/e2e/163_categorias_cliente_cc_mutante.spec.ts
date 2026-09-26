@@ -140,4 +140,69 @@ test.describe('Categorías de clientes — la categoría con cuenta corriente (m
       await request.patch(`${SUPABASE_URL}/rest/v1/categorias_cliente?id=eq.${catId}`, { headers, data: { activo: false } })
     }
   })
+
+  test('D2 · cambiar la categoría con valores propios pregunta; y bajar el límite avisa cuántos quedan por encima', async ({ page, request }) => {
+    test.setTimeout(180_000)
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    const headers = restHeaders(await tokenDesdeBrowser(page))
+    const h = { ...headers, Prefer: 'return=representation' }
+    const [s] = (await (await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=id,tenant_id&limit=1`, { headers })).json()) as any[]
+    const tid = s.tenant_id
+    const ts = Date.now()
+    const nombreCat = `E2E Cat163b ${ts}`
+    const cli = `E2E Cli163b ${ts}`
+    const cat = await request.post(`${SUPABASE_URL}/rest/v1/categorias_cliente`, {
+      headers: h, data: { tenant_id: tid, nombre: nombreCat, cc_habilitada: true, cc_limite: 1000, cc_enforcement_politica: 'avisar' },
+    })
+    expect(cat.ok(), `[163b] ${await cat.text()}`).toBe(true)
+    const catId = ((await cat.json()) as any[])[0].id
+    // Cliente con límite PROPIO 500 (lo pone el DUEÑO, E3) y CC propia.
+    const c = await request.post(`${SUPABASE_URL}/rest/v1/clientes`, {
+      headers: h, data: { tenant_id: tid, nombre: cli, dni: String(ts).slice(-7) + '7', telefono: '11' + String(ts).slice(-8), condicion_iva_receptor: 'CF', cuenta_corriente_habilitada: true, limite_credito: 500 },
+    })
+    expect(c.ok(), `[163b] ${await c.text()}`).toBe(true)
+    const cliId = ((await c.json()) as any[])[0].id
+    let ventaId: string | null = null
+    try {
+      // ── 73.12 · D2: al asignarle la categoría en la ficha, pregunta; "Usar los de la categoría" borra el propio ──
+      await goto(page, '/clientes')
+      await waitForApp(page)
+      await page.getByPlaceholder(/Buscar/i).first().fill(cli)
+      const fila = page.locator('div', { hasText: cli }).filter({ has: page.getByTitle('Editar cliente') }).last()
+      await fila.getByTitle('Editar cliente').click()
+      await page.locator('select').filter({ has: page.locator('option', { hasText: nombreCat }) }).first().selectOption({ label: nombreCat })
+      await page.getByRole('button', { name: /^Guardar cambios$/ }).click()
+      await expect(page.getByText('Valores propios del cliente').first(), '[163b] D2: no preguntó por los valores propios').toBeVisible({ timeout: 8000 })
+      await page.getByRole('button', { name: /Usar los de la categoría/ }).click()
+      await expect.poll(async () => {
+        const [r] = (await (await request.get(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${cliId}&select=categoria_cliente_id,limite_credito`, { headers })).json()) as any[]
+        return `${r.categoria_cliente_id}|${r.limite_credito}`
+      }, { timeout: 10000, message: '[163b] tenía que quedar en la categoría y sin límite propio' }).toBe(`${catId}|null`)
+
+      // ── 73.13 · deuda de 700 heredando el límite 1000; bajarlo a 600 avisa "1 cliente quedaría por encima" ──
+      const v = await request.post(`${SUPABASE_URL}/rest/v1/ventas`, {
+        headers: h, data: { tenant_id: tid, cliente_id: cliId, estado: 'despachada', total: 700, monto_pagado: 0, es_cuenta_corriente: true,
+          medio_pago: JSON.stringify([{ tipo: 'Cuenta Corriente', monto: 700 }]), sucursal_id: s.id },
+      })
+      expect(v.ok(), `[163b] no se pudo sembrar la deuda: ${await v.text()}`).toBe(true)
+      ventaId = ((await v.json()) as any[])[0].id
+      await goto(page, '/clientes?tab=categorias')
+      await waitForApp(page)
+      const filaCat = page.locator(`[data-categoria="${nombreCat}"]`)
+      await expect(filaCat).toBeVisible({ timeout: 15000 })
+      await filaCat.getByTitle('Editar').click()
+      const dlg = page.getByRole('dialog', { name: 'Categoría de clientes' })
+      await dlg.locator('input[type=number]').first().fill('600')
+      await dlg.getByRole('button', { name: /^Guardar$/ }).click()
+      await expect(page.getByText(/1 cliente de esta categoría quedaría por encima/).first(), '[163b] no avisó el impacto del límite nuevo').toBeVisible({ timeout: 10000 })
+      await page.getByRole('button', { name: /^Cancelar$/ }).last().click()
+      const [catDb] = (await (await request.get(`${SUPABASE_URL}/rest/v1/categorias_cliente?id=eq.${catId}&select=cc_limite`, { headers })).json()) as any[]
+      expect(Number(catDb.cc_limite), '[163b] cancelar el aviso no tenía que guardar el límite').toBe(1000)
+    } finally {
+      if (ventaId) await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaId}`, { headers, data: { estado: 'cancelada' } })
+      await request.patch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${cliId}`, { headers, data: { activo: false } })
+      await request.patch(`${SUPABASE_URL}/rest/v1/categorias_cliente?id=eq.${catId}`, { headers, data: { activo: false } })
+    }
+  })
 })

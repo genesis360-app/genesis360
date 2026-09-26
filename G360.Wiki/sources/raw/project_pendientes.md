@@ -79,7 +79,7 @@ type: project
 >   de categoría + tope + import Excel · (5) IA del cartel + reporte · (6) tiers/combos programados + cambios masivos.
 >   ✅ **Fase 1: C-1 y C-3 HECHOS en DEV** (mig 441, e2e 161, UAT §72) — C-2 espera PL-4.
 >   ✅ **Fase 2 (categoría + cuenta corriente) HECHA en DEV** (mig 442, e2e 162/163, UAT §73). GO decidió el 26/09: vencimiento
->   = una regla del servidor, valores de fábrica → hereda, CC habilitada en el servidor. Pendiente menor: EF `data-api`.
+>   = una regla del servidor, valores de fábrica → hereda, CC habilitada en el servidor. EF `data-api` corregida en código (exporta la CC efectiva + categoría): **desplegarla en DEV y PROD con el release** (mergear no despliega EFs).
 >   Siguiente: **Fase 3 (motor único de precio)** — espera PL-5 (POS sin red).
 >   🙋 **Preguntas PL-1..PL-7** (PL-7 nueva: C-1 con varias sucursales espera TODAS las etiquetas) (tope del DUEÑO, ventas recurrentes y portal que no existen, default de C-2 en negocios
 >   existentes, POS sin red, ventas en espera que no existen) — en el mismo archivo. La Fase 1 no depende de PL-1..PL-3,

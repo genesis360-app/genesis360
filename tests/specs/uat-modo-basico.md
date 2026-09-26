@@ -2392,7 +2392,7 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 73.9 | Asignación masiva: elegir → resumen → Guardar en UNA operación; "usar la categoría" borra los propios, "mantener" los deja; un cliente inválido hace caer todo | SQL 6a-6c · e2e `163` (asignación desde la pantalla) | ✅ |
 | 73.10 | Historial: cambios de la categoría y asignaciones quedan en actividad_log desde el servidor (F1, E2) | SQL 7a (13 filas) · panel "Historial" | ✅ código |
 | 73.11 | Ficha del cliente: muestra lo que rige y de dónde sale ("de la categoría"), 3 estados por campo, "volver a la categoría" | e2e `163` | ✅ |
-| 73.12 | Al cambiar la categoría de un cliente con valores propios que compiten, pregunta: mantener (por defecto) o usar la categoría (D2) | revisión de código. 🟡 sin e2e | 🟡 |
-| 73.13 | Aviso de impacto al bajar el límite de una categoría ("N clientes quedarían por encima") | revisión de código. 🟡 sin e2e | 🟡 |
+| 73.12 | Al cambiar la categoría de un cliente con valores propios que compiten, pregunta: mantener (por defecto) o usar la categoría (D2) | e2e `163` (D2): pregunta y "Usar los de la categoría" deja el límite propio en NULL | ✅ |
+| 73.13 | Aviso de impacto al bajar el límite de una categoría ("N clientes quedarían por encima") | e2e `163`: deuda 700 heredando límite 1000 → bajar a 600 avisa "1 cliente"; cancelar no guarda | ✅ |
 | 73.14 | Pedidos → venta a CC: condiciones efectivas + CC habilitada en el servidor | e2e `107` (CC sobre el límite, regresión) · revisión de la mig | ✅ |
 | 73.15 | Regresión de los e2e de CC existentes (107, 28, 39, 40, 57, 83) | verdes; 46/49/69/72 se saltean por fixtures sin sembrar (preexistente) | ✅ |

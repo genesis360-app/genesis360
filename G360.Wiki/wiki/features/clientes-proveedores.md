@@ -33,7 +33,7 @@ Fase 2 de `sources/raw/plan_categorias_clientes_y_precio_programado.md` (relevam
   propios que compiten pregunta (D2). Solo el DUEÑO toca valores propios (E3); los demás editan el resto de la ficha.
 - **Verificación**: 20 comprobaciones SQL (incluida "0 diferencias efectivas sin categorías"), 16 unit, e2e **163** y
   regresión de los e2e de CC. UAT §73.
-- **Pendiente menor**: la EF `data-api` exporta `cuenta_corriente_habilitada` crudo (ahora puede ser NULL = hereda).
+- EF `data-api`: exporta la CC **efectiva** y la categoría (código en `dev`; se despliega con el release).
 
 ## Módulo Clientes
 

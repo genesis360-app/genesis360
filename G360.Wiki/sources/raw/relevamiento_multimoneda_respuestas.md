@@ -9,6 +9,11 @@ type: relevamiento
 > proposito: son reglas de negocio que tocan plata y la fidelidad importa mas que el formato.
 > El PDF original es la fuente autoritativa ante cualquier duda.
 
+> **✅ Los 11 puntos abiertos (A-1..A-11) de este relevamiento fueron RESPONDIDOS por GO el 2026-09-25**:
+> ver `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` (sección "A · Multimoneda"), que incluye
+> también la directiva de alcance (estructura de N monedas, oculta; hoy solo ARS+USD visibles) y la
+> revisión legal de la cotización fiscal (RG ARCA 5616/2024).
+
 ---
 
 Respuestas al relevamiento de reglas de negocio —

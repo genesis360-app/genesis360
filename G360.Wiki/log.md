@@ -6,6 +6,148 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-25] update | D-1 fase 1 — historial diario de la cotización DIVISA del BNA (mig 439, DEV)
+
+- Mig **439** `cotizaciones_bna` (fecha publicada × moneda; lectura `authenticated`, escritura `service_role`) +
+  `fn_cotizacion_bna_vigente(moneda)` = última fecha **estrictamente anterior** a hoy en Argentina (día hábil anterior;
+  fines de semana y feriados salen solos).
+- EF **`cotizacion-bna`**: parsea la pestaña *divisas* de `bna.com.ar/Personas` (el 25/09: USD 1516,50 / 1525,50).
+  Cron (`CRON_SECRET`) captura siempre y responde 502 si no pudo; usuario logueado solo si la última captura tiene
+  más de 30 min (respuesta A-2: "al iniciar sesión"). La anon key sola → 401.
+- Parser puro `supabase/functions/_shared/bnaDivisas.ts`, **9 tests contra HTML REAL** (`tests/fixtures/bna_personas_2026-09-25.html`):
+  la página trae primero la tabla de **billetes** (1495/1545) y el test cubre no tomarla. Filas con `*` se ignoran (otra escala).
+- `sweeps.yml`: paso nuevo `if: always()` a las 03:10 AR, cuando la página muestra el cierre del día hábil anterior.
+- Aplicada y desplegada en **Supabase DEV**; unit 1936/1936, tsc verde. **No en PROD**: falta mig + EF + merge (`v1.233.1`, consultado a GO).
+- F2 (migrar POS/ficha/importador/tiers/combos/pagos USD/Bóveda a esta única tasa) queda para cuando PROD tenga historial.
+
+## [2026-09-25] update | D-1 en curso — BNA vendedor divisa reemplaza "USD→ARS a compra" (decisión posterior)
+
+Sexta entrada del día, inmediatamente después de escribir las respuestas de GO a los 30 puntos abiertos.
+GO revisó el archivo y agregó una decisión nueva sobre D-1 (hallazgo del importador A0): el criterio
+correcto para el POS no es el que se había cerrado en v1.207.0.
+
+### D-1 — el POS va a convertir USD→ARS al vendedor divisa BNA del día hábil anterior
+
+Invierte y reemplaza la convención **"USD→ARS a compra"** (v1.207.0, 2026-09-08, Fede) que hoy rige en
+POS, ficha, importador, tiers/combos en USD, pagos recibidos en USD y Bóveda. Nueva regla: **una sola
+tasa en todos lados** = tipo de cambio **vendedor divisa** del Banco Nación del **día hábil anterior**.
+
+Fuente elegida: la tabla pública de divisas de bna.com.ar (25/09: USD **1516,50 / 1525,50**, que coincide
+con el "mayorista" de dolarapi) — **no** ARCA WS, porque exige certificado de producción y ningún tenant
+de PROD está en producción todavía. Tampoco dolarapi "oficial" (ese es BNA **billete**, no divisa).
+
+Base legal (agregada como sección "Revisión legal" en el mismo archivo, ver entrada anterior): la RG ARCA
+5616/2024 no obliga a usar esta tasa para una venta cobrada en USD pero facturada en pesos (es el caso
+inverso al que regula la norma) — es una **decisión de negocio**, no una obligación, pero es legal y
+coherente con la tasa fiscal (fija durante el día, así la góndola no cambia de precio a media mañana).
+
+**Exposición hoy en PROD: 0 productos en USD, 0 pagos en USD en los últimos 30 días** — el cambio no
+mueve nada real todavía.
+
+**Plan en 2 fases**: F1 = captura diaria + historial (sin cambio visible para nadie), F2 = migrar todos
+los caminos que hoy usan compra (POS, ficha, importador, tiers/combos, pagos, Bóveda) al nuevo criterio,
+todos juntos (cambiar solo uno rompería la caja, mismo razonamiento que originó v1.207.0). **EN CURSO,
+nada construido todavía.**
+
+Agregada como sección "Decisiones posteriores (mismo día)" al final de
+`sources/raw/respuestas_puntos_abiertos_2026-09-25.md`. Pendiente marcado en
+`wiki/business/consultas-contador.md` (C-16) y notas de "en curso, reemplaza a COMPRA" dejadas en
+[[wiki/features/ventas-pos]], [[wiki/features/caja]] y [[wiki/features/productos]] — el código y el
+criterio actual **no cambiaron todavía**, solo la documentación de que va a cambiar.
+
+---
+
+## [2026-09-25] update | Respuestas de GO a los 30 puntos abiertos + revisión legal de la cotización
+
+Quinta entrada del día. GO respondió, por chat, los 30 puntos abiertos de los 3 relevamientos entregados
+en HTML el 23/09 (Multimoneda A-1..A-11, Categorías de clientes B-1..B-9, Precio programado C-1..C-7) más
+los 3 hallazgos de A0 (D-1..D-3). Nuevo archivo `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`
+(ya commiteado antes de esta sesión de wiki).
+
+### 🧭 Directiva de alcance de Multimoneda
+
+*"No es crítico ahora porque solo vamos a trabajar con clientes de Argentina con ARS y USD"*: la
+**estructura** se construye completa (modelo de N monedas, config, cotización por moneda + historial),
+pero queda **oculta**. Visible hoy: solo **ARS principal + USD secundaria**. Otras monedas, cuando se
+habiliten, siempre con cotización **manual**.
+
+### Puntos más relevantes
+
+B-2 (Categorías de clientes): **gana el mejor precio, no se apilan** (lista/categoría/tier/estado → el
+más bajo, mostrando cuál ganó). B-5: el tope de descuento **también aplica al DUEÑO**, sin salteo (cambia
+la propuesta original). A-3: cotización fiscal = **vendedor divisa BNA**. D-2: confirmado ✅ (ya hecho,
+mig 436). D-3: además de lo ya resuelto, pendiente nuevo — desplegables en la plantilla de importación
+(categoría, moneda, proveedor) en vez de solo una hoja de referencia.
+
+### ⚖️ Revisión legal pedida (A-2, A-3, D-1)
+
+RG ARCA 5616/2024: para comprobantes emitidos **en moneda extranjera**, la cotización es el **vendedor
+divisa del BNA al cierre del día hábil anterior** — se guarda un registro por día, fijo durante toda la
+emisión. dolarapi no sirve para esto (sin histórico, y su "oficial" es billete, no divisa). Para D-1
+(venta cobrada en USD, facturada en pesos): **ninguna norma fija la tasa** — es decisión de negocio, no
+obligación (ver entrada siguiente, donde GO decidió cuál).
+
+### D-1 quedó abierto en este documento, resuelto en la entrada inmediatamente siguiente
+
+Al escribir este archivo, D-1 quedó marcado como pregunta abierta a GO. Se la consultaron en la misma
+sesión y respondió — ver la entrada de arriba ("D-1 en curso").
+
+Linkeado desde `sources/raw/relevamiento_multimoneda_respuestas.md`,
+`sources/raw/relevamiento_categorias_clientes_respuestas.md` y
+`sources/raw/relevamiento_precio_programado_respuestas.md`.
+
+---
+
+## [2026-09-25] deploy | v1.233.0 a PROD — migs 436+437, y aging automático (mig 438) en DEV y PROD
+
+Cuarta entrada del día. Cierra el pendiente que había quedado abierto en las dos sesiones anteriores:
+llevar las migs **436** (margen `numeric(8,2)`) y **437** (aislamiento de sweeps) a PROD. Además, GO
+decidió el mismo día que Aging Profiles corra solo (mig **438**).
+
+### 🚀 Deploy — PR #359, merge `e38e26cd`, release `v1.233.0` Latest
+
+Migs 436 y 437 se aplicaron en PROD **antes** del merge, como corresponde. La 437 chocó al primer
+intento con `schema_migrations_pkey` — se había aplicado en el mismo segundo que la 436, y la versión de
+`schema_migrations` es un timestamp al segundo. Falló entera; se reintentó (con un segundo de diferencia)
+y entró. **Lección**: aplicar migraciones de a una, con separación real de tiempo entre una y otra.
+
+Verificado: `app.genesis360.pro` sirve `v1.233.0` (bundle `/assets/index-Q6a9x2aD.js`, `curl -L`); hash
+de las funciones tocadas por la 437 idéntico entre DEV y PROD; paridad `pg_policies` por schema DEV=PROD:
+`public` **234** (`d95a8640`), `storage` **40** (`d57ccda2`), `cron` **2** (`796770dd`) — nota: esta
+fórmula de hash es distinta a la usada en sesiones anteriores, así que solo vale comparar DEV vs PROD del
+mismo día, no contra hashes de otras fechas. Auditoría de Edge Functions: sin drift nuevo — siguen los 2
+cosméticos ya conocidos en PROD (`mp-addon-batch` con 6 secrets vs. esperados, `mp-verificar-suscripcion`
+con 8, ambos esperando el OK de GO), `marketplace-webhook` no desplegada en DEV, y
+`wa-embedded-signup-exchange` no desplegada en PROD. CI unit verde; e2e se saltea en CI (no corre ahí).
+
+### 🌙 Mig 438 — Aging Profiles corre solo, un cron diario
+
+Decisión de GO: dejar de depender del botón manual de Config para que Aging Profiles mueva las líneas de
+inventario según sus reglas de vencimiento. `438_aging_diario_automatico.sql`:
+
+- **`process_aging_profiles_all()`** (nueva, solo `service_role`): recorre todos los tenants con Aging
+  configurado, cada uno en su propio bloque — un error en un negocio no frena a los demás, se acumula en
+  el resultado devuelto + `RAISE WARNING` para que quede en los logs.
+- **`pg_cron`**: job **`aging-inventario-diario`** a las `15 6 * * *` (UTC) = 03:15 hora Argentina.
+
+Aplicada con **definición idéntica** en DEV y PROD (md5 `c29bf37d…`, verificado antes de habilitar el
+cron). Prueba en seco (sin aplicar cambios reales) antes de dejarla corriendo sola: **PROD 0 cambios**
+sobre el único negocio que tiene Aging configurado hoy; **DEV 17 lotes movidos en 2 negocios**.
+
+Cierra el **ítem 7 del backlog de la auditoría de procesos** — con esto no queda nada pendiente de ese
+backlog salvo lo marcado como "menor futuro" (traslados, cheques).
+
+🛑 **El archivo de la migración vive solo en `origin/dev`** (commit `6df9997e`), **todavía no está en
+`main`** — llega recién en el próximo PR. La base de datos de PROD ya tiene la función y el cron
+aplicados (vía Management API), así que el comportamiento ya es real en producción aunque el repo de
+`main` todavía no lo refleje.
+
+Detalle completo: [[wiki/features/inventario-stock]] "Aging Profiles", [[wiki/features/productos]]
+"Margen: tope numeric(8,2)", [[wiki/database/migraciones]] (migs 436-438),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
 ## [2026-09-25] update | Mig 437 — sweeps aceptaban el negocio de otro (DEV)
 
 Tercera sesión del día. Revisando el ítem 7 del backlog de la auditoría de procesos ("cron para

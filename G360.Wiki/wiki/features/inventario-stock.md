@@ -669,9 +669,19 @@ Filtros en tab Historial:
 - Asignado por SKU en ProductoFormPage
 - Función SQL `process_aging_profiles()` SECURITY DEFINER: calcula días restantes, aplica regla, cambia estado, inserta en actividad_log
 - EF `process-aging` + botón manual en ConfigPage → Aging Profiles
-- Pendiente: scheduler diario (pg_cron) — decisión de GO pendiente (cambiaría estados de inventario sin click; ver "🔒 Mig 437" abajo)
+- **✅ Scheduler diario ya existe** (mig 438, ver abajo) — decidido por GO el 2026-09-25.
 
-> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `process_aging_profiles(p_tenant_id)`
+> [!NOTE] **Mig 438 — ✅ EN DEV Y EN PROD (bases de datos), archivo todavía solo en `origin/dev`
+> (2026-09-25, commit `6df9997e`, llega a `main` en el próximo PR):** Aging Profiles deja de depender
+> del botón manual y **corre solo**. `process_aging_profiles_all()` (nueva, solo `service_role`;
+> recorre todos los tenants con Aging configurado, cada uno en su propio bloque — un error no frena a
+> los demás, se acumula en el resultado + `RAISE WARNING`) + `pg_cron` **`aging-inventario-diario`** a
+> las `15 6 * * *` UTC (03:15 AR). Definición idéntica en DEV y PROD (md5 `c29bf37d…`). Prueba en seco
+> antes de habilitar el cron: PROD 0 cambios (1 negocio con Aging configurado), DEV 17 lotes en 2
+> negocios. Cierra el ítem 7 del backlog de la auditoría de procesos.
+
+> [!WARNING] **Mig 437 — ✅ EN DEV Y EN PROD (2026-09-25 en DEV, commit `e16df8c7`; a PROD el
+> 2026-09-25 en el deploy `v1.233.0`, PR #359, merge `e38e26cd`):** `process_aging_profiles(p_tenant_id)`
 > es `SECURITY DEFINER` con `EXECUTE` para `authenticated` y **no comparaba el parámetro con el
 > tenant del usuario que llama** — cualquier usuario logueado podía pasar el UUID de OTRO negocio y
 > forzarle un cambio de `estado_id` en su inventario. Fix: con sesión de usuario se exige

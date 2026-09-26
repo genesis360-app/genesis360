@@ -3,17 +3,46 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.232.0`** (2026-09-24, migs 001-**435**). Compute de PROD: **Micro**
-desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.233.0`** (2026-09-25, migs 001-**437** por PR + mig **438** aplicada en
+base de datos, archivo todavía solo en `origin/dev`). Compute de PROD: **Micro** desde el 2026-09-15
+(antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **PROD = DEV en migraciones** (001-435, paridad `pg_policies` intacta por schema: `public` **234** ·
-`storage` **40** · `cron` **2**, hashes idénticos). PR **#358** `dev→main`, merge commit **`5a294934`**,
-release **`v1.232.0` Latest**. Detalle completo en `log.md` (2026-09-24, `deploy`).
+✅ **PROD = DEV en migraciones aplicadas** (001-438, paridad `pg_policies` por schema: `public` **234**
+(`d95a8640`) · `storage` **40** (`d57ccda2`) · `cron` **2** (`796770dd`) — fórmula de hash distinta a
+sesiones anteriores, comparar solo DEV vs PROD del mismo día). PR **#359** `dev→main`, merge commit
+**`e38e26cd`**, release **`v1.233.0` Latest**. Detalle completo en `log.md` (2026-09-25, `deploy`).
+
+## 🚀 v1.233.0 — Margen hasta 999.999,99 % + aislamiento de sweeps a PROD, aging automático (2026-09-25, EN PROD)
+
+PR **#359**, merge `e38e26cd`. Lleva a PROD lo que había quedado en DEV el 24/09: migs **436** (techo de
+margen `numeric(8,2)`) y **437** (los sweeps con tenant por parámetro dejan de aceptar el de OTRO
+negocio — REGLA #0). Ambas se aplicaron en PROD **antes** del merge; la 437 chocó al primer intento con
+`schema_migrations_pkey` porque se aplicó en el mismo segundo que la 436 (la versión es un timestamp al
+segundo) — falló entera, se reintentó y entró. Lección: aplicar migraciones de a una, con separación.
+Verificado: `app.genesis360.pro` sirve `v1.233.0` (bundle `index-Q6a9x2aD.js`, `curl -L`); hash de las
+funciones de la 437 idéntico DEV=PROD; paridad `pg_policies` por schema DEV=PROD: `public` **234**
+(`d95a8640`), `storage` **40** (`d57ccda2`), `cron` **2** (`796770dd`). Auditoría de EFs: sin drift nuevo.
+CI unit verde; e2e se saltea en CI.
+
+**🌙 Mig 438 — Aging Profiles corre solo** (mismo día, decisión de GO, aplicada en DEV y PROD pero el
+archivo todavía solo en `origin/dev`, commit `6df9997e`, llega a `main` en el próximo PR):
+`process_aging_profiles_all()` (`service_role`, cada negocio en su propio bloque) + `pg_cron`
+**`aging-inventario-diario`** a las 03:15 AR. Cierra el ítem 7 del backlog de la auditoría de procesos.
+
+**📋 Respuestas de GO a los 30 puntos abiertos** de los relevamientos de Multimoneda/Categorías/Precio
+programado (`sources/raw/respuestas_puntos_abiertos_2026-09-25.md`), con revisión legal de la cotización
+fiscal (RG ARCA 5616/2024). **Decisión posterior, mismo día — D-1 EN CURSO**: el POS va a convertir
+USD→ARS al **vendedor divisa BNA del día hábil anterior**, una sola tasa en todos lados, reemplazando la
+convención "USD→ARS a compra" (v1.207.0). Nada construido todavía.
+
+Detalle completo: [[wiki/features/inventario-stock]] "Aging Profiles", [[wiki/features/productos]]
+"Margen: tope numeric(8,2)", [[wiki/database/migraciones]] (migs 436-438), `log.md` (2026-09-25,
+`deploy`/`update`).
 
 ## 🚀 v1.232.0 — El tope de 1000 de PostgREST, paginador real y una caja no puede tener dos sesiones abiertas (2026-09-24, EN PROD)
 

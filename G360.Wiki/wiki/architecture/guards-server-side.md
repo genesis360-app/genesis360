@@ -530,7 +530,7 @@ Detalle completo de la verificación en `log.md` (2026-09-20 ×2 y 2026-09-22) y
 
 ---
 
-## 🛡️ Tercera tanda (mig 437, 2026-09-25) — 🟡 EN DEV, falta PROD
+## 🛡️ Tercera tanda (mig 437, 2026-09-25) — ✅ EN DEV Y EN PROD (a PROD el 2026-09-25, deploy `v1.233.0`, PR #359, merge `e38e26cd`)
 
 A diferencia de las dos tandas anteriores, este hallazgo **no salió de una auditoría de seguridad
 dedicada**: apareció revisando el ítem 7 del backlog de auditoría de procesos ("cron para sweeps

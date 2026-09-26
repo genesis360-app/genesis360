@@ -6,6 +6,84 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-25, 4ª+ sesión) — 🚀 **DEPLOY a PROD `v1.233.0`** + 🌙 aging automático (mig 438) + 📋 30 puntos abiertos RESPONDIDOS + 💵 D-1 EN CURSO
+>
+> Continúa directo sobre el bloque de abajo (2ª+3ª sesión, que dejó 436/437 en DEV sin deploy). Esta
+> sesión: deploy a PROD, una migración nueva decidida y aplicada el mismo día, y las respuestas de GO a
+> los 30 puntos abiertos de los 3 relevamientos (con una decisión posterior que reabre D-1).
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.0` | 001-438 en base (el archivo de la 438 vive solo en `origin/dev`, llega a `main` en el próximo PR) |
+> | **DEV** | `v1.233.0` (mismo código que PROD + el archivo 438) | 001-438 |
+>
+> #### 1 · 🚀 Deploy a PROD — PR #359, merge `e38e26cd`, release `v1.233.0` Latest
+>
+> Migs **436** (margen `numeric(8,2)`) y **437** (aislamiento de sweeps) aplicadas en PROD **antes** del
+> merge. La 437 chocó al primer intento con `schema_migrations_pkey` — se aplicó en el mismo segundo que
+> la 436 (la versión es un timestamp al segundo); falló entera, se reintentó y entró. **Lección: aplicar
+> las migraciones de a una, con separación real de tiempo.**
+>
+> Verificado: `app.genesis360.pro` sirve `v1.233.0` (bundle `/assets/index-Q6a9x2aD.js`, `curl -L`); hash
+> de las funciones de la 437 idéntico DEV=PROD; paridad `pg_policies` por schema DEV=PROD: `public`
+> **234** (`d95a8640`), `storage` **40** (`d57ccda2`), `cron` **2** (`796770dd`) — nota: esta fórmula de
+> hash es distinta a la de sesiones anteriores, comparar solo DEV vs PROD del mismo día. Auditoría de
+> EFs: sin drift nuevo (siguen los 2 cosméticos de PROD `mp-addon-batch`/`mp-verificar-suscripcion`
+> esperando OK de GO, `marketplace-webhook` no desplegada en DEV, `wa-embedded-signup-exchange` no
+> desplegada en PROD). CI unit verde; e2e se saltea en CI.
+>
+> #### 2 · 🌙 Mig 438 — Aging Profiles corre solo (decisión de GO, mismo día)
+>
+> `438_aging_diario_automatico.sql`: `process_aging_profiles_all()` (solo `service_role`; cada negocio en
+> su propio bloque, un error no frena a los demás — se acumula en el resultado + `RAISE WARNING`) +
+> `pg_cron` **`aging-inventario-diario`** a las `15 6 * * *` (03:15 AR). Aplicada con definición idéntica
+> en DEV y PROD (md5 `c29bf37d…`). Prueba en seco: PROD 0 cambios (1 negocio con Aging configurado), DEV
+> 17 lotes en 2 negocios. Cierra el **ítem 7 del backlog de auditoría de procesos** — no queda nada de
+> ese backlog salvo lo "menor futuro" (traslados, cheques).
+>
+> 🛑 **El archivo vive solo en `origin/dev`** (commit `6df9997e`), **todavía no en `main`** (llega en el
+> próximo PR); la base de PROD ya tiene la función y el cron aplicados vía Management API.
+>
+> #### 3 · 📋 Respuestas de GO a los 30 puntos abiertos + revisión legal
+>
+> Archivo nuevo `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`: respuestas de GO a Multimoneda
+> (A-1..A-11), Categorías de clientes (B-1..B-9), Precio programado (C-1..C-7) y hallazgos de A0
+> (D-1..D-3). **Directiva de alcance de Multimoneda**: estructura de N monedas completa pero **oculta**;
+> visible hoy solo **ARS + USD**. Revisión legal (RG ARCA 5616/2024, Res. SIC 4/2025) de A-2/A-3/D-1.
+> Linkeado desde los 3 archivos de relevamiento (`relevamiento_multimoneda_respuestas.md`,
+> `relevamiento_categorias_clientes_respuestas.md`, `relevamiento_precio_programado_respuestas.md`).
+>
+> #### 4 · 💵 Decisión posterior, mismo día — D-1 EN CURSO (reemplaza "USD→ARS a compra")
+>
+> Después de escribir las respuestas, GO decidió: el POS va a convertir USD→ARS al **tipo de cambio
+> vendedor divisa del BNA del día hábil anterior** (no billete, no compra) — **una sola tasa en todos
+> lados**: precio POS, ficha, importador, tiers/combos USD, valor de pagos recibidos en USD, Bóveda. Esto
+> **reemplaza** la regla "USD→ARS a compra" de v1.207.0 (Fede, 08/09).
+>
+> Fuente: tabla pública de bna.com.ar (25/09: USD 1516,50/1525,50, = mayorista de dolarapi) — no ARCA WS
+> (exige cert de producción, ningún tenant de PROD está ahí). Exposición hoy en PROD: **0 productos USD,
+> 0 pagos USD en 30 días** — el cambio no mueve nada real todavía. Plan en 2 fases: F1 captura diaria +
+> historial (sin cambio visible), F2 migrar todos los caminos. **EN CURSO, nada construido todavía.**
+>
+> Notas de "en curso, reemplaza a COMPRA" dejadas en [[wiki/features/ventas-pos]], [[wiki/features/caja]],
+> [[wiki/features/productos]] y [[wiki/business/consultas-contador]] (C-16) — el código y el criterio
+> actual **no cambiaron todavía**.
+>
+> #### ▶️ Qué queda pendiente para la próxima sesión
+> - **D-1**: **F1 HECHA en DEV (mig 439, commit `bb2c20a6`)**: tabla `cotizaciones_bna` + `fn_cotizacion_bna_vigente` + EF `cotizacion-bna` (desplegada en DEV, probada con usuario real: capturó USD/EUR/GBP del 25/09; la anon key sola → 401) + paso nuevo en `sweeps.yml` a las 03:10 AR. **Falta llevarla a PROD** (mig 439 + deploy EF + merge, porque el workflow corre desde `main`) — consultado a GO como `v1.233.1`, sin cambio visible.
+>   Después **F2**: migrar POS/ficha/importador/tiers/combos/pagos/Bóveda a la nueva tasa, todos juntos
+>   (arrancar cuando PROD tenga al menos un día de historial).
+> - **D-3** (importador): agregar desplegables a la plantilla Excel (categoría, moneda, proveedor, unidad)
+>   — hoy solo trae una hoja "Referencia"; la versión CE de SheetJS no escribe validaciones de datos, así
+>   que requiere otra librería o resolver el límite de otra forma.
+> - **Categorías de clientes** y **Precio programado**: ya tienen las 16 respuestas de GO (B-1..B-9,
+>   C-1..C-7) — **listos para planificar** la implementación por fases.
+> - Rotación de las keys legacy de Supabase en PROD (sigue pendiente, esperando medición de GO).
+> - Consultas al contador: siguen sumándose (C-16 actualizada con la nueva postura de D-1; nada
+>   respondido todavía por un matriculado real).
+>
+> ---
+>
 > ### 🛑 ARRANCÁ ACÁ (2026-09-25, 2ª+3ª sesión) — 🟡 D-2 (mig 436) + 🔒 mig 437 (sweeps cross-tenant) EJECUTADOS EN DEV, falta PROD
 >
 > Mismo día que el cierre de abajo, dos sesiones siguientes: primero se escribió y aplicó la

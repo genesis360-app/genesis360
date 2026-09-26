@@ -1,6 +1,6 @@
 ---
 name: respuestas_puntos_abiertos_2026-09-25
-description: Respuestas de GO (2026-09-25) a los 30 puntos abiertos de Multimoneda (A-1..A-11), Categorías de clientes (B-1..B-9), Precio programado (C-1..C-7) y hallazgos de A0 (D-1..D-3). Incluye la directiva de alcance de Multimoneda (estructura N monedas, oculta; hoy solo ARS+USD) y la revisión legal pedida para A-2/A-3 y D-1.
+description: Respuestas de GO (2026-09-25) a los 30 puntos abiertos de Multimoneda (A-1..A-11), Categorías de clientes (B-1..B-9), Precio programado (C-1..C-7) y hallazgos de A0 (D-1..D-3). Incluye la directiva de alcance de Multimoneda (estructura N monedas, oculta; hoy solo ARS+USD), la revisión legal pedida para A-2/A-3 y D-1, y la decisión posterior del mismo día que cierra D-1 (BNA vendedor divisa reemplaza "USD→ARS a compra", en curso).
 type: project
 ---
 
@@ -73,7 +73,7 @@ Todas **ok con la propuesta**.
 
 | # | Respuesta de GO | Estado |
 |---|---|---|
-| D-1 | 🛑 *"Al final la corrección estaba mal: lo que está bien es que en el POS se cotice al dólar **venta** de la cotización del **día hábil previo** al de facturación. Revisá legalmente cómo debería ser."* | 🔴 **NO ejecutado — consulta abierta a GO** (ver revisión legal). Invierte el fix de v1.207.0 (Fede, 08/09) y la convención "USD→ARS a compra" que hoy rige en POS, ficha, importador, pagos en USD y Bóveda. |
+| D-1 | 🛑 *"Al final la corrección estaba mal: lo que está bien es que en el POS se cotice al dólar **venta** de la cotización del **día hábil previo** al de facturación. Revisá legalmente cómo debería ser."* | ✅ **CERRADO el mismo día — ver "Decisiones posteriores" al final de este documento.** Vendedor divisa BNA del día hábil anterior, una sola tasa en todos lados. Invierte el fix de v1.207.0 (Fede, 08/09) y la convención "USD→ARS a compra" que hoy rige en POS, ficha, importador, pagos en USD y Bóveda. **EN CURSO: F1 (captura + historial) hecha en DEV, mig 439; F2 pendiente.** |
 | D-2 | ok | ✅ Ya hecho (mig 436, en DEV). |
 | D-3 | ok con la propuesta, y: *"el archivo template para importar ya debería venir con los chips desplegables u opciones disponibles para los campos que necesitan datos ya creados, como categoría, moneda, proveedores, etc."* | La propuesta (actualizar solo las columnas que trae el archivo) **ya está hecha** (UAT §66.8). Las "2 o 3 opciones" que GO recordaba existen: *Solo crear nuevos · Solo actualizar · Crear y actualizar*. **Nuevo pendiente**: desplegables en la plantilla (categoría, moneda, proveedor, unidad, etc.). Hoy la plantilla trae solo una hoja "Referencia", sin desplegables; la versión CE de SheetJS no escribe validaciones de datos, así que requiere otra librería o ese límite hay que resolverlo. |
 
@@ -125,3 +125,35 @@ Sigue valiendo: toda duda fiscal va también a la lista del contador.
    pero si paga en dólares un producto en pesos, tomarle los dólares a la tasa **vendedora** significa
    valuárselos más caro de lo que el banco se los compraría. Es otra decisión (hoy es "compra" por
    convención de casa de cambio).
+
+## Decisiones posteriores (mismo día) — 2026-09-25
+
+Después de escribir y entregar lo de arriba, GO respondió el punto que había quedado abierto en "Lo que
+falta decidir en D-1".
+
+### D-1 — CERRADO: el POS convierte USD→ARS al vendedor divisa BNA del día hábil anterior
+
+**Reemplaza** la convención "USD→ARS a compra" (v1.207.0, 2026-09-08, Fede) vigente hoy en POS, ficha,
+importador, tiers/combos en USD, pagos recibidos en USD y Bóveda.
+
+- **Tasa**: tipo de cambio **vendedor divisa** del Banco Nación Argentina, del **día hábil anterior** (no
+  billete, no compra) — la misma que exige la RG ARCA 5616/2024 para comprobantes en moneda extranjera,
+  aunque acá se aplica a un caso que la norma no regula (venta cobrada en USD, facturada en pesos).
+- **Una sola tasa en todos lados**, sin excepción: precio de producto en el POS, ficha, importador, tiers
+  y combos en USD, valor de un pago recibido en dólares, y Bóveda. Cambiar solo una parte rompe la caja
+  (mismo razonamiento que originó v1.207.0 cuando se detectó el problema con "venta").
+- **Fuente elegida**: la tabla pública de divisas de **bna.com.ar** — el 25/09 marcaba compra 1516,50 /
+  venta 1525,50, que coincide con el "mayorista" que ya expone dolarapi. **No se usa ARCA WS**
+  (`FEParamGetCotizacion`) para esto porque exige certificado de producción, y ningún tenant de PROD está
+  en producción todavía — cuando alguno lo esté, se puede reevaluar la fuente sin cambiar el criterio.
+- **Exposición hoy**: medido en PROD, **0 productos en USD y 0 pagos en USD en los últimos 30 días** — el
+  cambio no mueve ninguna plata real en este momento.
+- **Implementación en 2 fases**: **F1** — captura diaria de la cotización + tabla de historial (sin
+  ningún cambio visible para nadie mientras tanto); **F2** — migrar todos los caminos que hoy usan
+  COMPRA (POS, ficha, importador, tiers/combos, pagos en USD, Bóveda) al nuevo criterio, todos juntos.
+- **Estado: EN CURSO.** **F1 HECHA en DEV (mig 439, commit `bb2c20a6`)**: tabla `cotizaciones_bna` + `fn_cotizacion_bna_vigente` + EF `cotizacion-bna` (desplegada en DEV, probada con usuario real: capturó USD/EUR/GBP del 25/09; la anon key sola → 401) + paso nuevo en `sweeps.yml` a las 03:10 AR. **Falta llevarla a PROD** (mig 439 + deploy EF + merge, porque el workflow corre desde `main`) — consultado a GO como `v1.233.1`, sin cambio visible. F2 (migrar todos los caminos a esta tasa) pendiente.
+
+Actualizado en el wiki: [[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA",
+[[wiki/features/caja]] (`cajaBoveda.ts`), [[wiki/features/productos]] (importador),
+[[wiki/business/consultas-contador]] (C-16, C-08). El código y el criterio real **no cambiaron
+todavía** — estas notas solo documentan que el cambio va a llegar.

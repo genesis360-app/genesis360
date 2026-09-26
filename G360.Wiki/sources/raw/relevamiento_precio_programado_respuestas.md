@@ -9,6 +9,10 @@ type: relevamiento
 > proposito: son reglas de negocio que tocan plata y la fidelidad importa mas que el formato.
 > El PDF original es la fuente autoritativa ante cualquier duda.
 
+> **✅ Los 7 puntos abiertos (C-1..C-7) de este relevamiento fueron RESPONDIDOS por GO el 2026-09-25**:
+> ver `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` (sección "C · Precio programado") — todos
+> ok con la propuesta. Listo para planificar la implementación por fases.
+
 ---
 
 Respuestas al relevamiento de reglas de negocio — Precio de

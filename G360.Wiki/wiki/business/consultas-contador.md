@@ -325,6 +325,12 @@ muestre hoy y que **no debería mostrar** sin la firma de un profesional?
 > pagos recibidos en USD, Bóveda). Ver `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`
 > ("Decisiones posteriores"), [[wiki/features/ventas-pos]] "UNA sola tasa USD→ARS".
 
+> [!NOTE] **2026-09-26 — norma encontrada:** el **art. 49 del Dto. 692/98** (reglamento de IVA) convierte las
+> operaciones en moneda extranjera al **vendedor BNA al cierre del día anterior** al hecho imponible — la misma tasa
+> que se implementó. Pregunta concreta para el contador: ¿un producto con precio fijado en USD y facturado en pesos
+> queda alcanzado por el art. 49? Detalle en `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` ("Segunda
+> revisión legal").
+
 **Pregunta:** cuando la venta se cobra en dólares pero la factura se emite en **pesos** (que es la
 decisión de producto), ¿qué cotización corresponde para pasar esos dólares a pesos: la que usó el
 negocio en el mostrador, o la del BNA del día hábil anterior? ¿Y comprador o **vendedor divisa**?

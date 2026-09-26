@@ -111,6 +111,41 @@ Fuentes: [RG 5616/2024 — Boletín Oficial](https://www.boletinoficial.gob.ar/d
 [Manual del desarrollador WSFEv1 (ARCA)](https://www.afip.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG.pdf).
 Sigue valiendo: toda duda fiscal va también a la lista del contador.
 
+### ⚖️ Segunda revisión legal — 2026-09-26 (después de implementar la fase 2)
+
+GO pidió validar contra normas oficiales lo configurado. Resultado:
+
+- ✅ **RG ARCA 5616/2024, arts. 1-2** (texto del B.O. verificado): "tipo de cambio **vendedor divisa** que informa el
+  BNA **al cierre de sus operaciones**, correspondiente al **día hábil cambiario anterior**". Coincide con la tasa elegida.
+- 🔁 **Corrige la conclusión 2 de arriba ("ninguna norma fija la tasa")**: el **art. 49 del Decreto 692/98**
+  (reglamento de IVA) dice que las operaciones en moneda extranjera "se convertirán al tipo de cambio **vendedor** del
+  BNA, **al cierre del día anterior** a aquél en el que se perfeccione el hecho imponible". Un producto con precio
+  fijado en dólares y facturado en pesos cae razonablemente acá → la tasa elegida **no es solo legal sino la que pide
+  el IVA** para determinar la base imponible. (No dice "divisa"; ARCA usa divisa — coherente.) Ir al contador (C-16).
+- ✅ **Res. SIC 4/2025, art. 2 a)**: precio en pesos obligatorio, en dólares opcional; **no fija tipo de cambio**.
+  🛑 **Art. 2 g)**: el precio de góndola **debe coincidir con el cobrado en caja**. Hallazgo: las etiquetas de
+  precio (Repositores), Tienda Nube y Mercado Libre usan `productos.precio_venta`, el espejo en pesos CONGELADO del
+  día en que se editó el producto; el POS cobra `precio_usd × tasa del día`. Para un producto en USD difieren apenas
+  se mueve la cotización. Preexistente (también con "compra"); exposición PROD 0 productos USD. Pendiente de decisión.
+- ⚠️ **Valuación de tenencias en dólares** (saldo de Bóveda, "cuánto valen mis dólares"): Ganancias (empresas, al
+  cierre de ejercicio) y Bienes Personales (al 31/12) usan el **COMPRADOR** del BNA. La fase 2 pasó la Bóveda y los
+  dashboards al vendedor por decisión de GO ("sin excepción") — válido como gestión interna, pero **no** es el
+  criterio de un balance/DDJJ. Ya está en C-08 del contador.
+- ⚠️ **Ganancias, reglamento arts. 160-161**: convierte al comprador/vendedor "al cierre del día en que se concrete
+  la operación" (el MISMO día, no el anterior). IVA y Ganancias pueden pedir tasas distintas para la misma venta:
+  normal, lo resuelve el contador en la liquidación; la app guarda la tasa usada en cada venta (`ventas.cotizacion_usd`).
+- 🛑 **Hueco técnico contra "al cierre"**: la EF captura también durante el día (logins), y a esa hora la página del
+  BNA muestra la cotización **intradiaria** con la fecha de hoy. Si el cron de las 03:10 falla y nadie entra entre el
+  cierre (~15 h) y la apertura del día siguiente, la fila de ese día queda con un valor intradiario y al otro día se
+  usa como "vigente" sin serlo. Hoy no pasó (las filas de PROD y DEV se capturaron a las 00:03 y 00:37 del día
+  siguiente). Fix propuesto: marcar la fila como de cierre solo si se capturó después del cierre, y avisar si no.
+
+Fuentes: [RG 5616/2024 — B.O.](https://www.boletinoficial.gob.ar/detalleAviso/primera/318374/20241218) ·
+[Res. SIC 4/2025 — B.O.](https://www.boletinoficial.gob.ar/detalleAviso/primera/319787/20250117) ·
+[Ámbito — billete o divisa a nivel impositivo (cita Dto. 692/98 art. 49, Ganancias arts. 160-161, Bienes Personales)](https://www.ambito.com/opiniones/dolar/que-cotizacion-corresponde-utilizar-nivel-impositivo-billete-o-divisa-n5102786) ·
+[Errepar — valuación de moneda extranjera](https://blog.errepar.com/moneda-extranjera-adquirida-mercado-financiero/).
+⚠️ El texto del Dto. 692/98 art. 49 se tomó de fuentes secundarias (el sitio del CPCECABA devolvió 403); verificar en InfoLEG.
+
 ### 🛑 Lo que falta decidir en D-1 (consultado a GO el 2026-09-25)
 
 1. **¿Venta billete o vendedor divisa?** Hoy la app usa dolarapi "oficial" = BNA **billete**. El día 25/09:

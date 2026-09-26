@@ -35,7 +35,8 @@ import {
   ArrowLeft, Tags, Flame, TrendingUp, Clock, Check, X, Tag, CircleDot, UserCog, User,
   RefreshCw, MapPin, ArrowRight, PackageCheck, Printer, Bell, CalendarClock, AlertTriangle,
 } from 'lucide-react'
-import { etiquetaAntesDeHora, etiquetaVencida, formatearVigencia } from '@/lib/precioProgramado'
+import { fmtPesos } from '@/lib/formato'
+import { etiquetaAntesDeHora, etiquetaEsperada, etiquetaVencida, formatearVigencia } from '@/lib/precioProgramado'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -59,6 +60,8 @@ export default function RepositoresPage() {
   const [searchParams] = useSearchParams()
   const tareaResaltada = searchParams.get('tarea')
   const { user, tenant } = useAuthStore()
+  // C-1 (mig 441): en este modo, pasada la hora el precio espera la etiqueta (no está "vencida").
+  const precioEsperaEtiqueta = !!(tenant as any)?.precio_programado_requiere_repositor
   const { sucursalId, applyFilter } = useSucursalFilter()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const confirmar = useConfirm()
@@ -406,7 +409,13 @@ export default function RepositoresPage() {
 
   const handleCompletar = async (t: any) => {
     const nombre = seccion === 'carteles' ? t.producto_nombre : (t.productos?.nombre ?? '')
-    const msg = seccion === 'carteles'
+    // C-1 (mig 441): en modo "el precio espera la etiqueta", confirmar hace regir el precio nuevo — decirlo.
+    const haceRegir = seccion === 'carteles' && etiquetaEsperada(t, t.precio_vigente, precioEsperaEtiqueta)
+    const msg = haceRegir
+      ? `¿Confirmar la etiqueta de "${nombre}"?
+
+Al confirmarla, el precio nuevo (${fmtPesos(Number(t.precio_nuevo))}) empieza a regir ya en el POS.`
+      : seccion === 'carteles'
       ? `¿Marcar como lista la tarea de "${nombre}"?`
       : `¿Confirmar que se movió el stock de "${nombre}" a la góndola?`
     if (!(await confirmar(msg))) return
@@ -630,7 +639,11 @@ export default function RepositoresPage() {
                     )}
                     {/* Precio programado (mig 423): antes de la hora se prepara, pasada la hora está vencida */}
                     {t.vigente_desde && filtro === 'activas' && (
-                      etiquetaVencida(t) ? (
+                      etiquetaEsperada(t, t.precio_vigente, precioEsperaEtiqueta) ? (
+                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 inline-flex items-center gap-1">
+                          <CalendarClock size={10} /> El precio nuevo empieza a regir cuando confirmes esta etiqueta
+                        </span>
+                      ) : etiquetaVencida(t) ? (
                         <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 inline-flex items-center gap-1">
                           <AlertTriangle size={10} /> Vencida: rige desde {formatearVigencia(t.vigente_desde)}
                         </span>
@@ -681,7 +694,9 @@ export default function RepositoresPage() {
                       disabled={completarTarea.isPending || etiquetaAntesDeHora(t, t.precio_vigente)}
                       title={etiquetaAntesDeHora(t, t.precio_vigente)
                         ? `Se completa cuando rija el precio nuevo (${formatearVigencia(t.vigente_desde)})`
-                        : 'Marcar como lista'}
+                        : etiquetaEsperada(t, t.precio_vigente, precioEsperaEtiqueta)
+                          ? 'Confirmar la etiqueta: el precio nuevo empieza a regir ahora'
+                          : 'Marcar como lista'}
                       className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-50 transition-colors">
                       <Check size={16} />
                     </button>

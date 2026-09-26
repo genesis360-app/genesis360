@@ -6,7 +6,15 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-440, + correctivos 387b/387c)
+# Historial de Migraciones (001-441, + correctivos 387b/387c)
+
+📅 **Migración 441 — 🟡 EN DEV, falta PROD** (2026-09-26): `441_precio_programado_aprobacion_repositor.sql` — **C-1 de
+Precio programado**. `tenants.precio_programado_requiere_repositor` (default false) + `precio_programado_aviso_demora_horas`
+(1-168, default 2; GRANT UPDATE por columna) + `precios_programados.aviso_demora_at`. Nueva `fn_aplicar_precio_programado(uuid)`
+(solo service_role) con el cuerpo que vivía en el cron; `fn_aplicar_precios_programados` (espera etiquetas + aviso de demora),
+`fn_generar_tareas_precio_programado`, `fn_tarea_repositor_guard_completar`, `fn_productos_rol_guard` (bypass acotado con
+`g360.pp_aplicando`), `fn_generar_tarea_repositor_precio` y trigger nuevo `trg_tarea_repositor_aplicar_programado`. Las 5
+funciones de partida verificadas idénticas DEV = PROD. Probada en transacción descartada con impersonación (DEPOSITO).
 
 📅 **Migración 440 — 🟡 EN DEV, falta PROD** (2026-09-26): `440_precio_efectivo_cotizacion_bna.sql` — **D-1 fase 2**.
 `fn_precio_venta_efectivo` (motor de precio de Pedidos → venta) pasa a la tasa única `fn_cotizacion_bna_vigente('USD')`

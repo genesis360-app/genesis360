@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | Precio programado C-1 (el precio espera la etiqueta, mig 441) y C-3 (cambio "ahora" pregunta)
+
+- **C-1** opcional por negocio: pasada la hora el precio espera que se confirme la etiqueta (todas las sucursales con
+  góndola); al confirmar la última rige en el acto. El guard de productos deja pasar SOLO esa aplicación aunque la confirme
+  un rol sin permiso de precios. Aviso único a las X horas. Mig 441 aplicada en Supabase DEV tras probarla en transacción
+  descartada con impersonación (14 comprobaciones, incl. 2 intentos de abuso rechazados).
+- **C-3**: `useResolverPrecioProgramado` en ficha, Supervisión, edición masiva, kit e importador; `useElegir` (3 opciones).
+- Verificado: tsc, unit, e2e **161** (cron real + ficha) y regresión **151**. UAT §72. Nueva pregunta **PL-7**.
+
 ## [2026-09-26] update | Plan de fases: Categorías de clientes + Precio programado (sin código)
 
 - `sources/raw/plan_categorias_clientes_y_precio_programado.md`: 6 fases; el eje es el **motor único de precio en SQL**

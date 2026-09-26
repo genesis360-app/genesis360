@@ -2353,3 +2353,25 @@ Decisión de GO del 25/09 (D-1): todo lo que pasa dólares a pesos usa el **vend
 | 71.5 | Solo se ofrecen categorías y proveedores **activos** | revisión de código. 🟡 sin test | 🟡 |
 | 71.6 | Nombres con coma o `&` no rompen la lista; carteles de error dentro de los topes de Excel (32/255) | unit `xlsxValidaciones.test.ts` (14) | ✅ |
 | 71.7 | La hoja Referencia dice cuándo se generó la plantilla, y el cartel de error indica volver a descargarla si se creó una categoría/proveedor después | sonda e2e (texto de Referencia) | ✅ |
+
+## 🗓️ §72 — Precio programado: C-1 (el precio espera la etiqueta, mig 441) y C-3 (cambio "ahora" con programado pendiente) — 2026-09-26
+
+Respuestas de GO del 25/09 (`respuestas_puntos_abiertos_2026-09-25.md`, C-1 y C-3). C-1 es **opcional** por negocio (Config → Inventario → Repositores); apagado = como antes.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 72.1 | Modo prendido: llegada la hora, el cron **no** aplica el precio mientras la etiqueta ligada siga abierta | e2e `161` (C-1): pasada la hora + un minuto entero de cron, el precio sigue siendo el viejo (anti-vacío) · SQL en transacción descartada (A1-A4) | ✅ |
+| 72.2 | Al confirmar la ÚLTIMA etiqueta el precio rige **en el acto** (no al minuto siguiente) y **no** se pide otra etiqueta para esa sucursal | e2e `161`: confirmado desde Repositores → precio nuevo en ≤ 15 s, programado `aplicado`, 0 tareas abiertas · SQL A6-A8 | ✅ |
+| 72.3 | 🛑 Lo puede confirmar un rol que **no** puede cambiar precios (p. ej. DEPOSITO): el guard deja pasar SOLO la aplicación de ese programado | SQL con impersonación del DEPOSITO: confirma → precio aplicado | ✅ |
+| 72.4 | 🛑 Ese mismo rol **no** puede cambiar un precio directo, ni poniéndose la marca interna a mano con un id inventado | SQL X1 y X2: los dos rechazados ("tu rol no puede cambiar precios") | ✅ |
+| 72.5 | Antes de la hora la etiqueta **no** se puede confirmar (la góndola mostraría un precio que no se cobra) | SQL D2: rechazado "Todavía no…" | ✅ |
+| 72.6 | Si la etiqueta sigue sin confirmarse X horas después (default 2, configurable 1-48) se avisa **una vez** a DUEÑO y SUPER_USUARIO | SQL C1-C2: 2 avisos (2 destinatarios) y no se duplican en el cron siguiente | ✅ |
+| 72.7 | Producto **sin góndola** en modo prendido: no hay etiqueta que esperar → cambia a la hora | por diseño (sin tarea ligada, el cron aplica). 🟡 sin test | 🟡 |
+| 72.8 | Modo **apagado**: exactamente como antes (a la hora exacta) | SQL B1-B3 · e2e `151` (regresión) | ✅ |
+| 72.9 | Repositores explica "El precio nuevo empieza a regir cuando confirmes esta etiqueta" (no "Vencida"), y el diálogo de confirmación lo repite con el precio | e2e `161` | ✅ |
+| 72.10 | C-3 ficha: cambiar el precio "Ahora" con un programado pendiente pregunta; **Cancelar el programado y guardar** (opción por defecto, Enter) lo cancela | e2e `161` (C-3, paso 2) | ✅ |
+| 72.11 | C-3: **Guardar y mantener** guarda el precio y deja el programado pendiente | e2e `161` (paso 3) | ✅ |
+| 72.12 | C-3: **Volver** (o Escape) no guarda nada — nunca cae en una opción por accidente | e2e `161` (paso 1) | ✅ |
+| 72.13 | C-3 también en: aprobación de cambio de precio en Supervisión, edición masiva de precio, precio sugerido de kit e importador | revisión de código (mismo hook `useResolverPrecioProgramado`). 🟡 sin e2e propio | 🟡 |
+| 72.14 | Si falla la cancelación del programado, **no** se guarda el precio (si no, el programado lo pisaría a su hora) | revisión del hook. 🟡 sin test | 🟡 |
+

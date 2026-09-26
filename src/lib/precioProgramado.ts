@@ -97,6 +97,17 @@ export function etiquetaVencida(tarea: TareaEtiqueta, ahora: Date = new Date()):
   return !isNaN(desde.getTime()) && desde.getTime() <= ahora.getTime()
 }
 
+/**
+ * C-1 (mig 441) — modo "el precio espera la etiqueta": ya llegó la hora pero el precio nuevo todavía no rige porque
+ * falta que se confirme esta etiqueta. No es una etiqueta "vencida": al confirmarla, el precio empieza a regir.
+ */
+export function etiquetaEsperada(
+  tarea: TareaEtiqueta, precioVigente: unknown, requiereRepositor: boolean, ahora: Date = new Date(),
+): boolean {
+  if (!requiereRepositor || !etiquetaVencida(tarea, ahora)) return false
+  return cambioDePrecio(precioVigente, tarea.precio_nuevo)
+}
+
 /** Opciones de anticipación de la tarea del repositor (minutos). `tenants.repositor_anticipacion_min` acepta 0-1440. */
 export const ANTICIPACION_OPCIONES_MIN = [0, 15, 30, 60, 120, 240, 480, 1440] as const
 

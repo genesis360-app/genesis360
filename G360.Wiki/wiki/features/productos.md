@@ -785,6 +785,40 @@ PostgREST con control negativo. ✅ **Deploy a PROD el 2026-09-15** (migs 422-42
 
 ---
 
+## 🗓️ Precio programado — C-1 y C-3 de las respuestas del 25/09 (mig 441, 2026-09-26, DEV)
+
+Primer paso de la Fase 1 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`.
+
+**C-1 · "el precio cambia cuando llegó la hora Y el repositor confirmó"** — opcional por negocio, en Config →
+Inventario → Repositores (`tenants.precio_programado_requiere_repositor`, apagado por defecto = a la hora exacta).
+Prendido (modo avanzado):
+- El cron no aplica un programado mientras quede **alguna** etiqueta ligada abierta (una por sucursal con góndola).
+  Sin góndola, cambia a la hora. Las etiquetas se crean aunque la hora ya pasó (con anticipación "a la hora del
+  cambio" no había ventana previa).
+- La etiqueta se confirma recién pasada la hora; al confirmar la **última**, el precio rige **en el acto**
+  (trigger `trg_tarea_repositor_aplicar_programado`) y no se pide otra etiqueta para esa sucursal.
+- 🛑 Como lo dispara la confirmación del repositor, corre con su sesión: `fn_productos_rol_guard` deja pasar SOLO esa
+  aplicación (marca local `g360.pp_aplicando` + programado pendiente de ese producto con exactamente ese precio + ninguna
+  otra columna de precio tocada). Probado con un DEPOSITO: confirma → aplica; cambiar un precio directo o con la marca
+  inventada → rechazado.
+- Aviso único a DUEÑO y SUPER_USUARIO si la etiqueta sigue sin confirmarse X horas después (default 2).
+- El cuerpo de "aplicar un programado" pasó a `fn_aplicar_precio_programado(p_id)` (solo `service_role`), que usan el
+  cron y el trigger; mismo comportamiento que antes.
+- Pantallas: Repositores dice "El precio nuevo empieza a regir cuando confirmes esta etiqueta" (en vez de "Vencida") y
+  el diálogo lo repite con el precio; Programados muestra "Esperando que se confirme la etiqueta".
+
+**C-3 · cambio "ahora" con un programado pendiente → pregunta, por defecto cancelarlo** — hook
+`useResolverPrecioProgramado` en los 5 caminos que cambian `precio_venta` desde la app: ficha, aprobación en
+Supervisión, edición masiva, precio sugerido de kit e importador. Opciones: **Cancelar el programado y guardar**
+(primaria, Enter), **Guardar y mantener**, **Volver** (Escape; no guarda nada). Si la cancelación falla, no se guarda
+el precio. Nueva salida de 3+ opciones en el proveedor de confirmaciones (`useElegir`). El repricing automático del
+servidor no pregunta (no hay a quién).
+
+Verificación: SQL en transacción descartada (14 comprobaciones), 10 unit (`precioProgramadoC1C3.test.ts`), e2e **161**
+(C-1 con el cron real + C-3 en la ficha) y regresión **151**. UAT §72. C-2 espera PL-4.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/grupos-variantes]]

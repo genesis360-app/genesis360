@@ -55,6 +55,7 @@ import { type Combinador } from '@/lib/pildorasFiltro'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useResolverPrecioProgramado } from '@/hooks/useResolverPrecioProgramado'
 import { sugerirNombreKit, sugerirPrecioKit } from '@/lib/kits'
 // xlsx se importa dinámicamente en exportarConteo (auditoría perf 2026-08-14, P5).
 
@@ -101,6 +102,7 @@ export default function InventarioPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const qc = useQueryClient()
   const confirmar = useConfirm()
+  const resolverProgramado = useResolverPrecioProgramado()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { limits } = usePlanLimits()
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -1550,6 +1552,8 @@ export default function InventarioPage() {
     mutationFn: async (vars: { kitId: string; kitNombre: string; precioActual: number; precioNuevo: number }) => {
       const { kitId, kitNombre, precioActual, precioNuevo } = vars
       if (puedeGestionarConteo) {
+        // C-3: el precio del kit cambia ya → qué hacer con un precio programado pendiente.
+        if (!(await resolverProgramado([kitId], { [kitId]: kitNombre }))) return { esAutorizacion: false, abortado: true }
         const { error } = await supabase.from('productos').update({ precio_venta: precioNuevo }).eq('id', kitId)
         if (error) throw new Error(error.message)
         return { esAutorizacion: false }
@@ -1568,6 +1572,7 @@ export default function InventarioPage() {
       return { esAutorizacion: true }
     },
     onSuccess: (result: any) => {
+      if (result?.abortado) return   // eligió "Volver" en el aviso de precio programado (C-3)
       if (result?.esAutorizacion) {
         toast.success('Solicitud de cambio de precio enviada — pendiente de aprobación del supervisor')
         qc.invalidateQueries({ queryKey: ['autorizaciones', 'productos'] })

@@ -1952,6 +1952,13 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success('Anticipación de etiquetas actualizada')
   }
+  // C-1 de Precio programado (mig 441): el precio rige cuando llegó la hora Y el repositor confirmó la etiqueta.
+  const actualizarAprobacionRepositor = async (cambios: { precio_programado_requiere_repositor?: boolean; precio_programado_aviso_demora_horas?: number }) => {
+    const { data, error } = await supabase.from('tenants').update(cambios).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Configuración de precios programados actualizada')
+  }
 
   // A2 del relevamiento de Supervisor (mig 348): reglas de enrutamiento "tipo X -> Usuario A" para
   // la auto-asignación de autorizaciones al crearse (si no hay regla, el trigger reparte por carga).
@@ -4818,6 +4825,32 @@ export default function ConfigPage() {
                   .sort((a, b) => a - b)
                   .map(m => <option key={m} value={m}>{etiquetaAnticipacion(m)}</option>)}
               </select>
+            </div>
+            {/* C-1 (mig 441): el precio espera la etiqueta */}
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" className="mt-0.5 accent-accent"
+                  checked={!!(t289 as any)?.precio_programado_requiere_repositor}
+                  onChange={e => actualizarAprobacionRepositor({ precio_programado_requiere_repositor: e.target.checked })} />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  <strong>El precio programado cambia recién cuando el repositor confirma la etiqueta</strong>
+                  <span className="block text-xs text-gray-400 dark:text-gray-500">
+                    Apagado: el precio rige a la hora exacta. Prendido: llegada la hora, se sigue cobrando el precio
+                    anterior hasta que se confirme la etiqueta en todas las sucursales con góndola (así la góndola y la
+                    caja nunca difieren). Los productos sin góndola cambian a la hora.
+                  </span>
+                </span>
+              </label>
+              {(t289 as any)?.precio_programado_requiere_repositor && (
+                <div className="pl-7">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Avisarme si la etiqueta sigue sin confirmarse después de</label>
+                  <select value={(t289 as any)?.precio_programado_aviso_demora_horas ?? 2}
+                    onChange={e => actualizarAprobacionRepositor({ precio_programado_aviso_demora_horas: Number(e.target.value) })}
+                    className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                    {[1, 2, 4, 8, 24, 48].map(h => <option key={h} value={h}>{h === 1 ? '1 hora' : `${h} horas`}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

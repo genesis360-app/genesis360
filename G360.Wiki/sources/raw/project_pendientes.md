@@ -77,7 +77,8 @@ type: project
 >   `plan_categorias_clientes_y_precio_programado.md`. 6 fases: (1) precio programado C-1/C-2/C-3 · (2) categoría +
 >   cuenta corriente con herencia en UNA función SQL · (3) motor único de precio en SQL sin cambiar precios · (4) precio
 >   de categoría + tope + import Excel · (5) IA del cartel + reporte · (6) tiers/combos programados + cambios masivos.
->   🙋 **Preguntas PL-1..PL-6** (tope del DUEÑO, ventas recurrentes y portal que no existen, default de C-2 en negocios
+>   ✅ **Fase 1: C-1 y C-3 HECHOS en DEV** (mig 441, e2e 161, UAT §72) — C-2 espera PL-4.
+>   🙋 **Preguntas PL-1..PL-7** (PL-7 nueva: C-1 con varias sucursales espera TODAS las etiquetas) (tope del DUEÑO, ventas recurrentes y portal que no existen, default de C-2 en negocios
 >   existentes, POS sin red, ventas en espera que no existen) — en el mismo archivo. La Fase 1 no depende de PL-1..PL-3,
 >   PL-5 ni PL-6 (solo de PL-4 para C-2).
 > - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de

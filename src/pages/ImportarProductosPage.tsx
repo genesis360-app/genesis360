@@ -13,6 +13,7 @@ import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, margenSos
 import { celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
+import { useResolverPrecioProgramado } from '@/hooks/useResolverPrecioProgramado'
 import { agregarValidacionesXlsx, letraColumna, valoresLista, type ValidacionLista } from '@/lib/xlsxValidaciones'
 
 // ── Constantes ─────────────────────────────────────────────────────────────
@@ -85,6 +86,7 @@ export default function ImportarProductosPage() {
   // (vendedor divisa BNA del día hábil anterior, D-1 fase 2): la misma con la que el POS valúa un
   // producto en USD al cobrarlo. Con otra, el espejo en pesos no coincidiría con lo que se cobra.
   const { cotizacionUsdAArs } = useCotizacion()
+  const resolverProgramado = useResolverPrecioProgramado()
 
   // El importador crea y actualiza productos (incluidos PRECIOS), pero no tenía ningún gate de rol
   // — a diferencia de `ProductoFormPage`, que deshabilita todo el formulario salvo para
@@ -477,6 +479,18 @@ export default function ImportarProductosPage() {
   }
 
   const confirmarProductos = async () => {
+    // C-3: si el archivo cambia el precio de venta de productos con un precio programado pendiente, se pregunta
+    // antes qué hacer con esos programados (por defecto, cancelarlos).
+    const skusConPrecio = filasProducto
+      .filter(f => f.errores.length === 0 && f.estado === 'existente' && modo !== 'crear' && f.columnas.includes('precio_venta'))
+      .map(f => f.sku)
+    if (skusConPrecio.length > 0) {
+      const { data: prods, error: errProds } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
+        .select('id, nombre').eq('tenant_id', tenant!.id).in('sku', skusConPrecio).range(desde, hasta))
+      if (errProds) { toast.error('No se pudo revisar si hay precios programados. Intentá de nuevo.'); return }
+      const nombres = Object.fromEntries((prods ?? []).map((p: any) => [p.id, p.nombre]))
+      if (!(await resolverProgramado((prods ?? []).map((p: any) => p.id), nombres))) return
+    }
     setImportandoProd(true)
     let creados = 0, actualizados = 0, errores = 0
     const erroresDetalle: { sku: string; mensaje: string }[] = []

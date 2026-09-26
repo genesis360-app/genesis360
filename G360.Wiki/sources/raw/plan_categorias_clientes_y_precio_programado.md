@@ -42,6 +42,8 @@ Orden pensado para: (1) entregar valor rápido sin tocar el motor, (2) cumplir G
 cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meterle mecanismos nuevos.
 
 ### Fase 1 — Precio programado: ajustes chicos (C-1, C-2, C-3) · chica · sin motor
+
+> ✅ **C-1 y C-3 HECHOS en DEV el 2026-09-26** (mig 441, e2e 161, UAT §72). C-2 espera PL-4.
 - **C-1 aprobación del repositor**: flag nuevo por negocio (default apagado = precio a la hora exacta, como hoy).
   Prendido: el cron aplica solo si llegó la hora **y** la tarea de etiqueta está hecha; sin tope de espera; aviso al
   dueño cuando pasan más de X horas (X configurable). El POS NO activa el precio por la hora en este modo.
@@ -119,6 +121,10 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 - **PL-5 · El POS sin red (fase 3).** Con el motor en SQL, el POS necesita el servidor para poner precio. Hoy calcula
   en el navegador. Propuesta: sin respuesta del servidor el producto **no entra al carrito** (mismo criterio que D5:
   no se inventa un precio), con reintento; ¿o prefieren un modo degradado a precio de lista con aviso?
+- **PL-7 · C-1 con varias sucursales con góndola.** Implementado: el precio espera a que se confirme la etiqueta en
+  **todas** (si no, la sucursal que no la puso cobraría distinto de lo que muestra). Contracara: mientras tanto, en la
+  que sí la puso, la góndola muestra el precio nuevo y se cobra el viejo (el POS avisa igual que hoy con una etiqueta
+  desactualizada). Alternativa: aplicar al confirmar la primera. ¿Se deja "todas"?
 - **PL-6 · C-4 "ventas en espera" no existen.** El POS no tiene "poner en espera / retomar" una venta. C-4 no tiene
   dónde aplicarse. ¿Se construye "venta en espera" (sería una función nueva) o C-4 se da por cerrado?
 

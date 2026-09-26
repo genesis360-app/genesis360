@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | Segunda revisión legal de D-1 — 5 puntos para decidir con Fede (DL-1..DL-5)
+
+- La tasa elegida coincide con la RG ARCA 5616/2024 (arts. 1-2) y con el **art. 49 del Dto. 692/98** (IVA: vendedor
+  BNA al cierre del día anterior) — esto último corrige la conclusión del 25/09 ("ninguna norma fija la tasa").
+- Hallazgos: góndola/TN/ML ≠ precio cobrado para productos USD (Res. SIC 4/2025 art. 2 g), "al cierre" no garantizado
+  si falla el cron, valuación de tenencias al comprador (Ganancias/Bienes Personales).
+- Anotados como **DL-1..DL-5** con preguntas y propuestas en `project_pendientes.md` ("PARA DECIDIR CON FEDE"). Nada
+  ejecutado; el deploy `v1.234.0` también queda a decisión (DL-5).
+
 ## [2026-09-26] update | D-1 fase 2 — UNA sola tasa USD→ARS: vendedor divisa BNA del día hábil anterior (mig 440, DEV)
 
 - Nueva lib `src/lib/cotizacionBna.ts` (15 tests): la tasa sale de `fn_cotizacion_bna_vigente` (mig 439). `useCotizacion`

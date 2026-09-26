@@ -20,9 +20,50 @@ type: project
 > congelado y tiers USD a `tenants.cotizacion_usd` → ahora igual que el POS + sella `ventas.cotizacion_usd`.
 > Verificado: tsc, unit 1947/1947, build, e2e 55 y 143, sonda del widget. UAT §70. Ver log del 26/09.
 >
-> #### ▶️ Próximo
-> - **Deploy `v1.234.0`** (cambio visible: widget y Bóveda): mig 440 en PROD **antes** del merge + bump `APP_VERSION` +
->   PR `dev→main`. EFs: sin cambios (la `cotizacion-bna` ya está en PROD). Exposición PROD: 0 productos/tiers USD.
+> #### 🙋 PARA DECIDIR CON FEDE — revisión legal de D-1 (2026-09-26) — NO ejecutar nada hasta que respondan
+> Detalle y fuentes: `respuestas_puntos_abiertos_2026-09-25.md` → "Segunda revisión legal". Resumen: la tasa elegida
+> (vendedor divisa BNA, cierre del día hábil anterior) **coincide** con la RG ARCA 5616/2024 y con el **art. 49 del
+> Dto. 692/98** (IVA). Quedan 5 puntos:
+>
+> **DL-1 · Precio de góndola ≠ precio cobrado en caja** (Res. SIC 4/2025, art. 2 g: "deberán coincidir").
+> Etiquetas de precio (Repositores), Tienda Nube y Mercado Libre usan `productos.precio_venta`, el precio en pesos
+> CONGELADO el día que se editó el producto; el POS cobra `precio_usd × tasa del día`. En un producto en USD se
+> separan apenas se mueve el dólar. Preexistente; hoy PROD tiene 0 productos en USD.
+> - ❓ ¿Cómo se mantiene igual lo exhibido y lo cobrado?
+>   - **A (propuesta)**: cada vez que entra una cotización nueva, recalcular solo el precio en pesos guardado de los
+>     productos en USD → TN/ML se actualizan solos (ya sincronizan `precio_venta`) y se avisa "N etiquetas a
+>     reimprimir" en Repositores.
+>   - B: no recalcular; solo avisar que hay etiquetas desactualizadas.
+>   - C: que la góndola muestre solo el precio en USD + "se cobra en pesos al dólar BNA del día" (Res. SIC 4/2025
+>     **exige** el precio en pesos → no cumple sola; no recomendada).
+>
+> **DL-2 · "Al cierre" no está garantizado.** Durante el día la página del BNA muestra el valor intradiario con la
+> fecha de hoy y la app lo guarda cuando alguien entra. Si falla el proceso de las 03:10 y nadie entra entre el
+> cierre (~15 h) y la apertura siguiente, al otro día se usa un valor de media jornada como "de cierre". No pasó
+> todavía (PROD capturó a las 00:03 del día siguiente).
+> - ❓ ¿Qué hacer si el día hábil anterior solo tiene un valor intradiario?
+>   - **A (propuesta)**: marcar cada fila como "de cierre" solo si se capturó después del cierre; si la vigente no lo
+>     es, usarla igual pero con aviso ámbar en el menú ("cotización del dd/mm sin confirmar cierre").
+>   - B: no usarla y seguir con la última de cierre confirmada (más estricto, pero puede quedar 2 días atrás).
+>
+> **DL-3 · Valor de los dólares que tiene el negocio** (saldo de Caja Fuerte, dashboards). Ganancias (al cierre
+> de ejercicio) y Bienes Personales (al 31/12) valúan al **COMPRADOR** BNA; hoy la app usa el vendedor para todo
+> ("una sola tasa, sin excepción").
+> - ❓ ¿Se deja así o se distingue?
+>   - **A (propuesta)**: dejar el vendedor para operar (precios, pagos, conversiones) y mostrar además, solo como
+>     dato informativo, "valuado al comprador BNA: $X" donde se informe el saldo en dólares. No mueve plata.
+>   - B: dejar todo al vendedor (gestión interna; el balance lo arma el contador aparte).
+>
+> **DL-4 · Para el contador (no lo deciden GO/Fede)**: ¿un producto con precio fijado en USD y facturado en pesos
+> queda alcanzado por el art. 49 del Dto. 692/98? Y confirmar el texto del artículo en InfoLEG (se leyó en fuentes
+> secundarias). Ya anotado en C-16 de [[wiki/business/consultas-contador]]; valuación de tenencias en C-08.
+>
+> **DL-5 · Deploy `v1.234.0`** (D-1 fase 2 + mig 440, ya listo en DEV).
+> - ❓ ¿Se sube ya o se espera a resolver DL-1/DL-2?
+>   - **A (propuesta)**: subir ya — hoy no hay productos en USD en PROD, así que DL-1 no afecta a nadie, y DL-2 es
+>     independiente; los arreglos van en una versión siguiente.
+>   - B: esperar y subir todo junto.
+>   Mecánica: mig 440 en PROD **antes** del merge + bump `APP_VERSION` + PR `dev→main`; EFs sin cambios.
 > - Pendiente menor: 70.5 y 70.9 del UAT sin test automático.
 > - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de
 >   keys legacy PROD, consultas al contador.

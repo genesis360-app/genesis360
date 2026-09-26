@@ -6,6 +6,29 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-26) — 🚀 **PROD = DEV = `v1.233.1`** (migs 001-**439**), todo en `main`
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.1` ✅ servida | 001-**439** |
+> | **DEV** | `v1.233.1` | 001-**439** |
+>
+> PR **#360**, merge `50343fb9`, release `v1.233.1` Latest. Policies DEV = PROD (`public` 235 · `storage` 40 · `cron` 2).
+> **D-1 fase 1 en PROD**: la tabla `cotizaciones_bna` ya junta la cotización DIVISA del BNA todos los días
+> (`sweeps.yml`, 03:10 AR). Verificado disparando el workflow a mano: capturó USD/EUR/GBP y la **vigente es la del
+> 25/09 (1516,50 / 1525,50)**. La app todavía NO la usa: sigue con dolarapi + regla "a compra".
+>
+> #### ▶️ LO PRIMERO: D-1 fase 2 (ya decidido por GO, ejecutar sin reconsultar)
+> Pasar a la tasa **vendedor divisa BNA del día hábil anterior** (`fn_cotizacion_bna_vigente`), **UNA sola en todos
+> lados y todos juntos**: precio en POS, ficha, importador, tiers/combos USD, valor de pagos recibidos en USD, Bóveda.
+> Punto de entrada: `tasaUsdAArs` (`src/lib/cajaBoveda.ts`) + `useCotizacion`. Si la captura falla, seguir con la
+> última y avisar con la fecha visible (A-2); sin ninguna, error (D5). Llamar a la EF `cotizacion-bna` al iniciar
+> sesión (respaldo del cron). Exposición hoy: 0 productos USD y 0 pagos USD en PROD.
+>
+> #### Resto (sin cambios)
+> - D-3: desplegables en la plantilla del importador. · Categorías y Precio programado: respondidos, listos para planificar.
+> - Rotación de keys legacy en PROD · consultas al contador · 2 EFs de cobro con drift cosmético esperando OK.
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-25, 4ª+ sesión) — 🚀 **DEPLOY a PROD `v1.233.0`** + 🌙 aging automático (mig 438) + 📋 30 puntos abiertos RESPONDIDOS + 💵 D-1 EN CURSO
 >
 > Continúa directo sobre el bloque de abajo (2ª+3ª sesión, que dejó 436/437 en DEV sin deploy). Esta

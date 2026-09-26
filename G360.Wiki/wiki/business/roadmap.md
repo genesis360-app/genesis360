@@ -8,14 +8,20 @@ updated: 2026-09-25
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.233.0`** (2026-09-25, migs 001-**437** por PR + mig **438** aplicada en
-base de datos, archivo todavía solo en `origin/dev`). Compute de PROD: **Micro** desde el 2026-09-15
-(antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.233.1`** (2026-09-26, migs 001-**439**, archivos y bases iguales). Compute de
+PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **PROD = DEV en migraciones aplicadas** (001-438, paridad `pg_policies` por schema: `public` **234**
-(`d95a8640`) · `storage` **40** (`d57ccda2`) · `cron` **2** (`796770dd`) — fórmula de hash distinta a
-sesiones anteriores, comparar solo DEV vs PROD del mismo día). PR **#359** `dev→main`, merge commit
-**`e38e26cd`**, release **`v1.233.0` Latest**. Detalle completo en `log.md` (2026-09-25, `deploy`).
+✅ **PROD = DEV** (001-439; paridad `pg_policies` por schema: `public` **235** (`b6469b80`) · `storage` **40**
+(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#360** `dev→main`, merge
+**`50343fb9`**, release **`v1.233.1` Latest**.
+
+## 🚀 v1.233.1 — Historial diario de la cotización divisa del BNA (2026-09-26, EN PROD)
+
+PR **#360**, merge `50343fb9`. Sin cambios visibles. **D-1 fase 1**: mig **439** (`cotizaciones_bna` +
+`fn_cotizacion_bna_vigente`), EF **`cotizacion-bna`** (desplegada DEV y PROD) y paso nuevo en `sweeps.yml` (03:10 AR).
+Trae además al repo el archivo de la mig **438** (aging diario, ya aplicada en PROD el 25/09).
+Verificado: el workflow disparado a mano en PROD capturó USD/EUR/GBP y la vigente quedó en **25/09: 1516,50 / 1525,50**;
+`app.genesis360.pro` sirve `v1.233.1`. Próximo: **D-1 fase 2** (migrar todos los caminos USD→ARS a esta tasa).
 
 ## 🚀 v1.233.0 — Margen hasta 999.999,99 % + aislamiento de sweeps a PROD, aging automático (2026-09-25, EN PROD)
 

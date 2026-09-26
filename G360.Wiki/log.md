@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] deploy | v1.233.1 a PROD — historial diario de la cotización divisa del BNA (D-1 fase 1)
+
+- Mig **439** aplicada en PROD antes del merge; EF **`cotizacion-bna`** desplegada en PROD (existe `CRON_SECRET`).
+  Definición de `fn_cotizacion_bna_vigente` y paridad de policies idénticas DEV = PROD (`public` 235 `b6469b80`).
+- PR **#360** `dev→main`, CI unit verde, merge `50343fb9`, release **`v1.233.1` Latest**. `app.genesis360.pro` sirve
+  `v1.233.1` (bundle `/assets/index-W8XESaFr.js`, `curl -L`).
+- `gh workflow run sweeps.yml` a mano: los dos pasos verdes; `cotizacion-bna` capturó 3 monedas y la **vigente quedó en
+  25/09: 1516,50 / 1525,50** (en Argentina ya era 26/09). Una EF sin usuario → rechazada.
+- Sin cambios visibles. Próximo: **D-1 fase 2**.
+
 ## [2026-09-25] update | D-1 fase 1 — historial diario de la cotización DIVISA del BNA (mig 439, DEV)
 
 - Mig **439** `cotizaciones_bna` (fecha publicada × moneda; lectura `authenticated`, escritura `service_role`) +

@@ -6,9 +6,15 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-25
 ---
 
-# Historial de Migraciones (001-438, + correctivos 387b/387c)
+# Historial de Migraciones (001-439, + correctivos 387b/387c)
 
-📅 **Migración 438 — ✅ EN DEV Y EN PROD (bases de datos), archivo todavía solo en `dev`** (2026-09-25,
+📅 **Migración 439 — ✅ EN DEV Y EN PROD** (2026-09-25/26, `v1.233.1`): `439_cotizaciones_bna.sql` — **D-1 fase 1**.
+Tabla global `cotizaciones_bna (fecha, moneda, compra, venta, fuente, capturada_at)`, PK `(fecha, moneda)`, RLS con
+SELECT para `authenticated` y escritura solo `service_role`; `fn_cotizacion_bna_vigente(p_moneda)` = última fecha
+estrictamente anterior a hoy en Argentina (día hábil anterior, RG ARCA 5616/2024). La alimenta la EF `cotizacion-bna`
+(tabla *divisas* de bna.com.ar). Suma 1 policy (`public` 234 → 235 en ambos). Ver [[sources/raw/respuestas_puntos_abiertos_2026-09-25]].
+
+📅 **Migración 438 — ✅ EN DEV Y EN PROD** (archivo en `main` desde `v1.233.1`) (2026-09-25,
 commit `6df9997e` en `origin/dev`, aún no mergeado a `main` — llega en el próximo PR; la base de PROD ya
 tiene la función y el cron aplicados vía Management API): `438_aging_diario_automatico.sql` — decisión de
 GO: Aging Profiles deja de depender del botón manual de Config y **corre solo**. Función nueva

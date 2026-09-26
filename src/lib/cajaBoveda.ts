@@ -7,47 +7,20 @@ export interface ConversionUsdResult {
   tasaUsada: number
 }
 
-// F2 del relevamiento: la conversión USD↔$ desde la Bóveda usa la tasa de COMPRA cuando el dueño
-// vende sus dólares (recibe menos pesos por dólar, como en una casa de cambio real) y la tasa de
-// VENTA cuando compra dólares con pesos (la misma que usa el resto del POS, `tenant.cotizacion_usd`).
+// Conversión USD↔$ desde la Bóveda. D-1 fase 2 (GO, 2026-09-25): UNA sola tasa en todo el sistema,
+// también acá y en los dos sentidos — el vendedor divisa BNA del día hábil anterior (ver
+// `src/lib/cotizacionBna.ts`). Antes (relevamiento F2, G5 Fase 5) vender dólares iba a COMPRA y
+// comprarlos a VENTA, como una casa de cambio; esa diferencia desaparece por decisión de GO.
 // J1: sin redondeo — decimales exactos.
 export function calcularConversionUsd(
   sentido: SentidoConversionUsd,
   montoOrigen: number,
-  cotizacionVenta: number,
-  cotizacionCompra: number,
+  tasa: number,
 ): ConversionUsdResult {
   if (!(montoOrigen > 0)) throw new Error('Ingresá un monto válido')
-  if (sentido === 'usd_a_ars') {
-    if (!(cotizacionCompra > 0)) throw new Error('Falta la cotización de compra — actualizala antes de convertir')
-    return { montoDestino: montoOrigen * cotizacionCompra, tasaUsada: cotizacionCompra }
-  }
-  if (!(cotizacionVenta > 0)) throw new Error('Falta la cotización de venta — actualizala antes de convertir')
-  return { montoDestino: montoOrigen / cotizacionVenta, tasaUsada: cotizacionVenta }
-}
-
-/**
- * Tasa a la que el negocio pasa USD → ARS: **COMPRA**.
- *
- * Es la misma convención que `calcularConversionUsd` de arriba (relevamiento F2, G5 Fase 5): cuando
- * el negocio RECIBE dólares y los valúa en pesos usa la de compra, como una casa de cambio real.
- * Aplica a las tres cosas del POS, y tienen que coincidir entre sí o la cuenta no cierra:
- *   · el precio de un producto cargado en USD,
- *   · los tiers mayoristas y combos con montos en USD,
- *   · el valor en pesos de un pago recibido en dólares.
- *
- * 🐛 Hallazgo de Fede (2026-09-08): el POS convertía al dólar **venta**, así que le cobraba de más
- * al cliente respecto de la regla del negocio. Si se arreglara solo el precio y no el pago, un
- * cliente que paga en dólares sobrepagaría y saldría vuelto de la nada — por eso la tasa es UNA.
- *
- * Fallback a la de venta a propósito: la carga MANUAL de cotización (`useCotizacion.guardar`) solo
- * escribe `cotizacion_usd`, sin compra. En ese caso ese único valor ES la tasa que eligió el dueño.
- * Mismo criterio que ya usaba `GastosPage` (`cotizacion_usd_compra || cotizacion_usd`).
- */
-export function tasaUsdAArs(cotizacionCompra: number | null | undefined, cotizacionVenta: number | null | undefined): number {
-  const compra = Number(cotizacionCompra) || 0
-  if (compra > 0) return compra
-  return Number(cotizacionVenta) || 0
+  if (!(tasa > 0)) throw new Error('No hay cotización del dólar BNA — no se puede convertir')
+  if (sentido === 'usd_a_ars') return { montoDestino: montoOrigen * tasa, tasaUsada: tasa }
+  return { montoDestino: montoOrigen / tasa, tasaUsada: tasa }
 }
 
 // Busca la sesión permanente de una Caja Fuerte (por moneda); si no existe, la crea con la

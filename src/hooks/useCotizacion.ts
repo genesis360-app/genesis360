@@ -1,77 +1,67 @@
-import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { rolEnLista } from '@/lib/cajaPermisos'
-import { tasaUsdAArs } from '@/lib/cajaBoveda'
-import toast from 'react-hot-toast'
+import { normalizarVigente, tasaUsdAArs, avisoCotizacion, type CotizacionVigente } from '@/lib/cotizacionBna'
 
-// Pedido de Fede (relevamiento Compras/Gastos USD, 2026-09-04): dejar de ofrecer Blue/MEP/Cripto
-// como referencia — el sistema usa SIEMPRE el dólar Oficial de Banco Nación (compra y venta), sin
-// elección posible. Se mantiene la columna `tenants.cotizacion_usd_casa` en el schema (guarda
-// siempre 'oficial' de ahora en más) para no forzar una migración sobre datos históricos.
-const CASA_UNICA = 'oficial'
+// D-1 fase 2 (GO, 2026-09-25) — la cotización del dólar es UNA y sale sola: vendedor divisa del
+// Banco Nación del día hábil anterior (`src/lib/cotizacionBna.ts`). Reemplaza a:
+//   · dolarapi "oficial" (que es BNA BILLETE) guardado en `tenants.cotizacion_usd/_compra`,
+//   · la regla "USD→ARS a COMPRA" (v1.207.0) y
+//   · la carga MANUAL del dólar: A-4 — "automática si hay fuente; si no, manual". El dólar tiene
+//     fuente. Las columnas de `tenants` quedan en el schema (histórico) pero nadie las lee.
+//
+// La lectura pasa por la EF `cotizacion-bna`: además de devolver la vigente, captura del BNA si la
+// última captura tiene más de 30 min — es el "se actualiza al iniciar sesión" de A-2, de respaldo
+// del cron diario. Si la EF no responde, se lee la vigente directo (`fn_cotizacion_bna_vigente`).
 
-// G5 Fase 2 — antes cualquier usuario con sidebar podía editar la cotización manualmente. Ahora solo
-// el DUEÑO (siempre) + los roles habilitados en tenants.cotizacion_usd_roles_permitidos pueden cargar
-// un valor manual; el resto solo puede "refrescar" desde la API (siempre Oficial BNA).
-export function useCotizacion() {
-  const { tenant, user, setTenant } = useAuthStore()
-  const [loadingApi, setLoadingApi] = useState(false)
+interface EstadoCotizacion {
+  vigente: CotizacionVigente | null
+  capturaFallida: boolean
+}
 
-  const cotizacion         = tenant?.cotizacion_usd ?? 0
-  const cotizacionCompra   = (tenant as any)?.cotizacion_usd_compra ?? 0
-  // 🛑 La tasa con la que el negocio valúa dólares en pesos (precio de producto en USD, tiers,
-  // combos y pagos recibidos en dólares). Es COMPRA por convención — ver `tasaUsdAArs`.
-  const cotizacionUsdAArs  = tasaUsdAArs(cotizacionCompra, cotizacion)
-  const updatedAt          = tenant?.cotizacion_usd_updated_at
-  // DUEÑO siempre puede elegir, sea cual sea lo guardado — cotizacion_usd_roles_permitidos son roles
-  // ADICIONALES (nunca reemplaza a DUEÑO), a diferencia de accedeABoveda donde la lista es completa.
-  const puedeElegirTipo    = user?.rol === 'DUEÑO' || rolEnLista(
-    user?.rol as any, (user as any)?.rol_custom_id,
-    (tenant as any)?.cotizacion_usd_roles_permitidos ?? [],
-  )
+export const COTIZACION_QUERY_KEY = ['cotizacion-bna', 'USD'] as const
 
-  const guardar = async (valor: number): Promise<boolean> => {
-    if (!tenant) return false
-    if (!puedeElegirTipo) { toast.error('Tu rol no puede cargar la cotización manualmente'); return false }
-    const cotizacion_usd            = valor > 0 ? valor : null
-    const cotizacion_usd_updated_at = valor > 0 ? new Date().toISOString() : null
-    const { error } = await supabase
-      .from('tenants')
-      .update({ cotizacion_usd, cotizacion_usd_updated_at })
-      .eq('id', tenant.id)
-    if (error) { toast.error('Error al guardar cotización'); return false }
-    setTenant({ ...tenant, cotizacion_usd: cotizacion_usd ?? undefined, cotizacion_usd_updated_at: cotizacion_usd_updated_at ?? undefined })
-    return true
-  }
-
-  const fetchDesdeApi = async () => {
-    if (!tenant) return
-    setLoadingApi(true)
-    try {
-      const res = await fetch(`https://dolarapi.com/v1/dolares/${CASA_UNICA}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      if (!data?.venta) throw new Error()
-      const { data: updated, error } = await supabase
-        .from('tenants')
-        .update({
-          cotizacion_usd: data.venta,
-          cotizacion_usd_compra: data.compra ?? null,
-          cotizacion_usd_casa: CASA_UNICA,
-          cotizacion_usd_updated_at: new Date().toISOString(),
-        })
-        .eq('id', tenant.id)
-        .select().single()
-      if (error || !updated) throw error ?? new Error()
-      setTenant(updated)
-      toast.success(`Cotización Oficial BNA: $${data.venta.toLocaleString('es-AR')}`)
-    } catch {
-      toast.error('No se pudo obtener la cotización. Ingresala manualmente.')
-    } finally {
-      setLoadingApi(false)
+async function leerCotizacion(): Promise<EstadoCotizacion> {
+  try {
+    const { data, error } = await supabase.functions.invoke('cotizacion-bna', { body: {} })
+    if (error || !data?.ok) throw error ?? new Error(data?.error ?? 'cotizacion-bna')
+    return {
+      vigente: normalizarVigente(data.vigente),
+      capturaFallida: data.capturo === true && data.captura_ok !== true,
     }
+  } catch {
+    const { data, error } = await supabase.rpc('fn_cotizacion_bna_vigente', { p_moneda: 'USD' })
+    if (error) throw error
+    return { vigente: normalizarVigente(data), capturaFallida: true }
   }
+}
 
-  return { cotizacion, cotizacionCompra, cotizacionUsdAArs, updatedAt, puedeElegirTipo, guardar, fetchDesdeApi, loadingApi }
+export function useCotizacion() {
+  const { tenant } = useAuthStore()
+  const qc = useQueryClient()
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: COTIZACION_QUERY_KEY,
+    queryFn: leerCotizacion,
+    enabled: !!tenant,
+    // La tasa es fija durante todo el día; no hace falta pedirla en cada navegación.
+    staleTime: 10 * 60 * 1000,
+  })
+
+  const vigente = data?.vigente ?? null
+  // 🛑 La ÚNICA tasa USD→ARS del sistema. 0 = no hay: el que convierte tiene que frenar (D5).
+  const tasa = tasaUsdAArs(vigente)
+
+  return {
+    /** Vendedor divisa BNA del día hábil anterior. */
+    cotizacion: tasa,
+    /** Alias de `cotizacion` — se mantiene para que se lea explícito en los caminos de plata. */
+    cotizacionUsdAArs: tasa,
+    /** Fecha publicada por el BNA de la tasa en uso (`YYYY-MM-DD`). */
+    fecha: vigente?.fecha ?? null,
+    aviso: data ? avisoCotizacion(vigente, data.capturaFallida) : null,
+    cargando: isLoading,
+    actualizando: isFetching,
+    refrescar: () => qc.invalidateQueries({ queryKey: COTIZACION_QUERY_KEY }),
+  }
 }

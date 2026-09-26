@@ -80,9 +80,9 @@ export default function ImportarProductosPage() {
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
-  // A0 (respuesta de Fede al relevamiento de Multimoneda, 2026-09-20). Es la tasa de COMPRA: la misma
-  // con la que el POS valúa un producto en USD al cobrarlo (ver `tasaUsdAArs`). Usar la de venta acá
-  // dejaría el espejo en pesos por encima de lo que realmente se cobra.
+  // A0 (respuesta de Fede al relevamiento de Multimoneda, 2026-09-20). Es la tasa ÚNICA del sistema
+  // (vendedor divisa BNA del día hábil anterior, D-1 fase 2): la misma con la que el POS valúa un
+  // producto en USD al cobrarlo. Con otra, el espejo en pesos no coincidiría con lo que se cobra.
   const { cotizacionUsdAArs } = useCotizacion()
 
   // El importador crea y actualiza productos (incluidos PRECIOS), pero no tenía ningún gate de rol

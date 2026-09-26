@@ -8086,25 +8086,14 @@ export default function ConfigPage() {
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                   <DollarSign size={16} className="text-accent-text" /> Caja en Dólares
                 </h2>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede elegir el tipo de cotización</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                    El <strong>DUEÑO</strong> siempre puede elegir tipo (blue/oficial/MEP/cripto) o cargar un valor manual.
-                    Los roles de acá abajo pueden hacer lo mismo; el resto solo puede refrescar repitiendo el último tipo usado.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR'].map(r => {
-                      const activo = bizCotizacionRoles.includes(r)
-                      return (
-                        <button key={r} type="button" disabled={!canEdit}
-                          onClick={() => setBizCotizacionRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
-                          {r}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+                {/* D-1 fase 2 (GO, 2026-09-25): el dólar sale solo del Banco Nación (vendedor divisa del día
+                    hábil anterior) y ya no se carga a mano, así que "quién puede elegir la cotización" dejó de
+                    existir. `cotizacion_usd_roles_permitidos` queda en el schema para cuando haya monedas con
+                    cotización manual (directiva de Multimoneda). */}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Cotización del dólar: <strong>vendedor divisa del Banco Nación del día hábil anterior</strong>, automática.
+                  Es la misma en todo el sistema (precios en USD, pagos en dólares y Caja Fuerte).
+                </p>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede operar la Caja USD</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">

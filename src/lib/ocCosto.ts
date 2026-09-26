@@ -13,8 +13,8 @@
 // precarga nada — un campo vacío que el usuario completa es mucho menos peligroso que un número
 // plausible en la moneda equivocada.
 //
-// Sobre la tasa: se usa la MISMA en las dos direcciones (`cotizacionUsdAArs`, la de COMPRA por
-// convención del sistema — ver `tasaUsdAArs` en cajaBoveda.ts). Es deliberado: con una sola tasa el
+// Sobre la tasa: se usa la MISMA en las dos direcciones (`cotizacionUsdAArs`, la tasa única del
+// sistema: vendedor divisa BNA del día hábil anterior — ver src/lib/cotizacionBna.ts). Con una sola tasa el
 // ida y vuelta cierra exacto. Usar patas distintas según la dirección es justo lo que generó el
 // vuelto fantasma del POS (issue #1 de Fede, 2026-09-08).
 

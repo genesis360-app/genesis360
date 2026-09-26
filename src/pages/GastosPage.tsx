@@ -41,6 +41,7 @@ import ComprasReportesPanel from '@/components/ComprasReportesPanel'
 import { chequeProximoACobrar, montoChequeDeMedios } from '@/lib/comprasCheques'
 import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useCotizacion } from '@/hooks/useCotizacion'
 
 // Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
 const CATEGORIAS_GASTO_FALLBACK = [
@@ -175,6 +176,8 @@ type TabGastos = typeof TAB_VALIDOS[number]
 
 export default function GastosPage() {
   const { tenant, user } = useAuthStore()
+  // D-1 fase 2: referencia para el desvío de la cotización de descalce = la tasa única del sistema.
+  const { cotizacionUsdAArs } = useCotizacion()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
   // Multi-CUIT (F5): el IVA crédito del gasto se imputa al emisor de su SUCURSAL
@@ -763,7 +766,7 @@ export default function GastosPage() {
     m.tipo !== 'Cuenta Corriente' && (parseFloat(m.monto.replace(',', '.')) || 0) > 0 && monedaDeMetodo(m.tipo) !== ocMoneda)
   const puedeCotizacionCompras = puedeCargarCotizacionCompras(user?.rol, (user as any)?.rol_custom_id, (tenant as any)?.compras_cotizacion_roles_permitidos)
   const cotizacionDescalceNumUI = parseFloat(ocCotizacionDescalce.replace(',', '.'))
-  const cotizacionReferenciaUI = (tenant as any)?.cotizacion_usd_compra || (tenant as any)?.cotizacion_usd || null
+  const cotizacionReferenciaUI = cotizacionUsdAArs > 0 ? cotizacionUsdAArs : null
 
   const ocsFiltradas = useMemo(() => {
     const hoyStr = new Date().toISOString().split('T')[0]

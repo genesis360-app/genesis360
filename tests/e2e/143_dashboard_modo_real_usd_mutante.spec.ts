@@ -61,14 +61,18 @@ test.describe('Dashboard → modo "Real" y gastos en USD (mutante)', () => {
     const headers = restHeaders(token)
 
     // ── Contexto real: tenant y cotización vigente ──────────────────────────────
-    const meRes = await request.get(`${SUPABASE_URL}/rest/v1/tenants?select=id,cotizacion_usd&limit=1`, { headers })
+    const meRes = await request.get(`${SUPABASE_URL}/rest/v1/tenants?select=id&limit=1`, { headers })
     expect(meRes.ok(), 'no pude leer el tenant').toBeTruthy()
     const tenant = (await meRes.json())[0]
     expect(tenant?.id, 'el usuario e2e no resolvió un tenant').toBeTruthy()
-    const cotizacion = parseFloat(String(tenant.cotizacion_usd ?? 0))
+    // D-1 fase 2: la tasa del Dashboard es la ÚNICA del sistema (vendedor divisa BNA del día hábil
+    // anterior), ya no `tenants.cotizacion_usd`.
+    const cotRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_cotizacion_bna_vigente`, { headers, data: { p_moneda: 'USD' } })
+    expect(cotRes.ok(), 'no pude leer la cotización vigente').toBeTruthy()
+    const cotizacion = parseFloat(String((await cotRes.json())?.[0]?.venta ?? 0))
     expect(
       cotizacion > 1,
-      `el tenant no tiene cotización cargada (${tenant.cotizacion_usd}) — sin ella el modo pesos no puede convertir y este test no mide nada`,
+      `no hay cotización BNA vigente (${cotizacion}) — sin ella el modo pesos no puede convertir y este test no mide nada`,
     ).toBeTruthy()
 
     // La sucursal de la siembra sale de un gasto REAL del período, y a propósito de uno CON

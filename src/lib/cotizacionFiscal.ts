@@ -12,10 +12,10 @@
 //    importación de servicios (reverse charge), el del día hábil anterior al PAGO.
 //
 // ── 🛑 La trampa que hay que tener presente ─────────────────────────────────────────────────
-// **La cotización fiscal NO es la que usa el resto de Genesis360.** Por convención propia, el
-// sistema convierte USD→ARS al dólar **COMPRA** (ver `reference_usd_ars_usa_dolar_compra`), que es
-// lo correcto para valuar lo que el negocio TIENE. Lo fiscal pide **VENDEDOR**, y de una fecha
-// concreta. Son dos números distintos: usar el operativo acá falsea la posición de IVA.
+// Desde D-1 fase 2 (2026-09-26) el resto del sistema también usa el vendedor divisa BNA del día
+// hábil anterior (`src/lib/cotizacionBna.ts`) — pero el de **HOY**. Lo fiscal pide el del día hábil
+// anterior a la fecha **del comprobante**, que puede ser otro día. Mismo criterio, otra fecha: usar
+// la tasa operativa de hoy para un comprobante de la semana pasada falsea la posición de IVA.
 //
 // Por eso la tasa se guarda POR GASTO (`gastos.cotizacion_fiscal`, mig 414) y no se deriva de
 // `tenants.cotizacion_usd*`, que es un valor de HOY y se mueve.

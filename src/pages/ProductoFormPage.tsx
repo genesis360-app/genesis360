@@ -65,11 +65,9 @@ export default function ProductoFormPage() {
   const { tenant, user, sucursales } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
-  // 🛑 D-1 (2026-09-23). Antes tomaba `cotizacion`, que es la de VENTA. El 2026-09-08 Fede detectó
-  // que el POS convertía al dólar venta y le cobraba de más al cliente, y se arregló para que use
-  // COMPRA (`tasaUsdAArs`) — pero esta pantalla quedó sin actualizar. Resultado: el POS cobraba a una
-  // tasa y el espejo en pesos que leen margen y reportes se calculaba con otra. Ahora las tres
-  // puertas (POS, ficha e importador) usan la misma.
+  // 🛑 D-1. Las tres puertas (POS, ficha e importador) usan la MISMA tasa: la única del sistema,
+  // vendedor divisa BNA del día hábil anterior (fase 2, 2026-09-26). En 09-23 esta pantalla usaba
+  // otra que el POS y el espejo en pesos que leen margen y reportes no coincidía con lo cobrado.
   const { cotizacionUsdAArs: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showQR, setShowQR] = useState(false)

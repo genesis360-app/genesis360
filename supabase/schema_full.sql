@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-26T00:49:04.241Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260926004758 · 172 tablas
+-- Generado 2026-09-26T03:39:47.240Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260926032810 · 172 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -8216,7 +8216,15 @@ BEGIN
     END IF;
   END IF;
 
-  UPDATE ventas SET subtotal = v_subtotal, total = v_total, monto_pagado = v_monto_pagado WHERE id = v_venta_id;
+  -- D-1 fase 2 (mig 440): igual que el POS, si la venta lleva un producto con precio en dólares se
+  -- sella la tasa con la que se convirtió (`ventas.cotizacion_usd`, mig 368). Dashboards y
+  -- Rentabilidad separan por esa marca las ventas con componente en USD.
+  UPDATE ventas SET subtotal = v_subtotal, total = v_total, monto_pagado = v_monto_pagado,
+         cotizacion_usd = CASE WHEN EXISTS (
+           SELECT 1 FROM venta_items vi JOIN productos pr ON pr.id = vi.producto_id
+           WHERE vi.venta_id = v_venta_id AND pr.moneda_venta = 'usd' AND COALESCE(pr.precio_usd, 0) > 0
+         ) THEN (SELECT c.venta FROM fn_cotizacion_bna_vigente('USD') c) END
+   WHERE id = v_venta_id;
 
   IF v_monto_efectivo > 0.005 THEN
     INSERT INTO caja_movimientos (tenant_id, sesion_id, tipo, concepto, monto, usuario_id)
@@ -8452,14 +8460,28 @@ DECLARE
   v_precio_bloque      numeric;
   v_precio_resto       numeric;
   v_precio_final       numeric;
+  v_moneda_venta       text;
+  v_precio_usd         numeric;
 BEGIN
-  SELECT COALESCE(precio_venta, 0) INTO v_precio_lista
+  SELECT COALESCE(precio_venta, 0), moneda_venta, precio_usd
+    INTO v_precio_lista, v_moneda_venta, v_precio_usd
   FROM productos WHERE id = p_producto_id AND tenant_id = p_tenant_id;
   IF v_precio_lista IS NULL THEN RETURN 0; END IF;
 
-  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN v_precio_lista; END IF;
+  -- D-1 fase 2: la UNA tasa USD→ARS del sistema = vendedor divisa BNA del día hábil anterior.
+  SELECT c.venta INTO v_cotizacion FROM fn_cotizacion_bna_vigente('USD') c;
 
-  SELECT cotizacion_usd INTO v_cotizacion FROM tenants WHERE id = p_tenant_id;
+  -- Producto con precio en dólares: el precio de lista es precio_usd × tasa, igual que el POS
+  -- (VentasPage.agregarProducto). Antes esta función tomaba `precio_venta`, el espejo en pesos
+  -- congelado a la tasa del día en que se editó el producto. Sin tasa, se frena (D5).
+  IF v_moneda_venta = 'usd' AND COALESCE(v_precio_usd, 0) > 0 THEN
+    IF COALESCE(v_cotizacion, 0) <= 0 THEN
+      RAISE EXCEPTION 'El producto tiene precio en dólares y no hay cotización del dólar BNA';
+    END IF;
+    v_precio_lista := round(v_precio_usd * v_cotizacion, 2);
+  END IF;
+
+  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN v_precio_lista; END IF;
 
   v_mejor_ligado_precio := NULL;
 

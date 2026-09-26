@@ -138,7 +138,7 @@ export default function ProveedoresPage() {
   const { tenant, user } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
-  // Compras en USD — la tasa con la que el negocio valúa dólares (COMPRA por convención).
+  // Compras en USD — la tasa única del sistema (vendedor divisa BNA del día hábil anterior, D-1).
   // Se usa la MISMA en las dos direcciones para que el ida y vuelta cierre: ver src/lib/ocCosto.ts.
   const { cotizacionUsdAArs } = useCotizacion()
   const qc = useQueryClient()

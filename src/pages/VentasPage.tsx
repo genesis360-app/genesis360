@@ -408,11 +408,11 @@ export default function VentasPage() {
   }
   const qc = useQueryClient()
   const { grupos, grupoDefault } = useGruposEstados()
-  // 🛑 REGLA #0 (hallazgo de Fede, 2026-09-08): TODAS las conversiones USD→ARS del POS —precio de
-  // un producto en USD, tiers mayoristas, combos y el valor en pesos de un pago en dólares— van a la
-  // tasa de COMPRA, que es la convención del sistema (ver `tasaUsdAArs`). Antes acá entraba la de
-  // VENTA y le cobrábamos de más al cliente. Es UNA sola tasa a propósito: si el precio fuera a
-  // compra y el pago a venta, quien pagara en dólares sobrepagaría y saldría vuelto de la nada.
+  // 🛑 REGLA #0: TODAS las conversiones USD→ARS del POS —precio de un producto en USD, tiers
+  // mayoristas, combos y el valor en pesos de un pago en dólares— van a UNA sola tasa: el vendedor
+  // divisa BNA del día hábil anterior (D-1 fase 2, GO 2026-09-25; reemplaza "a COMPRA" de v1.207.0 —
+  // ver `src/lib/cotizacionBna.ts`). Es una a propósito: si el precio fuera a una tasa y el pago a
+  // otra, quien pagara en dólares sobrepagaría y saldría vuelto de la nada.
   const { cotizacionUsdAArs: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -1634,6 +1634,13 @@ export default function VentasPage() {
 
     if (!p.precio_venta || p.precio_venta <= 0) {
       toast.error(`"${p.nombre}" no tiene precio de venta. Editá el producto antes de venderlo.`)
+      return
+    }
+
+    // D5: un producto con precio en dólares SIN cotización no se vende al precio en pesos guardado
+    // (que quedó congelado a la tasa del día en que se editó) — antes caía ahí en silencio.
+    if ((p as any).moneda_venta === 'usd' && ((p as any).precio_usd ?? 0) > 0 && !(cotizacionUSD > 0)) {
+      toast.error(`"${p.nombre}" tiene precio en dólares y no hay cotización del dólar BNA. Actualizala desde el menú lateral.`)
       return
     }
 
@@ -3339,7 +3346,7 @@ export default function VentasPage() {
     }
     const hayPagoUsd = mediosSinCCParaUsd.some(m => mediosEfectivoUsd.has(m.tipo) && (parseFloat(m.montoUsd ?? '') || 0) > 0)
     if (hayPagoUsd && !(cotizacionUSD > 0)) {
-      toast.error('Cargá la cotización del dólar (menú lateral) antes de cobrar en USD.')
+      toast.error('No hay cotización del dólar BNA: actualizala desde el menú lateral antes de cobrar en USD.')
       return
     }
     if (hayPagoUsd && !carritoAceptaUsd(cart)) {
@@ -6763,7 +6770,7 @@ export default function VentasPage() {
                           <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">≈ ${(parseFloat(mp.monto) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                         )}
                         {!(cotizacionUSD > 0) && (
-                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Sin cotización cargada</p>
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Sin cotización del dólar BNA</p>
                         )}
                       </div>
                     ) : (

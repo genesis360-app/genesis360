@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | Plan de fases: Categorías de clientes + Precio programado (sin código)
+
+- `sources/raw/plan_categorias_clientes_y_precio_programado.md`: 6 fases; el eje es el **motor único de precio en SQL**
+  (B-1), que hoy son dos (`tiers.ts` en el POS y `fn_precio_venta_efectivo` en Pedidos) y ninguno sabe quién es el cliente.
+- Del código salieron 6 preguntas (PL-1..PL-6): no existen "ventas en espera" (C-4), "ventas recurrentes" (B1) ni pedidos
+  desde el portal (B-8); el tope del DUEÑO es contradictorio entre A4 y B-5; default de C-2 en negocios con config; POS sin red.
+
 ## [2026-09-26] update | e2e 160 — cubre UAT 70.5 (POS sin cotización) y 70.9 (pedido en USD)
 
 - 70.9: pedido con producto USD → venta a `precio_usd × tasa` (precio_venta sembrado en $1 para detectar regresión) y

@@ -73,7 +73,13 @@ type: project
 >     categorías** (un proveedor lleva CUIT/condición IVA, no se inventa desde un nombre). Si se acepta, en la
 >     plantilla el desplegable de categoría pasaría a "advertencia" en vez de "frenar".
 > - Orden acordado con GO (26/09): ~~D-3~~ → ~~tests de UAT 70.5 y 70.9~~ (✅ e2e `160`, con prueba de mutación)
->   → **Categorías de clientes + Precio programado juntos** (arrancar por el plan de fases).
+>   → **Categorías de clientes + Precio programado juntos**: ✅ **plan escrito**, esperando a GO →
+>   `plan_categorias_clientes_y_precio_programado.md`. 6 fases: (1) precio programado C-1/C-2/C-3 · (2) categoría +
+>   cuenta corriente con herencia en UNA función SQL · (3) motor único de precio en SQL sin cambiar precios · (4) precio
+>   de categoría + tope + import Excel · (5) IA del cartel + reporte · (6) tiers/combos programados + cambios masivos.
+>   🙋 **Preguntas PL-1..PL-6** (tope del DUEÑO, ventas recurrentes y portal que no existen, default de C-2 en negocios
+>   existentes, POS sin red, ventas en espera que no existen) — en el mismo archivo. La Fase 1 no depende de PL-1..PL-3,
+>   PL-5 ni PL-6 (solo de PL-4 para C-2).
 > - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de
 >   keys legacy PROD, consultas al contador.
 > - Idea (no pedida): `GastosPage` podría proponer `cotizacion_fiscal` desde `cotizaciones_bna` para la fecha del

@@ -3,7 +3,7 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
 sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-09-22
+updated: 2026-09-24
 ---
 
 # Clientes y Proveedores
@@ -37,6 +37,12 @@ fecha_nacimiento, etiquetas TEXT[], codigo_fiscal, regimen_fiscal  ← v1.3.0
   [[wiki/features/productos]], [[wiki/features/inventario-stock]], [[wiki/features/envios]].
   🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle en
   [[wiki/features/inventario-stock]] "Footer de conteo de registros".
+- **🆕 Paginador real (2026-09-24, ✅ EN PROD desde v1.232.0):** la misma barra suma "Mostrar 50 · 100 ·
+  500" + tramo visible + Anterior/Siguiente (`usePaginacionLista.ts`) — pagina lo que se DIBUJA, el
+  buscador y las cuentas de CC siguen operando sobre el listado completo. De paso se cerró el tope de
+  1000 filas de PostgREST que podía dejar clientes invisibles (sin aparecer ni buscándolos) en un
+  negocio con más de 1000 clientes — ver [[wiki/features/inventario-stock]] "El tope de 1000 de
+  PostgREST".
 
 ### Sub-tabs en ficha del cliente
 
@@ -408,6 +414,15 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 ### CL2 — Cuenta corriente: límite/vencimiento/interés/morosidad (mig 172)
 - **Enforcement de límite (B1):** `tenants.cc_enforcement_politica` (permitir/avisar/bloquear). Límite por cliente = `clientes.limite_credito`, fallback `tenants.limite_cc_default`. El POS controla al despachar a CC.
 - **Vencimiento + interés (B3):** `ventas.fecha_vencimiento_cc` (= hoy + `tenants.cc_dias_vencimiento`). Interés de mora `tenants.cc_interes_mensual_pct` → `ventas.interes_cc`, recalculado por **`recalcular_intereses_cc(tenant)`** (sweep-lazy; pg_cron no habilitado). El tab CC muestra interés + vencimiento real.
+
+> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `recalcular_intereses_cc(p_tenant)`
+> **ya validaba** que el parámetro coincidiera con el tenant del usuario (no tenía el hueco
+> cross-tenant que sí tenían otros dos sweeps, ver abajo), pero con un `EXISTS` sobre `users` que no
+> miraba `activo` — un usuario dado de baja (mig 433) todavía podía dispararla. Ahora resuelve el
+> tenant con `get_user_tenant_id()`, igual que el resto de la app. De paso, `liberar_reservas_vencidas`
+> (que acredita la seña en `cliente_creditos` al vencer una reserva) sí tenía un hueco real: aceptaba
+> el tenant de OTRO negocio. Ver [[wiki/architecture/guards-server-side]] ("G15") y
+> [[wiki/features/ventas-pos]] ("Vencimiento + liberación automática").
 - **Morosidad (B4):** `tenants.cc_morosidad_politica` (permitir/bloqueo_cc/bloqueo_total). RPC **`cliente_cc_estado(cliente)`** (deuda_total/deuda_vencida/interes_total).
 - **Cobranza (B5):** FIFO desde las 3 vías — ficha del cliente, **POS** (botón "Deuda CC" en el chip del cliente) y **Caja** (tab "Cobranzas CC" masivo). Helper `src/lib/cobranzaCC.ts`. **Desde v1.52.0 SÍ genera movimiento de caja** (auditoría de procesos #1): Efectivo → `ingreso` real al arqueo, otro método → `ingreso_informativo`; sin caja imputable → warning al operador. Ver [[wiki/features/caja]] → "Flujo ventas ↔ caja".
 

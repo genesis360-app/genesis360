@@ -379,6 +379,15 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 - Función `liberar_reservas_vencidas(tenant)` (SECURITY DEFINER): libera el stock reservado (series `reservado=false` / `cantidad_reservada` decrementado) y marca la reserva `cancelada` con nota. **No toca dinero** (la seña se resuelve manual). Cada reserva es atómica y saltea las de período contable cerrado.
 - Disparo: **sweep lazy** al entrar a Ventas (RPC una vez por montaje si el tenant tiene vencimiento configurado). pg_cron no está habilitado.
 
+> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `liberar_reservas_vencidas(p_tenant_id)`
+> es `SECURITY DEFINER` con `EXECUTE` para `authenticated` y **no comparaba el parámetro con el
+> tenant del usuario que llama** — cualquier usuario logueado podía pasar el UUID de OTRO negocio y
+> cancelarle reservas vencidas, liberando su stock reservado. Fix: con sesión de usuario se exige
+> `p_tenant_id = get_user_tenant_id()` (mira `activo`, mig 433); sin sesión (service_role, la EF
+> `cron-sweeps` vía `liberar_reservas_vencidas_all`) sigue igual. Encontrado revisando el backlog de
+> auditoría de procesos, no en una auditoría de seguridad dedicada. Ver
+> [[wiki/architecture/guards-server-side]] ("G15").
+
 ### Cancelación con penalidad + crédito (E2 · mig 160)
 - Cancelar una reserva **con seña** requiere DUEÑO/SUPERVISOR/ADMIN (gate E4). Abre modal con:
   - **Penalidad** `tenants.reserva_penalidad_pct`: se retiene ese % de la seña (no se devuelve).

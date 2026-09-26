@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, src/pages/ProductosPage.tsx, src/lib/importarProductosMoneda.ts, src/lib/importarProductosActualizacion.ts]
-updated: 2026-09-24
+sources: [CLAUDE.md, migrations 329, 330, 340, 357, 367, 370, 388, 422, 423, 424, 436, src/pages/ProductosPage.tsx, src/lib/importarProductosMoneda.ts, src/lib/importarProductosActualizacion.ts]
+updated: 2026-09-25
 ---
 
 # Productos
@@ -29,14 +29,15 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 - Botón píldora **"Filtros"** con popover (✅ v1.138.0, EN PROD desde el 2026-07-22 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
 
-> [!WARNING] 🔴 **PENDIENTE ABIERTO (2026-09-24): la lista corta en 1000 registros sin avisar.** "Se trae
-> el catálogo del tenant una vez" (arriba) no pagina, y PostgREST topea en **1000 filas** por default —
-> medido contra la API real: `Content-Range: 0-999/1177` en el tenant de pruebas. El buscador de píldoras
-> filtra sobre lo ya cargado client-side, así que un producto más allá del corte **no aparece ni
-> buscándolo**. **Impacto hoy: cero** — el negocio más grande en PROD (Kalken) tiene 13 productos. Es
-> latente, pero le va a pegar al primer cliente con catálogo grande, y el mismo patrón (sin paginar,
-> tope de 1000 de PostgREST) puede estar en otras listas (clientes, ventas, movimientos) — falta
-> auditarlo. GO todavía no decidió la prioridad. Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+> [!NOTE] ✅ **CERRADO (2026-09-24, 🚀 EN PROD desde v1.232.0).** "Se trae el catálogo del tenant una vez"
+> (arriba) no paginaba, y PostgREST topea en **1000 filas** por default — medido contra la API real:
+> `Content-Range: 0-999/1177` en el tenant de pruebas, 177 productos que la app no mostraba nunca (ni
+> buscándolos por nombre, porque el buscador de píldoras filtra sobre lo ya cargado client-side). Era un
+> patrón repetido en **27 queries** de toda la app, algunas de mayor riesgo que esta (`inventario_lineas`
+> se suma por producto → se veía como stock equivocado, REGLA #0). Cerrado con `src/lib/traerTodo.ts`
+> (nuevo, 7 tests): trae de a tandas de 1000 hasta que la base devuelve menos de lo pedido, con un techo
+> de seguridad que avisa por consola si algún día no alcanza. Detalle completo:
+> [[wiki/features/inventario-stock]] → "El tope de 1000 de PostgREST", `log.md` (2026-09-24, `deploy`).
 
 ### Footer de conteo de registros (🆕 2026-08-06, ✅ PROD desde v1.159.0)
 
@@ -47,6 +48,13 @@ tenant:
 - **Con filtro:** "Mostrando N de M productos".
 - 🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle completo en
   [[wiki/features/inventario-stock]] "Footer de conteo de registros".
+- 🆕 **Paginador real (2026-09-24, ✅ EN PROD desde v1.232.0):** la misma barra suma "Mostrar 50 · 100 ·
+  500", el tramo visible ("501-1.000 de 1.177 productos") y Anterior/Siguiente con número de página
+  (`src/hooks/usePaginacionLista.ts`, nuevo). **Pagina lo que se DIBUJA, no lo que se trae** — filtros,
+  buscador de píldoras y sumas de stock siguen operando sobre el set completo del tenant; si el paginado
+  fuera de la query, el buscador solo encontraría resultados dentro de la página actual. **Apagado a
+  propósito en la vista agrupada** (partir una madre de sus variantes entre dos páginas sería peor que no
+  paginar). Detalle completo: [[wiki/features/inventario-stock]] "El tope de 1000 de PostgREST".
 
 Reusado también en Inventario (tab Inventario), Clientes y Envíos — ver
 [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]], [[wiki/features/envios]].
@@ -390,11 +398,12 @@ Verificado contra la base real en DEV con el payload exacto (revertido después)
 100 USD a cotización 1400 → quedó `precio_costo=84000`, `precio_costo_usd=60`, `moneda_costo='usd'`,
 `precio_venta=140000`, `precio_usd=100`, `moneda_venta='usd'`, `margen_ganancia=66.67`.
 
-> [!NOTE] **Tres hallazgos que dejó A0 — estado al 2026-09-24, 🚀 EN PROD desde v1.231.0**: ✅ **D-1 y
-> D-3 RESUELTOS**, sin esperar respuesta de GO (eran aplicación directa de reglas ya decididas, no puntos
-> a relevar). 🟡 **D-2 mitigado, no cerrado** (el tope de 999,99% de margen sigue una decisión ABIERTA de
-> GO). Detalle completo en la sección de abajo, "Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴
-> que encontró `code-reviewer` (2026-09-24)".
+> [!NOTE] **Tres hallazgos que dejó A0 — estado al 2026-09-25**: ✅ **D-1 y D-3 RESUELTOS**, sin esperar
+> respuesta de GO (eran aplicación directa de reglas ya decididas, no puntos a relevar), 🚀 EN PROD desde
+> v1.231.0. ✅ **D-2 CERRADO en DEV, falta PROD** (mig 436, 2026-09-25): el tope de margen pasó de
+> `numeric(5,2)` (999,99 %) a `numeric(8,2)` (999.999,99 %). Detalle completo en la sección de abajo,
+> "Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24)" y
+> en "Margen: tope numeric(8,2) (mig 436, 2026-09-25)".
 
 ---
 
@@ -430,13 +439,14 @@ mientras el POS cobra a la de **compra** desde el fix del 2026-09-08 — era la 
 afuera de ese fix. Una línea. Ahora POS, ficha e importador usan la misma tasa. Hoy latente: 0
 productos en USD en PROD.
 
-### D-2 🟡 mitigado — aviso claro del tope de margen, el tope en sí sigue abierto
+### D-2 ✅ cerrado en DEV (falta PROD) — aviso claro del tope de margen + el tope ampliado (mig 436)
 
 Cargar un producto que superara el margen guardable devolvía un `numeric field overflow` crudo de
 Postgres, en la ficha y en el importador. Ahora los dos avisan con un mensaje claro antes de intentar
-guardar (`margenEntraEnLaBase`). ⚠️ **El tope de 999,99 % sigue existiendo**: `productos.margen_ganancia`
-es `GENERATED numeric(5,2)`, así que ningún producto con markup mayor todavía se puede guardar.
-**Ampliar la columna es una decisión de GO todavía ABIERTA.**
+guardar (`margenEntraEnLaBase`). El tope en sí —que el 2026-09-24 seguía en **999,99 %**
+(`productos.margen_ganancia GENERATED numeric(5,2)`)— se amplió el **2026-09-25** a **999.999,99 %**
+(`numeric(8,2)`, mig 436). Ver la sección "Margen: tope numeric(8,2) (mig 436, 2026-09-25)" más abajo
+para el detalle completo.
 
 ### Export reimportable — de 10 a 22 columnas
 
@@ -500,6 +510,42 @@ mano.
 **Verificación**: UAT §66 (26 escenarios) · §67 (mig 433, ver [[wiki/features/autenticacion-onboarding]])
 · §68 (7 escenarios de cobertura que faltan, `tests/specs/uat-modo-basico.md`). Typecheck limpio, build
 verde.
+
+### Margen: tope numeric(8,2) (mig 436, 2026-09-25) — ✅ EN DEV, ❌ falta PROD
+
+D-2 quedaba "mitigado, no cerrado" el 2026-09-24: la app avisaba con un mensaje claro antes del
+`numeric field overflow`, pero el tope de **999,99 %** seguía existiendo y era una decisión ABIERTA
+de GO. GO la decidió esa misma sesión (*"si claro, ampliemos la columna como indicas"*) y se ejecutó
+en la sesión siguiente, el mismo día: mig `436_margen_producto_numeric_8_2.sql`,
+`productos.margen_ganancia` (columna **GENERADA**,
+`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`) y `productos.margen_objetivo`
+(manual) pasan de `numeric(5,2)` a `numeric(8,2)`. Techo nuevo: **999.999,99 %** (vender a casi
+10.000× el costo).
+
+Aplicada en Supabase DEV vía Management API (`/database/migrations`; queda en `schema_migrations`
+como `20260925143456`) y probada: costo $30 / precio $1.500 guarda margen `4900.00` (primero
+verificado en una transacción descartada, después aplicada en firme). Sin vistas dependientes de
+ninguna de las dos columnas, verificado en DEV y en PROD. **NO aplicada en PROD todavía** — queda
+para el próximo deploy, junto con el bump de `APP_VERSION`. Las demás `numeric(5,2)` del esquema
+(`descuento_pct`, `comision_pct`, `repricing_tope_pct`, `reserva_*_pct`,
+`precio_ajuste_meli_pct`/`_tn_pct`) **no se tocaron**, a propósito: son descuentos y comisiones,
+donde 100 % es un techo legítimo.
+
+Dos cambios de código acompañaron la migración, mismo commit `70e257ce`, sin migración propia:
+
+- **`src/lib/importarProductosMoneda.ts`**: `MARGEN_MAX_PCT` sube a `999999.99` (sigue el techo real
+  de la columna) + nueva constante `MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99` y la función
+  `margenSospechosoPorMonedas()`. El importador **conserva el umbral viejo, pero solo como alerta**,
+  para filas donde costo y precio vienen en monedas distintas — el techo viejo de la columna frenaba
+  de rebote un CSV con costo en ARS y precio en USD (margen de 93.233 %); sin ese freno específico,
+  la fila entraría con el margen inflado en silencio (REGLA #0).
+- **`ProductoFormPage`**: el input "Margen objetivo %" tenía `max="100"` en el HTML — la validación
+  nativa del navegador bloqueaba cargar un objetivo de markup > 100 %, aunque `margen_objetivo` es
+  markup sobre costo (`fn_precio_para_margen = costo × (1 + m/100)`), no un porcentaje con techo en
+  100. Ahora `max = MARGEN_MAX_PCT` + guard agregado en `handleSubmit`.
+
+Tests: unit 1927/1927 verdes, build verde. UAT §66: 66.6 y 66.16 actualizados, nuevos 66.27 y 66.28.
+Ver [[wiki/database/migraciones]] (mig 436), `log.md` (2026-09-25, `update`).
 
 ---
 

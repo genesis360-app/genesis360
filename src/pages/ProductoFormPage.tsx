@@ -522,17 +522,23 @@ export default function ProductoFormPage() {
     if (!form.nombre.trim()) return toast.error('El nombre es obligatorio')
     if (skuTaken) return toast.error('El SKU ya está en uso. Elegí otro o dejalo vacío para autogenerar.')
 
-    // D-2: `productos.margen_ganancia` es una columna GENERATED `numeric(5,2)`, así que no admite más
-    // de 999,99 % de markup. Sin este chequeo la base responde un "numeric field overflow" crudo que
-    // no le dice nada a nadie. Se mira contra los precios EN PESOS, que son los que ve la columna
+    // D-2: `productos.margen_ganancia` es una columna GENERATED `numeric(8,2)` (mig 436), así que no
+    // admite más de 999.999,99 % de markup. Sin este chequeo la base responde un "numeric field
+    // overflow" crudo que no le dice nada a nadie. Se mira contra los precios EN PESOS, que son los que ve la columna
     // (cuando el producto va en dólares, `precio_costo`/`precio_venta` son el espejo convertido).
     const costoArs = parseFloat(form.precio_costo) || 0
     const ventaArs = parseFloat(form.precio_venta) || 0
     if (!margenEntraEnLaBase(costoArs, ventaArs)) {
       const m = margenGenerado(costoArs, ventaArs)
       return toast.error(
-        `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT}%. Revisá el costo y el precio.`,
+        `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT.toLocaleString('es-AR')}%. Revisá el costo y el precio.`,
       )
+    }
+    // `margen_objetivo` es markup sobre el costo (no un porcentaje del precio): puede pasar el 100 %.
+    // Mismo techo que `margen_ganancia` (numeric(8,2), mig 436).
+    const objetivo = parseFloat(form.margen_objetivo)
+    if (Number.isFinite(objetivo) && Math.abs(objetivo) > MARGEN_MAX_PCT) {
+      return toast.error(`El margen objetivo no puede superar ${MARGEN_MAX_PCT.toLocaleString('es-AR')}%.`)
     }
 
     // Verificar límite de productos solo al crear (no al editar)
@@ -1439,7 +1445,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo %</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
                   <div className="relative">
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1" disabled={!canEdit}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={MARGEN_MAX_PCT} step="0.1" disabled={!canEdit}
                       value={form.margen_objetivo}
                       onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
                       className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700"

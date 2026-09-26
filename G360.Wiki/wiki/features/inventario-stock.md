@@ -2,8 +2,8 @@
 title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362]
-updated: 2026-08-25
+sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362, src/lib/traerTodo.ts]
+updated: 2026-09-24
 ---
 
 # Inventario y Stock
@@ -65,6 +65,72 @@ Productos, Clientes y Envíos — ver [[wiki/features/productos]],
 > `flex-shrink-0` normal a `sticky bottom-0 z-10` (clavado contra el borde inferior del `<main>`, el
 > único contenedor con scroll, según `src/components/layout/AppLayout.tsx`), sin `fixed` ni cálculo
 > del ancho del sidebar. Mismo cambio en las 4 páginas que usan el componente.
+
+> 🆕 **Paginador real (2026-09-24, ✅ EN PROD desde v1.232.0).** La misma barra del pie suma "Mostrar
+> 50 · 100 · 500", el tramo visible ("501-1.000 de 1.177 productos") y Anterior/Siguiente con número
+> de página — `src/hooks/usePaginacionLista.ts` (nuevo) + `listaConteoStore` extendido. **Pagina lo
+> que se DIBUJA, no lo que se trae**: filtros, buscador y sumas de stock siguen operando sobre el set
+> completo. Pedido de GO — ver la sección siguiente para el fix hermano que lo hizo posible sin
+> mentirle al conteo.
+
+---
+
+## 🔴✅ El tope de 1000 de PostgREST — CERRADO (2026-09-24, ✅ EN PROD desde v1.232.0)
+
+PostgREST corta **toda** respuesta en **1000 filas** por default. Una query sin `.range()` no falla ni
+avisa: devuelve 1000 filas y la app las muestra como si fueran todas. Medido contra la API real:
+`Content-Range: 0-999/1177` en el catálogo de pruebas — **177 productos que la app no mostraba nunca**, y
+como el buscador de píldoras filtra sobre lo ya cargado client-side, un registro más allá del corte no
+aparecía **ni buscándolo por nombre**.
+
+### Por qué esta página es la de mayor riesgo del hallazgo
+
+Eran **27 queries** de toda la app sin `.range()`. La mayoría son listas que se ven y ya (Productos,
+Clientes, reportes exportables) — acá en Inventario el corte podía pegarle directo a **REGLA #0**:
+
+- **`inventario_lineas`**: las líneas de stock se **SUMAN por producto** para calcular el disponible. Con
+  más de 1000 líneas de inventario en el tenant, la suma se hacía sobre un subconjunto arbitrario (el
+  orden que devuelve Postgres sin `ORDER BY` explícito no está garantizado) → **el stock mostrado podía
+  ser directamente incorrecto**, sin ningún error visible.
+- Los **importadores** (`ImportarInventarioPage.tsx` y el de Productos/Clientes) arman un mapa de
+  "¿este SKU/DNI ya existe?" para decidir si CREAN o ACTUALIZAN una fila — con el mapa recortado a 1000,
+  un registro más allá del corte se trataba como nuevo y **duplicaba** en vez de actualizar.
+- Selectores de **Conteos/ABC/kits/combos** que arman su universo de productos también quedaban
+  recortados en un tenant con catálogo grande.
+
+### La solución — `src/lib/traerTodo.ts` (nuevo, 7 tests)
+
+Función pura que pide de a **tandas de 1000** hasta que la base devuelve **menos** de lo pedido (señal de
+que no hay más), con un **techo de seguridad configurable** que **avisa por consola** si se alcanza — un
+corte nunca puede volver a ser silencioso, ni siquiera en el caso patológico de un tenant con millones de
+filas. `traerTodoConError` devuelve `{data, error}` con la misma forma que ya devuelve `supabase-js`, para
+poder convertir una query existente **cambiando una sola línea** sin reescribir el resto del código que la
+consume.
+
+Dato técnico verificado antes de replicar el patrón por todo el repo: había que confirmar que reusar el
+**mismo builder de supabase-js** para tandas sucesivas (llamar `.range()` de nuevo sobre el mismo query
+builder) efectivamente trae registros distintos en cada vuelta y no repite la primera tanda — probado
+contra DEV con una tabla de 1254 filas: las 1254 volvieron, todas distintas. Hasta este hallazgo nunca se
+había ejercitado más de una vuelta del loop en ningún lugar del código.
+
+### Dónde se aplicó (27 queries)
+
+Además de `inventario_lineas` (esta página) y los importadores: el SKU siguiente de `ProductoFormPage`
+(se calculaba sobre una lista recortada → riesgo de **SKU duplicado**, ver [[wiki/features/productos]]),
+la lista de "madres" agrupadoras de `VentasPage` (no vendibles, precio 0 — recortada, **una madre podía
+venderse a $0**), Dashboard y Métricas (valorizado de stock y capital dormido), reportes exportables, y
+clientes con cuenta corriente (ver [[wiki/features/clientes-proveedores]]).
+
+### El paginador de la UI es un cambio aparte
+
+Que el listado ahora **traiga** todo el catálogo no significa que la UI deba **dibujar** todo de una — por
+eso el mismo release sumó el paginador real al pie (sección anterior, "Footer de conteo de registros").
+Las dos piezas son independientes: `traerTodo.ts` resuelve la integridad del dato (stock, dedupe,
+totales), el paginador resuelve cuánto se renderiza en pantalla.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), `log.md` (2026-09-24, `deploy`),
+[[wiki/database/migraciones]], [[wiki/development/testing]] (5 de las 9 fallas de la suite archivadas
+como "flakiness" eran en realidad este mismo tope de 1000).
 
 ---
 
@@ -603,7 +669,17 @@ Filtros en tab Historial:
 - Asignado por SKU en ProductoFormPage
 - Función SQL `process_aging_profiles()` SECURITY DEFINER: calcula días restantes, aplica regla, cambia estado, inserta en actividad_log
 - EF `process-aging` + botón manual en ConfigPage → Aging Profiles
-- Pendiente: scheduler diario (pg_cron)
+- Pendiente: scheduler diario (pg_cron) — decisión de GO pendiente (cambiaría estados de inventario sin click; ver "🔒 Mig 437" abajo)
+
+> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `process_aging_profiles(p_tenant_id)`
+> es `SECURITY DEFINER` con `EXECUTE` para `authenticated` y **no comparaba el parámetro con el
+> tenant del usuario que llama** — cualquier usuario logueado podía pasar el UUID de OTRO negocio y
+> forzarle un cambio de `estado_id` en su inventario. Fix: con sesión de usuario se exige
+> `p_tenant_id = get_user_tenant_id()` (mira `activo`, mig 433); sin sesión (service_role/cron) sigue
+> igual. `process_aging_profile_single` también pasa a `get_user_tenant_id()` (antes resolvía el
+> tenant con un `SELECT` a `users` que no miraba `activo`). Encontrado revisando el backlog de
+> auditoría de procesos, no en una auditoría de seguridad dedicada. Ver
+> [[wiki/architecture/guards-server-side]] ("G15").
 - **Distinto del descuento automático por estado en la venta** (v1.139.0, migs 284-285 — backlog
   Fede punto 3): Aging Profiles solo **mueve** una línea a otro `estado_id` según días a vencer,
   sin aplicar ningún descuento por sí solo. El feature nuevo aplica un % **al vender** stock que

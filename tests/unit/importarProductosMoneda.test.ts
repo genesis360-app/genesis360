@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { monedaProductoImportada, margenGenerado, margenEntraEnLaBase, montoYMonedaParaExportar } from '@/lib/importarProductosMoneda'
+import { monedaProductoImportada, margenGenerado, margenEntraEnLaBase, margenSospechosoPorMonedas, montoYMonedaParaExportar } from '@/lib/importarProductosMoneda'
 
 // A0 — el importador de productos y las columnas de moneda.
 // Contexto en `src/lib/importarProductosMoneda.ts` y en
@@ -84,8 +84,8 @@ describe('monedaProductoImportada', () => {
 })
 
 // ── Tope del margen que la base puede guardar ────────────────────────────────
-// `productos.margen_ganancia` es GENERATED numeric(5,2): más de 999,99 % no entra y Postgres
-// responde "numeric field overflow". Se valida en la vista previa para que el usuario lo vea antes.
+// `productos.margen_ganancia` es GENERATED numeric(8,2) (mig 436; antes numeric(5,2), techo
+// 999,99 %): más de 999.999,99 % no entra y Postgres responde "numeric field overflow".
 describe('margenGenerado / margenEntraEnLaBase', () => {
   it('calcula el mismo margen que la columna generada', () => {
     // ((250 - 150) / 150) * 100 = 66.67
@@ -101,33 +101,62 @@ describe('margenGenerado / margenEntraEnLaBase', () => {
     expect(margenEntraEnLaBase(0, 999999)).toBe(true)
   })
 
-  it('justo en el tope entra', () => {
-    // costo 100 → 999.99% es un precio de 1099.99
-    expect(margenEntraEnLaBase(100, 1099.99)).toBe(true)
+  it('🛑 D-2: un café de $30 vendido a $1.500 (4.900 %) SE PUEDE GUARDAR', () => {
+    // Con numeric(5,2) este producto no se podía guardar: la app rechazaba un precio legítimo.
+    expect(margenGenerado(30, 1500)).toBe(4900)
+    expect(margenEntraEnLaBase(30, 1500)).toBe(true)
   })
 
-  it('un punto por encima del tope NO entra', () => {
-    expect(margenEntraEnLaBase(100, 1101)).toBe(false)
+  it('el viejo tope (999,99 %) ya no frena', () => {
+    expect(margenEntraEnLaBase(100, 1101)).toBe(true)
   })
 
-  it('el caso real: CSV con costo en ARS y precio en USD', () => {
-    // costo 150 ARS contra precio 100 USD (= 140.000 ARS a 1400) → 93.233 %
-    const costo = monedaProductoImportada(150, 'ARS', 1400)!
-    const venta = monedaProductoImportada(100, 'USD', 1400)!
-    expect(margenEntraEnLaBase(costo.precioArs, venta.precioArs)).toBe(false)
+  it('justo en el tope nuevo entra', () => {
+    // costo 1 → 999.999,99 % es un precio de 10.000,9999
+    expect(margenEntraEnLaBase(1, 10000.9999)).toBe(true)
   })
 
-  it('el mismo par en la misma moneda sí entra', () => {
-    const costo = monedaProductoImportada(60, 'USD', 1400)!
-    const venta = monedaProductoImportada(100, 'USD', 1400)!
-    expect(margenEntraEnLaBase(costo.precioArs, venta.precioArs)).toBe(true)
-    expect(margenGenerado(costo.precioArs, venta.precioArs)).toBe(66.67)
+  it('por encima del tope nuevo NO entra', () => {
+    expect(margenEntraEnLaBase(1, 10001)).toBe(false)
   })
 
   it('una pérdida enorme también desborda, por el lado negativo', () => {
-    // La columna es numeric(5,2): -999.99 es el piso. No se puede perder más del 100% igual,
-    // pero el guard es simétrico a propósito, por si algún día el costo llega negativo.
-    expect(margenEntraEnLaBase(100, -999999)).toBe(false)
+    // El guard es simétrico a propósito, por si algún día el costo llega negativo.
+    expect(margenEntraEnLaBase(1, -99999999)).toBe(false)
+  })
+})
+
+// ── Red de seguridad del importador: costo y precio en monedas distintas ─────
+// Antes de la mig 436 el techo de la columna frenaba de rebote el CSV que mezcla monedas. Al
+// ampliarla, se conserva el mismo umbral (999,99 %) SOLO para las filas con monedas mezcladas.
+describe('margenSospechosoPorMonedas', () => {
+  it('🛑 el caso real: CSV con costo en ARS y precio en USD sigue frenado', () => {
+    // costo 150 ARS contra precio 100 USD (= 140.000 ARS a 1400) → 93.233 %
+    const costo = monedaProductoImportada(150, 'ARS', 1400)!
+    const venta = monedaProductoImportada(100, 'USD', 1400)!
+    expect(margenEntraEnLaBase(costo.precioArs, venta.precioArs)).toBe(true) // la base lo aceptaría…
+    expect(margenSospechosoPorMonedas(costo.precioArs, venta.precioArs)).toBe(true) // …el importador no
+  })
+
+  it('el mismo par en la misma moneda no es sospechoso', () => {
+    const costo = monedaProductoImportada(60, 'USD', 1400)!
+    const venta = monedaProductoImportada(100, 'USD', 1400)!
+    expect(margenSospechosoPorMonedas(costo.precioArs, venta.precioArs)).toBe(false)
+    expect(margenGenerado(costo.precioArs, venta.precioArs)).toBe(66.67)
+  })
+
+  it('costo en USD y precio en ARS con un margen razonable pasa', () => {
+    // costo 10 USD (14.000 ARS) vendido a 21.000 ARS → 50 %
+    expect(margenSospechosoPorMonedas(14000, 21000)).toBe(false)
+  })
+
+  it('en el umbral exacto no es sospechoso; un punto arriba sí', () => {
+    expect(margenSospechosoPorMonedas(100, 1099.99)).toBe(false)
+    expect(margenSospechosoPorMonedas(100, 1101)).toBe(true)
+  })
+
+  it('costo 0: no se puede calcular, no es sospechoso', () => {
+    expect(margenSospechosoPorMonedas(0, 5000)).toBe(false)
   })
 })
 

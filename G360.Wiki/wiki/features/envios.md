@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360, 386, 431, src/pages/EnviosPage.tsx]
-updated: 2026-09-22
+updated: 2026-09-24
 ---
 
 # Módulo Envíos
@@ -121,6 +121,11 @@ Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
   el footer aclara "de los últimos 100" en vez de mostrar un total falso. Mismo mecanismo en
   Productos, Inventario y Clientes — ver [[wiki/features/productos]],
   [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]].
+- **🆕 Paginador real (2026-09-24, ✅ EN PROD desde v1.232.0):** la misma barra suma "Mostrar 50 · 100 ·
+  500" + tramo visible + Anterior/Siguiente (`usePaginacionLista.ts`) — pagina lo que se DIBUJA, el
+  filtro/buscador siguen sobre el listado ya traído. Ver [[wiki/features/inventario-stock]] "El tope de
+  1000 de PostgREST" para el fix hermano (esta página ya limitaba a 100 de forma explícita, así que no
+  era candidata al corte silencioso de PostgREST).
   🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle en
   [[wiki/features/inventario-stock]] "Footer de conteo de registros".
 - Lista de envíos con filtros: estado / courier / canal / fechas / búsqueda

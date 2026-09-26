@@ -3,10 +3,83 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
-# Historial de Migraciones (001-434, + correctivos 387b/387c)
+# Historial de Migraciones (001-437, + correctivos 387b/387c)
+
+🔒 **Migración 437 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `e16df8c7` en `dev`, sin
+deploy ni bump de `APP_VERSION`): `437_sweeps_aislamiento_tenant.sql` — dos sweeps `SECURITY
+DEFINER` que reciben el tenant **por parámetro** y son ejecutables por `authenticated`,
+`process_aging_profiles(p_tenant_id)` y `liberar_reservas_vencidas(p_tenant_id)`, **no comparaban
+ese parámetro contra el negocio del usuario que llama**: cualquier usuario logueado podía pasar el
+UUID de OTRO negocio y cambiarle estados de inventario (aging), o cancelar sus reservas vencidas
+—liberando stock reservado y acreditando la seña en `cliente_creditos`— de ese negocio ajeno.
+Encontrado revisando el ítem 7 del backlog de la auditoría de procesos ("cron para sweeps lazy"),
+no en una auditoría de seguridad dedicada. Daño acotado a adelantar algo que ese sweep ya iba a
+hacer solo según la config del tenant afectado, pero es escritura cross-tenant (REGLA #0). Fix: con
+sesión de usuario se exige `p_tenant_id = get_user_tenant_id()` (que ya mira `activo`, mig 433); sin
+sesión (`service_role`, la EF `cron-sweeps` vía `liberar_reservas_vencidas_all`) sigue igual. De
+paso, `process_aging_profile_single` (resolvía el tenant con un `SELECT` a `users` sin mirar
+`activo`) y `recalcular_intereses_cc` (ya validaba el tenant, mismo problema del `activo`) pasan
+también a `get_user_tenant_id()`. Cuerpos tomados con `pg_get_functiondef` de PROD (idénticos a
+DEV). Revisada por `migration-reviewer` (apta). Probada en DEV impersonando al DUEÑO: aging de otro
+tenant → `{"error": "Tenant no encontrado", "cambios": 0}`; lo propio y el camino sin usuario siguen
+funcionando igual. Ver [[wiki/architecture/guards-server-side]] "G15" y
+[[wiki/architecture/multi-tenant-rls]].
+
+📐 **Migración 436 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `70e257ce` en `dev`, sin
+deploy ni bump de `APP_VERSION`): `productos.margen_ganancia` (columna **GENERADA**,
+`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`) y `productos.margen_objetivo`
+(manual) pasan de `numeric(5,2)` a `numeric(8,2)`. Hallazgo D-2 del importador: el techo viejo era
+**999,99 %** (vender a poco más de 11× el costo) y, al pasarse, **el producto no se podía guardar**
+(`numeric field overflow`) — no un número mal mostrado, un precio legítimo rechazado. Un café que
+cuesta $30 y se vende a $1.500 ya son 4.900 %; cualquier rubro de markup alto (cafetería, kiosco) lo
+toca el primer día. Techo nuevo: **999.999,99 %**. Decidido por GO el 2026-09-25 (sesión anterior),
+ejecutado en la sesión siguiente el mismo día. Aplicada en Supabase DEV vía Management API
+(`/database/migrations`, queda en `schema_migrations` como `20260925143456`) y probada: costo $30 /
+precio $1.500 guarda margen `4900.00`. El `ALTER` funciona aun siendo columna generada (verificado
+antes en una transacción descartada). Sin vistas dependientes (verificado en DEV y PROD). Las demás
+`numeric(5,2)` del esquema (`descuento_pct`, `comision_pct`, `repricing_tope_pct`, `reserva_*_pct`,
+`precio_ajuste_meli_pct`/`_tn_pct`) **no se tocaron a propósito**: son descuentos y comisiones, ahí
+100 % es un techo legítimo. Acompañan (mismo commit, sin migración propia): `MARGEN_MAX_PCT` de
+`src/lib/importarProductosMoneda.ts` sube a `999999.99` + nueva
+`MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99` que conserva el umbral viejo solo como alerta para
+filas con costo y precio en monedas distintas (REGLA #0); y el input "Margen objetivo %" de
+`ProductoFormPage`, que tenía `max="100"` bloqueando un markup legítimo > 100 %. Ver
+[[wiki/features/productos]] "Margen: tope numeric(8,2)".
+
+🛑 **Migración 435 — ✅ EN DEV Y EN PROD** (deploy `v1.232.0`, 2026-09-24, PR #358, merge `5a294934`):
+una caja no puede tener dos sesiones abiertas a la vez (REGLA #0). Los movimientos se cuelgan de una
+sesión y la app lee la MÁS RECIENTE (`order('abierta_at',desc).limit(1)`): con dos sesiones abiertas, la
+plata entra por una mientras el arqueo se cierra sobre la otra. **Medido**: PROD tenía un negocio con
+**6 sesiones abiertas a la vez** en su Caja Fuerte (creadas entre las 05:30 y 05:34 del 2026-06-20, todas
+vacías); en DEV, Caja1 con 2 abiertas y plata en las DOS (#54 con 189 movimientos, #56 con 17). Agrega un
+**índice único parcial `(caja_id) WHERE estado='abierta'`** (lo único que cierra la carrera de verdad) +
+trigger con mensaje entendible + saneamiento que cierra SOLO los duplicados VACÍOS (apertura 0, sin
+movimientos) — con plata adentro el índice falla a propósito, obligando a resolver a mano (en PROD cerró
+5 duplicados vacíos; en DEV la #56 con plata se cerró a mano con su saldo real: 5000 + 9353 − 3018 =
+11335, sin mover ningún movimiento). Revisión previa encontró que `trg_caja_ses_periodo_cerrado` dispara
+en CUALQUIER UPDATE de `caja_sesiones` y habría abortado el saneamiento sobre una sesión de un período
+contable cerrado — verificado antes de aplicar que el tenant afectado no tiene ninguno. Del lado del
+frontend (mismo release, sin migración propia): `CajaPage` ya no ofrece "Abrir caja" mientras la query de
+sesión viaja (spinner en su lugar), el guard de apertura pasó de `.maybeSingle()` (falla con 2+ filas) a
+`.limit(2)` + rechaza cualquier sesión abierta (antes solo rechazaba la de OTRO usuario), y
+`ensureFuerteSesionId` atrapa el `23505` de la carrera del get-or-create + filtra `estado='abierta'` (le
+faltaba, devolvía como abierta una sesión permanente ya cerrada). Ver [[wiki/features/caja]] "Una caja no
+puede tener dos sesiones abiertas".
+
+🚀 **Deploy `v1.232.0` a PROD (2026-09-24, segunda entrega del día)**: PR **#358** `dev→main`, merge
+commit **`5a294934`**, release **`v1.232.0`** (`--latest`). Incluye la mig 435 de arriba + (sin migración
+propia) **el tope de 1000 de PostgREST CERRADO** — `src/lib/traerTodo.ts` (nuevo, 7 tests) trae de a
+tandas de 1000 en las 27 queries de mayor riesgo (`inventario_lineas` sumaba stock recortado, SKU
+siguiente sobre lista recortada, importadores duplicando por mapa incompleto) — y el **paginador real al
+pie** de Productos/Inventario/Clientes/Envíos (`usePaginacionLista.ts`). También se cerraron las 9 fallas
+de la suite e2e que estaban archivadas como "flakiness" (ninguna lo era: 3 eran el spec fiscal 146 en el
+tenant equivocado, 5 eran el tope de 1000, 1 la carrera de apertura de caja) — **388/388 e2e en verde por
+primera vez**, unit 1922/1922. Paridad de policies DEV=PROD por hash **por schema**: `public` **234** ·
+`storage` **40** · `cron` **2**, hashes idénticos. Antes: PROD en `v1.231.0` (migs 001-434). Detalle
+completo en `log.md` (2026-09-24, `deploy`).
 
 🔑 **Migración 434 — ✅ EN DEV Y EN PROD** (deploy `v1.231.0`, 2026-09-24, PR #357, merge `313b7f6d`):
 empleados con nombre y contraseña, SIN correo. Pedido de GO: en un negocio chico los empleados no tienen

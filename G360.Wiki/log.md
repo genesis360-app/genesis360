@@ -6,6 +6,259 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-25] update | Mig 437 — sweeps aceptaban el negocio de otro (DEV)
+
+Tercera sesión del día. Revisando el ítem 7 del backlog de la auditoría de procesos ("cron para
+sweeps lazy") salió un hueco de aislamiento entre negocios. **Solo en DEV** — PROD sigue en
+`v1.232.0` (migs 001-435), sin bump de `APP_VERSION` (no hubo deploy). DEV pasa a 001-**437**.
+Commit `e16df8c7` en `origin/dev`.
+
+### Mig 437 — `process_aging_profiles`/`liberar_reservas_vencidas` aceptaban el tenant de OTRO negocio
+
+`process_aging_profiles(p_tenant_id)` y `liberar_reservas_vencidas(p_tenant_id)` son `SECURITY
+DEFINER` con `EXECUTE` otorgado a `authenticated` (verificado igual en DEV y PROD) y **no
+comparaban `p_tenant_id` contra el negocio del usuario que llama**: cualquier usuario logueado
+podía pasar el UUID de OTRO negocio y (1) cambiarle estados de inventario vía aging, o (2) cancelar
+sus reservas vencidas, liberando stock reservado y acreditando la seña en `cliente_creditos` de ese
+negocio ajeno. Daño acotado —adelanta algo que ese sweep ya iba a hacer solo, según la config del
+tenant afectado— pero es escritura cross-tenant, y la REGLA #0 no tolera eso ni "acotado".
+
+`437_sweeps_aislamiento_tenant.sql`: con sesión de usuario se exige `p_tenant_id =
+get_user_tenant_id()` (que ya mira `activo`, mig 433); sin sesión (`service_role`, la EF
+`cron-sweeps` vía `liberar_reservas_vencidas_all`) pasa igual que antes. De paso,
+`process_aging_profile_single` (resolvía el tenant con un `SELECT` a `users` que no miraba
+`activo`) y `recalcular_intereses_cc` (ya validaba el tenant, pero con el mismo problema del
+`activo`) pasan también a `get_user_tenant_id()`.
+
+Cuerpos tomados con `pg_get_functiondef` de PROD (idénticos a DEV, sin drift). Revisada por
+`migration-reviewer` (apta). Probada en DEV impersonando al DUEÑO del tenant dev: pedir aging de
+OTRO tenant → `{"error": "Tenant no encontrado", "cambios": 0}`, 0 cambios; el propio tenant sigue
+funcionando igual que antes; el camino sin usuario (service_role) también.
+
+### Ítem 7 del backlog de auditoría de procesos, re-verificado de paso
+
+Intereses de CC y reservas vencidas YA corren diario (`.github/workflows/sweeps.yml` → EF
+`cron-sweeps` → `*_all()`). "Servicios recurrentes" no es un sweep (solo un aviso en Proveedores, a
+propósito). Sigue faltando solo **AGING en el cron** (hoy únicamente por botón en Config; en PROD:
+1 negocio con 1 producto usándolo) — decisión pendiente de GO, porque correrlo solo cambia estados
+de inventario sin que nadie haga click.
+
+### Pendiente
+
+Llevar las migs 436 y 437 a PROD en el próximo deploy, junto con el bump de `APP_VERSION`
+correspondiente.
+
+---
+
+## [2026-09-25] update | D-2 — margen hasta 999.999,99 % (mig 436, DEV)
+
+Segunda sesión del día: se ejecutó lo que la sesión anterior había dejado decidido pero sin escribir.
+**Solo en DEV** — PROD sigue en `v1.232.0` (migs 001-435), sin bump de `APP_VERSION` (no hubo deploy).
+Commit `70e257ce` en `origin/dev`.
+
+### Mig 436 — `productos.margen_ganancia` y `margen_objetivo` a `numeric(8,2)`
+
+`436_margen_producto_numeric_8_2.sql`: las dos columnas pasan de `numeric(5,2)` a `numeric(8,2)`.
+Techo viejo **999,99 %** → nuevo **999.999,99 %**. `margen_ganancia` es **GENERADA**
+(`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`); el `ALTER` funciona aun siendo
+generada, verificado antes en una transacción descartada. Aplicada en Supabase DEV vía Management
+API (`/database/migrations`), queda en `schema_migrations` como `20260925143456`. Probada: costo $30
+/ precio $1.500 guarda margen `4900.00`. Sin vistas dependientes (verificado en DEV y PROD). **NO
+aplicada en PROD todavía.** Las demás `numeric(5,2)` del esquema (`descuento_pct`, `comision_pct`,
+`repricing_tope_pct`, `reserva_*_pct`, `precio_ajuste_meli_pct`/`_tn_pct`) no se tocaron a propósito:
+son descuentos y comisiones, ahí 100 % es un techo legítimo.
+
+### Importador — el techo viejo se mantiene como alerta de monedas mezcladas
+
+`src/lib/importarProductosMoneda.ts`: `MARGEN_MAX_PCT` pasa a `999999.99` (sigue el techo real de la
+columna) + nueva constante `MARGEN_SOSPECHOSO_MONEDAS_MEZCLADAS_PCT = 999.99` y la función
+`margenSospechosoPorMonedas()`. El importador conserva el umbral viejo **solo** para filas con costo
+y precio en monedas distintas, porque el techo de la columna frenaba de rebote un CSV con costo en
+ARS y precio en USD (margen de **93.233 %**) — sin ese freno específico, esa fila entraría con un
+margen inflado en silencio (REGLA #0: fiscal/contable/inventario no tolera errores latentes).
+
+### `ProductoFormPage` — el input tenía `max="100"` de más
+
+El campo "Margen objetivo %" tenía `max="100"` en el HTML: la validación nativa del navegador
+bloqueaba cargar un objetivo de markup > 100 %, aunque `margen_objetivo` es markup sobre costo
+(`fn_precio_para_margen = costo × (1 + m/100)`), no un porcentaje que deba tope en 100. Ahora
+`max = MARGEN_MAX_PCT` + guard agregado en `handleSubmit`.
+
+### Tests y UAT
+
+Unit 1927/1927 verdes, build verde. UAT §66: 66.6 y 66.16 actualizados, nuevos 66.27 y 66.28.
+
+### Pendiente
+
+Llevar la mig 436 a PROD en el próximo deploy, junto con el bump de `APP_VERSION` correspondiente.
+
+---
+
+## [2026-09-25] update | 🤖 El Asistente IA aprende los usuarios sin correo · 🧹 limpieza del tenant de pruebas · 🟡 D-2 (tope de margen) medido y explicado
+
+Cierre de los pendientes que quedaban abiertos tras los dos deploys del 24/09. **Sin cambios de
+versión**: PROD sigue en `v1.232.0` (migs 001-435).
+
+### 🤖 Asistente IA actualizado (DEV y PROD)
+
+`npm run ai:knowledge` (44 secciones, 74 KB) + redeploy de la EF `ai-assistant` en los dos ambientes.
+**El Asistente aprende del wiki SOLO al redeployar**, así que hasta ahora no sabía nada de la feature
+de usuarios sin correo pese a estar documentada. Verificado preguntándole: ya responde que para un
+empleado sin mail hay que usar la opción **"Sin email"** de Usuarios.
+
+### 🧹 Limpieza del tenant de pruebas (Almacén Jorgito, DEV)
+
+Se fueron **56 productos basura** que venían dejando las corridas: 45 `TESTPROD_test_*` (sin una sola
+referencia en ninguna tabla) y los **11 "Elite Pañuelos" duplicados con SKU `REC-*`** — los que
+hacían fallar 5 specs al competir por nombre en los pickers. Con ellos, 11 movimientos de stock, 11
+líneas, 11 ítems y 11 recepciones de test que quedaban con cero ítems.
+
+**Ninguno había participado en una venta** (0 filas en `venta_items`), así que no se tocó ningún
+registro contable. Queda un solo "Elite Pañuelos", el original `SKU-0001`, con su stock intacto
+(168). El catálogo de pruebas bajó de 1.328 a **1.272** productos. 13 specs verdes después.
+
+> [!WARNING]
+> **Gotcha confirmado**: al borrar `inventario_lineas`, un trigger **reinserta alertas** de "sin
+> stock" que después bloquean el `DELETE` de productos por FK. Hay que borrar las alertas **después**
+> de las líneas y **antes** de los productos. El primer intento murió justo ahí.
+
+### 🟡 D-2 — el tope de 999,99 % de `margen_ganancia`, medido
+
+`productos.margen_ganancia` es una columna **GENERADA** `numeric(5,2)`:
+`round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`. El techo es **999,99 %**, o sea
+vender a poco más de **11 veces** el costo.
+
+🛑 Lo importante: cuando se pasa, **el producto no se puede guardar** (`numeric field overflow`). No
+es que el margen se muestre mal — es que la app rechaza un precio legítimo.
+
+Medido hoy: en PROD el margen máximo es **200 %** (27 productos con costo, 6 sin costo); en DEV,
+**400 %** sobre 929. **Nadie está cerca del techo**, así que no hay urgencia — pero el caso que lo
+rompe es de lo más común en el rubro: un café que cuesta $30 y se vende a $1.500 son **4.900 %**.
+Una cafetería, un kiosco o cualquier rubro de markup alto lo tocan el primer día.
+
+Verificado (en una transacción descartada) que `ALTER COLUMN margen_ganancia TYPE numeric(8,2)`
+**funciona aun siendo columna generada** — ampliarla a 999.999,99 % es una migración de una línea.
+
+**✅ GO decidió ampliarla** (misma sesión): la migración que siga toca **las dos** columnas de
+`productos` —`margen_ganancia` (generada) y `margen_objetivo` (manual, mismo techo)— y **ninguna
+otra**: las demás `numeric(5,2)` del esquema son descuentos y comisiones (`descuento_pct`,
+`comision_pct`, `repricing_tope_pct`, `reserva_*_pct`, `precio_ajuste_meli_pct`/`_tn_pct`), donde
+100 % es un techo legítimo. Queda para ejecutar en la próxima sesión; la migración **no se escribió
+todavía a propósito**, porque un archivo `NNN_*.sql` sin aplicar en el repo fue justamente lo que
+generó confusión con la 433.
+
+---
+
+## [2026-09-24] deploy | 🚀 v1.232.0 EN PROD — el tope de 1000 de PostgREST CERRADO (`traerTodo.ts`) + paginador en los listados + mig 435 (una caja no puede tener dos sesiones abiertas) + suite e2e 388/0 por primera vez
+
+**PROD pasa de `v1.231.0` (migs 001-434) a `v1.232.0` (migs 001-435).** Segunda entrega del día — encadena
+directo con la sesión anterior (v1.231.0, usuarios sin correo). PR **#358** `dev→main`, merge commit
+**`5a294934`**, release **`v1.232.0` Latest** (`--latest`). Paridad `pg_policies` DEV=PROD por schema:
+`public` **234** · `storage` **40** · `cron` **2**, hashes idénticos.
+
+### 1 · 🔴 El tope de 1000 de PostgREST — CERRADO (el pendiente anotado horas antes en la sesión de v1.231.0)
+
+PostgREST corta TODA respuesta en 1000 filas sin fallar y sin avisar. Medido contra la API real:
+`Content-Range: 0-999/1177` en el catálogo de pruebas — **177 productos que la app no mostraba nunca**, y
+como el buscador de píldoras filtra sobre lo ya cargado client-side, un producto más allá del corte no
+aparecía ni buscándolo por nombre.
+
+Eran **27 queries** sin `.range()`. Las de mayor riesgo: `inventario_lineas` (esas líneas se SUMAN por
+producto → el corte se veía como **stock equivocado**, REGLA #0), `ProductoFormPage` (el SKU siguiente se
+calculaba sobre una lista recortada → **SKU duplicado**), `VentasPage` (la lista de "madres" agrupadoras,
+no vendibles, precio 0, recortada → **una madre podía venderse a $0**), Dashboard/Métricas (valorizado de
+stock y capital dormido), los importadores de productos/inventario/clientes (el mapa de existentes decide
+CREA vs ACTUALIZA; recortado, duplica), reportes exportables, selectores de Conteos/ABC/kits/combos,
+clientes con CC, etiquetas.
+
+**Solución**: `src/lib/traerTodo.ts` (nuevo, 7 tests) — pide de a tandas de 1000 hasta que la base
+devuelve menos de lo pedido, con un techo de seguridad que AVISA por consola (un corte nunca puede ser
+silencioso). `traerTodoConError` devuelve `{data, error}` para convertir una query existente cambiando una
+línea. Verificado contra DEV antes de replicar el patrón: reusar el mismo builder de supabase-js para
+tandas sucesivas trae todo (1254 filas, todas distintas) — nunca se había ejercitado más de una vuelta del
+loop. Detalle: [[wiki/features/inventario-stock]] "El tope de 1000 de PostgREST".
+
+### 2 · 🆕 Paginador al pie de los listados (pedido de GO)
+
+En Productos, Inventario, Clientes y Envíos, la barra del pie ahora trae "Mostrar 50 · 100 · 500", el
+tramo visible ("501-1.000 de 1.177 productos") y Anterior/Siguiente con número de página.
+`src/hooks/usePaginacionLista.ts` (nuevo) + la barra que ya pintaba `AppLayout` (`listaConteoStore`
+extendido). **Pagina lo que se DIBUJA, no lo que se trae**: filtros, buscador y sumas de stock siguen sobre
+el set completo — si el paginado fuera de la query, el buscador solo buscaría dentro de la página actual.
+En la vista AGRUPADA de Productos va apagado a propósito (partir una madre de sus variantes entre páginas
+sería peor).
+
+🛑 **Aclaración para el historial: esto no se había borrado.** GO recordaba haberlo pedido antes y que
+había desaparecido; verificado con `git log -S`: el commit original (`b8d12b87`, 2026-08-06) agregó SOLO
+el contador. El selector vivía en Historial y en el tab Supervisión de esos mismos módulos (retrofit
+v1.189-190), que es casi seguro donde lo vio.
+
+### 3 · 🛑 Mig 435 — una caja no puede tener dos sesiones abiertas (REGLA #0)
+
+Los movimientos se cuelgan de una sesión y la app lee la MÁS RECIENTE
+(`order('abierta_at',desc).limit(1)`): con dos abiertas, la plata entra por una mientras el arqueo se
+cierra sobre la otra. **Medido**: en PROD había un negocio con **6 sesiones abiertas a la vez** en su Caja
+Fuerte (creadas entre las 05:30 y 05:34 del 2026-06-20, todas vacías). En DEV, Caja1 con 2 abiertas y
+plata en las DOS (#54 con 189 movimientos, #56 con 17).
+
+Tres agujeros encadenados, los tres cerrados:
+1. `CajaPage` pintaba "Caja cerrada" + botón "Abrir caja" **mientras la query de la sesión viajaba** → el
+   que clickeaba ahí abría una segunda sesión. Ahora muestra un spinner y no ofrece nada hasta saber.
+2. El guard solo rechazaba si la sesión era de OTRO usuario, y usaba `.maybeSingle()` que **falla con 2+
+   abiertas** (se caía justo cuando más falta hacía). Ahora usa `.limit(2)` y rechaza cualquier sesión
+   abierta.
+3. `ensureFuerteSesionId` (get-or-create de la Bóveda) hacía SELECT + INSERT sin cerrar la carrera. Ahora
+   atrapa el 23505 y devuelve la sesión ganadora. De paso se le agregó el filtro `estado='abierta'`, que
+   faltaba: devolvía como abierta una sesión permanente ya cerrada.
+
+La migración: índice único parcial `(caja_id) WHERE estado='abierta'` (lo único que cierra una carrera) +
+trigger con mensaje entendible + saneamiento que cierra SOLO los duplicados vacíos (apertura 0 y sin
+movimientos). Con plata adentro no se toca y el índice falla a propósito, obligando a resolverlo a mano.
+En PROD cerró 5; en DEV el caso con plata se resolvió a mano cerrando la #56 con su saldo real (5000 +
+9353 − 3018 = 11335, con la fórmula de `cajaSaldo.ts`), sin mover ningún movimiento.
+
+Hallazgo de la revisión que evitó un problema: el trigger `trg_caja_ses_periodo_cerrado` dispara en
+CUALQUIER UPDATE de `caja_sesiones` y habría abortado el saneamiento si alguna sesión caía en un período
+contable cerrado. Verificado con datos antes de aplicar: el tenant afectado no tiene períodos cerrados.
+Detalle: [[wiki/features/caja]] "Una caja no puede tener dos sesiones abiertas".
+
+### 4 · Las 9 fallas de la suite: ninguna era "flakiness" — lección para dejar anotada
+
+La suite arrastraba 9 fallas archivadas como flaky. Ninguna lo era:
+- **3** eran el spec fiscal `146_gasto_cotizacion_fiscal_mutante` corriendo contra el tenant
+  **Monotributista** además del Responsable Inscripto (ahí "Factura A" correctamente no se ofrece). Se lo
+  excluyó del proyecto `chromium` en `playwright.config.ts` → pasó a 4/4.
+- **5** eran el tope de 1000: cada spec moría en un picker distinto (conteo, OC, autorización) porque los
+  11 "Elite Pañuelos" del tenant de pruebas caen en las posiciones 1071-1081.
+- **1** era la carrera de apertura de caja (punto 3, arriba).
+- Y `02_inventario` tenía además un `if (isVisible)` que **salteaba el filtrado en silencio**: con pocos
+  productos pasaba igual.
+
+Resultado: **388 pasados, 0 fallados** — la suite e2e completa en verde por primera vez. Unit: 1922/1922.
+Ver [[wiki/development/testing]] "Nueve fallas archivadas como flakiness, ninguna lo era".
+
+### ✅ Checklist del deploy, verificado
+
+| Paso | Resultado |
+|---|---|
+| Mig 435 en PROD | ✅ aplicada, `schema_full.sql` regenerado |
+| PR #358 `dev→main` | ✅ merge commit `5a294934` |
+| Release GitHub | ✅ `v1.232.0`, tag + `--latest` |
+| Paridad `pg_policies` DEV↔PROD | ✅ `public` 234 · `storage` 40 · `cron` 2 — hashes idénticos |
+| Tests unitarios | ✅ 1922/1922 |
+| e2e completo | ✅ 388/388 (0 fallados, primera vez) |
+
+### Pendientes actualizados
+
+1. **✅ CERRADO — el corte de 1000 de PostgREST** (anotado horas antes en la sesión de v1.231.0): ya no
+   queda ningún pendiente abierto sobre este tema.
+2. **D-2 sigue ABIERTO**: el tope de 999,99 % de `margen_ganancia` (`GENERATED numeric(5,2)`) — ampliar la
+   columna es la decisión de GO que falta.
+3. Los de siempre: los 27 puntos abiertos de los relevamientos + D-2 (28 en total), rotación de keys
+   legacy (esperando al 25/09), 2 EFs con drift cosmético en PROD.
+
+Detalle completo en `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
 ## [2026-09-24] deploy | 🚀 v1.231.0 EN PROD — usuarios sin correo (mig 434) + "Desactivar" que corta el acceso de verdad (mig 433, aplicada y probada)
 
 **PROD pasa de `v1.230.0` (migs 001-432) a `v1.231.0` (migs 001-434).** PR **#357** `dev→main`, merge

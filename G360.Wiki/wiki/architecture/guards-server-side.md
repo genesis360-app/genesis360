@@ -530,6 +530,63 @@ Detalle completo de la verificación en `log.md` (2026-09-20 ×2 y 2026-09-22) y
 
 ---
 
+## 🛡️ Tercera tanda (mig 437, 2026-09-25) — 🟡 EN DEV, falta PROD
+
+A diferencia de las dos tandas anteriores, este hallazgo **no salió de una auditoría de seguridad
+dedicada**: apareció revisando el ítem 7 del backlog de auditoría de procesos ("cron para sweeps
+lazy" — ver [[wiki/architecture/multi-tenant-rls]] y `sources/raw/project_pendientes.md`).
+
+### G15 — Los sweeps con tenant por parámetro aceptaban el de OTRO negocio
+
+`process_aging_profiles(p_tenant_id)` y `liberar_reservas_vencidas(p_tenant_id)` son `SECURITY
+DEFINER` con `EXECUTE` otorgado a `authenticated` (verificado igual en DEV y PROD) y **no
+comparaban `p_tenant_id` contra el tenant del usuario que llama**. Cualquier usuario logueado podía
+pasar el UUID de OTRO negocio y ejecutarlas sobre él:
+
+- `process_aging_profiles` cambia el `estado_id` de líneas de `inventario_lineas` según reglas de
+  vencimiento — un usuario de un negocio podía forzar el aging del inventario de otro.
+- `liberar_reservas_vencidas` cancela reservas vencidas, libera el stock reservado y **acredita la
+  seña en `cliente_creditos`** — un usuario de un negocio podía cancelar reservas y generar créditos
+  a clientes de otro.
+
+El daño queda acotado a lo que el propio negocio afectado ya iba a hacer solo, por su propia
+configuración de aging/vencimiento de reservas (adelantarlo, no inventar datos), pero sigue siendo
+una **escritura entre negocios** que toca inventario y créditos de clientes — la REGLA #0 no admite
+ese matiz.
+
+**Fix** (`437_sweeps_aislamiento_tenant.sql`): con sesión de usuario (`auth.uid() IS NOT NULL`) se
+exige `p_tenant_id = get_user_tenant_id()` — la misma función que gobierna el `USING` de casi todas
+las policies del schema y que ya mira `users.activo` desde la mig 433. Sin sesión (`service_role` /
+pg_cron, el caso de `liberar_reservas_vencidas_all()` llamada por la EF `cron-sweeps`, a la que
+`authenticated` no tiene `EXECUTE`) el comportamiento sigue igual que antes. `anon` no tiene
+`EXECUTE` sobre ninguna de las cuatro funciones tocadas.
+
+De paso, dos funciones vecinas se alinearon al mismo helper por una razón distinta (no un hueco
+cross-tenant, sino que no respetaban la baja de un usuario):
+- `process_aging_profile_single(p_profile_id)` resolvía el tenant con un `SELECT` a `users` que no
+  miraba `activo` — un usuario dado de baja (mig 433) todavía podía dispararla.
+- `recalcular_intereses_cc(p_tenant)` **ya validaba** que el parámetro coincidiera con el tenant del
+  usuario (no tenía el hueco de G15), pero con un `EXISTS` sobre `users` que tampoco miraba `activo`.
+
+Las cuatro funciones pasan a resolver el tenant con `get_user_tenant_id()`, así que un usuario dado
+de baja tampoco puede dispararlas.
+
+Cuerpos tomados con `pg_get_functiondef` de PROD (idénticos a DEV, sin drift). Revisada por
+`migration-reviewer` antes de aplicar (apta). Probada en DEV impersonando al DUEÑO del tenant dev:
+pedir aging de OTRO tenant devuelve `{"error": "Tenant no encontrado", "cambios": 0}` — 0 cambios;
+el propio tenant sigue funcionando igual que antes; el camino sin usuario (service_role) también.
+
+**Estado de deploy**: 🟡 **solo en DEV** (commit `e16df8c7` en `origin/dev`), sin bump de
+`APP_VERSION` — va a PROD en el próximo deploy, junto con la mig 436. `CREATE OR REPLACE` conserva
+los `GRANT` existentes, así que esta migración no toca `pg_policies` (sin impacto en la paridad de
+hashes DEV/PROD).
+
+Ver [[wiki/features/inventario-stock]] ("Aging Profiles") y [[wiki/features/ventas-pos]]
+("Vencimiento + liberación automática") y [[wiki/features/clientes-proveedores]] ("Vencimiento +
+interés").
+
+---
+
 Ver también: [[wiki/architecture/multi-tenant-rls]] · [[wiki/architecture/resiliencia]] ·
 [[wiki/architecture/edge-functions]] · [[wiki/architecture/infraestructura]] · [[wiki/development/testing]] ·
 `tests/specs/uat-app.md` (Tanda F)

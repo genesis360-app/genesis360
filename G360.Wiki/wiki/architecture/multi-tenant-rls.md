@@ -84,6 +84,14 @@ Estas funciones se usan en políticas que requieren permisos específicos (ej: s
 > → 0/0/0/0 tras la baja) y con el spec e2e `158_acceso_revocado_mutante`. Detalle completo en
 > [[wiki/features/autenticacion-onboarding]] ("Desactivar corta el acceso de verdad").
 
+> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25)**: `get_user_tenant_id()` resuelve bien
+> el tenant a partir de `auth.uid()`, pero eso no protege una función que recibe el tenant **por
+> parámetro** si esa función no compara ambos valores. `process_aging_profiles(p_tenant_id)` y
+> `liberar_reservas_vencidas(p_tenant_id)` —dos sweeps `SECURITY DEFINER` con `EXECUTE` para
+> `authenticated`— no hacían esa comparación: cualquier usuario logueado podía pasar el UUID de OTRO
+> negocio. Fix: con sesión se exige `p_tenant_id = get_user_tenant_id()`; sin sesión (service_role /
+> cron-sweeps) sigue igual. Detalle completo en [[wiki/architecture/guards-server-side]] ("G15").
+
 ---
 
 ## Roles de usuario

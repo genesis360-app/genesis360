@@ -8,12 +8,55 @@ updated: 2026-09-24
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.231.0`** (2026-09-24, migs 001-**434**). Compute de PROD: **Micro**
+**Versión en PROD (actual): `v1.232.0`** (2026-09-24, migs 001-**435**). Compute de PROD: **Micro**
 desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
 
-✅ **PROD = DEV en migraciones** (001-434, paridad `pg_policies` intacta por schema: `public` **234** ·
-`storage` **40** · `cron` **2**, hashes idénticos). PR **#357** `dev→main`, merge commit **`313b7f6d`**,
-release **`v1.231.0` Latest**. Detalle completo en `log.md` (2026-09-24, `deploy`).
+✅ **PROD = DEV en migraciones** (001-435, paridad `pg_policies` intacta por schema: `public` **234** ·
+`storage` **40** · `cron` **2**, hashes idénticos). PR **#358** `dev→main`, merge commit **`5a294934`**,
+release **`v1.232.0` Latest**. Detalle completo en `log.md` (2026-09-24, `deploy`).
+
+## 🚀 v1.232.0 — El tope de 1000 de PostgREST, paginador real y una caja no puede tener dos sesiones abiertas (2026-09-24, EN PROD)
+
+PR **#358**, merge `5a294934`. Segunda entrega del día — encadena directo con v1.231.0. Una migración
+nueva, **435**, más dos fixes cross-cutting sin migración propia.
+
+**🔴 El tope de 1000 de PostgREST — CERRADO.** PostgREST corta TODA respuesta en 1000 filas sin fallar y
+sin avisar. Medido contra la API real: `Content-Range: 0-999/1177` en el catálogo de pruebas — 177
+productos que la app no mostraba nunca, y el buscador de píldoras filtraba sobre lo ya cargado
+client-side, así que un producto más allá del corte no aparecía ni buscándolo. Eran **27 queries** sin
+`.range()`; las de mayor riesgo: `inventario_lineas` (esas líneas se SUMAN por producto → el corte se veía
+como **stock equivocado**, REGLA #0), el SKU siguiente de `ProductoFormPage` (calculado sobre lista
+recortada → SKU duplicado), la lista de "madres" agrupadoras de `VentasPage` (una madre podía venderse a
+$0), Dashboard/Métricas, y los importadores (el mapa de existentes decide CREA vs ACTUALIZA; recortado,
+duplica). Solución: `src/lib/traerTodo.ts` (nuevo, 7 tests) trae de a tandas de 1000 hasta que la base
+devuelve menos de lo pedido, con techo de seguridad que avisa por consola — aplicado a las 27 queries.
+
+**🆕 Paginador real al pie de los listados** (pedido de GO): Productos, Inventario, Clientes y Envíos
+ganan "Mostrar 50 · 100 · 500" + tramo visible + Anterior/Siguiente (`usePaginacionLista.ts`). Pagina lo
+que se DIBUJA, no lo que se trae — filtros, buscador y sumas de stock siguen sobre el set completo. Apagado
+a propósito en la vista agrupada de Productos. 🛑 No se había borrado: verificado con `git log -S` que el
+commit original (2026-08-06) solo agregó el contador; el selector que GO recordaba vivía en Historial y en
+el tab Supervisión de esos módulos.
+
+**🛑 Mig 435 — una caja no puede tener dos sesiones abiertas (REGLA #0).** La app lee la sesión MÁS
+RECIENTE de una caja; con dos abiertas, la plata entra por una mientras el arqueo se cierra sobre la otra.
+Medido: PROD tenía un negocio con **6 sesiones abiertas a la vez** en su Caja Fuerte; en DEV, una caja con
+2 abiertas y plata en las DOS. Tres agujeros cerrados: `CajaPage` ofrecía "Abrir caja" mientras la sesión
+todavía viajaba (ahora spinner), el guard usaba `.maybeSingle()` (falla justo con 2+ filas) y solo
+rechazaba la sesión de OTRO usuario (ahora `.limit(2)` + rechaza cualquiera abierta), y
+`ensureFuerteSesionId` no atrapaba la carrera del get-or-create de la Bóveda (ahora atrapa el `23505` +
+filtra `estado='abierta'`, que faltaba). Índice único parcial `(caja_id) WHERE estado='abierta'` + trigger
++ saneamiento que solo cierra duplicados VACÍOS — con plata adentro falla a propósito y se resuelve a
+mano (así se cerró en DEV, con el saldo real calculado con `cajaSaldo.ts`).
+
+**Las 9 fallas de la suite: ninguna era "flakiness".** 3 eran el spec fiscal `146` corriendo contra el
+tenant Monotributista (excluido del proyecto `chromium`), 5 eran el tope de 1000 (cada spec moría en un
+picker distinto), y 1 era la propia carrera de apertura de caja. **388/388 e2e en verde por primera vez**,
+1922/1922 unit.
+
+Detalle completo: [[wiki/features/inventario-stock]] "El tope de 1000 de PostgREST", [[wiki/features/caja]]
+"Una caja no puede tener dos sesiones abiertas", [[wiki/features/productos]], [[wiki/development/testing]],
+`log.md` (2026-09-24, `deploy`).
 
 ## 🚀 v1.231.0 — Usuarios sin correo, y "Desactivar" que corta el acceso de verdad (2026-09-24, EN PROD)
 

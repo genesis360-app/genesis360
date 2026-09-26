@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-24T23:43:59.240Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260924225750 · 171 tablas
+-- Generado 2026-09-25T18:14:00.327Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260925181324 · 171 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1619,7 +1619,7 @@ CREATE TABLE public.productos (
   estado_id uuid,
   precio_costo numeric(12,2) DEFAULT 0,
   precio_venta numeric(12,2) DEFAULT 0,
-  margen_ganancia numeric(5,2) DEFAULT 
+  margen_ganancia numeric(8,2) DEFAULT 
 CASE
     WHEN (precio_costo > (0)::numeric) THEN round((((precio_venta - precio_costo) / precio_costo) * (100)::numeric), 2)
     ELSE (0)::numeric
@@ -1639,7 +1639,7 @@ END,
   precio_venta_moneda character varying(3) NOT NULL DEFAULT 'ARS'::character varying,
   regla_inventario text,
   aging_profile_id uuid,
-  margen_objetivo numeric(5,2),
+  margen_objetivo numeric(8,2),
   publicado_marketplace boolean DEFAULT false,
   precio_marketplace numeric(12,2),
   stock_reservado_marketplace integer DEFAULT 0,
@@ -11114,6 +11114,12 @@ DECLARE
   v_lib        NUMERIC;
   v_acreditar  NUMERIC;
 BEGIN
+  -- 🔒 mig 437: un usuario solo puede liberar las reservas de SU negocio. Sin usuario (auth.uid()
+  -- NULL) es el sweep de service_role vía liberar_reservas_vencidas_all(): pasa.
+  IF auth.uid() IS NOT NULL AND p_tenant_id IS DISTINCT FROM get_user_tenant_id() THEN
+    RETURN 0;
+  END IF;
+
   SELECT reserva_vencimiento_dias, COALESCE(reserva_penalidad_pct, 0)
     INTO v_dias, v_penal_pct
     FROM tenants WHERE id = p_tenant_id;
@@ -11568,7 +11574,8 @@ DECLARE
   v_cambios          INT := 0;
   v_dias             INT;
 BEGIN
-  SELECT tenant_id INTO v_target_tenant FROM users WHERE id = auth.uid();
+  -- 🔒 mig 437: get_user_tenant_id() mira `activo` (mig 433); el SELECT a users no lo hacía.
+  v_target_tenant := get_user_tenant_id();
   IF v_target_tenant IS NULL THEN
     RETURN jsonb_build_object('error', 'Tenant no encontrado', 'cambios', 0);
   END IF;
@@ -11618,8 +11625,14 @@ DECLARE
   v_cambios       INT := 0;
   v_dias          INT;
 BEGIN
-  IF p_tenant_id IS NULL THEN
-    SELECT tenant_id INTO v_target_tenant FROM users WHERE id = auth.uid();
+  -- 🔒 mig 437: con usuario, SIEMPRE su propio negocio (y solo si está activo): antes cualquier
+  -- usuario podía pasar el p_tenant_id de otro negocio y cambiarle estados de inventario. Sin usuario
+  -- (auth.uid() NULL) es service_role / pg_cron: usa p_tenant_id.
+  IF auth.uid() IS NOT NULL THEN
+    v_target_tenant := get_user_tenant_id();
+    IF p_tenant_id IS NOT NULL AND p_tenant_id IS DISTINCT FROM v_target_tenant THEN
+      RETURN jsonb_build_object('error', 'Tenant no encontrado', 'cambios', 0);
+    END IF;
   ELSE
     v_target_tenant := p_tenant_id;
   END IF;
@@ -11746,7 +11759,9 @@ DECLARE
   v_pct NUMERIC;
   v_count INT := 0;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND tenant_id = p_tenant) THEN
+  -- 🔒 mig 437: get_user_tenant_id() mira `activo` (mig 433); el EXISTS sobre users no lo hacía.
+  -- Sin usuario sigue devolviendo 0, igual que antes (el sweep usa recalcular_intereses_cc_all()).
+  IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM get_user_tenant_id() THEN
     RETURN 0;
   END IF;
 

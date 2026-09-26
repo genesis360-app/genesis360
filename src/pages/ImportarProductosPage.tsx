@@ -9,7 +9,7 @@ import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
-import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
+import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, margenSospechosoPorMonedas, MARGEN_MAX_PCT } from '@/lib/importarProductosMoneda'
 import { celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
@@ -141,7 +141,7 @@ export default function ImportarProductosPage() {
       [
         'Pintura blanca 4L','PINT-0001','','Pinturas','',
         // Ejemplo en USD: costo y precio en la MISMA moneda. Mezclarlas deja un margen disparatado
-        // y la fila se rechaza (`margen_ganancia` no admite más de 999,99 %).
+        // y la fila se rechaza (ver `margenSospechosoPorMonedas`).
         4.5,'USD',9.9,'USD',
         5,'litro','','',
         10.5,35,
@@ -350,10 +350,12 @@ export default function ImportarProductosPage() {
           if ((precio_costo_moneda === 'USD' || precio_venta_moneda === 'USD') && !cotizUsable) {
             errores.push('Hay precios en USD pero no hay cotización cargada — cargala en el panel de cotización')
           } else {
-            // `margen_ganancia` es GENERATED numeric(5,2): más de 999,99 % no entra y la base
-            // responde con un "numeric field overflow" ilegible. Se avisa acá, en la vista previa,
-            // antes de importar. Se toca sobre todo con un CSV que mezcla monedas (costo en ARS
-            // contra precio en USD, que queda multiplicado por la cotización).
+            // Dos chequeos del margen, en la vista previa y antes de importar:
+            //  · `margen_ganancia` es GENERATED numeric(8,2): por encima de 999.999,99 % la base
+            //    responde un "numeric field overflow" ilegible.
+            //  · Con costo y precio en monedas distintas, más de 999,99 % delata el error típico del
+            //    CSV (costo en ARS contra precio en USD, multiplicado por la cotización). Es el umbral
+            //    que frenaba este caso antes de ampliar la columna (mig 436); se conserva a propósito.
             const c = monedaProductoImportada(precio_costo, precio_costo_moneda, cotizacionUsdAArs)
             const v = monedaProductoImportada(precio_venta, precio_venta_moneda, cotizacionUsdAArs)
             // 🛑 En una actualización parcial el archivo trae un solo lado del par. Comparar contra 0
@@ -363,13 +365,17 @@ export default function ImportarProductosPage() {
             const actual = yaExiste ? actualPorSku.get(sku) : undefined
             const costoParaMargen = columnas.has('precio_costo') || !actual ? c?.precioArs : actual.precioCostoArs
             const ventaParaMargen = columnas.has('precio_venta') || !actual ? v?.precioArs : actual.precioVentaArs
-            if (c && v && costoParaMargen !== undefined && ventaParaMargen !== undefined
-                && !margenEntraEnLaBase(costoParaMargen, ventaParaMargen)) {
+            if (c && v && costoParaMargen !== undefined && ventaParaMargen !== undefined) {
               const m = margenGenerado(costoParaMargen, ventaParaMargen)
-              errores.push(
-                `El margen da ${m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT}%` +
-                (precio_costo_moneda !== precio_venta_moneda ? ' — revisá que el costo y el precio estén en la misma moneda' : ''),
-              )
+              const pct = m?.toLocaleString('es-AR', { maximumFractionDigits: 0 })
+              if (!margenEntraEnLaBase(costoParaMargen, ventaParaMargen)) {
+                errores.push(
+                  `El margen da ${pct}% y el máximo que se puede guardar es ${MARGEN_MAX_PCT.toLocaleString('es-AR')}%` +
+                  (precio_costo_moneda !== precio_venta_moneda ? ' — revisá que el costo y el precio estén en la misma moneda' : ''),
+                )
+              } else if (precio_costo_moneda !== precio_venta_moneda && margenSospechosoPorMonedas(costoParaMargen, ventaParaMargen)) {
+                errores.push(`El margen da ${pct}% con el costo en ${precio_costo_moneda} y el precio en ${precio_venta_moneda} — revisá que el costo y el precio estén en la misma moneda`)
+              }
             }
           }
 

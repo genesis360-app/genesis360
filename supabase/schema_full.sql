@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-25T18:14:00.327Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260925181324 · 171 tablas
+-- Generado 2026-09-26T00:44:14.461Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260926004334 · 171 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -11698,6 +11698,43 @@ BEGIN
     'tenant_id', v_target_tenant,
     'procesado_en', NOW()
   );
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.process_aging_profiles_all()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  t          RECORD;
+  v_res      jsonb;
+  v_cambios  INT := 0;
+  v_negocios INT := 0;
+  v_errores  jsonb := '[]'::jsonb;
+BEGIN
+  FOR t IN
+    SELECT DISTINCT p.tenant_id
+    FROM productos p
+    WHERE p.aging_profile_id IS NOT NULL
+      AND p.tiene_vencimiento = TRUE
+  LOOP
+    BEGIN
+      v_res := process_aging_profiles(t.tenant_id);
+      v_cambios := v_cambios + COALESCE((v_res->>'cambios')::int, 0);
+      v_negocios := v_negocios + 1;
+    EXCEPTION WHEN OTHERS THEN
+      v_errores := v_errores || jsonb_build_object('tenant_id', t.tenant_id, 'error', SQLERRM);
+    END;
+  END LOOP;
+
+  IF jsonb_array_length(v_errores) > 0 THEN
+    RAISE WARNING 'process_aging_profiles_all: % negocio(s) con error: %', jsonb_array_length(v_errores), v_errores;
+  END IF;
+
+  RETURN jsonb_build_object('negocios', v_negocios, 'cambios', v_cambios, 'errores', v_errores, 'procesado_en', NOW());
 END;
 $function$
 

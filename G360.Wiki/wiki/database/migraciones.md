@@ -6,10 +6,34 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-25
 ---
 
-# Historial de Migraciones (001-437, + correctivos 387b/387c)
+# Historial de Migraciones (001-438, + correctivos 387b/387c)
 
-🔒 **Migración 437 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `e16df8c7` en `dev`, sin
-deploy ni bump de `APP_VERSION`): `437_sweeps_aislamiento_tenant.sql` — dos sweeps `SECURITY
+📅 **Migración 438 — ✅ EN DEV Y EN PROD (bases de datos), archivo todavía solo en `dev`** (2026-09-25,
+commit `6df9997e` en `origin/dev`, aún no mergeado a `main` — llega en el próximo PR; la base de PROD ya
+tiene la función y el cron aplicados vía Management API): `438_aging_diario_automatico.sql` — decisión de
+GO: Aging Profiles deja de depender del botón manual de Config y **corre solo**. Función nueva
+`process_aging_profiles_all()` (solo `service_role`; cada negocio en su propio bloque, un error no frena a
+los demás — se acumula en el resultado + `RAISE WARNING`) + `pg_cron` **`aging-inventario-diario`** a las
+`15 6 * * *` UTC (03:15 AR). Aplicada con definición idéntica en DEV y PROD (md5 `c29bf37d…`). Prueba en
+seco antes de habilitar el cron: PROD 0 cambios (1 negocio con Aging configurado), DEV 17 lotes movidos en
+2 negocios. Cierra el ítem 7 del backlog de la auditoría de procesos — no queda nada de ese backlog salvo
+lo "menor futuro" (traslados, cheques). Ver [[wiki/features/inventario-stock]] "Aging Profiles".
+
+🚀 **Deploy `v1.233.0` a PROD (2026-09-25)**: PR **#359** `dev→main`, merge commit **`e38e26cd`**, release
+**`v1.233.0`** (`--latest`). Incluye las migs 436 y 437 (detalle abajo), aplicadas en PROD **ANTES** del
+merge. La 437 chocó al primer intento con `schema_migrations_pkey` — se aplicó en el mismo segundo que la
+436, y la versión de la migración es un timestamp al segundo; falló entera, se reintentó y entró. Lección:
+aplicar migraciones de a una, con separación. Verificado: `app.genesis360.pro` sirve `v1.233.0` (bundle
+`index-Q6a9x2aD.js`, `curl -L`); hash de las funciones de la 437 idéntico DEV=PROD; paridad `pg_policies`
+por schema DEV=PROD: `public` **234** (`d95a8640`), `storage` **40** (`d57ccda2`), `cron` **2**
+(`796770dd`) — esta fórmula de hash es distinta a la de sesiones anteriores, comparar solo DEV vs PROD del
+mismo día. Auditoría de Edge Functions: sin drift nuevo (siguen los 2 cosméticos de PROD
+`mp-addon-batch`/`mp-verificar-suscripcion` esperando OK de GO, `marketplace-webhook` no desplegada en
+DEV, `wa-embedded-signup-exchange` no desplegada en PROD). CI unit verde; e2e se saltea en CI. Antes: PROD
+en `v1.232.0` (migs 001-435). Detalle completo en `log.md` (2026-09-25, `deploy`).
+
+🔒 **Migración 437 — ✅ EN DEV Y EN PROD** (DEV: 2026-09-25, commit `e16df8c7`; a PROD el 2026-09-25 en el
+deploy `v1.233.0`, PR #359, merge `e38e26cd`): dos sweeps `SECURITY
 DEFINER` que reciben el tenant **por parámetro** y son ejecutables por `authenticated`,
 `process_aging_profiles(p_tenant_id)` y `liberar_reservas_vencidas(p_tenant_id)`, **no comparaban
 ese parámetro contra el negocio del usuario que llama**: cualquier usuario logueado podía pasar el
@@ -28,8 +52,8 @@ tenant → `{"error": "Tenant no encontrado", "cambios": 0}`; lo propio y el cam
 funcionando igual. Ver [[wiki/architecture/guards-server-side]] "G15" y
 [[wiki/architecture/multi-tenant-rls]].
 
-📐 **Migración 436 — ✅ EN DEV, ❌ NO EN PROD TODAVÍA** (2026-09-25, commit `70e257ce` en `dev`, sin
-deploy ni bump de `APP_VERSION`): `productos.margen_ganancia` (columna **GENERADA**,
+📐 **Migración 436 — ✅ EN DEV Y EN PROD** (DEV: 2026-09-25, commit `70e257ce`; a PROD el 2026-09-25 en el
+deploy `v1.233.0`, PR #359, merge `e38e26cd`): `productos.margen_ganancia` (columna **GENERADA**,
 `round(((precio_venta - precio_costo) / precio_costo) * 100, 2)`) y `productos.margen_objetivo`
 (manual) pasan de `numeric(5,2)` a `numeric(8,2)`. Hallazgo D-2 del importador: el techo viejo era
 **999,99 %** (vender a poco más de 11× el costo) y, al pasarse, **el producto no se podía guardar**
@@ -3150,6 +3174,10 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV
 - ❌ ALTER TABLE fuera de un archivo de migration
 - ❌ Reescribir una migration ya aplicada en PROD (crear una nueva)
+- ❌ Aplicar dos migraciones seguidas sin separación de tiempo real entre una y otra: la versión de
+  `schema_migrations` es un **timestamp al segundo**, y aplicar dos en el mismo segundo choca contra
+  `schema_migrations_pkey` (pasó con las migs 436/437 al deployar `v1.233.0` a PROD — la primera falló
+  entera, se reintentó con 1 segundo de diferencia y entró)
 
 ---
 

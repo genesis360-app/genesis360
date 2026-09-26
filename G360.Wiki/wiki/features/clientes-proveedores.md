@@ -415,7 +415,8 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **Enforcement de límite (B1):** `tenants.cc_enforcement_politica` (permitir/avisar/bloquear). Límite por cliente = `clientes.limite_credito`, fallback `tenants.limite_cc_default`. El POS controla al despachar a CC.
 - **Vencimiento + interés (B3):** `ventas.fecha_vencimiento_cc` (= hoy + `tenants.cc_dias_vencimiento`). Interés de mora `tenants.cc_interes_mensual_pct` → `ventas.interes_cc`, recalculado por **`recalcular_intereses_cc(tenant)`** (sweep-lazy; pg_cron no habilitado). El tab CC muestra interés + vencimiento real.
 
-> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `recalcular_intereses_cc(p_tenant)`
+> [!WARNING] **Mig 437 — ✅ EN DEV Y EN PROD (2026-09-25 en DEV, commit `e16df8c7`; a PROD el
+> 2026-09-25 en el deploy `v1.233.0`, PR #359, merge `e38e26cd`):** `recalcular_intereses_cc(p_tenant)`
 > **ya validaba** que el parámetro coincidiera con el tenant del usuario (no tenía el hueco
 > cross-tenant que sí tenían otros dos sweeps, ver abajo), pero con un `EXISTS` sobre `users` que no
 > miraba `activo` — un usuario dado de baja (mig 433) todavía podía dispararla. Ahora resuelve el

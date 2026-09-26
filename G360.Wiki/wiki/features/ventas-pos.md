@@ -379,7 +379,8 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 - Función `liberar_reservas_vencidas(tenant)` (SECURITY DEFINER): libera el stock reservado (series `reservado=false` / `cantidad_reservada` decrementado) y marca la reserva `cancelada` con nota. **No toca dinero** (la seña se resuelve manual). Cada reserva es atómica y saltea las de período contable cerrado.
 - Disparo: **sweep lazy** al entrar a Ventas (RPC una vez por montaje si el tenant tiene vencimiento configurado). pg_cron no está habilitado.
 
-> [!WARNING] **Mig 437 — 🟡 EN DEV, falta PROD (2026-09-25):** `liberar_reservas_vencidas(p_tenant_id)`
+> [!WARNING] **Mig 437 — ✅ EN DEV Y EN PROD (2026-09-25 en DEV, commit `e16df8c7`; a PROD el
+> 2026-09-25 en el deploy `v1.233.0`, PR #359, merge `e38e26cd`):** `liberar_reservas_vencidas(p_tenant_id)`
 > es `SECURITY DEFINER` con `EXECUTE` para `authenticated` y **no comparaba el parámetro con el
 > tenant del usuario que llama** — cualquier usuario logueado podía pasar el UUID de OTRO negocio y
 > cancelarle reservas vencidas, liberando su stock reservado. Fix: con sesión de usuario se exige
@@ -712,6 +713,17 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 ---
 
 ## 💵 Los precios en USD se cobran al dólar COMPRA (v1.207.0, 2026-09-08)
+
+> [!WARNING] **🔴 EN CURSO — esta regla va a REEMPLAZARSE (decisión de GO, 2026-09-25).** Tras revisión
+> legal (RG ARCA 5616/2024), GO decidió que el POS pase a convertir USD→ARS al **tipo de cambio
+> vendedor divisa del Banco Nación del día hábil anterior** (no billete, no compra) — **una sola tasa
+> en todos lados**: precio POS, ficha, importador, tiers/combos USD, valor de pagos recibidos en USD y
+> Bóveda. Esto invierte lo que dice esta sección. Fuente elegida: tabla pública de bna.com.ar (no ARCA
+> WS, que exige certificado de producción). Exposición hoy en PROD: 0 productos USD, 0 pagos USD en 30
+> días. **Nada construido todavía** — 2 fases (F1 captura diaria + historial, F2 migrar los caminos).
+> Ver `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` ("Decisiones posteriores"),
+> [[wiki/business/consultas-contador]] (C-16). El código sigue funcionando como se describe abajo hasta
+> que se ejecute el cambio.
 
 🛑 **REGLA #0.** El POS convertía los precios en USD al dólar **venta**, así que **le cobraba de más
 al cliente** en cada venta de un producto en dólares. No era una preferencia: la convención está

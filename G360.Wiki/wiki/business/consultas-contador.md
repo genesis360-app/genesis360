@@ -2,8 +2,8 @@
 title: Consultas para el Contador
 category: business
 tags: [fiscal, contable, iva, afip, monotributo, ganancias, pendientes, consultas]
-sources: [relevamiento USD/Caja C2, mig 414, cotizacionFiscal.ts, DashFacturacionArea.tsx, respuestas relevamiento Multimoneda 2026-09-20 (RG ARCA 5616/2024)]
-updated: 2026-09-22
+sources: [relevamiento USD/Caja C2, mig 414, cotizacionFiscal.ts, DashFacturacionArea.tsx, respuestas relevamiento Multimoneda 2026-09-20 (RG ARCA 5616/2024), sources/raw/respuestas_puntos_abiertos_2026-09-25.md]
+updated: 2026-09-25
 ---
 
 # Consultas para el Contador
@@ -182,6 +182,11 @@ separarlos, igual que hicimos con los gastos.
 **Pregunta:** ¿es el criterio correcto para valuar tenencias en moneda extranjera? ¿Cambia si es
 para un balance formal en vez de para gestión interna?
 
+> [!NOTE] **Relacionada con C-16 (2026-09-25):** GO decidió reemplazar el dólar comprador por el
+> vendedor divisa BNA del día hábil anterior en el resto del sistema (POS, ficha, importador, pagos en
+> USD) incluyendo la Bóveda — ver C-16. Si aplica también acá (valuación de tenencias para reportes), lo
+> resuelve la misma implementación (D-1, en curso, nada construido todavía).
+
 ---
 
 ## Bloque 3 — Ganancias y patrimonio
@@ -303,12 +308,22 @@ muestre hoy y que **no debería mostrar** sin la firma de un profesional?
 
 ### C-16 · Venta cobrada en dólares, factura emitida en pesos: ¿qué cotización se usa?
 
-- **Estado:** 🟥 Abierta
+- **Estado:** 🟥 Abierta (sigue sin responder un matriculado — lo de abajo es una decisión de GO, no una
+  respuesta profesional)
 - **Área:** Facturación electrónica / tipo de cambio
 - **Impacta en:** `src/lib/cotizacionFiscal.ts`, `supabase/functions/emitir-factura`, y toda la
   conversión USD → ARS del POS
-- **Criterio provisorio actual:** la app convierte con el **dólar COMPRA** de la cotización operativa
-  que cargó el negocio (una sola tasa, para que no aparezca vuelto fantasma).
+- **Criterio provisorio actual (hasta que se ejecute el cambio de abajo):** la app convierte con el
+  **dólar COMPRA** de la cotización operativa que cargó el negocio (una sola tasa, para que no aparezca
+  vuelto fantasma).
+
+> [!WARNING] **🔴 EN CURSO (2026-09-25):** tras la revisión legal que sigue (RG ARCA 5616/2024, ninguna
+> norma fija la tasa del POS para una venta facturada en pesos — es decisión de negocio, no obligación),
+> GO decidió reemplazar el criterio de arriba: el POS va a convertir USD→ARS al **vendedor divisa del
+> BNA del día hábil anterior**, una sola tasa en todos lados (POS, ficha, importador, tiers/combos USD,
+> pagos recibidos en USD, Bóveda). **Nada construido todavía.** Ver
+> `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` ("Decisiones posteriores"),
+> [[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA".
 
 **Pregunta:** cuando la venta se cobra en dólares pero la factura se emite en **pesos** (que es la
 decisión de producto), ¿qué cotización corresponde para pasar esos dólares a pesos: la que usó el

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-25T18:14:00.327Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260925181324 · 171 tablas
+-- Generado 2026-09-26T00:49:04.241Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260926004758 · 172 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -584,6 +584,15 @@ CREATE TABLE public.consumo_tarifas (
   vigente_hasta date,
   fuente text,
   created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.cotizaciones_bna (
+  fecha date NOT NULL,
+  moneda text NOT NULL,
+  compra numeric(14,4) NOT NULL,
+  venta numeric(14,4) NOT NULL,
+  fuente text NOT NULL DEFAULT 'bna.com.ar/Personas#divisas'::text,
+  capturada_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.courier_credenciales (
@@ -2966,6 +2975,10 @@ ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_pkey PRIMARY K
 ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_precio_check CHECK ((precio >= (0)::numeric));
 ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_rango_valido CHECK (((vigente_hasta IS NULL) OR (vigente_hasta >= vigente_desde)));
 ALTER TABLE public.consumo_tarifas ADD CONSTRAINT consumo_tarifas_unidad_check CHECK ((unidad = ANY (ARRAY['mensaje'::text, 'millon_tokens'::text, 'minuto'::text])));
+ALTER TABLE public.cotizaciones_bna ADD CONSTRAINT cotizaciones_bna_compra_check CHECK ((compra > (0)::numeric));
+ALTER TABLE public.cotizaciones_bna ADD CONSTRAINT cotizaciones_bna_moneda_check CHECK ((moneda ~ '^[A-Z]{3}$'::text));
+ALTER TABLE public.cotizaciones_bna ADD CONSTRAINT cotizaciones_bna_pkey PRIMARY KEY (fecha, moneda);
+ALTER TABLE public.cotizaciones_bna ADD CONSTRAINT cotizaciones_bna_venta_check CHECK ((venta > (0)::numeric));
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_pkey PRIMARY KEY (id);
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_courier_key UNIQUE (tenant_id, courier);
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_pkey PRIMARY KEY (id);
@@ -5686,6 +5699,21 @@ AS $function$
   WHERE t.concepto = p_concepto AND t.vigente_desde <= p_fecha
     AND (t.vigente_hasta IS NULL OR t.vigente_hasta >= p_fecha)
   ORDER BY t.vigente_desde DESC LIMIT 1;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cotizacion_bna_vigente(p_moneda text DEFAULT 'USD'::text)
+ RETURNS TABLE(fecha date, compra numeric, venta numeric)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT c.fecha, c.compra, c.venta
+  FROM cotizaciones_bna c
+  WHERE c.moneda = p_moneda
+    AND c.fecha < (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+  ORDER BY c.fecha DESC
+  LIMIT 1
 $function$
 
 
@@ -11702,6 +11730,43 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.process_aging_profiles_all()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  t          RECORD;
+  v_res      jsonb;
+  v_cambios  INT := 0;
+  v_negocios INT := 0;
+  v_errores  jsonb := '[]'::jsonb;
+BEGIN
+  FOR t IN
+    SELECT DISTINCT p.tenant_id
+    FROM productos p
+    WHERE p.aging_profile_id IS NOT NULL
+      AND p.tiene_vencimiento = TRUE
+  LOOP
+    BEGIN
+      v_res := process_aging_profiles(t.tenant_id);
+      v_cambios := v_cambios + COALESCE((v_res->>'cambios')::int, 0);
+      v_negocios := v_negocios + 1;
+    EXCEPTION WHEN OTHERS THEN
+      v_errores := v_errores || jsonb_build_object('tenant_id', t.tenant_id, 'error', SQLERRM);
+    END;
+  END LOOP;
+
+  IF jsonb_array_length(v_errores) > 0 THEN
+    RAISE WARNING 'process_aging_profiles_all: % negocio(s) con error: %', jsonb_array_length(v_errores), v_errores;
+  END IF;
+
+  RETURN jsonb_build_object('negocios', v_negocios, 'cambios', v_cambios, 'errores', v_errores, 'procesado_en', NOW());
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.puede_aprobar_autorizacion_gasto(p_solicitante_rol text, p_aprobador_rol text)
  RETURNS boolean
  LANGUAGE sql
@@ -13580,6 +13645,7 @@ ALTER TABLE public.combo_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consumo_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consumo_tarifas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cotizaciones_bna ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courier_credenciales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courier_factura_lineas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.courier_facturas ENABLE ROW LEVEL SECURITY;
@@ -13935,6 +14001,8 @@ CREATE POLICY consumo_eventos_lectura_tenant ON public.consumo_eventos AS PERMIS
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY consumo_tarifas_lectura ON public.consumo_tarifas AS PERMISSIVE FOR SELECT TO authenticated
+  USING (true);
+CREATE POLICY cotizaciones_bna_select ON public.cotizaciones_bna AS PERMISSIVE FOR SELECT TO authenticated
   USING (true);
 CREATE POLICY courier_credenciales_select ON public.courier_credenciales AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
@@ -14720,6 +14788,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.co
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO service_role;
+GRANT SELECT ON public.cotizaciones_bna TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.cotizaciones_bna TO service_role;
 GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO anon;
 GRANT DELETE, INSERT, REFERENCES, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.courier_credenciales TO service_role;

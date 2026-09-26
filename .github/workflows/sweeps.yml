@@ -1,4 +1,4 @@
-name: Sweeps periódicos (intereses CC + reservas vencidas)
+name: Sweeps periódicos (intereses CC + reservas vencidas + cotización BNA)
 
 on:
   schedule:
@@ -14,6 +14,21 @@ jobs:
         run: |
           curl -X POST \
             "${{ secrets.SUPABASE_URL }}/functions/v1/cron-sweeps" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+
+      # D-1 (mig 439): cotización DIVISA del BNA. A las 03:10 AR la página todavía muestra el cierre
+      # del día hábil anterior, con su fecha — la tasa de la RG 5616. Falla (502) si no pudo capturar,
+      # para que el workflow quede rojo y se vea.
+      - name: Call cotizacion-bna Edge Function
+        if: always()  # independiente: que falle un sweep no deja al día sin cotización
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/cotizacion-bna" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \

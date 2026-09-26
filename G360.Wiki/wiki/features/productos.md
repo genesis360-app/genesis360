@@ -389,7 +389,11 @@ cambiaba lo que se cobraba**. Ahora el CSV manda.
 **Cómo quedó el fix**: lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa)
 con **22 tests** (`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
 (`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
-cobrarlo. **Sin cotización, la fila no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
+cobrarlo. 🛑 **EN CURSO — va a cambiar (2026-09-25, D-1):** GO decidió reemplazar COMPRA por el
+**vendedor divisa BNA del día hábil anterior** en todos los caminos (POS, ficha, importador, tiers/
+combos, pagos, Bóveda), no solo acá — nada construido todavía, ver
+[[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA". **Sin cotización, la fila
+no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
 validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
 escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el camino
 en pesos produce el mismo payload que antes.
@@ -400,7 +404,8 @@ Verificado contra la base real en DEV con el payload exacto (revertido después)
 
 > [!NOTE] **Tres hallazgos que dejó A0 — estado al 2026-09-25**: ✅ **D-1 y D-3 RESUELTOS**, sin esperar
 > respuesta de GO (eran aplicación directa de reglas ya decididas, no puntos a relevar), 🚀 EN PROD desde
-> v1.231.0. ✅ **D-2 CERRADO en DEV, falta PROD** (mig 436, 2026-09-25): el tope de margen pasó de
+> v1.231.0. ✅ **D-2 CERRADO en DEV Y EN PROD** (mig 436, DEV 2026-09-25; a PROD el 2026-09-25 en el
+> deploy `v1.233.0`, PR #359, merge `e38e26cd`): el tope de margen pasó de
 > `numeric(5,2)` (999,99 %) a `numeric(8,2)` (999.999,99 %). Detalle completo en la sección de abajo,
 > "Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24)" y
 > en "Margen: tope numeric(8,2) (mig 436, 2026-09-25)".
@@ -439,7 +444,7 @@ mientras el POS cobra a la de **compra** desde el fix del 2026-09-08 — era la 
 afuera de ese fix. Una línea. Ahora POS, ficha e importador usan la misma tasa. Hoy latente: 0
 productos en USD en PROD.
 
-### D-2 ✅ cerrado en DEV (falta PROD) — aviso claro del tope de margen + el tope ampliado (mig 436)
+### D-2 ✅ cerrado en DEV Y EN PROD — aviso claro del tope de margen + el tope ampliado (mig 436)
 
 Cargar un producto que superara el margen guardable devolvía un `numeric field overflow` crudo de
 Postgres, en la ficha y en el importador. Ahora los dos avisan con un mensaje claro antes de intentar
@@ -511,7 +516,7 @@ mano.
 · §68 (7 escenarios de cobertura que faltan, `tests/specs/uat-modo-basico.md`). Typecheck limpio, build
 verde.
 
-### Margen: tope numeric(8,2) (mig 436, 2026-09-25) — ✅ EN DEV, ❌ falta PROD
+### Margen: tope numeric(8,2) (mig 436, 2026-09-25) — ✅ EN DEV Y EN PROD (a PROD el 2026-09-25, deploy `v1.233.0`, PR #359, merge `e38e26cd`)
 
 D-2 quedaba "mitigado, no cerrado" el 2026-09-24: la app avisaba con un mensaje claro antes del
 `numeric field overflow`, pero el tope de **999,99 %** seguía existiendo y era una decisión ABIERTA

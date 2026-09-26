@@ -389,10 +389,9 @@ cambiaba lo que se cobraba**. Ahora el CSV manda.
 **Cómo quedó el fix**: lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa)
 con **22 tests** (`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
 (`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
-cobrarlo. 🛑 **EN CURSO — va a cambiar (2026-09-25, D-1):** GO decidió reemplazar COMPRA por el
-**vendedor divisa BNA del día hábil anterior** en todos los caminos (POS, ficha, importador, tiers/
-combos, pagos, Bóveda), no solo acá — nada construido todavía, ver
-[[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA". **Sin cotización, la fila
+cobrarlo. ✅ **Cambiado (D-1 fase 2, 2026-09-26):** la tasa ya no es COMPRA sino el **vendedor divisa
+BNA del día hábil anterior**, la única del sistema (POS, ficha, importador, tiers/combos, pagos,
+Bóveda) — ver [[wiki/features/ventas-pos]] "UNA sola tasa USD→ARS". **Sin cotización, la fila
 no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
 validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
 escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el camino

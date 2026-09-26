@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-08-25
+updated: 2026-09-26
 ---
 
 # Ventas / POS
@@ -712,18 +712,38 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 
 ---
 
-## 💵 Los precios en USD se cobran al dólar COMPRA (v1.207.0, 2026-09-08)
+## 💵 UNA sola tasa USD→ARS: vendedor divisa BNA del día hábil anterior (D-1 fase 2, 2026-09-26, mig 440)
 
-> [!WARNING] **🔴 EN CURSO — esta regla va a REEMPLAZARSE (decisión de GO, 2026-09-25).** Tras revisión
-> legal (RG ARCA 5616/2024), GO decidió que el POS pase a convertir USD→ARS al **tipo de cambio
-> vendedor divisa del Banco Nación del día hábil anterior** (no billete, no compra) — **una sola tasa
-> en todos lados**: precio POS, ficha, importador, tiers/combos USD, valor de pagos recibidos en USD y
-> Bóveda. Esto invierte lo que dice esta sección. Fuente elegida: tabla pública de bna.com.ar (no ARCA
-> WS, que exige certificado de producción). Exposición hoy en PROD: 0 productos USD, 0 pagos USD en 30
-> días. **Nada construido todavía** — 2 fases (F1 captura diaria + historial, F2 migrar los caminos).
-> Ver `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` ("Decisiones posteriores"),
-> [[wiki/business/consultas-contador]] (C-16). El código sigue funcionando como se describe abajo hasta
-> que se ejecute el cambio.
+Decisión de GO del 25/09 (D-1, `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`). **Reemplaza** la
+regla "a COMPRA" de la sección de abajo **y** el dólar "oficial" de dolarapi (que es BNA **billete**).
+
+- **Fuente única**: `cotizaciones_bna` (mig 439) → `fn_cotizacion_bna_vigente('USD')` = la última fecha
+  publicada estrictamente anterior a hoy en Argentina. Lógica pura en `src/lib/cotizacionBna.ts`
+  (`normalizarVigente`, `tasaUsdAArs`, `avisoCotizacion`; 15 tests).
+- **`useCotizacion`** ya no lee `tenants.cotizacion_usd*`: consulta la EF `cotizacion-bna` (React Query,
+  `staleTime` 10 min), que devuelve la vigente y **captura del BNA si la última captura tiene > 30 min** —
+  es el "se actualiza al iniciar sesión" de A-2, de respaldo del cron de las 03:10. Montado en `AppLayout`
+  (con el menú colapsado el widget no existe). Si la EF no responde → RPC directa + aviso.
+- `cotizacion` y `cotizacionUsdAArs` son **el mismo número**: precio de producto USD, tiers y combos USD,
+  pago recibido en USD, Bóveda (los dos sentidos), importador, ficha, costo sugerido de OC, referencia de
+  descalce en Gastos/OC y los dashboards.
+- **Sin carga manual del dólar** (A-4: "automática si hay fuente"). El widget muestra "Dólar BNA divisa
+  $X · Vendedor · del dd/mm" y avisa si la captura falló (sigue con la anterior, A-2) o si la vigente
+  tiene ≥ 5 días. En Config → Caja en Dólares desapareció "Quién puede elegir el tipo de cotización"
+  (`cotizacion_usd_roles_permitidos` queda en el schema para monedas manuales futuras).
+- 🛑 **D5 en el POS**: un producto en USD **sin** cotización ya no se vende al `precio_venta` en pesos
+  guardado (congelado a la tasa del día en que se editó): frena con aviso.
+- 🛑 **Mig 440 — Pedidos → venta**: `fn_precio_venta_efectivo` tomaba `precio_venta` para un producto en
+  USD (DEV: USD 450 salía $695.250 = 450 × 1545 billete) y los tiers USD a `tenants.cotizacion_usd`. Ahora
+  `precio_usd × tasa`, igual que el POS; sin tasa → error. `fn_pedido_generar_venta` además sella
+  `ventas.cotizacion_usd` si la venta lleva un producto en USD (el POS ya lo hacía; Dashboard y
+  Rentabilidad separan por esa marca).
+- Exposición al 26/09: PROD **0 productos y 0 tiers en USD** — no mueve plata real. UAT §70.
+
+## 💵 Los precios en USD se cobran al dólar COMPRA (v1.207.0, 2026-09-08) — ⛔ REEMPLAZADA
+
+> [!WARNING] **⛔ Reemplazada por la sección de arriba (D-1 fase 2, 2026-09-26).** Queda como historia:
+> el razonamiento de "una sola tasa para precio y pago" sigue valiendo; la tasa ya no es COMPRA.
 
 🛑 **REGLA #0.** El POS convertía los precios en USD al dólar **venta**, así que **le cobraba de más
 al cliente** en cada venta de un producto en dólares. No era una preferencia: la convención está

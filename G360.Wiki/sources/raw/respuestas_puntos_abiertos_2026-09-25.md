@@ -151,7 +151,7 @@ importador, tiers/combos en USD, pagos recibidos en USD y Bóveda.
 - **Implementación en 2 fases**: **F1** — captura diaria de la cotización + tabla de historial (sin
   ningún cambio visible para nadie mientras tanto); **F2** — migrar todos los caminos que hoy usan
   COMPRA (POS, ficha, importador, tiers/combos, pagos en USD, Bóveda) al nuevo criterio, todos juntos.
-- **Estado: EN CURSO.** **F1 HECHA en DEV (mig 439, commit `bb2c20a6`)**: tabla `cotizaciones_bna` + `fn_cotizacion_bna_vigente` + EF `cotizacion-bna` (desplegada en DEV, probada con usuario real: capturó USD/EUR/GBP del 25/09; la anon key sola → 401) + paso nuevo en `sweeps.yml` a las 03:10 AR. **Falta llevarla a PROD** (mig 439 + deploy EF + merge, porque el workflow corre desde `main`) — consultado a GO como `v1.233.1`, sin cambio visible. F2 (migrar todos los caminos a esta tasa) pendiente.
+- **Estado: F2 HECHA en DEV (2026-09-26, mig 440 — ver [[wiki/features/ventas-pos]] "UNA sola tasa USD→ARS"); F1 EN PROD desde v1.233.1.** Historia: **F1 HECHA en DEV (mig 439, commit `bb2c20a6`)**: tabla `cotizaciones_bna` + `fn_cotizacion_bna_vigente` + EF `cotizacion-bna` (desplegada en DEV, probada con usuario real: capturó USD/EUR/GBP del 25/09; la anon key sola → 401) + paso nuevo en `sweeps.yml` a las 03:10 AR. **Falta llevarla a PROD** (mig 439 + deploy EF + merge, porque el workflow corre desde `main`) — consultado a GO como `v1.233.1`, sin cambio visible. F2 (migrar todos los caminos a esta tasa) pendiente.
 
 Actualizado en el wiki: [[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA",
 [[wiki/features/caja]] (`cajaBoveda.ts`), [[wiki/features/productos]] (importador),

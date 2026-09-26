@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | D-1 fase 2 — UNA sola tasa USD→ARS: vendedor divisa BNA del día hábil anterior (mig 440, DEV)
+
+- Nueva lib `src/lib/cotizacionBna.ts` (15 tests): la tasa sale de `fn_cotizacion_bna_vigente` (mig 439). `useCotizacion`
+  la pide a la EF `cotizacion-bna` (que captura si la última captura tiene > 30 min = A-2 "al iniciar sesión"), con
+  fallback a la RPC; montado en `AppLayout`. Ya no lee `tenants.cotizacion_usd*` ni dolarapi (que era BNA **billete**).
+- Todos los caminos a la MISMA tasa: POS (precio, tiers, combos, pago en USD), ficha, importador, costo sugerido de OC,
+  referencia de descalce en Gastos, dashboards y **Bóveda** (`calcularConversionUsd(sentido, monto, tasa)`: sin compra/venta).
+- Sin carga manual del dólar (A-4). Widget: "Dólar BNA divisa $1.525,50 · Vendedor · del 25/09" + aviso si la captura
+  falló o la vigente tiene ≥ 5 días. Config → Caja en Dólares: fuera "Quién puede elegir el tipo de cotización".
+- 🛑 POS (D5): un producto en USD sin cotización ya no se vende al `precio_venta` guardado en silencio — frena.
+- 🛑 **Mig 440** (aplicada en Supabase DEV): `fn_precio_venta_efectivo` (Pedidos→venta) cotizaba un producto USD a
+  `precio_venta` congelado (DEV: USD 450 → $695.250 = 450 × 1545 billete) y los tiers USD a `tenants.cotizacion_usd`;
+  ahora `precio_usd × tasa` ($686.475) y sin tasa → error. `fn_pedido_generar_venta` sella `ventas.cotizacion_usd`.
+  Probada en transacción descartada antes de aplicar. `schema_full.sql` regenerado.
+- Verificado: tsc, unit **1947/1947**, build; e2e **55** (con fixture USD aplicado y restaurado: USD 10 → $15.255) y
+  **143** verdes (los dos leían `tenants.cotizacion_usd`; ahora la RPC); sonda del widget + EF desde el navegador. UAT §70.
+- Exposición PROD: 0 productos y 0 tiers en USD. **Falta**: deploy a PROD (mig 440 + merge) — consultado a GO.
+
 ## [2026-09-26] deploy | v1.233.1 a PROD — historial diario de la cotización divisa del BNA (D-1 fase 1)
 
 - Mig **439** aplicada en PROD antes del merge; EF **`cotizacion-bna`** desplegada en PROD (existe `CRON_SECRET`).

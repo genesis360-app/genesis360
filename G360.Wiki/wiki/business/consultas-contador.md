@@ -185,7 +185,8 @@ para un balance formal en vez de para gestión interna?
 > [!NOTE] **Relacionada con C-16 (2026-09-25):** GO decidió reemplazar el dólar comprador por el
 > vendedor divisa BNA del día hábil anterior en el resto del sistema (POS, ficha, importador, pagos en
 > USD) incluyendo la Bóveda — ver C-16. Si aplica también acá (valuación de tenencias para reportes), lo
-> resuelve la misma implementación (D-1, en curso, nada construido todavía).
+> resuelve la misma implementación (D-1). **Implementado el 2026-09-26 (fase 2, mig 440)**: la Bóveda
+> y los dashboards ya valúan USD al vendedor divisa BNA del día hábil anterior.
 
 ---
 
@@ -313,17 +314,16 @@ muestre hoy y que **no debería mostrar** sin la firma de un profesional?
 - **Área:** Facturación electrónica / tipo de cambio
 - **Impacta en:** `src/lib/cotizacionFiscal.ts`, `supabase/functions/emitir-factura`, y toda la
   conversión USD → ARS del POS
-- **Criterio provisorio actual (hasta que se ejecute el cambio de abajo):** la app convierte con el
-  **dólar COMPRA** de la cotización operativa que cargó el negocio (una sola tasa, para que no aparezca
-  vuelto fantasma).
+- **Criterio vigente (desde 2026-09-26, D-1 fase 2):** la app convierte con el **vendedor divisa del
+  BNA del día hábil anterior**, una sola tasa en todo el sistema (antes: dólar COMPRA de la cotización
+  operativa que cargaba el negocio).
 
-> [!WARNING] **🔴 EN CURSO (2026-09-25):** tras la revisión legal que sigue (RG ARCA 5616/2024, ninguna
+> [!NOTE] **✅ IMPLEMENTADO el 2026-09-26 (D-1 fase 2, mig 440).** Decidido el 2026-09-25: tras la revisión legal que sigue (RG ARCA 5616/2024, ninguna
 > norma fija la tasa del POS para una venta facturada en pesos — es decisión de negocio, no obligación),
 > GO decidió reemplazar el criterio de arriba: el POS va a convertir USD→ARS al **vendedor divisa del
 > BNA del día hábil anterior**, una sola tasa en todos lados (POS, ficha, importador, tiers/combos USD,
-> pagos recibidos en USD, Bóveda). **Nada construido todavía.** Ver
-> `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` ("Decisiones posteriores"),
-> [[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA".
+> pagos recibidos en USD, Bóveda). Ver `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`
+> ("Decisiones posteriores"), [[wiki/features/ventas-pos]] "UNA sola tasa USD→ARS".
 
 **Pregunta:** cuando la venta se cobra en dólares pero la factura se emite en **pesos** (que es la
 decisión de producto), ¿qué cotización corresponde para pasar esos dólares a pesos: la que usó el
@@ -332,7 +332,7 @@ negocio en el mostrador, o la del BNA del día hábil anterior? ¿Y comprador o 
 **Por qué importa:** la RG ARCA 5616/2024 fija, para comprobantes **emitidos en moneda extranjera**,
 el **tipo de cambio vendedor divisa del BNA al cierre del día hábil cambiario anterior**. No se
 encontró norma que fije lo mismo para el caso inverso (factura en pesos de una venta cobrada en
-dólares), que es justo el caso de Genesis360. **La app hoy usa COMPRA, no vendedor.** Si el criterio
+dólares), que es justo el caso de Genesis360. **La app usa vendedor divisa (desde 26/09).** Si el criterio
 está mal, quedan mal declarados los importes de todas las facturas de ventas cobradas en dólares.
 
 ---

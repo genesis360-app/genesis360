@@ -6,6 +6,29 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-26, 2ª sesión) — 💵 **D-1 fase 2 HECHA en DEV** (mig 440), falta PROD
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.1` | 001-**439** |
+> | **DEV** | `v1.233.1` + D-1 fase 2 (sin bump) | 001-**440** |
+>
+> **UNA sola tasa USD→ARS = vendedor divisa BNA del día hábil anterior** en todo el sistema (POS precio/tiers/combos/
+> pago USD, ficha, importador, OC, Gastos, dashboards, Bóveda en los dos sentidos). `src/lib/cotizacionBna.ts` +
+> `useCotizacion` (EF `cotizacion-bna` → captura al iniciar sesión, A-2; fallback RPC). Sin carga manual del dólar (A-4).
+> POS frena producto USD sin cotización (D5). **Mig 440** (DEV): Pedidos→venta cotizaba productos USD a `precio_venta`
+> congelado y tiers USD a `tenants.cotizacion_usd` → ahora igual que el POS + sella `ventas.cotizacion_usd`.
+> Verificado: tsc, unit 1947/1947, build, e2e 55 y 143, sonda del widget. UAT §70. Ver log del 26/09.
+>
+> #### ▶️ Próximo
+> - **Deploy `v1.234.0`** (cambio visible: widget y Bóveda): mig 440 en PROD **antes** del merge + bump `APP_VERSION` +
+>   PR `dev→main`. EFs: sin cambios (la `cotizacion-bna` ya está en PROD). Exposición PROD: 0 productos/tiers USD.
+> - Pendiente menor: 70.5 y 70.9 del UAT sin test automático.
+> - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de
+>   keys legacy PROD, consultas al contador.
+> - Idea (no pedida): `GastosPage` podría proponer `cotizacion_fiscal` desde `cotizaciones_bna` para la fecha del
+>   comprobante (misma fuente, otra fecha) — el criterio fiscal sigue pendiente de contador.
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-26) — 🚀 **PROD = DEV = `v1.233.1`** (migs 001-**439**), todo en `main`
 >
 > | | Código | Migraciones |

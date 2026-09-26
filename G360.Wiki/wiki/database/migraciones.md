@@ -3,10 +3,18 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-439, + correctivos 387b/387c)
+# Historial de Migraciones (001-440, + correctivos 387b/387c)
+
+📅 **Migración 440 — 🟡 EN DEV, falta PROD** (2026-09-26): `440_precio_efectivo_cotizacion_bna.sql` — **D-1 fase 2**.
+`fn_precio_venta_efectivo` (motor de precio de Pedidos → venta) pasa a la tasa única `fn_cotizacion_bna_vigente('USD')`
+(antes `tenants.cotizacion_usd`) y cotiza un producto con `moneda_venta='usd'` como `precio_usd × tasa`, igual que el POS
+(antes tomaba `precio_venta`, el espejo en pesos congelado); sin tasa → `RAISE` (D5). `fn_pedido_generar_venta` sella
+`ventas.cotizacion_usd` cuando la venta lleva un producto en USD. Definiciones de DEV y PROD verificadas antes (la
+primera difería solo en comentarios; la segunda idéntica). Probada en DEV en transacción descartada: USD 199,99 →
+$305.084,75; USD 450 → $686.475 (antes $695.250); sin cotización → error. Sin policies nuevas.
 
 📅 **Migración 439 — ✅ EN DEV Y EN PROD** (2026-09-25/26, `v1.233.1`): `439_cotizaciones_bna.sql` — **D-1 fase 1**.
 Tabla global `cotizaciones_bna (fecha, moneda, compra, venta, fuente, capturada_at)`, PK `(fecha, moneda)`, RLS con

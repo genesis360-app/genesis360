@@ -1186,8 +1186,9 @@ export default function VentasPage() {
           setClienteId(draft.clienteId)
           setClienteNombre(draft.clienteNombre ?? '')
           setClienteTelefono(draft.clienteTelefono ?? '')
-          supabase.from('clientes').select('cuenta_corriente_habilitada').eq('id', draft.clienteId).maybeSingle()
-            .then(({ data }) => { if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true) })
+          // Mig 442: CC habilitada EFECTIVA (Cliente > Categoría > Negocio), no el valor propio del cliente.
+          supabase.from('vw_clientes_cc').select('cc_habilitada').eq('cliente_id', draft.clienteId).maybeSingle()
+            .then(({ data }) => { if (data?.cc_habilitada) setClienteCCEnabled(true) })
         }
         if (draft.mediosPago) setMediosPago(draft.mediosPago)
         if (draft.notas) setNotas(draft.notas)
@@ -3284,9 +3285,10 @@ export default function VentasPage() {
       }
       // B1 — enforcement de límite (solo sobre la parte que va a CC)
       if (modoCC && montoCC > 0.5) {
-        const { data: cli } = await supabase.from('clientes').select('limite_credito').eq('id', clienteId).maybeSingle()
-        const limite = cli?.limite_credito ?? (tenant as any)?.limite_cc_default ?? null
-        const enf = evaluarLimiteCC({ deudaTotal: est.deuda_total, montoCC, limite, politica: (tenant as any)?.cc_enforcement_politica ?? 'avisar' })
+        // Mig 442: límite y política EFECTIVOS (Cliente > Categoría > Negocio) — los mismos que aplica el servidor.
+        const { data: cc } = await supabase.from('vw_clientes_cc').select('cc_limite, cc_enforcement_politica').eq('cliente_id', clienteId).maybeSingle()
+        const limite = cc?.cc_limite != null ? Number(cc.cc_limite) : null
+        const enf = evaluarLimiteCC({ deudaTotal: est.deuda_total, montoCC, limite, politica: (cc?.cc_enforcement_politica ?? 'avisar') as any })
         if (enf.supera) {
           const msg = `Esta venta deja la cuenta corriente en ${fmtCC(est.deuda_total + montoCC)}, supera el límite de ${fmtCC(limite as number)}.`
           if (enf.accion === 'bloquear') { toast.error(msg + ' Operación bloqueada.'); return }
@@ -3431,10 +3433,9 @@ export default function VentasPage() {
           )
         })(),
         es_cuenta_corriente: modoCC,
-        // B3 — vencimiento de la venta CC = hoy + cc_dias_vencimiento (si está configurado)
-        ...(modoCC && montoCC > 0.5 && ((tenant as any)?.cc_dias_vencimiento ?? null) != null
-          ? { fecha_vencimiento_cc: new Date(Date.now() + ((tenant as any).cc_dias_vencimiento) * 86400000).toISOString().slice(0, 10) }
-          : {}),
+        // B3 — el vencimiento de la venta CC lo pone el SERVIDOR (trigger `trg_ventas_cc_vencimiento`, mig 442): hoy +
+        // plazo efectivo (Cliente > Categoría > Negocio > 30). Antes lo calculaba acá con los días del negocio e
+        // ignoraba el plazo del cliente, mientras los avisos de vencido usaban otro.
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -6231,7 +6232,10 @@ export default function VentasPage() {
                               setClienteId(c.id)
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
-                              setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
+                              // Mig 442: la CC habilitada EFECTIVA (puede venir de la categoría); mientras llega, no se ofrece.
+                              setClienteCCEnabled(false)
+                              void supabase.from('vw_clientes_cc').select('cc_habilitada').eq('cliente_id', c.id).maybeSingle()
+                                .then(({ data }) => setClienteCCEnabled(!!data?.cc_habilitada))
                               setEsConsumidorFinal(false)   // H5: elegir cliente registrado → no es CF
                               setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente'))
                               setClienteSearch('')

@@ -2375,3 +2375,24 @@ Respuestas de GO del 25/09 (`respuestas_puntos_abiertos_2026-09-25.md`, C-1 y C-
 | 72.13 | C-3 también en: aprobación de cambio de precio en Supervisión, edición masiva de precio, precio sugerido de kit e importador | e2e `162` A (masiva: cancela los 2), B (Supervisión: mantener), C (importador: volver). Kit: mismo hook, revisión de código | ✅ |
 | 72.14 | Si falla la cancelación del programado, **no** se guarda el precio (si no, el programado lo pisaría a su hora) | e2e `162` D: RPC de cancelación forzada a fallar → error visible, precio sin cambio, programado pendiente | ✅ |
 
+## 🏷️ §73 — Categorías de clientes, etapa 1: la categoría con cuenta corriente (mig 442) — 2026-09-26
+
+Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de Fede (D1-D4, C2, C5, E1-E3, F1) + B-6 de GO + 3 decisiones de GO del 26/09 (plazo = una regla del servidor; valores de fábrica → "hereda"; CC habilitada controlada por el servidor). El PRECIO de categoría es la Fase 4.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 73.1 | 🛑 Sin categorías, las condiciones efectivas de TODOS los clientes quedan iguales que antes de la migración (límite, habilitada, plazo = días del negocio) | SQL en transacción descartada (0a-0c = 0 diferencias en DEV) | ✅ |
+| 73.2 | Cliente sin valores propios hereda las 5 condiciones de su categoría; el que tiene límite propio lo conserva (D1) | SQL 1a-1b · unit `ccCategorias.test.ts` (espejo de la vista, 16) | ✅ |
+| 73.3 | Categoría desactivada deja de aplicar (hereda del negocio); usada no se puede borrar, nunca usada sí (C2) | SQL 2a-2c | ✅ |
+| 73.4 | 🛑 Permisos en el servidor: un CAJERO no asigna (E2), no pone CC propia (E3) ni crea categorías (E1); habilitado en Config, asigna | SQL 3a-3d | ✅ |
+| 73.5 | 🛑 Vencimiento de la venta CC = hoy + plazo efectivo, lo pone el SERVIDOR aunque el navegador mande otra fecha | SQL 4a (mandó +99, quedó +10) · e2e `163` (POS: +12 de la categoría; el negocio tiene 2) | ✅ |
+| 73.6 | 🛑 Límite de la categoría con política "bloquear" frena la venta CC | SQL 4b | ✅ |
+| 73.7 | 🛑 CC no habilitada: el servidor rechaza la venta CC (decisión de GO) y el POS no ofrece la opción | SQL 4c · e2e `163` (anti-vacío: cliente sin CC → sin opción) | ✅ |
+| 73.8 | Interés por mora con el % de la categoría (no el del negocio) | SQL 5a (500 × 7% × 1 mes = 35) | ✅ |
+| 73.9 | Asignación masiva: elegir → resumen → Guardar en UNA operación; "usar la categoría" borra los propios, "mantener" los deja; un cliente inválido hace caer todo | SQL 6a-6c · e2e `163` (asignación desde la pantalla) | ✅ |
+| 73.10 | Historial: cambios de la categoría y asignaciones quedan en actividad_log desde el servidor (F1, E2) | SQL 7a (13 filas) · panel "Historial" | ✅ código |
+| 73.11 | Ficha del cliente: muestra lo que rige y de dónde sale ("de la categoría"), 3 estados por campo, "volver a la categoría" | e2e `163` | ✅ |
+| 73.12 | Al cambiar la categoría de un cliente con valores propios que compiten, pregunta: mantener (por defecto) o usar la categoría (D2) | revisión de código. 🟡 sin e2e | 🟡 |
+| 73.13 | Aviso de impacto al bajar el límite de una categoría ("N clientes quedarían por encima") | revisión de código. 🟡 sin e2e | 🟡 |
+| 73.14 | Pedidos → venta a CC: condiciones efectivas + CC habilitada en el servidor | e2e `107` (CC sobre el límite, regresión) · revisión de la mig | ✅ |
+| 73.15 | Regresión de los e2e de CC existentes (107, 28, 39, 40, 57, 83) | verdes; 46/49/69/72 se saltean por fixtures sin sembrar (preexistente) | ✅ |

@@ -53,6 +53,9 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 - Tests: extender `precioProgramado.test.ts` + e2e 151.
 
 ### Fase 2 — Categorías, etapa 1: la categoría con cuenta corriente (G1) · media · sin precio
+
+> ✅ **HECHA en DEV el 2026-09-26** (mig 442, e2e 163, UAT §73). Al relevar el código salieron 3 inconsistencias de CC
+> que GO resolvió el mismo día (plazo = una regla del servidor; valores de fábrica → hereda; CC habilitada en el servidor).
 - Entidad `categorias_cliente` (una por cliente, `clientes.categoria_id`), activar/desactivar, borrar solo si nunca se
   usó (C2). Pensada para ~20 por negocio (B-9).
 - Condiciones de CC de la categoría: las 5 opcionales con "hereda / sí / no" (D3, D4).

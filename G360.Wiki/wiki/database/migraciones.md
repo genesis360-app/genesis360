@@ -6,7 +6,16 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-441, + correctivos 387b/387c)
+# Historial de Migraciones (001-442, + correctivos 387b/387c)
+
+📅 **Migración 442 — 🟡 EN DEV, falta PROD** (2026-09-26): `442_categorias_cliente_cc.sql` — **Categorías de clientes, etapa 1**.
+Tabla `categorias_cliente` (5 condiciones de CC, NULL = hereda; `usada`; RLS con `fn_usuario_en_roles_categoria`), `clientes.categoria_cliente_id`,
+`tenants.categorias_cliente_roles` / `_asignar_roles`. **Valores de fábrica → "hereda"** (`cuenta_corriente_habilitada` false→NULL, `plazo_pago_dias`
+30→NULL, sin default). **Única resolución** `vw_clientes_cc` (security_invoker) + `fn_cc_condiciones_efectivas`. Guards
+`trg_clientes_categoria_guard` (E2/E3), `trg_categorias_cliente_guard_delete`; auditoría a `actividad_log` por trigger;
+`fn_asignar_categoria_clientes` (masiva, una operación); **`trg_ventas_cc_vencimiento`** (el vencimiento lo pone el servidor);
+`fn_ventas_cc_guard` (efectivas + CC habilitada), `fn_recalcular_intereses_cc_tenant` + `recalcular_intereses_cc[_all]`, `fn_notificar_cc_vencidas`,
+`fn_pedido_generar_venta` (**contiene la 440: aplicar 440 antes en PROD**). Suma 4 policies. Probada en transacción descartada (20 comprobaciones).
 
 📅 **Migración 441 — 🟡 EN DEV, falta PROD** (2026-09-26): `441_precio_programado_aprobacion_repositor.sql` — **C-1 de
 Precio programado**. `tenants.precio_programado_requiere_repositor` (default false) + `precio_programado_aviso_demora_horas`

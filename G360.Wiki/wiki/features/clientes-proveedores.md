@@ -12,6 +12,29 @@ updated: 2026-09-24
 
 ---
 
+
+## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
+
+Fase 2 de `sources/raw/plan_categorias_clientes_y_precio_programado.md` (relevamiento de Fede + respuestas de GO). El
+**precio** por categoría es la Fase 4; acá solo cuenta corriente.
+
+- **Modelo**: una categoría por cliente (C5). Define las 5 condiciones de CC, todas opcionales (D3/D4): habilitada, límite,
+  plazo, interés por mora y qué hacer al pasarse del límite. La política de morosidad y los avisos quedan del negocio.
+- **Herencia** (D1): **Cliente > Categoría activa > Negocio**. Una sola fuente: `vw_clientes_cc`. El cliente solo puede
+  tener propios en habilitada, límite y plazo (B-7). 🛑 Antes cada función resolvía distinto: el POS vencía a los días del
+  NEGOCIO e ignoraba el plazo del cliente, los avisos usaban el del cliente, Pedidos no ponía vencimiento, y "CC
+  habilitada" se controlaba solo en pantalla.
+- **Decisiones de GO del 26/09**: (1) vencimiento = hoy + plazo efectivo, **lo pone el servidor** (`trg_ventas_cc_vencimiento`)
+  para POS y Pedidos, y lo usan igual interés, morosidad, avisos y reportes; (2) los valores de fábrica (plazo 30, CC no)
+  pasaron a "hereda" — sin categoría no cambia nada efectivo; (3) el servidor rechaza una venta CC de un cliente sin CC.
+- **Pantallas**: Clientes → pestaña **Categorías** (crear/editar, desactivar con impacto, borrar si nunca se usó, historial,
+  permisos E1/E2, **Asignar a clientes** con resumen y decisión por cliente sobre sus propios). Ficha del cliente: selector de
+  categoría, 3 estados por campo, "lo que rige y de dónde sale", "volver a la categoría"; al cambiar la categoría con
+  propios que compiten pregunta (D2). Solo el DUEÑO toca valores propios (E3); los demás editan el resto de la ficha.
+- **Verificación**: 20 comprobaciones SQL (incluida "0 diferencias efectivas sin categorías"), 16 unit, e2e **163** y
+  regresión de los e2e de CC. UAT §73.
+- **Pendiente menor**: la EF `data-api` exporta `cuenta_corriente_habilitada` crudo (ahora puede ser NULL = hereda).
+
 ## Módulo Clientes
 
 **Página:** `src/pages/ClientesPage.tsx` (`/clientes`)  

@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | Categorías de clientes etapa 1 — la categoría con cuenta corriente (mig 442, DEV)
+
+- Al relevar el código salieron 3 inconsistencias de CC (REGLA #0): el POS vencía a los días del negocio e ignoraba el
+  plazo del cliente mientras los avisos usaban el del cliente; Pedidos no ponía vencimiento; "CC habilitada" solo en
+  pantalla. Exposición PROD: 0 deudas CC. **GO decidió** (AskUserQuestion): una regla del servidor, fábrica → hereda,
+  CC habilitada en el servidor.
+- Mig 442: `categorias_cliente`, `vw_clientes_cc` (única resolución Cliente > Categoría > Negocio), guards E1-E3, auditoría,
+  asignación masiva en una operación, vencimiento por trigger, guard de ventas/Pedidos/interés/avisos sobre lo efectivo.
+  20 comprobaciones SQL en transacción descartada (0 diferencias efectivas sin categorías).
+- Front: pestaña Categorías (panel + asignación masiva + historial + permisos), ficha del cliente con 3 estados y "lo que
+  rige", POS y dashboards con lo efectivo. e2e **162** (C-3 en otros caminos + 71.5 + 72.14) y **163** (categoría → POS).
+  Unit 1986/1986, build OK. UAT §73.
+
 ## [2026-09-26] update | Precio programado C-1 (el precio espera la etiqueta, mig 441) y C-3 (cambio "ahora" pregunta)
 
 - **C-1** opcional por negocio: pasada la hora el precio espera que se confirme la etiqueta (todas las sucursales con

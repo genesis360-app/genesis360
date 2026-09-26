@@ -11,7 +11,7 @@ type: project
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.233.1` | 001-**439** |
-> | **DEV** | `v1.233.1` + D-1 fase 2 (sin bump) | 001-**440** |
+> | **DEV** | `v1.233.1` + D-1 fase 2, D-3, precio programado C-1/C-3, categorías etapa 1 (sin bump) | 001-**442** |
 >
 > **UNA sola tasa USD→ARS = vendedor divisa BNA del día hábil anterior** en todo el sistema (POS precio/tiers/combos/
 > pago USD, ficha, importador, OC, Gastos, dashboards, Bóveda en los dos sentidos). `src/lib/cotizacionBna.ts` +
@@ -78,6 +78,9 @@ type: project
 >   cuenta corriente con herencia en UNA función SQL · (3) motor único de precio en SQL sin cambiar precios · (4) precio
 >   de categoría + tope + import Excel · (5) IA del cartel + reporte · (6) tiers/combos programados + cambios masivos.
 >   ✅ **Fase 1: C-1 y C-3 HECHOS en DEV** (mig 441, e2e 161, UAT §72) — C-2 espera PL-4.
+>   ✅ **Fase 2 (categoría + cuenta corriente) HECHA en DEV** (mig 442, e2e 162/163, UAT §73). GO decidió el 26/09: vencimiento
+>   = una regla del servidor, valores de fábrica → hereda, CC habilitada en el servidor. Pendiente menor: EF `data-api`.
+>   Siguiente: **Fase 3 (motor único de precio)** — espera PL-5 (POS sin red).
 >   🙋 **Preguntas PL-1..PL-7** (PL-7 nueva: C-1 con varias sucursales espera TODAS las etiquetas) (tope del DUEÑO, ventas recurrentes y portal que no existen, default de C-2 en negocios
 >   existentes, POS sin red, ventas en espera que no existen) — en el mismo archivo. La Fase 1 no depende de PL-1..PL-3,
 >   PL-5 ni PL-6 (solo de PL-4 para C-2).

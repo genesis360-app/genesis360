@@ -43,7 +43,10 @@ interface FilaCliente {
 }
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
-import { useConfirm } from '@/hooks/useConfirm'
+import { useConfirm, useElegir } from '@/hooks/useConfirm'
+import { useCategoriasCliente, useClientesCC, puedeAsignarCategoria, puedeEditarCCPropia, CATEGORIAS_QUERY_KEY, CLIENTES_CC_QUERY_KEY } from '@/hooks/useCategoriasCliente'
+import { resolverCondicionesCC, habilitadaAForm, propiosDesdeForm, tienePropios, propiosQueCompiten, ETIQUETA_ORIGEN, ETIQUETA_POLITICA, type HabilitadaForm } from '@/lib/ccCategorias'
+import { CategoriasClientePanel } from '@/components/CategoriasClientePanel'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 function formatFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -63,7 +66,9 @@ interface ClienteForm {
   cuit_receptor: string; condicion_iva_receptor: string
   fecha_nacimiento: string; etiquetas: string
   codigo_fiscal: string; regimen_fiscal: string
-  cuenta_corriente_habilitada: boolean; limite_credito: string; plazo_pago_dias: string
+  // Mig 442: valores PROPIOS del cliente. 'hereda' / vacío = toma el de la categoría o el del negocio.
+  categoria_cliente_id: string
+  cc_habilitada: HabilitadaForm; limite_credito: string; plazo_pago_dias: string
 }
 const FORM_VACIO: ClienteForm = {
   nombre: '', dni: '', telefono: '', email: '', notas: '',
@@ -71,7 +76,7 @@ const FORM_VACIO: ClienteForm = {
   cuit_receptor: '', condicion_iva_receptor: 'CF',
   fecha_nacimiento: '', etiquetas: '',
   codigo_fiscal: '', regimen_fiscal: '',
-  cuenta_corriente_habilitada: false, limite_credito: '', plazo_pago_dias: '30',
+  categoria_cliente_id: '', cc_habilitada: 'hereda', limite_credito: '', plazo_pago_dias: '',
 }
 
 function validarDNI(valor: string): string | null {
@@ -118,13 +123,21 @@ export default function ClientesPage() {
   const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
+  const elegir = useElegir()
+  // Categorías de clientes (mig 442)
+  const { data: categoriasCliente = [] } = useCategoriasCliente()
+  const { data: ccEfectivo } = useClientesCC()
+  const puedeAsignarCat = puedeAsignarCategoria(user as any, tenant)
+  const puedeCCPropia = puedeEditarCCPropia(user as any)
+  // Lo que el cliente tenía al abrir el modal: para saber si cambió la categoría y si tenía valores propios (D2).
+  const [formOriginal, setFormOriginal] = useState<ClienteForm | null>(null)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   // Deep-link desde AlertasPage ("Ver todos" de Clientes con saldo pendiente) — la pestaña Cuenta
   // Corriente ya lista exactamente eso, solo faltaba poder aterrizar ahí directo (GO, 2026-08-12).
-  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes' | 'autorizaciones'>(() => {
+  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes' | 'autorizaciones' | 'categorias'>(() => {
     const t = searchParams.get('tab')
-    return (t === 'cc' || t === 'reportes' || t === 'autorizaciones') ? t : 'lista'
+    return (t === 'cc' || t === 'reportes' || t === 'autorizaciones' || t === 'categorias') ? t : 'lista'
   })
   const [search, setSearch] = useState('')
   // C6 — segmentación de clientes para marketing (filtros + export)
@@ -315,13 +328,24 @@ export default function ClientesPage() {
   const { data: clientesCC = [] } = useQuery({
     queryKey: ['clientes-cc', tenant?.id],
     queryFn: async () => {
-      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
-        .select('id, nombre, telefono, email, plazo_pago_dias, limite_credito, cuenta_token')
-        .eq('tenant_id', tenant!.id)
-        .eq('cuenta_corriente_habilitada', true)
-        .order('nombre')
+      // Mig 442: la CC habilitada, el plazo y el límite son los EFECTIVOS (Cliente > Categoría > Negocio), no el valor
+      // propio del cliente — con herencia, un cliente con CC por su categoría tiene `cuenta_corriente_habilitada` NULL.
+      const { data: efectivos, error: e1 } = await traerTodoConError<any>((desde, hasta) => supabase.from('vw_clientes_cc')
+        .select('cliente_id, cc_plazo_dias, cc_limite').eq('tenant_id', tenant!.id).eq('cc_habilitada', true)
         .range(desde, hasta))
-      return data ?? []
+      if (e1) throw e1
+      const porId = new Map<string, any>((efectivos ?? []).map((e: any) => [e.cliente_id, e]))
+      const ids = [...porId.keys()]
+      const filas: any[] = []
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await supabase.from('clientes')
+          .select('id, nombre, telefono, email, cuenta_token').in('id', ids.slice(i, i + 200))
+        if (error) throw error
+        filas.push(...(data ?? []))
+      }
+      return filas
+        .map(c => ({ ...c, plazo_pago_dias: porId.get(c.id)?.cc_plazo_dias ?? 30, limite_credito: porId.get(c.id)?.cc_limite ?? null }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
     },
     enabled: !!tenant && (pageTab === 'cc' || pageTab === 'reportes'),
   })
@@ -487,20 +511,24 @@ export default function ClientesPage() {
     setTelError(null)
     if (cliente) {
       setEditId(cliente.id)
-      setForm({
+      const cargado: ClienteForm = {
         nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '',
         email: cliente.email ?? '', notas: cliente.notas ?? '',
         cuit_receptor: cliente.cuit_receptor ?? '', condicion_iva_receptor: cliente.condicion_iva_receptor ?? '',
         fecha_nacimiento: cliente.fecha_nacimiento ?? '',
         etiquetas: Array.isArray(cliente.etiquetas) ? cliente.etiquetas.join(', ') : '',
         codigo_fiscal: cliente.codigo_fiscal ?? '', regimen_fiscal: cliente.regimen_fiscal ?? '',
-        cuenta_corriente_habilitada: cliente.cuenta_corriente_habilitada ?? false,
-        limite_credito: cliente.limite_credito != null ? String(cliente.limite_credito) : '',
-        plazo_pago_dias: String(cliente.plazo_pago_dias ?? 30),
-      })
+        categoria_cliente_id: cliente.categoria_cliente_id ?? '',
+        cc_habilitada: habilitadaAForm(cliente.cuenta_corriente_habilitada),
+        limite_credito: cliente.limite_credito != null ? String(Number(cliente.limite_credito)) : '',
+        plazo_pago_dias: cliente.plazo_pago_dias != null ? String(cliente.plazo_pago_dias) : '',
+      }
+      setForm(cargado)
+      setFormOriginal(cargado)
     } else {
       setEditId(null)
       setForm(FORM_VACIO)
+      setFormOriginal(null)
     }
     setModalOpen(true)
   }
@@ -529,6 +557,27 @@ export default function ClientesPage() {
         (tel && (c.telefono ?? '').replace(/\D/g, '') === tel))
       if (match && !(await confirmar(`Posible duplicado: ya existe "${match.nombre}"${match.dni ? ` (DNI ${match.dni})` : ''}. ¿Crear de todas formas?`))) return
     }
+    // D2 — al cambiar de categoría un cliente con valores propios que compiten con los de la categoría: ¿se mantienen
+    // (por defecto) o se usan los de la categoría? Solo lo puede resolver quien puede tocar valores propios (E3).
+    let formFinal = form
+    const categoriaNueva = form.categoria_cliente_id && form.categoria_cliente_id !== (formOriginal?.categoria_cliente_id ?? '')
+      ? (categoriasCliente as any[]).find(c => c.id === form.categoria_cliente_id) : null
+    if (categoriaNueva && puedeCCPropia) {
+      const compiten = propiosQueCompiten(propiosDesdeForm(form), categoriaNueva)
+      if (compiten.length > 0) {
+        const detalle = compiten.map(x => `· ${x.campo === 'habilitada' ? 'CC habilitada' : x.campo === 'limite' ? 'Límite' : 'Plazo (días)'}: propio ${x.campo === 'limite' ? formatMoneda(Number(x.propio)) : x.propio} — la categoría define ${x.campo === 'limite' ? formatMoneda(Number(x.categoria)) : x.categoria}`).join('\n')
+        const decision = await elegir<'mantener' | 'categoria'>(
+          `Este cliente tiene condiciones de cuenta corriente propias distintas de las de "${categoriaNueva.nombre}":
+${detalle}`,
+          { titulo: 'Valores propios del cliente', opciones: [
+            { valor: 'mantener', texto: 'Mantener los valores propios', primario: true },
+            { valor: 'categoria', texto: 'Usar los de la categoría' },
+          ] },
+        )
+        if (decision === null) return
+        if (decision === 'categoria') formFinal = { ...form, cc_habilitada: 'hereda', limite_credito: '', plazo_pago_dias: '' }
+      }
+    }
     setSaving(true)
     try {
       const etiquetasArr = form.etiquetas.trim()
@@ -544,22 +593,25 @@ export default function ClientesPage() {
         etiquetas: etiquetasArr,
         codigo_fiscal: form.codigo_fiscal.trim() || null,
         regimen_fiscal: form.regimen_fiscal.trim() || null,
-        cuenta_corriente_habilitada: form.cuenta_corriente_habilitada,
-        limite_credito: form.limite_credito ? parseFloat(form.limite_credito) : null,
-        plazo_pago_dias: form.plazo_pago_dias ? parseInt(form.plazo_pago_dias) : 30,
+        // Mig 442: la categoría solo la manda quien puede asignarla (E2), y los valores propios de CC solo el DUEÑO
+        // (E3). El servidor rechaza igual (guard), pero así un SUPERVISOR puede editar el resto de la ficha.
+        ...(puedeAsignarCat ? { categoria_cliente_id: formFinal.categoria_cliente_id || null } : {}),
+        ...(puedeCCPropia ? propiosDesdeForm(formFinal) : {}),
       }
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
         if (error) throw error
         // F4 — audit log de cambios de datos del cliente
         logActividad({ entidad: 'cliente', entidad_id: editId, entidad_nombre: payload.nombre, accion: 'editar',
-          valor_nuevo: `Tel: ${payload.telefono ?? '—'} · Email: ${payload.email ?? '—'} · CC: ${payload.cuenta_corriente_habilitada ? 'sí' : 'no'}${payload.limite_credito ? ` (límite ${formatMoneda(payload.limite_credito)})` : ''}`, pagina: '/clientes' })
+          valor_nuevo: `Tel: ${payload.telefono ?? '—'} · Email: ${payload.email ?? '—'}`, pagina: '/clientes' })
         toast.success('Cliente actualizado')
       } else {
         const { error } = await supabase.from('clientes').insert({ tenant_id: tenant!.id, ...payload })
         if (error) throw error
         toast.success('Cliente creado')
       }
+      qc.invalidateQueries({ queryKey: [CLIENTES_CC_QUERY_KEY] })
+      qc.invalidateQueries({ queryKey: [CATEGORIAS_QUERY_KEY] })
       qc.invalidateQueries({ queryKey: ['clientes'] })
       qc.invalidateQueries({ queryKey: ['cliente-cambios'] })
       qc.invalidateQueries({ queryKey: ['clientes-stats'] })
@@ -919,7 +971,8 @@ export default function ClientesPage() {
     const rows = (clientes as any[]).map(c => ({
       id: c.id, nombre: c.nombre, dni: c.dni ?? '', telefono: c.telefono ?? '',
       email: c.email ?? '', direccion: c.direccion ?? '',
-      cuenta_corriente_habilitada: c.cuenta_corriente_habilitada ?? false,
+      cuenta_corriente_habilitada: ccEfectivo?.get(c.id)?.cc_habilitada ?? false,
+      categoria: ccEfectivo?.get(c.id)?.categoria_nombre ?? '',
       activo: c.activo,
     }))
     const filename = `clientes_${new Date().toISOString().slice(0,10)}`
@@ -974,6 +1027,7 @@ export default function ClientesPage() {
           { id: 'lista', label: 'Clientes', icon: Users },
           { id: 'cc', label: 'Cuenta Corriente', icon: CreditCard },
           { id: 'reportes', label: 'Reportes', icon: TrendingUp },
+          { id: 'categorias', label: 'Categorías', icon: Tag },
           ...(puedeVerAutorizacionesClientes ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
         ]}
         active={pageTab}
@@ -1069,17 +1123,19 @@ export default function ClientesPage() {
       {pageTab === 'cc' && (() => {
         // Agrupar ventas CC por cliente
         const hoyISO = new Date().toISOString().slice(0, 10)
-        const deudaMap: Record<string, { total: number; interes: number; count: number; masAntigua: string; masNueva: string; vencidaReal: boolean }> = {}
+        const deudaMap: Record<string, { total: number; interes: number; count: number; masAntigua: string; masNueva: string; vencidaReal: boolean; vtoProximo: string | null }> = {}
         for (const v of ventasCC as any[]) {
           const cid = v.cliente_id
           if (!cid) continue
           const saldo = (v.total ?? 0) - (v.monto_pagado ?? 0)
           const interes = v.interes_cc ?? 0
-          if (!deudaMap[cid]) deudaMap[cid] = { total: 0, interes: 0, count: 0, masAntigua: v.created_at, masNueva: v.created_at, vencidaReal: false }
+          if (!deudaMap[cid]) deudaMap[cid] = { total: 0, interes: 0, count: 0, masAntigua: v.created_at, masNueva: v.created_at, vencidaReal: false, vtoProximo: null }
           deudaMap[cid].total += saldo + interes  // B3 — la deuda mostrada incluye el interés de mora
           deudaMap[cid].interes += interes
           deudaMap[cid].count += 1
           if (v.fecha_vencimiento_cc && v.fecha_vencimiento_cc < hoyISO) deudaMap[cid].vencidaReal = true
+          // Mig 442: el vencimiento más próximo de sus deudas — la misma fecha que usan interés, morosidad y avisos.
+          if (v.fecha_vencimiento_cc && (!deudaMap[cid].vtoProximo || v.fecha_vencimiento_cc < deudaMap[cid].vtoProximo!)) deudaMap[cid].vtoProximo = v.fecha_vencimiento_cc
           if (v.created_at < deudaMap[cid].masAntigua) deudaMap[cid].masAntigua = v.created_at
           if (v.created_at > deudaMap[cid].masNueva) deudaMap[cid].masNueva = v.created_at
         }
@@ -1136,7 +1192,7 @@ export default function ClientesPage() {
                     const d = deudaMap[c.id]
                     const plazo = c.plazo_pago_dias ?? 30
                     const fechaVto = d
-                      ? new Date(new Date(d.masAntigua).getTime() + plazo * 24 * 60 * 60 * 1000)
+                      ? (d.vtoProximo ? new Date(`${d.vtoProximo}T12:00:00`) : new Date(new Date(d.masAntigua).getTime() + plazo * 24 * 60 * 60 * 1000))
                       : null
                     const diasVto = fechaVto ? Math.ceil((fechaVto.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null
                     const vencida = (diasVto !== null && diasVto < 0) || (d?.vencidaReal ?? false)
@@ -1302,6 +1358,8 @@ export default function ClientesPage() {
       })()}
 
       {/* ═══════════════ TAB REPORTES (G1 + G3) ═══════════════ */}
+      {pageTab === 'categorias' && <CategoriasClientePanel />}
+
       {pageTab === 'reportes' && (() => {
         const ahora = Date.now()
         const DIA = 86400000
@@ -1327,7 +1385,7 @@ export default function ClientesPage() {
           if (segEtiqueta && !((c.etiquetas ?? []) as string[]).includes(segEtiqueta)) return false
           if (segCC === 'con_deuda' && deuda <= 0.5) return false
           if (segCC === 'sin_deuda' && deuda > 0.5) return false
-          if (segCC === 'habilitada' && !c.cuenta_corriente_habilitada) return false
+          if (segCC === 'habilitada' && !ccEfectivo?.get(c.id)?.cc_habilitada) return false
           if (segActividad === 'con_compras' && st.count === 0) return false
           if (segActividad === 'sin_compras' && st.count > 0) return false
           if (segActividad === 'inactivos' && !(st.count > 0 && st.ultima && (ahora - new Date(st.ultima).getTime()) > 60 * DIA)) return false
@@ -1340,7 +1398,8 @@ export default function ClientesPage() {
           return {
             Nombre: c.nombre, DNI: c.dni ?? '', Teléfono: c.telefono ?? '', Email: c.email ?? '',
             Etiquetas: ((c.etiquetas ?? []) as string[]).join(' | '),
-            'CC habilitada': c.cuenta_corriente_habilitada ? 'Sí' : 'No',
+            'CC habilitada': ccEfectivo?.get(c.id)?.cc_habilitada ? 'Sí' : 'No',
+            Categoría: ccEfectivo?.get(c.id)?.categoria_nombre ?? '',
             'Total comprado': Math.round(st.total), Compras: st.count,
             'Última compra': st.ultima ? new Date(st.ultima).toLocaleDateString('es-AR') : '',
             Deuda: Math.round(deudaSeg[c.id] ?? 0), 'Saldo a favor': Math.round(creditoMap[c.id] ?? 0),
@@ -1621,7 +1680,12 @@ export default function ClientesPage() {
                           🎂 {esCumple ? '¡Hoy!' : `${nac.getDate()}/${nac.getMonth()+1}`}
                         </span>
                       })()}
-                      {c.cuenta_corriente_habilitada && (
+                      {ccEfectivo?.get(c.id)?.categoria_nombre && (
+                        <span className="text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded font-medium">
+                          {ccEfectivo.get(c.id)!.categoria_nombre}
+                        </span>
+                      )}
+                      {ccEfectivo?.get(c.id)?.cc_habilitada && (
                         <span className="text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium">
                           <CreditCard size={9} /> CC
                         </span>
@@ -2065,35 +2129,78 @@ export default function ClientesPage() {
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-3 flex items-center gap-1.5">
                   <CreditCard size={12} /> Cuenta Corriente
                 </p>
-                <label className={`flex items-center gap-3 mb-3 ${puedeGestionarCC ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
-                  <Toggle checked={form.cuenta_corriente_habilitada} disabled={!puedeGestionarCC}
-                    onChange={v => setForm(f => ({ ...f, cuenta_corriente_habilitada: v }))}
-                    aria-label="Habilitar cuenta corriente" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Habilitar cuenta corriente</span>
-                </label>
-                {!puedeGestionarCC && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 -mt-1">Solo DUEÑO/SUPERVISOR puede habilitar la cuenta corriente.</p>
-                )}
-                {form.cuenta_corriente_habilitada && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Límite de crédito ($)</label>
-                      <input type="number" min="0" value={form.limite_credito}
-                        onChange={e => setForm(f => ({ ...f, limite_credito: e.target.value }))}
-                        onWheel={e => e.currentTarget.blur()}
-                        placeholder="Sin límite"
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
+                {(() => {
+                  // Mig 442 — Cliente > Categoría > Negocio. Se muestra lo EFECTIVO con lo que se está editando, antes de guardar.
+                  const cat = (categoriasCliente as any[]).find(c => c.id === form.categoria_cliente_id) ?? null
+                  const ef = resolverCondicionesCC(propiosDesdeForm(form), cat, tenant as any)
+                  const hereda = (origen: string) => origen === 'cliente' ? '' : ` (${ETIQUETA_ORIGEN[origen as 'categoria' | 'negocio']})`
+                  const inputCls = 'w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:disabled:bg-gray-700/50'
+                  return (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+                        <select value={form.categoria_cliente_id} disabled={!puedeAsignarCat}
+                          onChange={e => setForm(f => ({ ...f, categoria_cliente_id: e.target.value }))}
+                          className={inputCls}>
+                          <option value="">Sin categoría</option>
+                          {(categoriasCliente as any[]).filter(c => c.activo || c.id === form.categoria_cliente_id).map(c => (
+                            <option key={c.id} value={c.id}>{c.nombre}{c.activo ? '' : ' (desactivada)'}</option>
+                          ))}
+                        </select>
+                        {!puedeAsignarCat && <p className="text-[11px] text-gray-400 mt-1">Tu rol no puede asignar categorías.</p>}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cuenta corriente</label>
+                          <select value={form.cc_habilitada} disabled={!puedeCCPropia}
+                            onChange={e => setForm(f => ({ ...f, cc_habilitada: e.target.value as HabilitadaForm }))}
+                            className={inputCls}>
+                            <option value="hereda">Hereda ({ef.origen.habilitada === 'cliente' ? '—' : ef.cc_habilitada ? 'sí' : 'no'})</option>
+                            <option value="si">Sí (propio)</option>
+                            <option value="no">No (propio)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Límite ($)</label>
+                          <input type="number" min="0" value={form.limite_credito} disabled={!puedeCCPropia}
+                            onChange={e => setForm(f => ({ ...f, limite_credito: e.target.value }))}
+                            onWheel={e => e.currentTarget.blur()}
+                            placeholder={form.limite_credito === '' ? `Hereda: ${ef.cc_limite != null ? formatMoneda(ef.cc_limite) : 'sin límite'}` : ''}
+                            className={inputCls} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Plazo (días)</label>
+                          <input type="number" min="1" max="365" value={form.plazo_pago_dias} disabled={!puedeCCPropia}
+                            onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))}
+                            onWheel={e => e.currentTarget.blur()}
+                            placeholder={form.plazo_pago_dias === '' ? `Hereda: ${ef.cc_plazo_dias}` : ''}
+                            className={inputCls} />
+                        </div>
+                      </div>
+
+                      <div className="text-xs rounded-xl px-3 py-2 bg-gray-50 dark:bg-gray-700/40 text-gray-600 dark:text-gray-300 space-y-0.5" data-cc-efectivo>
+                        <p className="font-medium text-gray-700 dark:text-gray-200">Lo que rige para este cliente</p>
+                        <p>Cuenta corriente: <strong>{ef.cc_habilitada ? 'habilitada' : 'no habilitada'}</strong>{hereda(ef.origen.habilitada)}</p>
+                        {ef.cc_habilitada && <>
+                          <p>Límite: <strong>{ef.cc_limite != null ? formatMoneda(ef.cc_limite) : 'sin límite'}</strong>{hereda(ef.origen.limite)} · Plazo: <strong>{ef.cc_plazo_dias} días</strong>{hereda(ef.origen.plazo)}</p>
+                          <p>Interés por mora: <strong>{ef.cc_interes_mensual_pct}% mensual</strong>{hereda(ef.origen.interes)} · Al pasarse del límite: <strong>{ETIQUETA_POLITICA[ef.cc_enforcement_politica]}</strong>{hereda(ef.origen.enforcement)}</p>
+                        </>}
+                      </div>
+
+                      {puedeCCPropia && tienePropios(propiosDesdeForm(form)) && form.categoria_cliente_id && (
+                        <button type="button"
+                          onClick={() => setForm(f => ({ ...f, cc_habilitada: 'hereda', limite_credito: '', plazo_pago_dias: '' }))}
+                          className="text-xs text-accent-text hover:underline">
+                          Volver a la categoría (borrar los valores propios)
+                        </button>
+                      )}
+                      {!puedeCCPropia && (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500">Solo el dueño puede darle a un cliente condiciones de cuenta corriente propias.</p>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Plazo de pago (días)</label>
-                      <input type="number" min="1" max="365" value={form.plazo_pago_dias}
-                        onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))}
-                        onWheel={e => e.currentTarget.blur()}
-                        placeholder="30"
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
-                    </div>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
 
               <div>

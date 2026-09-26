@@ -72,9 +72,8 @@ type: project
 >     en la vista previa "se van a crear N categorías"), en vez de exigir crearlas antes? Propuesta: **sí, solo
 >     categorías** (un proveedor lleva CUIT/condición IVA, no se inventa desde un nombre). Si se acepta, en la
 >     plantilla el desplegable de categoría pasaría a "advertencia" en vez de "frenar".
-> - Orden acordado con GO (26/09): ~~D-3~~ → **tests de UAT 70.5 y 70.9** → **Categorías de clientes + Precio
->   programado juntos** (arrancar por el plan de fases).
-> - Pendiente menor: 70.5 y 70.9 del UAT sin test automático.
+> - Orden acordado con GO (26/09): ~~D-3~~ → ~~tests de UAT 70.5 y 70.9~~ (✅ e2e `160`, con prueba de mutación)
+>   → **Categorías de clientes + Precio programado juntos** (arrancar por el plan de fases).
 > - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de
 >   keys legacy PROD, consultas al contador.
 > - Idea (no pedida): `GastosPage` podría proponer `cotizacion_fiscal` desde `cotizaciones_bna` para la fecha del

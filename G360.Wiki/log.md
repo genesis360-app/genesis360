@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | e2e 160 — cubre UAT 70.5 (POS sin cotización) y 70.9 (pedido en USD)
+
+- 70.9: pedido con producto USD → venta a `precio_usd × tasa` (precio_venta sembrado en $1 para detectar regresión) y
+  `ventas.cotizacion_usd` sellada; control con producto en pesos → NULL. 70.5: sin cotización (intercepción de red, sin
+  tocar `cotizaciones_bna`) el POS no agrega el producto USD; **mutación verificada** (sin el freno, el test falla).
+- Restos de ledger (gotcha 11.5) limpiados con service_role en DEV.
+
 ## [2026-09-26] update | D-3 — plantilla del importador con listas desplegables (DEV, sin migración)
 
 - 11 columnas con desplegable (categoría, proveedor, monedas, unidad, IVA, regla, SI/NO). `src/lib/xlsxValidaciones.ts`

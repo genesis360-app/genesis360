@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-26] update | D-3 — plantilla del importador con listas desplegables (DEV, sin migración)
+
+- 11 columnas con desplegable (categoría, proveedor, monedas, unidad, IVA, regla, SI/NO). `src/lib/xlsxValidaciones.ts`
+  inyecta `<dataValidations>` en el zip que genera SheetJS CE (`fflate`, ahora dependencia directa); listas en hoja
+  oculta "Listas" con nombres definidos. 14 tests unit.
+- Pregunta de GO: el maestro se lee **al descargar** (y al subir), solo activos; la hoja Referencia fecha la plantilla.
+- Verificado con **Excel 16 real** (sin reparar, 11 validaciones, rechaza valor inventado), ida y vuelta Excel →
+  importador (0 errores) y categoría creada con la pantalla abierta → aparece. UAT §71. Preguntas D3-a/D3-b en pendientes.
+
 ## [2026-09-26] update | Segunda revisión legal de D-1 — 5 puntos para decidir con Fede (DL-1..DL-5)
 
 - La tasa elegida coincide con la RG ARCA 5616/2024 (arts. 1-2) y con el **art. 49 del Dto. 692/98** (IVA: vendedor

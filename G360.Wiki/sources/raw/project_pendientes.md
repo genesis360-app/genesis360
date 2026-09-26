@@ -64,6 +64,16 @@ type: project
 >     independiente; los arreglos van en una versión siguiente.
 >   - B: esperar y subir todo junto.
 >   Mecánica: mig 440 en PROD **antes** del merge + bump `APP_VERSION` + PR `dev→main`; EFs sin cambios.
+> - ✅ **D-3 (desplegables en la plantilla del importador) HECHO en DEV** (2026-09-26, sin migración) — ver
+>   [[wiki/features/productos]] "Plantilla del importador con listas desplegables", UAT §71. Preguntas que dejó:
+>   - **D3-a** ❓ Hoy el importador ACEPTA una categoría/proveedor **desactivado** si se escribe su nombre (el
+>     desplegable ya no lo ofrece). ¿Se rechaza? Propuesta: **rechazar** con "está desactivada — reactivala".
+>   - **D3-b** ❓ ¿Querés que el importador pueda **crear** categorías nuevas que vengan en el archivo (con aviso
+>     en la vista previa "se van a crear N categorías"), en vez de exigir crearlas antes? Propuesta: **sí, solo
+>     categorías** (un proveedor lleva CUIT/condición IVA, no se inventa desde un nombre). Si se acepta, en la
+>     plantilla el desplegable de categoría pasaría a "advertencia" en vez de "frenar".
+> - Orden acordado con GO (26/09): ~~D-3~~ → **tests de UAT 70.5 y 70.9** → **Categorías de clientes + Precio
+>   programado juntos** (arrancar por el plan de fases).
 > - Pendiente menor: 70.5 y 70.9 del UAT sin test automático.
 > - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de
 >   keys legacy PROD, consultas al contador.

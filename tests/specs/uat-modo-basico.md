@@ -2341,3 +2341,15 @@ Decisión de GO del 25/09 (D-1): todo lo que pasa dólares a pesos usa el **vend
 | 70.9 | La venta generada desde un pedido con un producto en USD queda sellada con `ventas.cotizacion_usd` (el POS ya lo hacía) → Dashboard y Rentabilidad la separan como venta con componente USD | revisión de la mig 440. 🟡 sin e2e | 🟡 |
 | 70.10 | Dashboard (modo pesos) convierte los gastos en USD con la tasa única | e2e `143_dashboard_modo_real_usd_mutante` (ahora lee la tasa de `fn_cotizacion_bna_vigente`) | ✅ |
 | 70.11 | Importador, ficha y costo sugerido de OC usan la misma tasa; la referencia de desvío de la cotización de descalce en Gastos/OC también | typecheck + revisión (todos leen `useCotizacion().cotizacionUsdAArs`) | ✅ código |
+
+## 📋 §71 — Plantilla del importador con listas desplegables (D-3 de las respuestas del 25/09) — 2026-09-26
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 71.1 | La plantilla abre en Excel **sin "reparar"** y trae desplegables en categoría, proveedor, 2 monedas, unidad, IVA, regla y los 4 SI/NO | Excel 16 por COM sobre la plantilla bajada de la app: 11 columnas con `Validation.Type = 3` y su lista | ✅ |
+| 71.2 | Excel rechaza un valor fuera de la lista (categoría inventada) y acepta los de la lista (Bebidas, 10.5) | Excel COM `Validation.Value`: True/True/False | ✅ |
+| 71.3 | Una plantilla completada en Excel se importa igual que antes (la hoja oculta "Listas" no molesta) | archivo guardado por Excel subido al importador: vista previa 1 nuevo, 0 errores, IVA 10,5, Bebidas | ✅ |
+| 71.4 | Una categoría creada **con la pantalla del importador abierta** aparece en la plantilla que se descarga después | sonda e2e: crea la categoría por REST tras cargar la página, descarga, la encuentra en "Listas", la borra | ✅ |
+| 71.5 | Solo se ofrecen categorías y proveedores **activos** | revisión de código. 🟡 sin test | 🟡 |
+| 71.6 | Nombres con coma o `&` no rompen la lista; carteles de error dentro de los topes de Excel (32/255) | unit `xlsxValidaciones.test.ts` (14) | ✅ |
+| 71.7 | La hoja Referencia dice cuándo se generó la plantilla, y el cartel de error indica volver a descargarla si se creó una categoría/proveedor después | sonda e2e (texto de Referencia) | ✅ |

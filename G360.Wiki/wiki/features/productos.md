@@ -411,6 +411,32 @@ Verificado contra la base real en DEV con el payload exacto (revertido después)
 
 ---
 
+## Plantilla del importador con listas desplegables (D-3 de las respuestas del 25/09) — 2026-09-26, DEV
+
+> No confundir con el "D-3" de la sección siguiente (hallazgo de A0, 24/09). Este es el pedido de GO en
+> `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`, sección D.
+
+La plantilla (`descargarPlantillaProductos`) trae **desplegables** en 11 columnas: categoría, proveedor,
+las 2 monedas, unidad, alícuota de IVA, regla de inventario y los 4 SI/NO (series, lote, vencimiento, kit).
+Excel frena un valor que no esté en la lista (`errorStyle="stop"`) con un cartel que dice qué hacer.
+
+- **Cómo**: SheetJS CE no escribe validaciones de datos → `src/lib/xlsxValidaciones.ts` abre el `.xlsx`
+  (es un zip) con `fflate` (ahora dependencia directa), inserta `<dataValidations>` en el XML de la hoja en
+  la posición que exige el esquema y vuelve a comprimir. Las listas viven en una hoja **oculta "Listas"**,
+  referenciadas por **nombres definidos** (`lst_categoria`…): una lista en línea tiene tope de 255
+  caracteres y se rompe con un nombre que tenga coma. Topes de Excel respetados (título 32, texto 255: con
+  uno más largo Excel da el archivo por dañado). El parser sigue leyendo solo la primera hoja.
+- **Maestro al día (pregunta de GO)**: categorías y proveedores se consultan a la base **en el momento de
+  descargar** (no lo que la pantalla cargó al abrirse) y solo los **activos**; la subida valida también
+  contra el maestro de ese momento. Un archivo YA descargado no puede enterarse de una categoría nueva
+  (Excel no consulta la base): la hoja Referencia dice la fecha/hora de generación y el cartel de error
+  indica volver a descargar la plantilla.
+- Textos de Referencia corregidos: margen objetivo ya no dice "0–100" (D-2), moneda USD = dólar BNA.
+- **Verificado con Excel 16 real (COM)**: abre sin reparar, ve las 11 validaciones, acepta "Bebidas"/10.5
+  y rechaza una categoría inventada; la fila completada en Excel entra a la vista previa del importador
+  con 0 errores; una categoría creada con la pantalla abierta aparece en la plantilla. 14 tests unit
+  (`tests/unit/xlsxValidaciones.test.ts`, sobre un libro real de SheetJS). UAT §71.
+
 ## Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24) — 🚀 EN PROD desde v1.231.0
 
 Commits `93448deb`, `c8e7649c`, `02568b64`, `470525c6`. **Sin migración propia** (sigue 001-**432** al

@@ -13,6 +13,7 @@ import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, margenSos
 import { celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
+import { agregarValidacionesXlsx, letraColumna, valoresLista, type ValidacionLista } from '@/lib/xlsxValidaciones'
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 const UNIDADES_VALIDAS  = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -100,19 +101,27 @@ export default function ImportarProductosPage() {
   const [importandoProd, setImportandoProd] = useState(false)
   const [resultadoProd, setResultadoProd] = useState<{ creados: number; actualizados: number; errores: number; erroresDetalle: { sku: string; mensaje: string }[] } | null>(null)
 
-  const { data: categorias = [] } = useQuery({
+  const { data: categorias = [], refetch: refetchCategorias } = useQuery({
     queryKey: ['categorias', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('categorias').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
+    queryFn: async () => { const { data } = await supabase.from('categorias').select('id, nombre, activo').eq('tenant_id', tenant!.id); return data ?? [] },
     enabled: !!tenant,
   })
-  const { data: proveedores = [] } = useQuery({
+  const { data: proveedores = [], refetch: refetchProveedores } = useQuery({
     queryKey: ['proveedores', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('proveedores').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
+    queryFn: async () => { const { data } = await supabase.from('proveedores').select('id, nombre, activo').eq('tenant_id', tenant!.id); return data ?? [] },
     enabled: !!tenant,
   })
+  // D-3: la plantilla y la validación del archivo se arman con el maestro TAL COMO ESTÁ al hacer clic,
+  // no con lo que la pantalla cargó al abrirse (alguien pudo crear una categoría en otra pestaña).
+  const maestrosFrescos = async () => {
+    const [c, p] = await Promise.all([refetchCategorias(), refetchProveedores()])
+    return { cats: (c.data ?? categorias) as any[], provs: (p.data ?? proveedores) as any[] }
+  }
 
   const descargarPlantillaProductos = async () => {
     const XLSX = await import('xlsx')
+    const { cats, provs } = await maestrosFrescos()
+    const generada = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
     // ── Hoja principal ──────────────────────────────────────────────────────
     const headers = [
       'nombre','sku','codigo_barras','categoria','proveedor',
@@ -174,28 +183,30 @@ export default function ImportarProductosPage() {
 
     // ── Hoja de referencia ──────────────────────────────────────────────────
     const wsRef = XLSX.utils.aoa_to_sheet([
+      [`Plantilla generada el ${generada} — los desplegables de categoría y proveedor traen lo que existía en ese momento: si creás uno nuevo, volvé a descargarla.`,'',''],
+      ['','',''],
       ['Campo','Requerido','Valores / Notas'],
       ['nombre','SÍ','Nombre del producto'],
       ['sku','no','Identificador único (se autogenera si vacío)'],
       ['codigo_barras','no','Código EAN/UPC'],
-      ['categoria','no','Debe existir en Configuración → Categorías (error si no existe)'],
-      ['proveedor','no','Debe existir en Configuración → Proveedores (error si no existe)'],
+      ['categoria','no','Elegila del desplegable (las de Configuración → Categorías). Si no existe, la fila da error'],
+      ['proveedor','no','Elegilo del desplegable (los de Proveedores). Si no existe, la fila da error'],
       ['precio_costo','no','Número. Ej: 1500 o 4.5 (si USD)'],
-      ['precio_costo_moneda','no','ARS (default) o USD. En USD el producto queda en dólares y se convierte al cambio del día'],
+      ['precio_costo_moneda','no','ARS (default) o USD (desplegable). En USD el producto queda en dólares y se convierte al dólar BNA del día'],
       ['precio_venta','no','Número. Ej: 2500'],
-      ['precio_venta_moneda','no','ARS (default) o USD. Requiere cotización cargada, si no la fila da error'],
+      ['precio_venta_moneda','no','ARS (default) o USD (desplegable). En USD requiere cotización del dólar BNA, si no la fila da error'],
       ['stock_minimo','no','Entero. Ej: 5'],
-      ['unidad_medida','no','unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
+      ['unidad_medida','no','Desplegable: unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
       ['descripcion','no','Texto libre (descripción del producto)'],
       ['notas','no','Notas internas (no visible en ventas)'],
       ['','',''],
       ['── Atributos ──','',''],
-      ['alicuota_iva','no','0 / 10.5 / 21 (default) / 27'],
-      ['margen_objetivo','no','Porcentaje objetivo 0–100. Ej: 35'],
+      ['alicuota_iva','no','Desplegable: 0 / 10.5 / 21 (default) / 27'],
+      ['margen_objetivo','no','Markup sobre el costo, en %. Ej: 35 (puede superar 100)'],
       ['tiene_series','no','SI o NO (default NO). Activa trazabilidad por N/S'],
       ['tiene_lote','no','SI o NO (default NO). Activa N° de lote'],
       ['tiene_vencimiento','no','SI o NO (default NO). Activa fecha de vencimiento'],
-      ['regla_inventario','no','FIFO / FEFO / LEFO / LIFO / Manual (vacío = usa default del negocio)'],
+      ['regla_inventario','no','Desplegable: FIFO / FEFO / LEFO / LIFO / Manual (vacío = usa default del negocio)'],
       ['es_kit','no','SI o NO (default NO). Marca el producto como KIT de kitting'],
       ['','',''],
       ['── Estructura (opcional) ──','','Solo completa si necesitás datos de embalaje/logística'],
@@ -221,7 +232,52 @@ export default function ImportarProductosPage() {
     wsRef['!cols'] = [{ wch:26 },{ wch:12 },{ wch:60 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
 
-    XLSX.writeFile(wb, 'plantilla_productos.xlsx')
+    // ── D-3: listas desplegables ────────────────────────────────────────────
+    // SheetJS CE no escribe validaciones de datos: se agregan después sobre el zip
+    // (`src/lib/xlsxValidaciones.ts`). Los valores viven en una hoja oculta "Listas", cada columna
+    // con un nombre definido; el parser lee solo la primera hoja, así que "Listas" no molesta.
+    const SI_NO = ['SI', 'NO']
+    const listas: { nombre: string; valores: (string | number)[]; columnas: string[]; titulo: string; texto: string }[] = [
+      // Solo los ACTIVOS: no se propone un maestro dado de baja.
+      { nombre: 'lst_categoria', valores: valoresLista(cats.filter(c => c.activo !== false).map(c => c.nombre)), columnas: ['categoria'],
+        titulo: 'Categoría no está en la lista', texto: `Elegí una de la lista (categorías al ${generada}). Si la creaste después, descargá la plantilla de nuevo.` },
+      { nombre: 'lst_proveedor', valores: valoresLista(provs.filter(p => p.activo !== false).map(p => p.nombre)), columnas: ['proveedor'],
+        titulo: 'Proveedor no está en la lista', texto: `Elegí uno de la lista (proveedores al ${generada}). Si lo cargaste después, descargá la plantilla de nuevo.` },
+      { nombre: 'lst_moneda', valores: MONEDAS_VALIDAS, columnas: ['precio_costo_moneda', 'precio_venta_moneda'],
+        titulo: 'Moneda no válida', texto: 'Solo ARS o USD.' },
+      { nombre: 'lst_unidad', valores: UNIDADES_VALIDAS, columnas: ['unidad_medida'],
+        titulo: 'Unidad no válida', texto: 'Elegí una unidad de la lista.' },
+      { nombre: 'lst_iva', valores: ALICUOTAS_VALIDAS, columnas: ['alicuota_iva'],
+        titulo: 'Alícuota no válida', texto: 'Solo 0, 10.5, 21 o 27.' },
+      { nombre: 'lst_si_no', valores: SI_NO, columnas: ['tiene_series', 'tiene_lote', 'tiene_vencimiento', 'es_kit'],
+        titulo: 'Valor no válido', texto: 'Solo SI o NO.' },
+      { nombre: 'lst_regla', valores: REGLAS_VALIDAS, columnas: ['regla_inventario'],
+        titulo: 'Regla no válida', texto: 'Elegí FIFO, FEFO, LEFO, LIFO o Manual (o dejala vacía).' },
+    ].filter(l => l.valores.length > 0)   // sin categorías/proveedores cargados, esa columna queda libre
+
+    const filasListas: (string | number)[][] = [listas.map(l => l.nombre)]
+    const maxLargo = Math.max(...listas.map(l => l.valores.length))
+    for (let i = 0; i < maxLargo; i++) filasListas.push(listas.map(l => l.valores[i] ?? ''))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filasListas), 'Listas')
+    wb.Workbook = {
+      Sheets: [{ Hidden: 0 }, { Hidden: 0 }, { Hidden: 1 }],
+      Names: listas.map((l, i) => {
+        const col = letraColumna(i)
+        return { Name: l.nombre, Ref: `Listas!$${col}$2:$${col}$${l.valores.length + 1}` }
+      }),
+    }
+
+    const FILA_HASTA = 5000
+    const validaciones: ValidacionLista[] = listas.flatMap(l => l.columnas
+      .map(c => headers.indexOf(c))
+      .filter(i => i >= 0)
+      .map(i => ({ columna: letraColumna(i), filaDesde: 2, filaHasta: FILA_HASTA, nombreLista: l.nombre, errorTitulo: l.titulo, errorTexto: l.texto })))
+
+    const bytes = agregarValidacionesXlsx(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 1, validaciones)
+    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = 'plantilla_productos.xlsx'; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   const procesarArchivoProductos = async (file: File) => {
@@ -233,6 +289,8 @@ export default function ImportarProductosPage() {
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
+        // D-3: validar contra el maestro de AHORA, no el de cuando se abrió la pantalla.
+        const { cats: catsFrescas, provs: provsFrescos } = await maestrosFrescos()
 
         const skus = rows.map(r => String(r.sku || '').trim().toUpperCase()).filter(Boolean)
         // `moneda_venta`/`moneda_costo` se traen para poder rechazar un precio ambiguo: actualizar el
@@ -318,10 +376,10 @@ export default function ImportarProductosPage() {
           // Validar categoria y proveedor — deben existir, no se crean automáticamente
           const catNombre = String(row.categoria || '').trim()
           const provNombre = String(row.proveedor || '').trim()
-          if (catNombre && !(categorias as any[]).find(c => c.nombre.toLowerCase() === catNombre.toLowerCase())) {
+          if (catNombre && !catsFrescas.find(c => c.nombre.toLowerCase() === catNombre.toLowerCase())) {
             errores.push(`Categoría "${catNombre}" no existe — creala primero en Configuración`)
           }
-          if (provNombre && !(proveedores as any[]).find(p => p.nombre.toLowerCase() === provNombre.toLowerCase())) {
+          if (provNombre && !provsFrescos.find(p => p.nombre.toLowerCase() === provNombre.toLowerCase())) {
             errores.push(`Proveedor "${provNombre}" no existe — crealo primero en Configuración`)
           }
 

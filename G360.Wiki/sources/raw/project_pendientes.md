@@ -14,6 +14,7 @@ type: project
 > | **DEV** | `v1.233.1` | 001-**439** |
 >
 > PR **#360**, merge `50343fb9`, release `v1.233.1` Latest. Policies DEV = PROD (`public` 235 · `storage` 40 · `cron` 2).
+> Auditoría de EFs (`scripts/auditar-edge-functions.sh`): sin drift nuevo — `cotizacion-bna` igual en DEV y PROD.
 > **D-1 fase 1 en PROD**: la tabla `cotizaciones_bna` ya junta la cotización DIVISA del BNA todos los días
 > (`sweeps.yml`, 03:10 AR). Verificado disparando el workflow a mano: capturó USD/EUR/GBP y la **vigente es la del
 > 25/09 (1516,50 / 1525,50)**. La app todavía NO la usa: sigue con dolarapi + regla "a compra".

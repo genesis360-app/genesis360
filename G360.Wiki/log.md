@@ -14,6 +14,8 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
   `v1.233.1` (bundle `/assets/index-W8XESaFr.js`, `curl -L`).
 - `gh workflow run sweeps.yml` a mano: los dos pasos verdes; `cotizacion-bna` capturó 3 monedas y la **vigente quedó en
   25/09: 1516,50 / 1525,50** (en Argentina ya era 26/09). Una EF sin usuario → rechazada.
+- Auditoría de EFs: sin drift nuevo (`cotizacion-bna` igual DEV/PROD; siguen los 2 cosméticos de cobro en PROD y
+  las 2 no desplegadas en un ambiente, todos preexistentes).
 - Sin cambios visibles. Próximo: **D-1 fase 2**.
 
 ## [2026-09-25] update | D-1 fase 1 — historial diario de la cotización DIVISA del BNA (mig 439, DEV)

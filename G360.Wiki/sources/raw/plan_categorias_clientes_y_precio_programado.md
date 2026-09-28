@@ -109,6 +109,8 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 
 ## ❓ Preguntas nuevas para GO (salen de cruzar las respuestas con el código)
 
+> 2026-09-28: consolidadas junto con las demás abiertas en `preguntas_pendientes_2026-09-28.md`.
+
 - **PL-1 · El tope cuando el que vende es el DUEÑO.** A4 dice "por encima del tope autoriza un supervisor o el DUEÑO";
   B-5 dice "el DUEÑO también tiene tope, sin salteo". Juntas: ¿**nadie** puede vender por encima del tope (se bloquea
   para todos), o el DUEÑO necesita que otro (supervisor) lo autorice? Propuesta: **se bloquea para todos**; para

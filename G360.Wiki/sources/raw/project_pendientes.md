@@ -6,6 +6,39 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-28) — todo en DEV sin deploy + 🙋 14 preguntas abiertas en UN archivo
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.1` | 001-**439** |
+> | **DEV** (`origin/dev`, último `c39bad2f`) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump) | 001-**442** |
+>
+> **🙋 Todas las preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5, D3-a,
+> D3-b, PL-1..PL-7), cada una con contexto, opciones y propuesta. NO ejecutar nada de eso sin respuesta. Las 30 del
+> 25/09 siguen todas respondidas; estas son nuevas (revisión legal del 26/09, D-3 y cruce del plan con el código).
+>
+> **Qué está hecho en DEV (26/09)** — detalle en el bloque de abajo y en log.md:
+> - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.
+> - D-3: desplegables en la plantilla del importador. UAT §71.
+> - Precio programado C-1 (el precio espera la etiqueta, opcional) y C-3 (cambio "ahora" pregunta) (mig 441). UAT §72.
+> - Categorías de clientes etapa 1: la categoría con cuenta corriente (mig 442) + 3 decisiones de GO sobre CC. UAT §73.
+> - e2e nuevos 160-163 · unit 1986/1986 · build OK.
+>
+> **Deploy (espera DL-5):** migraciones a PROD **de a una y en orden 440 → 441 → 442** (la 442 contiene la 440) **antes**
+> del merge; bump `APP_VERSION`; PR `dev→main`; **desplegar la EF `data-api`** en DEV y PROD (cambió; mergear no despliega
+> EFs); auditoría de EFs y paridad de policies por schema (la 442 suma 4 policies en `public`).
+>
+> **Siguiente trabajo (cuando haya respuestas):** Fase 3 del plan (motor único de precio) espera **PL-5**; Fase 4 espera
+> **PL-1..PL-3**; C-2 espera **PL-4**; DL-1/DL-2/DL-3 según lo que decidan.
+>
+> **🧾 Soporte 28/09 — cliente activando facturación (MADERA CARRIZO HERMANOS SRL, CUIT 30-71598502-7, RI):** hizo los
+> pasos 5 (CSR con el asistente, `30715985027.csr`) y 6 (cert `genesis360` VÁLIDO en ARCA); estaba trabado en el paso 7.
+> Indicado: en "Selección del Representante" dejar vacío el campo CUIT/BUSCAR (es para delegar a un tercero) y
+> CONFIRMAR con el computador fiscal `genesis360`; paso 8 subir el `.crt` en el asistente (NO regenerar el CSR).
+> 🛑 **Hueco de la guía**: el cert es de PRODUCCIÓN y el "Modo PRUEBA" usa los servidores de homologación
+> (`wsaahomo`) → ahí falla aunque todo esté bien. Hay que pasar directo a producción y emitir una factura real chica.
+> **Pendiente: corregir la guía** (artifact `WYpzGUG42wPBCv74ya5Jmg`, pasos 7 y 9).
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-26, 2ª sesión) — 💵 **D-1 fase 2 HECHA en DEV** (mig 440), falta PROD
 >
 > | | Código | Migraciones |

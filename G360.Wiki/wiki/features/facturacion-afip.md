@@ -661,6 +661,16 @@ prueba. El log de la EF muestra `[homologación]`.
 
 ## Guía para clientes + video (2026-09-15, v1.227.1 🚀 EN PROD desde 2026-09-16)
 
+> [!WARNING] **2026-09-28 — dos huecos de la guía, encontrados con un cliente real (RI) trabado en el paso 7:**
+> 1. **Paso 7:** la pantalla "Selección del Representante a autorizar" ya trae el **Computador Fiscal** en un desplegable;
+>    el campo **CUIT/CUIL/CDI Usuario + BUSCAR** es para **delegar a un tercero** y va **vacío**. La guía dice "tocá
+>    Buscar" y confunde. Alcanza con elegir el computador fiscal y **CONFIRMAR**.
+> 2. **Paso 9:** el certificado que se crea en "Administración de Certificados Digitales" es de **PRODUCCIÓN**, y el
+>    "Modo PRUEBA" de la app usa los servidores de **homologación** (`wsaahomo`, ver `wsfe-core.ts`): ahí **no autentica**
+>    aunque todo esté bien. Con ese cert hay que pasar **directo a producción** y emitir una factura real chica para
+>    verificar el CAE. (Probar en homologación requiere un cert de homologación de WSASS, que el cliente no tiene.)
+> **Guía pendiente de corregir** (artifact `WYpzGUG42wPBCv74ya5Jmg`).
+
 **Guía HTML paso a paso publicada**, para pasarle al cliente que va a activar la facturación: artifact de Claude
 **https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg** — "Activar facturación en Genesis360". Qué tener a mano
 (CUIT y Clave Fiscal nivel 3, condición IVA, razón social y domicilio como figuran en ARCA, inicio de actividades,

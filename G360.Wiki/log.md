@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-28] update | Preguntas abiertas en un solo archivo + soporte de facturación (paso 7 de la guía)
+
+- `sources/raw/preguntas_pendientes_2026-09-28.md`: las 14 preguntas abiertas (DL-1..DL-5, D3-a, D3-b, PL-1..PL-7) con
+  contexto, opciones y propuesta, y por qué aparecieron después de responder las 30 del 25/09 (revisión legal del 26/09,
+  construir D-3, cruzar el plan con el código). Qué frena cada una: DL-5 el deploy, PL-5 la Fase 3, PL-1..3 la Fase 4.
+- Soporte a un cliente (RI) trabado en el paso 7 de la guía de facturación: el campo CUIT/BUSCAR de "Selección del
+  Representante" va vacío (es para delegar a un tercero); CONFIRMAR con el computador fiscal. Hueco encontrado en la
+  guía: un certificado de PRODUCCIÓN no autentica en "Modo PRUEBA" (homologación) → pasar directo a producción.
+  Guía pendiente de corregir. Ver [[wiki/features/facturacion-afip]].
+
 ## [2026-09-26] update | Categorías de clientes etapa 1 — la categoría con cuenta corriente (mig 442, DEV)
 
 - Al relevar el código salieron 3 inconsistencias de CC (REGLA #0): el POS vencía a los días del negocio e ignoraba el

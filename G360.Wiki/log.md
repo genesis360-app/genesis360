@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-29] query | QR de Mercado Pago en la factura — 5 riesgos de plata, preguntas QR-1..QR-3
+
+- GO preguntó si sigue el QR de MP en la factura. Sigue, pero depende del **saldo pendiente**, no del medio de pago.
+- Detectados 5 problemas latentes (REGLA #0): link sin vencimiento, uno nuevo por descarga, excedente y envío sin
+  registrar por el tope de `mp-ipn`, intereses de CC fuera del monto. Anotado en pendientes (#7) y como QR-1..QR-3
+  en `preguntas_pendientes_2026-09-28.md`. Sin código.
+
 ## [2026-09-29] update | Nombre de archivo al imprimir → Guardar como PDF
 
 - El Tilo facturó OK en PROD con `v1.233.2` (A-0005-00000001, CAE 86395240625932; importes verificados).

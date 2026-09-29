@@ -19,6 +19,8 @@ type: relevamiento
 > GO** y están implementadas en DEV (mig 442).
 
 > **Actualizado 2026-09-28 (tarde):** se suman **EC-1..EC-8** (sección D) del plan "Empezar de cero".
+>
+> **Actualizado 2026-09-29:** se suman **QR-1..QR-3** (sección E): el QR de Mercado Pago en la factura.
 
 **Qué frena cada una:** DL-5 frena el deploy · PL-5 frena la Fase 3 (motor único de precio) · PL-1..PL-3 frenan la
 Fase 4 (precio por categoría) · PL-4 frena C-2 · el resto se puede decidir sin apuro.
@@ -144,4 +146,41 @@ el negocio. Estas 8 definen la Fase 2 del plan (las Fases 0 y 1 no dependen de e
 **EC-8 · Ventas que entraron desde Mercado Libre / Tienda Nube durante la prueba** (borrarlas de Genesis360 no las
 borra del canal).
 - **A (propuesta)**: la vista previa las muestra aparte y pide confirmarlas explícitamente. B: si hay, se bloquea.
+
+---
+
+## E · QR de Mercado Pago en la factura (29/09)
+
+**Cómo funciona hoy.** El PDF de la factura lleva un QR de pago de MP cuando, **al generar el PDF**, la venta tiene
+**saldo pendiente** (> $0,50: cuenta corriente, seña, pago parcial) y el negocio tiene MP conectado. **No** depende de
+que el medio de pago sea MP: una venta pagada completa sale sin QR. Código: `crearPagoMpQR` en `VentasPage.tsx` y
+`FacturacionPage.tsx` → EF `mp-crear-link-pago` (preferencia con `external_reference = venta_id`) → el pago entra por
+`mp-ipn`, que suma a `ventas.monto_pagado` **con tope en `ventas.total`** y asienta un ingreso informativo en caja.
+
+**🛑 Problemas de plata detectados (REGLA #0, latentes — no vistos en datos reales):**
+1. **El link no vence nunca** (la preferencia se crea sin expiración) y queda impreso. Si el cliente salda la deuda por
+   otro medio, el QR sigue vivo y puede volver a pagar.
+2. **Cada descarga/impresión crea un link NUEVO**: 3 descargas = 3 QR vivos para la misma venta.
+3. **Lo cobrado de más no queda registrado**: por el tope de `mp-ipn`, un pago doble (casos 1 y 2) entra a la cuenta
+   MP del negocio pero lo que excede el total no aparece ni en la venta ni en la cuenta corriente.
+4. **Envío fuera del tope**: el monto del QR es `total + costo_envio − monto_pagado`, pero el tope usa `ventas.total`
+   (sin envío) → pagar el QR completo deja la parte del envío sin registrar.
+5. **Intereses de CC fuera del QR**: el monto no incluye `interes_cc` → el cliente paga creyendo que saldó todo y le
+   sigue quedando deuda.
+
+**QR-1 · ¿Dónde va el QR de pago?**
+- A: se mantiene en la factura (arreglando 1-5).
+- B: se saca de la factura y va al **estado de cuenta** del cliente (muestra la deuda real a la fecha, con intereses).
+- **C (propuesta)**: en los dos, arreglando 1-5; en la factura, solo si el negocio lo activa en su configuración.
+
+**QR-2 · Vida del link.**
+- **A (propuesta)**: UN link por venta, reusado en cada descarga, que se **desactiva al quedar saldada** la venta y
+  además vence a los N días (definir N; propuesta 30).
+- B: link nuevo en cada descarga pero con vencimiento corto (7 días).
+
+**QR-3 · Si igual entra un pago de más** (p. ej. un QR viejo impreso).
+- **A (propuesta)**: se registra completo como **saldo a favor** del cliente en su cuenta corriente + aviso al dueño.
+- B: no se registra el excedente en CC; solo se avisa al dueño para que lo devuelva por MP.
+
+Los puntos 4 y 5 no requieren decisión: se arreglan alineando el monto del QR con lo que registra `mp-ipn`.
 

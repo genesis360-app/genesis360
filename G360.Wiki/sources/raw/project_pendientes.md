@@ -39,6 +39,9 @@ type: project
 > 6. **Checklist de alta de un cliente nuevo** (para que no se repita lo de El Tilo en el próximo): modo básico vs
 >    avanzado explicado al elegir, ubicación obligatoria en avanzado, facturación con cert de producción → directo a
 >    producción, empleados sin correo = código del negocio (`eltilo`) + usuario. Armarlo como página de soporte en el wiki.
+> 7. 🛑 **QR de Mercado Pago en la factura (REGLA #0, latente)**: el link no vence, se crea uno nuevo por descarga,
+>    y lo cobrado de más (o el envío) no queda registrado por el tope de `mp-ipn`. Sin código hasta que GO responda
+>    **QR-1..QR-3** en `preguntas_pendientes_2026-09-28.md` (sección E).
 >
 > **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
 > - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.

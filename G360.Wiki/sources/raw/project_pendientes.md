@@ -41,12 +41,23 @@ type: project
 >   vacío) y paso 9 (un cert de producción no anda en Modo PRUEBA → pasar directo a producción). Preguntado a GO si la
 >   actualizo (es una página que ven los clientes); sin respuesta.
 >
+> **🐛 Trampa de producto (29/09, la destapó El Tilo — le va a pasar a todo negocio nuevo en modo avanzado):** el
+> ingreso de stock en modo avanzado **acepta** líneas sin ubicación, pero el POS **no las vende** y dice "no tiene stock
+> disponible" mientras Inventario muestra el stock. Propuesta: (a) el POS avisa "N unidades sin ubicar: ubicalas para
+> venderlas" con link a Inventario; (b) el ingreso en avanzado pide ubicación (o la sugiere) y avisa si se deja vacía.
+> Sin decidir: preguntar a GO antes de implementar.
+>
 > **🧾 Clientes reales en PROD (solo lectura, 28/09):**
 > - **El Tilo** (`04aaed58-80d8-4b8c-b3fd-a8cfbf46046a`, alta 28/09, maderaseltilo@hotmail.com, MADERA CARRIZO HERMANOS
 >   SRL, CUIT 30-71598502-7, RI, modo avanzado): facturación OK (cert activo, PV 5, **ya en producción**). No podía vender
 >   porque su **único producto quedó desactivado** (18:43). Indicado a GO: reactivarlo; probar ventas en Modo PRUEBA **sin
 >   facturar** (su cert es de producción: en homologación falla) y anular las de prueba; la primera factura real valida el
->   circuito. Si ARCA rechaza por permiso → falta el paso 7. Stock sin ubicaciones (no impide vender).
+>   circuito. Si ARCA rechaza por permiso → falta el paso 7.
+>   🛑 **29/09 — seguía sin poder vender con el producto ya activo. Causa real:** está en **modo avanzado** y el POS solo
+>   cuenta stock **con ubicación** (`soloUbicado`, `VentasPage.tsx:251`); sus 150 u. se ingresaron **sin ubicación** →
+>   el POS ve 0. (El 28/09 escribí "sin ubicación no impide vender": **estaba MAL**, había mirado solo el filtro de
+>   `disponible_surtido`.) Crearon la ubicación "Losa" pero no le asignaron el stock. Indicado: Inventario → cada LPN
+>   (`01` y `LPN-20260928-5D2D40`) → Editar → Ubicación "Losa" → Guardar; o pasar a modo básico si no usan depósito.
 > - **Kalken** (`d5002ec4-…`): sigue sin nada de facturación (sin CUIT/emisor/cert). Es otro negocio de la misma familia.
 
 > ### 🛑 ARRANCÁ ACÁ (2026-09-26, 2ª sesión) — 💵 **D-1 fase 2 HECHA en DEV** (mig 440), falta PROD

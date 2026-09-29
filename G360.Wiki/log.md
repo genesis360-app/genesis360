@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-29] update | Soporte El Tilo — no vende porque el stock no tiene ubicación (modo avanzado)
+
+- Con el producto ya activo seguía sin poder venderlo. Causa: **modo avanzado** + stock **sin ubicación**; el POS en
+  avanzado solo cuenta líneas con `ubicacion_id` (`soloUbicado`, `VentasPage.tsx:251`) → ve 0 de 150. Corrige un
+  diagnóstico mío del 28/09 ("sin ubicación no impide vender"), que estaba mal.
+- Indicado: asignar la ubicación "Losa" a los 2 LPN (Inventario → LPN → Editar → Ubicación), o pasar a modo básico.
+- Trampa de producto anotada en pendientes (el ingreso acepta stock sin ubicación que el POS después no vende).
+
 ## [2026-09-29] update | Cierre de sesión — todo listo para /clear
 
 - Estado: PROD `v1.233.1` (001-439); DEV 001-442 sin deploy, pre-release **`v1.234.0-rc.1`** sobre `origin/dev`.

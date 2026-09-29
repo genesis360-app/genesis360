@@ -10,7 +10,7 @@ type: project
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.233.1` | 001-**439** |
+> | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
 > | **DEV** (`origin/dev`, pre-release **`v1.234.0-rc.1`**) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump de `APP_VERSION`) | 001-**442** |
 >
 > **🙋 LO PRIMERO: las 22 preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
@@ -21,11 +21,10 @@ type: project
 >
 > **🔥 LO URGENTE (29/09 tarde) — errores que destapó El Tilo, el 2º cliente real. Orden sugerido y cómo evitar que se
 > repitan** (detalle de cada uno más abajo, en "El Tilo no podía facturar" y "Trampa de producto"):
-> 1. **Hotfix del punto de venta en el modal de facturar/NC** (commit `04281628` en `dev`, sin deploy). El Tilo factura
->    real con PV 5 y hasta el hotfix depende de "cerrar y reabrir el modal"; sus NC automáticas fallarían. **Preguntado a
->    GO si se hace hotfix desde `main` solo con ese cambio — sin respuesta.** *Para que no vuelva:* un e2e de facturación
->    con un negocio cuyo PV **no es el 1** (todos los tests usan PV 1 y por eso el bug era invisible) — incluir NC
->    automática.
+> 1. ✅ **Hotfix del punto de venta — EN PROD `v1.233.2`** (29/09, PR #361, rama `hotfix/v1.233.2-pv` desde `main`,
+   solo `VentasPage.tsx`, sin migs ni EF; servida verificada con curl). *Queda para que no vuelva:* un e2e de facturación
+   con un negocio cuyo PV **no es el 1** (todos los tests usan PV 1 y por eso el bug era invisible) — incluir NC
+   automática.
 > 2. **Modo avanzado: el POS no vende stock sin ubicación** y el ingreso lo permite (El Tilo no pudo vender 150 u.).
 >    Propuesta (preguntada a GO, sin respuesta): el POS avisa "N unidades sin ubicar" y el ingreso en avanzado pide la
 >    ubicación. *Para que no vuelva:* e2e "ingreso sin ubicación → aviso en el POS". Diagnóstico rápido en
@@ -104,7 +103,7 @@ type: project
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.233.1` | 001-**439** |
+> | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
 > | **DEV** | `v1.233.1` + D-1 fase 2, D-3, precio programado C-1/C-3, categorías etapa 1 (sin bump) | 001-**442** |
 >
 > **UNA sola tasa USD→ARS = vendedor divisa BNA del día hábil anterior** en todo el sistema (POS precio/tiers/combos/

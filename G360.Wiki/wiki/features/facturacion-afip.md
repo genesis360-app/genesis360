@@ -663,7 +663,7 @@ prueba. El log de la EF muestra `[homologación]`.
 
 > [!WARNING] **2026-09-29 — punto de venta ≠ 1 (El Tilo, PV 5):** el modal de facturar mandaba el PV **1** la primera
 > vez que se abría (la lista de PV se carga al abrirlo y el default ya se había calculado); el `<select>` mostraba el
-> 0005. La NC automática tenía el mismo origen y salía con PV 1. Arreglado en DEV (`VentasPage.tsx`), sin deploy.
+> 0005. La NC automática tenía el mismo origen y salía con PV 1. Arreglado (`VentasPage.tsx`) — **EN PROD `v1.233.2`** (hotfix 2026-09-29).
 > Además: **la factura no guarda su PV** — la NC (`CbtesAsoc.PtoVta`) y el PDF lo deducen; con 2+ PV por CUIT pueden
 > equivocarse. Pendiente en la Fase 0 de `sources/raw/plan_empezar_de_cero.md`.
 

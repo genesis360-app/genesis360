@@ -8,13 +8,19 @@ updated: 2026-09-25
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.233.1`** (2026-09-26, migs 001-**439**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.233.2`** (hotfix 2026-09-29 sobre `v1.233.1`) (2026-09-26, migs 001-**439**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
 ✅ **PROD = DEV** (001-439; paridad `pg_policies` por schema: `public` **235** (`b6469b80`) · `storage` **40**
 (`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#360** `dev→main`, merge
 **`50343fb9`**, release **`v1.233.1` Latest**.
+
+## 🚑 v1.233.2 — Hotfix: punto de venta en el modal de facturar/NC (2026-09-29, EN PROD)
+
+Negocios con PV AFIP ≠ 1 (El Tilo, PV 5) no podían facturar: el modal mandaba PV 1. Ahora el PV se corrige al llegar
+la lista (factura y NC manual) y la NC automática lee el PV de la base. Solo frontend, rama desde `main` (PR #361),
+sin las migs 440-442 de `dev`.
 
 ## 🟡 v1.234.0-rc.1 — pre-release en DEV (2026-09-26/29, SIN deploy, migs 440-442)
 

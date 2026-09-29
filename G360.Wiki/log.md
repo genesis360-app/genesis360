@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-29] deploy | v1.233.2 — hotfix del punto de venta a PROD (El Tilo)
+
+- El Tilo seguía con "El punto de venta 1 no está configurado" porque el fix (`04281628`) estaba solo en `dev`.
+- GO autorizó: rama `hotfix/v1.233.2-pv` desde `main` con solo el diff de `VentasPage.tsx` + bump → PR #361 mergeado,
+  release `v1.233.2` (Latest). tsc + build OK; `genesis360.pro` sirve `v1.233.2` (curl). Sin migs ni EF.
+- `dev` ya tenía el fix; al próximo deploy de `dev` el `APP_VERSION` sube por encima de 1.233.2.
+- Pendiente: e2e con PV ≠ 1.
+
 ## [2026-09-29] update | Soporte El Tilo — facturación: relación de ARCA + bug del punto de venta en el modal
 
 - `WSAA coe.notAuthorized` → faltaba la relación del paso 7 (hecha).

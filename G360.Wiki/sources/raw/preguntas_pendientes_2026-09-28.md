@@ -18,6 +18,8 @@ type: relevamiento
 > Las 3 preguntas de cuenta corriente del 26/09 (vencimiento, valores de fábrica, CC habilitada) **ya las respondió
 > GO** y están implementadas en DEV (mig 442).
 
+> **Actualizado 2026-09-28 (tarde):** se suman **EC-1..EC-8** (sección D) del plan "Empezar de cero".
+
 **Qué frena cada una:** DL-5 frena el deploy · PL-5 frena la Fase 3 (motor único de precio) · PL-1..PL-3 frenan la
 Fase 4 (precio por categoría) · PL-4 frena C-2 · el resto se puede decidir sin apuro.
 
@@ -111,3 +113,35 @@ confirme en **todas**. Mientras tanto, en la que ya la puso, la góndola muestra
 (el POS avisa, como con cualquier etiqueta desactualizada).
 - **A (propuesta)**: dejarlo así (todas).
 - B: aplicar el precio cuando se confirma la primera.
+
+## D · "Empezar de cero" conservando los datos maestros (28/09)
+
+Contexto y diseño: `plan_empezar_de_cero.md`. Hoy no existe nada intermedio entre anular venta por venta y dar de baja
+el negocio. Estas 8 definen la Fase 2 del plan (las Fases 0 y 1 no dependen de ellas).
+
+**EC-1 · Stock al reiniciar.** A: siempre a 0. B: siempre mantener lo que hay como stock inicial.
+- **C (propuesta)**: que lo elija el dueño en el momento, con B marcado por defecto.
+
+**EC-2 · Clientes y proveedores cargados durante la prueba.**
+- **A (propuesta)**: se conservan todos (suelen ser reales). B: se borran los que no tengan datos fiscales. C: elige el dueño.
+
+**EC-3 · Cuántas veces se puede reiniciar.**
+- **A (propuesta)**: las que quieran, mientras no exista ningún CAE real. B: una sola vez.
+
+**EC-4 · RRHH** (fichadas, liquidaciones, vacaciones, anticipos del período de prueba).
+- **A (propuesta)**: se borran junto con lo demás; empleados y su configuración se conservan. B: RRHH no se toca.
+
+**EC-5 · Quién puede hacerlo.**
+- **A (propuesta)**: el DUEÑO desde la app, con las cajas cerradas; y soporte desde el panel, siempre con el pedido del
+  cliente por escrito. B: solo el dueño.
+
+**EC-6 · Historial de actividad.**
+- **A (propuesta)**: se borra lo del período de prueba y queda un registro permanente del reinicio. B: se conserva todo.
+
+**EC-7 · Precios programados.**
+- **A (propuesta)**: se conservan los pendientes y se borra el historial de los ya aplicados.
+
+**EC-8 · Ventas que entraron desde Mercado Libre / Tienda Nube durante la prueba** (borrarlas de Genesis360 no las
+borra del canal).
+- **A (propuesta)**: la vista previa las muestra aparte y pide confirmarlas explícitamente. B: si hay, se bloquea.
+

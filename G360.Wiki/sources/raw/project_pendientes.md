@@ -28,6 +28,11 @@ type: project
 > del merge; bump `APP_VERSION`; PR `dev→main`; **desplegar la EF `data-api`** en DEV y PROD (cambió; mergear no despliega
 > EFs); auditoría de EFs y paridad de policies por schema (la 442 suma 4 policies en `public`).
 >
+> **🆕 Plan "Empezar de cero" (28/09, sin código):** `sources/raw/plan_empezar_de_cero.md` — borrar lo operado en la
+> etapa de prueba conservando maestros; clasificación real de las 153 tablas; bloqueado si hay algún CAE real. 🛑 **Hallazgo:
+> una factura no guarda si su CAE es de prueba o de producción** → Fase 0 lo sella para adelante (útil también para
+> reportes). Preguntas EC-1..EC-8 sumadas al archivo único. Fases 0 y 1 no dependen de respuestas.
+>
 > **Siguiente trabajo (cuando haya respuestas):** Fase 3 del plan (motor único de precio) espera **PL-5**; Fase 4 espera
 > **PL-1..PL-3**; C-2 espera **PL-4**; DL-1/DL-2/DL-3 según lo que decidan.
 >

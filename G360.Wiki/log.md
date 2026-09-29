@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-28] update | Plan "Empezar de cero" + soporte El Tilo (Madera Carrizo)
+
+- **Plan** `sources/raw/plan_empezar_de_cero.md`: botón "Empezar de cero" que borra lo operado en la etapa de prueba y
+  conserva maestros/configuración/certificado. Clasificación de las 153 tablas con `tenant_id` + 7 hijas; numeraciones
+  verificadas (`MAX+1`, se reinician solas); resguardos server-side (bloquea con CAE real o período cerrado, transacción
+  única, registro permanente, test que obliga a clasificar tablas nuevas). 5 fases. Preguntas EC-1..EC-8.
+- 🛑 **Hallazgo REGLA #0**: `ventas`/`devoluciones` no guardan el ambiente del CAE (homologación vs producción) → no se
+  distingue una factura de prueba de una real. Fase 0 del plan lo sella para adelante; los existentes = reales.
+- **Soporte PROD (solo lectura)**: el cliente de la guía de facturación es el negocio **El Tilo** (alta 28/09,
+  maderaseltilo@hotmail.com, CUIT 30-71598502-7, RI), no Kalken (Kalken sigue sin facturación). Facturación OK
+  (cert activo, PV 5, producción). No podía vender porque su **único producto quedó desactivado** (18:43). Indicado:
+  reactivarlo; probar en Modo PRUEBA sin facturar (su cert es de producción, en homologación falla) y anular las ventas
+  de prueba; la primera factura real es la validación del circuito.
+
 ## [2026-09-28] update | Preguntas abiertas en un solo archivo + soporte de facturación (paso 7 de la guía)
 
 - `sources/raw/preguntas_pendientes_2026-09-28.md`: las 14 preguntas abiertas (DL-1..DL-5, D3-a, D3-b, PL-1..PL-7) con

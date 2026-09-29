@@ -671,6 +671,10 @@ prueba. El log de la EF muestra `[homologación]`.
 >    verificar el CAE. (Probar en homologación requiere un cert de homologación de WSASS, que el cliente no tiene.)
 > **Guía pendiente de corregir** (artifact `WYpzGUG42wPBCv74ya5Jmg`).
 
+> [!WARNING] **2026-09-28 — hallazgo REGLA #0:** `ventas` y `devoluciones` no guardan el **ambiente** del CAE (homologación
+> vs producción). Un negocio que probó en homologación y pasó a producción ve los comprobantes de prueba mezclados con los
+> reales. Se corrige en la Fase 0 de `sources/raw/plan_empezar_de_cero.md` (sellar `cae_ambiente` al emitir).
+
 **Guía HTML paso a paso publicada**, para pasarle al cliente que va a activar la facturación: artifact de Claude
 **https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg** — "Activar facturación en Genesis360". Qué tener a mano
 (CUIT y Clave Fiscal nivel 3, condición IVA, razón social y domicilio como figuran en ARCA, inicio de actividades,

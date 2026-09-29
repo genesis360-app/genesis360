@@ -162,6 +162,11 @@ export async function generarRemitoPDF(
 ): Promise<void> {
   const doc = await construirRemitoDoc(data)
   if (accion === 'imprimir') {
+    // "Imprimir → Guardar como PDF" (iPhone, Chrome) nombra el archivo con el TÍTULO de la página, no con el del
+    // PDF → sin esto quedaba "Genesis360.pdf". Se pone el mismo nombre que la descarga y se restaura después.
+    const tituloPrevio = document.title
+    document.title = nombreRemitoPDF(data).replace(/\.pdf$/i, '')
+    doc.setProperties({ title: document.title })
     doc.autoPrint()
     const url = doc.output('bloburl') as unknown as string
     const iframe = document.createElement('iframe')
@@ -170,7 +175,7 @@ export async function generarRemitoPDF(
     iframe.src = url
     iframe.onload = () => {
       try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { /* el visor ya imprime */ }
-      setTimeout(() => iframe.remove(), 60_000)
+      setTimeout(() => { iframe.remove(); document.title = tituloPrevio }, 60_000)
     }
     document.body.appendChild(iframe)
   } else {

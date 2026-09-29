@@ -494,6 +494,11 @@ export async function generarFacturaPDF(
     // window.open tras un await queda bloqueado por el popup-blocker (se pierde el
     // gesto del usuario). Imprimimos vía un iframe oculto: con autoPrint() el visor
     // de PDF dispara el diálogo de impresión al cargar.
+    // "Imprimir → Guardar como PDF" (iPhone, Chrome) nombra el archivo con el TÍTULO de la página, no con el del
+    // PDF → sin esto quedaba "Genesis360.pdf". Se pone el mismo nombre que la descarga y se restaura después.
+    const tituloPrevio = document.title
+    document.title = nombreFacturaPDF(data).replace(/\.pdf$/i, '')
+    doc.setProperties({ title: document.title })
     doc.autoPrint()
     const url = doc.output('bloburl') as unknown as string
     const iframe = document.createElement('iframe')
@@ -507,7 +512,7 @@ export async function generarFacturaPDF(
     iframe.onload = () => {
       try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { /* el visor ya imprime por autoPrint */ }
       // Limpiar el iframe tras un margen para no cortar el diálogo de impresión.
-      setTimeout(() => iframe.remove(), 60_000)
+      setTimeout(() => { iframe.remove(); document.title = tituloPrevio }, 60_000)
     }
     document.body.appendChild(iframe)
   } else {

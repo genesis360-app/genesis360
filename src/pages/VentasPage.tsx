@@ -16,6 +16,7 @@ import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
 import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
@@ -8007,7 +8008,9 @@ export default function VentasPage() {
               )}
             </div>
             <div className="mt-5 flex gap-3 no-print">
-              <button onClick={() => { window.print(); }}
+              <button onClick={() => imprimirConNombre(devComprobante.numero_nc
+                ? String(devComprobante.numero_nc).replace(/[^\w-]+/g, '_')
+                : `Devolucion_Venta_${devComprobante.venta_numero}`)}
                 className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm flex items-center justify-center gap-2">
                 <Printer size={15} /> Imprimir
               </button>
@@ -8330,7 +8333,7 @@ export default function VentasPage() {
                 </div>
               )}
               <div className="flex gap-2">
-                <button onClick={() => window.print()}
+                <button onClick={() => imprimirConNombre(`Ticket_Venta_${ticketVenta.numero}`)}
                   className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <Printer size={15} /> Imprimir
                 </button>

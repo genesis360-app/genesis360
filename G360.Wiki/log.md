@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-29] update | Nombre de archivo al imprimir → Guardar como PDF
+
+- El Tilo facturó OK en PROD con `v1.233.2` (A-0005-00000001, CAE 86395240625932; importes verificados).
+- El PDF le quedó "Genesis360.pdf": usó **Imprimir → Guardar como PDF**, y el navegador nombra con el título de la
+  página. La descarga ya tenía nombre (`Factura_A_0005-00000001_Cliente.pdf`).
+- Fix (en `dev`, sin deploy): factura/remito/presupuesto ponen el nombre de la descarga como título mientras
+  imprimen; helper `src/lib/imprimirConNombre.ts` para los `window.print()` (ticket → `Ticket_Venta_N`, devolución →
+  número de NC o `Devolucion_Venta_N`, picking → `Picking_Pedido_N`). Test `tests/unit/imprimirConNombre.test.ts`.
+- Auditadas las ~60 descargas de la app: todas ya tenían nombre relacionado al documento.
+
 ## [2026-09-29] deploy | v1.233.2 — hotfix del punto de venta a PROD (El Tilo)
 
 - El Tilo seguía con "El punto de venta 1 no está configurado" porque el fix (`04281628`) estaba solo en `dev`.

@@ -35,6 +35,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
 import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { imprimirConNombre } from '@/lib/imprimirConNombre'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   borrador:            { label: 'Borrador',            cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
@@ -1592,7 +1593,7 @@ export default function PedidosPage() {
             <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3 no-print">
               <button onClick={() => setImprimirPedido(null)}
                 className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl text-sm">Cerrar</button>
-              <button onClick={() => window.print()}
+              <button onClick={() => imprimirConNombre(`Picking_Pedido_${imprimirPedido.numero}`)}
                 className="flex items-center gap-1.5 bg-accent text-white font-semibold px-5 py-2 rounded-xl text-sm hover:bg-accent/90 transition-colors">
                 <Printer size={15} /> Imprimir
               </button>

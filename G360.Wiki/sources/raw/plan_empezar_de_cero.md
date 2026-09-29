@@ -99,7 +99,7 @@ punto de venta y no se toca.)
 
 | Fase | Qué | Tamaño |
 |---|---|---|
-| **0** | Sellar el ambiente de cada CAE: `ventas.cae_ambiente` y `devoluciones.nc_cae_ambiente` (`homologacion`/`produccion`), escrito por `emitir-factura` desde el modo del emisor al emitir. Los existentes quedan `NULL` = "desconocido" = tratado como real. Útil también para separar comprobantes de prueba en historial y reportes | chica |
+| **0** | **(+ 29/09) sellar también `ventas.punto_venta`** — la factura no guarda en qué PV se emitió; la NC y el PDF lo adivinan. Sellar el ambiente de cada CAE: `ventas.cae_ambiente` y `devoluciones.nc_cae_ambiente` (`homologacion`/`produccion`), escrito por `emitir-factura` desde el modo del emisor al emitir. Los existentes quedan `NULL` = "desconocido" = tratado como real. Útil también para separar comprobantes de prueba en historial y reportes | chica |
 | **1** | Clasificación versionada en código (`src/lib/reinicioTablas.ts` o SQL) + test que falla con una tabla sin clasificar + verificación de numeraciones | chica |
 | **2** | Servidor: `fn_reiniciar_operaciones_preview` (cantidades) + `fn_reiniciar_operaciones` (SECURITY DEFINER, resguardos, borrado en orden de dependencias, opción de stock, registro en `reinicios_operaciones`) | media |
 | **3** | Pantalla: Configuración → "Empezar de cero" (vista previa, opciones, confirmación) + ofrecimiento al activar producción | chica |

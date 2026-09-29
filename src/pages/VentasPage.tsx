@@ -2088,7 +2088,6 @@ export default function VentasPage() {
     return () => { cancel = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facturaModal])
-
   // RG AFIP: una Factura B a consumidor final por un total ≥ umbral exige identificar al
   // comprador (DNI o CUIT). Si no está identificado, se bloquea la emisión hasta cargarlo.
   // El umbral es DEL EMISOR seleccionado (multi-CUIT); fallback al del tenant.
@@ -2678,6 +2677,25 @@ export default function VentasPage() {
   // seleccionado (las filas legacy sin emisor cuentan como del principal).
   const pvsDelEmisor = (puntosVentaAfip as any[]).filter((pv: any) =>
     pv.emisor_id === emisorFactura?.id || (!pv.emisor_id && (emisorFactura?.es_default ?? true)))
+
+  // 🐛 (El Tilo, PROD 2026-09-29): los PV se cargan RECIÉN al abrir el modal, así que la primera vez el default
+  // quedaba en 1 (lista todavía vacía) y el efecto de arriba ya había corrido. El <select> mostraba "0005" (única
+  // opción) pero el estado seguía en 1 → "El punto de venta 1 no está configurado para este emisor". Cuando llega la
+  // lista (o cambia el emisor), si el PV elegido no es uno del emisor, se toma el primero.
+  useEffect(() => {
+    if (!facturaModal) return
+    const nums = (pvsDelEmisor as any[]).map((pv: any) => Number(pv.numero))
+    if (nums.length > 0 && !nums.includes(Number(facturaPV))) setFacturaPV(nums[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facturaModal, puntosVentaAfip, emisorFactura?.id])
+
+  // Mismo problema en la NC manual: el default se calcula al hacer clic, antes de que carguen los PV.
+  useEffect(() => {
+    if (!ncModal) return
+    const nums = (puntosVentaAfip as any[]).map((pv: any) => Number(pv.numero))
+    if (nums.length > 0 && !nums.includes(Number(ncPV))) setNcPV(nums[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ncModal, puntosVentaAfip])
 
   const { data: combosDisp = [] } = useQuery({
     queryKey: ['combos', tenant?.id],
@@ -4447,9 +4465,21 @@ export default function VentasPage() {
       if (devolucionVenta.estado === 'facturada') {
         const devIdParaNC = dev.id
         const ventaParaNC = devolucionVenta
+        // 🐛 (2026-09-29): antes tomaba `puntosVentaAfip[0]`, una lista que solo se carga con un modal de facturación
+        // abierto → acá venía vacía y la NC salía con el PV 1. En un negocio cuyo PV no es el 1 (El Tilo: PV 5) el
+        // servidor la rechazaba y quedaba encolada con el mismo PV 1 → no se emitía nunca. Ahora se lee de la base, del
+        // emisor con el que se emitió la factura (los PV de AFIP son por CUIT).
+        const pvParaNC = async (): Promise<number> => {
+          const emisorVentaId = (ventaParaNC as any)?.emisor_id ?? null
+          const { data: pvs } = await supabase.from('puntos_venta_afip')
+            .select('numero, emisor_id').eq('tenant_id', tenant!.id).eq('activo', true).order('numero')
+          const delEmisor = (pvs ?? []).filter((pv: any) =>
+            emisorVentaId ? pv.emisor_id === emisorVentaId : true)
+          return Number((delEmisor[0] ?? (pvs ?? [])[0])?.numero ?? 1)
+        }
         void (async () => {
           try {
-            const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+            const pvDefault = await pvParaNC()
             const letra = String((ventaParaNC as any)?.tipo_comprobante ?? 'B')
               .replace(/^Factura\s+/i, '').replace(/^NC-/i, '').trim().toUpperCase()
             const ncLetra = (['A', 'B', 'C'].includes(letra) ? letra : 'B')
@@ -4466,7 +4496,7 @@ export default function VentasPage() {
           } catch (e: any) {
             let msg = String(e?.message ?? '')
             try { const body = await (e as any).context?.json?.(); if (body?.error) msg = String(body.error) } catch { /* */ }
-            const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+            const pvDefault = await pvParaNC().catch(() => 1)
             const letra = String((ventaParaNC as any)?.tipo_comprobante ?? 'B')
               .replace(/^Factura\s+/i, '').replace(/^NC-/i, '').trim().toUpperCase()
             const ncLetra = (['A', 'B', 'C'].includes(letra) ? letra : 'B')

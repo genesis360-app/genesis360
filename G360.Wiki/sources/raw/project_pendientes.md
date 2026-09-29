@@ -41,6 +41,24 @@ type: project
 >   vacío) y paso 9 (un cert de producción no anda en Modo PRUEBA → pasar directo a producción). Preguntado a GO si la
 >   actualizo (es una página que ven los clientes); sin respuesta.
 >
+> **🐛🧾 29/09 — El Tilo no podía facturar: 2 errores reales (el 2º, de la APP):**
+> 1. `WSAA coe.notAuthorized` → faltaba la relación del paso 7 en ARCA. La hicieron.
+> 2. "El punto de venta 1 no está configurado para este emisor" con PV 5 bien configurado en la app y en ARCA → **bug
+>    del modal de facturar**: los PV se cargan recién al abrirlo; el default quedaba en 1 y el `<select>` mostraba 0005
+>    (única opción) con el estado en 1. El guard del servidor lo frenó (correcto). **Workaround en PROD: cerrar y volver
+>    a abrir el modal.** Arreglado en DEV (sin deploy): efecto que corrige el PV al llegar la lista (factura y NC
+>    manual) y la **NC automática** ahora lee el PV de la base (antes salía con PV 1 y quedaba encolada para siempre en
+>    negocios cuyo PV no es el 1 — REGLA #0). tsc + build OK; sin e2e (necesita un negocio con PV ≠ 1).
+>    ⚠️ **Candidato a HOTFIX a PROD** (El Tilo factura real): `dev` tiene migs sin deployar → hotfix desde `main` solo con
+>    este cambio de `VentasPage.tsx`, si GO lo autoriza.
+> 3. 🛑 **REGLA #0, pendiente:** la factura **no guarda su punto de venta** (`ventas` no tiene la columna): la NC asume
+>    que la factura original está en el mismo PV que la NC ("caso single-PV") y el PDF imprime el primer PV del emisor.
+>    Con 2+ PV por CUIT, la NC podría referenciar mal (`CbtesAsoc.PtoVta`) y el PDF mostrar otro PV. Sumado a la
+>    **Fase 0** de `plan_empezar_de_cero.md` (misma migración que `cae_ambiente`): sellar `ventas.punto_venta` al emitir.
+> 4. 🐛 `ventas.numero` es **global entre negocios en PROD** (El Tilo #34 después de Kalken #33): `gen_venta_numero`
+>    numera por tenant, pero lo más probable es que la columna tenga un default que llena el número antes del trigger
+>    (sin verificar). No es fiscal. Pendiente de revisar y proponer arreglo.
+>
 > **🐛 Trampa de producto (29/09, la destapó El Tilo — le va a pasar a todo negocio nuevo en modo avanzado):** el
 > ingreso de stock en modo avanzado **acepta** líneas sin ubicación, pero el POS **no las vende** y dice "no tiene stock
 > disponible" mientras Inventario muestra el stock. Propuesta: (a) el POS avisa "N unidades sin ubicar: ubicalas para

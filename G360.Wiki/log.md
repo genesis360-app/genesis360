@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-29] update | Soporte El Tilo — facturación: relación de ARCA + bug del punto de venta en el modal
+
+- `WSAA coe.notAuthorized` → faltaba la relación del paso 7 (hecha).
+- "El punto de venta 1 no está configurado" con PV 5 bien cargado → **bug**: el modal de facturar calculaba el PV antes
+  de que cargara la lista (lazy) y el `<select>` mostraba 0005 con el estado en 1. Arreglado en DEV para factura y NC
+  manual; la **NC automática** leía la misma lista vacía y salía con PV 1 (encolada para siempre): ahora lee el PV de la
+  base. Workaround en PROD: reabrir el modal. Candidato a hotfix.
+- 🛑 Hallazgos anotados: la factura no guarda su punto de venta (NC y PDF lo adivinan → Fase 0) y `ventas.numero` es
+  global entre negocios en PROD.
+
 ## [2026-09-29] update | Soporte El Tilo — no vende porque el stock no tiene ubicación (modo avanzado)
 
 - Con el producto ya activo seguía sin poder venderlo. Causa: **modo avanzado** + stock **sin ubicación**; el POS en

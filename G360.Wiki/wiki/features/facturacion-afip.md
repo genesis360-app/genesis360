@@ -661,6 +661,12 @@ prueba. El log de la EF muestra `[homologación]`.
 
 ## Guía para clientes + video (2026-09-15, v1.227.1 🚀 EN PROD desde 2026-09-16)
 
+> [!WARNING] **2026-09-29 — punto de venta ≠ 1 (El Tilo, PV 5):** el modal de facturar mandaba el PV **1** la primera
+> vez que se abría (la lista de PV se carga al abrirlo y el default ya se había calculado); el `<select>` mostraba el
+> 0005. La NC automática tenía el mismo origen y salía con PV 1. Arreglado en DEV (`VentasPage.tsx`), sin deploy.
+> Además: **la factura no guarda su PV** — la NC (`CbtesAsoc.PtoVta`) y el PDF lo deducen; con 2+ PV por CUIT pueden
+> equivocarse. Pendiente en la Fase 0 de `sources/raw/plan_empezar_de_cero.md`.
+
 > [!WARNING] **2026-09-28 — dos huecos de la guía, encontrados con un cliente real (RI) trabado en el paso 7:**
 > 1. **Paso 7:** la pantalla "Selección del Representante a autorizar" ya trae el **Computador Fiscal** en un desplegable;
 >    el campo **CUIT/CUIL/CDI Usuario + BUSCAR** es para **delegar a un tercero** y va **vacío**. La guía dice "tocá

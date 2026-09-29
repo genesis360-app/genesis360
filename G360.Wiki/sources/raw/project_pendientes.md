@@ -6,43 +6,48 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-28) — todo en DEV sin deploy + 🙋 14 preguntas abiertas en UN archivo
+> ### 🛑 ARRANCÁ ACÁ (2026-09-29, cierre de sesión) — todo en DEV sin deploy + 🙋 22 preguntas abiertas en UN archivo
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.233.1` | 001-**439** |
-> | **DEV** (`origin/dev`, último `c39bad2f`) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump) | 001-**442** |
+> | **DEV** (`origin/dev`, pre-release **`v1.234.0-rc.1`**) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump de `APP_VERSION`) | 001-**442** |
 >
-> **🙋 Todas las preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5, D3-a,
-> D3-b, PL-1..PL-7), cada una con contexto, opciones y propuesta. NO ejecutar nada de eso sin respuesta. Las 30 del
-> 25/09 siguen todas respondidas; estas son nuevas (revisión legal del 26/09, D-3 y cruce del plan con el código).
+> **🙋 LO PRIMERO: las 22 preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
+> D3-a, D3-b, PL-1..PL-7, EC-1..EC-8), cada una con contexto, opciones y propuesta. GO las revisa con Fede. NO ejecutar
+> nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
+> Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·
+> EC-1..8 = Fase 2 de "Empezar de cero".
 >
-> **Qué está hecho en DEV (26/09)** — detalle en el bloque de abajo y en log.md:
+> **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
 > - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.
 > - D-3: desplegables en la plantilla del importador. UAT §71.
 > - Precio programado C-1 (el precio espera la etiqueta, opcional) y C-3 (cambio "ahora" pregunta) (mig 441). UAT §72.
 > - Categorías de clientes etapa 1: la categoría con cuenta corriente (mig 442) + 3 decisiones de GO sobre CC. UAT §73.
-> - e2e nuevos 160-163 · unit 1986/1986 · build OK.
+> - e2e nuevos 160-163 · unit 1986/1986 · build OK. EF `data-api` corregida en código (sin desplegar).
 >
 > **Deploy (espera DL-5):** migraciones a PROD **de a una y en orden 440 → 441 → 442** (la 442 contiene la 440) **antes**
-> del merge; bump `APP_VERSION`; PR `dev→main`; **desplegar la EF `data-api`** en DEV y PROD (cambió; mergear no despliega
-> EFs); auditoría de EFs y paridad de policies por schema (la 442 suma 4 policies en `public`).
+> del merge; bump `APP_VERSION` a `1.234.0`; PR `dev→main`; release `v1.234.0` (Latest); **desplegar la EF `data-api`** en
+> DEV y PROD (mergear no despliega EFs); `scripts/auditar-edge-functions.sh`; paridad de policies por schema (la 442 suma
+> 4 en `public`). Antes del deploy, revisar si Kalken o El Tilo están operando (clientes reales en PROD).
 >
-> **🆕 Plan "Empezar de cero" (28/09, sin código):** `sources/raw/plan_empezar_de_cero.md` — borrar lo operado en la
-> etapa de prueba conservando maestros; clasificación real de las 153 tablas; bloqueado si hay algún CAE real. 🛑 **Hallazgo:
-> una factura no guarda si su CAE es de prueba o de producción** → Fase 0 lo sella para adelante (útil también para
-> reportes). Preguntas EC-1..EC-8 sumadas al archivo único. Fases 0 y 1 no dependen de respuestas.
+> **Próximo trabajo que NO espera preguntas (preguntado a GO el 28/09, sin respuesta todavía — confirmar antes):**
+> - **Fase 0 de "Empezar de cero"** (`sources/raw/plan_empezar_de_cero.md`): 🛑 las facturas no guardan si el CAE es de
+>   homologación o producción → sellar `ventas.cae_ambiente` / `devoluciones.nc_cae_ambiente` al emitir en `emitir-factura`.
+>   Urgente en el sentido de que cada factura emitida sin ambiente ya no se puede clasificar después. Toca la EF fiscal:
+>   tests + deploy de EF.
+> - Fase 1 de "Empezar de cero": clasificación de las 153 tablas en código + test que falle con una tabla sin clasificar.
+> - **Corregir la guía de facturación para clientes** (artifact `WYpzGUG42wPBCv74ya5Jmg`): paso 7 (el campo CUIT/BUSCAR va
+>   vacío) y paso 9 (un cert de producción no anda en Modo PRUEBA → pasar directo a producción). Preguntado a GO si la
+>   actualizo (es una página que ven los clientes); sin respuesta.
 >
-> **Siguiente trabajo (cuando haya respuestas):** Fase 3 del plan (motor único de precio) espera **PL-5**; Fase 4 espera
-> **PL-1..PL-3**; C-2 espera **PL-4**; DL-1/DL-2/DL-3 según lo que decidan.
->
-> **🧾 Soporte 28/09 — cliente activando facturación (MADERA CARRIZO HERMANOS SRL, CUIT 30-71598502-7, RI):** hizo los
-> pasos 5 (CSR con el asistente, `30715985027.csr`) y 6 (cert `genesis360` VÁLIDO en ARCA); estaba trabado en el paso 7.
-> Indicado: en "Selección del Representante" dejar vacío el campo CUIT/BUSCAR (es para delegar a un tercero) y
-> CONFIRMAR con el computador fiscal `genesis360`; paso 8 subir el `.crt` en el asistente (NO regenerar el CSR).
-> 🛑 **Hueco de la guía**: el cert es de PRODUCCIÓN y el "Modo PRUEBA" usa los servidores de homologación
-> (`wsaahomo`) → ahí falla aunque todo esté bien. Hay que pasar directo a producción y emitir una factura real chica.
-> **Pendiente: corregir la guía** (artifact `WYpzGUG42wPBCv74ya5Jmg`, pasos 7 y 9).
+> **🧾 Clientes reales en PROD (solo lectura, 28/09):**
+> - **El Tilo** (`04aaed58-80d8-4b8c-b3fd-a8cfbf46046a`, alta 28/09, maderaseltilo@hotmail.com, MADERA CARRIZO HERMANOS
+>   SRL, CUIT 30-71598502-7, RI, modo avanzado): facturación OK (cert activo, PV 5, **ya en producción**). No podía vender
+>   porque su **único producto quedó desactivado** (18:43). Indicado a GO: reactivarlo; probar ventas en Modo PRUEBA **sin
+>   facturar** (su cert es de producción: en homologación falla) y anular las de prueba; la primera factura real valida el
+>   circuito. Si ARCA rechaza por permiso → falta el paso 7. Stock sin ubicaciones (no impide vender).
+> - **Kalken** (`d5002ec4-…`): sigue sin nada de facturación (sin CUIT/emisor/cert). Es otro negocio de la misma familia.
 
 > ### 🛑 ARRANCÁ ACÁ (2026-09-26, 2ª sesión) — 💵 **D-1 fase 2 HECHA en DEV** (mig 440), falta PROD
 >

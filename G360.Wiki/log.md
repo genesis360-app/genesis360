@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-29] update | Cierre de sesión — todo listo para /clear
+
+- Estado: PROD `v1.233.1` (001-439); DEV 001-442 sin deploy, pre-release **`v1.234.0-rc.1`** sobre `origin/dev`.
+- Pendientes reescrito como una sola foto ("ARRANCÁ ACÁ 2026-09-29"): 22 preguntas en el archivo único, checklist de deploy,
+  próximo trabajo que no espera respuestas (Fase 0/1 de "Empezar de cero", corregir la guía de facturación — las dos
+  preguntadas a GO sin respuesta) y el estado de los clientes reales El Tilo y Kalken.
+
 ## [2026-09-28] update | Plan "Empezar de cero" + soporte El Tilo (Madera Carrizo)
 
 - **Plan** `sources/raw/plan_empezar_de_cero.md`: botón "Empezar de cero" que borra lo operado en la etapa de prueba y

@@ -9,11 +9,26 @@ updated: 2026-09-25
 # Roadmap y Versiones
 
 **Versión en PROD (actual): `v1.233.1`** (2026-09-26, migs 001-**439**, archivos y bases iguales). Compute de
-PROD: **Micro** desde el 2026-09-15 (antes Nano). Primer cliente real en PROD: **Kalken**.
+PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
+(Madera Carrizo, factura en producción).
 
 ✅ **PROD = DEV** (001-439; paridad `pg_policies` por schema: `public` **235** (`b6469b80`) · `storage` **40**
 (`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#360** `dev→main`, merge
 **`50343fb9`**, release **`v1.233.1` Latest**.
+
+## 🟡 v1.234.0-rc.1 — pre-release en DEV (2026-09-26/29, SIN deploy, migs 440-442)
+
+Pre-release sobre `origin/dev` (no está en `main`). El deploy como `v1.234.0` espera DL-5
+(`sources/raw/preguntas_pendientes_2026-09-28.md`).
+- **D-1 fase 2** (mig 440): UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior en todo el sistema; Pedidos→venta
+  cotiza productos USD igual que el POS. [[wiki/features/ventas-pos]]
+- **D-3**: listas desplegables en la plantilla del importador (validado con Excel real). [[wiki/features/productos]]
+- **Precio programado C-1/C-3** (mig 441): el precio puede esperar la etiqueta del repositor; un cambio "ahora" pregunta
+  qué hacer con el programado. [[wiki/features/productos]]
+- **Categorías de clientes, etapa 1** (mig 442): la categoría con cuenta corriente; una sola resolución Cliente >
+  Categoría > Negocio; el vencimiento de la venta CC lo pone el servidor; CC habilitada controlada en el servidor.
+  [[wiki/features/clientes-proveedores]]
+- e2e 160-163, UAT §70-§73. Al deployar: migs 440→441→442 de a una antes del merge + EF `data-api`.
 
 ## 🚀 v1.233.1 — Historial diario de la cotización divisa del BNA (2026-09-26, EN PROD)
 

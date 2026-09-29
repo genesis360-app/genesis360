@@ -6,7 +6,7 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-29, cierre de sesión) — todo en DEV sin deploy + 🙋 22 preguntas abiertas en UN archivo
+> ### 🛑 ARRANCÁ ACÁ (2026-09-29, cierre de sesión) — 🔥 errores de El Tilo + todo en DEV sin deploy + 🙋 22 preguntas abiertas
 >
 > | | Código | Migraciones |
 > |---|---|---|
@@ -18,6 +18,28 @@ type: project
 > nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
 > Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·
 > EC-1..8 = Fase 2 de "Empezar de cero".
+>
+> **🔥 LO URGENTE (29/09 tarde) — errores que destapó El Tilo, el 2º cliente real. Orden sugerido y cómo evitar que se
+> repitan** (detalle de cada uno más abajo, en "El Tilo no podía facturar" y "Trampa de producto"):
+> 1. **Hotfix del punto de venta en el modal de facturar/NC** (commit `04281628` en `dev`, sin deploy). El Tilo factura
+>    real con PV 5 y hasta el hotfix depende de "cerrar y reabrir el modal"; sus NC automáticas fallarían. **Preguntado a
+>    GO si se hace hotfix desde `main` solo con ese cambio — sin respuesta.** *Para que no vuelva:* un e2e de facturación
+>    con un negocio cuyo PV **no es el 1** (todos los tests usan PV 1 y por eso el bug era invisible) — incluir NC
+>    automática.
+> 2. **Modo avanzado: el POS no vende stock sin ubicación** y el ingreso lo permite (El Tilo no pudo vender 150 u.).
+>    Propuesta (preguntada a GO, sin respuesta): el POS avisa "N unidades sin ubicar" y el ingreso en avanzado pide la
+>    ubicación. *Para que no vuelva:* e2e "ingreso sin ubicación → aviso en el POS". Diagnóstico rápido en
+>    [[reference_avanzado_pos_exige_ubicacion]].
+> 3. **Fase 0 (REGLA #0):** sellar `ventas.punto_venta` y `cae_ambiente` al emitir (hoy la factura no guarda su PV ni si
+>    el CAE es de prueba o real; la NC y el PDF lo deducen). Preguntado a GO si se arranca — sin respuesta.
+> 4. **`ventas.numero` global entre negocios en PROD** (El Tilo #34 tras Kalken #33). Verificar la causa (probable
+>    default de columna que le gana al trigger) y proponer arreglo. No es fiscal.
+> 5. **Corregir la guía de facturación** (artifact `WYpzGUG42wPBCv74ya5Jmg`): paso 7 (campo CUIT vacío, y verificar con
+>    CONSULTAR que la relación existe), paso 9 (cert de producción no anda en Modo PRUEBA), y sumar: "el error
+>    `coe.notAuthorized` = falta la relación; puede tardar unos minutos en tomarse". Preguntado a GO — sin respuesta.
+> 6. **Checklist de alta de un cliente nuevo** (para que no se repita lo de El Tilo en el próximo): modo básico vs
+>    avanzado explicado al elegir, ubicación obligatoria en avanzado, facturación con cert de producción → directo a
+>    producción, empleados sin correo = código del negocio (`eltilo`) + usuario. Armarlo como página de soporte en el wiki.
 >
 > **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
 > - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.

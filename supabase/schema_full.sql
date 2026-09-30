@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-26T15:29:06.963Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260926145506 · 173 tablas
+-- Generado 2026-09-30T20:19:02.933Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260930195014 · 173 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -531,7 +531,8 @@ CREATE TABLE public.clientes (
   baja_por uuid,
   cuenta_token text,
   cuenta_token_creado_at timestamp with time zone,
-  categoria_cliente_id uuid
+  categoria_cliente_id uuid,
+  domicilio_fiscal text
 );
 
 CREATE TABLE public.codigo_perfiles (

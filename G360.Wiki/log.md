@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-30] update | Domicilio fiscal del cliente (mig 443) + Factura A bloqueada sin él + layout de la factura
+
+- Decisión de GO: campo propio "Domicilio fiscal / comercial" en la ficha del cliente (receptor, no emisor ni sucursal)
+  y **bloquear** la Factura A sin domicilio. Mig 443 `clientes.domicilio_fiscal` (DEV). La factura usa ese campo; vacío,
+  el domicilio principal de `cliente_domicilios`. Bloqueo en el modal del POS y en la EF `emitir-factura` (desplegada en
+  DEV); NC-A no se bloquea. Helpers `domicilioReceptor`/`composeDomicilioCliente` en `facturasPDF.ts` (antes duplicados).
+- Layout (lo pidió GO: "que no salga del marco"): la tabla con IVA medía 188/184 mm con 182 disponibles (la columna
+  Total se salía — ya en la factura real de El Tilo); el nombre del producto en negrita no se partía y quedaba cortado;
+  IVA $ de millones partido en 2 líneas; condición/forma de pago, nombre y domicilio largos sin partir. Todo corregido
+  (también remito y presupuesto). CUIT del receptor con guiones.
+- Pruebas: e2e `164` (tenant RI Kiosco Buildi, AFIP homologación): bloqueo UI + EF directa (400, venta sin CAE) → carga
+  del domicilio por la ficha → Factura A con CAE real (A-0001-00000002, CAE 86390938632019) y PDF. Unit
+  `facturasPDFLayout.test.ts` mide cada texto contra los márgenes en 6 casos (rojo con los anchos viejos). 2000 unit
+  verdes, build OK, regresión e2e 08/21/56/60/63/87/163 verde. UAT §74.
+
 ## [2026-09-30] update | Factura: observaciones del contador de El Tilo
 
 - Contador: la factura está correcta; pide (1) domicilio comercial del receptor (obligatorio en RI), (2) **condición

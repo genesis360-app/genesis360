@@ -76,7 +76,9 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
       doc.text(ln, emX, y); y += 5
     }
   }
-  doc.text(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  for (const ln of (doc.splitTextToSize(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, LEFT_W) as string[])) {
+    doc.text(ln, emX, y); y += 5
+  }
   if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
   if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
   const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')
@@ -105,16 +107,16 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
   doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(0)
   doc.text('DATOS DEL CLIENTE', 14, ry); ry += 5
   doc.setFont('helvetica', 'normal').setTextColor(60)
-  doc.text(`Nombre / Razón Social: ${data.receptor_nombre}`, 14, ry); ry += 5
+  for (const ln of (doc.splitTextToSize(`Nombre / Razón Social: ${data.receptor_nombre}`, W - 28) as string[])) { doc.text(ln, 14, ry); ry += 5 }
   if (data.receptor_cuit_dni) {
     const docLabel = data.receptor_cuit_dni.replace(/\D/g, '').length === 11 ? 'CUIT' : 'DNI'
-    doc.text(`${docLabel}: ${data.receptor_cuit_dni}`, 14, ry); ry += 5
+    doc.text(`${docLabel}: ${docLabel === 'CUIT' ? formatCuit(data.receptor_cuit_dni) : data.receptor_cuit_dni}`, 14, ry); ry += 5
   }
   if (data.receptor_condicion_iva) {
     doc.text(`Condición IVA: ${data.receptor_condicion_iva}`, 14, ry); ry += 5
   }
   if (data.receptor_domicilio) {
-    doc.text(`Domicilio: ${data.receptor_domicilio}`, 14, ry); ry += 5
+    for (const ln of (doc.splitTextToSize(`Domicilio: ${data.receptor_domicilio}`, W - 28) as string[])) { doc.text(ln, 14, ry); ry += 5 }
   }
 
   // ── Tabla de ítems (columnas dinámicas: Cód? · Descripción · Cant · P.Unit · %Dto? · Importe) ─

@@ -146,7 +146,7 @@ export function composicionUnitaria(item: FacturaPDFData['items'][number]): stri
 
 // ─── Generador principal ──────────────────────────────────────────────────────
 
-async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
+export async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const COL = W / 2  // 105mm — divisor A/B
@@ -210,7 +210,9 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       doc.text(ln, emX, y); y += 5
     }
   }
-  doc.text(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  for (const ln of (doc.splitTextToSize(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, LEFT_W) as string[])) {
+    doc.text(ln, emX, y); y += 5
+  }
   if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
   if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
   const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')
@@ -229,9 +231,17 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text(`N° ${letra}-${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
   doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27, { align: 'right' })
   doc.text(`Moneda: ${data.moneda === 'USD' ? 'Dólares' : 'Pesos Argentinos'}`, RX, 32, { align: 'right' })
+  // Condición de venta y forma de pago: partidas al ancho libre a la derecha del recuadro de la letra (una forma de
+  // pago mixta larga no se mete debajo del recuadro ni de los datos del emisor).
+  const RIGHT_W = RX - (boxX + boxW) - 3
   let rightY = 32
-  if (data.condicion_venta) { rightY += 5; doc.text(`Condición de venta: ${data.condicion_venta}`, RX, rightY, { align: 'right' }) }
-  if (data.forma_pago) { rightY += 5; doc.text(`Forma de pago: ${data.forma_pago}`, RX, rightY, { align: 'right' }) }
+  for (const linea of [
+    data.condicion_venta ? `Condición de venta: ${data.condicion_venta}` : null,
+    data.forma_pago ? `Forma de pago: ${data.forma_pago}` : null,
+  ]) {
+    if (!linea) continue
+    for (const ln of (doc.splitTextToSize(linea, RIGHT_W) as string[])) { rightY += 5; doc.text(ln, RX, rightY, { align: 'right' }) }
+  }
 
   // ── Línea divisoria horizontal ───────────────────────────────────────────────
   const rightBottom = rightY
@@ -244,16 +254,18 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(0)
   doc.text('DATOS DEL RECEPTOR', 14, ry); ry += 5
   doc.setFont('helvetica', 'normal').setTextColor(60)
-  doc.text(`Nombre / Razón Social: ${data.receptor_nombre}`, 14, ry); ry += 5
+  // Líneas del receptor partidas al ancho de la página: un nombre o un domicilio largos no se salen del margen.
+  const RW = W - 28
+  for (const ln of (doc.splitTextToSize(`Nombre / Razón Social: ${data.receptor_nombre}`, RW) as string[])) { doc.text(ln, 14, ry); ry += 5 }
   if (data.receptor_cuit_dni) {
     const docLabel = data.receptor_cuit_dni.replace(/\D/g, '').length === 11 ? 'CUIT' : 'DNI'
-    doc.text(`${docLabel}: ${data.receptor_cuit_dni}`, 14, ry); ry += 5
+    doc.text(`${docLabel}: ${docLabel === 'CUIT' ? formatCuit(data.receptor_cuit_dni) : data.receptor_cuit_dni}`, 14, ry); ry += 5
   }
   if (data.receptor_condicion_iva) {
     doc.text(`Condición IVA: ${data.receptor_condicion_iva}`, 14, ry); ry += 5
   }
   if (data.receptor_domicilio) {
-    doc.text(`Domicilio: ${data.receptor_domicilio}`, 14, ry); ry += 5
+    for (const ln of (doc.splitTextToSize(`Domicilio: ${data.receptor_domicilio}`, RW) as string[])) { doc.text(ln, 14, ry); ry += 5 }
   }
 
   // ── Tabla de ítems ───────────────────────────────────────────────────────────
@@ -296,11 +308,14 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       const k = (doc.internal as any).scaleFactor
       const fontSizeMm = 8 / k
       const y1 = topY + fontSizeMm * 0.85
+      // El nombre también se parte al ancho de la celda: dibujado en una sola línea se metía debajo de la columna
+      // siguiente y quedaba cortado ("Poste Euc impregnado 1.8r", primera factura real de El Tilo, 2026-09-30).
       doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(0)
-      doc.text(item.descripcion, x, y1)
+      const nombre = doc.splitTextToSize(item.descripcion, maxW) as string[]
+      doc.text(nombre, x, y1, { lineHeightFactor: 1.15 })
       doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(130)
       const wrapped = doc.splitTextToSize(item.descripcion_extra, maxW) as string[]
-      doc.text(wrapped, x, y1 + fontSizeMm * 1.15)
+      doc.text(wrapped, x, y1 + fontSizeMm * 1.15 * nombre.length)
       doc.setTextColor(0)
     },
   })
@@ -357,12 +372,15 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       bodyStyles:  { fontSize: 8 },
       columnStyles: {
         ...codStyle,
-        [off]:     { cellWidth: conCod ? 44 : 60 },
+        // Suma = 182 mm = ancho entre márgenes (210 − 14 − 14). Sumaban 188/184 y la columna Total se salía del
+        // margen derecho (se vio en la primera factura real de El Tilo, 2026-09-30).
+        // IVA $ a 22 mm para que un IVA de millones ("$2.255.658,94") no se parta en 2 líneas.
+        [off]:     { cellWidth: conCod ? 38 : 58 },
         [off + 1]: { halign: 'center', cellWidth: 14 },
         [off + 2]: { halign: 'right', cellWidth: 26 },
-        [off + 3]: { halign: 'center', cellWidth: 14 },
+        [off + 3]: { halign: 'center', cellWidth: 12 },
         [off + 4]: { halign: 'right', cellWidth: 26 },
-        [off + 5]: { halign: 'right', cellWidth: 20 },
+        [off + 5]: { halign: 'right', cellWidth: 22 },
         [off + 6]: { halign: 'right', cellWidth: 24 },
       },
       theme: 'striped',
@@ -474,6 +492,29 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text('Comprobante fiscal electrónico — Genesis360', W / 2, 285, { align: 'center' })
 
   return doc
+}
+
+// ─── Domicilio del RECEPTOR (el cliente, no el emisor) ───────────────────────────
+// Contador de El Tilo (2026-09-30): la Factura A debe llevar el domicilio comercial del receptor. Fuente: el
+// domicilio fiscal de la ficha (`clientes.domicilio_fiscal`, mig 443); si está vacío, el domicilio principal de
+// `cliente_domicilios` (entregas) — así los clientes ya cargados siguen saliendo igual.
+
+type DomicilioEntrega = { calle?: string | null; numero?: string | null; piso_depto?: string | null
+  ciudad?: string | null; provincia?: string | null; es_principal?: boolean | null }
+
+/** Domicilio principal de entrega en una línea ("Calle 123 2B, Ciudad, Provincia"). */
+export function composeDomicilioCliente(doms: DomicilioEntrega[] | null | undefined): string | undefined {
+  const d = (doms ?? []).find(x => x.es_principal) ?? (doms ?? [])[0]
+  if (!d) return undefined
+  const l1 = [d.calle, d.numero, d.piso_depto].map(x => (x ?? '').trim()).filter(Boolean).join(' ')
+  const l2 = [d.ciudad, d.provincia].map(x => (x ?? '').trim()).filter(Boolean).join(', ')
+  return [l1, l2].filter(Boolean).join(', ') || undefined
+}
+
+/** Domicilio que va impreso como del receptor: el fiscal de la ficha o, si no hay, el principal. */
+export function domicilioReceptor(cli?: { domicilio_fiscal?: string | null; cliente_domicilios?: DomicilioEntrega[] | null } | null): string | undefined {
+  const fiscal = (cli?.domicilio_fiscal ?? '').trim()
+  return fiscal || composeDomicilioCliente(cli?.cliente_domicilios)
 }
 
 /** Condición de venta del comprobante: la venta a cuenta corriente es "Cuenta Corriente"; el resto, "Contado". */

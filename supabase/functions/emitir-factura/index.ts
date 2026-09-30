@@ -204,7 +204,8 @@ serve(async (req) => {
         sucursal_id, emisor_id,
         venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
           productos(nombre, sku, alicuota_iva)),
-        clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)
+        clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor, domicilio_fiscal,
+          cliente_domicilios(calle))
       `)
       // 🔴 Hallazgo del code-reviewer (revisión de mig 361, preexistente): esta EF usa
       // service_role (bypassea RLS por completo) — sin el .eq('tenant_id', ...) explícito acá,
@@ -382,6 +383,20 @@ serve(async (req) => {
     } else if (totalVenta >= umbral && cliente?.dni) {
       docTipo = 96 // DNI
       docNro  = parseInt((cliente.dni ?? '').replace(/[.\s-]/g, '')) || 0
+    }
+
+    // Factura A sin domicilio del RECEPTOR: la normativa exige el domicilio comercial del cliente (contador de El
+    // Tilo, 2026-09-30; decisión de GO: bloquear). Espejo del bloqueo del POS. Vale el domicilio fiscal del cliente o,
+    // si no tiene, su domicilio principal (lo que imprime el PDF). Solo la factura: una NC-A no se frena por esto.
+    if (tipo_comprobante === 'A') {
+      const domFiscal = String((cliente as any)?.domicilio_fiscal ?? '').trim()
+      const tieneDomicilio = !!domFiscal ||
+        ((cliente as any)?.cliente_domicilios ?? []).some((d: any) => String(d?.calle ?? '').trim() !== '')
+      if (!tieneDomicilio) {
+        return new Response(JSON.stringify({ error: 'Factura A: falta el domicilio fiscal/comercial del cliente. Cargalo en la ficha del cliente para poder emitir.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // FAC-27 — Factura B ≥ umbral sin identificar al cliente: AFIP (RG 5616) lo exige.

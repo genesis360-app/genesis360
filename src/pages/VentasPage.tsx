@@ -15,7 +15,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
-import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, type FacturaPDFData } from '@/lib/facturasPDF'
+import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, composeDomicilioCliente, domicilioReceptor, type FacturaPDFData } from '@/lib/facturasPDF'
 import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
@@ -2065,14 +2065,14 @@ export default function VentasPage() {
   useEffect(() => {
     if (!facturaModal) return
     let cancel = false
-    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(id))').eq('id', facturaModal.ventaId).single()
+    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))').eq('id', facturaModal.ventaId).single()
       .then(({ data }) => {
         if (cancel) return
         const cuit = ((data as any)?.clientes?.cuit_receptor ?? '').toString().replace(/[-\s]/g, '')
         const dni = ((data as any)?.clientes?.dni ?? '').toString().replace(/\D/g, '')
         setFacturaClienteCuit(cuit || null)
         setFacturaClienteDni(dni || null)
-        setFacturaClienteTieneDomicilio(((data as any)?.clientes?.cliente_domicilios ?? []).length > 0)
+        setFacturaClienteTieneDomicilio(!!domicilioReceptor((data as any)?.clientes))
         // Emisor default de esta venta = el de su sucursal (?? principal)
         const def = emisorDeSucursal((data as any)?.sucursal_id)
         setFacturaEmisorId(def?.id ?? null)
@@ -2099,9 +2099,15 @@ export default function VentasPage() {
   const requiereIdentFacturaB = !!facturaModal && facturaTipo === 'B'
     && Number(facturaModal.ventaTotal) >= umbralFacturaB
     && !facturaClienteCuit && !facturaClienteDni
+  // Factura A sin domicilio del RECEPTOR: se bloquea hasta cargarlo (decisión de GO, 2026-09-30). Espejo en la EF.
+  const faltaDomicilioFacturaA = !!facturaModal && facturaTipo === 'A' && !!facturaClienteCuit && !facturaClienteTieneDomicilio
 
   const emitirFactura = async () => {
     if (!facturaModal) return
+    if (faltaDomicilioFacturaA) {
+      toast.error('Factura A: falta el domicilio fiscal/comercial del cliente. Cargalo en la ficha del cliente para poder emitir.', { duration: 9000 })
+      return
+    }
     if (requiereIdentFacturaB) {
       toast.error(`Factura B por $${umbralFacturaB.toLocaleString('es-AR', { maximumFractionDigits: 0 })} o más a consumidor final: AFIP exige identificar al cliente con DNI o CUIT. Cargalo en la ficha del cliente.`, { duration: 9000 })
       return
@@ -2185,15 +2191,6 @@ export default function VentasPage() {
     } catch { return null }
   }
 
-  // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.
-  function composeDomicilioCliente(doms: any[] | null | undefined): string | undefined {
-    const d = (doms ?? []).find((x: any) => x.es_principal) ?? (doms ?? [])[0]
-    if (!d) return undefined
-    const l1 = [d.calle, d.numero, d.piso_depto].filter(Boolean).join(' ')
-    const l2 = [d.ciudad, d.provincia].filter(Boolean).join(', ')
-    return [l1, l2].filter(Boolean).join(', ') || undefined
-  }
-
   // medio_pago es un JSON string [{"tipo":"Efectivo","monto":1500}] → etiqueta para el PDF
   function parseFormaPago(mp: any): string | null {
     try {
@@ -2208,7 +2205,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -2244,7 +2241,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
-      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
+      receptor_domicilio:  domicilioReceptor(cli),
       items: [
         ...ventaItemsPdf.map((i: any) => ({
           codigo:         i.productos?.sku ?? null,
@@ -2291,7 +2288,7 @@ export default function VentasPage() {
   // Arma el PresupuestoPDFData (A4) para una venta en estado presupuesto ('pendiente').
   async function buildPresupuestoPDFDataPorId(ventaId: string): Promise<PresupuestoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
+      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -2316,7 +2313,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
-      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios) ?? null,
+      receptor_domicilio:  domicilioReceptor(cli) ?? null,
       items: ((venta as any).venta_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
@@ -2345,7 +2342,7 @@ export default function VentasPage() {
   // Arma el RemitoPDFData (nota de entrega, no fiscal) de una venta.
   async function buildRemitoPDFDataPorId(ventaId: string): Promise<RemitoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
+      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -2561,7 +2558,7 @@ export default function VentasPage() {
   // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
   async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: dev, error } = await supabase.from('devoluciones')
-      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
@@ -2583,7 +2580,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
-      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
+      receptor_domicilio:  domicilioReceptor(cli),
       items: ((dev as any).devolucion_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
@@ -9109,9 +9106,9 @@ export default function VentasPage() {
                   Factura A deshabilitada: la venta no tiene un cliente con CUIT.
                 </p>
               )}
-              {facturaTipo === 'A' && facturaClienteCuit && !facturaClienteTieneDomicilio && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                  El cliente no tiene domicilio cargado: la Factura A debe llevar el domicilio comercial del receptor. Cargalo en la ficha del cliente antes de emitir.
+              {faltaDomicilioFacturaA && (
+                <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
+                  Factura A: falta el domicilio fiscal/comercial del cliente (la normativa exige el domicilio del receptor). Cargalo en Clientes → editar cliente → "Domicilio fiscal / comercial" para poder emitir.
                 </p>
               )}
               {requiereIdentFacturaB && (
@@ -9147,8 +9144,8 @@ export default function VentasPage() {
               className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
               Saltar
             </button>
-            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB || (emisorEsOverride && !confirmoEmisorOverride)}
-              title={requiereIdentFacturaB ? 'Cargá DNI o CUIT del cliente para emitir Factura B sobre el umbral' : undefined}
+            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB || faltaDomicilioFacturaA || (emisorEsOverride && !confirmoEmisorOverride)}
+              title={requiereIdentFacturaB ? 'Cargá DNI o CUIT del cliente para emitir Factura B sobre el umbral' : faltaDomicilioFacturaA ? 'Cargá el domicilio fiscal/comercial del cliente para emitir Factura A' : undefined}
               className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
               {emitiendoFactura
                 ? <><span className="animate-spin">⟳</span> Emitiendo…</>

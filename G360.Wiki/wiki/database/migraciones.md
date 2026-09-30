@@ -6,7 +6,12 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-442, + correctivos 387b/387c)
+# Historial de Migraciones (001-443, + correctivos 387b/387c)
+
+📅 **Migración 443 — 🟡 EN DEV, falta PROD** (2026-09-30): `443_cliente_domicilio_fiscal.sql` — `clientes.domicilio_fiscal text`
+(domicilio fiscal/comercial del cliente como **receptor**; contador de El Tilo: obligatorio en Factura A). Aditiva, permisos a
+nivel tabla (la hereda), RLS sin cambios. La factura usa este campo y, vacío, cae al domicilio principal de `cliente_domicilios`.
+La EF `emitir-factura` la lee → **en PROD: 443 ANTES de desplegar la EF** (si no, la select falla y no se factura nada).
 
 📅 **Migración 442 — 🟡 EN DEV, falta PROD** (2026-09-26): `442_categorias_cliente_cc.sql` — **Categorías de clientes, etapa 1**.
 Tabla `categorias_cliente` (5 condiciones de CC, NULL = hereda; `usada`; RLS con `fn_usuario_en_roles_categoria`), `clientes.categoria_cliente_id`,

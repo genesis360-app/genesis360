@@ -66,6 +66,7 @@ interface ClienteForm {
   cuit_receptor: string; condicion_iva_receptor: string
   fecha_nacimiento: string; etiquetas: string
   codigo_fiscal: string; regimen_fiscal: string
+  domicilio_fiscal: string
   // Mig 442: valores PROPIOS del cliente. 'hereda' / vacío = toma el de la categoría o el del negocio.
   categoria_cliente_id: string
   cc_habilitada: HabilitadaForm; limite_credito: string; plazo_pago_dias: string
@@ -75,7 +76,7 @@ const FORM_VACIO: ClienteForm = {
   // Default fiscal del cliente nuevo: Consumidor Final (el caso más común; el alta queda explícita).
   cuit_receptor: '', condicion_iva_receptor: 'CF',
   fecha_nacimiento: '', etiquetas: '',
-  codigo_fiscal: '', regimen_fiscal: '',
+  codigo_fiscal: '', regimen_fiscal: '', domicilio_fiscal: '',
   categoria_cliente_id: '', cc_habilitada: 'hereda', limite_credito: '', plazo_pago_dias: '',
 }
 
@@ -518,6 +519,7 @@ export default function ClientesPage() {
         fecha_nacimiento: cliente.fecha_nacimiento ?? '',
         etiquetas: Array.isArray(cliente.etiquetas) ? cliente.etiquetas.join(', ') : '',
         codigo_fiscal: cliente.codigo_fiscal ?? '', regimen_fiscal: cliente.regimen_fiscal ?? '',
+        domicilio_fiscal: cliente.domicilio_fiscal ?? '',
         categoria_cliente_id: cliente.categoria_cliente_id ?? '',
         cc_habilitada: habilitadaAForm(cliente.cuenta_corriente_habilitada),
         limite_credito: cliente.limite_credito != null ? String(Number(cliente.limite_credito)) : '',
@@ -593,6 +595,7 @@ ${detalle}`,
         etiquetas: etiquetasArr,
         codigo_fiscal: form.codigo_fiscal.trim() || null,
         regimen_fiscal: form.regimen_fiscal.trim() || null,
+        domicilio_fiscal: form.domicilio_fiscal.trim() || null,
         // Mig 442: la categoría solo la manda quien puede asignarla (E2), y los valores propios de CC solo el DUEÑO
         // (E3). El servidor rechaza igual (guard), pero así un SUPERVISOR puede editar el resto de la ficha.
         ...(puedeAsignarCat ? { categoria_cliente_id: formFinal.categoria_cliente_id || null } : {}),
@@ -2109,6 +2112,19 @@ ${detalle}`,
                       </select>
                       <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
+                  </div>
+                  {/* Mig 443 — domicilio del cliente como RECEPTOR del comprobante (obligatorio en Factura A). Separado de
+                      los domicilios de entrega (pestaña "Domicilios"), que solo se usan si este queda vacío. */}
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Domicilio fiscal / comercial</label>
+                    <input value={form.domicilio_fiscal} onChange={e => setForm(f => ({ ...f, domicilio_fiscal: e.target.value }))}
+                      placeholder="Calle y número, localidad, provincia"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
+                    {form.condicion_iva_receptor === 'RI' && !form.domicilio_fiscal.trim() && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                        Obligatorio para emitirle Factura A: sale impreso como domicilio del receptor.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código fiscal</label>

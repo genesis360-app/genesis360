@@ -2401,7 +2401,10 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 
 | # | Escenario | Cómo se verifica | Estado |
 |---|---|---|---|
-| 74.1 | La condición IVA sale con la denominación completa ("Responsable Inscripto", "Consumidor Final", "Responsable Monotributo"), no "RI"/"CF", en emisor y receptor de factura, NC, remito y presupuesto; el emisor dice "Condición IVA:" | unit `facturasPDF.test.ts` (códigos cortos) · mirar el PDF | ✅ unit · ⬜ papel |
-| 74.2 | "Condición de venta: Contado" en una venta cobrada; "Cuenta Corriente" en una venta a CC; se imprime además de "Forma de pago" | unit `condicionVenta` · emitir una de cada una y mirar el PDF | ✅ unit · ⬜ papel |
-| 74.3 | Factura A a un cliente sin domicilio: el modal avisa que la Factura A debe llevar el domicilio comercial del receptor (no bloquea) | abrir el modal con un cliente RI sin domicilio | ⬜ |
-| 74.4 | Con domicilio principal cargado, la factura lo imprime en "Datos del receptor" | cargar domicilio y re-descargar | ⬜ |
+| 74.1 | La condición IVA sale con la denominación completa ("Responsable Inscripto", "Consumidor Final", "Responsable Monotributo"), no "RI"/"CF", en emisor y receptor de factura, NC, remito y presupuesto; el emisor dice "Condición IVA:" | unit `facturasPDF.test.ts` (códigos cortos) · mirar el PDF | ✅ unit · ✅ papel (e2e `164`, Factura A homologación) |
+| 74.2 | "Condición de venta: Contado" en una venta cobrada; "Cuenta Corriente" en una venta a CC; se imprime además de "Forma de pago" | unit `condicionVenta` · emitir una de cada una y mirar el PDF | ✅ unit · ✅ papel (e2e `164`, Factura A homologación) |
+| 74.3 | 🛑 Factura A a un cliente RI SIN domicilio (ni fiscal ni principal): el modal la BLOQUEA (aviso rojo + botón deshabilitado) y la EF `emitir-factura` la rechaza con 400 aunque se llame directo; la venta queda sin CAE (decisión de GO 2026-09-30) | e2e `164` (A: UI + llamada directa a la EF + `ventas.cae` NULL) | ✅ |
+| 74.4 | Ficha del cliente: campo "Domicilio fiscal / comercial" (mig 443) con aviso "obligatorio para Factura A" si es RI; se guarda en `clientes.domicilio_fiscal` | e2e `164` (B) | ✅ |
+| 74.5 | Con domicilio fiscal, la Factura A se emite con CAE y el PDF lo imprime en "Datos del receptor"; sin fiscal pero con domicilio principal, imprime el principal y deja emitir | e2e `164` (C, CAE real) · unit `domicilioReceptor` | ✅ |
+| 74.6 | Layout: nada se sale del margen (tabla con IVA = 182 mm; nombre del producto partido en su columna; condición/forma de pago, nombre y domicilio largos partidos) en A, B, C, NC y sin código | unit `facturasPDFLayout.test.ts` (mide cada texto dibujado; en rojo con los anchos viejos) + imágenes de los 6 casos | ✅ |
+| 74.7 | NC-A a un cliente sin domicilio NO se bloquea (solo la factura) | revisión de la EF (`tipo_comprobante === 'A'` exacto) | ✅ código |

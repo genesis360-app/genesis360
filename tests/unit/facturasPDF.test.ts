@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizarCondIVA, condicionVenta, formatCuit, formatFecha, fmtPesos, nombreFacturaPDF,
+  normalizarCondIVA, condicionVenta, domicilioReceptor, composeDomicilioCliente, formatCuit, formatFecha, fmtPesos, nombreFacturaPDF,
   sanitizarNombreArchivo, cantidadCelda, precioUnitarioCelda, composicionUnitaria,
   type FacturaPDFData,
 } from '@/lib/facturasPDF'
@@ -44,6 +44,25 @@ describe('condicionVenta — obligatoria en la factura, distinta de la forma de 
     expect(condicionVenta(false)).toBe('Contado')
     expect(condicionVenta(null)).toBe('Contado')
     expect(condicionVenta(undefined)).toBe('Contado')
+  })
+})
+
+describe('domicilioReceptor — domicilio del CLIENTE (receptor) impreso en la factura (mig 443)', () => {
+  const entrega = { calle: 'Av. Siempre Viva', numero: '742', piso_depto: null, ciudad: 'Springfield', provincia: 'Bs As', es_principal: true }
+  it('usa el domicilio fiscal de la ficha cuando está cargado (aunque haya domicilios de entrega)', () => {
+    expect(domicilioReceptor({ domicilio_fiscal: '  Av. Benavidez 2898, Tigre, Buenos Aires ', cliente_domicilios: [entrega] }))
+      .toBe('Av. Benavidez 2898, Tigre, Buenos Aires')
+  })
+  it('sin domicilio fiscal cae al domicilio principal de entrega (clientes ya cargados siguen igual)', () => {
+    expect(domicilioReceptor({ domicilio_fiscal: '   ', cliente_domicilios: [entrega] })).toBe('Av. Siempre Viva 742, Springfield, Bs As')
+  })
+  it('elige el principal aunque no sea el primero', () => {
+    expect(composeDomicilioCliente([{ calle: 'Otra', es_principal: false }, entrega])).toBe('Av. Siempre Viva 742, Springfield, Bs As')
+  })
+  it('sin ninguno → undefined (es lo que bloquea la Factura A)', () => {
+    expect(domicilioReceptor({ domicilio_fiscal: null, cliente_domicilios: [] })).toBeUndefined()
+    expect(domicilioReceptor(null)).toBeUndefined()
+    expect(domicilioReceptor({ cliente_domicilios: [{ calle: '  ', es_principal: true }] })).toBeUndefined()
   })
 })
 

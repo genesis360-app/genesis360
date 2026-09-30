@@ -42,6 +42,13 @@ type: project
 > 7. 🛑 **QR de Mercado Pago en la factura (REGLA #0, latente)**: el link no vence, se crea uno nuevo por descarga,
 >    y lo cobrado de más (o el envío) no queda registrado por el tope de `mp-ipn`. Sin código hasta que GO responda
 >    **QR-1..QR-3** en `preguntas_pendientes_2026-09-28.md` (sección E).
+> 8. 🧾 **Factura: observaciones del contador de El Tilo — HECHO en DEV, falta PROD** (30/09, mig **443** + EF
+>    `emitir-factura` en DEV): condición IVA completa, "Condición de venta", **domicilio fiscal del cliente** (campo en la
+>    ficha) y **Factura A bloqueada sin domicilio del receptor** (POS + EF). Además el layout: la tabla con IVA se salía del
+>    margen y el nombre del producto salía cortado (ya pasaba en la factura real de El Tilo). e2e `164` con Factura A
+>    real de homologación. **Orden a PROD: mig 443 → EF `emitir-factura` → frontend** (la EF lee la columna nueva).
+>    ⚠️ **Avisar a El Tilo antes**: sus clientes RI sin domicilio (Sergio Carrizo tiene 0) quedarán bloqueados para
+>    Factura A hasta cargarlo. Visto al probar: la ficha exige **DNI** también a una empresa con CUIT (a revisar con GO).
 >
 > **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
 > - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.
@@ -107,7 +114,7 @@ type: project
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
-> | **DEV** | `v1.233.1` + D-1 fase 2, D-3, precio programado C-1/C-3, categorías etapa 1 (sin bump) | 001-**442** |
+> | **DEV** | `v1.233.1` + D-1 fase 2, D-3, precio programado C-1/C-3, categorías etapa 1, factura/contador (sin bump) | 001-**443** |
 >
 > **UNA sola tasa USD→ARS = vendedor divisa BNA del día hábil anterior** en todo el sistema (POS precio/tiers/combos/
 > pago USD, ficha, importador, OC, Gastos, dashboards, Bóveda en los dos sentidos). `src/lib/cotizacionBna.ts` +

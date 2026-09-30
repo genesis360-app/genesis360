@@ -665,6 +665,8 @@ prueba. El log de la EF muestra `[homologación]`.
 > vez que se abría (la lista de PV se carga al abrirlo y el default ya se había calculado); el `<select>` mostraba el
 > 0005. La NC automática tenía el mismo origen y salía con PV 1. Arreglado (`VentasPage.tsx`) — **EN PROD `v1.233.2`** (hotfix 2026-09-29).
 > Imprimir → Guardar como PDF ahora sale con el mismo nombre que la descarga (`Factura_A_0005-00000001_Cliente`), no "Genesis360.pdf" (en `dev`, 2026-09-29).
+> Contador de El Tilo (2026-09-30): condición IVA con denominación completa, **"Condición de venta"** (Contado /
+> Cuenta Corriente, de `ventas.es_cuenta_corriente`) y aviso de domicilio del receptor en Factura A (en `dev`).
 > Además: **la factura no guarda su PV** — la NC (`CbtesAsoc.PtoVta`) y el PDF lo deducen; con 2+ PV por CUIT pueden
 > equivocarse. Pendiente en la Fase 0 de `sources/raw/plan_empezar_de_cero.md`.
 

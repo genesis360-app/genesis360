@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-30] update | Factura: observaciones del contador de El Tilo
+
+- Contador: la factura está correcta; pide (1) domicilio comercial del receptor (obligatorio en RI), (2) **condición
+  de venta** (contado / cuenta corriente), obligatoria y distinta de la forma de pago, (3) "Responsable Inscripto" y no "RI".
+- Hecho en `dev` (sin deploy): `normalizarCondIVA` mapea los códigos cortos que guardan los formularios (RI/CF/
+  Monotributista → denominación completa; antes pasaban tal cual) → factura, NC, remito, presupuesto; el emisor dice
+  "Condición IVA:". `condicionVenta(es_cuenta_corriente)` → "Condición de venta" en factura y NC. Aviso en el modal
+  de facturar si es Factura A y el cliente no tiene domicilio. UAT §74. 1990 unit verdes, build OK.
+- El domicilio SÍ existe (`cliente_domicilios`, el principal va a la factura) pero solo se carga desde la fila
+  expandida del cliente → pestaña Domicilios; no está en el formulario fiscal. El de Sergio Carrizo (PROD) tiene 0.
+  Cómo exponerlo: pregunta a GO.
+
 ## [2026-09-29] query | QR de Mercado Pago en la factura — 5 riesgos de plata, preguntas QR-1..QR-3
 
 - GO preguntó si sigue el QR de MP en la factura. Sigue, pero depende del **saldo pendiente**, no del medio de pago.

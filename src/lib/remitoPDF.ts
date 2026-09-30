@@ -62,7 +62,7 @@ async function construirRemitoDoc(data: RemitoPDFData): Promise<jsPDF> {
   if (data.emisor_domicilio) {
     for (const ln of (doc.splitTextToSize(data.emisor_domicilio, LEFT_W) as string[])) { doc.text(ln, emX, y); y += 5 }
   }
-  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  doc.text(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
   if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
   if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
   const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')

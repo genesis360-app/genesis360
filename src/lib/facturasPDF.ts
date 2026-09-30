@@ -65,6 +65,7 @@ export interface FacturaPDFData {
   total: number
   moneda?: string                 // 'PES' por defecto
   forma_pago?: string | null      // "Efectivo", "Cuenta Corriente", etc.
+  condicion_venta?: string | null // "Contado" / "Cuenta Corriente" — obligatoria en la factura (≠ forma de pago)
 
   // Pago online (MercadoPago) — QR del init_point, solo si hay saldo pendiente
   pago_mp_qr?: string | null      // dataURL del QR del link de pago
@@ -74,16 +75,21 @@ export interface FacturaPDFData {
 // ─── Mapeo tipo comprobante → número AFIP ────────────────────────────────────
 // (TIPO_CBTE vive en facturacionLogic e incluye A/B/C + NC-A/B/C + ND-A/B/C.)
 
+// Los formularios guardan los códigos cortos (RI / CF / Monotributista / Exento); los snake_case son legacy.
+// El papel lleva la denominación completa (contador de El Tilo, 2026-09-30: "RI" → "Responsable Inscripto").
 const COND_IVA_LABEL: Record<string, string> = {
   responsable_inscripto: 'Responsable Inscripto',
-  monotributo:           'Monotributo',
+  monotributo:           'Responsable Monotributo',
   exento:                'Exento',
   consumidor_final:      'Consumidor Final',
+  ri:                    'Responsable Inscripto',
+  cf:                    'Consumidor Final',
+  monotributista:        'Responsable Monotributo',
 }
 
 export function normalizarCondIVA(v?: string | null): string {
   if (!v) return 'Consumidor Final'
-  return COND_IVA_LABEL[v] ?? v
+  return COND_IVA_LABEL[v.trim().toLowerCase()] ?? v
 }
 
 // El QR fiscal (RG 4291) se construye con buildQrAfipUrl de '@/lib/facturacionLogic'
@@ -204,7 +210,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       doc.text(ln, emX, y); y += 5
     }
   }
-  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  doc.text(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
   if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
   if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
   const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')
@@ -223,10 +229,12 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text(`N° ${letra}-${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
   doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27, { align: 'right' })
   doc.text(`Moneda: ${data.moneda === 'USD' ? 'Dólares' : 'Pesos Argentinos'}`, RX, 32, { align: 'right' })
-  if (data.forma_pago) doc.text(`Forma de pago: ${data.forma_pago}`, RX, 37, { align: 'right' })
+  let rightY = 32
+  if (data.condicion_venta) { rightY += 5; doc.text(`Condición de venta: ${data.condicion_venta}`, RX, rightY, { align: 'right' }) }
+  if (data.forma_pago) { rightY += 5; doc.text(`Forma de pago: ${data.forma_pago}`, RX, rightY, { align: 'right' }) }
 
   // ── Línea divisoria horizontal ───────────────────────────────────────────────
-  const rightBottom = data.forma_pago ? 37 : 32
+  const rightBottom = rightY
   const lineY = Math.max(y, boxY + boxH, rightBottom) + 3
   doc.setDrawColor(180).setLineWidth(0.3)
   doc.line(14, lineY, W - 14, lineY)
@@ -466,6 +474,11 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text('Comprobante fiscal electrónico — Genesis360', W / 2, 285, { align: 'center' })
 
   return doc
+}
+
+/** Condición de venta del comprobante: la venta a cuenta corriente es "Cuenta Corriente"; el resto, "Contado". */
+export function condicionVenta(esCuentaCorriente?: boolean | null): string {
+  return esCuentaCorriente ? 'Cuenta Corriente' : 'Contado'
 }
 
 export function nombreFacturaPDF(data: FacturaPDFData): string {

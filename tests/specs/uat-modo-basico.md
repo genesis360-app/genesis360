@@ -2396,3 +2396,12 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 73.13 | Aviso de impacto al bajar el límite de una categoría ("N clientes quedarían por encima") | e2e `163`: deuda 700 heredando límite 1000 → bajar a 600 avisa "1 cliente"; cancelar no guarda | ✅ |
 | 73.14 | Pedidos → venta a CC: condiciones efectivas + CC habilitada en el servidor | e2e `107` (CC sobre el límite, regresión) · revisión de la mig | ✅ |
 | 73.15 | Regresión de los e2e de CC existentes (107, 28, 39, 40, 57, 83) | verdes; 46/49/69/72 se saltean por fixtures sin sembrar (preexistente) | ✅ |
+
+## 🧾 §74 — Factura: observaciones del contador de El Tilo (2026-09-30)
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 74.1 | La condición IVA sale con la denominación completa ("Responsable Inscripto", "Consumidor Final", "Responsable Monotributo"), no "RI"/"CF", en emisor y receptor de factura, NC, remito y presupuesto; el emisor dice "Condición IVA:" | unit `facturasPDF.test.ts` (códigos cortos) · mirar el PDF | ✅ unit · ⬜ papel |
+| 74.2 | "Condición de venta: Contado" en una venta cobrada; "Cuenta Corriente" en una venta a CC; se imprime además de "Forma de pago" | unit `condicionVenta` · emitir una de cada una y mirar el PDF | ✅ unit · ⬜ papel |
+| 74.3 | Factura A a un cliente sin domicilio: el modal avisa que la Factura A debe llevar el domicilio comercial del receptor (no bloquea) | abrir el modal con un cliente RI sin domicilio | ⬜ |
+| 74.4 | Con domicilio principal cargado, la factura lo imprime en "Datos del receptor" | cargar domicilio y re-descargar | ⬜ |

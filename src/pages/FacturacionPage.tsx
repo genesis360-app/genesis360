@@ -12,7 +12,7 @@ import { PageTabs } from '@/components/PageTabs'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
-import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, type FacturaPDFData } from '@/lib/facturasPDF'
 import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -128,6 +128,7 @@ export default function FacturacionPage() {
       })),
       total: Number(venta.total),
       forma_pago: formaPago,
+      condicion_venta: condicionVenta((venta as any).es_cuenta_corriente),
       pago_mp_qr: pagoMpQr,
       pago_mp_monto: pagoMpQr ? saldo : null,
     }

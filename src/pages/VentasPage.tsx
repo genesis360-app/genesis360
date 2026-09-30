@@ -15,7 +15,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
-import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, type FacturaPDFData } from '@/lib/facturasPDF'
 import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
@@ -526,6 +526,8 @@ export default function VentasPage() {
   const [facturaClienteCuit, setFacturaClienteCuit] = useState<string | null>(null)
   // DNI del cliente: junto al CUIT, sirve para identificar al receptor en Factura B sobre el umbral
   const [facturaClienteDni, setFacturaClienteDni] = useState<string | null>(null)
+  // Factura A: la normativa exige el domicilio comercial del receptor (contador de El Tilo, 2026-09-30).
+  const [facturaClienteTieneDomicilio, setFacturaClienteTieneDomicilio] = useState(true)
   // Tras emitir desde el POS: pasa a la vista de acciones (descargar/imprimir/email) sin ir al historial
   const [facturaEmitida, setFacturaEmitida] = useState<{ ventaId: string; tipo: string; cae: string } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
@@ -2063,13 +2065,14 @@ export default function VentasPage() {
   useEffect(() => {
     if (!facturaModal) return
     let cancel = false
-    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor)').eq('id', facturaModal.ventaId).single()
+    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(id))').eq('id', facturaModal.ventaId).single()
       .then(({ data }) => {
         if (cancel) return
         const cuit = ((data as any)?.clientes?.cuit_receptor ?? '').toString().replace(/[-\s]/g, '')
         const dni = ((data as any)?.clientes?.dni ?? '').toString().replace(/\D/g, '')
         setFacturaClienteCuit(cuit || null)
         setFacturaClienteDni(dni || null)
+        setFacturaClienteTieneDomicilio(((data as any)?.clientes?.cliente_domicilios ?? []).length > 0)
         // Emisor default de esta venta = el de su sucursal (?? principal)
         const def = emisorDeSucursal((data as any)?.sucursal_id)
         setFacturaEmisorId(def?.id ?? null)
@@ -2205,7 +2208,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -2265,6 +2268,7 @@ export default function VentasPage() {
       // bonificación que le hicieron — y la factura es el documento que se lleva.
       descuento_general_pct: Number((venta as any).descuento_total ?? 0) || null,
       forma_pago: formaPago,
+      condicion_venta: condicionVenta((venta as any).es_cuenta_corriente),
       pago_mp_qr: pagoMpQr,
       pago_mp_monto: pagoMpQr ? saldo : null,
     }
@@ -2557,7 +2561,7 @@ export default function VentasPage() {
   // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
   async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: dev, error } = await supabase.from('devoluciones')
-      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
@@ -2591,6 +2595,7 @@ export default function VentasPage() {
       })),
       total: Number((dev as any).monto_total ?? 0),
       forma_pago: null,
+      condicion_venta: condicionVenta((dev as any)?.ventas?.es_cuenta_corriente),
     }
     return { data, email: cli?.email ?? null }
   }
@@ -9102,6 +9107,11 @@ export default function VentasPage() {
               {!facturaClienteCuit && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
                   Factura A deshabilitada: la venta no tiene un cliente con CUIT.
+                </p>
+              )}
+              {facturaTipo === 'A' && facturaClienteCuit && !facturaClienteTieneDomicilio && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                  El cliente no tiene domicilio cargado: la Factura A debe llevar el domicilio comercial del receptor. Cargalo en la ficha del cliente antes de emitir.
                 </p>
               )}
               {requiereIdentFacturaB && (

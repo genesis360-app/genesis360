@@ -1103,7 +1103,7 @@ export default function VentasPage() {
     setSavingCliente(true)
     try {
       const { data, error } = await supabase.from('clientes')
-        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim(), email: email.trim() || null })
+        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim() || null, telefono: telefono.trim(), email: email.trim() || null })
         .select('id, nombre').single()
       if (error) throw error
       setClienteId(data.id)

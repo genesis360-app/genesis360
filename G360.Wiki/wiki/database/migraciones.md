@@ -6,7 +6,13 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-443, + correctivos 387b/387c)
+# Historial de Migraciones (001-444, + correctivos 387b/387c)
+
+📅 **Migración 444 — 🟡 EN DEV, falta PROD** (2026-09-30): `444_clientes_dni_vacio_a_null.sql` — DNI vacío del cliente → `NULL`
+(UPDATE de lo existente + trigger `trg_clientes_dni_vacio_a_null` BEFORE INSERT/UPDATE OF dni). El índice único `(tenant_id, dni)`
+trata `''` como valor: el alta rápida del POS y la ficha guardaban `''` y el 2º cliente sin DNI chocaba. En PROD hay 2 negocios
+con un cliente con `dni = ''` — ⚠️ **uno es El Tilo**: aplicarla en PROD modifica esa fila (`'' → NULL`); pedir OK de GO antes.
+Acompaña que la ficha ya no exige DNI cuando el cliente tiene CUIT.
 
 📅 **Migración 443 — 🟡 EN DEV, falta PROD** (2026-09-30): `443_cliente_domicilio_fiscal.sql` — `clientes.domicilio_fiscal text`
 (domicilio fiscal/comercial del cliente como **receptor**; contador de El Tilo: obligatorio en Factura A). Aditiva, permisos a

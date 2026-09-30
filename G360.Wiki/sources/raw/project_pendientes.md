@@ -47,8 +47,11 @@ type: project
 >    ficha) y **Factura A bloqueada sin domicilio del receptor** (POS + EF). Además el layout: la tabla con IVA se salía del
 >    margen y el nombre del producto salía cortado (ya pasaba en la factura real de El Tilo). e2e `164` con Factura A
 >    real de homologación. **Orden a PROD: mig 443 → EF `emitir-factura` → frontend** (la EF lee la columna nueva).
->    ⚠️ **Avisar a El Tilo antes**: sus clientes RI sin domicilio (Sergio Carrizo tiene 0) quedarán bloqueados para
->    Factura A hasta cargarlo. Visto al probar: la ficha exige **DNI** también a una empresa con CUIT (a revisar con GO).
+>    ⚠️ **Avisar a El Tilo antes**: sus clientes RI sin domicilio (el de su primera factura tiene 0) quedarán bloqueados para
+>    Factura A hasta cargarlo. ✅ La ficha ya no exige DNI cuando hay CUIT (GO 30/09). **Mig 444** (DNI '' → NULL + trigger):
+>    ⚠️ en PROD modifica 1 cliente de El Tilo (`dni '' → NULL`) — **pedir OK de GO** antes de aplicarla.
+>    🛑 **Datos del cliente real en el repo PÚBLICO**: `f733d122` (test con CUIT/CBU/alias/CAE de El Tilo) y el wiki (CUIT, correo)
+>    — limpiados en HEAD el 30/09; el historial de git los conserva (reescribir `dev` = decisión de GO).
 >
 > **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
 > - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.
@@ -97,8 +100,8 @@ type: project
 > Sin decidir: preguntar a GO antes de implementar.
 >
 > **🧾 Clientes reales en PROD (solo lectura, 28/09):**
-> - **El Tilo** (`04aaed58-80d8-4b8c-b3fd-a8cfbf46046a`, alta 28/09, maderaseltilo@hotmail.com, MADERA CARRIZO HERMANOS
->   SRL, CUIT 30-71598502-7, RI, modo avanzado): facturación OK (cert activo, PV 5, **ya en producción**). No podía vender
+> - **El Tilo** (`04aaed58-80d8-4b8c-b3fd-a8cfbf46046a`, alta 28/09, MADERA CARRIZO HERMANOS
+>   SRL, RI, modo avanzado): facturación OK (cert activo, PV 5, **ya en producción**). No podía vender
 >   porque su **único producto quedó desactivado** (18:43). Indicado a GO: reactivarlo; probar ventas en Modo PRUEBA **sin
 >   facturar** (su cert es de producción: en homologación falla) y anular las de prueba; la primera factura real valida el
 >   circuito. Si ARCA rechaza por permiso → falta el paso 7.
@@ -1125,7 +1128,7 @@ type: project
 > `/assets/*.js`, lo que produce un **falso negativo** ("no está deployado" cuando sí lo está).
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
-> DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
+> DUEÑO + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
 > bloquea, deploy) **seguir revisando si lo está usando**: sesiones y refresh tokens en `auth`, últimos movimientos
 > y `query_logs` agrupando `edge_logs` por `request.sb.auth_user`. Nada de pruebas contra su tenant.
 >

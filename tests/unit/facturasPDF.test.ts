@@ -50,8 +50,8 @@ describe('condicionVenta — obligatoria en la factura, distinta de la forma de 
 describe('domicilioReceptor — domicilio del CLIENTE (receptor) impreso en la factura (mig 443)', () => {
   const entrega = { calle: 'Av. Siempre Viva', numero: '742', piso_depto: null, ciudad: 'Springfield', provincia: 'Bs As', es_principal: true }
   it('usa el domicilio fiscal de la ficha cuando está cargado (aunque haya domicilios de entrega)', () => {
-    expect(domicilioReceptor({ domicilio_fiscal: '  Av. Benavidez 2898, Tigre, Buenos Aires ', cliente_domicilios: [entrega] }))
-      .toBe('Av. Benavidez 2898, Tigre, Buenos Aires')
+    expect(domicilioReceptor({ domicilio_fiscal: '  Calle Falsa 1234, Villa Ejemplo, Buenos Aires ', cliente_domicilios: [entrega] }))
+      .toBe('Calle Falsa 1234, Villa Ejemplo, Buenos Aires')
   })
   it('sin domicilio fiscal cae al domicilio principal de entrega (clientes ya cargados siguen igual)', () => {
     expect(domicilioReceptor({ domicilio_fiscal: '   ', cliente_domicilios: [entrega] })).toBe('Av. Siempre Viva 742, Springfield, Bs As')

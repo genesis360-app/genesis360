@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-30] update | DNI opcional con CUIT (mig 444) + datos del cliente real fuera del repo
+
+- GO: no pedir DNI cuando el cliente tiene CUIT → `dniObligatorioEnFicha` (`clienteCampos.ts`). De paso, bug latente: la
+  ficha y el alta rápida del POS guardaban `dni = ''` y el índice único `(tenant, dni)` lo trata como valor → el 2º
+  cliente sin DNI chocaba. En PROD, 2 negocios con un cliente así (uno es El Tilo). Mig 444 (DEV): `'' → NULL` + trigger.
+  e2e `164` ahora crea la empresa SIN DNI y la ficha la guarda. 2002 unit verdes. UAT §74.8-74.9.
+- 🛑 Error mío: el test de layout de la factura usaba los datos REALES de El Tilo (razón social, CUIT, domicilio, CBU,
+  alias y un CAE real) copiados de su PDF, y quedó en `f733d122` en el repo **público**. No se tocó su negocio (el test
+  dibuja un PDF local, sin base ni AFIP). Reemplazados por datos ficticios; el wiki también tenía su CUIT y correo →
+  quitados. El historial conserva los commits viejos: reescribirlo es decisión de GO.
+
 ## [2026-09-30] update | Domicilio fiscal del cliente (mig 443) + Factura A bloqueada sin él + layout de la factura
 
 - Decisión de GO: campo propio "Domicilio fiscal / comercial" en la ficha del cliente (receptor, no emisor ni sucursal)
@@ -30,7 +41,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
   "Condición IVA:". `condicionVenta(es_cuenta_corriente)` → "Condición de venta" en factura y NC. Aviso en el modal
   de facturar si es Factura A y el cliente no tiene domicilio. UAT §74. 1990 unit verdes, build OK.
 - El domicilio SÍ existe (`cliente_domicilios`, el principal va a la factura) pero solo se carga desde la fila
-  expandida del cliente → pestaña Domicilios; no está en el formulario fiscal. El de Sergio Carrizo (PROD) tiene 0.
+  expandida del cliente → pestaña Domicilios; no está en el formulario fiscal. El cliente de la primera factura (PROD) tiene 0.
   Cómo exponerlo: pregunta a GO.
 
 ## [2026-09-29] query | QR de Mercado Pago en la factura — 5 riesgos de plata, preguntas QR-1..QR-3
@@ -42,7 +53,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ## [2026-09-29] update | Nombre de archivo al imprimir → Guardar como PDF
 
-- El Tilo facturó OK en PROD con `v1.233.2` (A-0005-00000001, CAE 86395240625932; importes verificados).
+- El Tilo facturó OK en PROD con `v1.233.2` (A-0005-00000001; importes verificados).
 - El PDF le quedó "Genesis360.pdf": usó **Imprimir → Guardar como PDF**, y el navegador nombra con el título de la
   página. La descarga ya tenía nombre (`Factura_A_0005-00000001_Cliente.pdf`).
 - Fix (en `dev`, sin deploy): factura/remito/presupuesto ponen el nombre de la descarga como título mientras
@@ -92,7 +103,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 - 🛑 **Hallazgo REGLA #0**: `ventas`/`devoluciones` no guardan el ambiente del CAE (homologación vs producción) → no se
   distingue una factura de prueba de una real. Fase 0 del plan lo sella para adelante; los existentes = reales.
 - **Soporte PROD (solo lectura)**: el cliente de la guía de facturación es el negocio **El Tilo** (alta 28/09,
-  maderaseltilo@hotmail.com, CUIT 30-71598502-7, RI), no Kalken (Kalken sigue sin facturación). Facturación OK
+  RI), no Kalken (Kalken sigue sin facturación). Facturación OK
   (cert activo, PV 5, producción). No podía vender porque su **único producto quedó desactivado** (18:43). Indicado:
   reactivarlo; probar en Modo PRUEBA sin facturar (su cert es de producción, en homologación falla) y anular las ventas
   de prueba; la primera factura real es la validación del circuito.

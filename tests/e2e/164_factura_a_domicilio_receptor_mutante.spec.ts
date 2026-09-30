@@ -87,7 +87,7 @@ test.describe('Factura A — domicilio del receptor obligatorio (mutante, AFIP h
     const cliente = `E2E Receptor164 ${Date.now()}`
 
     const r = await request.post(`${SUPABASE_URL}/rest/v1/clientes`, {
-      headers: h, data: { tenant_id: tid, nombre: cliente, cuit_receptor: CUIT_RECEPTOR, condicion_iva_receptor: 'RI', telefono: '1100000164', dni: String(Date.now()).slice(-8) },
+      headers: h, data: { tenant_id: tid, nombre: cliente, cuit_receptor: CUIT_RECEPTOR, condicion_iva_receptor: 'RI', telefono: '1100000164' },
     })
     expect(r.ok(), `[164] no se pudo crear el cliente: ${await r.text()}`).toBe(true)
     const clienteId = ((await r.json()) as any[])[0].id
@@ -126,6 +126,8 @@ test.describe('Factura A — domicilio del receptor obligatorio (mutante, AFIP h
       const campo = page.getByPlaceholder('Calle y número, localidad, provincia')
       await expect(campo, '[164B] la ficha no tiene el campo de domicilio fiscal').toBeVisible({ timeout: 10000 })
       await expect(page.getByText(/Obligatorio para emitirle Factura A/).first(), '[164B] no avisó que es obligatorio para RI').toBeVisible()
+      // Empresa con CUIT y sin DNI: la ficha no exige DNI (decisión de GO 2026-09-30) — el guardado de abajo lo prueba.
+      await expect(page.getByText('DNI (opcional: tiene CUIT)'), '[164B] la ficha sigue exigiendo DNI con CUIT').toBeVisible()
       await campo.fill(DOMICILIO)
       await campo.scrollIntoViewIfNeeded()
       await page.screenshot({ path: path.join(EVIDENCIA, '2-ficha-cliente-domicilio.png') })

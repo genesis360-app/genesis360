@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { camposRequeridosCliente, enumLegacyDeCampos, validarClienteInline } from '@/lib/clienteCampos'
+import { camposRequeridosCliente, enumLegacyDeCampos, validarClienteInline, dniObligatorioEnFicha } from '@/lib/clienteCampos'
 
 // Punto 4 backlog Fede/GO — campos requeridos del cliente en el POS (mig 280)
 
@@ -49,5 +49,18 @@ describe('validarClienteInline', () => {
     const sinReq = { dni: false, telefono: false, email: false }
     expect(validarClienteInline({ nombre: 'Ana', dni: '', telefono: '', email: 'no-es-mail' }, sinReq)).toMatch(/válido/)
     expect(validarClienteInline({ nombre: 'Ana', dni: '', telefono: '', email: '' }, sinReq)).toBeNull()
+  })
+})
+
+
+describe('dniObligatorioEnFicha — con CUIT el DNI es opcional (una empresa no tiene DNI)', () => {
+  it('sin CUIT o con CUIT incompleto → DNI obligatorio', () => {
+    expect(dniObligatorioEnFicha('')).toBe(true)
+    expect(dniObligatorioEnFicha(null)).toBe(true)
+    expect(dniObligatorioEnFicha('30-1234')).toBe(true)
+  })
+  it('con CUIT de 11 dígitos (con o sin guiones) → DNI opcional', () => {
+    expect(dniObligatorioEnFicha('30-70308853-4')).toBe(false)
+    expect(dniObligatorioEnFicha('30703088534')).toBe(false)
   })
 })

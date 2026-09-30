@@ -1,7 +1,7 @@
 /**
  * Layout de la factura — nada se sale del margen (2026-09-30).
  *
- * La primera factura real de El Tilo mostró la columna "Total" pasada del margen derecho: las columnas de la tabla con
+ * Una factura real de un cliente mostró la columna "Total" pasada del margen derecho: las columnas de la tabla con
  * IVA sumaban 188/184 mm con 182 mm disponibles. Al sumar la condición IVA completa, la condición de venta y el
  * domicilio del receptor (contador de El Tilo) había más texto largo en el encabezado. Este test arma el PDF REAL
  * (`construirFacturaPDFDoc`) con los peores casos y mide: ancho de la tabla y cada texto dibujado contra los márgenes.
@@ -36,18 +36,18 @@ const W = 210, MARGEN = 14, EPS = 0.5
 
 const base: FacturaPDFData = {
   tipo_comprobante: 'A', numero_comprobante: 12345678, punto_venta: 5, fecha: '2026-09-30T15:00:00-03:00',
-  cae: '86395240625932', vencimiento_cae: '2026-10-10',
-  emisor_razon_social: 'Madera Carrizo Hermanos Sociedad de Responsabilidad Limitada', emisor_cuit: '30715985027',
-  emisor_domicilio: 'Av. Benavídez 2898, Ruta Provincial 27, Benavídez, Partido de Tigre, Provincia de Buenos Aires',
-  emisor_condicion_iva: 'RI', emisor_ingresos_brutos: '30715985027', emisor_inicio_actividades: '2018-04-01',
-  emisor_sitio_web: 'www.maderaseltilo.com.ar', emisor_telefono: '11 5555-5555', emisor_email: 'ventas@maderaseltilo.com.ar',
-  emisor_banco: 'BBVA', emisor_cbu: '0170368720000000265511', emisor_alias: 'eltilo.maderas',
+  cae: '71000000000001', vencimiento_cae: '2026-10-10',
+  emisor_razon_social: 'Aserradero Los Álamos del Litoral Sociedad de Responsabilidad Limitada', emisor_cuit: '30000000007',
+  emisor_domicilio: 'Calle Falsa 1234, Ruta Provincial 99, Villa Ejemplo, Partido de Ejemplo, Provincia de Buenos Aires',
+  emisor_condicion_iva: 'RI', emisor_ingresos_brutos: '901-000000-0', emisor_inicio_actividades: '2015-03-01',
+  emisor_sitio_web: 'www.aserradero-ejemplo.com.ar', emisor_telefono: '11 5555-5555', emisor_email: 'ventas@aserradero-ejemplo.com.ar',
+  emisor_banco: 'Banco Ejemplo', emisor_cbu: '0000003100000000000001', emisor_alias: 'aserradero.ejemplo',
   emisor_leyenda: 'Gracias por tu compra!',
   receptor_nombre: 'Distribuidora de Maderas y Materiales para la Construcción del Delta Sociedad Anónima',
   receptor_cuit_dni: '30703088534', receptor_condicion_iva: 'Responsable Inscripto',
   receptor_domicilio: 'Av. del Libertador 14.520 Piso 3 Oficina B, entre Alvear y Pueyrredón, Martínez, Partido de San Isidro, Provincia de Buenos Aires (B1640)',
   items: [
-    { codigo: 'SKU-00001', descripcion: 'Poste Euc impregnado 1.8m 9/10 diamentro', descripcion_extra: 'Impregnado CCA - 1.8 largo, 9/10 diametro',
+    { codigo: 'SKU-00001', descripcion: 'Poste de eucalipto impregnado 1,8 m 9/10 de diámetro', descripcion_extra: 'Impregnado CCA - 1,8 m de largo, 9/10 de diámetro',
       cantidad: 101, precio_unitario: 5750, alicuota_iva: 21, subtotal: 580750 },
     { codigo: 'MAD-TIRANTE-3X6-5.40', descripcion: 'Tirante de pino elliotis cepillado 3" x 6" x 5,40 m seco en horno', cantidad: 1250,
       precio_unitario: 18990.5, alicuota_iva: 10.5, subtotal: 23738125 },

@@ -1,3 +1,4 @@
+import { dniObligatorioEnFicha } from '@/lib/clienteCampos'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -538,7 +539,7 @@ export default function ClientesPage() {
   const guardar = async () => {
     if (moduloSoloLectura(user, 'clientes')) { toast.error('Tu rol tiene acceso de solo lectura en Clientes.'); return }
     if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
-    if (!form.dni.trim()) { toast.error('El DNI es obligatorio'); return }
+    if (!form.dni.trim() && dniObligatorioEnFicha(form.cuit_receptor)) { toast.error('El DNI es obligatorio (salvo que el cliente tenga CUIT)'); return }
     if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
     const errDni = validarDNI(form.dni)
     const errTel = validarTelefono(form.telefono)
@@ -552,9 +553,9 @@ export default function ClientesPage() {
       const { data: posibles } = await supabase.from('clientes')
         .select('nombre, dni, telefono')
         .eq('tenant_id', tenant!.id)
-        .or(`dni.eq.${form.dni.trim()},nombre.ilike.${form.nombre.trim()}`)
+        .or(form.dni.trim() ? `dni.eq.${form.dni.trim()},nombre.ilike.${form.nombre.trim()}` : `nombre.ilike.${form.nombre.trim()}`)
       const match = (posibles ?? []).find((c: any) =>
-        c.dni === form.dni.trim() ||
+        (!!form.dni.trim() && c.dni === form.dni.trim()) ||
         c.nombre.trim().toLowerCase() === form.nombre.trim().toLowerCase() ||
         (tel && (c.telefono ?? '').replace(/\D/g, '') === tel))
       if (match && !(await confirmar(`Posible duplicado: ya existe "${match.nombre}"${match.dni ? ` (DNI ${match.dni})` : ''}. ¿Crear de todas formas?`))) return
@@ -586,7 +587,8 @@ ${detalle}`,
         ? form.etiquetas.split(',').map(e => e.trim()).filter(Boolean)
         : null
       const payload = {
-        nombre: form.nombre.trim(), dni: form.dni.trim(),
+        // Sin DNI → NULL, nunca '': el índice único (tenant, dni) trata '' como un valor y el 2º cliente sin DNI chocaba.
+        nombre: form.nombre.trim(), dni: form.dni.trim() || null,
         telefono: form.telefono.trim(), email: form.email || null,
         notas: form.notas || null,
         cuit_receptor: form.cuit_receptor.trim() || null,
@@ -2043,7 +2045,7 @@ ${detalle}`,
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">DNI *</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{dniObligatorioEnFicha(form.cuit_receptor) ? 'DNI *' : 'DNI (opcional: tiene CUIT)'}</label>
                   <input value={form.dni}
                     onChange={e => { setForm(f => ({ ...f, dni: e.target.value })); setDniError(null) }}
                     onBlur={e => setDniError(validarDNI(e.target.value))}

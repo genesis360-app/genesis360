@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-30T20:19:02.933Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260930195014 · 173 tablas
+-- Generado 2026-09-30T23:52:57.345Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260930234256 · 173 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -5829,6 +5829,20 @@ BEGIN
     IF v_rol IS DISTINCT FROM 'DUEÑO' AND v_rol IS DISTINCT FROM 'ADMIN' THEN
       RAISE EXCEPTION 'No autorizado: solo el dueño puede darle a un cliente condiciones de cuenta corriente propias.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_clientes_dni_vacio_a_null()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.dni IS NOT NULL THEN
+    NEW.dni := NULLIF(btrim(NEW.dni), '');
   END IF;
   RETURN NEW;
 END;
@@ -13915,6 +13929,7 @@ CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH RO
 CREATE TRIGGER clientes_cuenta_token_fechado BEFORE UPDATE OF cuenta_token ON public.clientes FOR EACH ROW EXECUTE FUNCTION trg_clientes_cuenta_token_fechado();
 CREATE TRIGGER trg_clientes_categoria_auditar AFTER UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_auditar();
 CREATE TRIGGER trg_clientes_categoria_guard BEFORE INSERT OR UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_guard();
+CREATE TRIGGER trg_clientes_dni_vacio_a_null BEFORE INSERT OR UPDATE OF dni ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_dni_vacio_a_null();
 CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();

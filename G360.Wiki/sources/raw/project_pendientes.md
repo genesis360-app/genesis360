@@ -45,6 +45,10 @@ type: project
 >    con series es 0 → el movimiento queda con "stock antes" = 0. Solo el historial (el stock real cuenta series). PROD: 1
 >    de 3 ingresos con series afectado. No se reescribe el histórico. ✅ **Arreglado hacia adelante (01/10, GO)**:
 >    `src/lib/stockSucursal.ts` cuenta las series de la sucursal; lo usan todos los movimientos de InventarioPage.
+>    **Proveedores HECHO en DEV (01/10)**: "Importar" en la pantalla de Proveedores (antes no existía) — mig 450 +
+>    `ImportarProveedoresModal` (plantilla con listas desplegables de condición IVA y tipo; CUIT con dígito verificador;
+>    CBU con sus verificadores; match por CUIT normalizado o, sin CUIT, por nombre). e2e `170` 5/5. Faltan en el archivo:
+>    modo de pago, anticipo, código/régimen fiscal y contactos (se completan en la ficha).
 >    **Sigue**:
 >    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
 >    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →

@@ -36,13 +36,14 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Download, DollarSign, AlertCircle, FileDown, RotateCcw,
-  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog,
+  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload,
 } from 'lucide-react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
 import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { ImportarProveedoresModal } from '@/components/importacion/ImportarProveedoresModal'
 import { condicionParaProveedor, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes' | 'autorizaciones'
@@ -239,6 +240,7 @@ export default function ProveedoresPage() {
   // ── Proveedores state ──────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showImportProv, setShowImportProv] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<FormProv>(FORM_PROV_EMPTY)
 
@@ -1650,6 +1652,8 @@ export default function ProveedoresPage() {
           <div className="flex gap-2">
             <ActionMenu
               items={[
+                // Lector: solo lectura (la base tampoco lo deja importar, mig 450).
+                { label: 'Importar', icon: Upload, onClick: () => setShowImportProv(true), hidden: (user?.rol as string | undefined) === 'VIEWER' },
                 { label: 'Exportar Excel', icon: Download, onClick: () => exportarProveedores('xlsx') },
                 { label: 'Exportar CSV',  icon: Download, onClick: () => exportarProveedores('csv') },
                 { label: 'Exportar JSON', icon: Download, onClick: () => exportarProveedores('json') },
@@ -2622,6 +2626,13 @@ export default function ProveedoresPage() {
       )}
 
       {/* ── Modal proveedor ──────────────────────────────────────────────────── */}
+      {showImportProv && (
+        <ImportarProveedoresModal
+          onClose={() => setShowImportProv(false)}
+          onCargado={() => qc.invalidateQueries({ queryKey: ['proveedores'] })}
+        />
+      )}
+
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">

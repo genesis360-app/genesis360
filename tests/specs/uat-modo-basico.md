@@ -2411,6 +2411,16 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🚚 §80 — Importar proveedores (mig 450) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 80.1 | Alta desde archivo: CUIT y CBU se guardan solo con dígitos; la condición IVA con el código de la tabla | e2e `170` A | ✅ |
+| 80.2 | Existente detectado por CUIT aunque en la base tenga guiones; actualizar no borra datos con celdas vacías | e2e `170` B | ✅ |
+| 80.3 | CUIT con dígito verificador mal, CBU con verificadores mal, condición IVA desconocida → error con motivo, sin carga | e2e `170` C · unit `importarProveedores` | ✅ |
+| 80.4 | 🛑 Todo o nada: si la base rechaza una fila (el proveedor a actualizar se borró) no queda nada | e2e `170` D · SQL DEV | ✅ |
+| 80.5 | Lector no ve "Importar" y la base lo rechaza | revisión + guard en la función | ✅ código |
+
 ## 🔢 §79 — "Stock antes" de productos con series en los movimientos (2026-10-01)
 
 | # | Escenario | Cómo se verifica | Estado |

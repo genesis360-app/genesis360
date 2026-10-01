@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importar proveedores (Fase 3 de importar/exportar, mig 450)
+
+- Pedido de GO. La pantalla de Proveedores no tenía importador. Mig 450 `fn_importar_proveedores` (gemela de 448) +
+  `src/components/importacion/ImportarProveedoresModal.tsx` (vista previa compartida, modal a pantalla completa) +
+  `src/lib/importarProveedores.ts` (condición IVA por etiqueta/sigla/código, CBU con dígitos verificadores, tipo).
+- Existente: por CUIT normalizado en los dos lados (hay CUIT viejos con guiones) o, sin CUIT, por nombre; actualizar
+  escribe solo celdas con valor. `migration-reviewer` sin bloqueantes (recorte de textos, `tipo` vacío, tipos JSON).
+- Verde: tsc, build, unit 2072, SQL DEV (rollback), e2e `170` 5/5.
+
 ## [2026-10-01] update | Fix REGLA #0: "stock antes" de productos con series en los movimientos de Inventario
 
 - GO pidió corregir hacia adelante. `getStockAntesSucursal` (InventarioPage) sumaba `inventario_lineas.cantidad`, que

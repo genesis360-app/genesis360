@@ -8,6 +8,10 @@ updated: 2026-07-09
 
 # 🧾 Facturación automática de plataforma (Fede)
 
+> 🆕 **2026-10-01:** generado el CSR del certificado de plataforma (CUIT de Fede, alias `genesis360plataforma`; clave en
+> `certificados-afip/plataforma/20422374168/`). Fede lo sube a ARCA (`sources/raw/guia_fede_certificado_plataforma.md`) para
+> el padrón (autocompletar por CUIT) y, si habilita `wsfe`, sirve para facturar con el motor propio sin AfipSDK.
+
 > Estado: **✅ 100% en PROD (mig 261 + EFs `emitir-factura-plataforma`/
 > `platform-facturacion-sweep`, release v1.123.0)** — código mergeado a `main` (PR #278 + #279) +
 > tag/GitHub release publicados + Vercel `READY` en ambos proyectos, confirmado 2026-07-09. Código

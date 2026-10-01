@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Padrón ARCA fase 1 (certificado de plataforma) + cierre para /clear
+
+- Nueva prioridad de GO: autocompletar cliente/proveedor/emisor/alta rápida POS por CUIT desde ARCA. Decisiones: cert de
+  Genesis360 con el CUIT de Fede, consulta automática con vista previa. Manual oficial `ws_sr_constancia_inscripcion` v3.4
+  leído (getPersona_v2, endpoints, mapeo de condición IVA). Sin cert de Fede en DEV ni PROD → generados clave + CSR
+  (clave solo en bucket privado de DEV y PROD), guía `guia_fede_certificado_plataforma.md`. El mismo cert destraba la
+  facturación de plataforma.
+- Vercel: GO recreó `VITE_SUPABASE_ANON_KEY` (Preview, tipo Config) con la publishable → el panel de DEV vuelve a loguear.
+
 ## [2026-10-01] update | Panel interno: MRR real, alertas MP, tickets, monitoreo; agente de prueba en DEV
 
 - Arreglos del doc "Herramientas internas" (GO: "resolver lo del MRR y todo lo que falte"). admin-api: MRR desde

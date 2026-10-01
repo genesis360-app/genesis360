@@ -6,14 +6,22 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-29, cierre de sesión) — 🔥 errores de El Tilo + todo en DEV sin deploy + 🙋 22 preguntas abiertas
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01) — 🚀 PROD = DEV = `v1.234.0` (migs 001-444) · 🙋 preguntas abiertas
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
-> | **DEV** (`origin/dev`, pre-release **`v1.234.0-rc.1`**) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump de `APP_VERSION`) | 001-**442** |
+> | **PROD** | `v1.234.0` ✅ servida | 001-**444** |
+> | **DEV** | `v1.234.0` (= PROD) | 001-**444** |
 >
-> **🙋 LO PRIMERO: las 22 preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
+> Deploy 2026-10-01: migs 440→444 de a una con `scripts/aplicar-migracion.mjs` + EFs `emitir-factura`/`data-api`
+> (PROD; `data-api` también DEV) → PR #362 → release `v1.234.0`. Paridad policies DEV=PROD (public 239 · storage 40 · cron 2).
+> Auditoría EF: solo `mp-addon-batch` PROD difiere en un comentario (precios iguales) — se sincroniza con pricing v7.
+> 🔥 **En curso**: arreglos del panel interno (MRR, alertas MP, tickets, filtros, monitoreo, quitar /admin).
+> **Backlog nuevo (GO 01/10)**: estandarizar IMPORTAR (Proveedores no tiene; modales distintos entre Clientes y
+> Productos/Inventario — GO se inclina por el de pantalla completa con vista previa y validación) y EXPORTAR con más
+> formatos (hoy solo CSV; El Tilo lo vio "codificado" en la PC → ofrecer Excel .xlsx).
+>
+> **🙋 Preguntas abiertas (DL-5 ya respondida: deploy hecho) están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
 > D3-a, D3-b, PL-1..PL-7, EC-1..EC-8), cada una con contexto, opciones y propuesta. GO las revisa con Fede. NO ejecutar
 > nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
 > Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·

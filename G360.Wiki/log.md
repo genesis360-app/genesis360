@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] deploy | v1.234.0 a PROD + mig 444 con OK de GO
+
+- GO autorizó pasar todo a PROD (responde DL-5). Migs 440→441→442→443 aplicadas de a una con el script nuevo
+  `scripts/aplicar-migracion.mjs` (Management API: contenido EXACTO del archivo + registro en schema_migrations, en una
+  transacción — evita el gotcha de tildes de apply_migration; verificado con `prosrc LIKE '%dólares%'`). 444 antes, con
+  OK de GO (2 clientes `dni '' → NULL`, uno de El Tilo; único trigger de clientes no afectado).
+- EFs `emitir-factura` (verify_jwt) y `data-api` (sin verify_jwt) en PROD; `data-api` también en DEV (estaba vieja).
+- Merge de `main` (hotfix 1.233.2) en `dev`, bump 1.234.0, tsc + build, PR #362, release `v1.234.0` Latest, servida
+  verificada con curl. Paridad policies DEV=PROD. Asistente IA sin redeploy (app-reference sin cambios).
+- GO: las 2 alertas MP "huérfana" son pruebas suyas. Backlog nuevo: estandarizar importar + exportar a Excel.
+
 ## [2026-09-30] query | Doc de herramientas internas + pricing v7 relevado (PR-1..PR-8)
 
 - Doc "Herramientas internas de Genesis360 — inventario" (Claude Docs) para GO y su socio: panel interno

@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-446, + correctivos 387b/387c)
+# Historial de Migraciones (001-447, + correctivos 387b/387c)
+
+📦 **Migración 447 — 🟡 SOLO EN DEV (2026-10-01)**: `447_importar_productos_transaccion.sql` — `fn_importar_productos(p_filas jsonb, p_cancelar_programados boolean)`, SECURITY INVOKER: el importador de productos carga TODO O NADA en una transacción (D3-a). Lista blanca de columnas, tenant de la sesión, guard explícito `auth_puede_editar_modulo('inventario')`, SKU sin distinguir mayúsculas (mapa en una consulta), escritura por CONJUNTO (una sentencia por acción+columnas; por fila no entraba en los 8 s del rol `authenticated`), programados cancelados dentro de la misma carga solo si el precio cambia; ante error se informa "Fila N (SKU …)". Medido en DEV: 5000 altas 2,0 s · 5000 precios 1,3 s · 2000 nombre+empaque 1,7 s. Revisada por `migration-reviewer` (2 bloqueantes corregidos). En DEV quedó registrada 4 veces en `schema_migrations` (re-aplicada al iterar); en PROD va una vez.
 
 🔎 **Migración 446 — 🟡 SOLO EN DEV (2026-10-01)**: `446_padron_arca_cache.sql` — tabla `padron_arca_cache (cuit, environment, resultado jsonb, consultado_at)` para la EF `consultar-cuit` (autocompletar por CUIT desde ARCA). Global, sin `tenant_id` (dato público); RLS sin policies + REVOKE a anon/authenticated, solo `service_role`. Aditiva. Ver [[wiki/integrations/padron-arca]].
 

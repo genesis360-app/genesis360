@@ -2411,6 +2411,19 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📦 §76 — Importador de productos en dos pasos, TODO O NADA (D3-a, mig 447) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 76.1 | 🛑 Una fila rechazada por la base deshace la carga entera: no queda cargada ninguna otra fila y se informa "Fila N (SKU …)" | e2e `167` C (SKU creado entre la vista previa y la carga) · SQL en DEV (300 filas, falla la 151 → 0 cargadas) | ✅ |
+| 76.2 | Con una sola fila con error no hay botón "Cargar": se corrige el archivo y se vuelve a subir | e2e `167` A/B · `105` (corrige y re-sube) | ✅ |
+| 76.3 | Categoría/proveedor desactivado → "está desactivada: reactivala o elegí otra"; inexistente → no se crea | unit `importacion` · e2e `167` A | ✅ |
+| 76.4 | "Bajar las filas con error": Excel con número de fila, motivo y las columnas originales | e2e `167` A | ✅ |
+| 76.5 | SKU repetido dentro del archivo (sin distinguir mayúsculas) → error en ambas filas; SKU automáticos no chocan con los existentes | e2e `167` B · unit `importacion` | ✅ |
+| 76.6 | 🛑 Precio programado: "Cancelar" lo cancela DENTRO de la carga (si la carga falla, queda pendiente); solo si el precio cambia | e2e `167` D · `162` C | ✅ |
+| 76.7 | 🛑 Server-side: un CAJERO no importa; no se puede escribir `stock_actual`/`tenant_id`; el SKU no se renombra; IVA 0 queda 0 | SQL en DEV impersonando (rollback) | ✅ |
+| 76.8 | 5000 filas entran en el timeout de 8 s (altas 2,0 s; precios 1,3 s; empaque 2000 → 1,7 s); más de 5000 → mensaje para dividir | SQL en DEV (rollback) | ✅ |
+
 ## 🔎 §75 — Padrón de ARCA: autocompletar por CUIT (mig 446, EF `consultar-cuit`) — 2026-10-01
 
 Consulta `ws_sr_constancia_inscripcion` (getPersona_v2) con el certificado de plataforma (CUIT de Fede). En DEV =

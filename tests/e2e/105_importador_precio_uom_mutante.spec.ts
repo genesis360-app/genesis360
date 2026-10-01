@@ -71,9 +71,21 @@ test.describe('Importador de productos — estructura sin precio de empaque (mut
     const filaC = page.locator('tr', { hasText: skuC })
     await expect(filaC).toContainText(/Precio venta inválido/)
 
-    // Confirmar — solo A y B deben crearse (C quedó afuera del batch en la previsualización)
-    await page.getByRole('button', { name: /Confirmar \(/ }).click()
-    await expect(page.getByText(/2 creados · 0 actualizados · 0 errores/)).toBeVisible({ timeout: 15000 })
+    // D3-a (2026-10-01): con una fila con error NO se carga nada — no hay botón de carga, se pide corregir el archivo.
+    await expect(page.getByText(/Hay 1 fila con error/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Cargar \d+ productos/ })).toHaveCount(0)
+
+    // Se corrige el archivo (sin la fila C) y se vuelve a subir: ahora sí se cargan A y B.
+    const wb2 = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(rows.slice(0, 2)), 'Productos')
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'import-estructura-uom-corregido.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: XLSX.write(wb2, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+    })
+    await expect(erroresCount).toHaveText('0', { timeout: 10000 })
+    await page.getByRole('button', { name: /^Cargar 2 productos/ }).click()
+    await expect(page.getByText(/2 creados · 0 actualizados/)).toBeVisible({ timeout: 15000 })
 
     const token = await tokenDesdeBrowser(page)
     const headers = restHeaders(token)

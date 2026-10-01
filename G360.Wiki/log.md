@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importador de productos: dos pasos y TODO O NADA (mig 447)
+
+- Hallazgo: el importador cargaba fila por fila desde el navegador → un error a mitad de camino dejaba el archivo
+  cargado a medias (lo que D3-a pide evitar). Ahora: mig 447 `fn_importar_productos` aplica todo en UNA transacción.
+- Rendimiento: la 1ª versión (una sentencia por fila) tardaba 2-3 ms por fila y no entraba en los 8 s del rol
+  `authenticated` (una prueba de 5000 filas superó el timeout); reescrita por conjunto: 5000 altas 2,0 s.
+- `migration-reviewer`: 2 bloqueantes corregidos (SKU con mayúsculas distintas tiraba la carga; una fila solo de empaque
+  salteaba el guard de rol) + menores (no renombrar SKU, mensaje de duplicado, cancelar programado solo si cambia el precio).
+- Front: `src/lib/importacion.ts` (referencia desactivada → "reactivala o elegí otra", SKU repetido, SKU automáticos sin
+  choque, filas con error a Excel, mensajes de error de carga); "Cargar" bloqueado con errores; "Bajar las filas con
+  error"; `usePreguntarPrecioProgramado` (pregunta sin cancelar). Verde: tsc, build, unit 2056, e2e 167/105/162 11/11.
+
 ## [2026-10-01] update | Exportar estándar (fase 1 de importar/exportar) + D3-a resuelto
 
 - GO: mientras Fede saca el cert de producción, seguir con el backlog de importar/exportar. D3-a resuelto: en la vista

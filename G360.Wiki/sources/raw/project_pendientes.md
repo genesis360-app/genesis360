@@ -29,7 +29,12 @@ type: project
 >    **Fase 1 EXPORTAR — HECHA en `dev`**: `src/lib/exportarArchivo.ts` reemplaza los 11 CSV armados a mano; Productos,
 >    Clientes, Proveedores y la OC ganan **Exportar Excel**; CSV siempre con BOM (Pedidos no lo tenía) y saltos de línea
 >    escapados. unit `exportarArchivo` (8, ida y vuelta) + e2e `166`. **D3-a resuelto por GO: se re-sube el archivo.**
->    **Siguiente: Fase 2** = modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
+>    **Fase 2 — Productos HECHO en DEV (01/10)**: mig 447 `fn_importar_productos` (todo o nada en una transacción, por
+>    conjunto, lista blanca, guard de rol) + vista previa con número de fila, "ver solo errores", "Bajar las filas con
+>    error" (Excel con motivo) y **"Cargar" bloqueado mientras haya un error** (se re-sube el archivo); desactivada →
+>    "reactivala o elegí otra"; SKU repetido en el archivo; SKU automáticos sin choques; programados cancelados dentro de la
+>    carga. Tests: unit `importacion` (14) · e2e `167` (A-D) + `105`/`162` adaptados, 11/11. **Sigue**: Clientes →
+>    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
 >    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →
 >    Inventario; **Fase 3** = importar Proveedores.
 > 3. 💲 **Pricing v7**: respondidas PR-1 (anual = pago único sin renovación), PR-4 (Free eliminado; se regalan meses a

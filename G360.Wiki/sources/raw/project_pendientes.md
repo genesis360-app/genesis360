@@ -14,6 +14,9 @@ type: project
 > | **DEV** | `v1.234.1` (= PROD) | 001-**445** |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
+> **▶ PRÓXIMA SESIÓN: arrancar el DESARROLLO del padrón ARCA (punto 2, fases 2→4) con el cert de homologación ya
+> probado. GO lo pidió así (01/10). No hace falta esperar el de producción para construir.**
+>
 > **Lo primero al retomar:**
 > 1. ✅ **Panel interno EN PROD** (01/10, v1.234.1 + mig 445 + EFs `admin-api`/`mp-reconciliacion`/`monitoring-check`;
 >    repo admin PR #6). GO descarta en Facturación las 2 alertas MP "huérfana" (son pruebas suyas).

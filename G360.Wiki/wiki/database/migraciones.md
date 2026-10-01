@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-447, + correctivos 387b/387c)
+# Historial de Migraciones (001-448, + correctivos 387b/387c)
+
+👥 **Migración 448 — 🟡 SOLO EN DEV (2026-10-01)**: `448_importar_clientes_transaccion.sql` — `fn_importar_clientes(p_filas jsonb, p_sucursal_id uuid)`, gemela de la 447 para clientes: todo o nada, por conjunto, lista blanca (nombre, dni, telefono, email, notas, etiquetas), guard de rol (todos menos CONTADOR y VIEWER), sucursal validada, `''` → NULL, dos filas sobre el mismo cliente → error con fila. Corrige además que actualizar BORRABA los datos de las celdas vacías. 5000 altas 0,74 s · 5000 actualizaciones 0,59 s. La 447 se re-aplicó en DEV con el control de SKU repetido del lado del servidor.
 
 📦 **Migración 447 — 🟡 SOLO EN DEV (2026-10-01)**: `447_importar_productos_transaccion.sql` — `fn_importar_productos(p_filas jsonb, p_cancelar_programados boolean)`, SECURITY INVOKER: el importador de productos carga TODO O NADA en una transacción (D3-a). Lista blanca de columnas, tenant de la sesión, guard explícito `auth_puede_editar_modulo('inventario')`, SKU sin distinguir mayúsculas (mapa en una consulta), escritura por CONJUNTO (una sentencia por acción+columnas; por fila no entraba en los 8 s del rol `authenticated`), programados cancelados dentro de la misma carga solo si el precio cambia; ante error se informa "Fila N (SKU …)". Medido en DEV: 5000 altas 2,0 s · 5000 precios 1,3 s · 2000 nombre+empaque 1,7 s. Revisada por `migration-reviewer` (2 bloqueantes corregidos). En DEV quedó registrada 4 veces en `schema_migrations` (re-aplicada al iterar); en PROD va una vez.
 

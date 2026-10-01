@@ -1,5 +1,7 @@
 import { dniObligatorioEnFicha } from '@/lib/clienteCampos'
 import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
+import { filaExcel, filasConErrorParaExportar, MAX_FILAS_IMPORTACION, mensajeErrorCarga, skusRepetidos } from '@/lib/importacion'
 import { condicionParaCliente, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -200,7 +202,9 @@ export default function ClientesPage() {
   const [showImport, setShowImport] = useState(false)
   const [filasImport, setFilasImport] = useState<FilaCliente[]>([])
   const [importando, setImportando] = useState(false)
-  const [resultadoImport, setResultadoImport] = useState<{ creados: number; actualizados: number; ignorados: number; errores: number } | null>(null)
+  // D3-a: la carga es todo o nada → o se cargó todo, o no se cargó nada (con el motivo).
+  const [resultadoImport, setResultadoImport] = useState<ResultadoCarga | null>(null)
+  const [originalesImport, setOriginalesImport] = useState<Record<string, unknown>[]>([])
   // A5 — modo de resolución de duplicados (espeja importar productos)
   const [importModo, setImportModo] = useState<'ignorar_existentes' | 'ignorar_nuevos' | 'procesar_todos'>('ignorar_existentes')
 
@@ -890,39 +894,59 @@ ${detalle}`,
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
+        if (rows.length > MAX_FILAS_IMPORTACION) {
+          toast.error(`El archivo tiene ${rows.length} filas; el máximo por importación es ${MAX_FILAS_IMPORTACION}. Dividilo en partes.`)
+          return
+        }
 
         // A5 — detección de duplicados contra TODA la base (por DNI, teléfono o nombre)
         // Sin tope: "contra TODA la base" tiene que ser toda de verdad. Con mas de 1000 clientes,
         // PostgREST devolvia 1000 y el importador no veia los duplicados del resto.
-        const { data: existentes } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
-          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id).range(desde, hasta))
+        const { data: existentes, error: errExist } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
+          .select('id, nombre, dni, telefono, email').eq('tenant_id', tenant!.id).range(desde, hasta))
+        // Sin esta respuesta todos parecerían nuevos y se duplicarían: mejor no mostrar nada.
+        if (errExist) { toast.error('No se pudo revisar qué clientes ya existen. Intentá de nuevo.'); return }
         const norm = (s: string) => (s ?? '').replace(/\D/g, '')
         const porDni = new Map<string, string>()
         const porTel = new Map<string, string>()
         const porNombre = new Map<string, string>()
+        const porEmail = new Map<string, string>()
+        const nombrePorId = new Map<string, string>()
         for (const c of (existentes ?? []) as any[]) {
           if (c.dni) porDni.set(String(c.dni).trim(), c.id)
           if (c.telefono && norm(c.telefono)) porTel.set(norm(c.telefono), c.id)
+          if (c.email) porEmail.set(String(c.email).trim(), c.id)
           porNombre.set(c.nombre.trim().toLowerCase(), c.id)
+          nombrePorId.set(c.id, c.nombre)
         }
 
+        const dniRepetidos = skusRepetidos(rows.map(r => String(r.dni || '')))
+        const emailRepetidos = skusRepetidos(rows.map(r => String(r.email || '')))
         const filas: FilaCliente[] = rows.map((row, idx) => {
           const errores: string[] = []
           const nombre = String(row.nombre || '').trim()
           if (!nombre) errores.push('Nombre requerido')
           const dni = String(row.dni || '').trim() || undefined
           const telefono = String(row.telefono || '').trim() || undefined
+          const email = String(row.email || '').trim() || undefined
           const etiquetasRaw = String(row.etiquetas || '').trim()
           const matchId =
             (dni && porDni.get(dni)) ||
             (telefono && porTel.get(norm(telefono))) ||
             porNombre.get(nombre.toLowerCase()) || undefined
+          if (dni && dniRepetidos.has(dni.toUpperCase())) errores.push(`DNI repetido en el archivo (filas ${dniRepetidos.get(dni.toUpperCase())!.join(', ')})`)
+          if (email && emailRepetidos.has(email.toUpperCase())) errores.push(`Email repetido en el archivo (filas ${emailRepetidos.get(email.toUpperCase())!.join(', ')})`)
+          // El DNI y el email son únicos por negocio: si ya los tiene OTRO cliente, la carga fallaría.
+          const duenoDni = dni ? porDni.get(dni) : undefined
+          if (duenoDni && duenoDni !== matchId) errores.push(`El DNI ya es de otro cliente (${nombrePorId.get(duenoDni)})`)
+          const duenoEmail = email ? porEmail.get(email) : undefined
+          if (duenoEmail && duenoEmail !== matchId) errores.push(`El email ya es de otro cliente (${nombrePorId.get(duenoEmail)})`)
           return {
             idx,
             nombre,
             dni,
             telefono,
-            email: String(row.email || '').trim() || undefined,
+            email,
             notas: String(row.notas || '').trim() || undefined,
             etiquetas: etiquetasRaw ? etiquetasRaw.split(/[,;]/).map(s => s.trim()).filter(Boolean) : undefined,
             matchId,
@@ -930,49 +954,63 @@ ${detalle}`,
             errores,
           }
         })
+        // Dos filas del archivo que caen sobre el MISMO cliente existente: antes "ganaba la última" sin aviso.
+        const filasPorCliente = new Map<string, number[]>()
+        filas.forEach(f => { if (f.matchId) filasPorCliente.set(f.matchId, [...(filasPorCliente.get(f.matchId) ?? []), filaExcel(f.idx)]) })
+        for (const f of filas) {
+          const otras = f.matchId ? filasPorCliente.get(f.matchId)! : []
+          if (otras.length > 1) {
+            f.errores.push(`Las filas ${otras.join(', ')} son el mismo cliente (${nombrePorId.get(f.matchId!)}): dejá una sola`)
+            f.estado = 'error'
+          }
+        }
         setFilasImport(filas)
+        setOriginalesImport(rows)
       } catch { toast.error('Error al leer el archivo.') }
     }
     reader.readAsArrayBuffer(file)
   }
 
+  // A5 — modo: ignorar_existentes (solo nuevos) · ignorar_nuevos (solo actualizar) · procesar_todos
+  const accionCliente = (f: FilaCliente): 'crear' | 'actualizar' | null => {
+    if (f.estado === 'error') return null
+    if (f.estado === 'duplicado') return importModo === 'ignorar_existentes' ? null : 'actualizar'
+    return importModo === 'ignorar_nuevos' ? null : 'crear'
+  }
+
   const confirmarImport = async () => {
+    if (filasImport.some(f => f.estado === 'error')) return   // D3-a: todo o nada (el botón no aparece con errores)
+    // Solo las columnas con valor: al actualizar, una celda vacía NO borra el dato que ya tenía el cliente (antes sí).
+    const items = filasImport.flatMap(f => {
+      const accion = accionCliente(f)
+      if (!accion) return []
+      const campos: Record<string, unknown> = { nombre: f.nombre }
+      if (f.dni) campos.dni = f.dni
+      if (f.telefono) campos.telefono = f.telefono
+      if (f.email) campos.email = f.email
+      if (f.notas) campos.notas = f.notas
+      if (f.etiquetas?.length) campos.etiquetas = f.etiquetas
+      return [{ fila: filaExcel(f.idx), accion, id: accion === 'actualizar' ? f.matchId : undefined, campos }]
+    })
+    if (items.length === 0) return
     setImportando(true)
-    let creados = 0, actualizados = 0, ignorados = 0, errores = 0
-    // A5 — modo: ignorar_existentes (solo nuevos) · ignorar_nuevos (solo actualizar) · procesar_todos
-    for (const fila of filasImport) {
-      if (fila.estado === 'error') { errores++; continue }
-      const esDup = fila.estado === 'duplicado'
-      // Decidir acción según el modo
-      if (esDup && importModo === 'ignorar_existentes') { ignorados++; continue }
-      if (!esDup && importModo === 'ignorar_nuevos') { ignorados++; continue }
-      try {
-        const base = {
-          nombre: fila.nombre,
-          dni: fila.dni ?? null,
-          telefono: fila.telefono ?? null,
-          email: fila.email ?? null,
-          notas: fila.notas ?? null,
-          etiquetas: fila.etiquetas ?? null,
-        }
-        if (esDup && fila.matchId) {
-          const { error } = await supabase.from('clientes').update(base).eq('id', fila.matchId)
-          if (error) throw error
-          actualizados++
-        } else {
-          const { error } = await supabase.from('clientes').insert({
-            tenant_id: tenant!.id, ...base, sucursal_id: sucursalId || null,
-          })
-          if (error) throw error
-          creados++
-        }
-      } catch { errores++ }
+    try {
+      // 🛑 D3-a — una sola llamada; la base aplica todo en una transacción (mig 448).
+      const { data, error } = await supabase.rpc('fn_importar_clientes', { p_filas: items, p_sucursal_id: sucursalId || null })
+      if (error) { setResultadoImport({ ok: false, mensaje: mensajeErrorCarga(error) }); return }
+      const r = data as { creados: number; actualizados: number }
+      const ignorados = filasImport.length - items.length
+      setResultadoImport({ ok: true, resumen: `${r.creados} creados · ${r.actualizados} actualizados${ignorados ? ` · ${ignorados} ignorados` : ''}` })
+      setFilasImport([])
+      setOriginalesImport([])
+      toast.success(`${r.creados} creados · ${r.actualizados} actualizados`)
+    } catch (e: any) {
+      setResultadoImport({ ok: false, mensaje: mensajeErrorCarga(e) })
+    } finally {
+      setImportando(false)
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['cliente-etiquetas-catalogo'] })
     }
-    qc.invalidateQueries({ queryKey: ['clientes'] })
-    qc.invalidateQueries({ queryKey: ['cliente-etiquetas-catalogo'] })
-    setResultadoImport({ creados, actualizados, ignorados, errores })
-    setImportando(false)
-    toast.success(`${creados} creados · ${actualizados} actualizados`)
   }
 
   const exportarClientes = (format: 'json' | 'csv' | 'xlsx') => {
@@ -1008,7 +1046,7 @@ ${detalle}`,
                 { label: 'Exportar CSV',  icon: Download, onClick: () => exportarClientes('csv') },
                 { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
                 { label: verInactivos ? 'Ver activos' : 'Ver inactivos', icon: UserX, onClick: () => setVerInactivos(v => !v) },
-                { label: 'Importar', icon: Upload, onClick: () => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }, hidden: !puedeEditar },
+                { label: 'Importar', icon: Upload, onClick: () => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }, hidden: !puedeEditar || (user?.rol as string | undefined) === 'VIEWER' /* Lector: la base (mig 448) tampoco lo deja */ },
               ]}
             />
             {puedeEditar && (
@@ -2243,30 +2281,24 @@ ${detalle}`,
 
       {/* Modal importación masiva */}
       {showImport && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
+          {/* Pantalla completa (backlog "estandarizar importar"): la vista previa muestra TODAS las filas. */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-6xl h-[95vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 <FileSpreadsheet size={18} className="text-accent-text" /> Importar clientes
               </h2>
-              <button onClick={() => setShowImport(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
+              <button onClick={() => setShowImport(false)} aria-label="Cerrar" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
-            <div className="p-6 space-y-4">
-              {/* Resultado */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
               {resultadoImport && (
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-                  <CheckCircle size={18} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
-                    <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultadoImport.creados} creados · {resultadoImport.actualizados} actualizados · {resultadoImport.ignorados} ignorados · {resultadoImport.errores} errores</p>
-                    <button onClick={() => setShowImport(false)} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Cerrar →</button>
-                  </div>
-                </div>
+                <ResultadoImportacion resultado={resultadoImport} accion={resultadoImport.ok && (
+                  <button onClick={() => setShowImport(false)} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Cerrar →</button>
+                )} />
               )}
 
-              {/* Acciones */}
-              {!resultadoImport && (
+              {!resultadoImport?.ok && (
                 <div className="flex gap-3 flex-wrap">
                   <button onClick={descargarPlantilla}
                     className="flex items-center gap-2 border border-accent-text text-accent-text font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm transition-all">
@@ -2274,34 +2306,34 @@ ${detalle}`,
                   </button>
                   <button onClick={() => fileRefImport.current?.click()}
                     className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all">
-                    <Upload size={14} /> Cargar archivo
+                    <Upload size={14} /> {filasImport.length > 0 || resultadoImport ? 'Subir el archivo corregido' : 'Subir archivo'}
                   </button>
                   <input ref={fileRefImport} type="file" accept=".xlsx,.xls,.csv" className="hidden"
                     onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
                 </div>
               )}
 
-              {/* Vista previa */}
-              {filasImport.length > 0 && !resultadoImport && (
-                <>
-                  <div className="flex items-center gap-3 text-sm flex-wrap">
-                    <span className="text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
-                      <CheckCircle size={14} /> {filasImport.filter(f => f.estado === 'nuevo').length} nuevos
-                    </span>
-                    {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
-                      <span className="text-amber-600 dark:text-amber-400 font-medium">
-                        ⚠ {filasImport.filter(f => f.estado === 'duplicado').length} ya existen
-                      </span>
-                    )}
-                    {filasImport.filter(f => f.estado === 'error').length > 0 && (
-                      <span className="text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
-                        <XCircle size={14} /> {filasImport.filter(f => f.estado === 'error').length} con errores
-                      </span>
-                    )}
-                  </div>
-
-                  {/* A5 — modo de resolución de duplicados */}
-                  {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
+              {filasImport.length > 0 && !resultadoImport?.ok && (
+                <VistaPreviaImportacion
+                  entidadPlural="clientes"
+                  columnas={['Nombre', 'DNI', 'Teléfono', 'Email', 'Etiquetas']}
+                  filas={filasImport.map(f => {
+                    const accion = accionCliente(f)
+                    return {
+                      idx: f.idx,
+                      errores: f.errores,
+                      estado: f.estado === 'error' ? 'error' : accion === 'crear' ? 'nuevo' : accion === 'actualizar' ? 'existente' : 'omitida',
+                      detalle: f.estado === 'duplicado' ? (accion ? 'Ya existe: se actualizan las columnas con valor' : 'Ya existe') : undefined,
+                      celdas: [f.nombre || '—', f.dni ?? '—', f.telefono ?? '—', f.email ?? '—', f.etiquetas?.join(', ') ?? '—'],
+                    }
+                  })}
+                  cargando={importando}
+                  onCargar={confirmarImport}
+                  onBajarErrores={() => {
+                    const filas = filasConErrorParaExportar(originalesImport, filasImport)
+                    if (filas.length) void descargarExcel({ nombre: 'Filas con error', filas }, 'clientes_filas_con_error')
+                  }}
+                  opciones={filasImport.some(f => f.estado === 'duplicado') && (
                     <div className="bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700 rounded-xl p-3">
                       <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Hay clientes que ya existen. ¿Qué hago con ellos?</p>
                       <div className="space-y-1.5">
@@ -2317,61 +2349,10 @@ ${detalle}`,
                           </label>
                         ))}
                       </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">Al actualizar se escriben solo las columnas con valor: una celda vacía no borra lo que ya tiene el cliente.</p>
                     </div>
                   )}
-
-                  <div className="border border-gray-100 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                          <th className="px-3 py-2 text-left">Nombre</th>
-                          <th className="px-3 py-2 text-left hidden sm:table-cell">DNI</th>
-                          <th className="px-3 py-2 text-left hidden sm:table-cell">Teléfono</th>
-                          <th className="px-3 py-2 text-left hidden sm:table-cell">Email</th>
-                          <th className="px-3 py-2 text-left">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {filasImport.slice(0, 50).map(f => (
-                          <tr key={f.idx} className={f.estado === 'error' ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'duplicado' ? 'bg-amber-50 dark:bg-amber-900/20/50' : ''}>
-                            <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{f.nombre || <span className="text-gray-400 dark:text-gray-500 italic">—</span>}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.dni ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.telefono ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.email ?? '—'}</td>
-                            <td className="px-3 py-2">
-                              {f.estado === 'nuevo' && <span className="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Nuevo</span>}
-                              {f.estado === 'duplicado' && <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Existe</span>}
-                              {f.estado === 'error' && <span className="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded-full">{f.errores[0]}</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {filasImport.length > 50 && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Mostrando 50 de {filasImport.length} filas</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-3 justify-end">
-                    <button onClick={() => setFilasImport([])}
-                      className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
-                      Limpiar
-                    </button>
-                    {(() => {
-                      const nuevos = filasImport.filter(f => f.estado === 'nuevo').length
-                      const dups = filasImport.filter(f => f.estado === 'duplicado').length
-                      const aProcesar = importModo === 'ignorar_existentes' ? nuevos
-                        : importModo === 'ignorar_nuevos' ? dups
-                        : nuevos + dups
-                      return (
-                        <button onClick={confirmarImport} disabled={importando || aProcesar === 0}
-                          className="bg-accent hover:bg-accent/90 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition-all">
-                          {importando ? 'Importando...' : `Procesar ${aProcesar} ${aProcesar === 1 ? 'cliente' : 'clientes'}`}
-                        </button>
-                      )
-                    })()}
-                  </div>
-                </>
+                />
               )}
 
               {filasImport.length === 0 && !resultadoImport && (

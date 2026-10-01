@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importador de clientes: dos pasos y TODO O NADA (mig 448)
+
+- Mig 448 `fn_importar_clientes` (gemela de la 447) + componente compartido `VistaPreviaImportacion`/`ResultadoImportacion`
+  (lo van a usar Inventario, Maestro y Proveedores); modal de clientes a pantalla completa con todas las filas.
+- Bugs viejos corregidos: actualizar un cliente BORRABA email/teléfono/notas si la celda venía vacía (escribía todas las
+  columnas); DNI/email repetidos en el archivo o ya de otro cliente fallaban a mitad de la carga; dos filas sobre el mismo
+  cliente "ganaba la última" en silencio; los errores se contaban sin decir cuál.
+- `migration-reviewer`: sin bloqueantes; aplicados: duplicados de destino (también en la 447 por SKU), `''` → NULL,
+  "Importar" oculto para VIEWER (la base tampoco lo deja). e2e `168` 5/5, `167`/`105` re-corridos 6/6, unit 2056.
+
 ## [2026-10-01] update | Importador de productos: dos pasos y TODO O NADA (mig 447)
 
 - Hallazgo: el importador cargaba fila por fila desde el navegador → un error a mitad de camino dejaba el archivo

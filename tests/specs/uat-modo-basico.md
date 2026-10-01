@@ -2411,6 +2411,16 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 👥 §77 — Importador de clientes en dos pasos, TODO O NADA (D3-a, mig 448) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 77.1 | Actualizar un cliente existente con celdas vacías NO borra sus datos; las celdas con valor se escriben | e2e `168` A · SQL DEV (5000 filas, solo email: teléfono/notas/etiquetas/sucursal intactos) | ✅ |
+| 77.2 | La fila es un cliente (por DNI) pero trae el email de otro → error con motivo, sin carga | e2e `168` B | ✅ |
+| 77.3 | 🛑 Una fila rechazada por la base deshace todo ("Fila N: ya existe otro cliente con ese email/DNI") | e2e `168` C · SQL DEV (100 filas, falla la 40 → 0 cargadas) | ✅ |
+| 77.4 | Dos filas sobre el mismo cliente existente → error en ambas (antes ganaba la última) | e2e `168` D · guard en la base | ✅ |
+| 77.5 | CONTADOR y Lector no importan (botón oculto + base) | SQL DEV impersonando CONTADOR | ✅ |
+
 ## 📦 §76 — Importador de productos en dos pasos, TODO O NADA (D3-a, mig 447) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

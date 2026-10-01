@@ -59,6 +59,7 @@ DECLARE
   v_cancelados  int := 0;
   v_pp          uuid;
   v_constraint  text;
+  v_vistos      jsonb := '{}';    -- SKU → fila del archivo (un SKU por archivo)
 BEGIN
   IF auth.uid() IS NULL OR v_tenant IS NULL THEN
     RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
@@ -100,6 +101,10 @@ BEGIN
       IF v_accion IS NULL OR v_accion NOT IN ('crear', 'actualizar') THEN
         RAISE EXCEPTION 'acción inválida "%"', coalesce(v_accion, '');
       END IF;
+      IF v_vistos ? v_sku THEN
+        RAISE EXCEPTION 'el SKU ya aparece en la fila %; dejá una sola fila por producto', v_vistos->>v_sku;
+      END IF;
+      v_vistos := v_vistos || jsonb_build_object(v_sku, v_fila);
       -- En un alta el SKU es el de la fila (normalizado); al actualizar identifica la fila y nunca se renombra.
       v_campos := CASE WHEN v_accion = 'crear' THEN v_campos || jsonb_build_object('sku', v_sku) ELSE v_campos - 'sku' END;
 

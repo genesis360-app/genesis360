@@ -33,7 +33,10 @@ type: project
 >    conjunto, lista blanca, guard de rol) + vista previa con número de fila, "ver solo errores", "Bajar las filas con
 >    error" (Excel con motivo) y **"Cargar" bloqueado mientras haya un error** (se re-sube el archivo); desactivada →
 >    "reactivala o elegí otra"; SKU repetido en el archivo; SKU automáticos sin choques; programados cancelados dentro de la
->    carga. Tests: unit `importacion` (14) · e2e `167` (A-D) + `105`/`162` adaptados, 11/11. **Sigue**: Clientes →
+>    carga. Tests: unit `importacion` (14) · e2e `167` (A-D) + `105`/`162` adaptados, 11/11.
+>    **Clientes HECHO en DEV (01/10)**: mig 448 + componente compartido `src/components/importacion/VistaPreviaImportacion.tsx`
+>    (vista previa + resultado estándar), modal de pantalla completa; al actualizar ya NO borra los datos de celdas vacías;
+>    DNI/email repetidos o de otro cliente; dos filas = mismo cliente → error. e2e `168` 5/5. **Sigue**:
 >    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
 >    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →
 >    Inventario; **Fase 3** = importar Proveedores.

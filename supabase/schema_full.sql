@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-30T23:52:57.345Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260930234256 · 173 tablas
+-- Generado 2026-10-01T03:02:44.457Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261001025245 · 173 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1333,7 +1333,10 @@ CREATE TABLE public.mp_billing_alertas (
   tenant_id uuid,
   detalle jsonb,
   first_seen timestamp with time zone NOT NULL DEFAULT now(),
-  resolved_at timestamp with time zone
+  resolved_at timestamp with time zone,
+  descartada_at timestamp with time zone,
+  descartada_por uuid,
+  nota text
 );
 
 CREATE TABLE public.nc_afip_pendientes (

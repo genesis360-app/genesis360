@@ -29,6 +29,7 @@ import { InfoTip } from '@/components/InfoTip'
 // jspdf/jspdf-autotable se importan dinámicamente en descargarEstadoProveedor/descargarOCpdf
 // (auditoría perf 2026-08-14, P5).
 import toast from 'react-hot-toast'
+import { descargarCsv, descargarExcel, descargarJson, nombreConFecha } from '@/lib/exportarArchivo'
 import {
   Truck, Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp,
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
@@ -578,22 +579,21 @@ export default function ProveedoresPage() {
     doc.save(`OC_${String(oc.numero).padStart(4, '0')}_${((oc as any).proveedores?.nombre ?? 'proveedor').replace(/\s+/g, '_')}.pdf`)
   }
 
-  function descargarOCcsv(oc: OrdenCompra, items: OrdenCompraItem[]) {
+  function descargarOC(oc: OrdenCompra, items: OrdenCompraItem[], formato: 'csv' | 'xlsx') {
     // Los importes van sin símbolo (es un CSV), así que la moneda se nombra en el encabezado —
     // si no, una OC en dólares es indistinguible de una en pesos al abrir el archivo.
     const monedaOC = (oc as any).moneda ?? 'ARS'
-    const header = ['Producto', 'SKU', 'Cantidad', 'Unidad', `Precio Unitario (${monedaOC})`, `Subtotal (${monedaOC})`]
-    const rows = items.map(it => {
+    const filas = items.map(it => {
       const p = (it as any).productos
-      const sub = it.precio_unitario != null ? it.cantidad * it.precio_unitario : ''
-      return [p?.nombre ?? '', p?.sku ?? '', it.cantidad, p?.unidad_medida ?? '', it.precio_unitario ?? '', sub]
+      return {
+        Producto: p?.nombre ?? '', SKU: p?.sku ?? '', Cantidad: it.cantidad, Unidad: p?.unidad_medida ?? '',
+        [`Precio Unitario (${monedaOC})`]: it.precio_unitario ?? '',
+        [`Subtotal (${monedaOC})`]: it.precio_unitario != null ? it.cantidad * it.precio_unitario : '',
+      }
     })
-    const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url
-    a.download = `OC_${String(oc.numero).padStart(4, '0')}_${((oc as any).proveedores?.nombre ?? 'proveedor').replace(/\s+/g, '_')}.csv`
-    a.click(); URL.revokeObjectURL(url)
+    const nombre = `OC_${String(oc.numero).padStart(4, '0')}_${((oc as any).proveedores?.nombre ?? 'proveedor').replace(/\s+/g, '_')}`
+    if (formato === 'xlsx') void descargarExcel({ nombre: `OC ${oc.numero}`, filas }, nombre)
+    else descargarCsv(filas, nombre)
   }
 
   const { data: productos = [] } = useQuery({
@@ -1625,26 +1625,17 @@ export default function ProveedoresPage() {
     ...(puedeVerAutorizacionesProveedores ? [{ id: 'autorizaciones' as Tab, label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
   ]
 
-  const exportarProveedores = (format: 'json' | 'csv') => {
+  const exportarProveedores = (format: 'json' | 'csv' | 'xlsx') => {
     const rows = filteredProv.map((p: any) => ({
       id: p.id, nombre: p.nombre, razon_social: p.razon_social ?? '',
       cuit: p.cuit ?? '', condicion_iva: p.condicion_iva ?? '',
       plazo_pago_dias: p.plazo_pago_dias ?? '', banco: p.banco ?? '',
       cbu: p.cbu ?? '', activo: p.activo,
     }))
-    const filename = `proveedores_${new Date().toISOString().slice(0,10)}`
-    if (format === 'json') {
-      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.json`; a.click()
-    } else {
-      const headers = Object.keys(rows[0] ?? {})
-      const lines = rows.map((r: any) => headers.map((h: string) => {
-        const v = String(r[h] ?? '')
-        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
-      }).join(','))
-      const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.csv`; a.click()
-    }
+    const nombre = nombreConFecha('proveedores')
+    if (format === 'json') descargarJson(rows, nombre)
+    else if (format === 'xlsx') void descargarExcel({ nombre: 'Proveedores', filas: rows }, nombre)
+    else descargarCsv(rows, nombre)
   }
 
   return (
@@ -1659,8 +1650,9 @@ export default function ProveedoresPage() {
           <div className="flex gap-2">
             <ActionMenu
               items={[
-                { label: 'Exportar JSON', icon: Download, onClick: () => exportarProveedores('json') },
+                { label: 'Exportar Excel', icon: Download, onClick: () => exportarProveedores('xlsx') },
                 { label: 'Exportar CSV',  icon: Download, onClick: () => exportarProveedores('csv') },
+                { label: 'Exportar JSON', icon: Download, onClick: () => exportarProveedores('json') },
               ]}
             />
             <button
@@ -3525,9 +3517,16 @@ export default function ProveedoresPage() {
                   <FileDown className="w-4 h-4" /> PDF
                 </button>
                 <button
-                  onClick={() => descargarOCcsv(showOcDetail, ocItemsData)}
+                  onClick={() => descargarOC(showOcDetail, ocItemsData, 'xlsx')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border-ds text-primary hover:bg-page"
-                  title="Descargar CSV (abre en Excel)"
+                  title="Descargar Excel"
+                >
+                  <FileDown className="w-4 h-4" /> Excel
+                </button>
+                <button
+                  onClick={() => descargarOC(showOcDetail, ocItemsData, 'csv')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border-ds text-primary hover:bg-page"
+                  title="Descargar CSV"
                 >
                   <FileDown className="w-4 h-4" /> CSV
                 </button>

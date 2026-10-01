@@ -227,4 +227,6 @@ type: relevamiento
 1. **PL-5.** Confirmar primero cómo funciona hoy el POS sin conexión a internet, y a partir de eso aplicar el criterio definido (vender con últimos precios y aviso, salvo que ya exista una dependencia total de internet, en cuyo caso aplica el criterio de "no inventar precio").  
 2. **PL-7.** Confirmar si preparar la tabla de precio programado con una columna de sucursal (vacía por ahora) es suficiente preparación para el futuro, o si hace falta algo más en el diseño para no tener que rehacer el motor de precios el día que se necesite precio real por sucursal.  
 3. **EC-5.** Verificar si el sistema de roles de soporte de Genesis360 ya distingue un nivel de "superusuario de soporte", o si hay que crearlo para este caso.  
-4. **D3-a.** Confirmar el detalle de UX del flujo de dos pasos (vista previa con errores → botón de carga), y qué pasa si el usuario corrige el archivo: si hay que volver a subirlo entero o se puede editar fila por fila en la misma pantalla de vista previa.
+4. ✅ **D3-a — RESUELTO por GO (2026-10-01): se RE-SUBE el archivo** (corregir en Excel y volver a subir; la vista
+   previa se recalcula). Sin edición fila por fila en pantalla. Se puede ofrecer bajar las filas con error + motivo.
+   Texto original: Confirmar el detalle de UX del flujo de dos pasos (vista previa con errores → botón de carga), y qué pasa si el usuario corrige el archivo: si hay que volver a subirlo entero o se puede editar fila por fila en la misma pantalla de vista previa.

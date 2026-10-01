@@ -12,6 +12,7 @@ import { BRAND } from '@/config/brand'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportarExcel/exportarPDF (auditoría
 // perf 2026-08-14, P5) — evita cargarlas al abrir el tab Reportes si el usuario no exporta.
 import toast from 'react-hot-toast'
+import { descargarCsv } from '@/lib/exportarArchivo'
 import { Calendar, FileSpreadsheet, FileText, Download, Building2, Users, BarChart3 } from 'lucide-react'
 
 type SubTab = 'diario_caja' | 'consolidado' | 'mensual' | 'cajero'
@@ -231,23 +232,10 @@ export default function CajaReportes() {
 
   const exportarCSV = () => {
     if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
-    const header = columnas.map(c => `"${COL_LABELS[c] ?? c}"`).join(',')
-    const rows = datos.map((r: any) =>
-      columnas.map(c => {
-        const v = r[c]
-        if (v == null) return ''
-        if (typeof v === 'string') return `"${v.replace(/"/g, '""')}"`
-        return String(v)
-      }).join(',')
+    descargarCsv(
+      datos.map((r: any) => Object.fromEntries(columnas.map(c => [COL_LABELS[c] ?? c, r[c]]))),
+      `caja_${sub}_${new Date().toISOString().split('T')[0]}`,
     )
-    const csv = '﻿' + [header, ...rows].join('\n')  // BOM para Excel ES
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `caja_${sub}_${new Date().toISOString().split('T')[0]}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
     toast.success('CSV descargado')
   }
 

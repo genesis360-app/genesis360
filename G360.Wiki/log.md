@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Exportar estándar (fase 1 de importar/exportar) + D3-a resuelto
+
+- GO: mientras Fede saca el cert de producción, seguir con el backlog de importar/exportar. D3-a resuelto: en la vista
+  previa del importador se corrige el archivo y se **re-sube** (sin edición en pantalla).
+- `src/lib/exportarArchivo.ts`: `descargarExcel`/`descargarCsv`/`descargarJson`/`nombreConFecha`. Reemplaza los 11 CSV
+  hechos a mano (Productos, Clientes ×2, Proveedores, OC, Pedidos, Caja, Compras, Envíos, RRHH, Reportes). Productos,
+  Clientes, Proveedores y la OC ganan "Exportar Excel" (primero en el menú). Pedidos salía sin BOM; Clientes/Proveedores
+  no escapaban saltos de línea; Compras/Envíos/RRHH no escapaban comillas. CSV con coma (lo leen los importadores);
+  Compras/Envíos/RRHH conservan `;`. Regla nueva en [[wiki/development/convenciones-codigo]].
+- Verde: tsc, build, unit 2042 (nuevo `exportarArchivo`, ida y vuelta como el importador), e2e `166` (descarga real).
+
 ## [2026-10-01] update | Padrón ARCA fases 2-4 en DEV: EF consultar-cuit + vista previa en 5 pantallas
 
 - Núcleo puro `supabase/functions/_shared/padronArca.ts` (CUIT módulo 11, sobre getPersona_v2, parser, condición IVA)

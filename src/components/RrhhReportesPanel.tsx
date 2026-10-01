@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportar() (auditoría perf 2026-08-14, P5).
 import { FileSpreadsheet, FileDown, FileText, DollarSign, CalendarCheck, Plane, Users2, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { descargarCsv, descargarExcel } from '@/lib/exportarArchivo'
 import { supabase } from '@/lib/supabase'
 import {
   costoLaboralPorDepto, asistenciaConsolidada, vacacionesResumen,
@@ -17,16 +18,10 @@ async function exportar(fmt: ExportFmt, titulo: string, cols: Col[], rows: any[]
   const fecha = new Date().toISOString().split('T')[0]
   const fname = `rrhh_${titulo.toLowerCase().replace(/\s+/g, '_')}_${fecha}`
   if (fmt === 'excel') {
-    const XLSX = await import('xlsx')
-    const data = rows.map(r => Object.fromEntries(cols.map(c => [c.label, r[c.key]])))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Datos')
-    XLSX.writeFile(wb, `${fname}.xlsx`)
+    await descargarExcel({ nombre: 'Datos', filas: rows.map(r => Object.fromEntries(cols.map(c => [c.label, r[c.key]]))) }, fname)
   } else if (fmt === 'csv') {
-    const header = cols.map(c => `"${c.label}"`).join(';')
-    const body = rows.map(r => cols.map(c => `"${String(r[c.key] ?? '')}"`).join(';')).join('\n')
-    const blob = new Blob(['﻿' + header + '\n' + body], { type: 'text/csv;charset=utf-8;' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.csv`; a.click()
+    // `;`: estos reportes se pensaron para abrir en Excel en español (no se reimportan).
+    descargarCsv(rows.map(r => Object.fromEntries(cols.map(c => [c.label, r[c.key]]))), fname, ';')
   } else {
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
       import('jspdf'), import('jspdf-autotable'),

@@ -31,6 +31,7 @@ import { Toggle } from '@/components/Toggle'
 import { usePaginacionLista } from '@/hooks/usePaginacionLista'
 import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import toast from 'react-hot-toast'
+import { descargarCsv, descargarExcel, descargarJson, nombreConFecha } from '@/lib/exportarArchivo'
 
 interface FilaCliente {
   idx: number
@@ -974,7 +975,7 @@ ${detalle}`,
     toast.success(`${creados} creados · ${actualizados} actualizados`)
   }
 
-  const exportarClientes = (format: 'json' | 'csv') => {
+  const exportarClientes = (format: 'json' | 'csv' | 'xlsx') => {
     const rows = (clientes as any[]).map(c => ({
       id: c.id, nombre: c.nombre, dni: c.dni ?? '', telefono: c.telefono ?? '',
       email: c.email ?? '', direccion: c.direccion ?? '',
@@ -982,19 +983,10 @@ ${detalle}`,
       categoria: ccEfectivo?.get(c.id)?.categoria_nombre ?? '',
       activo: c.activo,
     }))
-    const filename = `clientes_${new Date().toISOString().slice(0,10)}`
-    if (format === 'json') {
-      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.json`; a.click()
-    } else {
-      const headers = Object.keys(rows[0] ?? {})
-      const lines = rows.map((r: any) => headers.map(h => {
-        const v = String(r[h] ?? '')
-        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
-      }).join(','))
-      const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.csv`; a.click()
-    }
+    const nombre = nombreConFecha('clientes')
+    if (format === 'json') descargarJson(rows, nombre)
+    else if (format === 'xlsx') void descargarExcel({ nombre: 'Clientes', filas: rows }, nombre)
+    else descargarCsv(rows, nombre)
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1012,8 +1004,9 @@ ${detalle}`,
           {pageTab === 'lista' && <>
             <ActionMenu
               items={[
-                { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
+                { label: 'Exportar Excel', icon: Download, onClick: () => exportarClientes('xlsx') },
                 { label: 'Exportar CSV',  icon: Download, onClick: () => exportarClientes('csv') },
+                { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
                 { label: verInactivos ? 'Ver activos' : 'Ver inactivos', icon: UserX, onClick: () => setVerInactivos(v => !v) },
                 { label: 'Importar', icon: Upload, onClick: () => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }, hidden: !puedeEditar },
               ]}
@@ -1414,21 +1407,9 @@ ${detalle}`,
         })
         const exportarSegmento = async (fmt: 'csv' | 'xlsx') => {
           if (segRows.length === 0) { toast.error('No hay clientes en el segmento'); return }
-          const fname = `segmento_clientes_${new Date().toISOString().slice(0, 10)}`
-          if (fmt === 'xlsx') {
-            const XLSX = await import('xlsx')
-            const wb = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(segRows), 'Segmento')
-            XLSX.writeFile(wb, `${fname}.xlsx`)
-          } else {
-            const headers = Object.keys(segRows[0])
-            const lines = segRows.map(r => headers.map(h => {
-              const v = String((r as any)[h] ?? '')
-              return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v
-            }).join(','))
-            const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.csv`; a.click()
-          }
+          const nombre = nombreConFecha('segmento_clientes')
+          if (fmt === 'xlsx') await descargarExcel({ nombre: 'Segmento', filas: segRows }, nombre)
+          else descargarCsv(segRows, nombre)
         }
 
         const exportarReporte = async () => {

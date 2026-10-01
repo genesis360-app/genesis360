@@ -288,6 +288,18 @@ por este motivo exacto.
 
 ---
 
+## Exportar a Excel / CSV — siempre por `src/lib/exportarArchivo.ts` (2026-10-01)
+
+Nunca armar un CSV o un `Blob` a mano. Usar `descargarExcel(hojas, nombre)`, `descargarCsv(filas, nombre, sep?)`,
+`descargarJson` y `nombreConFecha(prefijo)` (fecha local).
+
+- **Excel primero** en los menús ("Exportar Excel" → CSV → JSON): no tiene problemas de acentos ni de separador.
+- El CSV lleva **BOM** (sin él Excel muestra los acentos rotos — lo vio El Tilo), escapa comillas, separador y
+  **saltos de línea** (una nota con Enter partía la fila al reimportar), y usa **coma** por defecto porque es lo que
+  leen los importadores. Los reportes de Compras/Envíos/RRHH conservan `;` (no se reimportan).
+- Test de ida y vuelta: `tests/unit/exportarArchivo.test.ts` relee lo exportado igual que los importadores
+  (`XLSX.read` + `sheet_to_json`); e2e `166` descarga de verdad desde Productos/Clientes/Proveedores.
+
 ## Funciones puras → extraer a lib/
 
 Las funciones de lógica de negocio sin side effects van en `src/lib/`:

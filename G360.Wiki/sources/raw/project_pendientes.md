@@ -25,6 +25,13 @@ type: project
 >    `certificados-afip/plataforma/20422374168/produccion.crt` en PROD → secrets `ARCA_PADRON_KEY_PATH` y
 >    `ARCA_PADRON_PRODUCCION=true` en PROD → mig 446 → EF → merge con bump. El mismo cert destraba la **facturación de
 >    plataforma** (wsfe).
+> 2b. 🧰 **Estandarizar IMPORTAR/EXPORTAR** (pedido de GO 01/10, mientras Fede saca el cert de producción).
+>    **Fase 1 EXPORTAR — HECHA en `dev`**: `src/lib/exportarArchivo.ts` reemplaza los 11 CSV armados a mano; Productos,
+>    Clientes, Proveedores y la OC ganan **Exportar Excel**; CSV siempre con BOM (Pedidos no lo tenía) y saltos de línea
+>    escapados. unit `exportarArchivo` (8, ida y vuelta) + e2e `166`. **D3-a resuelto por GO: se re-sube el archivo.**
+>    **Siguiente: Fase 2** = modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
+>    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →
+>    Inventario; **Fase 3** = importar Proveedores.
 > 3. 💲 **Pricing v7**: respondidas PR-1 (anual = pago único sin renovación), PR-4 (Free eliminado; se regalan meses a
 >    mano) y PR-5 (Enterprise online como los demás). Abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del −20 % anual.
 > 4. ✅ **Respuestas 30/09** (DL/D3/PL/EC/QR) en `respuestas_preguntas_pendientes_2026-09-30.md` → a ejecutar: DL-1..3, QR-1..3

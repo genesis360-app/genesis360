@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Padrón ARCA fase 1 (certificado de plataforma) + cierre para /clear
+
+- Nueva prioridad de GO: autocompletar cliente/proveedor/emisor/alta rápida POS por CUIT desde ARCA. Decisiones: cert de
+  Genesis360 con el CUIT de Fede, consulta automática con vista previa. Manual oficial `ws_sr_constancia_inscripcion` v3.4
+  leído (getPersona_v2, endpoints, mapeo de condición IVA). Sin cert de Fede en DEV ni PROD → generados clave + CSR
+  (clave solo en bucket privado de DEV y PROD), guía `guia_fede_certificado_plataforma.md`. El mismo cert destraba la
+  facturación de plataforma.
+- Vercel: GO recreó `VITE_SUPABASE_ANON_KEY` (Preview, tipo Config) con la publishable → el panel de DEV vuelve a loguear.
+
+## [2026-10-01] update | Panel interno: MRR real, alertas MP, tickets, monitoreo; agente de prueba en DEV
+
+- Arreglos del doc "Herramientas internas" (GO: "resolver lo del MRR y todo lo que falte"). admin-api: MRR desde
+  `plan_tier` + precios de brand.ts (espejo `supabase/functions/_shared/precios.ts`, test `preciosEspejoServidor`),
+  solo activos; analytics cuenta el pago manual; métricas de consultas sin responder y alertas MP; responder → estado
+  `esperando`; `billing.mp_alerts.list/discard` (mig 445). mp-reconciliacion reabre limpia una descartada que reaparece.
+  monitoring-check rehecho (resumen del equipo por negocio, remitente real). App: fuera `/admin`. Panel: tarjetas del
+  Dashboard filtran (`?estado=`), alertas en Facturación, estados legibles en Soporte.
+- GO pidió un agente de prueba: `e2e.agente.admin@local.com` en DEV (rol admin, creado vía GoTrue admin con la secret
+  key de DEV leída por Management API; credenciales en `tests/e2e/.env.test.local`). Pruebas en vivo 10/10 OK.
+- Con datos reales de PROD el MRR nuevo da $60.000 (antes ~$0) y "alguna vez pagaron" 1 (antes 0).
+- Panel DEV no loguea por la anon legacy apagada → falta cambiar la env var en Vercel (GO).
+
+## [2026-10-01] deploy | v1.234.0 a PROD + mig 444 con OK de GO
+
+- GO autorizó pasar todo a PROD (responde DL-5). Migs 440→441→442→443 aplicadas de a una con el script nuevo
+  `scripts/aplicar-migracion.mjs` (Management API: contenido EXACTO del archivo + registro en schema_migrations, en una
+  transacción — evita el gotcha de tildes de apply_migration; verificado con `prosrc LIKE '%dólares%'`). 444 antes, con
+  OK de GO (2 clientes `dni '' → NULL`, uno de El Tilo; único trigger de clientes no afectado).
+- EFs `emitir-factura` (verify_jwt) y `data-api` (sin verify_jwt) en PROD; `data-api` también en DEV (estaba vieja).
+- Merge de `main` (hotfix 1.233.2) en `dev`, bump 1.234.0, tsc + build, PR #362, release `v1.234.0` Latest, servida
+  verificada con curl. Paridad policies DEV=PROD. Asistente IA sin redeploy (app-reference sin cambios).
+- GO: las 2 alertas MP "huérfana" son pruebas suyas. Backlog nuevo: estandarizar importar + exportar a Excel.
+
 ## [2026-09-30] query | Doc de herramientas internas + pricing v7 relevado (PR-1..PR-8)
 
 - Doc "Herramientas internas de Genesis360 — inventario" (Claude Docs) para GO y su socio: panel interno

@@ -6,20 +6,25 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-444, + correctivos 387b/387c)
+# Historial de Migraciones (001-445, + correctivos 387b/387c)
 
-📅 **Migración 444 — 🟡 EN DEV, falta PROD** (2026-09-30): `444_clientes_dni_vacio_a_null.sql` — DNI vacío del cliente → `NULL`
+📅 **Migración 445 — 🟡 EN DEV, falta PROD** (2026-10-01): `445_mp_billing_alertas_descartar.sql` — columnas
+`descartada_at`/`descartada_por`/`nota` en `mp_billing_alertas`: el panel interno lista las alertas de la reconciliación de MP
+y permite descartarlas con nota (no se re-emailean; si reaparecen, `mp-reconciliacion` las reabre limpias). Va ANTES de
+desplegar `admin-api`/`mp-reconciliacion` en PROD.
+
+📅 **Migración 444 — ✅ EN PROD (2026-10-01, v1.234.0)** (2026-09-30): `444_clientes_dni_vacio_a_null.sql` — DNI vacío del cliente → `NULL`
 (UPDATE de lo existente + trigger `trg_clientes_dni_vacio_a_null` BEFORE INSERT/UPDATE OF dni). El índice único `(tenant_id, dni)`
 trata `''` como valor: el alta rápida del POS y la ficha guardaban `''` y el 2º cliente sin DNI chocaba. En PROD hay 2 negocios
-con un cliente con `dni = ''` — ⚠️ **uno es El Tilo**: aplicarla en PROD modifica esa fila (`'' → NULL`); pedir OK de GO antes.
+con un cliente con `dni = ''` — uno era El Tilo: aplicada con OK de GO (2 filas `'' → NULL`, verificadas).
 Acompaña que la ficha ya no exige DNI cuando el cliente tiene CUIT.
 
-📅 **Migración 443 — 🟡 EN DEV, falta PROD** (2026-09-30): `443_cliente_domicilio_fiscal.sql` — `clientes.domicilio_fiscal text`
+📅 **Migración 443 — ✅ EN PROD (2026-10-01, v1.234.0)** (2026-09-30): `443_cliente_domicilio_fiscal.sql` — `clientes.domicilio_fiscal text`
 (domicilio fiscal/comercial del cliente como **receptor**; contador de El Tilo: obligatorio en Factura A). Aditiva, permisos a
 nivel tabla (la hereda), RLS sin cambios. La factura usa este campo y, vacío, cae al domicilio principal de `cliente_domicilios`.
 La EF `emitir-factura` la lee → **en PROD: 443 ANTES de desplegar la EF** (si no, la select falla y no se factura nada).
 
-📅 **Migración 442 — 🟡 EN DEV, falta PROD** (2026-09-26): `442_categorias_cliente_cc.sql` — **Categorías de clientes, etapa 1**.
+📅 **Migración 442 — ✅ EN PROD (2026-10-01, v1.234.0)** (2026-09-26): `442_categorias_cliente_cc.sql` — **Categorías de clientes, etapa 1**.
 Tabla `categorias_cliente` (5 condiciones de CC, NULL = hereda; `usada`; RLS con `fn_usuario_en_roles_categoria`), `clientes.categoria_cliente_id`,
 `tenants.categorias_cliente_roles` / `_asignar_roles`. **Valores de fábrica → "hereda"** (`cuenta_corriente_habilitada` false→NULL, `plazo_pago_dias`
 30→NULL, sin default). **Única resolución** `vw_clientes_cc` (security_invoker) + `fn_cc_condiciones_efectivas`. Guards
@@ -28,7 +33,7 @@ Tabla `categorias_cliente` (5 condiciones de CC, NULL = hereda; `usada`; RLS con
 `fn_ventas_cc_guard` (efectivas + CC habilitada), `fn_recalcular_intereses_cc_tenant` + `recalcular_intereses_cc[_all]`, `fn_notificar_cc_vencidas`,
 `fn_pedido_generar_venta` (**contiene la 440: aplicar 440 antes en PROD**). Suma 4 policies. Probada en transacción descartada (20 comprobaciones).
 
-📅 **Migración 441 — 🟡 EN DEV, falta PROD** (2026-09-26): `441_precio_programado_aprobacion_repositor.sql` — **C-1 de
+📅 **Migración 441 — ✅ EN PROD (2026-10-01, v1.234.0)** (2026-09-26): `441_precio_programado_aprobacion_repositor.sql` — **C-1 de
 Precio programado**. `tenants.precio_programado_requiere_repositor` (default false) + `precio_programado_aviso_demora_horas`
 (1-168, default 2; GRANT UPDATE por columna) + `precios_programados.aviso_demora_at`. Nueva `fn_aplicar_precio_programado(uuid)`
 (solo service_role) con el cuerpo que vivía en el cron; `fn_aplicar_precios_programados` (espera etiquetas + aviso de demora),
@@ -36,7 +41,7 @@ Precio programado**. `tenants.precio_programado_requiere_repositor` (default fal
 `g360.pp_aplicando`), `fn_generar_tarea_repositor_precio` y trigger nuevo `trg_tarea_repositor_aplicar_programado`. Las 5
 funciones de partida verificadas idénticas DEV = PROD. Probada en transacción descartada con impersonación (DEPOSITO).
 
-📅 **Migración 440 — 🟡 EN DEV, falta PROD** (2026-09-26): `440_precio_efectivo_cotizacion_bna.sql` — **D-1 fase 2**.
+📅 **Migración 440 — ✅ EN PROD (2026-10-01, v1.234.0)** (2026-09-26): `440_precio_efectivo_cotizacion_bna.sql` — **D-1 fase 2**.
 `fn_precio_venta_efectivo` (motor de precio de Pedidos → venta) pasa a la tasa única `fn_cotizacion_bna_vigente('USD')`
 (antes `tenants.cotizacion_usd`) y cotiza un producto con `moneda_venta='usd'` como `precio_usd × tasa`, igual que el POS
 (antes tomaba `precio_venta`, el espejo en pesos congelado); sin tasa → `RAISE` (D5). `fn_pedido_generar_venta` sella

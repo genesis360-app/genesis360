@@ -8,13 +8,21 @@ updated: 2026-09-25
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.233.2`** (hotfix 2026-09-29 sobre `v1.233.1`) (2026-09-26, migs 001-**439**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.234.0`** (2026-10-01, migs 001-**444**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-439; paridad `pg_policies` por schema: `public` **235** (`b6469b80`) · `storage` **40**
-(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#360** `dev→main`, merge
-**`50343fb9`**, release **`v1.233.1` Latest**.
+✅ **PROD = DEV** (001-444; paridad `pg_policies` por schema: `public` **239** (`fe9b1a50`) · `storage` **40**
+(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#362** `dev→main`, merge
+**`d9833f74`**, release **`v1.234.0` Latest**.
+
+## 🚀 v1.234.0 — Dólar BNA, precio programado, categorías + CC, factura (contador), domicilio fiscal, DNI (2026-10-01, EN PROD)
+
+Migs 440-444 + EFs `emitir-factura` y `data-api`. Una sola tasa USD→ARS (vendedor divisa BNA, día hábil anterior);
+precio programado C-1/C-3; categorías de clientes etapa 1 (CC por categoría, vencimiento server-side); factura con
+condición IVA completa, "Condición de venta", domicilio fiscal del receptor y Factura A bloqueada sin él; layout del
+PDF dentro del margen; DNI opcional con CUIT; nombre del PDF al imprimir; desplegables del importador (D-3).
+Migraciones aplicadas con `scripts/aplicar-migracion.mjs` (contenido exacto del archivo, en una transacción).
 
 ## 🚑 v1.233.2 — Hotfix: punto de venta en el modal de facturar/NC (2026-09-29, EN PROD)
 
@@ -22,7 +30,7 @@ Negocios con PV AFIP ≠ 1 (El Tilo, PV 5) no podían facturar: el modal mandaba
 la lista (factura y NC manual) y la NC automática lee el PV de la base. Solo frontend, rama desde `main` (PR #361),
 sin las migs 440-442 de `dev`.
 
-## 🟡 v1.234.0-rc.1 — pre-release en DEV (2026-09-26/29, SIN deploy, migs 440-442)
+## v1.234.0-rc.1 — pre-release (2026-09-26/29) → salió como `v1.234.0`
 
 Pre-release sobre `origin/dev` (no está en `main`). El deploy como `v1.234.0` espera DL-5
 (`sources/raw/preguntas_pendientes_2026-09-28.md`).

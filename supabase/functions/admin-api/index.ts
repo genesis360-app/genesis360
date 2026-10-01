@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { mrrDeTenant, NOMBRE_PLAN, PRECIO_DEBITO, PRECIO_LISTA } from '../_shared/precios.ts'
 
 // ───────────────────────────────────────────────────────────────────────────
 // admin-api — capa de datos del PANEL INTERNO (admin.genesis360.pro).
@@ -59,6 +60,8 @@ const ACTION_MODULE: Record<string, string> = {
   'billing.manual_record_payment': 'billing',
   'billing.manual_history': 'billing',
   'billing.platform_facturas_stats': 'billing',
+  'billing.mp_alerts.list': 'billing',
+  'billing.mp_alerts.discard': 'billing',
   'crm.leads.list': 'crm',
   'crm.leads.create': 'crm',
   'crm.leads.update': 'crm',
@@ -177,23 +180,35 @@ const cobroVivo = (t: { subscription_status?: string | null; mp_subscription_id?
   t.subscription_status === 'active' || !!t.mp_subscription_id
 
 // MRR + distribución por plan (join tenants→planes). Paga = plan_id no nulo y fuera de trial.
+// MRR = lo que pagan por mes los negocios con suscripción ACTIVA (no los de prueba, cancelados ni vencidos).
+// 🐛 (2026-10-01) Antes salía de la tabla `planes` (precios viejos) × `tenants.plan_id`, que tenía cargado 1 negocio de
+// 11: el panel mostraba ~$0 con un cliente pagando $60.000. El plan real es `plan_tier` y los precios, los de brand.ts
+// (espejo en _shared/precios.ts).
 async function computeBilling(svc: any) {
-  const nowIso = new Date().toISOString()
-  const { data: tenants } = await svc.from('tenants').select('plan_id, trial_ends_at')
-  const { data: planes } = await svc.from('planes').select('id, nombre, precio_mensual')
-  const precioById = new Map((planes ?? []).map((p: any) => [p.id, p]))
-  const porPlan = new Map<string, { nombre: string; precio_mensual: number; tenants: number; subtotal: number }>()
+  const [{ data: tenants }, { data: addons }] = await Promise.all([
+    svc.from('tenants').select('id, plan_tier, billing_mode, manual_monto_mensual').eq('subscription_status', 'active'),
+    svc.from('tenant_addons').select('tenant_id, dimension, cantidad').eq('tipo', 'fijo'),
+  ])
+  const addonsDe = new Map<string, Array<{ dimension: string; cantidad: number }>>()
+  for (const a of (addons ?? []) as any[]) {
+    const l = addonsDe.get(a.tenant_id) ?? []; l.push(a); addonsDe.set(a.tenant_id, l)
+  }
+  const porPlan = new Map<string, { nombre: string; precio_mensual: number; tenants: number; subtotal: number; sin_precio: number }>()
   let mrr = 0
-  for (const t of tenants ?? []) {
-    if (!t.plan_id) continue
-    const enTrial = t.trial_ends_at && t.trial_ends_at > nowIso
-    const plan = precioById.get(t.plan_id) as any
-    if (!plan) continue
-    const key = plan.id
-    const row = porPlan.get(key) ?? { nombre: plan.nombre, precio_mensual: Number(plan.precio_mensual ?? 0), tenants: 0, subtotal: 0 }
+  for (const t of (tenants ?? []) as any[]) {
+    const tier = String(t.plan_tier ?? 'free')
+    const monto = mrrDeTenant(t, addonsDe.get(t.id) ?? [])
+    const row = porPlan.get(tier) ?? {
+      nombre: NOMBRE_PLAN[tier] ?? tier,
+      // Precio de referencia de la fila: con débito (el destacado); el subtotal es lo que realmente paga cada uno.
+      precio_mensual: PRECIO_DEBITO[tier] ?? PRECIO_LISTA[tier] ?? 0,
+      tenants: 0, subtotal: 0, sin_precio: 0,
+    }
     row.tenants += 1
-    if (!enTrial) { row.subtotal += Number(plan.precio_mensual ?? 0); mrr += Number(plan.precio_mensual ?? 0) }
-    porPlan.set(key, row)
+    row.subtotal += monto
+    if (monto === 0) row.sin_precio += 1
+    porPlan.set(tier, row)
+    mrr += monto
   }
   return { mrr, por_plan: Array.from(porPlan.values()) }
 }
@@ -365,6 +380,13 @@ Deno.serve(async (req) => {
           svc.from('tenants').select('id', { count: 'exact', head: true }).gte('created_at', ago30),
           svc.from('support_tickets').select('id', { count: 'exact', head: true }).neq('estado', 'cerrado'),
         ])
+        // Lo que espera al EQUIPO (el cliente escribió último), no todo lo que no se cerró.
+        const [{ count: esperanRespuesta }, { count: alertasMp }] = await Promise.all([
+          svc.from('support_tickets').select('id', { count: 'exact', head: true })
+            .eq('pendiente_equipo', true).not('estado', 'in', '(resuelto,cerrado)'),
+          svc.from('mp_billing_alertas').select('id', { count: 'exact', head: true })
+            .is('resolved_at', null).is('descartada_at', null),
+        ])
         const { data: modos } = await svc.from('tenants').select('modo_operacion')
         const basico = (modos ?? []).filter((m: any) => m.modo_operacion === 'basico').length
         const { mrr } = await computeBilling(svc)
@@ -395,7 +417,7 @@ Deno.serve(async (req) => {
           total: t.count ?? 0, altas30: a30.count ?? 0,
           enTrial: trialVigente + trialPorVencer,
           trialPorVencer, trialVencido, bajasProgramadas, sinActividad30,
-          ticketsAbiertos: tickets.count ?? 0, basico, avanzado: (modos?.length ?? 0) - basico, mrr,
+          ticketsAbiertos: tickets.count ?? 0, ticketsEsperanRespuesta: esperanRespuesta ?? 0, alertasMp: alertasMp ?? 0, basico, avanzado: (modos?.length ?? 0) - basico, mrr,
         } })
       }
 
@@ -404,10 +426,16 @@ Deno.serve(async (req) => {
       // muestra el embudo real (altas, conversión a pago, churn y origen de los leads) y se dice
       // explícitamente qué falta para poder calcular CAC.
       case 'analytics.overview': {
-        const [{ data: tenants }, { data: leads }] = await Promise.all([
-          svc.from('tenants').select('created_at, subscription_status, plan_tier, primera_compra_at, trial_ends_at'),
+        const [{ data: tenantsRaw }, { data: leads }, { data: pagosManuales }] = await Promise.all([
+          svc.from('tenants').select('id, created_at, subscription_status, plan_tier, primera_compra_at, trial_ends_at'),
           svc.from('leads').select('origen, estado, valor_estimado, created_at'),
+          svc.from('billing_manual_pagos').select('tenant_id'),
         ])
+        // 🐛 (2026-10-01) "Alguna vez pagó" miraba solo `primera_compra_at`, que escribe el circuito de Mercado Pago: el
+        // único negocio activo (pago manual) figuraba como que nunca pagó. Un pago manual registrado también cuenta.
+        const conPagoManual = new Set((pagosManuales ?? []).map((p: any) => p.tenant_id))
+        const tenants = (tenantsRaw ?? []).map((t: any) =>
+          ({ ...t, primera_compra_at: t.primera_compra_at ?? (conPagoManual.has(t.id) ? t.created_at : null) }))
 
         // Altas por mes, últimos 12 — la serie que muestra si el negocio crece o se amesetó.
         const meses: { mes: string; altas: number; convirtieron: number }[] = []
@@ -643,6 +671,32 @@ Deno.serve(async (req) => {
 
         await audit({ tenantId, monto, medio, manual_paid_until: hasta })
         return json({ ok: true, manual_paid_until: hasta })
+      }
+
+      // Alertas de la reconciliación de Mercado Pago (mig 256 + 445). Antes solo llegaban por mail.
+      case 'billing.mp_alerts.list': {
+        const { data, error } = await svc.from('mp_billing_alertas')
+          .select('id, tipo, preapproval_id, tenant_id, detalle, first_seen, resolved_at, descartada_at, descartada_por, nota')
+          .is('resolved_at', null).order('first_seen', { ascending: false }).limit(100)
+        if (error) throw error
+        // Nombre del negocio aparte (sin FK a tenants: la alerta puede no tener negocio, es justamente la huérfana).
+        const ids = [...new Set((data ?? []).map((a: any) => a.tenant_id).filter(Boolean))]
+        const { data: ts } = ids.length ? await svc.from('tenants').select('id, nombre').in('id', ids) : { data: [] }
+        const nombre = new Map((ts ?? []).map((t: any) => [t.id, t.nombre]))
+        return json({ alertas: (data ?? []).map((a: any) => ({ ...a, tenant_nombre: a.tenant_id ? nombre.get(a.tenant_id) ?? null : null })) })
+      }
+
+      case 'billing.mp_alerts.discard': {
+        const id = Number(p.alertaId)
+        const nota = String(p.nota ?? '').trim()
+        if (!Number.isFinite(id) || !nota) return json({ error: 'Faltan alertaId y nota (por qué se descarta)' }, 400)
+        const { data, error } = await svc.from('mp_billing_alertas')
+          .update({ descartada_at: new Date().toISOString(), descartada_por: uid, nota })
+          .eq('id', id).is('resolved_at', null).select('id, tipo, preapproval_id').maybeSingle()
+        if (error) throw error
+        if (!data) return json({ error: 'La alerta no existe o ya se resolvió' }, 404)
+        await audit({ alertaId: id, tipo: data.tipo, preapproval_id: data.preapproval_id, nota })
+        return json({ ok: true })
       }
 
       case 'billing.platform_facturas_stats': {
@@ -1183,7 +1237,15 @@ Deno.serve(async (req) => {
           ticket_id: p.ticketId, autor_tipo: 'agente', autor_id: uid, cuerpo: p.cuerpo.trim(), interno,
         })
         if (error) throw error
-        await svc.from('support_tickets').update({ updated_at: new Date().toISOString() }).eq('id', p.ticketId)
+        // Respuesta al cliente (no nota interna) → el ticket pasa a "esperando al cliente". Antes quedaba "abierto" para
+        // siempre aunque ya estuviera atendido (el único ticket de PROD, del 15/09). Si el cliente vuelve a escribir, el
+        // trigger de la mig 426 lo marca pendiente del equipo y lo reabre.
+        const patchT: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (!interno) {
+          const { data: tk } = await svc.from('support_tickets').select('estado').eq('id', p.ticketId).maybeSingle()
+          if (tk && ['abierto', 'en_progreso'].includes(String(tk.estado))) patchT.estado = 'esperando'
+        }
+        await svc.from('support_tickets').update(patchT).eq('id', p.ticketId)
         await audit({ ticketId: p.ticketId, interno })
         return json({ ok: true })
       }

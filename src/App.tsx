@@ -37,7 +37,6 @@ const ConfigPage       = lazy(() => import('@/pages/ConfigPage'))
 const ComercialPage    = lazy(() => import('@/pages/ComercialPage'))
 const RepositoresPage  = lazy(() => import('@/pages/RepositoresPage'))
 const SuscripcionPage  = lazy(() => import('@/pages/SuscripcionPage'))
-const AdminPage        = lazy(() => import('@/pages/AdminPage'))
 const ClientesPage        = lazy(() => import('@/pages/ClientesPage'))
 const RentabilidadPage    = lazy(() => import('@/pages/RentabilidadPage'))
 const RecomendacionesPage = lazy(() => import('@/pages/RecomendacionesPage'))
@@ -223,10 +222,8 @@ function App() {
               </Route>
             </Route>
 
-            {/* Admin */}
-            <Route element={<AuthGuard requireRole="ADMIN" />}>
-              <Route path="/admin" element={<AdminPage />} />
-            </Route>
+            {/* /admin (gestión de negocios dentro de la app) se eliminó el 2026-10-01: lo reemplaza el panel interno
+                admin.genesis360.pro, que audita cada acción. Esta página cambiaba la suscripción sin dejar registro. */}
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

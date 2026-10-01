@@ -1,20 +1,30 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!
-const ALERT_EMAIL   = 'gaston.otranto@gmail.com'
-const FROM          = 'onboarding@resend.dev'  // cambiar a noreply@genesis360.pro cuando esté verificado
+// ─── Resumen diario del EQUIPO de Genesis360 (lo dispara GitHub Actions, 1 vez por día) ────────────────────────────
+//
+// 🔁 Rehecho el 2026-10-01 (doc "Herramientas internas"). La versión anterior sumaba reservas viejas, stock crítico y
+// cajas abiertas de TODOS los negocios juntos — temas de cada negocio, no nuestros, y sin decir de cuál — y salía desde
+// el remitente de prueba de Resend. Ahora lista, negocio por negocio, lo que le toca hacer AL EQUIPO:
+//   1. Cobros: alertas de Mercado Pago sin revisar y pagos manuales vencidos.
+//   2. Facturación trabada: NC de AFIP sin emitir y emisiones que quedaron para conciliar a mano.
+//   3. Soporte: consultas que esperan respuesta del equipo hace más de 24 h.
+//   4. Pruebas: vencen en 3 días o vencieron en las últimas 24 h.
+//   5. Clientes que pagan y no entran hace más de 14 días (riesgo de baja).
+// Sin pendientes también se manda (sirve de latido: si un día no llega, algo se cayó).
 
-// ─── Umbrales ─────────────────────────────────────────────────────────────────
-const UMBRAL_RESERVAS_DIAS  = 5   // reservas sin despachar → alerta
-const UMBRAL_CAJA_HORAS     = 16  // caja abierta sin cerrar → alerta
+const ALERT_EMAIL = 'gaston.otranto@gmail.com'
+const FROM        = 'Genesis360 <noreply@genesis360.pro>'
+const PANEL       = 'https://admin.genesis360.pro'
+const DIA         = 86_400_000
+
+const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '—')
+
+type Item = { negocio: string; detalle: string; tenantId?: string | null }
+type Seccion = { titulo: string; items: Item[] }
 
 Deno.serve(async (req) => {
-
-  // GUARD-CRON (auditoria de seguridad 2026-09-20): esta funcion la dispara GitHub Actions
-  // o alguna otra Edge Function, nunca un navegador. Antes el unico filtro era `verify_jwt`,
-  // que se satisface con la ANON KEY — y la anon key viaja en el bundle que descarga
-  // cualquiera, asi que la funcion estaba abierta a internet. Exige CRON_SECRET (workflows)
-  // o la service key (llamadas EF -> EF). Sin CRON_SECRET cargado, solo entra la service key.
+  // GUARD-CRON (auditoría de seguridad 2026-09-20): la dispara GitHub Actions o una EF, nunca un navegador.
   {
     const cronSecret = Deno.env.get('CRON_SECRET') ?? ''
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -24,191 +34,138 @@ Deno.serve(async (req) => {
       (cronSecret !== '' && enviado === cronSecret) ||
       (serviceKey !== '' && auth.includes(serviceKey))
     if (!autorizado) {
-      return new Response(JSON.stringify({ error: 'No autorizado' }), {
-        status: 401, headers: { 'Content-Type': 'application/json' },
-      })
+      return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
     }
   }
+
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    const ahora = Date.now()
+    const isoHace = (ms: number) => new Date(ahora - ms).toISOString()
 
-    const now      = Date.now()
-    const hoy      = new Date(); hoy.setHours(0, 0, 0, 0)
-    const hace5d   = new Date(now - UMBRAL_RESERVAS_DIAS * 86400 * 1000).toISOString()
-    const hace16h  = new Date(now - UMBRAL_CAJA_HORAS   * 3600  * 1000).toISOString()
+    const [alertasMp, manualesVencidos, ncPendientes, locks, tickets, overview] = await Promise.all([
+      db.from('mp_billing_alertas').select('tipo, preapproval_id, tenant_id, first_seen')
+        .is('resolved_at', null).is('descartada_at', null),
+      db.from('tenants').select('id, nombre, manual_paid_until, manual_monto_mensual')
+        .eq('billing_mode', 'manual').eq('subscription_status', 'active').lt('manual_paid_until', new Date().toISOString()),
+      db.from('nc_afip_pendientes').select('tenant_id, intentos, ultimo_error, requiere_reconciliacion_manual, created_at')
+        .is('resuelto_at', null),
+      db.from('emision_factura_locks').select('tenant_id, iniciado_at').eq('requiere_reconciliacion_manual', true),
+      db.from('support_tickets').select('tenant_id, asunto, ultimo_mensaje_at, created_at')
+        .eq('pendiente_equipo', true).not('estado', 'in', '(resuelto,cerrado)'),
+      db.rpc('fn_admin_tenants_overview', { p_q: null, p_limit: 500 }),
+    ])
 
-    // ── 1. Reservas viejas ────────────────────────────────────────────────────
-    const { data: reservasViejas = [] } = await supabase
-      .from('ventas')
-      .select('numero, total, monto_pagado, created_at')
-      .eq('estado', 'reservada')
-      .lt('created_at', hace5d)
-      .order('created_at', { ascending: true })
-      .limit(20)
+    // Nombre de cada negocio (una sola vez, del overview que ya trae todos).
+    const tenants = (overview.data ?? []) as any[]
+    const nombre = new Map<string, string>(tenants.map(t => [t.id, t.nombre ?? t.id]))
+    const n = (id: string | null) => (id ? nombre.get(id) ?? id : 'sin negocio vinculado')
 
-    // ── 2. Stock crítico ──────────────────────────────────────────────────────
-    const { data: todosProductos = [] } = await supabase
-      .from('productos')
-      .select('sku, nombre, stock_actual, stock_minimo')
-      .eq('activo', true)
-      .not('stock_minimo', 'is', null)
-      .gt('stock_minimo', 0)
+    const secciones: Seccion[] = [
+      {
+        titulo: 'Cobros',
+        items: [
+          ...((alertasMp.data ?? []) as any[]).map(a => ({
+            negocio: n(a.tenant_id), tenantId: a.tenant_id,
+            detalle: a.tipo === 'huerfana'
+              ? `Mercado Pago cobra una suscripción que no está vinculada a ningún negocio (${a.preapproval_id}). Vincularla o descartarla en Facturación.`
+              : a.tipo === 'drift_mp_cobra'
+                ? 'Mercado Pago le cobra pero el negocio no tiene acceso.'
+                : 'Tiene acceso activo pero su suscripción de Mercado Pago ya no cobra.',
+          })),
+          ...((manualesVencidos.data ?? []) as any[]).map(t => ({
+            negocio: t.nombre, tenantId: t.id,
+            detalle: `Pago manual vencido el ${fecha(t.manual_paid_until)} ($${Number(t.manual_monto_mensual ?? 0).toLocaleString('es-AR')}/mes).`,
+          })),
+        ],
+      },
+      {
+        titulo: 'Facturación trabada',
+        items: [
+          ...((ncPendientes.data ?? []) as any[]).map(x => ({
+            negocio: n(x.tenant_id), tenantId: x.tenant_id,
+            detalle: x.requiere_reconciliacion_manual
+              ? `Nota de crédito de AFIP para revisar a mano (${x.intentos} intentos): ${String(x.ultimo_error ?? '').slice(0, 140)}`
+              : `Nota de crédito de AFIP sin emitir desde el ${fecha(x.created_at)} (${x.intentos} intentos).`,
+          })),
+          ...((locks.data ?? []) as any[]).map(l => ({
+            negocio: n(l.tenant_id), tenantId: l.tenant_id,
+            detalle: `Una emisión del ${fecha(l.iniciado_at)} quedó sin confirmar: verificar en AFIP si salió antes de reintentar.`,
+          })),
+        ],
+      },
+      {
+        titulo: 'Soporte',
+        items: ((tickets.data ?? []) as any[])
+          .filter(t => new Date(t.ultimo_mensaje_at ?? t.created_at).getTime() < ahora - DIA)
+          .map(t => ({ negocio: n(t.tenant_id), tenantId: t.tenant_id, detalle: `Espera respuesta desde el ${fecha(t.ultimo_mensaje_at ?? t.created_at)}: "${t.asunto}".` })),
+      },
+      {
+        titulo: 'Pruebas',
+        items: tenants.filter(t => t.subscription_status === 'trial' && t.trial_ends_at).flatMap(t => {
+          const fin = new Date(t.trial_ends_at).getTime()
+          if (fin > ahora && fin <= ahora + 3 * DIA) return [{ negocio: t.nombre, tenantId: t.id, detalle: `La prueba vence el ${fecha(t.trial_ends_at)}.` }]
+          if (fin <= ahora && fin > ahora - DIA) return [{ negocio: t.nombre, tenantId: t.id, detalle: 'La prueba venció hoy sin elegir plan.' }]
+          return []
+        }),
+      },
+      {
+        titulo: 'Clientes que pagan y no entran',
+        items: tenants.filter(t => t.subscription_status === 'active'
+          && (!t.ultimo_acceso || new Date(t.ultimo_acceso).getTime() < ahora - 14 * DIA))
+          .map(t => ({ negocio: t.nombre, tenantId: t.id, detalle: `Último acceso: ${t.ultimo_acceso ? fecha(t.ultimo_acceso) : 'nunca'}.` })),
+      },
+    ]
 
-    const stockCritico = (todosProductos ?? [])
-      .filter((p: any) => (p.stock_actual ?? 0) <= (p.stock_minimo ?? 0))
+    const total = secciones.reduce((s, x) => s + x.items.length, 0)
+    const subject = total > 0
+      ? `Genesis360 — ${total} pendiente${total > 1 ? 's' : ''} del equipo · ${new Date().toLocaleDateString('es-AR')}`
+      : `Genesis360 — sin pendientes · ${new Date().toLocaleDateString('es-AR')}`
 
-    // ── 3. Cajas abiertas > 16h ───────────────────────────────────────────────
-    const { data: cajasViejas = [] } = await supabase
-      .from('caja_sesiones')
-      .select('id, created_at, cajas(nombre)')
-      .is('cerrada_at', null)
-      .lt('created_at', hace16h)
+    const bloque = (s: Seccion) => s.items.length === 0 ? '' : `
+      <h3 style="margin:24px 0 8px;font-size:15px;color:#111">${esc(s.titulo)} (${s.items.length})</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        ${s.items.map(i => `<tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;width:34%;vertical-align:top">
+            ${i.tenantId ? `<a href="${PANEL}/customers/${esc(i.tenantId)}" style="color:#7B00FF;text-decoration:none">${esc(i.negocio)}</a>` : esc(i.negocio)}
+          </td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#333">${esc(i.detalle)}</td>
+        </tr>`).join('')}
+      </table>`
 
-    // ── 4. Ventas finalizadas hoy ─────────────────────────────────────────────
-    const { data: ventasHoy = [], count: countHoy } = await supabase
-      .from('ventas')
-      .select('total', { count: 'exact' })
-      .eq('estado', 'despachada')
-      .gte('created_at', hoy.toISOString())
-
-    const totalHoy = (ventasHoy ?? []).reduce((s: number, v: any) => s + (v.total ?? 0), 0)
-
-    // ── Alertas ───────────────────────────────────────────────────────────────
-    const alerts: string[] = []
-    if ((reservasViejas ?? []).length > 0)
-      alerts.push(`🔒 ${(reservasViejas ?? []).length} reserva(s) sin despachar hace más de ${UMBRAL_RESERVAS_DIAS} días`)
-    if (stockCritico.length > 0)
-      alerts.push(`⚠️ ${stockCritico.length} producto(s) en stock crítico`)
-    if ((cajasViejas ?? []).length > 0)
-      alerts.push(`⏰ ${(cajasViejas ?? []).length} caja(s) abiertas hace más de ${UMBRAL_CAJA_HORAS} horas`)
-
-    const hasAlerts = alerts.length > 0
-    const fecha     = new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-    const subject   = hasAlerts
-      ? `⚠️ Genesis360 — ${alerts.length} alerta(s) · ${new Date().toLocaleDateString('es-AR')}`
-      : `✅ Genesis360 — Todo en orden · ${new Date().toLocaleDateString('es-AR')}`
-
-    // ── HTML del email ────────────────────────────────────────────────────────
-    const alertBox = hasAlerts
-      ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:16px;margin:0 0 20px">
-           <p style="margin:0 0 8px;color:#92400e;font-weight:600">Se detectaron ${alerts.length} alerta(s):</p>
-           <ul style="margin:0;padding-left:18px">
-             ${alerts.map(a => `<li style="color:#92400e;margin:4px 0;font-size:14px">${a}</li>`).join('')}
-           </ul>
-         </div>`
-      : `<p style="color:#059669;font-weight:600;margin:0 0 20px;font-size:14px">✅ Sin alertas — todo en orden.</p>`
-
-    const kpis = `
-      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-        <div style="background:#f3f4f6;border-radius:8px;padding:12px 20px;text-align:center;min-width:110px">
-          <div style="font-size:22px;font-weight:700;color:#111">${countHoy ?? 0}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Ventas hoy</div>
-        </div>
-        <div style="background:#f3f4f6;border-radius:8px;padding:12px 20px;text-align:center;min-width:110px">
-          <div style="font-size:22px;font-weight:700;color:#111">$${totalHoy.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Facturado hoy</div>
-        </div>
-        <div style="background:#f3f4f6;border-radius:8px;padding:12px 20px;text-align:center;min-width:110px">
-          <div style="font-size:22px;font-weight:700;color:${stockCritico.length > 0 ? '#dc2626' : '#111'}">${stockCritico.length}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Stock crítico</div>
-        </div>
-        <div style="background:#f3f4f6;border-radius:8px;padding:12px 20px;text-align:center;min-width:110px">
-          <div style="font-size:22px;font-weight:700;color:${(reservasViejas ?? []).length > 0 ? '#d97706' : '#111'}">${(reservasViejas ?? []).length}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Reservas viejas</div>
-        </div>
-      </div>`
-
-    const stockTable = stockCritico.length > 0 ? `
-      <p style="font-size:14px;font-weight:600;color:#dc2626;margin:0 0 6px">⚠ Stock crítico</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
-        <thead><tr>
-          <th style="text-align:left;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">SKU</th>
-          <th style="text-align:left;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Producto</th>
-          <th style="text-align:right;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Stock</th>
-          <th style="text-align:right;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Mínimo</th>
-        </tr></thead>
-        <tbody>
-          ${stockCritico.slice(0, 10).map((p: any) =>
-            `<tr>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;color:#374151">${p.sku}</td>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;color:#374151">${p.nombre}</td>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;text-align:right;color:#dc2626;font-weight:600">${p.stock_actual}</td>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;text-align:right;color:#374151">${p.stock_minimo}</td>
-            </tr>`
-          ).join('')}
-        </tbody>
-      </table>` : ''
-
-    const reservasTable = (reservasViejas ?? []).length > 0 ? `
-      <p style="font-size:14px;font-weight:600;color:#d97706;margin:0 0 6px">🔒 Reservas sin despachar</p>
-      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
-        <thead><tr>
-          <th style="text-align:left;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Venta</th>
-          <th style="text-align:right;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Total</th>
-          <th style="text-align:right;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Saldo pendiente</th>
-          <th style="text-align:right;color:#6b7280;font-weight:500;padding:6px 4px;border-bottom:1px solid #e5e7eb">Antigüedad</th>
-        </tr></thead>
-        <tbody>
-          ${(reservasViejas ?? []).slice(0, 10).map((r: any) => {
-            const dias = Math.floor((now - new Date(r.created_at).getTime()) / 86400000)
-            const saldo = (r.total ?? 0) - (r.monto_pagado ?? 0)
-            return `<tr>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;color:#374151">#${r.numero}</td>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;text-align:right;color:#374151">$${Number(r.total).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;text-align:right;color:${saldo > 0 ? '#d97706' : '#374151'}">${saldo > 0 ? '$' + saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '—'}</td>
-              <td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;text-align:right;color:#374151">${dias}d</td>
-            </tr>`
-          }).join('')}
-        </tbody>
-      </table>` : ''
-
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-<div style="max-width:600px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
-  <div style="background:#7B00FF;padding:24px 32px">
-    <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700">Genesis360 — Reporte diario</h1>
-    <p style="margin:4px 0 0;color:#d4b3ff;font-size:13px">${fecha}</p>
-  </div>
-  <div style="padding:24px 32px">
-    ${alertBox}
-    ${kpis}
-    ${stockTable}
-    ${reservasTable}
-  </div>
-  <div style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb">
-    <p style="margin:0;color:#9ca3af;font-size:12px">
-      Reporte automático de Genesis360 ·
-      <a href="https://app.genesis360.pro" style="color:#7B00FF;text-decoration:none">Abrir app</a> ·
-      <a href="https://supabase.com/dashboard/project/jjffnbrdjchquexdfgwq" style="color:#7B00FF;text-decoration:none">Supabase PROD</a>
+    const html = `<!doctype html><html><body style="margin:0;background:#f5f5f7;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:640px;margin:0 auto;padding:24px">
+  <div style="background:#fff;border-radius:12px;padding:24px">
+    <h2 style="margin:0 0 4px;font-size:18px;color:#111">Resumen diario del equipo</h2>
+    <p style="margin:0 0 8px;color:#666;font-size:13px">${new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+    ${total === 0
+      ? '<p style="color:#059669;font-weight:600;font-size:14px">Sin pendientes: cobros, facturación, soporte y pruebas en orden.</p>'
+      : secciones.map(bloque).join('')}
+    <p style="margin:24px 0 0;font-size:12px;color:#999">
+      <a href="${PANEL}" style="color:#7B00FF;text-decoration:none">Abrir el panel interno</a> · EF monitoring-check
     </p>
   </div>
-</div>
-</body></html>`
+</div></body></html>`
 
-    // ── Enviar via Resend ─────────────────────────────────────────────────────
-    const resendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ from: FROM, to: [ALERT_EMAIL], subject, html }),
-    })
-    const resendBody = await resendRes.json()
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    let emailId: string | null = null
+    if (resendKey) {
+      const r = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: FROM, to: [ALERT_EMAIL], subject, html }),
+      })
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) console.error('monitoring-check: Resend', r.status, JSON.stringify(body))
+      emailId = body?.id ?? null
+    }
 
-    return new Response(
-      JSON.stringify({ ok: true, hasAlerts, alerts, emailId: resendBody.id }),
-      { headers: { 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({
+      ok: true, total, emailId,
+      por_seccion: Object.fromEntries(secciones.map(s => [s.titulo, s.items.length])),
+    }), { headers: { 'Content-Type': 'application/json' } })
   } catch (err: any) {
     console.error('monitoring-check error:', err)
-    return new Response(
-      JSON.stringify({ ok: false, error: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
-    )
+    return new Response(JSON.stringify({ ok: false, error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })

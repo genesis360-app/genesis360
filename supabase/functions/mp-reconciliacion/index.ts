@@ -138,7 +138,8 @@ Deno.serve(async (req) => {
     for (const h of nuevos) {
       // upsert por si el hallazgo existió, se resolvió y reapareció (reabre: resolved_at=null)
       const { error } = await supabase.from('mp_billing_alertas')
-        .upsert({ tipo: h.tipo, preapproval_id: h.preapproval_id, tenant_id: h.tenant_id, detalle: h.detalle, resolved_at: null },
+        // Mig 445: si reaparece es un hecho nuevo → también se limpia un descarte anterior.
+        .upsert({ tipo: h.tipo, preapproval_id: h.preapproval_id, tenant_id: h.tenant_id, detalle: h.detalle, resolved_at: null, descartada_at: null, descartada_por: null, nota: null },
           { onConflict: 'tipo,preapproval_id' })
       if (error) console.error('mp-reconciliacion: upsert alerta', h.preapproval_id, error)
     }

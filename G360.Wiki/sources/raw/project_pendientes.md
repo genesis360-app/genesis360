@@ -6,14 +6,53 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-09-29, cierre de sesión) — 🔥 errores de El Tilo + todo en DEV sin deploy + 🙋 22 preguntas abiertas
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre para /clear) — PROD = `v1.234.0` · panel interno listo en DEV · padrón ARCA fase 1
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
-> | **DEV** (`origin/dev`, pre-release **`v1.234.0-rc.1`**) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump de `APP_VERSION`) | 001-**442** |
+> | **PROD** | `v1.234.0` ✅ servida | 001-**444** |
+> | **DEV** (`origin/dev`) | `v1.234.0` + panel interno (sale `/admin`) | 001-**445** |
+> | **Panel interno** (`genesis360-admin`) | PROD = `main`; `dev` con los arreglos (preview DEV) | — |
 >
-> **🙋 LO PRIMERO: las 22 preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
+> **Lo primero al retomar:**
+> 1. 🙋 **Pedir OK a GO para pasar a PROD los arreglos del panel interno** (orden: mig 445 con
+>    `node scripts/aplicar-migracion.mjs jjffnbrdjchquexdfgwq supabase/migrations/445_*.sql` → EFs `admin-api` (verify_jwt),
+>    `mp-reconciliacion` (verify_jwt), `monitoring-check` (`--no-verify-jwt`) → PR app `dev→main` (v1.234.1, sale `/admin`)
+>    → PR del repo admin `dev→main`). Al pasar, GO descarta en Facturación las 2 alertas MP "huérfana" (son pruebas suyas).
+> 2. ⏭️ **Padrón ARCA (autocompletar por CUIT) — fase 1 esperando a Fede.** Decisiones de GO: certificado de Genesis360 con
+>    el CUIT de **Fede** (20-42237416-8); se usa en ficha de cliente, proveedores, emisor y **alta rápida del POS**;
+>    consulta automática al completar un CUIT válido, con vista previa para aceptar. Hecho: manual ARCA leído
+>    (`ws_sr_constancia_inscripcion`, `getPersona_v2`, homologación `https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA5`,
+>    producción `https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5`; `cuitRepresentada` = CUIT del certificado;
+>    condición IVA: impuesto 30 = RI, 32 = exento, `datosMonotributo` = monotributo, si no CF); clave + CSR generados
+>    (alias `genesis360plataforma`; clave SOLO en bucket `certificados-afip` de DEV y PROD:
+>    `plataforma/20422374168/2026-10-01T05-21-29-127Z.key`); guía para Fede en `sources/raw/guia_fede_certificado_plataforma.md`.
+>    Falta: Fede devuelve `homologacion.crt` y `produccion.crt` → fase 2 (EF `consultar-cuit` reusando WSAA del motor propio:
+>    `buildTRA(service)` y `afip_wsaa_ta` ya son genéricos por servicio; cache de respuestas; rate limit persistente) → fase 3
+>    (pantallas) → fase 4 (e2e homologación + UAT). El mismo certificado destraba la **facturación de plataforma** (wsfe).
+> 3. 💲 **Pricing v7**: esperan PR-1..PR-8 (`preguntas_pendientes_2026-09-28.md` §F).
+> 4. ✅ **Respuestas 30/09** (DL/D3/PL/EC/QR) en `respuestas_preguntas_pendientes_2026-09-30.md` → a ejecutar: DL-1..3, QR-1..3
+>    (5 problemas de plata del QR de MP), D3-a/b (importador en 2 pasos, se une al backlog de estandarizar importar/exportar),
+>    PL-1..7 (Fase 3/4 categorías; PL-5 y PL-7 requieren propuesta de Tonga), EC-1..8 + Fase 0 ("Empezar de cero").
+>    Puntos abiertos para Tonga: PL-5 (POS sin internet), PL-7 (precio por sucursal), EC-5 (superusuario de soporte),
+>    D3-a (UX de la vista previa).
+> 5. 🧰 **Backlog**: estandarizar IMPORTAR (Proveedores sin importar; modal único de pantalla completa con vista previa) y
+>    EXPORTAR a Excel .xlsx además de CSV (El Tilo vio el CSV "codificado" en la PC: acentos).
+> 6. 🔑 Rotación de claves PROD (en curso): al apagar las legacy en PROD, actualizar también `VITE_SUPABASE_ANON_KEY` de
+>    **Production** en Vercel del panel interno (en DEV ya se hizo, GO 01/10).
+> 7. 🛑 Datos de El Tilo en el historial público de git (`f733d122`): GO pidió el impacto; recomendación = no reescribir
+>    (los datos van impresos en sus facturas). Sin decisión.
+>
+> Herramientas nuevas: `scripts/aplicar-migracion.mjs` (migs a PROD con contenido exacto) · agente de prueba del panel en DEV
+> `e2e.agente.admin@local.com` (credenciales en `tests/e2e/.env.test.local`) · doc "Herramientas internas de Genesis360 —
+> inventario" (Claude Docs, https://claude.ai/code/artifact/8c195e5b-2853-4e7c-9726-ec5ed019d998).
+>
+> **Backlog nuevo (GO 01/10)**: estandarizar IMPORTAR (Proveedores no tiene; modales distintos entre Clientes y
+> Productos/Inventario — GO se inclina por el de pantalla completa con vista previa y validación) y EXPORTAR con más
+> formatos (hoy solo CSV; El Tilo lo vio "codificado" en la PC → ofrecer Excel .xlsx).
+>
+> **✅ 01/10: respondidas DL/D3/PL/EC/QR → `respuestas_preguntas_pendientes_2026-09-30.md`. Abiertas: PR-1..PR-8 (pricing v7).**
+> **🙋 (histórico) Preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
 > D3-a, D3-b, PL-1..PL-7, EC-1..EC-8), cada una con contexto, opciones y propuesta. GO las revisa con Fede. NO ejecutar
 > nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
 > Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·

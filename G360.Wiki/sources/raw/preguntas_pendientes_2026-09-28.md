@@ -193,6 +193,17 @@ Los puntos 4 y 5 no requieren decisión: se arreglan alineando el monto del QR c
 
 ## F · Pricing v7 (30/09)
 
+> ✅ **Respuestas de GO (2026-10-01):**
+> - **PR-1:** el pago anual es un pago único por 1 año, **sin renovación automática** (al terminar el año no se vuelve a
+>   cobrar solo). La duda "acumula o no con el débito" no aplica: es un camino aparte. *(Falta definir sobre qué precio se
+>   aplica el −20 %: ver pregunta al final de esta sección.)*
+> - **PR-4:** **el plan Free deja de existir.** Si conviene (sobre todo con los primeros clientes), el equipo regala meses
+>   después de las reuniones, para que se vea como un regalo y no como algo que ya estaba (herramienta: "Extender
+>   prueba"/regalar desde el panel interno).
+> - **PR-5:** **Enterprise se contrata y se cobra igual que cualquier otro plan** (online, $200.000 con débito). Requiere
+>   crear el plan en Mercado Pago (GO) y pasar el id.
+> - Siguen abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del anual.
+
 Fuente: "06 - Cambios de Pricing v6 a v7 - Para Tonga" (Fede). Lo que el documento define se ejecuta tal cual (precios
 Básico $54.000/$60.000 y Pro $100.000/$117.600, límites, descuento por débito escalonado, RRHH y marketplace pasan a
 Enterprise). Contexto PROD al 30/09: 0 negocios en Pro o Enterprise, 2 add-ons activos. Estas 8 frenan la ejecución:

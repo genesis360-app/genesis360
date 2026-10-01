@@ -28,7 +28,8 @@ type: project
 >    Falta: Fede devuelve `homologacion.crt` y `produccion.crt` → fase 2 (EF `consultar-cuit` reusando WSAA del motor propio:
 >    `buildTRA(service)` y `afip_wsaa_ta` ya son genéricos por servicio; cache de respuestas; rate limit persistente) → fase 3
 >    (pantallas) → fase 4 (e2e homologación + UAT). El mismo certificado destraba la **facturación de plataforma** (wsfe).
-> 3. 💲 **Pricing v7**: esperan PR-1..PR-8 (`preguntas_pendientes_2026-09-28.md` §F).
+> 3. 💲 **Pricing v7**: respondidas PR-1 (anual = pago único sin renovación), PR-4 (Free eliminado; se regalan meses a
+>    mano) y PR-5 (Enterprise online como los demás). Abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del −20 % anual.
 > 4. ✅ **Respuestas 30/09** (DL/D3/PL/EC/QR) en `respuestas_preguntas_pendientes_2026-09-30.md` → a ejecutar: DL-1..3, QR-1..3
 >    (5 problemas de plata del QR de MP), D3-a/b (importador en 2 pasos, se une al backlog de estandarizar importar/exportar),
 >    PL-1..7 (Fase 3/4 categorías; PL-5 y PL-7 requieren propuesta de Tonga), EC-1..8 + Fase 0 ("Empezar de cero").

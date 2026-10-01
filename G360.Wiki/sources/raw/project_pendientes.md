@@ -6,17 +6,22 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, padrón ARCA en DEV) — PROD = `v1.234.1` (001-445) · DEV = código padrón + mig 446
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre) — PROD = DEV = `v1.235.0` (001-451)
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.234.1` ✅ servida | 001-**445** |
-> | **DEV** | `v1.234.1` + padrón ARCA (commit en `dev`, sin bump) | 001-**446** |
+> | **PROD** | `v1.235.0` ✅ (PR #367, merge `12e09d33`) | 001-**451** |
+> | **DEV** | `v1.235.0` (= PROD) | 001-**451** |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
+>
+> 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
+> (secrets del padrón en producción + ticket WSAA vigente copiado al cache de PROD), paridad de policies por schema OK,
+> release `v1.235.0` Latest. Padrón ARCA de PRODUCCIÓN verificado a mano (consulta real OK); la 1ª consulta desde la app
+> de PROD la hace un usuario real (no hay usuario de prueba en PROD).
 >
 > **Lo primero al retomar:**
 > 1. ✅ **Panel interno EN PROD** (01/10, v1.234.1 + mig 445). GO descarta en Facturación las 2 alertas MP "huérfana".
-> 2. 🔎 **Padrón ARCA (autocompletar por CUIT) — fases 2-4 HECHAS EN DEV (01/10).** EF `consultar-cuit` (DEV, verify_jwt,
+> 2. 🔎 **Padrón ARCA (autocompletar por CUIT) — ✅ EN PROD (v1.235.0, 01/10).** EF `consultar-cuit` (DEV, verify_jwt,
 >    secret `ARCA_PADRON_KEY_PATH`) + mig 446 `padron_arca_cache` (DEV) + componente `PadronArcaSugerencia` en ficha de
 >    cliente, proveedor, emisor fiscal (panel + alta inicial) y **alta rápida del POS** (ganó campo CUIT). 🛑 Condición IVA
 >    nunca CF por descarte (sin régimen → "elegila a mano"); C-19 al registro del contador. Tests: unit 21+3+1, e2e
@@ -25,7 +30,7 @@ type: project
 >    `certificados-afip/plataforma/20422374168/produccion.crt` en PROD → secrets `ARCA_PADRON_KEY_PATH` y
 >    `ARCA_PADRON_PRODUCCION=true` en PROD → mig 446 → EF → merge con bump. El mismo cert destraba la **facturación de
 >    plataforma** (wsfe).
-> 2c. 📲 **Enviar ticket/factura/NC por Mail o WhatsApp — HECHO en DEV (01/10, mig 451)**. GO: "Enviar" → Mail |
+> 2c. 📲 **Enviar ticket/factura/NC por Mail o WhatsApp — ✅ EN PROD (v1.235.0, mig 451)**. GO: "Enviar" → Mail |
 >    WhatsApp, con mensaje + link al PDF (`/c/<código>`, 90 días). Nunca se había hecho. Además: 🐛 el mail del ticket no
 >    precargaba el email del cliente (el ticket es la fila recién insertada, sin `clientes.email`) — reportado por un
 >    cliente en PROD — y el email tipeado quedaba para el ticket siguiente; ambos corregidos. e2e `171` 4/4.

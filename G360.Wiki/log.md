@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] deploy | v1.235.0 a PROD — padrón ARCA, Excel, importadores, WhatsApp
+
+- GO: "pasa todo a PRD". Migs 446→451 en PROD de a una con `scripts/aplicar-migracion.mjs` (hashes de las 5 funciones
+  DEV = PROD, tildes intactas; `padron_arca_cache` y `comprobantes_compartidos` sin SELECT para anon/authenticated).
+- EF `consultar-cuit` en PROD (verify_jwt; OPTIONS 200 / POST sin sesión 401) con los secrets del padrón en modo
+  producción; el ticket WSAA de producción vigente se copió al cache de PROD (si no, ARCA no da otro hasta que vence).
+  `auditar-edge-functions.sh consultar-cuit emitir-factura`: diff 0 en DEV y PROD.
+- Bump `v1.235.0`, PR #367 (CI unit verde, preview Vercel OK), merge `12e09d33`, release `v1.235.0` Latest.
+- Paridad `pg_policies` DEV = PROD: `public` 240 (`5a6594eb`), `storage` 40 (`5585866d`), `cron` 2 (`757afda6`).
+- Asistente IA sin redeploy (app-reference sin cambios).
+
 ## [2026-10-01] update | Importar clientes y proveedores: misma pantalla que Productos/Inventario
 
 - GO: "no quedó como esperaba, tiene que ser la misma pantalla que el importar de Productos o Inventario". Los modales de

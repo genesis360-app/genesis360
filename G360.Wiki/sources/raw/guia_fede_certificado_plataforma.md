@@ -35,7 +35,11 @@ Todo se hace entrando a arca.gob.ar con tu clave fiscal. Si un servicio no te ap
    archivo `.csr` y descargá el certificado (`produccion.crt`).
 2. Entrá a **Administrador de Relaciones de Clave Fiscal** → **Nueva relación** → Buscar → **ARCA** → **WebServices**
    → **Consulta de Constancia de Inscripción** (`ws_sr_constancia_inscripcion`).
-3. En **Representante** elegí el computador fiscal **genesis360plataforma** y confirmá.
+   ⚠️ Tiene que ser el que está **dentro de WebServices**. Si el servicio dice *"Nivel de seguridad mínimo requerido 3"*
+   es el trámite WEB para personas: no sirve (te deja poner solo un CUIT/CUIL como representante).
+3. En **Representante** → BUSCAR aparece un desplegable de **Computador Fiscal**: elegí **genesis360plataforma** (no un
+   CUIT/CUIL) y confirmá.
+   ✅ Hecho por Fede el 2026-10-01 y verificado con una consulta real a ARCA producción.
 4. (Opcional, para la facturación de plataforma) repetí el paso 2 con **Facturación Electrónica** (`wsfe`).
 
 ## 3. Enviar

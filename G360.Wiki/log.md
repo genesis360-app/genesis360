@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Cierre para /clear — certificado de producción documentado
+
+- GO dio el OK para documentar el certificado de producción (antes bloqueado). Cert `genesis360plataforma` de producción
+  (emisor ARCA "Computadores", serie `3624A3891E3D9FD7`, vence 30/09/2028, clave pública = la del CSR) subido el 01/10 al
+  bucket privado `certificados-afip` de DEV y PROD; Fede completó la relación en producción (se había trabado eligiendo
+  el trámite web "Nivel 3" en vez del de WebServices; guía aclarada). Consulta real a ARCA producción OK.
+- "ARRANCÁ ACÁ" reescrito en limpio; próxima tarea sugerida: importador del Maestro. Página del padrón con la sección
+  "Certificado de plataforma" (renovación, gotcha del ticket de 12 h). Index y notas de feature a EN PROD.
+
 ## [2026-10-01] deploy | v1.235.0 a PROD — padrón ARCA, Excel, importadores, WhatsApp
 
 - GO: "pasa todo a PRD". Migs 446→451 en PROD de a una con `scripts/aplicar-migracion.mjs` (hashes de las 5 funciones

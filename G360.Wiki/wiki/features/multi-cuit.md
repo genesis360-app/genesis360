@@ -8,7 +8,7 @@ updated: 2026-07-10
 
 # Multi-CUIT por tenant (F5) — diseño y plan por fases
 
-> 🔎 **2026-10-01 — Padrón de ARCA:** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
+> 🔎 **2026-10-01 — Padrón de ARCA (✅ EN PROD v1.235.0):** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
 > autocompletan razón social, condición IVA y domicilio fiscal con vista previa. Ver [[wiki/integrations/padron-arca]].
 
 **Estado: Fases 1-6 IMPLEMENTADAS (código v1.127.0). Migs 267-268 en DEV; ⚠ mig 269 (add-on

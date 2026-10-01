@@ -13,6 +13,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode, ClipboardList, CheckCircle2, UserCog } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { descargarCsv, descargarExcel, nombreConFecha } from '@/lib/exportarArchivo'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportarExcel/exportarPDF
 // (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
@@ -207,24 +208,14 @@ export default function PedidosPage() {
   const exportarExcel = async () => {
     const filas = filasExport()
     if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
-    const XLSX = await import('xlsx')
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Pedidos')
-    XLSX.writeFile(wb, `pedidos_${new Date().toISOString().split('T')[0]}.xlsx`)
+    await descargarExcel({ nombre: 'Pedidos', filas }, nombreConFecha('pedidos'))
     toast.success('Excel descargado')
   }
 
   const exportarCSV = () => {
     const filas = filasExport()
     if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
-    const cols = Object.keys(filas[0])
-    const header = cols.map(c => `"${c}"`).join(',')
-    const rows = filas.map(r => cols.map(c => `"${String((r as any)[c] ?? '').replace(/"/g, '""')}"`).join(','))
-    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `pedidos_${new Date().toISOString().split('T')[0]}.csv`
-    a.click(); URL.revokeObjectURL(url)
+    descargarCsv(filas, nombreConFecha('pedidos'))
     toast.success('CSV descargado')
   }
 

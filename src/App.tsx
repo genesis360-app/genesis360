@@ -23,6 +23,8 @@ const InventarioPage   = lazy(() => import('@/pages/InventarioPage'))
 const ProductoFormPage = lazy(() => import('@/pages/ProductoFormPage'))
 const ImportarProductosPage  = lazy(() => import('@/pages/ImportarProductosPage'))
 const ImportarInventarioPage = lazy(() => import('@/pages/ImportarInventarioPage'))
+const ImportarProveedoresPage = lazy(() => import('@/pages/ImportarProveedoresPage'))
+const ImportarClientesPage = lazy(() => import('@/pages/ImportarClientesPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
 const PanelCajeroPage      = lazy(() => import('@/pages/PanelCajeroPage'))
 const FicharPage           = lazy(() => import('@/pages/FicharPage'))
@@ -60,6 +62,7 @@ const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
 const TransportistePage   = lazy(() => import('@/pages/TransportistePage'))
 const HojaRutaPage        = lazy(() => import('@/pages/HojaRutaPage'))
 const CuentaClientePage   = lazy(() => import('@/pages/CuentaClientePage'))
+const ComprobantePublicoPage = lazy(() => import('@/pages/ComprobantePublicoPage'))
 const PortalProveedoresPage = lazy(() => import('@/pages/PortalProveedoresPage'))
 
 // app.genesis360.pro → directo al login/dashboard (sin landing)
@@ -153,6 +156,8 @@ function App() {
             <Route path="/hoja-ruta/:token" element={<HojaRutaPage />} />
             {/* B8 — Portal público de estado de cuenta del cliente — sin auth */}
             <Route path="/cuenta/:token" element={<CuentaClientePage />} />
+            {/* Comprobante compartido por WhatsApp (mig 451): público, solo por código */}
+            <Route path="/c/:token" element={<ComprobantePublicoPage />} />
             {/* RH6 — Fichado por QR público (kiosco) — sin auth */}
             <Route path="/fichar/:token" element={<FicharPage />} />
             {/* Portal de Proveedores — identidad separada (proveedor_accounts, mig 387/390), fuera
@@ -185,6 +190,8 @@ function App() {
                   {/* Redirects para compatibilidad con URLs viejas */}
                   <Route path="/inventario/nuevo" element={<Navigate to="/productos/nuevo" replace />} />
                   <Route path="/inventario/importar" element={<ImportarInventarioPage />} />
+                  <Route path="/proveedores/importar" element={<ImportarProveedoresPage />} />
+                  <Route path="/clientes/importar" element={<ImportarClientesPage />} />
                   <Route path="/inventario/:id/editar" element={<ProductoFormPage />} />
                   <Route path="/movimientos" element={<Navigate to="/inventario" replace />} />
                   <Route path="/ventas" element={<VentasPage />} />

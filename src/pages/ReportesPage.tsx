@@ -16,6 +16,7 @@ import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en cada handler de export (auditoría
 // perf 2026-08-14, P5) — este archivo es la página más pesada en exports (SQL/reportes/master).
 import toast from 'react-hot-toast'
+import { descargarCsv } from '@/lib/exportarArchivo'
 
 type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado' | 'productos-atributos'
   | 'baja-rotacion' | 'mas-devoluciones' | 'anuladas-devueltas' | 'comparativa-canal' | 'margen-real'
@@ -528,16 +529,7 @@ export default function ReportesPage() {
     try {
       const datos = datosPorReporte[id]
       if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
-      const XLSX = await import('xlsx')
-      const ws = XLSX.utils.json_to_sheet(datos)
-      const csv = XLSX.utils.sheet_to_csv(ws)
-      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `genesis360_${id}_${new Date().toISOString().split('T')[0]}.csv`
-      a.click()
-      URL.revokeObjectURL(url)
+      descargarCsv(datos, `genesis360_${id}_${new Date().toISOString().split('T')[0]}`)
       toast.success('CSV descargado')
     } finally {
       setGenerando(false)

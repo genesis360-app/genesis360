@@ -1,11 +1,13 @@
 import { dniObligatorioEnFicha } from '@/lib/clienteCampos'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { condicionParaCliente, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
-  Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
+  Upload, Download, CheckCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
   Tag, Calendar, StickyNote, CreditCard, AlertCircle, MessageCircle, DollarSign,
   UserX, RotateCcw, ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
@@ -24,24 +26,12 @@ import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
-import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
 import { usePaginacionLista } from '@/hooks/usePaginacionLista'
 import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import toast from 'react-hot-toast'
+import { descargarCsv, descargarExcel, descargarJson, nombreConFecha } from '@/lib/exportarArchivo'
 
-interface FilaCliente {
-  idx: number
-  nombre: string
-  dni?: string
-  telefono?: string
-  email?: string
-  notas?: string
-  etiquetas?: string[]
-  matchId?: string   // id del cliente existente si es duplicado (A5)
-  estado: 'nuevo' | 'duplicado' | 'error'
-  errores: string[]
-}
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { useConfirm, useElegir } from '@/hooks/useConfirm'
@@ -122,7 +112,6 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 export default function ClientesPage() {
   const { tenant, user } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
-  const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const elegir = useElegir()
@@ -192,14 +181,6 @@ export default function ClientesPage() {
   const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
   const [savingDom, setSavingDom] = useState(false)
 
-  // Import state
-  const fileRefImport = useRef<HTMLInputElement>(null)
-  const [showImport, setShowImport] = useState(false)
-  const [filasImport, setFilasImport] = useState<FilaCliente[]>([])
-  const [importando, setImportando] = useState(false)
-  const [resultadoImport, setResultadoImport] = useState<{ creados: number; actualizados: number; ignorados: number; errores: number } | null>(null)
-  // A5 — modo de resolución de duplicados (espeja importar productos)
-  const [importModo, setImportModo] = useState<'ignorar_existentes' | 'ignorar_nuevos' | 'procesar_todos'>('ignorar_existentes')
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: clientes = [], isLoading } = useQuery({
@@ -862,117 +843,7 @@ ${detalle}`,
     }
   }
 
-  // ── Importación masiva ───────────────────────────────────────────────────
-  const descargarPlantilla = async () => {
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre', 'dni', 'telefono', 'email', 'notas', 'etiquetas'],
-      ['Juan Pérez', '20123456', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente', 'mayorista, vip'],
-      ['María García', '27654321', '', 'maria@empresa.com', '', 'zona-norte'],
-    ])
-    const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
-    ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 28 }, { wch: 35 }, { wch: 25 }, { wch: 22 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
-    XLSX.writeFile(wb, 'plantilla_clientes.xlsx')
-  }
-
-  const procesarArchivo = (file: File) => {
-    setResultadoImport(null)
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      try {
-        const XLSX = await import('xlsx')
-        const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
-        const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
-        if (!rows.length) { toast.error('El archivo está vacío'); return }
-
-        // A5 — detección de duplicados contra TODA la base (por DNI, teléfono o nombre)
-        // Sin tope: "contra TODA la base" tiene que ser toda de verdad. Con mas de 1000 clientes,
-        // PostgREST devolvia 1000 y el importador no veia los duplicados del resto.
-        const { data: existentes } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
-          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id).range(desde, hasta))
-        const norm = (s: string) => (s ?? '').replace(/\D/g, '')
-        const porDni = new Map<string, string>()
-        const porTel = new Map<string, string>()
-        const porNombre = new Map<string, string>()
-        for (const c of (existentes ?? []) as any[]) {
-          if (c.dni) porDni.set(String(c.dni).trim(), c.id)
-          if (c.telefono && norm(c.telefono)) porTel.set(norm(c.telefono), c.id)
-          porNombre.set(c.nombre.trim().toLowerCase(), c.id)
-        }
-
-        const filas: FilaCliente[] = rows.map((row, idx) => {
-          const errores: string[] = []
-          const nombre = String(row.nombre || '').trim()
-          if (!nombre) errores.push('Nombre requerido')
-          const dni = String(row.dni || '').trim() || undefined
-          const telefono = String(row.telefono || '').trim() || undefined
-          const etiquetasRaw = String(row.etiquetas || '').trim()
-          const matchId =
-            (dni && porDni.get(dni)) ||
-            (telefono && porTel.get(norm(telefono))) ||
-            porNombre.get(nombre.toLowerCase()) || undefined
-          return {
-            idx,
-            nombre,
-            dni,
-            telefono,
-            email: String(row.email || '').trim() || undefined,
-            notas: String(row.notas || '').trim() || undefined,
-            etiquetas: etiquetasRaw ? etiquetasRaw.split(/[,;]/).map(s => s.trim()).filter(Boolean) : undefined,
-            matchId,
-            estado: errores.length > 0 ? 'error' : matchId ? 'duplicado' : 'nuevo',
-            errores,
-          }
-        })
-        setFilasImport(filas)
-      } catch { toast.error('Error al leer el archivo.') }
-    }
-    reader.readAsArrayBuffer(file)
-  }
-
-  const confirmarImport = async () => {
-    setImportando(true)
-    let creados = 0, actualizados = 0, ignorados = 0, errores = 0
-    // A5 — modo: ignorar_existentes (solo nuevos) · ignorar_nuevos (solo actualizar) · procesar_todos
-    for (const fila of filasImport) {
-      if (fila.estado === 'error') { errores++; continue }
-      const esDup = fila.estado === 'duplicado'
-      // Decidir acción según el modo
-      if (esDup && importModo === 'ignorar_existentes') { ignorados++; continue }
-      if (!esDup && importModo === 'ignorar_nuevos') { ignorados++; continue }
-      try {
-        const base = {
-          nombre: fila.nombre,
-          dni: fila.dni ?? null,
-          telefono: fila.telefono ?? null,
-          email: fila.email ?? null,
-          notas: fila.notas ?? null,
-          etiquetas: fila.etiquetas ?? null,
-        }
-        if (esDup && fila.matchId) {
-          const { error } = await supabase.from('clientes').update(base).eq('id', fila.matchId)
-          if (error) throw error
-          actualizados++
-        } else {
-          const { error } = await supabase.from('clientes').insert({
-            tenant_id: tenant!.id, ...base, sucursal_id: sucursalId || null,
-          })
-          if (error) throw error
-          creados++
-        }
-      } catch { errores++ }
-    }
-    qc.invalidateQueries({ queryKey: ['clientes'] })
-    qc.invalidateQueries({ queryKey: ['cliente-etiquetas-catalogo'] })
-    setResultadoImport({ creados, actualizados, ignorados, errores })
-    setImportando(false)
-    toast.success(`${creados} creados · ${actualizados} actualizados`)
-  }
-
-  const exportarClientes = (format: 'json' | 'csv') => {
+  const exportarClientes = (format: 'json' | 'csv' | 'xlsx') => {
     const rows = (clientes as any[]).map(c => ({
       id: c.id, nombre: c.nombre, dni: c.dni ?? '', telefono: c.telefono ?? '',
       email: c.email ?? '', direccion: c.direccion ?? '',
@@ -980,19 +851,10 @@ ${detalle}`,
       categoria: ccEfectivo?.get(c.id)?.categoria_nombre ?? '',
       activo: c.activo,
     }))
-    const filename = `clientes_${new Date().toISOString().slice(0,10)}`
-    if (format === 'json') {
-      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.json`; a.click()
-    } else {
-      const headers = Object.keys(rows[0] ?? {})
-      const lines = rows.map((r: any) => headers.map(h => {
-        const v = String(r[h] ?? '')
-        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
-      }).join(','))
-      const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.csv`; a.click()
-    }
+    const nombre = nombreConFecha('clientes')
+    if (format === 'json') descargarJson(rows, nombre)
+    else if (format === 'xlsx') void descargarExcel({ nombre: 'Clientes', filas: rows }, nombre)
+    else descargarCsv(rows, nombre)
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1010,10 +872,11 @@ ${detalle}`,
           {pageTab === 'lista' && <>
             <ActionMenu
               items={[
-                { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
+                { label: 'Exportar Excel', icon: Download, onClick: () => exportarClientes('xlsx') },
                 { label: 'Exportar CSV',  icon: Download, onClick: () => exportarClientes('csv') },
+                { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
                 { label: verInactivos ? 'Ver activos' : 'Ver inactivos', icon: UserX, onClick: () => setVerInactivos(v => !v) },
-                { label: 'Importar', icon: Upload, onClick: () => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }, hidden: !puedeEditar },
+                { label: 'Importar', icon: Upload, onClick: () => navigate('/clientes/importar'), hidden: !puedeEditar || (user?.rol as string | undefined) === 'VIEWER' /* Lector: la base (mig 448) tampoco lo deja */ },
               ]}
             />
             {puedeEditar && (
@@ -1412,21 +1275,9 @@ ${detalle}`,
         })
         const exportarSegmento = async (fmt: 'csv' | 'xlsx') => {
           if (segRows.length === 0) { toast.error('No hay clientes en el segmento'); return }
-          const fname = `segmento_clientes_${new Date().toISOString().slice(0, 10)}`
-          if (fmt === 'xlsx') {
-            const XLSX = await import('xlsx')
-            const wb = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(segRows), 'Segmento')
-            XLSX.writeFile(wb, `${fname}.xlsx`)
-          } else {
-            const headers = Object.keys(segRows[0])
-            const lines = segRows.map(r => headers.map(h => {
-              const v = String((r as any)[h] ?? '')
-              return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v
-            }).join(','))
-            const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.csv`; a.click()
-          }
+          const nombre = nombreConFecha('segmento_clientes')
+          if (fmt === 'xlsx') await descargarExcel({ nombre: 'Segmento', filas: segRows }, nombre)
+          else descargarCsv(segRows, nombre)
         }
 
         const exportarReporte = async () => {
@@ -2101,6 +1952,22 @@ ${detalle}`,
                       placeholder="20-12345678-9 (para Factura A)"
                       className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                   </div>
+                  <div className="col-span-2 -mt-2 empty:hidden">
+                    <PadronArcaSugerencia
+                      cuit={form.cuit_receptor}
+                      armarCampos={p => {
+                        const cond = condicionParaCliente(p.condicionIva)
+                        return [
+                          { key: 'nombre', label: 'Nombre', actual: form.nombre, nuevo: p.nombre, conservarSiHayValor: true },
+                          { key: 'condicion_iva_receptor', label: 'Condición IVA', actual: form.condicion_iva_receptor, actualTexto: etiquetaCondicionFicha(form.condicion_iva_receptor), nuevo: cond,
+                            nuevoTexto: p.condicionIva ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                            sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                          { key: 'domicilio_fiscal', label: 'Domicilio fiscal', actual: form.domicilio_fiscal, nuevo: p.domicilio?.texto ?? null },
+                        ]
+                      }}
+                      onAplicar={v => setForm(f => ({ ...f, ...v }))}
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condición IVA</label>
                     <div className="relative">
@@ -2243,154 +2110,6 @@ ${detalle}`,
       )}
 
       {/* Modal importación masiva */}
-      {showImport && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                <FileSpreadsheet size={18} className="text-accent-text" /> Importar clientes
-              </h2>
-              <button onClick={() => setShowImport(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {/* Resultado */}
-              {resultadoImport && (
-                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-                  <CheckCircle size={18} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
-                    <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultadoImport.creados} creados · {resultadoImport.actualizados} actualizados · {resultadoImport.ignorados} ignorados · {resultadoImport.errores} errores</p>
-                    <button onClick={() => setShowImport(false)} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Cerrar →</button>
-                  </div>
-                </div>
-              )}
-
-              {/* Acciones */}
-              {!resultadoImport && (
-                <div className="flex gap-3 flex-wrap">
-                  <button onClick={descargarPlantilla}
-                    className="flex items-center gap-2 border border-accent-text text-accent-text font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm transition-all">
-                    <Download size={14} /> Descargar plantilla
-                  </button>
-                  <button onClick={() => fileRefImport.current?.click()}
-                    className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all">
-                    <Upload size={14} /> Cargar archivo
-                  </button>
-                  <input ref={fileRefImport} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
-                </div>
-              )}
-
-              {/* Vista previa */}
-              {filasImport.length > 0 && !resultadoImport && (
-                <>
-                  <div className="flex items-center gap-3 text-sm flex-wrap">
-                    <span className="text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
-                      <CheckCircle size={14} /> {filasImport.filter(f => f.estado === 'nuevo').length} nuevos
-                    </span>
-                    {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
-                      <span className="text-amber-600 dark:text-amber-400 font-medium">
-                        ⚠ {filasImport.filter(f => f.estado === 'duplicado').length} ya existen
-                      </span>
-                    )}
-                    {filasImport.filter(f => f.estado === 'error').length > 0 && (
-                      <span className="text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
-                        <XCircle size={14} /> {filasImport.filter(f => f.estado === 'error').length} con errores
-                      </span>
-                    )}
-                  </div>
-
-                  {/* A5 — modo de resolución de duplicados */}
-                  {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
-                    <div className="bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Hay clientes que ya existen. ¿Qué hago con ellos?</p>
-                      <div className="space-y-1.5">
-                        {([
-                          { v: 'ignorar_existentes' as const, label: 'Ignorar existentes — solo crear los nuevos' },
-                          { v: 'ignorar_nuevos' as const, label: 'Ignorar nuevos — solo actualizar los existentes' },
-                          { v: 'procesar_todos' as const, label: 'Procesar todos — crear nuevos y actualizar existentes' },
-                        ]).map(opt => (
-                          <label key={opt.v} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                            <input type="radio" name="import-modo" checked={importModo === opt.v}
-                              onChange={() => setImportModo(opt.v)} className="accent-accent" />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="border border-gray-100 rounded-xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                          <th className="px-3 py-2 text-left">Nombre</th>
-                          <th className="px-3 py-2 text-left hidden sm:table-cell">DNI</th>
-                          <th className="px-3 py-2 text-left hidden sm:table-cell">Teléfono</th>
-                          <th className="px-3 py-2 text-left hidden sm:table-cell">Email</th>
-                          <th className="px-3 py-2 text-left">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {filasImport.slice(0, 50).map(f => (
-                          <tr key={f.idx} className={f.estado === 'error' ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'duplicado' ? 'bg-amber-50 dark:bg-amber-900/20/50' : ''}>
-                            <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{f.nombre || <span className="text-gray-400 dark:text-gray-500 italic">—</span>}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.dni ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.telefono ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.email ?? '—'}</td>
-                            <td className="px-3 py-2">
-                              {f.estado === 'nuevo' && <span className="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Nuevo</span>}
-                              {f.estado === 'duplicado' && <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Existe</span>}
-                              {f.estado === 'error' && <span className="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded-full">{f.errores[0]}</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {filasImport.length > 50 && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Mostrando 50 de {filasImport.length} filas</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-3 justify-end">
-                    <button onClick={() => setFilasImport([])}
-                      className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
-                      Limpiar
-                    </button>
-                    {(() => {
-                      const nuevos = filasImport.filter(f => f.estado === 'nuevo').length
-                      const dups = filasImport.filter(f => f.estado === 'duplicado').length
-                      const aProcesar = importModo === 'ignorar_existentes' ? nuevos
-                        : importModo === 'ignorar_nuevos' ? dups
-                        : nuevos + dups
-                      return (
-                        <button onClick={confirmarImport} disabled={importando || aProcesar === 0}
-                          className="bg-accent hover:bg-accent/90 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition-all">
-                          {importando ? 'Importando...' : `Procesar ${aProcesar} ${aProcesar === 1 ? 'cliente' : 'clientes'}`}
-                        </button>
-                      )
-                    })()}
-                  </div>
-                </>
-              )}
-
-              {filasImport.length === 0 && !resultadoImport && (
-                <div
-                  className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
-                  onClick={() => fileRefImport.current?.click()}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
-                  <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click para subir tu Excel</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, dni, telefono, email, notas, etiquetas</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ═══════════════ MODAL BAJA DE CLIENTE (A6) ═══════════════ */}
       {bajaCliente && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setBajaCliente(null)}>

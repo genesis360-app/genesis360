@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-01T03:02:44.457Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261001025245 · 173 tablas
+-- Generado 2026-10-01T19:43:48.935Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261001192416 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -572,6 +572,18 @@ CREATE TABLE public.combos (
   vigencia_desde date,
   vigencia_hasta date,
   unidad_medida_id uuid
+);
+
+CREATE TABLE public.comprobantes_compartidos (
+  token text NOT NULL DEFAULT replace((gen_random_uuid())::text, '-'::text, ''::text),
+  tenant_id uuid NOT NULL,
+  tipo text NOT NULL,
+  venta_id uuid,
+  devolucion_id uuid,
+  datos jsonb NOT NULL,
+  creado_por uuid DEFAULT auth.uid(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  vence_at timestamp with time zone NOT NULL DEFAULT (now() + '90 days'::interval)
 );
 
 CREATE TABLE public.consumo_eventos (
@@ -1415,6 +1427,13 @@ CREATE TABLE public.ordenes_compra (
   anticipo_pct numeric,
   pago_schedule jsonb,
   moneda text NOT NULL DEFAULT 'ARS'::text
+);
+
+CREATE TABLE public.padron_arca_cache (
+  cuit text NOT NULL,
+  environment text NOT NULL,
+  resultado jsonb NOT NULL,
+  consultado_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.pedido_items (
@@ -2996,6 +3015,11 @@ ALTER TABLE public.combo_items ADD CONSTRAINT combo_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.combos ADD CONSTRAINT combos_cantidad_check CHECK ((cantidad >= 2));
 ALTER TABLE public.combos ADD CONSTRAINT combos_descuento_pct_check CHECK (((descuento_pct >= (0)::numeric) AND (descuento_pct <= (100)::numeric)));
 ALTER TABLE public.combos ADD CONSTRAINT combos_pkey PRIMARY KEY (id);
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_check CHECK (((venta_id IS NOT NULL) OR (devolucion_id IS NOT NULL)));
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_datos_check CHECK ((octet_length((datos)::text) < 2000000));
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_pkey PRIMARY KEY (token);
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_tipo_check CHECK ((tipo = ANY (ARRAY['ticket'::text, 'factura'::text, 'nc'::text])));
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_token_check CHECK ((token ~ '^[0-9a-f]{32}$'::text));
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_cantidad_check CHECK ((cantidad >= (0)::numeric));
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_costo_check CHECK ((costo >= (0)::numeric));
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_moneda_check CHECK ((moneda = ANY (ARRAY['ARS'::text, 'USD'::text])));
@@ -3119,6 +3143,9 @@ ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_check CHE
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_pago_check CHECK ((estado_pago = ANY (ARRAY['pendiente_pago'::text, 'pago_parcial'::text, 'pagada'::text, 'cuenta_corriente'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pkey PRIMARY KEY (id);
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_tenant_id_numero_key UNIQUE (tenant_id, numero);
+ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_cuit_check CHECK ((cuit ~ '^\d{11}$'::text));
+ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_environment_check CHECK ((environment = ANY (ARRAY['homologacion'::text, 'produccion'::text])));
+ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_pkey PRIMARY KEY (cuit, environment);
 ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_preparacion'::text, 'preparado'::text, 'faltante'::text, 'cancelada'::text])));
 ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_pkey PRIMARY KEY (id);
@@ -3447,6 +3474,9 @@ ALTER TABLE public.combos ADD CONSTRAINT combos_producto_id_fkey FOREIGN KEY (pr
 ALTER TABLE public.combos ADD CONSTRAINT combos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.combos ADD CONSTRAINT combos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.combos ADD CONSTRAINT combos_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_devolucion_id_fkey FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id) ON DELETE CASCADE;
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tarifa_id_fkey FOREIGN KEY (tarifa_id) REFERENCES consumo_tarifas(id) ON DELETE SET NULL;
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3974,6 +4004,9 @@ CREATE INDEX idx_combo_items_tenant_id ON public.combo_items USING btree (tenant
 CREATE INDEX idx_combos_producto_id ON public.combos USING btree (producto_id);
 CREATE INDEX idx_combos_sucursal ON public.combos USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_combos_tenant_id ON public.combos USING btree (tenant_id);
+CREATE INDEX idx_comprobantes_compartidos_devolucion ON public.comprobantes_compartidos USING btree (devolucion_id);
+CREATE INDEX idx_comprobantes_compartidos_tenant ON public.comprobantes_compartidos USING btree (tenant_id);
+CREATE INDEX idx_comprobantes_compartidos_venta ON public.comprobantes_compartidos USING btree (venta_id);
 CREATE INDEX idx_consumo_eventos_sin_tarifa ON public.consumo_eventos USING btree (tenant_id) WHERE (NOT tarifa_encontrada);
 CREATE INDEX idx_consumo_eventos_tenant_periodo ON public.consumo_eventos USING btree (tenant_id, ocurrido_at DESC);
 CREATE INDEX idx_consumo_tarifas_lookup ON public.consumo_tarifas USING btree (concepto, vigente_desde DESC);
@@ -5979,6 +6012,42 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_comprobante_compartido(p_token text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT jsonb_build_object(
+           'tipo', c.tipo,
+           'datos', CASE c.tipo
+             WHEN 'factura' THEN c.datos || jsonb_build_object(
+               'cae', v.cae,
+               'vencimiento_cae', coalesce(v.vencimiento_cae::text, ''),
+               'tipo_comprobante', regexp_replace(coalesce(v.tipo_comprobante, 'B'), '^Factura\s+', '', 'i'),
+               'numero_comprobante', coalesce(v.numero_comprobante, v.numero::text))
+             WHEN 'nc' THEN c.datos || jsonb_build_object(
+               'cae', d.nc_cae,
+               'vencimiento_cae', coalesce(d.nc_vencimiento_cae, ''),
+               'tipo_comprobante', coalesce(d.nc_tipo, 'NC-B'),
+               'numero_comprobante', coalesce(d.nc_numero_comprobante, 0),
+               'punto_venta', coalesce(d.nc_punto_venta, 1),
+               'total', d.monto_total)
+             ELSE c.datos END,
+           'negocio', t.nombre,
+           'vence_at', c.vence_at)
+    FROM public.comprobantes_compartidos c
+    JOIN public.tenants t ON t.id = c.tenant_id
+    LEFT JOIN public.ventas v ON v.id = c.venta_id
+    LEFT JOIN public.devoluciones d ON d.id = c.devolucion_id
+   WHERE c.token = p_token
+     AND p_token ~ '^[0-9a-f]{32}$'
+     AND c.vence_at > now()
+     AND (c.tipo <> 'factura' OR v.cae IS NOT NULL)
+     AND (c.tipo <> 'nc' OR d.nc_cae IS NOT NULL);
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_consumo_tarifa_vigente(p_concepto text, p_fecha date)
  RETURNS TABLE(tarifa_id uuid, precio numeric, moneda text, unidad text)
  LANGUAGE sql
@@ -7597,6 +7666,803 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_importar_clientes(p_filas jsonb, p_sucursal_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  c_permitidas CONSTANT text[] := ARRAY['nombre', 'dni', 'telefono', 'email', 'notas', 'etiquetas'];
+  v_tenant     uuid := public.get_user_tenant_id();
+  v_rol        text;
+  v_item       jsonb;
+  v_norm       jsonb[] := '{}';
+  v_fila       int;
+  v_accion     text;
+  v_id         uuid;
+  v_campos     jsonb;
+  v_cols       text[];
+  v_extra      text[];
+  v_grupo      record;
+  v_sql        text;
+  v_n          int;
+  v_creados    int := 0;
+  v_actualiz   int := 0;
+  v_constraint text;
+  v_vistos     jsonb := '{}';   -- cliente → fila del archivo (dos filas no pueden actualizar al mismo)
+  v_k          text;
+BEGIN
+  IF auth.uid() IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  SELECT rol INTO v_rol FROM public.users WHERE id = auth.uid();
+  IF v_rol IS NULL OR v_rol IN ('CONTADOR', 'VIEWER') THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede importar clientes.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF p_sucursal_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.sucursales WHERE id = p_sucursal_id AND tenant_id = v_tenant) THEN
+    RAISE EXCEPTION 'Sucursal inválida.';
+  END IF;
+  IF jsonb_typeof(p_filas) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Formato inválido: se esperaba una lista de filas.';
+  END IF;
+  IF jsonb_array_length(p_filas) > 5000 THEN
+    RAISE EXCEPTION 'El archivo tiene % filas; el máximo por importación es 5000. Dividilo en partes.', jsonb_array_length(p_filas);
+  END IF;
+
+  BEGIN
+    -- 1) Validar y normalizar, sin escribir nada.
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_filas) LOOP
+      v_fila   := CASE WHEN v_item->>'fila' ~ '^\d{1,9}$' THEN (v_item->>'fila')::int END;
+      v_accion := v_item->>'accion';
+      v_campos := coalesce(v_item->'campos', '{}'::jsonb);
+      v_id     := NULL;
+
+      IF jsonb_typeof(v_campos) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'formato de campos inválido'; END IF;
+      IF v_accion IS NULL OR v_accion NOT IN ('crear', 'actualizar') THEN
+        RAISE EXCEPTION 'acción inválida "%"', coalesce(v_accion, '');
+      END IF;
+      SELECT array_agg(k ORDER BY k) INTO v_cols FROM jsonb_object_keys(v_campos) k;
+      SELECT array_agg(k) INTO v_extra FROM unnest(coalesce(v_cols, '{}')) k WHERE NOT (k = ANY (c_permitidas));
+      IF v_extra IS NOT NULL THEN
+        RAISE EXCEPTION 'columna no permitida: %', array_to_string(v_extra, ', ');
+      END IF;
+      IF v_cols IS NULL THEN RAISE EXCEPTION 'la fila no trae datos'; END IF;
+      -- Texto vacío = sin dato (NULL): un email '' chocaría con el índice único de email del negocio.
+      FOREACH v_k IN ARRAY ARRAY['dni', 'telefono', 'email', 'notas'] LOOP
+        IF v_campos ? v_k AND jsonb_typeof(v_campos->v_k) = 'string' AND btrim(v_campos->>v_k) = '' THEN
+          v_campos := jsonb_set(v_campos, ARRAY[v_k], 'null'::jsonb);
+        END IF;
+      END LOOP;
+
+      IF v_accion = 'crear' THEN
+        IF coalesce(trim(v_campos->>'nombre'), '') = '' THEN RAISE EXCEPTION 'falta el nombre'; END IF;
+      ELSE
+        IF coalesce(v_item->>'id', '') !~ '^[0-9a-fA-F-]{36}$' THEN RAISE EXCEPTION 'falta el cliente a actualizar'; END IF;
+        v_id := (v_item->>'id')::uuid;
+        IF v_vistos ? v_id::text THEN
+          RAISE EXCEPTION 'esta fila y la fila % actualizan al mismo cliente; dejá una sola', v_vistos->>v_id::text;
+        END IF;
+        v_vistos := v_vistos || jsonb_build_object(v_id::text, v_fila);
+        IF v_campos ? 'nombre' AND coalesce(trim(v_campos->>'nombre'), '') = '' THEN
+          RAISE EXCEPTION 'el nombre no puede quedar vacío';
+        END IF;
+      END IF;
+
+      v_norm := v_norm || jsonb_build_object(
+        'fila', v_fila, 'accion', v_accion, '_id', v_id, 'campos', v_campos, 'firma', array_to_string(v_cols, ','));
+    END LOOP;
+
+    -- 2) Escribir por CONJUNTO: una sentencia por (acción, columnas).
+    v_fila := NULL;
+    FOR v_grupo IN
+      SELECT e->>'accion' AS accion, e->>'firma' AS firma, jsonb_agg(e) AS items
+        FROM unnest(v_norm) e
+       GROUP BY 1, 2
+    LOOP
+      IF v_grupo.accion = 'crear' THEN
+        v_sql := format(
+          $f$WITH ins AS (
+               INSERT INTO public.clientes (tenant_id, sucursal_id, %1$s)
+               SELECT $1, $3, %2$s
+                 FROM jsonb_array_elements($2) e
+                 CROSS JOIN LATERAL jsonb_populate_record(NULL::public.clientes, e->'campos') r
+               RETURNING id)
+             SELECT count(*)::int FROM ins$f$,
+          (SELECT string_agg(format('%I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k),
+          (SELECT string_agg(format('r.%I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k));
+      ELSE
+        v_sql := format(
+          $f$WITH upd AS (
+               UPDATE public.clientes c SET %1$s
+                 FROM (SELECT (e->>'_id')::uuid AS _destino,
+                              jsonb_populate_record(NULL::public.clientes, e->'campos') AS x
+                         FROM jsonb_array_elements($2) e
+                       OFFSET 0) r
+                WHERE c.id = r._destino AND c.tenant_id = $1
+               RETURNING c.id)
+             SELECT count(*)::int FROM upd$f$,
+          (SELECT string_agg(format('%1$I = (r.x).%1$I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k));
+      END IF;
+
+      BEGIN
+        EXECUTE v_sql INTO v_n USING v_tenant, v_grupo.items, p_sucursal_id;
+      EXCEPTION WHEN OTHERS THEN
+        -- Buscar la fila culpable de a una, solo para el mensaje (igual se deshace todo).
+        FOR v_item IN SELECT * FROM jsonb_array_elements(v_grupo.items) LOOP
+          v_fila := (v_item->>'fila')::int;
+          EXECUTE v_sql USING v_tenant, jsonb_build_array(v_item), p_sucursal_id;
+        END LOOP;
+        v_fila := NULL;
+        RAISE;   -- ninguna falló sola: el problema es entre filas del mismo archivo
+      END;
+
+      IF v_n <> jsonb_array_length(v_grupo.items) THEN
+        RAISE EXCEPTION 'se procesaron % de % clientes; alguno se borró o es de otro negocio', v_n, jsonb_array_length(v_grupo.items);
+      END IF;
+      IF v_grupo.accion = 'crear' THEN v_creados := v_creados + v_n; ELSE v_actualiz := v_actualiz + v_n; END IF;
+    END LOOP;
+
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+    RAISE EXCEPTION '%', concat_ws(': ',
+        CASE WHEN v_fila IS NOT NULL THEN format('Fila %s', v_fila) END,
+        CASE
+          WHEN SQLSTATE = '23505' AND v_constraint = 'clientes_dni_tenant'       THEN 'ya existe otro cliente con ese DNI'
+          WHEN SQLSTATE = '23505' AND v_constraint = 'idx_clientes_email_unique' THEN 'ya existe otro cliente con ese email'
+          WHEN SQLSTATE = '23505' THEN format('dato duplicado (%s)', v_constraint)
+          ELSE SQLERRM
+        END)
+      USING ERRCODE = SQLSTATE;
+  END;
+
+  RETURN jsonb_build_object('creados', v_creados, 'actualizados', v_actualiz);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_importar_inventario(p_filas jsonb, p_sucursal_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant     uuid := public.get_user_tenant_id();
+  v_uid        uuid := auth.uid();
+  v_rol        text;
+  v_item       jsonb;
+  v_norm       jsonb[] := '{}';
+  v_fila       int;
+  v_p          record;
+  v_cant       int;
+  v_series     text[];
+  v_fecha      date;
+  v_attr       text;
+  v_req        boolean;
+  v_vistas     jsonb := '{}';   -- "producto|serie" → fila (serie repetida dentro del archivo)
+  v_s          text;
+  v_lineas     int := 0;
+  v_unidades   numeric := 0;
+  v_constraint text;
+  v_uuid_re    CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  v_lpn        text;
+  v_lpns       jsonb := '{}';   -- LPN → fila (repetido dentro del archivo)
+  v_mono       jsonb := '{}';   -- ubicación mono-SKU → producto del archivo
+  v_ubic       record;
+  v_otro       text;
+BEGIN
+  IF v_uid IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  SELECT rol INTO v_rol FROM public.users WHERE id = v_uid;
+  IF v_rol IS NULL OR v_rol = 'VIEWER' THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede ingresar stock.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF p_sucursal_id IS NULL
+     OR NOT EXISTS (SELECT 1 FROM public.sucursales WHERE id = p_sucursal_id AND tenant_id = v_tenant) THEN
+    RAISE EXCEPTION 'Elegí la sucursal de destino del ingreso.';
+  END IF;
+  -- Un usuario restringido a su sucursal solo ingresa ahí (RLS lo frenaría igual, con un error ilegible).
+  IF NOT public.auth_ve_todas_sucursales() AND public.auth_user_sucursal() IS DISTINCT FROM p_sucursal_id THEN
+    RAISE EXCEPTION 'No podés ingresar stock en esa sucursal.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  -- Conteos 2.0 · A2: igual que el ingreso normal, no se mueve stock durante un conteo wall-to-wall.
+  IF EXISTS (SELECT 1 FROM public.inventario_conteos
+              WHERE tenant_id = v_tenant AND sucursal_id = p_sucursal_id
+                AND estado = 'borrador' AND bloquea_movimientos = true) THEN
+    RAISE EXCEPTION 'Hay un conteo wall-to-wall en curso en esta sucursal. Finalizalo o eliminalo antes de ingresar stock.';
+  END IF;
+  IF jsonb_typeof(p_filas) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Formato inválido: se esperaba una lista de filas.';
+  END IF;
+  -- Tope más bajo que productos/clientes: cada línea dispara los triggers de stock (recalcular_stock, alertas, sync
+  -- ML/TN), ~1,4 ms por fila en DEV (3000 productos = 4,3 s); el rol `authenticated` corta a los 8 s.
+  IF jsonb_array_length(p_filas) > 2000 THEN
+    RAISE EXCEPTION 'El archivo tiene % filas; el máximo por importación de stock es 2000. Dividilo en partes.', jsonb_array_length(p_filas);
+  END IF;
+
+  BEGIN
+    -- 1) Validar TODO antes de escribir nada.
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_filas) LOOP
+      v_fila := CASE WHEN v_item->>'fila' ~ '^\d{1,9}$' THEN (v_item->>'fila')::int END;
+
+      SELECT id, nombre, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje,
+             tiene_formato, tiene_sabor_aroma, precio_costo, precio_venta
+        INTO v_p
+        FROM public.productos
+       WHERE id = CASE WHEN coalesce(v_item->>'producto_id', '') ~ v_uuid_re THEN (v_item->>'producto_id')::uuid END
+         AND tenant_id = v_tenant AND activo IS NOT FALSE;
+      IF v_p.id IS NULL THEN RAISE EXCEPTION 'el producto no existe o está inactivo'; END IF;
+
+      IF v_p.tiene_series THEN
+        SELECT array_agg(btrim(x)) INTO v_series
+          FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(v_item->'series') = 'array' THEN v_item->'series' ELSE '[]' END) x
+         WHERE btrim(x) <> '';
+        IF v_series IS NULL THEN RAISE EXCEPTION 'producto con series: completá numeros_serie'; END IF;
+        FOREACH v_s IN ARRAY v_series LOOP
+          IF v_vistas ? (v_p.id::text || '|' || v_s) THEN
+            RAISE EXCEPTION 'la serie % ya aparece en la fila %', v_s, v_vistas->>(v_p.id::text || '|' || v_s);
+          END IF;
+          v_vistas := v_vistas || jsonb_build_object(v_p.id::text || '|' || v_s, v_fila);
+        END LOOP;
+        v_cant := coalesce(array_length(v_series, 1), 0);
+      ELSE
+        v_series := NULL;
+        IF coalesce(v_item->>'cantidad', '') !~ '^\d{1,9}$' OR (v_item->>'cantidad')::int <= 0 THEN
+          RAISE EXCEPTION 'la cantidad tiene que ser un número entero mayor a 0';
+        END IF;
+        v_cant := (v_item->>'cantidad')::int;
+      END IF;
+
+      IF v_p.tiene_lote AND coalesce(btrim(v_item->>'nro_lote'), '') = '' THEN RAISE EXCEPTION 'el producto requiere lote'; END IF;
+      v_fecha := NULL;
+      IF coalesce(v_item->>'fecha_vencimiento', '') <> '' THEN
+        IF v_item->>'fecha_vencimiento' !~ '^\d{4}-\d{2}-\d{2}$' THEN RAISE EXCEPTION 'fecha de vencimiento inválida (usá AAAA-MM-DD)'; END IF;
+        BEGIN
+          v_fecha := (v_item->>'fecha_vencimiento')::date;
+        EXCEPTION WHEN OTHERS THEN
+          RAISE EXCEPTION 'fecha de vencimiento inválida (usá AAAA-MM-DD)';
+        END;
+      END IF;
+      IF v_p.tiene_vencimiento AND v_fecha IS NULL THEN RAISE EXCEPTION 'el producto requiere fecha de vencimiento'; END IF;
+      FOREACH v_attr IN ARRAY ARRAY['talle', 'color', 'encaje', 'formato', 'sabor_aroma'] LOOP
+        -- (en una variable: dentro de un IF, el THEN del CASE cortaría la condición)
+        v_req := CASE v_attr WHEN 'talle' THEN v_p.tiene_talle WHEN 'color' THEN v_p.tiene_color
+                             WHEN 'encaje' THEN v_p.tiene_encaje WHEN 'formato' THEN v_p.tiene_formato
+                             ELSE v_p.tiene_sabor_aroma END;
+        IF coalesce(v_req, false) AND coalesce(btrim(v_item->>v_attr), '') = '' THEN
+          RAISE EXCEPTION 'el producto requiere %', replace(v_attr, '_', '/');
+        END IF;
+      END LOOP;
+
+      -- Referencias: del negocio, activas; la ubicación además de ESTA sucursal (o global).
+      IF (coalesce(v_item->>'ubicacion_id', '') <> '' AND v_item->>'ubicacion_id' !~ v_uuid_re)
+         OR (coalesce(v_item->>'estado_id', '') <> '' AND v_item->>'estado_id' !~ v_uuid_re)
+         OR (coalesce(v_item->>'proveedor_id', '') <> '' AND v_item->>'proveedor_id' !~ v_uuid_re) THEN
+        RAISE EXCEPTION 'referencia inválida (ubicación, estado o proveedor)';
+      END IF;
+      IF coalesce(v_item->>'ubicacion_id', '') <> '' THEN
+        SELECT id, nombre, coalesce(mono_sku, false) AS mono INTO v_ubic
+          FROM public.ubicaciones WHERE id = (v_item->>'ubicacion_id')::uuid AND tenant_id = v_tenant
+           AND activo IS NOT FALSE AND (sucursal_id IS NULL OR sucursal_id = p_sucursal_id);
+        IF v_ubic.id IS NULL THEN RAISE EXCEPTION 'la ubicación no existe en esta sucursal o está desactivada'; END IF;
+        -- I-05 (igual que el ingreso individual): una ubicación Mono-SKU no admite un segundo producto con stock, ni
+        -- de la base ni de otra fila del archivo.
+        IF v_ubic.mono THEN
+          v_otro := NULL;
+          SELECT pr.nombre INTO v_otro
+            FROM public.inventario_lineas l JOIN public.productos pr ON pr.id = l.producto_id
+           WHERE l.tenant_id = v_tenant AND l.ubicacion_id = v_ubic.id AND l.activo AND l.cantidad > 0
+             AND l.producto_id <> v_p.id
+           LIMIT 1;
+          IF v_otro IS NOT NULL THEN
+            RAISE EXCEPTION 'la ubicación "%" es Mono-SKU y ya tiene "%"', v_ubic.nombre, v_otro;
+          END IF;
+          IF v_mono ? v_ubic.id::text AND v_mono->>v_ubic.id::text <> v_p.id::text THEN
+            RAISE EXCEPTION 'la ubicación "%" es Mono-SKU y otra fila del archivo le pone otro producto', v_ubic.nombre;
+          END IF;
+          v_mono := v_mono || jsonb_build_object(v_ubic.id::text, v_p.id);
+        END IF;
+      END IF;
+      -- LPN: único entre los activos del negocio (igual que el ingreso individual) y dentro del archivo.
+      v_lpn := nullif(btrim(v_item->>'lpn'), '');
+      IF v_lpn IS NOT NULL THEN
+        IF v_lpns ? v_lpn THEN RAISE EXCEPTION 'el LPN "%" ya aparece en la fila %', v_lpn, v_lpns->>v_lpn; END IF;
+        v_lpns := v_lpns || jsonb_build_object(v_lpn, v_fila);
+        v_otro := NULL;
+        SELECT pr.nombre INTO v_otro
+          FROM public.inventario_lineas l JOIN public.productos pr ON pr.id = l.producto_id
+         WHERE l.tenant_id = v_tenant AND l.lpn = v_lpn AND l.activo
+         LIMIT 1;
+        IF FOUND THEN RAISE EXCEPTION 'el LPN "%" ya existe en %', v_lpn, coalesce(v_otro, 'otro producto'); END IF;
+      END IF;
+      IF coalesce(v_item->>'estado_id', '') <> '' AND NOT EXISTS (
+           SELECT 1 FROM public.estados_inventario WHERE id = (v_item->>'estado_id')::uuid AND tenant_id = v_tenant AND activo IS NOT FALSE) THEN
+        RAISE EXCEPTION 'el estado de inventario no existe o está desactivado';
+      END IF;
+      IF coalesce(v_item->>'proveedor_id', '') <> '' AND NOT EXISTS (
+           SELECT 1 FROM public.proveedores WHERE id = (v_item->>'proveedor_id')::uuid AND tenant_id = v_tenant AND activo IS NOT FALSE) THEN
+        RAISE EXCEPTION 'el proveedor no existe o está desactivado';
+      END IF;
+      IF coalesce(v_item->>'precio_costo', '') <> '' AND (v_item->>'precio_costo') !~ '^\d+(\.\d+)?$' THEN
+        RAISE EXCEPTION 'precio de costo inválido';
+      END IF;
+
+      v_norm := v_norm || jsonb_build_object(
+        'ord', coalesce(array_length(v_norm, 1), 0) + 1, 'fila', v_fila, 'linea', gen_random_uuid(),
+        'producto_id', v_p.id, 'series', to_jsonb(v_series), 'mov_cant', v_cant,
+        'linea_cant', CASE WHEN v_p.tiene_series THEN 0 ELSE v_cant END,
+        'ubicacion_id', nullif(v_item->>'ubicacion_id', ''), 'estado_id', nullif(v_item->>'estado_id', ''),
+        'proveedor_id', nullif(v_item->>'proveedor_id', ''),
+        'nro_lote', nullif(btrim(v_item->>'nro_lote'), ''), 'fecha_vencimiento', v_fecha,
+        'lpn', v_lpn, 'motivo', coalesce(nullif(btrim(v_item->>'motivo'), ''), 'Carga masiva'),
+        'costo', coalesce(nullif(v_item->>'precio_costo', '')::numeric, v_p.precio_costo), 'venta', v_p.precio_venta,
+        'talle', CASE WHEN v_p.tiene_talle THEN nullif(btrim(v_item->>'talle'), '') END,
+        'color', CASE WHEN v_p.tiene_color THEN nullif(btrim(v_item->>'color'), '') END,
+        'encaje', CASE WHEN v_p.tiene_encaje THEN nullif(btrim(v_item->>'encaje'), '') END,
+        'formato', CASE WHEN v_p.tiene_formato THEN nullif(btrim(v_item->>'formato'), '') END,
+        'sabor_aroma', CASE WHEN v_p.tiene_sabor_aroma THEN nullif(btrim(v_item->>'sabor_aroma'), '') END);
+    END LOOP;
+    v_fila := NULL;
+
+    -- Series que ya existen en el negocio (la clave única es tenant + producto + serie, aunque esté vendida).
+    SELECT (e->>'fila')::int, s INTO v_fila, v_s
+      FROM unnest(v_norm) e
+      CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(e->'series') = 'array' THEN e->'series' ELSE '[]'::jsonb END) s
+      JOIN public.inventario_series i ON i.tenant_id = v_tenant AND i.producto_id = (e->>'producto_id')::uuid AND i.nro_serie = s
+     LIMIT 1;
+    IF v_fila IS NOT NULL THEN
+      RAISE EXCEPTION 'la serie % ya está cargada para ese producto', v_s;
+    END IF;
+
+    -- 2) Movimientos con stock antes/después POR SUCURSAL: base de la sucursal ANTES de esta carga + lo que suman las
+    --    filas anteriores del mismo producto en el archivo. Se calcula en el array antes de insertar nada.
+    SELECT coalesce(array_agg(x ORDER BY (x->>'ord')::int), '{}') INTO v_norm
+      FROM (
+        SELECT e || jsonb_build_object('antes',
+                 b.base + coalesce(sum((e->>'mov_cant')::int) OVER (PARTITION BY e->>'producto_id' ORDER BY (e->>'ord')::int
+                                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)) AS x
+          FROM unnest(v_norm) e
+          JOIN LATERAL (
+            SELECT CASE WHEN p.tiene_series
+                        THEN (SELECT count(*) FROM public.inventario_series s JOIN public.inventario_lineas l ON l.id = s.linea_id
+                               WHERE s.producto_id = p.id AND s.activo AND l.activo AND l.sucursal_id = p_sucursal_id)
+                        ELSE (SELECT coalesce(sum(l.cantidad), 0) FROM public.inventario_lineas l
+                               WHERE l.producto_id = p.id AND l.activo AND l.sucursal_id = p_sucursal_id)
+                   END::int AS base
+              FROM public.productos p WHERE p.id = (e->>'producto_id')::uuid) b ON true
+      ) t;
+
+    -- 3) Líneas, series y movimientos, por conjunto.
+    INSERT INTO public.inventario_lineas (id, tenant_id, producto_id, lpn, cantidad, estado_id, ubicacion_id, proveedor_id,
+      nro_lote, fecha_vencimiento, precio_costo_snapshot, precio_venta_snapshot, sucursal_id,
+      talle, color, encaje, formato, sabor_aroma)
+    SELECT (e->>'linea')::uuid, v_tenant, (e->>'producto_id')::uuid, e->>'lpn', (e->>'linea_cant')::int,
+           (e->>'estado_id')::uuid, (e->>'ubicacion_id')::uuid, (e->>'proveedor_id')::uuid,
+           e->>'nro_lote', (e->>'fecha_vencimiento')::date, (e->>'costo')::numeric, (e->>'venta')::numeric, p_sucursal_id,
+           e->>'talle', e->>'color', e->>'encaje', e->>'formato', e->>'sabor_aroma'
+      FROM unnest(v_norm) e;
+
+    INSERT INTO public.inventario_series (tenant_id, producto_id, linea_id, nro_serie, estado_id, reservado, activo)
+    SELECT v_tenant, (e->>'producto_id')::uuid, (e->>'linea')::uuid, s, (e->>'estado_id')::uuid, false, true
+      FROM unnest(v_norm) e
+      CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(e->'series') = 'array' THEN e->'series' ELSE '[]'::jsonb END) s;
+
+    INSERT INTO public.movimientos_stock (tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues, motivo,
+      estado_id, proveedor_id, usuario_id, linea_id, sucursal_id)
+    SELECT v_tenant, (e->>'producto_id')::uuid, 'ingreso', (e->>'mov_cant')::int, (e->>'antes')::int,
+           (e->>'antes')::int + (e->>'mov_cant')::int, e->>'motivo',
+           (e->>'estado_id')::uuid, (e->>'proveedor_id')::uuid, v_uid, (e->>'linea')::uuid, p_sucursal_id
+      FROM unnest(v_norm) e;
+
+    SELECT count(*), coalesce(sum((e->>'mov_cant')::int), 0) INTO v_lineas, v_unidades FROM unnest(v_norm) e;
+
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+    RAISE EXCEPTION '%', concat_ws(': ',
+        CASE WHEN v_fila IS NOT NULL THEN format('Fila %s', v_fila) END,
+        CASE
+          WHEN SQLSTATE = '23505' AND v_constraint ILIKE '%nro_serie%' THEN 'hay una serie que ya está cargada'
+          WHEN SQLSTATE = '23505' THEN format('dato duplicado (%s)', v_constraint)
+          ELSE SQLERRM
+        END)
+      USING ERRCODE = SQLSTATE;
+  END;
+
+  RETURN jsonb_build_object('lineas', v_lineas, 'unidades', v_unidades);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_importar_productos(p_filas jsonb, p_cancelar_programados boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  -- Columnas que el importador puede escribir. Cualquier otra clave del payload hace fallar la carga.
+  c_permitidas CONSTANT text[] := ARRAY[
+    'nombre', 'sku', 'codigo_barras', 'categoria_id', 'proveedor_id',
+    'precio_costo', 'precio_costo_usd', 'moneda_costo', 'precio_costo_moneda',
+    'precio_venta', 'precio_usd', 'moneda_venta', 'precio_venta_moneda',
+    'stock_minimo', 'unidad_medida', 'descripcion', 'notas', 'activo', 'alicuota_iva', 'margen_objetivo',
+    'tiene_series', 'tiene_lote', 'tiene_vencimiento', 'regla_inventario', 'es_kit'
+  ];
+  v_tenant      uuid := public.get_user_tenant_id();
+  v_item        jsonb;
+  v_norm        jsonb[] := '{}';
+  v_fila        int;
+  v_accion      text;
+  v_sku         text;
+  v_campos      jsonb;
+  v_cols        text[];
+  v_extra       text[];
+  v_id          uuid;
+  v_n           int;
+  v_mapa        jsonb;            -- SKU existente (en mayúsculas) → [ids]
+  v_creados_ids jsonb := '{}';    -- SKU creado → id (para el empaque)
+  v_grupo       record;
+  v_sql         text;
+  v_res         jsonb;
+  v_creados     int := 0;
+  v_actualiz    int := 0;
+  v_cancelados  int := 0;
+  v_pp          uuid;
+  v_constraint  text;
+  v_vistos      jsonb := '{}';    -- SKU → fila del archivo (un SKU por archivo)
+BEGIN
+  IF auth.uid() IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  -- Guard explícito (no alcanza con el trigger de `productos`): una fila que solo trae empaque no hace UPDATE de
+  -- `productos`, y `fn_presentaciones_guardar` valida tenant pero no rol.
+  IF NOT public.auth_puede_editar_modulo('inventario') THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede importar productos.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF jsonb_typeof(p_filas) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Formato inválido: se esperaba una lista de filas.';
+  END IF;
+  IF jsonb_array_length(p_filas) > 5000 THEN
+    RAISE EXCEPTION 'El archivo tiene % filas; el máximo por importación es 5000. Dividilo en partes.', jsonb_array_length(p_filas);
+  END IF;
+
+  -- SKU existentes → ids, en UNA consulta. Sin distinguir mayúsculas, igual que la vista previa (hay SKU viejos en
+  -- minúsculas). Buscarlos fila por fila costaba ~2 ms por fila: no hay índice sobre upper(sku).
+  SELECT coalesce(jsonb_object_agg(u, ids), '{}'::jsonb) INTO v_mapa
+    FROM (SELECT upper(p.sku) AS u, jsonb_agg(p.id) AS ids
+            FROM public.productos p
+           WHERE p.tenant_id = v_tenant
+             AND upper(p.sku) IN (SELECT upper(trim(e->>'sku')) FROM jsonb_array_elements(p_filas) e
+                                   WHERE e->>'accion' = 'actualizar')
+           GROUP BY 1) s;
+
+  -- UN bloque de excepción para toda la carga: ante cualquier error se deshace TODO, y `v_fila`/`v_sku` dicen qué
+  -- fila falló.
+  BEGIN
+    -- 1) Validar y normalizar todas las filas, sin escribir nada.
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_filas) LOOP
+      v_fila   := CASE WHEN v_item->>'fila' ~ '^\d{1,9}$' THEN (v_item->>'fila')::int END;
+      v_accion := v_item->>'accion';
+      v_sku    := upper(trim(coalesce(v_item->>'sku', '')));
+      v_campos := coalesce(v_item->'campos', '{}'::jsonb);
+
+      IF v_sku = '' THEN RAISE EXCEPTION 'falta el SKU'; END IF;
+      IF jsonb_typeof(v_campos) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'formato de campos inválido'; END IF;
+      IF v_accion IS NULL OR v_accion NOT IN ('crear', 'actualizar') THEN
+        RAISE EXCEPTION 'acción inválida "%"', coalesce(v_accion, '');
+      END IF;
+      IF v_vistos ? v_sku THEN
+        RAISE EXCEPTION 'el SKU ya aparece en la fila %; dejá una sola fila por producto', v_vistos->>v_sku;
+      END IF;
+      v_vistos := v_vistos || jsonb_build_object(v_sku, v_fila);
+      -- En un alta el SKU es el de la fila (normalizado); al actualizar identifica la fila y nunca se renombra.
+      v_campos := CASE WHEN v_accion = 'crear' THEN v_campos || jsonb_build_object('sku', v_sku) ELSE v_campos - 'sku' END;
+
+      SELECT array_agg(k ORDER BY k) INTO v_cols FROM jsonb_object_keys(v_campos) k;
+      SELECT array_agg(k) INTO v_extra FROM unnest(coalesce(v_cols, '{}')) k WHERE NOT (k = ANY (c_permitidas));
+      IF v_extra IS NOT NULL THEN
+        RAISE EXCEPTION 'columna no permitida: %', array_to_string(v_extra, ', ');
+      END IF;
+
+      v_id := NULL;
+      IF v_accion = 'actualizar' THEN
+        v_n := coalesce(jsonb_array_length(v_mapa->v_sku), 0);
+        IF v_n = 0 THEN
+          RAISE EXCEPTION 'el SKU ya no existe (¿se borró después de la vista previa?)';
+        ELSIF v_n > 1 THEN
+          RAISE EXCEPTION 'hay % productos con ese SKU escrito con distintas mayúsculas; unificalos antes de importar', v_n;
+        END IF;
+        v_id := (v_mapa->v_sku->>0)::uuid;
+        IF v_cols IS NULL AND jsonb_typeof(v_item->'presentaciones') IS DISTINCT FROM 'array' THEN
+          RAISE EXCEPTION 'la fila no trae ninguna columna para actualizar';
+        END IF;
+      ELSIF v_cols = ARRAY['sku'] THEN
+        RAISE EXCEPTION 'la fila no trae datos';
+      END IF;
+
+      v_norm := v_norm || jsonb_build_object(
+        'fila', v_fila, 'accion', v_accion, 'sku', v_sku, 'campos', v_campos, '_id', v_id,
+        'firma', array_to_string(v_cols, ','), 'presentaciones', v_item->'presentaciones');
+    END LOOP;
+
+    -- 2) Precios programados (C-3): solo donde el archivo CAMBIA el precio de venta.
+    v_fila := NULL; v_sku := NULL;
+    IF p_cancelar_programados THEN
+      FOR v_pp IN
+        SELECT pp.id
+          FROM unnest(v_norm) e
+          JOIN public.productos p ON p.id = (e->>'_id')::uuid
+          JOIN public.precios_programados pp ON pp.producto_id = p.id AND pp.estado = 'pendiente'
+         WHERE e->>'accion' = 'actualizar' AND e->'campos' ? 'precio_venta'
+           AND (e->'campos'->>'precio_venta')::numeric IS DISTINCT FROM p.precio_venta
+      LOOP
+        PERFORM public.fn_cancelar_precio_programado(v_pp);
+        v_cancelados := v_cancelados + 1;
+      END LOOP;
+    END IF;
+
+    -- 3) Escribir por CONJUNTO: una sentencia por (acción, columnas).
+    FOR v_grupo IN
+      SELECT e->>'accion' AS accion, e->>'firma' AS firma, jsonb_agg(e) AS items
+        FROM unnest(v_norm) e
+       WHERE coalesce(e->>'firma', '') <> ''
+       GROUP BY 1, 2
+    LOOP
+      IF v_grupo.accion = 'crear' THEN
+        v_sql := format(
+          $f$WITH ins AS (
+               INSERT INTO public.productos (tenant_id, %1$s)
+               SELECT $1, %2$s
+                 FROM jsonb_array_elements($2) e
+                 CROSS JOIN LATERAL jsonb_populate_record(NULL::public.productos, e->'campos') r
+               RETURNING id, upper(sku) AS u)
+             SELECT coalesce(jsonb_object_agg(u, id), '{}'::jsonb) FROM ins$f$,
+          (SELECT string_agg(format('%I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k),
+          (SELECT string_agg(format('r.%I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k));
+      ELSE
+        v_sql := format(
+          $f$WITH upd AS (
+               UPDATE public.productos p SET %1$s
+                 FROM (SELECT (e->>'_id')::uuid AS _destino,
+                              jsonb_populate_record(NULL::public.productos, e->'campos') AS x
+                         FROM jsonb_array_elements($2) e
+                       OFFSET 0) r
+                WHERE p.id = r._destino AND p.tenant_id = $1
+               RETURNING p.id)
+             SELECT jsonb_build_object('n', count(*)) FROM upd$f$,
+          (SELECT string_agg(format('%1$I = (r.x).%1$I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k));
+      END IF;
+
+      BEGIN
+        EXECUTE v_sql INTO v_res USING v_tenant, v_grupo.items;
+      EXCEPTION WHEN OTHERS THEN
+        -- Buscar la fila culpable de a una, solo para el mensaje (igual se deshace todo). El error de esa fila sale al
+        -- bloque de afuera, que lo devuelve con su número.
+        FOR v_item IN SELECT * FROM jsonb_array_elements(v_grupo.items) LOOP
+          v_fila := (v_item->>'fila')::int;
+          v_sku  := v_item->>'sku';
+          EXECUTE v_sql USING v_tenant, jsonb_build_array(v_item);
+        END LOOP;
+        v_fila := NULL; v_sku := NULL;
+        RAISE;   -- ninguna falló sola: el problema es entre filas del mismo archivo
+      END;
+
+      IF v_grupo.accion = 'crear' THEN
+        v_creados_ids := v_creados_ids || v_res;
+        v_creados := v_creados + jsonb_array_length(v_grupo.items);
+      ELSIF (v_res->>'n')::int <> jsonb_array_length(v_grupo.items) THEN
+        RAISE EXCEPTION 'se actualizaron % de % productos; alguno se borró o es de otro negocio',
+          v_res->>'n', jsonb_array_length(v_grupo.items);
+      END IF;
+    END LOOP;
+
+    -- Las filas que solo traen empaque también cuentan como actualizadas.
+    SELECT count(*) INTO v_actualiz FROM unnest(v_norm) e WHERE e->>'accion' = 'actualizar';
+
+    -- 4) Empaque (árbol de presentaciones), por fila.
+    FOR v_item IN SELECT e FROM unnest(v_norm) e WHERE jsonb_typeof(e->'presentaciones') = 'array' LOOP
+      v_fila := (v_item->>'fila')::int;
+      v_sku  := v_item->>'sku';
+      v_id   := coalesce((v_item->>'_id')::uuid, (v_creados_ids->>(v_item->>'sku'))::uuid);
+      IF v_id IS NULL THEN RAISE EXCEPTION 'no se encontró el producto para guardar el empaque'; END IF;
+      PERFORM public.fn_presentaciones_guardar(v_id, v_item->'presentaciones');
+    END LOOP;
+
+  EXCEPTION WHEN OTHERS THEN
+    -- Re-lanzar con el número de fila: la excepción sale de la función y Postgres deshace TODA la importación.
+    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+    RAISE EXCEPTION '%', concat_ws(': ',
+        CASE WHEN v_fila IS NOT NULL OR v_sku IS NOT NULL
+             THEN format('Fila %s (SKU %s)', coalesce(v_fila::text, '?'), coalesce(v_sku, '?')) END,
+        CASE
+          WHEN SQLSTATE = '23505' AND v_constraint ILIKE '%sku%' THEN 'ya existe un producto con ese SKU'
+          WHEN SQLSTATE = '23505' THEN format('dato duplicado (%s)', v_constraint)
+          ELSE SQLERRM
+        END)
+      USING ERRCODE = SQLSTATE;
+  END;
+
+  RETURN jsonb_build_object('creados', v_creados, 'actualizados', v_actualiz, 'programados_cancelados', v_cancelados);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_importar_proveedores(p_filas jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  c_permitidas CONSTANT text[] := ARRAY[
+    'tipo', 'nombre', 'razon_social', 'cuit', 'dni', 'condicion_iva', 'domicilio', 'contacto', 'telefono', 'email',
+    'plazo_pago_dias', 'banco', 'cbu', 'notas', 'etiquetas'
+  ];
+  v_tenant     uuid := public.get_user_tenant_id();
+  v_rol        text;
+  v_item       jsonb;
+  v_norm       jsonb[] := '{}';
+  v_fila       int;
+  v_accion     text;
+  v_id         uuid;
+  v_campos     jsonb;
+  v_cols       text[];
+  v_extra      text[];
+  v_k          text;
+  v_vistos     jsonb := '{}';   -- proveedor → fila del archivo (dos filas no pueden actualizar al mismo)
+  v_grupo      record;
+  v_sql        text;
+  v_n          int;
+  v_creados    int := 0;
+  v_actualiz   int := 0;
+  v_constraint text;
+BEGIN
+  IF auth.uid() IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  SELECT rol INTO v_rol FROM public.users WHERE id = auth.uid();
+  IF v_rol IS NULL OR v_rol = 'VIEWER' THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede importar proveedores.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF jsonb_typeof(p_filas) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Formato inválido: se esperaba una lista de filas.';
+  END IF;
+  IF jsonb_array_length(p_filas) > 5000 THEN
+    RAISE EXCEPTION 'El archivo tiene % filas; el máximo por importación es 5000. Dividilo en partes.', jsonb_array_length(p_filas);
+  END IF;
+
+  BEGIN
+    -- 1) Validar y normalizar, sin escribir nada.
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_filas) LOOP
+      v_fila   := CASE WHEN v_item->>'fila' ~ '^\d{1,9}$' THEN (v_item->>'fila')::int END;
+      v_accion := v_item->>'accion';
+      v_campos := coalesce(v_item->'campos', '{}'::jsonb);
+      v_id     := NULL;
+
+      IF jsonb_typeof(v_campos) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'formato de campos inválido'; END IF;
+      IF v_accion IS NULL OR v_accion NOT IN ('crear', 'actualizar') THEN
+        RAISE EXCEPTION 'acción inválida "%"', coalesce(v_accion, '');
+      END IF;
+      SELECT array_agg(k ORDER BY k) INTO v_cols FROM jsonb_object_keys(v_campos) k;
+      SELECT array_agg(k) INTO v_extra FROM unnest(coalesce(v_cols, '{}')) k WHERE NOT (k = ANY (c_permitidas));
+      IF v_extra IS NOT NULL THEN
+        RAISE EXCEPTION 'columna no permitida: %', array_to_string(v_extra, ', ');
+      END IF;
+      IF v_cols IS NULL THEN RAISE EXCEPTION 'la fila no trae datos'; END IF;
+      -- Textos recortados (como el alta manual) y vacío = sin dato (NULL).
+      FOREACH v_k IN ARRAY ARRAY['nombre', 'razon_social', 'cuit', 'dni', 'condicion_iva', 'domicilio', 'contacto', 'telefono',
+                                 'email', 'banco', 'cbu', 'notas', 'tipo'] LOOP
+        IF v_campos ? v_k AND jsonb_typeof(v_campos->v_k) NOT IN ('string', 'null') THEN
+          RAISE EXCEPTION 'la columna % tiene que ser texto', v_k;
+        END IF;
+        IF v_campos ? v_k AND jsonb_typeof(v_campos->v_k) = 'string' THEN
+          v_campos := jsonb_set(v_campos, ARRAY[v_k],
+            CASE WHEN btrim(v_campos->>v_k) = '' THEN 'null'::jsonb ELSE to_jsonb(btrim(v_campos->>v_k)) END);
+        END IF;
+      END LOOP;
+      -- Sin tipo: en un alta toma el default ('proveedor'); al actualizar no se puede dejar sin tipo.
+      IF v_campos ? 'tipo' AND jsonb_typeof(v_campos->'tipo') = 'null' THEN
+        IF v_accion = 'crear' THEN v_campos := v_campos - 'tipo'; ELSE RAISE EXCEPTION 'el tipo no puede quedar vacío'; END IF;
+        SELECT array_agg(k ORDER BY k) INTO v_cols FROM jsonb_object_keys(v_campos) k;
+      END IF;
+      IF v_campos ? 'cuit' AND jsonb_typeof(v_campos->'cuit') = 'string' AND v_campos->>'cuit' !~ '^\d{11}$' THEN
+        RAISE EXCEPTION 'CUIT inválido (11 dígitos)';
+      END IF;
+      IF v_campos ? 'cbu' AND jsonb_typeof(v_campos->'cbu') = 'string' AND v_campos->>'cbu' !~ '^\d{22}$' THEN
+        RAISE EXCEPTION 'CBU inválido (22 dígitos)';
+      END IF;
+      IF v_campos ? 'plazo_pago_dias' AND jsonb_typeof(v_campos->'plazo_pago_dias') <> 'null'
+         AND (v_campos->>'plazo_pago_dias' !~ '^\d{1,3}$') THEN
+        RAISE EXCEPTION 'plazo de pago inválido (días enteros)';
+      END IF;
+
+      IF v_accion = 'crear' THEN
+        IF coalesce(trim(v_campos->>'nombre'), '') = '' THEN RAISE EXCEPTION 'falta el nombre'; END IF;
+      ELSE
+        IF coalesce(v_item->>'id', '') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+          RAISE EXCEPTION 'falta el proveedor a actualizar';
+        END IF;
+        v_id := (v_item->>'id')::uuid;
+        IF v_vistos ? v_id::text THEN
+          RAISE EXCEPTION 'esta fila y la fila % actualizan al mismo proveedor; dejá una sola', v_vistos->>v_id::text;
+        END IF;
+        v_vistos := v_vistos || jsonb_build_object(v_id::text, v_fila);
+        IF v_campos ? 'nombre' AND coalesce(trim(v_campos->>'nombre'), '') = '' THEN
+          RAISE EXCEPTION 'el nombre no puede quedar vacío';
+        END IF;
+      END IF;
+
+      v_norm := v_norm || jsonb_build_object(
+        'fila', v_fila, 'accion', v_accion, '_id', v_id, 'campos', v_campos, 'firma', array_to_string(v_cols, ','));
+    END LOOP;
+
+    -- 2) Escribir por CONJUNTO: una sentencia por (acción, columnas).
+    v_fila := NULL;
+    FOR v_grupo IN
+      SELECT e->>'accion' AS accion, e->>'firma' AS firma, jsonb_agg(e) AS items
+        FROM unnest(v_norm) e
+       GROUP BY 1, 2
+    LOOP
+      IF v_grupo.accion = 'crear' THEN
+        v_sql := format(
+          $f$WITH ins AS (
+               INSERT INTO public.proveedores (tenant_id, %1$s)
+               SELECT $1, %2$s
+                 FROM jsonb_array_elements($2) e
+                 CROSS JOIN LATERAL jsonb_populate_record(NULL::public.proveedores, e->'campos') r
+               RETURNING id)
+             SELECT count(*)::int FROM ins$f$,
+          (SELECT string_agg(format('%I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k),
+          (SELECT string_agg(format('r.%I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k));
+      ELSE
+        v_sql := format(
+          $f$WITH upd AS (
+               UPDATE public.proveedores p SET %1$s
+                 FROM (SELECT (e->>'_id')::uuid AS _destino,
+                              jsonb_populate_record(NULL::public.proveedores, e->'campos') AS x
+                         FROM jsonb_array_elements($2) e
+                       OFFSET 0) r
+                WHERE p.id = r._destino AND p.tenant_id = $1
+               RETURNING p.id)
+             SELECT count(*)::int FROM upd$f$,
+          (SELECT string_agg(format('%1$I = (r.x).%1$I', k), ', ') FROM unnest(string_to_array(v_grupo.firma, ',')) k));
+      END IF;
+
+      BEGIN
+        EXECUTE v_sql INTO v_n USING v_tenant, v_grupo.items;
+      EXCEPTION WHEN OTHERS THEN
+        -- Buscar la fila culpable de a una, solo para el mensaje (igual se deshace todo).
+        FOR v_item IN SELECT * FROM jsonb_array_elements(v_grupo.items) LOOP
+          v_fila := (v_item->>'fila')::int;
+          EXECUTE v_sql USING v_tenant, jsonb_build_array(v_item);
+        END LOOP;
+        v_fila := NULL;
+        RAISE;
+      END;
+
+      IF v_n <> jsonb_array_length(v_grupo.items) THEN
+        RAISE EXCEPTION 'se procesaron % de % proveedores; alguno se borró o es de otro negocio', v_n, jsonb_array_length(v_grupo.items);
+      END IF;
+      IF v_grupo.accion = 'crear' THEN v_creados := v_creados + v_n; ELSE v_actualiz := v_actualiz + v_n; END IF;
+    END LOOP;
+
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+    RAISE EXCEPTION '%', concat_ws(': ',
+        CASE WHEN v_fila IS NOT NULL THEN format('Fila %s', v_fila) END,
+        CASE
+          WHEN SQLSTATE = '23514' AND v_constraint = 'proveedores_condicion_iva_check' THEN 'condición IVA inválida'
+          WHEN SQLSTATE = '23514' AND v_constraint = 'proveedores_tipo_check' THEN 'tipo inválido (proveedor o servicio)'
+          WHEN SQLSTATE = '23505' THEN format('dato duplicado (%s)', v_constraint)
+          ELSE SQLERRM
+        END)
+      USING ERRCODE = SQLSTATE;
+  END;
+
+  RETURN jsonb_build_object('creados', v_creados, 'actualizados', v_actualiz);
 END;
 $function$
 
@@ -14082,6 +14948,7 @@ ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.codigo_perfiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combo_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comprobantes_compartidos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consumo_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consumo_tarifas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cotizaciones_bna ENABLE ROW LEVEL SECURITY;
@@ -14133,6 +15000,7 @@ ALTER TABLE public.nc_afip_pendientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orden_compra_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_compra ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.padron_arca_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_lanzamientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedidos ENABLE ROW LEVEL SECURITY;
@@ -14444,6 +15312,12 @@ CREATE POLICY combos_select ON public.combos AS PERMISSIVE FOR SELECT TO public
 CREATE POLICY combos_write ON public.combos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY comprobantes_compartidos_insert ON public.comprobantes_compartidos AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (creado_por = auth.uid()) AND ((venta_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM ventas v
+  WHERE ((v.id = comprobantes_compartidos.venta_id) AND (v.tenant_id = comprobantes_compartidos.tenant_id) AND ((comprobantes_compartidos.tipo <> 'factura'::text) OR (v.cae IS NOT NULL)))))) AND ((devolucion_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM devoluciones d
+  WHERE ((d.id = comprobantes_compartidos.devolucion_id) AND (d.tenant_id = comprobantes_compartidos.tenant_id) AND ((comprobantes_compartidos.venta_id IS NULL) OR (d.venta_id = comprobantes_compartidos.venta_id)) AND ((comprobantes_compartidos.tipo <> 'nc'::text) OR (d.nc_cae IS NOT NULL)))))) AND ((tipo <> 'factura'::text) OR (venta_id IS NOT NULL)) AND ((tipo <> 'nc'::text) OR (devolucion_id IS NOT NULL))));
 CREATE POLICY consumo_eventos_lectura_tenant ON public.consumo_eventos AS PERMISSIVE FOR SELECT TO authenticated
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -15234,6 +16108,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.co
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO service_role;
+GRANT INSERT ON public.comprobantes_compartidos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.comprobantes_compartidos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO authenticated;
@@ -15371,6 +16247,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.or
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.orden_compra_items TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.padron_arca_cache TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_lanzamientos TO authenticated;

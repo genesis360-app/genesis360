@@ -19,6 +19,7 @@ import type { MasivoTipo } from '@/components/MasivoModal'
 import TrasladosPanel from '@/components/TrasladosPanel'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { stockEnSucursal as leerStockEnSucursal } from '@/lib/stockSucursal'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -804,19 +805,10 @@ export default function InventarioPage() {
 
   // ── Helper: stock por sucursal activa (o global si no hay sucursal) ──────────
   // Uso: movimientos_stock.stock_antes / stock_despues + display en formularios
+  // Con series cuenta las series de la sucursal (antes sumaba cantidades de línea, que en series son 0 → "stock
+  // antes" = 0 en el historial). Ver src/lib/stockSucursal.ts.
   async function getStockAntesSucursal(productoId: string, efectivaSucId: string | null): Promise<number> {
-    if (efectivaSucId) {
-      const { data } = await supabase
-        .from('inventario_lineas')
-        .select('cantidad')
-        .eq('tenant_id', tenant!.id)
-        .eq('producto_id', productoId)
-        .eq('sucursal_id', efectivaSucId)
-        .eq('activo', true)
-      return (data ?? []).reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
-    }
-    const { data } = await supabase.from('productos').select('stock_actual').eq('id', productoId).single()
-    return data?.stock_actual ?? 0
+    return leerStockEnSucursal(supabase, tenant!.id, productoId, efectivaSucId)
   }
 
   // Query reactiva: stock del producto seleccionado en la sucursal activa (para display en formularios)

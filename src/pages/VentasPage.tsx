@@ -15,6 +15,9 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
+import { EnviarComprobanteMenu } from '@/components/EnviarComprobanteMenu'
+import { useEnviarPorWhatsApp, etiquetaFiscal } from '@/hooks/useEnviarPorWhatsApp'
+import type { TicketCompartidoData } from '@/lib/ticketPDF'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, composeDomicilioCliente, domicilioReceptor, type FacturaPDFData } from '@/lib/facturasPDF'
 import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
@@ -52,6 +55,11 @@ import { convertirABase } from '@/lib/estructuras'
 import { mejorPrecioMayorista, precioBlendedTier, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { condicionParaCliente, cuitValido, normalizarCuit, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
+
+// Alta rápida de cliente en el POS. CUIT, condición IVA y domicilio fiscal se completan desde ARCA (padrón).
+const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit: '', condicion_iva_receptor: '', domicilio_fiscal: '' }
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
@@ -308,6 +316,21 @@ export default function VentasPage() {
     }
     return `#${v?.numero ?? '?'}`
   }
+  // Abre el envío del ticket por email con el correo del cliente PRECARGADO. El ticket que se arma al finalizar
+  // la venta es la fila recién insertada (solo `cliente_id`, sin el email del cliente): por eso el campo aparecía
+  // vacío y el cliente tenía que tipear un correo que ya estaba en su ficha (reportado en PROD, 2026-10-01). Igual
+  // que la factura (`abrirEnviarFacturaEmail`), se lee de la base. Editable.
+  const abrirEmailTicket = async () => {
+    if (emailTicketOpen) { setEmailTicketOpen(false); return }
+    setEmailTicketOpen(true)
+    setEmailTicketValue(ticketVenta?.clientes?.email ?? '')
+    if (ticketVenta?.clientes?.email || !ticketVenta?.cliente_id) return
+    try {
+      const { data } = await supabase.from('clientes').select('email').eq('id', ticketVenta.cliente_id).single()
+      // Solo si la persona no empezó a escribir otro mientras tanto.
+      if (data?.email) setEmailTicketValue(v => v || data.email)
+    } catch { /* si falla el prefill, igual se puede tipear el correo */ }
+  }
   // H2 — enviar el ticket/comprobante por email (reusa el template venta_confirmada)
   const enviarTicketPorEmail = async (destino: string) => {
     const email = destino.trim()
@@ -448,7 +471,7 @@ export default function VentasPage() {
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
-  const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '', email: '' })
+  const [nuevoClienteForm, setNuevoClienteForm] = useState(NUEVO_CLIENTE_VACIO)
   const [savingCliente, setSavingCliente] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [lpnPickerIdx, setLpnPickerIdx] = useState<number | null>(null)
@@ -510,6 +533,8 @@ export default function VentasPage() {
   const [emailTicketOpen, setEmailTicketOpen] = useState(false)
   const [emailTicketValue, setEmailTicketValue] = useState('')
   const [emailTicketSending, setEmailTicketSending] = useState(false)
+  // Envío por WhatsApp (mig 451): link al comprobante + chat del cliente
+  const { enviar: enviarPorWhatsApp, enviando: enviandoWhatsApp } = useEnviarPorWhatsApp()
   // VF3/J2 — clave maestra para acciones sensibles
   const claveMaestraConfigurada = !!(tenant as any)?.clave_maestra
   const [claveReq, setClaveReq] = useState<{ titulo: string; onOk: () => void } | null>(null)
@@ -1096,21 +1121,29 @@ export default function VentasPage() {
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
 
   const registrarClienteInline = async () => {
-    const { nombre, dni, telefono, email } = nuevoClienteForm
+    const { nombre, dni, telefono, email, cuit, condicion_iva_receptor, domicilio_fiscal } = nuevoClienteForm
     // Punto 4 Fede/GO (mig 280): los campos obligatorios los define el tenant por checkbox
     const err = validarClienteInline(nuevoClienteForm, camposReqCliente)
     if (err) { toast.error(err); return }
+    // Un CUIT mal tipeado haría rechazar la Factura A en ARCA: se valida el dígito verificador.
+    if (cuit.trim() && !cuitValido(cuit)) { toast.error('El CUIT no es válido (revisá el dígito verificador)'); return }
     setSavingCliente(true)
     try {
       const { data, error } = await supabase.from('clientes')
-        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim() || null, telefono: telefono.trim(), email: email.trim() || null })
+        .insert({
+          tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim() || null, telefono: telefono.trim(), email: email.trim() || null,
+          // Condición y domicilio solo acompañan a un CUIT: si se borró el CUIT, no quedan datos fiscales sueltos.
+          cuit_receptor: cuit.trim() ? normalizarCuit(cuit) : null,
+          condicion_iva_receptor: cuit.trim() ? (condicion_iva_receptor || null) : null,
+          domicilio_fiscal: cuit.trim() ? (domicilio_fiscal.trim() || null) : null,
+        })
         .select('id, nombre').single()
       if (error) throw error
       setClienteId(data.id)
       setClienteNombre(data.nombre)
       setClienteTelefono(telefono.trim())
       setNuevoClienteOpen(false)
-      setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' })
+      setNuevoClienteForm(NUEVO_CLIENTE_VACIO)
       toast.success('Cliente registrado')
     } catch (err: any) {
       toast.error(err.message?.includes('clientes_dni_tenant') ? 'Ya existe un cliente con ese DNI' : (err.message ?? 'Error al registrar'))
@@ -1120,12 +1153,12 @@ export default function VentasPage() {
   }
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
-  useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => setTicketVenta(null) })
+  useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => { setTicketVenta(null); setEmailTicketOpen(false); setEmailTicketValue('') } })
   // El detalle de venta cede el ESC a cualquier modal apilado por encima (devolución, NC,
   // cancelar reserva, cambiar cliente, saldo, ticket) → ESC siempre cierra el modal visible.
   useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null && devolucionVenta === null && ncModal === null && cancelReservaModal === null && cambiarClienteVenta === null && devComprobante === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: facturaModal !== null, onClose: () => { setFacturaModal(null); setFacturaEmitida(null) } })
-  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }, onConfirm: registrarClienteInline })
+  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm(NUEVO_CLIENTE_VACIO) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
   // Modales que se apilan sobre el detalle de venta — la NC va encima de la devolución.
   useModalKeyboard({ isOpen: devolucionVenta !== null && ncModal === null, onClose: () => { setDevolucionVenta(null); setAutorizacionAnulacionId(null) } })
@@ -2490,6 +2523,42 @@ export default function VentasPage() {
     await supabase.from('ventas_recurrentes').delete().eq('id', rec.id)
     qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
   }
+
+  // ── Enviar por WhatsApp (pedido de GO 2026-10-01, mig 451) — ver src/hooks/useEnviarPorWhatsApp.ts ──────
+  const enviarTicketPorWhatsApp = () => enviarPorWhatsApp(async () => {
+    if (!ticketVenta) return null
+    const total = Number(ticketVenta.total) || 0
+    const pagado = Number(ticketVenta.monto_pagado ?? total) || 0
+    const datos: TicketCompartidoData = {
+      negocio: tenant!.nombre,
+      etiqueta: `Venta ${formatTicket(ticketVenta)}`,
+      fecha: ticketVenta.created_at ?? new Date().toISOString(),
+      cliente: ticketVenta.clientes?.nombre ?? (clienteNombre || null),
+      items: (ticketVenta.items ?? []).map((i: any) => ({
+        nombre: i.nombre ?? i.producto_nombre ?? 'Ítem',
+        cantidad: i.tiene_series ? (i.series_seleccionadas?.length ?? i.cantidad ?? 1) : (i.cantidad ?? 1),
+        subtotal: Number(i.subtotal ?? ((i.precio_unitario ?? 0) * (i.cantidad ?? 1))) || 0,
+      })),
+      total,
+      medio_pago: typeof ticketVenta.medio_pago === 'string' ? formatMedioPago(ticketVenta.medio_pago) : null,
+      vuelto: ticketVenta.vuelto ?? null,
+      estado: ticketVenta.estado ?? null,
+      saldo: ticketVenta.estado === 'reservada' && total - pagado > 0.5 ? total - pagado : null,
+    }
+    return { tipo: 'ticket', ventaId: ticketVenta.id, datos, etiqueta: datos.etiqueta, total, clienteId: ticketVenta.cliente_id }
+  })
+
+  const enviarFacturaPorWhatsApp = (ventaId: string, clienteId?: string | null) => enviarPorWhatsApp(async () => {
+    const res = await buildFacturaPDFDataPorId(ventaId)
+    if (!res) return null
+    return { tipo: 'factura', ventaId, datos: res.data, etiqueta: etiquetaFiscal(res.data), total: res.data.total, clienteId }
+  })
+
+  const enviarNCPorWhatsApp = (devolucionId: string, ventaId?: string | null, clienteId?: string | null) => enviarPorWhatsApp(async () => {
+    const res = await buildNCPDFDataPorDevolucion(devolucionId)
+    if (!res) return null
+    return { tipo: 'nc', ventaId: ventaId ?? null, devolucionId, datos: res.data, etiqueta: etiquetaFiscal(res.data), total: res.data.total, clienteId }
+  })
 
   // Abre el modal de envío por email precargando el correo del cliente de la venta (editable).
   async function abrirEnviarFacturaEmail(ventaId: string) {
@@ -6305,8 +6374,37 @@ export default function VentasPage() {
                     <input value={nuevoClienteForm.email} onChange={e => setNuevoClienteForm(f => ({ ...f, email: e.target.value }))}
                       placeholder={`Email${camposReqCliente.email ? ' *' : ''}`} type="email" autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                    <input value={nuevoClienteForm.cuit} onChange={e => setNuevoClienteForm(f => ({ ...f, cuit: e.target.value }))}
+                      placeholder="CUIT (opcional, para Factura A)" inputMode="numeric"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                    <PadronArcaSugerencia
+                      cuit={nuevoClienteForm.cuit}
+                      armarCampos={p => [
+                        { key: 'nombre', label: 'Nombre', actual: nuevoClienteForm.nombre, nuevo: p.nombre, conservarSiHayValor: true },
+                        { key: 'condicion_iva_receptor', label: 'Condición IVA', actual: nuevoClienteForm.condicion_iva_receptor, actualTexto: etiquetaCondicionFicha(nuevoClienteForm.condicion_iva_receptor), nuevo: condicionParaCliente(p.condicionIva),
+                          nuevoTexto: p.condicionIva ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                          sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                        { key: 'domicilio_fiscal', label: 'Domicilio fiscal', actual: nuevoClienteForm.domicilio_fiscal, nuevo: p.domicilio?.texto ?? null },
+                      ]}
+                      onAplicar={v => setNuevoClienteForm(f => ({ ...f, ...v }))}
+                    />
+                    {nuevoClienteForm.cuit.trim() && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={nuevoClienteForm.condicion_iva_receptor} onChange={e => setNuevoClienteForm(f => ({ ...f, condicion_iva_receptor: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
+                          <option value="">Condición IVA…</option>
+                          <option value="CF">Consumidor Final</option>
+                          <option value="RI">Responsable Inscripto</option>
+                          <option value="Monotributista">Monotributista</option>
+                          <option value="Exento">Exento</option>
+                        </select>
+                        <input value={nuevoClienteForm.domicilio_fiscal} onChange={e => setNuevoClienteForm(f => ({ ...f, domicilio_fiscal: e.target.value }))}
+                          placeholder="Domicilio fiscal"
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                      </div>
+                    )}
                     <div className="flex gap-2">
-                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }}
+                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm(NUEVO_CLIENTE_VACIO) }}
                         className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm py-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/50">
                         Cancelar
                       </button>
@@ -7371,8 +7469,9 @@ export default function VentasPage() {
                                 className="p-1 text-gray-500 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><FileDown size={13} /></button>
                               <button title="Imprimir NC" disabled={descargandoNc} onClick={() => accionNCPDF(d.id, 'imprimir')}
                                 className="p-1 text-gray-500 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><Printer size={13} /></button>
-                              <button title="Enviar NC por email" onClick={() => abrirEnviarNCEmail(d.id)}
-                                className="p-1 text-gray-500 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><Send size={13} /></button>
+                              <EnviarComprobanteMenu compacto ocupado={enviandoWhatsApp}
+                                onMail={() => abrirEnviarNCEmail(d.id)}
+                                onWhatsApp={() => enviarNCPorWhatsApp(d.id, ventaDetalle?.id, ventaDetalle?.cliente_id)} />
                             </div>
                           ) : d.origen === 'facturada' && ventaDetalle?.cae && (tenant as any)?.facturacion_habilitada ? (
                             <button
@@ -7513,14 +7612,9 @@ export default function VentasPage() {
                       className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
                       <Printer size={15} /> Imprimir
                     </button>
-                    <button
-                      onClick={() => ventaDetalle?.id && abrirEnviarFacturaEmail(ventaDetalle.id)}
-                      disabled={enviandoFacturaEmail}
-                      className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
-                      {enviandoFacturaEmail
-                        ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</>
-                        : <><Send size={15} /> Enviar por email</>}
-                    </button>
+                    <EnviarComprobanteMenu haciaArriba ocupado={enviandoFacturaEmail || enviandoWhatsApp}
+                      onMail={() => ventaDetalle?.id && abrirEnviarFacturaEmail(ventaDetalle.id)}
+                      onWhatsApp={() => ventaDetalle?.id && enviarFacturaPorWhatsApp(ventaDetalle.id, ventaDetalle.cliente_id)} />
                   </div>
                 </div>
               )}
@@ -8339,11 +8433,9 @@ export default function VentasPage() {
                   className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <Printer size={15} /> Imprimir
                 </button>
-                <button onClick={() => { setEmailTicketOpen(o => !o); if (!emailTicketValue) setEmailTicketValue(ticketVenta.clientes?.email ?? ticketVenta.cliente_email ?? '') }}
-                  className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                  <Send size={15} /> Email
-                </button>
-                <button onClick={() => { setTicketVenta(null); setEmailTicketOpen(false) }}
+                <EnviarComprobanteMenu haciaArriba ocupado={enviandoWhatsApp}
+                  onMail={abrirEmailTicket} onWhatsApp={enviarTicketPorWhatsApp} />
+                <button onClick={() => { setTicketVenta(null); setEmailTicketOpen(false); setEmailTicketValue('') }}
                   className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm transition-all">
                   Cerrar
                 </button>
@@ -9172,10 +9264,9 @@ export default function VentasPage() {
                 className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
                 <Printer size={15} /> Imprimir
               </button>
-              <button onClick={() => abrirEnviarFacturaEmail(facturaEmitida.ventaId)} disabled={enviandoFacturaEmail}
-                className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
-                {enviandoFacturaEmail ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar email</>}
-              </button>
+              <EnviarComprobanteMenu ocupado={enviandoFacturaEmail || enviandoWhatsApp}
+                onMail={() => abrirEnviarFacturaEmail(facturaEmitida.ventaId)}
+                onWhatsApp={() => enviarFacturaPorWhatsApp(facturaEmitida.ventaId)} />
             </div>
           </div>
           <div className="px-5 pb-5">

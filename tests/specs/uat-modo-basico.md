@@ -2410,3 +2410,88 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.7 | NC-A a un cliente sin domicilio NO se bloquea (solo la factura) | revisión de la EF (`tipo_comprobante === 'A'` exacto) | ✅ código |
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
+
+## 📲 §81 — Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 81.1 | 🐛 PROD: cliente con email en la ficha → venta finalizada → Enviar → Mail trae el email precargado | e2e `171` A | ✅ |
+| 81.2 | El email tipeado en un ticket no queda cargado para el ticket de la venta siguiente | revisión (se limpia al cerrar) | ✅ código |
+| 81.3 | Enviar → WhatsApp abre el chat del teléfono del cliente con el mensaje y el link `/c/<código>`; sin teléfono, deja elegir el contacto | e2e `171` B · unit `compartirComprobante` | ✅ |
+| 81.4 | El link abre sin sesión, muestra el comprobante y baja el PDF (ticket no fiscal / factura / NC) | e2e `171` B | ✅ ticket |
+| 81.5 | 🛑 La página pública muestra el CAE/número/tipo REALES de la base aunque la foto traiga otros | e2e `171` C | ✅ |
+| 81.6 | Link inexistente o vencido → "no está disponible"; la tabla no se lee ni con ni sin sesión | e2e `171` D | ✅ |
+| 81.7 | Factura y NC: el envío por WhatsApp desde el detalle, el cartel "Factura emitida" y Facturación | e2e `164` (cartel con el menú, regresión) · revisión | ✅ código |
+
+## 🚚 §80 — Importar proveedores (mig 450) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 80.1 | Alta desde archivo: CUIT y CBU se guardan solo con dígitos; la condición IVA con el código de la tabla | e2e `170` A | ✅ |
+| 80.2 | Existente detectado por CUIT aunque en la base tenga guiones; actualizar no borra datos con celdas vacías | e2e `170` B | ✅ |
+| 80.3 | CUIT con dígito verificador mal, CBU con verificadores mal, condición IVA desconocida → error con motivo, sin carga | e2e `170` C · unit `importarProveedores` | ✅ |
+| 80.4 | 🛑 Todo o nada: si la base rechaza una fila (el proveedor a actualizar se borró) no queda nada | e2e `170` D · SQL DEV | ✅ |
+| 80.5 | Lector no ve "Importar" y la base lo rechaza | revisión + guard en la función | ✅ código |
+
+## 🔢 §79 — "Stock antes" de productos con series en los movimientos (2026-10-01)
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 79.1 | 🛑 Ingreso/rebaje/ajuste de un producto con series en una sucursal: el movimiento registra como "stock antes" las series activas de esa sucursal (antes, siempre 0) | unit `stockSucursal` · consulta REST vs SQL en DEV (26 = 26) | ✅ |
+| 79.2 | Producto sin series: suma de cantidades de las líneas activas de la sucursal (sin cambio) | unit `stockSucursal` · e2e 116/132 | ✅ |
+| 79.3 | Si no se puede leer el stock, el movimiento no se registra con un 0 inventado: se informa el error | unit `stockSucursal` | ✅ |
+| 79.4 | Los movimientos viejos con 0 NO se reescriben (1 en PROD) | decisión (regla de históricos) | ✅ |
+
+## 📦 §78 — Importador de inventario en dos pasos, TODO O NADA (D3-a, mig 449) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 78.1 | 🛑 Mismo resultado que el ingreso normal: línea en la sucursal, movimiento `ingreso` con stock antes/después por sucursal encadenado (0→5→8), stock exacto | e2e `169` A · SQL DEV | ✅ |
+| 78.2 | 🛑 Productos con series: la línea queda en 0 y el stock sale de las series; serie repetida o ya cargada → error con fila | SQL DEV | ✅ |
+| 78.3 | Cantidad decimal / ubicación inexistente o de otra sucursal / estado o proveedor desactivado → error con motivo (antes: truncaba o ignoraba) | e2e `169` B · unit `importacion` | ✅ |
+| 78.4 | 🛑 Una fila rechazada por la base deshace todo (LPN tomado entre la vista previa y la carga) | e2e `169` C | ✅ |
+| 78.5 | Lote / vencimiento / atributos obligatorios según el producto; fecha que no existe → error | SQL DEV · unit `importarInventario` | ✅ |
+| 78.6 | Sucursal obligatoria (y accesible para el usuario); conteo wall-to-wall en curso bloquea; Mono-SKU; LPN único | SQL DEV | ✅ |
+| 78.7 | Modo avanzado sin ubicación → aviso "el POS no lo va a poder vender"; modo básico ignora ubicación/estado | revisión de la pantalla | ✅ código |
+| 78.8 | Hasta 2000 filas (2000 productos = 3,1 s); más → pedir dividir | SQL DEV | ✅ |
+
+## 👥 §77 — Importador de clientes en dos pasos, TODO O NADA (D3-a, mig 448) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 77.1 | Actualizar un cliente existente con celdas vacías NO borra sus datos; las celdas con valor se escriben | e2e `168` A · SQL DEV (5000 filas, solo email: teléfono/notas/etiquetas/sucursal intactos) | ✅ |
+| 77.2 | La fila es un cliente (por DNI) pero trae el email de otro → error con motivo, sin carga | e2e `168` B | ✅ |
+| 77.3 | 🛑 Una fila rechazada por la base deshace todo ("Fila N: ya existe otro cliente con ese email/DNI") | e2e `168` C · SQL DEV (100 filas, falla la 40 → 0 cargadas) | ✅ |
+| 77.4 | Dos filas sobre el mismo cliente existente → error en ambas (antes ganaba la última) | e2e `168` D · guard en la base | ✅ |
+| 77.5 | CONTADOR y Lector no importan (botón oculto + base) | SQL DEV impersonando CONTADOR | ✅ |
+
+## 📦 §76 — Importador de productos en dos pasos, TODO O NADA (D3-a, mig 447) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 76.1 | 🛑 Una fila rechazada por la base deshace la carga entera: no queda cargada ninguna otra fila y se informa "Fila N (SKU …)" | e2e `167` C (SKU creado entre la vista previa y la carga) · SQL en DEV (300 filas, falla la 151 → 0 cargadas) | ✅ |
+| 76.2 | Con una sola fila con error no hay botón "Cargar": se corrige el archivo y se vuelve a subir | e2e `167` A/B · `105` (corrige y re-sube) | ✅ |
+| 76.3 | Categoría/proveedor desactivado → "está desactivada: reactivala o elegí otra"; inexistente → no se crea | unit `importacion` · e2e `167` A | ✅ |
+| 76.4 | "Bajar las filas con error": Excel con número de fila, motivo y las columnas originales | e2e `167` A | ✅ |
+| 76.5 | SKU repetido dentro del archivo (sin distinguir mayúsculas) → error en ambas filas; SKU automáticos no chocan con los existentes | e2e `167` B · unit `importacion` | ✅ |
+| 76.6 | 🛑 Precio programado: "Cancelar" lo cancela DENTRO de la carga (si la carga falla, queda pendiente); solo si el precio cambia | e2e `167` D · `162` C | ✅ |
+| 76.7 | 🛑 Server-side: un CAJERO no importa; no se puede escribir `stock_actual`/`tenant_id`; el SKU no se renombra; IVA 0 queda 0 | SQL en DEV impersonando (rollback) | ✅ |
+| 76.8 | 5000 filas entran en el timeout de 8 s (altas 2,0 s; precios 1,3 s; empaque 2000 → 1,7 s); más de 5000 → mensaje para dividir | SQL en DEV (rollback) | ✅ |
+
+## 🔎 §75 — Padrón de ARCA: autocompletar por CUIT (mig 446, EF `consultar-cuit`) — 2026-10-01
+
+Consulta `ws_sr_constancia_inscripcion` (getPersona_v2) con el certificado de plataforma (CUIT de Fede). En DEV =
+padrón de homologación (datos ficticios de ARCA). Decisiones de GO: automática al completar un CUIT válido, con vista
+previa para aceptar; en ficha de cliente, proveedor, emisor fiscal y alta rápida del POS.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 75.1 | 🛑 Condición IVA: monotributo → Monotributista; impuesto 30 → RI; 32 → Exento; régimen general completo sin IVA → CF | unit `padronArca.test.ts` | ✅ |
+| 75.2 | 🛑 Si ARCA no manda el régimen (errorRegimenGeneral / errorMonotributo / constancia bloqueada) la condición queda "no determinada": NUNCA se propone CF por descarte | unit `padronArca.test.ts` · captura (27-29867247-8: "elegila a mano") | ✅ |
+| 75.3 | Cada ficha recibe su vocabulario: cliente `RI/Monotributista/Exento/CF`, proveedor `responsable_inscripto/…` (CHECK), emisor sin CF (+ aviso "no puede facturar") | unit `padronArcaFront.test.ts` · e2e `165` (proveedor guarda `responsable_inscripto`) | ✅ |
+| 75.4 | Nada se escribe solo: vista previa con casillas; un nombre ya escrito no se preselecciona; "Descartar" no toca la ficha | e2e `165` | ✅ |
+| 75.5 | CUIT con dígito verificador inválido: no consulta; la EF responde 400 aunque se la llame directo | e2e `165` · prueba directa a la EF | ✅ |
+| 75.6 | Ficha que ya tenía CUIT: no consulta al abrir (botón "Consultar en ARCA") | revisión del componente | ✅ código |
+| 75.7 | POS alta rápida: CUIT opcional + condición + domicilio fiscal; CUIT inválido bloquea el guardado; con CUIT el DNI no se exige (misma regla que la ficha) | e2e `165` · unit `clienteCampos.test.ts` | ✅ |
+| 75.8 | EF: sin sesión 401; usuario inactivo 403; cache 24 h (no existe: 1 h; error de ARCA no se cachea); límite 30/min por usuario y 500/día por negocio | prueba directa a la EF en DEV (2º hit desde cache) | ✅ parcial (límites sin forzar) |
+| 75.9 | PROD: padrón real con `produccion.crt` de Fede + secret `ARCA_PADRON_PRODUCCION=true` | — | ⏳ falta el cert de producción |

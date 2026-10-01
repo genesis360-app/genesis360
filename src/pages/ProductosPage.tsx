@@ -23,6 +23,7 @@ import { montoYMonedaParaExportar } from '@/lib/importarProductosMoneda'
 import { puedeVerCosto } from '@/lib/permisosCosto'
 import { formatMoneda, fmtPesos } from '@/lib/formato'
 import toast from 'react-hot-toast'
+import { descargarCsv, descargarExcel, descargarJson, nombreConFecha } from '@/lib/exportarArchivo'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -758,7 +759,7 @@ export default function ProductosPage() {
   // columna ausente significa "no tocar", reimportar este archivo no borra el empaque de nadie.
   // `id` y `stock_actual` van de yapa para leerlo: el importador los ignora (el stock se mueve por
   // inventario, nunca por esta planilla).
-  const exportarProductos = (format: 'json' | 'csv') => {
+  const exportarProductos = (format: 'json' | 'csv' | 'xlsx') => {
     const siNo = (v: unknown) => (v ? 'SI' : 'NO')
     const rows = filtered.map(p => {
       const costo = montoYMonedaParaExportar(p.precio_costo, (p as any).precio_costo_usd, (p as any).moneda_costo)
@@ -791,23 +792,11 @@ export default function ProductosPage() {
         activo: siNo(p.activo),
       }
     })
-    if (format === 'json') {
-      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-      a.download = `productos_${new Date().toISOString().slice(0,10)}.json`; a.click()
-    } else {
-      const headers = Object.keys(rows[0] ?? {})
-      const lines = rows.map(r => headers.map(h => {
-        const v = String((r as any)[h] ?? '')
-        // El salto de linea importa: `descripcion` y `notas` son texto libre, y un Enter partia
-        // la fila del CSV en dos: al reimportar, eso corre todas las columnas siguientes.
-        return /[,"\n\r]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v
-      }).join(','))
-      const csv = '﻿' + [headers.join(','), ...lines].join('\n')
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-      a.download = `productos_${new Date().toISOString().slice(0,10)}.csv`; a.click()
-    }
+    const nombre = nombreConFecha('productos')
+    if (format === 'json') descargarJson(rows, nombre)
+    else if (format === 'xlsx') void descargarExcel({ nombre: 'Productos', filas: rows }, nombre)
+    // El CSV usa coma y escapa saltos de línea (`descripcion`/`notas`): es el formato que relee el importador.
+    else descargarCsv(rows, nombre)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -828,8 +817,9 @@ export default function ProductosPage() {
         <div className="flex gap-2">
           <ActionMenu
             items={[
-              { label: 'Exportar JSON', icon: Download, onClick: () => exportarProductos('json') },
+              { label: 'Exportar Excel', icon: Download, onClick: () => exportarProductos('xlsx') },
               { label: 'Exportar CSV',  icon: Download, onClick: () => exportarProductos('csv') },
+              { label: 'Exportar JSON', icon: Download, onClick: () => exportarProductos('json') },
               { label: 'Importar',      icon: Upload,   onClick: () => navigate('/productos/importar') },
               { label: 'Escanear ticket', icon: Camera, onClick: () => { setScanTicketStep('upload'); setScanTicketItems([]); setScanTicketPreview(null); setShowScanTicket(true) } },
             ]}

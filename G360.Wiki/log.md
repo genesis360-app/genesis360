@@ -6,6 +6,124 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importar clientes y proveedores: misma pantalla que Productos/Inventario
+
+- GO: "no quedó como esperaba, tiene que ser la misma pantalla que el importar de Productos o Inventario". Los modales de
+  Clientes y Proveedores pasan a PÁGINAS (`/clientes/importar`, `/proveedores/importar`; el menú "Importar" navega ahí).
+- Layout compartido `src/components/importacion/PaginaImportacion.tsx` (encabezado con volver, columna izquierda
+  Plantilla / Subir archivo / opciones, vista previa a la derecha) — también lo usa Inventario. `VistaPreviaImportacion`
+  rediseñada igual que la de Productos (contadores grandes, estado con ícono, franja gris con el botón).
+- Vista previa de Clientes/Proveedores con 4 columnas para que la de Errores entre (medido: tabla = tarjeta, 674 px).
+- Verde: tsc, build, unit 2079, e2e 168/169/170 12/12 (sin cambios en los tests).
+
+## [2026-10-01] update | Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) + fix del mail del ticket
+
+- GO preguntó si el envío por WhatsApp se había hecho: NO (no estaba en wiki ni memoria). Decisión de GO: "Enviar" →
+  Mail | WhatsApp en todos los lugares que mandaban por mail (ticket POS, factura en el detalle, cartel "Factura
+  emitida", NC, lista de Facturación); WhatsApp = mensaje + link al PDF (la API de Meta sigue sin aprobar).
+- Mig 451 `comprobantes_compartidos` + `fn_comprobante_compartido`; página pública `/c/:token`
+  (`ComprobantePublicoPage`, noindex/no-referrer); `src/lib/compartirComprobante.ts`, `src/lib/ticketPDF.ts`,
+  `src/hooks/useEnviarPorWhatsApp.ts`, `src/components/EnviarComprobanteMenu.tsx`. La pestaña de WhatsApp se abre en el
+  click (si no, el bloqueador de popups la frena tras los await).
+- 🐛 PROD (reporte de un cliente): Enviar → mail del ticket no traía el email cargado en la ficha — el ticket se arma con
+  la fila recién insertada (solo `cliente_id`). Ahora se lee de la base al abrir, como ya hacía la factura. Y el email
+  tipeado quedaba cargado para el ticket de la venta siguiente (otro cliente): se limpia al cerrar.
+- `migration-reviewer`: 🛑 los `datos` los arma el navegador → la función pública pisa CAE/número/tipo con los de la
+  base; factura/NC solo con CAE; `creado_por` = sesión; devolución de esa venta.
+- Verde: tsc, build, unit 2079 (nuevo `compartirComprobante`), e2e `171` 4/4 (precarga del mail, WhatsApp hasta el
+  PDF sin sesión, CAE inventado no se muestra, tabla inaccesible), regresión 38 y 164.
+
+## [2026-10-01] update | Importar proveedores (Fase 3 de importar/exportar, mig 450)
+
+- Pedido de GO. La pantalla de Proveedores no tenía importador. Mig 450 `fn_importar_proveedores` (gemela de 448) +
+  `src/components/importacion/ImportarProveedoresModal.tsx` (vista previa compartida, modal a pantalla completa) +
+  `src/lib/importarProveedores.ts` (condición IVA por etiqueta/sigla/código, CBU con dígitos verificadores, tipo).
+- Existente: por CUIT normalizado en los dos lados (hay CUIT viejos con guiones) o, sin CUIT, por nombre; actualizar
+  escribe solo celdas con valor. `migration-reviewer` sin bloqueantes (recorte de textos, `tipo` vacío, tipos JSON).
+- Verde: tsc, build, unit 2072, SQL DEV (rollback), e2e `170` 5/5.
+
+## [2026-10-01] update | Fix REGLA #0: "stock antes" de productos con series en los movimientos de Inventario
+
+- GO pidió corregir hacia adelante. `getStockAntesSucursal` (InventarioPage) sumaba `inventario_lineas.cantidad`, que
+  en productos con series es 0 → ingresos/rebajes/ajustes/kits de esos productos quedaban con "stock antes" = 0 en el
+  historial (el stock real siempre estuvo bien: `recalcular_stock` cuenta series). PROD: 1 movimiento afectado; no se
+  reescribe (regla de no tocar históricos).
+- `src/lib/stockSucursal.ts`: con series cuenta series activas en líneas activas de la sucursal (embed `!inner`,
+  verificado contra SQL: 26 = 26); si la lectura falla lanza en vez de inventar 0. Recepciones y MasivoModal usan el
+  stock global del producto (ya cuenta series): sin cambio. unit `stockSucursal` (4) · e2e 112/116/132 verdes.
+
+## [2026-10-01] update | Importador de inventario: dos pasos, TODO O NADA y alineado al ingreso normal (mig 449)
+
+- El importador viejo (nunca usado en PROD) escribía desde el navegador y se apartaba del ingreso normal: sin sucursal,
+  ubicación/estado/proveedor mal escritos ignorados en silencio, `parseInt` truncaba decimales, sin lote/vencimiento/
+  atributos obligatorios, movimiento sin control de error, sin bloqueo por conteo wall-to-wall.
+- Mig 449 `fn_importar_inventario`: todo en la base, una transacción; stock antes/después por sucursal encadenado con
+  ventana; LPN único y Mono-SKU como el ingreso individual. Tope 2000 filas (triggers de stock). `migration-reviewer`:
+  series en JSON null, LPN, Mono-SKU, acceso a sucursal, CTE en vez de temp table, uuid inválido → aplicados.
+- Pantalla nueva con la vista previa compartida; `src/lib/importarInventario.ts` (fechas reales, tope).
+- Hallazgo REGLA #0 en el ingreso NORMAL: stock antes = 0 en productos con series (1 caso en PROD, solo historial).
+- Verde: tsc, build, unit 2062, SQL DEV (rollback), e2e `169` 4/4.
+
+## [2026-10-01] update | Importador de clientes: dos pasos y TODO O NADA (mig 448)
+
+- Mig 448 `fn_importar_clientes` (gemela de la 447) + componente compartido `VistaPreviaImportacion`/`ResultadoImportacion`
+  (lo van a usar Inventario, Maestro y Proveedores); modal de clientes a pantalla completa con todas las filas.
+- Bugs viejos corregidos: actualizar un cliente BORRABA email/teléfono/notas si la celda venía vacía (escribía todas las
+  columnas); DNI/email repetidos en el archivo o ya de otro cliente fallaban a mitad de la carga; dos filas sobre el mismo
+  cliente "ganaba la última" en silencio; los errores se contaban sin decir cuál.
+- `migration-reviewer`: sin bloqueantes; aplicados: duplicados de destino (también en la 447 por SKU), `''` → NULL,
+  "Importar" oculto para VIEWER (la base tampoco lo deja). e2e `168` 5/5, `167`/`105` re-corridos 6/6, unit 2056.
+
+## [2026-10-01] update | Importador de productos: dos pasos y TODO O NADA (mig 447)
+
+- Hallazgo: el importador cargaba fila por fila desde el navegador → un error a mitad de camino dejaba el archivo
+  cargado a medias (lo que D3-a pide evitar). Ahora: mig 447 `fn_importar_productos` aplica todo en UNA transacción.
+- Rendimiento: la 1ª versión (una sentencia por fila) tardaba 2-3 ms por fila y no entraba en los 8 s del rol
+  `authenticated` (una prueba de 5000 filas superó el timeout); reescrita por conjunto: 5000 altas 2,0 s.
+- `migration-reviewer`: 2 bloqueantes corregidos (SKU con mayúsculas distintas tiraba la carga; una fila solo de empaque
+  salteaba el guard de rol) + menores (no renombrar SKU, mensaje de duplicado, cancelar programado solo si cambia el precio).
+- Front: `src/lib/importacion.ts` (referencia desactivada → "reactivala o elegí otra", SKU repetido, SKU automáticos sin
+  choque, filas con error a Excel, mensajes de error de carga); "Cargar" bloqueado con errores; "Bajar las filas con
+  error"; `usePreguntarPrecioProgramado` (pregunta sin cancelar). Verde: tsc, build, unit 2056, e2e 167/105/162 11/11.
+
+## [2026-10-01] update | Exportar estándar (fase 1 de importar/exportar) + D3-a resuelto
+
+- GO: mientras Fede saca el cert de producción, seguir con el backlog de importar/exportar. D3-a resuelto: en la vista
+  previa del importador se corrige el archivo y se **re-sube** (sin edición en pantalla).
+- `src/lib/exportarArchivo.ts`: `descargarExcel`/`descargarCsv`/`descargarJson`/`nombreConFecha`. Reemplaza los 11 CSV
+  hechos a mano (Productos, Clientes ×2, Proveedores, OC, Pedidos, Caja, Compras, Envíos, RRHH, Reportes). Productos,
+  Clientes, Proveedores y la OC ganan "Exportar Excel" (primero en el menú). Pedidos salía sin BOM; Clientes/Proveedores
+  no escapaban saltos de línea; Compras/Envíos/RRHH no escapaban comillas. CSV con coma (lo leen los importadores);
+  Compras/Envíos/RRHH conservan `;`. Regla nueva en [[wiki/development/convenciones-codigo]].
+- Verde: tsc, build, unit 2042 (nuevo `exportarArchivo`, ida y vuelta como el importador), e2e `166` (descarga real).
+
+## [2026-10-01] update | Padrón ARCA fases 2-4 en DEV: EF consultar-cuit + vista previa en 5 pantallas
+
+- Núcleo puro `supabase/functions/_shared/padronArca.ts` (CUIT módulo 11, sobre getPersona_v2, parser, condición IVA)
+  compartido por EF, vitest y front. 🛑 Condición: monotributo → MONOTRIBUTO; imp. 30 → RI; 32 → EXENTO; régimen
+  general completo sin IVA → CF (C-19 al contador); sin régimen/errores → `null`, nunca CF por descarte.
+- EF `consultar-cuit` en DEV: cert de plataforma (Fede), TA en `afip_wsaa_ta` (service `ws_sr_constancia_inscripcion`),
+  cache mig 446 `padron_arca_cache` (24 h / 1 h "no existe"), rate limit 30/min usuario · 500/día negocio · 5.000/día
+  global, TA rechazado → se renueva una vez, faults técnicos solo al log. Secret `ARCA_PADRON_KEY_PATH` en DEV.
+- `PadronArcaSugerencia`: automática al cambiar a un CUIT válido, vista previa con casillas, no pisa el nombre. En
+  cliente, proveedor (vocabulario `responsable_inscripto`…), emisor (panel + alta inicial; CF → aviso "no puede
+  facturar") y alta rápida del POS (nuevo campo CUIT; DNI no exigido con CUIT; condición/domicilio solo con CUIT).
+- Verde: tsc, build, unit 2030+ (nuevos `padronArca`, `padronArcaFront`), e2e `165` 6/6 contra homologación, UAT §75.
+  code-reviewer: sin 🔴. Falta PROD (cert de producción de Fede). Página nueva [[wiki/integrations/padron-arca]].
+
+## [2026-10-01] update | Padrón ARCA: certificado de homologación de Fede OK + prueba real
+
+- Fede creó el cert de homologación (`genesis360plataforma`, CUIT 20422374168, vence 30/09/2028) y la autorización a
+  `ws_sr_constancia_inscripcion`. Verificado: huella de la clave pública = la del CSR. Subido a DEV
+  (`certificados-afip/plataforma/20422374168/homologacion.crt`). Prueba real: WSAA homo OK → `getPersona_v2` responde
+  (datos ficticios del padrón de pruebas; a veces `errorConstancia` con avisos junto a los datos). Falta el de producción.
+
+## [2026-10-01] deploy | v1.234.1 — panel interno a PROD
+
+- GO autorizó. Mig 445 (script) → EFs `admin-api` + `mp-reconciliacion` (verify_jwt) y `monitoring-check` (sin) en PROD,
+  smoke 401 OK → PR #366 + release `v1.234.1` (app servida) → repo admin PR #6 (admin.genesis360.pro sirve el bundle
+  con `mp_alerts.list`). Handoff para /clear en `project_pendientes.md` → "ARRANCÁ ACÁ (2026-10-01, cierre)".
+
 ## [2026-10-01] update | Padrón ARCA fase 1 (certificado de plataforma) + cierre para /clear
 
 - Nueva prioridad de GO: autocompletar cliente/proveedor/emisor/alta rápida POS por CUIT desde ARCA. Decisiones: cert de

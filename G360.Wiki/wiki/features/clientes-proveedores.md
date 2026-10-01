@@ -8,6 +8,9 @@ updated: 2026-09-24
 
 # Clientes y Proveedores
 
+> 🔎 **2026-10-01 — Padrón de ARCA:** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
+> autocompletan razón social, condición IVA y domicilio fiscal con vista previa. Ver [[wiki/integrations/padron-arca]].
+
 > 🧾 **2026-09-30 (✅ EN PROD v1.234.0, mig 443) — Domicilio fiscal / comercial del cliente.** Campo propio en "Datos fiscales" de la ficha
 > (`clientes.domicilio_fiscal`), distinto de los domicilios de entrega (pestaña Domicilios). Es el domicilio del **receptor** que
 > imprime la factura; vacío → el domicilio principal de entrega. Obligatorio para Factura A (bloqueo en POS y EF). Ver

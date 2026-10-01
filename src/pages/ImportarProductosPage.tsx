@@ -13,7 +13,9 @@ import { monedaProductoImportada, margenEntraEnLaBase, margenGenerado, margenSos
 import { celdaTieneValor, columnasConValor, payloadParaActualizar, problemaDePrecio } from '@/lib/importarProductosActualizacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
-import { useResolverPrecioProgramado } from '@/hooks/useResolverPrecioProgramado'
+import { usePreguntarPrecioProgramado } from '@/hooks/useResolverPrecioProgramado'
+import { descargarExcel } from '@/lib/exportarArchivo'
+import { filaExcel, filasConErrorParaExportar, generarSkusAutomaticos, MAX_FILAS_IMPORTACION, mensajeErrorCarga, resolverReferencia, skusRepetidos } from '@/lib/importacion'
 import { agregarValidacionesXlsx, letraColumna, valoresLista, type ValidacionLista } from '@/lib/xlsxValidaciones'
 
 // ── Constantes ─────────────────────────────────────────────────────────────
@@ -37,6 +39,9 @@ interface FilaProducto {
   codigo_barras?: string
   categoria?: string
   proveedor?: string
+  /** Resueltos en la vista previa contra el maestro de ESE momento (D3-a: desactivada = error). */
+  categoria_id: string | null
+  proveedor_id: string | null
   precio_costo: number
   precio_costo_moneda: string
   precio_venta: number
@@ -86,7 +91,7 @@ export default function ImportarProductosPage() {
   // (vendedor divisa BNA del día hábil anterior, D-1 fase 2): la misma con la que el POS valúa un
   // producto en USD al cobrarlo. Con otra, el espejo en pesos no coincidiría con lo que se cobra.
   const { cotizacionUsdAArs } = useCotizacion()
-  const resolverProgramado = useResolverPrecioProgramado()
+  const preguntarProgramado = usePreguntarPrecioProgramado()
 
   // El importador crea y actualiza productos (incluidos PRECIOS), pero no tenía ningún gate de rol
   // — a diferencia de `ProductoFormPage`, que deshabilita todo el formulario salvo para
@@ -101,7 +106,14 @@ export default function ImportarProductosPage() {
   const [filasProducto, setFilasProducto] = useState<FilaProducto[]>([])
   const [modo, setModo] = useState<ModoSKU>('ambos')
   const [importandoProd, setImportandoProd] = useState(false)
-  const [resultadoProd, setResultadoProd] = useState<{ creados: number; actualizados: number; errores: number; erroresDetalle: { sku: string; mensaje: string }[] } | null>(null)
+  // D3-a: la carga es todo o nada → o se cargó todo, o no se cargó nada (con el motivo).
+  const [resultadoProd, setResultadoProd] = useState<
+    | { ok: true; creados: number; actualizados: number; programadosCancelados: number }
+    | { ok: false; mensaje: string }
+    | null>(null)
+  // Filas del archivo tal cual vinieron: para bajar las que tienen error, corregirlas y volver a subir.
+  const [originalesProd, setOriginalesProd] = useState<Record<string, unknown>[]>([])
+  const [soloErroresProd, setSoloErroresProd] = useState(false)
 
   const { data: categorias = [], refetch: refetchCategorias } = useQuery({
     queryKey: ['categorias', tenant?.id],
@@ -291,6 +303,10 @@ export default function ImportarProductosPage() {
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
+        if (rows.length > MAX_FILAS_IMPORTACION) {
+          toast.error(`El archivo tiene ${rows.length} filas; el máximo por importación es ${MAX_FILAS_IMPORTACION}. Dividilo en partes.`)
+          return
+        }
         // D-3: validar contra el maestro de AHORA, no el de cuando se abrió la pantalla.
         const { cats: catsFrescas, provs: provsFrescos } = await maestrosFrescos()
 
@@ -302,9 +318,22 @@ export default function ImportarProductosPage() {
         // contra 0 y el aviso nunca salta.
         // Sin tope: un archivo de mas de 1000 filas dejaba la respuesta recortada, y los SKU que
         // no entraban se tomaban como inexistentes — se creaban duplicados en vez de actualizar.
-        const { data: existentes } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
+        const { data: existentes, error: errExist } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
           .select('sku, moneda_venta, moneda_costo, precio_costo, precio_venta').eq('tenant_id', tenant!.id).in('sku', skus)
           .range(desde, hasta))
+        // Sin esta respuesta todo SKU parecería nuevo y se intentaría crearlo de nuevo: mejor no mostrar nada.
+        if (errExist) { toast.error('No se pudo revisar qué productos ya existen. Intentá de nuevo.'); return }
+        const repetidos = skusRepetidos(rows.map(r => String(r.sku || '')))
+        // Filas sin SKU: automáticos que no choquen con los del negocio ni con los del archivo.
+        const sinSku = rows.filter(r => !String(r.sku || '').trim()).length
+        let autos: string[] = []
+        if (sinSku > 0) {
+          const { data: autosExist, error: errAutos } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
+            .select('sku').eq('tenant_id', tenant!.id).ilike('sku', 'AUTO-%').range(desde, hasta))
+          if (errAutos) { toast.error('No se pudo revisar los SKU automáticos. Intentá de nuevo.'); return }
+          autos = generarSkusAutomaticos(sinSku, [...(autosExist ?? []).map((p: any) => p.sku), ...skus])
+        }
+        let siguienteAuto = 0
         const skusExistentes = new Set((existentes ?? []).map((p: any) => p.sku.toUpperCase()))
         const actualPorSku = new Map<string, { venta: string | null; costo: string | null; precioCostoArs: number; precioVentaArs: number }>(
           (existentes ?? []).map((p: any) => [p.sku.toUpperCase(), {
@@ -378,11 +407,13 @@ export default function ImportarProductosPage() {
           // Validar categoria y proveedor — deben existir, no se crean automáticamente
           const catNombre = String(row.categoria || '').trim()
           const provNombre = String(row.proveedor || '').trim()
-          if (catNombre && !catsFrescas.find(c => c.nombre.toLowerCase() === catNombre.toLowerCase())) {
-            errores.push(`Categoría "${catNombre}" no existe — creala primero en Configuración`)
-          }
-          if (provNombre && !provsFrescos.find(p => p.nombre.toLowerCase() === provNombre.toLowerCase())) {
-            errores.push(`Proveedor "${provNombre}" no existe — crealo primero en Configuración`)
+          // D3-a: una desactivada se rechaza con motivo; D3-b: nunca se crean desde acá.
+          const cat = resolverReferencia(catNombre, catsFrescas, 'Categoría')
+          const prov = resolverReferencia(provNombre, provsFrescos, 'Proveedor')
+          if (cat.error) errores.push(cat.error)
+          if (prov.error) errores.push(prov.error)
+          if (sku && repetidos.has(sku)) {
+            errores.push(`SKU repetido en el archivo (filas ${repetidos.get(sku)!.join(', ')}): dejá una sola fila por producto`)
           }
 
           // Solo es obligatorio para CREAR. Actualizar con un archivo de sku + precio es el caso normal.
@@ -442,7 +473,9 @@ export default function ImportarProductosPage() {
           return {
             idx, nombre,
             columnas: Array.from(columnas),
-            sku: sku || `AUTO-${String(idx + 1).padStart(4, '0')}`,
+            sku: sku || autos[siguienteAuto++],
+            categoria_id: cat.id,
+            proveedor_id: prov.id,
             codigo_barras: String(row.codigo_barras || '').trim() || undefined,
             categoria: String(row.categoria || '').trim() || undefined,
             proveedor: String(row.proveedor || '').trim() || undefined,
@@ -473,177 +506,184 @@ export default function ImportarProductosPage() {
             errores,
           } as FilaProducto
         }))
+        setOriginalesProd(rows)
+        setSoloErroresProd(false)
       } catch { toast.error('Error al leer el archivo.') }
     }
     reader.readAsArrayBuffer(file)
   }
 
   const confirmarProductos = async () => {
+    // D3-a: con una sola fila con error no se carga nada (el botón ya está deshabilitado; esto es por si acaso).
+    if (filasProducto.some(f => f.errores.length > 0)) return
+    const aCargar = filasProducto.filter(f => {
+      if (f.estado === 'nuevo' && modo === 'actualizar') return false
+      if (f.estado === 'existente' && modo === 'crear') return false
+      return true
+    })
+    if (aCargar.length === 0) return
+
     // C-3: si el archivo cambia el precio de venta de productos con un precio programado pendiente, se pregunta
-    // antes qué hacer con esos programados (por defecto, cancelarlos).
-    const skusConPrecio = filasProducto
-      .filter(f => f.errores.length === 0 && f.estado === 'existente' && modo !== 'crear' && f.columnas.includes('precio_venta'))
+    // antes qué hacer con esos programados. La cancelación ocurre DENTRO de la carga (mig 447): si la carga falla,
+    // los programados quedan como estaban.
+    const skusConPrecio = aCargar
+      .filter(f => f.estado === 'existente' && f.columnas.includes('precio_venta'))
       .map(f => f.sku)
+    let cancelarProgramados = false
     if (skusConPrecio.length > 0) {
       const { data: prods, error: errProds } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos')
         .select('id, nombre').eq('tenant_id', tenant!.id).in('sku', skusConPrecio).range(desde, hasta))
       if (errProds) { toast.error('No se pudo revisar si hay precios programados. Intentá de nuevo.'); return }
       const nombres = Object.fromEntries((prods ?? []).map((p: any) => [p.id, p.nombre]))
-      if (!(await resolverProgramado((prods ?? []).map((p: any) => p.id), nombres))) return
+      const decision = await preguntarProgramado((prods ?? []).map((p: any) => p.id), nombres)
+      if (decision === null) return
+      cancelarProgramados = decision === 'cancelar'
     }
-    setImportandoProd(true)
-    let creados = 0, actualizados = 0, errores = 0
-    const erroresDetalle: { sku: string; mensaje: string }[] = []
 
     // UdM predefinidas del tenant — las columnas estr_* del CSV mapean a Unidad/Caja/Pallet (mig 282)
-    const { data: udmRows } = await supabase.from('unidades_medida')
+    const { data: udmRows, error: errUdm } = await supabase.from('unidades_medida')
       .select('id, nombre').eq('tenant_id', tenant!.id).in('nombre', ['Unidad', 'Caja', 'Pallet'])
+    if (errUdm) { toast.error('No se pudieron leer las unidades de empaque. Intentá de nuevo.'); return }
     const udmId = (nombre: string) => (udmRows ?? []).find(u => u.nombre === nombre)?.id as string | undefined
 
-    for (const fila of filasProducto.filter(f => {
-      if (f.errores.length > 0) return false
-      if (f.estado === 'nuevo' && modo === 'actualizar') return false
-      if (f.estado === 'existente' && modo === 'crear') return false
-      return true
-    })) {
-      try {
-        // Categoria y proveedor SOLO se buscan — no se crean automáticamente
-        const categoria_id = fila.categoria
-          ? ((categorias as any[]).find(c => c.nombre.toLowerCase() === fila.categoria!.toLowerCase())?.id ?? null)
-          : null
-        const proveedor_id = fila.proveedor
-          ? ((proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())?.id ?? null)
-          : null
-
-        // ── A0 · Las columnas que el resto de la app realmente lee ──────────────────────────
-        // Ver `src/lib/importarProductosMoneda.ts` para el porqué. Las columnas muertas
-        // (`precio_*_moneda`) se siguen escribiendo para no romper la vista previa ni el histórico;
-        // se eliminan dentro del rediseño de Multimoneda, no acá.
-        const costo = monedaProductoImportada(fila.precio_costo, fila.precio_costo_moneda, cotizacionUsdAArs)
-        const venta = monedaProductoImportada(fila.precio_venta, fila.precio_venta_moneda, cotizacionUsdAArs)
-        // La fila ya se marcó con error en la validación, pero el guard va igual: sin cotización NO
-        // se importa, nunca se guarda un monto en dólares como si fueran pesos.
-        if (!costo || !venta) throw new Error('Hay precios en USD pero no hay cotización cargada')
-
-        const payload = {
-          tenant_id: tenant!.id,
-          nombre: fila.nombre,
-          sku: fila.sku,
-          codigo_barras: fila.codigo_barras ?? null,
-          categoria_id,
-          proveedor_id,
-          precio_costo: costo.precioArs,
-          precio_costo_usd: costo.precioUsd,
-          moneda_costo: costo.moneda,
-          precio_costo_moneda: fila.precio_costo_moneda,
-          precio_venta: venta.precioArs,
-          precio_usd: venta.precioUsd,
-          moneda_venta: venta.moneda,
-          precio_venta_moneda: fila.precio_venta_moneda,
-          stock_minimo: fila.stock_minimo,
-          unidad_medida: fila.unidad_medida,
-          descripcion: fila.descripcion ?? null,
-          notas: fila.notas ?? null,
-          activo: fila.columnas.includes('activo') ? fila.activo : true,
-          alicuota_iva: fila.alicuota_iva,
-          margen_objetivo: fila.margen_objetivo ?? null,
-          tiene_series: fila.tiene_series,
-          tiene_lote: fila.tiene_lote,
-          tiene_vencimiento: fila.tiene_vencimiento,
-          regla_inventario: fila.regla_inventario ?? null,
-          es_kit: fila.es_kit,
-        }
-
-        // Desde las columnas del archivo, no desde una lista fija: la anterior cubría 7 de las 14
-        // columnas `estr_*`, así que una fila con solo `estr_largo_unidad` fallaba entera.
-        const hasEstr = fila.columnas.some(c => c.startsWith('estr_'))
-        let productoId: string | null = null
-
-        if (fila.estado === 'nuevo') {
-          // Crear: el archivo define el producto entero, con los valores por defecto para lo que no trae.
-          const { data: inserted, error: errIns } = await supabase.from('productos').insert(payload).select('id').single()
-          if (errIns) throw errIns
-          productoId = inserted?.id ?? null
-          creados++
-        } else {
-          // Actualizar (D-3): SOLO las columnas que el archivo trae. Lo que no viene, no se toca —
-          // antes se reescribía la fila entera y se perdían proveedor, descripción, código de barras,
-          // alícuota de IVA y las marcas de trazabilidad.
-          const parcial = payloadParaActualizar(payload, new Set(fila.columnas))
-          // Una fila puede traer SOLO columnas de empaque (`estr_*`), que no viven en `productos`:
-          // ahí no hay UPDATE que hacer, pero el empaque de más abajo sí se aplica.
-          if (Object.keys(parcial).length === 0 && !hasEstr) {
-            throw new Error('La fila no trae ninguna columna para actualizar')
-          }
-          if (Object.keys(parcial).length > 0) {
-            const { error: errUpd } = await supabase.from('productos').update(parcial).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
-            if (errUpd) throw errUpd
-          }
-          if (hasEstr) {
-            const { data: p } = await supabase.from('productos').select('id').eq('sku', fila.sku).eq('tenant_id', tenant!.id).single()
-            productoId = p?.id ?? null
-          }
-          actualizados++
-        }
-
-        if (hasEstr && productoId) {
-          // Empaque = árbol de presentaciones (Fase 5, mig 310 — antes eran "estructuras" con
-          // niveles lineales). Base siempre; Caja/Pallet si el CSV trae datos. El padre se
-          // referencia por índice ANTERIOR del array, así que la cadena no puede tener ciclos.
-          // El empaque es logística pura, sin precio propio (mig 307): solo factor + dimensiones.
-          // `factor_base` es la equivalencia RESUELTA en unidades base (Pallet = cajas × u/caja).
-          const uPorCaja  = fila.estr_unidades_por_caja ?? 0
-          const cajasPall = fila.estr_cajas_por_pallet ?? 0
-
-          const lineas: any[] = [{
-            padre_idx: null,
-            nombre_empaque_id: null,
-            etiqueta: (fila.unidad_medida ?? 'Unidad').trim() || 'Unidad',
-            factor_base: 1,
-            peso_kg: fila.estr_peso_unidad  ?? null,
-            alto_cm: fila.estr_alto_unidad  ?? null,
-            ancho_cm: fila.estr_ancho_unidad ?? null,
-            largo_cm: fila.estr_largo_unidad ?? null,
-          }]
-          if (uPorCaja > 1) {
-            lineas.push({
-              padre_idx: 0,
-              nombre_empaque_id: udmId('Caja'),
-              etiqueta: `Caja-${uPorCaja}`,
-              factor_base: uPorCaja,
-              peso_kg: fila.estr_peso_caja  ?? null,
-              alto_cm: fila.estr_alto_caja  ?? null,
-              ancho_cm: fila.estr_ancho_caja ?? null,
-              largo_cm: fila.estr_largo_caja ?? null,
-            })
-            if (cajasPall > 1) {
-              lineas.push({
-                padre_idx: 1,
-                nombre_empaque_id: udmId('Pallet'),
-                etiqueta: `Pallet-${cajasPall * uPorCaja}`,
-                factor_base: cajasPall * uPorCaja,
-                peso_kg: fila.estr_peso_pallet  ?? null,
-                alto_cm: fila.estr_alto_pallet  ?? null,
-                ancho_cm: fila.estr_ancho_pallet ?? null,
-                largo_cm: fila.estr_largo_pallet ?? null,
-              })
-            }
-          }
-
-          const { error: ePres } = await supabase.rpc('fn_presentaciones_guardar', {
-            p_producto_id: productoId, p_lineas: lineas,
-          })
-          if (ePres) throw ePres
-        }
-      } catch (e: any) {
-        errores++
-        erroresDetalle.push({ sku: fila.sku, mensaje: e?.message ?? 'Error desconocido' })
+    // Se arma TODO antes de tocar la base: un error acá no deja nada a medias.
+    const items: Record<string, unknown>[] = []
+    for (const fila of aCargar) {
+      // ── A0 · Las columnas que el resto de la app realmente lee ──────────────────────────
+      // Ver `src/lib/importarProductosMoneda.ts` para el porqué. Las columnas muertas
+      // (`precio_*_moneda`) se siguen escribiendo para no romper la vista previa ni el histórico;
+      // se eliminan dentro del rediseño de Multimoneda, no acá.
+      const costo = monedaProductoImportada(fila.precio_costo, fila.precio_costo_moneda, cotizacionUsdAArs)
+      const venta = monedaProductoImportada(fila.precio_venta, fila.precio_venta_moneda, cotizacionUsdAArs)
+      // La fila ya se marcó con error en la validación, pero el guard va igual: sin cotización NO
+      // se importa, nunca se guarda un monto en dólares como si fueran pesos.
+      if (!costo || !venta) {
+        setResultadoProd({ ok: false, mensaje: `No se cargó nada. Fila ${filaExcel(fila.idx)}: hay precios en USD pero no hay cotización cargada.` })
+        return
       }
+
+      const payload = {
+        nombre: fila.nombre,
+        sku: fila.sku,
+        codigo_barras: fila.codigo_barras ?? null,
+        // Resueltos en la vista previa (D3-a): si la categoría se desactivó entre medio, la base lo rechaza igual.
+        categoria_id: fila.categoria_id,
+        proveedor_id: fila.proveedor_id,
+        precio_costo: costo.precioArs,
+        precio_costo_usd: costo.precioUsd,
+        moneda_costo: costo.moneda,
+        precio_costo_moneda: fila.precio_costo_moneda,
+        precio_venta: venta.precioArs,
+        precio_usd: venta.precioUsd,
+        moneda_venta: venta.moneda,
+        precio_venta_moneda: fila.precio_venta_moneda,
+        stock_minimo: fila.stock_minimo,
+        unidad_medida: fila.unidad_medida,
+        descripcion: fila.descripcion ?? null,
+        notas: fila.notas ?? null,
+        activo: fila.columnas.includes('activo') ? fila.activo : true,
+        alicuota_iva: fila.alicuota_iva,
+        margen_objetivo: fila.margen_objetivo ?? null,
+        tiene_series: fila.tiene_series,
+        tiene_lote: fila.tiene_lote,
+        tiene_vencimiento: fila.tiene_vencimiento,
+        regla_inventario: fila.regla_inventario ?? null,
+        es_kit: fila.es_kit,
+      }
+
+      // Desde las columnas del archivo, no desde una lista fija: la anterior cubría 7 de las 14
+      // columnas `estr_*`, así que una fila con solo `estr_largo_unidad` fallaba entera.
+      const hasEstr = fila.columnas.some(c => c.startsWith('estr_'))
+
+      // Crear: el archivo define el producto entero, con los valores por defecto para lo que no trae.
+      // Actualizar (D-3): SOLO las columnas que el archivo trae. Lo que no viene, no se toca.
+      const campos = fila.estado === 'nuevo' ? payload : payloadParaActualizar(payload, new Set(fila.columnas))
+      if (fila.estado !== 'nuevo' && Object.keys(campos).length === 0 && !hasEstr) {
+        setResultadoProd({ ok: false, mensaje: `No se cargó nada. Fila ${filaExcel(fila.idx)}: no trae ninguna columna para actualizar.` })
+        return
+      }
+
+      let presentaciones: any[] | null = null
+      if (hasEstr) {
+        // Empaque = árbol de presentaciones (Fase 5, mig 310 — antes eran "estructuras" con
+        // niveles lineales). Base siempre; Caja/Pallet si el CSV trae datos. El padre se
+        // referencia por índice ANTERIOR del array, así que la cadena no puede tener ciclos.
+        // El empaque es logística pura, sin precio propio (mig 307): solo factor + dimensiones.
+        // `factor_base` es la equivalencia RESUELTA en unidades base (Pallet = cajas × u/caja).
+        const uPorCaja  = fila.estr_unidades_por_caja ?? 0
+        const cajasPall = fila.estr_cajas_por_pallet ?? 0
+        presentaciones = [{
+          padre_idx: null,
+          nombre_empaque_id: null,
+          etiqueta: (fila.unidad_medida ?? 'Unidad').trim() || 'Unidad',
+          factor_base: 1,
+          peso_kg: fila.estr_peso_unidad  ?? null,
+          alto_cm: fila.estr_alto_unidad  ?? null,
+          ancho_cm: fila.estr_ancho_unidad ?? null,
+          largo_cm: fila.estr_largo_unidad ?? null,
+        }]
+        if (uPorCaja > 1) {
+          presentaciones.push({
+            padre_idx: 0,
+            nombre_empaque_id: udmId('Caja'),
+            etiqueta: `Caja-${uPorCaja}`,
+            factor_base: uPorCaja,
+            peso_kg: fila.estr_peso_caja  ?? null,
+            alto_cm: fila.estr_alto_caja  ?? null,
+            ancho_cm: fila.estr_ancho_caja ?? null,
+            largo_cm: fila.estr_largo_caja ?? null,
+          })
+          if (cajasPall > 1) {
+            presentaciones.push({
+              padre_idx: 1,
+              nombre_empaque_id: udmId('Pallet'),
+              etiqueta: `Pallet-${cajasPall * uPorCaja}`,
+              factor_base: cajasPall * uPorCaja,
+              peso_kg: fila.estr_peso_pallet  ?? null,
+              alto_cm: fila.estr_alto_pallet  ?? null,
+              ancho_cm: fila.estr_ancho_pallet ?? null,
+              largo_cm: fila.estr_largo_pallet ?? null,
+            })
+          }
+        }
+      }
+
+      items.push({
+        fila: filaExcel(fila.idx),
+        accion: fila.estado === 'nuevo' ? 'crear' : 'actualizar',
+        sku: fila.sku,
+        campos,
+        presentaciones,
+      })
     }
-    qc.invalidateQueries({ queryKey: ['productos'] })
-    setResultadoProd({ creados, actualizados, errores, erroresDetalle })
-    setImportandoProd(false)
-    toast.success(`${creados} creados, ${actualizados} actualizados`)
+
+    // 🛑 D3-a — TODO O NADA: una sola llamada; la base aplica todas las filas en una transacción (mig 447).
+    setImportandoProd(true)
+    try {
+      const { data, error } = await supabase.rpc('fn_importar_productos', {
+        p_filas: items, p_cancelar_programados: cancelarProgramados,
+      })
+      if (error) {
+        setResultadoProd({ ok: false, mensaje: mensajeErrorCarga(error) })
+        return
+      }
+      const r = data as { creados: number; actualizados: number; programados_cancelados: number }
+      setResultadoProd({ ok: true, creados: r.creados, actualizados: r.actualizados, programadosCancelados: r.programados_cancelados })
+      setFilasProducto([])
+      setOriginalesProd([])
+      toast.success(`${r.creados} creados, ${r.actualizados} actualizados`)
+    } catch (e: any) {
+      setResultadoProd({ ok: false, mensaje: mensajeErrorCarga(e) })
+    } finally {
+      setImportandoProd(false)
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    }
+  }
+
+  const bajarFilasConError = () => {
+    const filas = filasConErrorParaExportar(originalesProd, filasProducto)
+    if (filas.length === 0) return
+    void descargarExcel({ nombre: 'Filas con error', filas }, 'productos_filas_con_error')
   }
 
   const nuevosProd     = filasProducto.filter(f => f.estado === 'nuevo' && !f.errores.length).length
@@ -685,23 +725,26 @@ export default function ImportarProductosPage() {
       </div>
 
       <>
-          {resultadoProd && (
+          {resultadoProd?.ok === true && (
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
               <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
                 <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
-                  {resultadoProd.creados} creados · {resultadoProd.actualizados} actualizados · {resultadoProd.errores} errores
+                  {resultadoProd.creados} creados · {resultadoProd.actualizados} actualizados
+                  {resultadoProd.programadosCancelados > 0 && ` · ${resultadoProd.programadosCancelados} precios programados cancelados`}
                 </p>
-                {resultadoProd.erroresDetalle.length > 0 && (
-                  <ul className="mt-1.5 text-xs text-red-600 dark:text-red-400 list-disc list-inside space-y-0.5">
-                    {resultadoProd.erroresDetalle.slice(0, 10).map((e, i) => (
-                      <li key={i}>{e.sku}: {e.mensaje}</li>
-                    ))}
-                    {resultadoProd.erroresDetalle.length > 10 && <li>… y {resultadoProd.erroresDetalle.length - 10} más</li>}
-                  </ul>
-                )}
-                <button onClick={() => navigate('/productos')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
+                <button onClick={() => navigate('/productos')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver productos →</button>
+              </div>
+            </div>
+          )}
+          {resultadoProd?.ok === false && (
+            <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-start gap-3">
+              <XCircle size={20} className="text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-red-800 dark:text-red-300">No se cargó nada</p>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-0.5">{resultadoProd.mensaje.replace(/^No se cargó nada\.\s*/, '')}</p>
+                <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1">La importación es todo o nada: corregí el archivo y volvé a subirlo.</p>
               </div>
             </div>
           )}
@@ -721,10 +764,10 @@ export default function ImportarProductosPage() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoProductos(f) }}>
                   <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{filasProducto.length > 0 ? 'Subí el archivo corregido' : 'Arrastrá o hacé click'}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
                 </div>
-                <input ref={fileRefProd} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivoProductos(f) }} />
+                <input ref={fileRefProd} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivoProductos(f); e.target.value = '' }} />
               </div>
               {filasProducto.length > 0 && existentesProd > 0 && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
@@ -753,9 +796,21 @@ export default function ImportarProductosPage() {
                     <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{existentesProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Existentes</p></div>
                     <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Con errores</p></div>
                   </div>
+                  {errorProd > 0 && (
+                    <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-gray-100 text-xs">
+                      <label className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked={soloErroresProd} onChange={e => setSoloErroresProd(e.target.checked)} />
+                        Ver solo las filas con error
+                      </label>
+                      <button onClick={bajarFilasConError} className="flex items-center gap-1 text-accent-text hover:underline">
+                        <Download size={12} /> Bajar las {errorProd} filas con error (Excel, con el motivo)
+                      </button>
+                    </div>
+                  )}
                   <div className="overflow-x-auto max-h-96">
                     <table className="w-full text-xs">
                       <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700"><tr className="border-b border-gray-100">
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Fila</th>
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Nombre</th>
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
@@ -766,15 +821,16 @@ export default function ImportarProductosPage() {
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
                       </tr></thead>
                       <tbody>
-                        {filasProducto.map(f => (
+                        {filasProducto.filter(f => !soloErroresProd || f.errores.length > 0).map(f => (
                           <tr key={f.idx} className={`border-b border-gray-50 ${f.errores.length > 0 ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'existente' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                            <td className="px-3 py-2 text-gray-400">{filaExcel(f.idx)}</td>
                             <td className="px-3 py-2">
                               {f.errores.length > 0 ? <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
                                 : f.estado === 'existente' ? <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400"><RefreshCw size={12} /> Existe</span>
                                 : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> Nuevo</span>}
                             </td>
                             <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.nombre || <span className="text-red-400 italic">vacío</span>}</td>
-                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{f.sku}</td>
+                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400 whitespace-nowrap">{f.sku}</td>
                             <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_costo > 0 ? `${f.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${f.precio_costo.toLocaleString()}` : '—'}</td>
                             <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_venta > 0 ? `${f.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${f.precio_venta.toLocaleString()}` : '—'}</td>
                             <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.alicuota_iva}%</td>
@@ -786,12 +842,23 @@ export default function ImportarProductosPage() {
                     </table>
                   </div>
                   <div className="p-4 border-t border-gray-100 bg-gray-50 dark:bg-gray-700">
-                    <button onClick={confirmarProductos} disabled={importandoProd || (nuevosProd === 0 && existentesProd === 0)}
-                      className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                      {importandoProd ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
-                        : <><Upload size={16} /> Confirmar ({modo === 'crear' ? nuevosProd : modo === 'actualizar' ? existentesProd : nuevosProd + existentesProd} productos)</>}
-                    </button>
-                    {errorProd > 0 && <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2 flex items-center justify-center gap-1"><AlertTriangle size={11} /> Las filas con errores serán ignoradas</p>}
+                    {errorProd > 0 ? (
+                      // D3-a: con una sola fila con error no se carga nada. Se corrige el ARCHIVO y se vuelve a subir.
+                      <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                        <p>
+                          <strong>{errorProd === 1 ? 'Hay 1 fila con error' : `Hay ${errorProd} filas con error`}.</strong>{' '}
+                          No se carga nada hasta que el archivo esté limpio: corregilo y volvé a subirlo
+                          {' '}(arriba podés bajar solo las filas con error, con el motivo).
+                        </p>
+                      </div>
+                    ) : (
+                      <button onClick={confirmarProductos} disabled={importandoProd || (nuevosProd === 0 && existentesProd === 0)}
+                        className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                        {importandoProd ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Cargando...</>
+                          : <><Upload size={16} /> Cargar {modo === 'crear' ? nuevosProd : modo === 'actualizar' ? existentesProd : nuevosProd + existentesProd} productos</>}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

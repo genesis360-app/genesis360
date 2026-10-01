@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-448, + correctivos 387b/387c)
+# Historial de Migraciones (001-449, + correctivos 387b/387c)
+
+📦 **Migración 449 — 🟡 SOLO EN DEV (2026-10-01)**: `449_importar_inventario_transaccion.sql` — `fn_importar_inventario(p_filas jsonb, p_sucursal_id uuid)`: ingreso masivo de stock desde archivo, todo o nada, con el MISMO resultado que el ingreso normal (línea con sucursal, series con la línea en 0, movimiento `ingreso` con stock antes/después por sucursal encadenado entre filas del mismo producto). Valida en la base: sucursal obligatoria y accesible, conteo wall-to-wall, cantidad entera, lote/vencimiento/atributos según el producto, ubicación de la sucursal + Mono-SKU, LPN único (base y archivo), series repetidas/existentes, referencias activas del negocio. Tope 2000 filas (triggers de stock ~1,4 ms/fila; 2000 productos = 3,1 s). Revisada por `migration-reviewer` (hallazgos aplicados). El importador viejo nunca se usó en PROD (0 líneas `IMP-%`).
 
 👥 **Migración 448 — 🟡 SOLO EN DEV (2026-10-01)**: `448_importar_clientes_transaccion.sql` — `fn_importar_clientes(p_filas jsonb, p_sucursal_id uuid)`, gemela de la 447 para clientes: todo o nada, por conjunto, lista blanca (nombre, dni, telefono, email, notas, etiquetas), guard de rol (todos menos CONTADOR y VIEWER), sucursal validada, `''` → NULL, dos filas sobre el mismo cliente → error con fila. Corrige además que actualizar BORRABA los datos de las celdas vacías. 5000 altas 0,74 s · 5000 actualizaciones 0,59 s. La 447 se re-aplicó en DEV con el control de SKU repetido del lado del servidor.
 

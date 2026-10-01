@@ -2411,6 +2411,19 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📦 §78 — Importador de inventario en dos pasos, TODO O NADA (D3-a, mig 449) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 78.1 | 🛑 Mismo resultado que el ingreso normal: línea en la sucursal, movimiento `ingreso` con stock antes/después por sucursal encadenado (0→5→8), stock exacto | e2e `169` A · SQL DEV | ✅ |
+| 78.2 | 🛑 Productos con series: la línea queda en 0 y el stock sale de las series; serie repetida o ya cargada → error con fila | SQL DEV | ✅ |
+| 78.3 | Cantidad decimal / ubicación inexistente o de otra sucursal / estado o proveedor desactivado → error con motivo (antes: truncaba o ignoraba) | e2e `169` B · unit `importacion` | ✅ |
+| 78.4 | 🛑 Una fila rechazada por la base deshace todo (LPN tomado entre la vista previa y la carga) | e2e `169` C | ✅ |
+| 78.5 | Lote / vencimiento / atributos obligatorios según el producto; fecha que no existe → error | SQL DEV · unit `importarInventario` | ✅ |
+| 78.6 | Sucursal obligatoria (y accesible para el usuario); conteo wall-to-wall en curso bloquea; Mono-SKU; LPN único | SQL DEV | ✅ |
+| 78.7 | Modo avanzado sin ubicación → aviso "el POS no lo va a poder vender"; modo básico ignora ubicación/estado | revisión de la pantalla | ✅ código |
+| 78.8 | Hasta 2000 filas (2000 productos = 3,1 s); más → pedir dividir | SQL DEV | ✅ |
+
 ## 👥 §77 — Importador de clientes en dos pasos, TODO O NADA (D3-a, mig 448) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

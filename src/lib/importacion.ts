@@ -11,14 +11,23 @@ export const filaExcel = (idx: number) => idx + 2
 
 export interface ItemMaestro { id: string; nombre: string; activo?: boolean | null }
 
+export type TipoReferencia = 'Categoría' | 'Proveedor' | 'Ubicación' | 'Estado'
+
+const REFERENCIA: Record<TipoReferencia, { desactivada: string; dondeCrearla: string }> = {
+  'Categoría': { desactivada: 'está desactivada: reactivala o elegí otra', dondeCrearla: 'creala primero en Configuración' },
+  'Proveedor': { desactivada: 'está desactivado: reactivalo o elegí otro', dondeCrearla: 'crealo primero en Proveedores' },
+  'Ubicación': { desactivada: 'está desactivada: reactivala o elegí otra', dondeCrearla: 'tiene que existir en esta sucursal' },
+  'Estado':    { desactivada: 'está desactivado: reactivalo o elegí otro', dondeCrearla: 'crealo primero en Configuración' },
+}
+
 /**
- * Busca una categoría/proveedor por nombre (sin distinguir mayúsculas ni espacios de más).
+ * Busca una categoría/proveedor/ubicación/estado por nombre (sin distinguir mayúsculas ni espacios de más).
  * Devuelve el id o el motivo del rechazo. `activo` NULL cuenta como activo.
  */
 export function resolverReferencia(
   nombre: string | null | undefined,
   maestro: ItemMaestro[],
-  tipo: 'Categoría' | 'Proveedor',
+  tipo: TipoReferencia,
 ): { id: string | null; error?: string } {
   const buscado = String(nombre ?? '').trim()
   if (!buscado) return { id: null }
@@ -26,11 +35,8 @@ export function resolverReferencia(
   const encontrados = maestro.filter((m) => m.nombre.trim().toLowerCase().replace(/\s+/g, ' ') === clave)
   const activo = encontrados.find((m) => m.activo !== false)
   if (activo) return { id: activo.id }
-  if (encontrados.length > 0) {
-    return { id: null, error: `${tipo} "${buscado}" está desactivada: reactivala o elegí otra` }
-  }
-  const donde = tipo === 'Categoría' ? 'creala primero en Configuración' : 'crealo primero en Proveedores'
-  return { id: null, error: `${tipo} "${buscado}" no existe — ${donde}` }
+  if (encontrados.length > 0) return { id: null, error: `${tipo} "${buscado}" ${REFERENCIA[tipo].desactivada}` }
+  return { id: null, error: `${tipo} "${buscado}" no existe — ${REFERENCIA[tipo].dondeCrearla}` }
 }
 
 /** SKU que aparecen más de una vez en el archivo → filas (de Excel) donde aparecen. */

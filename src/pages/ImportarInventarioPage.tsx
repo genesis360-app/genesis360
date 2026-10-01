@@ -1,32 +1,31 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, Boxes } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Upload, Download, FileSpreadsheet, Boxes, AlertTriangle } from 'lucide-react'
 // xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
+import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
+import { descargarExcel } from '@/lib/exportarArchivo'
+import { filaExcel, filasConErrorParaExportar, mensajeErrorCarga, resolverReferencia, type ItemMaestro } from '@/lib/importacion'
+import { fechaImportada, MAX_FILAS_INVENTARIO } from '@/lib/importarInventario'
 import toast from 'react-hot-toast'
 
-// Convierte cualquier formato de fecha a YYYY-MM-DD. Recibe el módulo xlsx ya cargado (dynamic
-// import, auditoría perf 2026-08-14, P5) — este helper corre siempre después de leer el archivo.
-function parseFecha(val: any, xlsxMod: typeof import('xlsx')): string | undefined {
-  if (val === null || val === undefined || val === '') return undefined
-  if (typeof val === 'number') {
-    const d = xlsxMod.SSF.parse_date_code(val)
-    if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
-    return undefined
-  }
-  if (val instanceof Date) return val.toISOString().slice(0, 10)
-  const s = String(val).trim()
-  if (!s) return undefined
-  const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  return s
-}
+// ─── Importar inventario (ingreso masivo de stock desde archivo) ───────────────────────────────────────────────────
+// D3-a (Fede/GO): vista previa completa → botón aparte → TODO O NADA. La carga la hace la base en UNA transacción
+// (mig 449 `fn_importar_inventario`) con el mismo resultado que el ingreso normal de Inventario: línea con su SUCURSAL,
+// series, movimiento `ingreso` con stock antes/después por sucursal, lote/vencimiento/atributos obligatorios según el
+// producto, LPN único, ubicación Mono-SKU, conteo wall-to-wall. Antes esto se escribía fila por fila desde el
+// navegador, sin sucursal, ignorando en silencio ubicaciones/estados mal escritos y truncando decimales.
+
+const ATRIBUTOS = ['talle', 'color', 'encaje', 'formato', 'sabor_aroma'] as const
+type Atributo = typeof ATRIBUTOS[number]
 
 interface FilaInventario {
   idx: number
@@ -35,16 +34,20 @@ interface FilaInventario {
   producto_id: string
   tiene_series: boolean
   cantidad: number
-  precio_costo?: number
+  series?: string[]
+  precio_costo?: string
   ubicacion?: string
+  ubicacion_id: string | null
   estado?: string
+  estado_id: string | null
   proveedor?: string
+  proveedor_id: string | null
   nro_lote?: string
   fecha_vencimiento?: string
   lpn?: string
   motivo?: string
-  numeros_serie?: string[]
-  estadoFilaImport: 'ok' | 'error'
+  atributos: Partial<Record<Atributo, string>>
+  avisos: string[]
   errores: string[]
 }
 
@@ -52,70 +55,47 @@ export default function ImportarInventarioPage() {
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
+  const { sucursalId, sucursales } = useSucursalFilter()
+  const { avanzado } = useModoOperacion()
   const qc = useQueryClient()
+  const soloLectura = moduloSoloLectura(user as any, 'movimientos')
 
   const fileRef = useRef<HTMLInputElement>(null)
+  const [sucursalElegida, setSucursalElegida] = useState<string>('')
+  const sucursalDestino = sucursalId ?? (sucursalElegida || null)
 
   const [filas, setFilas] = useState<FilaInventario[]>([])
+  const [originales, setOriginales] = useState<Record<string, unknown>[]>([])
   const [importando, setImportando] = useState(false)
-  const [resultado, setResultado] = useState<{ cargados: number; errores: number } | null>(null)
-
-  const { data: ubicaciones = [] } = useQuery({
-    queryKey: ['ubicaciones', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
-    enabled: !!tenant,
-  })
-  const { data: estados = [] } = useQuery({
-    queryKey: ['estados_inventario', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true); return data ?? [] },
-    enabled: !!tenant,
-  })
-  const { data: proveedores = [] } = useQuery({
-    queryKey: ['proveedores', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('proveedores').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
-    enabled: !!tenant,
-  })
-  const { data: productosMap = {} } = useQuery({
-    queryKey: ['productos-sku-map', tenant?.id],
-    queryFn: async () => {
-      // Sin tope: si el mapa de SKU llega recortado, el importador trata productos existentes
-      // como nuevos.
-      const { data } = await traerTodoConError<any>((desde, hasta) => supabase.from('productos').select('id, nombre, sku, precio_costo, stock_actual, tiene_series').eq('tenant_id', tenant!.id).eq('activo', true).range(desde, hasta))
-      const map: Record<string, any> = {}
-      ;(data ?? []).forEach(p => { map[p.sku.toUpperCase()] = p })
-      return map
-    },
-    enabled: !!tenant,
-  })
+  const [resultado, setResultado] = useState<ResultadoCarga | null>(null)
 
   const descargarPlantilla = async () => {
     const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([
-      ['sku','cantidad','precio_costo','ubicacion','estado','proveedor','nro_lote','fecha_vencimiento','lpn','motivo','numeros_serie'],
-      ['TORN-0001',100,150,'Depósito A','Disponible','Proveedor A','L-2024-001','2025-12-31','','Carga inicial',''],
-      ['PINT-0001',20,'','Estante 2','','','','','','',''],
-      ['CELULAR-001','','','Depósito B','','','','','','Carga inicial','SN-0001,SN-0002,SN-0003'],
+      ['sku', 'cantidad', 'precio_costo', 'ubicacion', 'estado', 'proveedor', 'nro_lote', 'fecha_vencimiento', 'lpn', 'motivo', 'numeros_serie', ...ATRIBUTOS],
+      ['TORN-0001', 100, 150, 'Depósito A', 'Disponible', 'Proveedor A', 'L-2024-001', '2025-12-31', '', 'Carga inicial', ''],
+      ['PINT-0001', 20, '', 'Estante 2', '', '', '', '', '', '', ''],
+      ['CELULAR-001', '', '', 'Depósito B', '', '', '', '', '', 'Carga inicial', 'SN-0001,SN-0002,SN-0003'],
     ])
-    const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A','B','C','D','E','F','G','H','I','J','K'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
-    ws['!cols'] = [{ wch:15 },{ wch:12 },{ wch:14 },{ wch:15 },{ wch:15 },{ wch:15 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:20 },{ wch:35 }]
+    ws['!cols'] = [15, 12, 14, 15, 15, 15, 15, 18, 15, 20, 35, 10, 10, 10, 10, 12].map(wch => ({ wch }))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Inventario')
     const wsRef = XLSX.utils.aoa_to_sheet([
-      ['Campo','Requerido','Notas'],
-      ['sku','SÍ','Debe existir en el catálogo de productos'],
-      ['cantidad','SÍ (no serializado)','Cantidad a ingresar. Ignorado para productos con series.'],
-      ['precio_costo','no','Precio de costo del ingreso. Si vacío, usa el del producto.'],
-      ['ubicacion','no','Nombre de la ubicación. Debe existir en Configuración.'],
-      ['estado','no','Estado del inventario. Debe existir en Configuración.'],
-      ['proveedor','no','Nombre del proveedor. Debe existir en Configuración.'],
-      ['nro_lote','no','Número de lote'],
-      ['fecha_vencimiento','no','Formato YYYY-MM-DD. Ej: 2025-12-31'],
-      ['lpn','no','Identificador del bulto. Se autogenera si está vacío.'],
-      ['motivo','no','Motivo del ingreso. Ej: Carga inicial, Reposición, etc.'],
-      ['numeros_serie','SÍ (serializado)','Solo para productos con series. Separar con coma. Ej: SN-001,SN-002,SN-003.'],
+      ['Campo', 'Requerido', 'Notas'],
+      ['sku', 'SÍ', 'Debe existir en el catálogo de productos (activo).'],
+      ['cantidad', 'SÍ (sin series)', 'Número ENTERO mayor a 0, en la unidad base del producto. Ignorado para productos con series.'],
+      ['precio_costo', 'no', 'Costo de este ingreso (solo para la línea). Si está vacío, usa el del producto.'],
+      ['ubicacion', 'no', 'Nombre de la ubicación de la sucursal (o global). Debe existir y estar activa. Una ubicación Mono-SKU no admite un segundo producto.'],
+      ['estado', 'no', 'Estado del inventario. Si está vacío, usa el predeterminado del producto.'],
+      ['proveedor', 'no', 'Si está vacío, usa el del producto.'],
+      ['nro_lote', 'si el producto lo pide', 'Número de lote.'],
+      ['fecha_vencimiento', 'si el producto lo pide', 'AAAA-MM-DD o DD/MM/AAAA.'],
+      ['lpn', 'no', 'Identificador del bulto. Único entre los activos; se autogenera si está vacío.'],
+      ['motivo', 'no', 'Ej: Carga inicial. Por defecto "Carga masiva".'],
+      ['numeros_serie', 'SÍ (con series)', 'Separadas por coma. No pueden estar ya cargadas.'],
+      ['talle / color / encaje / formato / sabor_aroma', 'si el producto lo pide', 'Atributos de variante.'],
     ])
-    wsRef['!cols'] = [{ wch:20 },{ wch:18 },{ wch:75 }]
+    wsRef['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 90 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
     XLSX.writeFile(wb, 'plantilla_inventario.xlsx')
   }
@@ -129,135 +109,172 @@ export default function ImportarInventarioPage() {
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
+        if (rows.length > MAX_FILAS_INVENTARIO) {
+          toast.error(`El archivo tiene ${rows.length} filas; el máximo por importación de stock es ${MAX_FILAS_INVENTARIO}. Dividilo en partes.`)
+          return
+        }
+
+        // Maestros de AHORA (no los de cuando se abrió la pantalla) y sin tope de 1000 filas.
+        const [prods, ubics, ests, provs] = await Promise.all([
+          traerTodoConError<any>((d, h) => supabase.from('productos')
+            .select('id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, estado_id, proveedor_id')
+            .eq('tenant_id', tenant!.id).eq('activo', true).range(d, h)),
+          traerTodoConError<any>((d, h) => supabase.from('ubicaciones').select('id, nombre, activo, sucursal_id')
+            .eq('tenant_id', tenant!.id).range(d, h)),
+          traerTodoConError<any>((d, h) => supabase.from('estados_inventario').select('id, nombre, activo')
+            .eq('tenant_id', tenant!.id).range(d, h)),
+          traerTodoConError<any>((d, h) => supabase.from('proveedores').select('id, nombre, activo')
+            .eq('tenant_id', tenant!.id).range(d, h)),
+        ])
+        if (prods.error || ubics.error || ests.error || provs.error) {
+          toast.error('No se pudieron leer los productos o la configuración. Intentá de nuevo.')
+          return
+        }
+        const porSku = new Map<string, any>((prods.data ?? []).map((p: any) => [String(p.sku).toUpperCase(), p]))
+        // Ubicaciones de la sucursal destino o globales.
+        const ubicacionesSuc: ItemMaestro[] = (ubics.data ?? []).filter((u: any) => !u.sucursal_id || u.sucursal_id === sucursalDestino)
+        const seriesVistas = new Map<string, number>()
+        const lpnsVistos = new Map<string, number>()
 
         const preview: FilaInventario[] = rows.map((row, idx) => {
           const errores: string[] = []
+          const avisos: string[] = []
           const sku = String(row.sku || '').trim().toUpperCase()
-          const cantidad = parseInt(String(row.cantidad || '0')) || 0
-          const producto = productosMap[sku]
-          const tieneSeries = producto?.tiene_series ?? false
-          const numerosSerieRaw = String(row.numeros_serie || '').trim()
-          const numerosSerie = numerosSerieRaw ? numerosSerieRaw.split(/[,;]/).map(s => s.trim()).filter(Boolean) : []
-
+          const producto = porSku.get(sku)
           if (!sku) errores.push('SKU requerido')
-          else if (!producto) errores.push(`SKU "${sku}" no existe`)
+          else if (!producto) errores.push(`SKU "${sku}" no existe o está inactivo`)
+          const tieneSeries = !!producto?.tiene_series
 
+          // Cantidad: entero > 0 (la línea de stock es entera). Antes `parseInt` truncaba 1,5 → 1 sin avisar.
+          const cantRaw = String(row.cantidad ?? '').trim().replace(',', '.')
+          let cantidad = 0
+          let series: string[] | undefined
           if (tieneSeries) {
-            if (numerosSerie.length === 0) errores.push('Producto serializado: completá la columna numeros_serie')
+            series = String(row.numeros_serie || '').split(/[,;]/).map(s => s.trim()).filter(Boolean)
+            if (series.length === 0) errores.push('Producto con series: completá numeros_serie')
+            for (const s of series) {
+              const k = `${sku}|${s}`
+              if (seriesVistas.has(k)) errores.push(`La serie ${s} ya aparece en la fila ${filaExcel(seriesVistas.get(k)!)}`)
+              else seriesVistas.set(k, idx)
+            }
+            cantidad = series.length
+          } else if (!/^\d+$/.test(cantRaw) || Number(cantRaw) <= 0) {
+            errores.push(/^\d+\.\d+$/.test(cantRaw) ? `Cantidad "${row.cantidad}": tiene que ser un número entero` : 'Cantidad: número entero mayor a 0')
           } else {
-            if (cantidad <= 0) errores.push('Cantidad debe ser mayor a 0')
+            cantidad = Number(cantRaw)
           }
 
+          // Referencias (D3-a: desactivada → error con motivo). En modo básico no se usan ubicaciones ni estados.
+          const ubicNombre = String(row.ubicacion || '').trim()
+          const estNombre = String(row.estado || '').trim()
+          const provNombre = String(row.proveedor || '').trim()
+          let ubicacion_id: string | null = null
+          let estado_id: string | null = null
+          if (avanzado) {
+            const u = resolverReferencia(ubicNombre, ubicacionesSuc, 'Ubicación')
+            if (u.error) errores.push(u.error)
+            ubicacion_id = u.id
+            const es = resolverReferencia(estNombre, ests.data ?? [], 'Estado')
+            if (es.error) errores.push(es.error)
+            estado_id = es.id ?? (estNombre ? null : producto?.estado_id ?? null)
+            if (!ubicacion_id && !ubicNombre && producto) avisos.push('Sin ubicación: el POS no lo va a poder vender hasta ubicarlo')
+          } else if (ubicNombre || estNombre) {
+            avisos.push('Modo básico: se ignoran ubicación y estado')
+          }
+          const pv = resolverReferencia(provNombre, provs.data ?? [], 'Proveedor')
+          if (pv.error) errores.push(pv.error)
+          const proveedor_id = pv.id ?? (provNombre ? null : producto?.proveedor_id ?? null)
+
+          const nro_lote = String(row.nro_lote || '').trim() || undefined
+          const fv = fechaImportada(row.fecha_vencimiento, XLSX)
+          if (fv === 'invalida') errores.push(`Fecha de vencimiento "${row.fecha_vencimiento}" inválida (usá AAAA-MM-DD o DD/MM/AAAA)`)
+          const fecha_vencimiento = fv && fv !== 'invalida' ? fv : undefined
+          if (producto?.tiene_lote && !nro_lote) errores.push('El producto requiere lote')
+          if (producto?.tiene_vencimiento && !fecha_vencimiento && fv !== 'invalida') errores.push('El producto requiere fecha de vencimiento')
+          const atributos: Partial<Record<Atributo, string>> = {}
+          for (const a of ATRIBUTOS) {
+            const v = String(row[a] || '').trim()
+            if (producto?.[`tiene_${a}`]) {
+              if (!v) errores.push(`El producto requiere ${a.replace('_', '/')}`)
+              else atributos[a] = v
+            }
+          }
+
+          const lpn = String(row.lpn || '').trim() || undefined
+          if (lpn) {
+            if (lpnsVistos.has(lpn)) errores.push(`El LPN "${lpn}" ya aparece en la fila ${filaExcel(lpnsVistos.get(lpn)!)}`)
+            else lpnsVistos.set(lpn, idx)
+          }
+          const costoRaw = String(row.precio_costo ?? '').trim().replace(',', '.')
+          if (costoRaw && !/^\d+(\.\d+)?$/.test(costoRaw)) errores.push(`Precio de costo "${row.precio_costo}" inválido`)
+
           return {
-            idx,
-            sku,
-            producto_nombre: producto?.nombre ?? '—',
-            producto_id: producto?.id ?? '',
-            tiene_series: tieneSeries,
-            cantidad: tieneSeries ? numerosSerie.length : cantidad,
-            precio_costo: parseFloat(String(row.precio_costo || '').replace(',', '.')) || undefined,
-            ubicacion: String(row.ubicacion || '').trim() || undefined,
-            estado: String(row.estado || '').trim() || undefined,
-            proveedor: String(row.proveedor || '').trim() || undefined,
-            nro_lote: String(row.nro_lote || '').trim() || undefined,
-            fecha_vencimiento: parseFecha(row.fecha_vencimiento, XLSX),
-            lpn: String(row.lpn || '').trim() || undefined,
+            idx, sku, producto_nombre: producto?.nombre ?? '—', producto_id: producto?.id ?? '',
+            tiene_series: tieneSeries, cantidad, series,
+            precio_costo: costoRaw || undefined,
+            ubicacion: ubicNombre || undefined, ubicacion_id,
+            estado: estNombre || undefined, estado_id,
+            proveedor: provNombre || undefined, proveedor_id,
+            nro_lote, fecha_vencimiento, lpn,
             motivo: String(row.motivo || '').trim() || undefined,
-            numeros_serie: tieneSeries ? numerosSerie : undefined,
-            estadoFilaImport: errores.length > 0 ? 'error' : 'ok',
-            errores,
+            atributos, avisos, errores,
           }
         })
         setFilas(preview)
+        setOriginales(rows)
       } catch { toast.error('Error al leer el archivo.') }
     }
     reader.readAsArrayBuffer(file)
   }
 
   const confirmar = async () => {
-    setImportando(true)
-    let cargados = 0, errores = 0
-
-    for (const fila of filas.filter(f => f.estadoFilaImport === 'ok')) {
-      try {
-        const ubicacion_id = fila.ubicacion
-          ? ((ubicaciones as any[]).find(u => u.nombre.toLowerCase() === fila.ubicacion!.toLowerCase())?.id ?? null)
-          : null
-        const estado_id = fila.estado
-          ? ((estados as any[]).find(e => e.nombre.toLowerCase() === fila.estado!.toLowerCase())?.id ?? null)
-          : null
-        const proveedor_id = fila.proveedor
-          ? ((proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())?.id ?? null)
-          : null
-
-        const { data: prodAntes } = await supabase.from('productos').select('stock_actual, precio_costo').eq('id', fila.producto_id).single()
-        const stockAntes = prodAntes?.stock_actual ?? 0
-        const precioCosto = fila.precio_costo ?? prodAntes?.precio_costo ?? null
-        const lpn = fila.lpn || `IMP-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(fila.idx + 1).padStart(4, '0')}`
-
-        const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert({
-          tenant_id: tenant!.id,
-          producto_id: fila.producto_id,
-          lpn,
-          cantidad: fila.cantidad,
-          estado_id,
-          ubicacion_id,
-          proveedor_id,
-          nro_lote: fila.nro_lote ?? null,
-          fecha_vencimiento: fila.fecha_vencimiento ?? null,
-          precio_costo_snapshot: precioCosto,
-        }).select().single()
-        if (lineaErr) throw lineaErr
-
-        if (fila.tiene_series && fila.numeros_serie && fila.numeros_serie.length > 0) {
-          const { error: seriesErr } = await supabase.from('inventario_series').insert(
-            fila.numeros_serie.map(nro_serie => ({
-              tenant_id: tenant!.id,
-              producto_id: fila.producto_id,
-              linea_id: linea.id,
-              nro_serie,
-              estado_id,
-              reservado: false,
-              activo: true,
-            }))
-          )
-          if (seriesErr) throw seriesErr
-        }
-
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id,
-          producto_id: fila.producto_id,
-          tipo: 'ingreso',
-          cantidad: fila.cantidad,
-          stock_antes: stockAntes,
-          stock_despues: stockAntes + fila.cantidad,
-          motivo: fila.motivo ?? 'Carga masiva',
-          estado_id,
-          usuario_id: user?.id,
-          linea_id: linea.id,
-        })
-
-        cargados++
-      } catch { errores++ }
+    if (filas.some(f => f.errores.length > 0)) return   // D3-a: todo o nada (el botón no aparece con errores)
+    if (!sucursalDestino) { toast.error('Elegí la sucursal de destino del ingreso.'); return }
+    if (limits && !limits.puede_crear_movimiento) {
+      setResultado({ ok: false, mensaje: 'Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.' })
+      return
     }
-
-    qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
-    qc.invalidateQueries({ queryKey: ['productos'] })
-    qc.invalidateQueries({ queryKey: ['movimientos'] })
-    setResultado({ cargados, errores })
-    setImportando(false)
-    toast.success(`${cargados} líneas cargadas al inventario`)
+    setImportando(true)
+    try {
+      // 🛑 REGLA #0 / D3-a — una sola llamada; la base hace línea + series + movimiento en una transacción (mig 449).
+      const { data, error } = await supabase.rpc('fn_importar_inventario', {
+        p_sucursal_id: sucursalDestino,
+        p_filas: filas.map(f => ({
+          fila: filaExcel(f.idx),
+          producto_id: f.producto_id,
+          cantidad: f.tiene_series ? null : String(f.cantidad),
+          series: f.series ?? null,
+          ubicacion_id: f.ubicacion_id, estado_id: f.estado_id, proveedor_id: f.proveedor_id,
+          nro_lote: f.nro_lote ?? null, fecha_vencimiento: f.fecha_vencimiento ?? null,
+          lpn: f.lpn ?? null, motivo: f.motivo ?? null, precio_costo: f.precio_costo ?? null,
+          ...f.atributos,
+        })),
+      })
+      if (error) { setResultado({ ok: false, mensaje: mensajeErrorCarga(error) }); return }
+      const r = data as { lineas: number; unidades: number }
+      setResultado({ ok: true, resumen: `${r.lineas} línea${r.lineas !== 1 ? 's' : ''} cargada${r.lineas !== 1 ? 's' : ''} · ${r.unidades} unidades` })
+      setFilas([])
+      setOriginales([])
+      toast.success(`${r.lineas} líneas cargadas al inventario`)
+    } catch (e: any) {
+      setResultado({ ok: false, mensaje: mensajeErrorCarga(e) })
+    } finally {
+      setImportando(false)
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+    }
   }
-
-  const okCount    = filas.filter(f => f.estadoFilaImport === 'ok').length
-  const errorCount = filas.filter(f => f.estadoFilaImport === 'error').length
 
   if (limits && !limits.puede_importar) return <UpgradePrompt feature="importar" />
 
+  const sinSucursal = !sucursalDestino
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+        <button onClick={() => navigate('/inventario')} aria-label="Volver" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
           <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div>
@@ -266,100 +283,93 @@ export default function ImportarInventarioPage() {
         </div>
       </div>
 
-      {resultado && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-semibold text-green-800 dark:text-green-400">Carga completada</p>
-            <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultado.cargados} línea{resultado.cargados !== 1 ? 's' : ''} cargada{resultado.cargados !== 1 ? 's' : ''} · {resultado.errores} errores</p>
-            <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
-          </div>
+      {soloLectura ? (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-5 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" /> Tu rol tiene acceso de solo lectura en Inventario.
         </div>
-      )}
-
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-400">
-        <strong>Carga masiva de inventario</strong> — Cada fila crea una línea de stock (LPN) y registra un movimiento de ingreso. Los SKUs deben existir previamente en el catálogo de productos.
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent-text" /> Plantilla</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Completá una fila por línea de inventario a cargar.</p>
-            <button onClick={descargarPlantilla} className="w-full flex items-center justify-center gap-2 border border-accent-text text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
-              <Download size={15} /> Descargar plantilla
-            </button>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent-text" /> Subir archivo</h2>
-            <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
-              onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
-              <Boxes size={28} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
-            </div>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f) }} />
-          </div>
-        </div>
-
-        <div className="lg:col-span-2">
-          {filas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
-              <Boxes size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Subí un archivo para ver la previsualización</p>
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
-                <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{okCount}</p><p className="text-xs text-gray-500 dark:text-gray-400">Líneas a cargar</p></div>
-                <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorCount}</p><p className="text-xs text-gray-500 dark:text-gray-400">Con errores</p></div>
-              </div>
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700"><tr className="border-b border-gray-100">
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
-                    <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Cantidad</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Ubicación</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado inv.</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Lote</th>
-                    <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
-                  </tr></thead>
-                  <tbody>
-                    {filas.map(f => (
-                      <tr key={f.idx} className={`border-b border-gray-50 ${f.estadoFilaImport === 'error' ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
-                        <td className="px-3 py-2">
-                          {f.estadoFilaImport === 'error'
-                            ? <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
-                            : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> OK</span>}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{f.sku}</td>
-                        <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.producto_nombre}</td>
-                        <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-semibold">{f.cantidad}</td>
-                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.ubicacion ?? '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.estado ?? '—'}</td>
-                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.nro_lote ?? '—'}</td>
-                        <td className="px-3 py-2 text-red-500">{f.errores.join(', ') || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="p-4 border-t border-gray-100 bg-gray-50 dark:bg-gray-700">
-                <button onClick={confirmar} disabled={importando || okCount === 0}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {importando ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Cargando...</>
-                    : <><Boxes size={16} /> Cargar {okCount} línea{okCount !== 1 ? 's' : ''} al inventario</>}
-                </button>
-                {errorCount > 0 && <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2 flex items-center justify-center gap-1"><AlertTriangle size={11} /> Las filas con errores serán ignoradas</p>}
-              </div>
-            </div>
+      ) : (
+        <>
+          {resultado && (
+            <ResultadoImportacion resultado={resultado} accion={resultado.ok && (
+              <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
+            )} />
           )}
-        </div>
-      </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300 space-y-1">
+            <p><strong>Carga masiva de inventario</strong> — cada fila crea una línea de stock (LPN) en la sucursal elegida y registra un movimiento de ingreso, igual que el ingreso manual. Los SKU tienen que existir en el catálogo.</p>
+            <p className="text-xs">Todo o nada: con una fila con error no se carga ninguna. Hasta {MAX_FILAS_INVENTARIO} filas por archivo. El importador no consulta la regla de rotación por vencimiento.</p>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-5">
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Sucursal de destino</h2>
+                {sucursalId ? (
+                  <p className="text-sm text-gray-700 dark:text-gray-200">{(sucursales as any[]).find(s => s.id === sucursalId)?.nombre ?? 'Sucursal activa'}</p>
+                ) : (
+                  <select value={sucursalElegida} onChange={e => { setSucursalElegida(e.target.value); setFilas([]); setResultado(null) }}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700">
+                    <option value="">Elegí la sucursal…</option>
+                    {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
+                )}
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent-text" /> Plantilla</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Una fila por línea de inventario a cargar.</p>
+                <button onClick={descargarPlantilla} className="w-full flex items-center justify-center gap-2 border border-accent-text text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
+                  <Download size={15} /> Descargar plantilla
+                </button>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent-text" /> Subir archivo</h2>
+                <div className={`border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center transition-all ${sinSucursal ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-accent-text hover:bg-accent/5'}`}
+                  onClick={() => { if (!sinSucursal) fileRef.current?.click() }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && !sinSucursal) procesarArchivo(f) }}>
+                  <Boxes size={28} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {sinSucursal ? 'Primero elegí la sucursal' : filas.length > 0 ? 'Subí el archivo corregido' : 'Arrastrá o hacé click'}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
+                </div>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              {filas.length === 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 dark:border-gray-700 text-center text-gray-400 dark:text-gray-500">
+                  <Boxes size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Subí un archivo para ver la previsualización</p>
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                  <VistaPreviaImportacion
+                    entidadPlural="líneas al inventario"
+                    columnas={['SKU', 'Producto', 'Cantidad', 'Ubicación', 'Estado', 'Lote', 'Vence']}
+                    filas={filas.map(f => ({
+                      idx: f.idx,
+                      errores: f.errores,
+                      estado: f.errores.length ? 'error' : 'nuevo',
+                      detalle: f.avisos.join(' · ') || undefined,
+                      celdas: [f.sku, f.producto_nombre, f.tiene_series ? `${f.cantidad} (series)` : f.cantidad || '—',
+                        f.ubicacion ?? '—', f.estado ?? '—', f.nro_lote ?? '—', f.fecha_vencimiento ?? '—'],
+                    }))}
+                    cargando={importando}
+                    onCargar={confirmar}
+                    onBajarErrores={() => {
+                      const filasErr = filasConErrorParaExportar(originales, filas)
+                      if (filasErr.length) void descargarExcel({ nombre: 'Filas con error', filas: filasErr }, 'inventario_filas_con_error')
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

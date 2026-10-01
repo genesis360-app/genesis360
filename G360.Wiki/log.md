@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importador de inventario: dos pasos, TODO O NADA y alineado al ingreso normal (mig 449)
+
+- El importador viejo (nunca usado en PROD) escribía desde el navegador y se apartaba del ingreso normal: sin sucursal,
+  ubicación/estado/proveedor mal escritos ignorados en silencio, `parseInt` truncaba decimales, sin lote/vencimiento/
+  atributos obligatorios, movimiento sin control de error, sin bloqueo por conteo wall-to-wall.
+- Mig 449 `fn_importar_inventario`: todo en la base, una transacción; stock antes/después por sucursal encadenado con
+  ventana; LPN único y Mono-SKU como el ingreso individual. Tope 2000 filas (triggers de stock). `migration-reviewer`:
+  series en JSON null, LPN, Mono-SKU, acceso a sucursal, CTE en vez de temp table, uuid inválido → aplicados.
+- Pantalla nueva con la vista previa compartida; `src/lib/importarInventario.ts` (fechas reales, tope).
+- Hallazgo REGLA #0 en el ingreso NORMAL: stock antes = 0 en productos con series (1 caso en PROD, solo historial).
+- Verde: tsc, build, unit 2062, SQL DEV (rollback), e2e `169` 4/4.
+
 ## [2026-10-01] update | Importador de clientes: dos pasos y TODO O NADA (mig 448)
 
 - Mig 448 `fn_importar_clientes` (gemela de la 447) + componente compartido `VistaPreviaImportacion`/`ResultadoImportacion`

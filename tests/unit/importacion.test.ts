@@ -82,3 +82,12 @@ describe('mensajeErrorCarga', () => {
     expect(mensajeErrorCarga({ message: 'TypeError: Failed to fetch' })).toMatch(/todo o nada/)
   })
 })
+
+describe('resolverReferencia — ubicación y estado (importador de inventario)', () => {
+  it('mensajes con el género y el lugar correctos', () => {
+    expect(resolverReferencia('Dep A', [{ id: 'u', nombre: 'Dep A', activo: false }], 'Ubicación').error).toBe('Ubicación "Dep A" está desactivada: reactivala o elegí otra')
+    expect(resolverReferencia('Dep Z', [], 'Ubicación').error).toBe('Ubicación "Dep Z" no existe — tiene que existir en esta sucursal')
+    expect(resolverReferencia('Roto', [{ id: 'e', nombre: 'Roto', activo: false }], 'Estado').error).toBe('Estado "Roto" está desactivado: reactivalo o elegí otro')
+    expect(resolverReferencia('ACME', [{ id: 'p', nombre: 'ACME', activo: false }], 'Proveedor').error).toBe('Proveedor "ACME" está desactivado: reactivalo o elegí otro')
+  })
+})

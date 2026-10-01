@@ -36,7 +36,15 @@ type: project
 >    carga. Tests: unit `importacion` (14) · e2e `167` (A-D) + `105`/`162` adaptados, 11/11.
 >    **Clientes HECHO en DEV (01/10)**: mig 448 + componente compartido `src/components/importacion/VistaPreviaImportacion.tsx`
 >    (vista previa + resultado estándar), modal de pantalla completa; al actualizar ya NO borra los datos de celdas vacías;
->    DNI/email repetidos o de otro cliente; dos filas = mismo cliente → error. e2e `168` 5/5. **Sigue**:
+>    DNI/email repetidos o de otro cliente; dos filas = mismo cliente → error. e2e `168` 5/5.
+>    **Inventario HECHO en DEV (01/10)**: mig 449 + pantalla nueva (sucursal obligatoria, aviso "sin ubicación" en
+>    avanzado, defaults de estado/proveedor del producto, plantilla con atributos). Corrige 6 problemas latentes del
+>    importador viejo (sin sucursal, referencias mal escritas ignoradas, decimales truncados, sin lote/venc/atributos,
+>    movimiento sin control de error, sin conteo wall-to-wall). e2e `169` 4/4. 🛑 **Hallazgo REGLA #0 (ingreso NORMAL,
+>    no el importador)**: `getStockAntesSucursal` (InventarioPage ~807) suma `cantidad` de las líneas, que en productos
+>    con series es 0 → el movimiento queda con "stock antes" = 0. Solo el historial (el stock real cuenta series). PROD: 1
+>    de 3 ingresos con series afectado. No se reescribe el histórico; falta decidir el arreglo hacia adelante.
+>    **Sigue**:
 >    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
 >    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →
 >    Inventario; **Fase 3** = importar Proveedores.

@@ -16,7 +16,14 @@ type: project
 > Deploy 2026-10-01: migs 440→444 de a una con `scripts/aplicar-migracion.mjs` + EFs `emitir-factura`/`data-api`
 > (PROD; `data-api` también DEV) → PR #362 → release `v1.234.0`. Paridad policies DEV=PROD (public 239 · storage 40 · cron 2).
 > Auditoría EF: solo `mp-addon-batch` PROD difiere en un comentario (precios iguales) — se sincroniza con pricing v7.
-> 🔥 **En curso**: arreglos del panel interno (MRR, alertas MP, tickets, filtros, monitoreo, quitar /admin).
+> 🧰 **Panel interno — HECHO en DEV (01/10), falta PROD con OK de GO**: MRR real (plan_tier + precios vigentes, espejo
+> `_shared/precios.ts` con test de paridad), "alguna vez pagaron" cuenta el pago manual, alertas de MP en Facturación con
+> "Descartar" (mig 445), ticket pasa a "esperando" al responder, Dashboard con tarjetas que filtran, monitoreo diario
+> del equipo por negocio, `/admin` eliminado de la app. Probado en vivo en DEV con el **agente de prueba**
+> `e2e.agente.admin@local.com` (rol admin; credenciales en `tests/e2e/.env.test.local`). Orden a PROD: mig 445 →
+> EFs `admin-api`, `mp-reconciliacion`, `monitoring-check` (--no-verify-jwt) → merge app (sale /admin) → merge repo admin.
+> ⚠️ El panel de DEV (Vercel Preview) no loguea: `VITE_SUPABASE_ANON_KEY` sigue con la anon legacy apagada → GO la
+> cambia en Vercel por la publishable de DEV (el MCP de Vercel no tiene permiso sobre env vars).
 > **Backlog nuevo (GO 01/10)**: estandarizar IMPORTAR (Proveedores no tiene; modales distintos entre Clientes y
 > Productos/Inventario — GO se inclina por el de pantalla completa con vista previa y validación) y EXPORTAR con más
 > formatos (hoy solo CSV; El Tilo lo vio "codificado" en la PC → ofrecer Excel .xlsx).

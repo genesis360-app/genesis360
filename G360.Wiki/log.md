@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Panel interno: MRR real, alertas MP, tickets, monitoreo; agente de prueba en DEV
+
+- Arreglos del doc "Herramientas internas" (GO: "resolver lo del MRR y todo lo que falte"). admin-api: MRR desde
+  `plan_tier` + precios de brand.ts (espejo `supabase/functions/_shared/precios.ts`, test `preciosEspejoServidor`),
+  solo activos; analytics cuenta el pago manual; métricas de consultas sin responder y alertas MP; responder → estado
+  `esperando`; `billing.mp_alerts.list/discard` (mig 445). mp-reconciliacion reabre limpia una descartada que reaparece.
+  monitoring-check rehecho (resumen del equipo por negocio, remitente real). App: fuera `/admin`. Panel: tarjetas del
+  Dashboard filtran (`?estado=`), alertas en Facturación, estados legibles en Soporte.
+- GO pidió un agente de prueba: `e2e.agente.admin@local.com` en DEV (rol admin, creado vía GoTrue admin con la secret
+  key de DEV leída por Management API; credenciales en `tests/e2e/.env.test.local`). Pruebas en vivo 10/10 OK.
+- Con datos reales de PROD el MRR nuevo da $60.000 (antes ~$0) y "alguna vez pagaron" 1 (antes 0).
+- Panel DEV no loguea por la anon legacy apagada → falta cambiar la env var en Vercel (GO).
+
 ## [2026-10-01] deploy | v1.234.0 a PROD + mig 444 con OK de GO
 
 - GO autorizó pasar todo a PROD (responde DL-5). Migs 440→441→442→443 aplicadas de a una con el script nuevo

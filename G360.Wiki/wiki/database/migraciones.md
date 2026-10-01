@@ -6,7 +6,12 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-444, + correctivos 387b/387c)
+# Historial de Migraciones (001-445, + correctivos 387b/387c)
+
+📅 **Migración 445 — 🟡 EN DEV, falta PROD** (2026-10-01): `445_mp_billing_alertas_descartar.sql` — columnas
+`descartada_at`/`descartada_por`/`nota` en `mp_billing_alertas`: el panel interno lista las alertas de la reconciliación de MP
+y permite descartarlas con nota (no se re-emailean; si reaparecen, `mp-reconciliacion` las reabre limpias). Va ANTES de
+desplegar `admin-api`/`mp-reconciliacion` en PROD.
 
 📅 **Migración 444 — ✅ EN PROD (2026-10-01, v1.234.0)** (2026-09-30): `444_clientes_dni_vacio_a_null.sql` — DNI vacío del cliente → `NULL`
 (UPDATE de lo existente + trigger `trg_clientes_dni_vacio_a_null` BEFORE INSERT/UPDATE OF dni). El índice único `(tenant_id, dni)`

@@ -16,6 +16,9 @@ type: project
 > Deploy 2026-10-01: migs 440→444 de a una con `scripts/aplicar-migracion.mjs` + EFs `emitir-factura`/`data-api`
 > (PROD; `data-api` también DEV) → PR #362 → release `v1.234.0`. Paridad policies DEV=PROD (public 239 · storage 40 · cron 2).
 > Auditoría EF: solo `mp-addon-batch` PROD difiere en un comentario (precios iguales) — se sincroniza con pricing v7.
+> ⏭️ **SIGUIENTE PRIORIDAD (GO 01/10): autocompletar por CUIT desde el padrón de ARCA** al cargar cliente (y
+> proveedor / emisor): razón social, condición IVA, domicilio fiscal. Plan propuesto a GO, esperando OK y 3 definiciones
+> (certificado de quién, alcance, automático vs botón). Sin código todavía.
 > 🧰 **Panel interno — HECHO en DEV (01/10), falta PROD con OK de GO**: MRR real (plan_tier + precios vigentes, espejo
 > `_shared/precios.ts` con test de paridad), "alguna vez pagaron" cuenta el pago manual, alertas de MP en Facturación con
 > "Descartar" (mig 445), ticket pasa a "esperando" al responder, Dashboard con tarjetas que filtran, monitoreo diario

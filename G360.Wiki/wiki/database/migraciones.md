@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-450, + correctivos 387b/387c)
+# Historial de Migraciones (001-451, + correctivos 387b/387c)
+
+📲 **Migración 451 — 🟡 SOLO EN DEV (2026-10-01)**: `451_comprobantes_compartidos.sql` — tabla `comprobantes_compartidos` (código 32 hex generado en el navegador, tenant, tipo ticket|factura|nc, venta/devolución, `datos` jsonb = foto del comprobante, vence a 90 días) para enviar ticket/factura/NC por WhatsApp con un link público. Sin policy de SELECT (nadie la lee desde el front); INSERT por tenant, a nombre del usuario, venta/devolución del negocio y factura/NC solo con CAE. Lectura pública solo por código vía `fn_comprobante_compartido` (SECURITY DEFINER, anon), que 🛑 pisa los datos fiscales con los de la base (un CAE inventado en la foto no se muestra). `migration-reviewer`: sin bloqueantes, aplicados. Pendiente: limpieza de vencidos (pg_cron) — no urgente.
 
 🚚 **Migración 450 — 🟡 SOLO EN DEV (2026-10-01)**: `450_importar_proveedores_transaccion.sql` — `fn_importar_proveedores(p_filas jsonb)`: importar proveedores desde su pantalla (antes no existía; solo el Maestro cargaba nombre/contacto). Todo o nada, por conjunto, lista blanca (tipo, nombre, razón social, CUIT, DNI, condición IVA, domicilio, contacto, teléfono, email, plazo, banco, CBU, notas, etiquetas), textos recortados, `''` → NULL, CUIT 11 / CBU 22 dígitos, dos filas sobre el mismo proveedor → error. Rol: excluye VIEWER. 5000 altas 1,1 s. `migration-reviewer`: sin bloqueantes, menores aplicados.
 

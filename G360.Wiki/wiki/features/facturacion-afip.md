@@ -8,6 +8,12 @@ updated: 2026-09-15
 
 # Facturación Electrónica AFIP
 
+> 📲 **2026-10-01 — Enviar por Mail o WhatsApp (mig 451, EN DEV):** el botón de envío del ticket, la factura y la NC
+> (POS, cartel "Factura emitida" y Facturación) pasa a ser **"Enviar" → Mail | WhatsApp**. WhatsApp abre el chat del
+> cliente con el mensaje y un link `/c/<código>` (página pública, sin sesión, 90 días) que muestra el comprobante y
+> regenera el PDF desde una foto de datos (`comprobantes_compartidos`). 🛑 Los datos fiscales (CAE, número, tipo) los
+> pone la BASE, no la foto. Fix: el mail del ticket ahora precarga el email del cliente (bug reportado en PROD).
+
 > 🔎 **2026-10-01 — Padrón de ARCA:** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
 > autocompletan razón social, condición IVA y domicilio fiscal con vista previa. Ver [[wiki/integrations/padron-arca]].
 

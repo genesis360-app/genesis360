@@ -25,6 +25,11 @@ type: project
 >    `certificados-afip/plataforma/20422374168/produccion.crt` en PROD → secrets `ARCA_PADRON_KEY_PATH` y
 >    `ARCA_PADRON_PRODUCCION=true` en PROD → mig 446 → EF → merge con bump. El mismo cert destraba la **facturación de
 >    plataforma** (wsfe).
+> 2c. 📲 **Enviar ticket/factura/NC por Mail o WhatsApp — HECHO en DEV (01/10, mig 451)**. GO: "Enviar" → Mail |
+>    WhatsApp, con mensaje + link al PDF (`/c/<código>`, 90 días). Nunca se había hecho. Además: 🐛 el mail del ticket no
+>    precargaba el email del cliente (el ticket es la fila recién insertada, sin `clientes.email`) — reportado por un
+>    cliente en PROD — y el email tipeado quedaba para el ticket siguiente; ambos corregidos. e2e `171` 4/4.
+>    Pendiente menor: limpieza de links vencidos (pg_cron); revocar un link compartido por error (no existe).
 > 2b. 🧰 **Estandarizar IMPORTAR/EXPORTAR** (pedido de GO 01/10, mientras Fede saca el cert de producción).
 >    **Fase 1 EXPORTAR — HECHA en `dev`**: `src/lib/exportarArchivo.ts` reemplaza los 11 CSV armados a mano; Productos,
 >    Clientes, Proveedores y la OC ganan **Exportar Excel**; CSV siempre con BOM (Pedidos no lo tenía) y saltos de línea

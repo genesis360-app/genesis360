@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) + fix del mail del ticket
+
+- GO preguntó si el envío por WhatsApp se había hecho: NO (no estaba en wiki ni memoria). Decisión de GO: "Enviar" →
+  Mail | WhatsApp en todos los lugares que mandaban por mail (ticket POS, factura en el detalle, cartel "Factura
+  emitida", NC, lista de Facturación); WhatsApp = mensaje + link al PDF (la API de Meta sigue sin aprobar).
+- Mig 451 `comprobantes_compartidos` + `fn_comprobante_compartido`; página pública `/c/:token`
+  (`ComprobantePublicoPage`, noindex/no-referrer); `src/lib/compartirComprobante.ts`, `src/lib/ticketPDF.ts`,
+  `src/hooks/useEnviarPorWhatsApp.ts`, `src/components/EnviarComprobanteMenu.tsx`. La pestaña de WhatsApp se abre en el
+  click (si no, el bloqueador de popups la frena tras los await).
+- 🐛 PROD (reporte de un cliente): Enviar → mail del ticket no traía el email cargado en la ficha — el ticket se arma con
+  la fila recién insertada (solo `cliente_id`). Ahora se lee de la base al abrir, como ya hacía la factura. Y el email
+  tipeado quedaba cargado para el ticket de la venta siguiente (otro cliente): se limpia al cerrar.
+- `migration-reviewer`: 🛑 los `datos` los arma el navegador → la función pública pisa CAE/número/tipo con los de la
+  base; factura/NC solo con CAE; `creado_por` = sesión; devolución de esa venta.
+- Verde: tsc, build, unit 2079 (nuevo `compartirComprobante`), e2e `171` 4/4 (precarga del mail, WhatsApp hasta el
+  PDF sin sesión, CAE inventado no se muestra, tabla inaccesible), regresión 38 y 164.
+
 ## [2026-10-01] update | Importar proveedores (Fase 3 de importar/exportar, mig 450)
 
 - Pedido de GO. La pantalla de Proveedores no tenía importador. Mig 450 `fn_importar_proveedores` (gemela de 448) +

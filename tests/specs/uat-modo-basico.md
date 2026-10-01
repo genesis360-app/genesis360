@@ -2411,6 +2411,18 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📲 §81 — Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 81.1 | 🐛 PROD: cliente con email en la ficha → venta finalizada → Enviar → Mail trae el email precargado | e2e `171` A | ✅ |
+| 81.2 | El email tipeado en un ticket no queda cargado para el ticket de la venta siguiente | revisión (se limpia al cerrar) | ✅ código |
+| 81.3 | Enviar → WhatsApp abre el chat del teléfono del cliente con el mensaje y el link `/c/<código>`; sin teléfono, deja elegir el contacto | e2e `171` B · unit `compartirComprobante` | ✅ |
+| 81.4 | El link abre sin sesión, muestra el comprobante y baja el PDF (ticket no fiscal / factura / NC) | e2e `171` B | ✅ ticket |
+| 81.5 | 🛑 La página pública muestra el CAE/número/tipo REALES de la base aunque la foto traiga otros | e2e `171` C | ✅ |
+| 81.6 | Link inexistente o vencido → "no está disponible"; la tabla no se lee ni con ni sin sesión | e2e `171` D | ✅ |
+| 81.7 | Factura y NC: el envío por WhatsApp desde el detalle, el cartel "Factura emitida" y Facturación | e2e `164` (cartel con el menú, regresión) · revisión | ✅ código |
+
 ## 🚚 §80 — Importar proveedores (mig 450) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

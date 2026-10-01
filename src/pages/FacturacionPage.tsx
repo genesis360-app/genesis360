@@ -31,6 +31,8 @@ const TIPO_COMPROBANTE_OPTS = [
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { convertirGastoAMonedaLibro, creditoFiscalCompras } from '@/lib/cotizacionFiscal'
+import { EnviarComprobanteMenu } from '@/components/EnviarComprobanteMenu'
+import { useEnviarPorWhatsApp, etiquetaFiscal } from '@/hooks/useEnviarPorWhatsApp'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 function mesLabel(m: string) {
   const [y, mo] = m.split('-')
@@ -79,6 +81,8 @@ export default function FacturacionPage() {
     : null
   const [emitiendo, setEmitiendo]              = useState(false)
   const [descargandoPdf, setDescargandoPdf]    = useState<string | null>(null)
+  // Enviar por WhatsApp (mig 451): link a la factura + chat del cliente
+  const { enviar: enviarWhatsApp, enviando: enviandoWhatsApp } = useEnviarPorWhatsApp()
   const [enviandoEmail, setEnviandoEmail]      = useState<string | null>(null)
   // Modal "Enviar factura por email": precarga el correo del cliente (editable)
   const [facturaEmailModal, setFacturaEmailModal] = useState<{ facturaId: string } | null>(null)
@@ -785,16 +789,12 @@ export default function FacturacionPage() {
                             >
                               <Printer size={14} />
                             </button>
-                            <button
-                              onClick={() => abrirEnviarFacturaEmail(f.id)}
-                              disabled={enviandoEmail === f.id}
-                              title="Enviar por email"
-                              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-40"
-                            >
-                              {enviandoEmail === f.id
-                                ? <RefreshCw size={14} className="animate-spin" />
-                                : <Send size={14} />}
-                            </button>
+                            <EnviarComprobanteMenu compacto ocupado={enviandoEmail === f.id || enviandoWhatsApp}
+                              onMail={() => abrirEnviarFacturaEmail(f.id)}
+                              onWhatsApp={() => enviarWhatsApp(async () => {
+                                const res = await buildFacturaPDFDataById(f.id)
+                                return res && { tipo: 'factura', ventaId: f.id, datos: res.data, etiqueta: etiquetaFiscal(res.data), total: res.data.total }
+                              })} />
                           </div>
                         </td>
                       </tr>

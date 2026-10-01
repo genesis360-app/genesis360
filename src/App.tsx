@@ -60,6 +60,7 @@ const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
 const TransportistePage   = lazy(() => import('@/pages/TransportistePage'))
 const HojaRutaPage        = lazy(() => import('@/pages/HojaRutaPage'))
 const CuentaClientePage   = lazy(() => import('@/pages/CuentaClientePage'))
+const ComprobantePublicoPage = lazy(() => import('@/pages/ComprobantePublicoPage'))
 const PortalProveedoresPage = lazy(() => import('@/pages/PortalProveedoresPage'))
 
 // app.genesis360.pro → directo al login/dashboard (sin landing)
@@ -153,6 +154,8 @@ function App() {
             <Route path="/hoja-ruta/:token" element={<HojaRutaPage />} />
             {/* B8 — Portal público de estado de cuenta del cliente — sin auth */}
             <Route path="/cuenta/:token" element={<CuentaClientePage />} />
+            {/* Comprobante compartido por WhatsApp (mig 451): público, solo por código */}
+            <Route path="/c/:token" element={<ComprobantePublicoPage />} />
             {/* RH6 — Fichado por QR público (kiosco) — sin auth */}
             <Route path="/fichar/:token" element={<FicharPage />} />
             {/* Portal de Proveedores — identidad separada (proveedor_accounts, mig 387/390), fuera

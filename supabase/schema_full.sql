@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-01T19:02:29.170Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261001172127 · 174 tablas
+-- Generado 2026-10-01T19:43:48.935Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261001192416 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -572,6 +572,18 @@ CREATE TABLE public.combos (
   vigencia_desde date,
   vigencia_hasta date,
   unidad_medida_id uuid
+);
+
+CREATE TABLE public.comprobantes_compartidos (
+  token text NOT NULL DEFAULT replace((gen_random_uuid())::text, '-'::text, ''::text),
+  tenant_id uuid NOT NULL,
+  tipo text NOT NULL,
+  venta_id uuid,
+  devolucion_id uuid,
+  datos jsonb NOT NULL,
+  creado_por uuid DEFAULT auth.uid(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  vence_at timestamp with time zone NOT NULL DEFAULT (now() + '90 days'::interval)
 );
 
 CREATE TABLE public.consumo_eventos (
@@ -3003,6 +3015,11 @@ ALTER TABLE public.combo_items ADD CONSTRAINT combo_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.combos ADD CONSTRAINT combos_cantidad_check CHECK ((cantidad >= 2));
 ALTER TABLE public.combos ADD CONSTRAINT combos_descuento_pct_check CHECK (((descuento_pct >= (0)::numeric) AND (descuento_pct <= (100)::numeric)));
 ALTER TABLE public.combos ADD CONSTRAINT combos_pkey PRIMARY KEY (id);
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_check CHECK (((venta_id IS NOT NULL) OR (devolucion_id IS NOT NULL)));
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_datos_check CHECK ((octet_length((datos)::text) < 2000000));
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_pkey PRIMARY KEY (token);
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_tipo_check CHECK ((tipo = ANY (ARRAY['ticket'::text, 'factura'::text, 'nc'::text])));
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_token_check CHECK ((token ~ '^[0-9a-f]{32}$'::text));
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_cantidad_check CHECK ((cantidad >= (0)::numeric));
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_costo_check CHECK ((costo >= (0)::numeric));
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_moneda_check CHECK ((moneda = ANY (ARRAY['ARS'::text, 'USD'::text])));
@@ -3457,6 +3474,9 @@ ALTER TABLE public.combos ADD CONSTRAINT combos_producto_id_fkey FOREIGN KEY (pr
 ALTER TABLE public.combos ADD CONSTRAINT combos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.combos ADD CONSTRAINT combos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.combos ADD CONSTRAINT combos_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_devolucion_id_fkey FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id) ON DELETE CASCADE;
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.comprobantes_compartidos ADD CONSTRAINT comprobantes_compartidos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tarifa_id_fkey FOREIGN KEY (tarifa_id) REFERENCES consumo_tarifas(id) ON DELETE SET NULL;
 ALTER TABLE public.consumo_eventos ADD CONSTRAINT consumo_eventos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3984,6 +4004,9 @@ CREATE INDEX idx_combo_items_tenant_id ON public.combo_items USING btree (tenant
 CREATE INDEX idx_combos_producto_id ON public.combos USING btree (producto_id);
 CREATE INDEX idx_combos_sucursal ON public.combos USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_combos_tenant_id ON public.combos USING btree (tenant_id);
+CREATE INDEX idx_comprobantes_compartidos_devolucion ON public.comprobantes_compartidos USING btree (devolucion_id);
+CREATE INDEX idx_comprobantes_compartidos_tenant ON public.comprobantes_compartidos USING btree (tenant_id);
+CREATE INDEX idx_comprobantes_compartidos_venta ON public.comprobantes_compartidos USING btree (venta_id);
 CREATE INDEX idx_consumo_eventos_sin_tarifa ON public.consumo_eventos USING btree (tenant_id) WHERE (NOT tarifa_encontrada);
 CREATE INDEX idx_consumo_eventos_tenant_periodo ON public.consumo_eventos USING btree (tenant_id, ocurrido_at DESC);
 CREATE INDEX idx_consumo_tarifas_lookup ON public.consumo_tarifas USING btree (concepto, vigente_desde DESC);
@@ -5986,6 +6009,42 @@ BEGIN
 
   UPDATE wms_tareas SET estado = 'completada', completed_at = now() WHERE id = p_tarea_id;
 END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_comprobante_compartido(p_token text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT jsonb_build_object(
+           'tipo', c.tipo,
+           'datos', CASE c.tipo
+             WHEN 'factura' THEN c.datos || jsonb_build_object(
+               'cae', v.cae,
+               'vencimiento_cae', coalesce(v.vencimiento_cae::text, ''),
+               'tipo_comprobante', regexp_replace(coalesce(v.tipo_comprobante, 'B'), '^Factura\s+', '', 'i'),
+               'numero_comprobante', coalesce(v.numero_comprobante, v.numero::text))
+             WHEN 'nc' THEN c.datos || jsonb_build_object(
+               'cae', d.nc_cae,
+               'vencimiento_cae', coalesce(d.nc_vencimiento_cae, ''),
+               'tipo_comprobante', coalesce(d.nc_tipo, 'NC-B'),
+               'numero_comprobante', coalesce(d.nc_numero_comprobante, 0),
+               'punto_venta', coalesce(d.nc_punto_venta, 1),
+               'total', d.monto_total)
+             ELSE c.datos END,
+           'negocio', t.nombre,
+           'vence_at', c.vence_at)
+    FROM public.comprobantes_compartidos c
+    JOIN public.tenants t ON t.id = c.tenant_id
+    LEFT JOIN public.ventas v ON v.id = c.venta_id
+    LEFT JOIN public.devoluciones d ON d.id = c.devolucion_id
+   WHERE c.token = p_token
+     AND p_token ~ '^[0-9a-f]{32}$'
+     AND c.vence_at > now()
+     AND (c.tipo <> 'factura' OR v.cae IS NOT NULL)
+     AND (c.tipo <> 'nc' OR d.nc_cae IS NOT NULL);
 $function$
 
 
@@ -14889,6 +14948,7 @@ ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.codigo_perfiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combo_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.combos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comprobantes_compartidos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consumo_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consumo_tarifas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cotizaciones_bna ENABLE ROW LEVEL SECURITY;
@@ -15252,6 +15312,12 @@ CREATE POLICY combos_select ON public.combos AS PERMISSIVE FOR SELECT TO public
 CREATE POLICY combos_write ON public.combos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('comercial'::text)));
+CREATE POLICY comprobantes_compartidos_insert ON public.comprobantes_compartidos AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (creado_por = auth.uid()) AND ((venta_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM ventas v
+  WHERE ((v.id = comprobantes_compartidos.venta_id) AND (v.tenant_id = comprobantes_compartidos.tenant_id) AND ((comprobantes_compartidos.tipo <> 'factura'::text) OR (v.cae IS NOT NULL)))))) AND ((devolucion_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM devoluciones d
+  WHERE ((d.id = comprobantes_compartidos.devolucion_id) AND (d.tenant_id = comprobantes_compartidos.tenant_id) AND ((comprobantes_compartidos.venta_id IS NULL) OR (d.venta_id = comprobantes_compartidos.venta_id)) AND ((comprobantes_compartidos.tipo <> 'nc'::text) OR (d.nc_cae IS NOT NULL)))))) AND ((tipo <> 'factura'::text) OR (venta_id IS NOT NULL)) AND ((tipo <> 'nc'::text) OR (devolucion_id IS NOT NULL))));
 CREATE POLICY consumo_eventos_lectura_tenant ON public.consumo_eventos AS PERMISSIVE FOR SELECT TO authenticated
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -16042,6 +16108,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.co
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.combos TO service_role;
+GRANT INSERT ON public.comprobantes_compartidos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.comprobantes_compartidos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_eventos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.consumo_tarifas TO authenticated;

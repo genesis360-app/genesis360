@@ -25,7 +25,12 @@ type: project
 >    condición IVA: impuesto 30 = RI, 32 = exento, `datosMonotributo` = monotributo, si no CF); clave + CSR generados
 >    (alias `genesis360plataforma`; clave SOLO en bucket `certificados-afip` de DEV y PROD:
 >    `plataforma/20422374168/2026-10-01T05-21-29-127Z.key`); guía para Fede en `sources/raw/guia_fede_certificado_plataforma.md`.
->    Falta: Fede devuelve `homologacion.crt` y `produccion.crt` → fase 2 (EF `consultar-cuit` reusando WSAA del motor propio:
+>    ✅ 01/10: Fede sacó el cert de HOMOLOGACIÓN (vence 30/09/2028, coincide con la clave; en DEV
+>    `certificados-afip/plataforma/20422374168/homologacion.crt`) y la autorización a `ws_sr_constancia_inscripcion`.
+>    Prueba real OK: WSAA homo → getPersona_v2 devuelve datos (padrón de pruebas = datos ficticios; puede venir
+>    `errorConstancia` con avisos junto a los datos → la app los muestra sin trabarse). Falta solo `produccion.crt`
+>    + relación en producción (paso 2 de la guía) para PROD; homologación alcanza para construir fases 2-4.
+>    Falta: Fede devuelve `produccion.crt` → fase 2 (EF `consultar-cuit` reusando WSAA del motor propio:
 >    `buildTRA(service)` y `afip_wsaa_ta` ya son genéricos por servicio; cache de respuestas; rate limit persistente) → fase 3
 >    (pantallas) → fase 4 (e2e homologación + UAT). El mismo certificado destraba la **facturación de plataforma** (wsfe).
 > 3. 💲 **Pricing v7**: respondidas PR-1 (anual = pago único sin renovación), PR-4 (Free eliminado; se regalan meses a

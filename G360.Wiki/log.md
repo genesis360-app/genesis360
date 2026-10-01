@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Padrón ARCA: certificado de homologación de Fede OK + prueba real
+
+- Fede creó el cert de homologación (`genesis360plataforma`, CUIT 20422374168, vence 30/09/2028) y la autorización a
+  `ws_sr_constancia_inscripcion`. Verificado: huella de la clave pública = la del CSR. Subido a DEV
+  (`certificados-afip/plataforma/20422374168/homologacion.crt`). Prueba real: WSAA homo OK → `getPersona_v2` responde
+  (datos ficticios del padrón de pruebas; a veces `errorConstancia` con avisos junto a los datos). Falta el de producción.
+
 ## [2026-10-01] deploy | v1.234.1 — panel interno a PROD
 
 - GO autorizó. Mig 445 (script) → EFs `admin-api` + `mp-reconciliacion` (verify_jwt) y `monitoring-check` (sin) en PROD,

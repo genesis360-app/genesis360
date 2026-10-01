@@ -6,6 +6,9 @@ type: relevamiento
 
 # Preguntas pendientes para GO y Fede — 2026-09-28
 
+> ✅ **2026-10-01: RESPONDIDAS DL-1..5, D3-a/b, PL-1..7, EC-1..8 y QR-1..3** → `respuestas_preguntas_pendientes_2026-09-30.md`
+> (manda sobre las propuestas de acá). **Siguen abiertas: PR-1..PR-8 (pricing v7, sección F).**
+
 > **Por qué hay preguntas nuevas si el 25/09 se respondieron los 30 puntos.** Las 30 del 25/09 están todas
 > respondidas y no se reabre ninguna. Estas 14 son **nuevas** y salieron de tres lados:
 > 1. **La revisión legal que pidió GO el 26/09** sobre la tasa del dólar (DL-1..DL-5): la tasa elegida está bien,

@@ -21,7 +21,8 @@ type: project
 > Productos/Inventario — GO se inclina por el de pantalla completa con vista previa y validación) y EXPORTAR con más
 > formatos (hoy solo CSV; El Tilo lo vio "codificado" en la PC → ofrecer Excel .xlsx).
 >
-> **🙋 Preguntas abiertas (DL-5 ya respondida: deploy hecho) están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
+> **✅ 01/10: respondidas DL/D3/PL/EC/QR → `respuestas_preguntas_pendientes_2026-09-30.md`. Abiertas: PR-1..PR-8 (pricing v7).**
+> **🙋 (histórico) Preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
 > D3-a, D3-b, PL-1..PL-7, EC-1..EC-8), cada una con contexto, opciones y propuesta. GO las revisa con Fede. NO ejecutar
 > nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
 > Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·

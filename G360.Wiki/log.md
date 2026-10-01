@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] deploy | v1.234.1 — panel interno a PROD
+
+- GO autorizó. Mig 445 (script) → EFs `admin-api` + `mp-reconciliacion` (verify_jwt) y `monitoring-check` (sin) en PROD,
+  smoke 401 OK → PR #366 + release `v1.234.1` (app servida) → repo admin PR #6 (admin.genesis360.pro sirve el bundle
+  con `mp_alerts.list`). Handoff para /clear en `project_pendientes.md` → "ARRANCÁ ACÁ (2026-10-01, cierre)".
+
 ## [2026-10-01] update | Padrón ARCA fase 1 (certificado de plataforma) + cierre para /clear
 
 - Nueva prioridad de GO: autocompletar cliente/proveedor/emisor/alta rápida POS por CUIT desde ARCA. Decisiones: cert de

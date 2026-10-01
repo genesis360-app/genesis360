@@ -8,13 +8,19 @@ updated: 2026-09-25
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.234.0`** (2026-10-01, migs 001-**444**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.234.1`** (2026-10-01, migs 001-**445**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-444; paridad `pg_policies` por schema: `public` **239** (`fe9b1a50`) · `storage` **40**
-(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#362** `dev→main`, merge
-**`d9833f74`**, release **`v1.234.0` Latest**.
+✅ **PROD = DEV** (001-445; paridad `pg_policies` por schema: `public` **239** (`fe9b1a50`) · `storage` **40**
+(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#366** `dev→main`, merge
+**`f5f8cbab`**, release **`v1.234.1` Latest**.
+
+## 🧰 v1.234.1 — Panel interno: MRR real, alertas de MP, tickets, monitoreo del equipo (2026-10-01, EN PROD)
+
+Mig 445 + EFs `admin-api`, `mp-reconciliacion`, `monitoring-check`; repo `genesis360-admin` PR #6. MRR con `plan_tier` y
+precios vigentes (antes ~$0), "alguna vez pagaron" cuenta el pago manual, alertas de MP descartables, ticket "esperando"
+al responder, Dashboard que filtra, resumen diario del equipo por negocio. Se elimina `/admin` de la app.
 
 ## 🚀 v1.234.0 — Dólar BNA, precio programado, categorías + CC, factura (contador), domicilio fiscal, DNI (2026-10-01, EN PROD)
 

@@ -6,19 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre para /clear) — PROD = `v1.234.0` · panel interno listo en DEV · padrón ARCA fase 1
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre para /clear) — PROD = DEV = `v1.234.1` · panel interno EN PROD · padrón ARCA fase 1
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.234.0` ✅ servida | 001-**444** |
-> | **DEV** (`origin/dev`) | `v1.234.0` + panel interno (sale `/admin`) | 001-**445** |
-> | **Panel interno** (`genesis360-admin`) | PROD = `main`; `dev` con los arreglos (preview DEV) | — |
+> | **PROD** | `v1.234.1` ✅ servida | 001-**445** |
+> | **DEV** | `v1.234.1` (= PROD) | 001-**445** |
+> | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
 > **Lo primero al retomar:**
-> 1. 🙋 **Pedir OK a GO para pasar a PROD los arreglos del panel interno** (orden: mig 445 con
->    `node scripts/aplicar-migracion.mjs jjffnbrdjchquexdfgwq supabase/migrations/445_*.sql` → EFs `admin-api` (verify_jwt),
->    `mp-reconciliacion` (verify_jwt), `monitoring-check` (`--no-verify-jwt`) → PR app `dev→main` (v1.234.1, sale `/admin`)
->    → PR del repo admin `dev→main`). Al pasar, GO descarta en Facturación las 2 alertas MP "huérfana" (son pruebas suyas).
+> 1. ✅ **Panel interno EN PROD** (01/10, v1.234.1 + mig 445 + EFs `admin-api`/`mp-reconciliacion`/`monitoring-check`;
+>    repo admin PR #6). GO descarta en Facturación las 2 alertas MP "huérfana" (son pruebas suyas).
 > 2. ⏭️ **Padrón ARCA (autocompletar por CUIT) — fase 1 esperando a Fede.** Decisiones de GO: certificado de Genesis360 con
 >    el CUIT de **Fede** (20-42237416-8); se usa en ficha de cliente, proveedores, emisor y **alta rápida del POS**;
 >    consulta automática al completar un CUIT válido, con vista previa para aceptar. Hecho: manual ARCA leído
@@ -47,16 +45,6 @@ type: project
 > `e2e.agente.admin@local.com` (credenciales en `tests/e2e/.env.test.local`) · doc "Herramientas internas de Genesis360 —
 > inventario" (Claude Docs, https://claude.ai/code/artifact/8c195e5b-2853-4e7c-9726-ec5ed019d998).
 >
-> **Backlog nuevo (GO 01/10)**: estandarizar IMPORTAR (Proveedores no tiene; modales distintos entre Clientes y
-> Productos/Inventario — GO se inclina por el de pantalla completa con vista previa y validación) y EXPORTAR con más
-> formatos (hoy solo CSV; El Tilo lo vio "codificado" en la PC → ofrecer Excel .xlsx).
->
-> **✅ 01/10: respondidas DL/D3/PL/EC/QR → `respuestas_preguntas_pendientes_2026-09-30.md`. Abiertas: PR-1..PR-8 (pricing v7).**
-> **🙋 (histórico) Preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
-> D3-a, D3-b, PL-1..PL-7, EC-1..EC-8), cada una con contexto, opciones y propuesta. GO las revisa con Fede. NO ejecutar
-> nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
-> Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·
-> EC-1..8 = Fase 2 de "Empezar de cero".
 >
 > **🔥 LO URGENTE (29/09 tarde) — errores que destapó El Tilo, el 2º cliente real. Orden sugerido y cómo evitar que se
 > repitan** (detalle de cada uno más abajo, en "El Tilo no podía facturar" y "Trampa de producto"):

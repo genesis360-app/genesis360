@@ -2,12 +2,21 @@
 title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
-sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375, migration 414]
-updated: 2026-09-15
+sources: [CLAUDE.md, ROADMAP.md, migration 361, migration 375, migration 414, migration 453]
+updated: 2026-10-01
 ---
 
 # Facturación Electrónica AFIP
 
+> 🧾 **2026-10-01 — Fase 0: la factura guarda su punto de venta y el ambiente de su CAE (mig 453, 🟡 EN DEV):**
+> `emitir-factura` sella `ventas.punto_venta` + `ventas.cae_ambiente` y `devoluciones.nc_cae_ambiente`. Con eso: (1) la
+> NC arma `CbtesAsoc.PtoVta` con el PV **de la factura original** (antes, el de la NC: con 2+ PV por CUIT podía referenciar
+> otro comprobante); (2) el PDF imprime el PV en que se emitió (`puntoVentaDeFactura`, antes el primer PV del emisor);
+> (3) la EF rechaza una NC en otro ambiente que su factura. Facturas anteriores: NULL = desconocido = real (sin backfill).
+> 🛑 Además, los campos del comprobante quedan de **solo lectura para el navegador** (trigger `fn_guard_campos_fiscales`):
+> antes un usuario podía borrar el CAE de una venta por REST y volver a facturarla. **Deploy: mig 453 ANTES de la EF**
+> (si no, la EF no puede guardar el CAE que ARCA ya autorizó). e2e `173` (PV 2 en homologación), UAT §83.
+>
 > 📲 **2026-10-01 — Enviar por Mail o WhatsApp (mig 451, ✅ EN PROD v1.235.0):** el botón de envío del ticket, la factura y la NC
 > (POS, cartel "Factura emitida" y Facturación) pasa a ser **"Enviar" → Mail | WhatsApp**. WhatsApp abre el chat del
 > cliente con el mensaje y un link `/c/<código>` (página pública, sin sesión, 90 días) que muestra el comprobante y

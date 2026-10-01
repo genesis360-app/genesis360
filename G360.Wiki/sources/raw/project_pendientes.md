@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, noche) — PROD = `v1.235.0` (001-451) · DEV = `v1.235.0` + importador del Maestro (001-**452**)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, noche) — PROD = `v1.235.0` (001-451) · DEV = + Maestro, Fase 0, numeración (001-**454**)
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.235.0` ✅ (PR #367, merge `12e09d33`) | 001-**451** |
-> | **DEV** | `v1.235.0` + importador del Maestro (sin bump, en `dev`) | 001-**452** (452 solo en DEV) |
+> | **DEV** | `v1.235.0` + Maestro + Fase 0 + numeración (sin bump, en `dev`; EF `emitir-factura` desplegada en DEV) | 001-**454** (452-454 solo en DEV) |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
 > 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
@@ -25,9 +25,22 @@ type: project
 > `PaginaImportacion` + vista previa compartida + `fn_importar_maestro` todo-o-nada. 🛑 Encontrado y corregido: los
 > **combos se creaban sin `combo_items`** y el POS los ignoraba (0 afectados en PROD); motivo `egreso` lo rechazaba el
 > CHECK; ubicaciones sin sucursal; estados inexistentes salteados; perfil existente con reglas duplicadas. Proveedores
-> salió del Maestro (lleva a `/proveedores/importar`). UAT §82, e2e `171`, unit `importarMaestro`.
+> salió del Maestro (lleva a `/proveedores/importar`). UAT §82, e2e `172`, unit `importarMaestro`.
 > **Para PROD:** mig 452 → merge (la página llama a la función nueva) · tocó `app-reference.md` (rutas de importadores
 > corregidas) ⇒ `npm run ai:knowledge` + redeploy EF `ai-assistant` DEV y PROD.
+>
+> **✅ Urgentes sin preguntas HECHOS en DEV (01/10 noche):**
+> - **U-1 Fase 0 (REGLA #0, mig 453 + EF `emitir-factura`):** la factura guarda `punto_venta` y `cae_ambiente` (la NC,
+>   `nc_cae_ambiente`); la NC referencia el PV de la factura original; el PDF imprime el PV en que se emitió; NC en otro
+>   ambiente → rechazada. 🛑 Hallazgo cerrado de paso: `authenticated` podía hacer UPDATE de `ventas.cae` (borrarlo =
+>   re-facturar = doble factura) → trigger `fn_guard_campos_fiscales`. e2e `173` (PV 2 real en homologación), 137 ya no
+>   inventa un CAE. UAT §83.
+> - **U-3 Numeración (mig 454):** causa = **drift**: en PROD `ventas.numero` es IDENTITY global (DEV no). DROP IDENTITY +
+>   candado por negocio. UAT §84.
+> - **U-5 Checklist de alta:** [[wiki/support/checklist-alta-cliente]].
+> - 🛑 **Orden a PROD:** migs 452 → 453 → 454 (de a una) → **EF `emitir-factura`** (después de la 453: si va antes, no
+>   puede guardar el CAE que ARCA ya autorizó) → merge. Paridad: la 453 suma 2 triggers, sin policies nuevas.
+> - Pendiente de U-2 y la guía (U-4): respuesta de GO (D-1, D-2 del consolidado del 01/10).
 >
 > 1. ✅ **v1.235.0 EN PROD** (deploy 01/10 noche, PR #367): padrón ARCA, Excel, importadores todo-o-nada (Productos,
 >    Clientes, Inventario, Proveedores nuevo; misma pantalla), "stock antes" con series, envío por Mail/WhatsApp, fix del

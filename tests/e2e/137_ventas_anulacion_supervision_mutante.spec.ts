@@ -8,13 +8,13 @@
  * (cambiarEstado→'cancelada': reincorpora stock + revierte caja) — verificado en DB, no solo UI.
  * Es el camino nuevo y de más riesgo real (dinero/stock), así que se corre de punta a punta.
  *
- * Parte B (CON CAE, sintético — sin llamar a AFIP real): antes la solicitud NI SIQUIERA se
+ * Parte B (CON CAE de HOMOLOGACIÓN — la venta se factura de verdad por la EF `emitir-factura` en modo prueba; desde la
+ * mig 453 el CAE ya no se puede escribir a mano, ni siquiera para un fixture): antes la solicitud NI SIQUIERA se
  * ofrecía (el botón "Anular" se ocultaba del todo si había CAE). Ahora sí se ofrece, y aprobarla
  * abre "Devolver" precargada a devolución completa (todos los ítems) — se verifica que la
  * precarga es total y que la autorización SIGUE pendiente si se cancela sin confirmar (nunca se
- * marca aprobada antes de que el efecto real ocurra). No se completa la devolución con datos
- * sintéticos: eso dispararía la NC automática (A10) contra AFIP con un comprobante inventado —
- * mismo criterio defensivo que el spec 22 (devolución) ya usa para el "happy path monetario".
+ * marca aprobada antes de que el efecto real ocurra). No se completa la devolución: eso dispararía la
+ * NC automática (A10) — mismo criterio que el spec 22 (devolución) usa para el "happy path monetario".
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
@@ -185,7 +185,7 @@ test.describe('Ventas — anulación vía Supervisión (A1, mutante)', () => {
     expect(Number(movCaja.monto), '[137] el egreso de caja debía ser por el monto exacto cobrado').toBe(PRECIO)
   })
 
-  test('con CAE (sintético): la solicitud ahora se ofrece y aprobar abre "Devolver" precargada a devolución total, sin marcar aprobada hasta confirmarla', async ({ page, request }) => {
+  test('con CAE (homologación): la solicitud ahora se ofrece y aprobar abre "Devolver" precargada a devolución total, sin marcar aprobada hasta confirmarla', async ({ page, request }) => {
     test.setTimeout(120000)
     const sufijo = Date.now()
     const nombreProd = `E2E AnularVtaB ${sufijo}`
@@ -207,19 +207,20 @@ test.describe('Ventas — anulación vía Supervisión (A1, mutante)', () => {
     expect(items.length, '[137b] debía haber exactamente 1 venta_item para el producto recién vendido').toBe(1)
     const ventaId = items[0].venta_id
 
-    // Fixture SINTÉTICO — NUNCA se llama a AFIP acá: solo se marca la venta como facturada con un
-    // CAE de prueba para poder verificar el GATING de la UI (antes bloqueaba del todo esta acción
-    // con CAE). No se completa una devolución real con estos datos (ver comentario del archivo).
-    const caeFalso = `E2ETEST${sufijo}`
-    const patchFact = await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaId}`, {
-      headers, data: { estado: 'facturada', cae: caeFalso, tipo_comprobante: 'Factura B' },
+    // Factura C real de HOMOLOGACIÓN (el emisor default del tenant e2e es Monotributista, PV 1, modo prueba) por la
+    // EF: desde la mig 453 el CAE no se puede escribir a mano (antes este test lo "inventaba" con un PATCH).
+    const [suc] = (await (await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=tenant_id&limit=1`, { headers })).json()) as any[]
+    const ef = await request.post(`${SUPABASE_URL}/functions/v1/emitir-factura`, {
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      data: { venta_id: ventaId, tenant_id: suc.tenant_id, tipo_comprobante: 'C', punto_venta: 1 },
     })
-    expect(patchFact.ok(), `[137b] no se pudo marcar la venta como facturada (fixture sintético): ${await patchFact.text()}`).toBe(true)
+    expect(ef.ok(), `[137b] no se pudo facturar la venta en homologación: ${await ef.text()}`).toBe(true)
 
-    const ventaRes = await request.get(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaId}&select=numero,estado,cae`, { headers })
-    const [venta] = (await ventaRes.json()) as Array<{ numero: number; estado: string; cae: string }>
+    const ventaRes = await request.get(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaId}&select=numero,estado,cae,cae_ambiente`, { headers })
+    const [venta] = (await ventaRes.json()) as Array<{ numero: number; estado: string; cae: string; cae_ambiente: string }>
     expect(venta.estado).toBe('facturada')
-    expect(venta.cae).toBe(caeFalso)
+    expect(venta.cae).toBeTruthy()
+    expect(venta.cae_ambiente, '[137b] la factura no quedó sellada como de homologación (mig 453)').toBe('homologacion')
 
     // 1) Con CAE, "Solicitar anulación" ahora SÍ se ofrece (antes el botón "Anular" no aparecía)
     await abrirDetalleEnHistorial(page, venta.numero)
@@ -260,8 +261,7 @@ test.describe('Ventas — anulación vía Supervisión (A1, mutante)', () => {
     await expect(totalBanner, '[137b] no apareció el banner "Total a devolver"').toBeVisible()
     await expect(totalBanner).toContainText(`$${PRECIO.toLocaleString('es-AR')}`)
 
-    // 3) Cancelar SIN confirmar (no se completa la devolución con datos sintéticos — dispararía
-    // la NC automática A10 contra AFIP con un comprobante inventado)
+    // 3) Cancelar SIN confirmar (completar la devolución dispararía la NC automática A10)
     await page.getByRole('button', { name: /^Cancelar$/ }).first().click()
     await expect(page.getByRole('heading', { name: /Procesar devolución/ })).not.toBeVisible({ timeout: 5000 })
 

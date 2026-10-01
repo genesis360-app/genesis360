@@ -50,7 +50,7 @@ Silencios del importador anterior corregidos:
   anterior queda). Dos predeterminados en el archivo = error.
 - Estados: color inválido tomaba uno al azar → error.
 
-Tests: unit `importarMaestro` (20) · e2e `171` A-D · SQL en DEV impersonando al dueño (rollback). UAT §82.
+Tests: unit `importarMaestro` (20) · e2e `172` A-D · SQL en DEV impersonando al dueño (rollback). UAT §82.
 
 ---
 

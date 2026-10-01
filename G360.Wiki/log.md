@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Urgentes de El Tilo sin preguntas: Fase 0 (mig 453), numeración (mig 454), checklist de alta
+
+- GO: "avanza con lo urgente que no tenga nada pendiente". Consolidado de preguntas entregado en el chat (D-1..D-6).
+- **Fase 0 (REGLA #0)** — mig 453 + EF `emitir-factura` (desplegada en DEV): `ventas.punto_venta`/`cae_ambiente`,
+  `devoluciones.nc_cae_ambiente` sellados al emitir; `CbtesAsoc.PtoVta` = PV de la factura original (antes el de la
+  NC); PDF con el PV sellado (`puntoVentaDeFactura`, VentasPage + FacturacionPage); NC en otro ambiente → 400.
+  🛑 Hallazgo: `authenticated` tenía UPDATE sobre `ventas.cae/numero_comprobante/tipo_comprobante/emisor_id` sin guard
+  (borrar el CAE dejaba re-facturar) → trigger `fn_guard_campos_fiscales` (ventas + devoluciones; las devoluciones ya
+  no tenían policy de UPDATE, el hueco ahí era el INSERT). Verificado que ni la app ni funciones de la base los escriben.
+- **Numeración** — mig 454: en PROD `ventas.numero` es `GENERATED ALWAYS AS IDENTITY` (drift; DEV no) → la identidad
+  numeraba antes del trigger. DROP IDENTITY + candado por negocio. Probado en DEV simulando la IDENTITY (rollback).
+- **Checklist de alta**: `wiki/support/checklist-alta-cliente.md` (nuevo).
+- Tests: unit 2102 (+3 `puntoVentaDeFactura`); e2e `173` nuevo (PV 2 en homologación: sellado, PDF 0002, NC desde PV 1
+  aceptada, PATCH del CAE rechazado); e2e 137 factura de verdad en homologación (ya no PATCHea un CAE falso); e2e del
+  Maestro renumerado `171` → `172` (chocaba con el de WhatsApp); 22/56/63/87/164/171 en verde. UAT §83, §84.
+- Orden a PROD: 452 → 453 → 454 → EF `emitir-factura` → merge.
+
 ## [2026-10-01] update | Importar datos maestros: todo o nada (mig 452, en DEV)
 
 - `/configuracion/importar` pasa al flujo estándar de importadores (`PaginaImportacion` + `VistaPreviaImportacion` +
@@ -17,7 +34,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
   desmarcado fuera de transacción; color inválido → uno al azar. Proveedores sale del Maestro (→ `/proveedores/importar`).
 - `app-reference.md`: rutas de los importadores corregidas (decía `/importar/...`). Nota de corrección en
   `estructuras-udm.md` (decía que el Maestro no tenía fallas activas).
-- Verde: tsc, build, unit 2099 (+20 `importarMaestro`), e2e `171` 4/4 (limpieza verificada), SQL en DEV impersonando
+- Verde: tsc, build, unit 2099 (+20 `importarMaestro`), e2e `172` 4/4 (limpieza verificada), SQL en DEV impersonando
   al dueño con rollback (7 tipos + 7 errores esperados + predeterminado que se conserva si falla). UAT §82.
 
 ## [2026-10-01] update | Cierre para /clear — certificado de producción documentado

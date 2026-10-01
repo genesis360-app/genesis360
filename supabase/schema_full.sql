@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-01T21:23:59.953Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261001211028 · 175 tablas
+-- Generado 2026-10-01T21:58:38.767Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261001215032 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -750,7 +750,8 @@ CREATE TABLE public.devoluciones (
   afip_provider_usado text,
   nc_fecha timestamp with time zone,
   monto_usd numeric(14,2),
-  cotizacion_usd_usada numeric(14,4)
+  cotizacion_usd_usada numeric(14,4),
+  nc_cae_ambiente text
 );
 
 CREATE TABLE public.devoluciones_proveedor (
@@ -2809,7 +2810,9 @@ CREATE TABLE public.ventas (
   cupon_monto numeric(12,2),
   impuestos_marketplace numeric(12,2),
   tn_order_id bigint,
-  cotizacion_usd numeric(14,2)
+  cotizacion_usd numeric(14,2),
+  punto_venta integer,
+  cae_ambiente text
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -3052,6 +3055,7 @@ ALTER TABLE public.cupones_codigos ADD CONSTRAINT cupones_codigos_pkey PRIMARY K
 ALTER TABLE public.cupones_codigos ADD CONSTRAINT cupones_codigos_tenant_id_codigo_key UNIQUE (tenant_id, codigo);
 ALTER TABLE public.devolucion_items ADD CONSTRAINT devolucion_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.devolucion_proveedor_items ADD CONSTRAINT devolucion_proveedor_items_pkey PRIMARY KEY (id);
+ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_nc_cae_ambiente_check CHECK (((nc_cae_ambiente IS NULL) OR (nc_cae_ambiente = ANY (ARRAY['homologacion'::text, 'produccion'::text]))));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_nc_tipo_check CHECK ((nc_tipo = ANY (ARRAY['NC-A'::text, 'NC-B'::text, 'NC-C'::text])));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_origen_check CHECK ((origen = ANY (ARRAY['despachada'::text, 'facturada'::text])));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_pkey PRIMARY KEY (id);
@@ -3345,9 +3349,11 @@ ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_check CHECK (
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_pkey PRIMARY KEY (id);
+ALTER TABLE public.ventas ADD CONSTRAINT ventas_cae_ambiente_check CHECK (((cae_ambiente IS NULL) OR (cae_ambiente = ANY (ARRAY['homologacion'::text, 'produccion'::text]))));
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_cupon_codigo_id_key UNIQUE (cupon_codigo_id);
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'reservada'::text, 'despachada'::text, 'facturada'::text, 'cancelada'::text, 'devuelta'::text])));
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_pkey PRIMARY KEY (id);
+ALTER TABLE public.ventas ADD CONSTRAINT ventas_punto_venta_check CHECK (((punto_venta IS NULL) OR ((punto_venta >= 1) AND (punto_venta <= 99998))));
 ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_pkey PRIMARY KEY (id);
 ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_tenant_id_integracion_webhook_external_key UNIQUE (tenant_id, integracion, webhook_external_id);
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_frecuencia_dias_check CHECK ((frecuencia_dias > 0));
@@ -7577,6 +7583,77 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
 
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_campos_fiscales()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_campo text;
+BEGIN
+  -- Solo los roles del navegador. service_role (EF) y postgres (SECURITY DEFINER, soporte) pasan.
+  IF current_user NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'ventas' THEN
+    IF TG_OP = 'INSERT' THEN
+      v_campo := CASE
+        WHEN NEW.cae IS NOT NULL                 THEN 'cae'
+        WHEN NEW.vencimiento_cae IS NOT NULL     THEN 'vencimiento_cae'
+        WHEN NEW.numero_comprobante IS NOT NULL  THEN 'numero_comprobante'
+        WHEN NEW.punto_venta IS NOT NULL         THEN 'punto_venta'
+        WHEN NEW.cae_ambiente IS NOT NULL        THEN 'cae_ambiente'
+        WHEN NEW.afip_provider_usado IS NOT NULL THEN 'afip_provider_usado'
+      END;
+    ELSE
+      v_campo := CASE
+        WHEN NEW.cae IS DISTINCT FROM OLD.cae                                 THEN 'cae'
+        WHEN NEW.vencimiento_cae IS DISTINCT FROM OLD.vencimiento_cae         THEN 'vencimiento_cae'
+        WHEN NEW.numero_comprobante IS DISTINCT FROM OLD.numero_comprobante   THEN 'numero_comprobante'
+        WHEN NEW.punto_venta IS DISTINCT FROM OLD.punto_venta                 THEN 'punto_venta'
+        WHEN NEW.cae_ambiente IS DISTINCT FROM OLD.cae_ambiente               THEN 'cae_ambiente'
+        WHEN NEW.afip_provider_usado IS DISTINCT FROM OLD.afip_provider_usado THEN 'afip_provider_usado'
+        -- Con la factura ya emitida, tampoco su letra ni el CUIT emisor.
+        WHEN OLD.cae IS NOT NULL AND NEW.tipo_comprobante IS DISTINCT FROM OLD.tipo_comprobante THEN 'tipo_comprobante'
+        WHEN OLD.cae IS NOT NULL AND NEW.emisor_id IS DISTINCT FROM OLD.emisor_id               THEN 'emisor_id'
+      END;
+    END IF;
+  ELSE  -- devoluciones
+    IF TG_OP = 'INSERT' THEN
+      v_campo := CASE
+        WHEN NEW.nc_cae IS NOT NULL                THEN 'nc_cae'
+        WHEN NEW.nc_vencimiento_cae IS NOT NULL    THEN 'nc_vencimiento_cae'
+        WHEN NEW.nc_numero_comprobante IS NOT NULL THEN 'nc_numero_comprobante'
+        WHEN NEW.nc_tipo IS NOT NULL               THEN 'nc_tipo'
+        WHEN NEW.nc_punto_venta IS NOT NULL        THEN 'nc_punto_venta'
+        WHEN NEW.nc_fecha IS NOT NULL              THEN 'nc_fecha'
+        WHEN NEW.nc_cae_ambiente IS NOT NULL       THEN 'nc_cae_ambiente'
+        WHEN NEW.afip_provider_usado IS NOT NULL   THEN 'afip_provider_usado'
+      END;
+    ELSE
+      v_campo := CASE
+        WHEN NEW.nc_cae IS DISTINCT FROM OLD.nc_cae                               THEN 'nc_cae'
+        WHEN NEW.nc_vencimiento_cae IS DISTINCT FROM OLD.nc_vencimiento_cae       THEN 'nc_vencimiento_cae'
+        WHEN NEW.nc_numero_comprobante IS DISTINCT FROM OLD.nc_numero_comprobante THEN 'nc_numero_comprobante'
+        WHEN NEW.nc_tipo IS DISTINCT FROM OLD.nc_tipo                             THEN 'nc_tipo'
+        WHEN NEW.nc_punto_venta IS DISTINCT FROM OLD.nc_punto_venta               THEN 'nc_punto_venta'
+        WHEN NEW.nc_fecha IS DISTINCT FROM OLD.nc_fecha                           THEN 'nc_fecha'
+        WHEN NEW.nc_cae_ambiente IS DISTINCT FROM OLD.nc_cae_ambiente             THEN 'nc_cae_ambiente'
+        WHEN NEW.afip_provider_usado IS DISTINCT FROM OLD.afip_provider_usado     THEN 'afip_provider_usado'
+      END;
+    END IF;
+  END IF;
+
+  IF v_campo IS NOT NULL THEN
+    RAISE EXCEPTION 'El campo fiscal "%" solo lo escribe la emisión del comprobante ante ARCA; no se puede cargar ni modificar a mano.', v_campo
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
   RETURN NEW;
 END;
 $function$
@@ -12311,6 +12388,9 @@ CREATE OR REPLACE FUNCTION public.gen_venta_numero()
  SET search_path TO 'public'
 AS $function$
 BEGIN
+  -- Serializa la numeración DENTRO de un negocio (se libera al terminar la transacción). Negocios distintos no se
+  -- esperan entre sí.
+  PERFORM pg_advisory_xact_lock(hashtext('gen_venta_numero:' || NEW.tenant_id::text));
   IF NEW.numero IS NULL THEN
     SELECT COALESCE(MAX(numero), 0) + 1 INTO NEW.numero
     FROM ventas
@@ -15017,6 +15097,7 @@ CREATE TRIGGER trg_clientes_categoria_auditar AFTER UPDATE OF categoria_cliente_
 CREATE TRIGGER trg_clientes_categoria_guard BEFORE INSERT OR UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_guard();
 CREATE TRIGGER trg_clientes_dni_vacio_a_null BEFORE INSERT OR UPDATE OF dni ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_dni_vacio_a_null();
 CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
+CREATE TRIGGER trg_devoluciones_guard_fiscal BEFORE INSERT OR UPDATE ON public.devoluciones FOR EACH ROW EXECUTE FUNCTION fn_guard_campos_fiscales();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
@@ -15114,6 +15195,7 @@ CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pa
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
 CREATE TRIGGER trg_ventas_cc_vencimiento BEFORE INSERT OR UPDATE OF es_cuenta_corriente, estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_vencimiento();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
+CREATE TRIGGER trg_ventas_guard_fiscal BEFORE INSERT OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_guard_campos_fiscales();
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_propagar_sucursal_items AFTER UPDATE OF sucursal_id ON public.ventas FOR EACH ROW WHEN ((old.sucursal_id IS DISTINCT FROM new.sucursal_id)) EXECUTE FUNCTION fn_ventas_propagar_sucursal_items();
 CREATE TRIGGER trg_ventas_writeoff_rol_guard BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_writeoff_rol_guard();

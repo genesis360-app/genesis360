@@ -14,7 +14,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, composeDomicilioCliente, domicilioReceptor, type FacturaPDFData } from '@/lib/facturasPDF'
 import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
-import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
+import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { mapDevolucionNc, filasLibroNc, ivaNcTotal, type NcEmitida } from '@/lib/libroIva'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
@@ -107,7 +107,8 @@ export default function FacturacionPage() {
     })
     const { data: pvRows } = await supabase.from('puntos_venta_afip')
       .select('numero, emisor_id').eq('tenant_id', tenant!.id).eq('activo', true)
-    const pvNumero = puntoVentaDelEmisor(pvRows, emisor?.id ?? null, emisor?.es_default ?? true) ?? 1
+    // El PV en que se EMITIÓ (sellado, mig 453); las facturas viejas caen al PV del emisor.
+    const pvNumero = puntoVentaDeFactura((venta as any).punto_venta, pvRows, emisor?.id ?? null, emisor?.es_default ?? true)
 
     const data: FacturaPDFData = {
       tipo_comprobante:  (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),

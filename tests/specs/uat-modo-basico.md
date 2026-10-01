@@ -2411,6 +2411,23 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🗂️ §82 — Importar datos maestros, TODO O NADA (mig 452) — 2026-10-01
+
+`/configuracion/importar` con el mismo diseño que los otros importadores. Solo crea: lo existente (mismo nombre) se
+ignora. Proveedores se importa desde su propia pantalla (§80).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 82.1 | 🛑 Combo desde archivo: varias filas con el mismo nombre = UN combo con sus `combo_items` (antes se creaba sin productos y el POS lo ignoraba) | e2e `171` A · unit `importarMaestro` | ✅ |
+| 82.2 | 🛑 Combo: SKU inexistente/desactivado, % > 100, un solo producto con cantidad 1, descuento distinto entre filas, monto "1.500" (ambiguo) → error | unit `importarMaestro` · SQL DEV (rollback) | ✅ |
+| 82.3 | Motivo con tipo "egreso" (plantilla vieja) → `rebaje` (antes lo rechazaba el CHECK) | e2e `171` B | ✅ |
+| 82.4 | Grupo/perfil con un estado inexistente o desactivado → error con motivo (antes se salteaba) | e2e `171` C · unit | ✅ |
+| 82.5 | Perfil de vencimiento que ya existe se ignora ENTERO (antes se le agregaban reglas duplicadas); estado o días repetidos en el perfil → error | unit `importarMaestro` | ✅ |
+| 82.6 | Grupo predeterminado: si la carga falla, el predeterminado anterior queda; si sale bien, lo reemplaza | SQL DEV impersonando (rollback) | ✅ |
+| 82.7 | Ubicaciones y combos con la sucursal elegida (o todas); el mismo nombre en otra sucursal es nuevo; código repetido/mal formado → error | unit · SQL DEV | ✅ |
+| 82.8 | 🛑 Todo o nada: una categoría del archivo aparece antes de cargar → "ya existe" y no se crea ninguna | e2e `171` D | ✅ |
+| 82.9 | Color de estado inválido → error (antes se elegía uno al azar) | unit | ✅ |
+
 ## 📲 §81 — Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

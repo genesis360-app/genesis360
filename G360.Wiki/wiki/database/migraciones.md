@@ -3,10 +3,12 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-26
+updated: 2026-10-01
 ---
 
-# Historial de Migraciones (001-451, + correctivos 387b/387c)
+# Historial de Migraciones (001-452, + correctivos 387b/387c)
+
+🗂️ **Migración 452 — 🟡 EN DEV (2026-10-01), falta PROD**: `452_importar_maestro_transaccion.sql` — `fn_importar_maestro(p_tipo text, p_filas jsonb, p_sucursal_id uuid)`: el importador del Maestro (categorías, ubicaciones, estados, motivos, combos, perfiles de vencimiento, grupos) en UNA transacción, todo o nada. SECURITY INVOKER (rigen las policies de cada tabla; excluye VIEWER). Solo crea: un nombre existente o repetido en el archivo → error. Combos con sus `combo_items` (antes quedaban sin productos), motivo `egreso` → `rebaje`, ubicación con la sucursal elegida, estado/producto ajeno o desactivado → error, el predeterminado de grupos se cambia dentro de la transacción. Probada en DEV impersonando al dueño (rollback) + e2e `171`.
 
 📲 **Migración 451 — ✅ EN DEV Y PROD (2026-10-01, v1.235.0)**: `451_comprobantes_compartidos.sql` — tabla `comprobantes_compartidos` (código 32 hex generado en el navegador, tenant, tipo ticket|factura|nc, venta/devolución, `datos` jsonb = foto del comprobante, vence a 90 días) para enviar ticket/factura/NC por WhatsApp con un link público. Sin policy de SELECT (nadie la lee desde el front); INSERT por tenant, a nombre del usuario, venta/devolución del negocio y factura/NC solo con CAE. Lectura pública solo por código vía `fn_comprobante_compartido` (SECURITY DEFINER, anon), que 🛑 pisa los datos fiscales con los de la base (un CAE inventado en la foto no se muestra). `migration-reviewer`: sin bloqueantes, aplicados. Pendiente: limpieza de vencidos (pg_cron) — no urgente.
 

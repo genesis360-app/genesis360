@@ -62,9 +62,11 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 | `/recomendaciones` | Panel de recomendaciones IA |
 | `/rentabilidad` | Análisis de rentabilidad de ventas |
 | `/grupos-estados` | Grupos de estados de inventario |
-| `/importar/productos` | Carga masiva de catálogo |
-| `/importar/inventario` | Carga masiva de stock |
-| `/importar/master` | Carga masiva de datos maestros |
+| `/productos/importar` | Carga masiva de catálogo |
+| `/inventario/importar` | Carga masiva de stock |
+| `/clientes/importar` | Carga masiva de clientes |
+| `/proveedores/importar` | Carga masiva de proveedores |
+| `/configuracion/importar` | Carga masiva de datos maestros |
 | `/mi-cuenta` | Perfil y configuración personal |
 | `/mi-portal` | Portal del empleado (fichado / datos personales) — visible en sidebar según rol |
 | `/suscripcion` | Gestión de plan y pagos |
@@ -275,7 +277,7 @@ Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursal
 - **+ Nuevo producto** (esquina superior derecha): va a `/productos/nuevo`
 - **Escanear** (ícono cámara): busca por código
 - **Filtros** (v1.138.0): panel combinable — Activos/Inactivos/Todos, Con/Sin estructura de embalaje, Categoría, Proveedor, Marca, y atributos de inventario (tracking + variantes) combinables por OR
-- **Importar** → `/importar/productos`
+- **Importar** → `/productos/importar`
 - **Bulk actions** (aparece al seleccionar con checkbox):
   - Cambiar precio (porcentaje o valor fijo a todos los seleccionados)
   - Cambiar proveedor asignado
@@ -301,7 +303,7 @@ Cada producto puede tener una o más estructuras de embalaje ("footprints", esti
 
 El primer nivel es la unidad base (se preselecciona con la unidad de medida del producto). Los factores son siempre enteros ≥ 1. Se pueden agregar, quitar y reordenar niveles. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (conversión de cantidades, cálculo de volumen, peso de embarques) y es la base del picking/almacenaje por unidad de medida.
 
-**Precio por nivel de la estructura (v1.140-142.0):** cada nivel puede tener su propio precio de venta/costo (ej. el precio de "1 Caja" no tiene que ser necesariamente 12× el precio de "1 Unidad" — si no se carga, se calcula proporcional). En la hoja del producto, el selector **"Estos precios corresponden a"** define la "ancla de precio": a qué nivel de la estructura default corresponden `precio_venta`/`precio_costo` de cabecera (por default, el nivel base; puede anclarse a Caja o Pallet si el negocio piensa el precio en esos términos). El nivel base nunca tiene precio propio — siempre deriva del precio de cabecera. El **importador de productos** (`/importar/productos`) soporta cargar esto por Excel — ver 4.6.
+**Precio por nivel de la estructura (v1.140-142.0):** cada nivel puede tener su propio precio de venta/costo (ej. el precio de "1 Caja" no tiene que ser necesariamente 12× el precio de "1 Unidad" — si no se carga, se calcula proporcional). En la hoja del producto, el selector **"Estos precios corresponden a"** define la "ancla de precio": a qué nivel de la estructura default corresponden `precio_venta`/`precio_costo` de cabecera (por default, el nivel base; puede anclarse a Caja o Pallet si el negocio piensa el precio en esos términos). El nivel base nunca tiene precio propio — siempre deriva del precio de cabecera. El **importador de productos** (`/productos/importar`) soporta cargar esto por Excel — ver 4.6.
 
 > ⚠️ Las estructuras NO son combos/kits. Los combos (bundles promocionales) se configuran en `/configuracion` → tab Combos. Los kits de armado se gestionan en Inventario → tab Kits.
 
@@ -818,7 +820,7 @@ Configuración de grupos de estados de inventario. Permiten filtrar visualmente 
 
 ---
 
-### 4.6 Importar Productos (`/importar/productos`)
+### 4.6 Importar Productos (`/productos/importar`)
 
 Carga masiva del catálogo desde Excel (.xlsx).
 
@@ -830,7 +832,7 @@ Carga masiva del catálogo desde Excel (.xlsx).
 
 ---
 
-### 4.7 Importar Inventario (`/importar/inventario`)
+### 4.7 Importar Inventario (`/inventario/importar`)
 
 Carga masiva de stock desde Excel.
 
@@ -842,13 +844,19 @@ Carga masiva de stock desde Excel.
 
 ---
 
-### 4.8 Importar datos maestros (`/importar/master`)
+### 4.8 Importar datos maestros (`/configuracion/importar`)
 
-Carga masiva de entidades de configuración.
+Carga masiva de entidades de configuración (botón "Importar" en Configuración). Mismo diseño y reglas que los otros
+importadores: vista previa con el motivo de cada error, y **todo o nada** (con una fila con error no se carga ninguna).
+**Solo crea**: lo que ya existe con el mismo nombre se ignora.
 
-**Tipos soportados:** categorías, proveedores, ubicaciones, estados de inventario, motivos de movimiento, combos, aging profiles, grupos de estados.
+**Tipos soportados:** categorías, ubicaciones (por sucursal o para todas), estados de inventario, motivos de movimiento
+(ambos/ingreso/rebaje/caja), combos (varias filas con el mismo nombre = un combo de varios productos), perfiles de
+vencimiento (varias filas = un perfil con varias reglas) y grupos de estados. Proveedores tiene su propio importador
+(`/proveedores/importar`).
 
-Cada tipo tiene su plantilla de ejemplo descargable con las columnas requeridas.
+Cada tipo tiene su plantilla con una hoja "Referencia" que explica las columnas, y listas desplegables donde los valores
+son fijos (tipo de motivo, tipo de descuento, SI/NO, estados del negocio).
 
 ---
 

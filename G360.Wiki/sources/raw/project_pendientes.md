@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre) — PROD = DEV = `v1.235.0` (001-451)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, noche) — PROD = `v1.235.0` (001-451) · DEV = `v1.235.0` + importador del Maestro (001-**452**)
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.235.0` ✅ (PR #367, merge `12e09d33`) | 001-**451** |
-> | **DEV** | `v1.235.0` (= PROD) | 001-**451** |
+> | **DEV** | `v1.235.0` + importador del Maestro (sin bump, en `dev`) | 001-**452** (452 solo en DEV) |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
 > 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
@@ -21,11 +21,13 @@ type: project
 >
 > **Lo primero al retomar** (todo lo de abajo está EN PROD salvo lo marcado; detalle en `log.md` 2026-10-01):
 >
-> **▶ Próxima tarea sugerida: importador del MAESTRO** (`/configuracion/importar`, 8 tipos: categorías, proveedores
-> básicos, ubicaciones, estados, motivos, combos, perfiles de vencimiento, grupos de estados) al mismo flujo que los otros
-> cuatro: página con `PaginaImportacion` + vista previa compartida + función de la base todo-o-nada. Silencios a corregir:
-> estado inexistente en un perfil/grupo se saltea sin avisar; en grupos se desmarca el "predeterminado" ANTES de crear el
-> nuevo (si falla, el negocio queda sin predeterminado); el SKU del combo recién se valida al cargar.
+> **✅ Importador del MAESTRO HECHO en DEV (01/10 noche, mig 452, sin versión)** — `/configuracion/importar` con
+> `PaginaImportacion` + vista previa compartida + `fn_importar_maestro` todo-o-nada. 🛑 Encontrado y corregido: los
+> **combos se creaban sin `combo_items`** y el POS los ignoraba (0 afectados en PROD); motivo `egreso` lo rechazaba el
+> CHECK; ubicaciones sin sucursal; estados inexistentes salteados; perfil existente con reglas duplicadas. Proveedores
+> salió del Maestro (lleva a `/proveedores/importar`). UAT §82, e2e `171`, unit `importarMaestro`.
+> **Para PROD:** mig 452 → merge (la página llama a la función nueva) · tocó `app-reference.md` (rutas de importadores
+> corregidas) ⇒ `npm run ai:knowledge` + redeploy EF `ai-assistant` DEV y PROD.
 >
 > 1. ✅ **v1.235.0 EN PROD** (deploy 01/10 noche, PR #367): padrón ARCA, Excel, importadores todo-o-nada (Productos,
 >    Clientes, Inventario, Proveedores nuevo; misma pantalla), "stock antes" con series, envío por Mail/WhatsApp, fix del

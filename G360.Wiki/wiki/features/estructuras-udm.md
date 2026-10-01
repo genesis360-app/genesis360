@@ -534,6 +534,10 @@ se encontró y corrigió por prevención en `ImportarMasterPage.tsx` (combos, re
 de estados, categorías/proveedores/ubicaciones/estados/motivos) — ahí NO había una falla activa
 confirmada (se verificó por SQL que todas sus columnas usadas sí existen), pero el mismo
 código-olor estaba presente en las 4 ramas.
+> ⚠️ **Corrección 2026-10-01 (mig 452):** sí había fallas activas que esa revisión no vio, porque las columnas existían
+> pero el flujo no andaba: los combos se creaban sin `combo_items` (el POS los ignoraba) y el tipo de motivo `egreso` de
+> la plantilla lo rechazaba el CHECK. El importador del Maestro se rehízo todo-o-nada — ver
+> [[wiki/features/configuracion]] → "Importar datos maestros".
 
 Verde: tsc · build · **e2e 105 nuevo** (`105_importador_precio_uom_mutante.spec.ts`) contra DEV real
 con verificación POSITIVA en DB: precio propio por nivel persiste tal cual (sin recalcular), ancla

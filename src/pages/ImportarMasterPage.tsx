@@ -1,489 +1,300 @@
-import { useState, useRef } from 'react'
+// Importar el Maestro (categorías, ubicaciones, estados, motivos, combos, perfiles de vencimiento, grupos de estados).
+// Mismo diseño y criterio que los otros importadores (PaginaImportacion, D3-a): vista previa completa → "Cargar" →
+// TODO O NADA en la base (mig 452 `fn_importar_maestro`). Solo crea: lo que ya existe (mismo nombre) se ignora.
+// Las reglas por tipo viven en src/lib/importarMaestro.ts. Proveedores tiene su propio importador (/proveedores/importar).
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, Download, CheckCircle, XCircle, FileSpreadsheet, RefreshCw, Tag, Truck, MapPin, CircleDot, MessageSquare, Gift, Timer, Layers } from 'lucide-react'
-// xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
+import { useQueryClient } from '@tanstack/react-query'
+import { Tag, Truck, MapPin, CircleDot, MessageSquare, Gift, Timer, Layers, ArrowRight } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { traerTodoConError } from '@/lib/traerTodo'
 import { useAuthStore } from '@/store/authStore'
-import toast from 'react-hot-toast'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { descargarExcel } from '@/lib/exportarArchivo'
+import { filasConErrorParaExportar, MAX_FILAS_IMPORTACION, mensajeErrorCarga } from '@/lib/importacion'
+import {
+  COLUMNAS_MAESTRO, TIPOS_DESCUENTO_PLANTILLA, TIPOS_MOTIVO_PLANTILLA, validarMaestro,
+  type FilaMaestro, type TipoMaestro,
+} from '@/lib/importarMaestro'
+import { agregarValidacionesXlsx, letraColumna, type ValidacionLista } from '@/lib/xlsxValidaciones'
+import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
+import { PaginaImportacion, TarjetaImportacion } from '@/components/importacion/PaginaImportacion'
 
-type TipoMaster = 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'aging' | 'grupos'
-
-interface FilaMaster {
-  idx: number
-  nombre: string
-  extra: Record<string, string>
-  estado: 'nuevo' | 'existente' | 'error'
-  errores: string[]
+interface ConfigTipo {
+  label: string
+  plural: string          // para "Cargar N …"
+  icon: any
+  tabla: string
+  queryKey: string
+  ejemplos: (string | number)[][]
+  notas: [string, string, string][]   // columna, requerida, notas (hoja "Referencia")
+  /** Destino por sucursal (ubicaciones y combos). */
+  porSucursal?: boolean
 }
 
-const COLORES_DEFAULT = ['#22c55e', '#ef4444', '#f97316', '#3b82f6', '#8b5cf6', '#eab308', '#6b7280']
-
-const MASTER_CONFIG: Record<TipoMaster, { label: string; icon: any; cols: string[]; extraCols: string[]; tabla?: string; hint?: string }> = {
-  categorias:  { label: 'Categorías',           icon: Tag,        cols: ['nombre', 'descripcion'],                        extraCols: ['descripcion'],                     tabla: 'categorias' },
-  proveedores: { label: 'Proveedores',           icon: Truck,      cols: ['nombre', 'contacto', 'telefono', 'email'],      extraCols: ['contacto', 'telefono', 'email'],   tabla: 'proveedores' },
-  ubicaciones: { label: 'Ubicaciones',           icon: MapPin,     cols: ['nombre', 'descripcion'],                        extraCols: ['descripcion'],                     tabla: 'ubicaciones' },
-  estados:     { label: 'Estados',               icon: CircleDot,  cols: ['nombre', 'color'],                              extraCols: ['color'],                           tabla: 'estados_inventario',  hint: 'color: código hex (ej: #22c55e). Opcional.' },
-  motivos:     { label: 'Motivos',               icon: MessageSquare, cols: ['nombre', 'tipo'],                            extraCols: ['tipo'],                            tabla: 'motivos_movimiento',  hint: 'tipo: ambos | ingreso | egreso | caja. Opcional (default: ambos).' },
-  combos:      { label: 'Combos',                icon: Gift,       cols: ['nombre', 'sku_producto', 'cantidad', 'descuento_tipo', 'descuento_valor'], extraCols: ['sku_producto', 'cantidad', 'descuento_tipo', 'descuento_valor'], hint: 'descuento_tipo: pct | monto_ars | monto_usd' },
-  aging:       { label: 'Progresión de estado',  icon: Timer,      cols: ['nombre_perfil', 'estado', 'dias'],              extraCols: ['estado', 'dias'],                  hint: 'Agrupa reglas por nombre_perfil. estado = nombre del estado de inventario. dias = días hasta vencimiento ≤' },
-  grupos:      { label: 'Grupos de estados',      icon: Layers,     cols: ['nombre', 'descripcion', 'estados', 'es_default'], extraCols: ['descripcion', 'estados', 'es_default'], hint: 'estados: nombres separados por | (ej: Disponible|Próx a Vencer). es_default: SI o NO.' },
+const CONFIG: Record<TipoMaestro, ConfigTipo> = {
+  categorias: {
+    label: 'Categorías', plural: 'categorías', icon: Tag, tabla: 'categorias', queryKey: 'categorias',
+    ejemplos: [['Ferretería', 'Herramientas y materiales']],
+    notas: [['nombre', 'SÍ', 'Si ya existe una categoría con ese nombre, la fila se ignora.'], ['descripcion', 'no', '']],
+  },
+  ubicaciones: {
+    label: 'Ubicaciones', plural: 'ubicaciones', icon: MapPin, tabla: 'ubicaciones', queryKey: 'ubicaciones', porSucursal: true,
+    ejemplos: [['Depósito A', 'DEP-A', 'Primer piso'], ['Góndola 1', '', '']],
+    notas: [
+      ['nombre', 'SÍ', 'Si ya existe en la sucursal elegida, la fila se ignora.'],
+      ['codigo', 'no', 'Letras y números en mayúscula separados por guiones (ej. A-03-02). Vacío = se genera solo. No puede repetirse en el negocio.'],
+      ['descripcion', 'no', ''],
+    ],
+  },
+  estados: {
+    label: 'Estados', plural: 'estados', icon: CircleDot, tabla: 'estados_inventario', queryKey: 'estados_inventario',
+    ejemplos: [['Bloqueado', '#ef4444'], ['En análisis', '#f97316']],
+    notas: [['nombre', 'SÍ', 'Si ya existe, la fila se ignora.'], ['color', 'no', 'Código hex (ej. #22c55e). Vacío = gris.']],
+  },
+  motivos: {
+    label: 'Motivos', plural: 'motivos', icon: MessageSquare, tabla: 'motivos_movimiento', queryKey: 'motivos',
+    ejemplos: [['Venta mayorista', 'rebaje'], ['Ingreso proveedor', 'ingreso'], ['Ajuste caja', 'caja']],
+    notas: [['nombre', 'SÍ', 'Si ya existe, la fila se ignora.'], ['tipo', 'no', 'ambos (por defecto), ingreso, rebaje o caja. "egreso" se toma como rebaje.']],
+  },
+  combos: {
+    label: 'Combos', plural: 'combos', icon: Gift, tabla: 'combos', queryKey: 'combos', porSucursal: true,
+    ejemplos: [
+      ['3x Shampoo 10%', 'SKU-001', 3, 'pct', 10, '', ''],
+      ['Pack desayuno', 'SKU-010', 1, 'monto_ars', 500, '01/10/2026', '31/12/2026'],
+      ['Pack desayuno', 'SKU-011', 2, '', '', '', ''],
+    ],
+    notas: [
+      ['nombre', 'SÍ', 'Varias filas con el mismo nombre = un combo de varios productos (una fila por producto). Si ya existe un combo activo con ese nombre, se ignora.'],
+      ['sku', 'SÍ', 'SKU de un producto activo del catálogo.'],
+      ['cantidad', 'SÍ', 'Entero de 1 en adelante. Un combo de un solo producto necesita 2 o más.'],
+      ['descuento_tipo', 'SÍ', 'pct (porcentaje), monto_ars o monto_usd. Alcanza con ponerlo en la primera fila del combo.'],
+      ['descuento_valor', 'SÍ', 'Número con hasta 2 decimales, sin separador de miles. En pct, hasta 100.'],
+      ['vigencia_desde / vigencia_hasta', 'no', 'Fechas DD/MM/AAAA. Vacías = sin límite.'],
+    ],
+  },
+  aging: {
+    label: 'Perfiles de vencimiento', plural: 'perfiles', icon: Timer, tabla: 'aging_profiles', queryKey: 'aging_profiles',
+    ejemplos: [['PERECEDERO', 'Próx a Vencer', 30], ['PERECEDERO', 'Vencido', 0]],
+    notas: [
+      ['nombre_perfil', 'SÍ', 'Varias filas con el mismo nombre = un perfil con varias reglas. Si el perfil ya existe, se ignora entero.'],
+      ['estado', 'SÍ', 'Nombre de un estado de inventario activo (lista desplegable).'],
+      ['dias', 'SÍ', 'Días hasta el vencimiento (entero, 0 = vencido). No puede repetirse dentro del perfil.'],
+    ],
+  },
+  grupos: {
+    label: 'Grupos de estados', plural: 'grupos', icon: Layers, tabla: 'grupos_estados', queryKey: 'grupos_estados',
+    ejemplos: [['Disponible para venta', 'Estados vendibles', 'Disponible|Próx a Vencer', 'SI']],
+    notas: [
+      ['nombre', 'SÍ', 'Si ya existe, la fila se ignora.'],
+      ['estados', 'SÍ', 'Nombres de estados activos separados por | (ej. Disponible|Próx a Vencer).'],
+      ['es_default', 'no', 'SI o NO. Solo uno puede ser el predeterminado: reemplaza al actual.'],
+    ],
+  },
 }
 
-const PLANTILLA_EJEMPLOS: Record<TipoMaster, any[][]> = {
-  categorias:  [['Ferretería', 'Herramientas y materiales']],
-  proveedores: [['Proveedor A', 'Juan García', '1123456789', 'juan@proveedor.com']],
-  ubicaciones: [['Depósito A', 'Primer piso']],
-  estados:     [['Disponible', '#22c55e'], ['Bloqueado', '#ef4444'], ['En análisis', '#f97316']],
-  motivos:     [['Venta mayorista', 'egreso'], ['Ingreso proveedor', 'ingreso'], ['Ajuste caja', 'caja']],
-  combos:      [['3x Shampoo 10%', 'SKU-001', '3', 'pct', '10'], ['Pack ahorro $500', 'SKU-002', '2', 'monto_ars', '500']],
-  aging:       [['PERECEDERO', 'Próx a Vencer', '30'], ['PERECEDERO', 'Vencido', '0'], ['ESTANDAR', 'Vencido', '0']],
-  grupos:      [['Disponible para venta', 'Estados vendibles', 'Disponible|Próx a Vencer', 'SI'], ['Stock total', '', 'Disponible|Bloqueado|En análisis', 'NO']],
-}
+const TIPOS = Object.keys(CONFIG) as TipoMaestro[]
 
 export default function ImportarMasterPage() {
   const navigate = useNavigate()
-  const { tenant } = useAuthStore()
   const qc = useQueryClient()
-  const fileRef = useRef<HTMLInputElement>(null)
+  const { tenant, user } = useAuthStore()
+  const { sucursalId, sucursales } = useSucursalFilter()
 
-  const [tipoMaster, setTipoMaster] = useState<TipoMaster>('categorias')
-  const [filas, setFilas] = useState<FilaMaster[]>([])
-  const [importando, setImportando] = useState(false)
-  const [resultado, setResultado] = useState<{ creados: number; ignorados: number; errores: number; erroresDetalle: { nombre: string; mensaje: string }[] } | null>(null)
+  const [tipo, setTipo] = useState<TipoMaestro>('categorias')
+  // '' = todas las sucursales (como el alta manual sin sucursal).
+  const [sucursalDestino, setSucursalDestino] = useState<string>(sucursalId ?? '')
+  const [filas, setFilas] = useState<FilaMaestro[]>([])
+  const [items, setItems] = useState<Record<string, unknown>[]>([])
+  const [originales, setOriginales] = useState<Record<string, unknown>[]>([])
+  const [cargando, setCargando] = useState(false)
+  const [resultado, setResultado] = useState<ResultadoCarga | null>(null)
+  const cfg = CONFIG[tipo]
 
-  // Queries para dedup y resolución de referencias
-  const { data: categorias = [] }  = useQuery({ queryKey: ['categorias', tenant?.id],  queryFn: async () => { const { data } = await supabase.from('categorias').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: proveedores = [] } = useQuery({ queryKey: ['proveedores', tenant?.id], queryFn: async () => { const { data } = await supabase.from('proveedores').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: ubicaciones = [] } = useQuery({ queryKey: ['ubicaciones', tenant?.id], queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: estados = [] }     = useQuery({ queryKey: ['estados_inventario', tenant?.id], queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: motivos = [] }     = useQuery({ queryKey: ['motivos', tenant?.id],     queryFn: async () => { const { data } = await supabase.from('motivos_movimiento').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: combos = [] }      = useQuery({ queryKey: ['combos', tenant?.id],      queryFn: async () => { const { data } = await supabase.from('combos').select('id,nombre').eq('tenant_id', tenant!.id).eq('activo', true); return data ?? [] }, enabled: !!tenant })
-  const { data: agingProfiles = [] }= useQuery({ queryKey: ['aging_profiles', tenant?.id], queryFn: async () => { const { data } = await supabase.from('aging_profiles').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: gruposEstados = [] } = useQuery({ queryKey: ['grupos_estados', tenant?.id], queryFn: async () => { const { data } = await supabase.from('grupos_estados').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
-  const { data: productos = [] }   = useQuery({ queryKey: ['productos-sku', tenant?.id], queryFn: async () => { const { data } = await traerTodoConError<any>((d, h) => supabase.from('productos').select('id,nombre,sku').eq('tenant_id', tenant!.id).eq('activo', true).range(d, h)); return data ?? [] }, enabled: !!tenant && tipoMaster === 'combos' })
+  const limpiar = () => { setFilas([]); setItems([]); setOriginales([]); setResultado(null) }
 
-  const getExistentesMap = (tipo: TipoMaster): Record<string, boolean> => {
-    const map: Record<string, boolean> = {}
-    const lista: any[] = tipo === 'categorias' ? categorias : tipo === 'proveedores' ? proveedores :
-      tipo === 'ubicaciones' ? ubicaciones : tipo === 'estados' ? estados :
-      tipo === 'motivos' ? motivos : tipo === 'combos' ? combos :
-      tipo === 'aging' ? agingProfiles : gruposEstados
-    lista.forEach((i: any) => { map[i.nombre.toLowerCase()] = true })
-    return map
-  }
+  const traerEstados = () => traerTodoConError<any>((d, h) => supabase.from('estados_inventario')
+    .select('id, nombre, activo').eq('tenant_id', tenant!.id).range(d, h))
 
-  const descargarPlantilla = async (tipo: TipoMaster) => {
+  const descargarPlantilla = async () => {
     const XLSX = await import('xlsx')
-    const cfg = MASTER_CONFIG[tipo]
-    const rows = [cfg.cols, ...PLANTILLA_EJEMPLOS[tipo]]
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    ws['!cols'] = cfg.cols.map(() => ({ wch: 24 }))
-    if (cfg.hint) {
-      const noteCell = XLSX.utils.encode_cell({ r: rows.length + 1, c: 0 })
-      ws[noteCell] = { v: `Nota: ${cfg.hint}`, t: 's' }
-    }
+    const cols = COLUMNAS_MAESTRO[tipo]
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, cfg.label)
-    XLSX.writeFile(wb, `plantilla_${tipo}.xlsx`)
+    const ws = XLSX.utils.aoa_to_sheet([cols, ...cfg.ejemplos])
+    ws['!cols'] = cols.map(() => ({ wch: 24 }))
+    XLSX.utils.book_append_sheet(wb, ws, cfg.label.slice(0, 31))
+    const ref = XLSX.utils.aoa_to_sheet([['Columna', 'Requerida', 'Notas'], ...cfg.notas,
+      ['(todo o nada)', '', 'Con una sola fila con error no se carga nada: se corrige el archivo y se vuelve a subir.']])
+    ref['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 100 }]
+    XLSX.utils.book_append_sheet(wb, ref, 'Referencia')
+
+    // Listas desplegables donde los valores son fijos (o, en perfiles, los estados del negocio).
+    const listas: { nombre: string; valores: string[]; col: string; titulo: string; texto: string }[] = []
+    if (tipo === 'motivos') listas.push({ nombre: 'lst_tipo', valores: TIPOS_MOTIVO_PLANTILLA, col: 'tipo', titulo: 'Tipo no válido', texto: 'ambos, ingreso, rebaje o caja.' })
+    if (tipo === 'combos') listas.push({ nombre: 'lst_desc', valores: TIPOS_DESCUENTO_PLANTILLA, col: 'descuento_tipo', titulo: 'Tipo de descuento no válido', texto: 'pct, monto_ars o monto_usd.' })
+    if (tipo === 'grupos') listas.push({ nombre: 'lst_sino', valores: ['SI', 'NO'], col: 'es_default', titulo: 'Valor no válido', texto: 'SI o NO.' })
+    if (tipo === 'aging') {
+      const { data } = await traerEstados()
+      const activos = ((data ?? []) as any[]).filter(e => e.activo !== false).map(e => e.nombre as string)
+      if (activos.length) listas.push({ nombre: 'lst_estado', valores: activos, col: 'estado', titulo: 'Estado no válido', texto: 'Elegí un estado de la lista.' })
+    }
+    let bytes = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))
+    if (listas.length) {
+      const filasListas: string[][] = [listas.map(l => l.nombre)]
+      for (let i = 0; i < Math.max(...listas.map(l => l.valores.length)); i++) filasListas.push(listas.map(l => l.valores[i] ?? ''))
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filasListas), 'Listas')
+      wb.Workbook = {
+        Sheets: [{ Hidden: 0 }, { Hidden: 0 }, { Hidden: 1 }],
+        Names: listas.map((l, i) => ({ Name: l.nombre, Ref: `Listas!$${letraColumna(i)}$2:$${letraColumna(i)}$${l.valores.length + 1}` })),
+      }
+      const validaciones: ValidacionLista[] = listas.map(l => ({
+        columna: letraColumna(cols.indexOf(l.col)), filaDesde: 2, filaHasta: MAX_FILAS_IMPORTACION,
+        nombreLista: l.nombre, errorTitulo: l.titulo, errorTexto: l.texto,
+      }))
+      bytes = agregarValidacionesXlsx(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 1, validaciones) as Uint8Array
+    }
+    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    const a = document.createElement('a'); a.href = url; a.download = `plantilla_${tipo}.xlsx`; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const procesarArchivo = (file: File, tipo: TipoMaster) => {
+  const procesarArchivo = (file: File) => {
     setResultado(null)
-    const existentesMap = getExistentesMap(tipo)
     const reader = new FileReader()
     reader.onload = async (e) => {
       try {
         const XLSX = await import('xlsx')
-        const data = new Uint8Array(e.target!.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        if (rows.length === 0) { toast.error('El archivo está vacío'); return }
-
-        const cfg = MASTER_CONFIG[tipo]
-        const preview: FilaMaster[] = rows.map((row, idx) => {
-          const errores: string[] = []
-          const campoNombre = tipo === 'aging' ? 'nombre_perfil' : 'nombre'
-          const nombre = String((row as any)[campoNombre] || '').trim()
-          if (!nombre) errores.push(`${campoNombre} requerido`)
-
-          // Validaciones específicas por tipo
-          if (tipo === 'motivos') {
-            const tipoVal = String(row.tipo || 'ambos').trim().toLowerCase()
-            if (!['ambos', 'ingreso', 'egreso', 'caja', ''].includes(tipoVal))
-              errores.push(`tipo inválido: ${tipoVal} (use: ambos|ingreso|egreso|caja)`)
-          }
-          if (tipo === 'combos') {
-            if (!row.sku_producto) errores.push('sku_producto requerido')
-            const cant = parseInt(row.cantidad)
-            if (!cant || cant < 2) errores.push('cantidad mínima: 2')
-            const dtipo = String(row.descuento_tipo || '').toLowerCase()
-            if (!['pct', 'monto_ars', 'monto_usd'].includes(dtipo)) errores.push('descuento_tipo inválido')
-          }
-          if (tipo === 'aging') {
-            if (!row.estado) errores.push('estado requerido')
-            const dias = parseInt(row.dias)
-            if (isNaN(dias) || dias < 0) errores.push('dias debe ser ≥ 0')
-          }
-
-          const extra: Record<string, string> = {}
-          cfg.extraCols.forEach(c => { extra[c] = String((row as any)[c] || '').trim() })
-
-          const estado = errores.length > 0 ? 'error'
-            : (tipo !== 'aging' && existentesMap[nombre.toLowerCase()]) ? 'existente'
-            : 'nuevo'
-
-          return { idx, nombre, extra, estado, errores }
+        const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
+        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+        if (!rows.length) { toast.error('El archivo está vacío'); return }
+        if (rows.length > MAX_FILAS_IMPORTACION) {
+          toast.error(`El archivo tiene ${rows.length} filas; el máximo por importación es ${MAX_FILAS_IMPORTACION}. Dividilo en partes.`)
+          return
+        }
+        // Sin estas respuestas todo parecería nuevo (y se duplicaría) o las referencias no se resolverían.
+        const cols = tipo === 'ubicaciones' ? 'id, nombre, sucursal_id, codigo' : 'id, nombre'
+        const [exist, ests, prods] = await Promise.all([
+          traerTodoConError<any>((d, h) => {
+            let q = supabase.from(cfg.tabla).select(cols).eq('tenant_id', tenant!.id)
+            if (tipo === 'combos') q = q.eq('activo', true)
+            return q.range(d, h)
+          }),
+          tipo === 'aging' || tipo === 'grupos' ? traerEstados() : Promise.resolve({ data: [], error: null }),
+          tipo === 'combos'
+            ? traerTodoConError<any>((d, h) => supabase.from('productos').select('id, nombre, sku, activo').eq('tenant_id', tenant!.id).range(d, h))
+            : Promise.resolve({ data: [], error: null }),
+        ])
+        if (exist.error || ests.error || prods.error) { toast.error('No se pudo revisar lo que ya existe. Intentá de nuevo.'); return }
+        const v = validarMaestro(tipo, rows, {
+          existentes: exist.data ?? [], estados: ests.data ?? [], productos: prods.data ?? [],
+          sucursalId: cfg.porSucursal ? (sucursalDestino || null) : null, xlsx: XLSX,
         })
-        setFilas(preview)
-      } catch {
-        toast.error('Error al leer el archivo.')
-      }
+        setFilas(v.filas); setItems(v.items); setOriginales(rows)
+      } catch { toast.error('Error al leer el archivo.') }
     }
     reader.readAsArrayBuffer(file)
   }
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) procesarArchivo(file, tipoMaster)
-  }
-
-  const confirmarImportacion = async () => {
-    setImportando(true)
-    let creados = 0; let ignorados = 0; let errores = 0
-    const erroresDetalle: { nombre: string; mensaje: string }[] = []
-    const nuevas = filas.filter(f => f.estado === 'nuevo')
-
-    if (tipoMaster === 'combos') {
-      // Combos: resolver SKU → producto_id
-      const skuMap: Record<string, string> = {}
-      ;(productos as any[]).forEach((p: any) => { skuMap[p.sku?.toLowerCase()] = p.id })
-
-      for (const fila of nuevas) {
-        try {
-          const skuKey = fila.extra.sku_producto?.toLowerCase()
-          const productoId = skuMap[skuKey]
-          if (!productoId) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: `SKU "${fila.extra.sku_producto}" no encontrado` }); continue }
-          const dtipo = fila.extra.descuento_tipo?.toLowerCase()
-          const dval = parseFloat(fila.extra.descuento_valor) || 0
-          const { error: comboErr } = await supabase.from('combos').insert({
-            tenant_id: tenant!.id,
-            nombre: fila.nombre,
-            producto_id: productoId,
-            cantidad: parseInt(fila.extra.cantidad) || 2,
-            descuento_tipo: dtipo,
-            descuento_pct: dtipo === 'pct' ? dval : 0,
-            descuento_monto: dtipo !== 'pct' ? dval : 0,
-          })
-          if (comboErr) throw comboErr
-          creados++
-        } catch (e: any) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: e?.message ?? 'Error desconocido' }) }
-      }
-      qc.invalidateQueries({ queryKey: ['combos'] })
-
-    } else if (tipoMaster === 'aging') {
-      // Aging: agrupar por nombre_perfil → crear profile + reglas
-      const estadosMap: Record<string, string> = {}
-      ;(estados as any[]).forEach((e: any) => { estadosMap[e.nombre.toLowerCase()] = e.id })
-      const existentesMap = getExistentesMap('aging')
-
-      // Agrupar filas por perfil
-      const grupos: Record<string, FilaMaster[]> = {}
-      for (const fila of filas.filter(f => f.estado !== 'error')) {
-        if (!grupos[fila.nombre]) grupos[fila.nombre] = []
-        grupos[fila.nombre].push(fila)
-      }
-
-      for (const [nombrePerfil, rows] of Object.entries(grupos)) {
-        try {
-          let profileId: string
-          if (existentesMap[nombrePerfil.toLowerCase()]) {
-            const existing = (agingProfiles as any[]).find((p: any) => p.nombre.toLowerCase() === nombrePerfil.toLowerCase())
-            profileId = existing?.id
-            ignorados++
-          } else {
-            const { data: newProfile, error } = await supabase.from('aging_profiles')
-              .insert({ tenant_id: tenant!.id, nombre: nombrePerfil }).select('id').single()
-            if (error || !newProfile) {
-              errores++
-              erroresDetalle.push({ nombre: nombrePerfil, mensaje: error?.message ?? 'No se pudo crear el perfil' })
-              continue
-            }
-            profileId = newProfile.id
-            creados++
-          }
-
-          // Insertar reglas del perfil
-          for (const row of rows) {
-            const estadoNombre = row.extra.estado?.toLowerCase()
-            const estadoId = estadosMap[estadoNombre]
-            if (!estadoId) continue
-            const dias = parseInt(row.extra.dias) || 0
-            const { error: reglaErr } = await supabase.from('aging_profile_reglas').insert({
-              tenant_id: tenant!.id, profile_id: profileId, estado_id: estadoId, dias,
-            })
-            if (reglaErr) throw reglaErr
-          }
-        } catch (e: any) { errores++; erroresDetalle.push({ nombre: nombrePerfil, mensaje: e?.message ?? 'Error desconocido' }) }
-      }
-      qc.invalidateQueries({ queryKey: ['aging_profiles'] })
-
-    } else if (tipoMaster === 'grupos') {
-      // Grupos de estados: crear grupo + asignar estados por nombre
-      const estadosMap: Record<string, string> = {}
-      ;(estados as any[]).forEach((e: any) => { estadosMap[e.nombre.toLowerCase()] = e.id })
-
-      for (const fila of nuevas) {
-        try {
-          const esDefault = fila.extra.es_default?.toLowerCase() === 'si'
-          if (esDefault) {
-            const { error: unsetErr } = await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
-            if (unsetErr) throw unsetErr
-          }
-
-          const { data: grupo, error: gErr } = await supabase.from('grupos_estados').insert({
-            tenant_id: tenant!.id,
-            nombre: fila.nombre,
-            descripcion: fila.extra.descripcion || null,
-            es_default: esDefault,
-          }).select('id').single()
-          if (gErr || !grupo) {
-            errores++
-            erroresDetalle.push({ nombre: fila.nombre, mensaje: gErr?.message ?? 'No se pudo crear el grupo' })
-            continue
-          }
-
-          const nombresEstados = (fila.extra.estados || '').split('|').map((s: string) => s.trim()).filter(Boolean)
-          for (const nomEst of nombresEstados) {
-            const estadoId = estadosMap[nomEst.toLowerCase()]
-            if (estadoId) {
-              const { error: itemErr } = await supabase.from('grupo_estado_items').insert({ grupo_id: grupo.id, estado_id: estadoId })
-              if (itemErr) throw itemErr
-            }
-          }
-          creados++
-        } catch (e: any) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: e?.message ?? 'Error desconocido' }) }
-      }
-      qc.invalidateQueries({ queryKey: ['grupos_estados'] })
-
-    } else {
-      // Tipos simples: categorias, proveedores, ubicaciones, estados, motivos
-      for (const fila of nuevas) {
-        try {
-          const payload: Record<string, any> = { tenant_id: tenant!.id, nombre: fila.nombre }
-
-          if (tipoMaster === 'estados') {
-            const hex = /^#[0-9a-f]{6}$/i.test(fila.extra.color || '') ? fila.extra.color : COLORES_DEFAULT[Math.floor(Math.random() * COLORES_DEFAULT.length)]
-            payload.color = hex
-          } else if (tipoMaster === 'motivos') {
-            const tipoVal = ['ambos', 'ingreso', 'egreso', 'caja'].includes(fila.extra.tipo?.toLowerCase())
-              ? fila.extra.tipo.toLowerCase() : 'ambos'
-            payload.tipo = tipoVal
-          } else {
-            MASTER_CONFIG[tipoMaster].extraCols.forEach(c => { if (fila.extra[c]) payload[c] = fila.extra[c] })
-          }
-
-          const tabla = MASTER_CONFIG[tipoMaster].tabla!
-          const { error: insErr } = await supabase.from(tabla).insert(payload)
-          if (insErr) throw insErr
-          creados++
-        } catch (e: any) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: e?.message ?? 'Error desconocido' }) }
-      }
-
-      const qKey = tipoMaster === 'estados' ? 'estados_inventario' : tipoMaster === 'motivos' ? 'motivos' : tipoMaster
-      qc.invalidateQueries({ queryKey: [qKey] })
+  const cargar = async () => {
+    if (filas.some(f => f.estado === 'error') || !items.length) return   // D3-a: todo o nada
+    setCargando(true)
+    try {
+      const { data, error } = await supabase.rpc('fn_importar_maestro', {
+        p_tipo: tipo, p_filas: items, p_sucursal_id: cfg.porSucursal ? (sucursalDestino || null) : null,
+      })
+      if (error) { setResultado({ ok: false, mensaje: mensajeErrorCarga(error) }); return }
+      const creados = (data as { creados: number }).creados
+      const ignorados = filas.filter(f => f.estado === 'existente').length
+      setResultado({ ok: true, resumen: `${creados} ${cfg.plural} creados${ignorados ? ` · ${ignorados} filas ignoradas (ya existían)` : ''}` })
+      setFilas([]); setItems([]); setOriginales([])
+      qc.invalidateQueries({ queryKey: [cfg.queryKey] })
+      if (tipo === 'aging') qc.invalidateQueries({ queryKey: ['aging_profile_reglas'] })
+    } catch (e: any) {
+      setResultado({ ok: false, mensaje: mensajeErrorCarga(e) })
+    } finally {
+      setCargando(false)
     }
-
-    ignorados = ignorados || filas.filter(f => f.estado === 'existente').length
-    setResultado({ creados, ignorados, errores, erroresDetalle })
-    setImportando(false)
-    toast.success(`${MASTER_CONFIG[tipoMaster].label}: ${creados} creados`)
   }
 
-  const nuevosMaster = filas.filter(f => f.estado === 'nuevo').length
-  const existentesMaster = filas.filter(f => f.estado === 'existente').length
-
-  const cambiarTipo = (tipo: TipoMaster) => {
-    setTipoMaster(tipo)
-    setFilas([])
-    setResultado(null)
-    if (fileRef.current) fileRef.current.value = ''
+  if ((user?.rol as string | undefined) === 'VIEWER') {
+    return <div className="p-6 text-sm text-amber-700">Tu rol tiene acceso de solo lectura.</div>
   }
+
+  const nombreSucursal = (id: string) => (sucursales as any[]).find(s => s.id === id)?.nombre ?? 'Sucursal'
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/configuracion')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Importar datos maestros</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Cargá configuración desde Excel</p>
-        </div>
-      </div>
-
-      {resultado && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
-            <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
-              {resultado.creados} creado{resultado.creados !== 1 ? 's' : ''} · {resultado.ignorados} ignorado{resultado.ignorados !== 1 ? 's' : ''} (ya existían) · {resultado.errores} error{resultado.errores !== 1 ? 'es' : ''}
-            </p>
-            {resultado.erroresDetalle.length > 0 && (
-              <ul className="mt-1.5 text-xs text-red-600 dark:text-red-400 list-disc list-inside space-y-0.5">
-                {resultado.erroresDetalle.slice(0, 10).map((e, i) => (
-                  <li key={i}>{e.nombre}: {e.mensaje}</li>
-                ))}
-                {resultado.erroresDetalle.length > 10 && <li>… y {resultado.erroresDetalle.length - 10} más</li>}
-              </ul>
-            )}
-            <button onClick={() => navigate('/configuracion')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">
-              Volver a Configuración →
-            </button>
-          </div>
-        </div>
+    <PaginaImportacion
+      titulo="Importar datos maestros"
+      subtitulo="Cargá configuración desde Excel"
+      volverA="/configuracion"
+      onPlantilla={descargarPlantilla}
+      onArchivo={procesarArchivo}
+      hayFilas={filas.length > 0}
+      resultado={resultado && (
+        <ResultadoImportacion resultado={resultado} accion={resultado.ok && (
+          <button onClick={() => navigate('/configuracion')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Volver a Configuración →</button>
+        )} />
       )}
-
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className="space-y-4">
-          {/* Selector de tipo */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">¿Qué querés importar?</h2>
-            <div className="space-y-1">
-              {(Object.entries(MASTER_CONFIG) as [TipoMaster, typeof MASTER_CONFIG[TipoMaster]][]).map(([tipo, cfg]) => {
-                const Icon = cfg.icon
-                return (
-                  <label key={tipo} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <input type="radio" name="tipoMaster" value={tipo} checked={tipoMaster === tipo}
-                      onChange={() => cambiarTipo(tipo)} />
-                    <Icon size={15} className="text-accent-text flex-shrink-0" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{cfg.label}</span>
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Hint */}
-          {MASTER_CONFIG[tipoMaster].hint && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
-              {MASTER_CONFIG[tipoMaster].hint}
-            </div>
-          )}
-
-          {/* Plantilla */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <FileSpreadsheet size={16} className="text-accent-text" /> Plantilla
-            </h2>
-            <button onClick={() => descargarPlantilla(tipoMaster)}
-              className="w-full flex items-center justify-center gap-2 border border-accent-text text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
-              <Download size={15} /> Descargar plantilla
+      aviso={
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300">
+          <strong>Carga masiva del maestro</strong> — solo crea: lo que ya existe con el mismo nombre se ignora.
+          Todo o nada: con una fila con error no se carga ninguna. La hoja "Referencia" de cada plantilla explica las columnas.
+        </div>
+      }
+      antes={<>
+        <TarjetaImportacion titulo="¿Qué querés importar?">
+          <div className="space-y-1">
+            {TIPOS.map(t => {
+              const Icon = CONFIG[t].icon
+              return (
+                <label key={t} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <input type="radio" name="tipoMaster" value={t} checked={tipo === t} onChange={() => { setTipo(t); limpiar() }} />
+                  <Icon size={15} className="text-accent-text flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{CONFIG[t].label}</span>
+                </label>
+              )
+            })}
+            <button onClick={() => navigate('/proveedores/importar')}
+              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left">
+              <Truck size={15} className="text-gray-400 flex-shrink-0 ml-[22px]" />
+              <span className="text-sm text-gray-500 dark:text-gray-400 flex-1">Proveedores (importador propio)</span>
+              <ArrowRight size={14} className="text-gray-400" />
             </button>
           </div>
-
-          {/* Upload */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <Upload size={16} className="text-accent-text" /> Subir archivo
-            </h2>
-            <div
-              className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
-              onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f, tipoMaster) }}
-            >
-              <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
-            </div>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">Los duplicados (mismo nombre) se ignoran</p>
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="lg:col-span-2">
-          {filas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
-              <FileSpreadsheet size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Subí un archivo para ver la previsualización</p>
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
-                <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{nuevosMaster}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Nuevos</p>
-                </div>
-                <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-gray-400 dark:text-gray-500">{existentesMaster}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Ya existen (se ignoran)</p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700">
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">
-                        {tipoMaster === 'aging' ? 'Perfil' : 'Nombre'}
-                      </th>
-                      {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
-                        <th key={c} className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 capitalize">{c.replace('_', ' ')}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filas.map(fila => (
-                      <tr key={fila.idx} className={`border-b border-gray-50 ${fila.errores.length > 0 ? 'bg-red-50 dark:bg-red-900/20' : fila.estado === 'existente' ? 'bg-gray-50 dark:bg-gray-700' : ''}`}>
-                        <td className="px-3 py-2">
-                          {fila.errores.length > 0 ? (
-                            <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> {fila.errores[0]}</span>
-                          ) : fila.estado === 'existente' ? (
-                            <span className="flex items-center gap-1 text-gray-400 dark:text-gray-500"><RefreshCw size={12} /> Existe</span>
-                          ) : (
-                            <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> Nuevo</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{fila.nombre}</td>
-                        {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
-                          <td key={c} className="px-3 py-2 text-gray-500 dark:text-gray-400">
-                            {c === 'color' && fila.extra[c] ? (
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: fila.extra[c] }} />
-                                {fila.extra[c]}
-                              </span>
-                            ) : fila.extra[c] || '—'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="p-4 border-t border-gray-100 bg-gray-50 dark:bg-gray-700">
-                <button
-                  onClick={confirmarImportacion}
-                  disabled={importando || nuevosMaster === 0}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {importando ? (
-                    <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
-                  ) : (
-                    <><Upload size={16} /> Crear {nuevosMaster} {MASTER_CONFIG[tipoMaster].label.toLowerCase()}</>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+        </TarjetaImportacion>
+        {cfg.porSucursal && (
+          <TarjetaImportacion titulo={tipo === 'combos' ? 'Sucursal del combo' : 'Sucursal de las ubicaciones'}>
+            <select value={sucursalDestino} onChange={e => { setSucursalDestino(e.target.value); limpiar() }}
+              aria-label="Sucursal de destino"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700">
+              <option value="">Todas las sucursales</option>
+              {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
+              {sucursalDestino ? `Se crean solo para ${nombreSucursal(sucursalDestino)}.` : 'Se crean para todas las sucursales.'}
+            </p>
+          </TarjetaImportacion>
+        )}
+      </>}
+    >
+      <VistaPreviaImportacion
+        entidadPlural={cfg.plural}
+        totalACargar={items.length}
+        columnas={COLUMNAS_MAESTRO[tipo].map(c => c === 'nombre_perfil' ? 'Perfil' : c.charAt(0).toUpperCase() + c.slice(1).replace('_', ' '))}
+        filas={filas.map(f => ({
+          idx: f.idx, errores: f.errores, detalle: f.detalle,
+          // Lo que ya existe se ignora (el Maestro solo crea).
+          estado: f.estado === 'existente' ? 'omitida' : f.estado,
+          celdas: [f.nombre || '—', ...f.celdas.map(c => c || '—')],
+        }))}
+        cargando={cargando}
+        onCargar={cargar}
+        onBajarErrores={() => {
+          const err = filasConErrorParaExportar(originales, filas)
+          if (err.length) void descargarExcel({ nombre: 'Filas con error', filas: err }, `${tipo}_filas_con_error`)
+        }}
+      />
+    </PaginaImportacion>
   )
 }

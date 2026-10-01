@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importar datos maestros: todo o nada (mig 452, en DEV)
+
+- `/configuracion/importar` pasa al flujo estándar de importadores (`PaginaImportacion` + `VistaPreviaImportacion` +
+  `fn_importar_maestro(p_tipo, p_filas, p_sucursal_id)`, INVOKER, todo o nada, solo crea). Lógica en
+  `src/lib/importarMaestro.ts`. `VistaPreviaImportacion` gana `totalACargar` (combos/perfiles: varias filas = uno).
+- 🛑 Silencios encontrados y corregidos: combos creados SIN `combo_items` (el POS los ignoraba; 0 afectados: PROD tiene
+  1 combo inactivo con ítems); motivo `egreso` rechazado por el CHECK (`rebaje`); ubicaciones sin sucursal; estado
+  inexistente salteado en perfiles/grupos; perfil existente recibía reglas duplicadas; predeterminado de grupos
+  desmarcado fuera de transacción; color inválido → uno al azar. Proveedores sale del Maestro (→ `/proveedores/importar`).
+- `app-reference.md`: rutas de los importadores corregidas (decía `/importar/...`). Nota de corrección en
+  `estructuras-udm.md` (decía que el Maestro no tenía fallas activas).
+- Verde: tsc, build, unit 2099 (+20 `importarMaestro`), e2e `171` 4/4 (limpieza verificada), SQL en DEV impersonando
+  al dueño con rollback (7 tipos + 7 errores esperados + predeterminado que se conserva si falla). UAT §82.
+
 ## [2026-10-01] update | Cierre para /clear — certificado de producción documentado
 
 - GO dio el OK para documentar el certificado de producción (antes bloqueado). Cert `genesis360plataforma` de producción

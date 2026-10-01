@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Padrón ARCA fases 2-4 en DEV: EF consultar-cuit + vista previa en 5 pantallas
+
+- Núcleo puro `supabase/functions/_shared/padronArca.ts` (CUIT módulo 11, sobre getPersona_v2, parser, condición IVA)
+  compartido por EF, vitest y front. 🛑 Condición: monotributo → MONOTRIBUTO; imp. 30 → RI; 32 → EXENTO; régimen
+  general completo sin IVA → CF (C-19 al contador); sin régimen/errores → `null`, nunca CF por descarte.
+- EF `consultar-cuit` en DEV: cert de plataforma (Fede), TA en `afip_wsaa_ta` (service `ws_sr_constancia_inscripcion`),
+  cache mig 446 `padron_arca_cache` (24 h / 1 h "no existe"), rate limit 30/min usuario · 500/día negocio · 5.000/día
+  global, TA rechazado → se renueva una vez, faults técnicos solo al log. Secret `ARCA_PADRON_KEY_PATH` en DEV.
+- `PadronArcaSugerencia`: automática al cambiar a un CUIT válido, vista previa con casillas, no pisa el nombre. En
+  cliente, proveedor (vocabulario `responsable_inscripto`…), emisor (panel + alta inicial; CF → aviso "no puede
+  facturar") y alta rápida del POS (nuevo campo CUIT; DNI no exigido con CUIT; condición/domicilio solo con CUIT).
+- Verde: tsc, build, unit 2030+ (nuevos `padronArca`, `padronArcaFront`), e2e `165` 6/6 contra homologación, UAT §75.
+  code-reviewer: sin 🔴. Falta PROD (cert de producción de Fede). Página nueva [[wiki/integrations/padron-arca]].
+
 ## [2026-10-01] update | Padrón ARCA: certificado de homologación de Fede OK + prueba real
 
 - Fede creó el cert de homologación (`genesis360plataforma`, CUIT 20422374168, vence 30/09/2028) y la autorización a

@@ -33,7 +33,7 @@ las responda de una vez.
 
 | Estado | Cantidad |
 |---|---|
-| 🟥 Abiertas | 18 |
+| 🟥 Abiertas | 19 |
 | ✅ Respondidas por un matriculado | 0 |
 
 ⚠️ **Ninguna respondida todavía.** La C-01 y sus derivadas tienen una respuesta **de una IA que se
@@ -377,6 +377,28 @@ vendedor / divisa / billete), de qué **banco u organismo** (BNA, ARCA), y de qu
 **histórico por fecha** (hoy la app solo guarda la cotización del momento). También define qué pasa
 con las monedas que el BNA no cotiza: la RG 5616/2024 dice que ahí el emisor informa el tipo de
 cambio que usó, y hay que decidir cuál y cómo se justifica.
+
+---
+
+### C-19 · Padrón de ARCA: sin IVA ni monotributo, ¿el receptor es Consumidor Final?
+
+- **Estado:** 🟥 Abierta (2026-10-01)
+- **Área:** Condición frente al IVA del receptor (autocompletar por CUIT)
+- **Impacta en:** `supabase/functions/_shared/padronArca.ts` → `condicionIvaDesde`; la condición que se
+  le **propone** al usuario en la ficha de cliente/proveedor y en el alta rápida del POS. Ver
+  [[wiki/integrations/padron-arca]].
+- **Criterio provisorio actual:** si ARCA manda el régimen general completo y sin errores, y entre los
+  impuestos inscriptos no está el IVA (30) ni IVA exento (32) ni monotributo → se propone **Consumidor
+  Final** (Factura B). Si ARCA no manda el régimen, **no se propone nada**.
+
+**Pregunta:** una persona inscripta en otros impuestos (p. ej. solo Ganancias, o con IVA "no alcanzado"
+—impuesto 34— o "no inscripto" —33—), ¿se factura como Consumidor Final? ¿Hay algún impuesto o
+caracterización del padrón que la haga **Exento** o **No Responsable** en vez de CF?
+
+**Qué se rompe si está mal:** se le propondría al usuario una condición equivocada para el receptor;
+la letra (B) seguiría siendo la misma salvo que correspondiera Exento/No Responsable, pero el
+`CondicionIVAReceptorId` (RG 5616) iría mal informado en la factura. Es una **propuesta** que el
+usuario acepta, no se aplica sola.
 
 ---
 

@@ -6,36 +6,25 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre para /clear) — PROD = DEV = `v1.234.1` · panel interno EN PROD · padrón ARCA fase 1
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, padrón ARCA en DEV) — PROD = `v1.234.1` (001-445) · DEV = código padrón + mig 446
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.234.1` ✅ servida | 001-**445** |
-> | **DEV** | `v1.234.1` (= PROD) | 001-**445** |
+> | **DEV** | `v1.234.1` + padrón ARCA (commit en `dev`, sin bump) | 001-**446** |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
-> **▶ PRÓXIMA SESIÓN: arrancar el DESARROLLO del padrón ARCA (punto 2, fases 2→4) con el cert de homologación ya
-> probado. GO lo pidió así (01/10). No hace falta esperar el de producción para construir.**
->
 > **Lo primero al retomar:**
-> 1. ✅ **Panel interno EN PROD** (01/10, v1.234.1 + mig 445 + EFs `admin-api`/`mp-reconciliacion`/`monitoring-check`;
->    repo admin PR #6). GO descarta en Facturación las 2 alertas MP "huérfana" (son pruebas suyas).
-> 2. ⏭️ **Padrón ARCA (autocompletar por CUIT) — fase 1 esperando a Fede.** Decisiones de GO: certificado de Genesis360 con
->    el CUIT de **Fede** (20-42237416-8); se usa en ficha de cliente, proveedores, emisor y **alta rápida del POS**;
->    consulta automática al completar un CUIT válido, con vista previa para aceptar. Hecho: manual ARCA leído
->    (`ws_sr_constancia_inscripcion`, `getPersona_v2`, homologación `https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA5`,
->    producción `https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5`; `cuitRepresentada` = CUIT del certificado;
->    condición IVA: impuesto 30 = RI, 32 = exento, `datosMonotributo` = monotributo, si no CF); clave + CSR generados
->    (alias `genesis360plataforma`; clave SOLO en bucket `certificados-afip` de DEV y PROD:
->    `plataforma/20422374168/2026-10-01T05-21-29-127Z.key`); guía para Fede en `sources/raw/guia_fede_certificado_plataforma.md`.
->    ✅ 01/10: Fede sacó el cert de HOMOLOGACIÓN (vence 30/09/2028, coincide con la clave; en DEV
->    `certificados-afip/plataforma/20422374168/homologacion.crt`) y la autorización a `ws_sr_constancia_inscripcion`.
->    Prueba real OK: WSAA homo → getPersona_v2 devuelve datos (padrón de pruebas = datos ficticios; puede venir
->    `errorConstancia` con avisos junto a los datos → la app los muestra sin trabarse). Falta solo `produccion.crt`
->    + relación en producción (paso 2 de la guía) para PROD; homologación alcanza para construir fases 2-4.
->    Falta: Fede devuelve `produccion.crt` → fase 2 (EF `consultar-cuit` reusando WSAA del motor propio:
->    `buildTRA(service)` y `afip_wsaa_ta` ya son genéricos por servicio; cache de respuestas; rate limit persistente) → fase 3
->    (pantallas) → fase 4 (e2e homologación + UAT). El mismo certificado destraba la **facturación de plataforma** (wsfe).
+> 1. ✅ **Panel interno EN PROD** (01/10, v1.234.1 + mig 445). GO descarta en Facturación las 2 alertas MP "huérfana".
+> 2. 🔎 **Padrón ARCA (autocompletar por CUIT) — fases 2-4 HECHAS EN DEV (01/10).** EF `consultar-cuit` (DEV, verify_jwt,
+>    secret `ARCA_PADRON_KEY_PATH`) + mig 446 `padron_arca_cache` (DEV) + componente `PadronArcaSugerencia` en ficha de
+>    cliente, proveedor, emisor fiscal (panel + alta inicial) y **alta rápida del POS** (ganó campo CUIT). 🛑 Condición IVA
+>    nunca CF por descarte (sin régimen → "elegila a mano"); C-19 al registro del contador. Tests: unit 21+3+1, e2e
+>    `165` 6/6 contra homologación, UAT §75; code-reviewer sin 🔴 (🟡 aplicados). Detalle: [[wiki/integrations/padron-arca]].
+>    **Para PROD falta**: Fede devuelve `produccion.crt` (+ relación en producción, paso 2 de la guía) → subirlo a
+>    `certificados-afip/plataforma/20422374168/produccion.crt` en PROD → secrets `ARCA_PADRON_KEY_PATH` y
+>    `ARCA_PADRON_PRODUCCION=true` en PROD → mig 446 → EF → merge con bump. El mismo cert destraba la **facturación de
+>    plataforma** (wsfe).
 > 3. 💲 **Pricing v7**: respondidas PR-1 (anual = pago único sin renovación), PR-4 (Free eliminado; se regalan meses a
 >    mano) y PR-5 (Enterprise online como los demás). Abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del −20 % anual.
 > 4. ✅ **Respuestas 30/09** (DL/D3/PL/EC/QR) en `respuestas_preguntas_pendientes_2026-09-30.md` → a ejecutar: DL-1..3, QR-1..3

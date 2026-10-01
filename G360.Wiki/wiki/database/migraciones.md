@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-445, + correctivos 387b/387c)
+# Historial de Migraciones (001-446, + correctivos 387b/387c)
+
+🔎 **Migración 446 — 🟡 SOLO EN DEV (2026-10-01)**: `446_padron_arca_cache.sql` — tabla `padron_arca_cache (cuit, environment, resultado jsonb, consultado_at)` para la EF `consultar-cuit` (autocompletar por CUIT desde ARCA). Global, sin `tenant_id` (dato público); RLS sin policies + REVOKE a anon/authenticated, solo `service_role`. Aditiva. Ver [[wiki/integrations/padron-arca]].
 
 📅 **Migración 445 — ✅ EN PROD (2026-10-01, v1.234.1)**: `445_mp_billing_alertas_descartar.sql` — columnas
 `descartada_at`/`descartada_por`/`nota` en `mp_billing_alertas`: el panel interno lista las alertas de la reconciliación de MP

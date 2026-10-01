@@ -8,6 +8,9 @@ updated: 2026-09-15
 
 # Facturación Electrónica AFIP
 
+> 🔎 **2026-10-01 — Padrón de ARCA:** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
+> autocompletan razón social, condición IVA y domicilio fiscal con vista previa. Ver [[wiki/integrations/padron-arca]].
+
 Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1.3.0 PROD ✅.  
 **PDF con QR AFIP implementado en v1.5.0 PROD ✅** (RG 4291 — obligatorio desde 2021).
 

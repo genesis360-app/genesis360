@@ -76,7 +76,9 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
       doc.text(ln, emX, y); y += 5
     }
   }
-  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  for (const ln of (doc.splitTextToSize(`Condición IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, LEFT_W) as string[])) {
+    doc.text(ln, emX, y); y += 5
+  }
   if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
   if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
   const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')
@@ -105,16 +107,16 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
   doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(0)
   doc.text('DATOS DEL CLIENTE', 14, ry); ry += 5
   doc.setFont('helvetica', 'normal').setTextColor(60)
-  doc.text(`Nombre / Razón Social: ${data.receptor_nombre}`, 14, ry); ry += 5
+  for (const ln of (doc.splitTextToSize(`Nombre / Razón Social: ${data.receptor_nombre}`, W - 28) as string[])) { doc.text(ln, 14, ry); ry += 5 }
   if (data.receptor_cuit_dni) {
     const docLabel = data.receptor_cuit_dni.replace(/\D/g, '').length === 11 ? 'CUIT' : 'DNI'
-    doc.text(`${docLabel}: ${data.receptor_cuit_dni}`, 14, ry); ry += 5
+    doc.text(`${docLabel}: ${docLabel === 'CUIT' ? formatCuit(data.receptor_cuit_dni) : data.receptor_cuit_dni}`, 14, ry); ry += 5
   }
   if (data.receptor_condicion_iva) {
     doc.text(`Condición IVA: ${data.receptor_condicion_iva}`, 14, ry); ry += 5
   }
   if (data.receptor_domicilio) {
-    doc.text(`Domicilio: ${data.receptor_domicilio}`, 14, ry); ry += 5
+    for (const ln of (doc.splitTextToSize(`Domicilio: ${data.receptor_domicilio}`, W - 28) as string[])) { doc.text(ln, 14, ry); ry += 5 }
   }
 
   // ── Tabla de ítems (columnas dinámicas: Cód? · Descripción · Cant · P.Unit · %Dto? · Importe) ─
@@ -199,6 +201,11 @@ export async function generarPresupuestoPDF(
 ): Promise<void> {
   const doc = await construirPresupuestoDoc(data)
   if (accion === 'imprimir') {
+    // "Imprimir → Guardar como PDF" (iPhone, Chrome) nombra el archivo con el TÍTULO de la página, no con el del
+    // PDF → sin esto quedaba "Genesis360.pdf". Se pone el mismo nombre que la descarga y se restaura después.
+    const tituloPrevio = document.title
+    document.title = nombrePresupuestoPDF(data).replace(/\.pdf$/i, '')
+    doc.setProperties({ title: document.title })
     doc.autoPrint()
     const url = doc.output('bloburl') as unknown as string
     const iframe = document.createElement('iframe')
@@ -207,7 +214,7 @@ export async function generarPresupuestoPDF(
     iframe.src = url
     iframe.onload = () => {
       try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { /* el visor ya imprime */ }
-      setTimeout(() => iframe.remove(), 60_000)
+      setTimeout(() => { iframe.remove(); document.title = tituloPrevio }, 60_000)
     }
     document.body.appendChild(iframe)
   } else {

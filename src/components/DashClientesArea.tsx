@@ -67,7 +67,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
 
       // 2. Deuda CC (toda la historia)
       const { data: ventasCC = [] } = await supabase.from('ventas')
-        .select('total, monto_pagado, created_at, cliente_id, clientes(plazo_pago_dias)')
+        .select('total, monto_pagado, created_at, cliente_id, fecha_vencimiento_cc')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .eq('es_cuenta_corriente', true)
@@ -176,8 +176,11 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
       for (const v of ventasCC ?? []) {
         const saldo = Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0))
         if (saldo < 0.5) continue
-        const plazo = (v as any).clientes?.plazo_pago_dias ?? 30
-        const fechaVenc = new Date(v.created_at); fechaVenc.setDate(fechaVenc.getDate() + plazo)
+        // Mig 442: UNA regla — la fecha de vencimiento de la venta (la misma que usan interés y morosidad). Las ventas
+        // viejas sin fecha, a 30 días.
+        const fechaVenc = (v as any).fecha_vencimiento_cc
+          ? new Date(`${(v as any).fecha_vencimiento_cc}T12:00:00`)
+          : (() => { const f = new Date(v.created_at); f.setDate(f.getDate() + 30); return f })()
         const diasMora = Math.floor((ahora.getTime() - fechaVenc.getTime()) / 86400000)
         if (diasMora <= 0) { agingCC[0].monto += saldo; agingCC[0].count++ }
         else if (diasMora <= 30) { agingCC[1].monto += saldo; agingCC[1].count++ }

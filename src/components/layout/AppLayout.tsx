@@ -24,6 +24,7 @@ const RUTAS_AVANZADO = ['/recepciones', '/envios', '/historial', '/recursos', '/
 // Módulos que requieren exactamente una sucursal (sin opción "Todas").
 const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
 import { CotizacionWidget } from '@/components/CotizacionWidget'
+import { useCotizacion } from '@/hooks/useCotizacion'
 import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'
 import { useQuery } from '@tanstack/react-query'
@@ -233,6 +234,9 @@ export function AppLayout() {
   const { user, tenant, loadUserData } = useAuthStore()
   const confirmar = useConfirm()
   useInactivityTimeout(tenant?.session_timeout_minutes)
+  // D-1 (A-2): la cotización del dólar BNA se actualiza al iniciar sesión — montado acá y no solo en
+  // el widget, que no se renderiza con el menú colapsado.
+  useCotizacion()
   const { count: alertCount } = useAlertas()
   const { count: supervisionCount } = useSupervisionBadge(MODULOS_SUPERVISION.filter(m => puedeSupervisarModulo(user, m)))
 

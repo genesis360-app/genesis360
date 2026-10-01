@@ -33,9 +33,10 @@ export interface MonedaProductoImportada {
 /**
  * Traduce un importe del CSV + su moneda a las columnas vivas.
  *
- * `cotizacionUsdAArs` tiene que ser la tasa de **COMPRA** (`tasaUsdAArs`), que es con la que el POS
- * valúa un producto en dólares al cobrarlo. Con la de venta, el espejo en pesos quedaría por encima
- * de lo que realmente se cobra y el margen mentiría.
+ * `cotizacionUsdAArs` tiene que ser la tasa ÚNICA del sistema (`useCotizacion().cotizacionUsdAArs`:
+ * vendedor divisa BNA del día hábil anterior, D-1 fase 2), que es con la que el POS valúa un producto
+ * en dólares al cobrarlo. Con otra, el espejo en pesos no coincidiría con lo que realmente se cobra y
+ * el margen mentiría.
  *
  * Devuelve `null` si la fila pide USD y no hay cotización: **nunca se inventa una tasa** (D5 del
  * relevamiento). Quien llama tiene que rechazar la fila, no seguir con un cero.

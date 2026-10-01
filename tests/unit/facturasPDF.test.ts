@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  normalizarCondIVA, formatCuit, formatFecha, fmtPesos, nombreFacturaPDF,
+  normalizarCondIVA, condicionVenta, domicilioReceptor, composeDomicilioCliente, formatCuit, formatFecha, fmtPesos, nombreFacturaPDF,
   sanitizarNombreArchivo, cantidadCelda, precioUnitarioCelda, composicionUnitaria,
   type FacturaPDFData,
 } from '@/lib/facturasPDF'
@@ -18,9 +18,15 @@ const item = (over: Partial<Item> = {}): Item => ({
 describe('normalizarCondIVA', () => {
   it('mapea las claves conocidas a su label', () => {
     expect(normalizarCondIVA('responsable_inscripto')).toBe('Responsable Inscripto')
-    expect(normalizarCondIVA('monotributo')).toBe('Monotributo')
+    expect(normalizarCondIVA('monotributo')).toBe('Responsable Monotributo')
     expect(normalizarCondIVA('exento')).toBe('Exento')
     expect(normalizarCondIVA('consumidor_final')).toBe('Consumidor Final')
+  })
+  it('los códigos cortos que guardan los formularios salen con la denominación completa (no "RI")', () => {
+    expect(normalizarCondIVA('RI')).toBe('Responsable Inscripto')
+    expect(normalizarCondIVA('CF')).toBe('Consumidor Final')
+    expect(normalizarCondIVA('Monotributista')).toBe('Responsable Monotributo')
+    expect(normalizarCondIVA('Exento')).toBe('Exento')
   })
   it('sin valor → Consumidor Final (default seguro)', () => {
     expect(normalizarCondIVA(undefined)).toBe('Consumidor Final')
@@ -29,6 +35,34 @@ describe('normalizarCondIVA', () => {
   })
   it('clave desconocida → se devuelve tal cual (no la pisa con el default)', () => {
     expect(normalizarCondIVA('Un valor ya legible')).toBe('Un valor ya legible')
+  })
+})
+
+describe('condicionVenta — obligatoria en la factura, distinta de la forma de pago', () => {
+  it('venta a cuenta corriente → Cuenta Corriente; el resto → Contado', () => {
+    expect(condicionVenta(true)).toBe('Cuenta Corriente')
+    expect(condicionVenta(false)).toBe('Contado')
+    expect(condicionVenta(null)).toBe('Contado')
+    expect(condicionVenta(undefined)).toBe('Contado')
+  })
+})
+
+describe('domicilioReceptor — domicilio del CLIENTE (receptor) impreso en la factura (mig 443)', () => {
+  const entrega = { calle: 'Av. Siempre Viva', numero: '742', piso_depto: null, ciudad: 'Springfield', provincia: 'Bs As', es_principal: true }
+  it('usa el domicilio fiscal de la ficha cuando está cargado (aunque haya domicilios de entrega)', () => {
+    expect(domicilioReceptor({ domicilio_fiscal: '  Calle Falsa 1234, Villa Ejemplo, Buenos Aires ', cliente_domicilios: [entrega] }))
+      .toBe('Calle Falsa 1234, Villa Ejemplo, Buenos Aires')
+  })
+  it('sin domicilio fiscal cae al domicilio principal de entrega (clientes ya cargados siguen igual)', () => {
+    expect(domicilioReceptor({ domicilio_fiscal: '   ', cliente_domicilios: [entrega] })).toBe('Av. Siempre Viva 742, Springfield, Bs As')
+  })
+  it('elige el principal aunque no sea el primero', () => {
+    expect(composeDomicilioCliente([{ calle: 'Otra', es_principal: false }, entrega])).toBe('Av. Siempre Viva 742, Springfield, Bs As')
+  })
+  it('sin ninguno → undefined (es lo que bloquea la Factura A)', () => {
+    expect(domicilioReceptor({ domicilio_fiscal: null, cliente_domicilios: [] })).toBeUndefined()
+    expect(domicilioReceptor(null)).toBeUndefined()
+    expect(domicilioReceptor({ cliente_domicilios: [{ calle: '  ', es_principal: true }] })).toBeUndefined()
   })
 })
 

@@ -8,14 +8,41 @@ updated: 2026-09-25
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.233.0`** (2026-09-25, migs 001-**437** por PR + mig **438** aplicada en
-base de datos, archivo todavía solo en `origin/dev`). Compute de PROD: **Micro** desde el 2026-09-15
-(antes Nano). Primer cliente real en PROD: **Kalken**.
+**Versión en PROD (actual): `v1.233.2`** (hotfix 2026-09-29 sobre `v1.233.1`) (2026-09-26, migs 001-**439**, archivos y bases iguales). Compute de
+PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
+(Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV en migraciones aplicadas** (001-438, paridad `pg_policies` por schema: `public` **234**
-(`d95a8640`) · `storage` **40** (`d57ccda2`) · `cron` **2** (`796770dd`) — fórmula de hash distinta a
-sesiones anteriores, comparar solo DEV vs PROD del mismo día). PR **#359** `dev→main`, merge commit
-**`e38e26cd`**, release **`v1.233.0` Latest**. Detalle completo en `log.md` (2026-09-25, `deploy`).
+✅ **PROD = DEV** (001-439; paridad `pg_policies` por schema: `public` **235** (`b6469b80`) · `storage` **40**
+(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#360** `dev→main`, merge
+**`50343fb9`**, release **`v1.233.1` Latest**.
+
+## 🚑 v1.233.2 — Hotfix: punto de venta en el modal de facturar/NC (2026-09-29, EN PROD)
+
+Negocios con PV AFIP ≠ 1 (El Tilo, PV 5) no podían facturar: el modal mandaba PV 1. Ahora el PV se corrige al llegar
+la lista (factura y NC manual) y la NC automática lee el PV de la base. Solo frontend, rama desde `main` (PR #361),
+sin las migs 440-442 de `dev`.
+
+## 🟡 v1.234.0-rc.1 — pre-release en DEV (2026-09-26/29, SIN deploy, migs 440-442)
+
+Pre-release sobre `origin/dev` (no está en `main`). El deploy como `v1.234.0` espera DL-5
+(`sources/raw/preguntas_pendientes_2026-09-28.md`).
+- **D-1 fase 2** (mig 440): UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior en todo el sistema; Pedidos→venta
+  cotiza productos USD igual que el POS. [[wiki/features/ventas-pos]]
+- **D-3**: listas desplegables en la plantilla del importador (validado con Excel real). [[wiki/features/productos]]
+- **Precio programado C-1/C-3** (mig 441): el precio puede esperar la etiqueta del repositor; un cambio "ahora" pregunta
+  qué hacer con el programado. [[wiki/features/productos]]
+- **Categorías de clientes, etapa 1** (mig 442): la categoría con cuenta corriente; una sola resolución Cliente >
+  Categoría > Negocio; el vencimiento de la venta CC lo pone el servidor; CC habilitada controlada en el servidor.
+  [[wiki/features/clientes-proveedores]]
+- e2e 160-163, UAT §70-§73. Al deployar: migs 440→441→442 de a una antes del merge + EF `data-api`.
+
+## 🚀 v1.233.1 — Historial diario de la cotización divisa del BNA (2026-09-26, EN PROD)
+
+PR **#360**, merge `50343fb9`. Sin cambios visibles. **D-1 fase 1**: mig **439** (`cotizaciones_bna` +
+`fn_cotizacion_bna_vigente`), EF **`cotizacion-bna`** (desplegada DEV y PROD) y paso nuevo en `sweeps.yml` (03:10 AR).
+Trae además al repo el archivo de la mig **438** (aging diario, ya aplicada en PROD el 25/09).
+Verificado: el workflow disparado a mano en PROD capturó USD/EUR/GBP y la vigente quedó en **25/09: 1516,50 / 1525,50**;
+`app.genesis360.pro` sirve `v1.233.1`. Próximo: **D-1 fase 2** (migrar todos los caminos USD→ARS a esta tasa).
 
 ## 🚀 v1.233.0 — Margen hasta 999.999,99 % + aislamiento de sweeps a PROD, aging automático (2026-09-25, EN PROD)
 

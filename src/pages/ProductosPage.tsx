@@ -14,6 +14,7 @@ import { PreciosProgramadosPanel } from '@/components/PreciosProgramadosPanel'
 import { useSupervisorAutorizaciones, useSupervisionBadge, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
 import { puedeSupervisarModulo, puedeEditarModulo } from '@/lib/permisosModulo'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useResolverPrecioProgramado } from '@/hooks/useResolverPrecioProgramado'
 import { logActividad } from '@/lib/actividadLog'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -105,6 +106,8 @@ export default function ProductosPage() {
 
   const [tab, setTab] = useState<Tab>('productos')
   const confirmar = useConfirm()
+  // C-3: todo cambio de precio de venta "ahora" pregunta antes qué hacer con los precios programados pendientes.
+  const resolverProgramado = useResolverPrecioProgramado()
 
   // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en productos) ────────
   // A4 (relevamiento Supervisión, Fede 2026-08-20 + mig 386): kit_precio (Motor de Rotación) y
@@ -129,6 +132,8 @@ export default function ProductosPage() {
   }
 
   const aprobarAutorizacionProducto = async (aut: any) => {
+    const { producto_id: prodIdAut } = aut.datos_cambio ?? {}
+    if (prodIdAut && !(await resolverProgramado([prodIdAut]))) return
     setAutAprobandoId(aut.id)
     try {
       const { producto_id, precio_nuevo } = aut.datos_cambio ?? {}
@@ -425,6 +430,7 @@ export default function ProductosPage() {
       if (bulkModal === 'precio_venta') {
         const valor = parseFloat(bulkPrecioValor)
         if (isNaN(valor)) { toast.error('Ingresá un valor válido'); return }
+        if (!(await resolverProgramado(ids))) return
         if (bulkPrecioTipo === 'fijo') {
           if (valor <= 0) { toast.error('El precio debe ser mayor a 0'); return }
           const { error } = await supabase.from('productos').update({ precio_venta: valor }).in('id', ids)

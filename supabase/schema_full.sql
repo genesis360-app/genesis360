@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-09-26T00:49:04.241Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260926004758 · 172 tablas
+-- Generado 2026-09-30T23:52:57.345Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260930234256 · 173 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -404,6 +404,23 @@ CREATE TABLE public.categorias (
   rotacion_ubicacion_excepcion_id uuid
 );
 
+CREATE TABLE public.categorias_cliente (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  nombre text NOT NULL,
+  descripcion text,
+  activo boolean NOT NULL DEFAULT true,
+  usada boolean NOT NULL DEFAULT false,
+  cc_habilitada boolean,
+  cc_limite numeric(14,2),
+  cc_plazo_dias integer,
+  cc_interes_mensual_pct numeric(6,3),
+  cc_enforcement_politica text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_by uuid,
+  updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.categorias_gasto (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -506,14 +523,16 @@ CREATE TABLE public.clientes (
   etiquetas text[],
   codigo_fiscal text,
   regimen_fiscal text,
-  cuenta_corriente_habilitada boolean DEFAULT false,
+  cuenta_corriente_habilitada boolean,
   limite_credito numeric(12,2),
-  plazo_pago_dias integer DEFAULT 30,
+  plazo_pago_dias integer,
   motivo_baja text,
   baja_at timestamp with time zone,
   baja_por uuid,
   cuenta_token text,
-  cuenta_token_creado_at timestamp with time zone
+  cuenta_token_creado_at timestamp with time zone,
+  categoria_cliente_id uuid,
+  domicilio_fiscal text
 );
 
 CREATE TABLE public.codigo_perfiles (
@@ -1513,7 +1532,8 @@ CREATE TABLE public.precios_programados (
   aplicado_at timestamp with time zone,
   cancelado_por uuid,
   cancelado_at timestamp with time zone,
-  error text
+  error text,
+  aviso_demora_at timestamp with time zone
 );
 
 CREATE TABLE public.producto_estructura_niveles (
@@ -2506,7 +2526,11 @@ CREATE TABLE public.tenants (
   telefono text,
   repositor_anticipacion_min integer NOT NULL DEFAULT 60,
   cuenta_token_dias integer NOT NULL DEFAULT 90,
-  codigo text NOT NULL
+  codigo text NOT NULL,
+  precio_programado_requiere_repositor boolean NOT NULL DEFAULT false,
+  precio_programado_aviso_demora_horas integer NOT NULL DEFAULT 2,
+  categorias_cliente_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
+  categorias_cliente_asignar_roles jsonb NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2945,6 +2969,12 @@ ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_pkey PRIMARY KEY (
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias ADD CONSTRAINT chk_categorias_rotacion_matriz CHECK ((NOT (COALESCE(rotacion_agotar_antes_reponer, false) AND COALESCE(rotacion_armar_kits, false))));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_enforcement_politica_check CHECK (((cc_enforcement_politica IS NULL) OR (cc_enforcement_politica = ANY (ARRAY['permitir'::text, 'avisar'::text, 'bloquear'::text]))));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_interes_mensual_pct_check CHECK (((cc_interes_mensual_pct IS NULL) OR (cc_interes_mensual_pct >= (0)::numeric)));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_limite_check CHECK (((cc_limite IS NULL) OR (cc_limite >= (0)::numeric)));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_plazo_dias_check CHECK (((cc_plazo_dias IS NULL) OR ((cc_plazo_dias >= 1) AND (cc_plazo_dias <= 365))));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_nombre_check CHECK ((btrim(nombre) <> ''::text));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_estado_check CHECK ((estado = ANY (ARRAY['en_cartera'::text, 'entregado'::text, 'depositado'::text, 'cobrado'::text, 'endosado'::text, 'rechazado'::text, 'anulado'::text])));
@@ -3249,6 +3279,7 @@ ALTER TABLE public.tenants ADD CONSTRAINT tenants_oc_numeracion_check CHECK ((oc
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_pedido_numeracion_check CHECK ((pedido_numeracion = ANY (ARRAY['tenant'::text, 'sucursal'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_plan_tier_check CHECK ((plan_tier = ANY (ARRAY['free'::text, 'basico'::text, 'pro'::text, 'enterprise'::text])));
+ALTER TABLE public.tenants ADD CONSTRAINT tenants_pp_aviso_demora_horas_chk CHECK (((precio_programado_aviso_demora_horas >= 1) AND (precio_programado_aviso_demora_horas <= 168)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_precio_redondeo_check CHECK ((precio_redondeo = ANY (ARRAY['none'::text, '10'::text, '50'::text, '100'::text, '500'::text, '1000'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_repositor_anticipacion_min_check CHECK (((repositor_anticipacion_min >= 0) AND (repositor_anticipacion_min <= 1440)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_repositor_etiquetas_por_hoja_check CHECK ((repositor_etiquetas_por_hoja = ANY (ARRAY[4, 6, 12])));
@@ -3379,6 +3410,8 @@ ALTER TABLE public.cajas ADD CONSTRAINT cajas_tenant_id_fkey FOREIGN KEY (tenant
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_endosado_a_proveedor_id_fkey FOREIGN KEY (endosado_a_proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
@@ -3399,6 +3432,7 @@ ALTER TABLE public.cliente_notas ADD CONSTRAINT cliente_notas_cliente_id_fkey FO
 ALTER TABLE public.cliente_notas ADD CONSTRAINT cliente_notas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.cliente_notas ADD CONSTRAINT cliente_notas_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.clientes ADD CONSTRAINT clientes_baja_por_fkey FOREIGN KEY (baja_por) REFERENCES users(id);
+ALTER TABLE public.clientes ADD CONSTRAINT clientes_categoria_cliente_id_fkey FOREIGN KEY (categoria_cliente_id) REFERENCES categorias_cliente(id) ON DELETE RESTRICT;
 ALTER TABLE public.clientes ADD CONSTRAINT clientes_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
 ALTER TABLE public.clientes ADD CONSTRAINT clientes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.codigo_perfiles ADD CONSTRAINT codigo_perfiles_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
@@ -3831,6 +3865,9 @@ CREATE INDEX actividad_log_tenant_idx ON public.actividad_log USING btree (tenan
 CREATE INDEX actividad_log_transaccion_idx ON public.actividad_log USING btree (transaccion_id);
 CREATE INDEX actividad_log_usuario_idx ON public.actividad_log USING btree (tenant_id, usuario_id);
 CREATE UNIQUE INDEX caja_sesiones_una_abierta_por_caja ON public.caja_sesiones USING btree (caja_id) WHERE (estado = 'abierta'::text);
+CREATE INDEX categorias_cliente_tenant_idx ON public.categorias_cliente USING btree (tenant_id);
+CREATE UNIQUE INDEX categorias_cliente_tenant_nombre_key ON public.categorias_cliente USING btree (tenant_id, lower(btrim(nombre)));
+CREATE INDEX clientes_categoria_cliente_idx ON public.clientes USING btree (categoria_cliente_id) WHERE (categoria_cliente_id IS NOT NULL);
 CREATE UNIQUE INDEX clientes_dni_tenant ON public.clientes USING btree (tenant_id, dni) WHERE (dni IS NOT NULL);
 CREATE UNIQUE INDEX empleados_tenant_user_unique ON public.empleados USING btree (tenant_id, user_id) WHERE (user_id IS NOT NULL);
 CREATE INDEX idx_actividad_log_usuario_id ON public.actividad_log USING btree (usuario_id);
@@ -5286,6 +5323,81 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_aplicar_precio_programado(p_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  r        RECORD;
+  v_error  text;
+BEGIN
+  SELECT pp.id, pp.tenant_id, pp.producto_id, pp.precio_venta, pp.creado_por, pp.vigente_desde,
+         p.precio_venta AS precio_actual, p.nombre AS producto_nombre
+    INTO r
+    FROM public.precios_programados pp
+    JOIN public.productos p ON p.id = pp.producto_id
+   WHERE pp.id = p_id AND pp.estado = 'pendiente' AND pp.vigente_desde <= now()
+     FOR UPDATE OF pp SKIP LOCKED;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  BEGIN
+    -- Mig 441: marca de "esto lo aplica el programado" para el guard de productos y el trigger de etiquetas.
+    PERFORM set_config('g360.pp_aplicando', r.id::text, true);
+    -- El mismo UPDATE que un cambio manual: dispara la tarea del repositor y la publicación en ML/TN.
+    UPDATE public.productos SET precio_venta = r.precio_venta WHERE id = r.producto_id;
+    PERFORM set_config('g360.pp_aplicando', '', true);
+
+    UPDATE public.precios_programados
+       SET estado = 'aplicado', aplicado_at = now(), precio_anterior = r.precio_actual, error = NULL
+     WHERE id = r.id;
+
+    -- Mig 423 (C3): la etiqueta sin hacer de este producto queda ligada al programado. Si sigue sin hacerse
+    -- pasada la hora, es una "etiqueta vencida".
+    UPDATE public.tareas_repositor
+       SET precio_programado_id = r.id, vigente_desde = r.vigente_desde
+     WHERE producto_id = r.producto_id
+       AND tipo = 'cambio_precio'
+       AND estado IN ('pendiente', 'en_curso')
+       AND precio_programado_id IS DISTINCT FROM r.id;
+
+    INSERT INTO public.actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre,
+                                      accion, campo, valor_anterior, valor_nuevo, pagina, producto_id)
+    VALUES (r.tenant_id, r.creado_por, 'Cambio de precio programado', 'producto', r.producto_id::text,
+            r.producto_nombre, 'editar', 'precio de venta (programado)', r.precio_actual::text,
+            r.precio_venta::text, '/productos', r.producto_id);
+
+    RETURN true;
+  EXCEPTION WHEN OTHERS THEN
+    -- Nunca en silencio: queda marcado y se avisa al dueño.
+    v_error := SQLERRM;
+    -- Mig 423 (migration-reviewer): con su propia subtransacción. Sin esto, un error acá (p. ej. al insertar el
+    -- aviso) se escapaba y revertía los precios ya aplicados en este minuto.
+    BEGIN
+      UPDATE public.precios_programados SET estado = 'fallido', error = v_error WHERE id = r.id;
+      INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+      SELECT r.tenant_id, u.id, 'danger',
+             'No se pudo aplicar un precio programado',
+             r.producto_nombre || ': ' || v_error || '. El precio anterior sigue vigente.',
+             '/productos?tab=programados'
+        FROM public.users u
+       WHERE u.tenant_id = r.tenant_id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING '[fn_aplicar_precio_programado] no se pudo marcar ni avisar el fallo del programado %: %', r.id, SQLERRM;
+    END;
+    -- Mig 423: la etiqueta anticipada de un precio que no se aplicó no se tiene que poner.
+    BEGIN
+      PERFORM public.fn_tareas_precio_programado_desarmar(r.id, 'No se pudo aplicar el precio programado');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING '[fn_aplicar_precio_programado] programado % fallido, no se pudo desarmar su tarea: %', r.id, SQLERRM;
+    END;
+    RETURN false;
+  END;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_aplicar_precios_programados()
  RETURNS integer
  LANGUAGE plpgsql
@@ -5294,8 +5406,8 @@ CREATE OR REPLACE FUNCTION public.fn_aplicar_precios_programados()
 AS $function$
 DECLARE
   r        RECORD;
+  d        RECORD;
   v_n      integer := 0;
-  v_error  text;
 BEGIN
   -- Mig 423 (C1/C2): primero las etiquetas que tienen que aparecer antes de la hora. Si falla, se aplica igual.
   BEGIN
@@ -5304,64 +5416,89 @@ BEGIN
     RAISE WARNING '[fn_aplicar_precios_programados] no se pudieron generar las tareas anticipadas: %', SQLERRM;
   END;
 
-  FOR r IN
-    SELECT pp.id, pp.tenant_id, pp.producto_id, pp.precio_venta, pp.creado_por, pp.vigente_desde,
-           p.precio_venta AS precio_actual, p.nombre AS producto_nombre
+  -- Mig 441 (C-1): aviso, una sola vez, de la etiqueta que lleva más de X horas sin confirmarse.
+  FOR d IN
+    SELECT pp.id, pp.tenant_id, pp.vigente_desde, p.nombre AS producto_nombre, t.precio_programado_aviso_demora_horas AS horas
       FROM public.precios_programados pp
       JOIN public.productos p ON p.id = pp.producto_id
-     WHERE pp.estado = 'pendiente' AND pp.vigente_desde <= now()
-     ORDER BY pp.vigente_desde
-     LIMIT 500
-     FOR UPDATE OF pp SKIP LOCKED
+      JOIN public.tenants t ON t.id = pp.tenant_id
+     WHERE pp.estado = 'pendiente'
+       AND pp.aviso_demora_at IS NULL
+       AND t.precio_programado_requiere_repositor
+       AND t.modo_operacion = 'avanzado'
+       AND pp.vigente_desde + make_interval(hours => t.precio_programado_aviso_demora_horas) <= now()
+       AND EXISTS (SELECT 1 FROM public.tareas_repositor tr
+                    WHERE tr.precio_programado_id = pp.id AND tr.estado IN ('pendiente', 'en_curso'))
   LOOP
     BEGIN
-      -- El mismo UPDATE que un cambio manual: dispara la tarea del repositor y la publicación en ML/TN.
-      UPDATE public.productos SET precio_venta = r.precio_venta WHERE id = r.producto_id;
-
-      UPDATE public.precios_programados
-         SET estado = 'aplicado', aplicado_at = now(), precio_anterior = r.precio_actual, error = NULL
-       WHERE id = r.id;
-
-      -- Mig 423 (C3): la etiqueta sin hacer de este producto queda ligada al programado. Si sigue sin hacerse
-      -- pasada la hora, es una "etiqueta vencida".
-      UPDATE public.tareas_repositor
-         SET precio_programado_id = r.id, vigente_desde = r.vigente_desde
-       WHERE producto_id = r.producto_id
-         AND tipo = 'cambio_precio'
-         AND estado IN ('pendiente', 'en_curso')
-         AND precio_programado_id IS DISTINCT FROM r.id;
-
-      INSERT INTO public.actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre,
-                                        accion, campo, valor_anterior, valor_nuevo, pagina, producto_id)
-      VALUES (r.tenant_id, r.creado_por, 'Cambio de precio programado', 'producto', r.producto_id::text,
-              r.producto_nombre, 'editar', 'precio de venta (programado)', r.precio_actual::text,
-              r.precio_venta::text, '/productos', r.producto_id);
-
-      v_n := v_n + 1;
+      INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+      SELECT d.tenant_id, u.id, 'warning',
+             'Un precio programado espera la etiqueta',
+             d.producto_nombre || ': el precio nuevo tenía que regir desde el ' ||
+               to_char(d.vigente_desde AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM "a las" HH24:MI') ||
+               ' y sigue sin confirmarse la etiqueta (más de ' || d.horas || ' h). Hasta que se confirme, se cobra el precio anterior.',
+             '/repositores'
+        FROM public.users u
+       WHERE u.tenant_id = d.tenant_id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO');
+      UPDATE public.precios_programados SET aviso_demora_at = now() WHERE id = d.id;
     EXCEPTION WHEN OTHERS THEN
-      -- Nunca en silencio: queda marcado y se avisa al dueño.
-      v_error := SQLERRM;
-      -- Mig 423 (migration-reviewer): con su propia subtransacción. Sin esto, un error acá (p. ej. al insertar el
-      -- aviso) se escapaba del loop y revertía TODOS los precios ya aplicados en este minuto.
-      BEGIN
-        UPDATE public.precios_programados SET estado = 'fallido', error = v_error WHERE id = r.id;
-        INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
-        SELECT r.tenant_id, u.id, 'danger',
-               'No se pudo aplicar un precio programado',
-               r.producto_nombre || ': ' || v_error || '. El precio anterior sigue vigente.',
-               '/productos?tab=programados'
-          FROM public.users u
-         WHERE u.tenant_id = r.tenant_id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO');
-      EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING '[fn_aplicar_precios_programados] no se pudo marcar ni avisar el fallo del programado %: %', r.id, SQLERRM;
-      END;
-      -- Mig 423: la etiqueta anticipada de un precio que no se aplicó no se tiene que poner.
-      BEGIN
-        PERFORM public.fn_tareas_precio_programado_desarmar(r.id, 'No se pudo aplicar el precio programado');
-      EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING '[fn_aplicar_precios_programados] programado % fallido, no se pudo desarmar su tarea: %', r.id, SQLERRM;
-      END;
+      RAISE WARNING '[fn_aplicar_precios_programados] no se pudo avisar la demora del programado %: %', d.id, SQLERRM;
     END;
+  END LOOP;
+
+  FOR r IN
+    SELECT pp.id
+      FROM public.precios_programados pp
+      JOIN public.tenants t ON t.id = pp.tenant_id
+     WHERE pp.estado = 'pendiente' AND pp.vigente_desde <= now()
+       -- Mig 441 (C-1): en modo "requiere repositor" espera a que no quede ninguna etiqueta ligada abierta.
+       AND NOT (t.precio_programado_requiere_repositor AND t.modo_operacion = 'avanzado'
+                AND EXISTS (SELECT 1 FROM public.tareas_repositor tr
+                             WHERE tr.precio_programado_id = pp.id AND tr.estado IN ('pendiente', 'en_curso')))
+     ORDER BY pp.vigente_desde
+     LIMIT 500
+  LOOP
+    IF public.fn_aplicar_precio_programado(r.id) THEN v_n := v_n + 1; END IF;
+  END LOOP;
+  RETURN v_n;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_asignar_categoria_clientes(p_categoria_id uuid, p_items jsonb)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  it jsonb; v_n integer := 0; v_id uuid;
+BEGIN
+  IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' OR jsonb_array_length(p_items) = 0 THEN
+    RAISE EXCEPTION 'No hay clientes para asignar';
+  END IF;
+  IF jsonb_array_length(p_items) > 5000 THEN
+    RAISE EXCEPTION 'Demasiados clientes en una sola asignación (máximo 5000)';
+  END IF;
+  FOR it IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+    v_id := (it->>'cliente_id')::uuid;
+    IF COALESCE((it->>'editar')::boolean, false) THEN
+      UPDATE clientes SET categoria_cliente_id = p_categoria_id,
+             limite_credito = (it->>'limite')::numeric,
+             plazo_pago_dias = (it->>'plazo')::integer,
+             cuenta_corriente_habilitada = (it->>'habilitada')::boolean
+       WHERE id = v_id;
+    ELSIF COALESCE((it->>'mantener_propios')::boolean, true) THEN
+      UPDATE clientes SET categoria_cliente_id = p_categoria_id WHERE id = v_id;
+    ELSE
+      UPDATE clientes SET categoria_cliente_id = p_categoria_id,
+             limite_credito = NULL, plazo_pago_dias = NULL, cuenta_corriente_habilitada = NULL
+       WHERE id = v_id;
+    END IF;
+    IF NOT FOUND THEN
+      -- RLS: cliente de otro negocio o inexistente → toda la operación se cae (una sola operación, B-6).
+      RAISE EXCEPTION 'Cliente % inexistente o de otro negocio', v_id;
+    END IF;
+    v_n := v_n + 1;
   END LOOP;
   RETURN v_n;
 END;
@@ -5544,6 +5681,70 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_categorias_cliente_auditar()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  f text; v_ant text; v_nue text;
+  campos text[] := ARRAY['nombre','descripcion','activo','cc_habilitada','cc_limite','cc_plazo_dias','cc_interes_mensual_pct','cc_enforcement_politica'];
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    PERFORM fn_log_categoria(NEW.tenant_id, 'categoria_cliente', NEW.id, NEW.nombre, 'crear', NULL, NULL, NULL);
+    RETURN NEW;
+  END IF;
+  FOREACH f IN ARRAY campos LOOP
+    EXECUTE format('SELECT ($1).%I::text, ($2).%I::text', f, f) INTO v_ant, v_nue USING OLD, NEW;
+    IF v_ant IS DISTINCT FROM v_nue THEN
+      PERFORM fn_log_categoria(NEW.tenant_id, 'categoria_cliente', NEW.id, NEW.nombre,
+        CASE WHEN f = 'activo' THEN 'cambio_estado' ELSE 'editar' END, f,
+        COALESCE(v_ant, 'hereda'), COALESCE(v_nue, 'hereda'));
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_categorias_cliente_guard_delete()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF OLD.usada OR EXISTS (SELECT 1 FROM clientes WHERE categoria_cliente_id = OLD.id) THEN
+    RAISE EXCEPTION 'La categoría "%" ya se usó: desactivala en lugar de borrarla (se conserva el historial).', OLD.nombre
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN OLD;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_categorias_cliente_touch()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$ BEGIN NEW.updated_at := now(); RETURN NEW; END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cc_condiciones_efectivas(p_cliente_id uuid)
+ RETURNS TABLE(cc_habilitada boolean, cc_limite numeric, cc_plazo_dias integer, cc_interes_mensual_pct numeric, cc_enforcement_politica text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT v.cc_habilitada, v.cc_limite, v.cc_plazo_dias, v.cc_interes_mensual_pct, v.cc_enforcement_politica
+    FROM public.vw_clientes_cc v
+   WHERE v.cliente_id = p_cliente_id
+     -- Con sesión, solo clientes del propio negocio (sin sesión: triggers y crons).
+     AND (auth.uid() IS NULL OR v.tenant_id = get_user_tenant_id())
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_cheques_monto_guard()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -5560,6 +5761,92 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_clientes_categoria_auditar()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_ant text; v_nue text;
+BEGIN
+  IF NEW.categoria_cliente_id IS DISTINCT FROM OLD.categoria_cliente_id THEN
+    SELECT nombre INTO v_ant FROM categorias_cliente WHERE id = OLD.categoria_cliente_id;
+    SELECT nombre INTO v_nue FROM categorias_cliente WHERE id = NEW.categoria_cliente_id;
+    PERFORM fn_log_categoria(NEW.tenant_id, 'cliente', NEW.id, NEW.nombre, 'editar', 'categoría', COALESCE(v_ant, 'sin categoría'), COALESCE(v_nue, 'sin categoría'));
+  END IF;
+  IF NEW.cuenta_corriente_habilitada IS DISTINCT FROM OLD.cuenta_corriente_habilitada THEN
+    PERFORM fn_log_categoria(NEW.tenant_id, 'cliente', NEW.id, NEW.nombre, 'editar', 'CC propia: habilitada', COALESCE(OLD.cuenta_corriente_habilitada::text, 'hereda'), COALESCE(NEW.cuenta_corriente_habilitada::text, 'hereda'));
+  END IF;
+  IF NEW.limite_credito IS DISTINCT FROM OLD.limite_credito THEN
+    PERFORM fn_log_categoria(NEW.tenant_id, 'cliente', NEW.id, NEW.nombre, 'editar', 'CC propia: límite', COALESCE(OLD.limite_credito::text, 'hereda'), COALESCE(NEW.limite_credito::text, 'hereda'));
+  END IF;
+  IF NEW.plazo_pago_dias IS DISTINCT FROM OLD.plazo_pago_dias THEN
+    PERFORM fn_log_categoria(NEW.tenant_id, 'cliente', NEW.id, NEW.nombre, 'editar', 'CC propia: plazo', COALESCE(OLD.plazo_pago_dias::text, 'hereda'), COALESCE(NEW.plazo_pago_dias::text, 'hereda'));
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_clientes_categoria_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_rol text;
+  v_cat RECORD;
+BEGIN
+  IF NEW.categoria_cliente_id IS DISTINCT FROM (CASE WHEN TG_OP = 'UPDATE' THEN OLD.categoria_cliente_id END) THEN
+    IF NEW.categoria_cliente_id IS NOT NULL THEN
+      SELECT tenant_id, activo INTO v_cat FROM categorias_cliente WHERE id = NEW.categoria_cliente_id;
+      IF v_cat.tenant_id IS DISTINCT FROM NEW.tenant_id THEN
+        RAISE EXCEPTION 'La categoría no es de este negocio' USING ERRCODE = 'check_violation';
+      END IF;
+      IF NOT v_cat.activo THEN
+        RAISE EXCEPTION 'La categoría está desactivada: no se puede asignar' USING ERRCODE = 'check_violation';
+      END IF;
+    END IF;
+    IF NOT fn_usuario_en_roles_categoria('asignar') THEN
+      RAISE EXCEPTION 'No autorizado: tu rol no puede asignar categorías de clientes.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.categoria_cliente_id IS NOT NULL THEN
+      UPDATE categorias_cliente SET usada = true WHERE id = NEW.categoria_cliente_id AND NOT usada;
+    END IF;
+  END IF;
+
+  -- E3: los valores PROPIOS de cuenta corriente de un cliente los pone solo el DUEÑO (y el staff ADMIN).
+  IF auth.uid() IS NOT NULL AND (
+       (TG_OP = 'INSERT' AND (NEW.cuenta_corriente_habilitada IS NOT NULL OR NEW.limite_credito IS NOT NULL OR NEW.plazo_pago_dias IS NOT NULL))
+    OR (TG_OP = 'UPDATE' AND (NEW.cuenta_corriente_habilitada IS DISTINCT FROM OLD.cuenta_corriente_habilitada
+                           OR NEW.limite_credito IS DISTINCT FROM OLD.limite_credito
+                           OR NEW.plazo_pago_dias IS DISTINCT FROM OLD.plazo_pago_dias))) THEN
+    SELECT rol INTO v_rol FROM users WHERE id = auth.uid();
+    IF v_rol IS DISTINCT FROM 'DUEÑO' AND v_rol IS DISTINCT FROM 'ADMIN' THEN
+      RAISE EXCEPTION 'No autorizado: solo el dueño puede darle a un cliente condiciones de cuenta corriente propias.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_clientes_dni_vacio_a_null()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.dni IS NOT NULL THEN
+    NEW.dni := NULLIF(btrim(NEW.dni), '');
+  END IF;
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_completar_tarea_armado(p_tarea_id uuid)
@@ -6532,18 +6819,25 @@ CREATE OR REPLACE FUNCTION public.fn_generar_tarea_repositor_precio()
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-DECLARE r RECORD; v_avanzado boolean;
+DECLARE r RECORD; v_avanzado boolean; v_pp text;
 BEGIN
   IF NEW.precio_venta IS NOT DISTINCT FROM OLD.precio_venta THEN RETURN NEW; END IF;
 
   SELECT (modo_operacion = 'avanzado') INTO v_avanzado FROM tenants WHERE id = NEW.tenant_id;
   IF NOT COALESCE(v_avanzado, false) THEN RETURN NEW; END IF;
 
+  v_pp := COALESCE(current_setting('g360.pp_aplicando', true), '');
+
   FOR r IN
     SELECT pus.sucursal_id
     FROM producto_ubicacion_sucursal pus
     JOIN ubicaciones u ON u.id = pus.ubicacion_exhibicion_id
     WHERE pus.producto_id = NEW.id AND u.tipo_logico = 'exhibicion'
+      -- Mig 441 (C-1): si este cambio es la aplicación de un programado cuya etiqueta esta sucursal YA confirmó
+      -- (modo "requiere repositor"), no hay nada más que pedirle.
+      AND NOT (v_pp <> '' AND EXISTS (SELECT 1 FROM tareas_repositor tr
+                                       WHERE tr.precio_programado_id::text = v_pp AND tr.sucursal_id = pus.sucursal_id
+                                         AND tr.estado = 'completada'))
   LOOP
     INSERT INTO tareas_repositor (tenant_id, sucursal_id, producto_id, tipo, precio_anterior, precio_nuevo, usuario_asignado_id)
     VALUES (NEW.tenant_id, r.sucursal_id, NEW.id, 'cambio_precio', OLD.precio_venta, NEW.precio_venta,
@@ -6996,7 +7290,9 @@ BEGIN
       JOIN public.tenants t ON t.id = pp.tenant_id
      WHERE pp.estado = 'pendiente'
        AND t.modo_operacion = 'avanzado'
-       AND pp.vigente_desde > now()
+       -- Mig 441 (C-1): con "requiere repositor" la tarea tiene que existir aunque la hora ya haya pasado (con
+       -- anticipación 0 no hay ventana previa), porque el precio la espera.
+       AND (pp.vigente_desde > now() OR t.precio_programado_requiere_repositor)
        AND pp.vigente_desde - make_interval(mins => t.repositor_anticipacion_min) <= now()
        AND pp.precio_venta IS DISTINCT FROM p.precio_venta
   LOOP
@@ -7553,6 +7849,19 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_log_categoria(p_tenant uuid, p_entidad text, p_entidad_id uuid, p_nombre text, p_accion text, p_campo text, p_ant text, p_nuevo text)
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  INSERT INTO actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre, accion, campo,
+                             valor_anterior, valor_nuevo, pagina)
+  SELECT p_tenant, auth.uid(), COALESCE((SELECT nombre_display FROM users WHERE id = auth.uid()), 'Sistema'),
+         p_entidad, p_entidad_id::text, p_nombre, p_accion, p_campo, p_ant, p_nuevo, '/clientes'
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_notificar_cc_vencidas()
  RETURNS void
  LANGUAGE plpgsql
@@ -7578,7 +7887,11 @@ BEGIN
     WHERE v.es_cuenta_corriente = true
       AND v.estado IN ('despachada', 'facturada')
       AND (v.total - COALESCE(v.monto_pagado, 0)) > 0.5
-      AND (v.created_at + (COALESCE(c.plazo_pago_dias, 30) || ' days')::interval)::date < CURRENT_DATE
+      -- Mig 442: UNA regla — la misma fecha que usan interés y morosidad. Las ventas viejas sin fecha, con el plazo
+      -- efectivo del cliente (Cliente > Categoría > Negocio > 30).
+      AND COALESCE(v.fecha_vencimiento_cc,
+                   (v.created_at + ((SELECT e.cc_plazo_dias FROM vw_clientes_cc e WHERE e.cliente_id = v.cliente_id) || ' days')::interval)::date)
+          < CURRENT_DATE
     GROUP BY v.tenant_id, v.cliente_id, c.nombre, u.id
     HAVING SUM(GREATEST(v.total - COALESCE(v.monto_pagado, 0), 0) + COALESCE(v.interes_cc, 0)) > 0.5
   LOOP
@@ -8032,6 +8345,10 @@ BEGIN
   IF v_tiene_cc AND v_pedido.cliente_id IS NULL THEN
     RAISE EXCEPTION 'Cuenta corriente requiere un cliente identificado en el pedido';
   END IF;
+  -- Mig 442 (decisión de GO): la CC habilitada también la controla el servidor (condición EFECTIVA).
+  IF v_tiene_cc AND NOT COALESCE((SELECT e.cc_habilitada FROM vw_clientes_cc e WHERE e.cliente_id = v_pedido.cliente_id), false) THEN
+    RAISE EXCEPTION 'El cliente no tiene cuenta corriente habilitada. Cobrá por otro medio.';
+  END IF;
 
   SELECT trazabilidad_asignacion INTO v_traza_on FROM tenants WHERE id = v_pedido.tenant_id;
 
@@ -8198,7 +8515,8 @@ BEGIN
   v_monto_cc := LEAST(v_monto_cc, v_total);
 
   IF v_tiene_cc AND (v_total - v_monto_pagado) > 0.5 THEN
-    SELECT COALESCE(cc_enforcement_politica, 'avisar') INTO v_enforcement_pol FROM tenants WHERE id = v_pedido.tenant_id;
+    -- Mig 442: política y límite EFECTIVOS (Cliente > Categoría > Negocio).
+    SELECT e.cc_enforcement_politica INTO v_enforcement_pol FROM vw_clientes_cc e WHERE e.cliente_id = v_pedido.cliente_id;
     IF v_enforcement_pol = 'bloquear' THEN
       SELECT COALESCE(SUM(GREATEST(v.total - v.monto_pagado, 0) + COALESCE(v.interes_cc, 0)), 0) INTO v_deuda_total
       FROM ventas v
@@ -8206,8 +8524,7 @@ BEGIN
         AND v.es_cuenta_corriente = true AND v.estado <> 'cancelada'
         AND (v.total - v.monto_pagado) > 0.5;
 
-      SELECT COALESCE(c.limite_credito, t.limite_cc_default) INTO v_limite_credito
-      FROM clientes c, tenants t WHERE c.id = v_pedido.cliente_id AND t.id = v_pedido.tenant_id;
+      SELECT e.cc_limite INTO v_limite_credito FROM vw_clientes_cc e WHERE e.cliente_id = v_pedido.cliente_id;
 
       IF v_limite_credito IS NOT NULL AND (v_deuda_total + (v_total - v_monto_pagado)) > v_limite_credito + 0.5 THEN
         RAISE EXCEPTION 'Esta venta deja la cuenta corriente en $% — supera el límite de $%',
@@ -8216,7 +8533,15 @@ BEGIN
     END IF;
   END IF;
 
-  UPDATE ventas SET subtotal = v_subtotal, total = v_total, monto_pagado = v_monto_pagado WHERE id = v_venta_id;
+  -- D-1 fase 2 (mig 440): igual que el POS, si la venta lleva un producto con precio en dólares se
+  -- sella la tasa con la que se convirtió (`ventas.cotizacion_usd`, mig 368). Dashboards y
+  -- Rentabilidad separan por esa marca las ventas con componente en USD.
+  UPDATE ventas SET subtotal = v_subtotal, total = v_total, monto_pagado = v_monto_pagado,
+         cotizacion_usd = CASE WHEN EXISTS (
+           SELECT 1 FROM venta_items vi JOIN productos pr ON pr.id = vi.producto_id
+           WHERE vi.venta_id = v_venta_id AND pr.moneda_venta = 'usd' AND COALESCE(pr.precio_usd, 0) > 0
+         ) THEN (SELECT c.venta FROM fn_cotizacion_bna_vigente('USD') c) END
+   WHERE id = v_venta_id;
 
   IF v_monto_efectivo > 0.005 THEN
     INSERT INTO caja_movimientos (tenant_id, sesion_id, tipo, concepto, monto, usuario_id)
@@ -8452,14 +8777,28 @@ DECLARE
   v_precio_bloque      numeric;
   v_precio_resto       numeric;
   v_precio_final       numeric;
+  v_moneda_venta       text;
+  v_precio_usd         numeric;
 BEGIN
-  SELECT COALESCE(precio_venta, 0) INTO v_precio_lista
+  SELECT COALESCE(precio_venta, 0), moneda_venta, precio_usd
+    INTO v_precio_lista, v_moneda_venta, v_precio_usd
   FROM productos WHERE id = p_producto_id AND tenant_id = p_tenant_id;
   IF v_precio_lista IS NULL THEN RETURN 0; END IF;
 
-  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN v_precio_lista; END IF;
+  -- D-1 fase 2: la UNA tasa USD→ARS del sistema = vendedor divisa BNA del día hábil anterior.
+  SELECT c.venta INTO v_cotizacion FROM fn_cotizacion_bna_vigente('USD') c;
 
-  SELECT cotizacion_usd INTO v_cotizacion FROM tenants WHERE id = p_tenant_id;
+  -- Producto con precio en dólares: el precio de lista es precio_usd × tasa, igual que el POS
+  -- (VentasPage.agregarProducto). Antes esta función tomaba `precio_venta`, el espejo en pesos
+  -- congelado a la tasa del día en que se editó el producto. Sin tasa, se frena (D5).
+  IF v_moneda_venta = 'usd' AND COALESCE(v_precio_usd, 0) > 0 THEN
+    IF COALESCE(v_cotizacion, 0) <= 0 THEN
+      RAISE EXCEPTION 'El producto tiene precio en dólares y no hay cotización del dólar BNA';
+    END IF;
+    v_precio_lista := round(v_precio_usd * v_cotizacion, 2);
+  END IF;
+
+  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN v_precio_lista; END IF;
 
   v_mejor_ligado_precio := NULL;
 
@@ -8770,6 +9109,8 @@ CREATE OR REPLACE FUNCTION public.fn_productos_rol_guard()
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
+DECLARE
+  v_pp text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NOT public.auth_puede_editar_modulo('inventario') THEN
@@ -8785,6 +9126,21 @@ BEGIN
   OR NEW.precio_usd         IS DISTINCT FROM OLD.precio_usd
   OR NEW.precio_costo_usd   IS DISTINCT FROM OLD.precio_costo_usd
   OR NEW.margen_objetivo    IS DISTINCT FROM OLD.margen_objetivo THEN
+    -- Mig 441 (C-1): la aplicación de un precio programado que dispara la confirmación del repositor corre con la
+    -- sesión del repositor. Se deja pasar SOLO eso: programado pendiente de este producto, exactamente ese precio,
+    -- y ninguna otra columna de precio tocada.
+    v_pp := current_setting('g360.pp_aplicando', true);
+    IF v_pp IS NOT NULL AND v_pp <> ''
+       AND NEW.precio_costo       IS NOT DISTINCT FROM OLD.precio_costo
+       AND NEW.precio_marketplace IS NOT DISTINCT FROM OLD.precio_marketplace
+       AND NEW.precio_usd         IS NOT DISTINCT FROM OLD.precio_usd
+       AND NEW.precio_costo_usd   IS NOT DISTINCT FROM OLD.precio_costo_usd
+       AND NEW.margen_objetivo    IS NOT DISTINCT FROM OLD.margen_objetivo
+       AND EXISTS (SELECT 1 FROM public.precios_programados pp
+                    WHERE pp.id::text = v_pp AND pp.producto_id = NEW.id AND pp.estado = 'pendiente'
+                      AND pp.precio_venta = NEW.precio_venta) THEN
+      RETURN NEW;
+    END IF;
     IF NOT public.auth_puede_editar_modulo('inventario') THEN
       RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar precios de productos.'
         USING ERRCODE = 'insufficient_privilege';
@@ -9252,6 +9608,42 @@ BEGIN
       SELECT max(x.orden) FROM producto_presentaciones x
       WHERE x.producto_id = p_producto_id AND x.orden < child.orden
     );
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_recalcular_intereses_cc_tenant(p_tenant uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_count integer := 0;
+BEGIN
+  UPDATE ventas v SET interes_cc = ROUND(
+      GREATEST(v.total - v.monto_pagado, 0)
+      * (e.cc_interes_mensual_pct / 100.0)
+      * (GREATEST(0, (CURRENT_DATE - v.fecha_vencimiento_cc)) / 30.0)
+    , 2)
+    FROM vw_clientes_cc e
+   WHERE e.cliente_id = v.cliente_id
+     AND v.tenant_id = p_tenant
+     AND e.cc_interes_mensual_pct > 0
+     AND v.es_cuenta_corriente = TRUE
+     AND v.estado <> 'cancelada'
+     AND v.fecha_vencimiento_cc IS NOT NULL
+     AND (v.total - v.monto_pagado) > 0.5;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+
+  UPDATE ventas v SET interes_cc = 0
+   WHERE v.tenant_id = p_tenant AND v.es_cuenta_corriente = TRUE AND v.interes_cc <> 0
+     AND ((v.total - v.monto_pagado) <= 0.5
+          OR v.fecha_vencimiento_cc IS NULL
+          OR v.fecha_vencimiento_cc >= CURRENT_DATE
+          OR v.cliente_id IS NULL
+          OR COALESCE((SELECT e.cc_interes_mensual_pct FROM vw_clientes_cc e WHERE e.cliente_id = v.cliente_id), 0) <= 0);
+  RETURN v_count;
 END;
 $function$
 
@@ -9991,6 +10383,37 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_tarea_repositor_aplicar_programado()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_requiere boolean;
+BEGIN
+  IF NEW.estado = 'completada' AND OLD.estado IN ('pendiente', 'en_curso') AND NEW.precio_programado_id IS NOT NULL THEN
+    SELECT (t.precio_programado_requiere_repositor AND t.modo_operacion = 'avanzado') INTO v_requiere
+      FROM public.tenants t WHERE t.id = NEW.tenant_id;
+    IF COALESCE(v_requiere, false)
+       AND EXISTS (SELECT 1 FROM public.precios_programados pp
+                    WHERE pp.id = NEW.precio_programado_id AND pp.estado = 'pendiente' AND pp.vigente_desde <= now())
+       AND NOT EXISTS (SELECT 1 FROM public.tareas_repositor tr
+                        WHERE tr.precio_programado_id = NEW.precio_programado_id AND tr.id <> NEW.id
+                          AND tr.estado IN ('pendiente', 'en_curso')) THEN
+      -- Nunca frena la confirmación: si no se puede aplicar, `fn_aplicar_precio_programado` lo marca fallido y avisa.
+      BEGIN
+        PERFORM public.fn_aplicar_precio_programado(NEW.precio_programado_id);
+      EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING '[fn_tarea_repositor_aplicar_programado] tarea % programado %: %', NEW.id, NEW.precio_programado_id, SQLERRM;
+      END;
+    END IF;
+  END IF;
+  RETURN NULL;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_tarea_repositor_asignado_valido_tenant()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -10015,6 +10438,7 @@ AS $function$
 DECLARE
   v_pp_estado     text;
   v_precio_actual numeric;
+  v_requiere      boolean;
 BEGIN
   IF NEW.estado = 'completada' AND OLD.estado IN ('pendiente', 'en_curso') AND OLD.precio_programado_id IS NOT NULL THEN
     SELECT estado INTO v_pp_estado FROM public.precios_programados WHERE id = OLD.precio_programado_id;
@@ -10022,6 +10446,13 @@ BEGIN
     -- Si el precio vigente ya es el de la etiqueta, se puede poner (lo aplicó el cron o alguien lo cambió a mano).
     IF v_precio_actual IS DISTINCT FROM OLD.precio_nuevo AND v_pp_estado IS DISTINCT FROM 'aplicado' THEN
       IF v_pp_estado = 'pendiente' THEN
+        -- Mig 441 (C-1): con "requiere repositor", pasada la hora la confirmación es justamente lo que hace regir
+        -- el precio (lo aplica `fn_tarea_repositor_aplicar_programado`, después de este UPDATE).
+        SELECT (t.precio_programado_requiere_repositor AND t.modo_operacion = 'avanzado') INTO v_requiere
+          FROM public.tenants t WHERE t.id = OLD.tenant_id;
+        IF COALESCE(v_requiere, false) AND OLD.vigente_desde <= now() THEN
+          RETURN NEW;
+        END IF;
         RAISE EXCEPTION 'Todavía no: el precio nuevo rige desde el %. Si la etiqueta se pone antes, la góndola muestra un precio que el sistema todavía no cobra.',
           to_char(OLD.vigente_desde AT TIME ZONE 'America/Argentina/Buenos_Aires', 'DD/MM/YYYY "a las" HH24:MI')
           USING ERRCODE = 'check_violation';
@@ -10326,6 +10757,31 @@ BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_usuario_en_roles_categoria(p_columna text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_rol text; v_custom uuid; v_tenant uuid; v_lista jsonb;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN true; END IF;
+  SELECT rol, rol_custom_id, tenant_id INTO v_rol, v_custom, v_tenant FROM users WHERE id = auth.uid() AND activo IS NOT FALSE;
+  IF v_rol IS NULL THEN RETURN false; END IF;
+  IF v_rol IN ('DUEÑO', 'ADMIN') THEN RETURN true; END IF;
+  IF p_columna = 'gestionar' THEN
+    SELECT categorias_cliente_roles INTO v_lista FROM tenants WHERE id = v_tenant;
+  ELSIF p_columna = 'asignar' THEN
+    SELECT categorias_cliente_asignar_roles INTO v_lista FROM tenants WHERE id = v_tenant;
+  ELSE
+    RETURN false;
+  END IF;
+  RETURN v_lista IS NOT NULL AND (v_lista ? v_rol OR (v_custom IS NOT NULL AND v_lista ? ('custom:' || v_custom::text)));
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_usuarios_hacen_repositor(p_tenant_id uuid, p_sucursal_id uuid)
  RETURNS TABLE(usuario_id uuid, nombre text)
  LANGUAGE sql
@@ -10540,8 +10996,7 @@ DECLARE
   v_monto_cc    numeric := 0;
   v_deuda_total numeric := 0;
   v_deuda_venc  numeric := 0;
-  v_limite      numeric;
-  v_enf         text;
+  v_cc          RECORD;
   v_moros       text;
 BEGIN
   IF NEW.estado = 'pendiente' OR NEW.cliente_id IS NULL THEN
@@ -10568,7 +11023,7 @@ BEGIN
       AND v.estado <> 'cancelada'
       AND (v.total - v.monto_pagado) > v_eps;
 
-  -- B4 — morosidad.
+  -- B4 — morosidad (política solo del negocio, D3).
   IF v_deuda_venc > v_eps THEN
     IF v_moros = 'bloqueo_total' THEN
       RAISE EXCEPTION 'Cliente con deuda vencida ($%). No puede comprar hasta saldar.', round(v_deuda_venc)
@@ -10579,7 +11034,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- B1 — límite (parte CC, solo si la política es 'bloquear').
   IF v_es_cc THEN
     BEGIN
       IF NEW.medio_pago IS NOT NULL AND btrim(NEW.medio_pago) <> '' THEN
@@ -10592,23 +11046,50 @@ BEGIN
     END;
 
     IF v_monto_cc > v_eps THEN
-      v_enf := COALESCE((SELECT cc_enforcement_politica FROM public.tenants WHERE id = NEW.tenant_id), 'avisar');
-      IF v_enf = 'bloquear' THEN
-        SELECT COALESCE(c.limite_credito, t.limite_cc_default)
-          INTO v_limite
-          FROM public.clientes c, public.tenants t
-          WHERE c.id = NEW.cliente_id AND t.id = NEW.tenant_id;
-        IF v_limite IS NOT NULL AND (v_deuda_total + v_monto_cc) > v_limite + v_eps THEN
-          RAISE EXCEPTION 'La venta deja la cuenta corriente en $% y supera el límite de $%. Operación bloqueada.',
-            round(v_deuda_total + v_monto_cc), round(v_limite)
-            USING ERRCODE = 'check_violation';
-        END IF;
+      -- Mig 442: condiciones EFECTIVAS (Cliente > Categoría > Negocio).
+      SELECT * INTO v_cc FROM public.vw_clientes_cc WHERE cliente_id = NEW.cliente_id;
+
+      -- Mig 442 (decisión de GO): la CC habilitada también la controla el servidor.
+      IF NOT COALESCE(v_cc.cc_habilitada, false) THEN
+        RAISE EXCEPTION 'El cliente no tiene cuenta corriente habilitada. Cobrá por otro medio.'
+          USING ERRCODE = 'check_violation';
+      END IF;
+
+      -- B1 — límite (solo si la política efectiva es 'bloquear').
+      IF v_cc.cc_enforcement_politica = 'bloquear' AND v_cc.cc_limite IS NOT NULL
+         AND (v_deuda_total + v_monto_cc) > v_cc.cc_limite + v_eps THEN
+        RAISE EXCEPTION 'La venta deja la cuenta corriente en $% y supera el límite de $%. Operación bloqueada.',
+          round(v_deuda_total + v_monto_cc), round(v_cc.cc_limite)
+          USING ERRCODE = 'check_violation';
       END IF;
     END IF;
   END IF;
 
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_ventas_cc_vencimiento()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_plazo integer;
+BEGIN
+  -- En un UPDATE solo se completa cuando la venta RECIÉN pasa a CC o sale de presupuesto/reserva: una venta vieja sin
+  -- fecha no recibe un vencimiento retroactivo porque alguien le cambió el estado (REGLA #0 punto 7).
+  IF COALESCE(NEW.es_cuenta_corriente, false) AND NEW.cliente_id IS NOT NULL AND NEW.estado <> 'pendiente'
+     AND (TG_OP = 'INSERT'
+          OR (NEW.fecha_vencimiento_cc IS NULL
+              AND (OLD.es_cuenta_corriente IS DISTINCT FROM NEW.es_cuenta_corriente OR OLD.estado IN ('pendiente', 'reservada')))) THEN
+    SELECT cc_plazo_dias INTO v_plazo FROM vw_clientes_cc WHERE cliente_id = NEW.cliente_id;
+    NEW.fecha_vencimiento_cc := (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date + COALESCE(v_plazo, 30);
+  END IF;
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_ventas_propagar_sucursal_items()
@@ -11820,42 +12301,14 @@ CREATE OR REPLACE FUNCTION public.recalcular_intereses_cc(p_tenant uuid)
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-DECLARE
-  v_pct NUMERIC;
-  v_count INT := 0;
 BEGIN
   -- 🔒 mig 437: get_user_tenant_id() mira `activo` (mig 433); el EXISTS sobre users no lo hacía.
   -- Sin usuario sigue devolviendo 0, igual que antes (el sweep usa recalcular_intereses_cc_all()).
   IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM get_user_tenant_id() THEN
     RETURN 0;
   END IF;
-
-  SELECT COALESCE(cc_interes_mensual_pct, 0) INTO v_pct FROM tenants WHERE id = p_tenant;
-  IF v_pct IS NULL OR v_pct <= 0 THEN
-    UPDATE ventas SET interes_cc = 0
-      WHERE tenant_id = p_tenant AND es_cuenta_corriente = TRUE AND interes_cc <> 0;
-    RETURN 0;
-  END IF;
-
-  UPDATE ventas v SET interes_cc = ROUND(
-      GREATEST(v.total - v.monto_pagado, 0)
-      * (v_pct / 100.0)
-      * (GREATEST(0, (CURRENT_DATE - v.fecha_vencimiento_cc)) / 30.0)
-    , 2)
-  WHERE v.tenant_id = p_tenant
-    AND v.es_cuenta_corriente = TRUE
-    AND v.estado <> 'cancelada'
-    AND v.fecha_vencimiento_cc IS NOT NULL
-    AND (v.total - v.monto_pagado) > 0.5;
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-
-  UPDATE ventas SET interes_cc = 0
-    WHERE tenant_id = p_tenant AND es_cuenta_corriente = TRUE AND interes_cc <> 0
-      AND ((total - monto_pagado) <= 0.5
-           OR fecha_vencimiento_cc IS NULL
-           OR fecha_vencimiento_cc >= CURRENT_DATE);
-
-  RETURN v_count;
+  -- Mig 442: el % sale de cada cliente (categoría > negocio), no solo del negocio.
+  RETURN fn_recalcular_intereses_cc_tenant(p_tenant);
 END;
 $function$
 
@@ -11868,36 +12321,10 @@ CREATE OR REPLACE FUNCTION public.recalcular_intereses_cc_all()
 AS $function$
 DECLARE
   v_total INT := 0;
-  v_count INT;
-  v_pct   NUMERIC;
   t       RECORD;
 BEGIN
-  FOR t IN SELECT id, COALESCE(cc_interes_mensual_pct, 0) AS pct FROM tenants LOOP
-    v_pct := t.pct;
-    IF v_pct IS NULL OR v_pct <= 0 THEN
-      UPDATE ventas SET interes_cc = 0
-        WHERE tenant_id = t.id AND es_cuenta_corriente = TRUE AND interes_cc <> 0;
-      CONTINUE;
-    END IF;
-
-    UPDATE ventas v SET interes_cc = ROUND(
-        GREATEST(v.total - v.monto_pagado, 0)
-        * (v_pct / 100.0)
-        * (GREATEST(0, (CURRENT_DATE - v.fecha_vencimiento_cc)) / 30.0)
-      , 2)
-    WHERE v.tenant_id = t.id
-      AND v.es_cuenta_corriente = TRUE
-      AND v.estado <> 'cancelada'
-      AND v.fecha_vencimiento_cc IS NOT NULL
-      AND (v.total - v.monto_pagado) > 0.5;
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-    v_total := v_total + v_count;
-
-    UPDATE ventas SET interes_cc = 0
-      WHERE tenant_id = t.id AND es_cuenta_corriente = TRUE AND interes_cc <> 0
-        AND ((total - monto_pagado) <= 0.5
-             OR fecha_vencimiento_cc IS NULL
-             OR fecha_vencimiento_cc >= CURRENT_DATE);
+  FOR t IN SELECT id FROM tenants LOOP
+    v_total := v_total + fn_recalcular_intereses_cc_tenant(t.id);
   END LOOP;
   RETURN v_total;
 END;
@@ -13494,9 +13921,15 @@ CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones 
 CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
 CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
+CREATE TRIGGER trg_categorias_cliente_auditar AFTER INSERT OR UPDATE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_auditar();
+CREATE TRIGGER trg_categorias_cliente_guard_delete BEFORE DELETE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_guard_delete();
+CREATE TRIGGER trg_categorias_cliente_touch BEFORE UPDATE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_touch();
 CREATE TRIGGER trg_cheques_monto_guard BEFORE UPDATE ON public.cheques FOR EACH ROW EXECUTE FUNCTION fn_cheques_monto_guard();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
 CREATE TRIGGER clientes_cuenta_token_fechado BEFORE UPDATE OF cuenta_token ON public.clientes FOR EACH ROW EXECUTE FUNCTION trg_clientes_cuenta_token_fechado();
+CREATE TRIGGER trg_clientes_categoria_auditar AFTER UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_auditar();
+CREATE TRIGGER trg_clientes_categoria_guard BEFORE INSERT OR UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_guard();
+CREATE TRIGGER trg_clientes_dni_vacio_a_null BEFORE INSERT OR UPDATE OF dni ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_dni_vacio_a_null();
 CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
@@ -13563,6 +13996,7 @@ CREATE TRIGGER trg_vac_sol_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_so
 CREATE TRIGGER trg_enforce_sucursales BEFORE INSERT OR UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('sucursales');
 CREATE TRIGGER trg_notificar_respuesta_soporte AFTER INSERT ON public.support_messages FOR EACH ROW WHEN (((new.autor_tipo = 'agente'::text) AND (NOT new.interno))) EXECUTE FUNCTION fn_notificar_respuesta_soporte();
 CREATE TRIGGER trg_support_message_actualiza_ticket AFTER INSERT ON public.support_messages FOR EACH ROW EXECUTE FUNCTION fn_support_message_actualiza_ticket();
+CREATE TRIGGER trg_tarea_repositor_aplicar_programado AFTER UPDATE OF estado ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_aplicar_programado();
 CREATE TRIGGER trg_tarea_repositor_asignado_valido_tenant BEFORE INSERT OR UPDATE OF usuario_asignado_id ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_asignado_valido_tenant();
 CREATE TRIGGER trg_tarea_repositor_guard_completar BEFORE UPDATE OF estado ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_guard_completar();
 CREATE TRIGGER tr_tenant_certificates_updated_at BEFORE UPDATE ON public.tenant_certificates FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -13592,6 +14026,7 @@ CREATE TRIGGER set_venta_numero BEFORE INSERT ON public.ventas FOR EACH ROW EXEC
 CREATE TRIGGER trg_ventas_anulada_cancela_pedido AFTER UPDATE OF estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_anulada_cancela_pedido();
 CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pagado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_auto_pedido();
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
+CREATE TRIGGER trg_ventas_cc_vencimiento BEFORE INSERT OR UPDATE OF es_cuenta_corriente, estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_vencimiento();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_propagar_sucursal_items AFTER UPDATE OF sucursal_id ON public.ventas FOR EACH ROW WHEN ((old.sucursal_id IS DISTINCT FROM new.sucursal_id)) EXECUTE FUNCTION fn_ventas_propagar_sucursal_items();
@@ -13633,6 +14068,7 @@ ALTER TABLE public.caja_traspasos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cajas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.canales_venta ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categorias ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categorias_cliente ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categorias_gasto ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cheques ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cierres_contables ENABLE ROW LEVEL SECURITY;
@@ -13938,6 +14374,15 @@ CREATE POLICY categorias_insert ON public.categorias AS PERMISSIVE FOR INSERT TO
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY categorias_tenant ON public.categorias AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY categorias_cliente_delete ON public.categorias_cliente AS PERMISSIVE FOR DELETE TO authenticated
+  USING (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
+CREATE POLICY categorias_cliente_insert ON public.categorias_cliente AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
+CREATE POLICY categorias_cliente_select ON public.categorias_cliente AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY categorias_cliente_update ON public.categorias_cliente AS PERMISSIVE FOR UPDATE TO authenticated
+  USING (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
 CREATE POLICY categorias_gasto_tenant ON public.categorias_gasto AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -14754,6 +15199,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ca
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias_cliente TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias_cliente TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias_gasto TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias_gasto TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias_gasto TO service_role;
@@ -15134,6 +15581,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_caja_resumen_diario TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_caja_resumen_diario TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_caja_resumen_diario TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_clientes_cc TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_clientes_cc TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_consumo_mensual TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_consumo_mensual TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_diferencias_por_cajero TO anon;
@@ -15244,6 +15693,43 @@ CREATE OR REPLACE VIEW public.vw_caja_resumen_diario AS
      LEFT JOIN cajas c ON ((c.id = cs.caja_id)))
   WHERE (NOT COALESCE(c.es_caja_fuerte, false))
   GROUP BY cs.tenant_id, (date(cs.abierta_at)), cs.sucursal_id, s.nombre, cs.caja_id, c.nombre, c.moneda;
+
+CREATE OR REPLACE VIEW public.vw_clientes_cc AS
+ SELECT c.id AS cliente_id,
+    c.tenant_id,
+    c.categoria_cliente_id,
+    cat.nombre AS categoria_nombre,
+    COALESCE(c.cuenta_corriente_habilitada, cat.cc_habilitada, false) AS cc_habilitada,
+    COALESCE(c.limite_credito, cat.cc_limite, t.limite_cc_default) AS cc_limite,
+    COALESCE(c.plazo_pago_dias, cat.cc_plazo_dias, t.cc_dias_vencimiento, 30) AS cc_plazo_dias,
+    COALESCE(cat.cc_interes_mensual_pct, t.cc_interes_mensual_pct, (0)::numeric) AS cc_interes_mensual_pct,
+    COALESCE(cat.cc_enforcement_politica, t.cc_enforcement_politica, 'avisar'::text) AS cc_enforcement_politica,
+        CASE
+            WHEN (c.cuenta_corriente_habilitada IS NOT NULL) THEN 'cliente'::text
+            WHEN (cat.cc_habilitada IS NOT NULL) THEN 'categoria'::text
+            ELSE 'negocio'::text
+        END AS origen_habilitada,
+        CASE
+            WHEN (c.limite_credito IS NOT NULL) THEN 'cliente'::text
+            WHEN (cat.cc_limite IS NOT NULL) THEN 'categoria'::text
+            ELSE 'negocio'::text
+        END AS origen_limite,
+        CASE
+            WHEN (c.plazo_pago_dias IS NOT NULL) THEN 'cliente'::text
+            WHEN (cat.cc_plazo_dias IS NOT NULL) THEN 'categoria'::text
+            ELSE 'negocio'::text
+        END AS origen_plazo,
+        CASE
+            WHEN (cat.cc_interes_mensual_pct IS NOT NULL) THEN 'categoria'::text
+            ELSE 'negocio'::text
+        END AS origen_interes,
+        CASE
+            WHEN (cat.cc_enforcement_politica IS NOT NULL) THEN 'categoria'::text
+            ELSE 'negocio'::text
+        END AS origen_enforcement
+   FROM ((clientes c
+     JOIN tenants t ON ((t.id = c.tenant_id)))
+     LEFT JOIN categorias_cliente cat ON (((cat.id = c.categoria_cliente_id) AND cat.activo)));
 
 CREATE OR REPLACE VIEW public.vw_consumo_mensual AS
  SELECT tenant_id,

@@ -12,7 +12,7 @@ import { PageTabs } from '@/components/PageTabs'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
-import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, composeDomicilioCliente, domicilioReceptor, type FacturaPDFData } from '@/lib/facturasPDF'
 import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -116,7 +116,7 @@ export default function FacturacionPage() {
       receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
       receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),
-      receptor_domicilio: composeDomicilioCliente(venta.clientes?.cliente_domicilios),
+      receptor_domicilio: domicilioReceptor(venta.clientes),
       items: (venta.venta_items ?? []).map((i: any) => ({
         codigo:         i.productos?.sku ?? null,
         descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
@@ -128,6 +128,7 @@ export default function FacturacionPage() {
       })),
       total: Number(venta.total),
       forma_pago: formaPago,
+      condicion_venta: condicionVenta((venta as any).es_cuenta_corriente),
       pago_mp_qr: pagoMpQr,
       pago_mp_monto: pagoMpQr ? saldo : null,
     }
@@ -148,15 +149,6 @@ export default function FacturacionPage() {
       if (!res.ok || !json?.init_point) return null
       return await QRCode.toDataURL(json.init_point, { width: 200, margin: 1 })
     } catch { return null }
-  }
-
-  // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.
-  function composeDomicilioCliente(doms: any[] | null | undefined): string | undefined {
-    const d = (doms ?? []).find((x: any) => x.es_principal) ?? (doms ?? [])[0]
-    if (!d) return undefined
-    const l1 = [d.calle, d.numero, d.piso_depto].filter(Boolean).join(' ')
-    const l2 = [d.ciudad, d.provincia].filter(Boolean).join(', ')
-    return [l1, l2].filter(Boolean).join(', ') || undefined
   }
 
   // medio_pago es un JSON string [{"tipo":"Efectivo","monto":1500}] → etiqueta para el PDF

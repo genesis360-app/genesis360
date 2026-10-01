@@ -17,6 +17,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { PrecioVigenciaModal, type EleccionVigencia } from '@/components/PrecioVigenciaModal'
 import { cambioDePrecio, formatearVigencia } from '@/lib/precioProgramado'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { useResolverPrecioProgramado } from '@/hooks/useResolverPrecioProgramado'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, type UnidadFisica } from '@/lib/unidadMedidaFisica'
@@ -65,11 +66,9 @@ export default function ProductoFormPage() {
   const { tenant, user, sucursales } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
-  // 🛑 D-1 (2026-09-23). Antes tomaba `cotizacion`, que es la de VENTA. El 2026-09-08 Fede detectó
-  // que el POS convertía al dólar venta y le cobraba de más al cliente, y se arregló para que use
-  // COMPRA (`tasaUsdAArs`) — pero esta pantalla quedó sin actualizar. Resultado: el POS cobraba a una
-  // tasa y el espejo en pesos que leen margen y reportes se calculaba con otra. Ahora las tres
-  // puertas (POS, ficha e importador) usan la misma.
+  // 🛑 D-1. Las tres puertas (POS, ficha e importador) usan la MISMA tasa: la única del sistema,
+  // vendedor divisa BNA del día hábil anterior (fase 2, 2026-09-26). En 09-23 esta pantalla usaba
+  // otra que el POS y el espejo en pesos que leen margen y reportes no coincidía con lo cobrado.
   const { cotizacionUsdAArs: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showQR, setShowQR] = useState(false)
@@ -134,6 +133,7 @@ export default function ProductoFormPage() {
   // Precio con fecha/hora de vigencia (mig 422): al guardar un cambio de precio de venta se pregunta desde
   // cuándo rige. Si hay un cambio ya programado para este producto, se muestra acá y en el modal.
   const [vigenciaModalAbierto, setVigenciaModalAbierto] = useState(false)
+  const resolverProgramado = useResolverPrecioProgramado()
   const { data: precioPendiente } = useQuery({
     queryKey: ['precio-programado-pendiente', id],
     queryFn: async () => {
@@ -561,6 +561,11 @@ export default function ProductoFormPage() {
 
   const guardarProducto = async (vigencia: EleccionVigencia) => {
     setVigenciaModalAbierto(false)
+    // C-3: un cambio de precio "ahora" sobre un producto con precio programado pendiente pregunta qué hacer con
+    // él (por defecto, cancelarlo) — si no, a su hora pisaría el precio que se está guardando.
+    if (vigencia.modo === 'ahora' && isEditing && id && productoData
+        && cambioDePrecio(productoData.precio_venta, form.precio_venta)
+        && !(await resolverProgramado([id], { [id]: form.nombre }))) return
     setSaving(true)
     try {
       // Auto-generar SKU secuencial si está vacío

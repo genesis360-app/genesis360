@@ -69,7 +69,7 @@ export function PrecioVigenciaModal({ abierto, precioActual, precioNuevo, pendie
             <div className="text-xs rounded-xl px-3 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
               Ya hay un cambio programado a <strong>{fmtPesos(Number(pendiente.precio_venta))}</strong> para el{' '}
               <strong>{formatearVigencia(pendiente.vigente_desde)}</strong>. Si programás otro, lo reemplaza; si
-              elegís "Ahora", ese cambio sigue en pie.
+              elegís "Ahora", te preguntamos qué hacer con él (por defecto se cancela).
             </div>
           )}
 

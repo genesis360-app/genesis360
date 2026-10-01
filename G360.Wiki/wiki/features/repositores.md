@@ -677,6 +677,11 @@ número de plata.
 
 ## 🗓️ Etiquetas de precios programados (migs 423-424, 2026-09-15, ✅ EN PROD desde el 2026-09-15)
 
+> **2026-09-26 (mig 441, DEV) — modo "el precio espera la etiqueta" (C-1):** con el flag de Config prendido, pasada la
+> hora la etiqueta NO es "vencida": el precio nuevo empieza a regir cuando se confirma (la última de las sucursales con
+> góndola). La puede confirmar el repositor aunque su rol no pueda cambiar precios. Ver [[wiki/features/productos]]
+> "Precio programado — C-1 y C-3".
+
 Con un precio de venta programado ([[wiki/features/productos]], sección "Precio programado — Fases 2-3"), la
 tarea de cambiar la etiqueta aparece **antes** de la hora (anticipación configurable en esta misma card de
 Config, 1 hora por defecto), con el precio nuevo y el aviso "Rige desde…". No se puede completar mientras rija el

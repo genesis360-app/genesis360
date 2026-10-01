@@ -389,10 +389,9 @@ cambiaba lo que se cobraba**. Ahora el CSV manda.
 **Cómo quedó el fix**: lógica pura nueva `src/lib/importarProductosMoneda.ts` (patrón ccLogic de la casa)
 con **22 tests** (`tests/unit/importarProductosMoneda.test.ts`). Usa la cotización de **COMPRA**
 (`cotizacionUsdAArs`/`tasaUsdAArs`), la misma que usa el POS para valuar un producto en dólares al
-cobrarlo. 🛑 **EN CURSO — va a cambiar (2026-09-25, D-1):** GO decidió reemplazar COMPRA por el
-**vendedor divisa BNA del día hábil anterior** en todos los caminos (POS, ficha, importador, tiers/
-combos, pagos, Bóveda), no solo acá — nada construido todavía, ver
-[[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA". **Sin cotización, la fila
+cobrarlo. ✅ **Cambiado (D-1 fase 2, 2026-09-26):** la tasa ya no es COMPRA sino el **vendedor divisa
+BNA del día hábil anterior**, la única del sistema (POS, ficha, importador, tiers/combos, pagos,
+Bóveda) — ver [[wiki/features/ventas-pos]] "UNA sola tasa USD→ARS". **Sin cotización, la fila
 no se importa** (regla D5 de Fede: nunca se inventa una tasa) —
 validado en la vista previa y con guard en el envío. Typecheck limpio, build verde. **UAT §66, 8
 escenarios.** Revisado por `code-reviewer`: sin hallazgos rojos, OK para deployar; confirmó que el camino
@@ -411,6 +410,32 @@ Verificado contra la base real en DEV con el payload exacto (revertido después)
 > en "Margen: tope numeric(8,2) (mig 436, 2026-09-25)".
 
 ---
+
+## Plantilla del importador con listas desplegables (D-3 de las respuestas del 25/09) — 2026-09-26, DEV
+
+> No confundir con el "D-3" de la sección siguiente (hallazgo de A0, 24/09). Este es el pedido de GO en
+> `sources/raw/respuestas_puntos_abiertos_2026-09-25.md`, sección D.
+
+La plantilla (`descargarPlantillaProductos`) trae **desplegables** en 11 columnas: categoría, proveedor,
+las 2 monedas, unidad, alícuota de IVA, regla de inventario y los 4 SI/NO (series, lote, vencimiento, kit).
+Excel frena un valor que no esté en la lista (`errorStyle="stop"`) con un cartel que dice qué hacer.
+
+- **Cómo**: SheetJS CE no escribe validaciones de datos → `src/lib/xlsxValidaciones.ts` abre el `.xlsx`
+  (es un zip) con `fflate` (ahora dependencia directa), inserta `<dataValidations>` en el XML de la hoja en
+  la posición que exige el esquema y vuelve a comprimir. Las listas viven en una hoja **oculta "Listas"**,
+  referenciadas por **nombres definidos** (`lst_categoria`…): una lista en línea tiene tope de 255
+  caracteres y se rompe con un nombre que tenga coma. Topes de Excel respetados (título 32, texto 255: con
+  uno más largo Excel da el archivo por dañado). El parser sigue leyendo solo la primera hoja.
+- **Maestro al día (pregunta de GO)**: categorías y proveedores se consultan a la base **en el momento de
+  descargar** (no lo que la pantalla cargó al abrirse) y solo los **activos**; la subida valida también
+  contra el maestro de ese momento. Un archivo YA descargado no puede enterarse de una categoría nueva
+  (Excel no consulta la base): la hoja Referencia dice la fecha/hora de generación y el cartel de error
+  indica volver a descargar la plantilla.
+- Textos de Referencia corregidos: margen objetivo ya no dice "0–100" (D-2), moneda USD = dólar BNA.
+- **Verificado con Excel 16 real (COM)**: abre sin reparar, ve las 11 validaciones, acepta "Bebidas"/10.5
+  y rechaza una categoría inventada; la fila completada en Excel entra a la vista previa del importador
+  con 0 errores; una categoría creada con la pantalla abierta aparece en la plantilla. 14 tests unit
+  (`tests/unit/xlsxValidaciones.test.ts`, sobre un libro real de SheetJS). UAT §71.
 
 ## Actualización por archivo — D-3, D-1, D-2 y los 2 bugs 🔴 que encontró `code-reviewer` (2026-09-24) — 🚀 EN PROD desde v1.231.0
 
@@ -757,6 +782,40 @@ PostgREST con control negativo. ✅ **Deploy a PROD el 2026-09-15** (migs 422-42
 420-421/425-426; `md5(pg_get_functiondef)` idéntico DEV↔PROD, crons `aplicar-precios-programados` y
 `notif-precios-programados-manana` activos y corriendo sin fallos) — ver [[wiki/database/migraciones]] y
 `sources/raw/project_pendientes.md`.
+
+---
+
+## 🗓️ Precio programado — C-1 y C-3 de las respuestas del 25/09 (mig 441, 2026-09-26, DEV)
+
+Primer paso de la Fase 1 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`.
+
+**C-1 · "el precio cambia cuando llegó la hora Y el repositor confirmó"** — opcional por negocio, en Config →
+Inventario → Repositores (`tenants.precio_programado_requiere_repositor`, apagado por defecto = a la hora exacta).
+Prendido (modo avanzado):
+- El cron no aplica un programado mientras quede **alguna** etiqueta ligada abierta (una por sucursal con góndola).
+  Sin góndola, cambia a la hora. Las etiquetas se crean aunque la hora ya pasó (con anticipación "a la hora del
+  cambio" no había ventana previa).
+- La etiqueta se confirma recién pasada la hora; al confirmar la **última**, el precio rige **en el acto**
+  (trigger `trg_tarea_repositor_aplicar_programado`) y no se pide otra etiqueta para esa sucursal.
+- 🛑 Como lo dispara la confirmación del repositor, corre con su sesión: `fn_productos_rol_guard` deja pasar SOLO esa
+  aplicación (marca local `g360.pp_aplicando` + programado pendiente de ese producto con exactamente ese precio + ninguna
+  otra columna de precio tocada). Probado con un DEPOSITO: confirma → aplica; cambiar un precio directo o con la marca
+  inventada → rechazado.
+- Aviso único a DUEÑO y SUPER_USUARIO si la etiqueta sigue sin confirmarse X horas después (default 2).
+- El cuerpo de "aplicar un programado" pasó a `fn_aplicar_precio_programado(p_id)` (solo `service_role`), que usan el
+  cron y el trigger; mismo comportamiento que antes.
+- Pantallas: Repositores dice "El precio nuevo empieza a regir cuando confirmes esta etiqueta" (en vez de "Vencida") y
+  el diálogo lo repite con el precio; Programados muestra "Esperando que se confirme la etiqueta".
+
+**C-3 · cambio "ahora" con un programado pendiente → pregunta, por defecto cancelarlo** — hook
+`useResolverPrecioProgramado` en los 5 caminos que cambian `precio_venta` desde la app: ficha, aprobación en
+Supervisión, edición masiva, precio sugerido de kit e importador. Opciones: **Cancelar el programado y guardar**
+(primaria, Enter), **Guardar y mantener**, **Volver** (Escape; no guarda nada). Si la cancelación falla, no se guarda
+el precio. Nueva salida de 3+ opciones en el proveedor de confirmaciones (`useElegir`). El repricing automático del
+servidor no pregunta (no hay a quién).
+
+Verificación: SQL en transacción descartada (14 comprobaciones), 10 unit (`precioProgramadoC1C3.test.ts`), e2e **161**
+(C-1 con el cron real + C-3 en la ficha) y regresión **151**. UAT §72. C-2 espera PL-4.
 
 ---
 

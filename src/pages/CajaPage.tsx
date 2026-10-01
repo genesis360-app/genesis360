@@ -37,6 +37,7 @@ import { ConteoDenominaciones } from '@/components/ConteoDenominaciones'
 import { useConfirm } from '@/hooks/useConfirm'
 import { calcularConversionUsd, ensureFuerteSesionId } from '@/lib/cajaBoveda'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { fechaCorta } from '@/lib/cotizacionBna'
 
 const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
@@ -81,8 +82,9 @@ export default function CajaPage() {
   const puedeOperarCajaUsd = user?.rol === 'DUEÑO' || rolEnLista(
     rol, (user as any)?.rol_custom_id, (tenant as any)?.caja_usd_roles_permitidos ?? [],
   )
-  // G5 Fase 5 — conversión USD↔$ de la Bóveda (F2: usa compra/venta según el sentido)
-  const { cotizacion: cotizacionUSD, cotizacionCompra } = useCotizacion()
+  // G5 Fase 5 — conversión USD↔$ de la Bóveda. D-1 fase 2: la MISMA tasa en los dos sentidos
+  // (vendedor divisa BNA del día hábil anterior), la del resto del sistema.
+  const { cotizacionUsdAArs: cotizacionUSD, fecha: fechaCotizacionUSD } = useCotizacion()
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
   const [showApertura, setShowApertura] = useState(false)
@@ -1315,7 +1317,7 @@ export default function CajaPage() {
     mutationFn: async ({ sentido, monto }: { sentido: 'usd_a_ars' | 'ars_a_usd'; monto: number }) => {
       if (!puedeConvertirUsdBoveda) throw new Error('Solo el DUEÑO puede convertir USD↔$ en la Bóveda')
       if (!cajaFuerteArs || !cajaFuerteUsd) throw new Error('Falta configurar la Caja Fuerte en pesos o en dólares')
-      const { montoDestino, tasaUsada } = calcularConversionUsd(sentido, monto, cotizacionUSD, cotizacionCompra)
+      const { montoDestino, tasaUsada } = calcularConversionUsd(sentido, monto, cotizacionUSD)
 
       const saldoOrigenDisponible = sentido === 'usd_a_ars' ? fuerteSaldoUsd : fuerteSaldoArs
       if (monto > saldoOrigenDisponible) {
@@ -2741,7 +2743,7 @@ export default function CajaPage() {
         let preview: { montoDestino: number; tasaUsada: number } | null = null
         let previewError: string | null = null
         if (montoNum > 0) {
-          try { preview = calcularConversionUsd(convertirSentido, montoNum, cotizacionUSD, cotizacionCompra) }
+          try { preview = calcularConversionUsd(convertirSentido, montoNum, cotizacionUSD) }
           catch (e: any) { previewError = e.message }
         }
         return (
@@ -2759,11 +2761,11 @@ export default function CajaPage() {
               <div className="flex gap-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg p-1">
                 <button onClick={() => setConvertirSentido('usd_a_ars')}
                   className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${convertirSentido === 'usd_a_ars' ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                  USD → $ (compra)
+                  USD → $
                 </button>
                 <button onClick={() => setConvertirSentido('ars_a_usd')}
                   className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-colors ${convertirSentido === 'ars_a_usd' ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                  $ → USD (venta)
+                  $ → USD
                 </button>
               </div>
               <div>
@@ -2775,7 +2777,7 @@ export default function CajaPage() {
               </div>
               {preview && (
                 <p className="text-sm text-gray-700 dark:text-gray-200 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl px-3 py-2.5">
-                  Recibís <strong>{formatMonedaLib(preview.montoDestino, monedaDestino)}</strong> en la Caja Fuerte {monedaDestino} (cotización {preview.tasaUsada})
+                  Recibís <strong>{formatMonedaLib(preview.montoDestino, monedaDestino)}</strong> en la Caja Fuerte {monedaDestino} (dólar BNA divisa {preview.tasaUsada.toLocaleString('es-AR')}{fechaCotizacionUSD ? ` del ${fechaCorta(fechaCotizacionUSD)}` : ''})
                 </p>
               )}
               {previewError && <p className="text-xs text-red-600 dark:text-red-400">{previewError}</p>}

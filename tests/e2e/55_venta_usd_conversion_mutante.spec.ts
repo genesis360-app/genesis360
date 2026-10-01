@@ -3,25 +3,28 @@
  * E2E — Producto en USD se convierte a moneda local a la cotización vigente (REGLA #0, plata).
  *
  * Lógica L41 (`VentasPage` ~1281-1292): si el producto tiene `moneda_venta='usd'` + `precio_usd>0`
- * y el tenant tiene `cotizacion_usd>0`, al agregarlo al carrito su `precio_unitario` se calcula como
- * `round(precio_usd × cotizacion_usd)` (moneda local) y guarda `precio_usd_origen`. Ese precio_unitario
+ * y hay cotización del dólar BNA, al agregarlo al carrito su `precio_unitario` se calcula como
+ * `round(precio_usd × tasa, 2)` (moneda local) y guarda `precio_usd_origen`. Desde D-1 fase 2
+ * (2026-09-26) la tasa es la ÚNICA del sistema: vendedor divisa BNA del día hábil anterior
+ * (`fn_cotizacion_bna_vigente`), no `tenants.cotizacion_usd`. Ese precio_unitario
  * alimenta subtotal/IVA/`venta_items` → si la conversión está mal, se vende a un precio equivocado.
  *
  * Valida por UI (sin mutar): al agregar el producto USD, el carrito muestra
- * "Precio USD {origen} · convertido a ${local}". Con `precio_usd=10` y `cotizacion_usd=1430` → $14.300.
+ * "Precio USD {origen} · convertido a ${local}". Con `precio_usd=10` → 10 × la tasa vigente, leída en
+ * el mismo test (cambia todos los días).
  *
  * Fixture SQL (DEV, Almacén Jorgito): se marca temporalmente "Coca Cola 1.5L Original" (CON stock, así
  * aparece en el buscador) como `moneda_venta='usd'` + `precio_usd=10` (se restaura a 'local'/NULL tras
- * correr). La `cotizacion_usd=1430` ya estaba seteada.
+ * correr).
  *
  * Re-ejecutable y sin efectos (no completa la venta). Skip-guard si el producto no aparece o el fixture
  * USD no está aplicado. Corre con OWNER (chromium) contra DEV.
  */
 import { test, expect } from '@playwright/test'
-import { irAlPOS } from './helpers/fixtures'
+import { irAlPOS, tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
 
 test.describe('Venta de producto en USD — conversión a la cotización vigente', () => {
-  test('agregar producto USD → precio convertido a moneda local', async ({ page }) => {
+  test('agregar producto USD → precio convertido a moneda local', async ({ page, request }) => {
     // 🔎 `irAlPOS` en vez de goto+waitForApp: en una corrida masiva del 2026-07-15 este spec
     // falló con un críptico "no se encontró el buscador", y el snapshot del fallo mostraba el
     // DASHBOARD renderizado en /ventas (0 señales de POS, 4 de Dashboard: "La Balanza"/"El Mix
@@ -52,7 +55,16 @@ test.describe('Venta de producto en USD — conversión a la cotización vigente
     if (!(await usdInd.isVisible().catch(() => false))) {
       test.skip(true, 'Fixture USD no aplicado (marcar el producto moneda_venta=usd, precio_usd=10) o sin cotización.')
     }
-    // POSITIVO: 10 USD × 1430 = $14.300 (conversión a moneda local en el carrito)
-    await expect(page.getByText(/Precio USD\s*10.*convertido a \$14[.,]300/i)).toBeVisible({ timeout: 6000 })
+    // La tasa vigente, leída de la misma fuente que la app (cambia todos los días).
+    const rpc = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_cotizacion_bna_vigente`, {
+      headers: restHeaders(await tokenDesdeBrowser(page)), data: { p_moneda: 'USD' },
+    })
+    expect(rpc.ok(), 'no pude leer la cotización vigente').toBeTruthy()
+    const tasa = parseFloat(String((await rpc.json())?.[0]?.venta ?? 0))
+    expect(tasa > 1, `sin cotización BNA vigente (${tasa}) — el test no mide nada`).toBeTruthy()
+    // POSITIVO: 10 USD × tasa (conversión a moneda local en el carrito; la UI muestra sin decimales)
+    const esperado = Math.round(10 * tasa * 100) / 100
+    const txt = esperado.toLocaleString('es-AR', { maximumFractionDigits: 0 }).replace(/\./g, '[.,]')
+    await expect(page.getByText(new RegExp(`Precio USD\\s*10.*convertido a \\$${txt}(?!\\d)`, 'i'))).toBeVisible({ timeout: 6000 })
   })
 })

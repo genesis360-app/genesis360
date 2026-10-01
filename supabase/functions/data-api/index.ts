@@ -129,7 +129,21 @@ serve(async (req) => {
     if (updatedSince) q = q.gte('updated_at', updatedSince)
     const { data, error } = await q
     if (error) throw error
-    rows = data ?? []
+    // Mig 442: `cuenta_corriente_habilitada` del cliente es su valor PROPIO (NULL = hereda de la categoría o del
+    // negocio). Se exporta el EFECTIVO de `vw_clientes_cc`, que es el que rige, más la categoría.
+    const ids = (data ?? []).map(c => c.id)
+    const efectivo = new Map<string, { cc_habilitada: boolean; categoria_nombre: string | null }>()
+    if (ids.length > 0) {
+      const { data: cc, error: eCC } = await supabase.from('vw_clientes_cc')
+        .select('cliente_id, cc_habilitada, categoria_nombre').in('cliente_id', ids)
+      if (eCC) throw eCC
+      for (const r of cc ?? []) efectivo.set(r.cliente_id, { cc_habilitada: r.cc_habilitada, categoria_nombre: r.categoria_nombre })
+    }
+    rows = (data ?? []).map(c => ({
+      ...c,
+      cuenta_corriente_habilitada: efectivo.get(c.id)?.cc_habilitada ?? false,
+      categoria: efectivo.get(c.id)?.categoria_nombre ?? null,
+    }))
   }
 
   if (entity === 'proveedores') {

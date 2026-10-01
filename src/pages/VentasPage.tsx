@@ -15,7 +15,8 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
-import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicionVenta, composeDomicilioCliente, domicilioReceptor, type FacturaPDFData } from '@/lib/facturasPDF'
+import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
 import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
@@ -408,11 +409,11 @@ export default function VentasPage() {
   }
   const qc = useQueryClient()
   const { grupos, grupoDefault } = useGruposEstados()
-  // 🛑 REGLA #0 (hallazgo de Fede, 2026-09-08): TODAS las conversiones USD→ARS del POS —precio de
-  // un producto en USD, tiers mayoristas, combos y el valor en pesos de un pago en dólares— van a la
-  // tasa de COMPRA, que es la convención del sistema (ver `tasaUsdAArs`). Antes acá entraba la de
-  // VENTA y le cobrábamos de más al cliente. Es UNA sola tasa a propósito: si el precio fuera a
-  // compra y el pago a venta, quien pagara en dólares sobrepagaría y saldría vuelto de la nada.
+  // 🛑 REGLA #0: TODAS las conversiones USD→ARS del POS —precio de un producto en USD, tiers
+  // mayoristas, combos y el valor en pesos de un pago en dólares— van a UNA sola tasa: el vendedor
+  // divisa BNA del día hábil anterior (D-1 fase 2, GO 2026-09-25; reemplaza "a COMPRA" de v1.207.0 —
+  // ver `src/lib/cotizacionBna.ts`). Es una a propósito: si el precio fuera a una tasa y el pago a
+  // otra, quien pagara en dólares sobrepagaría y saldría vuelto de la nada.
   const { cotizacionUsdAArs: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -525,6 +526,8 @@ export default function VentasPage() {
   const [facturaClienteCuit, setFacturaClienteCuit] = useState<string | null>(null)
   // DNI del cliente: junto al CUIT, sirve para identificar al receptor en Factura B sobre el umbral
   const [facturaClienteDni, setFacturaClienteDni] = useState<string | null>(null)
+  // Factura A: la normativa exige el domicilio comercial del receptor (contador de El Tilo, 2026-09-30).
+  const [facturaClienteTieneDomicilio, setFacturaClienteTieneDomicilio] = useState(true)
   // Tras emitir desde el POS: pasa a la vista de acciones (descargar/imprimir/email) sin ir al historial
   const [facturaEmitida, setFacturaEmitida] = useState<{ ventaId: string; tipo: string; cae: string } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
@@ -1100,7 +1103,7 @@ export default function VentasPage() {
     setSavingCliente(true)
     try {
       const { data, error } = await supabase.from('clientes')
-        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim(), email: email.trim() || null })
+        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim() || null, telefono: telefono.trim(), email: email.trim() || null })
         .select('id, nombre').single()
       if (error) throw error
       setClienteId(data.id)
@@ -1186,8 +1189,9 @@ export default function VentasPage() {
           setClienteId(draft.clienteId)
           setClienteNombre(draft.clienteNombre ?? '')
           setClienteTelefono(draft.clienteTelefono ?? '')
-          supabase.from('clientes').select('cuenta_corriente_habilitada').eq('id', draft.clienteId).maybeSingle()
-            .then(({ data }) => { if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true) })
+          // Mig 442: CC habilitada EFECTIVA (Cliente > Categoría > Negocio), no el valor propio del cliente.
+          supabase.from('vw_clientes_cc').select('cc_habilitada').eq('cliente_id', draft.clienteId).maybeSingle()
+            .then(({ data }) => { if (data?.cc_habilitada) setClienteCCEnabled(true) })
         }
         if (draft.mediosPago) setMediosPago(draft.mediosPago)
         if (draft.notas) setNotas(draft.notas)
@@ -1637,6 +1641,13 @@ export default function VentasPage() {
       return
     }
 
+    // D5: un producto con precio en dólares SIN cotización no se vende al precio en pesos guardado
+    // (que quedó congelado a la tasa del día en que se editó) — antes caía ahí en silencio.
+    if ((p as any).moneda_venta === 'usd' && ((p as any).precio_usd ?? 0) > 0 && !(cotizacionUSD > 0)) {
+      toast.error(`"${p.nombre}" tiene precio en dólares y no hay cotización del dólar BNA. Actualizala desde el menú lateral.`)
+      return
+    }
+
     // Si ya está en el carrito, incrementar
     const totalEnCarrito = cart.filter(c => c.producto_id === p.id).reduce((a, c) => a + c.cantidad, 0)
     if (totalEnCarrito > 0) {
@@ -2054,13 +2065,14 @@ export default function VentasPage() {
   useEffect(() => {
     if (!facturaModal) return
     let cancel = false
-    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor)').eq('id', facturaModal.ventaId).single()
+    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))').eq('id', facturaModal.ventaId).single()
       .then(({ data }) => {
         if (cancel) return
         const cuit = ((data as any)?.clientes?.cuit_receptor ?? '').toString().replace(/[-\s]/g, '')
         const dni = ((data as any)?.clientes?.dni ?? '').toString().replace(/\D/g, '')
         setFacturaClienteCuit(cuit || null)
         setFacturaClienteDni(dni || null)
+        setFacturaClienteTieneDomicilio(!!domicilioReceptor((data as any)?.clientes))
         // Emisor default de esta venta = el de su sucursal (?? principal)
         const def = emisorDeSucursal((data as any)?.sucursal_id)
         setFacturaEmisorId(def?.id ?? null)
@@ -2087,9 +2099,15 @@ export default function VentasPage() {
   const requiereIdentFacturaB = !!facturaModal && facturaTipo === 'B'
     && Number(facturaModal.ventaTotal) >= umbralFacturaB
     && !facturaClienteCuit && !facturaClienteDni
+  // Factura A sin domicilio del RECEPTOR: se bloquea hasta cargarlo (decisión de GO, 2026-09-30). Espejo en la EF.
+  const faltaDomicilioFacturaA = !!facturaModal && facturaTipo === 'A' && !!facturaClienteCuit && !facturaClienteTieneDomicilio
 
   const emitirFactura = async () => {
     if (!facturaModal) return
+    if (faltaDomicilioFacturaA) {
+      toast.error('Factura A: falta el domicilio fiscal/comercial del cliente. Cargalo en la ficha del cliente para poder emitir.', { duration: 9000 })
+      return
+    }
     if (requiereIdentFacturaB) {
       toast.error(`Factura B por $${umbralFacturaB.toLocaleString('es-AR', { maximumFractionDigits: 0 })} o más a consumidor final: AFIP exige identificar al cliente con DNI o CUIT. Cargalo en la ficha del cliente.`, { duration: 9000 })
       return
@@ -2173,15 +2191,6 @@ export default function VentasPage() {
     } catch { return null }
   }
 
-  // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.
-  function composeDomicilioCliente(doms: any[] | null | undefined): string | undefined {
-    const d = (doms ?? []).find((x: any) => x.es_principal) ?? (doms ?? [])[0]
-    if (!d) return undefined
-    const l1 = [d.calle, d.numero, d.piso_depto].filter(Boolean).join(' ')
-    const l2 = [d.ciudad, d.provincia].filter(Boolean).join(', ')
-    return [l1, l2].filter(Boolean).join(', ') || undefined
-  }
-
   // medio_pago es un JSON string [{"tipo":"Efectivo","monto":1500}] → etiqueta para el PDF
   function parseFormaPago(mp: any): string | null {
     try {
@@ -2196,7 +2205,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -2232,7 +2241,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
-      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
+      receptor_domicilio:  domicilioReceptor(cli),
       items: [
         ...ventaItemsPdf.map((i: any) => ({
           codigo:         i.productos?.sku ?? null,
@@ -2256,6 +2265,7 @@ export default function VentasPage() {
       // bonificación que le hicieron — y la factura es el documento que se lleva.
       descuento_general_pct: Number((venta as any).descuento_total ?? 0) || null,
       forma_pago: formaPago,
+      condicion_venta: condicionVenta((venta as any).es_cuenta_corriente),
       pago_mp_qr: pagoMpQr,
       pago_mp_monto: pagoMpQr ? saldo : null,
     }
@@ -2278,7 +2288,7 @@ export default function VentasPage() {
   // Arma el PresupuestoPDFData (A4) para una venta en estado presupuesto ('pendiente').
   async function buildPresupuestoPDFDataPorId(ventaId: string): Promise<PresupuestoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
+      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -2303,7 +2313,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
-      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios) ?? null,
+      receptor_domicilio:  domicilioReceptor(cli) ?? null,
       items: ((venta as any).venta_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
@@ -2332,7 +2342,7 @@ export default function VentasPage() {
   // Arma el RemitoPDFData (nota de entrega, no fiscal) de una venta.
   async function buildRemitoPDFDataPorId(ventaId: string): Promise<RemitoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
+      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -2548,7 +2558,7 @@ export default function VentasPage() {
   // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
   async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: dev, error } = await supabase.from('devoluciones')
-      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
@@ -2570,7 +2580,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
-      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
+      receptor_domicilio:  domicilioReceptor(cli),
       items: ((dev as any).devolucion_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
@@ -2582,6 +2592,7 @@ export default function VentasPage() {
       })),
       total: Number((dev as any).monto_total ?? 0),
       forma_pago: null,
+      condicion_venta: condicionVenta((dev as any)?.ventas?.es_cuenta_corriente),
     }
     return { data, email: cli?.email ?? null }
   }
@@ -3295,9 +3306,10 @@ export default function VentasPage() {
       }
       // B1 — enforcement de límite (solo sobre la parte que va a CC)
       if (modoCC && montoCC > 0.5) {
-        const { data: cli } = await supabase.from('clientes').select('limite_credito').eq('id', clienteId).maybeSingle()
-        const limite = cli?.limite_credito ?? (tenant as any)?.limite_cc_default ?? null
-        const enf = evaluarLimiteCC({ deudaTotal: est.deuda_total, montoCC, limite, politica: (tenant as any)?.cc_enforcement_politica ?? 'avisar' })
+        // Mig 442: límite y política EFECTIVOS (Cliente > Categoría > Negocio) — los mismos que aplica el servidor.
+        const { data: cc } = await supabase.from('vw_clientes_cc').select('cc_limite, cc_enforcement_politica').eq('cliente_id', clienteId).maybeSingle()
+        const limite = cc?.cc_limite != null ? Number(cc.cc_limite) : null
+        const enf = evaluarLimiteCC({ deudaTotal: est.deuda_total, montoCC, limite, politica: (cc?.cc_enforcement_politica ?? 'avisar') as any })
         if (enf.supera) {
           const msg = `Esta venta deja la cuenta corriente en ${fmtCC(est.deuda_total + montoCC)}, supera el límite de ${fmtCC(limite as number)}.`
           if (enf.accion === 'bloquear') { toast.error(msg + ' Operación bloqueada.'); return }
@@ -3357,7 +3369,7 @@ export default function VentasPage() {
     }
     const hayPagoUsd = mediosSinCCParaUsd.some(m => mediosEfectivoUsd.has(m.tipo) && (parseFloat(m.montoUsd ?? '') || 0) > 0)
     if (hayPagoUsd && !(cotizacionUSD > 0)) {
-      toast.error('Cargá la cotización del dólar (menú lateral) antes de cobrar en USD.')
+      toast.error('No hay cotización del dólar BNA: actualizala desde el menú lateral antes de cobrar en USD.')
       return
     }
     if (hayPagoUsd && !carritoAceptaUsd(cart)) {
@@ -3442,10 +3454,9 @@ export default function VentasPage() {
           )
         })(),
         es_cuenta_corriente: modoCC,
-        // B3 — vencimiento de la venta CC = hoy + cc_dias_vencimiento (si está configurado)
-        ...(modoCC && montoCC > 0.5 && ((tenant as any)?.cc_dias_vencimiento ?? null) != null
-          ? { fecha_vencimiento_cc: new Date(Date.now() + ((tenant as any).cc_dias_vencimiento) * 86400000).toISOString().slice(0, 10) }
-          : {}),
+        // B3 — el vencimiento de la venta CC lo pone el SERVIDOR (trigger `trg_ventas_cc_vencimiento`, mig 442): hoy +
+        // plazo efectivo (Cliente > Categoría > Negocio > 30). Antes lo calculaba acá con los días del negocio e
+        // ignoraba el plazo del cliente, mientras los avisos de vencido usaban otro.
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -6254,7 +6265,10 @@ export default function VentasPage() {
                               setClienteId(c.id)
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
-                              setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
+                              // Mig 442: la CC habilitada EFECTIVA (puede venir de la categoría); mientras llega, no se ofrece.
+                              setClienteCCEnabled(false)
+                              void supabase.from('vw_clientes_cc').select('cc_habilitada').eq('cliente_id', c.id).maybeSingle()
+                                .then(({ data }) => setClienteCCEnabled(!!data?.cc_habilitada))
                               setEsConsumidorFinal(false)   // H5: elegir cliente registrado → no es CF
                               setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente'))
                               setClienteSearch('')
@@ -6793,7 +6807,7 @@ export default function VentasPage() {
                           <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">≈ ${(parseFloat(mp.monto) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                         )}
                         {!(cotizacionUSD > 0) && (
-                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Sin cotización cargada</p>
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">Sin cotización del dólar BNA</p>
                         )}
                       </div>
                     ) : (
@@ -7996,7 +8010,9 @@ export default function VentasPage() {
               )}
             </div>
             <div className="mt-5 flex gap-3 no-print">
-              <button onClick={() => { window.print(); }}
+              <button onClick={() => imprimirConNombre(devComprobante.numero_nc
+                ? String(devComprobante.numero_nc).replace(/[^\w-]+/g, '_')
+                : `Devolucion_Venta_${devComprobante.venta_numero}`)}
                 className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm flex items-center justify-center gap-2">
                 <Printer size={15} /> Imprimir
               </button>
@@ -8319,7 +8335,7 @@ export default function VentasPage() {
                 </div>
               )}
               <div className="flex gap-2">
-                <button onClick={() => window.print()}
+                <button onClick={() => imprimirConNombre(`Ticket_Venta_${ticketVenta.numero}`)}
                   className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <Printer size={15} /> Imprimir
                 </button>
@@ -9090,6 +9106,11 @@ export default function VentasPage() {
                   Factura A deshabilitada: la venta no tiene un cliente con CUIT.
                 </p>
               )}
+              {faltaDomicilioFacturaA && (
+                <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
+                  Factura A: falta el domicilio fiscal/comercial del cliente (la normativa exige el domicilio del receptor). Cargalo en Clientes → editar cliente → "Domicilio fiscal / comercial" para poder emitir.
+                </p>
+              )}
               {requiereIdentFacturaB && (
                 <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
                   Factura B ≥ ${umbralFacturaB.toLocaleString('es-AR', { maximumFractionDigits: 0 })} a consumidor final: AFIP exige DNI o CUIT del cliente. Cargalo en la ficha del cliente para poder emitir.
@@ -9123,8 +9144,8 @@ export default function VentasPage() {
               className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
               Saltar
             </button>
-            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB || (emisorEsOverride && !confirmoEmisorOverride)}
-              title={requiereIdentFacturaB ? 'Cargá DNI o CUIT del cliente para emitir Factura B sobre el umbral' : undefined}
+            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB || faltaDomicilioFacturaA || (emisorEsOverride && !confirmoEmisorOverride)}
+              title={requiereIdentFacturaB ? 'Cargá DNI o CUIT del cliente para emitir Factura B sobre el umbral' : faltaDomicilioFacturaA ? 'Cargá el domicilio fiscal/comercial del cliente para emitir Factura A' : undefined}
               className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
               {emitiendoFactura
                 ? <><span className="animate-spin">⟳</span> Emitiendo…</>

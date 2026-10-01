@@ -1952,6 +1952,13 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success('Anticipación de etiquetas actualizada')
   }
+  // C-1 de Precio programado (mig 441): el precio rige cuando llegó la hora Y el repositor confirmó la etiqueta.
+  const actualizarAprobacionRepositor = async (cambios: { precio_programado_requiere_repositor?: boolean; precio_programado_aviso_demora_horas?: number }) => {
+    const { data, error } = await supabase.from('tenants').update(cambios).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Configuración de precios programados actualizada')
+  }
 
   // A2 del relevamiento de Supervisor (mig 348): reglas de enrutamiento "tipo X -> Usuario A" para
   // la auto-asignación de autorizaciones al crearse (si no hay regla, el trigger reparte por carga).
@@ -4818,6 +4825,32 @@ export default function ConfigPage() {
                   .sort((a, b) => a - b)
                   .map(m => <option key={m} value={m}>{etiquetaAnticipacion(m)}</option>)}
               </select>
+            </div>
+            {/* C-1 (mig 441): el precio espera la etiqueta */}
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" className="mt-0.5 accent-accent"
+                  checked={!!(t289 as any)?.precio_programado_requiere_repositor}
+                  onChange={e => actualizarAprobacionRepositor({ precio_programado_requiere_repositor: e.target.checked })} />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  <strong>El precio programado cambia recién cuando el repositor confirma la etiqueta</strong>
+                  <span className="block text-xs text-gray-400 dark:text-gray-500">
+                    Apagado: el precio rige a la hora exacta. Prendido: llegada la hora, se sigue cobrando el precio
+                    anterior hasta que se confirme la etiqueta en todas las sucursales con góndola (así la góndola y la
+                    caja nunca difieren). Los productos sin góndola cambian a la hora.
+                  </span>
+                </span>
+              </label>
+              {(t289 as any)?.precio_programado_requiere_repositor && (
+                <div className="pl-7">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Avisarme si la etiqueta sigue sin confirmarse después de</label>
+                  <select value={(t289 as any)?.precio_programado_aviso_demora_horas ?? 2}
+                    onChange={e => actualizarAprobacionRepositor({ precio_programado_aviso_demora_horas: Number(e.target.value) })}
+                    className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                    {[1, 2, 4, 8, 24, 48].map(h => <option key={h} value={h}>{h === 1 ? '1 hora' : `${h} horas`}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -8086,25 +8119,14 @@ export default function ConfigPage() {
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                   <DollarSign size={16} className="text-accent-text" /> Caja en Dólares
                 </h2>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede elegir el tipo de cotización</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                    El <strong>DUEÑO</strong> siempre puede elegir tipo (blue/oficial/MEP/cripto) o cargar un valor manual.
-                    Los roles de acá abajo pueden hacer lo mismo; el resto solo puede refrescar repitiendo el último tipo usado.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR'].map(r => {
-                      const activo = bizCotizacionRoles.includes(r)
-                      return (
-                        <button key={r} type="button" disabled={!canEdit}
-                          onClick={() => setBizCotizacionRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
-                          {r}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+                {/* D-1 fase 2 (GO, 2026-09-25): el dólar sale solo del Banco Nación (vendedor divisa del día
+                    hábil anterior) y ya no se carga a mano, así que "quién puede elegir la cotización" dejó de
+                    existir. `cotizacion_usd_roles_permitidos` queda en el schema para cuando haya monedas con
+                    cotización manual (directiva de Multimoneda). */}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Cotización del dólar: <strong>vendedor divisa del Banco Nación del día hábil anterior</strong>, automática.
+                  Es la misma en todo el sistema (precios en USD, pagos en dólares y Caja Fuerte).
+                </p>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quién puede operar la Caja USD</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">

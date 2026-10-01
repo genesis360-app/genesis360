@@ -661,6 +661,32 @@ prueba. El log de la EF muestra `[homologación]`.
 
 ## Guía para clientes + video (2026-09-15, v1.227.1 🚀 EN PROD desde 2026-09-16)
 
+> [!WARNING] **2026-09-29 — punto de venta ≠ 1 (El Tilo, PV 5):** el modal de facturar mandaba el PV **1** la primera
+> vez que se abría (la lista de PV se carga al abrirlo y el default ya se había calculado); el `<select>` mostraba el
+> 0005. La NC automática tenía el mismo origen y salía con PV 1. Arreglado (`VentasPage.tsx`) — **EN PROD `v1.233.2`** (hotfix 2026-09-29).
+> Imprimir → Guardar como PDF ahora sale con el mismo nombre que la descarga (`Factura_A_0005-00000001_Cliente`), no "Genesis360.pdf" (en `dev`, 2026-09-29).
+> Contador de El Tilo (2026-09-30): condición IVA con denominación completa, **"Condición de venta"** (Contado /
+> Cuenta Corriente, de `ventas.es_cuenta_corriente`). **Domicilio del receptor** (mig 443): `clientes.domicilio_fiscal`
+> (campo "Domicilio fiscal / comercial" en la ficha; vacío → domicilio principal de `cliente_domicilios`). **Factura A
+> bloqueada sin domicilio** en el POS y en la EF `emitir-factura` (NC-A no). Layout: tabla con IVA a 182 mm, nombres y
+> textos largos partidos (test `facturasPDFLayout`). e2e `164`. En `dev`, falta PROD (orden: 443 → EF → frontend).
+> Además: **la factura no guarda su PV** — la NC (`CbtesAsoc.PtoVta`) y el PDF lo deducen; con 2+ PV por CUIT pueden
+> equivocarse. Pendiente en la Fase 0 de `sources/raw/plan_empezar_de_cero.md`.
+
+> [!WARNING] **2026-09-28 — dos huecos de la guía, encontrados con un cliente real (RI) trabado en el paso 7:**
+> 1. **Paso 7:** la pantalla "Selección del Representante a autorizar" ya trae el **Computador Fiscal** en un desplegable;
+>    el campo **CUIT/CUIL/CDI Usuario + BUSCAR** es para **delegar a un tercero** y va **vacío**. La guía dice "tocá
+>    Buscar" y confunde. Alcanza con elegir el computador fiscal y **CONFIRMAR**.
+> 2. **Paso 9:** el certificado que se crea en "Administración de Certificados Digitales" es de **PRODUCCIÓN**, y el
+>    "Modo PRUEBA" de la app usa los servidores de **homologación** (`wsaahomo`, ver `wsfe-core.ts`): ahí **no autentica**
+>    aunque todo esté bien. Con ese cert hay que pasar **directo a producción** y emitir una factura real chica para
+>    verificar el CAE. (Probar en homologación requiere un cert de homologación de WSASS, que el cliente no tiene.)
+> **Guía pendiente de corregir** (artifact `WYpzGUG42wPBCv74ya5Jmg`).
+
+> [!WARNING] **2026-09-28 — hallazgo REGLA #0:** `ventas` y `devoluciones` no guardan el **ambiente** del CAE (homologación
+> vs producción). Un negocio que probó en homologación y pasó a producción ve los comprobantes de prueba mezclados con los
+> reales. Se corrige en la Fase 0 de `sources/raw/plan_empezar_de_cero.md` (sellar `cae_ambiente` al emitir).
+
 **Guía HTML paso a paso publicada**, para pasarle al cliente que va a activar la facturación: artifact de Claude
 **https://claude.ai/artifact/WYpzGUG42wPBCv74ya5Jmg** — "Activar facturación en Genesis360". Qué tener a mano
 (CUIT y Clave Fiscal nivel 3, condición IVA, razón social y domicilio como figuran en ARCA, inicio de actividades,

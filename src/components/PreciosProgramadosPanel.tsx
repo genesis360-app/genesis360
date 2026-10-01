@@ -105,7 +105,13 @@ export function PreciosProgramadosPanel({ puedeEditar }: { puedeEditar: boolean 
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{fmtPesos(Number(pp.productos?.precio_venta ?? 0))}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{fmtPesos(Number(pp.precio_venta))}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">{formatearVigencia(pp.vigente_desde)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {formatearVigencia(pp.vigente_desde)}
+                      {/* C-1 (mig 441): pasada la hora, sigue pendiente porque espera la etiqueta */}
+                      {(tenant as any)?.precio_programado_requiere_repositor && new Date(pp.vigente_desde).getTime() <= Date.now() && (
+                        <span className="block text-[11px] text-amber-700 dark:text-amber-400">Esperando que se confirme la etiqueta</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">{pp.creador?.nombre_display ?? '—'}</td>
                     <td className="px-5 py-2.5 text-right">
                       {puedeEditar && (

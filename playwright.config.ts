@@ -85,7 +85,7 @@ export default defineConfig({
       // ofrece "Factura A" —y está bien que no se ofrezca, no discrimina IVA— así que 3 de sus tests
       // quedaban en rojo para siempre. Un rojo permanente en la suite enseña a ignorar los rojos,
       // que es exactamente lo que no queremos en el único spec que cubre IVA crédito.
-      testIgnore: /(^|[\\/])(1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive|117_aprobacion_estado_bypass_masivo_mutante|126_aprobacion_estado_convive_cantidad_mutante|146_gasto_cotizacion_fiscal_mutante)/,
+      testIgnore: /(^|[\\/])(1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive|117_aprobacion_estado_bypass_masivo_mutante|126_aprobacion_estado_convive_cantidad_mutante|146_gasto_cotizacion_fiscal_mutante|164_factura_a_domicilio_receptor_mutante)/,
     },
 
     // ─── Barrido responsive/mobile (owner) — viewport de celular, mismo storageState.
@@ -113,7 +113,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/ri_session.json'),
       },
       dependencies: ['setup-ri'],
-      testMatch: /146_gasto_cotizacion_fiscal_mutante\.spec\.ts/,
+      testMatch: /(146_gasto_cotizacion_fiscal_mutante|164_factura_a_domicilio_receptor_mutante)\.spec\.ts/,
     }] : []),
 
     // ─── Tests CAJERO — solo si hay credenciales

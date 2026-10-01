@@ -6,6 +6,211 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-30] query | Doc de herramientas internas + pricing v7 relevado (PR-1..PR-8)
+
+- Doc "Herramientas internas de Genesis360 — inventario" (Claude Docs) para GO y su socio: panel interno
+  (admin.genesis360.pro) módulo por módulo, Mis consultas, /admin legacy, 8 procesos automáticos; accionables y
+  recomendaciones. Hallazgos: 2 alertas MP "huérfana" abiertas en PROD (suscripción cobrando sin negocio), MRR del panel
+  roto (`planes`/`plan_id` legacy), "alguna vez pagaron" no cuenta el pago manual, ticket del 15/09 sin cerrar,
+  monitoreo diario mezcla tenants y usa remitente de prueba, `platform_billers` vacío.
+- Pricing v7 (Fede): relevado; 8 preguntas en `preguntas_pendientes_2026-09-28.md` §F antes de tocar cobros.
+
+## [2026-09-30] update | DNI opcional con CUIT (mig 444) + datos del cliente real fuera del repo
+
+- GO: no pedir DNI cuando el cliente tiene CUIT → `dniObligatorioEnFicha` (`clienteCampos.ts`). De paso, bug latente: la
+  ficha y el alta rápida del POS guardaban `dni = ''` y el índice único `(tenant, dni)` lo trata como valor → el 2º
+  cliente sin DNI chocaba. En PROD, 2 negocios con un cliente así (uno es El Tilo). Mig 444 (DEV): `'' → NULL` + trigger.
+  e2e `164` ahora crea la empresa SIN DNI y la ficha la guarda. 2002 unit verdes. UAT §74.8-74.9.
+- 🛑 Error mío: el test de layout de la factura usaba los datos REALES de El Tilo (razón social, CUIT, domicilio, CBU,
+  alias y un CAE real) copiados de su PDF, y quedó en `f733d122` en el repo **público**. No se tocó su negocio (el test
+  dibuja un PDF local, sin base ni AFIP). Reemplazados por datos ficticios; el wiki también tenía su CUIT y correo →
+  quitados. El historial conserva los commits viejos: reescribirlo es decisión de GO.
+
+## [2026-09-30] update | Domicilio fiscal del cliente (mig 443) + Factura A bloqueada sin él + layout de la factura
+
+- Decisión de GO: campo propio "Domicilio fiscal / comercial" en la ficha del cliente (receptor, no emisor ni sucursal)
+  y **bloquear** la Factura A sin domicilio. Mig 443 `clientes.domicilio_fiscal` (DEV). La factura usa ese campo; vacío,
+  el domicilio principal de `cliente_domicilios`. Bloqueo en el modal del POS y en la EF `emitir-factura` (desplegada en
+  DEV); NC-A no se bloquea. Helpers `domicilioReceptor`/`composeDomicilioCliente` en `facturasPDF.ts` (antes duplicados).
+- Layout (lo pidió GO: "que no salga del marco"): la tabla con IVA medía 188/184 mm con 182 disponibles (la columna
+  Total se salía — ya en la factura real de El Tilo); el nombre del producto en negrita no se partía y quedaba cortado;
+  IVA $ de millones partido en 2 líneas; condición/forma de pago, nombre y domicilio largos sin partir. Todo corregido
+  (también remito y presupuesto). CUIT del receptor con guiones.
+- Pruebas: e2e `164` (tenant RI Kiosco Buildi, AFIP homologación): bloqueo UI + EF directa (400, venta sin CAE) → carga
+  del domicilio por la ficha → Factura A con CAE real (A-0001-00000002, CAE 86390938632019) y PDF. Unit
+  `facturasPDFLayout.test.ts` mide cada texto contra los márgenes en 6 casos (rojo con los anchos viejos). 2000 unit
+  verdes, build OK, regresión e2e 08/21/56/60/63/87/163 verde. UAT §74.
+
+## [2026-09-30] update | Factura: observaciones del contador de El Tilo
+
+- Contador: la factura está correcta; pide (1) domicilio comercial del receptor (obligatorio en RI), (2) **condición
+  de venta** (contado / cuenta corriente), obligatoria y distinta de la forma de pago, (3) "Responsable Inscripto" y no "RI".
+- Hecho en `dev` (sin deploy): `normalizarCondIVA` mapea los códigos cortos que guardan los formularios (RI/CF/
+  Monotributista → denominación completa; antes pasaban tal cual) → factura, NC, remito, presupuesto; el emisor dice
+  "Condición IVA:". `condicionVenta(es_cuenta_corriente)` → "Condición de venta" en factura y NC. Aviso en el modal
+  de facturar si es Factura A y el cliente no tiene domicilio. UAT §74. 1990 unit verdes, build OK.
+- El domicilio SÍ existe (`cliente_domicilios`, el principal va a la factura) pero solo se carga desde la fila
+  expandida del cliente → pestaña Domicilios; no está en el formulario fiscal. El cliente de la primera factura (PROD) tiene 0.
+  Cómo exponerlo: pregunta a GO.
+
+## [2026-09-29] query | QR de Mercado Pago en la factura — 5 riesgos de plata, preguntas QR-1..QR-3
+
+- GO preguntó si sigue el QR de MP en la factura. Sigue, pero depende del **saldo pendiente**, no del medio de pago.
+- Detectados 5 problemas latentes (REGLA #0): link sin vencimiento, uno nuevo por descarga, excedente y envío sin
+  registrar por el tope de `mp-ipn`, intereses de CC fuera del monto. Anotado en pendientes (#7) y como QR-1..QR-3
+  en `preguntas_pendientes_2026-09-28.md`. Sin código.
+
+## [2026-09-29] update | Nombre de archivo al imprimir → Guardar como PDF
+
+- El Tilo facturó OK en PROD con `v1.233.2` (A-0005-00000001; importes verificados).
+- El PDF le quedó "Genesis360.pdf": usó **Imprimir → Guardar como PDF**, y el navegador nombra con el título de la
+  página. La descarga ya tenía nombre (`Factura_A_0005-00000001_Cliente.pdf`).
+- Fix (en `dev`, sin deploy): factura/remito/presupuesto ponen el nombre de la descarga como título mientras
+  imprimen; helper `src/lib/imprimirConNombre.ts` para los `window.print()` (ticket → `Ticket_Venta_N`, devolución →
+  número de NC o `Devolucion_Venta_N`, picking → `Picking_Pedido_N`). Test `tests/unit/imprimirConNombre.test.ts`.
+- Auditadas las ~60 descargas de la app: todas ya tenían nombre relacionado al documento.
+
+## [2026-09-29] deploy | v1.233.2 — hotfix del punto de venta a PROD (El Tilo)
+
+- El Tilo seguía con "El punto de venta 1 no está configurado" porque el fix (`04281628`) estaba solo en `dev`.
+- GO autorizó: rama `hotfix/v1.233.2-pv` desde `main` con solo el diff de `VentasPage.tsx` + bump → PR #361 mergeado,
+  release `v1.233.2` (Latest). tsc + build OK; `genesis360.pro` sirve `v1.233.2` (curl). Sin migs ni EF.
+- `dev` ya tenía el fix; al próximo deploy de `dev` el `APP_VERSION` sube por encima de 1.233.2.
+- Pendiente: e2e con PV ≠ 1.
+
+## [2026-09-29] update | Soporte El Tilo — facturación: relación de ARCA + bug del punto de venta en el modal
+
+- `WSAA coe.notAuthorized` → faltaba la relación del paso 7 (hecha).
+- "El punto de venta 1 no está configurado" con PV 5 bien cargado → **bug**: el modal de facturar calculaba el PV antes
+  de que cargara la lista (lazy) y el `<select>` mostraba 0005 con el estado en 1. Arreglado en DEV para factura y NC
+  manual; la **NC automática** leía la misma lista vacía y salía con PV 1 (encolada para siempre): ahora lee el PV de la
+  base. Workaround en PROD: reabrir el modal. Candidato a hotfix.
+- 🛑 Hallazgos anotados: la factura no guarda su punto de venta (NC y PDF lo adivinan → Fase 0) y `ventas.numero` es
+  global entre negocios en PROD.
+
+## [2026-09-29] update | Soporte El Tilo — no vende porque el stock no tiene ubicación (modo avanzado)
+
+- Con el producto ya activo seguía sin poder venderlo. Causa: **modo avanzado** + stock **sin ubicación**; el POS en
+  avanzado solo cuenta líneas con `ubicacion_id` (`soloUbicado`, `VentasPage.tsx:251`) → ve 0 de 150. Corrige un
+  diagnóstico mío del 28/09 ("sin ubicación no impide vender"), que estaba mal.
+- Indicado: asignar la ubicación "Losa" a los 2 LPN (Inventario → LPN → Editar → Ubicación), o pasar a modo básico.
+- Trampa de producto anotada en pendientes (el ingreso acepta stock sin ubicación que el POS después no vende).
+
+## [2026-09-29] update | Cierre de sesión — todo listo para /clear
+
+- Estado: PROD `v1.233.1` (001-439); DEV 001-442 sin deploy, pre-release **`v1.234.0-rc.1`** sobre `origin/dev`.
+- Pendientes reescrito como una sola foto ("ARRANCÁ ACÁ 2026-09-29"): 22 preguntas en el archivo único, checklist de deploy,
+  próximo trabajo que no espera respuestas (Fase 0/1 de "Empezar de cero", corregir la guía de facturación — las dos
+  preguntadas a GO sin respuesta) y el estado de los clientes reales El Tilo y Kalken.
+
+## [2026-09-28] update | Plan "Empezar de cero" + soporte El Tilo (Madera Carrizo)
+
+- **Plan** `sources/raw/plan_empezar_de_cero.md`: botón "Empezar de cero" que borra lo operado en la etapa de prueba y
+  conserva maestros/configuración/certificado. Clasificación de las 153 tablas con `tenant_id` + 7 hijas; numeraciones
+  verificadas (`MAX+1`, se reinician solas); resguardos server-side (bloquea con CAE real o período cerrado, transacción
+  única, registro permanente, test que obliga a clasificar tablas nuevas). 5 fases. Preguntas EC-1..EC-8.
+- 🛑 **Hallazgo REGLA #0**: `ventas`/`devoluciones` no guardan el ambiente del CAE (homologación vs producción) → no se
+  distingue una factura de prueba de una real. Fase 0 del plan lo sella para adelante; los existentes = reales.
+- **Soporte PROD (solo lectura)**: el cliente de la guía de facturación es el negocio **El Tilo** (alta 28/09,
+  RI), no Kalken (Kalken sigue sin facturación). Facturación OK
+  (cert activo, PV 5, producción). No podía vender porque su **único producto quedó desactivado** (18:43). Indicado:
+  reactivarlo; probar en Modo PRUEBA sin facturar (su cert es de producción, en homologación falla) y anular las ventas
+  de prueba; la primera factura real es la validación del circuito.
+
+## [2026-09-28] update | Preguntas abiertas en un solo archivo + soporte de facturación (paso 7 de la guía)
+
+- `sources/raw/preguntas_pendientes_2026-09-28.md`: las 14 preguntas abiertas (DL-1..DL-5, D3-a, D3-b, PL-1..PL-7) con
+  contexto, opciones y propuesta, y por qué aparecieron después de responder las 30 del 25/09 (revisión legal del 26/09,
+  construir D-3, cruzar el plan con el código). Qué frena cada una: DL-5 el deploy, PL-5 la Fase 3, PL-1..3 la Fase 4.
+- Soporte a un cliente (RI) trabado en el paso 7 de la guía de facturación: el campo CUIT/BUSCAR de "Selección del
+  Representante" va vacío (es para delegar a un tercero); CONFIRMAR con el computador fiscal. Hueco encontrado en la
+  guía: un certificado de PRODUCCIÓN no autentica en "Modo PRUEBA" (homologación) → pasar directo a producción.
+  Guía pendiente de corregir. Ver [[wiki/features/facturacion-afip]].
+
+## [2026-09-26] update | Categorías de clientes etapa 1 — la categoría con cuenta corriente (mig 442, DEV)
+
+- Al relevar el código salieron 3 inconsistencias de CC (REGLA #0): el POS vencía a los días del negocio e ignoraba el
+  plazo del cliente mientras los avisos usaban el del cliente; Pedidos no ponía vencimiento; "CC habilitada" solo en
+  pantalla. Exposición PROD: 0 deudas CC. **GO decidió** (AskUserQuestion): una regla del servidor, fábrica → hereda,
+  CC habilitada en el servidor.
+- Mig 442: `categorias_cliente`, `vw_clientes_cc` (única resolución Cliente > Categoría > Negocio), guards E1-E3, auditoría,
+  asignación masiva en una operación, vencimiento por trigger, guard de ventas/Pedidos/interés/avisos sobre lo efectivo.
+  20 comprobaciones SQL en transacción descartada (0 diferencias efectivas sin categorías).
+- Front: pestaña Categorías (panel + asignación masiva + historial + permisos), ficha del cliente con 3 estados y "lo que
+  rige", POS y dashboards con lo efectivo. e2e **162** (C-3 en otros caminos + 71.5 + 72.14) y **163** (categoría → POS).
+  Unit 1986/1986, build OK. UAT §73.
+
+## [2026-09-26] update | Precio programado C-1 (el precio espera la etiqueta, mig 441) y C-3 (cambio "ahora" pregunta)
+
+- **C-1** opcional por negocio: pasada la hora el precio espera que se confirme la etiqueta (todas las sucursales con
+  góndola); al confirmar la última rige en el acto. El guard de productos deja pasar SOLO esa aplicación aunque la confirme
+  un rol sin permiso de precios. Aviso único a las X horas. Mig 441 aplicada en Supabase DEV tras probarla en transacción
+  descartada con impersonación (14 comprobaciones, incl. 2 intentos de abuso rechazados).
+- **C-3**: `useResolverPrecioProgramado` en ficha, Supervisión, edición masiva, kit e importador; `useElegir` (3 opciones).
+- Verificado: tsc, unit, e2e **161** (cron real + ficha) y regresión **151**. UAT §72. Nueva pregunta **PL-7**.
+
+## [2026-09-26] update | Plan de fases: Categorías de clientes + Precio programado (sin código)
+
+- `sources/raw/plan_categorias_clientes_y_precio_programado.md`: 6 fases; el eje es el **motor único de precio en SQL**
+  (B-1), que hoy son dos (`tiers.ts` en el POS y `fn_precio_venta_efectivo` en Pedidos) y ninguno sabe quién es el cliente.
+- Del código salieron 6 preguntas (PL-1..PL-6): no existen "ventas en espera" (C-4), "ventas recurrentes" (B1) ni pedidos
+  desde el portal (B-8); el tope del DUEÑO es contradictorio entre A4 y B-5; default de C-2 en negocios con config; POS sin red.
+
+## [2026-09-26] update | e2e 160 — cubre UAT 70.5 (POS sin cotización) y 70.9 (pedido en USD)
+
+- 70.9: pedido con producto USD → venta a `precio_usd × tasa` (precio_venta sembrado en $1 para detectar regresión) y
+  `ventas.cotizacion_usd` sellada; control con producto en pesos → NULL. 70.5: sin cotización (intercepción de red, sin
+  tocar `cotizaciones_bna`) el POS no agrega el producto USD; **mutación verificada** (sin el freno, el test falla).
+- Restos de ledger (gotcha 11.5) limpiados con service_role en DEV.
+
+## [2026-09-26] update | D-3 — plantilla del importador con listas desplegables (DEV, sin migración)
+
+- 11 columnas con desplegable (categoría, proveedor, monedas, unidad, IVA, regla, SI/NO). `src/lib/xlsxValidaciones.ts`
+  inyecta `<dataValidations>` en el zip que genera SheetJS CE (`fflate`, ahora dependencia directa); listas en hoja
+  oculta "Listas" con nombres definidos. 14 tests unit.
+- Pregunta de GO: el maestro se lee **al descargar** (y al subir), solo activos; la hoja Referencia fecha la plantilla.
+- Verificado con **Excel 16 real** (sin reparar, 11 validaciones, rechaza valor inventado), ida y vuelta Excel →
+  importador (0 errores) y categoría creada con la pantalla abierta → aparece. UAT §71. Preguntas D3-a/D3-b en pendientes.
+
+## [2026-09-26] update | Segunda revisión legal de D-1 — 5 puntos para decidir con Fede (DL-1..DL-5)
+
+- La tasa elegida coincide con la RG ARCA 5616/2024 (arts. 1-2) y con el **art. 49 del Dto. 692/98** (IVA: vendedor
+  BNA al cierre del día anterior) — esto último corrige la conclusión del 25/09 ("ninguna norma fija la tasa").
+- Hallazgos: góndola/TN/ML ≠ precio cobrado para productos USD (Res. SIC 4/2025 art. 2 g), "al cierre" no garantizado
+  si falla el cron, valuación de tenencias al comprador (Ganancias/Bienes Personales).
+- Anotados como **DL-1..DL-5** con preguntas y propuestas en `project_pendientes.md` ("PARA DECIDIR CON FEDE"). Nada
+  ejecutado; el deploy `v1.234.0` también queda a decisión (DL-5).
+
+## [2026-09-26] update | D-1 fase 2 — UNA sola tasa USD→ARS: vendedor divisa BNA del día hábil anterior (mig 440, DEV)
+
+- Nueva lib `src/lib/cotizacionBna.ts` (15 tests): la tasa sale de `fn_cotizacion_bna_vigente` (mig 439). `useCotizacion`
+  la pide a la EF `cotizacion-bna` (que captura si la última captura tiene > 30 min = A-2 "al iniciar sesión"), con
+  fallback a la RPC; montado en `AppLayout`. Ya no lee `tenants.cotizacion_usd*` ni dolarapi (que era BNA **billete**).
+- Todos los caminos a la MISMA tasa: POS (precio, tiers, combos, pago en USD), ficha, importador, costo sugerido de OC,
+  referencia de descalce en Gastos, dashboards y **Bóveda** (`calcularConversionUsd(sentido, monto, tasa)`: sin compra/venta).
+- Sin carga manual del dólar (A-4). Widget: "Dólar BNA divisa $1.525,50 · Vendedor · del 25/09" + aviso si la captura
+  falló o la vigente tiene ≥ 5 días. Config → Caja en Dólares: fuera "Quién puede elegir el tipo de cotización".
+- 🛑 POS (D5): un producto en USD sin cotización ya no se vende al `precio_venta` guardado en silencio — frena.
+- 🛑 **Mig 440** (aplicada en Supabase DEV): `fn_precio_venta_efectivo` (Pedidos→venta) cotizaba un producto USD a
+  `precio_venta` congelado (DEV: USD 450 → $695.250 = 450 × 1545 billete) y los tiers USD a `tenants.cotizacion_usd`;
+  ahora `precio_usd × tasa` ($686.475) y sin tasa → error. `fn_pedido_generar_venta` sella `ventas.cotizacion_usd`.
+  Probada en transacción descartada antes de aplicar. `schema_full.sql` regenerado.
+- Verificado: tsc, unit **1947/1947**, build; e2e **55** (con fixture USD aplicado y restaurado: USD 10 → $15.255) y
+  **143** verdes (los dos leían `tenants.cotizacion_usd`; ahora la RPC); sonda del widget + EF desde el navegador. UAT §70.
+- Exposición PROD: 0 productos y 0 tiers en USD. **Falta**: deploy a PROD (mig 440 + merge) — consultado a GO.
+
+## [2026-09-26] deploy | v1.233.1 a PROD — historial diario de la cotización divisa del BNA (D-1 fase 1)
+
+- Mig **439** aplicada en PROD antes del merge; EF **`cotizacion-bna`** desplegada en PROD (existe `CRON_SECRET`).
+  Definición de `fn_cotizacion_bna_vigente` y paridad de policies idénticas DEV = PROD (`public` 235 `b6469b80`).
+- PR **#360** `dev→main`, CI unit verde, merge `50343fb9`, release **`v1.233.1` Latest**. `app.genesis360.pro` sirve
+  `v1.233.1` (bundle `/assets/index-W8XESaFr.js`, `curl -L`).
+- `gh workflow run sweeps.yml` a mano: los dos pasos verdes; `cotizacion-bna` capturó 3 monedas y la **vigente quedó en
+  25/09: 1516,50 / 1525,50** (en Argentina ya era 26/09). Una EF sin usuario → rechazada.
+- Auditoría de EFs: sin drift nuevo (`cotizacion-bna` igual DEV/PROD; siguen los 2 cosméticos de cobro en PROD y
+  las 2 no desplegadas en un ambiente, todos preexistentes).
+- Sin cambios visibles. Próximo: **D-1 fase 2**.
+
 ## [2026-09-25] update | D-1 fase 1 — historial diario de la cotización DIVISA del BNA (mig 439, DEV)
 
 - Mig **439** `cotizaciones_bna` (fecha publicada × moneda; lectura `authenticated`, escritura `service_role`) +

@@ -6,6 +6,222 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-09-29, cierre de sesión) — 🔥 errores de El Tilo + todo en DEV sin deploy + 🙋 22 preguntas abiertas
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
+> | **DEV** (`origin/dev`, pre-release **`v1.234.0-rc.1`**) | + D-1 fase 2, D-3, precio programado C-1/C-3, categorías de clientes etapa 1 (sin bump de `APP_VERSION`) | 001-**442** |
+>
+> **🙋 LO PRIMERO: las 22 preguntas abiertas están en `sources/raw/preguntas_pendientes_2026-09-28.md`** (DL-1..DL-5,
+> D3-a, D3-b, PL-1..PL-7, EC-1..EC-8), cada una con contexto, opciones y propuesta. GO las revisa con Fede. NO ejecutar
+> nada de eso sin respuesta. Las 30 del 25/09 siguen todas respondidas; estas son nuevas.
+> Qué frena cada una: **DL-5 = el deploy** · PL-5 = Fase 3 (motor de precio) · PL-1..3 = Fase 4 · PL-4 = C-2 ·
+> EC-1..8 = Fase 2 de "Empezar de cero".
+>
+> **🔥 LO URGENTE (29/09 tarde) — errores que destapó El Tilo, el 2º cliente real. Orden sugerido y cómo evitar que se
+> repitan** (detalle de cada uno más abajo, en "El Tilo no podía facturar" y "Trampa de producto"):
+> 1. ✅ **Hotfix del punto de venta — EN PROD `v1.233.2`** (29/09, PR #361, rama `hotfix/v1.233.2-pv` desde `main`,
+   solo `VentasPage.tsx`, sin migs ni EF; servida verificada con curl). *Queda para que no vuelva:* un e2e de facturación
+   con un negocio cuyo PV **no es el 1** (todos los tests usan PV 1 y por eso el bug era invisible) — incluir NC
+   automática.
+> 2. **Modo avanzado: el POS no vende stock sin ubicación** y el ingreso lo permite (El Tilo no pudo vender 150 u.).
+>    Propuesta (preguntada a GO, sin respuesta): el POS avisa "N unidades sin ubicar" y el ingreso en avanzado pide la
+>    ubicación. *Para que no vuelva:* e2e "ingreso sin ubicación → aviso en el POS". Diagnóstico rápido en
+>    [[reference_avanzado_pos_exige_ubicacion]].
+> 3. **Fase 0 (REGLA #0):** sellar `ventas.punto_venta` y `cae_ambiente` al emitir (hoy la factura no guarda su PV ni si
+>    el CAE es de prueba o real; la NC y el PDF lo deducen). Preguntado a GO si se arranca — sin respuesta.
+> 4. **`ventas.numero` global entre negocios en PROD** (El Tilo #34 tras Kalken #33). Verificar la causa (probable
+>    default de columna que le gana al trigger) y proponer arreglo. No es fiscal.
+> 5. **Corregir la guía de facturación** (artifact `WYpzGUG42wPBCv74ya5Jmg`): paso 7 (campo CUIT vacío, y verificar con
+>    CONSULTAR que la relación existe), paso 9 (cert de producción no anda en Modo PRUEBA), y sumar: "el error
+>    `coe.notAuthorized` = falta la relación; puede tardar unos minutos en tomarse". Preguntado a GO — sin respuesta.
+> 6. **Checklist de alta de un cliente nuevo** (para que no se repita lo de El Tilo en el próximo): modo básico vs
+>    avanzado explicado al elegir, ubicación obligatoria en avanzado, facturación con cert de producción → directo a
+>    producción, empleados sin correo = código del negocio (`eltilo`) + usuario. Armarlo como página de soporte en el wiki.
+> 7. 🛑 **QR de Mercado Pago en la factura (REGLA #0, latente)**: el link no vence, se crea uno nuevo por descarga,
+>    y lo cobrado de más (o el envío) no queda registrado por el tope de `mp-ipn`. Sin código hasta que GO responda
+>    **QR-1..QR-3** en `preguntas_pendientes_2026-09-28.md` (sección E).
+> 8. 🧾 **Factura: observaciones del contador de El Tilo — HECHO en DEV, falta PROD** (30/09, mig **443** + EF
+>    `emitir-factura` en DEV): condición IVA completa, "Condición de venta", **domicilio fiscal del cliente** (campo en la
+>    ficha) y **Factura A bloqueada sin domicilio del receptor** (POS + EF). Además el layout: la tabla con IVA se salía del
+>    margen y el nombre del producto salía cortado (ya pasaba en la factura real de El Tilo). e2e `164` con Factura A
+>    real de homologación. **Orden a PROD: mig 443 → EF `emitir-factura` → frontend** (la EF lee la columna nueva).
+>    ⚠️ **Avisar a El Tilo antes**: sus clientes RI sin domicilio (el de su primera factura tiene 0) quedarán bloqueados para
+>    Factura A hasta cargarlo. ✅ La ficha ya no exige DNI cuando hay CUIT (GO 30/09). **Mig 444** (DNI '' → NULL + trigger):
+>    ⚠️ en PROD modifica 1 cliente de El Tilo (`dni '' → NULL`) — **pedir OK de GO** antes de aplicarla.
+>    🛑 **Datos del cliente real en el repo PÚBLICO**: `f733d122` (test con CUIT/CBU/alias/CAE de El Tilo) y el wiki (CUIT, correo)
+>    — limpiados en HEAD el 30/09; el historial de git los conserva (reescribir `dev` = decisión de GO).
+> 9. 💲 **Pricing v7** (doc de Fede, 30/09): relevado dónde vive (brand.ts + `fn_plan_base_limite` + EF `mp-addon-batch` +
+>    `admin-api` TIER_BASE + MP + trial mig 257 + wiki `planes-pricing.md`). Espera **PR-1..PR-8**. Dato: el MRR del panel
+>    interno usa `planes.precio_mensual` (precios viejos, 1 tenant con `plan_id`) → arreglarlo junto con v7.
+>
+> **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
+> - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.
+> - D-3: desplegables en la plantilla del importador. UAT §71.
+> - Precio programado C-1 (el precio espera la etiqueta, opcional) y C-3 (cambio "ahora" pregunta) (mig 441). UAT §72.
+> - Categorías de clientes etapa 1: la categoría con cuenta corriente (mig 442) + 3 decisiones de GO sobre CC. UAT §73.
+> - e2e nuevos 160-163 · unit 1986/1986 · build OK. EF `data-api` corregida en código (sin desplegar).
+>
+> **Deploy (espera DL-5):** migraciones a PROD **de a una y en orden 440 → 441 → 442** (la 442 contiene la 440) **antes**
+> del merge; bump `APP_VERSION` a `1.234.0`; PR `dev→main`; release `v1.234.0` (Latest); **desplegar la EF `data-api`** en
+> DEV y PROD (mergear no despliega EFs); `scripts/auditar-edge-functions.sh`; paridad de policies por schema (la 442 suma
+> 4 en `public`). Antes del deploy, revisar si Kalken o El Tilo están operando (clientes reales en PROD).
+>
+> **Próximo trabajo que NO espera preguntas (preguntado a GO el 28/09, sin respuesta todavía — confirmar antes):**
+> - **Fase 0 de "Empezar de cero"** (`sources/raw/plan_empezar_de_cero.md`): 🛑 las facturas no guardan si el CAE es de
+>   homologación o producción → sellar `ventas.cae_ambiente` / `devoluciones.nc_cae_ambiente` al emitir en `emitir-factura`.
+>   Urgente en el sentido de que cada factura emitida sin ambiente ya no se puede clasificar después. Toca la EF fiscal:
+>   tests + deploy de EF.
+> - Fase 1 de "Empezar de cero": clasificación de las 153 tablas en código + test que falle con una tabla sin clasificar.
+> - **Corregir la guía de facturación para clientes** (artifact `WYpzGUG42wPBCv74ya5Jmg`): paso 7 (el campo CUIT/BUSCAR va
+>   vacío) y paso 9 (un cert de producción no anda en Modo PRUEBA → pasar directo a producción). Preguntado a GO si la
+>   actualizo (es una página que ven los clientes); sin respuesta.
+>
+> **🐛🧾 29/09 — El Tilo no podía facturar: 2 errores reales (el 2º, de la APP):**
+> 1. `WSAA coe.notAuthorized` → faltaba la relación del paso 7 en ARCA. La hicieron.
+> 2. "El punto de venta 1 no está configurado para este emisor" con PV 5 bien configurado en la app y en ARCA → **bug
+>    del modal de facturar**: los PV se cargan recién al abrirlo; el default quedaba en 1 y el `<select>` mostraba 0005
+>    (única opción) con el estado en 1. El guard del servidor lo frenó (correcto). **Workaround en PROD: cerrar y volver
+>    a abrir el modal.** Arreglado en DEV (sin deploy): efecto que corrige el PV al llegar la lista (factura y NC
+>    manual) y la **NC automática** ahora lee el PV de la base (antes salía con PV 1 y quedaba encolada para siempre en
+>    negocios cuyo PV no es el 1 — REGLA #0). tsc + build OK; sin e2e (necesita un negocio con PV ≠ 1).
+>    ⚠️ **Candidato a HOTFIX a PROD** (El Tilo factura real): `dev` tiene migs sin deployar → hotfix desde `main` solo con
+>    este cambio de `VentasPage.tsx`, si GO lo autoriza.
+> 3. 🛑 **REGLA #0, pendiente:** la factura **no guarda su punto de venta** (`ventas` no tiene la columna): la NC asume
+>    que la factura original está en el mismo PV que la NC ("caso single-PV") y el PDF imprime el primer PV del emisor.
+>    Con 2+ PV por CUIT, la NC podría referenciar mal (`CbtesAsoc.PtoVta`) y el PDF mostrar otro PV. Sumado a la
+>    **Fase 0** de `plan_empezar_de_cero.md` (misma migración que `cae_ambiente`): sellar `ventas.punto_venta` al emitir.
+> 4. 🐛 `ventas.numero` es **global entre negocios en PROD** (El Tilo #34 después de Kalken #33): `gen_venta_numero`
+>    numera por tenant, pero lo más probable es que la columna tenga un default que llena el número antes del trigger
+>    (sin verificar). No es fiscal. Pendiente de revisar y proponer arreglo.
+>
+> **🐛 Trampa de producto (29/09, la destapó El Tilo — le va a pasar a todo negocio nuevo en modo avanzado):** el
+> ingreso de stock en modo avanzado **acepta** líneas sin ubicación, pero el POS **no las vende** y dice "no tiene stock
+> disponible" mientras Inventario muestra el stock. Propuesta: (a) el POS avisa "N unidades sin ubicar: ubicalas para
+> venderlas" con link a Inventario; (b) el ingreso en avanzado pide ubicación (o la sugiere) y avisa si se deja vacía.
+> Sin decidir: preguntar a GO antes de implementar.
+>
+> **🧾 Clientes reales en PROD (solo lectura, 28/09):**
+> - **El Tilo** (`04aaed58-80d8-4b8c-b3fd-a8cfbf46046a`, alta 28/09, MADERA CARRIZO HERMANOS
+>   SRL, RI, modo avanzado): facturación OK (cert activo, PV 5, **ya en producción**). No podía vender
+>   porque su **único producto quedó desactivado** (18:43). Indicado a GO: reactivarlo; probar ventas en Modo PRUEBA **sin
+>   facturar** (su cert es de producción: en homologación falla) y anular las de prueba; la primera factura real valida el
+>   circuito. Si ARCA rechaza por permiso → falta el paso 7.
+>   🛑 **29/09 — seguía sin poder vender con el producto ya activo. Causa real:** está en **modo avanzado** y el POS solo
+>   cuenta stock **con ubicación** (`soloUbicado`, `VentasPage.tsx:251`); sus 150 u. se ingresaron **sin ubicación** →
+>   el POS ve 0. (El 28/09 escribí "sin ubicación no impide vender": **estaba MAL**, había mirado solo el filtro de
+>   `disponible_surtido`.) Crearon la ubicación "Losa" pero no le asignaron el stock. Indicado: Inventario → cada LPN
+>   (`01` y `LPN-20260928-5D2D40`) → Editar → Ubicación "Losa" → Guardar; o pasar a modo básico si no usan depósito.
+> - **Kalken** (`d5002ec4-…`): sigue sin nada de facturación (sin CUIT/emisor/cert). Es otro negocio de la misma familia.
+
+> ### 🛑 ARRANCÁ ACÁ (2026-09-26, 2ª sesión) — 💵 **D-1 fase 2 HECHA en DEV** (mig 440), falta PROD
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.2` (hotfix PV, 29/09) | 001-**439** |
+> | **DEV** | `v1.233.1` + D-1 fase 2, D-3, precio programado C-1/C-3, categorías etapa 1, factura/contador (sin bump) | 001-**443** |
+>
+> **UNA sola tasa USD→ARS = vendedor divisa BNA del día hábil anterior** en todo el sistema (POS precio/tiers/combos/
+> pago USD, ficha, importador, OC, Gastos, dashboards, Bóveda en los dos sentidos). `src/lib/cotizacionBna.ts` +
+> `useCotizacion` (EF `cotizacion-bna` → captura al iniciar sesión, A-2; fallback RPC). Sin carga manual del dólar (A-4).
+> POS frena producto USD sin cotización (D5). **Mig 440** (DEV): Pedidos→venta cotizaba productos USD a `precio_venta`
+> congelado y tiers USD a `tenants.cotizacion_usd` → ahora igual que el POS + sella `ventas.cotizacion_usd`.
+> Verificado: tsc, unit 1947/1947, build, e2e 55 y 143, sonda del widget. UAT §70. Ver log del 26/09.
+>
+> #### 🙋 PARA DECIDIR CON FEDE — revisión legal de D-1 (2026-09-26) — NO ejecutar nada hasta que respondan
+> Detalle y fuentes: `respuestas_puntos_abiertos_2026-09-25.md` → "Segunda revisión legal". Resumen: la tasa elegida
+> (vendedor divisa BNA, cierre del día hábil anterior) **coincide** con la RG ARCA 5616/2024 y con el **art. 49 del
+> Dto. 692/98** (IVA). Quedan 5 puntos:
+>
+> **DL-1 · Precio de góndola ≠ precio cobrado en caja** (Res. SIC 4/2025, art. 2 g: "deberán coincidir").
+> Etiquetas de precio (Repositores), Tienda Nube y Mercado Libre usan `productos.precio_venta`, el precio en pesos
+> CONGELADO el día que se editó el producto; el POS cobra `precio_usd × tasa del día`. En un producto en USD se
+> separan apenas se mueve el dólar. Preexistente; hoy PROD tiene 0 productos en USD.
+> - ❓ ¿Cómo se mantiene igual lo exhibido y lo cobrado?
+>   - **A (propuesta)**: cada vez que entra una cotización nueva, recalcular solo el precio en pesos guardado de los
+>     productos en USD → TN/ML se actualizan solos (ya sincronizan `precio_venta`) y se avisa "N etiquetas a
+>     reimprimir" en Repositores.
+>   - B: no recalcular; solo avisar que hay etiquetas desactualizadas.
+>   - C: que la góndola muestre solo el precio en USD + "se cobra en pesos al dólar BNA del día" (Res. SIC 4/2025
+>     **exige** el precio en pesos → no cumple sola; no recomendada).
+>
+> **DL-2 · "Al cierre" no está garantizado.** Durante el día la página del BNA muestra el valor intradiario con la
+> fecha de hoy y la app lo guarda cuando alguien entra. Si falla el proceso de las 03:10 y nadie entra entre el
+> cierre (~15 h) y la apertura siguiente, al otro día se usa un valor de media jornada como "de cierre". No pasó
+> todavía (PROD capturó a las 00:03 del día siguiente).
+> - ❓ ¿Qué hacer si el día hábil anterior solo tiene un valor intradiario?
+>   - **A (propuesta)**: marcar cada fila como "de cierre" solo si se capturó después del cierre; si la vigente no lo
+>     es, usarla igual pero con aviso ámbar en el menú ("cotización del dd/mm sin confirmar cierre").
+>   - B: no usarla y seguir con la última de cierre confirmada (más estricto, pero puede quedar 2 días atrás).
+>
+> **DL-3 · Valor de los dólares que tiene el negocio** (saldo de Caja Fuerte, dashboards). Ganancias (al cierre
+> de ejercicio) y Bienes Personales (al 31/12) valúan al **COMPRADOR** BNA; hoy la app usa el vendedor para todo
+> ("una sola tasa, sin excepción").
+> - ❓ ¿Se deja así o se distingue?
+>   - **A (propuesta)**: dejar el vendedor para operar (precios, pagos, conversiones) y mostrar además, solo como
+>     dato informativo, "valuado al comprador BNA: $X" donde se informe el saldo en dólares. No mueve plata.
+>   - B: dejar todo al vendedor (gestión interna; el balance lo arma el contador aparte).
+>
+> **DL-4 · Para el contador (no lo deciden GO/Fede)**: ¿un producto con precio fijado en USD y facturado en pesos
+> queda alcanzado por el art. 49 del Dto. 692/98? Y confirmar el texto del artículo en InfoLEG (se leyó en fuentes
+> secundarias). Ya anotado en C-16 de [[wiki/business/consultas-contador]]; valuación de tenencias en C-08.
+>
+> **DL-5 · Deploy `v1.234.0`** (D-1 fase 2 + mig 440, ya listo en DEV).
+> - ❓ ¿Se sube ya o se espera a resolver DL-1/DL-2?
+>   - **A (propuesta)**: subir ya — hoy no hay productos en USD en PROD, así que DL-1 no afecta a nadie, y DL-2 es
+>     independiente; los arreglos van en una versión siguiente.
+>   - B: esperar y subir todo junto.
+>   Mecánica: mig 440 en PROD **antes** del merge + bump `APP_VERSION` + PR `dev→main`; EFs sin cambios.
+> - ✅ **D-3 (desplegables en la plantilla del importador) HECHO en DEV** (2026-09-26, sin migración) — ver
+>   [[wiki/features/productos]] "Plantilla del importador con listas desplegables", UAT §71. Preguntas que dejó:
+>   - **D3-a** ❓ Hoy el importador ACEPTA una categoría/proveedor **desactivado** si se escribe su nombre (el
+>     desplegable ya no lo ofrece). ¿Se rechaza? Propuesta: **rechazar** con "está desactivada — reactivala".
+>   - **D3-b** ❓ ¿Querés que el importador pueda **crear** categorías nuevas que vengan en el archivo (con aviso
+>     en la vista previa "se van a crear N categorías"), en vez de exigir crearlas antes? Propuesta: **sí, solo
+>     categorías** (un proveedor lleva CUIT/condición IVA, no se inventa desde un nombre). Si se acepta, en la
+>     plantilla el desplegable de categoría pasaría a "advertencia" en vez de "frenar".
+> - Orden acordado con GO (26/09): ~~D-3~~ → ~~tests de UAT 70.5 y 70.9~~ (✅ e2e `160`, con prueba de mutación)
+>   → **Categorías de clientes + Precio programado juntos**: ✅ **plan escrito**, esperando a GO →
+>   `plan_categorias_clientes_y_precio_programado.md`. 6 fases: (1) precio programado C-1/C-2/C-3 · (2) categoría +
+>   cuenta corriente con herencia en UNA función SQL · (3) motor único de precio en SQL sin cambiar precios · (4) precio
+>   de categoría + tope + import Excel · (5) IA del cartel + reporte · (6) tiers/combos programados + cambios masivos.
+>   ✅ **Fase 1: C-1 y C-3 HECHOS en DEV** (mig 441, e2e 161, UAT §72) — C-2 espera PL-4.
+>   ✅ **Fase 2 (categoría + cuenta corriente) HECHA en DEV** (mig 442, e2e 162/163, UAT §73). GO decidió el 26/09: vencimiento
+>   = una regla del servidor, valores de fábrica → hereda, CC habilitada en el servidor. EF `data-api` corregida en código (exporta la CC efectiva + categoría): **desplegarla en DEV y PROD con el release** (mergear no despliega EFs).
+>   Siguiente: **Fase 3 (motor único de precio)** — espera PL-5 (POS sin red).
+>   🙋 **Preguntas PL-1..PL-7** (PL-7 nueva: C-1 con varias sucursales espera TODAS las etiquetas) (tope del DUEÑO, ventas recurrentes y portal que no existen, default de C-2 en negocios
+>   existentes, POS sin red, ventas en espera que no existen) — en el mismo archivo. La Fase 1 no depende de PL-1..PL-3,
+>   PL-5 ni PL-6 (solo de PL-4 para C-2).
+> - Sigue igual: D-3 (desplegables plantilla), Categorías y Precio programado listos para planificar, rotación de
+>   keys legacy PROD, consultas al contador.
+> - Idea (no pedida): `GastosPage` podría proponer `cotizacion_fiscal` desde `cotizaciones_bna` para la fecha del
+>   comprobante (misma fuente, otra fecha) — el criterio fiscal sigue pendiente de contador.
+
+> ### 🛑 ARRANCÁ ACÁ (2026-09-26) — 🚀 **PROD = DEV = `v1.233.1`** (migs 001-**439**), todo en `main`
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.233.1` ✅ servida | 001-**439** |
+> | **DEV** | `v1.233.1` | 001-**439** |
+>
+> PR **#360**, merge `50343fb9`, release `v1.233.1` Latest. Policies DEV = PROD (`public` 235 · `storage` 40 · `cron` 2).
+> Auditoría de EFs (`scripts/auditar-edge-functions.sh`): sin drift nuevo — `cotizacion-bna` igual en DEV y PROD.
+> **D-1 fase 1 en PROD**: la tabla `cotizaciones_bna` ya junta la cotización DIVISA del BNA todos los días
+> (`sweeps.yml`, 03:10 AR). Verificado disparando el workflow a mano: capturó USD/EUR/GBP y la **vigente es la del
+> 25/09 (1516,50 / 1525,50)**. La app todavía NO la usa: sigue con dolarapi + regla "a compra".
+>
+> #### ▶️ LO PRIMERO: D-1 fase 2 (ya decidido por GO, ejecutar sin reconsultar)
+> Pasar a la tasa **vendedor divisa BNA del día hábil anterior** (`fn_cotizacion_bna_vigente`), **UNA sola en todos
+> lados y todos juntos**: precio en POS, ficha, importador, tiers/combos USD, valor de pagos recibidos en USD, Bóveda.
+> Punto de entrada: `tasaUsdAArs` (`src/lib/cajaBoveda.ts`) + `useCotizacion`. Si la captura falla, seguir con la
+> última y avisar con la fecha visible (A-2); sin ninguna, error (D5). Llamar a la EF `cotizacion-bna` al iniciar
+> sesión (respaldo del cron). Exposición hoy: 0 productos USD y 0 pagos USD en PROD.
+>
+> #### Resto (sin cambios)
+> - D-3: desplegables en la plantilla del importador. · Categorías y Precio programado: respondidos, listos para planificar.
+> - Rotación de keys legacy en PROD · consultas al contador · 2 EFs de cobro con drift cosmético esperando OK.
+
 > ### 🛑 ARRANCÁ ACÁ (2026-09-25, 4ª+ sesión) — 🚀 **DEPLOY a PROD `v1.233.0`** + 🌙 aging automático (mig 438) + 📋 30 puntos abiertos RESPONDIDOS + 💵 D-1 EN CURSO
 >
 > Continúa directo sobre el bloque de abajo (2ª+3ª sesión, que dejó 436/437 en DEV sin deploy). Esta
@@ -915,7 +1131,7 @@ type: project
 > `/assets/*.js`, lo que produce un **falso negativo** ("no está deployado" cuando sí lo está).
 >
 > 👤 **Kalken es el primer cliente REAL en PROD** (tenant `d5002ec4-ef30-4a58-b64a-993483d983a3`, alta 2026-08-25,
-> DUEÑO Sergio Carrizo + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
+> DUEÑO + un SUPER_USUARIO). Antes de cualquier cosa disruptiva en PROD (reinicio, migración que
 > bloquea, deploy) **seguir revisando si lo está usando**: sesiones y refresh tokens en `auth`, últimos movimientos
 > y `query_logs` agrupando `edge_logs` por `request.sb.auth_user`. Nada de pruebas contra su tenant.
 >

@@ -48,3 +48,11 @@ export function validarClienteInline(
   if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'El email no es válido'
   return null
 }
+
+/**
+ * Ficha del cliente: el DNI es obligatorio salvo que tenga CUIT (11 dígitos). Una empresa (SRL, SA) se identifica por
+ * CUIT y no tiene DNI (decisión de GO, 2026-09-30, al probar la Factura A con domicilio del receptor).
+ */
+export function dniObligatorioEnFicha(cuit: string | null | undefined): boolean {
+  return (cuit ?? '').replace(/\D/g, '').length !== 11
+}

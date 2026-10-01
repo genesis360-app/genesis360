@@ -3,12 +3,54 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
-# Historial de Migraciones (001-438, + correctivos 387b/387c)
+# Historial de Migraciones (001-444, + correctivos 387b/387c)
 
-📅 **Migración 438 — ✅ EN DEV Y EN PROD (bases de datos), archivo todavía solo en `dev`** (2026-09-25,
+📅 **Migración 444 — 🟡 EN DEV, falta PROD** (2026-09-30): `444_clientes_dni_vacio_a_null.sql` — DNI vacío del cliente → `NULL`
+(UPDATE de lo existente + trigger `trg_clientes_dni_vacio_a_null` BEFORE INSERT/UPDATE OF dni). El índice único `(tenant_id, dni)`
+trata `''` como valor: el alta rápida del POS y la ficha guardaban `''` y el 2º cliente sin DNI chocaba. En PROD hay 2 negocios
+con un cliente con `dni = ''` — ⚠️ **uno es El Tilo**: aplicarla en PROD modifica esa fila (`'' → NULL`); pedir OK de GO antes.
+Acompaña que la ficha ya no exige DNI cuando el cliente tiene CUIT.
+
+📅 **Migración 443 — 🟡 EN DEV, falta PROD** (2026-09-30): `443_cliente_domicilio_fiscal.sql` — `clientes.domicilio_fiscal text`
+(domicilio fiscal/comercial del cliente como **receptor**; contador de El Tilo: obligatorio en Factura A). Aditiva, permisos a
+nivel tabla (la hereda), RLS sin cambios. La factura usa este campo y, vacío, cae al domicilio principal de `cliente_domicilios`.
+La EF `emitir-factura` la lee → **en PROD: 443 ANTES de desplegar la EF** (si no, la select falla y no se factura nada).
+
+📅 **Migración 442 — 🟡 EN DEV, falta PROD** (2026-09-26): `442_categorias_cliente_cc.sql` — **Categorías de clientes, etapa 1**.
+Tabla `categorias_cliente` (5 condiciones de CC, NULL = hereda; `usada`; RLS con `fn_usuario_en_roles_categoria`), `clientes.categoria_cliente_id`,
+`tenants.categorias_cliente_roles` / `_asignar_roles`. **Valores de fábrica → "hereda"** (`cuenta_corriente_habilitada` false→NULL, `plazo_pago_dias`
+30→NULL, sin default). **Única resolución** `vw_clientes_cc` (security_invoker) + `fn_cc_condiciones_efectivas`. Guards
+`trg_clientes_categoria_guard` (E2/E3), `trg_categorias_cliente_guard_delete`; auditoría a `actividad_log` por trigger;
+`fn_asignar_categoria_clientes` (masiva, una operación); **`trg_ventas_cc_vencimiento`** (el vencimiento lo pone el servidor);
+`fn_ventas_cc_guard` (efectivas + CC habilitada), `fn_recalcular_intereses_cc_tenant` + `recalcular_intereses_cc[_all]`, `fn_notificar_cc_vencidas`,
+`fn_pedido_generar_venta` (**contiene la 440: aplicar 440 antes en PROD**). Suma 4 policies. Probada en transacción descartada (20 comprobaciones).
+
+📅 **Migración 441 — 🟡 EN DEV, falta PROD** (2026-09-26): `441_precio_programado_aprobacion_repositor.sql` — **C-1 de
+Precio programado**. `tenants.precio_programado_requiere_repositor` (default false) + `precio_programado_aviso_demora_horas`
+(1-168, default 2; GRANT UPDATE por columna) + `precios_programados.aviso_demora_at`. Nueva `fn_aplicar_precio_programado(uuid)`
+(solo service_role) con el cuerpo que vivía en el cron; `fn_aplicar_precios_programados` (espera etiquetas + aviso de demora),
+`fn_generar_tareas_precio_programado`, `fn_tarea_repositor_guard_completar`, `fn_productos_rol_guard` (bypass acotado con
+`g360.pp_aplicando`), `fn_generar_tarea_repositor_precio` y trigger nuevo `trg_tarea_repositor_aplicar_programado`. Las 5
+funciones de partida verificadas idénticas DEV = PROD. Probada en transacción descartada con impersonación (DEPOSITO).
+
+📅 **Migración 440 — 🟡 EN DEV, falta PROD** (2026-09-26): `440_precio_efectivo_cotizacion_bna.sql` — **D-1 fase 2**.
+`fn_precio_venta_efectivo` (motor de precio de Pedidos → venta) pasa a la tasa única `fn_cotizacion_bna_vigente('USD')`
+(antes `tenants.cotizacion_usd`) y cotiza un producto con `moneda_venta='usd'` como `precio_usd × tasa`, igual que el POS
+(antes tomaba `precio_venta`, el espejo en pesos congelado); sin tasa → `RAISE` (D5). `fn_pedido_generar_venta` sella
+`ventas.cotizacion_usd` cuando la venta lleva un producto en USD. Definiciones de DEV y PROD verificadas antes (la
+primera difería solo en comentarios; la segunda idéntica). Probada en DEV en transacción descartada: USD 199,99 →
+$305.084,75; USD 450 → $686.475 (antes $695.250); sin cotización → error. Sin policies nuevas.
+
+📅 **Migración 439 — ✅ EN DEV Y EN PROD** (2026-09-25/26, `v1.233.1`): `439_cotizaciones_bna.sql` — **D-1 fase 1**.
+Tabla global `cotizaciones_bna (fecha, moneda, compra, venta, fuente, capturada_at)`, PK `(fecha, moneda)`, RLS con
+SELECT para `authenticated` y escritura solo `service_role`; `fn_cotizacion_bna_vigente(p_moneda)` = última fecha
+estrictamente anterior a hoy en Argentina (día hábil anterior, RG ARCA 5616/2024). La alimenta la EF `cotizacion-bna`
+(tabla *divisas* de bna.com.ar). Suma 1 policy (`public` 234 → 235 en ambos). Ver [[sources/raw/respuestas_puntos_abiertos_2026-09-25]].
+
+📅 **Migración 438 — ✅ EN DEV Y EN PROD** (archivo en `main` desde `v1.233.1`) (2026-09-25,
 commit `6df9997e` en `origin/dev`, aún no mergeado a `main` — llega en el próximo PR; la base de PROD ya
 tiene la función y el cron aplicados vía Management API): `438_aging_diario_automatico.sql` — decisión de
 GO: Aging Profiles deja de depender del botón manual de Config y **corre solo**. Función nueva

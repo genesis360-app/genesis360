@@ -29,13 +29,29 @@ interface PromptOptions {
   requerido?: boolean
 }
 
+/** Una salida de `elegir`. La marcada `primario` es la recomendada: la toma Enter y lleva el foco. */
+export interface OpcionEleccion<T extends string = string> {
+  valor: T
+  texto: string
+  primario?: boolean
+}
+
+interface ElegirOptions<T extends string = string> {
+  titulo?: string
+  opciones: OpcionEleccion<T>[]
+  /** Texto del botón que cierra sin elegir (default "Volver"). Escape y el fondo hacen lo mismo. */
+  volverText?: string
+}
+
 type Pedido =
   | { tipo: 'confirm'; mensaje: string; opciones: ConfirmOptions }
   | { tipo: 'prompt'; mensaje: string; opciones: PromptOptions }
+  | { tipo: 'elegir'; mensaje: string; opciones: ElegirOptions }
 
 interface ConfirmContextValue {
   confirmar: (mensaje: string, opciones?: ConfirmOptions) => Promise<boolean>
   preguntar: (mensaje: string, opciones?: PromptOptions) => Promise<string | null>
+  elegir: <T extends string>(mensaje: string, opciones: ElegirOptions<T>) => Promise<T | null>
 }
 
 const ConfirmContext = createContext<ConfirmContextValue | null>(null)
@@ -71,23 +87,37 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // Más de dos salidas (p. ej. C-3 de precio programado: cancelarlo / mantenerlo / volver). Escape y el fondo
+  // devuelven `null` = no se eligió nada: nunca caen en una opción por accidente.
+  const elegir = useCallback(<T extends string>(mensaje: string, opciones: ElegirOptions<T>): Promise<T | null> => {
+    resolverRef.current?.(null)
+    return new Promise<T | null>(resolve => {
+      resolverRef.current = resolve
+      setPedido({ tipo: 'elegir', mensaje, opciones })
+    })
+  }, [])
+
   const esPrompt = pedido?.tipo === 'prompt'
   const requerido = esPrompt ? (pedido.opciones.requerido ?? true) : false
   const puedeConfirmar = !esPrompt || !requerido || valorPrompt.trim() !== ''
 
   return (
-    <ConfirmContext.Provider value={{ confirmar, preguntar }}>
+    <ConfirmContext.Provider value={{ confirmar, preguntar, elegir }}>
       {children}
       {pedido && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
-          onClick={() => cerrar(pedido.tipo === 'prompt' ? null : false)}>
+          onClick={() => cerrar(pedido.tipo === 'confirm' ? false : null)}>
           <div
             className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6"
             onClick={e => e.stopPropagation()}
             role="alertdialog" aria-modal="true"
             onKeyDown={e => {
-              if (e.key === 'Escape') cerrar(pedido.tipo === 'prompt' ? null : false)
+              if (e.key === 'Escape') cerrar(pedido.tipo === 'confirm' ? false : null)
               if (e.key === 'Enter' && pedido.tipo === 'confirm') cerrar(true)
+              if (e.key === 'Enter' && pedido.tipo === 'elegir') {
+                const prim = pedido.opciones.opciones.find(o => o.primario)
+                if (prim) cerrar(prim.valor)
+              }
               if (e.key === 'Enter' && pedido.tipo === 'prompt' && puedeConfirmar) cerrar(valorPrompt)
             }}
           >
@@ -116,6 +146,22 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               />
             )}
 
+            {pedido.tipo === 'elegir' ? (
+              <div className="flex flex-col gap-2">
+                {pedido.opciones.opciones.map(o => (
+                  <button key={o.valor} autoFocus={o.primario} onClick={() => cerrar(o.valor)}
+                    className={`w-full px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${o.primario
+                      ? 'bg-accent hover:bg-accent/90 text-white'
+                      : 'border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                    {o.texto}
+                  </button>
+                ))}
+                <button onClick={() => cerrar(null)}
+                  className="w-full px-4 py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                  {pedido.opciones.volverText ?? 'Volver'}
+                </button>
+              </div>
+            ) : (
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => cerrar(pedido.tipo === 'prompt' ? null : false)}
@@ -134,6 +180,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 {pedido.opciones.confirmText ?? 'Confirmar'}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}
@@ -146,6 +193,13 @@ export function useConfirm() {
   const ctx = useContext(ConfirmContext)
   if (!ctx) throw new Error('useConfirm() necesita <ConfirmProvider> montado en la raíz de la app')
   return ctx.confirmar
+}
+
+/** `elegir('¿Qué hacemos?', { opciones: [...] })` — más de dos salidas; `null` = volvió sin elegir. */
+export function useElegir() {
+  const ctx = useContext(ConfirmContext)
+  if (!ctx) throw new Error('useElegir() necesita <ConfirmProvider> montado en la raíz de la app')
+  return ctx.elegir
 }
 
 /** `preguntar('Nombre:')` — reemplazo directo de `window.prompt`, con la misma semántica string/null. */

@@ -858,11 +858,11 @@ tienen RLS habilitado con policy propia.
 
 ### Código — `src/lib/cajaBoveda.ts` (nuevo)
 
-> [!WARNING] **🔴 EN CURSO — esta convención va a REEMPLAZARSE (decisión de GO, 2026-09-25, D-1).** El
-> criterio USD→ARS a COMPRA de acá abajo pasa a **vendedor divisa BNA del día hábil anterior**, una sola
-> tasa junto con POS/ficha/importador/tiers/combos/pagos. Nada construido todavía. Ver
-> [[wiki/features/ventas-pos]] "Los precios en USD se cobran al dólar COMPRA" y
-> `sources/raw/respuestas_puntos_abiertos_2026-09-25.md` ("Decisiones posteriores").
+> [!WARNING] **⛔ REEMPLAZADO (D-1 fase 2, 2026-09-26).** `calcularConversionUsd(sentido, monto, tasa)`
+> ahora recibe **una sola tasa** —vendedor divisa BNA del día hábil anterior, la misma de todo el
+> sistema— para los dos sentidos: ya no hay compra/venta ni spread (test `BOV-CNV-08`: ida y vuelta
+> exacta). El modal dice "dólar BNA divisa X del dd/mm". Ver [[wiki/features/ventas-pos]] "UNA sola tasa
+> USD→ARS". Lo de abajo es la versión anterior.
 
 - **`calcularConversionUsd(sentido, montoOrigen, cotizacionVenta, cotizacionCompra)`** — función pura (7
   tests nuevos, `BOV-CNV-01` a `07`, en `tests/unit/cajaBoveda.test.ts`). Implementa F2 del relevamiento:

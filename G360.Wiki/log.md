@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-09-30] query | Doc de herramientas internas + pricing v7 relevado (PR-1..PR-8)
+
+- Doc "Herramientas internas de Genesis360 — inventario" (Claude Docs) para GO y su socio: panel interno
+  (admin.genesis360.pro) módulo por módulo, Mis consultas, /admin legacy, 8 procesos automáticos; accionables y
+  recomendaciones. Hallazgos: 2 alertas MP "huérfana" abiertas en PROD (suscripción cobrando sin negocio), MRR del panel
+  roto (`planes`/`plan_id` legacy), "alguna vez pagaron" no cuenta el pago manual, ticket del 15/09 sin cerrar,
+  monitoreo diario mezcla tenants y usa remitente de prueba, `platform_billers` vacío.
+- Pricing v7 (Fede): relevado; 8 preguntas en `preguntas_pendientes_2026-09-28.md` §F antes de tocar cobros.
+
 ## [2026-09-30] update | DNI opcional con CUIT (mig 444) + datos del cliente real fuera del repo
 
 - GO: no pedir DNI cuando el cliente tiene CUIT → `dniObligatorioEnFicha` (`clienteCampos.ts`). De paso, bug latente: la

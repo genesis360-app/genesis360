@@ -52,6 +52,9 @@ type: project
 >    ⚠️ en PROD modifica 1 cliente de El Tilo (`dni '' → NULL`) — **pedir OK de GO** antes de aplicarla.
 >    🛑 **Datos del cliente real en el repo PÚBLICO**: `f733d122` (test con CUIT/CBU/alias/CAE de El Tilo) y el wiki (CUIT, correo)
 >    — limpiados en HEAD el 30/09; el historial de git los conserva (reescribir `dev` = decisión de GO).
+> 9. 💲 **Pricing v7** (doc de Fede, 30/09): relevado dónde vive (brand.ts + `fn_plan_base_limite` + EF `mp-addon-batch` +
+>    `admin-api` TIER_BASE + MP + trial mig 257 + wiki `planes-pricing.md`). Espera **PR-1..PR-8**. Dato: el MRR del panel
+>    interno usa `planes.precio_mensual` (precios viejos, 1 tenant con `plan_id`) → arreglarlo junto con v7.
 >
 > **Qué está hecho en DEV (26/09)** — detalle en el bloque del 26/09 de abajo y en log.md:
 > - D-1 fase 2: UNA tasa USD→ARS = vendedor divisa BNA del día hábil anterior (mig 440). UAT §70.

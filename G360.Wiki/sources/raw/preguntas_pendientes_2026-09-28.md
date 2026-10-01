@@ -21,6 +21,8 @@ type: relevamiento
 > **Actualizado 2026-09-28 (tarde):** se suman **EC-1..EC-8** (sección D) del plan "Empezar de cero".
 >
 > **Actualizado 2026-09-29:** se suman **QR-1..QR-3** (sección E): el QR de Mercado Pago en la factura.
+>
+> **Actualizado 2026-09-30:** se suman **PR-1..PR-8** (sección F): pricing v7 (documento "06 - Cambios de Pricing v6 a v7").
 
 **Qué frena cada una:** DL-5 frena el deploy · PL-5 frena la Fase 3 (motor único de precio) · PL-1..PL-3 frenan la
 Fase 4 (precio por categoría) · PL-4 frena C-2 · el resto se puede decidir sin apuro.
@@ -183,4 +185,42 @@ que el medio de pago sea MP: una venta pagada completa sale sin QR. Código: `cr
 - B: no se registra el excedente en CC; solo se avisa al dueño para que lo devuelva por MP.
 
 Los puntos 4 y 5 no requieren decisión: se arreglan alineando el monto del QR con lo que registra `mp-ipn`.
+
+---
+
+## F · Pricing v7 (30/09)
+
+Fuente: "06 - Cambios de Pricing v6 a v7 - Para Tonga" (Fede). Lo que el documento define se ejecuta tal cual (precios
+Básico $54.000/$60.000 y Pro $100.000/$117.600, límites, descuento por débito escalonado, RRHH y marketplace pasan a
+Enterprise). Contexto PROD al 30/09: 0 negocios en Pro o Enterprise, 2 add-ons activos. Estas 8 frenan la ejecución:
+
+**PR-1 · Pago anual.** El doc dice −20 % "adicional sobre el valor con débito" pero pide confirmarlo con Fede. Hoy la app
+dice −30 %. A: −20 % sobre el precio CON débito (acumula: Básico $43.200/mes). B: −20 % sobre el precio de lista, como vía
+alternativa al débito (Básico $48.000/mes).
+
+**PR-2 · Agente de WhatsApp ($50.000).** El doc lo marca como no confirmado.
+- **A (propuesta)**: no se publica el precio; figura en Enterprise sin monto hasta correr el cálculo de costo.
+
+**PR-3 · Prueba de 15 días.**
+- **A (propuesta)**: solo para las altas nuevas; las pruebas en curso conservan su fecha. B: se recortan también las vigentes.
+
+**PR-4 · Plan Free.** La app tiene un plan gratis permanente (50 productos, 200 comprobantes, 1 usuario); v7 no lo menciona.
+A: se elimina (después de la prueba hay que elegir plan). B: se mantiene como está.
+
+**PR-5 · Enterprise contratable online a $200.000.** Hoy es "a consultar". Para cobrarlo por débito hay que crear el plan
+en Mercado Pago (lo hacés vos en el panel de MP y me pasás el id), y actualizar Básico a $54.000 y Pro a $100.000 allá.
+A: se contrata online. B: sigue "a consultar" con el precio publicado.
+
+**PR-6 · Add-on de sucursales sube** ($15k/$35k/$55k → $35k/$55k/$70k).
+- **A (propuesta)**: el precio nuevo rige para compras nuevas; quien ya lo tiene sigue pagando el anterior.
+
+**PR-7 · Límites que bajan.** Comprobantes Básico 6.000 → 5.000, Pro 14.000 → 13.000; usuarios Básico 5 → 3, Pro 15 → 7;
+sucursales Pro 4 → 2; Enterprise deja de ser ilimitado (20 usuarios, 18.000 productos, 30.000 comprobantes, 4 sucursales).
+Un negocio que hoy está por encima del nuevo límite no pierde nada, pero no puede sumar más. ¿Confirmado?
+
+**PR-8 · Módulos sin equivalente claro.** "Logística inteligente" (Pro), "soporte prioritario" (Enterprise) y el add-on
+"Marketplace $35.000": ¿a qué parte de la app corresponde la logística inteligente, y el add-on de marketplace se le vende
+a Básico y Pro (que no lo incluyen)?
+
+Fuera de la app: la Landing 2.0 (documentos de Fede) dice 30 días de prueba en 3 lugares.
 

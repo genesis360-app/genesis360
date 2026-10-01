@@ -2411,6 +2411,15 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔢 §79 — "Stock antes" de productos con series en los movimientos (2026-10-01)
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 79.1 | 🛑 Ingreso/rebaje/ajuste de un producto con series en una sucursal: el movimiento registra como "stock antes" las series activas de esa sucursal (antes, siempre 0) | unit `stockSucursal` · consulta REST vs SQL en DEV (26 = 26) | ✅ |
+| 79.2 | Producto sin series: suma de cantidades de las líneas activas de la sucursal (sin cambio) | unit `stockSucursal` · e2e 116/132 | ✅ |
+| 79.3 | Si no se puede leer el stock, el movimiento no se registra con un 0 inventado: se informa el error | unit `stockSucursal` | ✅ |
+| 79.4 | Los movimientos viejos con 0 NO se reescriben (1 en PROD) | decisión (regla de históricos) | ✅ |
+
 ## 📦 §78 — Importador de inventario en dos pasos, TODO O NADA (D3-a, mig 449) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

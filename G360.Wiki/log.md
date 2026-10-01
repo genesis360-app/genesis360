@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Fix REGLA #0: "stock antes" de productos con series en los movimientos de Inventario
+
+- GO pidió corregir hacia adelante. `getStockAntesSucursal` (InventarioPage) sumaba `inventario_lineas.cantidad`, que
+  en productos con series es 0 → ingresos/rebajes/ajustes/kits de esos productos quedaban con "stock antes" = 0 en el
+  historial (el stock real siempre estuvo bien: `recalcular_stock` cuenta series). PROD: 1 movimiento afectado; no se
+  reescribe (regla de no tocar históricos).
+- `src/lib/stockSucursal.ts`: con series cuenta series activas en líneas activas de la sucursal (embed `!inner`,
+  verificado contra SQL: 26 = 26); si la lectura falla lanza en vez de inventar 0. Recepciones y MasivoModal usan el
+  stock global del producto (ya cuenta series): sin cambio. unit `stockSucursal` (4) · e2e 112/116/132 verdes.
+
 ## [2026-10-01] update | Importador de inventario: dos pasos, TODO O NADA y alineado al ingreso normal (mig 449)
 
 - El importador viejo (nunca usado en PROD) escribía desde el navegador y se apartaba del ingreso normal: sin sucursal,

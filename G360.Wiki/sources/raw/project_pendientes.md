@@ -43,7 +43,8 @@ type: project
 >    movimiento sin control de error, sin conteo wall-to-wall). e2e `169` 4/4. 🛑 **Hallazgo REGLA #0 (ingreso NORMAL,
 >    no el importador)**: `getStockAntesSucursal` (InventarioPage ~807) suma `cantidad` de las líneas, que en productos
 >    con series es 0 → el movimiento queda con "stock antes" = 0. Solo el historial (el stock real cuenta series). PROD: 1
->    de 3 ingresos con series afectado. No se reescribe el histórico; falta decidir el arreglo hacia adelante.
+>    de 3 ingresos con series afectado. No se reescribe el histórico. ✅ **Arreglado hacia adelante (01/10, GO)**:
+>    `src/lib/stockSucursal.ts` cuenta las series de la sucursal; lo usan todos los movimientos de InventarioPage.
 >    **Sigue**:
 >    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
 >    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →

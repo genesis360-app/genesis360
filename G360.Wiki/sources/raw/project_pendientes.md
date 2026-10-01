@@ -54,6 +54,8 @@ type: project
 >    `ImportarProveedoresModal` (plantilla con listas desplegables de condición IVA y tipo; CUIT con dígito verificador;
 >    CBU con sus verificadores; match por CUIT normalizado o, sin CUIT, por nombre). e2e `170` 5/5. Faltan en el archivo:
 >    modo de pago, anticipo, código/régimen fiscal y contactos (se completan en la ficha).
+>    **Pantallas unificadas (01/10, pedido de GO)**: Clientes y Proveedores pasan de modal a página con el mismo layout
+>    que Productos/Inventario (`PaginaImportacion`, rutas `/clientes/importar` y `/proveedores/importar`).
 >    **Sigue**:
 >    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
 >    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →

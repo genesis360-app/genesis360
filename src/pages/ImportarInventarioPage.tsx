@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, Download, FileSpreadsheet, Boxes, AlertTriangle } from 'lucide-react'
+import { Boxes, AlertTriangle } from 'lucide-react'
 // xlsx se importa dinámicamente en descargarPlantilla/procesarArchivo (auditoría perf 2026-08-14, P5).
 import { supabase } from '@/lib/supabase'
 import { traerTodoConError } from '@/lib/traerTodo'
@@ -12,6 +12,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
+import { PaginaImportacion, TarjetaImportacion } from '@/components/importacion/PaginaImportacion'
 import { descargarExcel } from '@/lib/exportarArchivo'
 import { filaExcel, filasConErrorParaExportar, mensajeErrorCarga, resolverReferencia, type ItemMaestro } from '@/lib/importacion'
 import { fechaImportada, MAX_FILAS_INVENTARIO } from '@/lib/importarInventario'
@@ -60,7 +61,6 @@ export default function ImportarInventarioPage() {
   const qc = useQueryClient()
   const soloLectura = moduloSoloLectura(user as any, 'movimientos')
 
-  const fileRef = useRef<HTMLInputElement>(null)
   const [sucursalElegida, setSucursalElegida] = useState<string>('')
   const sucursalDestino = sucursalId ?? (sucursalElegida || null)
 
@@ -269,107 +269,70 @@ export default function ImportarInventarioPage() {
 
   if (limits && !limits.puede_importar) return <UpgradePrompt feature="importar" />
 
-  const sinSucursal = !sucursalDestino
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/inventario')} aria-label="Volver" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-primary">Importar inventario</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Cargá stock masivamente desde Excel</p>
-        </div>
-      </div>
-
-      {soloLectura ? (
+  if (soloLectura) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">
         <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-5 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
           <AlertTriangle size={18} className="shrink-0 mt-0.5" /> Tu rol tiene acceso de solo lectura en Inventario.
         </div>
-      ) : (
-        <>
-          {resultado && (
-            <ResultadoImportacion resultado={resultado} accion={resultado.ok && (
-              <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
-            )} />
-          )}
+      </div>
+    )
+  }
 
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300 space-y-1">
-            <p><strong>Carga masiva de inventario</strong> — cada fila crea una línea de stock (LPN) en la sucursal elegida y registra un movimiento de ingreso, igual que el ingreso manual. Los SKU tienen que existir en el catálogo.</p>
-            <p className="text-xs">Todo o nada: con una fila con error no se carga ninguna. Hasta {MAX_FILAS_INVENTARIO} filas por archivo. El importador no consulta la regla de rotación por vencimiento.</p>
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-5">
-            <div className="space-y-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Sucursal de destino</h2>
-                {sucursalId ? (
-                  <p className="text-sm text-gray-700 dark:text-gray-200">{(sucursales as any[]).find(s => s.id === sucursalId)?.nombre ?? 'Sucursal activa'}</p>
-                ) : (
-                  <select value={sucursalElegida} onChange={e => { setSucursalElegida(e.target.value); setFilas([]); setResultado(null) }}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700">
-                    <option value="">Elegí la sucursal…</option>
-                    {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                  </select>
-                )}
-              </div>
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent-text" /> Plantilla</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Una fila por línea de inventario a cargar.</p>
-                <button onClick={descargarPlantilla} className="w-full flex items-center justify-center gap-2 border border-accent-text text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
-                  <Download size={15} /> Descargar plantilla
-                </button>
-              </div>
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent-text" /> Subir archivo</h2>
-                <div className={`border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center transition-all ${sinSucursal ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-accent-text hover:bg-accent/5'}`}
-                  onClick={() => { if (!sinSucursal) fileRef.current?.click() }}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && !sinSucursal) procesarArchivo(f) }}>
-                  <Boxes size={28} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {sinSucursal ? 'Primero elegí la sucursal' : filas.length > 0 ? 'Subí el archivo corregido' : 'Arrastrá o hacé click'}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
-                </div>
-                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
-              </div>
-            </div>
-
-            <div className="lg:col-span-2">
-              {filas.length === 0 ? (
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 dark:border-gray-700 text-center text-gray-400 dark:text-gray-500">
-                  <Boxes size={40} className="mx-auto mb-3 opacity-30" />
-                  <p className="font-medium">Subí un archivo para ver la previsualización</p>
-                </div>
-              ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
-                  <VistaPreviaImportacion
-                    entidadPlural="líneas al inventario"
-                    columnas={['SKU', 'Producto', 'Cantidad', 'Ubicación', 'Estado', 'Lote', 'Vence']}
-                    filas={filas.map(f => ({
-                      idx: f.idx,
-                      errores: f.errores,
-                      estado: f.errores.length ? 'error' : 'nuevo',
-                      detalle: f.avisos.join(' · ') || undefined,
-                      celdas: [f.sku, f.producto_nombre, f.tiene_series ? `${f.cantidad} (series)` : f.cantidad || '—',
-                        f.ubicacion ?? '—', f.estado ?? '—', f.nro_lote ?? '—', f.fecha_vencimiento ?? '—'],
-                    }))}
-                    cargando={importando}
-                    onCargar={confirmar}
-                    onBajarErrores={() => {
-                      const filasErr = filasConErrorParaExportar(originales, filas)
-                      if (filasErr.length) void descargarExcel({ nombre: 'Filas con error', filas: filasErr }, 'inventario_filas_con_error')
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </>
+  return (
+    <PaginaImportacion
+      titulo="Importar inventario"
+      subtitulo="Cargá stock masivamente desde Excel"
+      volverA="/inventario"
+      textoPlantilla="Completá una fila por línea de inventario a cargar."
+      onPlantilla={descargarPlantilla}
+      onArchivo={procesarArchivo}
+      hayFilas={filas.length > 0}
+      bloqueoSubida={sucursalDestino ? null : 'Primero elegí la sucursal'}
+      iconoVacio={<Boxes size={28} className="text-gray-300 mx-auto mb-2" />}
+      resultado={resultado && (
+        <ResultadoImportacion resultado={resultado} accion={resultado.ok && (
+          <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
+        )} />
       )}
-    </div>
+      aviso={
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300 space-y-1">
+          <p><strong>Carga masiva de inventario</strong> — cada fila crea una línea de stock (LPN) en la sucursal elegida y registra un movimiento de ingreso, igual que el ingreso manual. Los SKU tienen que existir en el catálogo.</p>
+          <p className="text-xs">Todo o nada: con una fila con error no se carga ninguna. Hasta {MAX_FILAS_INVENTARIO} filas por archivo. El importador no consulta la regla de rotación por vencimiento.</p>
+        </div>
+      }
+      antes={
+        <TarjetaImportacion titulo="Sucursal de destino">
+          {sucursalId ? (
+            <p className="text-sm text-gray-700 dark:text-gray-200">{(sucursales as any[]).find(s => s.id === sucursalId)?.nombre ?? 'Sucursal activa'}</p>
+          ) : (
+            <select value={sucursalElegida} onChange={e => { setSucursalElegida(e.target.value); setFilas([]); setResultado(null) }}
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700">
+              <option value="">Elegí la sucursal…</option>
+              {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          )}
+        </TarjetaImportacion>
+      }
+    >
+      <VistaPreviaImportacion
+        entidadPlural="líneas al inventario"
+        columnas={['SKU', 'Producto', 'Cantidad', 'Ubicación', 'Estado', 'Lote', 'Vence']}
+        filas={filas.map(f => ({
+          idx: f.idx,
+          errores: f.errores,
+          estado: f.errores.length ? 'error' : 'nuevo',
+          detalle: f.avisos.join(' · ') || undefined,
+          celdas: [f.sku, f.producto_nombre, f.tiene_series ? `${f.cantidad} (series)` : f.cantidad || '—',
+            f.ubicacion ?? '—', f.estado ?? '—', f.nro_lote ?? '—', f.fecha_vencimiento ?? '—'],
+        }))}
+        cargando={importando}
+        onCargar={confirmar}
+        onBajarErrores={() => {
+          const filasErr = filasConErrorParaExportar(originales, filas)
+          if (filasErr.length) void descargarExcel({ nombre: 'Filas con error', filas: filasErr }, 'inventario_filas_con_error')
+        }}
+      />
+    </PaginaImportacion>
   )
 }

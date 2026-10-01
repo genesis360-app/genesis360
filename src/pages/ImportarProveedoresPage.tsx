@@ -1,8 +1,11 @@
-// Importar proveedores desde Excel/CSV (backlog "estandarizar importar", GO 2026-10-01).
+// Importar proveedores desde Excel/CSV (backlog "estandarizar importar", GO 2026-10-01). Página completa con el mismo
+// diseño que Importar productos / inventario (PaginaImportacion).
 // Dos pasos y TODO O NADA (D3-a): vista previa completa → "Cargar"; la base aplica todo en una transacción
 // (mig 450 `fn_importar_proveedores`). Al actualizar un proveedor existente se escriben solo las columnas con valor.
-import { useRef, useState } from 'react'
-import { Download, FileSpreadsheet, Upload, X } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { Truck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { traerTodoConError } from '@/lib/traerTodo'
@@ -12,7 +15,8 @@ import { filaExcel, filasConErrorParaExportar, MAX_FILAS_IMPORTACION, mensajeErr
 import { cuitValido, normalizarCuit } from '@/lib/padronArca'
 import { cbuValido, condicionIvaProveedor, CONDICION_IVA_PLANTILLA, tipoProveedor } from '@/lib/importarProveedores'
 import { agregarValidacionesXlsx, letraColumna, type ValidacionLista } from '@/lib/xlsxValidaciones'
-import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from './VistaPreviaImportacion'
+import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
+import { PaginaImportacion, TarjetaImportacion } from '@/components/importacion/PaginaImportacion'
 
 const COLUMNAS = ['nombre', 'razon_social', 'cuit', 'condicion_iva', 'domicilio', 'contacto', 'telefono', 'email',
   'plazo_pago_dias', 'banco', 'cbu', 'tipo', 'dni', 'etiquetas', 'notas'] as const
@@ -28,9 +32,14 @@ interface FilaProv {
 
 type Modo = 'ignorar_existentes' | 'ignorar_nuevos' | 'procesar_todos'
 
-export function ImportarProveedoresModal({ onClose, onCargado }: { onClose: () => void; onCargado: () => void }) {
-  const { tenant } = useAuthStore()
-  const fileRef = useRef<HTMLInputElement>(null)
+const COND_CORTA: Record<string, string> = {
+  responsable_inscripto: 'Resp. Inscripto', monotributo: 'Monotributo', exento: 'Exento', consumidor_final: 'Cons. Final',
+}
+
+export default function ImportarProveedoresPage() {
+  const { tenant, user } = useAuthStore()
+  const navigate = useNavigate()
+  const qc = useQueryClient()
   const [filas, setFilas] = useState<FilaProv[]>([])
   const [originales, setOriginales] = useState<Record<string, unknown>[]>([])
   const [modo, setModo] = useState<Modo>('ignorar_existentes')
@@ -186,7 +195,7 @@ export function ImportarProveedoresModal({ onClose, onCargado }: { onClose: () =
       const ignorados = filas.length - items.length
       setResultado({ ok: true, resumen: `${r.creados} creados · ${r.actualizados} actualizados${ignorados ? ` · ${ignorados} ignorados` : ''}` })
       setFilas([]); setOriginales([])
-      onCargado()
+      qc.invalidateQueries({ queryKey: ['proveedores'] })
     } catch (e: any) {
       setResultado({ ok: false, mensaje: mensajeErrorCarga(e) })
     } finally {
@@ -194,84 +203,69 @@ export function ImportarProveedoresModal({ onClose, onCargado }: { onClose: () =
     }
   }
 
+  // Lector: solo lectura (la base tampoco lo deja importar, mig 450).
+  if ((user?.rol as string | undefined) === 'VIEWER') {
+    return <div className="p-6 text-sm text-amber-700">Tu rol tiene acceso de solo lectura.</div>
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-6xl h-[95vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-            <FileSpreadsheet size={18} className="text-accent-text" /> Importar proveedores
-          </h2>
-          <button onClick={onClose} aria-label="Cerrar" className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+    <PaginaImportacion
+      titulo="Importar proveedores"
+      subtitulo="Cargá tus proveedores desde Excel"
+      volverA="/proveedores"
+      onPlantilla={descargarPlantilla}
+      onArchivo={procesarArchivo}
+      hayFilas={filas.length > 0}
+      iconoVacio={<Truck size={28} className="text-gray-300 mx-auto mb-2" />}
+      resultado={resultado && (
+        <ResultadoImportacion resultado={resultado} accion={resultado.ok && (
+          <button onClick={() => navigate('/proveedores')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver proveedores →</button>
+        )} />
+      )}
+      aviso={
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300">
+          <strong>Carga masiva de proveedores</strong> — un proveedor que ya existe se reconoce por el CUIT (o, sin CUIT, por el nombre).
+          Todo o nada: con una fila con error no se carga ninguna.
         </div>
-        <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          {resultado && (
-            <ResultadoImportacion resultado={resultado} accion={resultado.ok && (
-              <button onClick={onClose} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Cerrar →</button>
-            )} />
-          )}
-          {!resultado?.ok && (
-            <div className="flex gap-3 flex-wrap">
-              <button onClick={descargarPlantilla}
-                className="flex items-center gap-2 border border-accent-text text-accent-text font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm">
-                <Download size={14} /> Descargar plantilla
-              </button>
-              <button onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2 rounded-xl text-sm">
-                <Upload size={14} /> {filas.length > 0 || resultado ? 'Subir el archivo corregido' : 'Subir archivo'}
-              </button>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
-            </div>
-          )}
-          {filas.length > 0 && !resultado?.ok && (
-            <VistaPreviaImportacion
-              entidadPlural="proveedores"
-              columnas={['Nombre', 'Razón social', 'CUIT', 'Condición IVA', 'Teléfono', 'Email']}
-              filas={filas.map(f => {
-                const a = accion(f)
-                return {
-                  idx: f.idx, errores: f.errores,
-                  estado: f.errores.length ? 'error' : a === 'crear' ? 'nuevo' : a === 'actualizar' ? 'existente' : 'omitida',
-                  detalle: f.matchId ? (a ? `Ya existe (${f.matchNombre}): se actualizan las columnas con valor` : `Ya existe (${f.matchNombre})`) : undefined,
-                  celdas: [f.nombre || f.matchNombre || '—', (f.campos.razon_social as string) ?? '—', (f.campos.cuit as string) ?? '—',
-                    (f.campos.condicion_iva as string)?.replace('_', ' ') ?? '—', (f.campos.telefono as string) ?? '—', (f.campos.email as string) ?? '—'],
-                }
-              })}
-              cargando={cargando}
-              onCargar={cargar}
-              onBajarErrores={() => {
-                const err = filasConErrorParaExportar(originales, filas)
-                if (err.length) void descargarExcel({ nombre: 'Filas con error', filas: err }, 'proveedores_filas_con_error')
-              }}
-              opciones={filas.some(f => f.matchId) && (
-                <div className="bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Hay proveedores que ya existen. ¿Qué hago con ellos?</p>
-                  {([
-                    ['ignorar_existentes', 'Ignorar existentes — solo crear los nuevos'],
-                    ['ignorar_nuevos', 'Ignorar nuevos — solo actualizar los existentes'],
-                    ['procesar_todos', 'Procesar todos — crear nuevos y actualizar existentes'],
-                  ] as [Modo, string][]).map(([v, label]) => (
-                    <label key={v} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                      <input type="radio" name="imp-prov-modo" checked={modo === v} onChange={() => setModo(v)} /> {label}
-                    </label>
-                  ))}
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">Al actualizar se escriben solo las columnas con valor: una celda vacía no borra lo que ya tiene el proveedor.</p>
-                </div>
-              )}
-            />
-          )}
-          {filas.length === 0 && !resultado && (
-            <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5"
-              onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
-              <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click para subir tu Excel</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: {COLUMNAS.join(', ')}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      }
+      opciones={filas.some(f => f.matchId) && (
+        <TarjetaImportacion titulo="Si el proveedor ya existe">
+          <div className="space-y-2">
+            {([
+              ['ignorar_existentes', 'Solo crear nuevos', 'Ignorar los que ya existen'],
+              ['ignorar_nuevos', 'Solo actualizar', 'Ignorar los nuevos'],
+              ['procesar_todos', 'Crear y actualizar', 'Procesar todos'],
+            ] as [Modo, string, string][]).map(([v, label, desc]) => (
+              <label key={v} className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <input type="radio" name="imp-prov-modo" checked={modo === v} onChange={() => setModo(v)} className="mt-0.5" />
+                <div><p className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</p><p className="text-xs text-gray-400 dark:text-gray-500">{desc}</p></div>
+              </label>
+            ))}
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">Al actualizar se escriben solo las celdas con valor: una vacía no borra lo que ya tiene el proveedor.</p>
+          </div>
+        </TarjetaImportacion>
+      )}
+    >
+      <VistaPreviaImportacion
+        entidadPlural="proveedores"
+        columnas={['Nombre', 'CUIT', 'Condición IVA', 'Teléfono']}
+        filas={filas.map(f => {
+          const a = accion(f)
+          return {
+            idx: f.idx, errores: f.errores,
+            estado: f.errores.length ? 'error' : a === 'crear' ? 'nuevo' : a === 'actualizar' ? 'existente' : 'omitida',
+            detalle: f.matchId ? (a ? `Ya existe (${f.matchNombre}): se actualizan las columnas con valor` : `Ya existe (${f.matchNombre})`) : undefined,
+            celdas: [f.nombre || f.matchNombre || '—', (f.campos.cuit as string) ?? '—',
+              COND_CORTA[f.campos.condicion_iva as string] ?? '—', (f.campos.telefono as string) ?? '—'],
+          }
+        })}
+        cargando={cargando}
+        onCargar={cargar}
+        onBajarErrores={() => {
+          const err = filasConErrorParaExportar(originales, filas)
+          if (err.length) void descargarExcel({ nombre: 'Filas con error', filas: err }, 'proveedores_filas_con_error')
+        }}
+      />
+    </PaginaImportacion>
   )
 }

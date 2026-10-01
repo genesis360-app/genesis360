@@ -1,7 +1,5 @@
 import { dniObligatorioEnFicha } from '@/lib/clienteCampos'
 import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
-import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
-import { filaExcel, filasConErrorParaExportar, MAX_FILAS_IMPORTACION, mensajeErrorCarga, skusRepetidos } from '@/lib/importacion'
 import { condicionParaCliente, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,7 +7,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
-  Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
+  Upload, Download, CheckCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
   Tag, Calendar, StickyNote, CreditCard, AlertCircle, MessageCircle, DollarSign,
   UserX, RotateCcw, ClipboardList, CheckCircle2, UserCog,
 } from 'lucide-react'
@@ -28,25 +26,12 @@ import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
-import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
 import { usePaginacionLista } from '@/hooks/usePaginacionLista'
 import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import toast from 'react-hot-toast'
 import { descargarCsv, descargarExcel, descargarJson, nombreConFecha } from '@/lib/exportarArchivo'
 
-interface FilaCliente {
-  idx: number
-  nombre: string
-  dni?: string
-  telefono?: string
-  email?: string
-  notas?: string
-  etiquetas?: string[]
-  matchId?: string   // id del cliente existente si es duplicado (A5)
-  estado: 'nuevo' | 'duplicado' | 'error'
-  errores: string[]
-}
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { useConfirm, useElegir } from '@/hooks/useConfirm'
@@ -127,7 +112,6 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 export default function ClientesPage() {
   const { tenant, user } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
-  const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const elegir = useElegir()
@@ -197,16 +181,6 @@ export default function ClientesPage() {
   const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
   const [savingDom, setSavingDom] = useState(false)
 
-  // Import state
-  const fileRefImport = useRef<HTMLInputElement>(null)
-  const [showImport, setShowImport] = useState(false)
-  const [filasImport, setFilasImport] = useState<FilaCliente[]>([])
-  const [importando, setImportando] = useState(false)
-  // D3-a: la carga es todo o nada → o se cargó todo, o no se cargó nada (con el motivo).
-  const [resultadoImport, setResultadoImport] = useState<ResultadoCarga | null>(null)
-  const [originalesImport, setOriginalesImport] = useState<Record<string, unknown>[]>([])
-  // A5 — modo de resolución de duplicados (espeja importar productos)
-  const [importModo, setImportModo] = useState<'ignorar_existentes' | 'ignorar_nuevos' | 'procesar_todos'>('ignorar_existentes')
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: clientes = [], isLoading } = useQuery({
@@ -869,150 +843,6 @@ ${detalle}`,
     }
   }
 
-  // ── Importación masiva ───────────────────────────────────────────────────
-  const descargarPlantilla = async () => {
-    const XLSX = await import('xlsx')
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre', 'dni', 'telefono', 'email', 'notas', 'etiquetas'],
-      ['Juan Pérez', '20123456', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente', 'mayorista, vip'],
-      ['María García', '27654321', '', 'maria@empresa.com', '', 'zona-norte'],
-    ])
-    const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
-    ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 28 }, { wch: 35 }, { wch: 25 }, { wch: 22 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
-    XLSX.writeFile(wb, 'plantilla_clientes.xlsx')
-  }
-
-  const procesarArchivo = (file: File) => {
-    setResultadoImport(null)
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-      try {
-        const XLSX = await import('xlsx')
-        const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
-        const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
-        if (!rows.length) { toast.error('El archivo está vacío'); return }
-        if (rows.length > MAX_FILAS_IMPORTACION) {
-          toast.error(`El archivo tiene ${rows.length} filas; el máximo por importación es ${MAX_FILAS_IMPORTACION}. Dividilo en partes.`)
-          return
-        }
-
-        // A5 — detección de duplicados contra TODA la base (por DNI, teléfono o nombre)
-        // Sin tope: "contra TODA la base" tiene que ser toda de verdad. Con mas de 1000 clientes,
-        // PostgREST devolvia 1000 y el importador no veia los duplicados del resto.
-        const { data: existentes, error: errExist } = await traerTodoConError<any>((desde, hasta) => supabase.from('clientes')
-          .select('id, nombre, dni, telefono, email').eq('tenant_id', tenant!.id).range(desde, hasta))
-        // Sin esta respuesta todos parecerían nuevos y se duplicarían: mejor no mostrar nada.
-        if (errExist) { toast.error('No se pudo revisar qué clientes ya existen. Intentá de nuevo.'); return }
-        const norm = (s: string) => (s ?? '').replace(/\D/g, '')
-        const porDni = new Map<string, string>()
-        const porTel = new Map<string, string>()
-        const porNombre = new Map<string, string>()
-        const porEmail = new Map<string, string>()
-        const nombrePorId = new Map<string, string>()
-        for (const c of (existentes ?? []) as any[]) {
-          if (c.dni) porDni.set(String(c.dni).trim(), c.id)
-          if (c.telefono && norm(c.telefono)) porTel.set(norm(c.telefono), c.id)
-          if (c.email) porEmail.set(String(c.email).trim(), c.id)
-          porNombre.set(c.nombre.trim().toLowerCase(), c.id)
-          nombrePorId.set(c.id, c.nombre)
-        }
-
-        const dniRepetidos = skusRepetidos(rows.map(r => String(r.dni || '')))
-        const emailRepetidos = skusRepetidos(rows.map(r => String(r.email || '')))
-        const filas: FilaCliente[] = rows.map((row, idx) => {
-          const errores: string[] = []
-          const nombre = String(row.nombre || '').trim()
-          if (!nombre) errores.push('Nombre requerido')
-          const dni = String(row.dni || '').trim() || undefined
-          const telefono = String(row.telefono || '').trim() || undefined
-          const email = String(row.email || '').trim() || undefined
-          const etiquetasRaw = String(row.etiquetas || '').trim()
-          const matchId =
-            (dni && porDni.get(dni)) ||
-            (telefono && porTel.get(norm(telefono))) ||
-            porNombre.get(nombre.toLowerCase()) || undefined
-          if (dni && dniRepetidos.has(dni.toUpperCase())) errores.push(`DNI repetido en el archivo (filas ${dniRepetidos.get(dni.toUpperCase())!.join(', ')})`)
-          if (email && emailRepetidos.has(email.toUpperCase())) errores.push(`Email repetido en el archivo (filas ${emailRepetidos.get(email.toUpperCase())!.join(', ')})`)
-          // El DNI y el email son únicos por negocio: si ya los tiene OTRO cliente, la carga fallaría.
-          const duenoDni = dni ? porDni.get(dni) : undefined
-          if (duenoDni && duenoDni !== matchId) errores.push(`El DNI ya es de otro cliente (${nombrePorId.get(duenoDni)})`)
-          const duenoEmail = email ? porEmail.get(email) : undefined
-          if (duenoEmail && duenoEmail !== matchId) errores.push(`El email ya es de otro cliente (${nombrePorId.get(duenoEmail)})`)
-          return {
-            idx,
-            nombre,
-            dni,
-            telefono,
-            email,
-            notas: String(row.notas || '').trim() || undefined,
-            etiquetas: etiquetasRaw ? etiquetasRaw.split(/[,;]/).map(s => s.trim()).filter(Boolean) : undefined,
-            matchId,
-            estado: errores.length > 0 ? 'error' : matchId ? 'duplicado' : 'nuevo',
-            errores,
-          }
-        })
-        // Dos filas del archivo que caen sobre el MISMO cliente existente: antes "ganaba la última" sin aviso.
-        const filasPorCliente = new Map<string, number[]>()
-        filas.forEach(f => { if (f.matchId) filasPorCliente.set(f.matchId, [...(filasPorCliente.get(f.matchId) ?? []), filaExcel(f.idx)]) })
-        for (const f of filas) {
-          const otras = f.matchId ? filasPorCliente.get(f.matchId)! : []
-          if (otras.length > 1) {
-            f.errores.push(`Las filas ${otras.join(', ')} son el mismo cliente (${nombrePorId.get(f.matchId!)}): dejá una sola`)
-            f.estado = 'error'
-          }
-        }
-        setFilasImport(filas)
-        setOriginalesImport(rows)
-      } catch { toast.error('Error al leer el archivo.') }
-    }
-    reader.readAsArrayBuffer(file)
-  }
-
-  // A5 — modo: ignorar_existentes (solo nuevos) · ignorar_nuevos (solo actualizar) · procesar_todos
-  const accionCliente = (f: FilaCliente): 'crear' | 'actualizar' | null => {
-    if (f.estado === 'error') return null
-    if (f.estado === 'duplicado') return importModo === 'ignorar_existentes' ? null : 'actualizar'
-    return importModo === 'ignorar_nuevos' ? null : 'crear'
-  }
-
-  const confirmarImport = async () => {
-    if (filasImport.some(f => f.estado === 'error')) return   // D3-a: todo o nada (el botón no aparece con errores)
-    // Solo las columnas con valor: al actualizar, una celda vacía NO borra el dato que ya tenía el cliente (antes sí).
-    const items = filasImport.flatMap(f => {
-      const accion = accionCliente(f)
-      if (!accion) return []
-      const campos: Record<string, unknown> = { nombre: f.nombre }
-      if (f.dni) campos.dni = f.dni
-      if (f.telefono) campos.telefono = f.telefono
-      if (f.email) campos.email = f.email
-      if (f.notas) campos.notas = f.notas
-      if (f.etiquetas?.length) campos.etiquetas = f.etiquetas
-      return [{ fila: filaExcel(f.idx), accion, id: accion === 'actualizar' ? f.matchId : undefined, campos }]
-    })
-    if (items.length === 0) return
-    setImportando(true)
-    try {
-      // 🛑 D3-a — una sola llamada; la base aplica todo en una transacción (mig 448).
-      const { data, error } = await supabase.rpc('fn_importar_clientes', { p_filas: items, p_sucursal_id: sucursalId || null })
-      if (error) { setResultadoImport({ ok: false, mensaje: mensajeErrorCarga(error) }); return }
-      const r = data as { creados: number; actualizados: number }
-      const ignorados = filasImport.length - items.length
-      setResultadoImport({ ok: true, resumen: `${r.creados} creados · ${r.actualizados} actualizados${ignorados ? ` · ${ignorados} ignorados` : ''}` })
-      setFilasImport([])
-      setOriginalesImport([])
-      toast.success(`${r.creados} creados · ${r.actualizados} actualizados`)
-    } catch (e: any) {
-      setResultadoImport({ ok: false, mensaje: mensajeErrorCarga(e) })
-    } finally {
-      setImportando(false)
-      qc.invalidateQueries({ queryKey: ['clientes'] })
-      qc.invalidateQueries({ queryKey: ['cliente-etiquetas-catalogo'] })
-    }
-  }
-
   const exportarClientes = (format: 'json' | 'csv' | 'xlsx') => {
     const rows = (clientes as any[]).map(c => ({
       id: c.id, nombre: c.nombre, dni: c.dni ?? '', telefono: c.telefono ?? '',
@@ -1046,7 +876,7 @@ ${detalle}`,
                 { label: 'Exportar CSV',  icon: Download, onClick: () => exportarClientes('csv') },
                 { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
                 { label: verInactivos ? 'Ver activos' : 'Ver inactivos', icon: UserX, onClick: () => setVerInactivos(v => !v) },
-                { label: 'Importar', icon: Upload, onClick: () => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }, hidden: !puedeEditar || (user?.rol as string | undefined) === 'VIEWER' /* Lector: la base (mig 448) tampoco lo deja */ },
+                { label: 'Importar', icon: Upload, onClick: () => navigate('/clientes/importar'), hidden: !puedeEditar || (user?.rol as string | undefined) === 'VIEWER' /* Lector: la base (mig 448) tampoco lo deja */ },
               ]}
             />
             {puedeEditar && (
@@ -2280,97 +2110,6 @@ ${detalle}`,
       )}
 
       {/* Modal importación masiva */}
-      {showImport && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
-          {/* Pantalla completa (backlog "estandarizar importar"): la vista previa muestra TODAS las filas. */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-6xl h-[95vh] flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                <FileSpreadsheet size={18} className="text-accent-text" /> Importar clientes
-              </h2>
-              <button onClick={() => setShowImport(false)} aria-label="Cerrar" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
-            </div>
-
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {resultadoImport && (
-                <ResultadoImportacion resultado={resultadoImport} accion={resultadoImport.ok && (
-                  <button onClick={() => setShowImport(false)} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Cerrar →</button>
-                )} />
-              )}
-
-              {!resultadoImport?.ok && (
-                <div className="flex gap-3 flex-wrap">
-                  <button onClick={descargarPlantilla}
-                    className="flex items-center gap-2 border border-accent-text text-accent-text font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm transition-all">
-                    <Download size={14} /> Descargar plantilla
-                  </button>
-                  <button onClick={() => fileRefImport.current?.click()}
-                    className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all">
-                    <Upload size={14} /> {filasImport.length > 0 || resultadoImport ? 'Subir el archivo corregido' : 'Subir archivo'}
-                  </button>
-                  <input ref={fileRefImport} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
-                </div>
-              )}
-
-              {filasImport.length > 0 && !resultadoImport?.ok && (
-                <VistaPreviaImportacion
-                  entidadPlural="clientes"
-                  columnas={['Nombre', 'DNI', 'Teléfono', 'Email', 'Etiquetas']}
-                  filas={filasImport.map(f => {
-                    const accion = accionCliente(f)
-                    return {
-                      idx: f.idx,
-                      errores: f.errores,
-                      estado: f.estado === 'error' ? 'error' : accion === 'crear' ? 'nuevo' : accion === 'actualizar' ? 'existente' : 'omitida',
-                      detalle: f.estado === 'duplicado' ? (accion ? 'Ya existe: se actualizan las columnas con valor' : 'Ya existe') : undefined,
-                      celdas: [f.nombre || '—', f.dni ?? '—', f.telefono ?? '—', f.email ?? '—', f.etiquetas?.join(', ') ?? '—'],
-                    }
-                  })}
-                  cargando={importando}
-                  onCargar={confirmarImport}
-                  onBajarErrores={() => {
-                    const filas = filasConErrorParaExportar(originalesImport, filasImport)
-                    if (filas.length) void descargarExcel({ nombre: 'Filas con error', filas }, 'clientes_filas_con_error')
-                  }}
-                  opciones={filasImport.some(f => f.estado === 'duplicado') && (
-                    <div className="bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Hay clientes que ya existen. ¿Qué hago con ellos?</p>
-                      <div className="space-y-1.5">
-                        {([
-                          { v: 'ignorar_existentes' as const, label: 'Ignorar existentes — solo crear los nuevos' },
-                          { v: 'ignorar_nuevos' as const, label: 'Ignorar nuevos — solo actualizar los existentes' },
-                          { v: 'procesar_todos' as const, label: 'Procesar todos — crear nuevos y actualizar existentes' },
-                        ]).map(opt => (
-                          <label key={opt.v} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                            <input type="radio" name="import-modo" checked={importModo === opt.v}
-                              onChange={() => setImportModo(opt.v)} className="accent-accent" />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">Al actualizar se escriben solo las columnas con valor: una celda vacía no borra lo que ya tiene el cliente.</p>
-                    </div>
-                  )}
-                />
-              )}
-
-              {filasImport.length === 0 && !resultadoImport && (
-                <div
-                  className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
-                  onClick={() => fileRefImport.current?.click()}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
-                  <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click para subir tu Excel</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, dni, telefono, email, notas, etiquetas</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ═══════════════ MODAL BAJA DE CLIENTE (A6) ═══════════════ */}
       {bajaCliente && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setBajaCliente(null)}>

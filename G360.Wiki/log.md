@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Importar clientes y proveedores: misma pantalla que Productos/Inventario
+
+- GO: "no quedó como esperaba, tiene que ser la misma pantalla que el importar de Productos o Inventario". Los modales de
+  Clientes y Proveedores pasan a PÁGINAS (`/clientes/importar`, `/proveedores/importar`; el menú "Importar" navega ahí).
+- Layout compartido `src/components/importacion/PaginaImportacion.tsx` (encabezado con volver, columna izquierda
+  Plantilla / Subir archivo / opciones, vista previa a la derecha) — también lo usa Inventario. `VistaPreviaImportacion`
+  rediseñada igual que la de Productos (contadores grandes, estado con ícono, franja gris con el botón).
+- Vista previa de Clientes/Proveedores con 4 columnas para que la de Errores entre (medido: tabla = tarjeta, 674 px).
+- Verde: tsc, build, unit 2079, e2e 168/169/170 12/12 (sin cambios en los tests).
+
 ## [2026-10-01] update | Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) + fix del mail del ticket
 
 - GO preguntó si el envío por WhatsApp se había hecho: NO (no estaba en wiki ni memoria). Decisión de GO: "Enviar" →

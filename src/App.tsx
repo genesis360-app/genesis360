@@ -23,6 +23,8 @@ const InventarioPage   = lazy(() => import('@/pages/InventarioPage'))
 const ProductoFormPage = lazy(() => import('@/pages/ProductoFormPage'))
 const ImportarProductosPage  = lazy(() => import('@/pages/ImportarProductosPage'))
 const ImportarInventarioPage = lazy(() => import('@/pages/ImportarInventarioPage'))
+const ImportarProveedoresPage = lazy(() => import('@/pages/ImportarProveedoresPage'))
+const ImportarClientesPage = lazy(() => import('@/pages/ImportarClientesPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
 const PanelCajeroPage      = lazy(() => import('@/pages/PanelCajeroPage'))
 const FicharPage           = lazy(() => import('@/pages/FicharPage'))
@@ -188,6 +190,8 @@ function App() {
                   {/* Redirects para compatibilidad con URLs viejas */}
                   <Route path="/inventario/nuevo" element={<Navigate to="/productos/nuevo" replace />} />
                   <Route path="/inventario/importar" element={<ImportarInventarioPage />} />
+                  <Route path="/proveedores/importar" element={<ImportarProveedoresPage />} />
+                  <Route path="/clientes/importar" element={<ImportarClientesPage />} />
                   <Route path="/inventario/:id/editar" element={<ProductoFormPage />} />
                   <Route path="/movimientos" element={<Navigate to="/inventario" replace />} />
                   <Route path="/ventas" element={<VentasPage />} />

@@ -10,7 +10,7 @@ export interface KnowledgeSection {
   contenido: string
 }
 
-export const KNOWLEDGE_GENERATED_AT = "2026-09-25T04:16:09.929Z"
+export const KNOWLEDGE_GENERATED_AT = "2026-10-01T23:52:23.451Z"
 
 export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
@@ -104,7 +104,7 @@ export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
       "categoria",
       "mayorista"
     ],
-    "contenido": "Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursales.\n\n**Tabs:**\n- **Productos**: listado con búsqueda por nombre/SKU/código de barras\n- **Estructuras**: definición de estructuras de embalaje con niveles dinámicos por unidad de medida (ej. unidad → caja → pallet, o cualquier UdM del negocio) con factores de conversión, dimensiones y pesos\n\n**Listado — fila expandida al hacer clic:**\n- Badge de stock disponible para venta (filtrado por sucursal activa, calculado desde `inventario_lineas`)\n- Badge rojo con AlertTriangle si stock ≤ stock mínimo\n- Precio de venta, precio de costo\n- Categoría, SKU, código de barras\n- Ícono carrito → agrega a Orden de Compra rápida\n- Link \"Editar\" → `/productos/:id/editar`\n\n**Acciones principales:**\n- **+ Nuevo producto** (esquina superior derecha): va a `/productos/nuevo`\n- **Escanear** (ícono cámara): busca por código\n- **Filtros** (v1.138.0): panel combinable — Activos/Inactivos/Todos, Con/Sin estructura de embalaje, Categoría, Proveedor, Marca, y atributos de inventario (tracking + variantes) combinables por OR\n- **Importar** → `/importar/productos`\n- **Bulk actions** (aparece al seleccionar con checkbox):\n  - Cambiar precio (porcentaje o valor fijo a todos los seleccionados)\n  - Cambiar proveedor asignado\n  - Reactivar productos desactivados\n\n**Formulario de producto** (`ProductoFormPage`):\n- Nombre, SKU (auto-generado `calcularSiguienteSKU()` o manual), código de barras\n- Categoría, proveedor\n- Precio de venta, precio de costo, moneda (ARS/USD), alícuota IVA (0 / 10.5 / 21 / 27%)\n- **Precios mayoristas**: tiers por cantidad mínima (ej: ≥10 unidades → $X)\n- Unidad de medida (unidad, kg, g, litro, ml, metro, cm, caja, pack, docena)\n- Stock mínimo global + stock mínimo por sucursal (override individual)\n- Imagen: upload a Supabase Storage\n- Regla de inventario: FIFO / FEFO / LEFO / LIFO / Manual\n- Flags: tiene series, tiene lote, tiene vencimiento\n- TiendaNube: habilitar sync, SKU TN\n- MercadoLibre: habilitar sync\n\n**Tab Estructuras — detalle:**\nCada producto puede tener una o más estructuras de embalaje (\"footprints\", estilo pack structure de Blue Yonder). Una estructura tiene **niveles dinámicos**: cada nivel es una **unidad de medida del negocio** (las de Configuración → Unidades: Unidad, Caja, Pallet, Docena, Display o cualquier UdM propia) con:\n- **Factor de conversión contra el nivel anterior** (ej.: Caja = 12 × Unidad, Pallet = 40 × Caja) — el sistema calcula y muestra la equivalencia total en la unidad base (480 × Unidad)\n- **Peso (kg) y alto/ancho/largo (cm)** opcionales por nivel\n\nEl primer nivel es la unidad base (se preselecciona con la unidad de medida del producto). Los factores son siempre enteros ≥ 1. Se pueden agregar, quitar y reordenar niveles. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (conversión de cantidades, cálculo de volumen, peso de embarques) y es la base del picking/almacenaje por unidad de medida.\n\n**Precio por nivel de la estructura (v1.140-142.0):** cada nivel puede tener su propio precio de venta/costo (ej. el precio de \"1 Caja\" no tiene que ser necesariamente 12× el precio de \"1 Unidad\" — si no se carga, se calcula proporcional). En la hoja del producto, el selector **\"Estos precios corresponden a\"** define la \"ancla de precio\": a qué nivel de la estructura default corresponden `precio_venta`/`precio_costo` de cabecera (por default, el nivel base; puede anclarse a Caja o Pallet si el negocio piensa el precio en esos términos). El nivel base nunca tiene precio propio — siempre deriva del precio de cabecera. El **importador de productos** (`/importar/productos`) soporta cargar esto por Excel — ver 4.6.\n\n> ⚠️ Las estructuras NO son combos/kits. Los combos (bundles promocionales) se configuran en `/configuracion` → tab Combos. Los kits de armado se gestionan en Inventario → tab Kits.\n\n**Relaciones:** base de Ventas, Inventario, Recepciones, OC. Estructuras usadas en LPNs para logística.\n\n---"
+    "contenido": "Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursales.\n\n**Tabs:**\n- **Productos**: listado con búsqueda por nombre/SKU/código de barras\n- **Estructuras**: definición de estructuras de embalaje con niveles dinámicos por unidad de medida (ej. unidad → caja → pallet, o cualquier UdM del negocio) con factores de conversión, dimensiones y pesos\n\n**Listado — fila expandida al hacer clic:**\n- Badge de stock disponible para venta (filtrado por sucursal activa, calculado desde `inventario_lineas`)\n- Badge rojo con AlertTriangle si stock ≤ stock mínimo\n- Precio de venta, precio de costo\n- Categoría, SKU, código de barras\n- Ícono carrito → agrega a Orden de Compra rápida\n- Link \"Editar\" → `/productos/:id/editar`\n\n**Acciones principales:**\n- **+ Nuevo producto** (esquina superior derecha): va a `/productos/nuevo`\n- **Escanear** (ícono cámara): busca por código\n- **Filtros** (v1.138.0): panel combinable — Activos/Inactivos/Todos, Con/Sin estructura de embalaje, Categoría, Proveedor, Marca, y atributos de inventario (tracking + variantes) combinables por OR\n- **Importar** → `/productos/importar`\n- **Bulk actions** (aparece al seleccionar con checkbox):\n  - Cambiar precio (porcentaje o valor fijo a todos los seleccionados)\n  - Cambiar proveedor asignado\n  - Reactivar productos desactivados\n\n**Formulario de producto** (`ProductoFormPage`):\n- Nombre, SKU (auto-generado `calcularSiguienteSKU()` o manual), código de barras\n- Categoría, proveedor\n- Precio de venta, precio de costo, moneda (ARS/USD), alícuota IVA (0 / 10.5 / 21 / 27%)\n- **Precios mayoristas**: tiers por cantidad mínima (ej: ≥10 unidades → $X)\n- Unidad de medida (unidad, kg, g, litro, ml, metro, cm, caja, pack, docena)\n- Stock mínimo global + stock mínimo por sucursal (override individual)\n- Imagen: upload a Supabase Storage\n- Regla de inventario: FIFO / FEFO / LEFO / LIFO / Manual\n- Flags: tiene series, tiene lote, tiene vencimiento\n- TiendaNube: habilitar sync, SKU TN\n- MercadoLibre: habilitar sync\n\n**Tab Estructuras — detalle:**\nCada producto puede tener una o más estructuras de embalaje (\"footprints\", estilo pack structure de Blue Yonder). Una estructura tiene **niveles dinámicos**: cada nivel es una **unidad de medida del negocio** (las de Configuración → Unidades: Unidad, Caja, Pallet, Docena, Display o cualquier UdM propia) con:\n- **Factor de conversión contra el nivel anterior** (ej.: Caja = 12 × Unidad, Pallet = 40 × Caja) — el sistema calcula y muestra la equivalencia total en la unidad base (480 × Unidad)\n- **Peso (kg) y alto/ancho/largo (cm)** opcionales por nivel\n\nEl primer nivel es la unidad base (se preselecciona con la unidad de medida del producto). Los factores son siempre enteros ≥ 1. Se pueden agregar, quitar y reordenar niveles. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (conversión de cantidades, cálculo de volumen, peso de embarques) y es la base del picking/almacenaje por unidad de medida.\n\n**Precio por nivel de la estructura (v1.140-142.0):** cada nivel puede tener su propio precio de venta/costo (ej. el precio de \"1 Caja\" no tiene que ser necesariamente 12× el precio de \"1 Unidad\" — si no se carga, se calcula proporcional). En la hoja del producto, el selector **\"Estos precios corresponden a\"** define la \"ancla de precio\": a qué nivel de la estructura default corresponden `precio_venta`/`precio_costo` de cabecera (por default, el nivel base; puede anclarse a Caja o Pallet si el negocio piensa el precio en esos términos). El nivel base nunca tiene precio propio — siempre deriva del precio de cabecera. El **importador de productos** (`/productos/importar`) soporta cargar esto por Excel — ver 4.6.\n\n> ⚠️ Las estructuras NO son combos/kits. Los combos (bundles promocionales) se configuran en `/configuracion` → tab Combos. Los kits de armado se gestionan en Inventario → tab Kits.\n\n**Relaciones:** base de Ventas, Inventario, Recepciones, OC. Estructuras usadas en LPNs para logística.\n\n---"
   },
   {
     "id": "3.6",
@@ -392,38 +392,33 @@ export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
     "id": "4.6",
     "titulo": "Importar Productos",
-    "ruta": "/importar/productos",
+    "ruta": "/productos/importar",
     "keywords": [
       "importar",
-      "productos",
-      "importar productos",
-      "carga masiva"
+      "productos"
     ],
     "contenido": "Carga masiva del catálogo desde Excel (.xlsx).\n\n**Columnas soportadas:** nombre, SKU, código de barras, categoría, proveedor, precio venta, precio costo, moneda (ARS/USD), alícuota IVA (0/10.5/21/27), unidad de medida, stock mínimo, notas internas, regla inventario (FIFO/FEFO/LEFO/LIFO/Manual), tiene series, tiene lote, tiene vencimiento, estructura (cajas, pallets, peso, dimensiones) + **precio por nivel** (v1.142.0): `estr_precio_ancla` (Unidad/Caja/Pallet, a qué nivel corresponden los precios de cabecera) y precio de venta/costo propio opcional por nivel de Caja/Pallet. Una fila con ancla a un nivel sin datos de estructura de ese nivel se rechaza en la previsualización.\n\n**Modos:** Crear nuevos / Actualizar existentes por SKU / Ambos.\n\n**Flujo:** subir archivo → previsualización con validaciones → columna de estado por fila (ok/error) → confirmar importación.\n\n---"
   },
   {
     "id": "4.7",
     "titulo": "Importar Inventario",
-    "ruta": "/importar/inventario",
+    "ruta": "/inventario/importar",
     "keywords": [
       "importar",
-      "inventario",
-      "importar inventario",
-      "carga masiva de stock"
+      "inventario"
     ],
     "contenido": "Carga masiva de stock desde Excel.\n\n**Columnas:** SKU, cantidad, precio de costo, ubicación, estado de inventario, proveedor (opcional), número de lote, fecha de vencimiento, LPN (opcional), motivo, números de serie (separados por coma).\n\n**Validaciones:** producto debe existir, ubicación y estado deben existir en configuración, fecha en múltiples formatos.\n\n**Flujo:** igual que importar productos — previsualización con errores por fila → importar.\n\n---"
   },
   {
     "id": "4.8",
     "titulo": "Importar datos maestros",
-    "ruta": "/importar/master",
+    "ruta": "/configuracion/importar",
     "keywords": [
       "importar",
       "datos",
-      "maestros",
-      "importar datos maestros"
+      "maestros"
     ],
-    "contenido": "Carga masiva de entidades de configuración.\n\n**Tipos soportados:** categorías, proveedores, ubicaciones, estados de inventario, motivos de movimiento, combos, aging profiles, grupos de estados.\n\nCada tipo tiene su plantilla de ejemplo descargable con las columnas requeridas.\n\n---"
+    "contenido": "Carga masiva de entidades de configuración (botón \"Importar\" en Configuración). Mismo diseño y reglas que los otros\nimportadores: vista previa con el motivo de cada error, y **todo o nada** (con una fila con error no se carga ninguna).\n**Solo crea**: lo que ya existe con el mismo nombre se ignora.\n\n**Tipos soportados:** categorías, ubicaciones (por sucursal o para todas), estados de inventario, motivos de movimiento\n(ambos/ingreso/rebaje/caja), combos (varias filas con el mismo nombre = un combo de varios productos), perfiles de\nvencimiento (varias filas = un perfil con varias reglas) y grupos de estados. Proveedores tiene su propio importador\n(`/proveedores/importar`).\n\nCada tipo tiene su plantilla con una hoja \"Referencia\" que explica las columnas, y listas desplegables donde los valores\nson fijos (tipo de motivo, tipo de descuento, SI/NO, estados del negocio).\n\n---"
   },
   {
     "id": "4.9",

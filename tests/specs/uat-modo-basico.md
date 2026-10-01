@@ -2410,3 +2410,21 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.7 | NC-A a un cliente sin domicilio NO se bloquea (solo la factura) | revisión de la EF (`tipo_comprobante === 'A'` exacto) | ✅ código |
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
+
+## 🔎 §75 — Padrón de ARCA: autocompletar por CUIT (mig 446, EF `consultar-cuit`) — 2026-10-01
+
+Consulta `ws_sr_constancia_inscripcion` (getPersona_v2) con el certificado de plataforma (CUIT de Fede). En DEV =
+padrón de homologación (datos ficticios de ARCA). Decisiones de GO: automática al completar un CUIT válido, con vista
+previa para aceptar; en ficha de cliente, proveedor, emisor fiscal y alta rápida del POS.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 75.1 | 🛑 Condición IVA: monotributo → Monotributista; impuesto 30 → RI; 32 → Exento; régimen general completo sin IVA → CF | unit `padronArca.test.ts` | ✅ |
+| 75.2 | 🛑 Si ARCA no manda el régimen (errorRegimenGeneral / errorMonotributo / constancia bloqueada) la condición queda "no determinada": NUNCA se propone CF por descarte | unit `padronArca.test.ts` · captura (27-29867247-8: "elegila a mano") | ✅ |
+| 75.3 | Cada ficha recibe su vocabulario: cliente `RI/Monotributista/Exento/CF`, proveedor `responsable_inscripto/…` (CHECK), emisor sin CF (+ aviso "no puede facturar") | unit `padronArcaFront.test.ts` · e2e `165` (proveedor guarda `responsable_inscripto`) | ✅ |
+| 75.4 | Nada se escribe solo: vista previa con casillas; un nombre ya escrito no se preselecciona; "Descartar" no toca la ficha | e2e `165` | ✅ |
+| 75.5 | CUIT con dígito verificador inválido: no consulta; la EF responde 400 aunque se la llame directo | e2e `165` · prueba directa a la EF | ✅ |
+| 75.6 | Ficha que ya tenía CUIT: no consulta al abrir (botón "Consultar en ARCA") | revisión del componente | ✅ código |
+| 75.7 | POS alta rápida: CUIT opcional + condición + domicilio fiscal; CUIT inválido bloquea el guardado; con CUIT el DNI no se exige (misma regla que la ficha) | e2e `165` · unit `clienteCampos.test.ts` | ✅ |
+| 75.8 | EF: sin sesión 401; usuario inactivo 403; cache 24 h (no existe: 1 h; error de ARCA no se cachea); límite 30/min por usuario y 500/día por negocio | prueba directa a la EF en DEV (2º hit desde cache) | ✅ parcial (límites sin forzar) |
+| 75.9 | PROD: padrón real con `produccion.crt` de Fede + secret `ARCA_PADRON_PRODUCCION=true` | — | ⏳ falta el cert de producción |

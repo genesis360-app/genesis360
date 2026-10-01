@@ -41,6 +41,8 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
 import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { condicionParaProveedor, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes' | 'autorizaciones'
 type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
@@ -2668,6 +2670,20 @@ export default function ProveedoresPage() {
                   <label className="block text-xs font-medium text-muted mb-1">CUIT</label>
                   <input className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
                     value={form.cuit} onChange={e => setForm(f => ({ ...f, cuit: e.target.value }))} placeholder="20-12345678-9" />
+                </div>
+                <div className="md:col-span-2 -mt-2 empty:hidden">
+                  <PadronArcaSugerencia
+                    cuit={form.cuit}
+                    armarCampos={p => [
+                      { key: 'nombre', label: 'Nombre comercial', actual: form.nombre, nuevo: p.nombre, conservarSiHayValor: true },
+                      { key: 'razon_social', label: 'Razón social', actual: form.razon_social, nuevo: p.nombre },
+                      { key: 'condicion_iva', label: 'Condición IVA', actual: form.condicion_iva, actualTexto: etiquetaCondicionFicha(form.condicion_iva), nuevo: condicionParaProveedor(p.condicionIva),
+                        nuevoTexto: p.condicionIva ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                        sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                      { key: 'domicilio', label: 'Domicilio', actual: form.domicilio, nuevo: p.domicilio?.texto ?? null },
+                    ]}
+                    onAplicar={v => setForm(f => ({ ...f, ...v }))}
+                  />
                 </div>
                 {/* Código fiscal */}
                 <div>

@@ -1,4 +1,6 @@
 import { dniObligatorioEnFicha } from '@/lib/clienteCampos'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { condicionParaCliente, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -2100,6 +2102,22 @@ ${detalle}`,
                     <input value={form.cuit_receptor} onChange={e => setForm(f => ({ ...f, cuit_receptor: e.target.value }))}
                       placeholder="20-12345678-9 (para Factura A)"
                       className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
+                  </div>
+                  <div className="col-span-2 -mt-2 empty:hidden">
+                    <PadronArcaSugerencia
+                      cuit={form.cuit_receptor}
+                      armarCampos={p => {
+                        const cond = condicionParaCliente(p.condicionIva)
+                        return [
+                          { key: 'nombre', label: 'Nombre', actual: form.nombre, nuevo: p.nombre, conservarSiHayValor: true },
+                          { key: 'condicion_iva_receptor', label: 'Condición IVA', actual: form.condicion_iva_receptor, actualTexto: etiquetaCondicionFicha(form.condicion_iva_receptor), nuevo: cond,
+                            nuevoTexto: p.condicionIva ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                            sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                          { key: 'domicilio_fiscal', label: 'Domicilio fiscal', actual: form.domicilio_fiscal, nuevo: p.domicilio?.texto ?? null },
+                        ]
+                      }}
+                      onAplicar={v => setForm(f => ({ ...f, ...v }))}
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condición IVA</label>

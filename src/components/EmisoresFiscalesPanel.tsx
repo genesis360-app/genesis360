@@ -20,6 +20,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { uploadCertificates, generarCsrEmisor, finalizarCertificadoDesdeCsr } from '@/lib/afip'
 import { pasoWizardCert } from '@/lib/csrCert'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { advertenciaEmisor, condicionParaEmisor, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 import { Toggle } from '@/components/Toggle'
 import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
@@ -584,6 +586,20 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CUIT *</label>
                     <input type="text" value={form.cuit} onChange={ev => setForm(f => ({ ...f, cuit: ev.target.value }))} placeholder="30-12345678-9" className={inputCls} />
+                  </div>
+                  <div className="md:col-span-2 empty:hidden">
+                    <PadronArcaSugerencia
+                      cuit={form.cuit}
+                      armarCampos={p => [
+                        { key: 'razon_social_fiscal', label: 'Razón social', actual: form.razon_social_fiscal, nuevo: p.nombre },
+                        { key: 'condicion_iva_emisor', label: 'Condición IVA', actual: form.condicion_iva_emisor, actualTexto: etiquetaCondicionFicha(form.condicion_iva_emisor), nuevo: condicionParaEmisor(p.condicionIva),
+                          nuevoTexto: p.condicionIva && p.condicionIva !== 'CF' ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                          sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                        { key: 'domicilio_fiscal', label: 'Domicilio fiscal', actual: form.domicilio_fiscal, nuevo: p.domicilio?.texto ?? null },
+                      ]}
+                      advertencia={advertenciaEmisor}
+                      onAplicar={v => setForm(f => ({ ...f, ...v }))}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Condición IVA *</label>

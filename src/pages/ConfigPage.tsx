@@ -36,6 +36,8 @@ import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, t
 import { breadcrumbUbicacion, descendientesDeUbicacion, ordenarArbolUbicaciones } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 import { ANTICIPACION_OPCIONES_MIN, etiquetaAnticipacion } from '@/lib/precioProgramado'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { advertenciaEmisor, condicionParaEmisor, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
@@ -3604,6 +3606,24 @@ export default function ConfigPage() {
                     <input type="text" value={bizCuit} onChange={e => setBizCuit(e.target.value)}
                       placeholder="20-12345678-9"
                       className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div className="md:col-span-2 empty:hidden">
+                    <PadronArcaSugerencia
+                      cuit={bizCuit}
+                      armarCampos={p => [
+                        { key: 'razon_social_fiscal', label: 'Razón social', actual: bizRazonSocial, nuevo: p.nombre },
+                        { key: 'condicion_iva_emisor', label: 'Condición IVA', actual: bizCondIva, actualTexto: etiquetaCondicionFicha(bizCondIva), nuevo: condicionParaEmisor(p.condicionIva),
+                          nuevoTexto: p.condicionIva && p.condicionIva !== 'CF' ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                          sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                        { key: 'domicilio_fiscal', label: 'Domicilio fiscal', actual: bizDomicilioFiscal, nuevo: p.domicilio?.texto ?? null },
+                      ]}
+                      advertencia={advertenciaEmisor}
+                      onAplicar={v => {
+                        if (v.razon_social_fiscal != null) setBizRazonSocial(v.razon_social_fiscal)
+                        if (v.condicion_iva_emisor != null) setBizCondIva(v.condicion_iva_emisor)
+                        if (v.domicilio_fiscal != null) setBizDomicilioFiscal(v.domicilio_fiscal)
+                      }}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Condición IVA del emisor</label>

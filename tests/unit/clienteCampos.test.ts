@@ -50,6 +50,11 @@ describe('validarClienteInline', () => {
     expect(validarClienteInline({ nombre: 'Ana', dni: '', telefono: '', email: 'no-es-mail' }, sinReq)).toMatch(/válido/)
     expect(validarClienteInline({ nombre: 'Ana', dni: '', telefono: '', email: '' }, sinReq)).toBeNull()
   })
+  it('alta rápida con CUIT (empresa): el DNI deja de ser obligatorio, como en la ficha', () => {
+    expect(validarClienteInline({ nombre: 'Ejemplo SRL', dni: '', telefono: '', email: 'a@b.co', cuit: '30-71234567-8' }, req)).toBeNull()
+    expect(validarClienteInline({ nombre: 'Ana', dni: '', telefono: '', email: 'a@b.co', cuit: '' }, req)).toMatch(/DNI/)
+    expect(validarClienteInline({ nombre: 'Ana', dni: '', telefono: '', email: 'a@b.co', cuit: '2012' }, req)).toMatch(/DNI/)
+  })
 })
 
 

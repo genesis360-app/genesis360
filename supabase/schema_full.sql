@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-01T03:02:44.457Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261001025245 · 173 tablas
+-- Generado 2026-10-01T14:20:44.324Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261001140152 · 174 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1415,6 +1415,13 @@ CREATE TABLE public.ordenes_compra (
   anticipo_pct numeric,
   pago_schedule jsonb,
   moneda text NOT NULL DEFAULT 'ARS'::text
+);
+
+CREATE TABLE public.padron_arca_cache (
+  cuit text NOT NULL,
+  environment text NOT NULL,
+  resultado jsonb NOT NULL,
+  consultado_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.pedido_items (
@@ -3119,6 +3126,9 @@ ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_check CHE
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_pago_check CHECK ((estado_pago = ANY (ARRAY['pendiente_pago'::text, 'pago_parcial'::text, 'pagada'::text, 'cuenta_corriente'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pkey PRIMARY KEY (id);
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_tenant_id_numero_key UNIQUE (tenant_id, numero);
+ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_cuit_check CHECK ((cuit ~ '^\d{11}$'::text));
+ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_environment_check CHECK ((environment = ANY (ARRAY['homologacion'::text, 'produccion'::text])));
+ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_pkey PRIMARY KEY (cuit, environment);
 ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_preparacion'::text, 'preparado'::text, 'faltante'::text, 'cancelada'::text])));
 ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_pkey PRIMARY KEY (id);
@@ -14133,6 +14143,7 @@ ALTER TABLE public.nc_afip_pendientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orden_compra_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_compra ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.padron_arca_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_lanzamientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedidos ENABLE ROW LEVEL SECURITY;
@@ -15371,6 +15382,7 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.or
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.orden_compra_items TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.padron_arca_cache TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_lanzamientos TO authenticated;

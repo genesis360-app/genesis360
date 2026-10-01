@@ -38,11 +38,12 @@ export function enumLegacyDeCampos(c: CamposRequeridosCliente): string {
 
 /** Valida el alta rápida del POS. Devuelve el mensaje de error o null si está OK. */
 export function validarClienteInline(
-  form: { nombre: string; dni: string; telefono: string; email: string },
+  form: { nombre: string; dni: string; telefono: string; email: string; cuit?: string },
   req: CamposRequeridosCliente,
 ): string | null {
   if (!form.nombre.trim()) return 'El nombre es obligatorio'
-  if (req.dni && !form.dni.trim()) return 'El DNI es obligatorio'
+  // Igual que la ficha: con CUIT (empresa) el DNI no se exige.
+  if (req.dni && !form.dni.trim() && dniObligatorioEnFicha(form.cuit)) return 'El DNI es obligatorio'
   if (req.telefono && !form.telefono.trim()) return 'El teléfono es obligatorio'
   if (req.email && !form.email.trim()) return 'El email es obligatorio'
   if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'El email no es válido'

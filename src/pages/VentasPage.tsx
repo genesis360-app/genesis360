@@ -52,6 +52,11 @@ import { convertirABase } from '@/lib/estructuras'
 import { mejorPrecioMayorista, precioBlendedTier, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
+import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
+import { condicionParaCliente, cuitValido, normalizarCuit, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
+
+// Alta rápida de cliente en el POS. CUIT, condición IVA y domicilio fiscal se completan desde ARCA (padrón).
+const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit: '', condicion_iva_receptor: '', domicilio_fiscal: '' }
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
@@ -448,7 +453,7 @@ export default function VentasPage() {
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
-  const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '', email: '' })
+  const [nuevoClienteForm, setNuevoClienteForm] = useState(NUEVO_CLIENTE_VACIO)
   const [savingCliente, setSavingCliente] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [lpnPickerIdx, setLpnPickerIdx] = useState<number | null>(null)
@@ -1096,21 +1101,29 @@ export default function VentasPage() {
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
 
   const registrarClienteInline = async () => {
-    const { nombre, dni, telefono, email } = nuevoClienteForm
+    const { nombre, dni, telefono, email, cuit, condicion_iva_receptor, domicilio_fiscal } = nuevoClienteForm
     // Punto 4 Fede/GO (mig 280): los campos obligatorios los define el tenant por checkbox
     const err = validarClienteInline(nuevoClienteForm, camposReqCliente)
     if (err) { toast.error(err); return }
+    // Un CUIT mal tipeado haría rechazar la Factura A en ARCA: se valida el dígito verificador.
+    if (cuit.trim() && !cuitValido(cuit)) { toast.error('El CUIT no es válido (revisá el dígito verificador)'); return }
     setSavingCliente(true)
     try {
       const { data, error } = await supabase.from('clientes')
-        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim() || null, telefono: telefono.trim(), email: email.trim() || null })
+        .insert({
+          tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim() || null, telefono: telefono.trim(), email: email.trim() || null,
+          // Condición y domicilio solo acompañan a un CUIT: si se borró el CUIT, no quedan datos fiscales sueltos.
+          cuit_receptor: cuit.trim() ? normalizarCuit(cuit) : null,
+          condicion_iva_receptor: cuit.trim() ? (condicion_iva_receptor || null) : null,
+          domicilio_fiscal: cuit.trim() ? (domicilio_fiscal.trim() || null) : null,
+        })
         .select('id, nombre').single()
       if (error) throw error
       setClienteId(data.id)
       setClienteNombre(data.nombre)
       setClienteTelefono(telefono.trim())
       setNuevoClienteOpen(false)
-      setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' })
+      setNuevoClienteForm(NUEVO_CLIENTE_VACIO)
       toast.success('Cliente registrado')
     } catch (err: any) {
       toast.error(err.message?.includes('clientes_dni_tenant') ? 'Ya existe un cliente con ese DNI' : (err.message ?? 'Error al registrar'))
@@ -1125,7 +1138,7 @@ export default function VentasPage() {
   // cancelar reserva, cambiar cliente, saldo, ticket) → ESC siempre cierra el modal visible.
   useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null && devolucionVenta === null && ncModal === null && cancelReservaModal === null && cambiarClienteVenta === null && devComprobante === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: facturaModal !== null, onClose: () => { setFacturaModal(null); setFacturaEmitida(null) } })
-  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }, onConfirm: registrarClienteInline })
+  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm(NUEVO_CLIENTE_VACIO) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
   // Modales que se apilan sobre el detalle de venta — la NC va encima de la devolución.
   useModalKeyboard({ isOpen: devolucionVenta !== null && ncModal === null, onClose: () => { setDevolucionVenta(null); setAutorizacionAnulacionId(null) } })
@@ -6305,8 +6318,37 @@ export default function VentasPage() {
                     <input value={nuevoClienteForm.email} onChange={e => setNuevoClienteForm(f => ({ ...f, email: e.target.value }))}
                       placeholder={`Email${camposReqCliente.email ? ' *' : ''}`} type="email" autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                    <input value={nuevoClienteForm.cuit} onChange={e => setNuevoClienteForm(f => ({ ...f, cuit: e.target.value }))}
+                      placeholder="CUIT (opcional, para Factura A)" inputMode="numeric"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                    <PadronArcaSugerencia
+                      cuit={nuevoClienteForm.cuit}
+                      armarCampos={p => [
+                        { key: 'nombre', label: 'Nombre', actual: nuevoClienteForm.nombre, nuevo: p.nombre, conservarSiHayValor: true },
+                        { key: 'condicion_iva_receptor', label: 'Condición IVA', actual: nuevoClienteForm.condicion_iva_receptor, actualTexto: etiquetaCondicionFicha(nuevoClienteForm.condicion_iva_receptor), nuevo: condicionParaCliente(p.condicionIva),
+                          nuevoTexto: p.condicionIva ? CONDICION_PADRON_LABEL[p.condicionIva] : undefined,
+                          sinDato: 'ARCA no la pudo determinar: elegila a mano' },
+                        { key: 'domicilio_fiscal', label: 'Domicilio fiscal', actual: nuevoClienteForm.domicilio_fiscal, nuevo: p.domicilio?.texto ?? null },
+                      ]}
+                      onAplicar={v => setNuevoClienteForm(f => ({ ...f, ...v }))}
+                    />
+                    {nuevoClienteForm.cuit.trim() && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={nuevoClienteForm.condicion_iva_receptor} onChange={e => setNuevoClienteForm(f => ({ ...f, condicion_iva_receptor: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
+                          <option value="">Condición IVA…</option>
+                          <option value="CF">Consumidor Final</option>
+                          <option value="RI">Responsable Inscripto</option>
+                          <option value="Monotributista">Monotributista</option>
+                          <option value="Exento">Exento</option>
+                        </select>
+                        <input value={nuevoClienteForm.domicilio_fiscal} onChange={e => setNuevoClienteForm(f => ({ ...f, domicilio_fiscal: e.target.value }))}
+                          placeholder="Domicilio fiscal"
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
+                      </div>
+                    )}
                     <div className="flex gap-2">
-                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }}
+                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm(NUEVO_CLIENTE_VACIO) }}
                         className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm py-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/50">
                         Cancelar
                       </button>

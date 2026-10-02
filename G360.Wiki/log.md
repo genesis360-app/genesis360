@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] fix | Desarmado de KIT atómico (mig 459)
+
+- Commit `a6ba9d0e` en `origin/dev`, mig 459 solo en Supabase DEV (PROD no, sin bump de versión). En DEV quedó registrada dos
+  veces en `schema_migrations` (`20261002060225` y `20261002060551`, re-aplicada por un ajuste de mensaje `trim_scale`).
+- REGLA #0 inventario: el desarmado de KIT (`InventarioPage`) eran escrituras sueltas desde el navegador → RPC
+  `desarmar_kit` (`SECURITY INVOKER`, GRANT `authenticated`) en una transacción: `FOR UPDATE` sobre las líneas del KIT, FIFO
+  por `created_at`, ingreso de componentes, movimientos, `kitting_log`. Cierra: no atómico, `stock_antes` de `des_kitting`
+  leído después del rebaje, FIFO sin orden, errores ignorados, sin bloqueo concurrente, componente fraccionario redondeado
+  en silencio (ahora rechazado; `inventario_lineas.cantidad` es integer), series rechazadas. Línea del KIT en 0 sin
+  reservas → se desactiva. Movimientos históricos NO corregidos.
+- Latente anotado (sin arreglar): el ARMADO (migs 244/343) tiene el mismo problema con recetas fraccionarias.
+- Tests: e2e `75_kit_desarmar_mutante` reescrito (verde), unit 2116/2116, build y tsc OK. UAT §89.
+- Cierra el riesgo (b) de pendientes. Próximo deploy a PROD: aplicar mig 459 antes del merge. MP: el token de Fede llega
+  el 03/10 (según GO).
+
 ## [2026-10-02] update | Pricing v7 en DEV (mig 457) + cierre para /clear
 
 - Catálogo v7 en `brand.ts` (sin Free; Básico $54k/$60k, Pro $100k/$117.600, Enterprise $200k/$250k; límites v7; RRHH y

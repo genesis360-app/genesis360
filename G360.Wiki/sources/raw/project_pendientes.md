@@ -11,7 +11,7 @@ type: project
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.237.0` (PR #369) | 001-456 + **458** (la 457 NO) |
-> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales (commits `ab452449`, `0214f65a` en `origin/dev`, sin bump) | 001-**458** |
+> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales + desarmado de KIT atómico (commits `ab452449`, `0214f65a`, `a6ba9d0e` en `origin/dev`, sin bump) | 001-**459** |
 > | **Panel interno** | `dev` con `cd284e4` (sin `plan_id`), sin mergear | — |
 >
 > ⚠️ Paridad de policies: DEV `public` **240** vs PROD **239** a propósito (la 457 suma `tenant_herencia_plan_select_propio`).
@@ -21,7 +21,7 @@ type: project
 >    Camino recomendado: GO pega el Access Token de producción de la app de Fede en `.env.local` y Claude lo hace por
 >    API (ver [[wiki/integrations/mercado-pago]]). Con el ID: `MP_PLAN_IDS.enterprise` + secret `MP_PLAN_ENTERPRISE`
 >    (DEV y PROD). Verificar también el monto de Básico ($54.000).
-> 2. **Deploy de v7 a PROD** (después de 1): mig 457 → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
+> 2. **Deploy de v7 a PROD** (después de 1): migs 457 **y 459** (desarmar_kit, con `scripts/aplicar-migracion.mjs`, de a una, antes del merge) → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
 >    `mp-verificar-suscripcion`, `mp-webhook` → bump `v1.238.0` → merge. Actualizar `app-reference.md` (líneas ~879 y
 >    ~1198, planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`. Mergear también el panel interno.
 > 3. **Fases pendientes de v7**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación — flujo nuevo);
@@ -41,7 +41,7 @@ type: project
 >
 > **Riesgos / hallazgos abiertos:** (a) `tenant_addons` no guarda el precio pagado por pack → si cambia el precio de un
 > add-on, `mp-addon-batch` recalcula con el precio nuevo (hoy nadie tiene packs de sucursales; arreglar antes del
-> próximo cambio de precio) · (b) el desarmado de KIT no es atómico (pasarlo a RPC) · (c) U-2: la ubicación habitual del
+> próximo cambio de precio) · (b) ✅ HECHO en DEV (02/10, mig 459, commit `a6ba9d0e`): el desarmado de KIT ahora es la RPC atómica `desarmar_kit` (ver [[wiki/features/inventario-stock]]); falta PROD · (b2) latente: el ARMADO (migs 244/343) tiene el mismo problema con recetas fraccionarias contra columnas integer · (c) U-2: la ubicación habitual del
 > producto se sigue precargando (decisión de GO: mantener).
 >
 > **📍 U-2 (A + B) HECHO en DEV (01/10 noche, sin migración, sin versión)** — GO eligió A+B **sin ubicación sugerida**.
@@ -50,7 +50,7 @@ type: project
 > importador, devolución vendible). e2e `174` + 8 specs adaptados. UAT §85.
 > ✅ GO respondió: (1) anulación → elige quien aprueba (C); (2) cancelar traslado → elige quien cancela; (3) se mantiene
 > la ubicación habitual. Hecho + **guard de la base mig 455**. **✅ EN PROD v1.237.0 (02/10)** junto con CUIT exigible y
-> la ficha de producto alineada. Hallazgo abierto: el desarmado de KIT no es atómico (pasarlo a RPC).
+> la ficha de producto alineada. Hallazgo (el desarmado de KIT no era atómico): ✅ resuelto en DEV el 02/10 con la mig 459.
 >
 > **🚀 v1.236.0 EN PROD (01/10, cierre, GO: "pasemos a PRD")** — migs 452→453→454 de a una, EF `emitir-factura` (diff 0),
 > merge PR #368, release Latest, servida `index-HQz-ILzk.js`, `ai-assistant` redeployado, paridad policies DEV = PROD.

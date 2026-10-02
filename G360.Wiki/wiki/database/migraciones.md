@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-01
 ---
 
-# Historial de Migraciones (001-458, + correctivos 387b/387c)
+# Historial de Migraciones (001-459, + correctivos 387b/387c)
+
+🧰 **Migración 459 — 🟡 EN DEV, NO EN PROD (2026-10-02; commit `a6ba9d0e`)**: `459_desarmar_kit_atomico.sql` — RPC `desarmar_kit` (`SECURITY INVOKER`, GRANT solo `authenticated`, sin policies): desarmado de KIT atómico (`FOR UPDATE`, FIFO ordenado, movimientos y `kitting_log` en la misma transacción; rechaza componentes fraccionarios y con serie). En DEV figura dos veces en `schema_migrations` (`20261002060225` y `20261002060551`, re-aplicada con un ajuste de mensaje `trim_scale`); en PROD se aplica una vez con `scripts/aplicar-migracion.mjs`, ANTES del merge. Paridad: DEV `public` 240 vs PROD 239 sigue por la 457. UAT §89. Ver [[wiki/features/inventario-stock]].
 
 🏢 **Migración 458 — ✅ EN DEV Y PROD (2026-10-02; el frontend de Reactivar va con el próximo deploy)**: `458_guard_sucursal_con_stock.sql` — trigger `trg_sucursales_guard_baja`: no se puede desactivar una sucursal con stock activo o caja abierta (incidente: "Casa central" del negocio de GO desactivada con 775 unidades → Inventario en 0). La UI (SucursalesPage) suma "Sucursales eliminadas" con Reactivar y registra eliminar/reactivar en `actividad_log`. UAT §87.
 

@@ -2411,6 +2411,20 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 💲 §88 — Pricing v7 (mig 457, 🟡 DEV) — 2026-10-02
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 88.1 | Alta nueva: prueba de 15 días con límites de Pro v7 (7 usuarios, 2 sucursales, 2 CUITs) | SQL DEV (rollback) | ✅ |
+| 88.2 | Alta nueva que paga Básico: 3 usuarios, 5.000 comprobantes | SQL DEV (rollback) · unit `planLimites` | ✅ |
+| 88.3 | 🛑 Negocio existente en prueba hereda Pro v6 (15 usuarios, 4 sucursales) aunque pague Básico v7; los add-ons se suman encima | SQL DEV · unit `planLimites` | ✅ |
+| 88.4 | 🛑 Negocio existente conserva módulos (WMS, RRHH, marketplace) aunque su plan v7 no los traiga | unit `planLimites` | ✅ |
+| 88.5 | Control de bajas de add-ons (`guardBatch` app y EF) usa la herencia: no bloquea a un existente por los límites v7 | unit `mpAddonBatch` | ✅ |
+| 88.6 | Landing y /suscripcion: 3 planes, sin Free, precios v7, "15 días"; Enterprise sin ID de MP → "Contactar" | e2e 09/12 · revisión | ✅ (precios a revisar en pantalla) |
+| 88.7 | Pro $100.000 y Enterprise $200.000 cobrados por MP; Enterprise activa el plan correcto | — | ⏳ espera IDs de MP |
+| 88.8 | Pago anual (−20 % sobre lista, 1 año, sin renovación) | — | ⏳ sin hacer |
+| 88.9 | Comprobantes: aviso 80 % / 100 % + mail, sin bloquear ventas | — | ⏳ sin hacer |
+
 ## 🏢 §87 — Eliminar una sucursal no puede esconder stock (mig 458) — 2026-10-02
 
 Incidente: en PROD, "Casa central" (negocio de GO) estaba desactivada con 28 líneas / 775 unidades → Inventario y

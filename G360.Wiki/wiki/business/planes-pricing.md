@@ -3,10 +3,42 @@ title: Planes y Pricing
 category: business
 tags: [planes, pricing, free, basic, pro, enterprise, limites, competencia]
 sources: [xubio.com, contabilium.com, netegia.com, neuralsoft.com, aconpy.com]
-updated: 2026-07-17
+updated: 2026-10-02
 ---
 
 # Planes y Pricing
+
+## 🆕 Pricing v7 (2026-10-02) — 🟡 EN DEV, PROD espera los IDs de Mercado Pago
+
+Fuente: docs de Fede en Drive **"05 - Genesis360 Pricing y Costos v7"** y **"06 - Cambios de Pricing v6 a v7 - Para
+Tonga"**. Código: `brand.ts` (catálogo) + mig 457 (`fn_plan_base_limite` v7, herencia) — commit `0214f65a`.
+
+| Plan | Débito automático | Otros medios | Desc. | Usuarios | Productos | Comprob./mes | Sucursales | CUITs |
+|---|---|---|---|---|---|---|---|---|
+| Básico | $54.000 | $60.000 | −10 % | 3 | 2.000 | 5.000 | 1 | 1 |
+| Pro | $100.000 | $117.600 | ≈−15 % | 7 | 7.000 | 13.000 | 2 | 2 |
+| Enterprise | $200.000 | $250.000 | −20 % | 20 | 18.000 | 30.000 | 4 | 4 |
+
+- **Sin plan Free**: la prueba de **15 días** (sin tarjeta, solo altas nuevas) es el período gratis. Prueba vencida sin
+  plan → `/suscripcion` (bloqueo, como antes; GO descartó "solo lectura").
+- **Módulos**: Básico sin WMS/Compras/Envíos/importación/RRHH/marketplace · Pro suma WMS, Compras, Envíos, importación
+  masiva ("Logística inteligente" = PR-8, lo define GO con Fede) · Enterprise suma RRHH, marketplace, soporte
+  prioritario y Agente de WhatsApp (sin precio publicado hasta calcular el costo, PR-2).
+- **Add-ons**: sin cambios salvo sucursales **+1 $35.000 · +3 $55.000 · +5 $70.000** (precio nuevo solo para compras
+  nuevas, PR-6). Marketplace $35.000 como add-on: PR-8 abierto.
+- **Pago anual**: −20 % sobre el precio de **lista**, pago único por 1 año, sin renovación automática. **Flujo sin hacer.**
+- **Comprobantes**: enforcement blando (aviso 80 % / 100 % + mail) — **sin hacer** (hoy solo el % en la app).
+- 🧬 **Herencia (GO 02/10, "los que ingresaron antes mantienen lo que tienen")**: `tenant_herencia_plan` guarda, para
+  cada negocio existente al aplicar la mig 457, los límites y módulos de su plan v6 (en prueba → Pro v6: 15 usuarios,
+  8.000 productos, 14.000 comprobantes, 4 sucursales, WMS+RRHH+marketplace). Límite = mayor(base v7, heredada) +
+  add-ons; módulos = los del plan + los heredados. Los nuevos, v7 puro.
+- **Mercado Pago**: Pro hay que llevarlo a $100.000 (editar el plan `f06b2690…`) y crear Enterprise $200.000 → su ID va
+  en `MP_PLAN_IDS.enterprise` (`brand.ts`) y en el secret `MP_PLAN_ENTERPRISE` (DEV y PROD). Sin ID, la tarjeta
+  Enterprise ofrece "contactar". Paso a paso en [[wiki/integrations/mercado-pago]].
+- No hay tabla de planes en la base (la `planes` legacy se retiró, mig 456). SQL por negocio:
+  [[wiki/support/sql-planes-tenants]].
+
+---
 
 > ✅ **Add-on de CUIT adicional — precio CONFIRMADO por GO el 2026-09-18**: +1 **$20.000** · +2 **$35.000** ·
 > +3 **$45.000** (recurrente, solo tipo `fijo`). Se dejaron los valores que ya estaban vivos, para no moverle

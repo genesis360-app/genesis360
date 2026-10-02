@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] update | Pricing v7 en DEV (mig 457) + cierre para /clear
+
+- Catálogo v7 en `brand.ts` (sin Free; Básico $54k/$60k, Pro $100k/$117.600, Enterprise $200k/$250k; límites v7; RRHH y
+  marketplace a Enterprise; add-on sucursales $35k/$55k/$70k) + mig 457 (DEV): `tenant_herencia_plan` (existentes
+  conservan su plan v6; en prueba → Pro v6), `fn_plan_base_limite` v7, `fn_tenant_limite` con herencia, prueba de 15
+  días para altas nuevas. Espejos: `src/lib/planLimites.ts` (nuevo), `usePlanLimits`, `guardBatch` y EF
+  `mp-addon-batch`, `_shared/precios.ts` (MRR), `MP_PLAN_ENTERPRISE` en 4 EFs (desplegadas en DEV).
+- `/suscripcion`: Enterprise sin ID de MP → "Contactar". Textos de 15 días (landing, onboarding, configurador, aviso).
+- Tests: unit 2116 (nuevo `planLimites`; 19 tests de v6 actualizados a v7, con el riesgo del precio de packs anotado);
+  e2e 09/12/84 23/23. UAT §88. Wiki: planes-pricing, suscripciones-planes, mercado-pago (paso a paso de los IDs).
+- PROD intacto en pricing: espera los IDs de MP (Pro $100k, Enterprise nuevo). Policies DEV 240 vs PROD 239 (esperado).
+
 ## [2026-10-02] fix | PROD: inventario en 0 en el negocio de GO → sucursal desactivada con stock (mig 458)
 
 - GO: "en productos me dice 0 unidades pero debajo 142 en total; en inventario 0 líneas". No se perdió nada: las 28

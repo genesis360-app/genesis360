@@ -6,28 +6,43 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-02) — PROD = DEV = `v1.237.0` (001-455)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-02, cierre para /clear) — PROD `v1.237.0` (+ migs 456 y 458 en la base) · DEV + pricing v7
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.237.0` ✅ (PR #369, merge `58bc176f`) | 001-**455** |
-> | **DEV** | `v1.237.0` (= PROD) | 001-**455** |
-> | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
+> | **PROD** | `v1.237.0` (PR #369) | 001-456 + **458** (la 457 NO) |
+> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales (commits `ab452449`, `0214f65a` en `origin/dev`, sin bump) | 001-**458** |
+> | **Panel interno** | `dev` con `cd284e4` (sin `plan_id`), sin mergear | — |
 >
-> 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
-> (secrets del padrón en producción + ticket WSAA vigente copiado al cache de PROD), paridad de policies por schema OK,
-> release `v1.235.0` Latest. Padrón ARCA de PRODUCCIÓN verificado a mano (consulta real OK); la 1ª consulta desde la app
-> de PROD la hace un usuario real (no hay usuario de prueba en PROD).
+> ⚠️ Paridad de policies: DEV `public` **240** vs PROD **239** a propósito (la 457 suma `tenant_herencia_plan_select_propio`).
 >
-> **Lo primero al retomar** (todo lo de abajo está EN PROD salvo lo marcado; detalle en `log.md` 2026-10-01):
+> **▶ Lo primero al retomar: pricing v7** (detalle en [[wiki/business/planes-pricing]] → "Pricing v7"):
+> 1. **IDs de Mercado Pago** (espera a GO/Fede): Pro a $100.000 (editar `f06b2690…`) + crear Enterprise $200.000.
+>    Camino recomendado: GO pega el Access Token de producción de la app de Fede en `.env.local` y Claude lo hace por
+>    API (ver [[wiki/integrations/mercado-pago]]). Con el ID: `MP_PLAN_IDS.enterprise` + secret `MP_PLAN_ENTERPRISE`
+>    (DEV y PROD). Verificar también el monto de Básico ($54.000).
+> 2. **Deploy de v7 a PROD** (después de 1): mig 457 → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
+>    `mp-verificar-suscripcion`, `mp-webhook` → bump `v1.238.0` → merge. Actualizar `app-reference.md` (líneas ~879 y
+>    ~1198, planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`. Mergear también el panel interno.
+> 3. **Fases pendientes de v7**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación — flujo nuevo);
+>    enforcement blando de comprobantes (80 %/100 % + mail); Landing 2.0 (docs de Fede) dice 30 días en 3 lugares.
+> 4. **Abiertos para GO/Fede:** PR-8 ("Logística inteligente" = ¿qué módulo?; ¿add-on Marketplace $35.000 para Básico y
+>    Pro?).
 >
-> **✅ Importador del MAESTRO HECHO en DEV (01/10 noche, mig 452, sin versión)** — `/configuracion/importar` con
-> `PaginaImportacion` + vista previa compartida + `fn_importar_maestro` todo-o-nada. 🛑 Encontrado y corregido: los
-> **combos se creaban sin `combo_items`** y el POS los ignoraba (0 afectados en PROD); motivo `egreso` lo rechazaba el
-> CHECK; ubicaciones sin sucursal; estados inexistentes salteados; perfil existente con reglas duplicadas. Proveedores
-> salió del Maestro (lleva a `/proveedores/importar`). UAT §82, e2e `172`, unit `importarMaestro`.
-> **Para PROD:** mig 452 → merge (la página llama a la función nueva) · tocó `app-reference.md` (rutas de importadores
-> corregidas) ⇒ `npm run ai:knowledge` + redeploy EF `ai-assistant` DEV y PROD.
+> **Decisiones de GO del 02/10 (ya aplicadas):** base del anual = precio de lista · Agente WhatsApp en Enterprise sin
+> precio · 15 días solo altas nuevas · add-on de sucursales nuevo solo compras nuevas · **existentes conservan límites y
+> módulos de su plan v6** (en prueba → Pro v6) · prueba vencida → `/suscripcion` (no "solo lectura") · Kalken (vencida
+> 24/09) y El Tilo (vence 28/10) quedan así: ven la página de planes al vencer.
+>
+> **Hecho hoy en PROD:** `v1.237.0` (U-2 stock con ubicación + mig 455, CUIT exigible, ficha alineada) · mig 456 (fuera
+> la tabla `planes` y `tenants.plan_id`; SQL de planes en [[wiki/support/sql-planes-tenants]]) · **incidente**: el
+> inventario de GO en 0 = sucursal "Casa central" desactivada con 775 unidades → reactivada + mig 458 (no se elimina una
+> sucursal con stock o caja abierta). El frontend de 458 (Reactivar en Sucursales + historial) va con el próximo deploy.
+>
+> **Riesgos / hallazgos abiertos:** (a) `tenant_addons` no guarda el precio pagado por pack → si cambia el precio de un
+> add-on, `mp-addon-batch` recalcula con el precio nuevo (hoy nadie tiene packs de sucursales; arreglar antes del
+> próximo cambio de precio) · (b) el desarmado de KIT no es atómico (pasarlo a RPC) · (c) U-2: la ubicación habitual del
+> producto se sigue precargando (decisión de GO: mantener).
 >
 > **📍 U-2 (A + B) HECHO en DEV (01/10 noche, sin migración, sin versión)** — GO eligió A+B **sin ubicación sugerida**.
 > A: el POS explica el stock sin ubicar / en ubicación no habilitada para surtido (y ya no oculta esos productos con un

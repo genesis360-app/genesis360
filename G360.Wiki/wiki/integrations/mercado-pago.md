@@ -38,6 +38,16 @@ Usuario hace clic en "Suscribirse"
 
 ### IDs de planes PROD
 
+> 🆕 **Pricing v7 (2026-10-02, pendiente):** Pro pasa a **$100.000** (editar el plan existente, mismo ID; 0 suscriptos
+> a Pro al 02/10) y se crea **Enterprise $200.000** (ID nuevo → `MP_PLAN_IDS.enterprise` en `brand.ts` + secret
+> **`MP_PLAN_ENTERPRISE`** en DEV y PROD; las 4 EFs `mp-webhook`, `mp-verificar-suscripcion`, `mp-reconciliacion` y
+> `admin-api` ya lo leen). Básico queda en $54.000 (verificar: en julio se había bajado a $1.000 para una prueba).
+> **Cómo hacerlo** (los planes viven en la cuenta MP de **Fede**): (A, recomendado) Fede saca el Access Token de
+> producción en mercadopago.com.ar/developers → Tus integraciones → app `2672033309404649` → Credenciales de
+> producción, GO lo pega en `.env.local` (`MP_ACCESS_TOKEN=`) y Claude hace GET/PUT/POST `/preapproval_plan` (el
+> token local actual es de la cuenta vieja: MP responde 401); o (B) desde el panel de MP → Suscripciones → editar Pro y
+> crear Enterprise, y pasar el ID (`preapproval_plan_id=` del link). JSON del POST en ASCII (con tildes da 400).
+
 > **💳 CAMBIO DE CUENTA (v1.119.0, 2026-07-07):** los cobros pasaron a la cuenta MP de **Fede Messina**
 > (collector `478332282`, app `2672033309404649`). Los planes viejos (`836c7829…`/`cb3bcdaa…`, cuenta
 > `2118612146`) quedaron huérfanos con la cuenta anterior. DEV y PROD usan el MISMO token nuevo.

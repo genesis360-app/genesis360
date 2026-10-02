@@ -16,6 +16,16 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kal
 (`5585866d`) · `cron` **2** (`757afda6`) — comparar solo DEV vs PROD del mismo día). PR **#367** `dev→main`, merge
 **`12e09d33`**, release **`v1.235.0` Latest**.
 
+## 📍 v1.237.0 — Stock con ubicación en modo avanzado, CUIT exigible, ficha de producto alineada (2026-10-02, EN PROD)
+
+- PR #369, merge `58bc176f`, release Latest, servida `index-CHaAhYhy.js`. Mig 455 en PROD antes del merge (hash DEV =
+  PROD). Sin Edge Functions. Paridad `pg_policies` DEV = PROD (public 240, storage 40, cron 2).
+- **U-2 (Regla #0, inventario):** el POS explica el stock que no vende (sin ubicar / ubicación no habilitada) y ya no lo
+  oculta con un grupo activo; en avanzado el stock entra con ubicación elegida en todas las entradas; anulación y
+  cancelación de traslado eligen ubicación y revisan errores; guard de la base (mig 455).
+- **CUIT** exigible en el alta rápida de cliente. **Ficha del producto** alineada (ⓘ).
+- Suite e2e completa con el guard: 435 ok, 0 fallas. Unit 2105.
+
 ## 🧾 v1.236.0 — Importador del Maestro, Fase 0 fiscal, numeración por negocio (2026-10-01, EN PROD)
 
 - PR #368, merge `f4354d29`, release Latest. Migs 452 → 453 → 454 en PROD de a una (hashes DEV = PROD), después la EF

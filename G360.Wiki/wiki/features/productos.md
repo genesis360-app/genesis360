@@ -148,7 +148,7 @@ Botón "Grupos" en barra de acciones → panel lateral (drawer):
 
 La página de creación/edición fue reorganizada en 6 cards temáticos. Columna derecha: Imagen + QR (solo al editar).
 
-> 🎨 **2026-10-01 (GO, 🟡 DEV):** en las filas de dos campos (Stock mínimo | Unidad de medida, Alícuota IVA | Margen
+> 🎨 **2026-10-01 (GO, ✅ EN PROD v1.237.0):** en las filas de dos campos (Stock mínimo | Unidad de medida, Alícuota IVA | Margen
 > objetivo) la descripción pasó de texto debajo del título a un ⓘ (`InfoTip`) con la explicación más completa: el texto
 > largo de "Unidad de medida" bajaba su campo y la fila quedaba desalineada.
 

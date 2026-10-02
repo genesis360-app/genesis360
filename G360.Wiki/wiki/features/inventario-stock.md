@@ -25,7 +25,7 @@ El núcleo de Genesis360. Modelo **LPN (Location/Product/Lot Number)** para trac
 
 ---
 
-## 📍 U-2 — Modo avanzado: el stock entra CON ubicación y el POS explica el que no se vende (2026-10-01, 🟡 EN DEV)
+## 📍 U-2 — Modo avanzado: el stock entra CON ubicación y el POS explica el que no se vende (2026-10-01, ✅ EN PROD v1.237.0)
 
 Lo destapó el 2º cliente real (29/09): en avanzado el POS solo vende stock **ubicado** y en ubicaciones **habilitadas
 para surtido** (`disponible_surtido`, default `false` desde la mig 336), pero el ingreso dejaba cargar stock sin

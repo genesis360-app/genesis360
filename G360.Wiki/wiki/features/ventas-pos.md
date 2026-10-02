@@ -268,7 +268,7 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
   `cliente_datos_minimos` se mantiene sincronizado al guardar y sirve de fallback si el jsonb es NULL.
 - El alta rápida del POS ganó **input de email** (antes no existía) y placeholders con `*` dinámico.
   Validación: `src/lib/clienteCampos.ts` (`validarClienteInline`).
-- **2026-10-01 (pedido de GO, 🟡 DEV): se suma CUIT** a los datos que se pueden exigir (desmarcado por defecto; sin
+- **2026-10-01 (pedido de GO, ✅ EN PROD v1.237.0): se suma CUIT** a los datos que se pueden exigir (desmarcado por defecto; sin
   migración, es una clave más del jsonb). Sirve al negocio que le vende a empresas y les hace Factura A. Con CUIT cargado
   el DNI sigue sin exigirse. El placeholder del POS pasa a "CUIT *" cuando está marcado. Unit `clienteCampos` (14).
 

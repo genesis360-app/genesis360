@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre) — PROD = DEV = `v1.236.0` (001-454)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-02) — PROD = DEV = `v1.237.0` (001-455)
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.236.0` ✅ (PR #368, merge `f4354d29`) | 001-**454** |
-> | **DEV** | `v1.236.0` (= PROD) | 001-**454** |
+> | **PROD** | `v1.237.0` ✅ (PR #369, merge `58bc176f`) | 001-**455** |
+> | **DEV** | `v1.237.0` (= PROD) | 001-**455** |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
 > 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
@@ -34,8 +34,8 @@ type: project
 > grupo activo). B: en avanzado no se carga stock sin ubicación (ingreso individual/masivo, recepción, traslado, kit,
 > importador, devolución vendible). e2e `174` + 8 specs adaptados. UAT §85.
 > ✅ GO respondió: (1) anulación → elige quien aprueba (C); (2) cancelar traslado → elige quien cancela; (3) se mantiene
-> la ubicación habitual. Hecho + **guard de la base mig 455** (en DEV). Hallazgo abierto: el desarmado de KIT no es
-> atómico (pasarlo a RPC). **Deploy: mig 455 + frontend juntos** (sin bump todavía).
+> la ubicación habitual. Hecho + **guard de la base mig 455**. **✅ EN PROD v1.237.0 (02/10)** junto con CUIT exigible y
+> la ficha de producto alineada. Hallazgo abierto: el desarmado de KIT no es atómico (pasarlo a RPC).
 >
 > **🚀 v1.236.0 EN PROD (01/10, cierre, GO: "pasemos a PRD")** — migs 452→453→454 de a una, EF `emitir-factura` (diff 0),
 > merge PR #368, release Latest, servida `index-HQz-ILzk.js`, `ai-assistant` redeployado, paridad policies DEV = PROD.

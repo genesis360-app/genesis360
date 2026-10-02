@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] deploy | v1.237.0 a PROD — stock con ubicación en avanzado (U-2), CUIT exigible, ficha alineada
+
+- GO: "luego que termine la suite y hacés estos arreglos subís todo a PRD". Además pidió: CUIT en "Datos requeridos al
+  crear un cliente" (agregado, desmarcado por defecto) y alinear "Stock e inventario" de la ficha (descripciones → ⓘ).
+- Suite e2e completa con el guard activo: 435 ok, 0 fallas (exit 0). Unit 2105. Build OK.
+- PROD: mig 455 (md5 DEV = PROD, tildes OK) → bump `v1.237.0` → PR #369 (CI unit verde, preview Vercel OK) → merge
+  `58bc176f` → release Latest → servida `index-CHaAhYhy.js`. Paridad `pg_policies` DEV = PROD (public 240, storage 40,
+  cron 2). Sin Edge Functions. app-reference sin cambios (Asistente IA sin redeploy).
+
 ## [2026-10-01] update | U-2 cerrado: anulación y traslado eligen ubicación + guard de la base (mig 455) — en DEV
 
 - GO: 1) anulación → elige quien aprueba (C); 2) cancelar traslado → elige quien cancela; 3) mantener la ubicación

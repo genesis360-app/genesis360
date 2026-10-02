@@ -3,14 +3,21 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 // Crea una MP Preference para cobrar un monto específico de una venta.
 // El external_reference = venta.id permite que mp-webhook matchee el pago.
+//
+// 🛑 REGLA #0 (2026-10-02): la preferencia se crea SIEMPRE con la cuenta MP del NEGOCIO. Antes, sin credencial (o con
+// dos conectadas, que rompían el `.maybeSingle()`) caía al MP_ACCESS_TOKEN de la PLATAFORMA → el cliente le pagaba a
+// Genesis360 y la venta no se conciliaba. Al 02/10 ningún negocio de PROD tenía MP conectado: todo link/QR salía así.
 
 const MP_API = 'https://api.mercadopago.com'
-const WEBHOOK_URL = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook'
+// El webhook del MISMO proyecto (antes estaba fijo a PROD, también desde DEV).
+const WEBHOOK_URL = `${Deno.env.get('SUPABASE_URL')}/functions/v1/mp-webhook`
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+const json = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -51,21 +58,36 @@ serve(async (req) => {
 
   // Obtener número de venta para el título (puede no existir aún en venta directa)
   const { data: venta } = await supabase
-    .from('ventas').select('numero').eq('id', venta_id).eq('tenant_id', tenantId).maybeSingle()
+    .from('ventas').select('numero, total, costo_envio, monto_pagado, sucursal_id, estado')
+    .eq('id', venta_id).eq('tenant_id', tenantId).maybeSingle()
 
-  // Buscar credenciales MP del tenant (cuenta del seller conectada)
-  const { data: cred } = await supabase
+  // Venta existente: el monto no puede superar su saldo (total + envío − pagado; el numeric llega como string).
+  // Sin venta = pre-venta del POS (todavía no se guardó): el monto es el que se está cobrando en el checkout.
+  if (venta) {
+    if (venta.estado === 'cancelada') return json({ error: 'La venta está cancelada.' }, 400)
+    const saldo = parseFloat(String(venta.total ?? 0)) + parseFloat(String(venta.costo_envio ?? 0))
+      - parseFloat(String(venta.monto_pagado ?? 0))
+    if (!(saldo > 0.5)) return json({ error: 'La venta no tiene saldo pendiente.' }, 400)
+    if (Number(monto) > saldo + 0.5) {
+      return json({ error: `El monto ($${Number(monto)}) supera el saldo pendiente de la venta ($${Math.round(saldo * 100) / 100}).` }, 400)
+    }
+  }
+
+  // Credencial MP del NEGOCIO. Puede haber más de una (por sucursal): primero la de la sucursal de la venta, después
+  // la del negocio sin sucursal, después la más reciente. NUNCA la cuenta de la plataforma.
+  const { data: creds } = await supabase
     .from('mercadopago_credentials')
-    .select('access_token')
+    .select('access_token, sucursal_id, created_at')
     .eq('tenant_id', tenantId)
     .eq('conectado', true)
-    .maybeSingle()
-
-  const accessToken = cred?.access_token ?? Deno.env.get('MP_ACCESS_TOKEN')
+    .order('created_at', { ascending: false })
+  const lista = (creds ?? []).filter((c: any) => !!c.access_token)
+  const cred = lista.find((c: any) => venta?.sucursal_id && c.sucursal_id === venta.sucursal_id)
+    ?? lista.find((c: any) => !c.sucursal_id)
+    ?? lista[0]
+  const accessToken = cred?.access_token
   if (!accessToken) {
-    return new Response(JSON.stringify({ error: 'No hay cuenta de MercadoPago conectada. Conectala en Configuración → Integraciones.' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return json({ error: 'No hay cuenta de Mercado Pago conectada. Conectala en Configuración → Integraciones.' }, 400)
   }
 
   const appUrl = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'

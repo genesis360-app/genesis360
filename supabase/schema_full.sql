@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-01T21:58:38.767Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261001215032 · 175 tablas
+-- Generado 2026-10-02T02:39:51.804Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002021838 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -7718,6 +7718,26 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_guard_stock_sin_ubicacion_avanzado()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF current_user NOT IN ('authenticated', 'anon') THEN RETURN NEW; END IF;
+  IF NEW.ubicacion_id IS NOT NULL OR NEW.activo IS NOT TRUE THEN RETURN NEW; END IF;
+  -- Línea vieja que YA estaba activa sin ubicación: se puede seguir moviendo (vender, ajustar).
+  IF TG_OP = 'UPDATE' AND OLD.ubicacion_id IS NULL AND OLD.activo IS TRUE THEN RETURN NEW; END IF;
+
+  IF EXISTS (SELECT 1 FROM public.tenants WHERE id = NEW.tenant_id AND modo_operacion = 'avanzado') THEN
+    RAISE EXCEPTION 'En modo avanzado el stock necesita una ubicación: elegí dónde quedó la mercadería (sin ubicación el punto de venta no la puede vender).'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_guard_una_sesion_abierta()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -15120,6 +15140,7 @@ CREATE TRIGGER lineas_recalcular_stock AFTER INSERT OR DELETE OR UPDATE OF canti
 CREATE TRIGGER lineas_updated_at BEFORE UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_inventario_estado_aprobacion_guard BEFORE UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_inventario_estado_aprobacion_guard();
 CREATE TRIGGER trg_inventario_lineas_estado_genera_tarea_repositor AFTER UPDATE OF estado_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_generar_tarea_repositor_estado();
+CREATE TRIGGER trg_inventario_lineas_guard_ubicacion BEFORE INSERT OR UPDATE OF ubicacion_id, activo ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_guard_stock_sin_ubicacion_avanzado();
 CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
 CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
 CREATE TRIGGER series_recalcular_stock AFTER INSERT OR DELETE OR UPDATE ON public.inventario_series FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();

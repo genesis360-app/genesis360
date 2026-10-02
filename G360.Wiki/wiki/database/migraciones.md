@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-01
 ---
 
-# Historial de Migraciones (001-454, + correctivos 387b/387c)
+# Historial de Migraciones (001-455, + correctivos 387b/387c)
+
+📍 **Migración 455 — 🟡 EN DEV (2026-10-01), falta PROD**: `455_guard_stock_sin_ubicacion_avanzado.sql` — U-2 (B), guard de la base: trigger `trg_inventario_lineas_guard_ubicacion` (`fn_guard_stock_sin_ubicacion_avanzado`, BEFORE INSERT OR UPDATE OF ubicacion_id, activo) — para authenticated/anon, en un negocio **avanzado** no se inserta stock activo sin ubicación, no se le quita la ubicación a una línea activa y no se activa una línea sin ubicación. Líneas viejas activas sin ubicación se siguen pudiendo mover. Sin cambio de policies. 🛑 Va a PROD **junto con** el frontend de U-2 (si va antes, la anulación y la cancelación de traslado viejas fallan con mensaje claro en vez de reingresar sin ubicación).
 
 🧾 **Migración 454 — ✅ EN DEV Y PROD (2026-10-01, v1.236.0)**: `454_ventas_numero_por_negocio.sql` — 🔴 **drift DEV≠PROD**: en PROD `ventas.numero` era `GENERATED ALWAYS AS IDENTITY` (secuencia global) y DEV no; la identidad llenaba el número antes del trigger `gen_venta_numero`, así que las ventas se numeraban entre TODOS los negocios (El Tilo #34 tras Kalken #33). `DROP IDENTITY IF EXISTS` (no-op en DEV) + candado por negocio (`pg_advisory_xact_lock`) en el trigger contra números repetidos por carrera. Cada negocio sigue desde su máximo; no se reescriben números. Única columna IDENTITY con drift (la otra, `mp_billing_alertas.id`, está en los dos).
 

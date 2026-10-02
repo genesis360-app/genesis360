@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, loginToken } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, loginToken, idUbicacionSiembra } from './helpers/fixtures'
 
 /** El `sub` del JWT es el `users.id` del actor logueado (deposito) — evita adivinar cuál fila de
  *  `users` es "la propia" cuando hay más de un usuario con el mismo rol en el tenant. */
@@ -82,7 +82,7 @@ async function crearLinea(request: any, c: Ctx, productoId: string, lpn: string)
   const res = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
     headers: c.headersOwner, data: {
       tenant_id: c.tenantId, producto_id: productoId, lpn, cantidad: 10, activo: true,
-      sucursal_id: c.sucursalId,
+      sucursal_id: c.sucursalId, ubicacion_id: await idUbicacionSiembra(request, c.headersOwner),
     },
   })
   expect(res.ok(), `[117] no se pudo crear el LPN: ${await res.text()}`).toBe(true)

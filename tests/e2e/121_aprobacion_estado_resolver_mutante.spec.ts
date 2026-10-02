@@ -27,7 +27,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, idUbicacionSiembra } from './helpers/fixtures'
 
 // PNG 1x1 válido — foto de evidencia real, no un placeholder inerte.
 const PNG_1x1 = Buffer.from(
@@ -77,7 +77,7 @@ async function crearProducto(request: any, c: Ctx, nombre: string, sku: string) 
 
 async function crearLinea(request: any, c: Ctx, productoId: string, lpn: string) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
-    headers: c.headers, data: { tenant_id: c.tenantId, producto_id: productoId, lpn, cantidad: 10, activo: true },
+    headers: c.headers, data: { tenant_id: c.tenantId, producto_id: productoId, lpn, cantidad: 10, activo: true, ubicacion_id: await idUbicacionSiembra(request, c.headers) },
   })
   expect(res.ok(), `[121] no se pudo crear el LPN: ${await res.text()}`).toBe(true)
   return ((await res.json()) as any[])[0]

@@ -68,6 +68,7 @@ import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
 import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useElegirUbicacion } from '@/components/ElegirUbicacionModal'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos' | 'autorizaciones'
@@ -253,6 +254,7 @@ export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const confirmar = useConfirm()
+  const { pedirUbicacion, modalUbicacion } = useElegirUbicacion()
   // Modo básico no usa ubicaciones: el stock se surte/despacha aunque `ubicacion_id` sea NULL
   // (el ingreso de stock en básico no asigna ubicación). En avanzado (WMS) solo se surte stock
   // ubicado. Aplicar a TODAS las queries de inventario_lineas que buscan stock para vender/
@@ -4972,7 +4974,7 @@ export default function VentasPage() {
   }
 
   const cambiarEstado = useMutation({
-    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null; motivo?: string; observacion?: string } }) => {
+    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts, ubicacionReingresoId }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null; motivo?: string; observacion?: string }; /** U-2: avanzado, anular una venta despachada → dónde vuelve el stock (lo elige quien aprueba). */ ubicacionReingresoId?: string | null }) => {
       // A1 — aprobar una anulación desde Supervisión puede apuntar a una venta que hoy no está en
       // el listado cargado del Historial (filtro de fecha/sucursal distinto) — fallback a traerla
       // directo de la DB en vez de fallar con "Venta no encontrada" pese a existir de verdad.
@@ -5329,6 +5331,12 @@ export default function VentasPage() {
             throw new Error(`Esta venta se cobró con US$${reintegroGuard.usd.toLocaleString('es-AR', { maximumFractionDigits: 2 })} en efectivo. Para anularla necesitás:\n• Abrir una Caja USD para registrar la devolución de los dólares, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito`)
           }
         }
+        // U-2 (GO 2026-10-01, opción C): en avanzado el stock de una venta ya rebajada vuelve a la ubicación que elige
+        // quien aprueba la anulación. Se valida ANTES de tocar caja o stock (la anulación no es atómica).
+        if (modoAvanzado && (venta.estado === 'despachada' || venta.estado === 'facturada') && !ubicacionReingresoId
+            && (items ?? []).some((it: any) => !(it.productos as any)?.tiene_series && Number(it.cantidad) > 0)) {
+          throw new Error('Elegí la ubicación donde vuelve a quedar la mercadería: en modo avanzado el stock sin ubicación no se puede vender.')
+        }
         // Liberar reservas
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
@@ -5354,8 +5362,8 @@ export default function VentasPage() {
         // restaurarlo al anular (espejo del reingreso de Devolver): el void devuelve plata Y stock.
         // En reservada/pendiente el stock no se había rebajado (solo reservado) → no re-agregar.
         if (venta.estado === 'despachada' || venta.estado === 'facturada') {
-          // Destino del reingreso: en avanzado, primer estado vendible (sin ubicación, se reubica
-          // luego); en básico, sin estado ni ubicación (todo es vendible). Ver [[reference_basico_stock_null_ubicacion_estado]].
+          // Destino del reingreso: en avanzado, primer estado vendible + la ubicación elegida al aprobar (U-2);
+          // en básico, sin estado ni ubicación (todo es vendible). Ver [[reference_basico_stock_null_ubicacion_estado]].
           let estadoVendibleId: string | null = null
           if (modoAvanzado) {
             const { data: ev } = await supabase.from('estados_inventario')
@@ -5372,7 +5380,10 @@ export default function VentasPage() {
                 await supabase.from('inventario_series').update({ activo: true, reservado: false }).in('id', serieIds)
                 const { data: seriesData } = await supabase.from('inventario_series').select('linea_id').in('id', serieIds)
                 const lineaIds = [...new Set((seriesData ?? []).map((s: any) => s.linea_id).filter(Boolean))]
-                if (lineaIds.length > 0) await supabase.from('inventario_lineas').update({ activo: true }).in('id', lineaIds)
+                if (lineaIds.length > 0) {
+                  const { error: eAct } = await supabase.from('inventario_lineas').update({ activo: true }).in('id', lineaIds)
+                  if (eAct) throw new Error(`La venta se anuló pero no se pudieron reactivar las series en el stock (${eAct.message}). Revisá el inventario.`)
+                }
               }
             } else {
               // Reingreso a la sucursal de la venta (evita líneas con sucursal_id NULL que solo
@@ -5409,7 +5420,10 @@ export default function VentasPage() {
                   notas: `Anulación de venta #${venta.numero}`,
                 }
                 if (modoAvanzado && estadoVendibleId) lineaPayload.estado_id = estadoVendibleId
-                const { data: linea } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
+                if (modoAvanzado) lineaPayload.ubicacion_id = ubicacionReingresoId
+                const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
+                // Antes no se miraba el error: la venta quedaba anulada (plata devuelta) y el stock no volvía.
+                if (lineaErr) throw new Error(`La venta se anuló pero no se pudo reingresar "${(item.productos as any)?.nombre ?? 'un producto'}" al stock (${lineaErr.message}). Revisá el inventario.`)
                 lineaId = linea?.id
               }
               if (lineaId) {
@@ -5733,7 +5747,18 @@ export default function VentasPage() {
         abrirModalDevolucion(ventaFresca, { anulacionTotal: true })
         toast('Completá la devolución total para terminar de aprobar (elegí el reembolso)', { icon: '📋', duration: 6000 })
       } else {
-        await cambiarEstado.mutateAsync({ ventaId, nuevoEstado: 'cancelada' })
+        // U-2 (opción C): en avanzado, quien aprueba elige dónde vuelve la mercadería (sin valor presupuesto).
+        let ubicacionReingresoId: string | null = null
+        if (modoAvanzado && (ventaFresca.venta_items ?? []).some((it: any) => !it.productos?.tiene_series && Number(it.cantidad) > 0)) {
+          ubicacionReingresoId = await pedirUbicacion({
+            titulo: `Anular la venta #${ventaFresca.numero}`,
+            mensaje: 'La mercadería vuelve al stock. ¿En qué ubicación queda?',
+            sucursalId: ventaFresca.sucursal_id ?? sucursalId ?? null,
+            confirmText: 'Anular y reingresar',
+          })
+          if (!ubicacionReingresoId) return
+        }
+        await cambiarEstado.mutateAsync({ ventaId, nuevoEstado: 'cancelada', ubicacionReingresoId })
         await marcarAprobadaVenta(aut.id)
         logVentaAuditoria(ventaId, 'anulacion', { estado_previo: ventaFresca.estado, total: ventaFresca.total, autorizacion_id: aut.id })
         toast.success('Anulación aprobada y ejecutada')
@@ -5756,6 +5781,7 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-6">
+      {modalUbicacion}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">

@@ -18,6 +18,7 @@ import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
 import { AvisarSupervisorButton } from '@/components/AvisarSupervisorButton'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 
@@ -33,6 +34,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const { tenant, user, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const confirmar = useConfirm()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
   const tieneSeries = producto.tiene_series
@@ -751,7 +753,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación</label>
                   <select value={editForm.ubicacion_id} onChange={e => setEditForm(p => ({ ...p, ubicacion_id: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
-                    <option value="">Sin ubicación</option>
+                    {/* U-2: en avanzado no se puede dejar una línea sin ubicación (el POS no la vendería). */}
+                    <option value="" disabled={modoAvanzado}>{modoAvanzado ? 'Elegí la ubicación…' : 'Sin ubicación'}</option>
                     {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                   </select>
                 </div>

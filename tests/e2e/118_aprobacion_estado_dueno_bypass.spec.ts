@@ -14,7 +14,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, idUbicacionSiembra } from './helpers/fixtures'
 
 test.describe('Aprobación de cambio de estado — bypass del DUEÑO (H2, comportamiento intencional)', () => {
   test('el DUEÑO aplica el cambio DIRECTO, sin foto ni autorización (APROB-03)', async ({ page, request }) => {
@@ -59,7 +59,7 @@ test.describe('Aprobación de cambio de estado — bypass del DUEÑO (H2, compor
     const [producto] = (await prodRes.json()) as Array<{ id: string }>
 
     const lineaRes = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
-      headers, data: { tenant_id: tenantId, producto_id: producto.id, lpn, cantidad: 10, activo: true, sucursal_id: suc.id },
+      headers, data: { tenant_id: tenantId, producto_id: producto.id, lpn, cantidad: 10, activo: true, sucursal_id: suc.id, ubicacion_id: await idUbicacionSiembra(request, headers) },
     })
     expect(lineaRes.ok(), `[118] no se pudo crear el LPN: ${await lineaRes.text()}`).toBe(true)
     const [linea] = (await lineaRes.json()) as Array<{ id: string; estado_id: string | null }>

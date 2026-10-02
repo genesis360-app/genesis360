@@ -20,6 +20,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { esDecimal } from '@/lib/ventasValidation'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { useElegirUbicacion } from '@/components/ElegirUbicacionModal'
 import {
   puedeCrearTraslado, puedeConfirmarRecepcion, disponibleLinea,
   validarCantidadTraslado, validarRecepcion, estadoDesdeRecepcion, totalFaltante,
@@ -46,6 +47,7 @@ export default function TrasladosPanel() {
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const { avanzado: modoAvanzado } = useModoOperacion()
+  const { pedirUbicacion, modalUbicacion } = useElegirUbicacion()
   const rol = user?.rol as any
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
 
@@ -402,21 +404,55 @@ export default function TrasladosPanel() {
   })
 
   // ── Cancelar traslado en tránsito (reingreso al origen) ───────────────────
+  // ¿Alguna línea de origen ya no existe? Entonces el stock vuelve en una línea NUEVA, que en avanzado necesita ubicación.
+  const lineasOrigenTraslado = async (t: any) => {
+    const ids = (t.traslado_items ?? []).map((it: any) => it.linea_origen_id).filter(Boolean)
+    if (!ids.length) return new Map<string, any>()
+    const { data, error } = await supabase.from('inventario_lineas').select('id, cantidad, activo').in('id', ids)
+    if (error) throw new Error(`No se pudo revisar el stock de origen: ${error.message}`)
+    return new Map((data ?? []).map((l: any) => [l.id, l]))
+  }
+
+  const pedirCancelar = async (t: any) => {
+    if (!(await confirmar(`¿Cancelar el traslado #${t.numero}? El stock vuelve a ${sucursalNombre(t.sucursal_origen_id)}.`, { danger: true }))) return
+    let ubicacionId: string | null = null
+    if (modoAvanzado) {
+      try {
+        const existentes = await lineasOrigenTraslado(t)
+        if ((t.traslado_items ?? []).some((it: any) => !it.linea_origen_id || !existentes.has(it.linea_origen_id))) {
+          // U-2 (GO 2026-10-01): sin línea de origen, quien cancela elige dónde vuelve (no se presupone).
+          ubicacionId = await pedirUbicacion({
+            titulo: `Cancelar el traslado #${t.numero}`,
+            mensaje: `Parte de la mercadería vuelve a ${sucursalNombre(t.sucursal_origen_id)} en una línea nueva. ¿En qué ubicación queda?`,
+            sucursalId: t.sucursal_origen_id, confirmText: 'Cancelar traslado',
+          })
+          if (!ubicacionId) return
+        }
+      } catch (e: any) { toast.error(e.message); return }
+    }
+    cancelar.mutate({ t, ubicacionId })
+  }
+
   const cancelar = useMutation({
-    mutationFn: async (t: any) => {
+    mutationFn: async ({ t, ubicacionId }: { t: any; ubicacionId: string | null }) => {
       if (!puedeCrearTraslado(rol)) throw new Error('No tenés permiso para cancelar traslados')
+      // Todo se valida ANTES de escribir (la cancelación no es atómica).
+      const existentes = await lineasOrigenTraslado(t)
+      if (modoAvanzado && !ubicacionId && (t.traslado_items ?? []).some((it: any) => !it.linea_origen_id || !existentes.has(it.linea_origen_id))) {
+        throw new Error('Elegí la ubicación donde vuelve la mercadería: en modo avanzado el stock sin ubicación no se puede vender.')
+      }
       for (const it of (t.traslado_items ?? [])) {
         let lineaId: string | null = it.linea_origen_id
-        const { data: lin } = lineaId
-          ? await supabase.from('inventario_lineas').select('id, cantidad, activo').eq('id', lineaId).single()
-          : { data: null }
+        const lin = lineaId ? existentes.get(lineaId) : null
         if (lin) {
-          await supabase.from('inventario_lineas')
+          const { error: eUpd } = await supabase.from('inventario_lineas')
             .update({ cantidad: (lin.cantidad ?? 0) + Number(it.cantidad), activo: true }).eq('id', lin.id)
+          if (eUpd) throw new Error(`No se pudo devolver el stock al origen: ${eUpd.message}`)
         } else {
           lineaId = crypto.randomUUID()
-          await supabase.from('inventario_lineas').insert({
+          const { error: eIns } = await supabase.from('inventario_lineas').insert({
             id: lineaId, tenant_id: tenant!.id, producto_id: it.producto_id,
+            ubicacion_id: modoAvanzado ? ubicacionId : null,
             lpn: it.lpn, cantidad: Number(it.cantidad), estado_id: it.estado_id ?? null,
             sucursal_id: t.sucursal_origen_id, nro_lote: it.nro_lote ?? null,
             fecha_vencimiento: it.fecha_vencimiento ?? null,
@@ -428,6 +464,8 @@ export default function TrasladosPanel() {
             formato: it.formato ?? null,
             sabor_aroma: it.sabor_aroma ?? null,
           })
+          // Antes no se miraba el error: el traslado quedaba cancelado y el stock no volvía.
+          if (eIns) throw new Error(`No se pudo devolver el stock al origen: ${eIns.message}`)
         }
         const serieIds = ((it.series as any[]) ?? []).map(s => s.serie_id)
         if (serieIds.length) {
@@ -465,6 +503,7 @@ export default function TrasladosPanel() {
 
   return (
     <div className="space-y-4">
+      {modalUbicacion}
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -529,7 +568,7 @@ export default function TrasladosPanel() {
                 )}
                 {t.estado === 'en_transito' && puedeCrearTraslado(rol) && (
                   <button
-                    onClick={async () => { if (await confirmar(`¿Cancelar el traslado #${t.numero}? El stock vuelve a ${sucursalNombre(t.sucursal_origen_id)}.`, { danger: true })) cancelar.mutate(t) }}
+                    onClick={() => { void pedirCancelar(t) }}
                     disabled={cancelar.isPending}
                     className="text-xs text-red-500 hover:text-red-600 px-2 py-1.5 disabled:opacity-50">
                     Cancelar

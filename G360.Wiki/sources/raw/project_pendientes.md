@@ -33,9 +33,9 @@ type: project
 > A: el POS explica el stock sin ubicar / en ubicación no habilitada para surtido (y ya no oculta esos productos con un
 > grupo activo). B: en avanzado no se carga stock sin ubicación (ingreso individual/masivo, recepción, traslado, kit,
 > importador, devolución vendible). e2e `174` + 8 specs adaptados. UAT §85.
-> 🙋 **Para GO:** (1) anulación de venta en avanzado: ¿a qué ubicación vuelve el stock? (2) cancelar traslado cuando la
-> línea de origen ya no existe; (3) ¿se mantiene la precarga de la "ubicación habitual del producto"?; (4) recién con
-> 1-2 resueltos, guard de la base (trigger). Hallazgo: el desarmado de KIT no es atómico (pasarlo a RPC).
+> ✅ GO respondió: (1) anulación → elige quien aprueba (C); (2) cancelar traslado → elige quien cancela; (3) se mantiene
+> la ubicación habitual. Hecho + **guard de la base mig 455** (en DEV). Hallazgo abierto: el desarmado de KIT no es
+> atómico (pasarlo a RPC). **Deploy: mig 455 + frontend juntos** (sin bump todavía).
 >
 > **🚀 v1.236.0 EN PROD (01/10, cierre, GO: "pasemos a PRD")** — migs 452→453→454 de a una, EF `emitir-factura` (diff 0),
 > merge PR #368, release Latest, servida `index-HQz-ILzk.js`, `ai-assistant` redeployado, paridad policies DEV = PROD.

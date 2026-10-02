@@ -8,7 +8,9 @@
  *  A2 · Stock en una ubicación NO habilitada para surtido → el POS lo explica y nombra la ubicación.
  *  B  · El ingreso individual en avanzado no se guarda sin ubicación (y no crea nada).
  *
- * Tenant Almacén Jorgito (avanzado). El stock sin ubicar se siembra por REST (la UI ya no deja crearlo).
+ * Tenant Almacén Jorgito (avanzado). Desde la mig 455 nadie puede crear stock sin ubicación en avanzado, así que A1 lo
+ * siembra con el escenario REAL en que aparece: el negocio estaba en BÁSICO (stock sin ubicar) y pasa a AVANZADO
+ * (mismo update que Configuración → modo). El modo se restaura en `finally`.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
@@ -61,7 +63,14 @@ test.describe('U-2 — stock sin ubicar en modo avanzado (A + B)', () => {
     const sku = `E2E174A-${ts}`
     const prodId = await crearProducto(page, headers, tid, `E2E 174 sin ubicar ${ts}`, sku)
     try {
-      await sembrarLinea(page, headers, { tenant_id: tid, producto_id: prodId, cantidad: 7, sucursal_id: sucId, estado_id: estadoId, activo: true })
+      // Básico → stock sin ubicar → vuelve a avanzado (como un negocio que cambia de modo).
+      const aBasico = await page.request.patch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tid}`, { headers, data: { modo_operacion: 'basico' } })
+      expect(aBasico.ok(), `[174A1] no se pudo pasar a básico: ${await aBasico.text()}`).toBe(true)
+      try {
+        await sembrarLinea(page, headers, { tenant_id: tid, producto_id: prodId, cantidad: 7, sucursal_id: sucId, estado_id: estadoId, activo: true })
+      } finally {
+        await page.request.patch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tid}`, { headers, data: { modo_operacion: 'avanzado' } })
+      }
       await intentarVender(page, sku)
       await expect(page.getByText(/Hay\s*7 unidades sin ubicar/), '[174A1] el POS no explicó que el stock está sin ubicar').toBeVisible({ timeout: 10000 })
       await expect(page.getByText('Este producto no tiene stock disponible')).toHaveCount(0)
@@ -123,6 +132,20 @@ test.describe('U-2 — stock sin ubicar en modo avanzado (A + B)', () => {
       const lineas = (await (await page.request.get(
         `${SUPABASE_URL}/rest/v1/inventario_lineas?select=id&producto_id=eq.${prodId}`, { headers })).json()) as any[]
       expect(lineas, '[174B] se creó stock sin ubicación').toHaveLength(0)
+      // …y la base tampoco lo deja (mig 455), aunque se saltee la pantalla.
+      const directo = await page.request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
+        headers, data: { tenant_id: tid, producto_id: prodId, cantidad: 3, activo: true },
+      })
+      expect(directo.ok(), '[174B] la base aceptó stock sin ubicación en avanzado').toBe(false)
+      expect(await directo.text()).toContain('necesita una ubicación')
+      // Ni el atajo de crearla inactiva y activarla después.
+      const inactiva = await page.request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
+        headers: { ...headers, Prefer: 'return=representation' }, data: { tenant_id: tid, producto_id: prodId, cantidad: 3, activo: false },
+      })
+      expect(inactiva.ok(), await inactiva.text()).toBe(true)
+      const idInactiva = ((await inactiva.json()) as any[])[0].id
+      const activar = await page.request.patch(`${SUPABASE_URL}/rest/v1/inventario_lineas?id=eq.${idInactiva}`, { headers, data: { activo: true } })
+      expect(activar.ok(), '[174B] se pudo activar una línea sin ubicación').toBe(false)
     } finally {
       await page.request.patch(`${SUPABASE_URL}/rest/v1/productos?id=eq.${prodId}`, { headers, data: { activo: false } })
     }

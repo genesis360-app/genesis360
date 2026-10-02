@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | U-2 cerrado: anulación y traslado eligen ubicación + guard de la base (mig 455) — en DEV
+
+- GO: 1) anulación → elige quien aprueba (C); 2) cancelar traslado → elige quien cancela; 3) mantener la ubicación
+  habitual del producto.
+- `ElegirUbicacionModal` (hook `useElegirUbicacion`); `cambiarEstado` recibe `ubicacionReingresoId` y valida antes de
+  tocar caja/stock; reingreso y reactivación de series revisan errores. Cancelar traslado: verifica todas las líneas de
+  origen antes de escribir y pide ubicación solo si falta alguna. Editar LPN: sin "Sin ubicación" en avanzado.
+- Mig 455 (DEV): trigger que impide, en avanzado, crear stock activo sin ubicación, quitársela a una línea o activar una
+  línea sin ubicación (atajo detectado al escribir el guard). Líneas viejas activas sin ubicación siguen operando.
+- Suite e2e completa antes del guard: 434 ok / 43 skip / 1 falla (137a, esperada: corría con el modal nuevo). Con el
+  guard: 9 specs sembraban stock sin ubicación por REST → adaptados con `idUbicacionSiembra`. 174 A1 siembra pasando
+  el negocio por básico (el escenario real del stock sin ubicar). Unit 2102, build OK. UAT §85.9-85.13.
+
 ## [2026-10-01] update | U-2: en modo avanzado el stock entra con ubicación (A + B) — en DEV
 
 - GO eligió A + B y rechazó la ubicación sugerida (C): "no sabemos si la guardó ahí físicamente".

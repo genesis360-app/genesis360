@@ -2423,7 +2423,11 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 85.6 | Con un grupo de estados activo, el producto con stock trabado sigue apareciendo en el buscador | e2e `174` A1 | ✅ |
 | 85.7 | Desarmado de KIT: si falla el ingreso de un componente, se avisa (antes el movimiento quedaba sin stock) | revisión | ✅ código |
 | 85.8 | Básico: nada cambia (sin ubicación, todo vendible) | revisión (todas las validaciones condicionadas a modo avanzado) | ✅ código |
-| 85.9 | ⏳ Anulación de venta y cancelación de traslado en avanzado: siguen reingresando sin ubicación | — | ⏳ decisión de GO |
+| 85.9 | 🛑 Anular una venta despachada (avanzado): quien aprueba elige la ubicación del reingreso (GO: opción C); sin elegir no se toca caja ni stock | e2e `137` A (vuelve a RACK2) | ✅ |
+| 85.10 | Cancelar un traslado cuya línea de origen ya no existe: quien cancela elige la ubicación; cada paso revisa errores | revisión | ✅ código |
+| 85.11 | 🛑 Base (mig 455): en avanzado no se crea stock activo sin ubicación, no se le quita a una línea, ni se activa una línea sin ubicación (atajo cerrado) | e2e `174` B (REST directo) | ✅ |
+| 85.12 | Las líneas viejas activas sin ubicación se siguen pudiendo vender/ajustar; la ubicación habitual del producto se sigue precargando (GO: mantener) | revisión · e2e de venta | ✅ |
+| 85.13 | Editar LPN en avanzado: ya no ofrece "Sin ubicación" | revisión | ✅ código |
 
 ## 🧾 §84 — Número de venta por negocio (mig 454, drift de PROD) — 2026-10-01
 

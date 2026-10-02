@@ -45,14 +45,20 @@ guardó ahí físicamente; ayudarlos a no cometer errores, no presuponer".
   des-pickeo ya la exigían.
 - El desarmado de KIT ahora revisa los errores de cada paso (antes, si fallaba el ingreso de un componente, el
   movimiento quedaba registrado sin el stock). ⚠️ Sigue sin ser atómico (pendiente: pasarlo a una RPC como el armado).
-- ⏳ **Sin guard de la base todavía**: la **anulación de venta** y la **cancelación de traslado** reingresan stock sin
-  ubicación, sin pantalla donde elegirla y sin revisar errores; un trigger que bloquee las perdería en silencio. Espera
-  decisión de GO sobre a dónde va ese stock.
-- Precarga existente que se mantiene (consultada a GO): la **ubicación habitual del producto** (ficha / por sucursal)
-  se sigue precargando en el ingreso individual, masivo y recepciones.
+- **Anular una venta despachada** (GO: opción C): quien aprueba la anulación elige en un modal dónde vuelve la mercadería
+  (`ElegirUbicacionModal`), validado ANTES de tocar caja o stock; el reingreso ahora revisa errores (antes la venta quedaba
+  anulada con la plata devuelta y el stock perdido en silencio). **Cancelar un traslado** cuya línea de origen ya no
+  existe: lo mismo, quien cancela elige. **Editar LPN**: en avanzado ya no ofrece "Sin ubicación".
+- **Guard de la base (mig 455, `fn_guard_stock_sin_ubicacion_avanzado`)**: para authenticated/anon, en un negocio
+  avanzado no se inserta stock activo sin ubicación, no se le quita la ubicación a una línea y no se ACTIVA una línea sin
+  ubicación (cerraba el atajo "crear inactiva y activar"). Las líneas viejas activas sin ubicación se pueden seguir
+  moviendo. SECURITY DEFINER / service_role pasan.
+- Se mantiene (GO): la **ubicación habitual del producto** (ficha / por sucursal) se sigue precargando en el ingreso
+  individual, masivo y recepciones.
 
-Tests: e2e `174` (A1 sin ubicar, A2 ubicación no habilitada, B ingreso; prueba de mutación del buscador) + specs 23, 29,
-30, 89, 92, 93, 97, 132 adaptados a elegir ubicación. UAT §85.
+Tests: e2e `174` (A1 sin ubicar —sembrado pasando el negocio por básico—, A2 ubicación no habilitada, B ingreso + guard de
+la base por REST; prueba de mutación del buscador), `137` A (anulación con ubicación elegida) + specs 23, 29, 30, 89, 92,
+93, 97, 112, 117, 118, 120, 121, 132, 169 adaptados a sembrar/elegir ubicación. UAT §85.
 
 ---
 

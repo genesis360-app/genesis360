@@ -39,6 +39,27 @@ type Tipo = 'huerfana' | 'drift_mp_cobra' | 'drift_acceso_gratis'
 interface Hallazgo { tipo: Tipo; preapproval_id: string; tenant_id: string | null; detalle: Record<string, unknown> }
 
 // Espejo de src/lib/mpReconciliacion.ts (testeado con vitest) — mantener idéntico.
+// Espejo de candidatosHuerfana / esPosibleDuplicado (src/lib/mpReconciliacion.ts, mig 464) — mantener idéntico.
+const VENTANA_CANDIDATO_MS = 3 * 60 * 60 * 1000
+type Intento = { tenant_id: string; mp_plan_id: string; created_at: string; vinculado_at: string | null }
+function candidatosHuerfana(pre: { preapproval_plan_id: string; date_created: string }, intentos: Intento[]): string[] {
+  const t = new Date(pre.date_created).getTime()
+  if (!Number.isFinite(t)) return []
+  const enVentana = intentos
+    .filter(i => i.mp_plan_id === pre.preapproval_plan_id && !i.vinculado_at)
+    .map(i => ({ tenant: i.tenant_id, dt: t - new Date(i.created_at).getTime() }))
+    .filter(x => Number.isFinite(x.dt) && x.dt >= -60_000 && x.dt <= VENTANA_CANDIDATO_MS)
+    .sort((a, b) => Math.abs(a.dt) - Math.abs(b.dt))
+  return [...new Set(enVentana.map(x => x.tenant))]
+}
+function esPosibleDuplicado(pre: { id: string; date_created: string }, candidato: string,
+  otras: Array<{ id: string; date_created: string; tenant_id: string | null; candidatos: string[] }>): boolean {
+  const t = new Date(pre.date_created).getTime()
+  return otras.some(o => o.id !== pre.id &&
+    (o.tenant_id === candidato || o.candidatos.includes(candidato)) &&
+    Math.abs(new Date(o.date_created).getTime() - t) <= 24 * 60 * 60 * 1000)
+}
+
 function clasificar(esPlanNuestro: boolean, status: string, linkedTenantStatus: string | null):
   'ignorar' | 'ok' | Tipo {
   if (!esPlanNuestro) return 'ignorar'
@@ -130,6 +151,41 @@ Deno.serve(async (req) => {
       })
     }
 
+    // 3b) Mig 464: nombrar al negocio candidato de cada huérfana (intentó ese plan en las 3 h previas) y marcar si
+    //     parece un pago DUPLICADO. Incidente 2026-09-28: dos huérfanas del mismo negocio a 40 s, sin nombre en la
+    //     alerta → descartadas como "prueba". Sigue sin vincular solo: lo decide soporte con "Linkear suscripción".
+    const huerfanas = hallazgos.filter(h => h.tipo === 'huerfana')
+    if (huerfanas.length) {
+      const desde = new Date(Math.min(...huerfanas.map(h => new Date(String(h.detalle.date_created)).getTime()))
+        - VENTANA_CANDIDATO_MS - 60_000)
+      const { data: intentos } = await supabase.from('mp_suscripcion_intentos')
+        .select('tenant_id, mp_plan_id, created_at, vinculado_at')
+        .gte('created_at', isNaN(desde.getTime()) ? new Date(0).toISOString() : desde.toISOString())
+      const planDe = new Map(nuestros.map(p => [String(p.id), String(p.preapproval_plan_id)]))
+      const conCand = huerfanas.map(h => ({
+        h,
+        candidatos: candidatosHuerfana(
+          { preapproval_plan_id: planDe.get(h.preapproval_id) ?? '', date_created: String(h.detalle.date_created) },
+          (intentos ?? []) as Intento[]),
+      }))
+      const otras = [
+        ...conCand.map(c => ({ id: c.h.preapproval_id, date_created: String(c.h.detalle.date_created), tenant_id: null, candidatos: c.candidatos })),
+        ...nuestros.filter(p => p?.status === 'authorized' && linkedByPre.has(String(p.id)))
+          .map(p => ({ id: String(p.id), date_created: String(p.date_created), tenant_id: linkedByPre.get(String(p.id))!.id, candidatos: [] as string[] })),
+      ]
+      const ids = [...new Set(conCand.flatMap(c => c.candidatos))]
+      const nombres = new Map<string, string>()
+      if (ids.length) {
+        const { data: ts } = await supabase.from('tenants').select('id, nombre').in('id', ids)
+        for (const t of ts ?? []) nombres.set(String(t.id), String(t.nombre))
+      }
+      for (const { h, candidatos } of conCand) {
+        h.detalle.candidatos = candidatos.map(id => ({ tenant_id: id, nombre: nombres.get(id) ?? null }))
+        h.detalle.posible_duplicado = candidatos.some(c =>
+          esPosibleDuplicado({ id: h.preapproval_id, date_created: String(h.detalle.date_created) }, c, otras))
+      }
+    }
+
     // 4) Dedupe contra mp_billing_alertas: nuevos = no registrados sin resolver.
     const { data: abiertas } = await supabase
       .from('mp_billing_alertas').select('tipo, preapproval_id').is('resolved_at', null)
@@ -158,8 +214,16 @@ Deno.serve(async (req) => {
     let emailed = false
     const resendKey = Deno.env.get('RESEND_API_KEY')
     if (nuevos.length && resendKey) {
+      const candTxt = (h: Hallazgo) => {
+        const c = (h.detalle.candidatos ?? []) as Array<{ tenant_id: string; nombre: string | null }>
+        if (h.tipo !== 'huerfana') return ''
+        const dup = h.detalle.posible_duplicado ? '<br><b style="color:#c00">⚠ POSIBLE PAGO DUPLICADO: cancelar en MP y devolver</b>' : ''
+        if (!c.length) return '<br><i>Sin negocio candidato (nadie salió de /suscripcion a ese plan en las 3 h previas).</i>' + dup
+        return `<br>Probable negocio: <b>${c.map(x => `${x.nombre ?? '?'} (${x.tenant_id})`).join(' · ')}</b>` +
+          (c.length > 1 ? ' <i>(ambiguo)</i>' : '') + dup
+      }
       const filas = nuevos.map(h =>
-        `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>${h.tipo}</b></td>` +
+        `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>${h.tipo}</b>${candTxt(h)}</td>` +
         `<td style="padding:6px 10px;border-bottom:1px solid #eee;font-family:monospace">${h.preapproval_id}</td>` +
         `<td style="padding:6px 10px;border-bottom:1px solid #eee">${h.tenant_id ?? '—'}</td>` +
         `<td style="padding:6px 10px;border-bottom:1px solid #eee">${JSON.stringify(h.detalle)}</td></tr>`).join('')

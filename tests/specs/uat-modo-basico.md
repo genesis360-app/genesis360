@@ -2411,6 +2411,21 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 💳 §93 — Suscripción: que un pago de plan no quede huérfano ni se duplique (mig 464, 🟡 DEV) — 2026-10-02
+
+Incidente (2º cliente real, 28/09): pagó el plan Pro dos veces con 40 s de diferencia y ninguna suscripción quedó
+vinculada (siguió "en prueba"). La reconciliación las detectó, pero la alerta no decía de quién eran y se descartaron
+como prueba. Fede cancela ambas y devuelve; el negocio conserva lo que tiene (herencia v6).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 93.1 | 🛑 La vuelta del checkout con solo `preapproval_id` (sin status=approved) verifica con ese id | e2e `175` A | ✅ |
+| 93.2 | 🛑 Intento sin vincular de las últimas 2 h → "Ya iniciaste un pago" antes de dejar pagar de nuevo; "Volver" no sale a MP | e2e `175` B | ✅ |
+| 93.3 | Cada salida al checkout queda en `mp_suscripcion_intentos` (negocio y usuario de la sesión, no del cliente) | e2e `175` B (RPC) | ✅ |
+| 93.4 | La alerta de huérfana nombra al negocio candidato (mismo plan, 3 h previas) y marca "posible pago duplicado" | unit `mpReconciliacion` (caso real: 2 huérfanas a 40 s) | ✅ |
+| 93.5 | Al vincular (vuelta o panel de soporte) los intentos quedan vinculados y dejan de avisar | revisión de `mp-verificar-suscripcion` y `admin-api` | ✅ código |
+| 93.6 | Alta real de punta a punta con un suscriptor nuevo (vuelve, se activa, no hay doble cobro) | — | ⏳ prueba con un pago real (monto chico) |
+
 ## 🧭 §92 — El modo avanzado es solo desde el plan Pro (mig 463, PR-8, 🟡 DEV) — 2026-10-02
 
 PR-8 (GO): "logística inteligente" = modo avanzado, solo desde Pro. La app ya lo trataba así (modo efectivo), pero la

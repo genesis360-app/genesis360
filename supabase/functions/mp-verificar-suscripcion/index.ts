@@ -192,6 +192,13 @@ serve(async (req) => {
       return json({ error: 'No se pudo activar' }, 500)
     }
 
+    // Mig 464: los intentos abiertos del negocio quedan vinculados (la app deja de avisar "ya iniciaste un pago" y la
+    // reconciliación no los ofrece como candidatos de otra huérfana). Si falla no se revierte la activación: solo se loguea.
+    const { error: intErr } = await admin.from('mp_suscripcion_intentos')
+      .update({ preapproval_id: String(sub.id), vinculado_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId).is('vinculado_at', null)
+    if (intErr) console.error('mp-verificar: no se pudieron marcar los intentos como vinculados', intErr)
+
     console.log(`mp-verificar: tenant ${tenantId} → active (sub ${sub.id}, ${mismaSubConTier ? tierDB : tier})`)
     return json({ activated: true })
   } catch (e) {

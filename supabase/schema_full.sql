@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T14:35:09.666Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002142505 · 175 tablas
+-- Generado 2026-10-02T15:14:24.014Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002150212 · 176 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1350,6 +1350,17 @@ CREATE TABLE public.mp_billing_alertas (
   descartada_at timestamp with time zone,
   descartada_por uuid,
   nota text
+);
+
+CREATE TABLE public.mp_suscripcion_intentos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  usuario_id uuid,
+  plan_tier text NOT NULL,
+  mp_plan_id text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  preapproval_id text,
+  vinculado_at timestamp with time zone
 );
 
 CREATE TABLE public.nc_afip_pendientes (
@@ -3138,6 +3149,8 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_check CHECK ((tipo = ANY (ARRAY['huerfana'::text, 'drift_mp_cobra'::text, 'drift_acceso_gratis'::text])));
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_preapproval_id_key UNIQUE (tipo, preapproval_id);
+ALTER TABLE public.mp_suscripcion_intentos ADD CONSTRAINT mp_suscripcion_intentos_pkey PRIMARY KEY (id);
+ALTER TABLE public.mp_suscripcion_intentos ADD CONSTRAINT mp_suscripcion_intentos_plan_tier_check CHECK ((plan_tier = ANY (ARRAY['basico'::text, 'pro'::text, 'enterprise'::text])));
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_pkey PRIMARY KEY (id);
 ALTER TABLE public.notificaciones ADD CONSTRAINT notificaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_cantidad_check CHECK ((cantidad > (0)::numeric));
@@ -3626,6 +3639,7 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_unidad_med
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE public.mp_suscripcion_intentos ADD CONSTRAINT mp_suscripcion_intentos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_devolucion_id_fkey FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id) ON DELETE CASCADE;
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
@@ -4436,6 +4450,8 @@ CREATE INDEX idx_wms_tareas_tenant ON public.wms_tareas USING btree (tenant_id);
 CREATE INDEX idx_wms_tareas_tenant_estado_usuario ON public.wms_tareas USING btree (tenant_id, estado, usuario_asignado_id);
 CREATE INDEX idx_zonas_sucursal ON public.zonas USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_zonas_tenant ON public.zonas USING btree (tenant_id);
+CREATE INDEX mp_suscripcion_intentos_plan_idx ON public.mp_suscripcion_intentos USING btree (mp_plan_id, created_at DESC);
+CREATE INDEX mp_suscripcion_intentos_tenant_idx ON public.mp_suscripcion_intentos USING btree (tenant_id, created_at DESC);
 CREATE UNIQUE INDEX tenants_codigo_key ON public.tenants USING btree (codigo);
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
@@ -13827,6 +13843,29 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.registrar_intento_suscripcion(p_plan_tier text, p_mp_plan_id text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant uuid;
+  v_id     uuid;
+BEGIN
+  SELECT tenant_id INTO v_tenant FROM public.users WHERE id = auth.uid();
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin negocio'; END IF;
+  IF p_plan_tier NOT IN ('basico', 'pro', 'enterprise') OR COALESCE(p_mp_plan_id, '') = '' THEN
+    RAISE EXCEPTION 'Plan inválido';
+  END IF;
+  INSERT INTO public.mp_suscripcion_intentos (tenant_id, usuario_id, plan_tier, mp_plan_id)
+  VALUES (v_tenant, auth.uid(), p_plan_tier, p_mp_plan_id)
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.registrar_pago_oc(p_oc_id uuid, p_medios jsonb, p_descuento_monto numeric DEFAULT 0, p_clave text DEFAULT NULL::text, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_cheque jsonb DEFAULT NULL::jsonb, p_pago_dias integer DEFAULT 30, p_pago_condiciones text DEFAULT NULL::text, p_cotizacion_usd numeric DEFAULT NULL::numeric)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -15588,6 +15627,7 @@ ALTER TABLE public.modo_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.motivos_movimiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.movimientos_stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mp_billing_alertas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mp_suscripcion_intentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.nc_afip_pendientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orden_compra_items ENABLE ROW LEVEL SECURITY;
@@ -16147,6 +16187,8 @@ CREATE POLICY movimientos_insert ON public.movimientos_stock AS PERMISSIVE FOR I
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY movimientos_select ON public.movimientos_stock AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))));
+CREATE POLICY mp_suscripcion_intentos_select_propio ON public.mp_suscripcion_intentos AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY nc_afip_pendientes_insert ON public.nc_afip_pendientes AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY nc_afip_pendientes_select ON public.nc_afip_pendientes AS PERMISSIVE FOR SELECT TO public
@@ -16830,6 +16872,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mo
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.movimientos_stock TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.movimientos_stock TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mp_billing_alertas TO service_role;
+GRANT SELECT ON public.mp_suscripcion_intentos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mp_suscripcion_intentos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc_afip_pendientes TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc_afip_pendientes TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO anon;

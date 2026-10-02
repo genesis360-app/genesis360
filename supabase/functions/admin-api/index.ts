@@ -576,6 +576,11 @@ Deno.serve(async (req) => {
         }).eq('id', tenantId)
         if (updErr) return json({ error: 'Se verificó en MP pero no se pudo activar la cuenta.' }, 500)
 
+        // Mig 464: los intentos abiertos del negocio quedan vinculados (la app deja de avisar "ya iniciaste un pago").
+        await svc.from('mp_suscripcion_intentos')
+          .update({ preapproval_id: preId, vinculado_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId).is('vinculado_at', null)
+
         const tierFinal = mismaSubConTier ? tierDB : tier
         await audit({ tenantId, preapproval_id: preId, tier: tierFinal, prev_cancel_error })
         return json({ ok: true, tier: tierFinal, prev_cancel_error })

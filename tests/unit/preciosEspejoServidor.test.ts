@@ -24,13 +24,17 @@ describe('mrrDeTenant', () => {
   })
   it('manual sin monto congelado: precio de lista + add-ons', () => {
     expect(mrrDeTenant({ id: 't', plan_tier: 'pro', billing_mode: 'manual', manual_monto_mensual: null },
-      [{ dimension: 'usuarios', cantidad: 3 }])).toBe(110000)
+      [{ dimension: 'usuarios', cantidad: 3 }])).toBe(117600 + 10000)  // lista Pro v7 + usuarios+3
   })
   it('automático: precio con débito + add-ons fijos', () => {
     expect(mrrDeTenant({ id: 't', plan_tier: 'basico', billing_mode: 'auto', manual_monto_mensual: null },
       [{ dimension: 'sku', cantidad: 2000 }, { dimension: 'cuits', cantidad: 1 }])).toBe(54000 + 10000 + 20000)
   })
-  it('plan sin precio publicado (enterprise) → 0, se informa aparte', () => {
-    expect(mrrDeTenant({ id: 't', plan_tier: 'enterprise', billing_mode: 'auto', manual_monto_mensual: null }, [])).toBe(0)
+  it('pricing v7: Enterprise tiene precio ($200.000 débito / $250.000 lista)', () => {
+    expect(mrrDeTenant({ id: 't', plan_tier: 'enterprise', billing_mode: 'auto', manual_monto_mensual: null }, [])).toBe(200000)
+    expect(mrrDeTenant({ id: 't', plan_tier: 'enterprise', billing_mode: 'manual', manual_monto_mensual: null }, [])).toBe(250000)
+  })
+  it('plan sin precio publicado (free legacy) → 0, se informa aparte', () => {
+    expect(mrrDeTenant({ id: 't', plan_tier: 'free', billing_mode: 'auto', manual_monto_mensual: null }, [])).toBe(0)
   })
 })

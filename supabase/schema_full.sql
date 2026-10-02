@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T04:01:06.209Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002035838 · 174 tablas
+-- Generado 2026-10-02T05:30:30.414Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002050741 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2342,13 +2342,22 @@ CREATE TABLE public.tenant_certificates (
   emisor_id uuid
 );
 
+CREATE TABLE public.tenant_herencia_plan (
+  tenant_id uuid NOT NULL,
+  tier_heredado text NOT NULL,
+  limites jsonb NOT NULL,
+  features text[] NOT NULL,
+  creado_at timestamp with time zone NOT NULL DEFAULT now(),
+  nota text
+);
+
 CREATE TABLE public.tenants (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   nombre text NOT NULL,
   tipo_comercio text,
   pais text DEFAULT 'AR'::text,
   subscription_status text NOT NULL DEFAULT 'trial'::text,
-  trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '30 days'::interval),
+  trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '15 days'::interval),
   max_users integer NOT NULL DEFAULT 2,
   max_productos integer NOT NULL DEFAULT 50,
   mp_subscription_id text,
@@ -3282,6 +3291,8 @@ ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_dimension_check CH
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tipo_check CHECK ((tipo = ANY (ARRAY['fijo'::text, 'temporal'::text])));
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_pkey PRIMARY KEY (id);
+ALTER TABLE public.tenant_herencia_plan ADD CONSTRAINT tenant_herencia_plan_pkey PRIMARY KEY (tenant_id);
+ALTER TABLE public.tenant_herencia_plan ADD CONSTRAINT tenant_herencia_plan_tier_heredado_check CHECK ((tier_heredado = ANY (ARRAY['free'::text, 'basico'::text, 'pro'::text, 'enterprise'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_cubicaje_factor CHECK (((cubicaje_factor_aprovechamiento > (0)::numeric) AND (cubicaje_factor_aprovechamiento <= (1)::numeric)));
 ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_rotacion_matriz CHECK ((NOT (rotacion_agotar_antes_reponer AND rotacion_armar_kits)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
@@ -3800,6 +3811,7 @@ ALTER TABLE public.tareas_repositor ADD CONSTRAINT tareas_repositor_usuario_asig
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_emisor_id_fkey FOREIGN KEY (emisor_id) REFERENCES emisores_fiscales(id) ON DELETE SET NULL;
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.tenant_herencia_plan ADD CONSTRAINT tenant_herencia_plan_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_wms_armado_operario_default_id_fkey FOREIGN KEY (wms_armado_operario_default_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE CASCADE;
@@ -7540,6 +7552,40 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_guard_baja_sucursal()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_lineas   int;
+  v_unidades numeric;
+  v_cajas    int;
+BEGIN
+  IF NOT (OLD.activo IS TRUE AND NEW.activo IS NOT TRUE) THEN RETURN NEW; END IF;
+
+  SELECT count(*), COALESCE(sum(cantidad), 0) INTO v_lineas, v_unidades
+    FROM public.inventario_lineas
+   WHERE sucursal_id = OLD.id AND activo AND cantidad > 0;
+  IF v_lineas > 0 THEN
+    RAISE EXCEPTION 'No se puede eliminar la sucursal "%": tiene % unidades de stock en % líneas. Trasladá el stock a otra sucursal antes de eliminarla.',
+      OLD.nombre, trim(to_char(v_unidades, 'FM999G999G990D###')), v_lineas
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  SELECT count(*) INTO v_cajas
+    FROM public.caja_sesiones s JOIN public.cajas c ON c.id = s.caja_id
+   WHERE c.sucursal_id = OLD.id AND s.estado = 'abierta';
+  IF v_cajas > 0 THEN
+    RAISE EXCEPTION 'No se puede eliminar la sucursal "%": tiene % caja(s) abierta(s). Cerralas antes de eliminarla.',
+      OLD.nombre, v_cajas USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_guard_baja_usuario()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -9809,14 +9855,16 @@ CREATE OR REPLACE FUNCTION public.fn_plan_base_limite(p_tier text, p_dim text)
  IMMUTABLE
 AS $function$
   SELECT CASE p_tier
-    WHEN 'enterprise' THEN -1
+    WHEN 'enterprise' THEN CASE p_dim
+      WHEN 'sku' THEN 18000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 30000
+      WHEN 'sucursales' THEN 4 WHEN 'usuarios' THEN 20 WHEN 'cuits' THEN 4 ELSE 0 END
     WHEN 'pro' THEN CASE p_dim
-      WHEN 'sku' THEN 8000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 14000
-      WHEN 'sucursales' THEN 4 WHEN 'usuarios' THEN 15 WHEN 'cuits' THEN 1 ELSE 0 END
+      WHEN 'sku' THEN 7000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 13000
+      WHEN 'sucursales' THEN 2 WHEN 'usuarios' THEN 7 WHEN 'cuits' THEN 2 ELSE 0 END
     WHEN 'basico' THEN CASE p_dim
-      WHEN 'sku' THEN 2000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 6000
-      WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 5 WHEN 'cuits' THEN 1 ELSE 0 END
-    ELSE CASE p_dim  -- free
+      WHEN 'sku' THEN 2000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 5000
+      WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 3 WHEN 'cuits' THEN 1 ELSE 0 END
+    ELSE CASE p_dim  -- free (legacy)
       WHEN 'sku' THEN 50 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 200
       WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 1 WHEN 'cuits' THEN 1 ELSE 0 END
   END
@@ -11693,7 +11741,7 @@ CREATE OR REPLACE FUNCTION public.fn_tenant_limite(p_tenant_id uuid, p_dim text)
  SET search_path TO 'public'
 AS $function$
 DECLARE
-  v_tier TEXT; v_status TEXT; v_trial TIMESTAMPTZ; v_base INT; v_addons INT;
+  v_tier TEXT; v_status TEXT; v_trial TIMESTAMPTZ; v_base INT; v_addons INT; v_her INT;
 BEGIN
   SELECT plan_tier, subscription_status, trial_ends_at
     INTO v_tier, v_status, v_trial
@@ -11703,7 +11751,10 @@ BEGIN
     v_tier := 'pro';
   END IF;
   v_base := public.fn_plan_base_limite(v_tier, p_dim);
-  IF v_base = -1 THEN RETURN -1; END IF;
+  -- Pricing v7 (mig 457): un negocio existente conserva la base de su plan v6 si es mayor.
+  SELECT (limites ->> p_dim)::int INTO v_her FROM public.tenant_herencia_plan WHERE tenant_id = p_tenant_id;
+  IF v_base = -1 OR v_her = -1 THEN RETURN -1; END IF;
+  v_base := GREATEST(v_base, COALESCE(v_her, 0));
   SELECT COALESCE(SUM(cantidad), 0) INTO v_addons
     FROM public.tenant_addons
     WHERE tenant_id = p_tenant_id AND dimension = p_dim
@@ -15168,6 +15219,7 @@ CREATE TRIGGER trg_salarios_updated_at BEFORE UPDATE ON public.rrhh_salarios FOR
 CREATE TRIGGER trg_vac_sal_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_saldo FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_vac_sol_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_solicitud FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_enforce_sucursales BEFORE INSERT OR UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('sucursales');
+CREATE TRIGGER trg_sucursales_guard_baja BEFORE UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION fn_guard_baja_sucursal();
 CREATE TRIGGER trg_notificar_respuesta_soporte AFTER INSERT ON public.support_messages FOR EACH ROW WHEN (((new.autor_tipo = 'agente'::text) AND (NOT new.interno))) EXECUTE FUNCTION fn_notificar_respuesta_soporte();
 CREATE TRIGGER trg_support_message_actualiza_ticket AFTER INSERT ON public.support_messages FOR EACH ROW EXECUTE FUNCTION fn_support_message_actualiza_ticket();
 CREATE TRIGGER trg_tarea_repositor_aplicar_programado AFTER UPDATE OF estado ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_aplicar_programado();
@@ -15366,6 +15418,7 @@ ALTER TABLE public.support_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tareas_repositor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_addons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tenant_herencia_plan ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tiendanube_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tipos_pedido ENABLE ROW LEVEL SECURITY;
@@ -16187,6 +16240,8 @@ CREATE POLICY tenant_certificates_select ON public.tenant_certificates AS PERMIS
 CREATE POLICY tenant_certificates_write_gestion ON public.tenant_certificates AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY tenant_herencia_plan_select_propio ON public.tenant_herencia_plan AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY tenants_insert_new_user ON public.tenants AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((( SELECT auth.uid() AS uid) IS NOT NULL));
 CREATE POLICY tenants_select ON public.tenants AS PERMISSIVE FOR SELECT TO public
@@ -16706,6 +16761,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.te
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_certificates TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_certificates TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_certificates TO service_role;
+GRANT SELECT ON public.tenant_herencia_plan TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_herencia_plan TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO service_role;

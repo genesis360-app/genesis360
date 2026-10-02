@@ -8,15 +8,15 @@
 // que COBRA los add-ons). Pricing v7 cambia estos números: tocar los tres lugares juntos.
 
 /** Precio mensual con débito automático (lo que paga `billing_mode = 'auto'`). */
-export const PRECIO_DEBITO: Record<string, number> = { basico: 54000, pro: 90000 }
+export const PRECIO_DEBITO: Record<string, number> = { basico: 54000, pro: 100000, enterprise: 200000 }  // pricing v7
 
 /** Precio de lista (otros medios de pago, `billing_mode = 'manual'` cuando no tiene monto congelado). */
-export const PRECIO_LISTA: Record<string, number> = { basico: 60000, pro: 100000 }
+export const PRECIO_LISTA: Record<string, number> = { basico: 60000, pro: 117600, enterprise: 250000 }  // pricing v7
 
 /** Packs de add-on FIJOS (suman al recurrente). Los temporales son pago único: no son MRR. */
 export const ADDON_PACKS: Record<string, Array<{ cantidad: number; precio: number }>> = {
   sku:          [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }],
-  sucursales:   [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }],
+  sucursales:   [{ cantidad: 1, precio: 35000 }, { cantidad: 3, precio: 55000 }, { cantidad: 5, precio: 70000 }],  // pricing v7
   usuarios:     [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }],
   comprobantes: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }],
   cuits:        [{ cantidad: 1, precio: 20000 }, { cantidad: 2, precio: 35000 }, { cantidad: 3, precio: 45000 }],
@@ -33,7 +33,7 @@ type TenantMrr = { id: string; plan_tier: string | null; billing_mode: string | 
  * Cuánto paga por mes un negocio ACTIVO (el filtro de activos lo hace quien llama).
  * Manual: el monto congelado al pasar a manual (lo que realmente se le cobra) o, si no hay, el de lista.
  * Automático: precio con débito del plan + add-ons fijos (es lo que MP cobra: el batch hace PUT del recurrente).
- * Enterprise / plan sin precio publicado: 0 (se informa aparte como "sin precio").
+ * Plan sin precio publicado: 0 (se informa aparte como "sin precio").
  */
 export function mrrDeTenant(t: TenantMrr, addonsFijos: Array<{ dimension: string; cantidad: number }>): number {
   const tier = String(t.plan_tier ?? '')

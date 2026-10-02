@@ -38,13 +38,16 @@ describe('calcularBatch — delta sobre el monto real (ejemplos GO)', () => {
     expect(r.deltaAPagar).toBe(5000)
   })
 
-  test('batch mixto (agrega usuarios $5k, quita sucursales $15k) → delta neto negativo = sin cobro', () => {
+  // ⚠️ Pricing v7: el pack de sucursales pasó de $15k a $35k. El batch resta el precio de HOY del pack que ya tiene
+  // el negocio (tenant_addons no guarda a cuánto se compró). Al 2026-10-02 nadie en PROD tiene packs de sucursales;
+  // pendiente: guardar el precio pagado por pack antes del próximo cambio de precio de add-ons.
+  test('batch mixto (agrega usuarios $5k, quita sucursales $35k) → delta neto negativo = sin cobro', () => {
     const r = calcularBatch({
-      montoActualMP: 75000,
-      packsActuales: { sucursales: 1 },              // $15.000
+      montoActualMP: 89000,                          // Básico $54k + sucursales+1 $35k
+      packsActuales: { sucursales: 1 },              // $35.000
       packsObjetivo: { usuarios: 1 },                // $5.000
     })
-    expect(r.recurrenteNuevo).toBe(65000)
+    expect(r.recurrenteNuevo).toBe(59000)
     expect(r.deltaAPagar).toBe(0)
   })
 
@@ -95,7 +98,7 @@ describe('calcularBatch — cambio de PLAN (Fase 2, spec GO 2026-07-07)', () => 
 
   test('upgrade + quitar packs puede dar delta ≤ 0 (sin cobro hoy, se aplica ya)', () => {
     const r = calcularBatch({
-      montoActualMP: 109000,                      // Básico $54k + sucursales+5 $55k
+      montoActualMP: 124000,                      // Básico $54k + sucursales+5 $70k (pricing v7)
       packsActuales: { sucursales: 5 },
       packsObjetivo: {},
       plan: plan('basico', 'pro'),
@@ -184,7 +187,7 @@ describe('guardBatch — baja bloqueada por uso activo (ejemplo GO exacto)', () 
     const b = guardBatch({
       tier: 'basico',
       packsObjetivo: {},
-      uso: { sku: 2100, sucursales: 1, usuarios: 7 }, // base 5 usuarios, usa 7
+      uso: { sku: 2100, sucursales: 1, usuarios: 7 }, // base 3 usuarios (v7), usa 7
     })
     expect(b.map(x => x.dimension).sort()).toEqual(['sku', 'usuarios'])
   })
@@ -194,8 +197,16 @@ describe('guardBatch — baja bloqueada por uso activo (ejemplo GO exacto)', () 
     expect(b.find(x => x.dimension === 'comprobantes')).toBeUndefined()
   })
 
-  test('enterprise (base -1) nunca bloquea', () => {
-    expect(guardBatch({ tier: 'enterprise', packsObjetivo: {}, uso: { sku: 99999, sucursales: 99, usuarios: 99 } })).toEqual([])
+  test('v7: enterprise ya no es ilimitado — bloquea por encima de 18.000 productos', () => {
+    expect(guardBatch({ tier: 'enterprise', packsObjetivo: {}, uso: { sku: 17000, sucursales: 4, usuarios: 20 } })).toEqual([])
+    expect(guardBatch({ tier: 'enterprise', packsObjetivo: {}, uso: { sku: 18001, sucursales: 1, usuarios: 1 } }).map(x => x.dimension)).toEqual(['sku'])
+  })
+
+  test('herencia v6 (mig 457): un negocio existente en Básico con 5 usuarios NO queda bloqueado (piso Pro v6: 15)', () => {
+    const herencia = { tier_heredado: 'pro', limites: { usuarios: 15, sku: 8000, sucursales: 4 }, features: [] }
+    expect(guardBatch({ tier: 'basico', packsObjetivo: {}, uso: { sku: 100, sucursales: 3, usuarios: 5 }, herencia })).toEqual([])
+    expect(guardBatch({ tier: 'basico', packsObjetivo: {}, uso: { sku: 100, sucursales: 3, usuarios: 5 } }).map(x => x.dimension).sort())
+      .toEqual(['sucursales', 'usuarios'])
   })
 })
 

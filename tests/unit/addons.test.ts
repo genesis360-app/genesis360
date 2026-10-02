@@ -50,7 +50,7 @@ describe('packs por dimensión', () => {
 describe('findAddonPack — el precio SOLO sale del catálogo', () => {
   test('cantidad exacta devuelve el precio de lista', () => {
     expect(findAddonPack('comprobantes', 5000)).toEqual({ cantidad: 5000, precio: 30000 })
-    expect(findAddonPack('sucursales', 1)).toEqual({ cantidad: 1, precio: 15000 })
+    expect(findAddonPack('sucursales', 1)).toEqual({ cantidad: 1, precio: 35000 })  // pricing v7
   })
 
   test('cantidad inexistente → null (precio no confiable, no cobrar)', () => {
@@ -87,11 +87,11 @@ describe('buildAddonRef / parseAddonRef — round-trip', () => {
 describe('precioMensualAddonsFijos', () => {
   test('suma solo los fijos, ignora temporales', () => {
     const total = precioMensualAddonsFijos([
-      { dimension: 'sucursales', cantidad: 1, tipo: 'fijo' },    // $15.000
+      { dimension: 'sucursales', cantidad: 1, tipo: 'fijo' },    // $35.000 (pricing v7)
       { dimension: 'usuarios', cantidad: 3, tipo: 'fijo' },      // $10.000
       { dimension: 'movimientos', cantidad: 5000, tipo: 'temporal' }, // NO cuenta (temporal)
     ])
-    expect(total).toBe(25000)
+    expect(total).toBe(45000)
   })
 
   test('lista vacía = 0; pack inexistente se ignora', () => {

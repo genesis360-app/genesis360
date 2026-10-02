@@ -46,6 +46,7 @@ function calcularLimites(opts: {
     puede_reportes: tiene('reportes'), puede_historial: tiene('historial'),
     puede_metricas: tiene('metricas'), puede_importar: tiene('importar'),
     puede_rrhh: tiene('rrhh'), puede_aging: tiene('aging'), puede_marketplace: tiene('marketplace'),
+    puede_wms: tiene('wms'),
     enTrialActivo,
   }
 }
@@ -92,29 +93,32 @@ describe('calcularLimites — plan Básico', () => {
     expect(l.puede_importar).toBe(false)
   })
 
-  test('límite de comprobantes es 6.000 (decisión GO 2026-07-05)', () => {
-    expect(calcularLimites({ ...base, plan_id: 'basico' }).max_comprobantes).toBe(6000)
+  test('límite de comprobantes es 5.000 (pricing v7)', () => {
+    expect(calcularLimites({ ...base, plan_id: 'basico' }).max_comprobantes).toBe(5000)
   })
 
-  test('add-on de comprobantes extiende el límite (6.000 + 1.000)', () => {
-    const l = calcularLimites({ ...base, plan_id: 'basico', addon_comprobantes: 1000, comprobantes_mes: 6500 })
-    expect(l.max_comprobantes).toBe(7000)
-    expect(l.pct_comprobantes).toBe(Math.round(6500 / 7000 * 100))
+  test('add-on de comprobantes extiende el límite (5.000 + 1.000)', () => {
+    const l = calcularLimites({ ...base, plan_id: 'basico', addon_comprobantes: 1000, comprobantes_mes: 5500 })
+    expect(l.max_comprobantes).toBe(6000)
+    expect(l.pct_comprobantes).toBe(Math.round(5500 / 6000 * 100))
   })
 })
 
 describe('calcularLimites — plan Pro', () => {
-  test('puede todo (rrhh, importar, aging, marketplace)', () => {
+  test('v7: importar y aging sí; RRHH y marketplace pasan a Enterprise', () => {
     const l = calcularLimites({ ...base, plan_id: 'pro' })
-    expect(l.puede_rrhh).toBe(true)
     expect(l.puede_importar).toBe(true)
     expect(l.puede_aging).toBe(true)
-    expect(l.puede_marketplace).toBe(true)
+    expect(l.puede_rrhh).toBe(false)
+    expect(l.puede_marketplace).toBe(false)
+    const e = calcularLimites({ ...base, plan_id: 'enterprise' })
+    expect(e.puede_rrhh).toBe(true)
+    expect(e.puede_marketplace).toBe(true)
   })
 
-  test('comprobantes limitados a 14.000; enterprise ilimitado', () => {
-    expect(calcularLimites({ ...base, plan_id: 'pro' }).max_comprobantes).toBe(14000)
-    expect(calcularLimites({ ...base, plan_id: 'enterprise' }).max_comprobantes).toBe(-1)
+  test('comprobantes: pro 13.000; enterprise 30.000 (ya no ilimitado)', () => {
+    expect(calcularLimites({ ...base, plan_id: 'pro' }).max_comprobantes).toBe(13000)
+    expect(calcularLimites({ ...base, plan_id: 'enterprise' }).max_comprobantes).toBe(30000)
   })
 })
 
@@ -122,11 +126,11 @@ describe('calcularLimites — Trial activo', () => {
   const futuro = new Date(Date.now() + 7 * 86400000).toISOString()
   const pasado = new Date(Date.now() - 1000).toISOString()
 
-  test('trial activo da acceso a features (y límites) de Pro', () => {
+  test('trial activo da acceso a features (y límites) de Pro v7', () => {
     const l = calcularLimites({ ...base, plan_id: 'free', subscription_status: 'trial', trial_ends_at: futuro })
     expect(l.enTrialActivo).toBe(true)
-    expect(l.puede_rrhh).toBe(true)
-    expect(l.max_comprobantes).toBe(14000)
+    expect(l.puede_wms).toBe(true)
+    expect(l.max_comprobantes).toBe(13000)
   })
 
   test('trial vencido NO da acceso a Pro', () => {

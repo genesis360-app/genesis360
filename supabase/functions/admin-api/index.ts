@@ -74,13 +74,17 @@ const MP_VIVOS = ['authorized', 'pending', 'paused']
 // preapproval_plan_id (MP) → tier. Espejo de mp-verificar-suscripcion / mp-webhook.
 // plan_tier es la fuente de verdad de los límites (fn_tenant_limite); los max_users/
 // max_productos se setean al BASE del tier solo por consistencia.
-const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
-  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
-  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro' | 'enterprise'> = {
+  [Deno.env.get('MP_PLAN_BASICO')     ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')        ?? '']: 'pro',
+  // Pricing v7: secret nuevo; mientras no exista, '' no coincide con ningún preapproval_plan_id real.
+  [Deno.env.get('MP_PLAN_ENTERPRISE') ?? '']: 'enterprise',
 }
+// Columnas legacy (tenants.max_users/max_productos, ya no limitan: manda fn_tenant_limite). Pricing v7.
 const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = {
-  basico: { max_users: 5,  max_productos: 2000 },
-  pro:    { max_users: 15, max_productos: 8000 },
+  basico:     { max_users: 3,  max_productos: 2000 },
+  pro:        { max_users: 7,  max_productos: 7000 },
+  enterprise: { max_users: 20, max_productos: 18000 },
 }
 
 // Cancela el/los preapproval(s) del tenant en Mercado Pago (mismo circuito que el EF

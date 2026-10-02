@@ -7,17 +7,15 @@ import { describe, test, expect } from 'vitest'
 import { PLANES, FEATURES_POR_PLAN, PLAN_REQUERIDO, PLAN_BASE_LIMITS } from '@/config/brand'
 
 describe('PLANES — estructura y coherencia', () => {
-  test('existen los 4 planes requeridos', () => {
-    const ids = PLANES.map(p => p.id)
-    expect(ids).toContain('free')
-    expect(ids).toContain('basico')
-    expect(ids).toContain('pro')
-    expect(ids).toContain('enterprise')
+  test('pricing v7: Básico, Pro y Enterprise; ya no hay plan Free (la prueba de 15 días es el período gratis)', () => {
+    expect(PLANES.map(p => p.id)).toEqual(['basico', 'pro', 'enterprise'])
   })
 
-  test('free es el más barato (precio 0)', () => {
-    const free = PLANES.find(p => p.id === 'free')!
-    expect(free.precio).toBe(0)
+  test('precios v7 con débito automático y de lista (docs de Fede)', () => {
+    const precio = (id: string) => PLANES.find(p => p.id === id) as any
+    expect([precio('basico').precio, precio('basico').precioManual]).toEqual([54000, 60000])
+    expect([precio('pro').precio, precio('pro').precioManual]).toEqual([100000, 117600])
+    expect([precio('enterprise').precio, precio('enterprise').precioManual]).toEqual([200000, 250000])
   })
 
   test('pro tiene más usuarios que basico', () => {
@@ -32,13 +30,11 @@ describe('PLANES — estructura y coherencia', () => {
     expect(pro.limites.productos).toBeGreaterThan(basico.limites.productos)
   })
 
-  test('dual pricing: precioManual (lista) siempre > precio (con -10% débito automático)', () => {
-    for (const id of ['basico', 'pro']) {
-      const plan = PLANES.find(p => p.id === id) as any
-      expect(plan.precioManual).toBeGreaterThan(plan.precio)
-      // El -10% exacto: precio = precioManual * 0.9
-      expect(plan.precio).toBe(Math.round(plan.precioManual * 0.9))
-    }
+  test('débito escalonado: Básico −10 %, Pro ≈−15 %, Enterprise −20 % sobre el precio de lista', () => {
+    const desc = (id: string) => { const p = PLANES.find(x => x.id === id) as any; return 1 - p.precio / p.precioManual }
+    expect(desc('basico')).toBeCloseTo(0.10, 2)
+    expect(desc('pro')).toBeCloseTo(0.15, 2)
+    expect(desc('enterprise')).toBeCloseTo(0.20, 2)
   })
 })
 
@@ -71,19 +67,27 @@ describe('FEATURES_POR_PLAN — reglas de acceso', () => {
     expect(basicoFeatures).toContain('historial')
   })
 
-  test('pro incluye rrhh e importar', () => {
+  test('v7: pro incluye importar y WMS; RRHH y marketplace pasan a enterprise', () => {
     const proFeatures = FEATURES_POR_PLAN['pro'] ?? []
-    expect(proFeatures).toContain('rrhh')
-    expect(proFeatures).toContain('importar')
+    expect(proFeatures).toEqual(expect.arrayContaining(['importar', 'wms']))
+    expect(proFeatures).not.toContain('rrhh')
+    expect(proFeatures).not.toContain('marketplace')
+    expect(FEATURES_POR_PLAN['enterprise']).toEqual(expect.arrayContaining(['rrhh', 'marketplace']))
   })
 })
 
-describe('PLAN_BASE_LIMITS — pricing v2 (espejo de fn_plan_base_limite, migs 251+259)', () => {
-  test('comprobantes: free 200 · basico 6.000 · pro 14.000 · enterprise -1 (decisión GO 2026-07-05)', () => {
+describe('PLAN_BASE_LIMITS — pricing v7 (espejo de fn_plan_base_limite, mig 457)', () => {
+  test('comprobantes: basico 5.000 · pro 13.000 · enterprise 30.000 (free 200 = legacy)', () => {
     expect(PLAN_BASE_LIMITS['free'].comprobantes).toBe(200)
-    expect(PLAN_BASE_LIMITS['basico'].comprobantes).toBe(6000)
-    expect(PLAN_BASE_LIMITS['pro'].comprobantes).toBe(14000)
-    expect(PLAN_BASE_LIMITS['enterprise'].comprobantes).toBe(-1)
+    expect(PLAN_BASE_LIMITS['basico'].comprobantes).toBe(5000)
+    expect(PLAN_BASE_LIMITS['pro'].comprobantes).toBe(13000)
+    expect(PLAN_BASE_LIMITS['enterprise'].comprobantes).toBe(30000)
+  })
+
+  test('CUITs incluidos van 1 a 1 con las sucursales del plan', () => {
+    for (const t of ['basico', 'pro', 'enterprise']) {
+      expect(PLAN_BASE_LIMITS[t].cuits).toBe(PLAN_BASE_LIMITS[t].sucursales)
+    }
   })
 
   test('movimientos dejó de ser límite: -1 en TODOS los tiers (pricing v2)', () => {
@@ -98,9 +102,10 @@ describe('PLAN_BASE_LIMITS — pricing v2 (espejo de fn_plan_base_limite, migs 2
     }
   })
 
-  test('enterprise es ilimitado (-1) en todas las dimensiones', () => {
-    for (const d of ['sku', 'movimientos', 'comprobantes', 'sucursales', 'usuarios'] as const) {
-      expect(PLAN_BASE_LIMITS['enterprise'][d]).toBe(-1)
+  test('v7: enterprise deja de ser ilimitado (20 usuarios · 18.000 productos · 4 sucursales) y es > pro en todo', () => {
+    expect(PLAN_BASE_LIMITS['enterprise']).toMatchObject({ usuarios: 20, sku: 18000, sucursales: 4, comprobantes: 30000 })
+    for (const d of ['sku', 'comprobantes', 'sucursales', 'usuarios'] as const) {
+      expect(PLAN_BASE_LIMITS['enterprise'][d]).toBeGreaterThan(PLAN_BASE_LIMITS['pro'][d])
     }
   })
 })
@@ -112,10 +117,11 @@ describe('PLAN_REQUERIDO', () => {
     expect(PLAN_REQUERIDO['metricas']).toBe('basico')
   })
 
-  test('rrhh, importar, aging y marketplace requieren pro', () => {
-    expect(PLAN_REQUERIDO['rrhh']).toBe('pro')
+  test('v7: importar, aging y WMS requieren pro; RRHH y marketplace requieren enterprise', () => {
     expect(PLAN_REQUERIDO['importar']).toBe('pro')
     expect(PLAN_REQUERIDO['aging']).toBe('pro')
-    expect(PLAN_REQUERIDO['marketplace']).toBe('pro')
+    expect(PLAN_REQUERIDO['wms']).toBe('pro')
+    expect(PLAN_REQUERIDO['rrhh']).toBe('enterprise')
+    expect(PLAN_REQUERIDO['marketplace']).toBe('enterprise')
   })
 })

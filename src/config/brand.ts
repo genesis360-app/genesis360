@@ -73,11 +73,13 @@ export const MODO_BASICO_ENABLED = true
 export const ADDON_FIJO_ENABLED = true
 
 // Planes de la cuenta MP nueva (collector 478332282, app 2672033309404649) — 2026-07-07.
-// Precio con el −10% de débito automático incluido ($54k/$90k); el pago manual (lista)
+// Precio con el descuento de débito automático incluido (pricing v7: $54k / $100k / $200k); el pago manual (lista)
 // no usa planes de MP. Los planes viejos murieron con la cuenta anterior.
+// Enterprise: vacío hasta que se cree el plan en MP (pricing v7) — sin ID, la tarjeta ofrece contactarnos.
 export const MP_PLAN_IDS: Record<string, string> = {
-  basico: '142aefe11ad64fb887b5949db005f8f8',
-  pro:    'f06b269057254b9da0e4a60cb89d1544',
+  basico:     '142aefe11ad64fb887b5949db005f8f8',
+  pro:        'f06b269057254b9da0e4a60cb89d1544',
+  enterprise: '',
 }
 
 // Precio de LISTA (sin el -10% de débito automático) — lo paga quien elige billing_mode
@@ -86,8 +88,9 @@ export const MP_PLAN_IDS: Record<string, string> = {
 // este valor al pasar a manual) — independiente de PLANES[].precio, que es el número que se
 // MUESTRA como destacado (con el -10%) y podría cambiar de criterio sin afectar lo ya cobrado.
 export const PRECIO_LISTA: Record<string, number> = {
-  basico: 60000,
-  pro:    100000,
+  basico:     60000,
+  pro:        117600,
+  enterprise: 250000,
 }
 
 // Datos de transferencia para pago manual (plan aprobado 2026-07-08 — facturación de Fede).
@@ -129,115 +132,93 @@ export const BRAND = {
 
 // ⚠ Límites/precios 2026 (propuesta GO, ver G360.Wiki/wiki/business/planes-pricing.md).
 // Los límites BASE viven también en SQL (fn_plan_base_limite, mig 251) → mantener en sync con PLAN_BASE_LIMITS.
+// Pricing v7 (Fede, docs "05 - Pricing y Costos v7" y "06 - Cambios v6 a v7"; GO 2026-10-02). Sin plan Free: la prueba
+// de 15 días es el período "gratis". Los negocios que existían antes del cambio conservan límites y módulos de su plan
+// v6 (tabla `tenant_herencia_plan`, mig 457). Débito automático: Básico −10 %, Pro ≈−15 %, Enterprise −20 %.
 export const PLANES = [
-  {
-    id: 'free',
-    nombre: 'Free',
-    precio: 0,
-    descripcion: 'Para empezar sin costo',
-    destacado: false,
-    limites: {
-      usuarios: 1,
-      productos: 50,
-      comprobantes_mes: 200,
-      sucursales: 1,
-    },
-    features: [
-      '1 usuario',
-      'Hasta 50 productos',
-      '200 comprobantes/mes',
-      '1 sucursal',
-      'Gestión de inventario · Ventas · Caja',
-      'Facturación electrónica AFIP',
-      'Alertas de stock mínimo',
-    ],
-    noIncluye: [
-      'Reportes',
-      'Métricas avanzadas',
-      'Importación masiva',
-      'RRHH',
-      'Modo avanzado (WMS)',
-    ],
-  },
   {
     id: 'basico',
     nombre: 'Básico',
-    precio: 54000,        // con -10% de débito automático (destacado)
+    precio: 54000,        // con débito automático (−10 %)
     precioManual: 60000,  // precio de lista — otros medios de pago (transferencia/efectivo/MP sin auto-débito)
     descripcion: 'Para comercios en marcha',
     destacado: false,
     limites: {
-      usuarios: 5,
+      usuarios: 3,
       productos: 2000,
-      comprobantes_mes: 6000,
+      comprobantes_mes: 5000,
       sucursales: 1,
     },
     features: [
-      '5 usuarios',
+      '3 usuarios',
       'Hasta 2.000 productos',
-      '6.000 comprobantes/mes',
-      '1 sucursal',
-      'Todo lo del plan Free',
-      'Facturación electrónica AFIP',
+      '5.000 comprobantes/mes',
+      '1 sucursal · 1 CUIT',
+      'Inventario · Ventas · Caja · Gastos',
+      'Facturación electrónica ARCA',
       'Reportes · Historial · Métricas',
       'Soporte por email',
     ],
     noIncluye: [
       'Modo avanzado (WMS)',
-      'RRHH',
       'Compras (OC + Recepciones) y Envíos',
       'Importación masiva',
+      'RRHH',
       'Marketplace',
     ],
   },
   {
     id: 'pro',
     nombre: 'Pro',
-    precio: 90000,         // con -10% de débito automático (destacado)
-    precioManual: 100000,  // precio de lista — otros medios de pago
+    precio: 100000,        // con débito automático (≈−15 %)
+    precioManual: 117600,  // precio de lista — otros medios de pago
     descripcion: 'Para negocios en crecimiento',
     destacado: true,
     limites: {
-      usuarios: 15,
-      productos: 8000,
-      comprobantes_mes: 14000,
-      sucursales: 4,
+      usuarios: 7,
+      productos: 7000,
+      comprobantes_mes: 13000,
+      sucursales: 2,
     },
     features: [
-      '15 usuarios',
-      'Hasta 8.000 productos',
-      '14.000 comprobantes/mes',
-      '4 sucursales',
+      '7 usuarios',
+      'Hasta 7.000 productos',
+      '13.000 comprobantes/mes',
+      '2 sucursales · 2 CUITs',
       'Todo lo del plan Básico',
       'Modo avanzado (WMS): lotes, series, vencimientos, FIFO/FEFO',
       'Compras (OC + Recepciones) y Envíos',
-      'RRHH completo',
-      'Importación masiva (CSV/Excel) · Marketplace',
+      'Importación masiva (CSV/Excel)',
+    ],
+    noIncluye: [
+      'RRHH',
+      'Marketplace',
       'Soporte prioritario',
     ],
-    noIncluye: [],
   },
   {
     id: 'enterprise',
     nombre: 'Enterprise',
-    precio: null, // precio a consultar
-    descripcion: 'Para grandes operaciones',
+    precio: 200000,        // con débito automático (−20 %)
+    precioManual: 250000,  // precio de lista — otros medios de pago
+    descripcion: 'Para operaciones grandes',
     destacado: false,
     limites: {
-      usuarios: -1, // ilimitado
-      productos: -1,
-      comprobantes_mes: -1, // ilimitado
-      sucursales: -1,
+      usuarios: 20,
+      productos: 18000,
+      comprobantes_mes: 30000,
+      sucursales: 4,
     },
     features: [
-      'Usuarios ilimitados',
-      'Productos ilimitados',
-      'Comprobantes y sucursales ilimitados',
-      'Multi-CUIT / multi-razón social',
+      '20 usuarios',
+      'Hasta 18.000 productos',
+      '30.000 comprobantes/mes',
+      '4 sucursales · 4 CUITs',
       'Todo lo del plan Pro',
-      'Onboarding personalizado · SLA',
-      'Integraciones a medida',
-      'Soporte 24/7',
+      'RRHH completo',
+      'Marketplace (Mercado Libre · Tienda Nube)',
+      'Agente de WhatsApp',
+      'Soporte prioritario',
     ],
     noIncluye: [],
   },
@@ -252,10 +233,10 @@ export const PLANES = [
 // emisores fiscales ADICIONALES activos se suman con el add-on "CUIT adicional". Espejo de
 // fn_plan_base_limite (mig 269) — mantener en sync.
 export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number; comprobantes: number; sucursales: number; usuarios: number; cuits: number }> = {
-  free:       { sku: 50,   movimientos: -1, comprobantes: 200,   sucursales: 1,  usuarios: 1,  cuits: 1 },
-  basico:     { sku: 2000, movimientos: -1, comprobantes: 6000,  sucursales: 1,  usuarios: 5,  cuits: 1 },
-  pro:        { sku: 8000, movimientos: -1, comprobantes: 14000, sucursales: 4,  usuarios: 15, cuits: 1 },
-  enterprise: { sku: -1,   movimientos: -1, comprobantes: -1,    sucursales: -1, usuarios: -1, cuits: -1 },
+  free:       { sku: 50,    movimientos: -1, comprobantes: 200,   sucursales: 1, usuarios: 1,  cuits: 1 },  // legacy
+  basico:     { sku: 2000,  movimientos: -1, comprobantes: 5000,  sucursales: 1, usuarios: 3,  cuits: 1 },
+  pro:        { sku: 7000,  movimientos: -1, comprobantes: 13000, sucursales: 2, usuarios: 7,  cuits: 2 },
+  enterprise: { sku: 18000, movimientos: -1, comprobantes: 30000, sucursales: 4, usuarios: 20, cuits: 4 },
 }
 
 // Packs de add-on por dimensión (ARS, precio de lista sin descuentos). Se suman al límite base.
@@ -272,28 +253,29 @@ export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number
 // que revalida y termina cobrando. Si se tocan acá, tocarlos allá EN EL MISMO COMMIT.
 export const ADDON_PACKS: Record<string, { tipos: Array<'fijo' | 'temporal'>; packs: Array<{ cantidad: number; precio: number }> }> = {
   sku:          { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
-  sucursales:   { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
+  sucursales:   { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 35000 }, { cantidad: 3, precio: 55000 }, { cantidad: 5, precio: 70000 }] },  // v7
   usuarios:     { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
   comprobantes: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }] },
   cuits:        { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 20000 }, { cantidad: 2, precio: 35000 }, { cantidad: 3, precio: 45000 }] },
 }
 
-// Descuentos sobre el precio del plan base (propuesta GO). Definir si se acumulan.
-export const PLAN_DESCUENTOS = { debito_automatico: 0.10, anual: 0.30 }
+// Descuentos (pricing v7): débito automático escalonado por plan (ya aplicado en PLANES[].precio); pago anual −20 %
+// sobre el precio de LISTA, pago único por 1 año sin renovación automática (GO 2026-10-01/02; flujo pendiente).
+export const PLAN_DESCUENTOS = { debito_automatico: { basico: 0.10, pro: 0.15, enterprise: 0.20 }, anual: 0.20 }
 
 // Features habilitadas por plan (para usePlanLimits y UpgradePrompt)
 // Cada plan incluye todas las features del anterior.
 export const FEATURES_POR_PLAN: Record<string, string[]> = {
   free:       ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas'],
   basico:     ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas'],
-  pro:        ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace', 'wms'],
+  pro:        ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'aging', 'wms'],  // v7: RRHH y marketplace pasan a Enterprise
   enterprise: ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace', 'wms'],
 }
 
 // Plan mínimo requerido por feature (para mensajes de upgrade)
 export const PLAN_REQUERIDO: Record<string, string> = {
   reportes: 'basico', historial: 'basico', metricas: 'basico',
-  importar: 'pro', rrhh: 'pro', aging: 'pro', marketplace: 'pro', wms: 'pro',
+  importar: 'pro', rrhh: 'enterprise', aging: 'pro', marketplace: 'enterprise', wms: 'pro',
 }
 
 // (MAX_MOVIMIENTOS_POR_PLAN eliminado en pricing v2 — movimientos ya no es límite; el

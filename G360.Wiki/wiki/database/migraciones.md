@@ -6,7 +6,11 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-01
 ---
 
-# Historial de Migraciones (001-456, + correctivos 387b/387c)
+# Historial de Migraciones (001-458, + correctivos 387b/387c)
+
+🏢 **Migración 458 — 🟡 EN DEV (2026-10-02), falta PROD**: `458_guard_sucursal_con_stock.sql` — trigger `trg_sucursales_guard_baja`: no se puede desactivar una sucursal con stock activo o caja abierta (incidente: "Casa central" del negocio de GO desactivada con 775 unidades → Inventario en 0). La UI (SucursalesPage) suma "Sucursales eliminadas" con Reactivar y registra eliminar/reactivar en `actividad_log`. UAT §87.
+
+📈 **Migración 457 — 🟡 EN DEV (2026-10-02), falta PROD**: `457_pricing_v7_limites_y_herencia.sql` — pricing v7: tabla `tenant_herencia_plan` (los negocios existentes conservan límites y módulos de su plan v6; los en prueba → Pro v6), `fn_plan_base_limite` v7 (Básico 3/2.000/5.000/1/1 · Pro 7/7.000/13.000/2/2 · Enterprise 20/18.000/30.000/4/4), `fn_tenant_limite` = mayor(base v7, heredada) + add-ons, prueba de 15 días por defecto. En curso.
 
 🗑️ **Migración 456 — ✅ EN DEV Y PROD (2026-10-02)**: `456_retirar_tabla_planes.sql` — retira la tabla `planes` (legacy de marzo: Básico $0 / Estándar $1.500 / Avanzado $3.000, sin uso) y `tenants.plan_id` (2 negocios de prueba en PROD, ambos con `plan_tier = basico`). Pedido de GO: la tabla no coincidía con la página de planes ni con la landing. Antes se desplegó `admin-api` sin `plan_id` en `customers.get` (DEV y PROD). `public` pasa de 240 a 239 policies (se va `planes_select_public`), DEV = PROD. SQL de planes por negocio: [[wiki/support/sql-planes-tenants]].
 

@@ -292,7 +292,11 @@ export default function SuscripcionPage() {
   }
 
   const handleSuscribir = (planId: string, mpPlanId: string) => {
-    if (!mpPlanId) { toast.error('Plan no configurado'); return }
+    // Pricing v7: Enterprise todavía sin plan en MP → se coordina por mail (en vez de "Plan no configurado").
+    if (!mpPlanId) {
+      window.location.href = `mailto:${BRAND.email}?subject=${encodeURIComponent(`Quiero contratar el plan ${PLANES.find(p => p.id === planId)?.nombre ?? planId}`)}`
+      return
+    }
     if (!tenant?.id) { toast.error('No se encontró el tenant'); return }
     setLoading(planId)
     const appUrl = import.meta.env.VITE_APP_URL ?? 'https://app.genesis360.pro'
@@ -620,8 +624,9 @@ export default function SuscripcionPage() {
                       : 'bg-accent/25 text-white border-accent-text/50'}`}>
                     ✓ Plan actual
                   </div>
-                ) : plan.precio === null ? (
-                  <a href={`mailto:${BRAND.email}?subject=Plan Enterprise`}
+                ) : plan.precio === null || !mpPlanId ? (
+                  // Sin plan de débito en MP (pricing v7: Enterprise hasta crearlo) → se contrata por mail.
+                  <a href={`mailto:${BRAND.email}?subject=${encodeURIComponent(`Quiero contratar el plan ${plan.nombre}`)}`}
                     className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
                       ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white dark:bg-gray-800 text-primary dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                     Contactar

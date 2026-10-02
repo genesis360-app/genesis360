@@ -28,9 +28,11 @@ const VIVOS = ['authorized', 'pending', 'paused']
 const SOPORTE_EMAIL = 'soporte@genesis360.pro'
 const FROM = 'Genesis360 <noreply@genesis360.pro>'
 
-const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
-  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
-  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro' | 'enterprise'> = {
+  [Deno.env.get('MP_PLAN_BASICO')     ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')        ?? '']: 'pro',
+  // Pricing v7: secret nuevo; mientras no exista, '' no coincide con ningún preapproval_plan_id real.
+  [Deno.env.get('MP_PLAN_ENTERPRISE') ?? '']: 'enterprise',
 }
 
 type Tipo = 'huerfana' | 'drift_mp_cobra' | 'drift_acceso_gratis'

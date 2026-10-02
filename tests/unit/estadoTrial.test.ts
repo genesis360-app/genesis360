@@ -94,6 +94,6 @@ describe('subtituloPlanes', () => {
 
   it('ET-TXT-08 sin trial, el mensaje comercial de siempre', () => {
     const e = estadoTrial({ ...d('2026-08-17T00:00:00Z'), subscriptionStatus: 'active' })
-    expect(subtituloPlanes(e, null)).toMatch(/30 días de prueba/i)
+    expect(subtituloPlanes(e, null)).toMatch(/15 días de prueba/i)
   })
 })

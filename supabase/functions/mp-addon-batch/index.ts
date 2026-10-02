@@ -41,7 +41,7 @@ const json = (body: unknown, status = 200) =>
 // src/config/brand.ts en el mismo commit.
 const ADDON_PACKS: Record<string, Array<{ cantidad: number; precio: number }>> = {
   sku:          [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }],
-  sucursales:   [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }],
+  sucursales:   [{ cantidad: 1, precio: 35000 }, { cantidad: 3, precio: 55000 }, { cantidad: 5, precio: 70000 }],  // pricing v7
   usuarios:     [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }],
   comprobantes: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }],
   cuits:        [{ cantidad: 1, precio: 20000 }, { cantidad: 2, precio: 35000 }, { cantidad: 3, precio: 45000 }],
@@ -49,9 +49,9 @@ const ADDON_PACKS: Record<string, Array<{ cantidad: number; precio: number }>> =
 // Base por tier (espejo de PLAN_BASE_LIMITS / fn_plan_base_limite) — dims de ESTADO (guard).
 const BASE_ESTADO: Record<string, { sku: number; sucursales: number; usuarios: number; cuits: number }> = {
   free:       { sku: 50,   sucursales: 1,  usuarios: 1,  cuits: 1 },
-  basico:     { sku: 2000, sucursales: 1,  usuarios: 5,  cuits: 1 },
-  pro:        { sku: 8000, sucursales: 4,  usuarios: 15, cuits: 1 },
-  enterprise: { sku: -1,   sucursales: -1, usuarios: -1, cuits: -1 },
+  basico:     { sku: 2000,  sucursales: 1, usuarios: 3,  cuits: 1 },   // pricing v7 (= fn_plan_base_limite, mig 457)
+  pro:        { sku: 7000,  sucursales: 2, usuarios: 7,  cuits: 2 },
+  enterprise: { sku: 18000, sucursales: 4, usuarios: 20, cuits: 4 },
 }
 const DIM_TABLA: Record<string, string> = { sku: 'productos', usuarios: 'users', sucursales: 'sucursales' }
 
@@ -177,10 +177,13 @@ Deno.serve(async (req) => {
 
     // ── Guard de baja a nivel batch (espejo guardBatch) — contra el tier OBJETIVO ──
     const base = BASE_ESTADO[planObjetivo ?? tierActual] ?? BASE_ESTADO.free
+    // Pricing v7 (mig 457): un negocio existente conserva la base de su plan v6 (piso), igual que fn_tenant_limite.
+    const { data: herencia } = await admin.from('tenant_herencia_plan').select('limites').eq('tenant_id', tenantId).maybeSingle()
     const bloqueos: Array<{ dimension: string; nuevo_limite: number; uso: number; excedente: number }> = []
     for (const dim of ['sku', 'sucursales', 'usuarios', 'cuits'] as const) {
-      if (base[dim] === -1) continue
-      const nuevoLimite = base[dim] + cantidadDe(packsObjetivo, dim)
+      const her = Number((herencia?.limites as Record<string, unknown> | null)?.[dim] ?? 0)
+      if (base[dim] === -1 || her === -1) continue
+      const nuevoLimite = Math.max(base[dim], her) + cantidadDe(packsObjetivo, dim)
       // 'cuits': el emisor DEFAULT (es_default) es el CUIT del negocio y NO consume cupo →
       // el "uso" son los emisores adicionales activos + 1 (por el default, que ocupa el base).
       let uso: number

@@ -22,7 +22,7 @@ const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: str
 ]
 
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
-  { Icon: Shield,     titulo: '30 días gratis',       sub: 'Sin tarjeta de crédito' },
+  { Icon: Shield,     titulo: '15 días gratis',       sub: 'Sin tarjeta de crédito' },
   { Icon: Rocket,     titulo: 'Activación inmediata', sub: 'Comenzá a usarlo hoy' },
   { Icon: Headphones, titulo: 'Soporte dedicado',     sub: 'Siempre estamos para ayudarte' },
   { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
@@ -69,7 +69,8 @@ interface PricingConfiguratorProps {
 }
 
 export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, temporal }: PricingConfiguratorProps = {}) {
-  const planes = PLANES.filter(p => p.id === 'basico' || p.id === 'pro')
+  // Pricing v7: los tres planes (Básico, Pro, Enterprise).
+  const planes = PLANES
   const [planId, setPlanId] = useState('pro')
   // dimension → cantidad elegida (0 = ninguno). En modo app arranca en los packs ACTUALES.
   const [sel, setSel] = useState<Record<string, number>>(() => (app ? { ...app.initialSel } as Record<string, number> : {}))
@@ -161,7 +162,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
       </div>
       {!app && (
         <p className="relative mt-2 text-center text-[11px] text-gray-500">
-          ${(plan.precio ?? 0).toLocaleString('es-AR')} con débito automático (-10%) · ${((plan as any).precioManual ?? plan.precio ?? 0).toLocaleString('es-AR')} con otros medios de pago
+          ${(plan.precio ?? 0).toLocaleString('es-AR')} con débito automático (−{Math.round((1 - (plan.precio ?? 0) / ((plan as any).precioManual || plan.precio || 1)) * 100)}%) · ${((plan as any).precioManual ?? plan.precio ?? 0).toLocaleString('es-AR')} con otros medios de pago
         </p>
       )}
 
@@ -304,7 +305,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
         ) : (
           <Link to="/onboarding"
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0">
-            <Check size={18} /> {ctaLabel ?? 'Probar 30 días gratis'}
+            <Check size={18} /> {ctaLabel ?? 'Probar 15 días gratis'}
           </Link>
         )}
       </div>

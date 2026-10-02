@@ -19,6 +19,7 @@
  *     quedar por debajo del uso activo (desactivar antes de bajar; SKU: desactivar ≠ eliminar).
  */
 import { PLAN_BASE_LIMITS } from '@/config/brand'
+import { limiteBase, type HerenciaPlan } from '@/lib/planLimites'
 import { findAddonPack, type AddonDimension, type AddonRow } from './addons'
 
 /** Dimensiones de add-on FIJO del panel batch (comprobantes es flujo: sin guard de baja). */
@@ -121,11 +122,12 @@ export function guardBatch(p: {
   tier: string
   packsObjetivo: PackSel
   uso: { sku: number; sucursales: number; usuarios: number }
+  /** Pricing v7 (mig 457): herencia v6 del negocio existente (piso de la base). */
+  herencia?: HerenciaPlan | null
 }): BatchBloqueo[] {
-  const base = PLAN_BASE_LIMITS[p.tier] ?? PLAN_BASE_LIMITS['free']
   const bloqueos: BatchBloqueo[] = []
   for (const dim of DIMS_ESTADO) {
-    const b = base[dim as 'sku' | 'sucursales' | 'usuarios']
+    const b = limiteBase(p.tier, dim as 'sku' | 'sucursales' | 'usuarios', p.herencia)
     if (b === -1) continue // ilimitado
     const nuevoLimite = b + (p.packsObjetivo[dim] ?? 0)
     const uso = p.uso[dim as 'sku' | 'sucursales' | 'usuarios']

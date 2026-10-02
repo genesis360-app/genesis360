@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T06:55:37.944Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002065305 · 175 tablas
+-- Generado 2026-10-02T14:35:09.666Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002142505 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -10055,6 +10055,19 @@ AS $function$
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_plan_permite_modo_avanzado(p_tenant_id uuid, p_tier text, p_status text, p_trial_ends_at timestamp with time zone)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT (CASE WHEN p_status = 'trial' AND p_trial_ends_at IS NOT NULL AND p_trial_ends_at >= now() THEN 'pro'
+               ELSE COALESCE(p_tier, 'free') END) IN ('pro', 'enterprise')
+      OR EXISTS (SELECT 1 FROM public.tenant_herencia_plan h
+                  WHERE h.tenant_id = p_tenant_id AND 'wms' = ANY (h.features));
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_portal_proveedor_negocios()
  RETURNS TABLE(tenant_id uuid, negocio_nombre text, proveedor_id uuid, proveedor_nombre text)
  LANGUAGE sql
@@ -11945,6 +11958,39 @@ BEGIN
       AND (tipo = 'fijo' OR (tipo = 'temporal' AND vence_at > now()));
   RETURN v_base + v_addons;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_tenants_modo_segun_plan()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.modo_operacion IS DISTINCT FROM 'avanzado' THEN RETURN NEW; END IF;
+  IF public.fn_plan_permite_modo_avanzado(NEW.id, NEW.plan_tier, NEW.subscription_status, NEW.trial_ends_at) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Alguien quiere ACTIVAR el modo avanzado sin el plan → rechazo.
+  IF TG_OP = 'INSERT' OR OLD.modo_operacion IS DISTINCT FROM 'avanzado' THEN
+    RAISE EXCEPTION 'El modo avanzado (logística inteligente) está disponible desde el plan Pro.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Ya estaba en avanzado y el PLAN dejó de incluirlo → pasa a básico y se avisa.
+  NEW.modo_operacion := 'basico';
+  INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+  SELECT NEW.id, u.id, 'warning',
+         'Tu negocio pasó a modo básico',
+         'Tu plan actual no incluye el modo avanzado (logística inteligente), que está disponible desde el plan Pro. '
+           || 'Tus ubicaciones y tu stock quedan guardados: si pasás a Pro, volvés a activarlo desde Configuración.',
+         '/suscripcion'
+    FROM public.users u
+   WHERE u.tenant_id = NEW.id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO');
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_tn_sync_heartbeat()
@@ -15422,6 +15468,7 @@ CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants F
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
 CREATE TRIGGER trg_tenant_codigo BEFORE INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenant_codigo();
+CREATE TRIGGER trg_tenants_modo_segun_plan BEFORE INSERT OR UPDATE OF modo_operacion, plan_tier, subscription_status, trial_ends_at ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenants_modo_segun_plan();
 CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();

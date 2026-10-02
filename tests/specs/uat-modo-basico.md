@@ -2411,6 +2411,21 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧭 §92 — El modo avanzado es solo desde el plan Pro (mig 463, PR-8, 🟡 DEV) — 2026-10-02
+
+PR-8 (GO): "logística inteligente" = modo avanzado, solo desde Pro. La app ya lo trataba así (modo efectivo), pero la
+base leía `modo_operacion` a secas → un Básico con 'avanzado' guardado veía la app en básico y la base le rechazaba el
+stock sin ubicación. Invariante nueva: `modo_operacion = 'avanzado'` solo con un plan efectivo que incluya `wms`.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 92.1 | Negocio existente (herencia v6 con wms) que paga Básico conserva el avanzado | SQL DEV (rollback, corrido por GO) | ✅ |
+| 92.2 | 🛑 Alta nueva sin herencia que pasa a Básico → modo básico + aviso a cada dueño | SQL DEV (rollback) | ✅ |
+| 92.3 | Activar avanzado en Básico → "disponible desde el plan Pro" | SQL DEV (rollback) | ✅ |
+| 92.4 | Pro y prueba vigente pueden activar avanzado | SQL DEV (rollback) | ✅ |
+| 92.5 | Cambiar de modo en un negocio Pro/Enterprise sigue funcionando | e2e 174/103/110/95/96/75/84 (15/15) | ✅ |
+| 92.6 | El alta de un negocio (modo por defecto básico) no se ve afectada | revisión (el trigger sale si no es avanzado) | ✅ código |
+
 ## 💲 §91 — Cada pack de add-on guarda el precio pactado (mig 461, PR-6, 🟡 DEV) — 2026-10-02
 
 PR-6 (GO): el precio nuevo de un add-on aplica solo a compras nuevas. Antes `mp-addon-batch` restaba el precio del

@@ -33,7 +33,7 @@ las responda de una vez.
 
 | Estado | Cantidad |
 |---|---|
-| 🟥 Abiertas | 19 |
+| 🟥 Abiertas | 21 |
 | ✅ Respondidas por un matriculado | 0 |
 
 ⚠️ **Ninguna respondida todavía.** La C-01 y sus derivadas tienen una respuesta **de una IA que se
@@ -399,6 +399,45 @@ caracterización del padrón que la haga **Exento** o **No Responsable** en vez 
 la letra (B) seguiría siendo la misma salvo que correspondiera Exento/No Responsable, pero el
 `CondicionIVAReceptorId` (RG 5616) iría mal informado en la factura. Es una **propuesta** que el
 usuario acepta, no se aplica sola.
+
+---
+
+### C-20 · Intereses por mora de cuenta corriente: ¿llevan Nota de Débito con IVA?
+
+- **Estado:** 🟥 Abierta (2026-10-02)
+- **Área:** Cuenta corriente de clientes — intereses por pago fuera de término
+- **Impacta en:** `ventas.interes_cc` (lo calcula `fn_recalcular_intereses_cc_tenant` con la tasa mensual de la
+  categoría/cliente), la cobranza de CC y el QR de Mercado Pago de la factura/estado de cuenta.
+- **Contexto:** GO decidió el 02/10 que el interés de CC **se cobra** (hasta hoy se mostraba pero se perdonaba solo
+  al pagar el capital) y que el QR de pago lo incluya.
+- **Criterio provisorio actual:** el interés **no se cobra todavía** hasta tener esta respuesta; el QR va sin interés.
+
+**Pregunta:** el interés que un negocio le cobra a su cliente por pagar una venta en cuenta corriente después del
+vencimiento, ¿hay que documentarlo con una **Nota de Débito** electrónica (con IVA, según la condición del emisor:
+A/B/C), o puede cobrarse sin comprobante fiscal? Si lleva ND: ¿el IVA del interés va a la misma alícuota que la venta
+original (21 %, 10,5 %, mixta) o a 21 %? ¿Y para un emisor Monotributista (ND C)?
+
+**Qué se rompe si está mal:** si el interés debe facturarse y se cobra sin Nota de Débito, el negocio cobra un ingreso
+gravado sin declararlo (IVA y Ingresos Brutos no ingresados). Si no hace falta ND y la exigimos, solo se agrega un paso.
+
+---
+
+### C-21 · Multi-CUIT: traslado de mercadería entre sucursales de distinto CUIT
+
+- **Estado:** 🟥 Abierta (2026-10-02)
+- **Área:** Inventario + multi-CUIT ([[wiki/features/multi-cuit]])
+- **Impacta en:** traslados entre sucursales (`traslados`), cuando cada sucursal tiene asignado un emisor distinto
+  (`sucursales.emisor_fiscal_id`). Hoy la app lo trata como un movimiento interno de stock, sin comprobante fiscal.
+- **Criterio provisorio actual:** traslado interno, sin factura ni remito fiscal entre CUITs.
+
+**Pregunta:** si un mismo negocio opera con dos CUITs (p. ej. dos sociedades o una persona y una sociedad) y mueve
+mercadería de la sucursal del CUIT A a la del CUIT B, ¿eso es una venta entre dos contribuyentes distintos (factura
+de A a B, con IVA, y la compra entra en el Libro IVA Compras de B) o puede tratarse como un traslado interno con
+remito? ¿Cambia si los dos CUITs son de la misma persona (titular monotributista + titular RI, p. ej.)?
+
+**Qué se rompe si está mal:** la mercadería pasa de un contribuyente a otro sin comprobante; después B la vende y
+factura con su CUIT algo que, fiscalmente, nunca compró (inventario de B sin respaldo, IVA crédito/débito de A y B
+mal liquidados).
 
 ---
 

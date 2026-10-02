@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-09-22
+updated: 2026-10-02
 ---
 
 # Integración Mercado Pago
@@ -38,7 +38,12 @@ Usuario hace clic en "Suscribirse"
 
 ### IDs de planes PROD
 
-> 🆕 **Pricing v7 (2026-10-02, pendiente):** Pro pasa a **$100.000** (editar el plan existente, mismo ID; 0 suscriptos
+> ✅ **HECHO (2026-10-02 tarde):** Fede editó Pro y creó Enterprise. IDs verificados en el checkout público, todos sin
+> prueba gratis: Básico `142aefe11ad64fb887b5949db005f8f8` $54.000 · Pro `f06b269057254b9da0e4a60cb89d1544` $100.000 ·
+> **Enterprise `852a7e8e6d244640818eb20e2c1037f8` $200.000**. `MP_PLAN_IDS.enterprise` en `brand.ts` (commit `8f818d6e`);
+> secret `MP_PLAN_ENTERPRISE` cargado en DEV y PROD (hash verificado). Lo de abajo queda como historia del procedimiento.
+>
+> 🆕 **Pricing v7 (2026-10-02, procedimiento original):** Pro pasa a **$100.000** (editar el plan existente, mismo ID; 0 suscriptos
 > a Pro al 02/10) y se crea **Enterprise $200.000** (ID nuevo → `MP_PLAN_IDS.enterprise` en `brand.ts` + secret
 > **`MP_PLAN_ENTERPRISE`** en DEV y PROD; las 4 EFs `mp-webhook`, `mp-verificar-suscripcion`, `mp-reconciliacion` y
 > `admin-api` ya lo leen). Básico queda en $54.000 (verificar: en julio se había bajado a $1.000 para una prueba).
@@ -57,10 +62,11 @@ Usuario hace clic en "Suscribirse"
 
 ```
 Básico: 142aefe11ad64fb887b5949db005f8f8  ($54.000 ARS/mes — lista $60k con −10% débito automático)
-Pro:    f06b269057254b9da0e4a60cb89d1544  ($90.000 ARS/mes — lista $100k con −10% débito automático)
+Pro:    f06b269057254b9da0e4a60cb89d1544  ($100.000 ARS/mes desde v7 — antes $90.000)
+Enterprise: 852a7e8e6d244640818eb20e2c1037f8  ($200.000 ARS/mes, v7)
 ```
 
-Definidos en `brand.ts` → `MP_PLAN_IDS` + secrets `MP_PLAN_BASICO`/`MP_PLAN_PRO` (tier en EFs).
+Definidos en `brand.ts` → `MP_PLAN_IDS` + secrets `MP_PLAN_BASICO`/`MP_PLAN_PRO`/`MP_PLAN_ENTERPRISE` (tier en EFs).
 
 ### `external_reference` = `tenant_id`
 
@@ -78,6 +84,27 @@ El campo `external_reference` identifica al tenant en el webhook. Al recibir un 
 ---
 
 ## 2. Pagos de ventas con QR
+
+### 🛑 Hotfix EN PROD (2026-10-02, commit `d2332830`): el link/QR nunca usa la cuenta MP de la plataforma
+
+**EF `mp-crear-link-pago` desplegada en PROD v10 con OK de GO.** Antes, si el negocio no tenía MP conectado (o tenía 2
+credenciales, que rompían el `.maybeSingle()`), la EF caía al `MP_ACCESS_TOKEN` de la PLATAFORMA: el cliente le pagaba a
+Genesis360 y la venta no se conciliaba. En PROD ningún negocio tiene MP conectado, así que todo QR/link (QR del POS,
+"Cobrar con link", QR de la factura) salía así. Exposición medida: 0 facturas con saldo en PROD; las 24 h de logs, sin
+llamadas (no se puede ver más atrás). Se le sugirió a GO que Fede revise su cuenta MP por pagos huérfanos.
+Ahora: solo la credencial del negocio (primero la de la sucursal de la venta), monto ≤ saldo de la venta, venta
+saldada/cancelada → 400, `notification_url` del mismo proyecto (estaba fija a PROD).
+
+### 🔧 QR de MP — decisiones de GO (2026-10-02) y plan por fases (en curso, sin código)
+
+- El **envío SE COBRA** y entra en la deuda de CC. El **interés de CC SE COBRA** y va en el QR, **pero recién cuando el
+  contador responda la C-20** (¿el interés lleva Nota de Débito con IVA?; ver [[wiki/business/consultas-contador]]).
+- Hallazgos: la deuda de CC no incluye `costo_envio` (aunque `monto_pagado` sí lo incluye desde ISS-105); los intereses
+  nunca se cobran (la cobranza FIFO aplica solo al capital y `fn_recalcular_intereses_cc_tenant` pone `interes_cc` en 0
+  al saldar); `mp-ipn` hace check-then-insert de la idempotencia (carrera con `mp-webhook`, que inserta primero).
+- **Fase 1** (en curso): envío en CC/cobranza/QR; un link por venta reutilizado, vencimiento a 30 días, se desactiva al
+  saldarse; excedente → `cliente_creditos` (saldo a favor) + aviso al dueño; idempotencia de `mp-ipn` con insert-first.
+  **Fase 2**: interruptor en la configuración del negocio + QR en el estado de cuenta. **Fase 3**: el interés (espera C-20).
 
 ### EF `mp-crear-link-pago`
 

@@ -3,12 +3,30 @@ title: Planes y Pricing
 category: business
 tags: [planes, pricing, free, basic, pro, enterprise, limites, competencia]
 sources: [xubio.com, contabilium.com, netegia.com, neuralsoft.com, aconpy.com]
-updated: 2026-10-02
+updated: 2026-10-02 (tarde)
 ---
 
 # Planes y Pricing
 
-## 🆕 Pricing v7 (2026-10-02) — 🟡 EN DEV, PROD espera los IDs de Mercado Pago
+## 🆕 Pricing v7 (2026-10-02) — 🟡 EN DEV, listo para PROD (sin bloqueos; espera horario de GO)
+
+> **Actualización 2026-10-02 (tarde):**
+> - **Mercado Pago listo**: Fede creó Enterprise y editó Pro. IDs verificados en el checkout público: Básico `142aefe1…`
+>   $54.000 · Pro `f06b2690…` $100.000 · Enterprise `852a7e8e6d244640818eb20e2c1037f8` $200.000, todos sin prueba gratis.
+>   `MP_PLAN_IDS.enterprise` en `brand.ts` (commit `8f818d6e`); secret `MP_PLAN_ENTERPRISE` cargado en DEV y PROD (hash
+>   verificado). v7 ya no tiene bloqueos para PROD.
+> - **PR-8 respondida por GO**: "Logística inteligente" = **modo avanzado**, solo desde Pro (Básico solo modo básico).
+>   El "marketplace" es una feature futura, todavía no creada: el add-on de $35.000 **no existe por ahora**.
+>   **Mig 463** (commit `25c74e70`): `fn_plan_permite_modo_avanzado` + trigger en `tenants` → activar avanzado sin plan
+>   que incluya `wms` se rechaza; si el plan deja de incluirlo, pasa a básico y avisa a los dueños; la herencia v6 se
+>   respeta. UAT §92.
+> - **PR-6 / precio pactado de add-ons (mig 461, commit `c46a8e3e`)**: `tenant_addons.precio_mensual` guarda el precio
+>   de cada pack al contratarlo (backfill con catálogo v6). En `mp-addon-batch`, un pack que no cambia **mantiene el
+>   precio pactado**; uno nuevo o distinto toma el catálogo vigente. Espejo en `src/lib/mpAddonBatch.ts` (`precioPack`,
+>   `preciosDesdeAddons`), configurador y `/suscripcion`; el MRR de `admin-api` (`_shared/precios.ts`, `mrrDeTenant`)
+>   usa el precio pactado. Cierra el riesgo "(a)": un cambio de precio del catálogo ya no reprecia a quien ya tiene el pack.
+> - **Deploy a PROD (pendiente)**: ver [[wiki/integrations/mercado-pago]] y pendientes → migs 457 → 459 → 460 → 461 →
+>   462 → 463, EFs, bump `v1.238.0`, `app-reference.md` + `ai:knowledge` + redeploy `ai-assistant`.
 
 Fuente: docs de Fede en Drive **"05 - Genesis360 Pricing y Costos v7"** y **"06 - Cambios de Pricing v6 a v7 - Para
 Tonga"**. Código: `brand.ts` (catálogo) + mig 457 (`fn_plan_base_limite` v7, herencia) — commit `0214f65a`.
@@ -22,19 +40,19 @@ Tonga"**. Código: `brand.ts` (catálogo) + mig 457 (`fn_plan_base_limite` v7, h
 - **Sin plan Free**: la prueba de **15 días** (sin tarjeta, solo altas nuevas) es el período gratis. Prueba vencida sin
   plan → `/suscripcion` (bloqueo, como antes; GO descartó "solo lectura").
 - **Módulos**: Básico sin WMS/Compras/Envíos/importación/RRHH/marketplace · Pro suma WMS, Compras, Envíos, importación
-  masiva ("Logística inteligente" = PR-8, lo define GO con Fede) · Enterprise suma RRHH, marketplace, soporte
+  masiva ("Logística inteligente" = modo avanzado, solo desde Pro; PR-8 respondida, mig 463) · Enterprise suma RRHH, marketplace, soporte
   prioritario y Agente de WhatsApp (sin precio publicado hasta calcular el costo, PR-2).
 - **Add-ons**: sin cambios salvo sucursales **+1 $35.000 · +3 $55.000 · +5 $70.000** (precio nuevo solo para compras
-  nuevas, PR-6). Marketplace $35.000 como add-on: PR-8 abierto.
+  nuevas, PR-6; precio pactado por pack, mig 461). Marketplace $35.000 como add-on: no existe por ahora (feature futura, PR-8).
 - **Pago anual**: −20 % sobre el precio de **lista**, pago único por 1 año, sin renovación automática. **Flujo sin hacer.**
 - **Comprobantes**: enforcement blando (aviso 80 % / 100 % + mail) — **sin hacer** (hoy solo el % en la app).
 - 🧬 **Herencia (GO 02/10, "los que ingresaron antes mantienen lo que tienen")**: `tenant_herencia_plan` guarda, para
   cada negocio existente al aplicar la mig 457, los límites y módulos de su plan v6 (en prueba → Pro v6: 15 usuarios,
   8.000 productos, 14.000 comprobantes, 4 sucursales, WMS+RRHH+marketplace). Límite = mayor(base v7, heredada) +
   add-ons; módulos = los del plan + los heredados. Los nuevos, v7 puro.
-- **Mercado Pago**: Pro hay que llevarlo a $100.000 (editar el plan `f06b2690…`) y crear Enterprise $200.000 → su ID va
-  en `MP_PLAN_IDS.enterprise` (`brand.ts`) y en el secret `MP_PLAN_ENTERPRISE` (DEV y PROD). Sin ID, la tarjeta
-  Enterprise ofrece "contactar". Paso a paso en [[wiki/integrations/mercado-pago]].
+- **Mercado Pago**: ✅ hecho (ver actualización de arriba): Pro `f06b2690…` a $100.000 y Enterprise `852a7e8e…` $200.000
+  creados; ID en `MP_PLAN_IDS.enterprise` y secret `MP_PLAN_ENTERPRISE` (DEV y PROD). Detalle en
+  [[wiki/integrations/mercado-pago]].
 - No hay tabla de planes en la base (la `planes` legacy se retiró, mig 456). SQL por negocio:
   [[wiki/support/sql-planes-tenants]].
 

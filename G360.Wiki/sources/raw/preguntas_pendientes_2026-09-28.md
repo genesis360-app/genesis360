@@ -7,7 +7,7 @@ type: relevamiento
 # Preguntas pendientes para GO y Fede — 2026-09-28
 
 > ✅ **2026-10-01: RESPONDIDAS DL-1..5, D3-a/b, PL-1..7, EC-1..8 y QR-1..3** → `respuestas_preguntas_pendientes_2026-09-30.md`
-> (manda sobre las propuestas de acá). **Siguen abiertas: PR-1..PR-8 (pricing v7, sección F).**
+> (manda sobre las propuestas de acá). **Siguen abiertas: PR-1..PR-8 (pricing v7, sección F).** *(Actualización 2026-10-02: PR-8 respondida por GO, ver sección F.)*
 
 > **Por qué hay preguntas nuevas si el 25/09 se respondieron los 30 puntos.** Las 30 del 25/09 están todas
 > respondidas y no se reabre ninguna. Estas 14 son **nuevas** y salieron de tres lados:
@@ -203,6 +203,10 @@ Los puntos 4 y 5 no requieren decisión: se arreglan alineando el monto del QR c
 > - **PR-5:** **Enterprise se contrata y se cobra igual que cualquier otro plan** (online, $200.000 con débito). Requiere
 >   crear el plan en Mercado Pago (GO) y pasar el id.
 > - Siguen abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del anual.
+>
+> ✅ **PR-8 RESPONDIDA por GO (2026-10-02):** "Logística inteligente" = **modo avanzado**, solo desde Pro (Básico solo modo
+> básico). El "marketplace" es una feature futura, todavía no creada; el add-on de $35.000 **no existe por ahora**.
+> Implementado en la mig 463 (guard en `tenants`). **PR-6** ya ejecutada (precio pactado por pack, mig 461).
 
 Fuente: "06 - Cambios de Pricing v6 a v7 - Para Tonga" (Fede). Lo que el documento define se ejecuta tal cual (precios
 Básico $54.000/$60.000 y Pro $100.000/$117.600, límites, descuento por débito escalonado, RRHH y marketplace pasan a

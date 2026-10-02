@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] update | Cierre de la tarde: migs 461-463, hotfix EN PROD del link de pago, QR de MP, v7 sin bloqueos
+
+- **Estado**: PROD `v1.237.0` (migs 001-456 + 458) **+ EF `mp-crear-link-pago` v10** (hotfix, ver abajo). DEV 001-**463**,
+  todo en `origin/dev` y Supabase DEV. Unit 2122.
+- **Mig 461 (commit `c46a8e3e`, PR-6)**: `tenant_addons.precio_mensual` + backfill con catálogo v6; `fn_aplicar_addon_batch`
+  copia el precio desde `addon_batch_changes.packs_objetivo` (cada pack trae `precio`, calculado por la EF). EF
+  `mp-addon-batch`: pack que no cambia mantiene el precio pactado; nuevo/distinto toma el catálogo vigente. Espejo en
+  `src/lib/mpAddonBatch.ts` (`precioPack`, `preciosDesdeAddons`), configurador y `/suscripcion`; MRR de `admin-api`
+  (`_shared/precios.ts`, `mrrDeTenant`) con el precio pactado. EFs `mp-addon-batch` y `admin-api` desplegadas en DEV.
+  UAT §91. Cierra el riesgo "(a)". PROD: solo 2 packs, de negocios de prueba.
+- **Mig 462 (commit `8cb8a98d`)**: trigger en `kitting_log` que rechaza cantidades fraccionarias en el armado de KIT
+  (manual y automático; `inventario_lineas.cantidad` es integer). Cierra el latente "(b2)" de la 459. PROD: 0 recetas y 0
+  armados. e2e KIT 53/53. UAT §89.8.
+- **🛑 Hotfix EN PROD (commit `d2332830`)**: EF `mp-crear-link-pago` desplegada en PROD **v10** con OK de GO. Antes, sin MP
+  conectado (o con 2 credenciales, que rompían `.maybeSingle()`), usaba el `MP_ACCESS_TOKEN` de la PLATAFORMA: el cliente
+  le pagaba a Genesis360 y la venta no se conciliaba. En PROD ningún negocio tiene MP conectado → todo QR/link salía así
+  (QR del POS, "Cobrar con link", QR de la factura). Exposición medida: 0 facturas con saldo; 24 h de logs sin llamadas
+  (no se ve más atrás). Se sugirió a GO que Fede revise su cuenta MP. Ahora: solo la credencial del negocio (primero la
+  de la sucursal), monto ≤ saldo, saldada/cancelada → 400, `notification_url` del mismo proyecto. Ver
+  [[wiki/integrations/mercado-pago]].
+- **QR de MP — decisiones de GO**: el envío SE COBRA (entra en la deuda de CC); el interés de CC SE COBRA y va en el QR,
+  pero recién cuando el contador responda la **C-20**. Hallazgos: la deuda de CC no incluye `costo_envio` (aunque
+  `monto_pagado` sí, desde ISS-105); los intereses nunca se cobran (FIFO solo al capital; `fn_recalcular_intereses_cc_tenant`
+  pone `interes_cc` en 0 al saldar); `mp-ipn` hace check-then-insert (carrera con `mp-webhook`). Fase 1 en curso, sin
+  código: envío en CC/cobranza/QR, un link por venta con vencimiento a 30 días que se desactiva al saldarse, excedente →
+  `cliente_creditos` + aviso al dueño, `mp-ipn` insert-first. Fase 2: interruptor en config + QR en estado de cuenta.
+  Fase 3: interés (espera C-20). Ver [[wiki/features/clientes-proveedores]].
+- **Contador**: C-20 (intereses de CC y ND) y C-21 (traslado entre sucursales de distinto CUIT) en
+  [[wiki/business/consultas-contador]]. Abiertas: **21**.
+- **Pricing v7 — MP listo**: IDs verificados en el checkout público: Básico `142aefe1…` $54.000, Pro `f06b2690…` $100.000,
+  Enterprise `852a7e8e6d244640818eb20e2c1037f8` $200.000, sin prueba gratis. `MP_PLAN_IDS.enterprise` (commit `8f818d6e`);
+  secret `MP_PLAN_ENTERPRISE` en DEV y PROD (hash verificado). v7 sin bloqueos para PROD.
+- **PR-8 respondida por GO**: "Logística inteligente" = modo avanzado solo desde Pro; marketplace = feature futura (el
+  add-on de $35.000 no existe por ahora). **Mig 463 (commit `25c74e70`)**: `fn_plan_permite_modo_avanzado` + trigger en
+  `tenants` (activar avanzado sin plan se rechaza; si el plan deja de incluir `wms` → básico + aviso a dueños; herencia v6
+  respetada). Motivo: un Básico con 'avanzado' guardado quedaba roto. GO probó en DEV con rollback 5/5 + e2e 15/15. UAT §92.
+- **Deploy de v7 a PROD (pendiente de horario de GO)**: migs 457 → 459 → 460 → 461 → 462 → 463 de a una con
+  `scripts/aplicar-migracion.mjs`, antes del merge; EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
+  `mp-verificar-suscripcion`, `mp-webhook` (`mp-crear-link-pago` ya está en PROD); bump `v1.238.0`; `app-reference.md`
+  (planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`; panel interno; suite e2e completa.
+- Wiki: planes-pricing, mercado-pago, clientes-proveedores, migraciones, preguntas_pendientes (PR-8), pendientes, index.
+
 ## [2026-10-02] fix | PROD: caja abierta invisible bloqueaba el cambio de sucursal (mig 460)
 
 - Commit `1e90eb73` en `origin/dev`; mig 460 solo en Supabase DEV (PROD no, sin bump de versión). Continuación del incidente

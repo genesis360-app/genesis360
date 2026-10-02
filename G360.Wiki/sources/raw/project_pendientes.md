@@ -6,28 +6,44 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-02, cierre para /clear) — PROD `v1.237.0` (+ migs 456 y 458 en la base) · DEV + pricing v7
+> ### 🛑 ARRANCÁ ACÁ (2026-10-02, cierre de la tarde) — PROD `v1.237.0` (+ migs 456/458 en la base + EF `mp-crear-link-pago` v10) · DEV 001-463 + pricing v7 sin bloqueos
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.237.0` (PR #369) | 001-456 + **458** (la 457 NO) |
-> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales + desarmado de KIT atómico (commits `ab452449`, `0214f65a`, `a6ba9d0e`, `1e90eb73` en `origin/dev`, sin bump) + caja con la sucursal de su caja (mig 460) | 001-**460** |
+> | **PROD** | `v1.237.0` (PR #369) + **EF `mp-crear-link-pago` v10** (hotfix, commit `d2332830`, desplegada con OK de GO) | 001-456 + **458** (la 457 NO; sin cambios de migración hoy) |
+> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales + desarmado de KIT atómico + caja con la sucursal de su caja + precio pactado de add-ons + guard de modo avanzado por plan (commits `ab452449`, `0214f65a`, `a6ba9d0e`, `1e90eb73`, `c46a8e3e`, `8cb8a98d`, `8f818d6e`, `25c74e70` en `origin/dev`, sin bump). Unit 2122 | 001-**463** |
 > | **Panel interno** | `dev` con `cd284e4` (sin `plan_id`), sin mergear | — |
 >
 > ⚠️ Paridad de policies: DEV `public` **240** vs PROD **239** a propósito (la 457 suma `tenant_herencia_plan_select_propio`).
 >
-> **▶ Lo primero al retomar: pricing v7** (detalle en [[wiki/business/planes-pricing]] → "Pricing v7"):
-> 1. **IDs de Mercado Pago** (espera a GO/Fede): Pro a $100.000 (editar `f06b2690…`) + crear Enterprise $200.000.
->    Camino recomendado: GO pega el Access Token de producción de la app de Fede en `.env.local` y Claude lo hace por
->    API (ver [[wiki/integrations/mercado-pago]]). Con el ID: `MP_PLAN_IDS.enterprise` + secret `MP_PLAN_ENTERPRISE`
->    (DEV y PROD). Verificar también el monto de Básico ($54.000).
-> 2. **Deploy de v7 a PROD** (después de 1): migs 457, **459** (desarmar_kit) **y 460** (sesión de caja en la sucursal de su caja), con `scripts/aplicar-migracion.mjs`, de a una, antes del merge) → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
->    `mp-verificar-suscripcion`, `mp-webhook` → bump `v1.238.0` → merge. Actualizar `app-reference.md` (líneas ~879 y
->    ~1198, planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`. Mergear también el panel interno.
+> **🛑 Hotfix EN PROD hoy:** `mp-crear-link-pago` caía al token de la PLATAFORMA si el negocio no tenía MP (o tenía 2
+> credenciales) → el cliente le pagaba a Genesis360. En PROD ningún negocio tiene MP, así que todo QR/link salía así.
+> Exposición: 0 facturas con saldo; 24 h de logs sin llamadas (no se ve más atrás). 🙋 Sugerido a GO: que Fede revise su
+> cuenta MP. Detalle en [[wiki/integrations/mercado-pago]].
+>
+> **▶ Lo primero al retomar: deploy de v7 a PROD** (pendiente del horario de GO; **ya no hay bloqueos**; detalle en
+> [[wiki/business/planes-pricing]]):
+> 1. ✅ **Mercado Pago listo**: Básico `142aefe1…` $54.000 · Pro `f06b2690…` $100.000 · Enterprise `852a7e8e…` $200.000
+>    (verificados en el checkout público, sin prueba gratis). `MP_PLAN_IDS.enterprise` (commit `8f818d6e`) y secret
+>    `MP_PLAN_ENTERPRISE` en DEV y PROD (hash verificado).
+> 2. **Lista del deploy**: migs **457 → 459 → 460 → 461 → 462 → 463**, de a una con `scripts/aplicar-migracion.mjs`, antes
+>    del merge → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`
+>    (`mp-crear-link-pago` ya está en PROD) → bump `v1.238.0` → merge. Actualizar `app-reference.md` (líneas ~879 y
+>    ~1198, planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`. Mergear también el panel interno y
+>    correr la suite e2e completa. Mig 463: verificar antes qué negocios de PROD tienen 'avanzado' con plan sin `wms`.
 > 3. **Fases pendientes de v7**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación — flujo nuevo);
 >    enforcement blando de comprobantes (80 %/100 % + mail); Landing 2.0 (docs de Fede) dice 30 días en 3 lugares.
-> 4. **Abiertos para GO/Fede:** PR-8 ("Logística inteligente" = ¿qué módulo?; ¿add-on Marketplace $35.000 para Básico y
->    Pro?).
+> 4. ✅ **PR-8 respondida por GO**: "Logística inteligente" = modo avanzado, solo desde Pro (Básico solo básico);
+>    marketplace = feature futura, el add-on de $35.000 no existe por ahora → mig 463 (UAT §92).
+>
+> **🔧 QR de MP — Fase 1 EN CURSO (sin código todavía).** Decisiones de GO 02/10: el envío SE COBRA y entra en la deuda
+> de CC; el interés de CC SE COBRA y va en el QR **recién cuando el contador responda la C-20** (¿ND con IVA?; 21 consultas
+> abiertas, C-20 y C-21 agregadas hoy). Hallazgos: la deuda de CC no incluye `costo_envio` (`monto_pagado` sí, desde
+> ISS-105); los intereses nunca se cobran (FIFO solo al capital; `fn_recalcular_intereses_cc_tenant` pone `interes_cc` en
+> 0 al saldar); `mp-ipn` hace check-then-insert (carrera con `mp-webhook`). **Fase 1**: envío en CC/cobranza/QR, un link
+> por venta reutilizado con vencimiento a 30 días que se desactiva al saldarse, excedente → `cliente_creditos` + aviso
+> al dueño, `mp-ipn` insert-first. **Fase 2**: interruptor en la configuración + QR en el estado de cuenta. **Fase 3**:
+> el interés (espera C-20). Ver [[wiki/features/clientes-proveedores]].
 >
 > **Decisiones de GO del 02/10 (ya aplicadas):** base del anual = precio de lista · Agente WhatsApp en Enterprise sin
 > precio · 15 días solo altas nuevas · add-on de sucursales nuevo solo compras nuevas · **existentes conservan límites y
@@ -60,9 +76,7 @@ type: project
 >   Alternativa más suave: solo mostrar "este usuario está abierto en otro dispositivo" y dejar que el dueño decida.
 > - Sin código hasta que GO decida: (1) estricto 1 dispositivo / N dispositivos / solo aviso; (2) si el dueño es excepción.
 >
-> **Riesgos / hallazgos abiertos:** (a) `tenant_addons` no guarda el precio pagado por pack → si cambia el precio de un
-> add-on, `mp-addon-batch` recalcula con el precio nuevo (hoy nadie tiene packs de sucursales; arreglar antes del
-> próximo cambio de precio) · (b) ✅ HECHO en DEV (02/10, mig 459, commit `a6ba9d0e`): el desarmado de KIT ahora es la RPC atómica `desarmar_kit` (ver [[wiki/features/inventario-stock]]); falta PROD · (b2) latente: el ARMADO (migs 244/343) tiene el mismo problema con recetas fraccionarias contra columnas integer · (c) U-2: la ubicación habitual del
+> **Riesgos / hallazgos:** (a) ✅ CERRADO en DEV (02/10, mig 461, commit `c46a8e3e`): `tenant_addons.precio_mensual` guarda el precio pactado por pack; PROD tiene solo 2 packs, de negocios de prueba · (b) ✅ HECHO en DEV (02/10, mig 459, commit `a6ba9d0e`): el desarmado de KIT ahora es la RPC atómica `desarmar_kit` (ver [[wiki/features/inventario-stock]]); falta PROD · (b2) ✅ CERRADO en DEV (02/10, mig 462, commit `8cb8a98d`): trigger en `kitting_log` rechaza armado fraccionario; PROD 0 recetas y 0 armados · (c) U-2: la ubicación habitual del
 > producto se sigue precargando (decisión de GO: mantener).
 >
 > **📍 U-2 (A + B) HECHO en DEV (01/10 noche, sin migración, sin versión)** — GO eligió A+B **sin ubicación sugerida**.

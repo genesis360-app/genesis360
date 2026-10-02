@@ -3,10 +3,16 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
-# Historial de Migraciones (001-460, + correctivos 387b/387c)
+# Historial de Migraciones (001-463, + correctivos 387b/387c)
+
+🧩 **Migración 463 — 🟡 EN DEV, NO EN PROD (2026-10-02 tarde; commit `25c74e70`, PR-8)**: función `fn_plan_permite_modo_avanzado` + trigger en `tenants`: activar `modo_operacion = 'avanzado'` sin un plan que incluya `wms` se rechaza; si el plan deja de incluir `wms`, el negocio pasa a básico y se avisa a los dueños; la herencia v6 (`tenant_herencia_plan`) se respeta. Motivo: la base leía `modo_operacion` a secas y un Básico con 'avanzado' guardado quedaba roto (app en básico, base exigiendo ubicación). Probada por GO en DEV con rollback (5/5) + e2e 15/15. UAT §92. Ver [[wiki/business/planes-pricing]].
+
+🧱 **Migración 462 — 🟡 EN DEV, NO EN PROD (2026-10-02 tarde; commit `8cb8a98d`)**: trigger en `kitting_log` que rechaza cantidades fraccionarias en el armado de KIT (manual y automático), porque `inventario_lineas.cantidad` es integer. Cierra el latente "(b2)" que dejó la 459. PROD: 0 recetas y 0 armados. e2e de KIT 53/53. UAT §89.8. Ver [[wiki/features/inventario-stock]].
+
+💲 **Migración 461 — 🟡 EN DEV, NO EN PROD (2026-10-02 tarde; commit `c46a8e3e`, PR-6)**: `tenant_addons.precio_mensual` (precio pactado por pack) + backfill con el catálogo v6; `fn_aplicar_addon_batch` copia el precio desde `addon_batch_changes.packs_objetivo` (cada pack trae `precio`, que calcula la EF `mp-addon-batch`). Cierra el riesgo "(a)" de pendientes. PROD: solo 2 packs, de negocios de prueba. UAT §91. Ver [[wiki/business/planes-pricing]].
 
 🏪 **Migración 460 — 🟡 EN DEV, NO EN PROD (2026-10-02; commit `1e90eb73`)**: `460_caja_sesion_sucursal_de_su_caja.sql` — la sesión de caja vive en la sucursal de su caja: BEFORE INSERT en `caja_sesiones` fuerza `sucursal_id` = el de la caja (si tiene); BEFORE UPDATE OF `sucursal_id` en `caja_sesiones` rechaza desalinear; BEFORE UPDATE OF `sucursal_id` en `cajas` rechaza mover una caja con sesión abierta. Sin policies. Incidente PROD: una sesión abierta con sucursal desfasada bloqueaba el cambio de sucursal (corregida con UPDATE, ver [[wiki/features/caja]]). Aplicar en PROD junto con la 459, de a una.
 

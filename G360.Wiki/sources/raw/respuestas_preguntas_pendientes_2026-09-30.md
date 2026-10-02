@@ -1,6 +1,6 @@
 ---
 name: respuestas_preguntas_pendientes_2026-09-30
-description: Respuestas de Fede/GO (30/09) a DL-1..5, D3-a/b, PL-1..7, EC-1..8, QR-1..3 de preguntas_pendientes_2026-09-28.md. Manda sobre las propuestas. Quedan abiertas PR-1..PR-8 (pricing v7) y 4 puntos para Tonga (sección 4).
+description: Respuestas de Fede/GO (30/09) a DL-1..5, D3-a/b, PL-1..7, EC-1..8, QR-1..3 de preguntas_pendientes_2026-09-28.md. Manda sobre las propuestas. Quedan abiertas PR-1..PR-8 (pricing v7; **PR-8 respondida por GO el 2026-10-02**: "Logística inteligente" = modo avanzado solo desde Pro, el marketplace es feature futura y su add-on no existe por ahora; ver preguntas_pendientes_2026-09-28.md) y 4 puntos para Tonga (sección 4).
 type: relevamiento
 ---
 

@@ -2455,6 +2455,7 @@ Antes: escrituras sueltas desde el navegador (KIT rebajado sin componentes si fa
 | 89.5 | 🛑 Componente fraccionario (0,5 × 3 = 1,5) → rechazado (la columna es entera: antes se redondeaba en silencio) | e2e `75` · SQL DEV | ✅ |
 | 89.6 | KIT o componente con número de serie → rechazado (antes entraba sin series) | revisión de la función | ✅ código |
 | 89.7 | La línea del KIT que queda en 0 (sin reservas) se desactiva | revisión de la función | ✅ código |
+| 89.8 | 🛑 ARMADO (manual y automático, mig 462): 3 KITs × receta 0,5 → rechazado y las reservas quedan intactas; 2 × 0,5 = 1 pasa | SQL DEV impersonando (rollback) · e2e 132/133/75/02/141 sin regresión | ✅ |
 
 ## 💲 §88 — Pricing v7 (mig 457, 🟡 DEV) — 2026-10-02
 

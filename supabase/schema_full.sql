@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T06:52:26.690Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002064336 · 175 tablas
+-- Generado 2026-10-02T06:55:37.944Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002065305 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -7878,6 +7878,30 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_guard_kitting_cantidades_enteras()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  rec RECORD;
+BEGIN
+  IF NEW.cantidad_kits <> trunc(NEW.cantidad_kits) THEN
+    RAISE EXCEPTION 'La cantidad de KITs tiene que ser un número entero' USING ERRCODE = 'check_violation';
+  END IF;
+  FOR rec IN SELECT r.cantidad, p.nombre FROM kit_recetas r JOIN productos p ON p.id = r.comp_producto_id
+             WHERE r.tenant_id = NEW.tenant_id AND r.kit_producto_id = NEW.kit_producto_id LOOP
+    IF rec.cantidad * NEW.cantidad_kits <> trunc(rec.cantidad * NEW.cantidad_kits) THEN
+      RAISE EXCEPTION 'El componente "%" daría % unidades: el stock se lleva en unidades enteras. Elegí una cantidad de KITs que dé un número entero.',
+        rec.nombre, trim_scale(rec.cantidad * NEW.cantidad_kits)
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_guard_mover_caja_con_sesion_abierta()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -15343,6 +15367,7 @@ CREATE TRIGGER trg_inventario_lineas_guard_ubicacion BEFORE INSERT OR UPDATE OF 
 CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
 CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
 CREATE TRIGGER series_recalcular_stock AFTER INSERT OR DELETE OR UPDATE ON public.inventario_series FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
+CREATE TRIGGER trg_kitting_log_cantidades_enteras BEFORE INSERT ON public.kitting_log FOR EACH ROW EXECUTE FUNCTION fn_guard_kitting_cantidades_enteras();
 CREATE TRIGGER trg_updated_at_meli_cred BEFORE UPDATE ON public.meli_credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_updated_at_mp_creds BEFORE UPDATE ON public.mercadopago_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_mp_creds();
 CREATE TRIGGER trg_metodos_pago_updated_at BEFORE UPDATE ON public.metodos_pago FOR EACH ROW EXECUTE FUNCTION update_metodos_pago_updated_at();

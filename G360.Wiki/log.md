@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] deploy | v1.236.0 a PROD — Maestro, Fase 0 fiscal, numeración por negocio
+
+- GO: "U-4 sí corregir… pasemos a PRD en el orden que indicás".
+- Guía de facturación para clientes corregida (artifact `WYpzGUG42wPBCv74ya5Jmg`, v5): paso 7 (desplegable del
+  Computador Fiscal; el campo CUIT y BUSCAR van vacíos; la relación puede tardar minutos), paso 9 (con el cert de
+  producción el Modo PRUEBA no anda), paso 10 (validar con una factura real chica), problemas: `coe.notAuthorized` y
+  error de autenticación en modo prueba.
+- PROD: migs 452 → 453 → 454 de a una con `scripts/aplicar-migracion.mjs`; md5 de `fn_importar_maestro`,
+  `fn_guard_campos_fiscales`, `gen_venta_numero` DEV = PROD; columnas y triggers presentes; IDENTITY de
+  `ventas.numero` quitada; tildes intactas. Después EF `emitir-factura` (OPTIONS 200 / sin sesión 401; auditoría diff 0
+  DEV y PROD). `ai:knowledge` + `ai-assistant` redeployado en DEV y PROD.
+- Bump `v1.236.0`, PR #368 (CI unit verde, preview Vercel OK), merge `f4354d29`, release `v1.236.0` Latest; servida
+  `index-HQz-ILzk.js` con v1.236.0. Paridad `pg_policies` DEV = PROD: `public` 240, `storage` 40, `cron` 2.
+
 ## [2026-10-01] update | Urgentes de El Tilo sin preguntas: Fase 0 (mig 453), numeración (mig 454), checklist de alta
 
 - GO: "avanza con lo urgente que no tenga nada pendiente". Consolidado de preguntas entregado en el chat (D-1..D-6).

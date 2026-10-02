@@ -8,7 +8,7 @@ updated: 2026-10-01
 
 # Facturación Electrónica AFIP
 
-> 🧾 **2026-10-01 — Fase 0: la factura guarda su punto de venta y el ambiente de su CAE (mig 453, 🟡 EN DEV):**
+> 🧾 **2026-10-01 — Fase 0: la factura guarda su punto de venta y el ambiente de su CAE (mig 453, ✅ EN PROD v1.236.0):**
 > `emitir-factura` sella `ventas.punto_venta` + `ventas.cae_ambiente` y `devoluciones.nc_cae_ambiente`. Con eso: (1) la
 > NC arma `CbtesAsoc.PtoVta` con el PV **de la factura original** (antes, el de la NC: con 2+ PV por CUIT podía referenciar
 > otro comprobante); (2) el PDF imprime el PV en que se emitió (`puntoVentaDeFactura`, antes el primer PV del emisor);

@@ -2468,7 +2468,8 @@ quedan (historial). Sin otras abiertas desfasadas en PROD.
 | 90.2 | 🛑 Cambiarle la sucursal a una sesión (desalinearla de su caja) → rechazado | SQL DEV (rollback) | ✅ |
 | 90.3 | 🛑 Mover de sucursal una caja con sesión abierta → "cerrala antes de cambiarla de sucursal" | SQL DEV (rollback) | ✅ |
 | 90.4 | El aviso "tenés una caja abierta en otra sucursal" usa la sucursal de la caja y "ir a cerrarla" lleva a donde la caja se ve | revisión · e2e de caja 05/20/32/64/65/67/157 sin regresión | ✅ código |
-| 90.5 | PROD: GO cierra `Caja1` (Casa central) con arqueo de $4.000 | — | ⏳ GO |
+| 90.5 | PROD: GO cierra `Caja1` (Casa central) con arqueo de $4.000 | — | ✅ GO (02/10) |
+| 90.6 | 🛑 Incidente PROD 02/10 (2º cliente real): movieron de sucursal una caja ABIERTA (sesión de 4 días, ~$734k en efectivo) → sesión invisible. Se volvió la caja a su sucursal original (OK de GO) para cerrar ahí sin reescribir historia. La pantalla ahora deshabilita el selector con la caja abierta y consulta la caja en sí antes de moverla (`cajasAbiertas` filtra por sucursal y no ve una sesión desfasada); el cambio queda en el historial de actividad | e2e de caja 05/20/32/64/65/67 (10/10) · revisión | ✅ código (falta el cierre del cliente) |
 
 ## 🧩 §89 — Desarmado de KIT atómico (mig 459, 🟡 DEV) — 2026-10-02
 

@@ -61,6 +61,11 @@ type: project
 > **Segundo incidente del mismo negocio:** una caja abierta con sucursal desfasada bloqueaba el cambio de sucursal sin
 > salida → corregida en PROD con un UPDATE + mig 460 (solo DEV) que lo impide hacia adelante.
 >
+> **✅ Decisiones de GO 02/10 (puntos abiertos para Tonga):** PL-5 = A (POS: aviso claro sin conexión; venta offline
+> solo si un cliente la pide) · PL-7 = la preparación para precio por sucursal es el **motor único de precio** de la
+> Fase 3 (+ columna `sucursal_id` vacía en `precios_programados`) · EC-5 = B (superusuario de soporte = rol `admin` del
+> panel; cada persona con su propio usuario de panel — GO los crea). Detalle en `respuestas_preguntas_pendientes_2026-09-30.md` §4.
+>
 > **🙋 PARA REVISAR (pedido de GO 02/10) — un usuario, un dispositivo a la vez:** GO plantea que al entrar con el mismo
 > usuario desde otro dispositivo se cierre la sesión del anterior. Analizar antes de decidir si aplica:
 > - *A favor:* cada persona usa su propio usuario (trazabilidad de caja/ventas/actividad por persona, no "el usuario del

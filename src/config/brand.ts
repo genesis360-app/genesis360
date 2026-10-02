@@ -79,7 +79,7 @@ export const ADDON_FIJO_ENABLED = true
 export const MP_PLAN_IDS: Record<string, string> = {
   basico:     '142aefe11ad64fb887b5949db005f8f8',
   pro:        'f06b269057254b9da0e4a60cb89d1544',
-  enterprise: '',
+  enterprise: '852a7e8e6d244640818eb20e2c1037f8',
 }
 
 // Precio de LISTA (sin el -10% de débito automático) — lo paga quien elige billing_mode

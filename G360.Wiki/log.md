@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] fix | PROD: inventario en 0 en el negocio de GO → sucursal desactivada con stock (mig 458)
+
+- GO: "en productos me dice 0 unidades pero debajo 142 en total; en inventario 0 líneas". No se perdió nada: las 28
+  líneas / 775 unidades estaban en "Casa central", que estaba DESACTIVADA; la app se para en la primera sucursal activa
+  (Huechuraba, vacía). Sin registro de quién/cuándo (el "Eliminar" de Sucursales no logueaba; logs de PROD sin esa
+  ventana). No lo causó v1.237.0 ni el cambio de plan por SQL de GO (ningún trigger de tenants toca sucursales).
+- Reactivada en PROD (UPDATE con OK de GO). Arreglo (DEV): mig 458 (no se elimina una sucursal con stock o caja
+  abierta), SucursalesPage con "Sucursales eliminadas" + Reactivar + historial. UAT §87.
+
 ## [2026-10-02] update | Pricing v7: relevamiento + tabla `planes` retirada (mig 456) + SQL de planes por negocio
 
 - Plan de pricing v7 con los docs de Fede en Drive ("05 - Pricing y Costos v7" y "06 - Cambios v6 a v7"). GO marcó que

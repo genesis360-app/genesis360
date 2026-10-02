@@ -2411,6 +2411,19 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🏢 §87 — Eliminar una sucursal no puede esconder stock (mig 458) — 2026-10-02
+
+Incidente: en PROD, "Casa central" (negocio de GO) estaba desactivada con 28 líneas / 775 unidades → Inventario y
+Productos mostraban 0 (la app filtra por la primera sucursal activa). Reactivada el 02/10.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 87.1 | 🛑 Eliminar una sucursal con stock activo → rechazado con "tiene N unidades en M líneas, trasladá el stock" | SQL DEV (rollback) | ✅ |
+| 87.2 | Eliminar una sucursal con caja abierta → rechazado | revisión del trigger | ✅ código |
+| 87.3 | Sucursal vacía se puede eliminar; aparece en "Sucursales eliminadas" con "Reactivar" | SQL DEV · revisión | ✅ |
+| 87.4 | Eliminar y reactivar quedan en el historial de actividad | revisión | ✅ código |
+| 87.5 | Reactivar respeta el límite de sucursales del plan | trigger existente `fn_enforce_limite` | ✅ |
+
 ## 🧩 §86 — CUIT exigible en el alta rápida de cliente + ficha del producto alineada — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

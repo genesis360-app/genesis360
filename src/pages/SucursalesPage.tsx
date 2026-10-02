@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Building2, Plus, Pencil, Trash2, MapPin, Phone, Truck, Navigation, Check, X } from 'lucide-react'
+import { Building2, Plus, Pencil, Trash2, MapPin, Phone, Truck, Navigation, Check, X, RotateCcw } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
+import { logActividad } from '@/lib/actividadLog'
 
 interface SucursalForm {
   nombre: string
@@ -46,6 +47,18 @@ export default function SucursalesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sucursales').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  // Sucursales eliminadas (borrado lógico) — se pueden reactivar (mig 458: antes solo por SQL).
+  const { data: sucursalesEliminadas = [] } = useQuery({
+    queryKey: ['sucursales-eliminadas', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sucursales').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', false).order('nombre')
       if (error) throw error
       return data ?? []
     },
@@ -118,14 +131,34 @@ export default function SucursalesPage() {
     onError: (e: any) => toast.error(e.message),
   })
 
+  // La base no deja eliminar una sucursal con stock activo o caja abierta (mig 458): el error dice cuánto tiene.
   const remove = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('sucursales').update({ activo: false }).eq('id', id)
+    mutationFn: async (s: { id: string; nombre: string }) => {
+      const { error } = await supabase.from('sucursales').update({ activo: false }).eq('id', s.id)
       if (error) throw error
+      logActividad({ entidad: 'sucursal', entidad_id: s.id, entidad_nombre: s.nombre, accion: 'eliminar', pagina: '/sucursales' })
     },
     onSuccess: async () => {
       toast.success('Sucursal eliminada')
       qc.invalidateQueries({ queryKey: ['sucursales', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['sucursales-eliminadas', tenant?.id] })
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) loadUserData(user.id)
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const reactivar = useMutation({
+    mutationFn: async (s: { id: string; nombre: string }) => {
+      // El límite de sucursales del plan lo controla la base (fn_enforce_limite).
+      const { error } = await supabase.from('sucursales').update({ activo: true }).eq('id', s.id)
+      if (error) throw error
+      logActividad({ entidad: 'sucursal', entidad_id: s.id, entidad_nombre: s.nombre, accion: 'editar', campo: 'activo', valor_anterior: 'false', valor_nuevo: 'true', pagina: '/sucursales' })
+    },
+    onSuccess: async () => {
+      toast.success('Sucursal reactivada')
+      qc.invalidateQueries({ queryKey: ['sucursales', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['sucursales-eliminadas', tenant?.id] })
       const { data: { user } } = await supabase.auth.getUser()
       if (user) loadUserData(user.id)
     },
@@ -221,7 +254,9 @@ export default function SucursalesPage() {
                     className="p-2 text-gray-400 hover:text-primary dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Pencil size={15} />
                   </button>
-                  <button onClick={async () => { if (await confirmar(`¿Eliminar "${s.nombre}"?`, { danger: true })) remove.mutate(s.id) }}
+                  <button onClick={async () => { if (await confirmar(`¿Eliminar "${s.nombre}"?
+
+Solo se puede si no tiene stock ni cajas abiertas. Después la podés reactivar desde esta página.`, { danger: true })) remove.mutate({ id: s.id, nombre: s.nombre }) }}
                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                     <Trash2 size={15} />
                   </button>
@@ -278,6 +313,23 @@ export default function SucursalesPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {(sucursalesEliminadas as any[]).length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+          <p className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2">Sucursales eliminadas</p>
+          <div className="space-y-1.5">
+            {(sucursalesEliminadas as any[]).map((s: any) => (
+              <div key={s.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-gray-500 dark:text-gray-400">{s.nombre}</span>
+                <button onClick={() => reactivar.mutate({ id: s.id, nombre: s.nombre })} disabled={reactivar.isPending}
+                  className="flex items-center gap-1 text-xs text-accent-text px-2 py-1 rounded-lg hover:bg-accent/10 disabled:opacity-50">
+                  <RotateCcw size={12} /> Reactivar
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

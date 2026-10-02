@@ -7,7 +7,7 @@
 import { describe, test, expect } from 'vitest'
 import {
   calcularBatch, guardBatch, selDesdeAddons, precioSel, esUpgradeDePlan,
-  decidirSweepProgramado, decidirConfirmacionCobro,
+  decidirSweepProgramado, decidirConfirmacionCobro, preciosDesdeAddons, precioPack,
 } from '@/lib/mpAddonBatch'
 
 describe('calcularBatch — delta sobre el monto real (ejemplos GO)', () => {
@@ -38,9 +38,7 @@ describe('calcularBatch — delta sobre el monto real (ejemplos GO)', () => {
     expect(r.deltaAPagar).toBe(5000)
   })
 
-  // ⚠️ Pricing v7: el pack de sucursales pasó de $15k a $35k. El batch resta el precio de HOY del pack que ya tiene
-  // el negocio (tenant_addons no guarda a cuánto se compró). Al 2026-10-02 nadie en PROD tiene packs de sucursales;
-  // pendiente: guardar el precio pagado por pack antes del próximo cambio de precio de add-ons.
+  // Sin precio pactado (pack viejo sin `precio_mensual`) el batch cae al catálogo vigente: ver el describe de PR-6.
   test('batch mixto (agrega usuarios $5k, quita sucursales $35k) → delta neto negativo = sin cobro', () => {
     const r = calcularBatch({
       montoActualMP: 89000,                          // Básico $54k + sucursales+1 $35k
@@ -218,5 +216,45 @@ describe('selDesdeAddons — estado inicial del panel', () => {
       { dimension: 'usuarios', cantidad: 1, tipo: 'fijo' },
     ])
     expect(sel).toEqual({ sku: 2000, usuarios: 1 })
+  })
+})
+
+// PR-6 (GO 2026-10-02) + mig 461: el precio nuevo de un add-on aplica SOLO a compras nuevas. El pack que el negocio ya
+// tiene vale lo que pactó (tenant_addons.precio_mensual). Espejo de precioPack de la EF mp-addon-batch.
+describe('precio pactado por pack (PR-6, mig 461)', () => {
+  // Negocio que compró +1 sucursal a $15.000 (v6) sobre Básico $54k → paga $69.000. El catálogo v7 dice $35.000.
+  const pactados = { sucursales: 15000 }
+
+  test('🛑 quitar el pack descuenta lo que paga ($15k), no el precio nuevo ($35k)', () => {
+    const r = calcularBatch({ montoActualMP: 69000, packsActuales: { sucursales: 1 }, packsObjetivo: {}, preciosPactados: pactados })
+    expect(r.recurrenteNuevo).toBe(54000)
+  })
+
+  test('🛑 mantener el pack y sumar otro: el que ya tiene no se re-precia', () => {
+    const r = calcularBatch({ montoActualMP: 69000, packsActuales: { sucursales: 1 }, packsObjetivo: { sucursales: 1, usuarios: 1 }, preciosPactados: pactados })
+    expect(r).toMatchObject({ recurrenteNuevo: 74000, deltaAPagar: 5000 })
+  })
+
+  test('cambiar a otro pack de la misma dimensión = compra nueva → precio vigente', () => {
+    // sale el +1 ($15k pactado) y entra el +3 ($55k v7)
+    const r = calcularBatch({ montoActualMP: 69000, packsActuales: { sucursales: 1 }, packsObjetivo: { sucursales: 3 }, preciosPactados: pactados })
+    expect(r).toMatchObject({ recurrenteNuevo: 109000, deltaAPagar: 40000 })
+  })
+
+  test('precioPack: pactado solo para la misma dimensión y cantidad; sin pactado → catálogo', () => {
+    expect(precioPack('sucursales', 1, { sucursales: 1 }, pactados)).toBe(15000)
+    expect(precioPack('sucursales', 3, { sucursales: 1 }, pactados)).toBe(55000)
+    expect(precioPack('sucursales', 1, {}, pactados)).toBe(35000)
+    expect(precioPack('usuarios', 1, { usuarios: 1 }, pactados)).toBe(5000)
+    expect(precioPack('sucursales', 0, { sucursales: 1 }, pactados)).toBe(0)
+  })
+
+  test('preciosDesdeAddons: el numeric llega como string; temporales y nulos se ignoran; un 0 es un precio', () => {
+    expect(preciosDesdeAddons([
+      { dimension: 'sucursales', cantidad: 1, tipo: 'fijo', precio_mensual: '15000.00' },
+      { dimension: 'usuarios', cantidad: 1, tipo: 'fijo', precio_mensual: null },
+      { dimension: 'sku', cantidad: 500, tipo: 'fijo', precio_mensual: '0.00' },
+      { dimension: 'comprobantes', cantidad: 1000, tipo: 'temporal', precio_mensual: '10000.00' },
+    ])).toEqual({ sucursales: 15000, sku: 0 })
   })
 })

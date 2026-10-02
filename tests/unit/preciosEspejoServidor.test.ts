@@ -38,3 +38,11 @@ describe('mrrDeTenant', () => {
     expect(mrrDeTenant({ id: 't', plan_tier: 'free', billing_mode: 'auto', manual_monto_mensual: null }, [])).toBe(0)
   })
 })
+
+describe('mrrDeTenant — precio pactado del pack (mig 461)', () => {
+  it('usa tenant_addons.precio_mensual (string) y cae al catálogo si no está', () => {
+    const t = { id: 't', plan_tier: 'basico', billing_mode: 'auto', manual_monto_mensual: null }
+    expect(mrrDeTenant(t, [{ dimension: 'sucursales', cantidad: 1, precio_mensual: '15000.00' }])).toBe(54000 + 15000)
+    expect(mrrDeTenant(t, [{ dimension: 'sucursales', cantidad: 1, precio_mensual: null }])).toBe(54000 + 35000)
+  })
+})

@@ -2411,6 +2411,21 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 💲 §91 — Cada pack de add-on guarda el precio pactado (mig 461, PR-6, 🟡 DEV) — 2026-10-02
+
+PR-6 (GO): el precio nuevo de un add-on aplica solo a compras nuevas. Antes `mp-addon-batch` restaba el precio del
+catálogo de HOY a los packs que el negocio ya tenía → con v7 (sucursales $15k → $35k) el recurrente se recalculaba mal.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 91.1 | 🛑 Quitar un pack comprado a $15k descuenta $15k del recurrente, no los $35k del catálogo nuevo | unit `mpAddonBatch` | ✅ |
+| 91.2 | 🛑 Mantener el pack y sumar otro: el que ya tenía no se re-precia | unit `mpAddonBatch` | ✅ |
+| 91.3 | Cambiar a otro pack de la misma dimensión = compra nueva → precio vigente | unit `mpAddonBatch` | ✅ |
+| 91.4 | `fn_aplicar_addon_batch` guarda el precio de cada pack; un cambio viejo sin precio deja NULL (la EF cae al catálogo) | SQL DEV (rollback) | ✅ |
+| 91.5 | Backfill: los packs fijos existentes quedan con el precio v6 con que se compraron | SQL DEV (1 pack: cuits +1 → $20.000) | ✅ |
+| 91.6 | La tarjeta del pack que ya tiene muestra el precio pactado; el MRR del panel usa el pactado | unit `preciosEspejoServidor` · revisión | ✅ |
+| 91.7 | El precio lo calcula la EF (el cliente solo manda dimensión y cantidad) | revisión de la EF | ✅ código |
+
 ## 💰 §90 — La sesión de caja vive en la sucursal de su caja (mig 460, 🟡 DEV) — 2026-10-02
 
 Incidente PROD (negocio de GO): sesión abierta desde el 13/04 ($4.000) con sucursal Huechuraba y caja de Casa central →

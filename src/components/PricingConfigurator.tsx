@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
-import { calcularBatch, esUpgradeDePlan, type PackSel } from '@/lib/mpAddonBatch'
+import { calcularBatch, esUpgradeDePlan, precioPack, type PackSel, type PreciosPactados } from '@/lib/mpAddonBatch'
 import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, Zap, Landmark, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
@@ -45,6 +45,8 @@ export interface AppBatchMode {
   montoActualMP: number
   /** Packs FIJOS actuales (selDesdeAddons de tenant_addons). */
   initialSel: PackSel
+  /** Precio pactado de los packs actuales (tenant_addons.precio_mensual, mig 461). */
+  preciosPactados?: PreciosPactados
   confirmando?: boolean
   /** planObjetivo: 'pro' si el batch incluye el upgrade de plan (E1/E2 lo decide la página). */
   onConfirm: (packsObjetivo: PackSel, planObjetivo: 'pro' | null) => void
@@ -97,7 +99,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
 
   // Modo app: total = recurrente NUEVO por delta (espejo calcularBatch, mismo cálculo del EF).
   const batchApp = app
-    ? calcularBatch({ montoActualMP: app.montoActualMP, packsActuales: app.initialSel, packsObjetivo: sel as PackSel, plan: planCambio })
+    ? calcularBatch({ montoActualMP: app.montoActualMP, packsActuales: app.initialSel, packsObjetivo: sel as PackSel, plan: planCambio, preciosPactados: app.preciosPactados })
     : null
   const totalApp = batchApp?.recurrenteNuevo ?? 0
   const deltaApp = app ? totalApp - app.montoActualMP : 0
@@ -236,7 +238,8 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
                     <span className={`text-[11px] leading-tight ${activo ? 'text-white' : 'text-gray-300'}`}>
                       +{pack.cantidad.toLocaleString('es-AR')} {unidad}
                     </span>
-                    <span className="text-sm font-bold">${pack.precio.toLocaleString('es-AR')}</span>
+                    {/* El pack que ya tiene vale lo pactado (PR-6), no el catálogo vigente. */}
+                    <span className="text-sm font-bold">${(app ? precioPack(dim, pack.cantidad, app.initialSel, app.preciosPactados) : pack.precio).toLocaleString('es-AR')}</span>
                   </button>
                 )
               })}

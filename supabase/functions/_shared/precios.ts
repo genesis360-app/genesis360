@@ -35,9 +35,16 @@ type TenantMrr = { id: string; plan_tier: string | null; billing_mode: string | 
  * Automático: precio con débito del plan + add-ons fijos (es lo que MP cobra: el batch hace PUT del recurrente).
  * Plan sin precio publicado: 0 (se informa aparte como "sin precio").
  */
-export function mrrDeTenant(t: TenantMrr, addonsFijos: Array<{ dimension: string; cantidad: number }>): number {
+export function mrrDeTenant(
+  t: TenantMrr,
+  addonsFijos: Array<{ dimension: string; cantidad: number; precio_mensual?: number | string | null }>,
+): number {
   const tier = String(t.plan_tier ?? '')
-  const addons = addonsFijos.reduce((s, a) => s + precioAddon(a.dimension, a.cantidad), 0)
+  // Mig 461: el pack vale lo que se pactó al contratarlo (PR-6); el catálogo solo si no quedó registrado.
+  const addons = addonsFijos.reduce((s, a) => {
+    const pactado = a.precio_mensual == null ? NaN : parseFloat(String(a.precio_mensual))
+    return s + (Number.isFinite(pactado) ? pactado : precioAddon(a.dimension, a.cantidad))
+  }, 0)
   if (t.billing_mode === 'manual') {
     const congelado = Number(t.manual_monto_mensual)
     return Number.isFinite(congelado) && congelado > 0 ? congelado : (PRECIO_LISTA[tier] ?? 0) + addons

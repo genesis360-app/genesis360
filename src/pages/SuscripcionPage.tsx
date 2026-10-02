@@ -8,7 +8,7 @@ import { tieneAccesoVigente } from '@/lib/accesoSuscripcion'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { type AddonRow } from '@/lib/addons'
-import { selDesdeAddons, type PackSel, type BatchBloqueo } from '@/lib/mpAddonBatch'
+import { selDesdeAddons, preciosDesdeAddons, type PackSel, type BatchBloqueo } from '@/lib/mpAddonBatch'
 import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
 import PricingConfigurator from '@/components/PricingConfigurator'
 import {
@@ -55,13 +55,13 @@ export default function SuscripcionPage() {
   })
 
   // Add-ons FIJOS activos del tenant → estado inicial del panel batch (packs tildados).
-  const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string }>>({
+  const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string; precio_mensual: number | string | null }>>({
     queryKey: ['addons-fijos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('tenant_addons')
-        .select('id, dimension, cantidad, tipo')
+        .select('id, dimension, cantidad, tipo, precio_mensual')
         .eq('tenant_id', tenant!.id).eq('tipo', 'fijo')
-      return (data ?? []) as Array<AddonRow & { id: string }>
+      return (data ?? []) as Array<AddonRow & { id: string; precio_mensual: number | string | null }>
     },
     enabled: !!tenant && esActivo,
     staleTime: 30000,
@@ -685,6 +685,7 @@ export default function SuscripcionPage() {
                 planesMp: batchPreview.planes_mp,
                 montoActualMP: batchPreview.monto_actual,
                 initialSel: packsActuales,
+                preciosPactados: preciosDesdeAddons(addonsFijos),
                 confirmando: confirmandoBatch,
                 onConfirm: handleConfirmarBatch,
               }}

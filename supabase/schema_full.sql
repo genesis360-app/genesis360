@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T06:28:01.962Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002061859 · 175 tablas
+-- Generado 2026-10-02T06:52:26.690Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002064336 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2326,7 +2326,8 @@ CREATE TABLE public.tenant_addons (
   tipo text NOT NULL,
   vence_at timestamp with time zone,
   mp_payment_id text,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  precio_mensual numeric(14,2)
 );
 
 CREATE TABLE public.tenant_certificates (
@@ -5462,9 +5463,11 @@ BEGIN
   IF v_estado NOT IN ('pendiente_pago','esperando_cobro') THEN RETURN FALSE; END IF;
 
   DELETE FROM public.tenant_addons WHERE tenant_id = p_tenant_id AND tipo = 'fijo';
-  INSERT INTO public.tenant_addons (tenant_id, dimension, cantidad, tipo, vence_at)
-  SELECT p_tenant_id, x.dimension, x.cantidad, 'fijo', NULL
-  FROM jsonb_to_recordset(v_packs) AS x(dimension TEXT, cantidad INT)
+  -- Mig 461: el precio viaja en packs_objetivo (lo calcula la EF). Un change creado antes de la 461 no lo trae →
+  -- NULL, y la EF cae al catálogo para ese pack (mismo comportamiento que antes).
+  INSERT INTO public.tenant_addons (tenant_id, dimension, cantidad, tipo, vence_at, precio_mensual)
+  SELECT p_tenant_id, x.dimension, x.cantidad, 'fijo', NULL, x.precio
+  FROM jsonb_to_recordset(v_packs) AS x(dimension TEXT, cantidad INT, precio NUMERIC)
   WHERE x.cantidad > 0;
 
   IF v_plan IS NOT NULL THEN

@@ -191,9 +191,9 @@ const cobroVivo = (t: { subscription_status?: string | null; mp_subscription_id?
 async function computeBilling(svc: any) {
   const [{ data: tenants }, { data: addons }] = await Promise.all([
     svc.from('tenants').select('id, plan_tier, billing_mode, manual_monto_mensual').eq('subscription_status', 'active'),
-    svc.from('tenant_addons').select('tenant_id, dimension, cantidad').eq('tipo', 'fijo'),
+    svc.from('tenant_addons').select('tenant_id, dimension, cantidad, precio_mensual').eq('tipo', 'fijo'),
   ])
-  const addonsDe = new Map<string, Array<{ dimension: string; cantidad: number }>>()
+  const addonsDe = new Map<string, Array<{ dimension: string; cantidad: number; precio_mensual: number | string | null }>>()
   for (const a of (addons ?? []) as any[]) {
     const l = addonsDe.get(a.tenant_id) ?? []; l.push(a); addonsDe.set(a.tenant_id, l)
   }

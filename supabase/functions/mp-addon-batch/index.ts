@@ -56,8 +56,26 @@ const BASE_ESTADO: Record<string, { sku: number; sucursales: number; usuarios: n
 const DIM_TABLA: Record<string, string> = { sku: 'productos', usuarios: 'users', sucursales: 'sucursales' }
 
 type Pack = { dimension: string; cantidad: number }
+type PackActual = Pack & { precio_mensual: number | string | null }
 const precioDe = (dimension: string, cantidad: number): number | null =>
   ADDON_PACKS[dimension]?.find(p => p.cantidad === cantidad)?.precio ?? null
+
+// Mig 461 / PR-6 (GO 2026-10-02): el precio nuevo de un add-on aplica SOLO a compras nuevas. Un pack que el negocio
+// ya tiene vale lo que pagó al contratarlo (tenant_addons.precio_mensual); el catálogo vigente solo para un pack
+// nuevo o distinto (o uno viejo sin precio registrado). Espejo: precioPack de src/lib/mpAddonBatch.ts.
+const pactadoDe = (a: PackActual | undefined): number | null => {
+  if (!a || a.precio_mensual == null) return null
+  const n = parseFloat(String(a.precio_mensual))
+  return Number.isFinite(n) ? n : null
+}
+const precioPack = (p: Pack, actuales: PackActual[]): number => {
+  const actual = actuales.find(a => a.dimension === p.dimension)
+  if (actual && actual.cantidad === p.cantidad) {
+    const pactado = pactadoDe(actual)
+    if (pactado !== null) return pactado
+  }
+  return precioDe(p.dimension, p.cantidad) ?? 0
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -125,8 +143,8 @@ Deno.serve(async (req) => {
       return json({ error: 'Necesitás una suscripción activa para modificar tu plan.' }, 400)
     }
     const { data: fijosRows } = await admin.from('tenant_addons')
-      .select('dimension, cantidad').eq('tenant_id', tenantId).eq('tipo', 'fijo')
-    const packsActuales: Pack[] = (fijosRows ?? []) as Pack[]
+      .select('dimension, cantidad, precio_mensual').eq('tenant_id', tenantId).eq('tipo', 'fijo')
+    const packsActuales: PackActual[] = (fijosRows ?? []) as PackActual[]
 
     const getRes = await fetch(`${MP}/preapproval/${t.mp_subscription_id}`, { headers: H })
     if (!getRes.ok) return json({ error: 'No se pudo leer la suscripción en Mercado Pago' }, 502)
@@ -167,8 +185,10 @@ Deno.serve(async (req) => {
     }
 
     // ── Cálculo por delta (espejo calcularBatch) ──────────────────────────────────
-    const suma = (packs: Pack[]) => packs.reduce((s, p) => s + (precioDe(p.dimension, p.cantidad) ?? 0), 0)
+    const suma = (packs: Pack[]) => packs.reduce((s, p) => s + precioPack(p, packsActuales), 0)
     const recurrenteNuevo = Math.max(0, montoActual - suma(packsActuales) + suma(packsObjetivo) + deltaPlan)
+    // Lo que se guarda en el change (y fn_aplicar_addon_batch copia a tenant_addons.precio_mensual).
+    const packsObjetivoConPrecio = packsObjetivo.map(p => ({ ...p, precio: precioPack(p, packsActuales) }))
     const delta = recurrenteNuevo - montoActual
     const dims = ['sku', 'sucursales', 'usuarios', 'comprobantes', 'cuits']
     const cantidadDe = (packs: Pack[], d: string) => packs.find(p => p.dimension === d)?.cantidad ?? 0
@@ -235,7 +255,7 @@ Deno.serve(async (req) => {
       if (!cambiaPlan) return json({ error: 'El cambio programado es solo para el cambio de plan.' }, 400)
       if (!nextPaymentDate) return json({ error: 'Mercado Pago no informó tu próxima fecha de cobro. Probá el cambio inmediato.' }, 502)
       const { data: change, error: insErr } = await admin.from('addon_batch_changes').insert({
-        tenant_id: tenantId, packs_objetivo: packsObjetivo, plan_objetivo: planObjetivo,
+        tenant_id: tenantId, packs_objetivo: packsObjetivoConPrecio, plan_objetivo: planObjetivo,
         estado: 'programado', programado_para: new Date(nextPaymentDate).toISOString(),
         monto_delta: 0, monto_recurrente_nuevo: recurrenteNuevo,
       }).select('id').single()
@@ -247,7 +267,7 @@ Deno.serve(async (req) => {
     // ── BAJA / NEUTRO: sin cobro — PUT fail-closed + aplicación atómica ───────────
     if (delta <= 0) {
       const { data: change, error: insErr } = await admin.from('addon_batch_changes').insert({
-        tenant_id: tenantId, packs_objetivo: packsObjetivo, plan_objetivo: planObjetivo,
+        tenant_id: tenantId, packs_objetivo: packsObjetivoConPrecio, plan_objetivo: planObjetivo,
         monto_delta: 0, monto_recurrente_nuevo: recurrenteNuevo,
       }).select('id').single()
       if (insErr || !change) return json({ error: 'No se pudo registrar el cambio. Reintentá.' }, 500)
@@ -276,7 +296,7 @@ Deno.serve(async (req) => {
 
     // ── SUBA: preference de pago único por el delta; aplica el webhook al pagar ───
     const { data: change, error: insErr } = await admin.from('addon_batch_changes').insert({
-      tenant_id: tenantId, packs_objetivo: packsObjetivo, plan_objetivo: planObjetivo,
+      tenant_id: tenantId, packs_objetivo: packsObjetivoConPrecio, plan_objetivo: planObjetivo,
       monto_delta: delta, monto_recurrente_nuevo: recurrenteNuevo,
     }).select('id').single()
     if (insErr || !change) return json({ error: 'No se pudo registrar el cambio. Reintentá.' }, 500)

@@ -2411,6 +2411,20 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 💰 §90 — La sesión de caja vive en la sucursal de su caja (mig 460, 🟡 DEV) — 2026-10-02
+
+Incidente PROD (negocio de GO): sesión abierta desde el 13/04 ($4.000) con sucursal Huechuraba y caja de Casa central →
+invisible en Caja y bloqueaba el cambio de sucursal sin salida. Corregida esa fila con OK de GO; las 2 cerradas desfasadas
+quedan (historial). Sin otras abiertas desfasadas en PROD.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 90.1 | 🛑 Abrir una sesión con otra sucursal en el selector → la base le pone la sucursal de la caja | SQL DEV (rollback) | ✅ |
+| 90.2 | 🛑 Cambiarle la sucursal a una sesión (desalinearla de su caja) → rechazado | SQL DEV (rollback) | ✅ |
+| 90.3 | 🛑 Mover de sucursal una caja con sesión abierta → "cerrala antes de cambiarla de sucursal" | SQL DEV (rollback) | ✅ |
+| 90.4 | El aviso "tenés una caja abierta en otra sucursal" usa la sucursal de la caja y "ir a cerrarla" lleva a donde la caja se ve | revisión · e2e de caja 05/20/32/64/65/67/157 sin regresión | ✅ código |
+| 90.5 | PROD: GO cierra `Caja1` (Casa central) con arqueo de $4.000 | — | ⏳ GO |
+
 ## 🧩 §89 — Desarmado de KIT atómico (mig 459, 🟡 DEV) — 2026-10-02
 
 Antes: escrituras sueltas desde el navegador (KIT rebajado sin componentes si fallaba a mitad; `stock_antes` del

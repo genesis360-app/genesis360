@@ -729,7 +729,8 @@ export default function CajaPage() {
         // G5 Fase 3 (E1) — moneda REAL de la sesión, denormalizada de cajas.moneda al abrir
         // (mig 368: inmutable en el histórico aunque después se edite cajas.moneda).
         moneda: cajaActual?.moneda ?? 'ARS',
-        sucursal_id: sucursalId || null,
+        // La sesión vive en la sucursal de SU caja, no la del selector (mig 460 lo fuerza en la base).
+        sucursal_id: cajaActual?.sucursal_id ?? (sucursalId || null),
       })
       if (error) throw error
       // Notificar si hay diferencia

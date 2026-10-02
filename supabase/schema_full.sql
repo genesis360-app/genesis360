@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T06:14:16.916Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002060551 · 175 tablas
+-- Generado 2026-10-02T06:28:01.962Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002061859 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -5701,6 +5701,28 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_caja_sesion_sucursal_de_su_caja()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_suc uuid;
+BEGIN
+  SELECT sucursal_id INTO v_suc FROM cajas WHERE id = NEW.caja_id;
+  IF v_suc IS NULL THEN RETURN NEW; END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    NEW.sucursal_id := v_suc;
+  ELSIF NEW.sucursal_id IS DISTINCT FROM v_suc AND NEW.sucursal_id IS DISTINCT FROM OLD.sucursal_id THEN
+    RAISE EXCEPTION 'La sesión de caja tiene que estar en la sucursal de su caja.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_canal_de_origen(p_tenant_id uuid, p_origen text)
  RETURNS uuid
  LANGUAGE sql
@@ -7851,6 +7873,22 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_mover_caja_con_sesion_abierta()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.sucursal_id IS DISTINCT FROM OLD.sucursal_id
+     AND EXISTS (SELECT 1 FROM caja_sesiones WHERE caja_id = NEW.id AND estado = 'abierta') THEN
+    RAISE EXCEPTION 'La caja "%" está abierta: cerrala antes de cambiarla de sucursal.', NEW.nombre
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_guard_rol_admin()
@@ -15258,10 +15296,12 @@ CREATE TRIGGER trg_caja_mov_cierre BEFORE DELETE OR UPDATE ON public.caja_movimi
 CREATE TRIGGER trg_validar_moneda_cuenta_origen BEFORE INSERT OR UPDATE OF moneda, cuenta_origen_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_cuenta_origen();
 CREATE TRIGGER trg_validar_moneda_movimiento BEFORE INSERT OR UPDATE OF moneda, sesion_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_sesion();
 CREATE TRIGGER trg_caja_ses_cierre BEFORE DELETE OR UPDATE ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION trg_caja_ses_periodo_cerrado();
+CREATE TRIGGER trg_caja_sesiones_sucursal_de_su_caja BEFORE INSERT OR UPDATE OF sucursal_id ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_caja_sesion_sucursal_de_su_caja();
 CREATE TRIGGER trg_guard_una_sesion_abierta BEFORE INSERT OR UPDATE OF estado ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_guard_una_sesion_abierta();
 CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_set_caja_sesion_numero();
 CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
 CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();
+CREATE TRIGGER trg_cajas_guard_mover_con_sesion_abierta BEFORE UPDATE OF sucursal_id ON public.cajas FOR EACH ROW EXECUTE FUNCTION fn_guard_mover_caja_con_sesion_abierta();
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_categorias_cliente_auditar AFTER INSERT OR UPDATE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_auditar();
 CREATE TRIGGER trg_categorias_cliente_guard_delete BEFORE DELETE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_guard_delete();

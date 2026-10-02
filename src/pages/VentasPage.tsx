@@ -605,6 +605,20 @@ export default function VentasPage() {
   const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   // A7 (relevamiento Ventas A-D): destino del stock devuelto — DEV (revisión) o vendible directo. Default DEV.
   const [devDestinoStock, setDevDestinoStock] = useState<'dev' | 'vendible'>('dev')
+  // U-2 (B): en avanzado, "vendible" exige elegir la ubicación (antes entraba sin ubicación y el POS no la vendía).
+  const [devUbicVendibleId, setDevUbicVendibleId] = useState('')
+  const { data: ubicacionesVendibles = [] } = useQuery({
+    queryKey: ['ubicaciones-vendibles', tenant?.id, devolucionVenta?.sucursal_id ?? null],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ubicaciones').select('id, nombre, sucursal_id')
+        .eq('tenant_id', tenant!.id).eq('activo', true).eq('disponible_surtido', true).eq('es_devolucion', false)
+        .order('nombre')
+      if (error) throw error
+      const suc = devolucionVenta?.sucursal_id ?? null
+      return (data ?? []).filter((u: any) => !u.sucursal_id || !suc || u.sucursal_id === suc)
+    },
+    enabled: !!tenant && !!devolucionVenta && modoAvanzado,
+  })
   // L1 — caja específica para egreso efectivo en devolución (ARS)
   const [devCajaSesionId, setDevCajaSesionId] = useState<string>('')
   // G5 Fase 6 (G1) — caja específica para el egreso en USD, cuando el medio de devolución es
@@ -1347,14 +1361,32 @@ export default function VentasPage() {
         }
       }
 
+      // U-2 (A): en avanzado, stock en estado vendible pero SIN ubicar o en una ubicación no habilitada para surtido.
+      // No se vende, pero el producto tiene que seguir apareciendo para que el POS explique por qué (con un grupo
+      // activo se ocultaba y la persona no entendía dónde estaba su stock).
+      const trabadoMap: Record<string, number> = {}
+      if (modoAvanzado) {
+        let trabQ = applyFilter(supabase.from('inventario_lineas')
+          .select('producto_id, cantidad, cantidad_reservada, ubicacion_id, ubicaciones(disponible_surtido)')
+          .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
+          .in('producto_id', productoIds))
+        if (estadosFinal.length > 0) trabQ = trabQ.in('estado_id', estadosFinal)
+        const { data: trab } = await trabQ
+        for (const l of trab ?? []) {
+          if (l.ubicacion_id && (l.ubicaciones as any)?.disponible_surtido !== false) continue
+          trabadoMap[l.producto_id] = (trabadoMap[l.producto_id] ?? 0) + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
+        }
+      }
+
       // Filtrar productos con stock > 0 en el grupo y agregar stock calculado
       return prods
         .map((p: any) => ({
           ...p,
           stock_disponible: stockMap[p.id] ?? 0,
           stock_filtrado: estadosFiltro.length > 0, // indica que el stock está filtrado por grupo
+          stock_trabado: trabadoMap[p.id] ?? 0,
         }))
-        .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0)
+        .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0 || (trabadoMap[p.id] ?? 0) > 0)
     },
     enabled: !!tenant && authInitialized,
   })
@@ -1663,6 +1695,48 @@ export default function VentasPage() {
     const stockDisponible = p.stock_disponible ?? p.stock_actual ?? 0
 
     if (stockDisponible <= 0) {
+      // U-2 (A): en avanzado el POS solo vende stock UBICADO y en ubicaciones habilitadas para surtido. Si el stock está
+      // sin ubicar o en una ubicación no habilitada, decirlo y llevar a donde se arregla — antes el cartel decía "no
+      // tiene stock" con el stock a la vista en Inventario.
+      if (modoAvanzado && (!p.stock_filtrado || p.stock_trabado > 0)) {
+        let q = supabase.from('inventario_lineas').select('cantidad, cantidad_reservada, ubicacion_id, ubicaciones(nombre, disponible_surtido)')
+          .eq('tenant_id', tenant!.id).eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
+        if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+        const { data: lineasProd } = await q
+        const libre = (l: any) => Math.max(0, Number(l.cantidad ?? 0) - Number(l.cantidad_reservada ?? 0))
+        const sinUbicar = (lineasProd ?? []).filter((l: any) => !l.ubicacion_id).reduce((a: number, l: any) => a + libre(l), 0)
+        const noHabilitadas = (lineasProd ?? []).filter((l: any) => l.ubicacion_id && (l.ubicaciones as any)?.disponible_surtido === false)
+        const enNoHabilitadas = noHabilitadas.reduce((a: number, l: any) => a + libre(l), 0)
+        const u = (n: number) => `${n} unidad${n === 1 ? '' : 'es'}`
+        if (sinUbicar > 0) {
+          const busqueda = encodeURIComponent(p.sku || p.nombre)
+          toast.error(t => (
+            <span>
+              Hay <strong>{u(sinUbicar)} sin ubicar</strong> de este producto: en modo avanzado solo se vende el stock
+              con ubicación.{' '}
+              <button className="underline font-medium" onClick={() => {
+                toast.dismiss(t.id)
+                navigate(`/inventario?search=${busqueda}&filterUbic=__sin__`)
+              }}>Ubicarlas en Inventario</button>
+            </span>
+          ), { duration: 10000 })
+          return
+        }
+        if (enNoHabilitadas > 0) {
+          const nombres = [...new Set(noHabilitadas.map((l: any) => (l.ubicaciones as any)?.nombre).filter(Boolean))].join(', ')
+          toast.error(t => (
+            <span>
+              Hay <strong>{u(enNoHabilitadas)}</strong> de este producto en {nombres ? <strong>{nombres}</strong> : 'una ubicación'}, que
+              no está habilitada para venta (surtido).{' '}
+              <button className="underline font-medium" onClick={() => {
+                toast.dismiss(t.id)
+                navigate('/configuracion?tab=inventario')
+              }}>Habilitarla en Configuración</button>
+            </span>
+          ), { duration: 10000 })
+          return
+        }
+      }
       toast.error(p.stock_filtrado
         ? 'Sin stock disponible en el grupo seleccionado'
         : 'Este producto no tiene stock disponible')
@@ -4232,6 +4306,7 @@ export default function VentasPage() {
       setDevCajaSesionId(sesionesArs.length === 1 ? (sesionesArs[0] as any).id : '')
       setDevCajaSesionUsdId(sesionesUsd.length === 1 ? (sesionesUsd[0] as any).id : '')
       setDevDestinoStock('dev')
+      setDevUbicVendibleId('')
       setDevolucionVenta(venta)
     }
     // A1 — al aprobar desde Supervisión ya se pasó el gate de `puedeSupervisarModulo`, más
@@ -4401,6 +4476,10 @@ export default function VentasPage() {
         return
       }
       estadoVendibleId = estadoVendData.id
+      if (!devUbicVendibleId) {
+        toast.error('Elegí la ubicación donde vuelve a quedar la mercadería: en modo avanzado el stock sin ubicación no se puede vender.')
+        return
+      }
     }
 
     // Calcular monto total de la devolución
@@ -4658,7 +4737,7 @@ export default function VentasPage() {
             lineaId = lineaExistente.id
             lineaLpn = lineaExistente.lpn
           } else {
-            // A7: si devDestinoStock === 'vendible', va al stock disponible (sin ubicación); si no,
+            // A7: si devDestinoStock === 'vendible', va al stock disponible en la ubicación elegida (U-2); si no,
             // a la ubicación DEV de revisión. En básico, reingreso directo (sin ubicación/estado).
             const lineaPayload: any = {
               tenant_id: tenant.id,
@@ -4671,6 +4750,7 @@ export default function VentasPage() {
               // Básico: reingreso directo al stock (sin ubicación ni estado), inmediatamente vendible.
             } else if (devDestinoStock === 'vendible' && estadoVendibleId) {
               lineaPayload.estado_id = estadoVendibleId
+              lineaPayload.ubicacion_id = devUbicVendibleId
             } else {
               lineaPayload.ubicacion_id = ubicDevId
               lineaPayload.estado_id = estadoDevId
@@ -7953,10 +8033,23 @@ export default function VentasPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-primary">Reintegrar a stock vendible</p>
-                      <p className="text-[11px] text-muted">Entra como disponible para venta, sin ubicación (asignar después).</p>
+                      <p className="text-[11px] text-muted">Entra como disponible para venta, en la ubicación que elijas.</p>
                     </div>
                   </label>
                 </div>
+                {devDestinoStock === 'vendible' && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-primary mb-1">¿En qué ubicación queda?</label>
+                    <select value={devUbicVendibleId} onChange={e => setDevUbicVendibleId(e.target.value)} aria-label="Ubicación del stock devuelto"
+                      className={`w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 ${devUbicVendibleId ? 'border-gray-200 dark:border-gray-700' : 'border-red-300 dark:border-red-700'}`}>
+                      <option value="" disabled>Elegí la ubicación…</option>
+                      {(ubicacionesVendibles as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                    {(ubicacionesVendibles as any[]).length === 0 && (
+                      <p className="text-[11px] text-red-500 mt-1">No hay ubicaciones habilitadas para venta. Activá "disponible para surtido" en Configuración → Inventario → Ubicaciones.</p>
+                    )}
+                  </div>
+                )}
               </div>
               )}
 

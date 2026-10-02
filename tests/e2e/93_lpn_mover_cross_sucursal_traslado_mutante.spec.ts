@@ -23,7 +23,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible, garantizarUbicacionSiembra, UBICACION_SIEMBRA } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const SUR = 'b33a9829-e14d-4962-b55b-3995f614dd87'
@@ -41,6 +41,8 @@ test.describe('LpnAccionesModal → Mover a OTRA sucursal genera traslado (mutan
     // Sucursal activa del OWNER fija = Norte (origen)
     await goto(page, '/')
     await page.evaluate((id) => localStorage.setItem('sucursal-id', id), NORTE)
+    // U-2 (B): el ingreso en avanzado exige ubicación → la de siembra tiene que existir.
+    await garantizarUbicacionSiembra(page)
 
     // 1) Crear producto + ingreso de 5 u. en Sucursal Norte (mismo patrón que el spec 92)
     await goto(page, '/productos/nuevo')
@@ -67,6 +69,8 @@ test.describe('LpnAccionesModal → Mover a OTRA sucursal genera traslado (mutan
     await modalIngreso.getByText(nombreProducto).first().click()
     const sucSelectIngreso = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
     if (await visible(sucSelectIngreso, 2000)) await sucSelectIngreso.selectOption(NORTE)
+    const ubicSelectIngreso = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
+    if (await visible(ubicSelectIngreso, 3000)) await ubicSelectIngreso.selectOption({ label: UBICACION_SIEMBRA })
     const cantidadIngreso = page.locator('input[type="number"][placeholder="0"]').first()
     await expect(cantidadIngreso).toBeVisible({ timeout: 5000 })
     await cantidadIngreso.fill('5')

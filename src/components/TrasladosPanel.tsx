@@ -19,6 +19,7 @@ import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { logActividad } from '@/lib/actividadLog'
 import { esDecimal } from '@/lib/ventasValidation'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import {
   puedeCrearTraslado, puedeConfirmarRecepcion, disponibleLinea,
   validarCantidadTraslado, validarRecepcion, estadoDesdeRecepcion, totalFaltante,
@@ -44,6 +45,7 @@ export default function TrasladosPanel() {
   const { sucursalId, sucursales, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const rol = user?.rol as any
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
 
@@ -289,6 +291,8 @@ export default function TrasladosPanel() {
       }))
       const err = validarRecepcion(recepcion)
       if (err) throw new Error(err)
+      // U-2 (B): en avanzado el POS solo vende stock ubicado → la recepción exige la ubicación donde quedó.
+      if (modoAvanzado && !recibirUbicacionId) throw new Error('Elegí la ubicación donde guardaste lo recibido: en modo avanzado el stock sin ubicación no se puede vender')
 
       for (let i = 0; i < itemsT.length; i++) {
         const it = itemsT[i]
@@ -685,8 +689,8 @@ export default function TrasladosPanel() {
               </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación destino</label>
-                <select value={recibirUbicacionId} onChange={e => setRecibirUbicacionId(e.target.value)} className={inputCls}>
-                  <option value="">Sin ubicación</option>
+                <select value={recibirUbicacionId} onChange={e => setRecibirUbicacionId(e.target.value)} className={inputCls} aria-label="Ubicación destino">
+                  <option value="" disabled={modoAvanzado}>{modoAvanzado ? 'Elegí dónde quedó…' : 'Sin ubicación'}</option>
                   {(ubicacionesDestino as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesDestinoPorId)}</option>)}
                 </select>
               </div>

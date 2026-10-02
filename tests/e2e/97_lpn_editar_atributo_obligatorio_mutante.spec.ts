@@ -16,7 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible, garantizarUbicacionSiembra, elegirUbicacionSiembraEnIngreso } from './helpers/fixtures'
 
 test.describe('LpnAccionesModal → Editar exige atributo de variante obligatorio (mutante)', () => {
   test('vaciar el color y guardar rechaza; re-elegirlo y guardar persiste', async ({ page, request }) => {
@@ -40,6 +40,8 @@ test.describe('LpnAccionesModal → Editar exige atributo de variante obligatori
     })
 
     // 2) Ingreso manual de 1 unidad con color "Verde-E2E"
+    // U-2 (B): el ingreso en avanzado exige ubicación → la de siembra tiene que existir antes de abrir el modal.
+    await garantizarUbicacionSiembra(page)
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
@@ -73,6 +75,7 @@ test.describe('LpnAccionesModal → Editar exige atributo de variante obligatori
     await nuevoValorInput.blur()
     await expect(colorSelectIngreso).toHaveValue('Verde-E2E', { timeout: 6000 })
 
+    await elegirUbicacionSiembraEnIngreso(page)
     await page.getByRole('button', { name: /Confirmar ingreso/ }).first().click()
     await expect(page.getByText(/Ingreso registrado/i)).toBeVisible({ timeout: 12000 })
 

@@ -286,6 +286,7 @@ export default function InventarioPage() {
   const [clonarDestinoId, setClonarDestinoId] = useState('')
   const [desarmarCantidad, setDesarmarCantidad] = useState('1')
   const [desarmarNotas, setDesarmarNotas] = useState('')
+  const [desarmarUbicacionId, setDesarmarUbicacionId] = useState('')
 
   // ── Conteo tab state ───────────────────────────────────────────────────────
   type ConteoRow = {
@@ -1239,6 +1240,8 @@ export default function InventarioPage() {
       if ((selectedProduct as any).tiene_encaje && !form.encaje.trim()) throw new Error('Este producto requiere encaje')
       if ((selectedProduct as any).tiene_formato && !form.formato.trim()) throw new Error('Este producto requiere formato')
       if ((selectedProduct as any).tiene_sabor_aroma && !form.saborAroma.trim()) throw new Error('Este producto requiere sabor/aroma')
+      // U-2 (B): en avanzado el POS solo vende stock ubicado → no se ingresa sin ubicación.
+      if (modoAvanzado && !form.ubicacionId) throw new Error('Elegí la ubicación: en modo avanzado el stock sin ubicación no se puede vender')
 
       // I-05: Validar mono_sku en la ubicación seleccionada
       if (form.ubicacionId) {
@@ -1603,6 +1606,8 @@ export default function InventarioPage() {
     mutationFn: async () => {
       const cant = parseFloat(kittingCantidad)
       if (!kittingKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
+      // U-2 (B): en avanzado el KIT armado entra con ubicación elegida (sin ella el POS no lo vende).
+      if (modoAvanzado && !kittingUbicacionId) throw new Error('Elegí la ubicación destino del KIT: en modo avanzado el stock sin ubicación no se puede vender')
       // RPC ATÓMICA (mig 244): valida stock por componente, reserva FIFO y crea el kitting_log
       // en una sola transacción → no quedan reservas huérfanas si algo falla a mitad.
       const { error } = await supabase.rpc('iniciar_armado_kit', {
@@ -1667,6 +1672,8 @@ export default function InventarioPage() {
       if (!desarmarKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
       const recetas = recetasMap[desarmarKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
+      // U-2 (B): se valida ANTES de escribir nada (el desarmado no es atómico).
+      if (modoAvanzado && !desarmarUbicacionId) throw new Error('Elegí la ubicación de los componentes: en modo avanzado el stock sin ubicación no se puede vender')
 
       // 1. Verificar que hay stock suficiente del KIT en inventario_lineas (filtrado por sucursal)
       let lineasKitQ = supabase.from('inventario_lineas')
@@ -1686,7 +1693,8 @@ export default function InventarioPage() {
         const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
         const aRebajar = Math.min(disponible, restanteKit)
         if (aRebajar <= 0) continue
-        await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
+        const { error: eReb } = await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
+        if (eReb) throw new Error(`No se pudo rebajar el KIT: ${eReb.message}`)
         restanteKit -= aRebajar
       }
       const saKitDes = await getStockAntesSucursal(desarmarKitId, sucursalId)
@@ -1702,11 +1710,14 @@ export default function InventarioPage() {
       // 3. Ingreso de cada componente según receta
       for (const r of recetas) {
         const cantComp = r.cantidad * cant
-        await supabase.from('inventario_lineas').insert({
+        const { error: eComp } = await supabase.from('inventario_lineas').insert({
           tenant_id: tenant!.id, producto_id: r.comp_producto_id,
           cantidad: cantComp, activo: true,
           sucursal_id: sucursalId || null,
+          ubicacion_id: modoAvanzado ? desarmarUbicacionId : null,
         })
+        // Antes no se miraba el error: el movimiento quedaba registrado sin el stock.
+        if (eComp) throw new Error(`El KIT ya se rebajó pero no se pudo ingresar un componente (${eComp.message}). Revisá el inventario.`)
         const saComp = await getStockAntesSucursal(r.comp_producto_id, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: r.comp_producto_id,
@@ -1732,7 +1743,7 @@ export default function InventarioPage() {
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['kits-productos'] })
       setShowDesarmarModal(false)
-      setDesarmarCantidad('1'); setDesarmarNotas('')
+      setDesarmarCantidad('1'); setDesarmarNotas(''); setDesarmarUbicacionId('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -2523,6 +2534,8 @@ export default function InventarioPage() {
           if (row.tiene_encaje && !row.encaje.trim()) { errores.push(`${row.sku}: requiere encaje`); continue }
           if (row.tiene_formato && !row.formato.trim()) { errores.push(`${row.sku}: requiere formato`); continue }
           if (row.tiene_sabor_aroma && !row.sabor_aroma.trim()) { errores.push(`${row.sku}: requiere sabor/aroma`); continue }
+          // U-2 (B): en avanzado el POS solo vende stock ubicado → la ubicación se elige a conciencia, no se presupone.
+          if (modoAvanzado && !row.ubicacion_id) { errores.push(`${row.sku}: elegí la ubicación (en modo avanzado el stock sin ubicación no se puede vender)`); continue }
 
           const { data: prodAntes } = await supabase.from('productos').select('precio_costo,precio_venta').eq('id', row.producto_id).single()
           const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
@@ -2977,10 +2990,11 @@ export default function InventarioPage() {
                               )}
                               {modoAvanzado && (
                               <td className="px-3 py-2">
-                                <select value={row.ubicacion_id}
+                                <select value={row.ubicacion_id} aria-label="Ubicación" aria-invalid={!row.ubicacion_id}
                                   onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, ubicacion_id: e.target.value } : r))}
-                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
-                                  <option value="">Sin ubic.</option>
+                                  className={`w-full px-2 py-1.5 border rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 ${row.ubicacion_id ? 'border-gray-200 dark:border-gray-600' : 'border-red-300 dark:border-red-700'}`}>
+                                  {/* U-2 (B): obligatoria en avanzado, sin valor sugerido. */}
+                                  <option value="" disabled>Elegí…</option>
                                   {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                                 </select>
                               </td>
@@ -3687,7 +3701,8 @@ export default function InventarioPage() {
                           )}
                           <select value={form.ubicacionId} onChange={e => setForm(p => ({ ...p, ubicacionId: e.target.value }))}
                             className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
-                            <option value="">Sin ubicación</option>
+                            {/* U-2 (B): en avanzado la ubicación es obligatoria. */}
+                            <option value="" disabled={modoAvanzado}>{modoAvanzado ? 'Elegí la ubicación…' : 'Sin ubicación'}</option>
                             {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                           </select>
                           {/* Fase C del cubicaje (migs 321/322/325): avisa si la posición queda
@@ -5452,10 +5467,11 @@ export default function InventarioPage() {
                     )}
 
                     <div>
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Ubicación destino (opcional)</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Ubicación destino{modoAvanzado ? '' : ' (opcional)'}</label>
                       <select value={kittingUbicacionId} onChange={e => setKittingUbicacionId(e.target.value)}
                         className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30">
-                        <option value="">Sin ubicación</option>
+                        {/* U-2 (B): obligatoria en avanzado, sin valor sugerido. */}
+                        <option value="" disabled={modoAvanzado}>{modoAvanzado ? 'Elegí la ubicación…' : 'Sin ubicación'}</option>
                         {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                       </select>
                     </div>
@@ -6338,6 +6354,17 @@ export default function InventarioPage() {
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+
+                    {modoAvanzado && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Ubicación de los componentes</label>
+                        <select value={desarmarUbicacionId} onChange={e => setDesarmarUbicacionId(e.target.value)} aria-label="Ubicación de los componentes"
+                          className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-400/30">
+                          <option value="" disabled>Elegí la ubicación…</option>
+                          {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
+                        </select>
                       </div>
                     )}
 

@@ -267,6 +267,15 @@ export async function garantizarUbicacionSiembra(page: Page): Promise<boolean> {
   return true
 }
 
+/**
+ * U-2 (B, 2026-10-01): en modo AVANZADO el ingreso exige ubicación. Para los specs que arman el ingreso a mano: elige la
+ * ubicación de siembra en el modal abierto (si el campo está). Llamar `garantizarUbicacionSiembra` ANTES de abrir el modal.
+ */
+export async function elegirUbicacionSiembraEnIngreso(page: Page): Promise<void> {
+  const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
+  if (await visible(ubicSelect, 3000)) await ubicSelect.selectOption({ label: UBICACION_SIEMBRA })
+}
+
 export async function ingresoRealPorUI(
   page: Page,
   opts: { nombreProducto: string; cantidad: number; estadoNombre?: string; ubicacionNombre?: string },

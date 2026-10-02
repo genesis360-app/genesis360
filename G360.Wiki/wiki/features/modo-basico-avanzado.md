@@ -13,6 +13,9 @@ Dos experiencias en un solo SaaS (v1.55.0, mig 207):
 - **Básico** (default para tenants NUEVOS, disponible en todos los planes): experiencia de mostrador para kioscos, almacenes y pymes chicas. POS, caja, productos simples, stock simple, clientes con CC, gastos. Sin LPN, lotes, series, vencimientos, ubicaciones, OC ni envíos.
 - **Avanzado (WMS)**: el sistema completo (trazabilidad estilo Manhattan/Blue Yonder). Toggle del DUEÑO en **Configuración → Negocio → Modo de operación**, gateado a plan **Pro+** (feature `wms`; el trial lo prueba automáticamente porque `usePlanLimits` da features de Pro durante trial activo).
 
+> 📍 **2026-10-01 (U-2):** en avanzado el stock ya no entra sin ubicación (ingreso, recepción, traslado, kit, importador,
+> devolución vendible) y el POS explica el stock que no puede vender. Ver [[wiki/features/inventario-stock]] → "U-2".
+
 ## Principio de diseño (invariante)
 
 **El modo gatea UI, nunca datos.** Los flujos de datos se gatean por producto (`tiene_series/tiene_lote/tiene_vencimiento`), como siempre. El backend no cambia: LPN auto-generado, `venta_item_despachos`, triggers de `stock_actual` y FIFO corren igual en ambos modos. Por eso:

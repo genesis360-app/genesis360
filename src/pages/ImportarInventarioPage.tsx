@@ -85,7 +85,7 @@ export default function ImportarInventarioPage() {
       ['sku', 'SÍ', 'Debe existir en el catálogo de productos (activo).'],
       ['cantidad', 'SÍ (sin series)', 'Número ENTERO mayor a 0, en la unidad base del producto. Ignorado para productos con series.'],
       ['precio_costo', 'no', 'Costo de este ingreso (solo para la línea). Si está vacío, usa el del producto.'],
-      ['ubicacion', 'no', 'Nombre de la ubicación de la sucursal (o global). Debe existir y estar activa. Una ubicación Mono-SKU no admite un segundo producto.'],
+      ['ubicacion', avanzado ? 'SÍ' : 'no (modo básico: se ignora)', 'Nombre de la ubicación de la sucursal (o global). Debe existir y estar activa. Una ubicación Mono-SKU no admite un segundo producto.'],
       ['estado', 'no', 'Estado del inventario. Si está vacío, usa el predeterminado del producto.'],
       ['proveedor', 'no', 'Si está vacío, usa el del producto.'],
       ['nro_lote', 'si el producto lo pide', 'Número de lote.'],
@@ -177,7 +177,8 @@ export default function ImportarInventarioPage() {
             const es = resolverReferencia(estNombre, ests.data ?? [], 'Estado')
             if (es.error) errores.push(es.error)
             estado_id = es.id ?? (estNombre ? null : producto?.estado_id ?? null)
-            if (!ubicacion_id && !ubicNombre && producto) avisos.push('Sin ubicación: el POS no lo va a poder vender hasta ubicarlo')
+            // U-2 (B): en avanzado la ubicación es obligatoria (antes era un aviso y la fila entraba igual).
+            if (!ubicNombre) errores.push('Falta la ubicación: en modo avanzado el stock sin ubicación no se puede vender')
           } else if (ubicNombre || estNombre) {
             avisos.push('Modo básico: se ignoran ubicación y estado')
           }

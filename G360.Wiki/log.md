@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | U-2: en modo avanzado el stock entra con ubicación (A + B) — en DEV
+
+- GO eligió A + B y rechazó la ubicación sugerida (C): "no sabemos si la guardó ahí físicamente".
+- A (POS): aviso "N unidades sin ubicar" con link a Inventario filtrado; aviso de ubicación no habilitada para surtido
+  (default `false` desde mig 336) con link a Configuración. El buscador con un grupo de estados activo ocultaba el
+  producto entero → ahora lo muestra si tiene stock trabado (`stock_trabado`).
+- B: ubicación obligatoria en avanzado, sin valor presupuesto, en ingreso individual y masivo, recepción, recibir
+  traslado, armar/desarmar KIT, importador de inventario (de aviso a error) y devolución "vendible" (bug: entraba sin
+  ubicación y el POS no la vendía). Desarmado: ahora revisa errores (antes el movimiento quedaba sin el stock).
+- Pendiente de GO: anulación de venta y cancelación de traslado (reingresan sin ubicación ni control de errores →
+  bloquean el guard de la base). Se mantiene la precarga de la ubicación habitual del producto (consultado).
+- Tests: e2e `174` (3 casos; prueba de mutación del buscador), specs 23/29/30/89/92/93/97/132 adaptados a elegir
+  ubicación (helper `elegirUbicacionSiembraEnIngreso`). Unit 2102, build OK. UAT §85.
+
 ## [2026-10-01] deploy | v1.236.0 a PROD — Maestro, Fase 0 fiscal, numeración por negocio
 
 - GO: "U-4 sí corregir… pasemos a PRD en el orden que indicás".

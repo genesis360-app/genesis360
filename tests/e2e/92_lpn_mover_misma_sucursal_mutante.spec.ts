@@ -19,7 +19,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible, garantizarUbicacionSiembra, elegirUbicacionSiembraEnIngreso } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 
@@ -42,6 +42,8 @@ test.describe('LpnAccionesModal → Mover dentro de la misma sucursal (mutante)'
     await expect(page).toHaveURL(/\/productos$/, { timeout: 8000 })
 
     // 2) Ingreso de 5 unidades en Sucursal Norte
+    // U-2 (B): el ingreso en avanzado exige ubicación → la de siembra tiene que existir antes de abrir el modal.
+    await garantizarUbicacionSiembra(page)
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
@@ -65,6 +67,7 @@ test.describe('LpnAccionesModal → Mover dentro de la misma sucursal (mutante)'
     const cantidadIngreso = page.locator('input[type="number"][placeholder="0"]').first()
     await expect(cantidadIngreso).toBeVisible({ timeout: 5000 })
     await cantidadIngreso.fill('5')
+    await elegirUbicacionSiembraEnIngreso(page)
     await page.getByRole('button', { name: /Confirmar ingreso/ }).first().click()
     await expect(page.getByText(/Ingreso registrado/i)).toBeVisible({ timeout: 12000 })
 

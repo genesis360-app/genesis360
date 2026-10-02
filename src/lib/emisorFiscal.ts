@@ -128,6 +128,22 @@ export function puntoVentaDelEmisor(
   return delEmisor.length ? Number(delEmisor[0].numero) : null
 }
 
+/**
+ * Punto de venta a IMPRIMIR en una factura ya emitida: el que quedó sellado al emitirla (`ventas.punto_venta`,
+ * mig 453). Las facturas anteriores no lo guardan → se cae al PV del emisor (comportamiento previo, que con 2+ PV
+ * por CUIT podía imprimir otro número).
+ */
+export function puntoVentaDeFactura(
+  pvSellado: number | string | null | undefined,
+  pvRows: PvRowLike[] | null | undefined,
+  emisorId: string | null,
+  esDefault: boolean,
+): number {
+  const sellado = Number(pvSellado)
+  if (Number.isInteger(sellado) && sellado > 0) return sellado
+  return puntoVentaDelEmisor(pvRows, emisorId, esDefault) ?? 1
+}
+
 export interface PvRowLike {
   numero: number | string
   emisor_id?: string | null

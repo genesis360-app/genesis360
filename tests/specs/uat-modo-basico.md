@@ -2411,6 +2411,43 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧾 §84 — Número de venta por negocio (mig 454, drift de PROD) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 84.1 | Cada negocio numera sus ventas desde su propio máximo (en PROD la columna era IDENTITY global: El Tilo #34 después de Kalken #33) | SQL en DEV simulando la IDENTITY de PROD (rollback): global 900000 → tras el arreglo 73 → 74 | ✅ |
+| 84.2 | Los números ya dados no se reescriben | revisión de la mig (solo DROP IDENTITY) | ✅ |
+| 84.3 | Dos ventas simultáneas del mismo negocio no reciben el mismo número (candado por negocio en el trigger) | revisión del trigger | ✅ código |
+
+## 🧾 §83 — Fase 0: la factura guarda su PV y el ambiente del CAE; campos fiscales intocables (mig 453) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 83.1 | 🛑 Factura emitida en el PV 2 → `ventas.punto_venta = 2` y `cae_ambiente = 'homologacion'` | e2e `173` A | ✅ |
+| 83.2 | 🛑 El PDF imprime el PV en que se emitió (antes, el primer PV del emisor) | e2e `173` A (Factura_B_0002-…) · unit `emisorFiscal` | ✅ |
+| 83.3 | 🛑 NC desde otro PV: `CbtesAsoc.PtoVta` = PV de la factura original; ARCA la acepta; NC sellada `nc_cae_ambiente` | e2e `173` B (homologación) | ✅ (ARCA acepta; no se probó que la versión vieja fallara) |
+| 83.4 | 🛑 NC en otro ambiente que su factura (p. ej. factura de prueba y emisor ya en producción) → rechazada con motivo | revisión de la EF | ✅ código |
+| 83.5 | 🛑 Desde el navegador no se puede cargar, cambiar ni borrar CAE, número, PV, ambiente, ni (con CAE) letra/emisor; ventas y devoluciones | e2e `173` C · SQL DEV impersonando (rollback) | ✅ |
+| 83.6 | Las actualizaciones normales de la venta (cobros, notas, estado) siguen andando | SQL DEV · e2e 22/56/63/87/137/164/171 en verde | ✅ |
+| 83.7 | Facturas anteriores a la mig 453: PV y ambiente NULL = "desconocido" = tratadas como REALES; sin backfill | revisión | ✅ |
+
+## 🗂️ §82 — Importar datos maestros, TODO O NADA (mig 452) — 2026-10-01
+
+`/configuracion/importar` con el mismo diseño que los otros importadores. Solo crea: lo existente (mismo nombre) se
+ignora. Proveedores se importa desde su propia pantalla (§80).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 82.1 | 🛑 Combo desde archivo: varias filas con el mismo nombre = UN combo con sus `combo_items` (antes se creaba sin productos y el POS lo ignoraba) | e2e `172` A · unit `importarMaestro` | ✅ |
+| 82.2 | 🛑 Combo: SKU inexistente/desactivado, % > 100, un solo producto con cantidad 1, descuento distinto entre filas, monto "1.500" (ambiguo) → error | unit `importarMaestro` · SQL DEV (rollback) | ✅ |
+| 82.3 | Motivo con tipo "egreso" (plantilla vieja) → `rebaje` (antes lo rechazaba el CHECK) | e2e `172` B | ✅ |
+| 82.4 | Grupo/perfil con un estado inexistente o desactivado → error con motivo (antes se salteaba) | e2e `172` C · unit | ✅ |
+| 82.5 | Perfil de vencimiento que ya existe se ignora ENTERO (antes se le agregaban reglas duplicadas); estado o días repetidos en el perfil → error | unit `importarMaestro` | ✅ |
+| 82.6 | Grupo predeterminado: si la carga falla, el predeterminado anterior queda; si sale bien, lo reemplaza | SQL DEV impersonando (rollback) | ✅ |
+| 82.7 | Ubicaciones y combos con la sucursal elegida (o todas); el mismo nombre en otra sucursal es nuevo; código repetido/mal formado → error | unit · SQL DEV | ✅ |
+| 82.8 | 🛑 Todo o nada: una categoría del archivo aparece antes de cargar → "ya existe" y no se crea ninguna | e2e `172` D | ✅ |
+| 82.9 | Color de estado inválido → error (antes se elegía uno al azar) | unit | ✅ |
+
 ## 📲 §81 — Enviar ticket/factura/NC por Mail o WhatsApp (mig 451) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

@@ -8,9 +8,10 @@ updated: 2026-10-01
 
 # Padrón de ARCA — autocompletar por CUIT
 
-> Estado: **fases 1-4 hechas en DEV (2026-10-01)** — EF `consultar-cuit` + mig 446 en Supabase DEV, pantallas en
-> `dev`, e2e `165` verde contra el padrón de **homologación**. **Falta PROD**: el `produccion.crt` de Fede y la
-> relación con el servicio en producción (paso 2 de `sources/raw/guia_fede_certificado_plataforma.md`).
+> Estado: **✅ EN PROD (v1.235.0, 2026-10-01)** — EF `consultar-cuit` en PROD en modo producción (secret
+> `ARCA_PADRON_PRODUCCION=true`), mig 446 en DEV y PROD. DEV consulta el padrón de **homologación** (datos ficticios).
+> Certificado de producción de Fede subido y relación con el servicio en producción completada; consulta real a ARCA
+> producción verificada (CUIT 33-69345023-9 → "AGENCIA DE RECAUDACION Y CONTROL ADUANERO", jurídica, activa).
 
 ## Qué hace
 
@@ -99,12 +100,26 @@ CUITs útiles del padrón de **homologación** (datos ficticios de ARCA): `30500
 `20201731594` CF (ejemplo del manual) · `27298672478` "Domicilio Incompleto", sin régimen → condición `null` ·
 `20000000516` CUIT cancelada.
 
+## Certificado de plataforma
+
+- Alias `genesis360plataforma`, CUIT 20-42237416-8 (Fede). Una sola clave privada (generada por Genesis360, nunca en
+  el repo) con dos certificados: homologación (DEV) y producción (emisor ARCA "Computadores", serie `3624A3891E3D9FD7`,
+  vence **30/09/2028**; su clave pública coincide con la del CSR). Ambos en el bucket privado `certificados-afip`
+  (`plataforma/20422374168/<homologacion|produccion>.crt`); la ruta de la clave va en el secret `ARCA_PADRON_KEY_PATH`.
+- Relación en producción: Administrador de Relaciones → servicio **dentro de WebServices** (no el trámite web "Nivel 3"),
+  representante = el **Computador Fiscal** `genesis360plataforma` (no un CUIT/CUIL). Fede se trabó ahí (01/10); ver la
+  guía `sources/raw/guia_fede_certificado_plataforma.md`, paso 2.
+- 🛑 El ticket WSAA dura 12 h y ARCA no da otro mientras haya uno vigente: **no probar el login de producción desde otro
+  lado que no sea la EF de PROD**, o copiar el ticket a `afip_wsaa_ta` de PROD (se hizo así en el deploy del 01/10).
+- Renovar antes del 30/09/2028 (generar CSR nuevo con la misma clave o una nueva y actualizar el secret).
+
 ## Pendiente
 
-1. `produccion.crt` de Fede → subir a `certificados-afip/plataforma/20422374168/produccion.crt` en **PROD** + secrets
-   `ARCA_PADRON_KEY_PATH` y `ARCA_PADRON_PRODUCCION=true` en PROD + mig 446 + deploy de la EF (antes del merge).
-2. Duda fiscal **C-19** ([[wiki/business/consultas-contador]]): CF cuando hay régimen general sin IVA.
-3. El mismo certificado destraba la **facturación de plataforma** (`platform_billers.cert_crt_path`/`cert_key_path`).
+1. Duda fiscal **C-19** ([[wiki/business/consultas-contador]]): CF cuando hay régimen general sin IVA (caso real: ARCA
+   aparece con el impuesto 34, "no alcanzado").
+2. El mismo certificado destraba la **facturación de plataforma** (`platform_billers.cert_crt_path`/`cert_key_path`):
+   falta la relación de `wsfe` en ARCA y configurar el biller.
+3. Primera consulta desde la app de PROD (no hay usuario de prueba en PROD): que GO o Fede carguen un CUIT.
 
 Relacionado: [[wiki/features/facturacion-afip]] · [[wiki/features/clientes-proveedores]] ·
 [[wiki/features/multi-cuit]] · `sources/raw/guia_fede_certificado_plataforma.md`.

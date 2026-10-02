@@ -8,13 +8,21 @@ updated: 2026-09-25
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.234.1`** (2026-10-01, migs 001-**445**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.235.0`** (2026-10-01, migs 001-**451**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-445; paridad `pg_policies` por schema: `public` **239** (`fe9b1a50`) · `storage` **40**
-(`d57ccda2`) · `cron` **2** (`796770dd`) — comparar solo DEV vs PROD del mismo día). PR **#366** `dev→main`, merge
-**`f5f8cbab`**, release **`v1.234.1` Latest**.
+✅ **PROD = DEV** (001-451; paridad `pg_policies` por schema: `public` **240** (`5a6594eb`) · `storage` **40**
+(`5585866d`) · `cron` **2** (`757afda6`) — comparar solo DEV vs PROD del mismo día). PR **#367** `dev→main`, merge
+**`12e09d33`**, release **`v1.235.0` Latest**.
+
+## 📲 v1.235.0 — Padrón ARCA, Excel, importadores todo o nada, envío por WhatsApp (2026-10-01, EN PROD)
+
+Migs 446-451 (aplicadas antes del merge, hashes de funciones DEV = PROD) + EF nueva `consultar-cuit` (auditoría diff 0).
+Padrón de ARCA en producción (autocompletar por CUIT en clientes, proveedores, emisor y alta rápida del POS); Excel en
+las exportaciones y CSV con BOM; importadores de Productos, Clientes, Inventario y Proveedores (nuevo) en dos pasos,
+todo o nada en una transacción y con la misma pantalla; "stock antes" de productos con series; enviar ticket/factura/NC
+por Mail o WhatsApp (link público `/c/<código>`), y el mail del ticket precarga el email del cliente.
 
 ## 🧰 v1.234.1 — Panel interno: MRR real, alertas de MP, tickets, monitoreo del equipo (2026-10-01, EN PROD)
 

@@ -37,13 +37,15 @@ interface Props {
   onBajarErrores: () => void
   /** Opciones propias del importador dentro de la tarjeta (si no van en la columna izquierda). */
   opciones?: ReactNode
+  /** Cuántas entidades se cargan, si no es una por fila (combos/perfiles del Maestro: varias filas = uno). */
+  totalACargar?: number
 }
 
-export function VistaPreviaImportacion({ columnas, filas, entidadPlural, cargando, onCargar, onBajarErrores, opciones }: Props) {
+export function VistaPreviaImportacion({ columnas, filas, entidadPlural, cargando, onCargar, onBajarErrores, opciones, totalACargar }: Props) {
   const [soloErrores, setSoloErrores] = useState(false)
   const n = (e: EstadoFilaImport) => filas.filter(f => f.estado === e).length
   const errores = n('error')
-  const aCargar = n('nuevo') + n('existente')
+  const aCargar = totalACargar ?? n('nuevo') + n('existente')
   const visibles = soloErrores ? filas.filter(f => f.estado === 'error') : filas
   const th = 'text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap'
 

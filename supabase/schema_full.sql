@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-01T19:43:48.935Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261001192416 · 175 tablas
+-- Generado 2026-10-01T21:58:38.767Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261001215032 · 175 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -750,7 +750,8 @@ CREATE TABLE public.devoluciones (
   afip_provider_usado text,
   nc_fecha timestamp with time zone,
   monto_usd numeric(14,2),
-  cotizacion_usd_usada numeric(14,4)
+  cotizacion_usd_usada numeric(14,4),
+  nc_cae_ambiente text
 );
 
 CREATE TABLE public.devoluciones_proveedor (
@@ -2809,7 +2810,9 @@ CREATE TABLE public.ventas (
   cupon_monto numeric(12,2),
   impuestos_marketplace numeric(12,2),
   tn_order_id bigint,
-  cotizacion_usd numeric(14,2)
+  cotizacion_usd numeric(14,2),
+  punto_venta integer,
+  cae_ambiente text
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -3052,6 +3055,7 @@ ALTER TABLE public.cupones_codigos ADD CONSTRAINT cupones_codigos_pkey PRIMARY K
 ALTER TABLE public.cupones_codigos ADD CONSTRAINT cupones_codigos_tenant_id_codigo_key UNIQUE (tenant_id, codigo);
 ALTER TABLE public.devolucion_items ADD CONSTRAINT devolucion_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.devolucion_proveedor_items ADD CONSTRAINT devolucion_proveedor_items_pkey PRIMARY KEY (id);
+ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_nc_cae_ambiente_check CHECK (((nc_cae_ambiente IS NULL) OR (nc_cae_ambiente = ANY (ARRAY['homologacion'::text, 'produccion'::text]))));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_nc_tipo_check CHECK ((nc_tipo = ANY (ARRAY['NC-A'::text, 'NC-B'::text, 'NC-C'::text])));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_origen_check CHECK ((origen = ANY (ARRAY['despachada'::text, 'facturada'::text])));
 ALTER TABLE public.devoluciones ADD CONSTRAINT devoluciones_pkey PRIMARY KEY (id);
@@ -3345,9 +3349,11 @@ ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_check CHECK (
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_pkey PRIMARY KEY (id);
+ALTER TABLE public.ventas ADD CONSTRAINT ventas_cae_ambiente_check CHECK (((cae_ambiente IS NULL) OR (cae_ambiente = ANY (ARRAY['homologacion'::text, 'produccion'::text]))));
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_cupon_codigo_id_key UNIQUE (cupon_codigo_id);
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'reservada'::text, 'despachada'::text, 'facturada'::text, 'cancelada'::text, 'devuelta'::text])));
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_pkey PRIMARY KEY (id);
+ALTER TABLE public.ventas ADD CONSTRAINT ventas_punto_venta_check CHECK (((punto_venta IS NULL) OR ((punto_venta >= 1) AND (punto_venta <= 99998))));
 ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_pkey PRIMARY KEY (id);
 ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_tenant_id_integracion_webhook_external_key UNIQUE (tenant_id, integracion, webhook_external_id);
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_frecuencia_dias_check CHECK ((frecuencia_dias > 0));
@@ -7582,6 +7588,77 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_guard_campos_fiscales()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_campo text;
+BEGIN
+  -- Solo los roles del navegador. service_role (EF) y postgres (SECURITY DEFINER, soporte) pasan.
+  IF current_user NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'ventas' THEN
+    IF TG_OP = 'INSERT' THEN
+      v_campo := CASE
+        WHEN NEW.cae IS NOT NULL                 THEN 'cae'
+        WHEN NEW.vencimiento_cae IS NOT NULL     THEN 'vencimiento_cae'
+        WHEN NEW.numero_comprobante IS NOT NULL  THEN 'numero_comprobante'
+        WHEN NEW.punto_venta IS NOT NULL         THEN 'punto_venta'
+        WHEN NEW.cae_ambiente IS NOT NULL        THEN 'cae_ambiente'
+        WHEN NEW.afip_provider_usado IS NOT NULL THEN 'afip_provider_usado'
+      END;
+    ELSE
+      v_campo := CASE
+        WHEN NEW.cae IS DISTINCT FROM OLD.cae                                 THEN 'cae'
+        WHEN NEW.vencimiento_cae IS DISTINCT FROM OLD.vencimiento_cae         THEN 'vencimiento_cae'
+        WHEN NEW.numero_comprobante IS DISTINCT FROM OLD.numero_comprobante   THEN 'numero_comprobante'
+        WHEN NEW.punto_venta IS DISTINCT FROM OLD.punto_venta                 THEN 'punto_venta'
+        WHEN NEW.cae_ambiente IS DISTINCT FROM OLD.cae_ambiente               THEN 'cae_ambiente'
+        WHEN NEW.afip_provider_usado IS DISTINCT FROM OLD.afip_provider_usado THEN 'afip_provider_usado'
+        -- Con la factura ya emitida, tampoco su letra ni el CUIT emisor.
+        WHEN OLD.cae IS NOT NULL AND NEW.tipo_comprobante IS DISTINCT FROM OLD.tipo_comprobante THEN 'tipo_comprobante'
+        WHEN OLD.cae IS NOT NULL AND NEW.emisor_id IS DISTINCT FROM OLD.emisor_id               THEN 'emisor_id'
+      END;
+    END IF;
+  ELSE  -- devoluciones
+    IF TG_OP = 'INSERT' THEN
+      v_campo := CASE
+        WHEN NEW.nc_cae IS NOT NULL                THEN 'nc_cae'
+        WHEN NEW.nc_vencimiento_cae IS NOT NULL    THEN 'nc_vencimiento_cae'
+        WHEN NEW.nc_numero_comprobante IS NOT NULL THEN 'nc_numero_comprobante'
+        WHEN NEW.nc_tipo IS NOT NULL               THEN 'nc_tipo'
+        WHEN NEW.nc_punto_venta IS NOT NULL        THEN 'nc_punto_venta'
+        WHEN NEW.nc_fecha IS NOT NULL              THEN 'nc_fecha'
+        WHEN NEW.nc_cae_ambiente IS NOT NULL       THEN 'nc_cae_ambiente'
+        WHEN NEW.afip_provider_usado IS NOT NULL   THEN 'afip_provider_usado'
+      END;
+    ELSE
+      v_campo := CASE
+        WHEN NEW.nc_cae IS DISTINCT FROM OLD.nc_cae                               THEN 'nc_cae'
+        WHEN NEW.nc_vencimiento_cae IS DISTINCT FROM OLD.nc_vencimiento_cae       THEN 'nc_vencimiento_cae'
+        WHEN NEW.nc_numero_comprobante IS DISTINCT FROM OLD.nc_numero_comprobante THEN 'nc_numero_comprobante'
+        WHEN NEW.nc_tipo IS DISTINCT FROM OLD.nc_tipo                             THEN 'nc_tipo'
+        WHEN NEW.nc_punto_venta IS DISTINCT FROM OLD.nc_punto_venta               THEN 'nc_punto_venta'
+        WHEN NEW.nc_fecha IS DISTINCT FROM OLD.nc_fecha                           THEN 'nc_fecha'
+        WHEN NEW.nc_cae_ambiente IS DISTINCT FROM OLD.nc_cae_ambiente             THEN 'nc_cae_ambiente'
+        WHEN NEW.afip_provider_usado IS DISTINCT FROM OLD.afip_provider_usado     THEN 'afip_provider_usado'
+      END;
+    END IF;
+  END IF;
+
+  IF v_campo IS NOT NULL THEN
+    RAISE EXCEPTION 'El campo fiscal "%" solo lo escribe la emisión del comprobante ante ARCA; no se puede cargar ni modificar a mano.', v_campo
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_guard_debe_cambiar_password()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8074,6 +8151,223 @@ BEGIN
   END;
 
   RETURN jsonb_build_object('lineas', v_lineas, 'unidades', v_unidades);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_importar_maestro(p_tipo text, p_filas jsonb, p_sucursal_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant     uuid := public.get_user_tenant_id();
+  v_rol        text;
+  v_item       jsonb;
+  v_sub        jsonb;
+  v_fila       int;
+  v_nombre     text;
+  v_txt        text;
+  v_id         uuid;
+  v_ref        uuid;
+  v_num        numeric;
+  v_n          int;
+  v_desde      date;
+  v_hasta      date;
+  v_vistos     text[] := '{}';
+  v_defaults   int := 0;
+  v_creados    int := 0;
+  v_constraint text;
+  v_tabla      text;
+BEGIN
+  IF auth.uid() IS NULL OR v_tenant IS NULL THEN
+    RAISE EXCEPTION 'No autenticado.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  SELECT rol INTO v_rol FROM public.users WHERE id = auth.uid();
+  IF v_rol IS NULL OR v_rol = 'VIEWER' THEN
+    RAISE EXCEPTION 'No autorizado: tu rol no puede importar datos maestros.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  v_tabla := CASE p_tipo
+    WHEN 'categorias'  THEN 'categorias'
+    WHEN 'ubicaciones' THEN 'ubicaciones'
+    WHEN 'estados'     THEN 'estados_inventario'
+    WHEN 'motivos'     THEN 'motivos_movimiento'
+    WHEN 'combos'      THEN 'combos'
+    WHEN 'aging'       THEN 'aging_profiles'
+    WHEN 'grupos'      THEN 'grupos_estados'
+  END;
+  IF v_tabla IS NULL THEN RAISE EXCEPTION 'Tipo de importación inválido "%".', coalesce(p_tipo, ''); END IF;
+  IF jsonb_typeof(p_filas) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Formato inválido: se esperaba una lista de filas.';
+  END IF;
+  IF jsonb_array_length(p_filas) > 5000 THEN
+    RAISE EXCEPTION 'El archivo tiene % filas; el máximo por importación es 5000. Dividilo en partes.', jsonb_array_length(p_filas);
+  END IF;
+  -- La sucursal tiene que ser del negocio (RLS de sucursales la acota al tenant).
+  IF p_sucursal_id IS NOT NULL AND p_tipo IN ('ubicaciones', 'combos')
+     AND NOT EXISTS (SELECT 1 FROM public.sucursales WHERE id = p_sucursal_id AND tenant_id = v_tenant) THEN
+    RAISE EXCEPTION 'La sucursal elegida no existe en tu negocio.';
+  END IF;
+
+  BEGIN
+    FOR v_item IN SELECT * FROM jsonb_array_elements(p_filas) LOOP
+      IF jsonb_typeof(v_item) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'formato de fila inválido'; END IF;
+      v_fila   := CASE WHEN v_item->>'fila' ~ '^\d{1,9}$' THEN (v_item->>'fila')::int END;
+      v_nombre := nullif(btrim(coalesce(v_item->>'nombre', '')), '');
+      IF v_nombre IS NULL THEN RAISE EXCEPTION 'falta el nombre'; END IF;
+
+      -- Nombre repetido en el archivo o ya existente (sin distinguir mayúsculas ni espacios de más).
+      v_txt := lower(regexp_replace(v_nombre, '\s+', ' ', 'g'));
+      IF v_txt = ANY (v_vistos) THEN RAISE EXCEPTION '"%" está repetido en el archivo', v_nombre; END IF;
+      v_vistos := v_vistos || v_txt;
+      EXECUTE format(
+        'SELECT count(*)::int FROM public.%I WHERE tenant_id = $1 AND lower(regexp_replace(btrim(nombre), ''\s+'', '' '', ''g'')) = $2 %s',
+        v_tabla,
+        CASE p_tipo
+          WHEN 'ubicaciones' THEN 'AND sucursal_id IS NOT DISTINCT FROM $3'
+          WHEN 'combos'      THEN 'AND activo IS NOT FALSE'
+          ELSE '' END)
+        INTO v_n USING v_tenant, v_txt, p_sucursal_id;
+      IF v_n > 0 THEN RAISE EXCEPTION '"%" ya existe', v_nombre; END IF;
+
+      IF p_tipo = 'categorias' THEN
+        INSERT INTO public.categorias (tenant_id, nombre, descripcion)
+        VALUES (v_tenant, v_nombre, nullif(btrim(coalesce(v_item->>'descripcion', '')), ''));
+
+      ELSIF p_tipo = 'ubicaciones' THEN
+        v_txt := nullif(upper(btrim(coalesce(v_item->>'codigo', ''))), '');
+        IF v_txt IS NOT NULL AND v_txt !~ '^[A-Z0-9]+(-[A-Z0-9]+)*$' THEN
+          RAISE EXCEPTION 'código "%" inválido (letras y números separados por guiones)', v_txt;
+        END IF;
+        INSERT INTO public.ubicaciones (tenant_id, nombre, codigo, descripcion, sucursal_id)
+        VALUES (v_tenant, v_nombre, v_txt, nullif(btrim(coalesce(v_item->>'descripcion', '')), ''), p_sucursal_id);
+
+      ELSIF p_tipo = 'estados' THEN
+        v_txt := nullif(btrim(coalesce(v_item->>'color', '')), '');
+        IF v_txt IS NOT NULL AND v_txt !~* '^#[0-9a-f]{6}$' THEN
+          RAISE EXCEPTION 'color "%" inválido (código hex como #22c55e)', v_txt;
+        END IF;
+        INSERT INTO public.estados_inventario (tenant_id, nombre, color)
+        VALUES (v_tenant, v_nombre, coalesce(lower(v_txt), '#6B7280'));
+
+      ELSIF p_tipo = 'motivos' THEN
+        v_txt := coalesce(nullif(lower(btrim(coalesce(v_item->>'tipo', ''))), ''), 'ambos');
+        IF v_txt = 'egreso' THEN v_txt := 'rebaje'; END IF;
+        IF v_txt NOT IN ('ambos', 'ingreso', 'rebaje', 'caja') THEN
+          RAISE EXCEPTION 'tipo "%" inválido (ambos, ingreso, rebaje o caja)', v_txt;
+        END IF;
+        INSERT INTO public.motivos_movimiento (tenant_id, nombre, tipo) VALUES (v_tenant, v_nombre, v_txt);
+
+      ELSIF p_tipo = 'combos' THEN
+        v_txt := lower(coalesce(v_item->>'descuento_tipo', ''));
+        IF v_txt NOT IN ('pct', 'monto_ars', 'monto_usd') THEN
+          RAISE EXCEPTION 'descuento_tipo "%" inválido (pct, monto_ars o monto_usd)', v_txt;
+        END IF;
+        IF coalesce(v_item->>'descuento_valor', '') !~ '^\d+(\.\d+)?$' THEN
+          RAISE EXCEPTION 'descuento_valor inválido';
+        END IF;
+        v_num := (v_item->>'descuento_valor')::numeric;
+        IF v_txt = 'pct' AND v_num > 100 THEN RAISE EXCEPTION 'el descuento en porcentaje no puede superar 100'; END IF;
+        v_desde := CASE WHEN coalesce(v_item->>'vigencia_desde', '') <> '' THEN (v_item->>'vigencia_desde')::date END;
+        v_hasta := CASE WHEN coalesce(v_item->>'vigencia_hasta', '') <> '' THEN (v_item->>'vigencia_hasta')::date END;
+        IF v_desde > v_hasta THEN RAISE EXCEPTION 'vigencia_desde es posterior a vigencia_hasta'; END IF;
+        IF jsonb_typeof(v_item->'items') IS DISTINCT FROM 'array' OR jsonb_array_length(v_item->'items') = 0 THEN
+          RAISE EXCEPTION 'el combo no tiene productos';
+        END IF;
+
+        v_id := gen_random_uuid();
+        INSERT INTO public.combos (id, tenant_id, nombre, descuento_tipo, descuento_pct, descuento_monto, sucursal_id,
+                                   vigencia_desde, vigencia_hasta, activo)
+        VALUES (v_id, v_tenant, v_nombre, v_txt,
+                CASE WHEN v_txt = 'pct' THEN v_num ELSE 0 END,
+                CASE WHEN v_txt <> 'pct' THEN v_num ELSE 0 END,
+                p_sucursal_id, v_desde, v_hasta, true);
+
+        FOR v_sub IN SELECT * FROM jsonb_array_elements(v_item->'items') LOOP
+          v_fila := CASE WHEN v_sub->>'fila' ~ '^\d{1,9}$' THEN (v_sub->>'fila')::int ELSE v_fila END;
+          IF coalesce(v_sub->>'cantidad', '') !~ '^\d{1,6}$' OR (v_sub->>'cantidad')::int < 1 THEN
+            RAISE EXCEPTION 'cantidad inválida (entero de 1 en adelante)';
+          END IF;
+          IF coalesce(v_sub->>'producto_id', '') !~ '^[0-9a-fA-F-]{36}$' THEN RAISE EXCEPTION 'producto inválido'; END IF;
+          v_ref := (v_sub->>'producto_id')::uuid;
+          IF NOT EXISTS (SELECT 1 FROM public.productos WHERE id = v_ref AND tenant_id = v_tenant AND activo IS NOT FALSE) THEN
+            RAISE EXCEPTION 'el producto no existe o está desactivado';
+          END IF;
+          IF EXISTS (SELECT 1 FROM public.combo_items WHERE combo_id = v_id AND producto_id = v_ref) THEN
+            RAISE EXCEPTION 'el producto está dos veces en el combo';
+          END IF;
+          INSERT INTO public.combo_items (tenant_id, combo_id, producto_id, cantidad)
+          VALUES (v_tenant, v_id, v_ref, (v_sub->>'cantidad')::int);
+        END LOOP;
+        IF jsonb_array_length(v_item->'items') = 1 AND (v_item->'items'->0->>'cantidad')::int < 2 THEN
+          RAISE EXCEPTION 'un combo de un solo producto necesita cantidad 2 o más';
+        END IF;
+
+      ELSIF p_tipo = 'aging' THEN
+        IF jsonb_typeof(v_item->'reglas') IS DISTINCT FROM 'array' OR jsonb_array_length(v_item->'reglas') = 0 THEN
+          RAISE EXCEPTION 'el perfil no tiene reglas';
+        END IF;
+        v_id := gen_random_uuid();
+        INSERT INTO public.aging_profiles (id, tenant_id, nombre) VALUES (v_id, v_tenant, v_nombre);
+        FOR v_sub IN SELECT * FROM jsonb_array_elements(v_item->'reglas') LOOP
+          v_fila := CASE WHEN v_sub->>'fila' ~ '^\d{1,9}$' THEN (v_sub->>'fila')::int ELSE v_fila END;
+          IF coalesce(v_sub->>'dias', '') !~ '^\d{1,6}$' THEN RAISE EXCEPTION 'días inválidos (entero de 0 en adelante)'; END IF;
+          IF coalesce(v_sub->>'estado_id', '') !~ '^[0-9a-fA-F-]{36}$' THEN RAISE EXCEPTION 'estado inválido'; END IF;
+          v_ref := (v_sub->>'estado_id')::uuid;
+          IF NOT EXISTS (SELECT 1 FROM public.estados_inventario WHERE id = v_ref AND tenant_id = v_tenant AND activo IS NOT FALSE) THEN
+            RAISE EXCEPTION 'el estado no existe o está desactivado';
+          END IF;
+          IF EXISTS (SELECT 1 FROM public.aging_profile_reglas WHERE profile_id = v_id
+                       AND (estado_id = v_ref OR dias = (v_sub->>'dias')::int)) THEN
+            RAISE EXCEPTION 'el perfil ya tiene una regla con ese estado o con esos días';
+          END IF;
+          INSERT INTO public.aging_profile_reglas (tenant_id, profile_id, estado_id, dias)
+          VALUES (v_tenant, v_id, v_ref, (v_sub->>'dias')::int);
+        END LOOP;
+
+      ELSIF p_tipo = 'grupos' THEN
+        IF jsonb_typeof(v_item->'estados') IS DISTINCT FROM 'array' OR jsonb_array_length(v_item->'estados') = 0 THEN
+          RAISE EXCEPTION 'el grupo no tiene estados';
+        END IF;
+        IF coalesce((v_item->>'es_default')::boolean, false) THEN
+          v_defaults := v_defaults + 1;
+          IF v_defaults > 1 THEN RAISE EXCEPTION 'solo un grupo puede ser el predeterminado'; END IF;
+          -- Dentro de la transacción: si algo falla después, el predeterminado anterior vuelve.
+          UPDATE public.grupos_estados SET es_default = false WHERE tenant_id = v_tenant AND es_default;
+        END IF;
+        v_id := gen_random_uuid();
+        INSERT INTO public.grupos_estados (id, tenant_id, nombre, descripcion, es_default)
+        VALUES (v_id, v_tenant, v_nombre, nullif(btrim(coalesce(v_item->>'descripcion', '')), ''),
+                coalesce((v_item->>'es_default')::boolean, false));
+        FOR v_sub IN SELECT * FROM jsonb_array_elements(v_item->'estados') LOOP
+          IF coalesce(v_sub #>> '{}', '') !~ '^[0-9a-fA-F-]{36}$' THEN RAISE EXCEPTION 'estado inválido'; END IF;
+          v_ref := (v_sub #>> '{}')::uuid;
+          IF NOT EXISTS (SELECT 1 FROM public.estados_inventario WHERE id = v_ref AND tenant_id = v_tenant AND activo IS NOT FALSE) THEN
+            RAISE EXCEPTION 'un estado no existe o está desactivado';
+          END IF;
+          INSERT INTO public.grupo_estado_items (grupo_id, estado_id) VALUES (v_id, v_ref) ON CONFLICT DO NOTHING;
+        END LOOP;
+      END IF;
+
+      v_creados := v_creados + 1;
+    END LOOP;
+
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+    RAISE EXCEPTION '%', concat_ws(': ',
+        CASE WHEN v_fila IS NOT NULL THEN format('Fila %s', v_fila) END,
+        CASE
+          WHEN SQLSTATE = '42501' THEN 'tu rol no tiene permiso para crear esto'
+          WHEN SQLSTATE = '23505' AND v_constraint = 'uq_ubicaciones_tenant_codigo' THEN 'ese código de ubicación ya existe'
+          WHEN SQLSTATE = '23505' THEN format('dato duplicado (%s)', v_constraint)
+          WHEN SQLSTATE = '23514' THEN format('dato inválido (%s)', v_constraint)
+          WHEN SQLSTATE IN ('22007', '22008') THEN 'fecha inválida'
+          ELSE SQLERRM
+        END)
+      USING ERRCODE = SQLSTATE;
+  END;
+
+  RETURN jsonb_build_object('creados', v_creados);
 END;
 $function$
 
@@ -12094,6 +12388,9 @@ CREATE OR REPLACE FUNCTION public.gen_venta_numero()
  SET search_path TO 'public'
 AS $function$
 BEGIN
+  -- Serializa la numeración DENTRO de un negocio (se libera al terminar la transacción). Negocios distintos no se
+  -- esperan entre sí.
+  PERFORM pg_advisory_xact_lock(hashtext('gen_venta_numero:' || NEW.tenant_id::text));
   IF NEW.numero IS NULL THEN
     SELECT COALESCE(MAX(numero), 0) + 1 INTO NEW.numero
     FROM ventas
@@ -14800,6 +15097,7 @@ CREATE TRIGGER trg_clientes_categoria_auditar AFTER UPDATE OF categoria_cliente_
 CREATE TRIGGER trg_clientes_categoria_guard BEFORE INSERT OR UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_guard();
 CREATE TRIGGER trg_clientes_dni_vacio_a_null BEFORE INSERT OR UPDATE OF dni ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_dni_vacio_a_null();
 CREATE TRIGGER trg_cupones_codigos_guard BEFORE UPDATE ON public.cupones_codigos FOR EACH ROW EXECUTE FUNCTION fn_cupones_codigos_guard();
+CREATE TRIGGER trg_devoluciones_guard_fiscal BEFORE INSERT OR UPDATE ON public.devoluciones FOR EACH ROW EXECUTE FUNCTION fn_guard_campos_fiscales();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
@@ -14897,6 +15195,7 @@ CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pa
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
 CREATE TRIGGER trg_ventas_cc_vencimiento BEFORE INSERT OR UPDATE OF es_cuenta_corriente, estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_vencimiento();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
+CREATE TRIGGER trg_ventas_guard_fiscal BEFORE INSERT OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_guard_campos_fiscales();
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_propagar_sucursal_items AFTER UPDATE OF sucursal_id ON public.ventas FOR EACH ROW WHEN ((old.sucursal_id IS DISTINCT FROM new.sucursal_id)) EXECUTE FUNCTION fn_ventas_propagar_sucursal_items();
 CREATE TRIGGER trg_ventas_writeoff_rol_guard BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_writeoff_rol_guard();

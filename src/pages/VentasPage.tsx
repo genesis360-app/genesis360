@@ -63,7 +63,7 @@ const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
-import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
+import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
 import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
@@ -2238,7 +2238,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, punto_venta, es_cuenta_corriente, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, domicilio_fiscal, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -2257,7 +2257,8 @@ export default function VentasPage() {
     })
     const { data: pvRows } = await supabase.from('puntos_venta_afip')
       .select('numero, emisor_id').eq('tenant_id', tenant!.id).eq('activo', true)
-    const pvNumero = puntoVentaDelEmisor(pvRows, emisor?.id ?? null, emisor?.es_default ?? true) ?? 1
+    // El PV en que se EMITIÓ (sellado, mig 453); las facturas viejas caen al PV del emisor.
+    const pvNumero = puntoVentaDeFactura((venta as any).punto_venta, pvRows, emisor?.id ?? null, emisor?.es_default ?? true)
     const cli = (venta as any).clientes
     const formaPago = parseFormaPago((venta as any).medio_pago)
     // Saldo pendiente → QR de pago MercadoPago en el PDF (si el tenant tiene MP conectado)

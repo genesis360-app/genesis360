@@ -6,75 +6,61 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, padrón ARCA en DEV) — PROD = `v1.234.1` (001-445) · DEV = código padrón + mig 446
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, noche) — PROD = `v1.235.0` (001-451) · DEV = + Maestro, Fase 0, numeración (001-**454**)
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.234.1` ✅ servida | 001-**445** |
-> | **DEV** | `v1.234.1` + padrón ARCA (commit en `dev`, sin bump) | 001-**446** |
+> | **PROD** | `v1.235.0` ✅ (PR #367, merge `12e09d33`) | 001-**451** |
+> | **DEV** | `v1.235.0` + Maestro + Fase 0 + numeración (sin bump, en `dev`; EF `emitir-factura` desplegada en DEV) | 001-**454** (452-454 solo en DEV) |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
-> **Lo primero al retomar:**
-> 1. ✅ **Panel interno EN PROD** (01/10, v1.234.1 + mig 445). GO descarta en Facturación las 2 alertas MP "huérfana".
-> 2. 🔎 **Padrón ARCA (autocompletar por CUIT) — fases 2-4 HECHAS EN DEV (01/10).** EF `consultar-cuit` (DEV, verify_jwt,
->    secret `ARCA_PADRON_KEY_PATH`) + mig 446 `padron_arca_cache` (DEV) + componente `PadronArcaSugerencia` en ficha de
->    cliente, proveedor, emisor fiscal (panel + alta inicial) y **alta rápida del POS** (ganó campo CUIT). 🛑 Condición IVA
->    nunca CF por descarte (sin régimen → "elegila a mano"); C-19 al registro del contador. Tests: unit 21+3+1, e2e
->    `165` 6/6 contra homologación, UAT §75; code-reviewer sin 🔴 (🟡 aplicados). Detalle: [[wiki/integrations/padron-arca]].
->    **Para PROD falta**: Fede devuelve `produccion.crt` (+ relación en producción, paso 2 de la guía) → subirlo a
->    `certificados-afip/plataforma/20422374168/produccion.crt` en PROD → secrets `ARCA_PADRON_KEY_PATH` y
->    `ARCA_PADRON_PRODUCCION=true` en PROD → mig 446 → EF → merge con bump. El mismo cert destraba la **facturación de
->    plataforma** (wsfe).
-> 2c. 📲 **Enviar ticket/factura/NC por Mail o WhatsApp — HECHO en DEV (01/10, mig 451)**. GO: "Enviar" → Mail |
->    WhatsApp, con mensaje + link al PDF (`/c/<código>`, 90 días). Nunca se había hecho. Además: 🐛 el mail del ticket no
->    precargaba el email del cliente (el ticket es la fila recién insertada, sin `clientes.email`) — reportado por un
->    cliente en PROD — y el email tipeado quedaba para el ticket siguiente; ambos corregidos. e2e `171` 4/4.
->    Pendiente menor: limpieza de links vencidos (pg_cron); revocar un link compartido por error (no existe).
-> 2b. 🧰 **Estandarizar IMPORTAR/EXPORTAR** (pedido de GO 01/10, mientras Fede saca el cert de producción).
->    **Fase 1 EXPORTAR — HECHA en `dev`**: `src/lib/exportarArchivo.ts` reemplaza los 11 CSV armados a mano; Productos,
->    Clientes, Proveedores y la OC ganan **Exportar Excel**; CSV siempre con BOM (Pedidos no lo tenía) y saltos de línea
->    escapados. unit `exportarArchivo` (8, ida y vuelta) + e2e `166`. **D3-a resuelto por GO: se re-sube el archivo.**
->    **Fase 2 — Productos HECHO en DEV (01/10)**: mig 447 `fn_importar_productos` (todo o nada en una transacción, por
->    conjunto, lista blanca, guard de rol) + vista previa con número de fila, "ver solo errores", "Bajar las filas con
->    error" (Excel con motivo) y **"Cargar" bloqueado mientras haya un error** (se re-sube el archivo); desactivada →
->    "reactivala o elegí otra"; SKU repetido en el archivo; SKU automáticos sin choques; programados cancelados dentro de la
->    carga. Tests: unit `importacion` (14) · e2e `167` (A-D) + `105`/`162` adaptados, 11/11.
->    **Clientes HECHO en DEV (01/10)**: mig 448 + componente compartido `src/components/importacion/VistaPreviaImportacion.tsx`
->    (vista previa + resultado estándar), modal de pantalla completa; al actualizar ya NO borra los datos de celdas vacías;
->    DNI/email repetidos o de otro cliente; dos filas = mismo cliente → error. e2e `168` 5/5.
->    **Inventario HECHO en DEV (01/10)**: mig 449 + pantalla nueva (sucursal obligatoria, aviso "sin ubicación" en
->    avanzado, defaults de estado/proveedor del producto, plantilla con atributos). Corrige 6 problemas latentes del
->    importador viejo (sin sucursal, referencias mal escritas ignoradas, decimales truncados, sin lote/venc/atributos,
->    movimiento sin control de error, sin conteo wall-to-wall). e2e `169` 4/4. 🛑 **Hallazgo REGLA #0 (ingreso NORMAL,
->    no el importador)**: `getStockAntesSucursal` (InventarioPage ~807) suma `cantidad` de las líneas, que en productos
->    con series es 0 → el movimiento queda con "stock antes" = 0. Solo el historial (el stock real cuenta series). PROD: 1
->    de 3 ingresos con series afectado. No se reescribe el histórico. ✅ **Arreglado hacia adelante (01/10, GO)**:
->    `src/lib/stockSucursal.ts` cuenta las series de la sucursal; lo usan todos los movimientos de InventarioPage.
->    **Proveedores HECHO en DEV (01/10)**: "Importar" en la pantalla de Proveedores (antes no existía) — mig 450 +
->    `ImportarProveedoresModal` (plantilla con listas desplegables de condición IVA y tipo; CUIT con dígito verificador;
->    CBU con sus verificadores; match por CUIT normalizado o, sin CUIT, por nombre). e2e `170` 5/5. Faltan en el archivo:
->    modo de pago, anticipo, código/régimen fiscal y contactos (se completan en la ficha).
->    **Pantallas unificadas (01/10, pedido de GO)**: Clientes y Proveedores pasan de modal a página con el mismo layout
->    que Productos/Inventario (`PaginaImportacion`, rutas `/clientes/importar` y `/proveedores/importar`).
->    **Sigue**:
->    Inventario → Maestro con el mismo flujo, y **Fase 3** = importar Proveedores. (Detalle original:) modal único de importación en 2 pasos (vista previa completa con motivo por fila → botón
->    "Cargar" todo-o-nada; desactivada → "reactivala o elegí otra"; no crea categorías), migrando Productos → Clientes →
->    Inventario; **Fase 3** = importar Proveedores.
-> 3. 💲 **Pricing v7**: respondidas PR-1 (anual = pago único sin renovación), PR-4 (Free eliminado; se regalan meses a
->    mano) y PR-5 (Enterprise online como los demás). Abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del −20 % anual.
-> 4. ✅ **Respuestas 30/09** (DL/D3/PL/EC/QR) en `respuestas_preguntas_pendientes_2026-09-30.md` → a ejecutar: DL-1..3, QR-1..3
->    (5 problemas de plata del QR de MP), D3-a/b (importador en 2 pasos, se une al backlog de estandarizar importar/exportar),
->    PL-1..7 (Fase 3/4 categorías; PL-5 y PL-7 requieren propuesta de Tonga), EC-1..8 + Fase 0 ("Empezar de cero").
->    Puntos abiertos para Tonga: PL-5 (POS sin internet), PL-7 (precio por sucursal), EC-5 (superusuario de soporte),
->    D3-a (UX de la vista previa).
-> 5. 🧰 **Backlog**: estandarizar IMPORTAR (Proveedores sin importar; modal único de pantalla completa con vista previa) y
->    EXPORTAR a Excel .xlsx además de CSV (El Tilo vio el CSV "codificado" en la PC: acentos).
-> 6. 🔑 Rotación de claves PROD (en curso): al apagar las legacy en PROD, actualizar también `VITE_SUPABASE_ANON_KEY` de
->    **Production** en Vercel del panel interno (en DEV ya se hizo, GO 01/10).
-> 7. 🛑 Datos de El Tilo en el historial público de git (`f733d122`): GO pidió el impacto; recomendación = no reescribir
->    (los datos van impresos en sus facturas). Sin decisión.
+> 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
+> (secrets del padrón en producción + ticket WSAA vigente copiado al cache de PROD), paridad de policies por schema OK,
+> release `v1.235.0` Latest. Padrón ARCA de PRODUCCIÓN verificado a mano (consulta real OK); la 1ª consulta desde la app
+> de PROD la hace un usuario real (no hay usuario de prueba en PROD).
 >
-> Herramientas nuevas: `scripts/aplicar-migracion.mjs` (migs a PROD con contenido exacto) · agente de prueba del panel en DEV
+> **Lo primero al retomar** (todo lo de abajo está EN PROD salvo lo marcado; detalle en `log.md` 2026-10-01):
+>
+> **✅ Importador del MAESTRO HECHO en DEV (01/10 noche, mig 452, sin versión)** — `/configuracion/importar` con
+> `PaginaImportacion` + vista previa compartida + `fn_importar_maestro` todo-o-nada. 🛑 Encontrado y corregido: los
+> **combos se creaban sin `combo_items`** y el POS los ignoraba (0 afectados en PROD); motivo `egreso` lo rechazaba el
+> CHECK; ubicaciones sin sucursal; estados inexistentes salteados; perfil existente con reglas duplicadas. Proveedores
+> salió del Maestro (lleva a `/proveedores/importar`). UAT §82, e2e `172`, unit `importarMaestro`.
+> **Para PROD:** mig 452 → merge (la página llama a la función nueva) · tocó `app-reference.md` (rutas de importadores
+> corregidas) ⇒ `npm run ai:knowledge` + redeploy EF `ai-assistant` DEV y PROD.
+>
+> **✅ Urgentes sin preguntas HECHOS en DEV (01/10 noche):**
+> - **U-1 Fase 0 (REGLA #0, mig 453 + EF `emitir-factura`):** la factura guarda `punto_venta` y `cae_ambiente` (la NC,
+>   `nc_cae_ambiente`); la NC referencia el PV de la factura original; el PDF imprime el PV en que se emitió; NC en otro
+>   ambiente → rechazada. 🛑 Hallazgo cerrado de paso: `authenticated` podía hacer UPDATE de `ventas.cae` (borrarlo =
+>   re-facturar = doble factura) → trigger `fn_guard_campos_fiscales`. e2e `173` (PV 2 real en homologación), 137 ya no
+>   inventa un CAE. UAT §83.
+> - **U-3 Numeración (mig 454):** causa = **drift**: en PROD `ventas.numero` es IDENTITY global (DEV no). DROP IDENTITY +
+>   candado por negocio. UAT §84.
+> - **U-5 Checklist de alta:** [[wiki/support/checklist-alta-cliente]].
+> - 🛑 **Orden a PROD:** migs 452 → 453 → 454 (de a una) → **EF `emitir-factura`** (después de la 453: si va antes, no
+>   puede guardar el CAE que ARCA ya autorizó) → merge. Paridad: la 453 suma 2 triggers, sin policies nuevas.
+> - Pendiente de U-2 y la guía (U-4): respuesta de GO (D-1, D-2 del consolidado del 01/10).
+>
+> 1. ✅ **v1.235.0 EN PROD** (deploy 01/10 noche, PR #367): padrón ARCA, Excel, importadores todo-o-nada (Productos,
+>    Clientes, Inventario, Proveedores nuevo; misma pantalla), "stock antes" con series, envío por Mail/WhatsApp, fix del
+>    mail del ticket. Pendiente: que GO o Fede carguen un CUIT en PROD para confirmar el padrón desde la pantalla (no hay
+>    usuario de prueba en PROD; la conexión con ARCA producción ya se verificó con una consulta real).
+> 2. 🔎 **Padrón ARCA** — cert de producción de Fede (`genesis360plataforma`, vence 30/09/2028) en el bucket privado
+>    `certificados-afip` de DEV y PROD; Fede completó la relación con el servicio en producción (verificado 01/10). El
+>    mismo cert destraba la **facturación de plataforma** (wsfe): falta la relación de wsfe en ARCA y cargar el biller.
+>    Duda fiscal **C-19** al contador (CF cuando ARCA muestra régimen sin IVA; ej. real: ARCA tiene impuesto 34).
+> 3. 📲 **Envío por WhatsApp** — pendientes menores: limpieza de links vencidos (`comprobantes_compartidos`, pg_cron),
+>    revocar un link compartido por error (no existe). El envío automático del PDF espera la App Review de Meta.
+> 4. 💲 **Pricing v7**: respondidas PR-1, PR-4, PR-5. Abiertas: PR-2, PR-3, PR-6, PR-7, PR-8 y la base del −20 % anual.
+> 5. ✅ **Respuestas 30/09** (`respuestas_preguntas_pendientes_2026-09-30.md`) → a ejecutar: DL-1..3, QR-1..3 (5 problemas
+>    de plata del QR de MP), PL-1..7 (Fase 3/4 categorías), EC-1..8 + Fase 0 ("Empezar de cero"). D3-a/D3-b ✅ hechos
+>    (importadores). Puntos abiertos para Tonga: PL-5 (POS sin internet), PL-7 (precio por sucursal), EC-5 (superusuario).
+> 6. 🔑 Rotación de claves PROD (en curso): al apagar las legacy en PROD, actualizar también `VITE_SUPABASE_ANON_KEY` de
+>    **Production** en Vercel del panel interno.
+> 7. 🛑 Datos de El Tilo en el historial público de git (`f733d122`): recomendación = no reescribir. Sin decisión de GO.
+>
+> Herramientas: `scripts/aplicar-migracion.mjs` (migs a PROD con contenido exacto, de a una) · importadores: `PaginaImportacion` + `VistaPreviaImportacion` + `src/lib/importacion.ts` · `src/lib/exportarArchivo.ts` · agente de prueba del panel en DEV
 > `e2e.agente.admin@local.com` (credenciales en `tests/e2e/.env.test.local`) · doc "Herramientas internas de Genesis360 —
 > inventario" (Claude Docs, https://claude.ai/code/artifact/8c195e5b-2853-4e7c-9726-ec5ed019d998).
 >
@@ -102,7 +88,7 @@ type: project
 > 7. 🛑 **QR de Mercado Pago en la factura (REGLA #0, latente)**: el link no vence, se crea uno nuevo por descarga,
 >    y lo cobrado de más (o el envío) no queda registrado por el tope de `mp-ipn`. Sin código hasta que GO responda
 >    **QR-1..QR-3** en `preguntas_pendientes_2026-09-28.md` (sección E).
-> 8. 🧾 **Factura: observaciones del contador de El Tilo — HECHO en DEV, falta PROD** (30/09, mig **443** + EF
+> 8. 🧾 **Factura: observaciones del contador de El Tilo — ✅ EN PROD (v1.234.0, 01/10)** (30/09, mig **443** + EF
 >    `emitir-factura` en DEV): condición IVA completa, "Condición de venta", **domicilio fiscal del cliente** (campo en la
 >    ficha) y **Factura A bloqueada sin domicilio del receptor** (POS + EF). Además el layout: la tabla con IVA se salía del
 >    margen y el nombre del producto salía cortado (ya pasaba en la factura real de El Tilo). e2e `164` con Factura A

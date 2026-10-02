@@ -6,6 +6,57 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-01] update | Urgentes de El Tilo sin preguntas: Fase 0 (mig 453), numeración (mig 454), checklist de alta
+
+- GO: "avanza con lo urgente que no tenga nada pendiente". Consolidado de preguntas entregado en el chat (D-1..D-6).
+- **Fase 0 (REGLA #0)** — mig 453 + EF `emitir-factura` (desplegada en DEV): `ventas.punto_venta`/`cae_ambiente`,
+  `devoluciones.nc_cae_ambiente` sellados al emitir; `CbtesAsoc.PtoVta` = PV de la factura original (antes el de la
+  NC); PDF con el PV sellado (`puntoVentaDeFactura`, VentasPage + FacturacionPage); NC en otro ambiente → 400.
+  🛑 Hallazgo: `authenticated` tenía UPDATE sobre `ventas.cae/numero_comprobante/tipo_comprobante/emisor_id` sin guard
+  (borrar el CAE dejaba re-facturar) → trigger `fn_guard_campos_fiscales` (ventas + devoluciones; las devoluciones ya
+  no tenían policy de UPDATE, el hueco ahí era el INSERT). Verificado que ni la app ni funciones de la base los escriben.
+- **Numeración** — mig 454: en PROD `ventas.numero` es `GENERATED ALWAYS AS IDENTITY` (drift; DEV no) → la identidad
+  numeraba antes del trigger. DROP IDENTITY + candado por negocio. Probado en DEV simulando la IDENTITY (rollback).
+- **Checklist de alta**: `wiki/support/checklist-alta-cliente.md` (nuevo).
+- Tests: unit 2102 (+3 `puntoVentaDeFactura`); e2e `173` nuevo (PV 2 en homologación: sellado, PDF 0002, NC desde PV 1
+  aceptada, PATCH del CAE rechazado); e2e 137 factura de verdad en homologación (ya no PATCHea un CAE falso); e2e del
+  Maestro renumerado `171` → `172` (chocaba con el de WhatsApp); 22/56/63/87/164/171 en verde. UAT §83, §84.
+- Orden a PROD: 452 → 453 → 454 → EF `emitir-factura` → merge.
+
+## [2026-10-01] update | Importar datos maestros: todo o nada (mig 452, en DEV)
+
+- `/configuracion/importar` pasa al flujo estándar de importadores (`PaginaImportacion` + `VistaPreviaImportacion` +
+  `fn_importar_maestro(p_tipo, p_filas, p_sucursal_id)`, INVOKER, todo o nada, solo crea). Lógica en
+  `src/lib/importarMaestro.ts`. `VistaPreviaImportacion` gana `totalACargar` (combos/perfiles: varias filas = uno).
+- 🛑 Silencios encontrados y corregidos: combos creados SIN `combo_items` (el POS los ignoraba; 0 afectados: PROD tiene
+  1 combo inactivo con ítems); motivo `egreso` rechazado por el CHECK (`rebaje`); ubicaciones sin sucursal; estado
+  inexistente salteado en perfiles/grupos; perfil existente recibía reglas duplicadas; predeterminado de grupos
+  desmarcado fuera de transacción; color inválido → uno al azar. Proveedores sale del Maestro (→ `/proveedores/importar`).
+- `app-reference.md`: rutas de los importadores corregidas (decía `/importar/...`). Nota de corrección en
+  `estructuras-udm.md` (decía que el Maestro no tenía fallas activas).
+- Verde: tsc, build, unit 2099 (+20 `importarMaestro`), e2e `172` 4/4 (limpieza verificada), SQL en DEV impersonando
+  al dueño con rollback (7 tipos + 7 errores esperados + predeterminado que se conserva si falla). UAT §82.
+
+## [2026-10-01] update | Cierre para /clear — certificado de producción documentado
+
+- GO dio el OK para documentar el certificado de producción (antes bloqueado). Cert `genesis360plataforma` de producción
+  (emisor ARCA "Computadores", serie `3624A3891E3D9FD7`, vence 30/09/2028, clave pública = la del CSR) subido el 01/10 al
+  bucket privado `certificados-afip` de DEV y PROD; Fede completó la relación en producción (se había trabado eligiendo
+  el trámite web "Nivel 3" en vez del de WebServices; guía aclarada). Consulta real a ARCA producción OK.
+- "ARRANCÁ ACÁ" reescrito en limpio; próxima tarea sugerida: importador del Maestro. Página del padrón con la sección
+  "Certificado de plataforma" (renovación, gotcha del ticket de 12 h). Index y notas de feature a EN PROD.
+
+## [2026-10-01] deploy | v1.235.0 a PROD — padrón ARCA, Excel, importadores, WhatsApp
+
+- GO: "pasa todo a PRD". Migs 446→451 en PROD de a una con `scripts/aplicar-migracion.mjs` (hashes de las 5 funciones
+  DEV = PROD, tildes intactas; `padron_arca_cache` y `comprobantes_compartidos` sin SELECT para anon/authenticated).
+- EF `consultar-cuit` en PROD (verify_jwt; OPTIONS 200 / POST sin sesión 401) con los secrets del padrón en modo
+  producción; el ticket WSAA de producción vigente se copió al cache de PROD (si no, ARCA no da otro hasta que vence).
+  `auditar-edge-functions.sh consultar-cuit emitir-factura`: diff 0 en DEV y PROD.
+- Bump `v1.235.0`, PR #367 (CI unit verde, preview Vercel OK), merge `12e09d33`, release `v1.235.0` Latest.
+- Paridad `pg_policies` DEV = PROD: `public` 240 (`5a6594eb`), `storage` 40 (`5585866d`), `cron` 2 (`757afda6`).
+- Asistente IA sin redeploy (app-reference sin cambios).
+
 ## [2026-10-01] update | Importar clientes y proveedores: misma pantalla que Productos/Inventario
 
 - GO: "no quedó como esperaba, tiene que ser la misma pantalla que el importar de Productos o Inventario". Los modales de

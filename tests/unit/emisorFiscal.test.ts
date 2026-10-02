@@ -87,7 +87,7 @@ describe('validarPuntoVenta (los PV de AFIP son POR CUIT)', () => {
 // ─── Identidad para COMPROBANTES (cutover mig 271 / v1.133.0 — fuente única) ─────────────
 // El bug real que estos tests guardan: con multi-CUIT, el CAE sale con el CUIT del EMISOR de
 // la venta pero el PDF imprimía la identidad del TENANT → papel ≠ AFIP.
-import { elegirIdentidadEmisor, puntoVentaDelEmisor } from '@/lib/emisorFiscal'
+import { elegirIdentidadEmisor, puntoVentaDeFactura, puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 
 describe('elegirIdentidadEmisor (identidad que imprime el comprobante)', () => {
   const eDef = { id: DEF, es_default: true, cuit: '23-32031506-9' }
@@ -135,5 +135,21 @@ describe('puntoVentaDelEmisor (el PV impreso es POR CUIT)', () => {
   it('FAC-IDENT-10 emisor sin PV configurado → null (el caller decide el fallback legacy 1)', () => {
     expect(puntoVentaDelEmisor(pvs, B, false)).toBeNull()
     expect(puntoVentaDelEmisor([], A, false)).toBeNull()
+  })
+})
+
+describe('puntoVentaDeFactura (Fase 0, mig 453: el PV impreso es el SELLADO al emitir)', () => {
+  const pvs = [{ numero: 1, emisor_id: null }, { numero: 5, emisor_id: null }]
+  it('factura con PV sellado → ese, aunque el emisor tenga otro PV más bajo (caso El Tilo: PV 5)', () => {
+    expect(puntoVentaDeFactura(5, pvs, null, true)).toBe(5)
+    expect(puntoVentaDeFactura('5', pvs, null, true)).toBe(5)   // numeric de Postgres llega como string
+  })
+  it('factura vieja sin PV sellado → el PV del emisor (comportamiento previo)', () => {
+    expect(puntoVentaDeFactura(null, pvs, null, true)).toBe(1)
+    expect(puntoVentaDeFactura(undefined, [], null, true)).toBe(1)
+  })
+  it('un valor basura no se imprime: cae al del emisor', () => {
+    expect(puntoVentaDeFactura(0, pvs, null, true)).toBe(1)
+    expect(puntoVentaDeFactura('abc', pvs, null, true)).toBe(1)
   })
 })

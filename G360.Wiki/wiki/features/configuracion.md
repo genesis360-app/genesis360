@@ -2,8 +2,8 @@
 title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
-sources: [CLAUDE.md, migrations 289, 290, 292, 299, 370]
-updated: 2026-09-22
+sources: [CLAUDE.md, migrations 289, 290, 292, 299, 370, 452]
+updated: 2026-10-01
 ---
 
 # Módulo Configuración
@@ -23,6 +23,34 @@ updated: 2026-09-22
 > restauradas ambas, verificadas en el navegador real, ya deployadas a PROD junto con el resto de
 > v1.161.0 (PR #319). Detalle completo en la sección "Ventas" más abajo. Ver
 > `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-08-08).
+
+---
+
+## 🗂️ Importar datos maestros — todo o nada (mig 452, 🟡 EN DEV 2026-10-01, sin versión)
+
+`/configuracion/importar` (botón "Importar" arriba de Configuración) pasa al mismo flujo que Productos, Clientes,
+Inventario y Proveedores: `PaginaImportacion` + `VistaPreviaImportacion` + función de la base todo-o-nada
+(`fn_importar_maestro(p_tipo, p_filas, p_sucursal_id)`, SECURITY INVOKER: las policies de cada tabla siguen decidiendo
+quién crea qué). Reglas puras en `src/lib/importarMaestro.ts`. **Solo crea**: lo existente (mismo nombre, sin distinguir
+mayúsculas) se ignora. Tipos: categorías, ubicaciones, estados, motivos, combos, perfiles de vencimiento, grupos de
+estados. **Proveedores** se sacó del Maestro: el ítem lleva a `/proveedores/importar` (mig 450), que reconoce por CUIT
+(el Maestro solo comparaba el nombre y podía duplicar).
+
+Silencios del importador anterior corregidos:
+- 🛑 **Combos sin productos**: se creaban con `combos.producto_id` y sin `combo_items`, y el POS (que arma los combos
+  desde `combo_items`) los ignoraba. Ahora varias filas con el mismo nombre = un combo de varios productos con sus
+  ítems. Validado: SKU activo, % ≤ 100, monto sin separador de miles ("1.500" se rechaza), un solo producto ⇒ cantidad
+  ≥ 2, descuento/vigencia iguales en todas las filas. Afectados: 0 (PROD tiene 1 combo, inactivo, con ítems).
+- Motivos: la plantilla traía `egreso` y el CHECK solo acepta `rebaje` → ahora `egreso` = `rebaje`.
+- Ubicaciones: se creaban sin sucursal → ahora con la sucursal elegida (o todas, como el alta manual); el mismo
+  nombre en otra sucursal es nuevo; código repetido/mal formado = error.
+- Perfiles de vencimiento y grupos: un estado inexistente se salteaba → error de fila. Un perfil existente recibía
+  reglas duplicadas → ahora se ignora entero. Estado o días repetidos en el perfil = error.
+- Grupos: se desmarcaba el predeterminado ANTES de crear el nuevo → ahora dentro de la transacción (si falla, el
+  anterior queda). Dos predeterminados en el archivo = error.
+- Estados: color inválido tomaba uno al azar → error.
+
+Tests: unit `importarMaestro` (20) · e2e `172` A-D · SQL en DEV impersonando al dueño (rollback). UAT §82.
 
 ---
 

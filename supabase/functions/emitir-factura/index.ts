@@ -201,7 +201,7 @@ serve(async (req) => {
     const { data: venta } = await supabase.from('ventas')
       .select(`
         id, numero, total, costo_envio, estado, medio_pago, cae, tipo_comprobante, numero_comprobante,
-        sucursal_id, emisor_id,
+        sucursal_id, emisor_id, punto_venta, cae_ambiente,
         venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
           productos(nombre, sku, alicuota_iva)),
         clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor, domicilio_fiscal,
@@ -508,6 +508,14 @@ serve(async (req) => {
     // Sin esto, la 2ª emisión dentro de las ~12h fallaría: AFIP no re-emite un TA vigente
     // (coe.alreadyAuthenticated) y las instancias de la EF son efímeras.
     const taEnvironment = isProduction ? 'produccion' : 'homologacion'
+    // 🛑 REGLA #0 (mig 453): la NC tiene que ir al MISMO ambiente que su factura. Una factura de homologación no existe
+    // en producción (y al revés): ARCA no podría asociarla. Solo se sabe para facturas emitidas desde la mig 453; las
+    // anteriores (cae_ambiente NULL) siguen como hasta ahora.
+    if (esNC && (venta as any).cae_ambiente && (venta as any).cae_ambiente !== taEnvironment) {
+      return new Response(JSON.stringify({
+        error: `La factura original se emitió en ${(venta as any).cae_ambiente === 'produccion' ? 'PRODUCCIÓN' : 'homologación (modo prueba)'} y el emisor hoy está en ${isProduction ? 'PRODUCCIÓN' : 'homologación (modo prueba)'}: la nota de crédito tiene que emitirse en el mismo ambiente que la factura.`,
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
     const taCache: TaCache = {
       get: async () => {
         const { data } = await supabase.from('afip_wsaa_ta')
@@ -565,12 +573,13 @@ serve(async (req) => {
       MonCotiz:   1,
       CondicionIVAReceptorId: condicionId,
       // AFIP exige CbtesAsoc en NC/ND (error 10197 si falta). Referencia la factura
-      // original: Tipo (de venta.tipo_comprobante, guardado como "Factura X"), el mismo
-      // punto de venta y su número. (Asumimos mismo PV que la NC — el caso single-PV.)
+      // original: Tipo (de venta.tipo_comprobante, guardado como "Factura X"), SU punto de venta
+      // (sellado al emitirla, mig 453) y su número. Facturas anteriores a la mig 453 no guardan
+      // el PV: para ésas se sigue asumiendo el de la NC (caso single-PV, comportamiento previo).
       ...(esNC ? {
         CbtesAsoc: [{
           Tipo:   TIPO_CBTE[String(venta.tipo_comprobante ?? '').replace('Factura ', '').trim()] ?? 6,
-          PtoVta: punto_venta,
+          PtoVta: Number((venta as any).punto_venta) || punto_venta,
           Nro:    Number(venta.numero_comprobante) || 0,
         }],
       } : {}),
@@ -613,6 +622,7 @@ serve(async (req) => {
         nc_numero_comprobante: proximo,
         nc_tipo:              tipo_comprobante,
         nc_punto_venta:       punto_venta,
+        nc_cae_ambiente:      taEnvironment,
         // Fecha de emisión de la NC (mig 266): el Libro IVA la imputa a ESTE período,
         // no al de la devolución (created_at).
         nc_fecha:             new Date().toISOString(),
@@ -626,6 +636,9 @@ serve(async (req) => {
         vencimiento_cae:   resultado.CAEFchVto,
         tipo_comprobante:  `Factura ${tipo_comprobante}`,
         numero_comprobante: proximo,
+        // Fase 0 (mig 453): en qué PV y en qué ambiente se emitió — la NC y el PDF lo leen de acá.
+        punto_venta:       punto_venta,
+        cae_ambiente:      taEnvironment,
         afip_provider_usado: providerName,
         // Multi-CUIT: con qué emisor se emitió (la NC lo hereda de acá). Null solo en el
         // fallback legacy sin fila de emisor.

@@ -6838,10 +6838,11 @@ export default function VentasPage() {
                         )}
                       </div>
 
-                      {/* Fecha + rango horario de entrega acordados (ISS-178) */}
-                      <div className="grid grid-cols-2 gap-2">
+                      {/* Fecha + rango horario de entrega acordados (ISS-178). `items-end`: si una etiqueta ocupa dos
+                          líneas en una ventana angosta, los campos igual quedan alineados. */}
+                      <div className="grid grid-cols-2 gap-2 items-end">
                         <div>
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega</label>
                           <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
                             className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>

@@ -85,3 +85,30 @@ describe('productoMatcheaPildoras (agrupa por producto, exige ambas píldoras en
     expect(productoMatcheaPildoras(producto, [], pildorasLpn, 'Y')).toBe(false)
   })
 })
+
+// Pedido de GO 2026-10-02: buscar un LPN debe dejar a la vista ESE LPN, no los cientos del producto.
+import { lineasQueCoinciden } from '@/lib/inventarioFiltro'
+
+describe('lineasQueCoinciden — qué LPN del producto mostrar/resaltar', () => {
+  const prod = { nombre: 'Tornillo', sku: 'TOR-1', codigoBarras: null }
+  const lineas = [
+    { id: 'a', lpn: 'LPN-0001', ubicacionNombre: 'A-01' },
+    { id: 'b', lpn: 'LPN-0002', ubicacionNombre: 'A-02' },
+    { id: 'c', lpn: 'LPN-0003', ubicacionNombre: 'B-01' },
+  ]
+  const libre = (valor: string) => [{ id: 'x', campo: 'libre' as const, operador: 'contiene' as const, valor }]
+
+  it('búsqueda libre por un LPN → solo esa línea', () => {
+    expect(lineasQueCoinciden(prod, lineas, libre('lpn-0002'), 'Y')).toEqual(new Set(['b']))
+  })
+  it('búsqueda por ubicación → las líneas de esa ubicación', () => {
+    expect(lineasQueCoinciden(prod, lineas, libre('A-0'), 'Y')).toEqual(new Set(['a', 'b']))
+  })
+  it('búsqueda por SKU o nombre (todas coinciden) → null: se muestran todas sin resaltar', () => {
+    expect(lineasQueCoinciden(prod, lineas, libre('TOR'), 'Y')).toBeNull()
+  })
+  it('sin búsqueda o sin líneas → null', () => {
+    expect(lineasQueCoinciden(prod, lineas, [], 'Y')).toBeNull()
+    expect(lineasQueCoinciden(prod, [], libre('LPN'), 'Y')).toBeNull()
+  })
+})

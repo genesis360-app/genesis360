@@ -86,3 +86,24 @@ export function productoMatcheaPildoras(
     pildoras, combinador,
   ))
 }
+
+/**
+ * Pedido de GO 2026-10-02: al buscar un LPN, el producto aparece pero adentro hay que buscar ese LPN entre cientos.
+ * Devuelve los ids de las líneas del producto que coinciden con la búsqueda, o `null` si la búsqueda no distingue
+ * entre líneas (sin píldoras, o todas/ninguna de las líneas coinciden — p. ej. una búsqueda por SKU o por nombre).
+ * Con un subconjunto, la pantalla muestra solo esas líneas (resaltadas) con la opción "Ver todos".
+ */
+export function lineasQueCoinciden<L extends { id: string; lpn: string | null; ubicacionNombre: string | null }>(
+  producto: { nombre: string; sku: string | null; codigoBarras: string | null },
+  lineas: ReadonlyArray<L>,
+  pildoras: ReadonlyArray<PildoraInventario>,
+  combinador: Combinador,
+): Set<string> | null {
+  if (pildoras.length === 0 || lineas.length === 0) return null
+  const ids = lineas.filter(l => evaluarPildorasLinea({
+    productoNombre: producto.nombre, sku: producto.sku, codigoBarras: producto.codigoBarras,
+    lpn: l.lpn, ubicacionNombre: l.ubicacionNombre,
+  }, pildoras, combinador)).map(l => l.id)
+  if (ids.length === 0 || ids.length === lineas.length) return null
+  return new Set(ids)
+}

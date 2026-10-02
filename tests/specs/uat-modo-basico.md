@@ -2411,6 +2411,19 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔎 §94 — Inventario: buscar un LPN deja a la vista ese LPN · Envío: campos alineados (🟡 DEV) — 2026-10-02
+
+Pedido de GO. LPN: se descartó tildar el checkbox (alimenta las acciones masivas: dos búsquedas dejarían dos LPN
+tildados sin querer) y también expandir solo el producto (buscar y hacer click es el hábito; el click lo cerraría —
+lo detectaron 7 e2e de LPN).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 94.1 | Buscar un LPN: la fila del producto dice "1 LPN coincide"; al expandirlo se ven solo los que coinciden, resaltados, con "Mostrando 1 de N" | e2e `176` · unit `inventarioFiltro` | ✅ |
+| 94.2 | "Ver todos" muestra todos los LPN con el buscado resaltado y lleva la pantalla hasta él; la búsqueda no tilda nada | e2e `176` | ✅ |
+| 94.3 | Buscar por nombre/SKU (todas las líneas coinciden) no cambia nada: se ven todas, sin resaltar | unit `inventarioFiltro` · e2e 92/93/97/117/118/126 | ✅ |
+| 94.4 | Venta con envío en ventana angosta: "Fecha de entrega" y "Rango horario" quedan alineados | revisión (`items-end` + etiqueta corta) | ✅ código |
+
 ## 💳 §93 — Suscripción: que un pago de plan no quede huérfano ni se duplique (mig 464, 🟡 DEV) — 2026-10-02
 
 Incidente (2º cliente real, 28/09): pagó el plan Pro dos veces con 40 s de diferencia y ninguna suscripción quedó

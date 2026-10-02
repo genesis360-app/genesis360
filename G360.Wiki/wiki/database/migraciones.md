@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-01
 ---
 
-# Historial de Migraciones (001-455, + correctivos 387b/387c)
+# Historial de Migraciones (001-456, + correctivos 387b/387c)
+
+🗑️ **Migración 456 — ✅ EN DEV Y PROD (2026-10-02)**: `456_retirar_tabla_planes.sql` — retira la tabla `planes` (legacy de marzo: Básico $0 / Estándar $1.500 / Avanzado $3.000, sin uso) y `tenants.plan_id` (2 negocios de prueba en PROD, ambos con `plan_tier = basico`). Pedido de GO: la tabla no coincidía con la página de planes ni con la landing. Antes se desplegó `admin-api` sin `plan_id` en `customers.get` (DEV y PROD). `public` pasa de 240 a 239 policies (se va `planes_select_public`), DEV = PROD. SQL de planes por negocio: [[wiki/support/sql-planes-tenants]].
 
 📍 **Migración 455 — ✅ EN DEV Y PROD (2026-10-02, v1.237.0)**: `455_guard_stock_sin_ubicacion_avanzado.sql` — U-2 (B), guard de la base: trigger `trg_inventario_lineas_guard_ubicacion` (`fn_guard_stock_sin_ubicacion_avanzado`, BEFORE INSERT OR UPDATE OF ubicacion_id, activo) — para authenticated/anon, en un negocio **avanzado** no se inserta stock activo sin ubicación, no se le quita la ubicación a una línea activa y no se activa una línea sin ubicación. Líneas viejas activas sin ubicación se siguen pudiendo mover. Sin cambio de policies. 🛑 Va a PROD **junto con** el frontend de U-2 (si va antes, la anulación y la cancelación de traslado viejas fallan con mensaje claro en vez de reingresar sin ubicación).
 

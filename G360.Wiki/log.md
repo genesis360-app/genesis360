@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] update | Pricing v7: relevamiento + tabla `planes` retirada (mig 456) + SQL de planes por negocio
+
+- Plan de pricing v7 con los docs de Fede en Drive ("05 - Pricing y Costos v7" y "06 - Cambios v6 a v7"). GO marcó que
+  la tabla `planes` de PRD no coincidía con /suscripcion ni la landing: la tabla era legacy (marzo, sin uso); la landing
+  y /suscripcion coinciden entre sí y con `fn_plan_base_limite`, pero todo está en v6 (precios, límites, 30 días, Free).
+- Decisiones de GO: base del anual = precio de lista; PR-2 agente WhatsApp en Enterprise sin precio; PR-3 15 días solo
+  altas nuevas; PR-6 precio nuevo de add-on solo compras nuevas; PR-7 y regla general: **los negocios existentes
+  conservan límites y módulos de su plan v6** (los que están en prueba = Pro v6); prueba vencida = solo lectura **solo
+  para nuevos**. PR-8 lo ve con Fede.
+- 🔥 Hallazgo: al vencer la prueba la app BLOQUEA todo (redirect a /suscripcion) y los límites caen a Free. Kalken está
+  así desde el 24/09 (último ingreso 29/09); El Tilo vence el 28/10. Consultado a GO cómo resolverlo.
+- Mig 456 (DEV y PROD): fuera `planes` y `tenants.plan_id`; `admin-api` desplegada antes sin `plan_id`; panel interno sin
+  el fallback. Policies `public` 239 DEV = PROD. Nueva página [[wiki/support/sql-planes-tenants]].
+
 ## [2026-10-02] deploy | v1.237.0 a PROD — stock con ubicación en avanzado (U-2), CUIT exigible, ficha alineada
 
 - GO: "luego que termine la suite y hacés estos arreglos subís todo a PRD". Además pidió: CUIT en "Datos requeridos al

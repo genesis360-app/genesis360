@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T02:39:51.804Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002021838 · 175 tablas
+-- Generado 2026-10-02T04:01:06.209Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002035838 · 174 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1490,16 +1490,6 @@ CREATE TABLE public.pedidos (
   venta_origen_id uuid
 );
 
-CREATE TABLE public.planes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  nombre text NOT NULL,
-  max_users integer NOT NULL DEFAULT 2,
-  precio_mensual numeric(10,2) NOT NULL,
-  mp_plan_id text,
-  activo boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now()
-);
-
 CREATE TABLE public.platform_billers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   nombre text NOT NULL,
@@ -2359,7 +2349,6 @@ CREATE TABLE public.tenants (
   pais text DEFAULT 'AR'::text,
   subscription_status text NOT NULL DEFAULT 'trial'::text,
   trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '30 days'::interval),
-  plan_id uuid,
   max_users integer NOT NULL DEFAULT 2,
   max_productos integer NOT NULL DEFAULT 50,
   mp_subscription_id text,
@@ -3156,7 +3145,6 @@ ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_pkey PRIMARY KEY (id
 ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_pkey PRIMARY KEY (id);
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmado'::text, 'en_preparacion'::text, 'listo_para_entrega'::text, 'entregado'::text, 'entregado_parcial'::text, 'cancelado'::text])));
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_pkey PRIMARY KEY (id);
-ALTER TABLE public.planes ADD CONSTRAINT planes_pkey PRIMARY KEY (id);
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_condicion_iva_emisor_check CHECK ((condicion_iva_emisor = ANY (ARRAY['Monotributista'::text, 'Exento'::text, 'RI'::text])));
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_pkey PRIMARY KEY (id);
@@ -3812,7 +3800,6 @@ ALTER TABLE public.tareas_repositor ADD CONSTRAINT tareas_repositor_usuario_asig
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_emisor_id_fkey FOREIGN KEY (emisor_id) REFERENCES emisores_fiscales(id) ON DELETE SET NULL;
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-ALTER TABLE public.tenants ADD CONSTRAINT tenants_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES planes(id);
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_wms_armado_operario_default_id_fkey FOREIGN KEY (wms_armado_operario_default_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE CASCADE;
@@ -4358,7 +4345,6 @@ CREATE INDEX idx_tenant_certificates_emisor_id ON public.tenant_certificates USI
 CREATE INDEX idx_tenant_certificates_tenant ON public.tenant_certificates USING btree (tenant_id);
 CREATE INDEX idx_tenants_delete_scheduled_at ON public.tenants USING btree (delete_scheduled_at) WHERE (delete_scheduled_at IS NOT NULL);
 CREATE UNIQUE INDEX idx_tenants_fichado_token ON public.tenants USING btree (fichado_token) WHERE (fichado_token IS NOT NULL);
-CREATE INDEX idx_tenants_plan_id ON public.tenants USING btree (plan_id);
 CREATE INDEX idx_tiendanube_credentials_sucursal_id ON public.tiendanube_credentials USING btree (sucursal_id);
 CREATE INDEX idx_tn_creds_tenant ON public.tiendanube_credentials USING btree (tenant_id);
 CREATE INDEX idx_tn_map_producto ON public.inventario_tn_map USING btree (tenant_id, producto_id);
@@ -15324,7 +15310,6 @@ ALTER TABLE public.padron_arca_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_lanzamientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedidos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.planes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
@@ -15909,8 +15894,6 @@ CREATE POLICY pedido_lanzamientos_tenant ON public.pedido_lanzamientos AS PERMIS
 CREATE POLICY pedidos_tenant ON public.pedidos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY planes_select_public ON public.planes AS PERMISSIVE FOR SELECT TO anon, authenticated
-  USING (true);
 CREATE POLICY precios_programados_select ON public.precios_programados AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY pen_tenant ON public.producto_estructura_niveles AS PERMISSIVE FOR ALL TO public
@@ -16574,9 +16557,6 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pe
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_lanzamientos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedidos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedidos TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO authenticated;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_billers TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas_claims TO service_role;

@@ -58,7 +58,6 @@ export interface Tenant {
   pais: string
   subscription_status: SubscriptionStatus
   trial_ends_at: string
-  plan_id?: string
   max_users: number
   max_productos: number
   mp_subscription_id?: string

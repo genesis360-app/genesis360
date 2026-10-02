@@ -756,7 +756,7 @@ Deno.serve(async (req) => {
       case 'customers.get': {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
         const { data: tenant, error } = await svc.from('tenants')
-          .select('id, nombre, plan_id, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
+          .select('id, nombre, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
             + 'inicio_actividades, subscription_status, subscription_period_end, delete_scheduled_at, '
             + 'pais, tipo_comercio, moneda, telefono, mp_subscription_id, '
             // Estado fiscal: es lo primero que pregunta un cliente que no puede facturar.

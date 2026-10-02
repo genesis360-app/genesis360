@@ -45,6 +45,21 @@ type: project
 > **Segundo incidente del mismo negocio:** una caja abierta con sucursal desfasada bloqueaba el cambio de sucursal sin
 > salida → corregida en PROD con un UPDATE + mig 460 (solo DEV) que lo impide hacia adelante.
 >
+> **🙋 PARA REVISAR (pedido de GO 02/10) — un usuario, un dispositivo a la vez:** GO plantea que al entrar con el mismo
+> usuario desde otro dispositivo se cierre la sesión del anterior. Analizar antes de decidir si aplica:
+> - *A favor:* cada persona usa su propio usuario (trazabilidad de caja/ventas/actividad por persona, no "el usuario del
+>   local" compartido); empuja a comprar usuarios del plan (límite de usuarios real); menos riesgo si alguien se lleva la
+>   contraseña.
+> - *En contra / implicancias:* el dueño que usa celular + PC a la vez queda echado de uno (¿excepción para DUEÑO, o
+>   "máximo N dispositivos"?); una venta a medio cargar en el dispositivo echado se pierde (avisar antes de cortar, no
+>   cortar en medio de un cobro); la PWA offline/cola de sincronización; la sesión de caja es por usuario, no por
+>   dispositivo (¿qué pasa con la caja abierta en el otro equipo?); los empleados sin correo (código + usuario) comparten
+>   más fácil el acceso.
+> - *Técnico:* Supabase no lo trae de fábrica: tabla de sesión activa por usuario (id de sesión/dispositivo) + chequeo
+>   al iniciar sesión y en el refresh del token (o Realtime para echar al instante) + `auth.admin.signOut` de las demás.
+>   Alternativa más suave: solo mostrar "este usuario está abierto en otro dispositivo" y dejar que el dueño decida.
+> - Sin código hasta que GO decida: (1) estricto 1 dispositivo / N dispositivos / solo aviso; (2) si el dueño es excepción.
+>
 > **Riesgos / hallazgos abiertos:** (a) `tenant_addons` no guarda el precio pagado por pack → si cambia el precio de un
 > add-on, `mp-addon-batch` recalcula con el precio nuevo (hoy nadie tiene packs de sucursales; arreglar antes del
 > próximo cambio de precio) · (b) ✅ HECHO en DEV (02/10, mig 459, commit `a6ba9d0e`): el desarmado de KIT ahora es la RPC atómica `desarmar_kit` (ver [[wiki/features/inventario-stock]]); falta PROD · (b2) latente: el ARMADO (migs 244/343) tiene el mismo problema con recetas fraccionarias contra columnas integer · (c) U-2: la ubicación habitual del

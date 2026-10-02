@@ -2411,6 +2411,15 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧩 §86 — CUIT exigible en el alta rápida de cliente + ficha del producto alineada — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 86.1 | Config → Ventas → Operativa → "Datos requeridos al crear un cliente" ofrece CUIT (desmarcado por defecto) | revisión | ✅ código |
+| 86.2 | Con CUIT marcado, el alta rápida del POS no crea el cliente sin un CUIT de 11 dígitos; placeholder "CUIT *" | unit `clienteCampos` | ✅ |
+| 86.3 | CUIT y DNI marcados: con CUIT cargado el DNI no se exige (regla de la ficha, GO 30/09) | unit `clienteCampos` | ✅ |
+| 86.4 | Ficha del producto: Stock mínimo / Unidad de medida e IVA / Margen alineados; la explicación está en el ⓘ | captura (1280 px) | ✅ |
+
 ## 📍 §85 — Modo avanzado: stock con ubicación obligatoria + el POS explica el que no se vende (U-2) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

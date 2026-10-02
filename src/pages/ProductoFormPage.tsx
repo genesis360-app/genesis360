@@ -1,3 +1,4 @@
+import { InfoTip } from '@/components/InfoTip'
 import imageCompression from 'browser-image-compression'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -1434,8 +1435,10 @@ export default function ProductoFormPage() {
               {/* Alícuota IVA | Margen objetivo % */}
               <div className={`grid ${verCosto ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alícuota IVA</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">IVA incluido en el precio de venta</p>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Alícuota IVA{' '}
+                    <InfoTip text="El IVA que ya está incluido en el precio de venta. Es el que se informa en la factura (A o B) de este producto." />
+                  </label>
                   <select value={form.alicuota_iva} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, alicuota_iva: e.target.value }))}
                     className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:opacity-50 disabled:bg-gray-50 dark:bg-gray-700">
@@ -1447,8 +1450,10 @@ export default function ProductoFormPage() {
                 </div>
                 {verCosto && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo %</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Margen objetivo %{' '}
+                    <InfoTip text="El margen que querés ganar con este producto. Se usa para sugerir el precio de venta y aparece una alerta en Métricas si el margen real cae por debajo." />
+                  </label>
                   <div className="relative">
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={MARGEN_MAX_PCT} step="0.1" disabled={!canEdit}
                       value={form.margen_objetivo}
@@ -1668,15 +1673,20 @@ export default function ProductoFormPage() {
               {/* Stock mínimo | Unidad de medida */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
+                  {/* Descripción en el ⓘ: como texto debajo del título desalineaba los dos campos de la fila (GO 2026-10-01). */}
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Stock mínimo{' '}
+                    <InfoTip text="Cuando el stock de este producto baja de este número, aparece en Alertas (stock bajo) para que lo repongas." />
+                  </label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide/cuenta este producto (Peso/Volumen/Longitud admiten decimales; Conteo no)</p>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Unidad de medida{' '}
+                    <InfoTip text="Cómo se mide o cuenta este producto. Las de Peso, Volumen y Longitud (kg, litro, metro) admiten decimales en ventas e ingresos; las de Conteo (unidad, par, docena) solo enteros." />
+                  </label>
                   {unidadesFisicas.length > 0 ? (
                     <select value={form.unidad_medida_base_id} disabled={!canEdit}
                       onChange={e => {

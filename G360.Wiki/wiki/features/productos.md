@@ -148,6 +148,10 @@ Botón "Grupos" en barra de acciones → panel lateral (drawer):
 
 La página de creación/edición fue reorganizada en 6 cards temáticos. Columna derecha: Imagen + QR (solo al editar).
 
+> 🎨 **2026-10-01 (GO, 🟡 DEV):** en las filas de dos campos (Stock mínimo | Unidad de medida, Alícuota IVA | Margen
+> objetivo) la descripción pasó de texto debajo del título a un ⓘ (`InfoTip`) con la explicación más completa: el texto
+> largo de "Unidad de medida" bajaba su campo y la fila quedaba desalineada.
+
 > [!NOTE] **🐛 Fix bug real de caché stale al reabrir un producto editado (2026-07-22, ✅ EN PROD desde v1.144.0, sin
 > commitear al cierre de sesión).** GO reportó que el selector "Estos precios corresponden a" (ancla
 > de precio, Card 3) no se guardaba a la primera — había que editarlo dos veces. Investigado contra un

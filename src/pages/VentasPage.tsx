@@ -6482,7 +6482,7 @@ export default function VentasPage() {
                       placeholder={`Email${camposReqCliente.email ? ' *' : ''}`} type="email" autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <input value={nuevoClienteForm.cuit} onChange={e => setNuevoClienteForm(f => ({ ...f, cuit: e.target.value }))}
-                      placeholder="CUIT (opcional, para Factura A)" inputMode="numeric"
+                      placeholder={camposReqCliente.cuit ? "CUIT *" : "CUIT (opcional, para Factura A)"} inputMode="numeric"
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <PadronArcaSugerencia
                       cuit={nuevoClienteForm.cuit}

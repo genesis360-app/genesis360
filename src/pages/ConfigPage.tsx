@@ -7062,14 +7062,14 @@ export default function ConfigPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Datos requeridos al crear un cliente
-                    {' '}<InfoTip text="Aplica al alta rápida de cliente desde el POS. El nombre es siempre obligatorio; marcá qué otros datos no pueden faltar." />
+                    {' '}<InfoTip text="Aplica al alta rápida de cliente desde el POS. El nombre es siempre obligatorio; marcá qué otros datos no pueden faltar. Con CUIT cargado el DNI no se exige (una empresa no tiene DNI). CUIT obligatorio sirve si le vendés a empresas y les hacés Factura A." />
                   </label>
                   <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
                     <label className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
                       <input type="checkbox" checked disabled className="w-4 h-4 accent-accent opacity-60" />
                       Nombre (siempre)
                     </label>
-                    {([['dni', 'DNI'], ['telefono', 'Teléfono'], ['email', 'Email']] as const).map(([key, label]) => (
+                    {([['dni', 'DNI'], ['cuit', 'CUIT'], ['telefono', 'Teléfono'], ['email', 'Email']] as const).map(([key, label]) => (
                       <label key={key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                         <input type="checkbox" disabled={!canEdit} checked={bizClienteCampos[key]}
                           onChange={e => setBizClienteCampos(p => ({ ...p, [key]: e.target.checked }))}

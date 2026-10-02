@@ -22,8 +22,7 @@ import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
 import {
   tokenDesdeBrowser, restHeaders, SUPABASE_URL, loginToken,
-  sembrarPresentaciones, leerPresentaciones,
-} from './helpers/fixtures'
+  sembrarPresentaciones, leerPresentaciones, idUbicacionSiembra } from './helpers/fixtures'
 
 test.describe('Guards server-side — tier cross-producto y aprobación de estado (REST-only)', () => {
   test('TIER-09: el trigger rechaza enlazar en un tier la presentación de OTRO producto', async ({ page, request }) => {
@@ -118,7 +117,7 @@ test.describe('Guards server-side — tier cross-producto y aprobación de estad
     const [producto] = (await prodRes.json()) as Array<{ id: string }>
 
     const lineaRes = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
-      headers: ownerHeaders, data: { tenant_id: tenantId, producto_id: producto.id, lpn: `E2E-LPN120-${ts}`, cantidad: 5, activo: true },
+      headers: ownerHeaders, data: { tenant_id: tenantId, producto_id: producto.id, lpn: `E2E-LPN120-${ts}`, cantidad: 5, activo: true, ubicacion_id: await idUbicacionSiembra(request, ownerHeaders) },
     })
     expect(lineaRes.ok(), `[120] no se pudo crear el LPN: ${await lineaRes.text()}`).toBe(true)
     const [linea] = (await lineaRes.json()) as Array<{ id: string; estado_id: string | null }>

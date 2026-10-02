@@ -71,6 +71,9 @@ test.describe('Traslado entre sucursales (mutante)', () => {
           'ubicación global en DEV (verificar `ubicaciones` con sucursal_id IS NULL).',
       })
       .toBeGreaterThan(1)
+    // U-2 (B): en avanzado la recepción exige elegir dónde quedó (sin valor presupuesto).
+    const ubicVals = await ubicDestinoSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
+    await ubicDestinoSelect.selectOption(ubicVals[0])
 
     await page.getByRole('button', { name: /Confirmar recepción/i }).last().click()
 

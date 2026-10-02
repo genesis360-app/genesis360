@@ -2411,6 +2411,33 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧩 §86 — CUIT exigible en el alta rápida de cliente + ficha del producto alineada — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 86.1 | Config → Ventas → Operativa → "Datos requeridos al crear un cliente" ofrece CUIT (desmarcado por defecto) | revisión | ✅ código |
+| 86.2 | Con CUIT marcado, el alta rápida del POS no crea el cliente sin un CUIT de 11 dígitos; placeholder "CUIT *" | unit `clienteCampos` | ✅ |
+| 86.3 | CUIT y DNI marcados: con CUIT cargado el DNI no se exige (regla de la ficha, GO 30/09) | unit `clienteCampos` | ✅ |
+| 86.4 | Ficha del producto: Stock mínimo / Unidad de medida e IVA / Margen alineados; la explicación está en el ⓘ | captura (1280 px) | ✅ |
+
+## 📍 §85 — Modo avanzado: stock con ubicación obligatoria + el POS explica el que no se vende (U-2) — 2026-10-01
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 85.1 | 🛑 Avanzado: el ingreso individual no se guarda sin ubicación y no crea nada; el campo arranca vacío (no se presupone) | e2e `174` B | ✅ |
+| 85.2 | Avanzado: ingreso masivo, recepción, recibir traslado, armar/desarmar KIT e importador de inventario exigen ubicación | e2e 29, 30, 93, 132 (eligen ubicación) · revisión | ✅ |
+| 85.3 | 🛑 Devolución con destino "vendible": se elige la ubicación entre las habilitadas para surtido (antes entraba sin ubicación y el POS no la vendía) | revisión | ✅ código |
+| 85.4 | POS: producto con stock sin ubicar → "Hay N unidades sin ubicar" + botón a Inventario filtrado | e2e `174` A1 (mutación: sin el arreglo del buscador falla) | ✅ |
+| 85.5 | POS: stock en una ubicación no habilitada para surtido → la nombra + botón a Configuración | e2e `174` A2 | ✅ |
+| 85.6 | Con un grupo de estados activo, el producto con stock trabado sigue apareciendo en el buscador | e2e `174` A1 | ✅ |
+| 85.7 | Desarmado de KIT: si falla el ingreso de un componente, se avisa (antes el movimiento quedaba sin stock) | revisión | ✅ código |
+| 85.8 | Básico: nada cambia (sin ubicación, todo vendible) | revisión (todas las validaciones condicionadas a modo avanzado) | ✅ código |
+| 85.9 | 🛑 Anular una venta despachada (avanzado): quien aprueba elige la ubicación del reingreso (GO: opción C); sin elegir no se toca caja ni stock | e2e `137` A (vuelve a RACK2) | ✅ |
+| 85.10 | Cancelar un traslado cuya línea de origen ya no existe: quien cancela elige la ubicación; cada paso revisa errores | revisión | ✅ código |
+| 85.11 | 🛑 Base (mig 455): en avanzado no se crea stock activo sin ubicación, no se le quita a una línea, ni se activa una línea sin ubicación (atajo cerrado) | e2e `174` B (REST directo) | ✅ |
+| 85.12 | Las líneas viejas activas sin ubicación se siguen pudiendo vender/ajustar; la ubicación habitual del producto se sigue precargando (GO: mantener) | revisión · e2e de venta | ✅ |
+| 85.13 | Editar LPN en avanzado: ya no ofrece "Sin ubicación" | revisión | ✅ código |
+
 ## 🧾 §84 — Número de venta por negocio (mig 454, drift de PROD) — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { visible } from './helpers/fixtures'
+import { visible, garantizarUbicacionSiembra, UBICACION_SIEMBRA } from './helpers/fixtures'
 
 const PRODUCTO = 'Elite Pañuelos'  // sin lote/vencimiento/series (evita campos obligatorios extra)
 
@@ -17,6 +17,8 @@ test.describe('Recepción → stock (mutante)', () => {
   test('recepción sin OC: agrega un producto y sube el stock', async ({ page }) => {
     await goto(page, '/recepciones')
     await waitForApp(page)
+    // U-2 (B): en avanzado la recepción exige ubicación → la de siembra tiene que existir (si se creó, recargar).
+    if (await garantizarUbicacionSiembra(page)) { await goto(page, '/recepciones'); await waitForApp(page) }
 
     // Entrar al form si hay un botón de "Nueva recepción"
     const nueva = page.getByRole('button', { name: /Nueva recepci|Registrar recepci|^Recibir$/i }).first()
@@ -43,10 +45,19 @@ test.describe('Recepción → stock (mutante)', () => {
     await buscador.fill(PRODUCTO)
     await page.locator('div.absolute.z-20 button').first().click()
 
+
     // Confirmar recepción
     const confirmar = page.getByRole('button', { name: /Confirmar recepción/i })
     await expect(confirmar).toBeVisible({ timeout: 5000 })
     await confirmar.click()
+
+    // U-2 (B): sin ubicación (el producto no tiene una habitual) la recepción NO se confirma: avisa y despliega el ítem.
+    const ubicItem = page.locator('select').filter({ has: page.locator('option', { hasText: /Elegí la ubicación/ }) }).first()
+    if (await visible(ubicItem, 3000) && (await ubicItem.inputValue()) === '') {
+      await expect(page.getByText(/Elegí la ubicación de "Elite Pañuelos"/).first()).toBeVisible({ timeout: 5000 })
+      await ubicItem.selectOption({ label: UBICACION_SIEMBRA })
+      await confirmar.click()
+    }
 
     // POSITIVO: el modal de resultado "Recepción #N confirmada" (RecepcionesPage:910)
     await expect(page.getByText(/Recepción #\d+ confirmada/i)).toBeVisible({ timeout: 15000 })

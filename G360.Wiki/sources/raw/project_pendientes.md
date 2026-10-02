@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, noche) — PROD = `v1.235.0` (001-451) · DEV = + Maestro, Fase 0, numeración (001-**454**)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre) — PROD = DEV = `v1.236.0` (001-454)
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.235.0` ✅ (PR #367, merge `12e09d33`) | 001-**451** |
-> | **DEV** | `v1.235.0` + Maestro + Fase 0 + numeración (sin bump, en `dev`; EF `emitir-factura` desplegada en DEV) | 001-**454** (452-454 solo en DEV) |
+> | **PROD** | `v1.236.0` ✅ (PR #368, merge `f4354d29`) | 001-**454** |
+> | **DEV** | `v1.236.0` (= PROD) | 001-**454** |
 > | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
 >
 > 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
@@ -29,7 +29,19 @@ type: project
 > **Para PROD:** mig 452 → merge (la página llama a la función nueva) · tocó `app-reference.md` (rutas de importadores
 > corregidas) ⇒ `npm run ai:knowledge` + redeploy EF `ai-assistant` DEV y PROD.
 >
-> **✅ Urgentes sin preguntas HECHOS en DEV (01/10 noche):**
+> **📍 U-2 (A + B) HECHO en DEV (01/10 noche, sin migración, sin versión)** — GO eligió A+B **sin ubicación sugerida**.
+> A: el POS explica el stock sin ubicar / en ubicación no habilitada para surtido (y ya no oculta esos productos con un
+> grupo activo). B: en avanzado no se carga stock sin ubicación (ingreso individual/masivo, recepción, traslado, kit,
+> importador, devolución vendible). e2e `174` + 8 specs adaptados. UAT §85.
+> ✅ GO respondió: (1) anulación → elige quien aprueba (C); (2) cancelar traslado → elige quien cancela; (3) se mantiene
+> la ubicación habitual. Hecho + **guard de la base mig 455** (en DEV). Hallazgo abierto: el desarmado de KIT no es
+> atómico (pasarlo a RPC). **Deploy: mig 455 + frontend juntos** (sin bump todavía).
+>
+> **🚀 v1.236.0 EN PROD (01/10, cierre, GO: "pasemos a PRD")** — migs 452→453→454 de a una, EF `emitir-factura` (diff 0),
+> merge PR #368, release Latest, servida `index-HQz-ILzk.js`, `ai-assistant` redeployado, paridad policies DEV = PROD.
+> **U-4 ✅** guía de facturación corregida (artifact v5). **U-2** espera decisión (opciones en el chat del 01/10).
+>
+> **✅ Urgentes sin preguntas HECHOS (ahora EN PROD) (01/10 noche):**
 > - **U-1 Fase 0 (REGLA #0, mig 453 + EF `emitir-factura`):** la factura guarda `punto_venta` y `cae_ambiente` (la NC,
 >   `nc_cae_ambiente`); la NC referencia el PV de la factura original; el PDF imprime el PV en que se emitió; NC en otro
 >   ambiente → rechazada. 🛑 Hallazgo cerrado de paso: `authenticated` podía hacer UPDATE de `ventas.cae` (borrarlo =
@@ -38,8 +50,8 @@ type: project
 > - **U-3 Numeración (mig 454):** causa = **drift**: en PROD `ventas.numero` es IDENTITY global (DEV no). DROP IDENTITY +
 >   candado por negocio. UAT §84.
 > - **U-5 Checklist de alta:** [[wiki/support/checklist-alta-cliente]].
-> - 🛑 **Orden a PROD:** migs 452 → 453 → 454 (de a una) → **EF `emitir-factura`** (después de la 453: si va antes, no
->   puede guardar el CAE que ARCA ya autorizó) → merge. Paridad: la 453 suma 2 triggers, sin policies nuevas.
+> - ✅ **Orden a PROD cumplido (01/10):** migs 452 → 453 → 454 (de a una) → **EF `emitir-factura`** (después de la 453: si
+>   iba antes, no podía guardar el CAE que ARCA ya autorizó) → merge. La 453 sumó 2 triggers, sin policies nuevas.
 > - Pendiente de U-2 y la guía (U-4): respuesta de GO (D-1, D-2 del consolidado del 01/10).
 >
 > 1. ✅ **v1.235.0 EN PROD** (deploy 01/10 noche, PR #367): padrón ARCA, Excel, importadores todo-o-nada (Productos,

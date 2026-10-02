@@ -1,5 +1,5 @@
 // ── Campos requeridos del cliente en el POS (backlog Fede/GO punto 4, mig 280) ───────────
-// `tenants.cliente_campos_requeridos` = {"dni":bool,"telefono":bool,"email":bool} (el nombre
+// `tenants.cliente_campos_requeridos` = {"dni":bool,"telefono":bool,"email":bool,"cuit":bool} (el nombre
 // es SIEMPRE obligatorio). Si el jsonb es NULL (tenant viejo sin re-guardar la config),
 // se deriva del enum legacy `cliente_datos_minimos`.
 
@@ -7,13 +7,15 @@ export interface CamposRequeridosCliente {
   dni: boolean
   telefono: boolean
   email: boolean
+  /** CUIT obligatorio (2026-10-01, pedido de GO): para negocios que le venden a empresas. Sin clave = false. */
+  cuit: boolean
 }
 
 const LEGACY_MAP: Record<string, CamposRequeridosCliente> = {
-  nombre:            { dni: false, telefono: false, email: false },
-  nombre_dni:        { dni: true,  telefono: false, email: false },
-  nombre_dni_email:  { dni: true,  telefono: false, email: true },
-  todos:             { dni: true,  telefono: true,  email: true },
+  nombre:            { dni: false, telefono: false, email: false, cuit: false },
+  nombre_dni:        { dni: true,  telefono: false, email: false, cuit: false },
+  nombre_dni_email:  { dni: true,  telefono: false, email: true,  cuit: false },
+  todos:             { dni: true,  telefono: true,  email: true,  cuit: false },
 }
 
 export function camposRequeridosCliente(tenant: {
@@ -23,7 +25,7 @@ export function camposRequeridosCliente(tenant: {
   const raw = tenant?.cliente_campos_requeridos
   if (raw && typeof raw === 'object') {
     const o = raw as any
-    return { dni: o.dni === true, telefono: o.telefono === true, email: o.email === true }
+    return { dni: o.dni === true, telefono: o.telefono === true, email: o.email === true, cuit: o.cuit === true }
   }
   return LEGACY_MAP[tenant?.cliente_datos_minimos ?? 'nombre'] ?? LEGACY_MAP.nombre
 }
@@ -46,6 +48,8 @@ export function validarClienteInline(
   if (req.dni && !form.dni.trim() && dniObligatorioEnFicha(form.cuit)) return 'El DNI es obligatorio'
   if (req.telefono && !form.telefono.trim()) return 'El teléfono es obligatorio'
   if (req.email && !form.email.trim()) return 'El email es obligatorio'
+  // El dígito verificador lo valida el formulario (padrón ARCA); acá solo que esté.
+  if (req.cuit && (form.cuit ?? '').replace(/\D/g, '').length !== 11) return 'El CUIT es obligatorio'
   if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'El email no es válido'
   return null
 }

@@ -117,8 +117,10 @@ test.describe('Importador de inventario — dos pasos, todo o nada (D3-a, REGLA 
       await expect(page.getByRole('button', { name: /^Cargar 2 líneas/ })).toBeVisible({ timeout: 15000 })
       // Entre la vista previa y la carga, alguien crea una línea con el 2º LPN.
       const [suc] = (await (await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=id&limit=1`, { headers })).json()) as any[]
+      // Con ubicación: desde la mig 455 la base no acepta stock sin ubicación en avanzado.
+      const [ubic] = (await (await request.get(`${SUPABASE_URL}/rest/v1/ubicaciones?select=id&nombre=eq.${encodeURIComponent(UBICACION_SIEMBRA)}&limit=1`, { headers })).json()) as any[]
       const otra = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
-        headers, data: { tenant_id: tid, producto_id: p.id, lpn: `E2E169-L2-${ts}`, cantidad: 1, sucursal_id: suc.id },
+        headers, data: { tenant_id: tid, producto_id: p.id, lpn: `E2E169-L2-${ts}`, cantidad: 1, sucursal_id: suc.id, ubicacion_id: ubic.id },
       })
       expect(otra.ok(), await otra.text()).toBe(true)
 

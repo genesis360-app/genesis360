@@ -294,6 +294,9 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
         return `${it.productoNombre}: requiere número de lote.`
       if (tipo === 'ingreso' && it.tieneVencimiento && !it.fechaVencimiento)
         return `${it.productoNombre}: requiere fecha de vencimiento.`
+      // U-2 (B): en avanzado el ingreso exige ubicación (sin ella el POS no lo vende).
+      if (tipo === 'ingreso' && modoAvanzado && !it.ubicacionId)
+        return `${it.productoNombre}: elegí la ubicación (en modo avanzado el stock sin ubicación no se puede vender).`
       // REGLA #0: atributos de variante — igual de obligatorios acá que en el ingreso simple.
       if (tipo === 'ingreso') {
         for (const a of ATRIBUTOS_MASIVO) {
@@ -816,7 +819,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                                 <select value={it.ubicacionId} onChange={e => upd(it.localId, { ubicacionId: e.target.value })} className={sel}>
-                                  <option value="">Sin ubicación</option>
+                                  {/* U-2 (B): obligatoria (este bloque solo se ve en avanzado). */}
+                                  <option value="" disabled>Elegí la ubicación…</option>
                                   {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                                 </select>
                               </div>

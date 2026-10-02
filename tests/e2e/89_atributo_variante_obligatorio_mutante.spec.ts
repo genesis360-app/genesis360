@@ -13,7 +13,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { visible } from './helpers/fixtures'
+import { visible, garantizarUbicacionSiembra, elegirUbicacionSiembraEnIngreso } from './helpers/fixtures'
 
 test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', () => {
   test('producto con Talle activado exige el talle al confirmar el ingreso', async ({ page }) => {
@@ -44,6 +44,8 @@ test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', ()
     })
 
     // 2) Ir a Inventario → Agregar stock → Ingreso y buscar el producto recién creado
+    // U-2 (B): el ingreso en avanzado exige ubicación → la de siembra tiene que existir antes de abrir el modal.
+    await garantizarUbicacionSiembra(page)
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
@@ -76,6 +78,7 @@ test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', ()
     await cantidad.fill('1')
 
     // 3) NEGATIVO — confirmar SIN talle debe rechazar con el mensaje exacto
+    await elegirUbicacionSiembraEnIngreso(page)
     const confirmar = page.getByRole('button', { name: /Confirmar ingreso/ }).first()
     await expect(confirmar).toBeEnabled({ timeout: 5000 })
     await confirmar.click()

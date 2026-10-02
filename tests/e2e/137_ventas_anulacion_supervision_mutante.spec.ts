@@ -160,6 +160,12 @@ test.describe('Ventas — anulación vía Supervisión (A1, mutante)', () => {
     const confirmarAprobar = page.getByRole('alertdialog').getByRole('button', { name: /^Confirmar$/i })
     await expect(confirmarAprobar, '[137] no apareció el diálogo de confirmación al aprobar').toBeVisible({ timeout: 5000 })
     await confirmarAprobar.click()
+    // U-2 (GO 2026-10-01, opción C): en avanzado quien aprueba elige dónde vuelve la mercadería (sin valor presupuesto).
+    const modalUbic = page.getByRole('dialog', { name: new RegExp(`Anular la venta #${ventaPre.numero}`) })
+    await expect(modalUbic, '[137] aprobar la anulación no pidió la ubicación del reingreso').toBeVisible({ timeout: 8000 })
+    await expect(modalUbic.getByRole('button', { name: 'Anular y reingresar' })).toBeDisabled()
+    await modalUbic.getByLabel('Ubicación').selectOption({ label: 'RACK2' })
+    await modalUbic.getByRole('button', { name: 'Anular y reingresar' }).click()
     await expect(page.getByText(/Anulación aprobada y ejecutada/i)).toBeVisible({ timeout: 15000 })
 
     // 3) POSITIVO final en DB: venta cancelada, autorización aprobada, stock restaurado, caja revertida
@@ -174,6 +180,11 @@ test.describe('Ventas — anulación vía Supervisión (A1, mutante)', () => {
     const prodPostRes = await request.get(`${SUPABASE_URL}/rest/v1/productos?id=eq.${productoId}&select=stock_actual`, { headers })
     const [prodPost] = (await prodPostRes.json()) as Array<{ stock_actual: number }>
     expect(prodPost.stock_actual, '[137] el stock debía volver al valor sembrado tras la anulación').toBe(STOCK_INICIAL)
+    // …y vuelve a la ubicación ELEGIDA (antes volvía sin ubicación y el POS no lo vendía).
+    const lineasPost = (await (await request.get(
+      `${SUPABASE_URL}/rest/v1/inventario_lineas?producto_id=eq.${productoId}&activo=eq.true&notas=ilike.*Anulaci*&select=ubicaciones(nombre)`, { headers })).json()) as any[]
+    expect(lineasPost.length, '[137] no se encontró la línea del reingreso').toBeGreaterThan(0)
+    expect(lineasPost.every(l => l.ubicaciones?.nombre === 'RACK2'), '[137] el reingreso no quedó en la ubicación elegida').toBe(true)
 
     const cajaRes = await request.get(
       `${SUPABASE_URL}/rest/v1/caja_movimientos?tipo=eq.egreso_devolucion_sena&concepto=ilike.*Venta%20%23${ventaPre.numero}*&select=id,monto&order=created_at.desc&limit=1`,

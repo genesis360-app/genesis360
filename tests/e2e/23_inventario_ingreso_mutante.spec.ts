@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible, garantizarUbicacionSiembra, UBICACION_SIEMBRA } from './helpers/fixtures'
 
 test.describe('Inventario — ingreso de stock (mutante)', () => {
   test('ingresa stock de un producto y registra el movimiento', async ({ page, request }) => {
@@ -44,6 +44,8 @@ test.describe('Inventario — ingreso de stock (mutante)', () => {
     })
     expect(crearRes.ok(), `[23] no se pudo sembrar el producto: ${await crearRes.text()}`).toBe(true)
     const [prodSembrado] = (await crearRes.json()) as Array<{ id: string }>
+    // U-2 (B): en avanzado el ingreso exige ubicación → la de siembra tiene que existir antes de abrir el modal.
+    await garantizarUbicacionSiembra(page)
 
     await goto(page, '/inventario')
     await waitForApp(page)
@@ -76,6 +78,10 @@ test.describe('Inventario — ingreso de stock (mutante)', () => {
       )
       if (vals.length > 0) await sucSelect.selectOption(vals[0])
     }
+
+    // 4b) Ubicación (obligatoria en avanzado, U-2): la de siembra, nunca una elegida a ciegas.
+    const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
+    if (await visible(ubicSelect, 3000)) await ubicSelect.selectOption({ label: UBICACION_SIEMBRA })
 
     // 5) Cantidad = 1 (el input number con placeholder "0" dentro del modal)
     const cantidad = page.locator('input[type="number"][placeholder="0"]').first()

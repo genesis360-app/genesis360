@@ -151,6 +151,8 @@ test.describe('Motor de Rotación — armado de KIT prioriza el lote en descuent
     await expect(modalArmado).toBeVisible({ timeout: 8000 })
     const cantInput = page.locator('xpath=//label[contains(.,"Cantidad de KITs a armar")]/following::input[1]')
     await cantInput.fill(String(CANT_KITS_ARMAR))
+    // U-2 (B): en avanzado el KIT armado entra con ubicación elegida.
+    await page.locator('xpath=//label[contains(.,"Ubicación destino")]/following::select[1]').selectOption({ label: 'RACK2' })
     const btnIniciar = page.getByRole('button', { name: /Iniciar armado/i })
     await expect(btnIniciar).toBeEnabled({ timeout: 5000 })
     await btnIniciar.click()

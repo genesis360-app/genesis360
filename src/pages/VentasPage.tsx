@@ -68,6 +68,7 @@ import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
 import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useElegirUbicacion } from '@/components/ElegirUbicacionModal'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos' | 'autorizaciones'
@@ -253,6 +254,7 @@ export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const confirmar = useConfirm()
+  const { pedirUbicacion, modalUbicacion } = useElegirUbicacion()
   // Modo básico no usa ubicaciones: el stock se surte/despacha aunque `ubicacion_id` sea NULL
   // (el ingreso de stock en básico no asigna ubicación). En avanzado (WMS) solo se surte stock
   // ubicado. Aplicar a TODAS las queries de inventario_lineas que buscan stock para vender/
@@ -605,6 +607,20 @@ export default function VentasPage() {
   const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   // A7 (relevamiento Ventas A-D): destino del stock devuelto — DEV (revisión) o vendible directo. Default DEV.
   const [devDestinoStock, setDevDestinoStock] = useState<'dev' | 'vendible'>('dev')
+  // U-2 (B): en avanzado, "vendible" exige elegir la ubicación (antes entraba sin ubicación y el POS no la vendía).
+  const [devUbicVendibleId, setDevUbicVendibleId] = useState('')
+  const { data: ubicacionesVendibles = [] } = useQuery({
+    queryKey: ['ubicaciones-vendibles', tenant?.id, devolucionVenta?.sucursal_id ?? null],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ubicaciones').select('id, nombre, sucursal_id')
+        .eq('tenant_id', tenant!.id).eq('activo', true).eq('disponible_surtido', true).eq('es_devolucion', false)
+        .order('nombre')
+      if (error) throw error
+      const suc = devolucionVenta?.sucursal_id ?? null
+      return (data ?? []).filter((u: any) => !u.sucursal_id || !suc || u.sucursal_id === suc)
+    },
+    enabled: !!tenant && !!devolucionVenta && modoAvanzado,
+  })
   // L1 — caja específica para egreso efectivo en devolución (ARS)
   const [devCajaSesionId, setDevCajaSesionId] = useState<string>('')
   // G5 Fase 6 (G1) — caja específica para el egreso en USD, cuando el medio de devolución es
@@ -1347,14 +1363,32 @@ export default function VentasPage() {
         }
       }
 
+      // U-2 (A): en avanzado, stock en estado vendible pero SIN ubicar o en una ubicación no habilitada para surtido.
+      // No se vende, pero el producto tiene que seguir apareciendo para que el POS explique por qué (con un grupo
+      // activo se ocultaba y la persona no entendía dónde estaba su stock).
+      const trabadoMap: Record<string, number> = {}
+      if (modoAvanzado) {
+        let trabQ = applyFilter(supabase.from('inventario_lineas')
+          .select('producto_id, cantidad, cantidad_reservada, ubicacion_id, ubicaciones(disponible_surtido)')
+          .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
+          .in('producto_id', productoIds))
+        if (estadosFinal.length > 0) trabQ = trabQ.in('estado_id', estadosFinal)
+        const { data: trab } = await trabQ
+        for (const l of trab ?? []) {
+          if (l.ubicacion_id && (l.ubicaciones as any)?.disponible_surtido !== false) continue
+          trabadoMap[l.producto_id] = (trabadoMap[l.producto_id] ?? 0) + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
+        }
+      }
+
       // Filtrar productos con stock > 0 en el grupo y agregar stock calculado
       return prods
         .map((p: any) => ({
           ...p,
           stock_disponible: stockMap[p.id] ?? 0,
           stock_filtrado: estadosFiltro.length > 0, // indica que el stock está filtrado por grupo
+          stock_trabado: trabadoMap[p.id] ?? 0,
         }))
-        .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0)
+        .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0 || (trabadoMap[p.id] ?? 0) > 0)
     },
     enabled: !!tenant && authInitialized,
   })
@@ -1663,6 +1697,48 @@ export default function VentasPage() {
     const stockDisponible = p.stock_disponible ?? p.stock_actual ?? 0
 
     if (stockDisponible <= 0) {
+      // U-2 (A): en avanzado el POS solo vende stock UBICADO y en ubicaciones habilitadas para surtido. Si el stock está
+      // sin ubicar o en una ubicación no habilitada, decirlo y llevar a donde se arregla — antes el cartel decía "no
+      // tiene stock" con el stock a la vista en Inventario.
+      if (modoAvanzado && (!p.stock_filtrado || p.stock_trabado > 0)) {
+        let q = supabase.from('inventario_lineas').select('cantidad, cantidad_reservada, ubicacion_id, ubicaciones(nombre, disponible_surtido)')
+          .eq('tenant_id', tenant!.id).eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
+        if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+        const { data: lineasProd } = await q
+        const libre = (l: any) => Math.max(0, Number(l.cantidad ?? 0) - Number(l.cantidad_reservada ?? 0))
+        const sinUbicar = (lineasProd ?? []).filter((l: any) => !l.ubicacion_id).reduce((a: number, l: any) => a + libre(l), 0)
+        const noHabilitadas = (lineasProd ?? []).filter((l: any) => l.ubicacion_id && (l.ubicaciones as any)?.disponible_surtido === false)
+        const enNoHabilitadas = noHabilitadas.reduce((a: number, l: any) => a + libre(l), 0)
+        const u = (n: number) => `${n} unidad${n === 1 ? '' : 'es'}`
+        if (sinUbicar > 0) {
+          const busqueda = encodeURIComponent(p.sku || p.nombre)
+          toast.error(t => (
+            <span>
+              Hay <strong>{u(sinUbicar)} sin ubicar</strong> de este producto: en modo avanzado solo se vende el stock
+              con ubicación.{' '}
+              <button className="underline font-medium" onClick={() => {
+                toast.dismiss(t.id)
+                navigate(`/inventario?search=${busqueda}&filterUbic=__sin__`)
+              }}>Ubicarlas en Inventario</button>
+            </span>
+          ), { duration: 10000 })
+          return
+        }
+        if (enNoHabilitadas > 0) {
+          const nombres = [...new Set(noHabilitadas.map((l: any) => (l.ubicaciones as any)?.nombre).filter(Boolean))].join(', ')
+          toast.error(t => (
+            <span>
+              Hay <strong>{u(enNoHabilitadas)}</strong> de este producto en {nombres ? <strong>{nombres}</strong> : 'una ubicación'}, que
+              no está habilitada para venta (surtido).{' '}
+              <button className="underline font-medium" onClick={() => {
+                toast.dismiss(t.id)
+                navigate('/configuracion?tab=inventario')
+              }}>Habilitarla en Configuración</button>
+            </span>
+          ), { duration: 10000 })
+          return
+        }
+      }
       toast.error(p.stock_filtrado
         ? 'Sin stock disponible en el grupo seleccionado'
         : 'Este producto no tiene stock disponible')
@@ -4232,6 +4308,7 @@ export default function VentasPage() {
       setDevCajaSesionId(sesionesArs.length === 1 ? (sesionesArs[0] as any).id : '')
       setDevCajaSesionUsdId(sesionesUsd.length === 1 ? (sesionesUsd[0] as any).id : '')
       setDevDestinoStock('dev')
+      setDevUbicVendibleId('')
       setDevolucionVenta(venta)
     }
     // A1 — al aprobar desde Supervisión ya se pasó el gate de `puedeSupervisarModulo`, más
@@ -4401,6 +4478,10 @@ export default function VentasPage() {
         return
       }
       estadoVendibleId = estadoVendData.id
+      if (!devUbicVendibleId) {
+        toast.error('Elegí la ubicación donde vuelve a quedar la mercadería: en modo avanzado el stock sin ubicación no se puede vender.')
+        return
+      }
     }
 
     // Calcular monto total de la devolución
@@ -4658,7 +4739,7 @@ export default function VentasPage() {
             lineaId = lineaExistente.id
             lineaLpn = lineaExistente.lpn
           } else {
-            // A7: si devDestinoStock === 'vendible', va al stock disponible (sin ubicación); si no,
+            // A7: si devDestinoStock === 'vendible', va al stock disponible en la ubicación elegida (U-2); si no,
             // a la ubicación DEV de revisión. En básico, reingreso directo (sin ubicación/estado).
             const lineaPayload: any = {
               tenant_id: tenant.id,
@@ -4671,6 +4752,7 @@ export default function VentasPage() {
               // Básico: reingreso directo al stock (sin ubicación ni estado), inmediatamente vendible.
             } else if (devDestinoStock === 'vendible' && estadoVendibleId) {
               lineaPayload.estado_id = estadoVendibleId
+              lineaPayload.ubicacion_id = devUbicVendibleId
             } else {
               lineaPayload.ubicacion_id = ubicDevId
               lineaPayload.estado_id = estadoDevId
@@ -4892,7 +4974,7 @@ export default function VentasPage() {
   }
 
   const cambiarEstado = useMutation({
-    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null; motivo?: string; observacion?: string } }) => {
+    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts, ubicacionReingresoId }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null; motivo?: string; observacion?: string }; /** U-2: avanzado, anular una venta despachada → dónde vuelve el stock (lo elige quien aprueba). */ ubicacionReingresoId?: string | null }) => {
       // A1 — aprobar una anulación desde Supervisión puede apuntar a una venta que hoy no está en
       // el listado cargado del Historial (filtro de fecha/sucursal distinto) — fallback a traerla
       // directo de la DB en vez de fallar con "Venta no encontrada" pese a existir de verdad.
@@ -5249,6 +5331,12 @@ export default function VentasPage() {
             throw new Error(`Esta venta se cobró con US$${reintegroGuard.usd.toLocaleString('es-AR', { maximumFractionDigits: 2 })} en efectivo. Para anularla necesitás:\n• Abrir una Caja USD para registrar la devolución de los dólares, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito`)
           }
         }
+        // U-2 (GO 2026-10-01, opción C): en avanzado el stock de una venta ya rebajada vuelve a la ubicación que elige
+        // quien aprueba la anulación. Se valida ANTES de tocar caja o stock (la anulación no es atómica).
+        if (modoAvanzado && (venta.estado === 'despachada' || venta.estado === 'facturada') && !ubicacionReingresoId
+            && (items ?? []).some((it: any) => !(it.productos as any)?.tiene_series && Number(it.cantidad) > 0)) {
+          throw new Error('Elegí la ubicación donde vuelve a quedar la mercadería: en modo avanzado el stock sin ubicación no se puede vender.')
+        }
         // Liberar reservas
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
@@ -5274,8 +5362,8 @@ export default function VentasPage() {
         // restaurarlo al anular (espejo del reingreso de Devolver): el void devuelve plata Y stock.
         // En reservada/pendiente el stock no se había rebajado (solo reservado) → no re-agregar.
         if (venta.estado === 'despachada' || venta.estado === 'facturada') {
-          // Destino del reingreso: en avanzado, primer estado vendible (sin ubicación, se reubica
-          // luego); en básico, sin estado ni ubicación (todo es vendible). Ver [[reference_basico_stock_null_ubicacion_estado]].
+          // Destino del reingreso: en avanzado, primer estado vendible + la ubicación elegida al aprobar (U-2);
+          // en básico, sin estado ni ubicación (todo es vendible). Ver [[reference_basico_stock_null_ubicacion_estado]].
           let estadoVendibleId: string | null = null
           if (modoAvanzado) {
             const { data: ev } = await supabase.from('estados_inventario')
@@ -5292,7 +5380,10 @@ export default function VentasPage() {
                 await supabase.from('inventario_series').update({ activo: true, reservado: false }).in('id', serieIds)
                 const { data: seriesData } = await supabase.from('inventario_series').select('linea_id').in('id', serieIds)
                 const lineaIds = [...new Set((seriesData ?? []).map((s: any) => s.linea_id).filter(Boolean))]
-                if (lineaIds.length > 0) await supabase.from('inventario_lineas').update({ activo: true }).in('id', lineaIds)
+                if (lineaIds.length > 0) {
+                  const { error: eAct } = await supabase.from('inventario_lineas').update({ activo: true }).in('id', lineaIds)
+                  if (eAct) throw new Error(`La venta se anuló pero no se pudieron reactivar las series en el stock (${eAct.message}). Revisá el inventario.`)
+                }
               }
             } else {
               // Reingreso a la sucursal de la venta (evita líneas con sucursal_id NULL que solo
@@ -5329,7 +5420,10 @@ export default function VentasPage() {
                   notas: `Anulación de venta #${venta.numero}`,
                 }
                 if (modoAvanzado && estadoVendibleId) lineaPayload.estado_id = estadoVendibleId
-                const { data: linea } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
+                if (modoAvanzado) lineaPayload.ubicacion_id = ubicacionReingresoId
+                const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
+                // Antes no se miraba el error: la venta quedaba anulada (plata devuelta) y el stock no volvía.
+                if (lineaErr) throw new Error(`La venta se anuló pero no se pudo reingresar "${(item.productos as any)?.nombre ?? 'un producto'}" al stock (${lineaErr.message}). Revisá el inventario.`)
                 lineaId = linea?.id
               }
               if (lineaId) {
@@ -5653,7 +5747,18 @@ export default function VentasPage() {
         abrirModalDevolucion(ventaFresca, { anulacionTotal: true })
         toast('Completá la devolución total para terminar de aprobar (elegí el reembolso)', { icon: '📋', duration: 6000 })
       } else {
-        await cambiarEstado.mutateAsync({ ventaId, nuevoEstado: 'cancelada' })
+        // U-2 (opción C): en avanzado, quien aprueba elige dónde vuelve la mercadería (sin valor presupuesto).
+        let ubicacionReingresoId: string | null = null
+        if (modoAvanzado && (ventaFresca.venta_items ?? []).some((it: any) => !it.productos?.tiene_series && Number(it.cantidad) > 0)) {
+          ubicacionReingresoId = await pedirUbicacion({
+            titulo: `Anular la venta #${ventaFresca.numero}`,
+            mensaje: 'La mercadería vuelve al stock. ¿En qué ubicación queda?',
+            sucursalId: ventaFresca.sucursal_id ?? sucursalId ?? null,
+            confirmText: 'Anular y reingresar',
+          })
+          if (!ubicacionReingresoId) return
+        }
+        await cambiarEstado.mutateAsync({ ventaId, nuevoEstado: 'cancelada', ubicacionReingresoId })
         await marcarAprobadaVenta(aut.id)
         logVentaAuditoria(ventaId, 'anulacion', { estado_previo: ventaFresca.estado, total: ventaFresca.total, autorizacion_id: aut.id })
         toast.success('Anulación aprobada y ejecutada')
@@ -5676,6 +5781,7 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-6">
+      {modalUbicacion}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
@@ -6376,7 +6482,7 @@ export default function VentasPage() {
                       placeholder={`Email${camposReqCliente.email ? ' *' : ''}`} type="email" autoComplete="off"
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <input value={nuevoClienteForm.cuit} onChange={e => setNuevoClienteForm(f => ({ ...f, cuit: e.target.value }))}
-                      placeholder="CUIT (opcional, para Factura A)" inputMode="numeric"
+                      placeholder={camposReqCliente.cuit ? "CUIT *" : "CUIT (opcional, para Factura A)"} inputMode="numeric"
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <PadronArcaSugerencia
                       cuit={nuevoClienteForm.cuit}
@@ -7953,10 +8059,23 @@ export default function VentasPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-primary">Reintegrar a stock vendible</p>
-                      <p className="text-[11px] text-muted">Entra como disponible para venta, sin ubicación (asignar después).</p>
+                      <p className="text-[11px] text-muted">Entra como disponible para venta, en la ubicación que elijas.</p>
                     </div>
                   </label>
                 </div>
+                {devDestinoStock === 'vendible' && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-primary mb-1">¿En qué ubicación queda?</label>
+                    <select value={devUbicVendibleId} onChange={e => setDevUbicVendibleId(e.target.value)} aria-label="Ubicación del stock devuelto"
+                      className={`w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 ${devUbicVendibleId ? 'border-gray-200 dark:border-gray-700' : 'border-red-300 dark:border-red-700'}`}>
+                      <option value="" disabled>Elegí la ubicación…</option>
+                      {(ubicacionesVendibles as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                    {(ubicacionesVendibles as any[]).length === 0 && (
+                      <p className="text-[11px] text-red-500 mt-1">No hay ubicaciones habilitadas para venta. Activá "disponible para surtido" en Configuración → Inventario → Ubicaciones.</p>
+                    )}
+                  </div>
+                )}
               </div>
               )}
 

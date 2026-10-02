@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, idUbicacionSiembra } from './helpers/fixtures'
 
 test.describe('Stock sin variante asignada (mutante)', () => {
   test('el reparto conserva cada unidad, traza el movimiento y rechaza lo inválido', async ({ page, request }) => {
@@ -54,11 +54,12 @@ test.describe('Stock sin variante asignada (mutante)', () => {
     // ── 2) Stock: 10 en LPN-A + 7 en LPN-B ──────────────────────────────────────────────
     const lpnA = `E2E112-A-${sello}`
     const lpnB = `E2E112-B-${sello}`
+    const ubicSiembra = await idUbicacionSiembra(request, headers)   // mig 455: en avanzado no hay stock sin ubicación
     const lineasRes = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
       headers: { ...headers, Prefer: 'return=representation' },
       data: [
-        { tenant_id: madre.tenant_id, producto_id: madre.id, lpn: lpnA, cantidad: 10, sucursal_id: sucursal.id, activo: true },
-        { tenant_id: madre.tenant_id, producto_id: madre.id, lpn: lpnB, cantidad: 7, sucursal_id: sucursal.id, activo: true },
+        { tenant_id: madre.tenant_id, producto_id: madre.id, lpn: lpnA, cantidad: 10, sucursal_id: sucursal.id, activo: true, ubicacion_id: ubicSiembra },
+        { tenant_id: madre.tenant_id, producto_id: madre.id, lpn: lpnB, cantidad: 7, sucursal_id: sucursal.id, activo: true, ubicacion_id: ubicSiembra },
       ],
     })
     expect(lineasRes.ok(), `[112] no se pudo sembrar el stock: ${await lineasRes.text()}`).toBe(true)
@@ -217,7 +218,7 @@ test.describe('Stock sin variante asignada — SERIALIZADOS (mutante)', () => {
     // 2) Un LPN con 3 series activas + 1 ya vendida (activo=false)
     const lineaRes = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
       headers: { ...headers, Prefer: 'return=representation' },
-      data: { tenant_id: suc.tenant_id, producto_id: madreId, lpn: `E2E-SER-LPN-${sello}`, cantidad: 0, sucursal_id: suc.id, activo: true },
+      data: { tenant_id: suc.tenant_id, producto_id: madreId, lpn: `E2E-SER-LPN-${sello}`, cantidad: 0, sucursal_id: suc.id, activo: true, ubicacion_id: await idUbicacionSiembra(request, headers) },
     })
     const [linea] = (await lineaRes.json()) as Array<{ id: string; lpn: string }>
 

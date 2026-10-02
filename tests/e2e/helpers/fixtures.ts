@@ -267,6 +267,36 @@ export async function garantizarUbicacionSiembra(page: Page): Promise<boolean> {
   return true
 }
 
+/**
+ * Id de `UBICACION_SIEMBRA` (la crea si no existe) usando solo REST — para specs que siembran `inventario_lineas` directo.
+ * Desde la mig 455 la base rechaza stock activo sin ubicación en un negocio avanzado.
+ */
+export async function idUbicacionSiembra(request: APIRequestContext, headers: Record<string, string>): Promise<string> {
+  const q = `${SUPABASE_URL}/rest/v1/ubicaciones?select=id&nombre=eq.${encodeURIComponent(UBICACION_SIEMBRA)}&activo=eq.true&limit=1`
+  const [u] = (await (await request.get(q, { headers })).json()) as Array<{ id: string }>
+  if (u?.id) return u.id
+  const [me] = (await (await request.get(`${SUPABASE_URL}/rest/v1/users?select=tenant_id&limit=1`, { headers })).json()) as Array<{ tenant_id: string }>
+  const alta = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
+    headers: { ...headers, Prefer: 'return=representation' },
+    data: {
+      tenant_id: me.tenant_id, nombre: UBICACION_SIEMBRA, sucursal_id: null, mono_sku: false, activo: true, prioridad: 0,
+      descripcion: 'Ubicación de siembra de los tests e2e — multi-SKU, global y disponible para surtido',
+      disponible_surtido: true, tipo_logico: 'almacenamiento',
+    },
+  })
+  expect(alta.ok(), `[fixtures] no se pudo crear "${UBICACION_SIEMBRA}": ${await alta.text()}`).toBeTruthy()
+  return ((await alta.json()) as Array<{ id: string }>)[0].id
+}
+
+/**
+ * U-2 (B, 2026-10-01): en modo AVANZADO el ingreso exige ubicación. Para los specs que arman el ingreso a mano: elige la
+ * ubicación de siembra en el modal abierto (si el campo está). Llamar `garantizarUbicacionSiembra` ANTES de abrir el modal.
+ */
+export async function elegirUbicacionSiembraEnIngreso(page: Page): Promise<void> {
+  const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
+  if (await visible(ubicSelect, 3000)) await ubicSelect.selectOption({ label: UBICACION_SIEMBRA })
+}
+
 export async function ingresoRealPorUI(
   page: Page,
   opts: { nombreProducto: string; cantidad: number; estadoNombre?: string; ubicacionNombre?: string },

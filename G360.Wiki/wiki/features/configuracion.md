@@ -26,7 +26,7 @@ updated: 2026-10-01
 
 ---
 
-## 🗂️ Importar datos maestros — todo o nada (mig 452, 🟡 EN DEV 2026-10-01, sin versión)
+## 🗂️ Importar datos maestros — todo o nada (mig 452, ✅ EN PROD v1.236.0, 2026-10-01)
 
 `/configuracion/importar` (botón "Importar" arriba de Configuración) pasa al mismo flujo que Productos, Clientes,
 Inventario y Proveedores: `PaginaImportacion` + `VistaPreviaImportacion` + función de la base todo-o-nada

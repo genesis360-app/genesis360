@@ -12,6 +12,7 @@ import { estadoOCdesdeRecibido, superaOverReceipt, tieneFaltante, esAjusteCantid
 import { cambioCostoPct, superaAlertaCosto } from '@/lib/comprasCostos'
 import { logActividad } from '@/lib/actividadLog'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import type { Recepcion } from '@/lib/supabase'
 import { useConfirm } from '@/hooks/useConfirm'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
@@ -116,6 +117,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
 
 export default function RecepcionesPage() {
   const { tenant, user, sucursales, sucursalId: sucursalCtx } = useAuthStore()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const { applyFilter, sucursalId } = useSucursalFilter()
   const confirmar = useConfirm()
   // CO2 — config + rol para over-receipt, motivo de faltante y remito
@@ -505,6 +507,14 @@ export default function RecepcionesPage() {
 
       // CO2/B7 — remito obligatorio
       if (remitoObligatorio && !remitoFile) { toast.error('Adjuntá el remito del proveedor (obligatorio)'); return }
+
+      // U-2 (B): en avanzado lo recibido entra con ubicación (sin ella el POS no lo vende).
+      const sinUbic = modoAvanzado ? items.find(it => cantDe(it) > 0 && !it.ubicacion_id) : undefined
+      if (sinUbic) {
+        setItems(prev => prev.map(x => x._key === sinUbic._key ? { ...x, expanded: true } : x))
+        toast.error(`Elegí la ubicación de "${sinUbic.producto_nombre}": en modo avanzado el stock sin ubicación no se puede vender`)
+        return
+      }
     }
 
     setSaving(true)
@@ -1349,7 +1359,8 @@ export default function RecepcionesPage() {
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                         <select value={it.ubicacion_id} onChange={e => updItem(it._key, { ubicacion_id: e.target.value })}
                           className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600">
-                          <option value="">Sin ubicación</option>
+                          {/* U-2 (B): obligatoria en avanzado. */}
+                          <option value="" disabled={modoAvanzado}>{modoAvanzado ? 'Elegí la ubicación…' : 'Sin ubicación'}</option>
                           {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                         </select>
                       </div>

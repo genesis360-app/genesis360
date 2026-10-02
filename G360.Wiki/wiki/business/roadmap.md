@@ -16,6 +16,16 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kal
 (`5585866d`) · `cron` **2** (`757afda6`) — comparar solo DEV vs PROD del mismo día). PR **#367** `dev→main`, merge
 **`12e09d33`**, release **`v1.235.0` Latest**.
 
+## 🧾 v1.236.0 — Importador del Maestro, Fase 0 fiscal, numeración por negocio (2026-10-01, EN PROD)
+
+- PR #368, merge `f4354d29`, release Latest. Migs 452 → 453 → 454 en PROD de a una (hashes DEV = PROD), después la EF
+  `emitir-factura` (auditoría diff 0), después el merge. `ai-assistant` redeployado en DEV y PROD (app-reference).
+- **Importar datos maestros** todo o nada (combos con sus productos, motivo `egreso`, ubicaciones con sucursal, estados
+  inexistentes → error). Proveedores sale del Maestro.
+- 🛑 **Fase 0 (REGLA #0)**: la factura guarda su PV y el ambiente del CAE; NC con el PV de la factura original; PDF con
+  el PV correcto; campos fiscales de solo lectura para el navegador.
+- **Numeración por negocio**: quitada la IDENTITY global de `ventas.numero` (drift de PROD).
+
 ## 📲 v1.235.0 — Padrón ARCA, Excel, importadores todo o nada, envío por WhatsApp (2026-10-01, EN PROD)
 
 Migs 446-451 (aplicadas antes del merge, hashes de funciones DEV = PROD) + EF nueva `consultar-cuit` (auditoría diff 0).

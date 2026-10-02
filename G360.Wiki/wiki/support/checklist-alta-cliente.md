@@ -38,7 +38,7 @@ cargue stock o intente facturar.
 
 ## 3 · Facturación electrónica (ARCA)
 
-Guía para el cliente: artifact `WYpzGUG42wPBCv74ya5Jmg` (⚠️ pendiente de corregir los pasos 7 y 9 — espera OK de GO).
+Guía para el cliente: artifact `WYpzGUG42wPBCv74ya5Jmg` (✅ corregida 01/10, v5: paso 7 con el campo CUIT vacío, aviso de que el cert de producción no anda en Modo PRUEBA, `coe.notAuthorized`).
 
 - [ ] **Condición frente al IVA** del emisor bien cargada (RI → Facturas A/B; Monotributo/Exento → solo C).
 - [ ] El **CSR se genera en la app** y se descarga como `<CUIT>.csr`. El cliente solo sube el `.crt` que le da ARCA.

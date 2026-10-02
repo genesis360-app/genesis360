@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362, src/lib/traerTodo.ts]
-updated: 2026-09-24
+updated: 2026-10-01
 ---
 
 # Inventario y Stock
@@ -22,6 +22,43 @@ El núcleo de Genesis360. Modelo **LPN (Location/Product/Lot Number)** para trac
 > **✅ Verificado en la misma sesión (2026-08-24/25)**: aprobar un ajuste/conteo de inventario desde el
 > tab Supervisión efectivamente muta el `stock_actual` — era un gap de cobertura de tests real (nunca se
 > había probado end-to-end en vivo), no un bug encontrado.
+
+---
+
+## 📍 U-2 — Modo avanzado: el stock entra CON ubicación y el POS explica el que no se vende (2026-10-01, 🟡 EN DEV)
+
+Lo destapó el 2º cliente real (29/09): en avanzado el POS solo vende stock **ubicado** y en ubicaciones **habilitadas
+para surtido** (`disponible_surtido`, default `false` desde la mig 336), pero el ingreso dejaba cargar stock sin
+ubicación y el POS decía "no tiene stock" con el stock a la vista en Inventario.
+
+**Decisión de GO (A + B, sin ubicación sugerida):** el sistema no elige la ubicación por la persona — "no sabemos si la
+guardó ahí físicamente; ayudarlos a no cometer errores, no presuponer".
+
+- **A · El POS explica.** Si un producto no tiene stock vendible pero sí unidades **sin ubicar** → "Hay N unidades sin
+  ubicar…" + botón a Inventario filtrado (`?search=<SKU>&filterUbic=__sin__`). Si están en una ubicación **no habilitada
+  para surtido** → la nombra + botón a Configuración → Inventario. El buscador ya no oculta esos productos cuando hay un
+  grupo de estados activo (antes con un grupo predeterminado el producto ni aparecía — `stock_trabado`).
+- **B · En avanzado no se carga stock sin ubicación** (campo vacío, sin valor presupuesto; opción "Elegí…"): ingreso
+  individual y masivo (`InventarioPage`, `MasivoModal`), recepción de compras, recibir un traslado, armado y desarmado de
+  KIT, importador de inventario (la ubicación pasa de aviso a **error**), y devolución con destino **vendible** (antes
+  entraba sin ubicación y no se vendía; ahora se elige entre ubicaciones habilitadas para surtido). Mover LPN y
+  des-pickeo ya la exigían.
+- El desarmado de KIT ahora revisa los errores de cada paso (antes, si fallaba el ingreso de un componente, el
+  movimiento quedaba registrado sin el stock). ⚠️ Sigue sin ser atómico (pendiente: pasarlo a una RPC como el armado).
+- **Anular una venta despachada** (GO: opción C): quien aprueba la anulación elige en un modal dónde vuelve la mercadería
+  (`ElegirUbicacionModal`), validado ANTES de tocar caja o stock; el reingreso ahora revisa errores (antes la venta quedaba
+  anulada con la plata devuelta y el stock perdido en silencio). **Cancelar un traslado** cuya línea de origen ya no
+  existe: lo mismo, quien cancela elige. **Editar LPN**: en avanzado ya no ofrece "Sin ubicación".
+- **Guard de la base (mig 455, `fn_guard_stock_sin_ubicacion_avanzado`)**: para authenticated/anon, en un negocio
+  avanzado no se inserta stock activo sin ubicación, no se le quita la ubicación a una línea y no se ACTIVA una línea sin
+  ubicación (cerraba el atajo "crear inactiva y activar"). Las líneas viejas activas sin ubicación se pueden seguir
+  moviendo. SECURITY DEFINER / service_role pasan.
+- Se mantiene (GO): la **ubicación habitual del producto** (ficha / por sucursal) se sigue precargando en el ingreso
+  individual, masivo y recepciones.
+
+Tests: e2e `174` (A1 sin ubicar —sembrado pasando el negocio por básico—, A2 ubicación no habilitada, B ingreso + guard de
+la base por REST; prueba de mutación del buscador), `137` A (anulación con ubicación elegida) + specs 23, 29, 30, 89, 92,
+93, 97, 112, 117, 118, 120, 121, 132, 169 adaptados a sembrar/elegir ubicación. UAT §85.
 
 ---
 

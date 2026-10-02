@@ -2411,6 +2411,22 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧩 §89 — Desarmado de KIT atómico (mig 459, 🟡 DEV) — 2026-10-02
+
+Antes: escrituras sueltas desde el navegador (KIT rebajado sin componentes si fallaba a mitad; `stock_antes` del
+`des_kitting` leído después del rebaje; FIFO sin orden; errores de ledger ignorados; sin bloqueo). Ahora RPC
+`desarmar_kit` en una transacción. Los movimientos históricos no se corrigen.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 89.1 | Desarmar 2 KITs (receta ×3): KIT 5 → 3, componente 10 → 16 en la ubicación elegida, un `kitting_log` 'desarmado' | e2e `75` | ✅ |
+| 89.2 | 🛑 Movimiento `des_kitting` con antes/después reales (5 → 3) e `ingreso` del componente (10 → 16) | e2e `75` · SQL DEV (rollback) | ✅ |
+| 89.3 | 🛑 Falla a mitad (insert del componente) → no queda nada: KIT intacto, 0 movimientos | SQL DEV impersonando (rollback) | ✅ |
+| 89.4 | Avanzado sin ubicación / stock insuficiente / cantidad de KITs con decimales → rechazado | SQL DEV (rollback) | ✅ |
+| 89.5 | 🛑 Componente fraccionario (0,5 × 3 = 1,5) → rechazado (la columna es entera: antes se redondeaba en silencio) | e2e `75` · SQL DEV | ✅ |
+| 89.6 | KIT o componente con número de serie → rechazado (antes entraba sin series) | revisión de la función | ✅ código |
+| 89.7 | La línea del KIT que queda en 0 (sin reservas) se desactiva | revisión de la función | ✅ código |
+
 ## 💲 §88 — Pricing v7 (mig 457, 🟡 DEV) — 2026-10-02
 
 | # | Escenario | Cómo se verifica | Estado |

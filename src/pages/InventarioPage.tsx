@@ -1672,69 +1672,17 @@ export default function InventarioPage() {
       if (!desarmarKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
       const recetas = recetasMap[desarmarKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
-      // U-2 (B): se valida ANTES de escribir nada (el desarmado no es atómico).
       if (modoAvanzado && !desarmarUbicacionId) throw new Error('Elegí la ubicación de los componentes: en modo avanzado el stock sin ubicación no se puede vender')
-
-      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas (filtrado por sucursal)
-      let lineasKitQ = supabase.from('inventario_lineas')
-        .select('id, cantidad, cantidad_reservada')
-        .eq('tenant_id', tenant!.id).eq('producto_id', desarmarKitId).eq('activo', true)
-      if (sucursalId) lineasKitQ = lineasKitQ.eq('sucursal_id', sucursalId)
-      const { data: lineasKit } = await lineasKitQ
-      const stockDisponibleKit = (lineasKit ?? []).reduce((s: number, l: any) => s + (l.cantidad - (l.cantidad_reservada ?? 0)), 0)
-      if (stockDisponibleKit < cant) {
-        throw new Error(`Stock insuficiente del KIT: necesitás ${cant}, hay ${stockDisponibleKit} disponibles`)
-      }
-
-      // 2. Rebaje del KIT (FIFO)
-      let restanteKit = cant
-      for (const linea of (lineasKit ?? [])) {
-        if (restanteKit <= 0) break
-        const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-        const aRebajar = Math.min(disponible, restanteKit)
-        if (aRebajar <= 0) continue
-        const { error: eReb } = await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
-        if (eReb) throw new Error(`No se pudo rebajar el KIT: ${eReb.message}`)
-        restanteKit -= aRebajar
-      }
-      const saKitDes = await getStockAntesSucursal(desarmarKitId, sucursalId)
-      await supabase.from('movimientos_stock').insert({
-        tenant_id: tenant!.id, producto_id: desarmarKitId,
-        tipo: 'des_kitting', cantidad: cant,
-        stock_antes: saKitDes, stock_despues: Math.max(0, saKitDes - cant),
-        motivo: desarmarNotas || `Desarmado x${cant}`,
-        usuario_id: user?.id ?? null,
-        sucursal_id: sucursalId || null,
+      // RPC ATÓMICA (mig 459): bloquea las líneas del KIT, rebaja FIFO, ingresa los componentes, registra
+      // movimientos y kitting_log en una transacción → nunca queda el KIT rebajado sin sus componentes.
+      const { error } = await supabase.rpc('desarmar_kit', {
+        p_kit_producto_id: desarmarKitId,
+        p_cantidad:        cant,
+        p_ubicacion_id:    modoAvanzado ? desarmarUbicacionId : null,
+        p_sucursal_id:     sucursalId || null,
+        p_notas:           desarmarNotas || null,
       })
-
-      // 3. Ingreso de cada componente según receta
-      for (const r of recetas) {
-        const cantComp = r.cantidad * cant
-        const { error: eComp } = await supabase.from('inventario_lineas').insert({
-          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
-          cantidad: cantComp, activo: true,
-          sucursal_id: sucursalId || null,
-          ubicacion_id: modoAvanzado ? desarmarUbicacionId : null,
-        })
-        // Antes no se miraba el error: el movimiento quedaba registrado sin el stock.
-        if (eComp) throw new Error(`El KIT ya se rebajó pero no se pudo ingresar un componente (${eComp.message}). Revisá el inventario.`)
-        const saComp = await getStockAntesSucursal(r.comp_producto_id, sucursalId)
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
-          tipo: 'ingreso', cantidad: cantComp,
-          stock_antes: saComp, stock_despues: saComp + cantComp,
-          motivo: `Desarmado KIT x${cant} [${desarmarKitId}]`,
-          usuario_id: user?.id ?? null,
-          sucursal_id: sucursalId || null,
-        })
-      }
-
-      // 4. Log
-      await supabase.from('kitting_log').insert({
-        tenant_id: tenant!.id, kit_producto_id: desarmarKitId,
-        cantidad_kits: cant, usuario_id: user?.id ?? null,
-        notas: desarmarNotas || null, tipo: 'desarmado',
-      })
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => {
       toast.success('KIT desarmado con éxito — componentes ingresados al stock')

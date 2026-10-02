@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-01
 ---
 
-# Historial de Migraciones (001-459, + correctivos 387b/387c)
+# Historial de Migraciones (001-460, + correctivos 387b/387c)
+
+🏪 **Migración 460 — 🟡 EN DEV, NO EN PROD (2026-10-02; commit `1e90eb73`)**: `460_caja_sesion_sucursal_de_su_caja.sql` — la sesión de caja vive en la sucursal de su caja: BEFORE INSERT en `caja_sesiones` fuerza `sucursal_id` = el de la caja (si tiene); BEFORE UPDATE OF `sucursal_id` en `caja_sesiones` rechaza desalinear; BEFORE UPDATE OF `sucursal_id` en `cajas` rechaza mover una caja con sesión abierta. Sin policies. Incidente PROD: una sesión abierta con sucursal desfasada bloqueaba el cambio de sucursal (corregida con UPDATE, ver [[wiki/features/caja]]). Aplicar en PROD junto con la 459, de a una.
 
 🧰 **Migración 459 — 🟡 EN DEV, NO EN PROD (2026-10-02; commit `a6ba9d0e`)**: `459_desarmar_kit_atomico.sql` — RPC `desarmar_kit` (`SECURITY INVOKER`, GRANT solo `authenticated`, sin policies): desarmado de KIT atómico (`FOR UPDATE`, FIFO ordenado, movimientos y `kitting_log` en la misma transacción; rechaza componentes fraccionarios y con serie). En DEV figura dos veces en `schema_migrations` (`20261002060225` y `20261002060551`, re-aplicada con un ajuste de mensaje `trim_scale`); en PROD se aplica una vez con `scripts/aplicar-migracion.mjs`, ANTES del merge. Paridad: DEV `public` 240 vs PROD 239 sigue por la 457. UAT §89. Ver [[wiki/features/inventario-stock]].
 

@@ -11,7 +11,7 @@ type: project
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.237.0` (PR #369) | 001-456 + **458** (la 457 NO) |
-> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales + desarmado de KIT atómico (commits `ab452449`, `0214f65a`, `a6ba9d0e` en `origin/dev`, sin bump) | 001-**459** |
+> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales + desarmado de KIT atómico (commits `ab452449`, `0214f65a`, `a6ba9d0e`, `1e90eb73` en `origin/dev`, sin bump) + caja con la sucursal de su caja (mig 460) | 001-**460** |
 > | **Panel interno** | `dev` con `cd284e4` (sin `plan_id`), sin mergear | — |
 >
 > ⚠️ Paridad de policies: DEV `public` **240** vs PROD **239** a propósito (la 457 suma `tenant_herencia_plan_select_propio`).
@@ -21,7 +21,7 @@ type: project
 >    Camino recomendado: GO pega el Access Token de producción de la app de Fede en `.env.local` y Claude lo hace por
 >    API (ver [[wiki/integrations/mercado-pago]]). Con el ID: `MP_PLAN_IDS.enterprise` + secret `MP_PLAN_ENTERPRISE`
 >    (DEV y PROD). Verificar también el monto de Básico ($54.000).
-> 2. **Deploy de v7 a PROD** (después de 1): migs 457 **y 459** (desarmar_kit, con `scripts/aplicar-migracion.mjs`, de a una, antes del merge) → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
+> 2. **Deploy de v7 a PROD** (después de 1): migs 457, **459** (desarmar_kit) **y 460** (sesión de caja en la sucursal de su caja), con `scripts/aplicar-migracion.mjs`, de a una, antes del merge) → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
 >    `mp-verificar-suscripcion`, `mp-webhook` → bump `v1.238.0` → merge. Actualizar `app-reference.md` (líneas ~879 y
 >    ~1198, planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`. Mergear también el panel interno.
 > 3. **Fases pendientes de v7**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación — flujo nuevo);
@@ -34,10 +34,16 @@ type: project
 > módulos de su plan v6** (en prueba → Pro v6) · prueba vencida → `/suscripcion` (no "solo lectura") · Kalken (vencida
 > 24/09) y El Tilo (vence 28/10) quedan así: ven la página de planes al vencer.
 >
+> 🙋 **Pendiente de GO (PROD):** cerrar `Caja1` de Casa central con arqueo de $4.000 (sesión abierta desde el 13/04/2026;
+> el 02/10 se le corrigió la sucursal con un UPDATE, ver [[wiki/features/caja]] y el log). Quedan 2 sesiones CERRADAS de
+> GO con la sucursal desfasada: no se tocan (REGLA #0 #7).
+>
 > **Hecho hoy en PROD:** `v1.237.0` (U-2 stock con ubicación + mig 455, CUIT exigible, ficha alineada) · mig 456 (fuera
 > la tabla `planes` y `tenants.plan_id`; SQL de planes en [[wiki/support/sql-planes-tenants]]) · **incidente**: el
 > inventario de GO en 0 = sucursal "Casa central" desactivada con 775 unidades → reactivada + mig 458 (no se elimina una
 > sucursal con stock o caja abierta). El frontend de 458 (Reactivar en Sucursales + historial) va con el próximo deploy.
+> **Segundo incidente del mismo negocio:** una caja abierta con sucursal desfasada bloqueaba el cambio de sucursal sin
+> salida → corregida en PROD con un UPDATE + mig 460 (solo DEV) que lo impide hacia adelante.
 >
 > **Riesgos / hallazgos abiertos:** (a) `tenant_addons` no guarda el precio pagado por pack → si cambia el precio de un
 > add-on, `mp-addon-batch` recalcula con el precio nuevo (hoy nadie tiene packs de sucursales; arreglar antes del

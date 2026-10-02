@@ -8,6 +8,8 @@ updated: 2026-09-12
 
 # Multi-Sucursal
 
+> **2026-10-02 (incidente PROD, negocio de GO):** la sucursal "Casa central" estaba desactivada con stock (mig 458, impide desactivar con stock o caja abierta) y, ya reactivada, una sesión de caja con la sucursal desfasada de su caja bloqueaba el cambio de sucursal. Mig 460 (EN DEV, NO EN PROD): la sesión de caja vive siempre en la sucursal de su caja. Ver [[wiki/features/caja]] y [[wiki/database/migraciones]].
+
 Soporte para negocios con múltiples branches. Implementado en v0.42.0 (migration 025).
 
 ---

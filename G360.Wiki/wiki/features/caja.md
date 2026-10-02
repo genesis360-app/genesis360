@@ -3,7 +3,7 @@ title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375, 420, 435]
-updated: 2026-09-24
+updated: 2026-10-02
 ---
 
 # Módulo Caja
@@ -15,6 +15,8 @@ La caja es el registro de efectivo físico del negocio. Es obligatoria para regi
 **Página:** `src/pages/CajaPage.tsx` · panel cajero simplificado `src/pages/PanelCajeroPage.tsx` (`/caja/panel`, M3)  
 **Shortcuts:** `Shift+I` = ingreso · (egreso solo vía Gastos)  
 **Última actualización:** 2026-06-10 — 🎉 **relevamiento Caja A-M COMPLETO en PROD**. Tanda final v1.50.0 (PROD, mig 203, PR #178): E1 bóveda roles custom · E3 arqueo de bóveda · L3 préstamo a empleado · M3 panel cajero · M4 sonido al cobrar. Ver "Estado del relevamiento" abajo.
+
+> **🟡 2026-10-02 (mig 460, EN DEV, NO EN PROD; commit `1e90eb73`): la sesión de caja vive en la sucursal de su caja.** Incidente PROD (negocio de GO): una sesión abierta desde el 13/04/2026 tenía `sucursal_id` = Huechuraba pero su `Caja1` es de Casa central; el aviso "tenés una caja abierta en otra sucursal" (AppLayout, L4) comparaba contra la sucursal de la sesión y, tras la desactivación de Casa central ([[wiki/features/multi-sucursal]], mig 458), bloqueaba todo cambio de sucursal sin salida ("Ir a cerrarla" llevaba a una Caja donde `Caja1` no figura). Causas: CajaPage tomaba la sucursal del selector (no de la caja) y Configuración permitía mover una caja con sesión abierta. Arreglo: 3 triggers (INSERT fuerza la sucursal de la caja; UPDATE de `sucursal_id` en la sesión rechaza desalinear; mover una caja con sesión abierta se rechaza) + CajaPage usa la sucursal de la caja + AppLayout usa `cajas.sucursal_id`. En PROD: UPDATE puntual de la sesión a Casa central con OK de GO (pendiente que GO la cierre con arqueo de $4.000); 2 sesiones cerradas con el mismo desfase NO se tocan (REGLA #0 #7). Ver [[wiki/database/migraciones]].
 
 ## 🔀 Diagrama de flujo — Ciclo de caja (apertura → movimientos → cierre)
 

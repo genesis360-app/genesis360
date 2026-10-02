@@ -6,6 +6,29 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] fix | PROD: caja abierta invisible bloqueaba el cambio de sucursal (mig 460)
+
+- Commit `1e90eb73` en `origin/dev`; mig 460 solo en Supabase DEV (PROD no, sin bump de versión). Continuación del incidente
+  de "Casa central" (mig 458, entrada de más abajo).
+- Incidente PROD, negocio de GO ("Familia Otranto De Porto"): tras reactivar "Casa central", GO seguía sin ver el
+  inventario y al cambiar de sucursal le salía "tenés una caja abierta en otra sucursal" sin ninguna caja abierta visible.
+  Causa: una sesión de caja abierta desde el 13/04/2026 (3 ingresos, $4.000, apertura $0) tenía `sucursal_id` = Casa
+  Huechuraba, pero su caja `Caja1` es de Casa central. El aviso de AppLayout (L4) compara contra la sucursal de la sesión;
+  mientras Casa central estuvo desactivada la app lo llevó a Huechuraba y desde ahí todo cambio de sucursal quedaba
+  bloqueado. "Ir a cerrarla" lo mandaba a Caja de Huechuraba, donde `Caja1` no figura. Sin salida.
+- Corrección en PROD con OK de GO: UPDATE de esa única sesión, `sucursal_id` → Casa central (sin tocar montos ni
+  cerrarla). **Pendiente de GO: cerrarla con arqueo de $4.000.** Auditoría PROD: 0 sesiones abiertas desfasadas en otros
+  negocios (Kalken y El Tilo limpios). Quedan 2 sesiones CERRADAS de GO con el mismo desfase: no se tocan (REGLA #0 #7).
+- Causas en el código: (1) CajaPage tomaba `caja_sesiones.sucursal_id` del selector de sucursal, no de la caja;
+  (2) Configuración de Caja permite mover una caja de sucursal aunque tenga una sesión abierta.
+- Arreglo: mig 460 `460_caja_sesion_sucursal_de_su_caja.sql` (3 triggers): BEFORE INSERT en `caja_sesiones` fuerza la
+  sucursal de la caja (si tiene); BEFORE UPDATE OF `sucursal_id` en `caja_sesiones` rechaza desalinear; BEFORE UPDATE OF
+  `sucursal_id` en `cajas` rechaza mover una caja con sesión abierta. Sin policies nuevas (paridad public DEV 240 vs PROD
+  239, por la 457). Frontend: CajaPage usa la sucursal de la caja al abrir; AppLayout usa `cajas.sucursal_id`.
+- Tests: SQL en DEV con rollback (3 controles OK); tsc y build OK; unit 2116/2116; e2e de caja 05/20/32/64/65/67/157:
+  10 pasados, 4 saltados por gate, 0 fallas. UAT §90.
+- Próximo deploy a PROD: aplicar migs 459 y 460, de a una, con `scripts/aplicar-migracion.mjs`, antes del merge.
+
 ## [2026-10-02] fix | Desarmado de KIT atómico (mig 459)
 
 - Commit `a6ba9d0e` en `origin/dev`, mig 459 solo en Supabase DEV (PROD no, sin bump de versión). En DEV quedó registrada dos

@@ -2478,7 +2478,7 @@ Decisión de GO: (A) hoy la lista y su carga, SIN aplicarla al vender; (B2) desp
 | 96.3 | Importar: producto de otro negocio o repetido en el archivo → rechazado | SQL DEV (rollback) | ✅ |
 | 96.4 | 🛑 Un CAJERO (sin permiso de gestionar categorías) no puede cargar ni importar | SQL DEV impersonando (RLS + función) | ✅ |
 | 96.5 | Historial: cada cambio a mano queda en la categoría; una importación deja UNA entrada con el resumen | SQL DEV | ✅ |
-| 96.6 | La pantalla avisa "Todavía no se aplica en las ventas"; ningún precio cambia | revisión (nada lee la tabla al vender) | ✅ código |
+| 96.6 | ~~La pantalla avisa "Todavía no se aplica en las ventas"~~ → desde la mig 468 se aplica (ver §98) y la pantalla dice "Se aplica al vender" | e2e `178` | ✅ |
 | 96.7 | La plantilla trae todos los productos activos con su % actual | revisión | ✅ código |
 
 ## 📦 §95 — El pedido hereda la fecha de entrega de la venta con envío (mig 465, 🟡 DEV) — 2026-10-02

@@ -1,7 +1,7 @@
 // Lista de descuentos de una categoría de clientes (mig 466 — Categorías, Fase 4 parte A, GO 2026-10-02).
 // Un % por producto (B5). "Sin cargar" = el producto no está en la lista; 0 % = está, sin descuento a propósito (C4).
-// 🛑 Todavía NO se aplica al vender: el POS y Pedidos la van a usar en la parte B2 (motor único de precio, gana el
-// precio más bajo frente al mayorista y al estado). La pantalla lo dice en grande para que nadie lo dé por aplicado.
+// Se aplica al vender desde la mig 468 (B2 / Fase 4): el motor único de precio la usa en el POS, presupuestos y Pedidos
+// para clientes con esta categoría; compite con el mayorista y el estado y gana el precio más bajo (no se suman).
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -155,9 +155,9 @@ export default function DescuentosCategoriaPage() {
       <div className="flex gap-2 items-start rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-300">
         <Info size={16} className="flex-shrink-0 mt-0.5" />
         <p>
-          <strong>Todavía no se aplica en las ventas.</strong> Podés ir cargando la lista; el punto de venta y los pedidos la
-          van a usar en la próxima versión. Ahí el descuento de la categoría compite con el precio mayorista y el descuento
-          por estado: <strong>gana el precio más bajo</strong>, no se suman.
+          <strong>Se aplica al vender</strong> (punto de venta, presupuestos y pedidos) a los clientes de esta categoría. El
+          descuento compite con el precio mayorista y el descuento por estado: <strong>gana el precio más bajo</strong>, no
+          se suman. Sin cliente cargado en la venta no se aplica.
         </p>
       </div>
 

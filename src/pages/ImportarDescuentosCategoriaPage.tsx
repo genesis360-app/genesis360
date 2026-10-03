@@ -174,7 +174,7 @@ export default function ImportarDescuentosCategoriaPage() {
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-300">
           <strong>La plantilla trae todos tus productos</strong> con el descuento que ya tienen en esta categoría. Completá la
           columna <code>descuento_pct</code> (vacío = no se toca) y volvé a subirla. Todo o nada: con una fila con error no se
-          carga ninguna. <strong>Todavía no se aplica en las ventas.</strong>
+          carga ninguna. <strong>Los cambios se aplican en las ventas apenas se cargan.</strong>
         </div>
       }
     >

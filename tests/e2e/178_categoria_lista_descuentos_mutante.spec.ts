@@ -38,7 +38,7 @@ test('lista de descuentos: agregar, 0 explícito, sacar, importar todo o nada', 
   try {
     await goto(page, `/clientes/categorias/${cat.id}/descuentos`)
     await waitForApp(page)
-    await expect(page.getByText('Todavía no se aplica en las ventas.')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('Se aplica al vender')).toBeVisible({ timeout: 15000 })
 
     // Agregar con coma decimal
     await page.getByLabel('Producto a agregar').fill(`E2E178A-${ts}`)

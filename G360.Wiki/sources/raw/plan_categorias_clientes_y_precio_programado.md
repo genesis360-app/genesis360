@@ -69,6 +69,7 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 - Auditoría completa (F1) + registro de quién asignó qué (E2). Aviso de impacto al editar el límite (D2).
 
 ### Fase 3 — Motor único de precio en SQL (B-1) · grande · SIN cambio de comportamiento
+> ✅ **HECHA EN DEV (2026-10-03, mig 467, commit `055bfbdd`, pre-release `v1.239.0-rc.1`; NO en PROD).** `fn_precio_motor_producto` + `fn_precios_lineas(p_items, p_lista, p_cliente_id)` (p_cliente_id reservado para la Fase 4); `fn_precio_venta_efectivo` quedó como envoltura. Paridad 0 diferencias (21.556 casos vieja vs nueva; 136.256 SQL vs `tiers.ts`). PL-5 = A aplicada en el POS (sin precio del servidor no se registra). Hallazgo: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra PL-2; pendiente de decisión de GO. Detalle en [[wiki/features/precios-tiers-empaque]].
 - `fn_precios_lineas(p_cliente_id, p_items jsonb)` → por línea: precio unitario efectivo, **mecanismo que ganó**
   (lista / tier / estado / —categoría en fase 4—) y el detalle de los que compitieron. Una ida por carrito (B-1).
 - El POS y Pedidos pasan a usarlo; `tiers.ts` queda solo para mostrar (o se retira).

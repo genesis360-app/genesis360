@@ -6,12 +6,18 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-03, post deploy) — PROD = DEV = `v1.238.0`, migs 001-466
+> ### 🛑 ARRANCÁ ACÁ (2026-10-03, tarde) — PROD `v1.238.0` (001-466) · DEV 001-**467** + `v1.239.0-rc.1`
 >
 > | | Código | Migraciones | Policies |
 > |---|---|---|---|
 > | **PROD** | `v1.238.0` (PR #370, merge `8be5f1fb`, release Latest, servida `index-DRm63vPm.js`) | 001-**466** | public 245 · storage 40 · cron 2 |
-> | **DEV** | `v1.238.0` (igual) | 001-**466** | iguales (mismo hash) |
+> | **DEV** | `v1.238.0` (APP_VERSION igual) + commit `055bfbdd` en `origin/dev`, pre-release `v1.239.0-rc.1` | 001-**467** (la 467 NO está en PROD) | iguales a PROD (la 467 no toca policies; no re-verificado) |
+>
+> **Hecho en DEV (03/10 tarde): B2 Fase 3 — motor único de precio en SQL (mig 467).** `fn_precio_motor_producto` +
+> `fn_precios_lineas`; `fn_precio_venta_efectivo` es envoltura; POS y Presupuesto "Actualizar precios" usan el motor; sin
+> precio del servidor no se vende (PL-5 = A). Paridad 0 diferencias (21.556 + 136.256 casos; `scripts/paridad-motor-precio.mjs`).
+> Unit 2156, UAT §97. Hallazgo para GO: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio
+> congelado), contra PL-2. Detalle en [[wiki/features/precios-tiers-empaque]]. Lo de abajo (bloque del deploy de la mañana) sigue vigente salvo lo de DEV.
 > | **Panel interno** | mergeado (PR #7, sin `plan_id`) | — | — |
 >
 > **Deploy hecho (madrugada del 03/10):** migs 457 → 466 a PROD de a una con `scripts/aplicar-migracion.mjs` (la 462 chocó
@@ -23,8 +29,9 @@ type: project
 > descuentos por categoría están EN PROD.** Todo lo que abajo diga "EN DEV / falta PROD" de 457-466 quedó superado.
 >
 > ### ▶ LO PRÓXIMO (en este orden)
-> 1. **B2 — Categorías de clientes (Fase 3 del plan)**: motor único de precio + que POS y Pedidos apliquen la lista de
->    descuentos (mig 466, hoy NO se aplica al vender). Reglas: gana el precio más bajo frente al mayorista y al estado;
+> 1. **B2 — Categorías de clientes, FASE 4 (la categoría dentro del motor)**. ✅ Fase 3 (motor único, mig 467) HECHA en DEV
+>    el 03/10, falta PROD. Ahora: que el motor lea `categoria_cliente_descuentos` (mig 466, hoy NO se aplica al vender), que
+>    POS y Pedidos apliquen la lista, guardar categoría/%/mecanismo por línea en `venta_items` y el cartel para el cajero. Reglas: gana el precio más bajo frente al mayorista y al estado;
 >    tope acumulado sin salteo (PL-1); categoría/%/mecanismo guardados por línea; cartel para el cajero. GO eligió B2 y no
 >    B1 (meter la categoría en los dos motores actuales). PL-7: la preparación para precio por sucursal es este motor
 >    único (+ `sucursal_id` vacío en `precios_programados`). Ver [[wiki/features/clientes-proveedores]].

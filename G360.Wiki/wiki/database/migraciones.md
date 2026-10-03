@@ -6,7 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-466, + correctivos 387b/387c)
+# Historial de Migraciones (001-467, + correctivos 387b/387c)
+
+🧮 **Migración 467 — 🟡 SOLO EN DEV (2026-10-03, commit `055bfbdd`, pre-release `v1.239.0-rc.1`; NO en PROD, PROD sigue 001-466)**: `467_motor_unico_precio.sql` — MOTOR ÚNICO de precio en SQL (B2 / Fase 3 del plan de Categorías de clientes). Núcleo `fn_precio_motor_producto(tenant, producto, cantidad, lista)` (interno, solo `service_role`) con ayudantes `fn_tier_match`, `fn_tier_precio_unitario`, `fn_precio_redondear`. `fn_precio_venta_efectivo` pasa a ser envoltura del núcleo (misma firma y resultado) y cierra una fuga desde mig 317 (con sesión solo acepta el negocio propio: "Negocio inválido"). Nueva `fn_precios_lineas(p_items jsonb, p_lista text, p_cliente_id uuid)` para el POS (negocio de la sesión). Paridad: vieja vs nueva 21.556 casos y SQL vs `src/lib/tiers.ts` 136.256 casos, 0 diferencias (`scripts/paridad-motor-precio.mjs`). UAT §97. Ver [[wiki/features/precios-tiers-empaque]], [[wiki/features/clientes-proveedores]].
 
 📋 **Migración 466 — ✅ EN DEV Y PROD (2026-10-03, v1.238.0)**: `categoria_cliente_descuentos` — lista de descuentos por categoría de clientes (Fase 4 parte A). Pantalla `/clientes/categorias/:id/descuentos` e importador (celda vacía = no se toca, todo o nada, hasta 20.000 filas). Todavía NO se aplica al vender (eso es B2: motor único de precio). UAT §96, e2e 178. Ver [[wiki/features/clientes-proveedores]].
 

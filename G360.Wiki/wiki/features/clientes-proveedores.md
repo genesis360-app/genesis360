@@ -34,6 +34,10 @@ lleva Nota de Débito con IVA?, [[wiki/business/consultas-contador]]).
   `interes_cc` en 0 al saldar la deuda.
 - Excedente de un pago → `cliente_creditos` (saldo a favor) + aviso al dueño (decisión de diseño de la Fase 1).
 
+## 🧮 Categorías de clientes — B2 Fase 3: motor único de precio (mig 467, 2026-10-03, solo DEV)
+
+Ya existe el motor único de precio en SQL (`fn_precio_motor_producto`, `fn_precios_lineas` con `p_cliente_id` reservado), pero la lista de descuentos por categoría (mig 466, EN PROD) **todavía NO se aplica al vender**: eso es la **Fase 4** (categoría dentro del motor; gana el precio más bajo frente a tier/estado; tope acumulado PL-1 sin salteo; categoría/%/mecanismo por línea en `venta_items`; cartel para el cajero). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
+
 ## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
 
 Fase 2 de `sources/raw/plan_categorias_clientes_y_precio_programado.md` (relevamiento de Fede + respuestas de GO). El

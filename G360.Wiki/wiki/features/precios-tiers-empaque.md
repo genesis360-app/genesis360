@@ -33,6 +33,20 @@ updated: 2026-08-18
 > **Deploy:** migs 328-333 en PROD, PR #309 (`50fd025c`), tag `v1.155.0`. ⚠ Nadie probó A/B/C a mano
 > en el navegador de PROD todavía (deployado igual, autorizado explícitamente por GO).
 
+## 🧮 Motor único de precio en SQL (mig 467, 2026-10-03) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.1`, commit `055bfbdd`)
+
+B2 / Fase 3 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`. Antes había dos motores (cliente `tiers.ts` y servidor `fn_precio_venta_efectivo`) que debían dar el mismo número; ahora hay uno en SQL.
+
+- **Núcleo** `fn_precio_motor_producto(tenant, producto, cantidad, lista)` (interno, solo `service_role`): lista / USD a tasa BNA, tiers (gana el primero en orden), empaque por bloques (compite con el tier normal), lista forzada por canal. Ayudantes `fn_tier_match`, `fn_tier_precio_unitario`, `fn_precio_redondear`.
+- **`fn_precio_venta_efectivo`** (Pedidos → `fn_pedido_generar_venta`): ahora envoltura del núcleo, misma firma y mismo resultado. Cierra una fuga desde mig 317: con sesión solo acepta el negocio propio ("Negocio inválido").
+- **`fn_precios_lineas(p_items jsonb, p_lista text, p_cliente_id uuid)`** para el POS: negocio de la sesión (`get_user_tenant_id`), suma cantidad por SKU, aplica redondeo y devuelve por línea `precio_lista/precio_base/precio_unitario/mecanismo/bloques/error`. `p_cliente_id` reservado para la Fase 4.
+- **Validación (cero cambio de precios)**: vieja vs nueva 21.556 casos (418 productos); SQL vs `src/lib/tiers.ts` 136.256 casos (3 listas x 6 modos de redondeo): 0 diferencias. Script `scripts/paridad-motor-precio.mjs` (correr con `node --experimental-strip-types`), a repetir antes de cada cambio al motor.
+- **POS (`VentasPage`)**: `src/lib/motorPrecio.ts` nuevo; `precioTierEfectivo` usa el precio del servidor cuando coincide con la cantidad actual; `tiers.ts` queda solo como provisorio en pantalla. Sin precio del servidor no se registra venta/reserva/presupuesto (PL-5 = A): botón "Calculando precios…" o aviso rojo "Sin conexión con el servidor…".
+- **Presupuesto "Actualizar precios"** usa el motor (antes tomaba `precio_venta` crudo: ignoraba el mayorista y en USD usaba el espejo en pesos congelado); además redondea subtotal/IVA a centavos y ya no ignora un error al grabar una línea.
+- **Tests**: unit `motorPrecio` (14), e2e 179 (2), e2e de precios 38 passed; suite unit 2156 verdes; UAT §97 en `tests/specs/uat-modo-basico.md`.
+- **Hallazgo abierto para GO**: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra lo asumido en PL-2. Pendiente de decisión.
+- **Siguiente (Fase 4)**: la categoría dentro del motor (leer `categoria_cliente_descuentos`; gana el precio más bajo frente a tier/estado; tope acumulado PL-1 sin salteo; guardar categoría/%/mecanismo por línea en `venta_items`; cartel para el cajero). Ver [[wiki/features/clientes-proveedores]] y [[wiki/database/migraciones]].
+
 ## El pedido de Fede (25/7/2026)
 
 Fede (socio, cofundador) mandó un documento con **6 decisiones de negocio** + **1 regla

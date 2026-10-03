@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-03] update | Motor único de precio en SQL (B2 Fase 3, mig 467) — SOLO EN DEV
+
+- **Estado**: PROD sigue `v1.238.0`, migs 001-466. DEV = 001-**467**; commit `055bfbdd` en `origin/dev`, pre-release GitHub `v1.239.0-rc.1` (`APP_VERSION` sin cambiar). Mig 467 `467_motor_unico_precio.sql` aplicada solo en DEV.
+- **Mig 467**: núcleo `fn_precio_motor_producto(tenant, producto, cantidad, lista)` (solo `service_role`) + ayudantes `fn_tier_match`, `fn_tier_precio_unitario`, `fn_precio_redondear`; `fn_precio_venta_efectivo` queda como envoltura (misma firma/resultado) y cierra una fuga desde mig 317 (con sesión solo el negocio propio); `fn_precios_lineas(p_items, p_lista, p_cliente_id)` para el POS (`p_cliente_id` reservado a la Fase 4).
+- **Validación**: vieja vs nueva 21.556 casos (418 productos) y SQL vs `tiers.ts` 136.256 casos: 0 diferencias. Script `scripts/paridad-motor-precio.mjs` (`node --experimental-strip-types`).
+- **POS**: `src/lib/motorPrecio.ts`; sin precio del servidor no se registra venta/reserva/presupuesto (PL-5 = A). Presupuesto "Actualizar precios" usa el motor (antes ignoraba el mayorista y usaba el espejo en pesos en USD), redondea a centavos y no ignora errores al grabar línea.
+- **Tests**: unit `motorPrecio` 14, e2e 179 (2), e2e de precios 38 passed, unit total 2156 verdes; UAT §97.
+- **Para GO**: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra PL-2; decisión pendiente. **Siguiente**: Fase 4 (la categoría dentro del motor).
+- Ver [[wiki/features/precios-tiers-empaque]], [[wiki/features/clientes-proveedores]], [[wiki/database/migraciones]], `sources/raw/plan_categorias_clientes_y_precio_programado.md`.
+
+---
+
 ## [2026-10-03] deploy | v1.238.0 a PROD — pricing v7, caja, KIT, suscripciones, categorías (lista), pedidos por fecha
 
 - **Estado**: PROD = DEV = `v1.238.0`, migs 001-**466**, policies iguales (public 245, storage 40, cron 2). PR #370, merge

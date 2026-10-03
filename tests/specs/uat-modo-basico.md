@@ -2411,6 +2411,25 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 💲 §97 — Motor ÚNICO de precio (B2 / Fase 3, mig 467, 🟡 DEV) — 2026-10-03
+
+Decisión de GO (B2): un solo motor de precio, en la base; POS, presupuestos y Pedidos lo consultan. **Regla de esta fase:
+cero cambio de precios.** El POS manda una línea por SKU con la cantidad total del carrito; `tiers.ts` solo muestra un
+número provisorio mientras llega la respuesta. PL-5 = A: sin precio del servidor no se registra nada.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 97.1 | 🛑 `fn_precio_venta_efectivo` (Pedidos) da EXACTAMENTE lo mismo que antes | SQL DEV: vieja (definición real copiada a `pg_temp`) vs nueva, 21.556 casos / 418 productos (tiers, empaque ±1, USD, fraccionarios) → **0 diferencias**, en transacción que aborta | ✅ |
+| 97.2 | 🛑 El motor del servidor da EXACTAMENTE lo mismo que el POS (`tiers.ts` + redondeo) | `node --experimental-strip-types scripts/paridad-motor-precio.mjs`: 136.256 casos (3 listas de canal × 6 modos de redondeo) → **0 diferencias** | ✅ |
+| 97.3 | La cantidad se suma POR SKU en todo el carrito (60 + 40 = 100 → tier "= 100") | SQL DEV impersonando (`fn_precios_lineas`) · unit `motorPrecio` | ✅ |
+| 97.4 | Un producto de otro negocio → línea con error "Producto inexistente", sin precio | SQL DEV impersonando | ✅ |
+| 97.5 | 🔒 `fn_precio_venta_efectivo` ya no acepta el id de OTRO negocio con sesión ("Negocio inválido"; venía abierto desde mig 317); el núcleo no es invocable por usuarios | SQL DEV impersonando | ✅ |
+| 97.6 | 🛑 Sin respuesta del motor: aviso "Sin conexión con el servidor" y botón de registrar deshabilitado; vuelve solo al reconectar | e2e `179` (A) | ✅ |
+| 97.7 | Mientras se recalcula (cambio de cantidad) el botón dice "Calculando precios…"; nunca se guarda un precio calculado para otra cantidad | unit `motorPrecio` (precio vigente solo si coincide la cantidad) | ✅ |
+| 97.8 | Producto en USD sin cotización: la línea dice por qué no tiene precio y bloquea ("Sacalo del carrito para seguir") | unit `motorPrecio` · e2e `160` (el POS ni lo agrega; Pedidos en USD sigue igual) | ✅ |
+| 97.9 | 🛑 "Actualizar precios" de un presupuesto usa el motor: aplica el mayorista por cantidad (antes `precio_venta` crudo; en USD el espejo congelado), redondea subtotal/IVA a centavos y no ignora un error al grabar una línea | e2e `179` (B, verifica precio/subtotal/IVA/total en la base) | ✅ |
+| 97.10 | Tiers en el carrito real con venta persistida siguen dando lo mismo (precio desde el servidor) | e2e 04/19/24/44/55/102-104/107/110/113/115/116/122/123/133/135/150/160: 38 ✅ · 54 y 63 se saltean por fixture de datos previo (el 123 cubre lo del 54 sembrando lo suyo) | ✅ |
+
 ## 🔎 §94 — Inventario: buscar un LPN deja a la vista ese LPN · Envío: campos alineados (🟡 DEV) — 2026-10-02
 
 Pedido de GO. LPN: se descartó tildar el checkbox (alimenta las acciones masivas: dos búsquedas dejarían dos LPN

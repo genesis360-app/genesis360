@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
 import QRCode from 'qrcode'
@@ -62,6 +62,7 @@ import { condicionParaCliente, cuitValido, normalizarCuit, CONDICION_PADRON_LABE
 const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit: '', condicion_iva_receptor: '', domicilio_fiscal: '' }
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
+import { itemsParaMotor, mapaPreciosMotor, precioServidorVigente, estadoPreciosCarrito, cantidadParaPrecio, type ListaCanal } from '@/lib/motorPrecio'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -2884,6 +2885,30 @@ export default function VentasPage() {
     enabled: !!tenant,
   })
 
+  // B2 / Fase 3 (mig 467) — precios del MOTOR ÚNICO para el carrito actual. La clave lleva la cantidad por SKU, la
+  // lista del canal y el cliente (Fase 4: categoría), así que cualquier cambio vuelve a consultar. Mientras tanto se
+  // mantiene la respuesta anterior, pero `precioServidorVigente` solo la usa si coincide con la cantidad actual.
+  const listaCanalPOS = (reglaDe(canalPOS).lista_precio ?? null) as ListaCanal
+  const itemsMotor = useMemo(() => itemsParaMotor(cart), [cart])
+  const motorPrecios = useQuery({
+    queryKey: ['precios-motor', tenant?.id, listaCanalPOS, clienteId ?? null, itemsMotor],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_precios_lineas', {
+        p_items: itemsMotor, p_lista: listaCanalPOS, p_cliente_id: clienteId ?? null,
+      })
+      if (error) throw error
+      return mapaPreciosMotor(data)
+    },
+    enabled: !!tenant && itemsMotor.length > 0,
+    placeholderData: keepPreviousData,
+    retry: 1,
+  })
+  const preciosMotor = motorPrecios.data
+  const estadoPrecios = estadoPreciosCarrito(cart, preciosMotor, {
+    cargando: motorPrecios.isFetching,
+    errorConsulta: motorPrecios.error ? ((motorPrecios.error as any).message ?? 'Sin conexión con el servidor') : null,
+  })
+
   // Precio de lista/tier de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
   // que la cantidad satisfaga; si ninguno aplica, precio minorista (precio_unitario base).
   // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
@@ -2897,7 +2922,7 @@ export default function VentasPage() {
   // descuento para cualquier múltiplo exacto, y el resto suelto sigue evaluándose por su cuenta —
   // el promedio ponderado preserva la plata total exacta sin importar en cuántas líneas del
   // carrito esté repartida la cantidad de ese SKU.
-  const precioTierBase = (item: CartItem): number => {
+  const precioTierBaseLocal = (item: CartItem): number => {
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
     // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
@@ -2917,8 +2942,23 @@ export default function VentasPage() {
   // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
   // `tenants.precio_redondeo`. Todo el cálculo de plata (subtotal, IVA, venta_items.precio_unitario,
   // factura) deriva de acá → el redondeo se propaga de forma consistente. Default 'none' = sin cambios.
-  const precioTierEfectivo = (item: CartItem): number =>
-    redondearPrecio(precioTierBase(item), (tenant as any)?.precio_redondeo)
+  const precioTierEfectivoLocal = (item: CartItem): number =>
+    redondearPrecio(precioTierBaseLocal(item), (tenant as any)?.precio_redondeo)
+
+  // B2 / Fase 3 (mig 467) — MOTOR ÚNICO: el precio que se cobra lo calcula la base (`fn_precios_lineas`), una ida por
+  // carrito con la cantidad total de cada SKU. Lo de arriba (`*Local`, tiers.ts) queda SOLO para mostrar un número
+  // mientras llega la respuesta: `registrarVenta` no guarda nada hasta que todas las líneas tienen precio del servidor
+  // para su cantidad actual (`estadoPreciosCarrito`; PL-5 = A, sin servidor no hay precio).
+  const cantSkuEnCarrito = (productoId: string) =>
+    cart.filter(i => i.producto_id === productoId).reduce((s, i) => s + cantidadParaPrecio(i), 0)
+  const precioTierBase = (item: CartItem): number => {
+    const srv = precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
+    return srv ? (srv.precio_base ?? srv.precio_unitario!) : precioTierBaseLocal(item)
+  }
+  const precioTierEfectivo = (item: CartItem): number => {
+    const srv = precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
+    return srv ? srv.precio_unitario! : precioTierEfectivoLocal(item)
+  }
 
   // Descuento por estado recalculado con el precio de tier VIGENTE de la línea (mig 306: el tier
   // depende del total del SKU en el carrito). Fuente ÚNICA — así la plata (getItemSubtotal), el
@@ -3350,6 +3390,18 @@ export default function VentasPage() {
       return
     }
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
+    // B2 / Fase 3 (REGLA #0): sin precio del servidor para TODAS las líneas no se guarda nada (PL-5 = A).
+    if (!estadoPrecios.listo) {
+      if (estadoPrecios.motivo === 'calculando') toast.error('Calculando precios… probá de nuevo en un segundo.')
+      else {
+        const nombre = estadoPrecios.productoId ? cart.find(i => i.producto_id === estadoPrecios.productoId)?.nombre : null
+        toast.error(nombre
+          ? `No se pudo calcular el precio de "${nombre}": ${estadoPrecios.mensaje}`
+          : `Sin conexión con el servidor: no se pueden calcular precios ni registrar ventas (${estadoPrecios.mensaje}).`,
+          { duration: 7000 })
+      }
+      return
+    }
     for (const item of cart) {
       if (item.tiene_series && item.series_seleccionadas.length === 0) {
         toast.error(`Seleccioná las series para ${item.nombre}`); return
@@ -4194,28 +4246,49 @@ export default function VentasPage() {
     try {
       const productoIds = (ventaDetalle.venta_items ?? []).map((i: any) => i.producto_id).filter(Boolean)
       const { data: prods } = await supabase
-        .from('productos').select('id, precio_venta, alicuota_iva').in('id', productoIds)
+        .from('productos').select('id, alicuota_iva').in('id', productoIds)
       if (!prods) throw new Error('No se pudieron cargar los precios')
-      const precioMap: Record<string, { precio_venta: number; alicuota_iva: number }> = {}
-      for (const p of prods) precioMap[p.id] = { precio_venta: p.precio_venta ?? 0, alicuota_iva: p.alicuota_iva ?? 21 }
+      const ivaMap: Record<string, number> = {}
+      for (const p of prods) {
+        const a = parseFloat(p.alicuota_iva as any)
+        ivaMap[p.id] = Number.isFinite(a) ? a : 21
+      }
+      // B2 / Fase 3 (mig 467) — el precio sale del MOTOR ÚNICO, igual que en el POS. Antes tomaba `precio_venta` crudo:
+      // ignoraba el mayorista por cantidad y, en un producto en dólares, usaba el espejo en pesos congelado.
+      const itemsMotorPres = itemsParaMotor((ventaDetalle.venta_items ?? [])
+        .filter((i: any) => i.producto_id)
+        .map((i: any) => ({ producto_id: i.producto_id, cantidad: Number(i.cantidad) })))
+      const { data: preciosData, error: preciosErr } = await supabase.rpc('fn_precios_lineas', {
+        p_items: itemsMotorPres,
+        p_lista: (reglaDe(ventaDetalle.origen).lista_precio ?? null) as ListaCanal,
+        p_cliente_id: ventaDetalle.cliente_id ?? null,
+      })
+      if (preciosErr) throw new Error(`No se pudieron calcular los precios: ${preciosErr.message}`)
+      const precios = mapaPreciosMotor(preciosData)
+      const conError = itemsMotorPres.find(i => precios[i.producto_id]?.error || precios[i.producto_id]?.precio_unitario === undefined)
+      if (conError) throw new Error(`No se pudo calcular el precio de un producto: ${precios[conError.producto_id]?.error ?? 'sin precio'}`)
       let nuevoTotal = 0
       for (const item of (ventaDetalle.venta_items ?? [])) {
-        const prod = precioMap[item.producto_id]
-        if (!prod) continue
-        // H4 — mismo redondeo de precio que el POS, para que el presupuesto refrescado quede consistente
-        const nuevoPrecio = redondearPrecio(prod.precio_venta, (tenant as any)?.precio_redondeo)
+        const srv = item.producto_id ? precios[item.producto_id] : undefined
+        // Una línea que no se puede re-cotizar conserva su precio — y su subtotal tiene que seguir sumando al total.
+        if (!srv || srv.precio_unitario === undefined || !(item.producto_id in ivaMap)) { nuevoTotal += Number(item.subtotal ?? 0); continue }
+        const prod = { alicuota_iva: ivaMap[item.producto_id] }
+        const nuevoPrecio = srv.precio_unitario
         const descu = item.descuento ?? 0
-        const nuevoSubtotal = nuevoPrecio * item.cantidad * (1 - descu / 100)
+        const nuevoSubtotal = Math.round(nuevoPrecio * Number(item.cantidad) * (1 - Number(descu) / 100) * 100) / 100
         const ivaRate = prod.alicuota_iva / 100
-        const nuevoIva = nuevoSubtotal - nuevoSubtotal / (1 + ivaRate)
+        const nuevoIva = Math.round((nuevoSubtotal - nuevoSubtotal / (1 + ivaRate)) * 100) / 100
         nuevoTotal += nuevoSubtotal
-        await supabase.from('venta_items').update({
+        const { error: itemErr } = await supabase.from('venta_items').update({
           precio_unitario: nuevoPrecio,
           subtotal: nuevoSubtotal,
           alicuota_iva: prod.alicuota_iva,
           iva_monto: nuevoIva,
         }).eq('id', item.id)
+        // Antes se ignoraba: el total quedaba con el precio nuevo y la línea con el viejo.
+        if (itemErr) throw new Error(`No se pudo actualizar una línea del presupuesto: ${itemErr.message}`)
       }
+      nuevoTotal = Math.round(nuevoTotal * 100) / 100
       const { error } = await supabase.from('ventas').update({
         total: nuevoTotal,
         updated_at: new Date().toISOString(),
@@ -7231,10 +7304,22 @@ export default function VentasPage() {
                       <CreditCard size={12} /> <span>Parte de la venta a cuenta corriente del cliente</span>
                     </div>
                   )}
-                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
+                  {/* B2 / Fase 3 — sin precio del servidor no se cobra (PL-5 = A): se dice por qué. */}
+                  {!estadoPrecios.listo && estadoPrecios.motivo === 'error' && (
+                    <div data-testid="pos-precios-error" className="flex items-start gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                      <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        {estadoPrecios.productoId
+                          ? `No se pudo calcular el precio de "${cart.find(i => i.producto_id === estadoPrecios.productoId)?.nombre ?? 'un producto'}": ${estadoPrecios.mensaje}. Sacalo del carrito para seguir.`
+                          : 'Sin conexión con el servidor: no se pueden calcular precios ni registrar ventas. Revisá la conexión; se reintenta solo.'}
+                      </span>
+                    </div>
+                  )}
+                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving || !estadoPrecios.listo}
+                    data-testid="pos-registrar-venta"
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
-                    {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
+                    {saving ? 'Guardando...' : !estadoPrecios.listo && estadoPrecios.motivo === 'calculando' ? 'Calculando precios…' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
                   </button>
                 </div>
               </div>

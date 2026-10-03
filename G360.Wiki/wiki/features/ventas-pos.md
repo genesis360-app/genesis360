@@ -8,6 +8,8 @@ updated: 2026-09-26
 
 # Ventas / POS
 
+> 🚚 **2026-10-03 (✅ EN PROD v1.238.0):** POS con envío: "Fecha de entrega" (sin "acordada"), misma altura que "Rango horario"; en panel angosto bajan de línea. El pedido hereda esa fecha (mig 465). Decisión de GO 02/10: PL-5 = A (aviso claro del POS sin conexión; venta offline solo si un cliente la pide). La lista de descuentos por categoría (mig 466) todavía NO se aplica al vender (B2 pendiente).
+
 > 📲 **2026-10-01 — Enviar por Mail o WhatsApp (mig 451, ✅ EN PROD v1.235.0):** el botón de envío del ticket, la factura y la NC
 > (POS, cartel "Factura emitida" y Facturación) pasa a ser **"Enviar" → Mail | WhatsApp**. WhatsApp abre el chat del
 > cliente con el mensaje y un link `/c/<código>` (página pública, sin sesión, 90 días) que muestra el comprobante y

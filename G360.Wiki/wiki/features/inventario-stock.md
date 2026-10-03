@@ -8,6 +8,8 @@ updated: 2026-10-01
 
 # Inventario y Stock
 
+> 🔎 **2026-10-03 (✅ EN PROD v1.238.0):** buscar un LPN deja a la vista ese LPN: la fila del producto avisa "N LPN coincide" y al expandir se ven solo esos (resaltados) + "Ver todos". No tilda el checkbox ni expande solo (decisión deliberada). UAT §94, e2e 176. Además EN PROD: desarmado de KIT atómico (mig 459) y armado sin cantidades fraccionarias (mig 462).
+
 El núcleo de Genesis360. Modelo **LPN (Location/Product/Lot Number)** para tracking granular.
 
 **Página:** `src/pages/InventarioPage.tsx`  
@@ -46,7 +48,7 @@ guardó ahí físicamente; ayudarlos a no cometer errores, no presuponer".
 - El desarmado de KIT ahora revisa los errores de cada paso (antes, si fallaba el ingreso de un componente, el
   movimiento quedaba registrado sin el stock). ✅ Ya es atómico: ver "Desarmado de KIT atómico (mig 459)" abajo.
 
-#### Desarmado de KIT atómico (mig 459 — EN DEV 2026-10-02, NO EN PROD)
+#### Desarmado de KIT atómico (mig 459 — ✅ EN PROD v1.238.0, 2026-10-03; armado sin fraccionarios mig 462 también EN PROD)
 
 Hallazgo REGLA #0 (inventario): el desarmado en `InventarioPage` eran escrituras sueltas desde el navegador. Ahora
 llama a la RPC `desarmar_kit` (`SECURITY INVOKER`, GRANT solo `authenticated`; sin policies nuevas), todo en una

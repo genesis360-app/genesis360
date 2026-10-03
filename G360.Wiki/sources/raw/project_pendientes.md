@@ -6,7 +6,59 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-02, cierre de la tarde) — PROD `v1.237.0` (+ migs 456/458 en la base + EF `mp-crear-link-pago` v10) · DEV 001-463 + pricing v7 sin bloqueos
+> ### 🛑 ARRANCÁ ACÁ (2026-10-03, post deploy) — PROD = DEV = `v1.238.0`, migs 001-466
+>
+> | | Código | Migraciones | Policies |
+> |---|---|---|---|
+> | **PROD** | `v1.238.0` (PR #370, merge `8be5f1fb`, release Latest, servida `index-DRm63vPm.js`) | 001-**466** | public 245 · storage 40 · cron 2 |
+> | **DEV** | `v1.238.0` (igual) | 001-**466** | iguales (mismo hash) |
+> | **Panel interno** | mergeado (PR #7, sin `plan_id`) | — | — |
+>
+> **Deploy hecho (madrugada del 03/10):** migs 457 → 466 a PROD de a una con `scripts/aplicar-migracion.mjs` (la 462 chocó
+> en la versión con la 461 por caer en el mismo segundo; falló entera y se reaplicó). EFs en PROD: `admin-api`,
+> `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`, `ai-assistant`. Auditoría de EFs diff 0
+> (sin desplegar, de antes: `marketplace-webhook` en DEV, `wa-embedded-signup-exchange` en PROD por la App Review de Meta).
+> Secret `MP_PLAN_ENTERPRISE` en DEV y PROD. e2e previa 441/0 fallas, unit 2142. **Pricing v7, KIT atómico, caja por
+> sucursal, precio pactado de add-ons, modo avanzado solo desde Pro, anti doble pago de MP, pedidos por fecha y la lista de
+> descuentos por categoría están EN PROD.** Todo lo que abajo diga "EN DEV / falta PROD" de 457-466 quedó superado.
+>
+> ### ▶ LO PRÓXIMO (en este orden)
+> 1. **B2 — Categorías de clientes (Fase 3 del plan)**: motor único de precio + que POS y Pedidos apliquen la lista de
+>    descuentos (mig 466, hoy NO se aplica al vender). Reglas: gana el precio más bajo frente al mayorista y al estado;
+>    tope acumulado sin salteo (PL-1); categoría/%/mecanismo guardados por línea; cartel para el cajero. GO eligió B2 y no
+>    B1 (meter la categoría en los dos motores actuales). PL-7: la preparación para precio por sucursal es este motor
+>    único (+ `sucursal_id` vacío en `precios_programados`). Ver [[wiki/features/clientes-proveedores]].
+> 2. **QR de MP Fase 1** (decidida, SIN EMPEZAR): envío en la deuda de CC/cobranza/QR, un link por venta con vencimiento a
+>    30 días que se desactiva al saldarse, excedente a saldo a favor (`cliente_creditos`) + aviso al dueño, `mp-ipn`
+>    insert-first (idempotencia). Fase 2: interruptor + QR en estado de cuenta. Fase 3: interés (espera C-20).
+> 3. **🙋 ESPERA DECISIÓN DE GO (REGLA #0 / legal):** (a) hoy se puede BORRAR por API una venta con CAE (solo frena el
+>    período cerrado), y movimientos de caja y gastos con IVA también → propuesta: triggers que lo impidan; (b) "Empezar de
+>    cero" debería limitarse (solo en prueba o los primeros N días); (c) T&C sin cláusula de uso lícito (evasión,
+>    simulación, fraude) ni de responsabilidad fiscal por CUIT / efectivo / "no intermediamos fondos" — texto propuesto, que
+>    lo revise un abogado, habría que subir `LEGAL_VERSION`. Ver [[wiki/business/legal-compliance]]. Además: ¿auto-vincular
+>    una suscripción de MP cuando hay un único negocio candidato? (caso El Tilo).
+> 4. **Pricing v7 — faltan**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación), aviso de comprobantes
+>    80 %/100 % + mail, landing de Fede (dice "30 días" en 3 lugares; la prueba es de 15).
+> 5. **PL-5 = A** (chico): el POS avisa claro cuando no hay conexión; venta offline solo si un cliente la pide.
+> 6. **Un usuario, un dispositivo** (para revisar con GO; ver el análisis más abajo en el bloque del 02/10): estricto / N
+>    dispositivos / solo aviso, y si el dueño es excepción. Sin código hasta que GO decida.
+> 7. **Rotación de claves PROD (en curso)**: desactivar legacy anon+service_role, revocar la JWT signing key HS256,
+>    redeployar `genesis360-admin`, actualizar `VITE_SUPABASE_ANON_KEY` de Production en Vercel del panel; medir.
+> 8. **Esperando a terceros:** Meta (App Review → envío automático de PDF por WhatsApp, `wa-embedded-signup-exchange`),
+>    relación `wsfe` en ARCA para la facturación de plataforma, contador (21 consultas abiertas, C-20 y C-21 nuevas).
+>
+> **Para después (GO):** WMS profesional (priorización de tareas y asignación automática por permiso y vehículo).
+> **Clientes reales en PROD:** Kalken y El Tilo (gratis, heredan Pro v6; la suscripción duplicada de El Tilo: GO pidió a
+> Fede cancelar ambas preapprovals Pro a $20 y devolver). Sugerido a Fede: revisar su cuenta MP por cobros de negocios (hotfix
+> 02/10). Incidentes cerrados 02/10: caja abierta de El Tilo movida de sucursal (UAT §90.6) y Familia Otranto (§90); mig 460.
+> **Decisiones de GO 02/10:** PL-5 = A · PL-7 = motor único · EC-5 = B (superusuario = rol `admin` del panel, un usuario por
+> persona, GO los crea) · envío e interés de CC se cobran · PR-8 respondida. Contador: C-20 y C-21 agregadas.
+> **Hecho hoy, EN PROD:** lista de descuentos por categoría (`/clientes/categorias/:id/descuentos` + importador, UAT §96,
+> e2e 178) · Pedidos por fecha de entrega y `hoyLocalISO` (UAT §95, e2e 177) · Inventario: buscar un LPN (UAT §94, e2e 176) ·
+> POS envío "Fecha de entrega".
+>
+> ---
+> ### (HISTÓRICO, superado por el bloque de arriba) ARRANCÁ ACÁ (2026-10-02, cierre de la tarde) — PROD `v1.237.0` (+ migs 456/458 en la base + EF `mp-crear-link-pago` v10) · DEV 001-463 + pricing v7 sin bloqueos
 >
 > | | Código | Migraciones |
 > |---|---|---|

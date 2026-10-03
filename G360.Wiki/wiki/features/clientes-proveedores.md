@@ -8,6 +8,8 @@ updated: 2026-10-02
 
 # Clientes y Proveedores
 
+> 🏷️ **2026-10-03 (✅ EN PROD v1.238.0, mig 466) — Lista de descuentos por categoría (Fase 4 parte A):** pantalla `/clientes/categorias/:id/descuentos` (ícono % en Clientes → Categorías) e importador `/clientes/categorias/:id/descuentos/importar` (plantilla con todos los productos, celda vacía = no se toca, todo o nada, hasta 20.000 filas). Tabla `categoria_cliente_descuentos`. **Todavía NO se aplica al vender.** Siguiente = **B2**: motor único de precio (Fase 3 del plan) + que POS y Pedidos apliquen la lista (gana el precio más bajo frente al mayorista y al estado, tope acumulado sin salteo PL-1, categoría/%/mecanismo guardados por línea, cartel para el cajero). GO eligió B2 y no B1 (meter la categoría en los dos motores actuales). UAT §96, e2e 178. QR Fase 1 (envío en CC, un link por venta con vencimiento a 30 días, excedente a saldo a favor, idempotencia de `mp-ipn`) decidida y SIN EMPEZAR.
+
 > 🔎 **2026-10-01 — Padrón de ARCA (✅ EN PROD v1.235.0):** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
 > autocompletan razón social, condición IVA y domicilio fiscal con vista previa. Ver [[wiki/integrations/padron-arca]].
 

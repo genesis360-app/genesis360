@@ -8,7 +8,9 @@ updated: 2026-10-02 (tarde)
 
 # Planes y Pricing
 
-## 🆕 Pricing v7 (2026-10-02) — 🟡 EN DEV, listo para PROD (sin bloqueos; espera horario de GO)
+## 🆕 Pricing v7 (2026-10-02) — ✅ EN PROD v1.238.0 (deploy 2026-10-03)
+
+> **✅ 2026-10-03 — DEPLOY A PROD (v1.238.0, PR #370, merge `8be5f1fb`):** migs 457-466 aplicadas en PROD de a una; los 11 negocios con herencia conservan su plan v6 (El Tilo, Kalken y Familia Otranto = Pro v6 con wms). Mig 463 verificada antes: ningún avanzado sin wms; los 6 negocios en avanzado siguieron en avanzado. Backfill 461: el único pack fijo de PROD quedó en $5.000. EFs en PROD: `admin-api`, `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`, `ai-assistant`. Secret `MP_PLAN_ENTERPRISE` en DEV y PROD; Básico $54.000 y Pro $100.000 verificados en el checkout de MP. **Faltan de v7**: pago anual (−20 % sobre lista), aviso de comprobantes 80 %/100 % + mail, landing de Fede ("30 días" en 3 lugares).
 
 > **Actualización 2026-10-02 (tarde):**
 > - **Mercado Pago listo**: Fede creó Enterprise y editó Pro. IDs verificados en el checkout público: Básico `142aefe1…`
@@ -25,7 +27,7 @@ updated: 2026-10-02 (tarde)
 >   precio pactado**; uno nuevo o distinto toma el catálogo vigente. Espejo en `src/lib/mpAddonBatch.ts` (`precioPack`,
 >   `preciosDesdeAddons`), configurador y `/suscripcion`; el MRR de `admin-api` (`_shared/precios.ts`, `mrrDeTenant`)
 >   usa el precio pactado. Cierra el riesgo "(a)": un cambio de precio del catálogo ya no reprecia a quien ya tiene el pack.
-> - **Deploy a PROD (pendiente)**: ver [[wiki/integrations/mercado-pago]] y pendientes → migs 457 → 459 → 460 → 461 →
+> - **Deploy a PROD (✅ HECHO 2026-10-03)**: ver [[wiki/integrations/mercado-pago]] y pendientes → migs 457 → 459 → 460 → 461 →
 >   462 → 463, EFs, bump `v1.238.0`, `app-reference.md` + `ai:knowledge` + redeploy `ai-assistant`.
 
 Fuente: docs de Fede en Drive **"05 - Genesis360 Pricing y Costos v7"** y **"06 - Cambios de Pricing v6 a v7 - Para

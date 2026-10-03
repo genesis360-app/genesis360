@@ -8,6 +8,8 @@ updated: 2026-08-31
 
 # Módulo Pedidos
 
+> 📅 **2026-10-03 (✅ EN PROD v1.238.0, mig 465) — el pedido hereda la fecha de entrega del envío:** Pedidos ordena por fecha (atrasado / hoy / mañana) con el rango horario; Picking muestra la fecha. Se arreglaron las fechas que se veían un día antes y el "hoy" en UTC (Pedidos y Alertas, `hoyLocalISO`). UAT §95, e2e 177. Para después (GO): WMS profesional con priorización de tareas y asignación automática por permisos y vehículo (ver [[wiki/features/wms]]).
+
 > **✅ Módulo COMPLETO y EN PROD desde v1.144.0 (2026-07-28, PR #302, migs 292 + 294-302).** Arrancado el 2026-07-22. El ciclo de vida completo
 > está construido y verificado con e2e real contra DEV: **PED1-PED8 completos**, incluida una
 > segunda ronda que cerró los 5 gaps que había dejado la primera pasada (ver "Correcciones

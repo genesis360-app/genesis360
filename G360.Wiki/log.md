@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-03] deploy | v1.238.0 a PROD — pricing v7, caja, KIT, suscripciones, categorías (lista), pedidos por fecha
+
+- **Estado**: PROD = DEV = `v1.238.0`, migs 001-**466**, policies iguales (public 245, storage 40, cron 2). PR #370, merge
+  `8be5f1fb`, release `v1.238.0` Latest, servida verificada con curl (`index-DRm63vPm.js`). Panel interno
+  (`genesis360-admin`) mergeado: PR #7, sin `plan_id`. Suite e2e previa 441 passed / 0 failed (51,3 min), unit 2142, CI verde.
+- **Migs 457 → 466 en PROD** de a una con `scripts/aplicar-migracion.mjs` (la 462 chocó en la versión con la 461 por caer
+  en el mismo segundo: falló entera sin aplicar nada y se reaplicó; gotcha documentado en el script). 457 pricing v7 +
+  `tenant_herencia_plan` (11 negocios con herencia; El Tilo, Kalken y Familia Otranto = Pro v6 con wms) · 459 desarmado de
+  KIT atómico · 460 sesión de caja en la sucursal de su caja (0 desfasadas en PROD) · 461 precio pactado por pack (el único
+  pack fijo de PROD quedó en $5.000) · 462 armado de KIT sin fraccionarios · 463 modo avanzado solo desde Pro (verificado
+  antes: ningún avanzado sin wms; los 6 en avanzado siguieron) · 464 `mp_suscripcion_intentos` · 465 pedido hereda la fecha
+  del envío · 466 `categoria_cliente_descuentos`.
+- **EFs en PROD**: `admin-api`, `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`,
+  `ai-assistant` (también DEV; `app-reference.md` a planes v7 + `npm run ai:knowledge`). `mp-crear-link-pago` ya estaba
+  desde el 02/10. `auditar-edge-functions.sh`: diff 0; sin desplegar solo `marketplace-webhook` (DEV) y
+  `wa-embedded-signup-exchange` (PROD, espera la App Review de Meta). Secret `MP_PLAN_ENTERPRISE` en DEV y PROD; Básico
+  $54.000 y Pro $100.000 verificados en el checkout de MP.
+- **Hecho el 02-03/10 y ahora EN PROD**: lista de descuentos por categoría (Fase 4 parte A, mig 466; pantalla +
+  importador; UAT §96, e2e 178) · Pedidos por fecha de entrega y "hoy" local (`hoyLocalISO`; UAT §95, e2e 177) · buscar un
+  LPN en Inventario (UAT §94, e2e 176) · POS envío "Fecha de entrega".
+- **Incidentes 02/10**: El Tilo (caja ABIERTA ~$734k movida de sucursal → sesión invisible; vuelta a ELTILO oficina con OK
+  de GO; UAT §90.6) · Familia Otranto (sesión desfasada bloqueaba el cambio de sucursal; GO la cerró; UAT §90) ·
+  suscripción duplicada de El Tilo (dos preapprovals Pro a $20, 28/09; GO pidió a Fede cancelar y devolver; arreglo de fondo
+  mig 464, UAT §93; abierta: ¿auto-vincular con un único candidato?) · hotfix `mp-crear-link-pago` (ya no usa la cuenta MP
+  de la plataforma; sugerido que Fede revise su cuenta MP).
+- **Decisiones de GO 02/10**: PL-5 = A · PL-7 = motor único · EC-5 = B · envío e interés de CC se cobran (interés espera C-20)
+  · QR Fase 1 decidida, sin empezar · PR-8 respondida. GO eligió **B2** (motor único de precio + aplicar la lista) y no B1.
+- **Legal / T&C (sin aplicar)**: faltan cláusulas de uso lícito y de responsabilidad fiscal / "no intermediamos fondos"
+  (que lo revise un abogado; subir `LEGAL_VERSION`). **REGLA #0 abiertos, ESPERAN DECISIÓN DE GO**: (a) se puede BORRAR una
+  venta con CAE por API, y movimientos de caja y gastos con IVA → triggers que lo impidan; (b) limitar "Empezar de cero".
+  Contador: C-20 y C-21 agregadas, 21 abiertas.
+- Ver [[wiki/business/planes-pricing]], [[wiki/business/roadmap]], [[wiki/database/migraciones]],
+  [[wiki/integrations/mercado-pago]], [[wiki/features/caja]], [[wiki/features/clientes-proveedores]],
+  [[wiki/features/pedidos]], [[wiki/business/legal-compliance]].
+
+---
+
 ## [2026-10-02] update | Cierre de la tarde: migs 461-463, hotfix EN PROD del link de pago, QR de MP, v7 sin bloqueos
 
 - **Estado**: PROD `v1.237.0` (migs 001-456 + 458) **+ EF `mp-crear-link-pago` v10** (hotfix, ver abajo). DEV 001-**463**,

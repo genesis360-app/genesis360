@@ -8,6 +8,8 @@ updated: 2026-08-11
 
 # WMS — Warehouse Management System
 
+> 📦 **2026-10-03 — Para después (GO):** WMS profesional con priorización de tareas de preparación y asignación automática a usuarios con permiso para ese tipo de tarea y vehículo. Hoy (✅ EN PROD v1.238.0, mig 465): Pedidos y Picking ordenan por fecha de entrega y marcan atrasado/hoy/mañana. Ver [[wiki/features/pedidos]].
+
 Visión: el sistema sugiere dónde almacenar cada SKU en base a dimensiones/peso, y genera listas de picking con tareas dirigidas.
 
 > [!IMPORTANT] **🛑 Pivote de arquitectura (2026-07-22, mismo día que las Fases 3-5 de abajo) — de

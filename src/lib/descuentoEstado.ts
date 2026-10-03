@@ -42,6 +42,9 @@ function round2(n: number): number { return Math.round((n + Number.EPSILON) * 10
 export function calcularDescuentoEstadoLinea(
   fuentes: FuenteConDescuentoEstado[],
   precioUnitario: number,
+  /** Mig 468 (A2): cliente con categoría ACTIVA → el estado COMPITE contra la lista en vez de sumarse: por unidad se
+   *  descuenta max(0, precioUnitario − lista × (1 − %)). Espejo de `fn_descuento_estado_unitario` (Pedidos). */
+  compite?: { precioLista: number } | null,
 ): { monto: number; detalle: DescuentoEstadoDetalle[] } {
   if (!(precioUnitario > 0) || fuentes.length === 0) return { monto: 0, detalle: [] }
 
@@ -58,7 +61,10 @@ export function calcularDescuentoEstadoLinea(
 
   const detalle: DescuentoEstadoDetalle[] = [...porEstado.entries()]
     .map(([estado_nombre, { pct, cantidad }]) => ({
-      estado_nombre, pct, cantidad, monto: round2(precioUnitario * cantidad * pct / 100),
+      estado_nombre, pct, cantidad,
+      monto: compite
+        ? round2(Math.max(0, precioUnitario - round2(compite.precioLista * (1 - Math.min(100, pct) / 100))) * cantidad)
+        : round2(precioUnitario * cantidad * pct / 100),
     }))
     .filter(d => d.monto > 0)
 

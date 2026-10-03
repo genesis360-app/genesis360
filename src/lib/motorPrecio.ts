@@ -11,7 +11,7 @@
  * cupón y promo por medio de pago.
  */
 
-export type MecanismoPrecio = 'lista' | 'tier' | 'empaque' | 'canal_mayorista'
+export type MecanismoPrecio = 'lista' | 'tier' | 'empaque' | 'canal_mayorista' | 'categoria'
 export type ListaCanal = 'minorista' | 'mayorista' | null
 
 export interface PrecioMotorLinea {
@@ -24,6 +24,17 @@ export interface PrecioMotorLinea {
   mecanismo?: MecanismoPrecio
   es_usd?: boolean
   error?: string
+  // Fase 4 (mig 468) — categoría del cliente
+  /** Precio y mecanismo que habría sin la categoría (lo que compitió y perdió, para el cartel). */
+  precio_sin_categoria?: number
+  mecanismo_sin_categoria?: MecanismoPrecio
+  /** Cliente con categoría ACTIVA: el descuento por estado compite contra la lista en vez de sumarse (A2). */
+  estado_compite?: boolean
+  categoria_id?: string | null
+  categoria_nombre?: string | null
+  /** % de la categoría para el producto; undefined = sin cargar. */
+  categoria_pct?: number
+  precio_categoria?: number
 }
 
 export interface ItemCarritoParaMotor {
@@ -69,6 +80,13 @@ export function mapaPreciosMotor(respuesta: unknown): Record<string, PrecioMotor
       precio_unitario: precio,
       mecanismo: raw.mecanismo as MecanismoPrecio | undefined,
       es_usd: raw.es_usd === true,
+      precio_sin_categoria: num(raw.precio_sin_categoria),
+      mecanismo_sin_categoria: raw.mecanismo_sin_categoria as MecanismoPrecio | undefined,
+      estado_compite: raw.estado_compite === true,
+      categoria_id: (raw.categoria_id as string | null | undefined) ?? null,
+      categoria_nombre: (raw.categoria_nombre as string | null | undefined) ?? null,
+      categoria_pct: num(raw.categoria_pct),
+      precio_categoria: num(raw.precio_categoria),
       // Sin precio y sin error explícito también es un error: nunca se cobra una línea sin precio del servidor.
       error: raw.error ? String(raw.error) : precio === undefined ? 'Sin precio' : undefined,
     }
@@ -110,4 +128,57 @@ export function estadoPreciosCarrito(
   }
   if (opts.cargando) return { listo: false, motivo: 'calculando' }
   return { listo: true }
+}
+
+// ── Fase 4: cartel para el cajero y tope de descuento ───────────────────────────────────────────────────────────────
+
+const NOMBRE_MECANISMO: Record<string, string> = {
+  tier: 'precio por cantidad', empaque: 'precio por empaque', canal_mayorista: 'precio mayorista del canal', lista: 'precio de lista',
+}
+const pesos = (n: number) => `$${n.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
+const pctTxt = (n: number) => `${n.toLocaleString('es-AR', { maximumFractionDigits: 2 })} %`
+
+/** Etiqueta corta para la línea (A5): "Categoría Colocadores: −20 % sobre lista". null si la categoría no ganó. */
+export function etiquetaCategoria(p: PrecioMotorLinea | null | undefined): string | null {
+  if (!p || p.mecanismo !== 'categoria' || !p.categoria_nombre || !(p.categoria_pct && p.categoria_pct > 0)) return null
+  return `Categoría ${p.categoria_nombre}: −${pctTxt(p.categoria_pct)} sobre lista`
+}
+
+/**
+ * Texto del cartel (A2), SOLO para el que maneja el POS: aparece cuando en una línea compitieron dos o más
+ * descuentos y uno no se aplicó. Plantilla fija (la redacción con IA es la Fase 5; ésta queda de respaldo).
+ * `estadoPerdio`: había un lote con descuento por estado que no se aplicó porque el precio ya era mejor.
+ */
+export function textoCartelPrecio(
+  p: PrecioMotorLinea | null | undefined, producto: string,
+  estado?: { nombre: string; pct: number; perdio: boolean } | null,
+): string | null {
+  if (!p || p.precio_unitario === undefined) return null
+  const partes: string[] = []
+  const otro = p.mecanismo_sin_categoria && p.mecanismo_sin_categoria !== 'lista' ? p.mecanismo_sin_categoria : null
+  if (p.mecanismo === 'categoria' && p.categoria_nombre && p.categoria_pct) {
+    if (otro && p.precio_sin_categoria !== undefined) {
+      partes.push(`En ${producto} se aplica el ${pctTxt(p.categoria_pct)} de la categoría ${p.categoria_nombre} (${pesos(p.precio_categoria ?? p.precio_unitario)}). No se suma al ${NOMBRE_MECANISMO[otro]} (${pesos(p.precio_sin_categoria)}) porque los descuentos no se acumulan: se toma el mejor para el cliente.`)
+    }
+  } else if (p.categoria_nombre && p.categoria_pct && p.categoria_pct > 0 && p.precio_categoria !== undefined && otro) {
+    partes.push(`En ${producto} se aplica el ${NOMBRE_MECANISMO[otro]} (${pesos(p.precio_unitario)}), que es mejor que el ${pctTxt(p.categoria_pct)} de la categoría ${p.categoria_nombre} (${pesos(p.precio_categoria)}). Los descuentos no se acumulan: se toma el mejor para el cliente.`)
+  }
+  if (estado?.perdio) {
+    partes.push(`Las unidades del lote "${estado.nombre}" (${pctTxt(estado.pct)}) salen al mismo precio: ese descuento no se suma porque el precio ya es mejor para el cliente.`)
+  }
+  return partes.length ? partes.join(' ') : null
+}
+
+/**
+ * Tope de descuento acumulado (A4 + B-5 + PL-1): (lista − cobrado) / lista, contando TODO lo que descuenta. Nadie lo
+ * saltea. `topePct` null/undefined = no rige. `cobrado` = lo que se cobra por los productos (sin envío).
+ */
+export function evaluarTopeDescuento(
+  lineas: { precioLista: number | undefined; cantidad: number }[], cobrado: number, topePct: number | null | undefined,
+): { rige: boolean; excede: boolean; descuentoPct: number } {
+  const tope = typeof topePct === 'number' ? topePct : parseFloat(String(topePct ?? ''))
+  const lista = lineas.reduce((s, l) => s + (Number.isFinite(l.precioLista) ? (l.precioLista as number) * l.cantidad : 0), 0)
+  const descuentoPct = lista > 0 ? Math.round(((lista - cobrado) / lista) * 10000) / 100 : 0
+  if (!Number.isFinite(tope)) return { rige: false, excede: false, descuentoPct }
+  return { rige: true, excede: lista > 0 && descuentoPct > tope + 0.005, descuentoPct }
 }

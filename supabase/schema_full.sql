@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-03T05:20:43.196Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261003050753 · 177 tablas
+-- Generado 2026-10-03T06:47:34.061Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261003063524 · 177 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2574,7 +2574,8 @@ CREATE TABLE public.tenants (
   precio_programado_requiere_repositor boolean NOT NULL DEFAULT false,
   precio_programado_aviso_demora_horas integer NOT NULL DEFAULT 2,
   categorias_cliente_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
-  categorias_cliente_asignar_roles jsonb NOT NULL DEFAULT '[]'::jsonb
+  categorias_cliente_asignar_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
+  descuento_tope_acumulado_pct numeric(5,2)
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2767,7 +2768,11 @@ CREATE TABLE public.venta_items (
   cantidad_uom numeric(12,3),
   pedido_item_id uuid,
   comision_marketplace numeric(12,2),
-  sucursal_id uuid
+  sucursal_id uuid,
+  precio_lista_unitario numeric(14,2),
+  mecanismo_precio text,
+  categoria_cliente_id uuid,
+  categoria_descuento_pct numeric(5,2)
 );
 
 CREATE TABLE public.venta_series (
@@ -3331,6 +3336,7 @@ ALTER TABLE public.tenants ADD CONSTRAINT tenants_cliente_datos_minimos_check CH
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_cliente_obligatorio_check CHECK ((cliente_obligatorio = ANY (ARRAY['siempre'::text, 'reservas'::text, 'nunca'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_codigo_formato CHECK ((codigo ~ '^[a-z0-9]{3,20}$'::text));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_conteo_modo_check CHECK ((conteo_modo = ANY (ARRAY['rapido'::text, 'guiado'::text, 'elegir'::text])));
+ALTER TABLE public.tenants ADD CONSTRAINT tenants_descuento_tope_acumulado_pct_check CHECK (((descuento_tope_acumulado_pct IS NULL) OR ((descuento_tope_acumulado_pct >= (0)::numeric) AND (descuento_tope_acumulado_pct <= (100)::numeric))));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_envio_peso_fuente_chk CHECK ((envio_peso_fuente = ANY (ARRAY['manual'::text, 'producto'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_gastos_dias_alerta_anticipo_oc_check CHECK (((gastos_dias_alerta_anticipo_oc >= 1) AND (gastos_dias_alerta_anticipo_oc <= 365)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_gastos_dias_alerta_borrador_check CHECK (((gastos_dias_alerta_borrador >= 1) AND (gastos_dias_alerta_borrador <= 365)));
@@ -3372,8 +3378,10 @@ ALTER TABLE public.users ADD CONSTRAINT users_rol_check CHECK ((rol = ANY (ARRAY
 ALTER TABLE public.users ADD CONSTRAINT users_usuario_formato CHECK (((usuario IS NULL) OR (usuario ~ '^[a-z0-9][a-z0-9_-]{2,29}$'::text)));
 ALTER TABLE public.venta_auditoria ADD CONSTRAINT venta_auditoria_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_pkey PRIMARY KEY (id);
+ALTER TABLE public.venta_items ADD CONSTRAINT trg_venta_items_tope_descuento TRIGGER DEFERRABLE INITIALLY DEFERRED;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_mecanismo_precio_check CHECK (((mecanismo_precio IS NULL) OR (mecanismo_precio = ANY (ARRAY['lista'::text, 'tier'::text, 'empaque'::text, 'canal_mayorista'::text, 'categoria'::text]))));
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_pkey PRIMARY KEY (id);
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_cae_ambiente_check CHECK (((cae_ambiente IS NULL) OR (cae_ambiente = ANY (ARRAY['homologacion'::text, 'produccion'::text]))));
@@ -3880,6 +3888,7 @@ ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_prod
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_venta_item_id_fkey FOREIGN KEY (venta_item_id) REFERENCES venta_items(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_categoria_cliente_id_fkey FOREIGN KEY (categoria_cliente_id) REFERENCES categorias_cliente(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pedido_item_id_fkey FOREIGN KEY (pedido_item_id) REFERENCES pedido_items(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
@@ -6436,6 +6445,19 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_descuento_estado_unitario(p_precio_efectivo numeric, p_precio_lista numeric, p_pct numeric, p_compite boolean)
+ RETURNS numeric
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT CASE
+    WHEN COALESCE(p_pct, 0) <= 0 OR COALESCE(p_precio_efectivo, 0) <= 0 THEN 0
+    WHEN p_compite THEN GREATEST(p_precio_efectivo - round(p_precio_lista * (1 - LEAST(100, p_pct) / 100), 2), 0)
+    ELSE p_precio_efectivo * p_pct / 100 END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_empleados_basico()
@@ -9855,6 +9877,8 @@ DECLARE
   v_deuda_total      numeric;
   v_limite_credito   numeric;
   v_enforcement_pol  text;
+  v_motor            jsonb;
+  v_desc_u           numeric;
 BEGIN
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
@@ -9934,7 +9958,14 @@ BEGIN
     FROM pedido_items pi2
     WHERE pi2.pedido_id = p_pedido_id AND pi2.producto_id = v_item.producto_id
       AND pi2.estado <> 'cancelada';
-    v_precio := fn_precio_venta_efectivo(v_pedido.tenant_id, v_item.producto_id, v_cant_sku);
+    -- Mig 468: motor único con el cliente del pedido (categoría). Sin precio del motor no hay venta.
+    v_motor := fn_precios_lineas(
+      jsonb_build_array(jsonb_build_object('key', v_item.id, 'producto_id', v_item.producto_id, 'cantidad', v_cant_sku)),
+      NULL, v_pedido.cliente_id)->'lineas'->0;
+    IF v_motor ? 'error' THEN
+      RAISE EXCEPTION 'No se pudo calcular el precio de % (SKU %): %', v_producto.nombre, v_producto.sku, v_motor->>'error';
+    END IF;
+    v_precio := (v_motor->>'precio_unitario')::numeric;
     v_item_subtotal := ROUND(v_precio * v_cant_entregar, 2);
     v_iva_monto := CASE WHEN COALESCE(v_producto.alicuota_iva, 0) > 0
       THEN ROUND(v_item_subtotal - v_item_subtotal / (1 + v_producto.alicuota_iva / 100), 2)
@@ -9942,10 +9973,11 @@ BEGIN
 
     INSERT INTO venta_items (
       tenant_id, venta_id, producto_id, cantidad, precio_unitario, precio_costo_historico,
-      subtotal, alicuota_iva, iva_monto, pedido_item_id
+      subtotal, alicuota_iva, iva_monto, pedido_item_id, mecanismo_precio
     ) VALUES (
       v_pedido.tenant_id, v_venta_id, v_item.producto_id, v_cant_entregar, v_precio,
-      v_producto.precio_costo, v_item_subtotal, COALESCE(v_producto.alicuota_iva, 21), v_iva_monto, v_item.id
+      v_producto.precio_costo, v_item_subtotal, COALESCE(v_producto.alicuota_iva, 21), v_iva_monto, v_item.id,
+      v_motor->>'mecanismo'
     ) RETURNING id INTO v_venta_item_id;
 
     v_subtotal := v_subtotal + v_item_subtotal;
@@ -9975,11 +10007,16 @@ BEGIN
       SELECT ei.descuento_pct INTO v_pct_linea
       FROM estados_inventario ei WHERE ei.id = v_linea.estado_id;
       IF COALESCE(v_pct_linea, 0) > 0 THEN
-        v_desc_monto := v_desc_monto + ROUND(v_precio * v_tomar * v_pct_linea / 100, 2);
-        IF v_desc_pct IS NULL THEN
-          v_desc_pct := v_pct_linea; v_desc_pcts := 1;
-        ELSIF v_desc_pct <> v_pct_linea THEN
-          v_desc_pcts := v_desc_pcts + 1;
+        -- Mig 468 (A2): con categoría activa el estado compite contra la lista; sin categoría se acumula (igual que antes).
+        v_desc_u := fn_descuento_estado_unitario(v_precio, (v_motor->>'precio_lista')::numeric, v_pct_linea,
+                                                 COALESCE((v_motor->>'estado_compite')::boolean, false));
+        IF v_desc_u > 0 THEN
+          v_desc_monto := v_desc_monto + ROUND(v_desc_u * v_tomar, 2);
+          IF v_desc_pct IS NULL THEN
+            v_desc_pct := v_pct_linea; v_desc_pcts := 1;
+          ELSIF v_desc_pct <> v_pct_linea THEN
+            v_desc_pcts := v_desc_pcts + 1;
+          END IF;
         END IF;
       END IF;
 
@@ -10299,6 +10336,69 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_precio_motor_cliente(p_tenant_id uuid, p_producto_id uuid, p_cantidad numeric, p_lista text DEFAULT NULL::text, p_cliente_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_r          jsonb;
+  v_cat_id     uuid;
+  v_cat_nombre text;
+  v_pct        numeric;
+  v_lista      numeric;
+  v_precio_cat numeric;
+  v_bloque     jsonb;
+  v_bloques    jsonb := '[]'::jsonb;
+  v_total      numeric := 0;
+  v_cant       numeric := 0;
+  v_gana_cat   boolean := false;
+  v_base       numeric;
+BEGIN
+  v_r := fn_precio_motor_producto(p_tenant_id, p_producto_id, p_cantidad, p_lista);
+  IF v_r IS NULL THEN RETURN NULL; END IF;
+
+  IF p_cliente_id IS NOT NULL THEN
+    SELECT cat.id, cat.nombre INTO v_cat_id, v_cat_nombre
+    FROM clientes c JOIN categorias_cliente cat ON cat.id = c.categoria_cliente_id AND cat.activo
+    WHERE c.id = p_cliente_id AND c.tenant_id = p_tenant_id AND cat.tenant_id = p_tenant_id;
+  END IF;
+
+  v_r := v_r || jsonb_build_object(
+    'precio_sin_categoria', v_r->'precio_base',
+    'mecanismo_sin_categoria', v_r->'mecanismo',
+    'estado_compite', v_cat_id IS NOT NULL,
+    'categoria_id', v_cat_id, 'categoria_nombre', v_cat_nombre);
+  IF v_cat_id IS NULL THEN RETURN v_r; END IF;
+
+  SELECT descuento_pct INTO v_pct FROM categoria_cliente_descuentos
+  WHERE categoria_id = v_cat_id AND producto_id = p_producto_id AND tenant_id = p_tenant_id;
+  v_r := v_r || jsonb_build_object('categoria_pct', v_pct);
+  IF COALESCE(v_pct, 0) <= 0 THEN RETURN v_r; END IF;
+
+  v_lista := (v_r->>'precio_lista')::numeric;
+  v_precio_cat := round(v_lista * (1 - LEAST(100, v_pct) / 100), 2);
+  v_r := v_r || jsonb_build_object('precio_categoria', v_precio_cat);
+
+  -- Cada bloque toma el más bajo entre su precio y el de categoría (empate → categoría).
+  FOR v_bloque IN SELECT * FROM jsonb_array_elements(v_r->'bloques') LOOP
+    IF v_precio_cat <= (v_bloque->>'precio_unitario')::numeric THEN
+      v_bloque := v_bloque || jsonb_build_object('precio_unitario', v_precio_cat, 'mecanismo', 'categoria');
+      v_gana_cat := true;
+    END IF;
+    v_bloques := v_bloques || jsonb_build_array(v_bloque);
+    v_cant  := v_cant  + (v_bloque->>'cantidad')::numeric;
+    v_total := v_total + (v_bloque->>'cantidad')::numeric * (v_bloque->>'precio_unitario')::numeric;
+  END LOOP;
+
+  IF NOT v_gana_cat THEN RETURN v_r; END IF;
+  v_base := CASE WHEN v_cant > 0 THEN round(v_total / v_cant, 2) ELSE v_precio_cat END;
+  RETURN v_r || jsonb_build_object('precio_base', v_base, 'mecanismo', 'categoria', 'bloques', v_bloques);
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_precio_motor_producto(p_tenant_id uuid, p_producto_id uuid, p_cantidad numeric, p_lista text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -10510,6 +10610,7 @@ DECLARE
   v_tenant  uuid := get_user_tenant_id();
   v_modo    text;
   v_cot     numeric;
+  v_tope    numeric;
   v_item    jsonb;
   v_prod    uuid;
   v_cant    numeric;
@@ -10527,10 +10628,9 @@ BEGIN
     RAISE EXCEPTION 'El cliente no pertenece a este negocio';
   END IF;
 
-  SELECT precio_redondeo INTO v_modo FROM tenants WHERE id = v_tenant;
+  SELECT precio_redondeo, descuento_tope_acumulado_pct INTO v_modo, v_tope FROM tenants WHERE id = v_tenant;
   SELECT c.venta INTO v_cot FROM fn_cotizacion_bna_vigente('USD') c;
 
-  -- Cantidad TOTAL por SKU en todo el carrito (mig 306).
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
     IF v_item->>'producto_id' IS NULL THEN RAISE EXCEPTION 'Línea sin producto'; END IF;
     v_prod := (v_item->>'producto_id')::uuid;
@@ -10540,10 +10640,9 @@ BEGIN
       to_jsonb(COALESCE((v_totales->>v_prod::text)::numeric, 0) + v_cant));
   END LOOP;
 
-  -- Un precio por SKU (todas sus líneas comparten el precio efectivo).
   FOR v_prod, v_cant IN SELECT key::uuid, value::numeric FROM jsonb_each_text(v_totales) LOOP
     BEGIN
-      v_r := fn_precio_motor_producto(v_tenant, v_prod, v_cant, p_lista);
+      v_r := fn_precio_motor_cliente(v_tenant, v_prod, v_cant, p_lista, p_cliente_id);
       IF v_r IS NULL THEN
         v_r := jsonb_build_object('error', 'Producto inexistente');
       ELSE
@@ -10562,7 +10661,8 @@ BEGIN
       || (v_precios->(v_item->>'producto_id')));
   END LOOP;
 
-  RETURN jsonb_build_object('cotizacion_usd', v_cot, 'redondeo', COALESCE(v_modo, 'none'), 'lineas', v_lineas);
+  RETURN jsonb_build_object('cotizacion_usd', v_cot, 'redondeo', COALESCE(v_modo, 'none'),
+    'tope_descuento_pct', v_tope, 'lineas', v_lineas);
 END;
 $function$
 
@@ -12635,6 +12735,51 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_venta_items_precio_lista()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_r       jsonb;
+  v_cliente uuid;
+  v_estado  text;
+  v_modo    text;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    SELECT estado INTO v_estado FROM ventas WHERE id = NEW.venta_id;
+    IF v_estado IS DISTINCT FROM 'pendiente'
+       OR (NEW.precio_unitario IS NOT DISTINCT FROM OLD.precio_unitario AND NEW.producto_id IS NOT DISTINCT FROM OLD.producto_id) THEN
+      NEW.precio_lista_unitario   := OLD.precio_lista_unitario;
+      NEW.categoria_cliente_id    := OLD.categoria_cliente_id;
+      NEW.categoria_descuento_pct := OLD.categoria_descuento_pct;
+      RETURN NEW;
+    END IF;
+  END IF;
+
+  NEW.precio_lista_unitario := NULL;
+  NEW.categoria_cliente_id := NULL;
+  NEW.categoria_descuento_pct := NULL;
+  IF NEW.producto_id IS NULL OR auth.uid() IS NULL THEN RETURN NEW; END IF;
+
+  SELECT cliente_id INTO v_cliente FROM ventas WHERE id = NEW.venta_id;
+  SELECT precio_redondeo INTO v_modo FROM tenants WHERE id = NEW.tenant_id;
+  BEGIN
+    v_r := fn_precio_motor_cliente(NEW.tenant_id, NEW.producto_id, 0, NULL, v_cliente);
+  EXCEPTION WHEN OTHERS THEN
+    v_r := NULL;   -- p. ej. producto en USD sin cotización: el POS no lo deja vender; acá no se inventa una lista
+  END;
+  IF v_r IS NOT NULL THEN
+    NEW.precio_lista_unitario := fn_precio_redondear((v_r->>'precio_lista')::numeric, v_modo);
+    NEW.categoria_cliente_id := (v_r->>'categoria_id')::uuid;
+    NEW.categoria_descuento_pct := (v_r->>'categoria_pct')::numeric;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_venta_items_set_sucursal()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -12649,6 +12794,21 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_items_tope_descuento()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN NULL; END IF;
+  IF TG_OP = 'UPDATE' AND NEW.subtotal >= OLD.subtotal THEN RETURN NULL; END IF;
+  PERFORM fn_venta_tope_descuento_check(NEW.venta_id);
+  RETURN NULL;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_venta_requiere_pedido(p_venta_id uuid, p_con_envio boolean DEFAULT false)
@@ -12678,6 +12838,32 @@ BEGIN
   SELECT clasificacion INTO v_clasif FROM canales_venta WHERE id = v_canal_id;
   RETURN COALESCE(v_clasif, 'presencial') = 'online';
 END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_tope_descuento_check(p_venta_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v RECORD;
+BEGIN
+  SELECT t.descuento_tope_acumulado_pct AS tope,
+         SUM(vi.cantidad * vi.precio_lista_unitario) AS lista, SUM(vi.subtotal) AS cobrado
+    INTO v
+  FROM venta_items vi JOIN tenants t ON t.id = vi.tenant_id
+  WHERE vi.venta_id = p_venta_id AND vi.producto_id IS NOT NULL AND vi.precio_lista_unitario IS NOT NULL
+  GROUP BY t.descuento_tope_acumulado_pct;
+  IF v.tope IS NULL OR COALESCE(v.lista, 0) <= 0 THEN RETURN; END IF;
+  IF (v.lista - v.cobrado) / v.lista * 100 > v.tope + 0.005 THEN
+    RAISE EXCEPTION 'La venta tiene un descuento total de % %% sobre el precio de lista y el tope del negocio es % %%. Para vender más barato hay que subir el tope en Configuración → Ventas.',
+      replace(to_char(round((v.lista - v.cobrado) / v.lista * 100, 2), 'FM990.00'), '.', ','),
+      replace(to_char(v.tope, 'FM990.00'), '.', ',')
+      USING ERRCODE = 'check_violation';
+  END IF;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_ventas_cc_guard()
@@ -15775,7 +15961,9 @@ CREATE TRIGGER trg_guard_baja_usuario BEFORE UPDATE OF activo ON public.users FO
 CREATE TRIGGER trg_guard_debe_cambiar_password BEFORE UPDATE OF debe_cambiar_password ON public.users FOR EACH ROW WHEN ((new.debe_cambiar_password IS DISTINCT FROM old.debe_cambiar_password)) EXECUTE FUNCTION fn_guard_debe_cambiar_password();
 CREATE TRIGGER trg_guard_rol_admin BEFORE INSERT OR UPDATE OF rol ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_rol_admin();
 CREATE TRIGGER trg_venta_items_auto_pedido AFTER INSERT ON public.venta_items REFERENCING NEW TABLE AS nuevas FOR EACH STATEMENT EXECUTE FUNCTION trg_venta_items_sync_pedido();
+CREATE TRIGGER trg_venta_items_precio_lista BEFORE INSERT OR UPDATE ON public.venta_items FOR EACH ROW EXECUTE FUNCTION fn_venta_items_precio_lista();
 CREATE TRIGGER trg_venta_items_sucursal BEFORE INSERT OR UPDATE OF venta_id ON public.venta_items FOR EACH ROW EXECUTE FUNCTION fn_venta_items_set_sucursal();
+CREATE CONSTRAINT TRIGGER trg_venta_items_tope_descuento AFTER INSERT OR UPDATE ON public.venta_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fn_venta_items_tope_descuento();
 CREATE TRIGGER set_venta_numero BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION gen_venta_numero();
 CREATE TRIGGER trg_ventas_anulada_cancela_pedido AFTER UPDATE OF estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_anulada_cancela_pedido();
 CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pagado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_auto_pedido();

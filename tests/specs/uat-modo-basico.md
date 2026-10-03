@@ -2411,6 +2411,28 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🏷️ §98 — Categoría del cliente en el precio + tope de descuento (B2 / Fase 4, mig 468, 🟡 DEV) — 2026-10-03
+
+Reglas del relevamiento (A1, A2, A4, A5, B4, F2) + B-2/B-5 + PL-1 + decisiones de GO del 03/10: con categoría ACTIVA el
+estado compite aunque el producto no tenga % cargado; la categoría aplica también en canales "minorista".
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 98.1 | 🛑 A1 (lista $100, tier ≥10 a $80): cat 20 % 12 u → $80 (empate, se informa categoría) · cat 30 % 12 u → $70 · cat 20 % 5 u → $80 · cat 20 % con tier $60 → $60 (tier) | SQL DEV (transacción abortada, 19 casos) · e2e `180` A (POS, $840 y F2 en la base) · unit `motorPrecio` | ✅ |
+| 98.2 | 🛑 A2: 4 u de un lote 15 % con la línea a $80 → el estado no se aplica; con 25 % esas 4 salen a $75 · sin categoría el estado se sigue ACUMULANDO (como antes) | SQL DEV · unit `motorPrecio`/`descuentoEstado` · e2e `180` Pedidos ($940 con categoría / $880 sin) | ✅ |
+| 98.3 | 🛑 Clientes SIN categoría: exactamente el mismo precio que antes | `scripts/paridad-motor-precio.mjs` con el motor con cliente NULL: 139.288 casos → 0 diferencias · e2e de precios (ver 98.12) | ✅ |
+| 98.4 | Sin cliente no hay categoría (B4); categoría desactivada = sin categoría; 0 % explícito = sin descuento | SQL DEV | ✅ |
+| 98.5 | Canal "minorista": aplica la categoría; canal "mayorista": compite con el mayorista del canal | SQL DEV | ✅ |
+| 98.6 | A5: el cajero ve "Categoría X: −N % sobre lista" y, si compitieron descuentos, el cartel que explica por qué no se suman (solo en el POS, no en ticket ni factura) | e2e `180` A · unit (textos de plantilla) | ✅ |
+| 98.7 | F2: cada línea guarda mecanismo, lista, categoría y % — lista/categoría/% los pone el SERVIDOR (no se puede mandar una lista falsa) | SQL DEV · e2e `180` (POS y Pedidos) | ✅ |
+| 98.8 | 🛑 Tope (PL-1): con tope 20 % una venta con 30 % NO se registra, ni el DUEÑO, ni con clave maestra; el mensaje dice el % y que se sube en Configuración → Ventas | e2e `180` B (POS) · SQL DEV (trigger: rechaza aunque el navegador mande lista $80) | ✅ |
+| 98.9 | Tope por VENTA, no por línea: Pedidos inserta de a una y descuenta el estado después; 2 líneas (20 % + lista) con tope 15 % pasan | SQL DEV (control diferido al confirmar) | ✅ |
+| 98.10 | Tope en UPDATE: bajar lo cobrado de una venta ya hecha por API → rechazado; la lista de una venta hecha no se puede reescribir; en un presupuesto que se re-cotiza la recalcula el servidor | SQL DEV | ✅ |
+| 98.11 | El tope se mide contra la lista REDONDEADA (redondeo 100: lista $1.234 → $1.200), sin rechazos falsos en el borde | SQL DEV · POS usa la misma lista | ✅ |
+| 98.12 | Regresión: ventas, presupuestos, Pedidos, tiers, empaque, UoM, USD, cupones, combos, CC, categorías | e2e 04/19/24/44/46/55/98/102-104/107/110/113/115/116/122/123/133/135/150/160/163/178/179/180: 50 ✅ · 54 y 63 se saltean por fixture previo | ✅ |
+| 98.13 | Plantilla recurrente rechazada (p. ej. por el tope) ya no deja un presupuesto vacío | revisión (borra el encabezado si fallan las líneas) | ✅ código |
+| 98.14 | Mercado Libre / Tienda Nube (sin usuario) no pasan por el tope ni por la lista del servidor | revisión (los triggers miran `auth.uid()`) | ✅ código |
+
 ## 💲 §97 — Motor ÚNICO de precio (B2 / Fase 3, mig 467, 🟡 DEV) — 2026-10-03
 
 Decisión de GO (B2): un solo motor de precio, en la base; POS, presupuestos y Pedidos lo consultan. **Regla de esta fase:
@@ -2425,7 +2447,7 @@ número provisorio mientras llega la respuesta. PL-5 = A: sin precio del servido
 | 97.4 | Un producto de otro negocio → línea con error "Producto inexistente", sin precio | SQL DEV impersonando | ✅ |
 | 97.5 | 🔒 `fn_precio_venta_efectivo` ya no acepta el id de OTRO negocio con sesión ("Negocio inválido"; venía abierto desde mig 317); el núcleo no es invocable por usuarios | SQL DEV impersonando | ✅ |
 | 97.6 | 🛑 Sin respuesta del motor: aviso "Sin conexión con el servidor" y botón de registrar deshabilitado; vuelve solo al reconectar | e2e `179` (A) | ✅ |
-| 97.7 | Mientras se recalcula (cambio de cantidad) el botón dice "Calculando precios…"; nunca se guarda un precio calculado para otra cantidad | unit `motorPrecio` (precio vigente solo si coincide la cantidad) | ✅ |
+| 97.7 | Mientras se recalcula (cambio de cantidad, cliente o canal) el botón queda deshabilitado con "Calculando precios…" debajo (el texto del botón no cambia); una re-consulta del mismo carrito no bloquea; nunca se guarda un precio calculado para otra cantidad | unit `motorPrecio` (precio vigente solo si coincide la cantidad) | ✅ |
 | 97.8 | Producto en USD sin cotización: la línea dice por qué no tiene precio y bloquea ("Sacalo del carrito para seguir") | unit `motorPrecio` · e2e `160` (el POS ni lo agrega; Pedidos en USD sigue igual) | ✅ |
 | 97.9 | 🛑 "Actualizar precios" de un presupuesto usa el motor: aplica el mayorista por cantidad (antes `precio_venta` crudo; en USD el espejo congelado), redondea subtotal/IVA a centavos y no ignora un error al grabar una línea | e2e `179` (B, verifica precio/subtotal/IVA/total en la base) | ✅ |
 | 97.10 | Tiers en el carrito real con venta persistida siguen dando lo mismo (precio desde el servidor) | e2e 04/19/24/44/55/102-104/107/110/113/115/116/122/123/133/135/150/160: 38 ✅ · 54 y 63 se saltean por fixture de datos previo (el 123 cubre lo del 54 sembrando lo suyo) | ✅ |

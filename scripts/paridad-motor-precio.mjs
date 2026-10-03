@@ -2,7 +2,7 @@
 //
 // Por qué existe (REGLA #0): la Fase 3 de B2 mueve el precio del POS al servidor y tiene que dar EXACTAMENTE lo mismo
 // que hoy. Este script trae de la base todos los productos con tiers (más los de precio en USD y una muestra del resto),
-// los evalúa con el núcleo SQL (`fn_precio_motor_producto` + `fn_precio_redondear`) para muchas cantidades y las tres
+// los evalúa con el motor SQL sin cliente (`fn_precio_motor_cliente(…, NULL)` + `fn_precio_redondear`, mig 468) para muchas cantidades y las tres
 // listas (sin forzar / minorista / mayorista), y los compara contra la lógica de `precioTierBase` del POS.
 // Solo lectura. Correrlo de nuevo antes de cada cambio al motor (Fase 4: categoría).
 //
@@ -97,7 +97,7 @@ for (let i = 0; i < productos.length; i += LOTE) {
       (r->>'precio_lista')::float8 AS precio_lista,
       fn_precio_redondear((r->>'precio_base')::numeric, v.m)::float8 AS precio, r->>'mecanismo' AS mecanismo
     FROM (VALUES ${valores.join(',')}) v(t, p, c, l, m)
-    CROSS JOIN LATERAL (SELECT fn_precio_motor_producto(v.t, v.p, v.c, v.l) AS r) x`)
+    CROSS JOIN LATERAL (SELECT fn_precio_motor_cliente(v.t, v.p, v.c, v.l, NULL) AS r) x`)
   const porId = Object.fromEntries(lote.map(p => [p.id, p]))
   for (const f of filas) {
     casos++

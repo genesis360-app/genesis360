@@ -974,6 +974,8 @@ export default function ConfigPage() {
   // Fase 4 — descuentos y caja
   // (descuento_max_cajero_pct se quitó: el CAJERO está siempre bloqueado de descuentos — H4)
   const [bizDescuentoMaxSupervisor, setBizDescuentoMaxSupervisor] = useState<string>(tenant?.descuento_max_supervisor_pct != null ? String(tenant.descuento_max_supervisor_pct) : '')
+  // Mig 468 (A4 + B-5 + PL-1): tope de descuento ACUMULADO por venta (vacío = no rige). Nadie lo saltea.
+  const [bizDescuentoTope, setBizDescuentoTope] = useState<string>((tenant as any)?.descuento_tope_acumulado_pct != null ? String((tenant as any).descuento_tope_acumulado_pct) : '')
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
   const [bizClaveMaestraConfirm,    setBizClaveMaestraConfirm]    = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
@@ -1435,6 +1437,8 @@ export default function ConfigPage() {
       cliente_creacion_inline:  bizClienteCreacionInline,
       // Fase 4 — descuentos y caja
       descuento_max_supervisor_pct: bizDescuentoMaxSupervisor ? parseFloat(bizDescuentoMaxSupervisor) : null,
+      descuento_tope_acumulado_pct: bizDescuentoTope.trim() !== '' && Number.isFinite(parseFloat(bizDescuentoTope))
+        ? Math.min(100, Math.max(0, parseFloat(bizDescuentoTope))) : null,
       boveda_umbral_caja:           bizBovedaUmbral           ? parseFloat(bizBovedaUmbral)           : null,
       // RRHH (H4)
       rrhh_tardanza_modo:                  bizRrhhTardanzaModo,
@@ -7140,6 +7144,23 @@ export default function ConfigPage() {
                       <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
                     </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Aplica al rol SUPERVISOR. El DUEÑO nunca tiene límite.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tope de descuento total por venta (%)</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
+                        data-testid="config-tope-descuento"
+                        value={bizDescuentoTope} disabled={!canEdit}
+                        onChange={e => setBizDescuentoTope(e.target.value)}
+                        placeholder="Sin tope"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      Cuánto puede bajar una venta respecto del precio de lista, sumando todo: precio por cantidad, categoría del
+                      cliente, estado, descuentos, combos, cupón y promoción por medio de pago. <span className="font-medium">Rige
+                      para todos, también para el DUEÑO</span>: para vender más barato hay que subir este tope. Vacío = sin tope.
+                    </p>
                   </div>
                 </div>
                 {canEdit && (

@@ -62,7 +62,7 @@ import { condicionParaCliente, cuitValido, normalizarCuit, CONDICION_PADRON_LABE
 const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit: '', condicion_iva_receptor: '', domicilio_fiscal: '' }
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
-import { itemsParaMotor, mapaPreciosMotor, precioServidorVigente, estadoPreciosCarrito, cantidadParaPrecio, type ListaCanal } from '@/lib/motorPrecio'
+import { itemsParaMotor, mapaPreciosMotor, precioServidorVigente, estadoPreciosCarrito, cantidadParaPrecio, etiquetaCategoria, textoCartelPrecio, evaluarTopeDescuento, type ListaCanal } from '@/lib/motorPrecio'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -2577,7 +2577,12 @@ export default function VentasPage() {
         alicuota_iva: Number(i.alicuota_iva ?? 21),
       }))
       const { error: iErr } = await supabase.from('venta_items').insert(itemRows)
-      if (iErr) throw iErr
+      if (iErr) {
+        // Sin líneas no hay presupuesto: se borra el encabezado (p. ej. el tope de descuento rechazó los precios de la
+        // plantilla, mig 468). Si no, quedaba un presupuesto vacío por cada intento.
+        await supabase.from('ventas').delete().eq('id', ventaId)
+        throw iErr
+      }
       await supabase.from('ventas_recurrentes').update({
         proximo_at: proximaFecha(rec.frecuencia_dias),
         ultima_generada_at: new Date().toISOString(),
@@ -2905,7 +2910,10 @@ export default function VentasPage() {
   })
   const preciosMotor = motorPrecios.data
   const estadoPrecios = estadoPreciosCarrito(cart, preciosMotor, {
-    cargando: motorPrecios.isFetching,
+    // Bloquea solo si lo que hay es de OTRO carrito (cambió la clave: cantidades, cliente o canal) o todavía no llegó
+    // nada. Una re-consulta en segundo plano del MISMO carrito (staleTime 0) no bloquea: si no, un click en ese
+    // instante decía "Calculando precios…" y no registraba (lo detectaron los e2e 103 y 123 en la suite).
+    cargando: motorPrecios.isPlaceholderData || (motorPrecios.isFetching && !motorPrecios.data),
     errorConsulta: motorPrecios.error ? ((motorPrecios.error as any).message ?? 'Sin conexión con el servidor') : null,
   })
 
@@ -2951,6 +2959,7 @@ export default function VentasPage() {
   // para su cantidad actual (`estadoPreciosCarrito`; PL-5 = A, sin servidor no hay precio).
   const cantSkuEnCarrito = (productoId: string) =>
     cart.filter(i => i.producto_id === productoId).reduce((s, i) => s + cantidadParaPrecio(i), 0)
+  const srvDe = (item: CartItem) => precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
   const precioTierBase = (item: CartItem): number => {
     const srv = precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
     return srv ? (srv.precio_base ?? srv.precio_unitario!) : precioTierBaseLocal(item)
@@ -2964,8 +2973,13 @@ export default function VentasPage() {
   // depende del total del SKU en el carrito). Fuente ÚNICA — así la plata (getItemSubtotal), el
   // detalle combinado del ticket y lo que se graba en venta_items nunca quedan stale si otra línea
   // del mismo SKU movió el tier (Regla #0). Los campos item.descuento_estado_* son solo snapshot.
-  const descEstadoDe = (item: CartItem) =>
-    calcularDescuentoEstadoLinea(item.lpn_fuentes ?? [], precioTierEfectivo(item))
+  // Mig 468 (A2): si el cliente tiene categoría ACTIVA el estado compite contra la lista (gana el más bajo); si no, se
+  // acumula sobre el precio como siempre. Lo dice el motor (`estado_compite`).
+  const descEstadoDe = (item: CartItem) => {
+    const srv = srvDe(item)
+    return calcularDescuentoEstadoLinea(item.lpn_fuentes ?? [], precioTierEfectivo(item),
+      srv?.estado_compite && srv.precio_lista !== undefined ? { precioLista: srv.precio_lista } : null)
+  }
 
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
@@ -3402,6 +3416,22 @@ export default function VentasPage() {
       }
       return
     }
+    // Mig 468 (A4 + B-5 + PL-1): tope de descuento acumulado sobre la lista, contando todo. Nadie lo saltea (ni el
+    // DUEÑO, ni con clave maestra): para vender más barato se sube el tope en Configuración. La base lo vuelve a
+    // controlar al guardar las líneas.
+    {
+      const tope = evaluarTopeDescuento(
+        // Lista REDONDEADA con el redondeo del negocio, igual que la guarda el servidor (`precio_lista_unitario`).
+        cart.map(i => {
+          const l = srvDe(i)?.precio_lista
+          return { precioLista: l === undefined ? undefined : redondearPrecio(l, (tenant as any)?.precio_redondeo), cantidad: cantidadParaPrecio(i) }
+        }),
+        total, (tenant as any)?.descuento_tope_acumulado_pct)
+      if (tope.excede) {
+        toast.error(`La venta tiene un descuento total de ${tope.descuentoPct.toLocaleString('es-AR')} % sobre el precio de lista y el tope del negocio es ${Number((tenant as any)?.descuento_tope_acumulado_pct).toLocaleString('es-AR')} %. Para vender más barato hay que subir el tope en Configuración → Ventas.`, { duration: 8000 })
+        return
+      }
+    }
     for (const item of cart) {
       if (item.tiene_series && item.series_seleccionadas.length === 0) {
         toast.error(`Seleccioná las series para ${item.nombre}`); return
@@ -3803,6 +3833,8 @@ export default function VentasPage() {
           // qué UoM se vendió. cantidad (arriba) sigue en unidades base, sin cambios.
           unidad_medida_id: item.unidad_medida_id ?? null,
           cantidad_uom: item.cantidad_uom ?? null,
+          // Mig 468 (F2): qué definió el precio. Lista, categoría y % los pone el servidor (trigger), no el navegador.
+          mecanismo_precio: srvDe(item)?.mecanismo ?? null,
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
@@ -4284,6 +4316,7 @@ export default function VentasPage() {
           subtotal: nuevoSubtotal,
           alicuota_iva: prod.alicuota_iva,
           iva_monto: nuevoIva,
+          mecanismo_precio: srv.mecanismo ?? null,   // mig 468 (F2); lista y categoría las recalcula el servidor
         }).eq('id', item.id)
         // Antes se ignoraba: el total quedaba con el precio nuevo y la línea con el viejo.
         if (itemErr) throw new Error(`No se pudo actualizar una línea del presupuesto: ${itemErr.message}`)
@@ -6364,7 +6397,36 @@ export default function VentasPage() {
 
                       {/* G1/G2 — precio mayorista aplicado por cantidad (compara el precio de lista
                           SIN redondeo para no confundir el redondeo con un descuento mayorista) */}
+                      {/* Mig 468 (A5): categoría del cliente aplicada + cartel cuando compitieron descuentos (solo cajero). */}
                       {(() => {
+                        const srv = srvDe(item)
+                        const etiqueta = etiquetaCategoria(srv)
+                        const estadoPerdio = srv?.estado_compite
+                          ? (item.lpn_fuentes ?? []).find(f => (f as any).estado_descuento_pct > 0
+                              && !descEstadoDe(item).detalle.some(d => d.estado_nombre === ((f as any).estado_nombre ?? '—')))
+                          : undefined
+                        const cartel = textoCartelPrecio(srv, item.nombre, estadoPerdio
+                          ? { nombre: (estadoPerdio as any).estado_nombre ?? 'con descuento', pct: Number((estadoPerdio as any).estado_descuento_pct), perdio: true }
+                          : null)
+                        if (!etiqueta && !cartel) return null
+                        return (
+                          <>
+                            {etiqueta && (
+                              <p data-testid="pos-etiqueta-categoria" className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
+                                <Tag size={11} /> {etiqueta}: ${precioTierEfectivo(item).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/u
+                                <span className="text-gray-400 dark:text-gray-500 line-through font-normal">${(srv?.precio_lista ?? item.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                              </p>
+                            )}
+                            {cartel && (
+                              <p data-testid="pos-cartel-precio" className="mt-1 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
+                                ℹ️ {cartel}
+                              </p>
+                            )}
+                          </>
+                        )
+                      })()}
+                      {(() => {
+                        if (srvDe(item)?.mecanismo === 'categoria') return null
                         if (precioTierBase(item) >= item.precio_unitario) return null
                         const efectivo = precioTierEfectivo(item)
                         return (
@@ -7319,8 +7381,13 @@ export default function VentasPage() {
                     data-testid="pos-registrar-venta"
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
-                    {saving ? 'Guardando...' : !estadoPrecios.listo && estadoPrecios.motivo === 'calculando' ? 'Calculando precios…' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
+                    {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
                   </button>
+                  {/* El botón conserva su texto (deshabilitado) mientras llega el precio del servidor: un texto que cambia
+                      titila y hace que un click caiga en otro botón con el mismo nombre (selector de modo). */}
+                  {!estadoPrecios.listo && estadoPrecios.motivo === 'calculando' && cart.length > 0 && (
+                    <p data-testid="pos-precios-calculando" className="text-center text-xs text-gray-400 dark:text-gray-500">Calculando precios…</p>
+                  )}
                 </div>
               </div>
             )}

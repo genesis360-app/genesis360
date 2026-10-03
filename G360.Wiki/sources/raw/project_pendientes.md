@@ -66,6 +66,10 @@ type: project
 > Fase 3 (+ columna `sucursal_id` vacía en `precios_programados`) · EC-5 = B (superusuario de soporte = rol `admin` del
 > panel; cada persona con su propio usuario de panel — GO los crea). Detalle en `respuestas_preguntas_pendientes_2026-09-30.md` §4.
 >
+> **📦 Para después (GO 02/10) — WMS profesional:** priorización de tareas de preparación y que las tareas caigan
+> solas a los usuarios con permiso para ese tipo de tarea y vehículo. Por ahora (mig 465): el pedido hereda la fecha de
+> entrega del envío y Pedidos/Picking ordenan y marcan atrasado/hoy/mañana.
+>
 > **🙋 PARA REVISAR (pedido de GO 02/10) — un usuario, un dispositivo a la vez:** GO plantea que al entrar con el mismo
 > usuario desde otro dispositivo se cierre la sesión del anterior. Analizar antes de decidir si aplica:
 > - *A favor:* cada persona usa su propio usuario (trazabilidad de caja/ventas/actividad por persona, no "el usuario del

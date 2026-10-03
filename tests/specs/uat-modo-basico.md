@@ -2422,7 +2422,23 @@ lo detectaron 7 e2e de LPN).
 | 94.1 | Buscar un LPN: la fila del producto dice "1 LPN coincide"; al expandirlo se ven solo los que coinciden, resaltados, con "Mostrando 1 de N" | e2e `176` · unit `inventarioFiltro` | ✅ |
 | 94.2 | "Ver todos" muestra todos los LPN con el buscado resaltado y lleva la pantalla hasta él; la búsqueda no tilda nada | e2e `176` | ✅ |
 | 94.3 | Buscar por nombre/SKU (todas las líneas coinciden) no cambia nada: se ven todas, sin resaltar | unit `inventarioFiltro` · e2e 92/93/97/117/118/126 | ✅ |
-| 94.4 | Venta con envío en ventana angosta: "Fecha de entrega" y "Rango horario" quedan alineados | revisión (`items-end` + etiqueta corta) | ✅ código |
+| 94.4 | Venta con envío: "Fecha de entrega" y "Rango horario" con la misma altura; en panel angosto el segundo baja de línea (sin cortar etiquetas) | medición en el navegador a 1280/1024/900 px | ✅ |
+| 94.5 | El borde del último LPN resaltado no se corta (resaltado por dentro) | revisión | ✅ código |
+
+## 📦 §95 — El pedido hereda la fecha de entrega de la venta con envío (mig 465, 🟡 DEV) — 2026-10-02
+
+Pedido de GO: que preparación sepa qué priorizar. La fecha quedaba solo en el envío; el pedido nacía sin fecha.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 95.1 | Venta con envío y fecha → el pedido toma esa fecha | SQL DEV (rollback) | ✅ |
+| 95.2 | Reprogramar la fecha del envío → el pedido abierto la sigue | SQL DEV (rollback) | ✅ |
+| 95.3 | Pedidos ordena por fecha de entrega (atrasado, hoy, mañana, resto, sin fecha) con etiqueta y rango horario; "Más recientes primero" disponible | e2e `177` · unit `pedidoPrioridad` | ✅ |
+| 95.4 | La fecha se ve en el día correcto (antes `new Date('YYYY-MM-DD')` mostraba el día anterior en Argentina) | unit `pedidoPrioridad` · e2e `177` | ✅ |
+| 95.5 | "Hoy" es el día local: después de las 21 h un pedido de hoy no sale atrasado (Pedidos, Alertas) | revisión (`hoyLocalISO`) | ✅ código |
+| 95.6 | Picking muestra la fecha de entrega del pedido de cada tarea | revisión · e2e de picking sin regresión (115/115) | ✅ |
+
+
 
 ## 💳 §93 — Suscripción: que un pago de plan no quede huérfano ni se duplique (mig 464, 🟡 DEV) — 2026-10-02
 

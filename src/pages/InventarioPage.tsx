@@ -4542,7 +4542,7 @@ export default function InventarioPage() {
                               {lineas.map((l: any) => (
                                 <div key={l.id} id={`lpn-fila-${l.id}`} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-9' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
                                   ${selectedLineas.includes(l.id) ? 'border-accent-text/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}
-                                  ${coinciden?.has(l.id) ? 'ring-2 ring-amber-400 dark:ring-amber-500' : ''}`}>
+                                  ${coinciden?.has(l.id) ? 'ring-2 ring-inset ring-amber-400 dark:ring-amber-500' : ''}`}>
                                   {modoAvanzado && (
                                   <div className="col-span-1 flex items-center">
                                     <input type="checkbox" className="rounded accent-accent"

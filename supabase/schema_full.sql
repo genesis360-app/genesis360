@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T15:14:24.014Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002150212 · 176 tablas
+-- Generado 2026-10-03T00:18:08.409Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261002235739 · 176 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -14541,6 +14541,23 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_envio_fecha_sincroniza_pedido()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.pedido_id IS NULL OR NEW.fecha_entrega_acordada IS NOT DISTINCT FROM OLD.fecha_entrega_acordada THEN
+    RETURN NULL;
+  END IF;
+  UPDATE pedidos SET fecha_entrega_solicitada = NEW.fecha_entrega_acordada
+   WHERE id = NEW.pedido_id AND tenant_id = NEW.tenant_id
+     AND estado NOT IN ('entregado', 'entregado_parcial', 'cancelado');
+  RETURN NULL;
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_envio_marca_pedido_con_envio()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -14562,6 +14579,11 @@ BEGIN
   END IF;
   IF v_pedido_id IS NOT NULL THEN
     UPDATE envios SET pedido_id = v_pedido_id WHERE id = NEW.id AND pedido_id IS NULL;
+    -- Mig 465: la fecha de entrega acordada en la venta llega al pedido (si el pedido no tenía una propia).
+    IF NEW.fecha_entrega_acordada IS NOT NULL THEN
+      UPDATE pedidos SET fecha_entrega_solicitada = NEW.fecha_entrega_acordada
+       WHERE id = v_pedido_id AND fecha_entrega_solicitada IS NULL;
+    END IF;
   END IF;
   RETURN NULL;
 EXCEPTION WHEN OTHERS THEN
@@ -15432,6 +15454,7 @@ CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON publ
 CREATE TRIGGER trg_guard_emisor_default BEFORE DELETE OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_guard_emisor_default();
 CREATE TRIGGER empleados_update_timestamp BEFORE UPDATE ON public.empleados FOR EACH ROW EXECUTE FUNCTION update_empleados_timestamp();
 CREATE TRIGGER trg_envios_entregado_sync_pedido AFTER INSERT OR UPDATE OF estado ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_entregado_sincroniza_pedido();
+CREATE TRIGGER trg_envios_fecha_sync_pedido AFTER UPDATE OF fecha_entrega_acordada ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_fecha_sincroniza_pedido();
 CREATE TRIGGER trg_envios_marca_pedido AFTER INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_marca_pedido_con_envio();
 CREATE TRIGGER trg_envios_updated_at BEFORE UPDATE ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envios_updated_at();
 CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION set_envio_numero();

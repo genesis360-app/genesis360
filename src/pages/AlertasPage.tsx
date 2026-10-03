@@ -1,4 +1,5 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
+import { hoyLocalISO } from '@/lib/ventasValidation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart, Vault, Bell } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -194,7 +195,7 @@ export default function AlertasPage() {
   const lineasSinProveedor = lineasSinProveedorResult?.rows ?? []
   const lineasSinProveedorTotal = lineasSinProveedorResult?.total ?? 0
 
-  const hoyStr = new Date().toISOString().split('T')[0]
+  const hoyStr = hoyLocalISO()
   const en3dias = new Date(); en3dias.setDate(en3dias.getDate() + 3)
   const en3diasStr = en3dias.toISOString().split('T')[0]
 
@@ -242,7 +243,7 @@ export default function AlertasPage() {
   const { data: lpnsVencidosResult, isLoading: loadingVencidos } = useQuery({
     queryKey: ['lpns-vencidos', tenant?.id, sucursalId],
     queryFn: async () => {
-      const hoy = new Date().toISOString().split('T')[0]
+      const hoy = hoyLocalISO()
       const { data, error, count } = await applyFilter(supabase
         .from('inventario_lineas')
         .select('id, lpn, cantidad, fecha_vencimiento, productos(id, nombre, sku)', { count: 'exact' })
@@ -266,7 +267,7 @@ export default function AlertasPage() {
   const { data: pedidosVencidosResult } = useQuery({
     queryKey: ['pedidos-entrega-vencida', tenant?.id, sucursalId],
     queryFn: async () => {
-      const hoy = new Date().toISOString().split('T')[0]
+      const hoy = hoyLocalISO()
       const { data, error, count } = await applyFilter(supabase
         .from('pedidos')
         .select('id, numero, fecha_entrega_solicitada, estado, clientes(nombre)', { count: 'exact' })

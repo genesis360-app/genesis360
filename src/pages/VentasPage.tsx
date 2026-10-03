@@ -6838,16 +6838,17 @@ export default function VentasPage() {
                         )}
                       </div>
 
-                      {/* Fecha + rango horario de entrega acordados (ISS-178). `items-end`: si una etiqueta ocupa dos
-                          líneas en una ventana angosta, los campos igual quedan alineados. */}
-                      <div className="grid grid-cols-2 gap-2 items-end">
-                        <div>
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega</label>
+                      {/* Fecha + rango horario de entrega acordados (ISS-178). Los dos campos con la misma altura (el input de
+                          fecha y el select miden distinto por defecto) y un ancho mínimo: si el panel es angosto, el segundo baja
+                          a otra línea en vez de cortar las etiquetas. */}
+                      <div className="flex flex-wrap gap-2 items-start">
+                        <div className="flex-1 min-w-[130px]">
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 whitespace-nowrap">Fecha de entrega</label>
                           <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-full h-9 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Rango horario</label>
+                        <div className="flex-1 min-w-[130px]">
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 whitespace-nowrap">Rango horario</label>
                           {(() => {
                             const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
                               ? (tenant as any).envio_rangos_horarios
@@ -6857,7 +6858,7 @@ export default function VentasPage() {
                                 value={envioRangoHorarioIdx}
                                 onChange={e => setEnvioRangoHorarioIdx(e.target.value)}
                                 disabled={rangos.length === 0}
-                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
+                                className="w-full h-9 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
                               >
                                 <option value="">{rangos.length === 0 ? 'Sin rangos configurados' : 'Sin definir'}</option>
                                 {rangos.map((r, i) => (

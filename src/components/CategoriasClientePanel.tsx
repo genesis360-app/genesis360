@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Power, Trash2, History, Users, X, Tag, ShieldCheck } from 'lucide-react'
+import { Plus, Pencil, Power, Trash2, History, Users, X, Tag, ShieldCheck, Percent } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -13,7 +14,8 @@ import {
 } from '@/hooks/useCategoriasCliente'
 import { AsignarCategoriaModal } from '@/components/AsignarCategoriaModal'
 
-// Categorías de clientes, etapa 1 (mig 442): la categoría con cuenta corriente. El precio por categoría es la Fase 4.
+// Categorías de clientes, etapa 1 (mig 442): la categoría con cuenta corriente. La lista de descuentos por producto
+// (mig 466, Fase 4 parte A) vive en DescuentosCategoriaPage; aplicarla al vender es la parte B2.
 // Reglas: una por cliente (C5), desactivar ≠ borrar (C2), cada condición opcional = "hereda del negocio" (D3/D4),
 // permisos E1/E2 configurables por el DUEÑO, historial completo (F1) — lo escribe el servidor.
 
@@ -46,6 +48,7 @@ export function CategoriasClientePanel() {
   const { tenant, user, setTenant } = useAuthStore()
   const qc = useQueryClient()
   const confirmar = useConfirm()
+  const navigate = useNavigate()
   const { data: categorias = [], isLoading } = useCategoriasCliente()
   const { data: ccEfectivo } = useClientesCC()
   const puedeGestionar = puedeGestionarCategorias(user as any, tenant)
@@ -210,6 +213,7 @@ export function CategoriasClientePanel() {
               {c.activo && (
                 <button title="Asignar a clientes" onClick={() => setAsignarA(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Users size={15} /></button>
               )}
+              <button title="Lista de descuentos" onClick={() => navigate(`/clientes/categorias/${c.id}/descuentos`)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Percent size={15} /></button>
               <button title="Historial" onClick={() => setHistorialDe(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><History size={15} /></button>
               {puedeGestionar && <>
                 <button title="Editar" onClick={() => abrir(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Pencil size={15} /></button>

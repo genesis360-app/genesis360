@@ -2425,6 +2425,21 @@ lo detectaron 7 e2e de LPN).
 | 94.4 | Venta con envío: "Fecha de entrega" y "Rango horario" con la misma altura; en panel angosto el segundo baja de línea (sin cortar etiquetas) | medición en el navegador a 1280/1024/900 px | ✅ |
 | 94.5 | El borde del último LPN resaltado no se corta (resaltado por dentro) | revisión | ✅ código |
 
+## 🏷️ §96 — Lista de descuentos por categoría de clientes (mig 466, Fase 4 parte A, 🟡 DEV) — 2026-10-02
+
+Decisión de GO: (A) hoy la lista y su carga, SIN aplicarla al vender; (B2) después, motor único de precio + POS/Pedidos
+(gana el más bajo, tope acumulado sin salteo PL-1, mecanismo por línea).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 96.1 | Agregar un producto con "12,5" → 12,5 %; editar a 0 → queda con 0 (≠ sin cargar); sacar → sin cargar | e2e `178` | ✅ |
+| 96.2 | 🛑 Importar con una fila mala (150 %) → no se carga NADA; corregido → carga; celda vacía = no se toca | e2e `178` · SQL DEV | ✅ |
+| 96.3 | Importar: producto de otro negocio o repetido en el archivo → rechazado | SQL DEV (rollback) | ✅ |
+| 96.4 | 🛑 Un CAJERO (sin permiso de gestionar categorías) no puede cargar ni importar | SQL DEV impersonando (RLS + función) | ✅ |
+| 96.5 | Historial: cada cambio a mano queda en la categoría; una importación deja UNA entrada con el resumen | SQL DEV | ✅ |
+| 96.6 | La pantalla avisa "Todavía no se aplica en las ventas"; ningún precio cambia | revisión (nada lee la tabla al vender) | ✅ código |
+| 96.7 | La plantilla trae todos los productos activos con su % actual | revisión | ✅ código |
+
 ## 📦 §95 — El pedido hereda la fecha de entrega de la venta con envío (mig 465, 🟡 DEV) — 2026-10-02
 
 Pedido de GO: que preparación sepa qué priorizar. La fecha quedaba solo en el envío; el pedido nacía sin fecha.

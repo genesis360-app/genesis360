@@ -921,6 +921,12 @@ POS:
 - **Redondeo del tenant** (H4).
 - **Descuento por estado de inventario** (migs 284-285), prorrateado **por fuente**: cada unidad
   descuenta según el % del estado de SU línea concreta.
+- 🟡 **Categoría del cliente (mig 468, 2026-10-03, SOLO EN DEV)**: `fn_pedido_generar_venta` toma el precio de
+  `fn_precios_lineas` con el cliente del pedido (la categoría compite con tier/empaque/canal y gana el más
+  bajo), calcula el estado con `fn_descuento_estado_unitario` (con categoría activa compite contra la lista) y
+  graba `mecanismo_precio`. El tope de descuento acumulado se controla al confirmar la venta (constraint
+  trigger diferido: Pedidos inserta de a una línea y descuenta el estado después). Ejemplo e2e 180: $940 con
+  categoría / $880 sin. Ver [[wiki/features/precios-tiers-empaque]].
 
 Verificado en DEV: 12 unidades con base $1.000, tier `>=10 -> $700` y estado con 20% pasaron de
 facturar **$12.000** a **$6.720**.

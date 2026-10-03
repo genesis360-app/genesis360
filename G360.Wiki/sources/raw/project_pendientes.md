@@ -6,13 +6,22 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-03, tarde) — PROD `v1.238.0` (001-466) · DEV 001-**467** + `v1.239.0-rc.1`
+> ### 🛑 ARRANCÁ ACÁ (2026-10-03, noche) — PROD `v1.238.0` (001-466) · DEV 001-**468** + `v1.239.0-rc.2`
 >
 > | | Código | Migraciones | Policies |
 > |---|---|---|---|
 > | **PROD** | `v1.238.0` (PR #370, merge `8be5f1fb`, release Latest, servida `index-DRm63vPm.js`) | 001-**466** | public 245 · storage 40 · cron 2 |
-> | **DEV** | `v1.238.0` (APP_VERSION igual) + commit `055bfbdd` en `origin/dev`, pre-release `v1.239.0-rc.1` | 001-**467** (la 467 NO está en PROD) | iguales a PROD (la 467 no toca policies; no re-verificado) |
+> | **DEV** | `v1.238.0` (APP_VERSION igual) + commits `055bfbdd` (Fase 3), `3b0bb474` y `7930c539` (Fase 4) en `origin/dev`, pre-release `v1.239.0-rc.2` | 001-**468** (467 y 468 NO están en PROD; aplicar la 467 antes que la 468) | public 245 (dump de DEV tras la 468) = PROD |
 >
+> **Hecho en DEV (03/10 noche): B2 Fase 4 — la categoría del cliente dentro del motor de precio + tope de descuento (mig 468).**
+> `fn_precio_motor_cliente` (categoría compite con tier/empaque/canal, gana el más bajo); `fn_precios_lineas` devuelve categoría y
+> `tope_descuento_pct`; A2 (con categoría activa el estado compite contra la lista); `venta_items` guarda `precio_lista_unitario`,
+> `mecanismo_precio`, `categoria_cliente_id`, `categoria_descuento_pct` (trigger del servidor); tope `tenants.descuento_tope_acumulado_pct`
+> (Config → Ventas, nadie lo saltea; constraint trigger diferido por venta); `fn_pedido_generar_venta` con categoría; POS con etiqueta y
+> cartel de plantilla; fix del cobro con `isPlaceholderData`. Paridad sin categoría 139.288 casos / 0 diferencias, 19 casos SQL,
+> e2e 180, regresión 50/0, unit 2167, UAT §98. Detalle en [[wiki/features/precios-tiers-empaque]]. **Abierto para GO**: las ventas recurrentes
+> generan el presupuesto con precio congelado y sin categoría.
+
 > **Hecho en DEV (03/10 tarde): B2 Fase 3 — motor único de precio en SQL (mig 467).** `fn_precio_motor_producto` +
 > `fn_precios_lineas`; `fn_precio_venta_efectivo` es envoltura; POS y Presupuesto "Actualizar precios" usan el motor; sin
 > precio del servidor no se vende (PL-5 = A). Paridad 0 diferencias (21.556 + 136.256 casos; `scripts/paridad-motor-precio.mjs`).
@@ -29,12 +38,12 @@ type: project
 > descuentos por categoría están EN PROD.** Todo lo que abajo diga "EN DEV / falta PROD" de 457-466 quedó superado.
 >
 > ### ▶ LO PRÓXIMO (en este orden)
-> 1. **B2 — Categorías de clientes, FASE 4 (la categoría dentro del motor)**. ✅ Fase 3 (motor único, mig 467) HECHA en DEV
->    el 03/10, falta PROD. Ahora: que el motor lea `categoria_cliente_descuentos` (mig 466, hoy NO se aplica al vender), que
->    POS y Pedidos apliquen la lista, guardar categoría/%/mecanismo por línea en `venta_items` y el cartel para el cajero. Reglas: gana el precio más bajo frente al mayorista y al estado;
->    tope acumulado sin salteo (PL-1); categoría/%/mecanismo guardados por línea; cartel para el cajero. GO eligió B2 y no
->    B1 (meter la categoría en los dos motores actuales). PL-7: la preparación para precio por sucursal es este motor
->    único (+ `sucursal_id` vacío en `precios_programados`). Ver [[wiki/features/clientes-proveedores]].
+> 1. **B2 — Categorías de clientes, FASE 5 + deploy de 467-468**. ✅ Fase 3 (motor único, mig 467) y ✅ Fase 4 (categoría en el
+>    motor + tope + F2, mig 468) HECHAS en DEV el 03/10; **faltan en PROD** (aplicar 467 antes que 468, de a una con
+>    `scripts/aplicar-migracion.mjs`, cuando GO lo autorice). Fase 5: IA que redacta el cartel (B-4, al guardar la promoción;
+>    fallback = plantilla) + reporte F3 de lo no facturado por categoría. Para GO: ventas recurrentes (precio congelado, sin
+>    categoría). PL-7: la preparación para precio por sucursal es este motor único (+ `sucursal_id` vacío en
+>    `precios_programados`). Ver [[wiki/features/clientes-proveedores]].
 > 2. **QR de MP Fase 1** (decidida, SIN EMPEZAR): envío en la deuda de CC/cobranza/QR, un link por venta con vencimiento a
 >    30 días que se desactiva al saldarse, excedente a saldo a favor (`cliente_creditos`) + aviso al dueño, `mp-ipn`
 >    insert-first (idempotencia). Fase 2: interruptor + QR en estado de cuenta. Fase 3: interés (espera C-20).

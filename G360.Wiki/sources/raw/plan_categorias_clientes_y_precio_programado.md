@@ -80,6 +80,7 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
   (**PL-5**).
 
 ### Fase 4 — Categorías, etapa 2: el precio · grande
+> ✅ **HECHA EN DEV (2026-10-03, mig 468, commits `3b0bb474` + `7930c539`, pre-release `v1.239.0-rc.2`; NO en PROD; aplicar 467 antes que 468).** `fn_precio_motor_cliente` + categoría en `fn_precios_lineas`; A2 con categoría activa; F2 en `venta_items` (`precio_lista_unitario`, `mecanismo_precio`, `categoria_cliente_id`, `categoria_descuento_pct`); tope `tenants.descuento_tope_acumulado_pct` sin salteo (constraint trigger diferido); Pedidos con categoría; POS con etiqueta + cartel de plantilla. Paridad 139.288 casos / 0 diferencias; e2e 180; UAT §98. Detalle en [[wiki/features/precios-tiers-empaque]].
 - Lista por categoría: % **por producto** (B5), distinguiendo "sin cargar" de "0 % explícito" (C4); producto nuevo
   entra sin descuento + alerta de "sin cargar".
 - **Importación por Excel** (B-3): por SKU, vista previa, producto inexistente = error en su fila, actualiza solo lo

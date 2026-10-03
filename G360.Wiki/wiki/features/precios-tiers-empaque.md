@@ -45,7 +45,21 @@ B2 / Fase 3 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`. An
 - **Presupuesto "Actualizar precios"** usa el motor (antes tomaba `precio_venta` crudo: ignoraba el mayorista y en USD usaba el espejo en pesos congelado); además redondea subtotal/IVA a centavos y ya no ignora un error al grabar una línea.
 - **Tests**: unit `motorPrecio` (14), e2e 179 (2), e2e de precios 38 passed; suite unit 2156 verdes; UAT §97 en `tests/specs/uat-modo-basico.md`.
 - **Hallazgo abierto para GO**: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra lo asumido en PL-2. Pendiente de decisión.
-- **Siguiente (Fase 4)**: la categoría dentro del motor (leer `categoria_cliente_descuentos`; gana el precio más bajo frente a tier/estado; tope acumulado PL-1 sin salteo; guardar categoría/%/mecanismo por línea en `venta_items`; cartel para el cajero). Ver [[wiki/features/clientes-proveedores]] y [[wiki/database/migraciones]].
+- **Siguiente (Fase 4)**: ✅ hecha en DEV, ver la sección de abajo. Ver [[wiki/features/clientes-proveedores]] y [[wiki/database/migraciones]].
+
+## 🏷️ La categoría del cliente en el motor + tope de descuento (mig 468, 2026-10-03) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.2`, commits `3b0bb474` + `7930c539`)
+
+B2 / Fase 4. Aplicar la 467 antes que la 468 al deployar.
+
+- **`fn_precio_motor_cliente(tenant, producto, cantidad, lista, cliente)`** (interno): núcleo de 467 + categoría. Precio de categoría = lista x (1 - %), antes del redondeo; compite por bloque con tier/empaque/canal y gana el más bajo; en empate se informa `categoria`. Sin cliente, categoría desactivada, sin fila o 0 % = exactamente como antes. La categoría aplica también en un canal con lista "minorista" (decisión de GO 03/10).
+- **`fn_precios_lineas`** (misma firma) la usa y devuelve además `precio_sin_categoria`, `mecanismo_sin_categoria`, `estado_compite`, `categoria_id/nombre/pct`, `precio_categoria`, `tope_descuento_pct`.
+- **A2 — descuento por estado**: `fn_descuento_estado_unitario(precio, lista, pct, compite)`. Con categoría ACTIVA el descuento por estado compite contra la lista (gana el más bajo), aunque el producto no tenga % cargado (decisión de GO 03/10); sin categoría se acumula como antes. Espejo TS `calcularDescuentoEstadoLinea(fuentes, precio, { precioLista })`.
+- **F2 en `venta_items`**: `precio_lista_unitario` (lista redondeada con el redondeo del negocio), `mecanismo_precio` (CHECK lista/tier/empaque/canal_mayorista/categoria), `categoria_cliente_id`, `categoria_descuento_pct`. Las escribe el servidor (trigger BEFORE INSERT OR UPDATE `trg_venta_items_precio_lista`); una venta ya hecha no se reescribe; un presupuesto que se re-cotiza se recalcula.
+- **Tope de descuento acumulado** (A4 + B-5 + PL-1): `tenants.descuento_tope_acumulado_pct` (NULL = no rige), en Config → Ventas ("Tope de descuento total por venta"). Se mide contra la lista redondeada sumando todo (tier, categoría, estado, manual, general, combos, cupón, promo por medio de pago). **Nadie lo saltea** (ni el DUEÑO ni con clave maestra). Control en el POS + CONSTRAINT TRIGGER DIFERIDO `trg_venta_items_tope_descuento` por venta al confirmar (Pedidos inserta de a una línea y descuenta el estado después; un control inmediato rechazaba pedidos válidos); también cubre un UPDATE que baja lo cobrado. Sin `auth.uid()` (ML/TN por service_role) no aplica.
+- **POS**: etiqueta "Categoría X: -N % sobre lista" en la línea y cartel con texto de plantilla para el cajero cuando compitieron descuentos (A2/A5); la redacción con IA queda para la Fase 5. **Gotcha**: bloquear el cobro con `isFetching` frena ventas legítimas (re-consultas de fondo con staleTime 0); usar `isPlaceholderData`. El botón conserva su texto (deshabilitado + "Calculando precios…" debajo).
+- **Recurrentes**: si fallan las líneas al generar un presupuesto desde una plantilla, se borra el encabezado (antes quedaba vacío). Abierto para GO: esas plantillas siguen con precio congelado y sin categoría.
+- **Validación**: paridad sin categoría 139.288 casos, 0 diferencias (`scripts/paridad-motor-precio.mjs` mide `fn_precio_motor_cliente` con cliente NULL); 19 casos SQL de referencia (A1 x4, A2 x2, tope, F2, Pedidos multilínea, UPDATE, redondeo); e2e 180; regresión e2e 50 passed / 0 failed (54 y 63 se saltean por fixture previo); unit 2167; UAT §98 (§96.6 actualizado).
+- **Falta (Fase 5)**: IA que redacta el cartel (B-4) + reporte F3 de lo no facturado por categoría.
 
 ## El pedido de Fede (25/7/2026)
 

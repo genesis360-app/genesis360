@@ -36,7 +36,9 @@ lleva Nota de Débito con IVA?, [[wiki/business/consultas-contador]]).
 
 ## 🧮 Categorías de clientes — B2 Fase 3: motor único de precio (mig 467, 2026-10-03, solo DEV)
 
-Ya existe el motor único de precio en SQL (`fn_precio_motor_producto`, `fn_precios_lineas` con `p_cliente_id` reservado), pero la lista de descuentos por categoría (mig 466, EN PROD) **todavía NO se aplica al vender**: eso es la **Fase 4** (categoría dentro del motor; gana el precio más bajo frente a tier/estado; tope acumulado PL-1 sin salteo; categoría/%/mecanismo por línea en `venta_items`; cartel para el cajero). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
+Ya existe el motor único de precio en SQL (`fn_precio_motor_producto`, `fn_precios_lineas`).
+
+**Actualización Fase 4 (mig 468, 2026-10-03, solo DEV; en PROD todavía NO se aplica al vender)**: la lista de descuentos por categoría (mig 466, EN PROD) **ya se aplica al vender en DEV** (POS y Pedidos): la categoría del cliente compite con tier/empaque/canal y gana el precio más bajo; tope de descuento acumulado sin salteo (`tenants.descuento_tope_acumulado_pct`, Config → Ventas); categoría/%/mecanismo guardados por línea en `venta_items`; cartel de plantilla para el cajero. La pantalla de la lista ahora dice "Se aplica al vender". Falta Fase 5 (IA del cartel + reporte de lo no facturado por categoría). Las ventas recurrentes siguen sin categoría (abierto para GO). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
 
 ## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
 

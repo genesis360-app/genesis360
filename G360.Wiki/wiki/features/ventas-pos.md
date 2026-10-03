@@ -428,6 +428,8 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 ## Precios mayoristas por cantidad (G1/G2)
 
+> 🟡 **2026-10-03 (SOLO EN DEV, migs 467-468, pre-release `v1.239.0-rc.2`)**: el POS toma el precio del motor único en SQL (`fn_precios_lineas`; sin precio del servidor no se registra la venta). Con cliente con categoría, la categoría compite con tier/empaque/canal (gana el más bajo) y la línea muestra "Categoría X: -N % sobre lista" + cartel de plantilla para el cajero. **Tope de descuento total por venta** (Config → Ventas, `tenants.descuento_tope_acumulado_pct`): suma todo y nadie lo saltea (ni DUEÑO ni clave maestra). Fix: el cobro no se bloquea en re-consultas de fondo (`isPlaceholderData`). Ver [[wiki/features/precios-tiers-empaque]].
+
 - Cada producto puede tener **tiers** en `producto_precios_mayorista`, editables en el form de
   producto (accordion "Precios mayoristas", solo `canEdit`). **No** es por cliente ni por monto
   total — es por unidades del producto (confirmado GO 2026-05-31).

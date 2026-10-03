@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
-import { calcularBatch, esUpgradeDePlan, type PackSel } from '@/lib/mpAddonBatch'
+import { calcularBatch, esUpgradeDePlan, precioPack, type PackSel, type PreciosPactados } from '@/lib/mpAddonBatch'
 import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, Zap, Landmark, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
@@ -22,7 +22,7 @@ const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: str
 ]
 
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
-  { Icon: Shield,     titulo: '30 días gratis',       sub: 'Sin tarjeta de crédito' },
+  { Icon: Shield,     titulo: '15 días gratis',       sub: 'Sin tarjeta de crédito' },
   { Icon: Rocket,     titulo: 'Activación inmediata', sub: 'Comenzá a usarlo hoy' },
   { Icon: Headphones, titulo: 'Soporte dedicado',     sub: 'Siempre estamos para ayudarte' },
   { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
@@ -45,6 +45,8 @@ export interface AppBatchMode {
   montoActualMP: number
   /** Packs FIJOS actuales (selDesdeAddons de tenant_addons). */
   initialSel: PackSel
+  /** Precio pactado de los packs actuales (tenant_addons.precio_mensual, mig 461). */
+  preciosPactados?: PreciosPactados
   confirmando?: boolean
   /** planObjetivo: 'pro' si el batch incluye el upgrade de plan (E1/E2 lo decide la página). */
   onConfirm: (packsObjetivo: PackSel, planObjetivo: 'pro' | null) => void
@@ -69,7 +71,8 @@ interface PricingConfiguratorProps {
 }
 
 export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, temporal }: PricingConfiguratorProps = {}) {
-  const planes = PLANES.filter(p => p.id === 'basico' || p.id === 'pro')
+  // Pricing v7: los tres planes (Básico, Pro, Enterprise).
+  const planes = PLANES
   const [planId, setPlanId] = useState('pro')
   // dimension → cantidad elegida (0 = ninguno). En modo app arranca en los packs ACTUALES.
   const [sel, setSel] = useState<Record<string, number>>(() => (app ? { ...app.initialSel } as Record<string, number> : {}))
@@ -96,7 +99,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
 
   // Modo app: total = recurrente NUEVO por delta (espejo calcularBatch, mismo cálculo del EF).
   const batchApp = app
-    ? calcularBatch({ montoActualMP: app.montoActualMP, packsActuales: app.initialSel, packsObjetivo: sel as PackSel, plan: planCambio })
+    ? calcularBatch({ montoActualMP: app.montoActualMP, packsActuales: app.initialSel, packsObjetivo: sel as PackSel, plan: planCambio, preciosPactados: app.preciosPactados })
     : null
   const totalApp = batchApp?.recurrenteNuevo ?? 0
   const deltaApp = app ? totalApp - app.montoActualMP : 0
@@ -161,7 +164,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
       </div>
       {!app && (
         <p className="relative mt-2 text-center text-[11px] text-gray-500">
-          ${(plan.precio ?? 0).toLocaleString('es-AR')} con débito automático (-10%) · ${((plan as any).precioManual ?? plan.precio ?? 0).toLocaleString('es-AR')} con otros medios de pago
+          ${(plan.precio ?? 0).toLocaleString('es-AR')} con débito automático (−{Math.round((1 - (plan.precio ?? 0) / ((plan as any).precioManual || plan.precio || 1)) * 100)}%) · ${((plan as any).precioManual ?? plan.precio ?? 0).toLocaleString('es-AR')} con otros medios de pago
         </p>
       )}
 
@@ -235,7 +238,8 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
                     <span className={`text-[11px] leading-tight ${activo ? 'text-white' : 'text-gray-300'}`}>
                       +{pack.cantidad.toLocaleString('es-AR')} {unidad}
                     </span>
-                    <span className="text-sm font-bold">${pack.precio.toLocaleString('es-AR')}</span>
+                    {/* El pack que ya tiene vale lo pactado (PR-6), no el catálogo vigente. */}
+                    <span className="text-sm font-bold">${(app ? precioPack(dim, pack.cantidad, app.initialSel, app.preciosPactados) : pack.precio).toLocaleString('es-AR')}</span>
                   </button>
                 )
               })}
@@ -304,7 +308,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
         ) : (
           <Link to="/onboarding"
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0">
-            <Check size={18} /> {ctaLabel ?? 'Probar 30 días gratis'}
+            <Check size={18} /> {ctaLabel ?? 'Probar 15 días gratis'}
           </Link>
         )}
       </div>

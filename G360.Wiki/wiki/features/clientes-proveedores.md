@@ -3,7 +3,7 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
 sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-09-24
+updated: 2026-10-02
 ---
 
 # Clientes y Proveedores
@@ -20,6 +20,17 @@ updated: 2026-09-24
 
 ---
 
+
+## 🔎 Hallazgos de CC: envío e interés (2026-10-02, sin código)
+
+Surgieron al planear el QR de MP (ver [[wiki/integrations/mercado-pago]]). Decisiones de GO: el **envío se cobra** y entra
+en la deuda de CC; el **interés se cobra** (va en el QR) pero **recién cuando responda el contador la C-20** (¿el interés
+lleva Nota de Débito con IVA?, [[wiki/business/consultas-contador]]).
+- La deuda de CC **no incluye `costo_envio`**, aunque `monto_pagado` sí lo incluye desde ISS-105 (desfase a corregir en
+  la Fase 1 del QR).
+- Los **intereses nunca se cobran**: la cobranza FIFO aplica solo al capital y `fn_recalcular_intereses_cc_tenant` pone
+  `interes_cc` en 0 al saldar la deuda.
+- Excedente de un pago → `cliente_creditos` (saldo a favor) + aviso al dueño (decisión de diseño de la Fase 1).
 
 ## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
 

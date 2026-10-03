@@ -320,7 +320,7 @@ export function AppLayout() {
     queryKey: ['mis-cajas-abiertas-por-suc', tenant?.id, user?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, sucursal_id, cajas(nombre)')
+        .select('id, sucursal_id, cajas(nombre, sucursal_id)')
         .eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
       return data ?? []
     },
@@ -335,7 +335,12 @@ export function AppLayout() {
   // L4 — Wrapper de setSucursal: bloquea cambio si hay caja propia abierta en otra sucursal
   const handleCambiarSucursal = async (newId: string | null) => {
     if (newId === sucursalId) return
-    const cajaPropiaEnOtra = (misCajasAbiertasPorSuc as any[]).find((s: any) => s.sucursal_id && s.sucursal_id !== newId)
+    // La sucursal que cuenta es la de la CAJA: es donde la pantalla de Caja la muestra y se puede cerrar
+    // (una sesión desalineada de su caja quedaba invisible y bloqueaba el cambio sin salida — incidente 02/10).
+    const sucDeLaSesion = (s: any): string | null => s.cajas?.sucursal_id ?? s.sucursal_id ?? null
+    const cajaPropiaEnOtra = (misCajasAbiertasPorSuc as any[])
+      .map((s: any) => ({ ...s, sucursal_id: sucDeLaSesion(s) }))
+      .find((s: any) => s.sucursal_id && s.sucursal_id !== newId)
     if (cajaPropiaEnOtra) {
       const nombre = cajaPropiaEnOtra.cajas?.nombre ?? 'caja'
       const ok = await confirmar(

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { PLAN_BASE_LIMITS, FEATURES_POR_PLAN } from '@/config/brand'
+import { featuresEfectivas, limiteEfectivo, tierEfectivo, type HerenciaPlan } from '@/lib/planLimites'
 
 export interface PlanLimits {
   plan_id: string                // tier real del tenant (free/basico/pro/enterprise)
@@ -56,6 +56,7 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
         { count: comprobantesMes },
         { data: tenantRow },
         { data: addonRows },
+        { data: herenciaRow },
       ] = await Promise.all([
         supabase.from('users').select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenant!.id).eq('activo', true),
@@ -78,16 +79,17 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
           .eq('id', tenant!.id).single(),
         supabase.from('tenant_addons').select('dimension, cantidad, tipo, vence_at')
           .eq('tenant_id', tenant!.id),
+        // Pricing v7 (mig 457): límites y módulos del plan v6 que conservan los negocios existentes.
+        supabase.from('tenant_herencia_plan').select('tier_heredado, limites, features')
+          .eq('tenant_id', tenant!.id).maybeSingle(),
       ])
 
-      // Tier efectivo (ESPEJO de fn_tenant_limite, mig 251): trial activo → 'pro'.
+      // Tier efectivo (ESPEJO de fn_tenant_limite, migs 251 + 457): trial vigente → 'pro'; herencia v6 como piso.
       const planTier = (tenantRow?.plan_tier as string) ?? 'free'
-      const enTrialActivo =
-        tenantRow?.subscription_status === 'trial' &&
-        !!tenantRow?.trial_ends_at &&
-        new Date(tenantRow.trial_ends_at) >= new Date()
-      const effTier = enTrialActivo ? 'pro' : planTier
-      const base = PLAN_BASE_LIMITS[effTier] ?? PLAN_BASE_LIMITS['free']
+      const effTier = tierEfectivo({
+        planTier, subscriptionStatus: tenantRow?.subscription_status, trialEndsAt: tenantRow?.trial_ends_at, now: new Date(),
+      })
+      const herencia = (herenciaRow ?? null) as HerenciaPlan | null
 
       // Suma de add-ons activos por dimensión (fijos + temporales no vencidos).
       const now = new Date()
@@ -99,7 +101,7 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
       // Límite efectivo = base + add-ons (−1 = ilimitado, no se le suma nada).
       const addonMovLegacy = tenantRow?.addon_movimientos ?? 0
       const eff = (dim: 'sku' | 'movimientos' | 'comprobantes' | 'sucursales' | 'usuarios', legacy = 0) =>
-        base[dim] === -1 ? -1 : base[dim] + addonSum(dim) + legacy
+        limiteEfectivo(effTier, dim, addonSum(dim), herencia, legacy)
 
       const max_productos    = eff('sku')
       const max_usuarios     = eff('usuarios')
@@ -113,7 +115,7 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
       const movimientos_mesAct  = movimientosMes ?? 0
       const comprobantes_mesAct = comprobantesMes ?? 0
 
-      const features = FEATURES_POR_PLAN[effTier] ?? FEATURES_POR_PLAN['free']
+      const features = featuresEfectivas(effTier, herencia)
       const tiene = (f: string) => features.includes(f)
       const pct = (act: number, max: number) => max === -1 ? 0 : Math.round((act / max) * 100)
 

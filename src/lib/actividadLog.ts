@@ -32,6 +32,7 @@ export type EntidadLog =
   | 'envio'
   | 'autorizacion'
   | 'tarea_repositor'
+  | 'sucursal'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'reasignar' | 'ingreso_stock' | 'rebaje_stock' | 'incobrable' | 'despacho_traslado' | 'recepcion_traslado' | 'faltante_traslado'
 

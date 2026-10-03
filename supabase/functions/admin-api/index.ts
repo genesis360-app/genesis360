@@ -74,13 +74,17 @@ const MP_VIVOS = ['authorized', 'pending', 'paused']
 // preapproval_plan_id (MP) → tier. Espejo de mp-verificar-suscripcion / mp-webhook.
 // plan_tier es la fuente de verdad de los límites (fn_tenant_limite); los max_users/
 // max_productos se setean al BASE del tier solo por consistencia.
-const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
-  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
-  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro' | 'enterprise'> = {
+  [Deno.env.get('MP_PLAN_BASICO')     ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')        ?? '']: 'pro',
+  // Pricing v7: secret nuevo; mientras no exista, '' no coincide con ningún preapproval_plan_id real.
+  [Deno.env.get('MP_PLAN_ENTERPRISE') ?? '']: 'enterprise',
 }
+// Columnas legacy (tenants.max_users/max_productos, ya no limitan: manda fn_tenant_limite). Pricing v7.
 const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = {
-  basico: { max_users: 5,  max_productos: 2000 },
-  pro:    { max_users: 15, max_productos: 8000 },
+  basico:     { max_users: 3,  max_productos: 2000 },
+  pro:        { max_users: 7,  max_productos: 7000 },
+  enterprise: { max_users: 20, max_productos: 18000 },
 }
 
 // Cancela el/los preapproval(s) del tenant en Mercado Pago (mismo circuito que el EF
@@ -187,9 +191,9 @@ const cobroVivo = (t: { subscription_status?: string | null; mp_subscription_id?
 async function computeBilling(svc: any) {
   const [{ data: tenants }, { data: addons }] = await Promise.all([
     svc.from('tenants').select('id, plan_tier, billing_mode, manual_monto_mensual').eq('subscription_status', 'active'),
-    svc.from('tenant_addons').select('tenant_id, dimension, cantidad').eq('tipo', 'fijo'),
+    svc.from('tenant_addons').select('tenant_id, dimension, cantidad, precio_mensual').eq('tipo', 'fijo'),
   ])
-  const addonsDe = new Map<string, Array<{ dimension: string; cantidad: number }>>()
+  const addonsDe = new Map<string, Array<{ dimension: string; cantidad: number; precio_mensual: number | string | null }>>()
   for (const a of (addons ?? []) as any[]) {
     const l = addonsDe.get(a.tenant_id) ?? []; l.push(a); addonsDe.set(a.tenant_id, l)
   }
@@ -572,6 +576,11 @@ Deno.serve(async (req) => {
         }).eq('id', tenantId)
         if (updErr) return json({ error: 'Se verificó en MP pero no se pudo activar la cuenta.' }, 500)
 
+        // Mig 464: los intentos abiertos del negocio quedan vinculados (la app deja de avisar "ya iniciaste un pago").
+        await svc.from('mp_suscripcion_intentos')
+          .update({ preapproval_id: preId, vinculado_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId).is('vinculado_at', null)
+
         const tierFinal = mismaSubConTier ? tierDB : tier
         await audit({ tenantId, preapproval_id: preId, tier: tierFinal, prev_cancel_error })
         return json({ ok: true, tier: tierFinal, prev_cancel_error })
@@ -756,7 +765,7 @@ Deno.serve(async (req) => {
       case 'customers.get': {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
         const { data: tenant, error } = await svc.from('tenants')
-          .select('id, nombre, plan_id, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
+          .select('id, nombre, plan_tier, billing_mode, modo_operacion, created_at, trial_ends_at, '
             + 'inicio_actividades, subscription_status, subscription_period_end, delete_scheduled_at, '
             + 'pais, tipo_comercio, moneda, telefono, mp_subscription_id, '
             // Estado fiscal: es lo primero que pregunta un cliente que no puede facturar.

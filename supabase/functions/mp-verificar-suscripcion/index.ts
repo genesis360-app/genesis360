@@ -27,13 +27,17 @@ const MP = 'https://api.mercadopago.com'
 // preapproval_plan_id (MP) → tier del plan (espejo de mp-webhook). plan_tier es la
 // FUENTE DE VERDAD de los límites (fn_tenant_limite, mig 251). Los legacy max_users/
 // max_productos se setean al BASE del tier solo por consistencia, no gobiernan límites.
-const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
-  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
-  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro' | 'enterprise'> = {
+  [Deno.env.get('MP_PLAN_BASICO')     ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')        ?? '']: 'pro',
+  // Pricing v7: secret nuevo; mientras no exista, '' no coincide con ningún preapproval_plan_id real.
+  [Deno.env.get('MP_PLAN_ENTERPRISE') ?? '']: 'enterprise',
 }
+// Columnas legacy (tenants.max_users/max_productos, ya no limitan: manda fn_tenant_limite). Pricing v7.
 const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = {
-  basico: { max_users: 5,  max_productos: 2000 },
-  pro:    { max_users: 15, max_productos: 8000 },
+  basico:     { max_users: 3,  max_productos: 2000 },
+  pro:        { max_users: 7,  max_productos: 7000 },
+  enterprise: { max_users: 20, max_productos: 18000 },
 }
 
 const json = (body: unknown, status = 200) =>
@@ -187,6 +191,13 @@ serve(async (req) => {
       console.error('mp-verificar: error activando tenant', updErr)
       return json({ error: 'No se pudo activar' }, 500)
     }
+
+    // Mig 464: los intentos abiertos del negocio quedan vinculados (la app deja de avisar "ya iniciaste un pago" y la
+    // reconciliación no los ofrece como candidatos de otra huérfana). Si falla no se revierte la activación: solo se loguea.
+    const { error: intErr } = await admin.from('mp_suscripcion_intentos')
+      .update({ preapproval_id: String(sub.id), vinculado_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId).is('vinculado_at', null)
+    if (intErr) console.error('mp-verificar: no se pudieron marcar los intentos como vinculados', intErr)
 
     console.log(`mp-verificar: tenant ${tenantId} → active (sub ${sub.id}, ${mismaSubConTier ? tierDB : tier})`)
     return json({ activated: true })

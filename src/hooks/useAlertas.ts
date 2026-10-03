@@ -1,3 +1,4 @@
+import { hoyLocalISO } from '@/lib/ventasValidation'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -63,7 +64,7 @@ export function useAlertas() {
       const fechaLimite = new Date()
       fechaLimite.setDate(fechaLimite.getDate() - RESERVAS_DIAS_LIMITE)
 
-      const hoy = new Date().toISOString().split('T')[0]
+      const hoy = hoyLocalISO()
       const en3dias = new Date()
       en3dias.setDate(en3dias.getDate() + 3)
       const en3diasStr = en3dias.toISOString().split('T')[0]

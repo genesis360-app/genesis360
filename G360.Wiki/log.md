@@ -6,6 +6,130 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-02] update | Cierre de la tarde: migs 461-463, hotfix EN PROD del link de pago, QR de MP, v7 sin bloqueos
+
+- **Estado**: PROD `v1.237.0` (migs 001-456 + 458) **+ EF `mp-crear-link-pago` v10** (hotfix, ver abajo). DEV 001-**463**,
+  todo en `origin/dev` y Supabase DEV. Unit 2122.
+- **Mig 461 (commit `c46a8e3e`, PR-6)**: `tenant_addons.precio_mensual` + backfill con catálogo v6; `fn_aplicar_addon_batch`
+  copia el precio desde `addon_batch_changes.packs_objetivo` (cada pack trae `precio`, calculado por la EF). EF
+  `mp-addon-batch`: pack que no cambia mantiene el precio pactado; nuevo/distinto toma el catálogo vigente. Espejo en
+  `src/lib/mpAddonBatch.ts` (`precioPack`, `preciosDesdeAddons`), configurador y `/suscripcion`; MRR de `admin-api`
+  (`_shared/precios.ts`, `mrrDeTenant`) con el precio pactado. EFs `mp-addon-batch` y `admin-api` desplegadas en DEV.
+  UAT §91. Cierra el riesgo "(a)". PROD: solo 2 packs, de negocios de prueba.
+- **Mig 462 (commit `8cb8a98d`)**: trigger en `kitting_log` que rechaza cantidades fraccionarias en el armado de KIT
+  (manual y automático; `inventario_lineas.cantidad` es integer). Cierra el latente "(b2)" de la 459. PROD: 0 recetas y 0
+  armados. e2e KIT 53/53. UAT §89.8.
+- **🛑 Hotfix EN PROD (commit `d2332830`)**: EF `mp-crear-link-pago` desplegada en PROD **v10** con OK de GO. Antes, sin MP
+  conectado (o con 2 credenciales, que rompían `.maybeSingle()`), usaba el `MP_ACCESS_TOKEN` de la PLATAFORMA: el cliente
+  le pagaba a Genesis360 y la venta no se conciliaba. En PROD ningún negocio tiene MP conectado → todo QR/link salía así
+  (QR del POS, "Cobrar con link", QR de la factura). Exposición medida: 0 facturas con saldo; 24 h de logs sin llamadas
+  (no se ve más atrás). Se sugirió a GO que Fede revise su cuenta MP. Ahora: solo la credencial del negocio (primero la
+  de la sucursal), monto ≤ saldo, saldada/cancelada → 400, `notification_url` del mismo proyecto. Ver
+  [[wiki/integrations/mercado-pago]].
+- **QR de MP — decisiones de GO**: el envío SE COBRA (entra en la deuda de CC); el interés de CC SE COBRA y va en el QR,
+  pero recién cuando el contador responda la **C-20**. Hallazgos: la deuda de CC no incluye `costo_envio` (aunque
+  `monto_pagado` sí, desde ISS-105); los intereses nunca se cobran (FIFO solo al capital; `fn_recalcular_intereses_cc_tenant`
+  pone `interes_cc` en 0 al saldar); `mp-ipn` hace check-then-insert (carrera con `mp-webhook`). Fase 1 en curso, sin
+  código: envío en CC/cobranza/QR, un link por venta con vencimiento a 30 días que se desactiva al saldarse, excedente →
+  `cliente_creditos` + aviso al dueño, `mp-ipn` insert-first. Fase 2: interruptor en config + QR en estado de cuenta.
+  Fase 3: interés (espera C-20). Ver [[wiki/features/clientes-proveedores]].
+- **Contador**: C-20 (intereses de CC y ND) y C-21 (traslado entre sucursales de distinto CUIT) en
+  [[wiki/business/consultas-contador]]. Abiertas: **21**.
+- **Pricing v7 — MP listo**: IDs verificados en el checkout público: Básico `142aefe1…` $54.000, Pro `f06b2690…` $100.000,
+  Enterprise `852a7e8e6d244640818eb20e2c1037f8` $200.000, sin prueba gratis. `MP_PLAN_IDS.enterprise` (commit `8f818d6e`);
+  secret `MP_PLAN_ENTERPRISE` en DEV y PROD (hash verificado). v7 sin bloqueos para PROD.
+- **PR-8 respondida por GO**: "Logística inteligente" = modo avanzado solo desde Pro; marketplace = feature futura (el
+  add-on de $35.000 no existe por ahora). **Mig 463 (commit `25c74e70`)**: `fn_plan_permite_modo_avanzado` + trigger en
+  `tenants` (activar avanzado sin plan se rechaza; si el plan deja de incluir `wms` → básico + aviso a dueños; herencia v6
+  respetada). Motivo: un Básico con 'avanzado' guardado quedaba roto. GO probó en DEV con rollback 5/5 + e2e 15/15. UAT §92.
+- **Deploy de v7 a PROD (pendiente de horario de GO)**: migs 457 → 459 → 460 → 461 → 462 → 463 de a una con
+  `scripts/aplicar-migracion.mjs`, antes del merge; EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`,
+  `mp-verificar-suscripcion`, `mp-webhook` (`mp-crear-link-pago` ya está en PROD); bump `v1.238.0`; `app-reference.md`
+  (planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`; panel interno; suite e2e completa.
+- Wiki: planes-pricing, mercado-pago, clientes-proveedores, migraciones, preguntas_pendientes (PR-8), pendientes, index.
+
+## [2026-10-02] fix | PROD: caja abierta invisible bloqueaba el cambio de sucursal (mig 460)
+
+- Commit `1e90eb73` en `origin/dev`; mig 460 solo en Supabase DEV (PROD no, sin bump de versión). Continuación del incidente
+  de "Casa central" (mig 458, entrada de más abajo).
+- Incidente PROD, negocio de GO ("Familia Otranto De Porto"): tras reactivar "Casa central", GO seguía sin ver el
+  inventario y al cambiar de sucursal le salía "tenés una caja abierta en otra sucursal" sin ninguna caja abierta visible.
+  Causa: una sesión de caja abierta desde el 13/04/2026 (3 ingresos, $4.000, apertura $0) tenía `sucursal_id` = Casa
+  Huechuraba, pero su caja `Caja1` es de Casa central. El aviso de AppLayout (L4) compara contra la sucursal de la sesión;
+  mientras Casa central estuvo desactivada la app lo llevó a Huechuraba y desde ahí todo cambio de sucursal quedaba
+  bloqueado. "Ir a cerrarla" lo mandaba a Caja de Huechuraba, donde `Caja1` no figura. Sin salida.
+- Corrección en PROD con OK de GO: UPDATE de esa única sesión, `sucursal_id` → Casa central (sin tocar montos ni
+  cerrarla). **Pendiente de GO: cerrarla con arqueo de $4.000.** Auditoría PROD: 0 sesiones abiertas desfasadas en otros
+  negocios (Kalken y El Tilo limpios). Quedan 2 sesiones CERRADAS de GO con el mismo desfase: no se tocan (REGLA #0 #7).
+- Causas en el código: (1) CajaPage tomaba `caja_sesiones.sucursal_id` del selector de sucursal, no de la caja;
+  (2) Configuración de Caja permite mover una caja de sucursal aunque tenga una sesión abierta.
+- Arreglo: mig 460 `460_caja_sesion_sucursal_de_su_caja.sql` (3 triggers): BEFORE INSERT en `caja_sesiones` fuerza la
+  sucursal de la caja (si tiene); BEFORE UPDATE OF `sucursal_id` en `caja_sesiones` rechaza desalinear; BEFORE UPDATE OF
+  `sucursal_id` en `cajas` rechaza mover una caja con sesión abierta. Sin policies nuevas (paridad public DEV 240 vs PROD
+  239, por la 457). Frontend: CajaPage usa la sucursal de la caja al abrir; AppLayout usa `cajas.sucursal_id`.
+- Tests: SQL en DEV con rollback (3 controles OK); tsc y build OK; unit 2116/2116; e2e de caja 05/20/32/64/65/67/157:
+  10 pasados, 4 saltados por gate, 0 fallas. UAT §90.
+- Próximo deploy a PROD: aplicar migs 459 y 460, de a una, con `scripts/aplicar-migracion.mjs`, antes del merge.
+
+## [2026-10-02] fix | Desarmado de KIT atómico (mig 459)
+
+- Commit `a6ba9d0e` en `origin/dev`, mig 459 solo en Supabase DEV (PROD no, sin bump de versión). En DEV quedó registrada dos
+  veces en `schema_migrations` (`20261002060225` y `20261002060551`, re-aplicada por un ajuste de mensaje `trim_scale`).
+- REGLA #0 inventario: el desarmado de KIT (`InventarioPage`) eran escrituras sueltas desde el navegador → RPC
+  `desarmar_kit` (`SECURITY INVOKER`, GRANT `authenticated`) en una transacción: `FOR UPDATE` sobre las líneas del KIT, FIFO
+  por `created_at`, ingreso de componentes, movimientos, `kitting_log`. Cierra: no atómico, `stock_antes` de `des_kitting`
+  leído después del rebaje, FIFO sin orden, errores ignorados, sin bloqueo concurrente, componente fraccionario redondeado
+  en silencio (ahora rechazado; `inventario_lineas.cantidad` es integer), series rechazadas. Línea del KIT en 0 sin
+  reservas → se desactiva. Movimientos históricos NO corregidos.
+- Latente anotado (sin arreglar): el ARMADO (migs 244/343) tiene el mismo problema con recetas fraccionarias.
+- Tests: e2e `75_kit_desarmar_mutante` reescrito (verde), unit 2116/2116, build y tsc OK. UAT §89.
+- Cierra el riesgo (b) de pendientes. Próximo deploy a PROD: aplicar mig 459 antes del merge. MP: el token de Fede llega
+  el 03/10 (según GO).
+
+## [2026-10-02] update | Pricing v7 en DEV (mig 457) + cierre para /clear
+
+- Catálogo v7 en `brand.ts` (sin Free; Básico $54k/$60k, Pro $100k/$117.600, Enterprise $200k/$250k; límites v7; RRHH y
+  marketplace a Enterprise; add-on sucursales $35k/$55k/$70k) + mig 457 (DEV): `tenant_herencia_plan` (existentes
+  conservan su plan v6; en prueba → Pro v6), `fn_plan_base_limite` v7, `fn_tenant_limite` con herencia, prueba de 15
+  días para altas nuevas. Espejos: `src/lib/planLimites.ts` (nuevo), `usePlanLimits`, `guardBatch` y EF
+  `mp-addon-batch`, `_shared/precios.ts` (MRR), `MP_PLAN_ENTERPRISE` en 4 EFs (desplegadas en DEV).
+- `/suscripcion`: Enterprise sin ID de MP → "Contactar". Textos de 15 días (landing, onboarding, configurador, aviso).
+- Tests: unit 2116 (nuevo `planLimites`; 19 tests de v6 actualizados a v7, con el riesgo del precio de packs anotado);
+  e2e 09/12/84 23/23. UAT §88. Wiki: planes-pricing, suscripciones-planes, mercado-pago (paso a paso de los IDs).
+- PROD intacto en pricing: espera los IDs de MP (Pro $100k, Enterprise nuevo). Policies DEV 240 vs PROD 239 (esperado).
+
+## [2026-10-02] fix | PROD: inventario en 0 en el negocio de GO → sucursal desactivada con stock (mig 458)
+
+- GO: "en productos me dice 0 unidades pero debajo 142 en total; en inventario 0 líneas". No se perdió nada: las 28
+  líneas / 775 unidades estaban en "Casa central", que estaba DESACTIVADA; la app se para en la primera sucursal activa
+  (Huechuraba, vacía). Sin registro de quién/cuándo (el "Eliminar" de Sucursales no logueaba; logs de PROD sin esa
+  ventana). No lo causó v1.237.0 ni el cambio de plan por SQL de GO (ningún trigger de tenants toca sucursales).
+- Reactivada en PROD (UPDATE con OK de GO). Arreglo (DEV): mig 458 (no se elimina una sucursal con stock o caja
+  abierta), SucursalesPage con "Sucursales eliminadas" + Reactivar + historial. UAT §87.
+
+## [2026-10-02] update | Pricing v7: relevamiento + tabla `planes` retirada (mig 456) + SQL de planes por negocio
+
+- Plan de pricing v7 con los docs de Fede en Drive ("05 - Pricing y Costos v7" y "06 - Cambios v6 a v7"). GO marcó que
+  la tabla `planes` de PRD no coincidía con /suscripcion ni la landing: la tabla era legacy (marzo, sin uso); la landing
+  y /suscripcion coinciden entre sí y con `fn_plan_base_limite`, pero todo está en v6 (precios, límites, 30 días, Free).
+- Decisiones de GO: base del anual = precio de lista; PR-2 agente WhatsApp en Enterprise sin precio; PR-3 15 días solo
+  altas nuevas; PR-6 precio nuevo de add-on solo compras nuevas; PR-7 y regla general: **los negocios existentes
+  conservan límites y módulos de su plan v6** (los que están en prueba = Pro v6); prueba vencida = solo lectura **solo
+  para nuevos**. PR-8 lo ve con Fede.
+- 🔥 Hallazgo: al vencer la prueba la app BLOQUEA todo (redirect a /suscripcion) y los límites caen a Free. Kalken está
+  así desde el 24/09 (último ingreso 29/09); El Tilo vence el 28/10. Consultado a GO cómo resolverlo.
+- Mig 456 (DEV y PROD): fuera `planes` y `tenants.plan_id`; `admin-api` desplegada antes sin `plan_id`; panel interno sin
+  el fallback. Policies `public` 239 DEV = PROD. Nueva página [[wiki/support/sql-planes-tenants]].
+
+## [2026-10-02] deploy | v1.237.0 a PROD — stock con ubicación en avanzado (U-2), CUIT exigible, ficha alineada
+
+- GO: "luego que termine la suite y hacés estos arreglos subís todo a PRD". Además pidió: CUIT en "Datos requeridos al
+  crear un cliente" (agregado, desmarcado por defecto) y alinear "Stock e inventario" de la ficha (descripciones → ⓘ).
+- Suite e2e completa con el guard activo: 435 ok, 0 fallas (exit 0). Unit 2105. Build OK.
+- PROD: mig 455 (md5 DEV = PROD, tildes OK) → bump `v1.237.0` → PR #369 (CI unit verde, preview Vercel OK) → merge
+  `58bc176f` → release Latest → servida `index-CHaAhYhy.js`. Paridad `pg_policies` DEV = PROD (public 240, storage 40,
+  cron 2). Sin Edge Functions. app-reference sin cambios (Asistente IA sin redeploy).
+
 ## [2026-10-01] update | U-2 cerrado: anulación y traslado eligen ubicación + guard de la base (mig 455) — en DEV
 
 - GO: 1) anulación → elige quien aprueba (C); 2) cancelar traslado → elige quien cancela; 3) mantener la ubicación

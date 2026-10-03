@@ -729,7 +729,8 @@ export default function CajaPage() {
         // G5 Fase 3 (E1) — moneda REAL de la sesión, denormalizada de cajas.moneda al abrir
         // (mig 368: inmutable en el histórico aunque después se edite cajas.moneda).
         moneda: cajaActual?.moneda ?? 'ARS',
-        sucursal_id: sucursalId || null,
+        // La sesión vive en la sucursal de SU caja, no la del selector (mig 460 lo fuerza en la base).
+        sucursal_id: cajaActual?.sucursal_id ?? (sucursalId || null),
       })
       if (error) throw error
       // Notificar si hay diferencia
@@ -3135,13 +3136,27 @@ export default function CajaPage() {
                       {sucursales.length > 1 && (
                         <select
                           value={c.sucursal_id ?? ''}
+                          disabled={tieneSessionActiva}
+                          title={tieneSessionActiva ? 'Cerrá la caja antes de cambiarla de sucursal' : 'Sucursal de la caja'}
                           onChange={async (e) => {
                             const val = e.target.value || null
+                            // 🛑 Incidente PROD 2026-10-02: una caja abierta (con $734k) se movió de sucursal y su sesión
+                            // quedó invisible en las dos. Se consulta la caja en sí (`cajasAbiertas` filtra por sucursal y
+                            // no ve una sesión desfasada). La base también lo rechaza (mig 460).
+                            const { data: abierta } = await supabase.from('caja_sesiones')
+                              .select('id').eq('caja_id', c.id).eq('estado', 'abierta').limit(1)
+                            if (abierta && abierta.length > 0) {
+                              toast.error(`La caja "${c.nombre}" está abierta: cerrala antes de cambiarla de sucursal.`)
+                              return
+                            }
                             const { error } = await supabase.from('cajas').update({ sucursal_id: val }).eq('id', c.id)
                             if (error) { toast.error(error.message); return }
+                            logActividad({ entidad: 'caja', entidad_id: c.id, entidad_nombre: c.nombre, accion: 'editar', campo: 'sucursal_id',
+                              valor_anterior: sucursales.find((s: any) => s.id === c.sucursal_id)?.nombre ?? 'Sin sucursal',
+                              valor_nuevo: sucursales.find((s: any) => s.id === val)?.nombre ?? 'Sin sucursal', pagina: '/caja' })
                             qc.invalidateQueries({ queryKey: ['cajas'] })
                           }}
-                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-accent-text">
+                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-accent-text disabled:opacity-50 disabled:cursor-not-allowed">
                           <option value="">Sin sucursal</option>
                           {sucursales.map((s: any) => (
                             <option key={s.id} value={s.id}>{s.nombre}</option>

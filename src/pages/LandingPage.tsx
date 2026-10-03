@@ -68,7 +68,7 @@ const FAQ = [
   },
   {
     q: '¿Puedo probar antes de pagar?',
-    a: 'Sí, todos los planes tienen 30 días de prueba gratuita sin necesidad de tarjeta de crédito.',
+    a: 'Sí, todos los planes tienen 15 días de prueba gratuita sin necesidad de tarjeta de crédito.',
   },
   {
     q: '¿Mis datos están seguros?',
@@ -84,7 +84,7 @@ const FAQ = [
   },
   {
     q: '¿Cómo es el soporte?',
-    a: 'Plan Free tiene soporte por comunidad. Básico y Pro tienen soporte por email. Enterprise tiene soporte prioritario 24/7.',
+    a: 'Básico y Pro tienen soporte por email. Enterprise tiene soporte prioritario.',
   },
 ]
 
@@ -129,7 +129,7 @@ export default function LandingPage() {
             </Link>
             <Link to="/onboarding"
               className="text-sm font-semibold bg-accent hover:bg-accent/90 text-white px-5 py-2.5 rounded-xl transition-all">
-              Empezar gratis
+              Probar gratis
             </Link>
           </div>
 
@@ -147,7 +147,7 @@ export default function LandingPage() {
             <hr className="border-gray-100" />
             <Link to="/login" className="block text-gray-600 py-1">Ingresar</Link>
             <Link to="/onboarding" className="block w-full text-center bg-primary text-white font-semibold py-2.5 rounded-xl">
-              Empezar gratis
+              Probar gratis
             </Link>
           </div>
         )}
@@ -158,7 +158,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-6">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            30 días gratis · Sin tarjeta de crédito
+            15 días gratis · Sin tarjeta de crédito
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight mb-6">
             El inventario que<br />
@@ -170,7 +170,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/onboarding"
               className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">
-              Empezar gratis <ArrowRight size={20} />
+              Probar gratis <ArrowRight size={20} />
             </Link>
             <a href="#features"
               className="flex items-center justify-center gap-2 border-2 border-white/30 text-white font-semibold px-8 py-4 rounded-xl hover:bg-white/10 transition-all text-lg">
@@ -308,7 +308,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4">Planes y precios</h2>
-            <p className="text-gray-500">Empezá gratis. Crecé cuando lo necesites.</p>
+            <p className="text-gray-500">Probá 15 días gratis. Crecé cuando lo necesites.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {PLANES.map(plan => (
@@ -371,7 +371,7 @@ export default function LandingPage() {
                   // ruta interna (navega a /mailto... → catch-all → rebota al home, no abre el correo).
                   return plan.precio === null
                     ? <a href={`mailto:${BRAND.email}`} className={ctaClass}>Contactar</a>
-                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 30 días gratis'}</Link>
+                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 15 días gratis'}</Link>
                 })()}
               </div>
             ))}
@@ -402,7 +402,7 @@ export default function LandingPage() {
             ¿Listo para tomar el control de tu inventario?
           </h2>
           <p className="text-blue-100 text-lg mb-8">
-            Empezá hoy. 30 días gratis, sin tarjeta de crédito.
+            Empezá hoy. 15 días gratis, sin tarjeta de crédito.
           </p>
           <Link to="/onboarding"
             className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">

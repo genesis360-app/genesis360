@@ -2411,6 +2411,154 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔎 §94 — Inventario: buscar un LPN deja a la vista ese LPN · Envío: campos alineados (🟡 DEV) — 2026-10-02
+
+Pedido de GO. LPN: se descartó tildar el checkbox (alimenta las acciones masivas: dos búsquedas dejarían dos LPN
+tildados sin querer) y también expandir solo el producto (buscar y hacer click es el hábito; el click lo cerraría —
+lo detectaron 7 e2e de LPN).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 94.1 | Buscar un LPN: la fila del producto dice "1 LPN coincide"; al expandirlo se ven solo los que coinciden, resaltados, con "Mostrando 1 de N" | e2e `176` · unit `inventarioFiltro` | ✅ |
+| 94.2 | "Ver todos" muestra todos los LPN con el buscado resaltado y lleva la pantalla hasta él; la búsqueda no tilda nada | e2e `176` | ✅ |
+| 94.3 | Buscar por nombre/SKU (todas las líneas coinciden) no cambia nada: se ven todas, sin resaltar | unit `inventarioFiltro` · e2e 92/93/97/117/118/126 | ✅ |
+| 94.4 | Venta con envío: "Fecha de entrega" y "Rango horario" con la misma altura; en panel angosto el segundo baja de línea (sin cortar etiquetas) | medición en el navegador a 1280/1024/900 px | ✅ |
+| 94.5 | El borde del último LPN resaltado no se corta (resaltado por dentro) | revisión | ✅ código |
+
+## 🏷️ §96 — Lista de descuentos por categoría de clientes (mig 466, Fase 4 parte A, 🟡 DEV) — 2026-10-02
+
+Decisión de GO: (A) hoy la lista y su carga, SIN aplicarla al vender; (B2) después, motor único de precio + POS/Pedidos
+(gana el más bajo, tope acumulado sin salteo PL-1, mecanismo por línea).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 96.1 | Agregar un producto con "12,5" → 12,5 %; editar a 0 → queda con 0 (≠ sin cargar); sacar → sin cargar | e2e `178` | ✅ |
+| 96.2 | 🛑 Importar con una fila mala (150 %) → no se carga NADA; corregido → carga; celda vacía = no se toca | e2e `178` · SQL DEV | ✅ |
+| 96.3 | Importar: producto de otro negocio o repetido en el archivo → rechazado | SQL DEV (rollback) | ✅ |
+| 96.4 | 🛑 Un CAJERO (sin permiso de gestionar categorías) no puede cargar ni importar | SQL DEV impersonando (RLS + función) | ✅ |
+| 96.5 | Historial: cada cambio a mano queda en la categoría; una importación deja UNA entrada con el resumen | SQL DEV | ✅ |
+| 96.6 | La pantalla avisa "Todavía no se aplica en las ventas"; ningún precio cambia | revisión (nada lee la tabla al vender) | ✅ código |
+| 96.7 | La plantilla trae todos los productos activos con su % actual | revisión | ✅ código |
+
+## 📦 §95 — El pedido hereda la fecha de entrega de la venta con envío (mig 465, 🟡 DEV) — 2026-10-02
+
+Pedido de GO: que preparación sepa qué priorizar. La fecha quedaba solo en el envío; el pedido nacía sin fecha.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 95.1 | Venta con envío y fecha → el pedido toma esa fecha | SQL DEV (rollback) | ✅ |
+| 95.2 | Reprogramar la fecha del envío → el pedido abierto la sigue | SQL DEV (rollback) | ✅ |
+| 95.3 | Pedidos ordena por fecha de entrega (atrasado, hoy, mañana, resto, sin fecha) con etiqueta y rango horario; "Más recientes primero" disponible | e2e `177` · unit `pedidoPrioridad` | ✅ |
+| 95.4 | La fecha se ve en el día correcto (antes `new Date('YYYY-MM-DD')` mostraba el día anterior en Argentina) | unit `pedidoPrioridad` · e2e `177` | ✅ |
+| 95.5 | "Hoy" es el día local: después de las 21 h un pedido de hoy no sale atrasado (Pedidos, Alertas) | revisión (`hoyLocalISO`) | ✅ código |
+| 95.6 | Picking muestra la fecha de entrega del pedido de cada tarea | revisión · e2e de picking sin regresión (115/115) | ✅ |
+
+
+
+## 💳 §93 — Suscripción: que un pago de plan no quede huérfano ni se duplique (mig 464, 🟡 DEV) — 2026-10-02
+
+Incidente (2º cliente real, 28/09): pagó el plan Pro dos veces con 40 s de diferencia y ninguna suscripción quedó
+vinculada (siguió "en prueba"). La reconciliación las detectó, pero la alerta no decía de quién eran y se descartaron
+como prueba. Fede cancela ambas y devuelve; el negocio conserva lo que tiene (herencia v6).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 93.1 | 🛑 La vuelta del checkout con solo `preapproval_id` (sin status=approved) verifica con ese id | e2e `175` A | ✅ |
+| 93.2 | 🛑 Intento sin vincular de las últimas 2 h → "Ya iniciaste un pago" antes de dejar pagar de nuevo; "Volver" no sale a MP | e2e `175` B | ✅ |
+| 93.3 | Cada salida al checkout queda en `mp_suscripcion_intentos` (negocio y usuario de la sesión, no del cliente) | e2e `175` B (RPC) | ✅ |
+| 93.4 | La alerta de huérfana nombra al negocio candidato (mismo plan, 3 h previas) y marca "posible pago duplicado" | unit `mpReconciliacion` (caso real: 2 huérfanas a 40 s) | ✅ |
+| 93.5 | Al vincular (vuelta o panel de soporte) los intentos quedan vinculados y dejan de avisar | revisión de `mp-verificar-suscripcion` y `admin-api` | ✅ código |
+| 93.6 | Alta real de punta a punta con un suscriptor nuevo (vuelve, se activa, no hay doble cobro) | — | ⏳ prueba con un pago real (monto chico) |
+
+## 🧭 §92 — El modo avanzado es solo desde el plan Pro (mig 463, PR-8, 🟡 DEV) — 2026-10-02
+
+PR-8 (GO): "logística inteligente" = modo avanzado, solo desde Pro. La app ya lo trataba así (modo efectivo), pero la
+base leía `modo_operacion` a secas → un Básico con 'avanzado' guardado veía la app en básico y la base le rechazaba el
+stock sin ubicación. Invariante nueva: `modo_operacion = 'avanzado'` solo con un plan efectivo que incluya `wms`.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 92.1 | Negocio existente (herencia v6 con wms) que paga Básico conserva el avanzado | SQL DEV (rollback, corrido por GO) | ✅ |
+| 92.2 | 🛑 Alta nueva sin herencia que pasa a Básico → modo básico + aviso a cada dueño | SQL DEV (rollback) | ✅ |
+| 92.3 | Activar avanzado en Básico → "disponible desde el plan Pro" | SQL DEV (rollback) | ✅ |
+| 92.4 | Pro y prueba vigente pueden activar avanzado | SQL DEV (rollback) | ✅ |
+| 92.5 | Cambiar de modo en un negocio Pro/Enterprise sigue funcionando | e2e 174/103/110/95/96/75/84 (15/15) | ✅ |
+| 92.6 | El alta de un negocio (modo por defecto básico) no se ve afectada | revisión (el trigger sale si no es avanzado) | ✅ código |
+
+## 💲 §91 — Cada pack de add-on guarda el precio pactado (mig 461, PR-6, 🟡 DEV) — 2026-10-02
+
+PR-6 (GO): el precio nuevo de un add-on aplica solo a compras nuevas. Antes `mp-addon-batch` restaba el precio del
+catálogo de HOY a los packs que el negocio ya tenía → con v7 (sucursales $15k → $35k) el recurrente se recalculaba mal.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 91.1 | 🛑 Quitar un pack comprado a $15k descuenta $15k del recurrente, no los $35k del catálogo nuevo | unit `mpAddonBatch` | ✅ |
+| 91.2 | 🛑 Mantener el pack y sumar otro: el que ya tenía no se re-precia | unit `mpAddonBatch` | ✅ |
+| 91.3 | Cambiar a otro pack de la misma dimensión = compra nueva → precio vigente | unit `mpAddonBatch` | ✅ |
+| 91.4 | `fn_aplicar_addon_batch` guarda el precio de cada pack; un cambio viejo sin precio deja NULL (la EF cae al catálogo) | SQL DEV (rollback) | ✅ |
+| 91.5 | Backfill: los packs fijos existentes quedan con el precio v6 con que se compraron | SQL DEV (1 pack: cuits +1 → $20.000) | ✅ |
+| 91.6 | La tarjeta del pack que ya tiene muestra el precio pactado; el MRR del panel usa el pactado | unit `preciosEspejoServidor` · revisión | ✅ |
+| 91.7 | El precio lo calcula la EF (el cliente solo manda dimensión y cantidad) | revisión de la EF | ✅ código |
+
+## 💰 §90 — La sesión de caja vive en la sucursal de su caja (mig 460, 🟡 DEV) — 2026-10-02
+
+Incidente PROD (negocio de GO): sesión abierta desde el 13/04 ($4.000) con sucursal Huechuraba y caja de Casa central →
+invisible en Caja y bloqueaba el cambio de sucursal sin salida. Corregida esa fila con OK de GO; las 2 cerradas desfasadas
+quedan (historial). Sin otras abiertas desfasadas en PROD.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 90.1 | 🛑 Abrir una sesión con otra sucursal en el selector → la base le pone la sucursal de la caja | SQL DEV (rollback) | ✅ |
+| 90.2 | 🛑 Cambiarle la sucursal a una sesión (desalinearla de su caja) → rechazado | SQL DEV (rollback) | ✅ |
+| 90.3 | 🛑 Mover de sucursal una caja con sesión abierta → "cerrala antes de cambiarla de sucursal" | SQL DEV (rollback) | ✅ |
+| 90.4 | El aviso "tenés una caja abierta en otra sucursal" usa la sucursal de la caja y "ir a cerrarla" lleva a donde la caja se ve | revisión · e2e de caja 05/20/32/64/65/67/157 sin regresión | ✅ código |
+| 90.5 | PROD: GO cierra `Caja1` (Casa central) con arqueo de $4.000 | — | ✅ GO (02/10) |
+| 90.6 | 🛑 Incidente PROD 02/10 (2º cliente real): movieron de sucursal una caja ABIERTA (sesión de 4 días, ~$734k en efectivo) → sesión invisible. Se volvió la caja a su sucursal original (OK de GO) para cerrar ahí sin reescribir historia. La pantalla ahora deshabilita el selector con la caja abierta y consulta la caja en sí antes de moverla (`cajasAbiertas` filtra por sucursal y no ve una sesión desfasada); el cambio queda en el historial de actividad | e2e de caja 05/20/32/64/65/67 (10/10) · revisión | ✅ código (falta el cierre del cliente) |
+
+## 🧩 §89 — Desarmado de KIT atómico (mig 459, 🟡 DEV) — 2026-10-02
+
+Antes: escrituras sueltas desde el navegador (KIT rebajado sin componentes si fallaba a mitad; `stock_antes` del
+`des_kitting` leído después del rebaje; FIFO sin orden; errores de ledger ignorados; sin bloqueo). Ahora RPC
+`desarmar_kit` en una transacción. Los movimientos históricos no se corrigen.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 89.1 | Desarmar 2 KITs (receta ×3): KIT 5 → 3, componente 10 → 16 en la ubicación elegida, un `kitting_log` 'desarmado' | e2e `75` | ✅ |
+| 89.2 | 🛑 Movimiento `des_kitting` con antes/después reales (5 → 3) e `ingreso` del componente (10 → 16) | e2e `75` · SQL DEV (rollback) | ✅ |
+| 89.3 | 🛑 Falla a mitad (insert del componente) → no queda nada: KIT intacto, 0 movimientos | SQL DEV impersonando (rollback) | ✅ |
+| 89.4 | Avanzado sin ubicación / stock insuficiente / cantidad de KITs con decimales → rechazado | SQL DEV (rollback) | ✅ |
+| 89.5 | 🛑 Componente fraccionario (0,5 × 3 = 1,5) → rechazado (la columna es entera: antes se redondeaba en silencio) | e2e `75` · SQL DEV | ✅ |
+| 89.6 | KIT o componente con número de serie → rechazado (antes entraba sin series) | revisión de la función | ✅ código |
+| 89.7 | La línea del KIT que queda en 0 (sin reservas) se desactiva | revisión de la función | ✅ código |
+| 89.8 | 🛑 ARMADO (manual y automático, mig 462): 3 KITs × receta 0,5 → rechazado y las reservas quedan intactas; 2 × 0,5 = 1 pasa | SQL DEV impersonando (rollback) · e2e 132/133/75/02/141 sin regresión | ✅ |
+
+## 💲 §88 — Pricing v7 (mig 457, 🟡 DEV) — 2026-10-02
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 88.1 | Alta nueva: prueba de 15 días con límites de Pro v7 (7 usuarios, 2 sucursales, 2 CUITs) | SQL DEV (rollback) | ✅ |
+| 88.2 | Alta nueva que paga Básico: 3 usuarios, 5.000 comprobantes | SQL DEV (rollback) · unit `planLimites` | ✅ |
+| 88.3 | 🛑 Negocio existente en prueba hereda Pro v6 (15 usuarios, 4 sucursales) aunque pague Básico v7; los add-ons se suman encima | SQL DEV · unit `planLimites` | ✅ |
+| 88.4 | 🛑 Negocio existente conserva módulos (WMS, RRHH, marketplace) aunque su plan v7 no los traiga | unit `planLimites` | ✅ |
+| 88.5 | Control de bajas de add-ons (`guardBatch` app y EF) usa la herencia: no bloquea a un existente por los límites v7 | unit `mpAddonBatch` | ✅ |
+| 88.6 | Landing y /suscripcion: 3 planes, sin Free, precios v7, "15 días"; Enterprise sin ID de MP → "Contactar" | e2e 09/12 · revisión | ✅ (precios a revisar en pantalla) |
+| 88.7 | Pro $100.000 y Enterprise $200.000 cobrados por MP; Enterprise activa el plan correcto | — | ⏳ espera IDs de MP |
+| 88.8 | Pago anual (−20 % sobre lista, 1 año, sin renovación) | — | ⏳ sin hacer |
+| 88.9 | Comprobantes: aviso 80 % / 100 % + mail, sin bloquear ventas | — | ⏳ sin hacer |
+
+## 🏢 §87 — Eliminar una sucursal no puede esconder stock (mig 458) — 2026-10-02
+
+Incidente: en PROD, "Casa central" (negocio de GO) estaba desactivada con 28 líneas / 775 unidades → Inventario y
+Productos mostraban 0 (la app filtra por la primera sucursal activa). Reactivada el 02/10.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 87.1 | 🛑 Eliminar una sucursal con stock activo → rechazado con "tiene N unidades en M líneas, trasladá el stock" | SQL DEV (rollback) | ✅ |
+| 87.2 | Eliminar una sucursal con caja abierta → rechazado | revisión del trigger | ✅ código |
+| 87.3 | Sucursal vacía se puede eliminar; aparece en "Sucursales eliminadas" con "Reactivar" | SQL DEV · revisión | ✅ |
+| 87.4 | Eliminar y reactivar quedan en el historial de actividad | revisión | ✅ código |
+| 87.5 | Reactivar respeta el límite de sucursales del plan | trigger existente `fn_enforce_limite` | ✅ |
+
 ## 🧩 §86 — CUIT exigible en el alta rápida de cliente + ficha del producto alineada — 2026-10-01
 
 | # | Escenario | Cómo se verifica | Estado |

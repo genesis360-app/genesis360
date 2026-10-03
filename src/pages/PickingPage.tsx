@@ -8,6 +8,8 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
 import { logActividad } from '@/lib/actividadLog'
+import { urgenciaEntrega, fechaEntregaLegible } from '@/lib/pedidoPrioridad'
+import { hoyLocalISO } from '@/lib/ventasValidation'
 import { useConfirm } from '@/hooks/useConfirm'
 import {
   parsearPildora, evaluarPildora, evaluarPildoras, CAMPOS_FILTRO, esCampoNumerico,
@@ -39,7 +41,7 @@ interface TareaWMS {
   ubicacion_destino: { nombre: string } | null
   envios: { numero: number | null; venta_id: string | null } | null
   pedido_id: string | null
-  pedidos: { numero: number | null; venta_origen_id: string | null } | null
+  pedidos: { numero: number | null; venta_origen_id: string | null; fecha_entrega_solicitada: string | null; estado: string } | null
 }
 
 // La venta de una tarea se resuelve por DOS caminos: pedidos.venta_origen_id (viene de Pedidos)
@@ -81,7 +83,7 @@ export default function PickingPage() {
     queryKey: ['wms_tareas', tenant?.id, sucursalId, user?.id],
     queryFn: async () => {
       let q = supabase.from('wms_tareas')
-        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id, fecha_entrega_solicitada, estado), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'en_curso'])
         // reposicion_gondola (mig 355) es trabajo del Repositor, vive en /repositores — nunca se mezcla
@@ -279,6 +281,20 @@ export default function PickingPage() {
                       <ClipboardList size={11} /> Pedido #{t.pedidos.numero}
                     </button>
                   )}
+                  {/* Fecha de entrega del pedido (GO 2026-10-02): que preparación sepa qué va primero. */}
+                  {t.pedidos?.fecha_entrega_solicitada && (() => {
+                    const urg = urgenciaEntrega(t.pedidos.fecha_entrega_solicitada, t.pedidos.estado, hoyLocalISO())
+                    const cls = urg === 'atrasado' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : urg === 'hoy' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : urg === 'manana' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                    const etiqueta = urg === 'atrasado' ? 'Atrasado' : urg === 'hoy' ? 'Entrega hoy' : urg === 'manana' ? 'Entrega mañana' : 'Entrega'
+                    return (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cls}`} title="Fecha de entrega acordada con el cliente">
+                        {etiqueta} · {fechaEntregaLegible(t.pedidos.fecha_entrega_solicitada)}
+                      </span>
+                    )
+                  })()}
                   {ventaIdDe(t) != null && ventasPorId[ventaIdDe(t)!] != null && (
                     <button type="button"
                       onClick={() => navigate(`/ventas?id=${ventaIdDe(t)}`)}

@@ -6,36 +6,95 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-01, cierre) — PROD = DEV = `v1.236.0` (001-454)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-02, cierre de la tarde) — PROD `v1.237.0` (+ migs 456/458 en la base + EF `mp-crear-link-pago` v10) · DEV 001-463 + pricing v7 sin bloqueos
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.236.0` ✅ (PR #368, merge `f4354d29`) | 001-**454** |
-> | **DEV** | `v1.236.0` (= PROD) | 001-**454** |
-> | **Panel interno** (`genesis360-admin`) | `main` = `dev` (PR #6), servido en admin.genesis360.pro | — |
+> | **PROD** | `v1.237.0` (PR #369) + **EF `mp-crear-link-pago` v10** (hotfix, commit `d2332830`, desplegada con OK de GO) | 001-456 + **458** (la 457 NO; sin cambios de migración hoy) |
+> | **DEV** | `v1.237.0` + pricing v7 + guard de sucursales + desarmado de KIT atómico + caja con la sucursal de su caja + precio pactado de add-ons + guard de modo avanzado por plan (commits `ab452449`, `0214f65a`, `a6ba9d0e`, `1e90eb73`, `c46a8e3e`, `8cb8a98d`, `8f818d6e`, `25c74e70` en `origin/dev`, sin bump). Unit 2122 | 001-**463** |
+> | **Panel interno** | `dev` con `cd284e4` (sin `plan_id`), sin mergear | — |
 >
-> 🚀 **Deploy 01/10 (GO: "pasa todo a PRD")**: migs 446→451 de a una (hashes DEV = PROD), EF `consultar-cuit` en PROD
-> (secrets del padrón en producción + ticket WSAA vigente copiado al cache de PROD), paridad de policies por schema OK,
-> release `v1.235.0` Latest. Padrón ARCA de PRODUCCIÓN verificado a mano (consulta real OK); la 1ª consulta desde la app
-> de PROD la hace un usuario real (no hay usuario de prueba en PROD).
+> ⚠️ Paridad de policies: DEV `public` **240** vs PROD **239** a propósito (la 457 suma `tenant_herencia_plan_select_propio`).
 >
-> **Lo primero al retomar** (todo lo de abajo está EN PROD salvo lo marcado; detalle en `log.md` 2026-10-01):
+> **🛑 Hotfix EN PROD hoy:** `mp-crear-link-pago` caía al token de la PLATAFORMA si el negocio no tenía MP (o tenía 2
+> credenciales) → el cliente le pagaba a Genesis360. En PROD ningún negocio tiene MP, así que todo QR/link salía así.
+> Exposición: 0 facturas con saldo; 24 h de logs sin llamadas (no se ve más atrás). 🙋 Sugerido a GO: que Fede revise su
+> cuenta MP. Detalle en [[wiki/integrations/mercado-pago]].
 >
-> **✅ Importador del MAESTRO HECHO en DEV (01/10 noche, mig 452, sin versión)** — `/configuracion/importar` con
-> `PaginaImportacion` + vista previa compartida + `fn_importar_maestro` todo-o-nada. 🛑 Encontrado y corregido: los
-> **combos se creaban sin `combo_items`** y el POS los ignoraba (0 afectados en PROD); motivo `egreso` lo rechazaba el
-> CHECK; ubicaciones sin sucursal; estados inexistentes salteados; perfil existente con reglas duplicadas. Proveedores
-> salió del Maestro (lleva a `/proveedores/importar`). UAT §82, e2e `172`, unit `importarMaestro`.
-> **Para PROD:** mig 452 → merge (la página llama a la función nueva) · tocó `app-reference.md` (rutas de importadores
-> corregidas) ⇒ `npm run ai:knowledge` + redeploy EF `ai-assistant` DEV y PROD.
+> **▶ Lo primero al retomar: deploy de v7 a PROD** (pendiente del horario de GO; **ya no hay bloqueos**; detalle en
+> [[wiki/business/planes-pricing]]):
+> 1. ✅ **Mercado Pago listo**: Básico `142aefe1…` $54.000 · Pro `f06b2690…` $100.000 · Enterprise `852a7e8e…` $200.000
+>    (verificados en el checkout público, sin prueba gratis). `MP_PLAN_IDS.enterprise` (commit `8f818d6e`) y secret
+>    `MP_PLAN_ENTERPRISE` en DEV y PROD (hash verificado).
+> 2. **Lista del deploy**: migs **457 → 459 → 460 → 461 → 462 → 463**, de a una con `scripts/aplicar-migracion.mjs`, antes
+>    del merge → EFs `admin-api`, `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`
+>    (`mp-crear-link-pago` ya está en PROD) → bump `v1.238.0` → merge. Actualizar `app-reference.md` (líneas ~879 y
+>    ~1198, planes y precios) + `npm run ai:knowledge` + redeploy `ai-assistant`. Mergear también el panel interno y
+>    correr la suite e2e completa. Mig 463: verificar antes qué negocios de PROD tienen 'avanzado' con plan sin `wms`.
+> 3. **Fases pendientes de v7**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación — flujo nuevo);
+>    enforcement blando de comprobantes (80 %/100 % + mail); Landing 2.0 (docs de Fede) dice 30 días en 3 lugares.
+> 4. ✅ **PR-8 respondida por GO**: "Logística inteligente" = modo avanzado, solo desde Pro (Básico solo básico);
+>    marketplace = feature futura, el add-on de $35.000 no existe por ahora → mig 463 (UAT §92).
+>
+> **🔧 QR de MP — Fase 1 EN CURSO (sin código todavía).** Decisiones de GO 02/10: el envío SE COBRA y entra en la deuda
+> de CC; el interés de CC SE COBRA y va en el QR **recién cuando el contador responda la C-20** (¿ND con IVA?; 21 consultas
+> abiertas, C-20 y C-21 agregadas hoy). Hallazgos: la deuda de CC no incluye `costo_envio` (`monto_pagado` sí, desde
+> ISS-105); los intereses nunca se cobran (FIFO solo al capital; `fn_recalcular_intereses_cc_tenant` pone `interes_cc` en
+> 0 al saldar); `mp-ipn` hace check-then-insert (carrera con `mp-webhook`). **Fase 1**: envío en CC/cobranza/QR, un link
+> por venta reutilizado con vencimiento a 30 días que se desactiva al saldarse, excedente → `cliente_creditos` + aviso
+> al dueño, `mp-ipn` insert-first. **Fase 2**: interruptor en la configuración + QR en el estado de cuenta. **Fase 3**:
+> el interés (espera C-20). Ver [[wiki/features/clientes-proveedores]].
+>
+> **Decisiones de GO del 02/10 (ya aplicadas):** base del anual = precio de lista · Agente WhatsApp en Enterprise sin
+> precio · 15 días solo altas nuevas · add-on de sucursales nuevo solo compras nuevas · **existentes conservan límites y
+> módulos de su plan v6** (en prueba → Pro v6) · prueba vencida → `/suscripcion` (no "solo lectura") · Kalken (vencida
+> 24/09) y El Tilo (vence 28/10) quedan así: ven la página de planes al vencer.
+>
+> 🙋 **Pendiente de GO (PROD):** cerrar `Caja1` de Casa central con arqueo de $4.000 (sesión abierta desde el 13/04/2026;
+> el 02/10 se le corrigió la sucursal con un UPDATE, ver [[wiki/features/caja]] y el log). Quedan 2 sesiones CERRADAS de
+> GO con la sucursal desfasada: no se tocan (REGLA #0 #7).
+>
+> **Hecho hoy en PROD:** `v1.237.0` (U-2 stock con ubicación + mig 455, CUIT exigible, ficha alineada) · mig 456 (fuera
+> la tabla `planes` y `tenants.plan_id`; SQL de planes en [[wiki/support/sql-planes-tenants]]) · **incidente**: el
+> inventario de GO en 0 = sucursal "Casa central" desactivada con 775 unidades → reactivada + mig 458 (no se elimina una
+> sucursal con stock o caja abierta). El frontend de 458 (Reactivar en Sucursales + historial) va con el próximo deploy.
+> **Segundo incidente del mismo negocio:** una caja abierta con sucursal desfasada bloqueaba el cambio de sucursal sin
+> salida → corregida en PROD con un UPDATE + mig 460 (solo DEV) que lo impide hacia adelante.
+>
+> **✅ Decisiones de GO 02/10 (puntos abiertos para Tonga):** PL-5 = A (POS: aviso claro sin conexión; venta offline
+> solo si un cliente la pide) · PL-7 = la preparación para precio por sucursal es el **motor único de precio** de la
+> Fase 3 (+ columna `sucursal_id` vacía en `precios_programados`) · EC-5 = B (superusuario de soporte = rol `admin` del
+> panel; cada persona con su propio usuario de panel — GO los crea). Detalle en `respuestas_preguntas_pendientes_2026-09-30.md` §4.
+>
+> **📦 Para después (GO 02/10) — WMS profesional:** priorización de tareas de preparación y que las tareas caigan
+> solas a los usuarios con permiso para ese tipo de tarea y vehículo. Por ahora (mig 465): el pedido hereda la fecha de
+> entrega del envío y Pedidos/Picking ordenan y marcan atrasado/hoy/mañana.
+>
+> **🙋 PARA REVISAR (pedido de GO 02/10) — un usuario, un dispositivo a la vez:** GO plantea que al entrar con el mismo
+> usuario desde otro dispositivo se cierre la sesión del anterior. Analizar antes de decidir si aplica:
+> - *A favor:* cada persona usa su propio usuario (trazabilidad de caja/ventas/actividad por persona, no "el usuario del
+>   local" compartido); empuja a comprar usuarios del plan (límite de usuarios real); menos riesgo si alguien se lleva la
+>   contraseña.
+> - *En contra / implicancias:* el dueño que usa celular + PC a la vez queda echado de uno (¿excepción para DUEÑO, o
+>   "máximo N dispositivos"?); una venta a medio cargar en el dispositivo echado se pierde (avisar antes de cortar, no
+>   cortar en medio de un cobro); la PWA offline/cola de sincronización; la sesión de caja es por usuario, no por
+>   dispositivo (¿qué pasa con la caja abierta en el otro equipo?); los empleados sin correo (código + usuario) comparten
+>   más fácil el acceso.
+> - *Técnico:* Supabase no lo trae de fábrica: tabla de sesión activa por usuario (id de sesión/dispositivo) + chequeo
+>   al iniciar sesión y en el refresh del token (o Realtime para echar al instante) + `auth.admin.signOut` de las demás.
+>   Alternativa más suave: solo mostrar "este usuario está abierto en otro dispositivo" y dejar que el dueño decida.
+> - Sin código hasta que GO decida: (1) estricto 1 dispositivo / N dispositivos / solo aviso; (2) si el dueño es excepción.
+>
+> **Riesgos / hallazgos:** (a) ✅ CERRADO en DEV (02/10, mig 461, commit `c46a8e3e`): `tenant_addons.precio_mensual` guarda el precio pactado por pack; PROD tiene solo 2 packs, de negocios de prueba · (b) ✅ HECHO en DEV (02/10, mig 459, commit `a6ba9d0e`): el desarmado de KIT ahora es la RPC atómica `desarmar_kit` (ver [[wiki/features/inventario-stock]]); falta PROD · (b2) ✅ CERRADO en DEV (02/10, mig 462, commit `8cb8a98d`): trigger en `kitting_log` rechaza armado fraccionario; PROD 0 recetas y 0 armados · (c) U-2: la ubicación habitual del
+> producto se sigue precargando (decisión de GO: mantener).
 >
 > **📍 U-2 (A + B) HECHO en DEV (01/10 noche, sin migración, sin versión)** — GO eligió A+B **sin ubicación sugerida**.
 > A: el POS explica el stock sin ubicar / en ubicación no habilitada para surtido (y ya no oculta esos productos con un
 > grupo activo). B: en avanzado no se carga stock sin ubicación (ingreso individual/masivo, recepción, traslado, kit,
 > importador, devolución vendible). e2e `174` + 8 specs adaptados. UAT §85.
 > ✅ GO respondió: (1) anulación → elige quien aprueba (C); (2) cancelar traslado → elige quien cancela; (3) se mantiene
-> la ubicación habitual. Hecho + **guard de la base mig 455** (en DEV). Hallazgo abierto: el desarmado de KIT no es
-> atómico (pasarlo a RPC). **Deploy: mig 455 + frontend juntos** (sin bump todavía).
+> la ubicación habitual. Hecho + **guard de la base mig 455**. **✅ EN PROD v1.237.0 (02/10)** junto con CUIT exigible y
+> la ficha de producto alineada. Hallazgo (el desarmado de KIT no era atómico): ✅ resuelto en DEV el 02/10 con la mig 459.
 >
 > **🚀 v1.236.0 EN PROD (01/10, cierre, GO: "pasemos a PRD")** — migs 452→453→454 de a una, EF `emitir-factura` (diff 0),
 > merge PR #368, release Latest, servida `index-HQz-ILzk.js`, `ai-assistant` redeployado, paridad policies DEV = PROD.

@@ -8,8 +8,10 @@ import { tieneAccesoVigente } from '@/lib/accesoSuscripcion'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { type AddonRow } from '@/lib/addons'
-import { selDesdeAddons, type PackSel, type BatchBloqueo } from '@/lib/mpAddonBatch'
+import { selDesdeAddons, preciosDesdeAddons, type PackSel, type BatchBloqueo } from '@/lib/mpAddonBatch'
 import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
+import { intentoPendienteReciente, type IntentoSuscripcion } from '@/lib/mpReconciliacion'
+import { useConfirm } from '@/hooks/useConfirm'
 import PricingConfigurator from '@/components/PricingConfigurator'
 import {
   Check, X, CheckCircle, XCircle, Clock,
@@ -31,6 +33,7 @@ export default function SuscripcionPage() {
   const [verifReason, setVerifReason] = useState<string | null>(null)
   const { limits } = usePlanLimits()
   const queryClient = useQueryClient()
+  const confirmar = useConfirm()
 
   const esActivo = tenant?.subscription_status === 'active'
   // 🐛 El título miraba solo `subscription_status === 'trial'` y nunca la fecha, así que decía
@@ -55,13 +58,13 @@ export default function SuscripcionPage() {
   })
 
   // Add-ons FIJOS activos del tenant → estado inicial del panel batch (packs tildados).
-  const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string }>>({
+  const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string; precio_mensual: number | string | null }>>({
     queryKey: ['addons-fijos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('tenant_addons')
-        .select('id, dimension, cantidad, tipo')
+        .select('id, dimension, cantidad, tipo, precio_mensual')
         .eq('tenant_id', tenant!.id).eq('tipo', 'fijo')
-      return (data ?? []) as Array<AddonRow & { id: string }>
+      return (data ?? []) as Array<AddonRow & { id: string; precio_mensual: number | string | null }>
     },
     enabled: !!tenant && esActivo,
     staleTime: 30000,
@@ -196,6 +199,10 @@ export default function SuscripcionPage() {
   const esAddon = paymentType === 'addon'
   const esAddonBatch = paymentType === 'addonbatch'
   const esManualPago = paymentType === 'manualpago'
+  // Vuelta del checkout de una SUSCRIPCIÓN: en el checkout por plan MP puede volver solo con `preapproval_id`, sin
+  // `status=approved`. Antes se verificaba solo con status=approved → el pago quedaba sin vincular (incidente
+  // 2026-09-28: dos suscripciones pagadas, ninguna vinculada). Con el preapproval_id en la URL se verifica siempre.
+  const esVueltaSuscripcion = !esAddon && !esAddonBatch && !esManualPago && (status === 'approved' || !!preapprovalId)
 
   // ── Retorno del checkout del BATCH: poll del estado del change (lo aplica el webhook) ──
   const [batchState, setBatchState] = useState<'verificando' | 'ok' | 'pendiente' | 'error'>('verificando')
@@ -249,7 +256,7 @@ export default function SuscripcionPage() {
   // Al volver de MP con status=approved: esperar la sesión (el redirect recarga la app de
   // cero → el JWT puede no estar listo → 401), verificar y reintentar (MP/webhook tarda).
   useEffect(() => {
-    if (status !== 'approved' || esAddon || esAddonBatch || esManualPago) return
+    if (!esVueltaSuscripcion) return
     let cancelado = false
     ;(async () => {
       setVerifState('verificando')
@@ -265,7 +272,7 @@ export default function SuscripcionPage() {
     })()
     return () => { cancelado = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, esAddon, preapprovalId])
+  }, [esVueltaSuscripcion, preapprovalId])
 
   // Activada: refrescar el store (tenant → active, evita que SubscriptionGuard rebote a
   // /suscripcion con datos viejos) y llevar al dashboard tras mostrar el cartel de éxito.
@@ -291,10 +298,39 @@ export default function SuscripcionPage() {
     setVerifState('pendiente')
   }
 
-  const handleSuscribir = (planId: string, mpPlanId: string) => {
-    if (!mpPlanId) { toast.error('Plan no configurado'); return }
+  const handleSuscribir = async (planId: string, mpPlanId: string) => {
+    // Pricing v7: Enterprise todavía sin plan en MP → se coordina por mail (en vez de "Plan no configurado").
+    if (!mpPlanId) {
+      window.location.href = `mailto:${BRAND.email}?subject=${encodeURIComponent(`Quiero contratar el plan ${PLANES.find(p => p.id === planId)?.nombre ?? planId}`)}`
+      return
+    }
     if (!tenant?.id) { toast.error('No se encontró el tenant'); return }
+    // Mig 464 — frenar el doble pago: si en las últimas 2 h ya salió hacia el checkout y el pago no quedó vinculado,
+    // puede que ya haya pagado y MP todavía no lo confirmó (incidente 2026-09-28: pagó dos veces con 40 s de diferencia).
+    const { data: intentos } = await supabase.from('mp_suscripcion_intentos')
+      .select('tenant_id, mp_plan_id, created_at, vinculado_at')
+      .eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(10)
+    const pendiente = intentoPendienteReciente((intentos ?? []) as IntentoSuscripcion[], new Date())
+    if (pendiente) {
+      const min = Math.max(1, Math.round((Date.now() - new Date(pendiente.created_at).getTime()) / 60000))
+      const ok = await confirmar(
+        `Hace ${min} minuto${min === 1 ? '' : 's'} iniciaste el pago de una suscripción y todavía no la vemos confirmada.
+
+` +
+        'Si completaste el pago en Mercado Pago, NO vuelvas a pagar: te cobrarían dos veces. La confirmación puede ' +
+        `tardar hasta una hora; si no se activa, escribinos a ${BRAND.email}.
+
+` +
+        '¿Seguro que no pagaste y querés ir a pagar de nuevo?',
+        { titulo: 'Ya iniciaste un pago', confirmText: 'No pagué, ir a pagar', cancelText: 'Volver', danger: true },
+      )
+      if (!ok) return
+    }
     setLoading(planId)
+    // El negocio y el usuario los pone la base (sesión). Si el registro falla no se frena el pago: solo se pierde
+    // el aviso anti-duplicado y el candidato de la reconciliación.
+    const { error: intErr } = await supabase.rpc('registrar_intento_suscripcion', { p_plan_tier: planId, p_mp_plan_id: mpPlanId })
+    if (intErr) console.warn('No se pudo registrar el intento de suscripción', intErr.message)
     const appUrl = import.meta.env.VITE_APP_URL ?? 'https://app.genesis360.pro'
     const initPoint = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}&external_reference=${tenant.id}&back_url=${encodeURIComponent(appUrl + '/suscripcion')}`
     window.location.href = initPoint
@@ -328,11 +364,11 @@ export default function SuscripcionPage() {
     : undefined
 
   // Pantalla de resultado de pago
-  if (status) {
+  if (status || esVueltaSuscripcion) {
     return (
       <div className="min-h-screen bg-brand-gradient-dark flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
-          {status === 'approved' ? (
+          {status === 'approved' || esVueltaSuscripcion ? (
             esAddonBatch ? (
               batchState === 'ok' ? (
                 <>
@@ -620,8 +656,9 @@ export default function SuscripcionPage() {
                       : 'bg-accent/25 text-white border-accent-text/50'}`}>
                     ✓ Plan actual
                   </div>
-                ) : plan.precio === null ? (
-                  <a href={`mailto:${BRAND.email}?subject=Plan Enterprise`}
+                ) : plan.precio === null || !mpPlanId ? (
+                  // Sin plan de débito en MP (pricing v7: Enterprise hasta crearlo) → se contrata por mail.
+                  <a href={`mailto:${BRAND.email}?subject=${encodeURIComponent(`Quiero contratar el plan ${plan.nombre}`)}`}
                     className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
                       ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white dark:bg-gray-800 text-primary dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                     Contactar
@@ -680,6 +717,7 @@ export default function SuscripcionPage() {
                 planesMp: batchPreview.planes_mp,
                 montoActualMP: batchPreview.monto_actual,
                 initialSel: packsActuales,
+                preciosPactados: preciosDesdeAddons(addonsFijos),
                 confirmando: confirmandoBatch,
                 onConfirm: handleConfirmarBatch,
               }}

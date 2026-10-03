@@ -31,7 +31,8 @@ import {
 import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { motivoNoLanzarPedido } from '@/lib/pedidoVenta'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
-import { esDecimal } from '@/lib/ventasValidation'
+import { esDecimal, hoyLocalISO } from '@/lib/ventasValidation'
+import { urgenciaEntrega, ordenarPorEntrega, fechaEntregaLegible } from '@/lib/pedidoPrioridad'
 import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
 import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, type EstadoAutorizacion } from '@/hooks/useSupervisorAutorizaciones'
@@ -117,6 +118,10 @@ export default function PedidosPage() {
   // el criterio de la alerta (fecha_entrega_solicitada < hoy, no entregado/cancelado) — no hay un
   // único `estado` que lo represente, así que es un flag aparte en vez de un valor de filtroEstado.
   const [soloVencidos, setSoloVencidos] = useState(() => searchParams.get('vencidos') === '1')
+  // Orden de la lista (GO 2026-10-02): por fecha de entrega para que preparación sepa qué va primero.
+  const [ordenPedidos, setOrdenPedidos] = useState<'entrega' | 'recientes'>(() => {
+    try { return localStorage.getItem('pedidos-orden') === 'recientes' ? 'recientes' : 'entrega' } catch { return 'entrega' }
+  })
 
   // ── Entregar (PED4): genera la venta real + rebaja stock reservado + asienta caja ────
   const [entregaModal, setEntregaModal] = useState<any | null>(null)
@@ -155,7 +160,7 @@ export default function PedidosPage() {
     queryKey: ['pedidos', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase.from('pedidos')
-        .select('*, tipos_pedido(nombre), clientes(nombre), pedido_items(*, productos(nombre, sku, unidad_medida)), ventas:venta_origen_id(estado)')
+        .select('*, tipos_pedido(nombre), clientes(nombre), pedido_items(*, productos(nombre, sku, unidad_medida)), ventas:venta_origen_id(estado), envios(rango_horario_desde, rango_horario_hasta)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -175,8 +180,9 @@ export default function PedidosPage() {
     : null
   const pildorasEfectivas = pildoraDeEntrada ? [...pildoras, pildoraDeEntrada] : pildoras
 
-  const hoyStrPed = new Date().toISOString().split('T')[0]
-  const pedidosFiltrados = (pedidos as any[])
+  // Día LOCAL: con toISOString, después de las 21 h de Argentina "hoy" ya era mañana y un pedido de hoy salía atrasado.
+  const hoyStrPed = hoyLocalISO()
+  const pedidosFiltradosSinOrden = (pedidos as any[])
     .filter(p => !filtroEstado || p.estado === filtroEstado)
     .filter(p => !soloVencidos || (
       p.fecha_entrega_solicitada && p.fecha_entrega_solicitada < hoyStrPed
@@ -186,6 +192,7 @@ export default function PedidosPage() {
       { numero: p.numero, referencia: p.referencia ?? null, clienteNombre: p.clientes?.nombre ?? p.cliente_nombre ?? null },
       pildorasEfectivas, combinador,
     ))
+  const pedidosFiltrados = ordenPedidos === 'entrega' ? ordenarPorEntrega(pedidosFiltradosSinOrden) : pedidosFiltradosSinOrden
 
   // ── K3 (PED8): exportar Excel/PDF/CSV — una fila por línea de pedido, mismo criterio que
   // el resto de los módulos (XLSX.utils.json_to_sheet / jsPDF+autoTable / CSV a mano) ──────
@@ -194,12 +201,12 @@ export default function PedidosPage() {
     const items = (p.pedido_items ?? []).filter((it: any) => it.estado !== 'cancelada')
     if (items.length === 0) return [{
       Pedido: p.numero, Referencia: p.referencia ?? '', Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
-      'Entrega solicitada': p.fecha_entrega_solicitada ? new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR') : '',
+      'Entrega solicitada': p.fecha_entrega_solicitada ? fechaEntregaLegible(p.fecha_entrega_solicitada) : '',
       Producto: '', SKU: '', Cantidad: '', Entregado: '',
     }]
     return items.map((it: any) => ({
       Pedido: p.numero, Referencia: p.referencia ?? '', Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
-      'Entrega solicitada': p.fecha_entrega_solicitada ? new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR') : '',
+      'Entrega solicitada': p.fecha_entrega_solicitada ? fechaEntregaLegible(p.fecha_entrega_solicitada) : '',
       Producto: it.productos?.nombre ?? '', SKU: it.productos?.sku ?? '',
       Cantidad: Number(it.cantidad), Entregado: Number(it.cantidad_entregada ?? 0),
     }))
@@ -969,6 +976,16 @@ export default function PedidosPage() {
           <option value="">Todos los estados</option>
           {Object.entries(ESTADO_BADGE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        <select value={ordenPedidos} aria-label="Orden de los pedidos"
+          onChange={e => {
+            const v = e.target.value === 'recientes' ? 'recientes' : 'entrega'
+            setOrdenPedidos(v)
+            try { localStorage.setItem('pedidos-orden', v) } catch { /* sin storage: solo esta sesión */ }
+          }}
+          className={`${inputCls} max-w-[220px]`}>
+          <option value="entrega">Ordenar por fecha de entrega</option>
+          <option value="recientes">Más recientes primero</option>
+        </select>
         {soloVencidos && (
           <button onClick={() => setSoloVencidos(false)}
             className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
@@ -1020,9 +1037,22 @@ export default function PedidosPage() {
                   <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex items-center gap-1"><User size={12} className="text-gray-400" />{cliente}</span>
                   <span className="text-xs text-gray-400">{nItems} línea{nItems !== 1 ? 's' : ''}</span>
                   {p.requiere_envio && <Truck size={12} className="text-gray-400" />}
-                  {p.fecha_entrega_solicitada && (
-                    <span className="text-xs text-gray-400 flex items-center gap-1"><CalendarClock size={11} />{new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR')}</span>
-                  )}
+                  {p.fecha_entrega_solicitada && (() => {
+                    const urg = urgenciaEntrega(p.fecha_entrega_solicitada, p.estado, hoyStrPed)
+                    const env = (p.envios ?? []).find((e: any) => e.rango_horario_desde)
+                    const cls = urg === 'atrasado' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                      : urg === 'hoy' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                      : urg === 'manana' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                      : 'text-gray-400'
+                    const etiqueta = urg === 'atrasado' ? 'Atrasado · ' : urg === 'hoy' ? 'Hoy · ' : urg === 'manana' ? 'Mañana · ' : ''
+                    return (
+                      <span className={`text-xs flex items-center gap-1 ${urg && urg !== 'proximo' ? `font-semibold px-1.5 py-0.5 rounded ${cls}` : 'text-gray-400'}`}
+                        title="Fecha de entrega acordada">
+                        <CalendarClock size={11} />{etiqueta}{fechaEntregaLegible(p.fecha_entrega_solicitada)}
+                        {env && ` ${env.rango_horario_desde}–${env.rango_horario_hasta}`}
+                      </span>
+                    )
+                  })()}
                 </button>
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${badge.cls}`}>{badge.label}</span>
                 {p.estado === 'borrador' && puedeYo('confirmar') && (

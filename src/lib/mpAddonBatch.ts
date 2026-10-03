@@ -19,6 +19,7 @@
  *     quedar por debajo del uso activo (desactivar antes de bajar; SKU: desactivar ≠ eliminar).
  */
 import { PLAN_BASE_LIMITS } from '@/config/brand'
+import { limiteBase, type HerenciaPlan } from '@/lib/planLimites'
 import { findAddonPack, type AddonDimension, type AddonRow } from './addons'
 
 /** Dimensiones de add-on FIJO del panel batch (comprobantes es flujo: sin guard de baja). */
@@ -39,10 +40,36 @@ export function selDesdeAddons(rows: AddonRow[]): PackSel {
   return sel
 }
 
-/** Precio mensual de una selección (packs del catálogo; pack inexistente = 0, no confiable). */
-export function precioSel(sel: PackSel): number {
+/** Precio mensual pactado de cada pack FIJO actual (tenant_addons.precio_mensual, mig 461). */
+export type PreciosPactados = Partial<Record<AddonDimension, number>>
+
+/** Precios pactados a partir de las filas de tenant_addons (el numeric de Postgres llega como string). */
+export function preciosDesdeAddons(rows: Array<AddonRow & { precio_mensual?: number | string | null }>): PreciosPactados {
+  const precios: PreciosPactados = {}
+  for (const r of rows) {
+    if (r.tipo !== 'fijo' || r.precio_mensual == null) continue
+    const n = parseFloat(String(r.precio_mensual))
+    if (Number.isFinite(n)) precios[r.dimension] = n
+  }
+  return precios
+}
+
+/**
+ * Precio de UN pack (espejo de `precioPack` de la EF mp-addon-batch). PR-6 (GO 2026-10-02): el precio nuevo de un
+ * add-on aplica solo a compras nuevas → el pack que el negocio YA tiene (misma dimensión y cantidad) vale lo que se
+ * pactó; un pack nuevo o distinto, el catálogo vigente. Pack inexistente en el catálogo = 0 (no confiable).
+ */
+export function precioPack(dim: AddonDimension, cant: number, actuales: PackSel = {}, pactados: PreciosPactados = {}): number {
+  if (!cant) return 0
+  const pactado = pactados[dim]
+  if (actuales[dim] === cant && pactado !== undefined && Number.isFinite(pactado)) return pactado
+  return findAddonPack(dim, cant)?.precio ?? 0
+}
+
+/** Precio mensual de una selección (cada pack según `precioPack`). */
+export function precioSel(sel: PackSel, actuales: PackSel = {}, pactados: PreciosPactados = {}): number {
   return Object.entries(sel).reduce((sum, [dim, cant]) =>
-    sum + (cant ? (findAddonPack(dim as AddonDimension, cant)?.precio ?? 0) : 0), 0)
+    sum + precioPack(dim as AddonDimension, cant ?? 0, actuales, pactados), 0)
 }
 
 /**
@@ -87,9 +114,11 @@ export function calcularBatch(p: {
   packsActuales: PackSel
   packsObjetivo: PackSel
   plan?: PlanCambio | null
+  /** Precio pactado de los packs actuales (mig 461). Sin él, se usa el catálogo (comportamiento previo). */
+  preciosPactados?: PreciosPactados
 }): BatchCalculo {
-  const actual = precioSel(p.packsActuales)
-  const objetivo = precioSel(p.packsObjetivo)
+  const actual = precioSel(p.packsActuales, p.packsActuales, p.preciosPactados)
+  const objetivo = precioSel(p.packsObjetivo, p.packsActuales, p.preciosPactados)
   const cambiaPlan = !!p.plan && p.plan.tierObjetivo !== p.plan.tierActual
   const deltaPlan = cambiaPlan ? p.plan!.precioPlanObjetivoMP - p.plan!.precioPlanActualMP : 0
   const recurrenteNuevo = Math.max(0, p.montoActualMP - actual + objetivo + deltaPlan)
@@ -121,11 +150,12 @@ export function guardBatch(p: {
   tier: string
   packsObjetivo: PackSel
   uso: { sku: number; sucursales: number; usuarios: number }
+  /** Pricing v7 (mig 457): herencia v6 del negocio existente (piso de la base). */
+  herencia?: HerenciaPlan | null
 }): BatchBloqueo[] {
-  const base = PLAN_BASE_LIMITS[p.tier] ?? PLAN_BASE_LIMITS['free']
   const bloqueos: BatchBloqueo[] = []
   for (const dim of DIMS_ESTADO) {
-    const b = base[dim as 'sku' | 'sucursales' | 'usuarios']
+    const b = limiteBase(p.tier, dim as 'sku' | 'sucursales' | 'usuarios', p.herencia)
     if (b === -1) continue // ilimitado
     const nuevoLimite = b + (p.packsObjetivo[dim] ?? 0)
     const uso = p.uso[dim as 'sku' | 'sucursales' | 'usuarios']

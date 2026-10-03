@@ -7,7 +7,7 @@
 import { describe, test, expect } from 'vitest'
 import {
   calcularBatch, guardBatch, selDesdeAddons, precioSel, esUpgradeDePlan,
-  decidirSweepProgramado, decidirConfirmacionCobro,
+  decidirSweepProgramado, decidirConfirmacionCobro, preciosDesdeAddons, precioPack,
 } from '@/lib/mpAddonBatch'
 
 describe('calcularBatch — delta sobre el monto real (ejemplos GO)', () => {
@@ -38,13 +38,14 @@ describe('calcularBatch — delta sobre el monto real (ejemplos GO)', () => {
     expect(r.deltaAPagar).toBe(5000)
   })
 
-  test('batch mixto (agrega usuarios $5k, quita sucursales $15k) → delta neto negativo = sin cobro', () => {
+  // Sin precio pactado (pack viejo sin `precio_mensual`) el batch cae al catálogo vigente: ver el describe de PR-6.
+  test('batch mixto (agrega usuarios $5k, quita sucursales $35k) → delta neto negativo = sin cobro', () => {
     const r = calcularBatch({
-      montoActualMP: 75000,
-      packsActuales: { sucursales: 1 },              // $15.000
+      montoActualMP: 89000,                          // Básico $54k + sucursales+1 $35k
+      packsActuales: { sucursales: 1 },              // $35.000
       packsObjetivo: { usuarios: 1 },                // $5.000
     })
-    expect(r.recurrenteNuevo).toBe(65000)
+    expect(r.recurrenteNuevo).toBe(59000)
     expect(r.deltaAPagar).toBe(0)
   })
 
@@ -95,7 +96,7 @@ describe('calcularBatch — cambio de PLAN (Fase 2, spec GO 2026-07-07)', () => 
 
   test('upgrade + quitar packs puede dar delta ≤ 0 (sin cobro hoy, se aplica ya)', () => {
     const r = calcularBatch({
-      montoActualMP: 109000,                      // Básico $54k + sucursales+5 $55k
+      montoActualMP: 124000,                      // Básico $54k + sucursales+5 $70k (pricing v7)
       packsActuales: { sucursales: 5 },
       packsObjetivo: {},
       plan: plan('basico', 'pro'),
@@ -184,7 +185,7 @@ describe('guardBatch — baja bloqueada por uso activo (ejemplo GO exacto)', () 
     const b = guardBatch({
       tier: 'basico',
       packsObjetivo: {},
-      uso: { sku: 2100, sucursales: 1, usuarios: 7 }, // base 5 usuarios, usa 7
+      uso: { sku: 2100, sucursales: 1, usuarios: 7 }, // base 3 usuarios (v7), usa 7
     })
     expect(b.map(x => x.dimension).sort()).toEqual(['sku', 'usuarios'])
   })
@@ -194,8 +195,16 @@ describe('guardBatch — baja bloqueada por uso activo (ejemplo GO exacto)', () 
     expect(b.find(x => x.dimension === 'comprobantes')).toBeUndefined()
   })
 
-  test('enterprise (base -1) nunca bloquea', () => {
-    expect(guardBatch({ tier: 'enterprise', packsObjetivo: {}, uso: { sku: 99999, sucursales: 99, usuarios: 99 } })).toEqual([])
+  test('v7: enterprise ya no es ilimitado — bloquea por encima de 18.000 productos', () => {
+    expect(guardBatch({ tier: 'enterprise', packsObjetivo: {}, uso: { sku: 17000, sucursales: 4, usuarios: 20 } })).toEqual([])
+    expect(guardBatch({ tier: 'enterprise', packsObjetivo: {}, uso: { sku: 18001, sucursales: 1, usuarios: 1 } }).map(x => x.dimension)).toEqual(['sku'])
+  })
+
+  test('herencia v6 (mig 457): un negocio existente en Básico con 5 usuarios NO queda bloqueado (piso Pro v6: 15)', () => {
+    const herencia = { tier_heredado: 'pro', limites: { usuarios: 15, sku: 8000, sucursales: 4 }, features: [] }
+    expect(guardBatch({ tier: 'basico', packsObjetivo: {}, uso: { sku: 100, sucursales: 3, usuarios: 5 }, herencia })).toEqual([])
+    expect(guardBatch({ tier: 'basico', packsObjetivo: {}, uso: { sku: 100, sucursales: 3, usuarios: 5 } }).map(x => x.dimension).sort())
+      .toEqual(['sucursales', 'usuarios'])
   })
 })
 
@@ -207,5 +216,45 @@ describe('selDesdeAddons — estado inicial del panel', () => {
       { dimension: 'usuarios', cantidad: 1, tipo: 'fijo' },
     ])
     expect(sel).toEqual({ sku: 2000, usuarios: 1 })
+  })
+})
+
+// PR-6 (GO 2026-10-02) + mig 461: el precio nuevo de un add-on aplica SOLO a compras nuevas. El pack que el negocio ya
+// tiene vale lo que pactó (tenant_addons.precio_mensual). Espejo de precioPack de la EF mp-addon-batch.
+describe('precio pactado por pack (PR-6, mig 461)', () => {
+  // Negocio que compró +1 sucursal a $15.000 (v6) sobre Básico $54k → paga $69.000. El catálogo v7 dice $35.000.
+  const pactados = { sucursales: 15000 }
+
+  test('🛑 quitar el pack descuenta lo que paga ($15k), no el precio nuevo ($35k)', () => {
+    const r = calcularBatch({ montoActualMP: 69000, packsActuales: { sucursales: 1 }, packsObjetivo: {}, preciosPactados: pactados })
+    expect(r.recurrenteNuevo).toBe(54000)
+  })
+
+  test('🛑 mantener el pack y sumar otro: el que ya tiene no se re-precia', () => {
+    const r = calcularBatch({ montoActualMP: 69000, packsActuales: { sucursales: 1 }, packsObjetivo: { sucursales: 1, usuarios: 1 }, preciosPactados: pactados })
+    expect(r).toMatchObject({ recurrenteNuevo: 74000, deltaAPagar: 5000 })
+  })
+
+  test('cambiar a otro pack de la misma dimensión = compra nueva → precio vigente', () => {
+    // sale el +1 ($15k pactado) y entra el +3 ($55k v7)
+    const r = calcularBatch({ montoActualMP: 69000, packsActuales: { sucursales: 1 }, packsObjetivo: { sucursales: 3 }, preciosPactados: pactados })
+    expect(r).toMatchObject({ recurrenteNuevo: 109000, deltaAPagar: 40000 })
+  })
+
+  test('precioPack: pactado solo para la misma dimensión y cantidad; sin pactado → catálogo', () => {
+    expect(precioPack('sucursales', 1, { sucursales: 1 }, pactados)).toBe(15000)
+    expect(precioPack('sucursales', 3, { sucursales: 1 }, pactados)).toBe(55000)
+    expect(precioPack('sucursales', 1, {}, pactados)).toBe(35000)
+    expect(precioPack('usuarios', 1, { usuarios: 1 }, pactados)).toBe(5000)
+    expect(precioPack('sucursales', 0, { sucursales: 1 }, pactados)).toBe(0)
+  })
+
+  test('preciosDesdeAddons: el numeric llega como string; temporales y nulos se ignoran; un 0 es un precio', () => {
+    expect(preciosDesdeAddons([
+      { dimension: 'sucursales', cantidad: 1, tipo: 'fijo', precio_mensual: '15000.00' },
+      { dimension: 'usuarios', cantidad: 1, tipo: 'fijo', precio_mensual: null },
+      { dimension: 'sku', cantidad: 500, tipo: 'fijo', precio_mensual: '0.00' },
+      { dimension: 'comprobantes', cantidad: 1000, tipo: 'temporal', precio_mensual: '10000.00' },
+    ])).toEqual({ sucursales: 15000, sku: 0 })
   })
 })

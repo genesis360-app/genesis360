@@ -25,7 +25,7 @@ El núcleo de Genesis360. Modelo **LPN (Location/Product/Lot Number)** para trac
 
 ---
 
-## 📍 U-2 — Modo avanzado: el stock entra CON ubicación y el POS explica el que no se vende (2026-10-01, 🟡 EN DEV)
+## 📍 U-2 — Modo avanzado: el stock entra CON ubicación y el POS explica el que no se vende (2026-10-01, ✅ EN PROD v1.237.0)
 
 Lo destapó el 2º cliente real (29/09): en avanzado el POS solo vende stock **ubicado** y en ubicaciones **habilitadas
 para surtido** (`disponible_surtido`, default `false` desde la mig 336), pero el ingreso dejaba cargar stock sin
@@ -44,7 +44,21 @@ guardó ahí físicamente; ayudarlos a no cometer errores, no presuponer".
   entraba sin ubicación y no se vendía; ahora se elige entre ubicaciones habilitadas para surtido). Mover LPN y
   des-pickeo ya la exigían.
 - El desarmado de KIT ahora revisa los errores de cada paso (antes, si fallaba el ingreso de un componente, el
-  movimiento quedaba registrado sin el stock). ⚠️ Sigue sin ser atómico (pendiente: pasarlo a una RPC como el armado).
+  movimiento quedaba registrado sin el stock). ✅ Ya es atómico: ver "Desarmado de KIT atómico (mig 459)" abajo.
+
+#### Desarmado de KIT atómico (mig 459 — EN DEV 2026-10-02, NO EN PROD)
+
+Hallazgo REGLA #0 (inventario): el desarmado en `InventarioPage` eran escrituras sueltas desde el navegador. Ahora
+llama a la RPC `desarmar_kit` (`SECURITY INVOKER`, GRANT solo `authenticated`; sin policies nuevas), todo en una
+transacción: `FOR UPDATE` sobre las líneas del KIT, FIFO ordenado por `created_at`, ingreso de componentes en la
+ubicación elegida, movimientos `des_kitting` y `kitting_log`. Cierra: no atomicidad; `stock_antes` del movimiento leído
+DESPUÉS del rebaje (antes/después corridos); FIFO sin orden; errores de `movimientos_stock`/`kitting_log` ignorados; sin
+bloqueo concurrente; componente fraccionario (receta numeric × cant) redondeado en silencio porque
+`inventario_lineas.cantidad` es integer → ahora se **rechaza**; productos con serie → rechazados. La línea del KIT que
+queda en 0 sin reservas se desactiva. Los movimientos históricos NO se corrigieron. e2e `75_kit_desarmar_mutante`
+reescrito autocontenido; UAT §89.
+⚠️ Hallazgo latente sin arreglar: el **armado** (`iniciar/confirmar_armado_kit`, migs 244/343) tiene el mismo problema
+con recetas fraccionarias contra columnas integer (`cantidad_reservada`/`cantidad`).
 - **Anular una venta despachada** (GO: opción C): quien aprueba la anulación elige en un modal dónde vuelve la mercadería
   (`ElegirUbicacionModal`), validado ANTES de tocar caja o stock; el reingreso ahora revisa errores (antes la venta quedaba
   anulada con la plata devuelta y el stock perdido en silencio). **Cancelar un traslado** cuya línea de origen ya no

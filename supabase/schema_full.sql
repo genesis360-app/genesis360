@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-02T02:39:51.804Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261002021838 · 175 tablas
+-- Generado 2026-10-03T02:49:03.309Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261003023427 · 177 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -389,6 +389,17 @@ CREATE TABLE public.canales_venta (
   predefinido boolean NOT NULL DEFAULT false,
   orden integer,
   created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.categoria_cliente_descuentos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  categoria_id uuid NOT NULL,
+  producto_id uuid NOT NULL,
+  descuento_pct numeric(5,2) NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by uuid
 );
 
 CREATE TABLE public.categorias (
@@ -1352,6 +1363,17 @@ CREATE TABLE public.mp_billing_alertas (
   nota text
 );
 
+CREATE TABLE public.mp_suscripcion_intentos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  usuario_id uuid,
+  plan_tier text NOT NULL,
+  mp_plan_id text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  preapproval_id text,
+  vinculado_at timestamp with time zone
+);
+
 CREATE TABLE public.nc_afip_pendientes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -1488,16 +1510,6 @@ CREATE TABLE public.pedidos (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   referencia text,
   venta_origen_id uuid
-);
-
-CREATE TABLE public.planes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  nombre text NOT NULL,
-  max_users integer NOT NULL DEFAULT 2,
-  precio_mensual numeric(10,2) NOT NULL,
-  mp_plan_id text,
-  activo boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now()
 );
 
 CREATE TABLE public.platform_billers (
@@ -2336,7 +2348,8 @@ CREATE TABLE public.tenant_addons (
   tipo text NOT NULL,
   vence_at timestamp with time zone,
   mp_payment_id text,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  precio_mensual numeric(14,2)
 );
 
 CREATE TABLE public.tenant_certificates (
@@ -2352,14 +2365,22 @@ CREATE TABLE public.tenant_certificates (
   emisor_id uuid
 );
 
+CREATE TABLE public.tenant_herencia_plan (
+  tenant_id uuid NOT NULL,
+  tier_heredado text NOT NULL,
+  limites jsonb NOT NULL,
+  features text[] NOT NULL,
+  creado_at timestamp with time zone NOT NULL DEFAULT now(),
+  nota text
+);
+
 CREATE TABLE public.tenants (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   nombre text NOT NULL,
   tipo_comercio text,
   pais text DEFAULT 'AR'::text,
   subscription_status text NOT NULL DEFAULT 'trial'::text,
-  trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '30 days'::interval),
-  plan_id uuid,
+  trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '15 days'::interval),
   max_users integer NOT NULL DEFAULT 2,
   max_productos integer NOT NULL DEFAULT 50,
   mp_subscription_id text,
@@ -2992,6 +3013,9 @@ ALTER TABLE public.cajas ADD CONSTRAINT cajas_pkey PRIMARY KEY (id);
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_clasificacion_check CHECK ((clasificacion = ANY (ARRAY['online'::text, 'presencial'::text])));
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_pkey PRIMARY KEY (id);
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
+ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_categoria_id_producto_id_key UNIQUE (categoria_id, producto_id);
+ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_descuento_pct_check CHECK (((descuento_pct >= (0)::numeric) AND (descuento_pct <= (100)::numeric)));
+ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias ADD CONSTRAINT chk_categorias_rotacion_matriz CHECK ((NOT (COALESCE(rotacion_agotar_antes_reponer, false) AND COALESCE(rotacion_armar_kits, false))));
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_enforcement_politica_check CHECK (((cc_enforcement_politica IS NULL) OR (cc_enforcement_politica = ANY (ARRAY['permitir'::text, 'avisar'::text, 'bloquear'::text]))));
@@ -3139,6 +3163,8 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_check CHECK ((tipo = ANY (ARRAY['huerfana'::text, 'drift_mp_cobra'::text, 'drift_acceso_gratis'::text])));
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_preapproval_id_key UNIQUE (tipo, preapproval_id);
+ALTER TABLE public.mp_suscripcion_intentos ADD CONSTRAINT mp_suscripcion_intentos_pkey PRIMARY KEY (id);
+ALTER TABLE public.mp_suscripcion_intentos ADD CONSTRAINT mp_suscripcion_intentos_plan_tier_check CHECK ((plan_tier = ANY (ARRAY['basico'::text, 'pro'::text, 'enterprise'::text])));
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_pkey PRIMARY KEY (id);
 ALTER TABLE public.notificaciones ADD CONSTRAINT notificaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_cantidad_check CHECK ((cantidad > (0)::numeric));
@@ -3156,7 +3182,6 @@ ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_pkey PRIMARY KEY (id
 ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_pkey PRIMARY KEY (id);
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmado'::text, 'en_preparacion'::text, 'listo_para_entrega'::text, 'entregado'::text, 'entregado_parcial'::text, 'cancelado'::text])));
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_pkey PRIMARY KEY (id);
-ALTER TABLE public.planes ADD CONSTRAINT planes_pkey PRIMARY KEY (id);
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_condicion_iva_emisor_check CHECK ((condicion_iva_emisor = ANY (ARRAY['Monotributista'::text, 'Exento'::text, 'RI'::text])));
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_pkey PRIMARY KEY (id);
@@ -3294,6 +3319,8 @@ ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_dimension_check CH
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tipo_check CHECK ((tipo = ANY (ARRAY['fijo'::text, 'temporal'::text])));
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_pkey PRIMARY KEY (id);
+ALTER TABLE public.tenant_herencia_plan ADD CONSTRAINT tenant_herencia_plan_pkey PRIMARY KEY (tenant_id);
+ALTER TABLE public.tenant_herencia_plan ADD CONSTRAINT tenant_herencia_plan_tier_heredado_check CHECK ((tier_heredado = ANY (ARRAY['free'::text, 'basico'::text, 'pro'::text, 'enterprise'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_cubicaje_factor CHECK (((cubicaje_factor_aprovechamiento > (0)::numeric) AND (cubicaje_factor_aprovechamiento <= (1)::numeric)));
 ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_rotacion_matriz CHECK ((NOT (rotacion_agotar_antes_reponer AND rotacion_armar_kits)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
@@ -3444,6 +3471,9 @@ ALTER TABLE public.caja_traspasos ADD CONSTRAINT caja_traspasos_usuario_id_fkey 
 ALTER TABLE public.cajas ADD CONSTRAINT cajas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.cajas ADD CONSTRAINT cajas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias_cliente(id) ON DELETE CASCADE;
+ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
+ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
@@ -3626,6 +3656,7 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_unidad_med
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE public.mp_suscripcion_intentos ADD CONSTRAINT mp_suscripcion_intentos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_devolucion_id_fkey FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id) ON DELETE CASCADE;
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
@@ -3812,7 +3843,7 @@ ALTER TABLE public.tareas_repositor ADD CONSTRAINT tareas_repositor_usuario_asig
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_emisor_id_fkey FOREIGN KEY (emisor_id) REFERENCES emisores_fiscales(id) ON DELETE SET NULL;
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-ALTER TABLE public.tenants ADD CONSTRAINT tenants_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES planes(id);
+ALTER TABLE public.tenant_herencia_plan ADD CONSTRAINT tenant_herencia_plan_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_wms_armado_operario_default_id_fkey FOREIGN KEY (wms_armado_operario_default_id) REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE CASCADE;
@@ -3904,6 +3935,8 @@ CREATE INDEX actividad_log_tenant_idx ON public.actividad_log USING btree (tenan
 CREATE INDEX actividad_log_transaccion_idx ON public.actividad_log USING btree (transaccion_id);
 CREATE INDEX actividad_log_usuario_idx ON public.actividad_log USING btree (tenant_id, usuario_id);
 CREATE UNIQUE INDEX caja_sesiones_una_abierta_por_caja ON public.caja_sesiones USING btree (caja_id) WHERE (estado = 'abierta'::text);
+CREATE INDEX categoria_cliente_descuentos_producto_idx ON public.categoria_cliente_descuentos USING btree (producto_id);
+CREATE INDEX categoria_cliente_descuentos_tenant_idx ON public.categoria_cliente_descuentos USING btree (tenant_id);
 CREATE INDEX categorias_cliente_tenant_idx ON public.categorias_cliente USING btree (tenant_id);
 CREATE UNIQUE INDEX categorias_cliente_tenant_nombre_key ON public.categorias_cliente USING btree (tenant_id, lower(btrim(nombre)));
 CREATE INDEX clientes_categoria_cliente_idx ON public.clientes USING btree (categoria_cliente_id) WHERE (categoria_cliente_id IS NOT NULL);
@@ -4358,7 +4391,6 @@ CREATE INDEX idx_tenant_certificates_emisor_id ON public.tenant_certificates USI
 CREATE INDEX idx_tenant_certificates_tenant ON public.tenant_certificates USING btree (tenant_id);
 CREATE INDEX idx_tenants_delete_scheduled_at ON public.tenants USING btree (delete_scheduled_at) WHERE (delete_scheduled_at IS NOT NULL);
 CREATE UNIQUE INDEX idx_tenants_fichado_token ON public.tenants USING btree (fichado_token) WHERE (fichado_token IS NOT NULL);
-CREATE INDEX idx_tenants_plan_id ON public.tenants USING btree (plan_id);
 CREATE INDEX idx_tiendanube_credentials_sucursal_id ON public.tiendanube_credentials USING btree (sucursal_id);
 CREATE INDEX idx_tn_creds_tenant ON public.tiendanube_credentials USING btree (tenant_id);
 CREATE INDEX idx_tn_map_producto ON public.inventario_tn_map USING btree (tenant_id, producto_id);
@@ -4437,6 +4469,8 @@ CREATE INDEX idx_wms_tareas_tenant ON public.wms_tareas USING btree (tenant_id);
 CREATE INDEX idx_wms_tareas_tenant_estado_usuario ON public.wms_tareas USING btree (tenant_id, estado, usuario_asignado_id);
 CREATE INDEX idx_zonas_sucursal ON public.zonas USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_zonas_tenant ON public.zonas USING btree (tenant_id);
+CREATE INDEX mp_suscripcion_intentos_plan_idx ON public.mp_suscripcion_intentos USING btree (mp_plan_id, created_at DESC);
+CREATE INDEX mp_suscripcion_intentos_tenant_idx ON public.mp_suscripcion_intentos USING btree (tenant_id, created_at DESC);
 CREATE UNIQUE INDEX tenants_codigo_key ON public.tenants USING btree (codigo);
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
@@ -4888,6 +4922,125 @@ BEGIN
   INSERT INTO movimientos_stock (tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues, motivo, usuario_id, sucursal_id)
   VALUES (v_tenant, v_log.kit_producto_id, 'kitting', v_log.cantidad_kits, v_kantes - v_log.cantidad_kits, v_kantes, COALESCE(v_log.notas, 'Kitting x' || v_log.cantidad_kits), auth.uid(), p_sucursal_id);
   UPDATE kitting_log SET estado = 'completado' WHERE id = p_log_id;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.desarmar_kit(p_kit_producto_id uuid, p_cantidad numeric, p_ubicacion_id uuid, p_sucursal_id uuid, p_notas text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant     uuid;
+  v_avanzado   boolean;
+  v_series     boolean;
+  rec          RECORD;
+  ln           RECORD;
+  v_nrecetas   int;
+  v_disponible numeric := 0;
+  v_restante   numeric;
+  v_rebajar    numeric;
+  v_antes      numeric;
+  v_comp_cant  numeric;
+  v_log_id     uuid;
+BEGIN
+  SELECT tenant_id INTO v_tenant FROM users WHERE id = auth.uid();
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin tenant'; END IF;
+  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RAISE EXCEPTION 'Cantidad inválida'; END IF;
+  IF p_cantidad <> trunc(p_cantidad) THEN RAISE EXCEPTION 'La cantidad de KITs a desarmar tiene que ser un número entero'; END IF;
+
+  SELECT modo_operacion = 'avanzado' INTO v_avanzado FROM tenants WHERE id = v_tenant;
+  IF v_avanzado AND p_ubicacion_id IS NULL THEN
+    RAISE EXCEPTION 'Elegí la ubicación de los componentes: en modo avanzado el stock sin ubicación no se puede vender';
+  END IF;
+
+  SELECT tiene_series INTO v_series FROM productos WHERE id = p_kit_producto_id AND tenant_id = v_tenant;
+  IF NOT FOUND THEN RAISE EXCEPTION 'KIT no encontrado'; END IF;
+  IF v_series THEN RAISE EXCEPTION 'El desarmado no admite KITs con número de serie'; END IF;
+
+  SELECT count(*) INTO v_nrecetas FROM kit_recetas
+    WHERE tenant_id = v_tenant AND kit_producto_id = p_kit_producto_id;
+  IF v_nrecetas = 0 THEN RAISE EXCEPTION 'El KIT no tiene receta configurada'; END IF;
+
+  -- Validar los componentes ANTES de escribir nada
+  FOR rec IN SELECT r.comp_producto_id, r.cantidad, p.nombre, p.tiene_series
+             FROM kit_recetas r JOIN productos p ON p.id = r.comp_producto_id
+             WHERE r.tenant_id = v_tenant AND r.kit_producto_id = p_kit_producto_id LOOP
+    IF rec.tiene_series THEN
+      RAISE EXCEPTION 'El componente "%" tiene número de serie: el desarmado no lo admite', rec.nombre;
+    END IF;
+    v_comp_cant := rec.cantidad * p_cantidad;
+    IF v_comp_cant <> trunc(v_comp_cant) THEN
+      RAISE EXCEPTION 'El componente "%" daría % unidades: el stock se lleva en unidades enteras. Desarmá una cantidad de KITs que dé un número entero.',
+        rec.nombre, trim_scale(v_comp_cant);
+    END IF;
+  END LOOP;
+
+  -- 1. Bloquear las líneas del KIT (orden determinístico) y validar disponible
+  FOR ln IN
+    SELECT id, cantidad, COALESCE(cantidad_reservada, 0) AS reservada FROM inventario_lineas
+    WHERE tenant_id = v_tenant AND producto_id = p_kit_producto_id AND activo = true
+      AND (p_sucursal_id IS NULL OR sucursal_id = p_sucursal_id)
+    ORDER BY created_at, id
+    FOR UPDATE
+  LOOP
+    v_disponible := v_disponible + GREATEST(0, ln.cantidad - ln.reservada);
+  END LOOP;
+  IF v_disponible < p_cantidad THEN
+    RAISE EXCEPTION 'Stock insuficiente del KIT: necesitás %, hay % disponibles', p_cantidad, v_disponible;
+  END IF;
+
+  -- 2. Stock ANTES del KIT (en la sucursal, o total si no hay sucursal) y rebaje FIFO
+  SELECT COALESCE(sum(cantidad), 0) INTO v_antes FROM inventario_lineas
+    WHERE tenant_id = v_tenant AND producto_id = p_kit_producto_id AND activo = true
+      AND (p_sucursal_id IS NULL OR sucursal_id = p_sucursal_id);
+
+  v_restante := p_cantidad;
+  FOR ln IN
+    SELECT id, cantidad, COALESCE(cantidad_reservada, 0) AS reservada FROM inventario_lineas
+    WHERE tenant_id = v_tenant AND producto_id = p_kit_producto_id AND activo = true
+      AND (p_sucursal_id IS NULL OR sucursal_id = p_sucursal_id)
+      AND cantidad - COALESCE(cantidad_reservada, 0) > 0
+    ORDER BY created_at, id
+  LOOP
+    EXIT WHEN v_restante <= 0;
+    v_rebajar := LEAST(ln.cantidad - ln.reservada, v_restante);
+    -- Patrón del rebaje FIFO (mig 309): el LPN que queda en 0 se desactiva.
+    UPDATE inventario_lineas
+      SET cantidad = cantidad - v_rebajar,
+          activo   = (cantidad - v_rebajar) > 0 OR COALESCE(cantidad_reservada, 0) > 0,
+          updated_at = now()
+      WHERE id = ln.id;
+    v_restante := v_restante - v_rebajar;
+  END LOOP;
+
+  INSERT INTO movimientos_stock (tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues, motivo, usuario_id, sucursal_id)
+  VALUES (v_tenant, p_kit_producto_id, 'des_kitting', p_cantidad, v_antes, GREATEST(0, v_antes - p_cantidad),
+          COALESCE(NULLIF(p_notas, ''), 'Desarmado x' || p_cantidad), auth.uid(), p_sucursal_id);
+
+  -- 3. Ingreso de cada componente según la receta
+  FOR rec IN SELECT comp_producto_id, cantidad FROM kit_recetas
+             WHERE tenant_id = v_tenant AND kit_producto_id = p_kit_producto_id
+             ORDER BY comp_producto_id LOOP
+    v_comp_cant := rec.cantidad * p_cantidad;
+    SELECT COALESCE(sum(cantidad), 0) INTO v_antes FROM inventario_lineas
+      WHERE tenant_id = v_tenant AND producto_id = rec.comp_producto_id AND activo = true
+        AND (p_sucursal_id IS NULL OR sucursal_id = p_sucursal_id);
+
+    INSERT INTO inventario_lineas (tenant_id, producto_id, cantidad, activo, sucursal_id, ubicacion_id)
+    VALUES (v_tenant, rec.comp_producto_id, v_comp_cant, true, p_sucursal_id,
+            CASE WHEN v_avanzado THEN p_ubicacion_id ELSE NULL END);
+
+    INSERT INTO movimientos_stock (tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues, motivo, usuario_id, sucursal_id)
+    VALUES (v_tenant, rec.comp_producto_id, 'ingreso', v_comp_cant, v_antes, v_antes + v_comp_cant,
+            'Desarmado KIT x' || p_cantidad || ' [' || p_kit_producto_id || ']', auth.uid(), p_sucursal_id);
+  END LOOP;
+
+  -- 4. Log
+  INSERT INTO kitting_log (tenant_id, kit_producto_id, cantidad_kits, ubicacion_id, usuario_id, notas, tipo, estado)
+  VALUES (v_tenant, p_kit_producto_id, p_cantidad, p_ubicacion_id, auth.uid(), NULLIF(p_notas, ''), 'desarmado', 'completado')
+  RETURNING id INTO v_log_id;
+  RETURN v_log_id;
 END $function$
 
 
@@ -5345,9 +5498,11 @@ BEGIN
   IF v_estado NOT IN ('pendiente_pago','esperando_cobro') THEN RETURN FALSE; END IF;
 
   DELETE FROM public.tenant_addons WHERE tenant_id = p_tenant_id AND tipo = 'fijo';
-  INSERT INTO public.tenant_addons (tenant_id, dimension, cantidad, tipo, vence_at)
-  SELECT p_tenant_id, x.dimension, x.cantidad, 'fijo', NULL
-  FROM jsonb_to_recordset(v_packs) AS x(dimension TEXT, cantidad INT)
+  -- Mig 461: el precio viaja en packs_objetivo (lo calcula la EF). Un change creado antes de la 461 no lo trae →
+  -- NULL, y la EF cae al catálogo para ese pack (mismo comportamiento que antes).
+  INSERT INTO public.tenant_addons (tenant_id, dimension, cantidad, tipo, vence_at, precio_mensual)
+  SELECT p_tenant_id, x.dimension, x.cantidad, 'fijo', NULL, x.precio
+  FROM jsonb_to_recordset(v_packs) AS x(dimension TEXT, cantidad INT, precio NUMERIC)
   WHERE x.cantidad > 0;
 
   IF v_plan IS NOT NULL THEN
@@ -5584,6 +5739,28 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_caja_sesion_sucursal_de_su_caja()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_suc uuid;
+BEGIN
+  SELECT sucursal_id INTO v_suc FROM cajas WHERE id = NEW.caja_id;
+  IF v_suc IS NULL THEN RETURN NEW; END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    NEW.sucursal_id := v_suc;
+  ELSIF NEW.sucursal_id IS DISTINCT FROM v_suc AND NEW.sucursal_id IS DISTINCT FROM OLD.sucursal_id THEN
+    RAISE EXCEPTION 'La sesión de caja tiene que estar en la sucursal de su caja.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_canal_de_origen(p_tenant_id uuid, p_origen text)
  RETURNS uuid
  LANGUAGE sql
@@ -5719,6 +5896,51 @@ BEGIN
       notas = COALESCE(notas || ' — ', '') || 'Cancelada: se canceló el reabastecimiento del que dependía'
     WHERE tarea_precedente_id = p_tarea_id AND estado IN ('pendiente','en_curso');
   END IF;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_categoria_descuentos_auditar()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_row  categoria_cliente_descuentos := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  v_cat  text;
+  v_prod text;
+BEGIN
+  IF current_setting('g360.cat_desc_importando', true) = '1' THEN RETURN NULL; END IF;
+  -- Borrado en cascada de la categoría o del producto: no hay nada que contar.
+  SELECT nombre INTO v_cat FROM categorias_cliente WHERE id = v_row.categoria_id;
+  IF v_cat IS NULL THEN RETURN NULL; END IF;
+  SELECT COALESCE(sku, '') || ' ' || nombre INTO v_prod FROM productos WHERE id = v_row.producto_id;
+  PERFORM fn_log_categoria(v_row.tenant_id, 'categoria_cliente', v_row.categoria_id, v_cat,
+    CASE TG_OP WHEN 'INSERT' THEN 'crear' WHEN 'DELETE' THEN 'eliminar' ELSE 'editar' END,
+    'descuento: ' || COALESCE(v_prod, v_row.producto_id::text),
+    CASE WHEN TG_OP = 'INSERT' THEN 'sin cargar' ELSE OLD.descuento_pct::text || '%' END,
+    CASE WHEN TG_OP = 'DELETE' THEN 'sin cargar' ELSE NEW.descuento_pct::text || '%' END);
+  RETURN NULL;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_categoria_descuentos_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM categorias_cliente WHERE id = NEW.categoria_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'La categoría no pertenece a este negocio' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM productos WHERE id = NEW.producto_id AND tenant_id = NEW.tenant_id) THEN
+    RAISE EXCEPTION 'El producto no pertenece a este negocio' USING ERRCODE = 'check_violation';
+  END IF;
+  NEW.updated_at := now();
+  NEW.updated_by := COALESCE(auth.uid(), NEW.updated_by);
+  RETURN NEW;
 END;
 $function$
 
@@ -7554,6 +7776,40 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_guard_baja_sucursal()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_lineas   int;
+  v_unidades numeric;
+  v_cajas    int;
+BEGIN
+  IF NOT (OLD.activo IS TRUE AND NEW.activo IS NOT TRUE) THEN RETURN NEW; END IF;
+
+  SELECT count(*), COALESCE(sum(cantidad), 0) INTO v_lineas, v_unidades
+    FROM public.inventario_lineas
+   WHERE sucursal_id = OLD.id AND activo AND cantidad > 0;
+  IF v_lineas > 0 THEN
+    RAISE EXCEPTION 'No se puede eliminar la sucursal "%": tiene % unidades de stock en % líneas. Trasladá el stock a otra sucursal antes de eliminarla.',
+      OLD.nombre, trim(to_char(v_unidades, 'FM999G999G990D###')), v_lineas
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  SELECT count(*) INTO v_cajas
+    FROM public.caja_sesiones s JOIN public.cajas c ON c.id = s.caja_id
+   WHERE c.sucursal_id = OLD.id AND s.estado = 'abierta';
+  IF v_cajas > 0 THEN
+    RAISE EXCEPTION 'No se puede eliminar la sucursal "%": tiene % caja(s) abierta(s). Cerralas antes de eliminarla.',
+      OLD.nombre, v_cajas USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_guard_baja_usuario()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -7700,6 +7956,46 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_kitting_cantidades_enteras()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  rec RECORD;
+BEGIN
+  IF NEW.cantidad_kits <> trunc(NEW.cantidad_kits) THEN
+    RAISE EXCEPTION 'La cantidad de KITs tiene que ser un número entero' USING ERRCODE = 'check_violation';
+  END IF;
+  FOR rec IN SELECT r.cantidad, p.nombre FROM kit_recetas r JOIN productos p ON p.id = r.comp_producto_id
+             WHERE r.tenant_id = NEW.tenant_id AND r.kit_producto_id = NEW.kit_producto_id LOOP
+    IF rec.cantidad * NEW.cantidad_kits <> trunc(rec.cantidad * NEW.cantidad_kits) THEN
+      RAISE EXCEPTION 'El componente "%" daría % unidades: el stock se lleva en unidades enteras. Elegí una cantidad de KITs que dé un número entero.',
+        rec.nombre, trim_scale(rec.cantidad * NEW.cantidad_kits)
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_mover_caja_con_sesion_abierta()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.sucursal_id IS DISTINCT FROM OLD.sucursal_id
+     AND EXISTS (SELECT 1 FROM caja_sesiones WHERE caja_id = NEW.id AND estado = 'abierta') THEN
+    RAISE EXCEPTION 'La caja "%" está abierta: cerrala antes de cambiarla de sucursal.', NEW.nombre
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_guard_rol_admin()
@@ -7918,6 +8214,66 @@ BEGIN
   END;
 
   RETURN jsonb_build_object('creados', v_creados, 'actualizados', v_actualiz);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_importar_descuentos_categoria(p_categoria_id uuid, p_filas jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant  uuid := public.get_user_tenant_id();
+  v_cat     text;
+  v_malo    record;
+  v_nuevos  int;
+  v_total   int;
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin negocio'; END IF;
+  IF NOT fn_usuario_en_roles_categoria('gestionar') THEN
+    RAISE EXCEPTION 'Tu rol no puede modificar las listas de descuento de las categorías';
+  END IF;
+  SELECT nombre INTO v_cat FROM categorias_cliente WHERE id = p_categoria_id AND tenant_id = v_tenant;
+  IF v_cat IS NULL THEN RAISE EXCEPTION 'Categoría no encontrada'; END IF;
+  IF jsonb_typeof(p_filas) <> 'array' OR jsonb_array_length(p_filas) = 0 THEN RAISE EXCEPTION 'No hay filas para cargar'; END IF;
+
+  -- Validación de TODAS las filas antes de escribir (la pantalla ya validó; esto es la última línea de defensa).
+  SELECT x.fila, x.producto_id, x.descuento_pct INTO v_malo
+    FROM jsonb_to_recordset(p_filas) AS x(fila int, producto_id uuid, descuento_pct numeric)
+   WHERE x.descuento_pct IS NULL OR x.descuento_pct < 0 OR x.descuento_pct > 100
+      OR x.descuento_pct <> round(x.descuento_pct, 2)
+      OR NOT EXISTS (SELECT 1 FROM productos p WHERE p.id = x.producto_id AND p.tenant_id = v_tenant)
+   LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'Fila %: producto o descuento inválido (el descuento va de 0 a 100, con hasta 2 decimales)', v_malo.fila;
+  END IF;
+  IF (SELECT count(*) FROM jsonb_to_recordset(p_filas) AS x(producto_id uuid))
+     <> (SELECT count(DISTINCT x.producto_id) FROM jsonb_to_recordset(p_filas) AS x(producto_id uuid)) THEN
+    RAISE EXCEPTION 'El archivo trae el mismo producto más de una vez';
+  END IF;
+
+  SELECT count(*) INTO v_nuevos
+    FROM jsonb_to_recordset(p_filas) AS x(producto_id uuid)
+   WHERE NOT EXISTS (SELECT 1 FROM categoria_cliente_descuentos d WHERE d.categoria_id = p_categoria_id AND d.producto_id = x.producto_id);
+  v_total := jsonb_array_length(p_filas);
+
+  PERFORM set_config('g360.cat_desc_importando', '1', true);
+  INSERT INTO categoria_cliente_descuentos (tenant_id, categoria_id, producto_id, descuento_pct)
+  SELECT v_tenant, p_categoria_id, x.producto_id, x.descuento_pct
+    FROM jsonb_to_recordset(p_filas) AS x(producto_id uuid, descuento_pct numeric)
+  ON CONFLICT (categoria_id, producto_id) DO UPDATE SET descuento_pct = EXCLUDED.descuento_pct;
+  PERFORM set_config('g360.cat_desc_importando', '', true);
+
+  -- Una sola entrada en el historial de la categoría (fn_log_categoria no es ejecutable por authenticated; la policy de
+  -- actividad_log deja insertar en el propio negocio).
+  INSERT INTO actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre, accion, campo,
+                             valor_anterior, valor_nuevo, pagina)
+  VALUES (v_tenant, auth.uid(), COALESCE((SELECT nombre_display FROM users WHERE id = auth.uid()), 'Sistema'),
+          'categoria_cliente', p_categoria_id::text, v_cat, 'importar', 'lista de descuentos', NULL,
+          format('%s productos (%s nuevos, %s actualizados)', v_total, v_nuevos, v_total - v_nuevos), '/clientes');
+
+  RETURN jsonb_build_object('creados', v_nuevos, 'actualizados', v_total - v_nuevos);
 END;
 $function$
 
@@ -9823,17 +10179,32 @@ CREATE OR REPLACE FUNCTION public.fn_plan_base_limite(p_tier text, p_dim text)
  IMMUTABLE
 AS $function$
   SELECT CASE p_tier
-    WHEN 'enterprise' THEN -1
+    WHEN 'enterprise' THEN CASE p_dim
+      WHEN 'sku' THEN 18000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 30000
+      WHEN 'sucursales' THEN 4 WHEN 'usuarios' THEN 20 WHEN 'cuits' THEN 4 ELSE 0 END
     WHEN 'pro' THEN CASE p_dim
-      WHEN 'sku' THEN 8000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 14000
-      WHEN 'sucursales' THEN 4 WHEN 'usuarios' THEN 15 WHEN 'cuits' THEN 1 ELSE 0 END
+      WHEN 'sku' THEN 7000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 13000
+      WHEN 'sucursales' THEN 2 WHEN 'usuarios' THEN 7 WHEN 'cuits' THEN 2 ELSE 0 END
     WHEN 'basico' THEN CASE p_dim
-      WHEN 'sku' THEN 2000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 6000
-      WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 5 WHEN 'cuits' THEN 1 ELSE 0 END
-    ELSE CASE p_dim  -- free
+      WHEN 'sku' THEN 2000 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 5000
+      WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 3 WHEN 'cuits' THEN 1 ELSE 0 END
+    ELSE CASE p_dim  -- free (legacy)
       WHEN 'sku' THEN 50 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 200
       WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 1 WHEN 'cuits' THEN 1 ELSE 0 END
   END
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_plan_permite_modo_avanzado(p_tenant_id uuid, p_tier text, p_status text, p_trial_ends_at timestamp with time zone)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT (CASE WHEN p_status = 'trial' AND p_trial_ends_at IS NOT NULL AND p_trial_ends_at >= now() THEN 'pro'
+               ELSE COALESCE(p_tier, 'free') END) IN ('pro', 'enterprise')
+      OR EXISTS (SELECT 1 FROM public.tenant_herencia_plan h
+                  WHERE h.tenant_id = p_tenant_id AND 'wms' = ANY (h.features));
 $function$
 
 
@@ -11707,7 +12078,7 @@ CREATE OR REPLACE FUNCTION public.fn_tenant_limite(p_tenant_id uuid, p_dim text)
  SET search_path TO 'public'
 AS $function$
 DECLARE
-  v_tier TEXT; v_status TEXT; v_trial TIMESTAMPTZ; v_base INT; v_addons INT;
+  v_tier TEXT; v_status TEXT; v_trial TIMESTAMPTZ; v_base INT; v_addons INT; v_her INT;
 BEGIN
   SELECT plan_tier, subscription_status, trial_ends_at
     INTO v_tier, v_status, v_trial
@@ -11717,13 +12088,49 @@ BEGIN
     v_tier := 'pro';
   END IF;
   v_base := public.fn_plan_base_limite(v_tier, p_dim);
-  IF v_base = -1 THEN RETURN -1; END IF;
+  -- Pricing v7 (mig 457): un negocio existente conserva la base de su plan v6 si es mayor.
+  SELECT (limites ->> p_dim)::int INTO v_her FROM public.tenant_herencia_plan WHERE tenant_id = p_tenant_id;
+  IF v_base = -1 OR v_her = -1 THEN RETURN -1; END IF;
+  v_base := GREATEST(v_base, COALESCE(v_her, 0));
   SELECT COALESCE(SUM(cantidad), 0) INTO v_addons
     FROM public.tenant_addons
     WHERE tenant_id = p_tenant_id AND dimension = p_dim
       AND (tipo = 'fijo' OR (tipo = 'temporal' AND vence_at > now()));
   RETURN v_base + v_addons;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_tenants_modo_segun_plan()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.modo_operacion IS DISTINCT FROM 'avanzado' THEN RETURN NEW; END IF;
+  IF public.fn_plan_permite_modo_avanzado(NEW.id, NEW.plan_tier, NEW.subscription_status, NEW.trial_ends_at) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Alguien quiere ACTIVAR el modo avanzado sin el plan → rechazo.
+  IF TG_OP = 'INSERT' OR OLD.modo_operacion IS DISTINCT FROM 'avanzado' THEN
+    RAISE EXCEPTION 'El modo avanzado (logística inteligente) está disponible desde el plan Pro.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Ya estaba en avanzado y el PLAN dejó de incluirlo → pasa a básico y se avisa.
+  NEW.modo_operacion := 'basico';
+  INSERT INTO public.notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+  SELECT NEW.id, u.id, 'warning',
+         'Tu negocio pasó a modo básico',
+         'Tu plan actual no incluye el modo avanzado (logística inteligente), que está disponible desde el plan Pro. '
+           || 'Tus ubicaciones y tu stock quedan guardados: si pasás a Pro, volvés a activarlo desde Configuración.',
+         '/suscripcion'
+    FROM public.users u
+   WHERE u.tenant_id = NEW.id AND u.rol IN ('DUEÑO', 'SUPER_USUARIO');
+  RETURN NEW;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_tn_sync_heartbeat()
@@ -13560,6 +13967,29 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.registrar_intento_suscripcion(p_plan_tier text, p_mp_plan_id text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant uuid;
+  v_id     uuid;
+BEGIN
+  SELECT tenant_id INTO v_tenant FROM public.users WHERE id = auth.uid();
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin negocio'; END IF;
+  IF p_plan_tier NOT IN ('basico', 'pro', 'enterprise') OR COALESCE(p_mp_plan_id, '') = '' THEN
+    RAISE EXCEPTION 'Plan inválido';
+  END IF;
+  INSERT INTO public.mp_suscripcion_intentos (tenant_id, usuario_id, plan_tier, mp_plan_id)
+  VALUES (v_tenant, auth.uid(), p_plan_tier, p_mp_plan_id)
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.registrar_pago_oc(p_oc_id uuid, p_medios jsonb, p_descuento_monto numeric DEFAULT 0, p_clave text DEFAULT NULL::text, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_cheque jsonb DEFAULT NULL::jsonb, p_pago_dias integer DEFAULT 30, p_pago_condiciones text DEFAULT NULL::text, p_cotizacion_usd numeric DEFAULT NULL::numeric)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -14235,6 +14665,23 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_envio_fecha_sincroniza_pedido()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.pedido_id IS NULL OR NEW.fecha_entrega_acordada IS NOT DISTINCT FROM OLD.fecha_entrega_acordada THEN
+    RETURN NULL;
+  END IF;
+  UPDATE pedidos SET fecha_entrega_solicitada = NEW.fecha_entrega_acordada
+   WHERE id = NEW.pedido_id AND tenant_id = NEW.tenant_id
+     AND estado NOT IN ('entregado', 'entregado_parcial', 'cancelado');
+  RETURN NULL;
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_envio_marca_pedido_con_envio()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -14256,6 +14703,11 @@ BEGIN
   END IF;
   IF v_pedido_id IS NOT NULL THEN
     UPDATE envios SET pedido_id = v_pedido_id WHERE id = NEW.id AND pedido_id IS NULL;
+    -- Mig 465: la fecha de entrega acordada en la venta llega al pedido (si el pedido no tenía una propia).
+    IF NEW.fecha_entrega_acordada IS NOT NULL THEN
+      UPDATE pedidos SET fecha_entrega_solicitada = NEW.fecha_entrega_acordada
+       WHERE id = v_pedido_id AND fecha_entrega_solicitada IS NULL;
+    END IF;
   END IF;
   RETURN NULL;
 EXCEPTION WHEN OTHERS THEN
@@ -15102,10 +15554,14 @@ CREATE TRIGGER trg_caja_mov_cierre BEFORE DELETE OR UPDATE ON public.caja_movimi
 CREATE TRIGGER trg_validar_moneda_cuenta_origen BEFORE INSERT OR UPDATE OF moneda, cuenta_origen_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_cuenta_origen();
 CREATE TRIGGER trg_validar_moneda_movimiento BEFORE INSERT OR UPDATE OF moneda, sesion_id ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION fn_validar_moneda_coincide_sesion();
 CREATE TRIGGER trg_caja_ses_cierre BEFORE DELETE OR UPDATE ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION trg_caja_ses_periodo_cerrado();
+CREATE TRIGGER trg_caja_sesiones_sucursal_de_su_caja BEFORE INSERT OR UPDATE OF sucursal_id ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_caja_sesion_sucursal_de_su_caja();
 CREATE TRIGGER trg_guard_una_sesion_abierta BEFORE INSERT OR UPDATE OF estado ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_guard_una_sesion_abierta();
 CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_set_caja_sesion_numero();
 CREATE TRIGGER trg_validar_rol_opera_caja_usd BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_validar_rol_opera_caja_usd();
 CREATE TRIGGER trg_validar_traspaso_misma_moneda BEFORE INSERT ON public.caja_traspasos FOR EACH ROW EXECUTE FUNCTION fn_validar_traspaso_misma_moneda();
+CREATE TRIGGER trg_cajas_guard_mover_con_sesion_abierta BEFORE UPDATE OF sucursal_id ON public.cajas FOR EACH ROW EXECUTE FUNCTION fn_guard_mover_caja_con_sesion_abierta();
+CREATE TRIGGER trg_categoria_descuentos_auditar AFTER INSERT OR DELETE OR UPDATE OF descuento_pct ON public.categoria_cliente_descuentos FOR EACH ROW EXECUTE FUNCTION fn_categoria_descuentos_auditar();
+CREATE TRIGGER trg_categoria_descuentos_guard BEFORE INSERT OR UPDATE ON public.categoria_cliente_descuentos FOR EACH ROW EXECUTE FUNCTION fn_categoria_descuentos_guard();
 CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_categorias_cliente_auditar AFTER INSERT OR UPDATE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_auditar();
 CREATE TRIGGER trg_categorias_cliente_guard_delete BEFORE DELETE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_guard_delete();
@@ -15124,6 +15580,7 @@ CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON publ
 CREATE TRIGGER trg_guard_emisor_default BEFORE DELETE OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_guard_emisor_default();
 CREATE TRIGGER empleados_update_timestamp BEFORE UPDATE ON public.empleados FOR EACH ROW EXECUTE FUNCTION update_empleados_timestamp();
 CREATE TRIGGER trg_envios_entregado_sync_pedido AFTER INSERT OR UPDATE OF estado ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_entregado_sincroniza_pedido();
+CREATE TRIGGER trg_envios_fecha_sync_pedido AFTER UPDATE OF fecha_entrega_acordada ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_fecha_sincroniza_pedido();
 CREATE TRIGGER trg_envios_marca_pedido AFTER INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_marca_pedido_con_envio();
 CREATE TRIGGER trg_envios_updated_at BEFORE UPDATE ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envios_updated_at();
 CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION set_envio_numero();
@@ -15144,6 +15601,7 @@ CREATE TRIGGER trg_inventario_lineas_guard_ubicacion BEFORE INSERT OR UPDATE OF 
 CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
 CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
 CREATE TRIGGER series_recalcular_stock AFTER INSERT OR DELETE OR UPDATE ON public.inventario_series FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
+CREATE TRIGGER trg_kitting_log_cantidades_enteras BEFORE INSERT ON public.kitting_log FOR EACH ROW EXECUTE FUNCTION fn_guard_kitting_cantidades_enteras();
 CREATE TRIGGER trg_updated_at_meli_cred BEFORE UPDATE ON public.meli_credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_updated_at_mp_creds BEFORE UPDATE ON public.mercadopago_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_mp_creds();
 CREATE TRIGGER trg_metodos_pago_updated_at BEFORE UPDATE ON public.metodos_pago FOR EACH ROW EXECUTE FUNCTION update_metodos_pago_updated_at();
@@ -15182,6 +15640,7 @@ CREATE TRIGGER trg_salarios_updated_at BEFORE UPDATE ON public.rrhh_salarios FOR
 CREATE TRIGGER trg_vac_sal_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_saldo FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_vac_sol_updated_at BEFORE UPDATE ON public.rrhh_vacaciones_solicitud FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_enforce_sucursales BEFORE INSERT OR UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('sucursales');
+CREATE TRIGGER trg_sucursales_guard_baja BEFORE UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION fn_guard_baja_sucursal();
 CREATE TRIGGER trg_notificar_respuesta_soporte AFTER INSERT ON public.support_messages FOR EACH ROW WHEN (((new.autor_tipo = 'agente'::text) AND (NOT new.interno))) EXECUTE FUNCTION fn_notificar_respuesta_soporte();
 CREATE TRIGGER trg_support_message_actualiza_ticket AFTER INSERT ON public.support_messages FOR EACH ROW EXECUTE FUNCTION fn_support_message_actualiza_ticket();
 CREATE TRIGGER trg_tarea_repositor_aplicar_programado AFTER UPDATE OF estado ON public.tareas_repositor FOR EACH ROW EXECUTE FUNCTION fn_tarea_repositor_aplicar_programado();
@@ -15197,6 +15656,7 @@ CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants F
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
 CREATE TRIGGER trg_tenant_codigo BEFORE INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenant_codigo();
+CREATE TRIGGER trg_tenants_modo_segun_plan BEFORE INSERT OR UPDATE OF modo_operacion, plan_tier, subscription_status, trial_ends_at ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_tenants_modo_segun_plan();
 CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
@@ -15256,6 +15716,7 @@ ALTER TABLE public.caja_sesiones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.caja_traspasos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cajas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.canales_venta ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categoria_cliente_descuentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categorias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categorias_cliente ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categorias_gasto ENABLE ROW LEVEL SECURITY;
@@ -15316,6 +15777,7 @@ ALTER TABLE public.modo_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.motivos_movimiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.movimientos_stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mp_billing_alertas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mp_suscripcion_intentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.nc_afip_pendientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orden_compra_items ENABLE ROW LEVEL SECURITY;
@@ -15324,7 +15786,6 @@ ALTER TABLE public.padron_arca_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_lanzamientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedidos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.planes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
@@ -15381,6 +15842,7 @@ ALTER TABLE public.support_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tareas_repositor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_addons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tenant_herencia_plan ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tiendanube_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tipos_pedido ENABLE ROW LEVEL SECURITY;
@@ -15559,6 +16021,15 @@ CREATE POLICY canales_venta_select ON public.canales_venta AS PERMISSIVE FOR SEL
 CREATE POLICY canales_venta_write_gestion ON public.canales_venta AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY cat_desc_delete ON public.categoria_cliente_descuentos AS PERMISSIVE FOR DELETE TO authenticated
+  USING (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
+CREATE POLICY cat_desc_insert ON public.categoria_cliente_descuentos AS PERMISSIVE FOR INSERT TO authenticated
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
+CREATE POLICY cat_desc_select ON public.categoria_cliente_descuentos AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
+CREATE POLICY cat_desc_update ON public.categoria_cliente_descuentos AS PERMISSIVE FOR UPDATE TO authenticated
+  USING (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)))
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
 CREATE POLICY categorias_insert ON public.categorias AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -15875,6 +16346,8 @@ CREATE POLICY movimientos_insert ON public.movimientos_stock AS PERMISSIVE FOR I
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY movimientos_select ON public.movimientos_stock AS PERMISSIVE FOR SELECT TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))));
+CREATE POLICY mp_suscripcion_intentos_select_propio ON public.mp_suscripcion_intentos AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY nc_afip_pendientes_insert ON public.nc_afip_pendientes AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY nc_afip_pendientes_select ON public.nc_afip_pendientes AS PERMISSIVE FOR SELECT TO public
@@ -15909,8 +16382,6 @@ CREATE POLICY pedido_lanzamientos_tenant ON public.pedido_lanzamientos AS PERMIS
 CREATE POLICY pedidos_tenant ON public.pedidos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
-CREATE POLICY planes_select_public ON public.planes AS PERMISSIVE FOR SELECT TO anon, authenticated
-  USING (true);
 CREATE POLICY precios_programados_select ON public.precios_programados AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY pen_tenant ON public.producto_estructura_niveles AS PERMISSIVE FOR ALL TO public
@@ -16204,6 +16675,8 @@ CREATE POLICY tenant_certificates_select ON public.tenant_certificates AS PERMIS
 CREATE POLICY tenant_certificates_write_gestion ON public.tenant_certificates AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY tenant_herencia_plan_select_propio ON public.tenant_herencia_plan AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY tenants_insert_new_user ON public.tenants AS PERMISSIVE FOR INSERT TO public
   WITH CHECK ((( SELECT auth.uid() AS uid) IS NOT NULL));
 CREATE POLICY tenants_select ON public.tenants AS PERMISSIVE FOR SELECT TO public
@@ -16393,6 +16866,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ca
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.canales_venta TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.canales_venta TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.canales_venta TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categoria_cliente_descuentos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categoria_cliente_descuentos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.categorias TO service_role;
@@ -16558,6 +17033,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mo
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.movimientos_stock TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.movimientos_stock TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mp_billing_alertas TO service_role;
+GRANT SELECT ON public.mp_suscripcion_intentos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.mp_suscripcion_intentos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc_afip_pendientes TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.nc_afip_pendientes TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.notificaciones TO anon;
@@ -16574,9 +17051,6 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pe
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_lanzamientos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedidos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedidos TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO authenticated;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_billers TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas_claims TO service_role;
@@ -16726,6 +17200,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.te
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_certificates TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_certificates TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_certificates TO service_role;
+GRANT SELECT ON public.tenant_herencia_plan TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenant_herencia_plan TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tenants TO service_role;

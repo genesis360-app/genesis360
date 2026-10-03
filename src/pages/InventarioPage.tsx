@@ -49,7 +49,7 @@ import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPil
 import { usePaginacionLista } from '@/hooks/usePaginacionLista'
 import { traerTodo, traerTodoConError } from '@/lib/traerTodo'
 import {
-  parsearPildora as parsearPildoraInv, evaluarPildorasLinea, productoMatcheaPildoras,
+  parsearPildora as parsearPildoraInv, evaluarPildorasLinea, productoMatcheaPildoras, lineasQueCoinciden,
   CAMPOS_FILTRO_INVENTARIO, type PildoraInventario,
 } from '@/lib/inventarioFiltro'
 import { type Combinador } from '@/lib/pildorasFiltro'
@@ -157,6 +157,8 @@ export default function InventarioPage() {
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const filterPanelRef = useRef<HTMLDivElement>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Búsqueda por LPN (GO 2026-10-02): producto cuyo "Ver todos los LPN" se abrió (si no, se ven solo los que coinciden).
+  const [verTodosLpnDe, setVerTodosLpnDe] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
   const [seriesModal, setSeriesModal] = useState<{ lpn: string; series: any[] } | null>(null)
@@ -1672,69 +1674,17 @@ export default function InventarioPage() {
       if (!desarmarKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
       const recetas = recetasMap[desarmarKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
-      // U-2 (B): se valida ANTES de escribir nada (el desarmado no es atómico).
       if (modoAvanzado && !desarmarUbicacionId) throw new Error('Elegí la ubicación de los componentes: en modo avanzado el stock sin ubicación no se puede vender')
-
-      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas (filtrado por sucursal)
-      let lineasKitQ = supabase.from('inventario_lineas')
-        .select('id, cantidad, cantidad_reservada')
-        .eq('tenant_id', tenant!.id).eq('producto_id', desarmarKitId).eq('activo', true)
-      if (sucursalId) lineasKitQ = lineasKitQ.eq('sucursal_id', sucursalId)
-      const { data: lineasKit } = await lineasKitQ
-      const stockDisponibleKit = (lineasKit ?? []).reduce((s: number, l: any) => s + (l.cantidad - (l.cantidad_reservada ?? 0)), 0)
-      if (stockDisponibleKit < cant) {
-        throw new Error(`Stock insuficiente del KIT: necesitás ${cant}, hay ${stockDisponibleKit} disponibles`)
-      }
-
-      // 2. Rebaje del KIT (FIFO)
-      let restanteKit = cant
-      for (const linea of (lineasKit ?? [])) {
-        if (restanteKit <= 0) break
-        const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-        const aRebajar = Math.min(disponible, restanteKit)
-        if (aRebajar <= 0) continue
-        const { error: eReb } = await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
-        if (eReb) throw new Error(`No se pudo rebajar el KIT: ${eReb.message}`)
-        restanteKit -= aRebajar
-      }
-      const saKitDes = await getStockAntesSucursal(desarmarKitId, sucursalId)
-      await supabase.from('movimientos_stock').insert({
-        tenant_id: tenant!.id, producto_id: desarmarKitId,
-        tipo: 'des_kitting', cantidad: cant,
-        stock_antes: saKitDes, stock_despues: Math.max(0, saKitDes - cant),
-        motivo: desarmarNotas || `Desarmado x${cant}`,
-        usuario_id: user?.id ?? null,
-        sucursal_id: sucursalId || null,
+      // RPC ATÓMICA (mig 459): bloquea las líneas del KIT, rebaja FIFO, ingresa los componentes, registra
+      // movimientos y kitting_log en una transacción → nunca queda el KIT rebajado sin sus componentes.
+      const { error } = await supabase.rpc('desarmar_kit', {
+        p_kit_producto_id: desarmarKitId,
+        p_cantidad:        cant,
+        p_ubicacion_id:    modoAvanzado ? desarmarUbicacionId : null,
+        p_sucursal_id:     sucursalId || null,
+        p_notas:           desarmarNotas || null,
       })
-
-      // 3. Ingreso de cada componente según receta
-      for (const r of recetas) {
-        const cantComp = r.cantidad * cant
-        const { error: eComp } = await supabase.from('inventario_lineas').insert({
-          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
-          cantidad: cantComp, activo: true,
-          sucursal_id: sucursalId || null,
-          ubicacion_id: modoAvanzado ? desarmarUbicacionId : null,
-        })
-        // Antes no se miraba el error: el movimiento quedaba registrado sin el stock.
-        if (eComp) throw new Error(`El KIT ya se rebajó pero no se pudo ingresar un componente (${eComp.message}). Revisá el inventario.`)
-        const saComp = await getStockAntesSucursal(r.comp_producto_id, sucursalId)
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
-          tipo: 'ingreso', cantidad: cantComp,
-          stock_antes: saComp, stock_despues: saComp + cantComp,
-          motivo: `Desarmado KIT x${cant} [${desarmarKitId}]`,
-          usuario_id: user?.id ?? null,
-          sucursal_id: sucursalId || null,
-        })
-      }
-
-      // 4. Log
-      await supabase.from('kitting_log').insert({
-        tenant_id: tenant!.id, kit_producto_id: desarmarKitId,
-        cantidad_kits: cant, usuario_id: user?.id ?? null,
-        notas: desarmarNotas || null, tipo: 'desarmado',
-      })
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => {
       toast.success('KIT desarmado con éxito — componentes ingresados al stock')
@@ -2739,6 +2689,11 @@ export default function InventarioPage() {
     total: productos.length,
     claveFiltros: `${pildorasEfectivasInv.length}|${combinadorInv}|${filterCat}|${filterProv}|${filterUbic}|${filterEstado}|${filterAlerta}`,
   })
+
+  // Una búsqueda nueva vuelve a mostrar solo los LPN que coinciden. (No se expande el producto solo: buscar y hacer
+  // click en el producto es el hábito, y un producto ya abierto se cerraría con ese click.)
+  const claveBusquedaInv = pildorasEfectivasInv.map(p => `${p.campo}:${p.operador}:${p.valor}`).join('|') + `|${combinadorInv}`
+  useEffect(() => { setVerTodosLpnDe(null) }, [claveBusquedaInv])
 
   const stockCritico = productos.filter(p => getStockTotal(p) <= (p as any).stock_minimo).length
 
@@ -4459,7 +4414,15 @@ export default function InventarioPage() {
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
                 {visiblesInv.map(p => {
-                  const lineas = lineasMap[p.id] ?? []
+                  const lineasTodas = lineasMap[p.id] ?? []
+                  // Búsqueda por LPN/ubicación: solo las líneas que coinciden (resaltadas) salvo "Ver todos".
+                  const coinciden = lineasQueCoinciden(
+                    { nombre: p.nombre, sku: (p as any).sku ?? null, codigoBarras: (p as any).codigo_barras ?? null },
+                    lineasTodas.map((l: any) => ({ id: l.id as string, lpn: l.lpn ?? null, ubicacionNombre: l.ubicaciones?.nombre ?? null })),
+                    pildorasEfectivasInv, combinadorInv,
+                  )
+                  const viendoTodos = verTodosLpnDe === p.id
+                  const lineas = coinciden && !viendoTodos ? lineasTodas.filter((l: any) => coinciden.has(l.id)) : lineasTodas
                   const stockTotal = getStockTotal(p)
                   const stockDisp = getStockDisponible(p)
                   const critico = stockDisp <= (p as any).stock_minimo
@@ -4504,13 +4467,37 @@ export default function InventarioPage() {
                               {stockTotal} total
                             </p>
                           )}
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{lineas.length} línea{lineas.length !== 1 ? 's' : ''}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{lineasTodas.length} línea{lineasTodas.length !== 1 ? 's' : ''}</p>
+                          {coinciden && (
+                            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
+                              {coinciden.size} LPN coincide{coinciden.size !== 1 ? 'n' : ''}
+                            </p>
+                          )}
                         </div>
                       </div>
 
                       {/* Líneas expandidas */}
                       {expanded && (
                         <div className="bg-gray-50 dark:bg-gray-700 border-t border-gray-100 dark:border-gray-600 px-4 py-3">
+                          {coinciden && (
+                            <div className="flex items-center justify-between gap-2 mb-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
+                              <span>
+                                {viendoTodos
+                                  ? <>Mostrando los {lineasTodas.length} LPN del producto · resaltados los {coinciden.size} que coinciden con la búsqueda</>
+                                  : <>Mostrando {coinciden.size} de {lineasTodas.length} LPN: los que coinciden con la búsqueda</>}
+                              </span>
+                              <button type="button" className="font-semibold underline whitespace-nowrap"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (viendoTodos) { setVerTodosLpnDe(null); return }
+                                  setVerTodosLpnDe(p.id)
+                                  const primero = lineasTodas.find((l: any) => coinciden.has(l.id))
+                                  if (primero) setTimeout(() => document.getElementById(`lpn-fila-${primero.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+                                }}>
+                                {viendoTodos ? 'Ver solo los que coinciden' : 'Ver todos'}
+                              </button>
+                            </div>
+                          )}
                           {lineas.length === 0 ? (
                             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                           ) : (
@@ -4553,8 +4540,9 @@ export default function InventarioPage() {
                                 {modoAvanzado && <span className="col-span-1 text-center">Acciones</span>}
                               </div>
                               {lineas.map((l: any) => (
-                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-9' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
-                                  ${selectedLineas.includes(l.id) ? 'border-accent-text/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
+                                <div key={l.id} id={`lpn-fila-${l.id}`} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-9' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
+                                  ${selectedLineas.includes(l.id) ? 'border-accent-text/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}
+                                  ${coinciden?.has(l.id) ? 'ring-2 ring-inset ring-amber-400 dark:ring-amber-500' : ''}`}>
                                   {modoAvanzado && (
                                   <div className="col-span-1 flex items-center">
                                     <input type="checkbox" className="rounded accent-accent"

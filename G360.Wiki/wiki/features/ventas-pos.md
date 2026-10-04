@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-09-26
+updated: 2026-10-04
 ---
 
 # Ventas / POS
@@ -428,7 +428,9 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 ## Precios mayoristas por cantidad (G1/G2)
 
-> 🟡 **2026-10-03 (SOLO EN DEV, migs 467-468, pre-release `v1.239.0-rc.2`)**: el POS toma el precio del motor único en SQL (`fn_precios_lineas`; sin precio del servidor no se registra la venta). Con cliente con categoría, la categoría compite con tier/empaque/canal (gana el más bajo) y la línea muestra "Categoría X: -N % sobre lista" + cartel de plantilla para el cajero. **Tope de descuento total por venta** (Config → Ventas, `tenants.descuento_tope_acumulado_pct`): suma todo y nadie lo saltea (ni DUEÑO ni clave maestra). Fix: el cobro no se bloquea en re-consultas de fondo (`isPlaceholderData`). Ver [[wiki/features/precios-tiers-empaque]].
+> 🪧 **2026-10-04 (SOLO EN DEV, migs 469-470, `v1.239.0-rc.3`)**: el cartel del cajero usa las frases que la IA redactó al guardar la promoción (EF `categoria-cartel-ia`; marcadores completados con los números del motor; si no son válidas o no existen, plantilla). La línea guarda `descuento_categoria_monto` (lo no facturado por la categoría) para el reporte "Descuentos por categoría". Ver [[wiki/features/precios-tiers-empaque]].
+>
+> 🟡 **2026-10-03 (SOLO EN DEV, migs 467-468, pre-release `v1.239.0-rc.2`)**: el POS toma el precio del motor único en SQL (`fn_precios_lineas`; sin precio del servidor no se registra la venta). Con cliente con categoría, la categoría compite con tier/empaque/canal (gana el más bajo) y la línea muestra "Categoría X: -N % sobre lista" + cartel para el cajero (plantilla o, desde la Fase 5, las frases redactadas por la IA al guardar la promoción, re-validadas en el navegador; con los números del motor). **Tope de descuento total por venta** (Config → Ventas, `tenants.descuento_tope_acumulado_pct`): suma todo y nadie lo saltea (ni DUEÑO ni clave maestra). Fix: el cobro no se bloquea en re-consultas de fondo (`isPlaceholderData`). Ver [[wiki/features/precios-tiers-empaque]].
 
 - Cada producto puede tener **tiers** en `producto_precios_mayorista`, editables en el form de
   producto (accordion "Precios mayoristas", solo `canEdit`). **No** es por cliente ni por monto

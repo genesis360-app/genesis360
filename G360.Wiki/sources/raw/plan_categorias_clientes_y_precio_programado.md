@@ -96,6 +96,7 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 - Aviso de impacto al editar una categoría (C1): "afecta a N clientes; M presupuestos/pedidos conservan su precio".
 
 ### Fase 5 — IA del cartel + reporte · media
+> ✅ **HECHA EN DEV (2026-10-04, migs 469-470, commit `3a31a2f1`, pre-release `v1.239.0-rc.3`; NO en PROD).** EF `categoria-cartel-ia` (solo DEV; Groq, una redacción por categoría de 3 frases con marcadores, validación estricta, fallback a plantilla), `src/lib/cartelCategoria.ts` (+ copia idéntica en `_shared`), panel "Cartel para el cajero", `venta_items.descuento_categoria_monto`, `fn_reporte_descuento_categoria` y reporte "Descuentos por categoría" (la 470 resta devoluciones parciales). **Con esto B2 queda completo en DEV; falta el deploy (467 -> 468 -> 469 -> 470 + EF).** Detalle en [[wiki/features/precios-tiers-empaque]].
 - B-4: la IA **redacta al guardar la promoción**, no en la venta; fallback = plantilla; se le manda producto, categoría
   y %, nunca datos del cliente, costos ni márgenes.
 - F3: reporte de lo no facturado por descuentos de categoría (período, categoría, cliente), solo líneas donde ganó la

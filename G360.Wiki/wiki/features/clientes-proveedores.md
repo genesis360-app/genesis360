@@ -3,7 +3,7 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
 sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # Clientes y Proveedores
@@ -38,7 +38,9 @@ lleva Nota de Débito con IVA?, [[wiki/business/consultas-contador]]).
 
 Ya existe el motor único de precio en SQL (`fn_precio_motor_producto`, `fn_precios_lineas`).
 
-**Actualización Fase 4 (mig 468, 2026-10-03, solo DEV; en PROD todavía NO se aplica al vender)**: la lista de descuentos por categoría (mig 466, EN PROD) **ya se aplica al vender en DEV** (POS y Pedidos): la categoría del cliente compite con tier/empaque/canal y gana el precio más bajo; tope de descuento acumulado sin salteo (`tenants.descuento_tope_acumulado_pct`, Config → Ventas); categoría/%/mecanismo guardados por línea en `venta_items`; cartel de plantilla para el cajero. La pantalla de la lista ahora dice "Se aplica al vender". Falta Fase 5 (IA del cartel + reporte de lo no facturado por categoría). Las ventas recurrentes siguen sin categoría (abierto para GO). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
+**Actualización Fase 4 (mig 468, 2026-10-03, solo DEV; en PROD todavía NO se aplica al vender)**: la lista de descuentos por categoría (mig 466, EN PROD) **ya se aplica al vender en DEV** (POS y Pedidos): la categoría del cliente compite con tier/empaque/canal y gana el precio más bajo; tope de descuento acumulado sin salteo (`tenants.descuento_tope_acumulado_pct`, Config → Ventas); categoría/%/mecanismo guardados por línea en `venta_items`; cartel de plantilla para el cajero. La pantalla de la lista ahora dice "Se aplica al vender". Las ventas recurrentes siguen sin categoría (abierto para GO). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
+
+**Actualización Fase 5 (migs 469-470, 2026-10-04, solo DEV; B2 completo en DEV)**: la pantalla de la lista de descuentos ganó el panel **"Cartel para el cajero"** (origen IA/estándar + ejemplo completado, botón "Volver a redactar"): la EF `categoria-cartel-ia` redacta al guardar la promoción 3 frases con marcadores que el POS completa con los números del motor (fallback a plantilla). Reportes → **"Descuentos por categoría"** con lo no facturado por la categoría (período, categoría, cliente; las devoluciones parciales se restan). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/features/reportes-metricas]]. Deploy pendiente (467 -> 470 + EF).
 
 ## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
 

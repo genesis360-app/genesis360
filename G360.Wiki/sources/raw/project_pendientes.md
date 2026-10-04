@@ -6,12 +6,21 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-03, noche) — PROD `v1.238.0` (001-466) · DEV 001-**468** + `v1.239.0-rc.2`
+> ### 🛑 ARRANCÁ ACÁ (2026-10-04) — PROD `v1.238.0` (001-466) · DEV 001-**470** + `v1.239.0-rc.3` · B2 COMPLETO en DEV
 >
 > | | Código | Migraciones | Policies |
 > |---|---|---|---|
 > | **PROD** | `v1.238.0` (PR #370, merge `8be5f1fb`, release Latest, servida `index-DRm63vPm.js`) | 001-**466** | public 245 · storage 40 · cron 2 |
-> | **DEV** | `v1.238.0` (APP_VERSION igual) + commits `055bfbdd` (Fase 3), `3b0bb474` y `7930c539` (Fase 4) en `origin/dev`, pre-release `v1.239.0-rc.2` | 001-**468** (467 y 468 NO están en PROD; aplicar la 467 antes que la 468) | public 245 (dump de DEV tras la 468) = PROD |
+> | **DEV** | `v1.238.0` (APP_VERSION igual) + commits `055bfbdd` (Fase 3), `3b0bb474` y `7930c539` (Fase 4), `3a31a2f1` (Fase 5) en `origin/dev`, pre-release `v1.239.0-rc.3` | 001-**470** (467-470 NO están en PROD; aplicar en orden 467 -> 468 -> 469 -> 470) | public 245 (dump de DEV tras la 470) = PROD |
+>
+> **Hecho en DEV (04/10): B2 Fase 5 — cartel con IA + reporte de lo no facturado por la categoría (migs 469-470). B2 COMPLETO en DEV.**
+> EF nueva `categoria-cartel-ia` (DEV sí, **PROD no**; secret `GROQ_API_KEY`): la IA solo redacta, al guardar la promoción, 3 frases
+> por categoría con marcadores que el POS completa con los números del motor; validación estricta, fallback a plantilla, rate limit
+> 20/min usuario y 200/día negocio; 9/9 válidas en DEV. `venta_items.descuento_categoria_monto` (F3 = (precio sin categoría - con
+> categoría) x cantidad) + `fn_reporte_descuento_categoria` + Reportes → "Descuentos por categoría" (columna "Total no facturado";
+> la 470 resta devoluciones parciales en proporción). Panel "Cartel para el cajero" en la pantalla de la lista. Unit 2180, e2e 180
+> extendido + 181 nuevo, regresión 51/51, 25 casos SQL, UAT §99. Detalle en [[wiki/features/precios-tiers-empaque]] y
+> [[wiki/features/clientes-proveedores]]. **Al deployar: `npm run ai:knowledge` + redeploy de `ai-assistant`** (app-reference ganó el reporte).
 >
 > **Hecho en DEV (03/10 noche): B2 Fase 4 — la categoría del cliente dentro del motor de precio + tope de descuento (mig 468).**
 > `fn_precio_motor_cliente` (categoría compite con tier/empaque/canal, gana el más bajo); `fn_precios_lineas` devuelve categoría y
@@ -38,11 +47,11 @@ type: project
 > descuentos por categoría están EN PROD.** Todo lo que abajo diga "EN DEV / falta PROD" de 457-466 quedó superado.
 >
 > ### ▶ LO PRÓXIMO (en este orden)
-> 1. **B2 — Categorías de clientes, FASE 5 + deploy de 467-468**. ✅ Fase 3 (motor único, mig 467) y ✅ Fase 4 (categoría en el
->    motor + tope + F2, mig 468) HECHAS en DEV el 03/10; **faltan en PROD** (aplicar 467 antes que 468, de a una con
->    `scripts/aplicar-migracion.mjs`, cuando GO lo autorice). Fase 5: IA que redacta el cartel (B-4, al guardar la promoción;
->    fallback = plantilla) + reporte F3 de lo no facturado por categoría. Para GO: ventas recurrentes (precio congelado, sin
->    categoría). PL-7: la preparación para precio por sucursal es este motor único (+ `sucursal_id` vacío en
+> 1. **B2 — Categorías de clientes: DEPLOY de 467-470 a PROD**. ✅ Fases 3, 4 y 5 HECHAS en DEV (03-04/10); **B2 completo en DEV,
+>    faltan en PROD** (aplicar en orden 467 -> 468 -> 469 -> 470, de a una con `scripts/aplicar-migracion.mjs`, + desplegar la EF
+>    `categoria-cartel-ia` verificando `GROQ_API_KEY` + `auditar-edge-functions.sh` + `npm run ai:knowledge` y redeploy de
+>    `ai-assistant`, cuando GO lo autorice). Para GO: ventas recurrentes (existen; generan el presupuesto con precio congelado de la
+>    plantilla, sin categoría). PL-7: la preparación para precio por sucursal es este motor único (+ `sucursal_id` vacío en
 >    `precios_programados`). Ver [[wiki/features/clientes-proveedores]].
 > 2. **QR de MP Fase 1** (decidida, SIN EMPEZAR): envío en la deuda de CC/cobranza/QR, un link por venta con vencimiento a
 >    30 días que se desactiva al saldarse, excedente a saldo a favor (`cliente_creditos`) + aviso al dueño, `mp-ipn`

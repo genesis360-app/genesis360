@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Percent, Search, Trash2, Upload, Download, Info, Plus } from 'lucide-react'
+import { ArrowLeft, Percent, Search, Trash2, Upload, Download, Info, Plus, Sparkles, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -13,7 +13,9 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { traerTodoConError } from '@/lib/traerTodo'
 import { descargarExcel, nombreConFecha } from '@/lib/exportarArchivo'
 import { usePaginacionLista } from '@/hooks/usePaginacionLista'
-import { useCategoriasCliente, puedeGestionarCategorias } from '@/hooks/useCategoriasCliente'
+import { useCategoriasCliente, puedeGestionarCategorias, CATEGORIAS_QUERY_KEY } from '@/hooks/useCategoriasCliente'
+import { pedirRedaccionCartel } from '@/lib/cartelCategoriaIA'
+import { PLANTILLAS, completarFrase, validarTextosCartel } from '@/lib/cartelCategoria'
 import { leerPorcentaje, porcentajeLegible } from '@/lib/categoriaDescuentos'
 
 interface FilaDescuento {
@@ -88,6 +90,27 @@ export default function DescuentosCategoriaPage() {
 
   const invalidar = () => qc.invalidateQueries({ queryKey: keyLista })
 
+  // Mig 469 (B-4): la IA redacta el cartel del POS "al guardar la promoción". El texto es por categoría (los números
+  // los pone el motor), así que no hace falta en cada %: se pide con el primer producto de la lista y con "Volver a
+  // redactar" (la importación lo pide al terminar). Sin esperar: la venta usa la plantilla mientras tanto.
+  const [redactando, setRedactando] = useState(false)
+  const redactarCartel = async (mostrar: boolean) => {
+    if (!categoriaId) return
+    if (mostrar) setRedactando(true)
+    try {
+      const r = await pedirRedaccionCartel(categoriaId)
+      qc.invalidateQueries({ queryKey: [CATEGORIAS_QUERY_KEY] })
+      if (mostrar) {
+        if (r.origen === 'ia') toast.success('Cartel redactado')
+        else toast(`Se usa el texto estándar${r.motivo ? ` (${r.motivo})` : ''}`, { icon: 'ℹ️' })
+      }
+    } finally {
+      if (mostrar) setRedactando(false)
+    }
+  }
+  const textosCartel = validarTextosCartel(categoria?.cartel_textos) ?? PLANTILLAS
+  const ejemploCartel = filas.find(f => parseFloat(String(f.descuento_pct)) > 0)
+
   const guardarPct = async (f: FilaDescuento) => {
     const texto = editando[f.id]
     if (texto === undefined) return
@@ -121,6 +144,7 @@ export default function DescuentosCategoriaPage() {
     toast.success(`${elegido.nombre}: ${porcentajeLegible(pct)}`)
     setElegido(null); setBuscarProd(''); setNuevoPct('')
     invalidar()
+    if (pct > 0 && !categoria?.cartel_generado_at) void redactarCartel(false)
   }
 
   const exportar = () => {
@@ -158,6 +182,35 @@ export default function DescuentosCategoriaPage() {
           <strong>Se aplica al vender</strong> (punto de venta, presupuestos y pedidos) a los clientes de esta categoría. El
           descuento compite con el precio mayorista y el descuento por estado: <strong>gana el precio más bajo</strong>, no
           se suman. Sin cliente cargado en la venta no se aplica.
+        </p>
+      </div>
+
+      {/* Mig 469 (B-4): el cartel que ve el cajero cuando compiten descuentos. Lo redacta la IA; los números, el motor. */}
+      <div data-testid="cartel-categoria" className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Sparkles size={15} className="text-accent-text" />
+          <h2 className="font-semibold text-sm text-gray-700 dark:text-gray-200">Cartel para el cajero</h2>
+          <span data-testid="cartel-origen" className={`text-xs px-2 py-0.5 rounded-full ${categoria?.cartel_origen === 'ia' ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
+            {categoria?.cartel_origen === 'ia' ? 'Redactado con IA' : 'Texto estándar'}
+          </span>
+          {puedeGestionar && (
+            <button onClick={() => void redactarCartel(true)} disabled={redactando}
+              className="ml-auto flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+              <RefreshCw size={12} className={redactando ? 'animate-spin' : ''} /> {redactando ? 'Redactando…' : 'Volver a redactar'}
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Aparece solo en la pantalla del punto de venta (no en el ticket ni en la factura) cuando en un producto compitieron
+          descuentos. La IA solo redacta: recibe el nombre de la categoría y algunos productos con su %, nunca datos de
+          clientes, costos ni márgenes. Los precios los completa el sistema en cada venta. Ejemplo:
+        </p>
+        <p className="text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+          ℹ️ {completarFrase(textosCartel.categoria_gana, {
+            producto: ejemploCartel?.productos?.nombre ?? 'Producto de ejemplo',
+            pct: porcentajeLegible(ejemploCartel ? parseFloat(String(ejemploCartel.descuento_pct)) : 20),
+            categoria: categoria?.nombre ?? '', precio: '$80', otro: 'precio por cantidad', otro_precio: '$85',
+          })}
         </p>
       </div>
 

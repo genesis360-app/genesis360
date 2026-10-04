@@ -16,6 +16,8 @@ import { leerPorcentaje, porcentajeLegible } from '@/lib/categoriaDescuentos'
 import { useCategoriasCliente, puedeGestionarCategorias } from '@/hooks/useCategoriasCliente'
 import { ResultadoImportacion, VistaPreviaImportacion, type ResultadoCarga } from '@/components/importacion/VistaPreviaImportacion'
 import { PaginaImportacion } from '@/components/importacion/PaginaImportacion'
+import { pedirRedaccionCartel } from '@/lib/cartelCategoriaIA'
+import { CATEGORIAS_QUERY_KEY } from '@/hooks/useCategoriasCliente'
 
 /** El plan prevé hasta 10.000 productos por categoría (B-9); los demás importadores cortan en 5.000. */
 const MAX_FILAS_DESCUENTOS = 20000
@@ -145,6 +147,8 @@ export default function ImportarDescuentosCategoriaPage() {
       setResultado({ ok: true, resumen: `${r.creados} agregados · ${r.actualizados} actualizados${sinCambios ? ` · ${sinCambios} sin cambios o vacías` : ''}` })
       setFilas([]); setOriginales([])
       qc.invalidateQueries({ queryKey: ['categoria-descuentos', categoriaId] })
+      // Mig 469 (B-4): al guardar la promoción, la IA redacta el cartel del POS (sin esperar; si falla, queda el estándar).
+      if (categoriaId) void pedirRedaccionCartel(categoriaId).then(() => qc.invalidateQueries({ queryKey: [CATEGORIAS_QUERY_KEY] }))
     } catch (e: any) {
       setResultado({ ok: false, mensaje: mensajeErrorCarga(e) })
     } finally {

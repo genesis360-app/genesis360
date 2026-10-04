@@ -2411,6 +2411,30 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## ✨ §99 — Cartel con IA y reporte de lo no facturado por la categoría (B2 / Fase 5, mig 469 + EF `categoria-cartel-ia`, 🟡 DEV) — 2026-10-04
+
+B-4: la IA SOLO redacta, al guardar la promoción (no en la venta), con plantilla de respaldo; recibe nombre de producto,
+categoría y %, nunca datos del cliente, costos ni márgenes. Una redacción POR CATEGORÍA con marcadores que el POS completa
+con los números del motor ("la IA explica, no calcula"). F3: por período, categoría y cliente; solo líneas donde ganó la
+categoría.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 99.1 | La IA redacta las 3 frases (gana la categoría / gana otro precio / el estado no se suma) y quedan guardadas con fecha y origen "ia" | EF en DEV con usuario real (5/5 "ia", 1,7–2,9 s) · e2e `181` | ✅ |
+| 99.2 | 🛑 Texto inválido de la IA (números, $, %, marcadores faltantes o inventados, links) → se le pide corregir UNA vez; si sigue mal, queda la plantilla | unit `cartelCategoria` (validación) · EF en DEV (antes del reintento 1 de 2 caía a plantilla) | ✅ |
+| 99.3 | A la IA solo le llegan la categoría y hasta 5 productos con su % | unit `cartelCategoria` · revisión de la EF | ✅ |
+| 99.4 | EF: sin sesión 401; rol sin permiso de gestionar categorías 403; categoría de otro negocio 404; 20/min por usuario y 200/día por negocio | e2e `181` (401) · revisión | ✅ parcial |
+| 99.5 | La venta nunca depende de la IA: se pide sin esperar al cargar el primer producto y al importar; "Volver a redactar" muestra el resultado | e2e `181` · revisión | ✅ |
+| 99.6 | POS: usa las frases de la IA si son válidas (validadas de nuevo en el navegador); si no, la plantilla | unit `cartelCategoria` | ✅ |
+| 99.7 | Pantalla de la lista: "Cartel para el cajero" con origen (IA / estándar) y un ejemplo completo, nunca con {marcadores} | e2e `181` | ✅ |
+| 99.8 | 🛑 F3: lo no facturado = (precio sin categoría − con categoría) × cantidad, ambos del motor; con tier $80 y categoría $70 son $10/u, no $30 | e2e `180` A ($120 en la base) · SQL DEV | ✅ |
+| 99.9 | F3 saneado por el servidor: solo si ganó la categoría, nunca negativo ni mayor que la línea a lista, no se reescribe en una venta hecha | SQL DEV (transacción abortada) | ✅ |
+| 99.10 | Reporte "Descuentos por categoría" (Reportes): por categoría y cliente, ventas despachadas/facturadas/reservadas del período; solo DUEÑO/ADMIN/SUPER_USUARIO/SUPERVISOR/CONTADOR | e2e `180` A (fila con categoría, cliente y $120) · SQL DEV | ✅ |
+| 99.11 | Empate categoría = tier: se informa "categoría" pero lo no facturado es 0 (no suma al reporte) | e2e `180` Pedidos | ✅ |
+| 99.12 | Regresión e2e de precios / ventas / Pedidos | e2e (25 specs): 51 ✅ · tras la 470: 178/179/180/181 8 ✅ · 54 y 63 se saltean por fixture previo | ✅ |
+| 99.13 | 🛑 F3 con devolución PARCIAL (la venta sigue despachada): se descuenta en proporción a lo devuelto de ese producto (6 de 14 → $150 × 8/14 = $85,71) | SQL DEV (mig 470, transacción abortada) | ✅ |
+| 99.14 | La IA no puede disfrazar números: cifras de otros alfabetos, "mitad", "veinte por ciento", "gratis" → rechazado; los nombres de categoría/producto se aplanan antes de ir a la IA; una falla pasajera no pisa una redacción válida; timeout 15 s | unit `cartelCategoria` · revisión de la EF | ✅ |
+
 ## 🏷️ §98 — Categoría del cliente en el precio + tope de descuento (B2 / Fase 4, mig 468, 🟡 DEV) — 2026-10-03
 
 Reglas del relevamiento (A1, A2, A4, A5, B4, F2) + B-2/B-5 + PL-1 + decisiones de GO del 03/10: con categoría ACTIVA el

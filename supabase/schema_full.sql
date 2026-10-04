@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-03T06:47:34.061Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261003063524 · 177 tablas
+-- Generado 2026-10-04T04:29:26.035Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261004040521 · 177 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -429,7 +429,10 @@ CREATE TABLE public.categorias_cliente (
   cc_enforcement_politica text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   created_by uuid,
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  cartel_textos jsonb,
+  cartel_origen text,
+  cartel_generado_at timestamp with time zone
 );
 
 CREATE TABLE public.categorias_gasto (
@@ -2772,7 +2775,8 @@ CREATE TABLE public.venta_items (
   precio_lista_unitario numeric(14,2),
   mecanismo_precio text,
   categoria_cliente_id uuid,
-  categoria_descuento_pct numeric(5,2)
+  categoria_descuento_pct numeric(5,2),
+  descuento_categoria_monto numeric(14,2)
 );
 
 CREATE TABLE public.venta_series (
@@ -3023,6 +3027,7 @@ ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente
 ALTER TABLE public.categoria_cliente_descuentos ADD CONSTRAINT categoria_cliente_descuentos_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias ADD CONSTRAINT chk_categorias_rotacion_matriz CHECK ((NOT (COALESCE(rotacion_agotar_antes_reponer, false) AND COALESCE(rotacion_armar_kits, false))));
+ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cartel_origen_check CHECK (((cartel_origen IS NULL) OR (cartel_origen = ANY (ARRAY['ia'::text, 'plantilla'::text]))));
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_enforcement_politica_check CHECK (((cc_enforcement_politica IS NULL) OR (cc_enforcement_politica = ANY (ARRAY['permitir'::text, 'avisar'::text, 'bloquear'::text]))));
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_interes_mensual_pct_check CHECK (((cc_interes_mensual_pct IS NULL) OR (cc_interes_mensual_pct >= (0)::numeric)));
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_cc_limite_check CHECK (((cc_limite IS NULL) OR (cc_limite >= (0)::numeric)));
@@ -9973,11 +9978,13 @@ BEGIN
 
     INSERT INTO venta_items (
       tenant_id, venta_id, producto_id, cantidad, precio_unitario, precio_costo_historico,
-      subtotal, alicuota_iva, iva_monto, pedido_item_id, mecanismo_precio
+      subtotal, alicuota_iva, iva_monto, pedido_item_id, mecanismo_precio, descuento_categoria_monto
     ) VALUES (
       v_pedido.tenant_id, v_venta_id, v_item.producto_id, v_cant_entregar, v_precio,
       v_producto.precio_costo, v_item_subtotal, COALESCE(v_producto.alicuota_iva, 21), v_iva_monto, v_item.id,
-      v_motor->>'mecanismo'
+      v_motor->>'mecanismo',
+      CASE WHEN v_motor->>'mecanismo' = 'categoria'
+        THEN round(GREATEST((v_motor->>'precio_unitario_sin_categoria')::numeric - v_precio, 0) * v_cant_entregar, 2) END
     ) RETURNING id INTO v_venta_item_id;
 
     v_subtotal := v_subtotal + v_item_subtotal;
@@ -10355,12 +10362,13 @@ DECLARE
   v_cant       numeric := 0;
   v_gana_cat   boolean := false;
   v_base       numeric;
+  v_cartel     jsonb;
 BEGIN
   v_r := fn_precio_motor_producto(p_tenant_id, p_producto_id, p_cantidad, p_lista);
   IF v_r IS NULL THEN RETURN NULL; END IF;
 
   IF p_cliente_id IS NOT NULL THEN
-    SELECT cat.id, cat.nombre INTO v_cat_id, v_cat_nombre
+    SELECT cat.id, cat.nombre, cat.cartel_textos INTO v_cat_id, v_cat_nombre, v_cartel
     FROM clientes c JOIN categorias_cliente cat ON cat.id = c.categoria_cliente_id AND cat.activo
     WHERE c.id = p_cliente_id AND c.tenant_id = p_tenant_id AND cat.tenant_id = p_tenant_id;
   END IF;
@@ -10369,7 +10377,8 @@ BEGIN
     'precio_sin_categoria', v_r->'precio_base',
     'mecanismo_sin_categoria', v_r->'mecanismo',
     'estado_compite', v_cat_id IS NOT NULL,
-    'categoria_id', v_cat_id, 'categoria_nombre', v_cat_nombre);
+    'categoria_id', v_cat_id, 'categoria_nombre', v_cat_nombre,
+    'categoria_cartel', v_cartel);
   IF v_cat_id IS NULL THEN RETURN v_r; END IF;
 
   SELECT descuento_pct INTO v_pct FROM categoria_cliente_descuentos
@@ -10646,7 +10655,9 @@ BEGIN
       IF v_r IS NULL THEN
         v_r := jsonb_build_object('error', 'Producto inexistente');
       ELSE
-        v_r := v_r || jsonb_build_object('precio_unitario', fn_precio_redondear((v_r->>'precio_base')::numeric, v_modo));
+        v_r := v_r || jsonb_build_object(
+          'precio_unitario', fn_precio_redondear((v_r->>'precio_base')::numeric, v_modo),
+          'precio_unitario_sin_categoria', fn_precio_redondear((v_r->>'precio_sin_categoria')::numeric, v_modo));
       END IF;
     EXCEPTION WHEN OTHERS THEN
       GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
@@ -11510,6 +11521,60 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_reporte_descuento_categoria(p_desde date, p_hasta date, p_categoria_id uuid DEFAULT NULL::uuid, p_cliente_id uuid DEFAULT NULL::uuid)
+ RETURNS TABLE(categoria_id uuid, categoria_nombre text, cliente_id uuid, cliente_nombre text, ventas bigint, lineas bigint, unidades numeric, monto numeric)
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant uuid := get_user_tenant_id();
+  v_rol    text;
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin negocio en la sesión'; END IF;
+  SELECT u.rol INTO v_rol FROM users u WHERE u.id = auth.uid() AND u.activo IS NOT FALSE;
+  IF v_rol IS NULL OR v_rol NOT IN ('DUEÑO', 'ADMIN', 'SUPER_USUARIO', 'SUPERVISOR', 'CONTADOR') THEN
+    RAISE EXCEPTION 'Tu rol no puede ver este reporte';
+  END IF;
+  IF p_desde IS NULL OR p_hasta IS NULL OR p_hasta < p_desde THEN RAISE EXCEPTION 'Período inválido'; END IF;
+  IF p_hasta - p_desde > 731 THEN RAISE EXCEPTION 'El período no puede superar los dos años'; END IF;
+
+  -- SECURITY INVOKER: la RLS de ventas / venta_items (sucursal) aplica igual que en el resto de los reportes.
+  -- Mig 470: una devolución PARCIAL deja la venta 'despachada'/'facturada'; lo devuelto ya no es plata que se dejó de
+  -- cobrar. `devolucion_items` no apunta a la línea sino al producto de la venta → se descuenta en proporción a lo
+  -- devuelto de ese producto en esa venta (devuelto / vendido, tope 100 %).
+  RETURN QUERY
+  WITH vendido AS (
+    SELECT vi2.venta_id, vi2.producto_id, sum(vi2.cantidad) AS cant
+    FROM venta_items vi2 WHERE vi2.tenant_id = v_tenant GROUP BY 1, 2
+  ), devuelto AS (
+    SELECT d.venta_id, di.producto_id, sum(di.cantidad) AS cant
+    FROM devolucion_items di JOIN devoluciones d ON d.id = di.devolucion_id
+    WHERE d.tenant_id = v_tenant GROUP BY 1, 2
+  )
+  SELECT vi.categoria_cliente_id, cat.nombre, v.cliente_id, COALESCE(c.nombre, v.cliente_nombre),
+         count(DISTINCT v.id), count(*),
+         round(sum(vi.cantidad * (1 - LEAST(COALESCE(dv.cant, 0) / NULLIF(vd.cant, 0), 1))), 2),
+         round(sum(vi.descuento_categoria_monto * (1 - LEAST(COALESCE(dv.cant, 0) / NULLIF(vd.cant, 0), 1))), 2)
+  FROM venta_items vi
+  JOIN ventas v ON v.id = vi.venta_id
+  LEFT JOIN vendido vd ON vd.venta_id = vi.venta_id AND vd.producto_id = vi.producto_id
+  LEFT JOIN devuelto dv ON dv.venta_id = vi.venta_id AND dv.producto_id = vi.producto_id
+  LEFT JOIN categorias_cliente cat ON cat.id = vi.categoria_cliente_id
+  LEFT JOIN clientes c ON c.id = v.cliente_id
+  WHERE vi.tenant_id = v_tenant AND v.tenant_id = v_tenant
+    AND vi.mecanismo_precio = 'categoria' AND COALESCE(vi.descuento_categoria_monto, 0) > 0
+    AND v.estado IN ('despachada', 'facturada', 'reservada')   -- no presupuestos, devueltas ni anuladas
+    AND (v.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN p_desde AND p_hasta
+    AND (p_categoria_id IS NULL OR vi.categoria_cliente_id = p_categoria_id)
+    AND (p_cliente_id IS NULL OR v.cliente_id = p_cliente_id)
+  GROUP BY vi.categoria_cliente_id, cat.nombre, v.cliente_id, COALESCE(c.nombre, v.cliente_nombre)
+  HAVING sum(vi.descuento_categoria_monto * (1 - LEAST(COALESCE(dv.cant, 0) / NULLIF(vd.cant, 0), 1))) > 0
+  ORDER BY 8 DESC;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_repositor_elegir_asignado(p_tenant_id uuid, p_sucursal_id uuid)
@@ -12749,11 +12814,17 @@ DECLARE
 BEGIN
   IF TG_OP = 'UPDATE' THEN
     SELECT estado INTO v_estado FROM ventas WHERE id = NEW.venta_id;
+    -- Mig 470: un presupuesto re-cotizado sin monto nuevo no conserva el de antes (era de otro precio).
+    IF v_estado = 'pendiente' AND NEW.precio_unitario IS DISTINCT FROM OLD.precio_unitario
+       AND NEW.descuento_categoria_monto IS NOT DISTINCT FROM OLD.descuento_categoria_monto THEN
+      NEW.descuento_categoria_monto := NULL;
+    END IF;
     IF v_estado IS DISTINCT FROM 'pendiente'
        OR (NEW.precio_unitario IS NOT DISTINCT FROM OLD.precio_unitario AND NEW.producto_id IS NOT DISTINCT FROM OLD.producto_id) THEN
       NEW.precio_lista_unitario   := OLD.precio_lista_unitario;
       NEW.categoria_cliente_id    := OLD.categoria_cliente_id;
       NEW.categoria_descuento_pct := OLD.categoria_descuento_pct;
+      NEW.descuento_categoria_monto := OLD.descuento_categoria_monto;
       RETURN NEW;
     END IF;
   END IF;
@@ -12761,7 +12832,7 @@ BEGIN
   NEW.precio_lista_unitario := NULL;
   NEW.categoria_cliente_id := NULL;
   NEW.categoria_descuento_pct := NULL;
-  IF NEW.producto_id IS NULL OR auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF NEW.producto_id IS NULL OR auth.uid() IS NULL THEN NEW.descuento_categoria_monto := NULL; RETURN NEW; END IF;
 
   SELECT cliente_id INTO v_cliente FROM ventas WHERE id = NEW.venta_id;
   SELECT precio_redondeo INTO v_modo FROM tenants WHERE id = NEW.tenant_id;
@@ -12774,6 +12845,16 @@ BEGIN
     NEW.precio_lista_unitario := fn_precio_redondear((v_r->>'precio_lista')::numeric, v_modo);
     NEW.categoria_cliente_id := (v_r->>'categoria_id')::uuid;
     NEW.categoria_descuento_pct := (v_r->>'categoria_pct')::numeric;
+  END IF;
+  -- Mig 469 (F3): lo que la categoría bajó en esta línea. Solo si ganó la categoría y el cliente la tiene; nunca
+  -- negativo ni más que la línea entera a precio de lista.
+  IF NEW.mecanismo_precio IS DISTINCT FROM 'categoria' OR NEW.categoria_cliente_id IS NULL
+     OR NEW.descuento_categoria_monto IS NULL OR NEW.descuento_categoria_monto <= 0 THEN
+    NEW.descuento_categoria_monto := NULL;
+  ELSIF NEW.precio_lista_unitario IS NOT NULL THEN
+    -- Mig 470: tope = lo que la línea quedó por debajo de la lista (antes: la línea entera a lista).
+    NEW.descuento_categoria_monto := NULLIF(GREATEST(LEAST(NEW.descuento_categoria_monto,
+      round((NEW.precio_lista_unitario - COALESCE(NEW.precio_unitario, 0)) * NEW.cantidad, 2)), 0), 0);
   END IF;
   RETURN NEW;
 END;

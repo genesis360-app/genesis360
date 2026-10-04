@@ -14,6 +14,10 @@ export interface CategoriaCliente extends CondicionesCategoria {
   descripcion: string | null
   usada: boolean
   created_at: string
+  // Mig 469 (B-4): cartel del POS redactado por la IA (null = plantilla)
+  cartel_textos?: Record<string, string> | null
+  cartel_origen?: 'ia' | 'plantilla' | null
+  cartel_generado_at?: string | null
 }
 
 /** Una fila de `vw_clientes_cc`: condiciones EFECTIVAS del cliente y de dónde sale cada una. */

@@ -20,6 +20,10 @@ import { descargarCsv } from '@/lib/exportarArchivo'
 
 type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado' | 'productos-atributos'
   | 'baja-rotacion' | 'mas-devoluciones' | 'anuladas-devueltas' | 'comparativa-canal' | 'margen-real'
+  | 'descuento-categoria'
+
+// Mig 469 (F3): mismos roles que `fn_reporte_descuento_categoria`.
+const ROLES_REPORTE_CATEGORIA = ['DUEÑO', 'ADMIN', 'SUPER_USUARIO', 'SUPERVISOR', 'CONTADOR']
 
 interface ReporteConfig {
   id: ReporteId
@@ -42,6 +46,7 @@ const REPORTES: ReporteConfig[] = [
   { id: 'mas-devoluciones',    titulo: 'Más devoluciones',        descripcion: 'Ranking de productos por unidades devueltas',                      icon: ArrowLeftRight, color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-600' },
   { id: 'anuladas-devueltas',  titulo: 'Anuladas y devueltas',    descripcion: 'Ventas anuladas y devoluciones con su motivo',                     icon: AlertTriangle, color: 'bg-red-50 dark:bg-red-900/20 text-red-500' },
   { id: 'comparativa-canal',   titulo: 'Comparativa por canal',   descripcion: 'Ventas, total y ticket promedio por canal (online/presencial)',   icon: BarChart2,   color: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' },
+  { id: 'descuento-categoria', titulo: 'Descuentos por categoría', descripcion: 'Lo que no se facturó por el descuento de categoría de clientes, por categoría y cliente', icon: Tag, color: 'bg-violet-50 dark:bg-violet-900/20 text-violet-600' },
   { id: 'margen-real',         titulo: 'Margen real por venta',   descripcion: 'Margen de cada venta (total − costo) considerando descuentos',     icon: DollarSign,  color: 'bg-green-50 dark:bg-green-900/20 text-green-600' },
 ]
 
@@ -215,6 +220,18 @@ export default function ReportesPage() {
   })
 
   // VF4/K1 — devoluciones del período (con ítems + datos de la venta)
+  // F3 (mig 469): lo que la categoría bajó frente al precio sin ella, solo en las líneas donde ganó la categoría.
+  const puedeReporteCategoria = ROLES_REPORTE_CATEGORIA.includes((user as any)?.rol ?? '')
+  const { data: descuentoCategoria = [] } = useQuery({
+    queryKey: ['reporte-descuento-categoria', tenant?.id, fechaDesde, fechaHasta],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_reporte_descuento_categoria', { p_desde: fechaDesde, p_hasta: fechaHasta })
+      if (error) { toast.error(`Descuentos por categoría: ${error.message}`); return [] }
+      return (data ?? []) as any[]
+    },
+    enabled: !!tenant && puedeReporteCategoria && reporteActivo === 'descuento-categoria',
+  })
+
   const { data: devoluciones = [] } = useQuery({
     queryKey: ['reporte-devoluciones', tenant?.id, fechaDesde, fechaHasta],
     queryFn: async () => {
@@ -431,6 +448,16 @@ export default function ReportesPage() {
         }))
     })(),
 
+    // F3 (mig 469) — lo que no se facturó por la categoría: por categoría y cliente (el detalle viene agrupado).
+    'descuento-categoria': (descuentoCategoria as any[]).map(r => ({
+      Categoría: r.categoria_nombre ?? '(categoría borrada)',
+      Cliente: r.cliente_nombre ?? '',
+      Ventas: Number(r.ventas),
+      Líneas: Number(r.lineas),
+      Unidades: Number(r.unidades),
+      'Total no facturado': Math.round(Number(r.monto) * 100) / 100,
+    })),
+
     // VF4/K1.f — margen real por venta (total − costo histórico)
     'margen-real': ventas.map((v: any) => {
       const costo = (v.venta_items ?? []).reduce((acc: number, it: any) => acc + ((it.precio_costo_historico ?? 0) * it.cantidad), 0)
@@ -634,7 +661,7 @@ export default function ReportesPage() {
 
   const reporteSeleccionado = REPORTES.find(r => r.id === reporteActivo)
   const datos = reporteActivo ? datosPorReporte[reporteActivo] : []
-  const necesitaFechas = reporteActivo && ['movimientos', 'ventas', 'rotacion'].includes(reporteActivo)
+  const necesitaFechas = reporteActivo && ['movimientos', 'ventas', 'rotacion', 'descuento-categoria'].includes(reporteActivo)
 
   if (limits && !limits.puede_reportes) return <UpgradePrompt feature="reportes" />
 
@@ -649,7 +676,7 @@ export default function ReportesPage() {
 
       {/* Grid de reportes */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {REPORTES.map(r => {
+        {REPORTES.filter(r => r.id !== 'descuento-categoria' || puedeReporteCategoria).map(r => {
           const Icon = r.icon
           const activo = reporteActivo === r.id
           return (

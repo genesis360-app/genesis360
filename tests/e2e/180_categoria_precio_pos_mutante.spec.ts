@@ -120,6 +120,20 @@ test.describe('Categoría del cliente en el POS (mig 468)', () => {
     expect(Number(item.precio_lista_unitario)).toBeCloseTo(100, 2)
     expect(item.categoria_cliente_id).toBe(e.cat.id)
     expect(Number(item.categoria_descuento_pct)).toBeCloseTo(30, 2)
+    // F3 (mig 469): lo que bajó la categoría frente al tier = 12 × ($80 − $70) = $120
+    const [f3] = await (await request.get(
+      `${SUPABASE_URL}/rest/v1/venta_items?producto_id=eq.${e.producto.id}&select=descuento_categoria_monto&order=created_at.desc&limit=1`,
+      { headers: e.headers })).json()
+    expect(Number(f3.descuento_categoria_monto), '[180] F3: 12 × ($80 tier − $70 categoría)').toBeCloseTo(120, 2)
+
+    // El reporte "Descuentos por categoría" lo muestra (categoría + cliente + $120).
+    await goto(page, '/reportes')
+    await waitForApp(page)
+    await page.getByRole('button', { name: /Descuentos por categoría/ }).first().click()
+    const fila = page.locator('tbody tr').filter({ hasText: e.cat.nombre ?? `Colocadores 180 ${ts}` })
+    await expect(fila).toHaveCount(1, { timeout: 15000 })
+    await expect(fila).toContainText(e.nombreCliente)
+    await expect(fila).toContainText(/120/)
   })
 
   test('tope 20 %: la venta con 30 % de descuento no se registra (ni el DUEÑO)', async ({ page, request }) => {
@@ -215,11 +229,13 @@ test('Pedidos A2: con categoría el lote con 25 % compite contra la lista ($940)
 
   const a = await pedidoA2(request, headers, tenantId, tipo.id, ts, 'C', cat.id, conCat.id)
   const ventaA = await entregar(a.pedidoId!)
-  const [va] = await (await request.get(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaA}&select=total,venta_items(precio_unitario,mecanismo_precio,precio_lista_unitario,categoria_descuento_pct,descuento_estado_monto)`, { headers })).json()
+  const [va] = await (await request.get(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaA}&select=total,venta_items(precio_unitario,mecanismo_precio,precio_lista_unitario,categoria_descuento_pct,descuento_estado_monto,descuento_categoria_monto)`, { headers })).json()
   expect(Number(va.total), '[180] 8 × $80 (categoría) + 4 × $75 (estado 25 % le gana) = $940').toBeCloseTo(940, 2)
   expect(va.venta_items[0].mecanismo_precio).toBe('categoria')
   expect(Number(va.venta_items[0].precio_lista_unitario)).toBeCloseTo(100, 2)
   expect(Number(va.venta_items[0].descuento_estado_monto)).toBeCloseTo(20, 2)
+  // F3: con cat 20 % la categoría empata con el tier ($80) → ganó la categoría pero no bajó nada frente al tier.
+  expect(va.venta_items[0].descuento_categoria_monto).toBeNull()
 
   const b = await pedidoA2(request, headers, tenantId, tipo.id, ts, 'S', cat.id, sinCat.id)
   const ventaB = await entregar(b.pedidoId!)

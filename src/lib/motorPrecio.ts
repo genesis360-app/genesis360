@@ -1,3 +1,5 @@
+import { PLANTILLAS, completarFrase, validarTextosCartel, type TextosCartel } from './cartelCategoria'
+
 /**
  * Motor ÚNICO de precio — lado del POS (B2 / Fase 3, mig 467).
  *
@@ -35,6 +37,10 @@ export interface PrecioMotorLinea {
   /** % de la categoría para el producto; undefined = sin cargar. */
   categoria_pct?: number
   precio_categoria?: number
+  /** Mig 469: precio que habría sin la categoría, ya redondeado (para F3). */
+  precio_unitario_sin_categoria?: number
+  /** Mig 469 (B-4): frases del cartel redactadas por la IA para la categoría (validadas de nuevo acá). null = plantilla. */
+  categoria_cartel?: TextosCartel | null
 }
 
 export interface ItemCarritoParaMotor {
@@ -87,6 +93,8 @@ export function mapaPreciosMotor(respuesta: unknown): Record<string, PrecioMotor
       categoria_nombre: (raw.categoria_nombre as string | null | undefined) ?? null,
       categoria_pct: num(raw.categoria_pct),
       precio_categoria: num(raw.precio_categoria),
+      precio_unitario_sin_categoria: num(raw.precio_unitario_sin_categoria),
+      categoria_cartel: validarTextosCartel(raw.categoria_cartel),
       // Sin precio y sin error explícito también es un error: nunca se cobra una línea sin precio del servidor.
       error: raw.error ? String(raw.error) : precio === undefined ? 'Sin precio' : undefined,
     }
@@ -146,7 +154,8 @@ export function etiquetaCategoria(p: PrecioMotorLinea | null | undefined): strin
 
 /**
  * Texto del cartel (A2), SOLO para el que maneja el POS: aparece cuando en una línea compitieron dos o más
- * descuentos y uno no se aplicó. Plantilla fija (la redacción con IA es la Fase 5; ésta queda de respaldo).
+ * descuentos y uno no se aplicó. Usa las frases que redactó la IA para la categoría (B-4, mig 469) si las hay y son
+ * válidas; si no, la plantilla fija. Los números los pone siempre el motor.
  * `estadoPerdio`: había un lote con descuento por estado que no se aplicó porque el precio ya era mejor.
  */
 export function textoCartelPrecio(
@@ -154,19 +163,36 @@ export function textoCartelPrecio(
   estado?: { nombre: string; pct: number; perdio: boolean } | null,
 ): string | null {
   if (!p || p.precio_unitario === undefined) return null
+  const frases = p.categoria_cartel ?? PLANTILLAS
   const partes: string[] = []
   const otro = p.mecanismo_sin_categoria && p.mecanismo_sin_categoria !== 'lista' ? p.mecanismo_sin_categoria : null
+  const base = { producto, categoria: p.categoria_nombre ?? '', pct: p.categoria_pct ? pctTxt(p.categoria_pct) : '' }
   if (p.mecanismo === 'categoria' && p.categoria_nombre && p.categoria_pct) {
     if (otro && p.precio_sin_categoria !== undefined) {
-      partes.push(`En ${producto} se aplica el ${pctTxt(p.categoria_pct)} de la categoría ${p.categoria_nombre} (${pesos(p.precio_categoria ?? p.precio_unitario)}). No se suma al ${NOMBRE_MECANISMO[otro]} (${pesos(p.precio_sin_categoria)}) porque los descuentos no se acumulan: se toma el mejor para el cliente.`)
+      partes.push(completarFrase(frases.categoria_gana, {
+        ...base, precio: pesos(p.precio_categoria ?? p.precio_unitario),
+        otro: NOMBRE_MECANISMO[otro], otro_precio: pesos(p.precio_sin_categoria),
+      }))
     }
   } else if (p.categoria_nombre && p.categoria_pct && p.categoria_pct > 0 && p.precio_categoria !== undefined && otro) {
-    partes.push(`En ${producto} se aplica el ${NOMBRE_MECANISMO[otro]} (${pesos(p.precio_unitario)}), que es mejor que el ${pctTxt(p.categoria_pct)} de la categoría ${p.categoria_nombre} (${pesos(p.precio_categoria)}). Los descuentos no se acumulan: se toma el mejor para el cliente.`)
+    partes.push(completarFrase(frases.otro_gana, {
+      ...base, otro: NOMBRE_MECANISMO[otro], precio: pesos(p.precio_unitario), precio_categoria: pesos(p.precio_categoria),
+    }))
   }
   if (estado?.perdio) {
-    partes.push(`Las unidades del lote "${estado.nombre}" (${pctTxt(estado.pct)}) salen al mismo precio: ese descuento no se suma porque el precio ya es mejor para el cliente.`)
+    partes.push(completarFrase(frases.estado_no_suma, { estado: estado.nombre, estado_pct: pctTxt(estado.pct) }))
   }
   return partes.length ? partes.join(' ') : null
+}
+
+/**
+ * Lo que la categoría bajó en una línea (F3, mig 469): (precio sin categoría − precio con categoría) × cantidad, ambos
+ * del motor y redondeados. null si no ganó la categoría. El servidor lo vuelve a sanear.
+ */
+export function descuentoCategoriaMonto(p: PrecioMotorLinea | null | undefined, cantidad: number): number | null {
+  if (!p || p.mecanismo !== 'categoria' || p.precio_unitario === undefined || p.precio_unitario_sin_categoria === undefined) return null
+  const m = Math.round(Math.max(0, p.precio_unitario_sin_categoria - p.precio_unitario) * cantidad * 100) / 100
+  return m > 0 ? m : null
 }
 
 /**

@@ -62,7 +62,7 @@ import { condicionParaCliente, cuitValido, normalizarCuit, CONDICION_PADRON_LABE
 const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit: '', condicion_iva_receptor: '', domicilio_fiscal: '' }
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
-import { itemsParaMotor, mapaPreciosMotor, precioServidorVigente, estadoPreciosCarrito, cantidadParaPrecio, etiquetaCategoria, textoCartelPrecio, evaluarTopeDescuento, type ListaCanal } from '@/lib/motorPrecio'
+import { itemsParaMotor, mapaPreciosMotor, precioServidorVigente, estadoPreciosCarrito, cantidadParaPrecio, etiquetaCategoria, textoCartelPrecio, evaluarTopeDescuento, descuentoCategoriaMonto, type ListaCanal } from '@/lib/motorPrecio'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -3835,6 +3835,8 @@ export default function VentasPage() {
           cantidad_uom: item.cantidad_uom ?? null,
           // Mig 468 (F2): qué definió el precio. Lista, categoría y % los pone el servidor (trigger), no el navegador.
           mecanismo_precio: srvDe(item)?.mecanismo ?? null,
+          // Mig 469 (F3): lo que bajó la categoría en esta línea (el servidor lo sanea).
+          descuento_categoria_monto: descuentoCategoriaMonto(srvDe(item), cant),
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
@@ -4317,6 +4319,7 @@ export default function VentasPage() {
           alicuota_iva: prod.alicuota_iva,
           iva_monto: nuevoIva,
           mecanismo_precio: srv.mecanismo ?? null,   // mig 468 (F2); lista y categoría las recalcula el servidor
+          descuento_categoria_monto: descuentoCategoriaMonto(srv, Number(item.cantidad)),   // mig 469 (F3)
         }).eq('id', item.id)
         // Antes se ignoraba: el total quedaba con el precio nuevo y la línea con el viejo.
         if (itemErr) throw new Error(`No se pudo actualizar una línea del presupuesto: ${itemErr.message}`)

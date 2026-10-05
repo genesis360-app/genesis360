@@ -12,6 +12,7 @@ import { ConfirmProvider } from '@/hooks/useConfirm'
 
 // Lazy loading de módulos
 const LoginPage        = lazy(() => import('@/pages/LoginPage'))
+const RestablecerPasswordPage = lazy(() => import('@/pages/RestablecerPasswordPage'))
 const LandingPage      = lazy(() => import('@/pages/LandingPage'))
 const OnboardingPage   = lazy(() => import('@/pages/OnboardingPage'))
 const TerminosPage     = lazy(() => import('@/pages/TerminosPage'))
@@ -147,6 +148,8 @@ function App() {
               <LandingPage />
             } />
             <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+            {/* Vuelta del correo de recuperación: con sesión recién iniciada por el link, NO redirige al dashboard. */}
+            <Route path="/restablecer-contrasena" element={<RestablecerPasswordPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/terminos" element={<TerminosPage />} />
             <Route path="/privacidad" element={<PrivacidadPage />} />

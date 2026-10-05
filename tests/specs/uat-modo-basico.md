@@ -2411,6 +2411,26 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔑 §100 — Acceso por correo: invitados eligen contraseña + "¿Olvidaste tu contraseña?" (mig 471, 🟡 DEV) — 2026-10-05
+
+Caso real (El Tilo, PROD): un SUPER_USUARIO invitado con Hotmail entró una vez por el link y no pudo volver. El link de
+invitación inicia sesión UNA vez y nunca pedía contraseña; con Gmail no se notaba ("Continuar con Google"). Tampoco había
+"¿Olvidaste tu contraseña?", y los correos de Supabase eran los de fábrica, en inglés. Otra invitación fue a
+"outloock.com" y nunca llegó.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 100.1 | El invitado por correo, al entrar por el link, ve "Elegí tu contraseña" con el texto de la invitación; la elige, entra y la marca baja | DEV a mano: usuario de prueba con la marca → pantalla con el texto correcto → contraseña nueva → dashboard, `debe_cambiar_password` = false (y se restauró la original) | ✅ |
+| 100.2 | El empleado SIN correo sigue viendo su texto ("te la dio el dueño") y el flujo de siempre | e2e `159` | ✅ |
+| 100.3 | invite-user crea al invitado con la marca y manda el nombre del negocio al correo | revisión · EF desplegada en DEV | ✅ código |
+| 100.4 | 🛑 Mig 471: marca a los invitados que ya existían y nunca volvieron a entrar después del link (o no lo abrieron), sin Google; no cambia contraseñas ni corta sesiones | conteo: DEV 0, PROD 9 (8 de El Tilo + 1 de otro negocio) | ✅ DEV · ⏳ PROD |
+| 100.5 | "¿Olvidaste tu contraseña?": la respuesta es la misma exista o no el correo; con usuario sin correo, la ayuda dice que lo pida al dueño | e2e `182` | ✅ |
+| 100.6 | /restablecer-contrasena con link vencido o sin link: lo explica y lleva al ingreso | e2e `182` | ✅ |
+| 100.7 | Los errores de Supabase al cambiar la contraseña se muestran en castellano (misma contraseña, muy fácil, muy corta) | revisión · probado en DEV (misma contraseña) | ✅ |
+| 100.8 | Al invitar, un dominio mal tipeado ofrece la corrección (outloock.com → outlook.com, gmial, hotmial, .con) | unit `dominioCorreo` · e2e `182` | ✅ |
+| 100.9 | Correos de Auth en castellano y con la marca (invitación con el nombre del negocio, recuperar, confirmar, link de ingreso), versionados en `supabase/templates/` y aplicados con `scripts/aplicar-plantillas-auth.mjs` | aplicado en DEV (DEV no tiene SMTP propio: el correo real se ve en PROD) | ✅ DEV · ⏳ PROD |
+| 100.10 | El usuario de El Tilo: con la mig 471 en PROD, al entrar por un link nuevo (recuperación) elige su contraseña | tras el deploy | ⏳ |
+
 ## ✨ §99 — Cartel con IA y reporte de lo no facturado por la categoría (B2 / Fase 5, mig 469 + EF `categoria-cartel-ia`, 🟡 DEV) — 2026-10-04
 
 B-4: la IA SOLO redacta, al guardar la promoción (no en la venta), con plantilla de respaldo; recibe nombre de producto,

@@ -14,6 +14,7 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
+import { sugerenciaCorreo } from '@/lib/dominioCorreo'
 
 type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'VIEWER'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
@@ -216,7 +217,7 @@ export default function UsuariosPage() {
         throw new Error(body?.error ?? error.message)
       }
       if (data?.error) throw new Error(data.error)
-      toast.success(`Invitación enviada a ${invEmail}. El usuario recibirá un link para crear su contraseña.`)
+      toast.success(`Invitación enviada a ${invEmail}. Al abrir el link del correo elige su contraseña.`)
       logActividad({ entidad: 'usuario', entidad_nombre: invEmail.split('@')[0], accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })
       setInvEmail(''); setShowInvitar(false)
       qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -502,6 +503,15 @@ export default function UsuariosPage() {
                   placeholder="usuario@email.com" required
                   className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
               </div>
+              {/* 2026-10-05: una invitación de El Tilo fue a "outloock.com" y nunca llegó. */}
+              {sugerenciaCorreo(invEmail) && (
+                <p data-testid="sugerencia-correo" className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  ¿Quisiste decir{' '}
+                  <button type="button" onClick={() => setInvEmail(sugerenciaCorreo(invEmail)!)} className="font-semibold underline">
+                    {sugerenciaCorreo(invEmail)}
+                  </button>?
+                </p>
+              )}
             </div>
           ) : (
             <>
@@ -564,7 +574,8 @@ export default function UsuariosPage() {
           {invModo === 'email' ? (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
               <Mail size={13} className="mt-0.5 flex-shrink-0" />
-              El usuario recibirá un email con un link para crear su contraseña.
+              Le llega un correo con un link: al abrirlo elige su contraseña y desde ahí entra con su correo. Si no lo
+              ve, que revise el correo no deseado. Con una cuenta de Google también puede entrar con "Continuar con Google".
             </div>
           ) : (
             // El código del negocio es la otra mitad de lo que el empleado necesita para entrar.

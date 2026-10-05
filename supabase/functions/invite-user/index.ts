@@ -62,12 +62,16 @@ serve(async (req) => {
       throw new Error('No tenés permisos para invitar usuarios a este negocio')
     }
 
+    // El nombre del negocio va en los datos del usuario para que la plantilla del correo diga a qué lo invitan
+    // ({{ .Data.negocio }}, supabase/templates/invite.html).
+    const { data: tenantRow } = await supabaseAdmin.from('tenants').select('nombre').eq('id', tenant_id).single()
+
     // Invitar via Supabase Admin API (envía el email con magic link)
     const { data: invData, error: invError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
       {
         redirectTo,
-        data: { tenant_id, rol },
+        data: { tenant_id, rol, negocio: tenantRow?.nombre ?? '' },
       }
     )
     if (invError) throw new Error(invError.message)
@@ -80,6 +84,10 @@ serve(async (req) => {
         rol,
         nombre_display: email.split('@')[0],
         activo: true,
+        // 2026-10-05: el link de invitación inicia sesión UNA vez y nunca pedía contraseña; quien no usa Google
+        // (Hotmail, Outlook, correo de empresa) después no podía volver a entrar. Con la marca, el AuthGuard le pide
+        // elegir una al entrar por el link (la baja solo la hace la EF usuarios-sin-correo, junto con el cambio).
+        debe_cambiar_password: true,
       },
       { onConflict: 'id' }
     )

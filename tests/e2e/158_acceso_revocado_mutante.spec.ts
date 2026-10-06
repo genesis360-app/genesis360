@@ -52,7 +52,9 @@ test('dar de baja corta el acceso de verdad, y "Reactivar" lo devuelve', async (
     await expect(fila).toHaveCount(1)          // que no matchee un contenedor de más
     await expect(fila).not.toContainText('Inactivo')
 
-    await fila.getByTitle(/^Desactivar/).click()
+    // Desde 2026-10-06 la baja está en el panel "Editar acceso" de la fila (sección Cuenta).
+    await fila.getByRole('button', { name: /Editar acceso/ }).click()
+    await fila.getByRole('button', { name: 'Desactivar usuario' }).click()
     await confirmarModal(page)
     await expect(page.getByText('Usuario desactivado')).toBeVisible({ timeout: 10000 })
     dadoDeBaja = true

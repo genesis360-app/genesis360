@@ -69,6 +69,7 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 - Auditoría completa (F1) + registro de quién asignó qué (E2). Aviso de impacto al editar el límite (D2).
 
 ### Fase 3 — Motor único de precio en SQL (B-1) · grande · SIN cambio de comportamiento
+> ✅ **HECHA EN DEV (2026-10-03, mig 467, commit `055bfbdd`, pre-release `v1.239.0-rc.1`; NO en PROD).** `fn_precio_motor_producto` + `fn_precios_lineas(p_items, p_lista, p_cliente_id)` (p_cliente_id reservado para la Fase 4); `fn_precio_venta_efectivo` quedó como envoltura. Paridad 0 diferencias (21.556 casos vieja vs nueva; 136.256 SQL vs `tiers.ts`). PL-5 = A aplicada en el POS (sin precio del servidor no se registra). Hallazgo: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra PL-2; pendiente de decisión de GO. Detalle en [[wiki/features/precios-tiers-empaque]].
 - `fn_precios_lineas(p_cliente_id, p_items jsonb)` → por línea: precio unitario efectivo, **mecanismo que ganó**
   (lista / tier / estado / —categoría en fase 4—) y el detalle de los que compitieron. Una ida por carrito (B-1).
 - El POS y Pedidos pasan a usarlo; `tiers.ts` queda solo para mostrar (o se retira).
@@ -79,6 +80,7 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
   (**PL-5**).
 
 ### Fase 4 — Categorías, etapa 2: el precio · grande
+> ✅ **HECHA EN DEV (2026-10-03, mig 468, commits `3b0bb474` + `7930c539`, pre-release `v1.239.0-rc.2`; NO en PROD; aplicar 467 antes que 468).** `fn_precio_motor_cliente` + categoría en `fn_precios_lineas`; A2 con categoría activa; F2 en `venta_items` (`precio_lista_unitario`, `mecanismo_precio`, `categoria_cliente_id`, `categoria_descuento_pct`); tope `tenants.descuento_tope_acumulado_pct` sin salteo (constraint trigger diferido); Pedidos con categoría; POS con etiqueta + cartel de plantilla. Paridad 139.288 casos / 0 diferencias; e2e 180; UAT §98. Detalle en [[wiki/features/precios-tiers-empaque]].
 - Lista por categoría: % **por producto** (B5), distinguiendo "sin cargar" de "0 % explícito" (C4); producto nuevo
   entra sin descuento + alerta de "sin cargar".
 - **Importación por Excel** (B-3): por SKU, vista previa, producto inexistente = error en su fila, actualiza solo lo
@@ -94,6 +96,7 @@ cuenta corriente, después el precio"), (3) dejar el motor único ANTES de meter
 - Aviso de impacto al editar una categoría (C1): "afecta a N clientes; M presupuestos/pedidos conservan su precio".
 
 ### Fase 5 — IA del cartel + reporte · media
+> ✅ **HECHA EN DEV (2026-10-04, migs 469-470, commit `3a31a2f1`, pre-release `v1.239.0-rc.3`; NO en PROD).** EF `categoria-cartel-ia` (solo DEV; Groq, una redacción por categoría de 3 frases con marcadores, validación estricta, fallback a plantilla), `src/lib/cartelCategoria.ts` (+ copia idéntica en `_shared`), panel "Cartel para el cajero", `venta_items.descuento_categoria_monto`, `fn_reporte_descuento_categoria` y reporte "Descuentos por categoría" (la 470 resta devoluciones parciales). **Con esto B2 queda completo en DEV; falta el deploy (467 -> 468 -> 469 -> 470 + EF).** Detalle en [[wiki/features/precios-tiers-empaque]].
 - B-4: la IA **redacta al guardar la promoción**, no en la venta; fallback = plantilla; se le manda producto, categoría
   y %, nunca datos del cliente, costos ni márgenes.
 - F3: reporte de lo no facturado por descuentos de categoría (período, categoría, cliente), solo líneas donde ganó la

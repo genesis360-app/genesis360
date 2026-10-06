@@ -10,7 +10,9 @@ import { propiosQueCompiten } from '@/lib/ccCategorias'
 import { puedeAsignarCategoria, puedeEditarCCPropia, type CategoriaCliente } from '@/hooks/useCategoriasCliente'
 
 // Asignación masiva de una categoría (B-6 de GO + D2 de Fede):
-//  1) se eligen los clientes (buscador + filtro por etiqueta),
+//  1) se eligen los clientes (buscador + filtro por etiqueta) en una tabla con compras, ticket promedio y total gastado
+//     (rediseño 2026-10-05; `fn_clientes_compras_resumen`, mig 472: ventas despachadas/facturadas/reservadas menos
+//     lo devuelto),
 //  2) resumen previo: cuántos, cuántos cambian de categoría, y la lista de los que tienen condiciones de CC PROPIAS que
 //     compiten con las de la categoría — para cada uno: mantener (por defecto), usar la de la categoría o editar,
 //  3) "Guardar" = UNA sola operación en el servidor (`fn_asignar_categoria_clientes`): o entra todo o nada.
@@ -41,6 +43,16 @@ export function AsignarCategoriaModal({ categoria, onCerrar, onAsignado }: { cat
     },
   })
 
+  const { data: compras } = useQuery({
+    queryKey: ['clientes-compras-resumen', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_clientes_compras_resumen')
+      if (error) throw error
+      return new Map<string, { compras: number; total: number }>(
+        ((data ?? []) as any[]).map(r => [r.cliente_id, { compras: Number(r.compras), total: Number(r.total) }]))
+    },
+  })
+
   const etiquetas = useMemo(() => [...new Set(clientes.flatMap(c => c.etiquetas ?? []))].sort(), [clientes])
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
@@ -57,7 +69,13 @@ export function AsignarCategoriaModal({ categoria, onCerrar, onAsignado }: { cat
   const yaEstan = elegidos.filter(c => c.categoria_cliente_id === categoria.id).length
 
   const toggle = (id: string) => setSeleccion(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const todosFiltrados = () => setSeleccion(s => { const n = new Set(s); filtrados.forEach(c => n.add(c.id)); return n })
+  const todosElegidos = filtrados.length > 0 && filtrados.every(c => seleccion.has(c.id))
+  const algunoElegido = filtrados.some(c => seleccion.has(c.id))
+  const alternarTodos = () => setSeleccion(s => {
+    const n = new Set(s)
+    if (todosElegidos) filtrados.forEach(c => n.delete(c.id)); else filtrados.forEach(c => n.add(c.id))
+    return n
+  })
 
   const decisionDe = (c: Fila) => decisiones[c.id] ?? {
     d: 'mantener' as Decision,
@@ -93,7 +111,7 @@ export function AsignarCategoriaModal({ categoria, onCerrar, onAsignado }: { cat
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onCerrar}>
       <div role="dialog" aria-modal="true" aria-label="Asignar categoría a clientes"
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
           <h3 className="font-semibold text-gray-800 dark:text-gray-100">Asignar "{categoria.nombre}" a clientes</h3>
           <button onClick={onCerrar} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
@@ -117,21 +135,50 @@ export function AsignarCategoriaModal({ categoria, onCerrar, onAsignado }: { cat
               </div>
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>{seleccion.size} seleccionado{seleccion.size === 1 ? '' : 's'} · {filtrados.length} en la lista</span>
-                <span className="flex gap-3">
-                  <button onClick={todosFiltrados} className="text-accent-text hover:underline">Seleccionar los {filtrados.length} de la lista</button>
-                  {seleccion.size > 0 && <button onClick={() => setSeleccion(new Set())} className="hover:underline">Limpiar</button>}
-                </span>
+                {seleccion.size > 0 && <button onClick={() => setSeleccion(new Set())} className="hover:underline">Limpiar</button>}
               </div>
             </div>
-            <div className="overflow-y-auto flex-1 divide-y divide-gray-50 dark:divide-gray-700">
-              {isLoading ? <p className="p-4 text-sm text-gray-400">Cargando…</p> : filtrados.slice(0, 500).map(c => (
-                <label key={c.id} className="flex items-center gap-3 px-4 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" data-asignar-cliente={c.nombre}>
-                  <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} className="accent-accent" />
-                  <span className="flex-1 truncate">{c.nombre}</span>
-                  {c.categoria_cliente_id === categoria.id && <span className="text-[11px] text-gray-400">ya está</span>}
-                </label>
-              ))}
-              {filtrados.length > 500 && <p className="p-3 text-xs text-gray-400">Se muestran 500; "Seleccionar los {filtrados.length}" incluye todos.</p>}
+            <div className="overflow-y-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400">
+                  <tr>
+                    <th className="w-10 px-4 py-2 text-left">
+                      <input type="checkbox" checked={todosElegidos} aria-label={`Seleccionar los ${filtrados.length} clientes de la lista`}
+                        ref={el => { if (el) el.indeterminate = algunoElegido && !todosElegidos }}
+                        onChange={alternarTodos} className="accent-accent" data-testid="asignar-todos" />
+                    </th>
+                    <th className="px-2 py-2 text-left font-medium">Cliente</th>
+                    <th className="px-2 py-2 text-right font-medium">Compras</th>
+                    <th className="px-2 py-2 text-right font-medium">Ticket promedio</th>
+                    <th className="px-4 py-2 text-right font-medium">Total gastado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {isLoading ? (
+                    <tr><td colSpan={5} className="p-4 text-sm text-gray-400">Cargando…</td></tr>
+                  ) : filtrados.length === 0 ? (
+                    <tr><td colSpan={5} className="p-4 text-sm text-gray-400">No hay clientes con ese filtro.</td></tr>
+                  ) : filtrados.slice(0, 500).map(c => {
+                    const k = compras?.get(c.id)
+                    return (
+                      <tr key={c.id} onClick={() => toggle(c.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40" data-asignar-cliente={c.nombre}>
+                        <td className="px-4 py-2">
+                          <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} onClick={e => e.stopPropagation()}
+                            className="accent-accent" aria-label={`Elegir ${c.nombre}`} />
+                        </td>
+                        <td className="px-2 py-2">
+                          <span className="text-gray-800 dark:text-gray-100">{c.nombre}</span>
+                          {c.categoria_cliente_id === categoria.id && <span className="ml-2 text-[11px] text-gray-400">ya está</span>}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums text-gray-600 dark:text-gray-300">{k?.compras ?? 0}</td>
+                        <td className="px-2 py-2 text-right tabular-nums text-gray-600 dark:text-gray-300">{k && k.compras > 0 ? formatMoneda(k.total / k.compras) : '—'}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-gray-800 dark:text-gray-100">{k ? formatMoneda(k.total) : formatMoneda(0)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              {filtrados.length > 500 && <p className="p-3 text-xs text-gray-400">Se muestran 500; el check del encabezado elige los {filtrados.length} de la lista.</p>}
             </div>
             <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex justify-end">
               <button disabled={seleccion.size === 0} onClick={() => setPaso(2)}

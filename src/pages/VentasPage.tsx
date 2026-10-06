@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck, UserCog, ClipboardList } from 'lucide-react'
 import QRCode from 'qrcode'
@@ -22,7 +22,7 @@ import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicio
 import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
-import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
+import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, cotizarRecurrente, type RecurrenteItemSnapshot, type PrecioMotorParaRecurrente } from '@/lib/ventasRecurrentes'
 import { detectarTipoComprobante, tiposComprobantePermitidos, prorratearDescuentoGlobal } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -62,6 +62,7 @@ import { condicionParaCliente, cuitValido, normalizarCuit, CONDICION_PADRON_LABE
 const NUEVO_CLIENTE_VACIO = { nombre: '', dni: '', telefono: '', email: '', cuit: '', condicion_iva_receptor: '', domicilio_fiscal: '' }
 import { montoSugeridoCredito, creditoARestituirPorAnulacion, ORIGEN_ANULACION_VENTA } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
+import { itemsParaMotor, mapaPreciosMotor, precioServidorVigente, estadoPreciosCarrito, cantidadParaPrecio, etiquetaCategoria, textoCartelPrecio, evaluarTopeDescuento, descuentoCategoriaMonto, type ListaCanal } from '@/lib/motorPrecio'
 import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
@@ -2549,8 +2550,25 @@ export default function VentasPage() {
   async function generarDesdeRecurrente(rec: any) {
     setGenerandoRecId(rec.id)
     try {
-      const items: RecurrenteItemSnapshot[] = rec.items ?? []
-      const total = totalRecurrente(items)
+      const items: RecurrenteItemSnapshot[] = (rec.items ?? []).filter((i: RecurrenteItemSnapshot) => i.producto_id)
+      if (items.length === 0) throw new Error('La plantilla no tiene productos')
+      // Pedido de GO 06/10 — el precio sale del MOTOR ÚNICO (precio de hoy + categoría del cliente), igual que el POS y
+      // "Actualizar precios" del presupuesto. Antes se copiaba el precio congelado al crear la plantilla.
+      const itemsMotorRec = itemsParaMotor(items.map(i => ({ producto_id: i.producto_id, cantidad: Number(i.cantidad) })))
+      const [{ data: preciosData, error: preciosErr }, { data: prods, error: prodErr }] = await Promise.all([
+        supabase.rpc('fn_precios_lineas', { p_items: itemsMotorRec, p_lista: null, p_cliente_id: rec.cliente_id ?? null }),
+        supabase.from('productos').select('id, alicuota_iva').in('id', itemsMotorRec.map(i => i.producto_id)),
+      ])
+      if (preciosErr) throw new Error(`No se pudieron calcular los precios: ${preciosErr.message}`)
+      if (prodErr) throw new Error(`No se pudieron leer los productos: ${prodErr.message}`)
+      const mapa = mapaPreciosMotor(preciosData)
+      const precios: Record<string, PrecioMotorParaRecurrente> = {}
+      for (const it of itemsMotorRec) {
+        const p = mapa[it.producto_id]
+        precios[it.producto_id] = p ? { ...p, descuentoCategoria: descuentoCategoriaMonto(p, it.cantidad) } : { error: 'sin precio' }
+      }
+      const { lineas, total } = cotizarRecurrente(items, precios,
+        Object.fromEntries((prods ?? []).map((p: any) => [p.id, p.alicuota_iva])))
       const ventaId = crypto.randomUUID()
       const { error: vErr } = await supabase.from('ventas').insert({
         id: ventaId,
@@ -2565,23 +2583,19 @@ export default function VentasPage() {
         notas: rec.notas ?? null,
       })
       if (vErr) throw vErr
-      const itemRows = items.filter(i => i.producto_id).map(i => ({
-        tenant_id: tenant!.id,
-        venta_id: ventaId,
-        producto_id: i.producto_id,
-        cantidad: i.cantidad,
-        precio_unitario: i.precio_unitario,
-        descuento: Number(i.descuento ?? 0),
-        subtotal: i.subtotal,
-        alicuota_iva: Number(i.alicuota_iva ?? 21),
-      }))
+      const itemRows = lineas.map(l => ({ tenant_id: tenant!.id, venta_id: ventaId, ...l }))
       const { error: iErr } = await supabase.from('venta_items').insert(itemRows)
-      if (iErr) throw iErr
+      if (iErr) {
+        // Sin líneas no hay presupuesto: se borra el encabezado (p. ej. el tope de descuento rechazó los precios de la
+        // plantilla, mig 468). Si no, quedaba un presupuesto vacío por cada intento.
+        await supabase.from('ventas').delete().eq('id', ventaId)
+        throw iErr
+      }
       await supabase.from('ventas_recurrentes').update({
         proximo_at: proximaFecha(rec.frecuencia_dias),
         ultima_generada_at: new Date().toISOString(),
       }).eq('id', rec.id)
-      toast.success('Presupuesto generado desde la plantilla. Revisalo y convertilo/facturalo.')
+      toast.success('Presupuesto generado con los precios de hoy. Revisalo y convertilo/facturalo.')
       qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
       qc.invalidateQueries({ queryKey: ['ventas'] })
     } catch (e: any) {
@@ -2884,6 +2898,33 @@ export default function VentasPage() {
     enabled: !!tenant,
   })
 
+  // B2 / Fase 3 (mig 467) — precios del MOTOR ÚNICO para el carrito actual. La clave lleva la cantidad por SKU, la
+  // lista del canal y el cliente (Fase 4: categoría), así que cualquier cambio vuelve a consultar. Mientras tanto se
+  // mantiene la respuesta anterior, pero `precioServidorVigente` solo la usa si coincide con la cantidad actual.
+  const listaCanalPOS = (reglaDe(canalPOS).lista_precio ?? null) as ListaCanal
+  const itemsMotor = useMemo(() => itemsParaMotor(cart), [cart])
+  const motorPrecios = useQuery({
+    queryKey: ['precios-motor', tenant?.id, listaCanalPOS, clienteId ?? null, itemsMotor],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_precios_lineas', {
+        p_items: itemsMotor, p_lista: listaCanalPOS, p_cliente_id: clienteId ?? null,
+      })
+      if (error) throw error
+      return mapaPreciosMotor(data)
+    },
+    enabled: !!tenant && itemsMotor.length > 0,
+    placeholderData: keepPreviousData,
+    retry: 1,
+  })
+  const preciosMotor = motorPrecios.data
+  const estadoPrecios = estadoPreciosCarrito(cart, preciosMotor, {
+    // Bloquea solo si lo que hay es de OTRO carrito (cambió la clave: cantidades, cliente o canal) o todavía no llegó
+    // nada. Una re-consulta en segundo plano del MISMO carrito (staleTime 0) no bloquea: si no, un click en ese
+    // instante decía "Calculando precios…" y no registraba (lo detectaron los e2e 103 y 123 en la suite).
+    cargando: motorPrecios.isPlaceholderData || (motorPrecios.isFetching && !motorPrecios.data),
+    errorConsulta: motorPrecios.error ? ((motorPrecios.error as any).message ?? 'Sin conexión con el servidor') : null,
+  })
+
   // Precio de lista/tier de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
   // que la cantidad satisfaga; si ninguno aplica, precio minorista (precio_unitario base).
   // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
@@ -2897,7 +2938,7 @@ export default function VentasPage() {
   // descuento para cualquier múltiplo exacto, y el resto suelto sigue evaluándose por su cuenta —
   // el promedio ponderado preserva la plata total exacta sin importar en cuántas líneas del
   // carrito esté repartida la cantidad de ese SKU.
-  const precioTierBase = (item: CartItem): number => {
+  const precioTierBaseLocal = (item: CartItem): number => {
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
     // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
@@ -2917,15 +2958,36 @@ export default function VentasPage() {
   // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
   // `tenants.precio_redondeo`. Todo el cálculo de plata (subtotal, IVA, venta_items.precio_unitario,
   // factura) deriva de acá → el redondeo se propaga de forma consistente. Default 'none' = sin cambios.
-  const precioTierEfectivo = (item: CartItem): number =>
-    redondearPrecio(precioTierBase(item), (tenant as any)?.precio_redondeo)
+  const precioTierEfectivoLocal = (item: CartItem): number =>
+    redondearPrecio(precioTierBaseLocal(item), (tenant as any)?.precio_redondeo)
+
+  // B2 / Fase 3 (mig 467) — MOTOR ÚNICO: el precio que se cobra lo calcula la base (`fn_precios_lineas`), una ida por
+  // carrito con la cantidad total de cada SKU. Lo de arriba (`*Local`, tiers.ts) queda SOLO para mostrar un número
+  // mientras llega la respuesta: `registrarVenta` no guarda nada hasta que todas las líneas tienen precio del servidor
+  // para su cantidad actual (`estadoPreciosCarrito`; PL-5 = A, sin servidor no hay precio).
+  const cantSkuEnCarrito = (productoId: string) =>
+    cart.filter(i => i.producto_id === productoId).reduce((s, i) => s + cantidadParaPrecio(i), 0)
+  const srvDe = (item: CartItem) => precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
+  const precioTierBase = (item: CartItem): number => {
+    const srv = precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
+    return srv ? (srv.precio_base ?? srv.precio_unitario!) : precioTierBaseLocal(item)
+  }
+  const precioTierEfectivo = (item: CartItem): number => {
+    const srv = precioServidorVigente(preciosMotor, item.producto_id, cantSkuEnCarrito(item.producto_id))
+    return srv ? srv.precio_unitario! : precioTierEfectivoLocal(item)
+  }
 
   // Descuento por estado recalculado con el precio de tier VIGENTE de la línea (mig 306: el tier
   // depende del total del SKU en el carrito). Fuente ÚNICA — así la plata (getItemSubtotal), el
   // detalle combinado del ticket y lo que se graba en venta_items nunca quedan stale si otra línea
   // del mismo SKU movió el tier (Regla #0). Los campos item.descuento_estado_* son solo snapshot.
-  const descEstadoDe = (item: CartItem) =>
-    calcularDescuentoEstadoLinea(item.lpn_fuentes ?? [], precioTierEfectivo(item))
+  // Mig 468 (A2): si el cliente tiene categoría ACTIVA el estado compite contra la lista (gana el más bajo); si no, se
+  // acumula sobre el precio como siempre. Lo dice el motor (`estado_compite`).
+  const descEstadoDe = (item: CartItem) => {
+    const srv = srvDe(item)
+    return calcularDescuentoEstadoLinea(item.lpn_fuentes ?? [], precioTierEfectivo(item),
+      srv?.estado_compite && srv.precio_lista !== undefined ? { precioLista: srv.precio_lista } : null)
+  }
 
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
@@ -3350,6 +3412,34 @@ export default function VentasPage() {
       return
     }
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
+    // B2 / Fase 3 (REGLA #0): sin precio del servidor para TODAS las líneas no se guarda nada (PL-5 = A).
+    if (!estadoPrecios.listo) {
+      if (estadoPrecios.motivo === 'calculando') toast.error('Calculando precios… probá de nuevo en un segundo.')
+      else {
+        const nombre = estadoPrecios.productoId ? cart.find(i => i.producto_id === estadoPrecios.productoId)?.nombre : null
+        toast.error(nombre
+          ? `No se pudo calcular el precio de "${nombre}": ${estadoPrecios.mensaje}`
+          : `Sin conexión con el servidor: no se pueden calcular precios ni registrar ventas (${estadoPrecios.mensaje}).`,
+          { duration: 7000 })
+      }
+      return
+    }
+    // Mig 468 (A4 + B-5 + PL-1): tope de descuento acumulado sobre la lista, contando todo. Nadie lo saltea (ni el
+    // DUEÑO, ni con clave maestra): para vender más barato se sube el tope en Configuración. La base lo vuelve a
+    // controlar al guardar las líneas.
+    {
+      const tope = evaluarTopeDescuento(
+        // Lista REDONDEADA con el redondeo del negocio, igual que la guarda el servidor (`precio_lista_unitario`).
+        cart.map(i => {
+          const l = srvDe(i)?.precio_lista
+          return { precioLista: l === undefined ? undefined : redondearPrecio(l, (tenant as any)?.precio_redondeo), cantidad: cantidadParaPrecio(i) }
+        }),
+        total, (tenant as any)?.descuento_tope_acumulado_pct)
+      if (tope.excede) {
+        toast.error(`La venta tiene un descuento total de ${tope.descuentoPct.toLocaleString('es-AR')} % sobre el precio de lista y el tope del negocio es ${Number((tenant as any)?.descuento_tope_acumulado_pct).toLocaleString('es-AR')} %. Para vender más barato hay que subir el tope en Configuración → Ventas.`, { duration: 8000 })
+        return
+      }
+    }
     for (const item of cart) {
       if (item.tiene_series && item.series_seleccionadas.length === 0) {
         toast.error(`Seleccioná las series para ${item.nombre}`); return
@@ -3751,6 +3841,10 @@ export default function VentasPage() {
           // qué UoM se vendió. cantidad (arriba) sigue en unidades base, sin cambios.
           unidad_medida_id: item.unidad_medida_id ?? null,
           cantidad_uom: item.cantidad_uom ?? null,
+          // Mig 468 (F2): qué definió el precio. Lista, categoría y % los pone el servidor (trigger), no el navegador.
+          mecanismo_precio: srvDe(item)?.mecanismo ?? null,
+          // Mig 469 (F3): lo que bajó la categoría en esta línea (el servidor lo sanea).
+          descuento_categoria_monto: descuentoCategoriaMonto(srvDe(item), cant),
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
@@ -4194,28 +4288,51 @@ export default function VentasPage() {
     try {
       const productoIds = (ventaDetalle.venta_items ?? []).map((i: any) => i.producto_id).filter(Boolean)
       const { data: prods } = await supabase
-        .from('productos').select('id, precio_venta, alicuota_iva').in('id', productoIds)
+        .from('productos').select('id, alicuota_iva').in('id', productoIds)
       if (!prods) throw new Error('No se pudieron cargar los precios')
-      const precioMap: Record<string, { precio_venta: number; alicuota_iva: number }> = {}
-      for (const p of prods) precioMap[p.id] = { precio_venta: p.precio_venta ?? 0, alicuota_iva: p.alicuota_iva ?? 21 }
+      const ivaMap: Record<string, number> = {}
+      for (const p of prods) {
+        const a = parseFloat(p.alicuota_iva as any)
+        ivaMap[p.id] = Number.isFinite(a) ? a : 21
+      }
+      // B2 / Fase 3 (mig 467) — el precio sale del MOTOR ÚNICO, igual que en el POS. Antes tomaba `precio_venta` crudo:
+      // ignoraba el mayorista por cantidad y, en un producto en dólares, usaba el espejo en pesos congelado.
+      const itemsMotorPres = itemsParaMotor((ventaDetalle.venta_items ?? [])
+        .filter((i: any) => i.producto_id)
+        .map((i: any) => ({ producto_id: i.producto_id, cantidad: Number(i.cantidad) })))
+      const { data: preciosData, error: preciosErr } = await supabase.rpc('fn_precios_lineas', {
+        p_items: itemsMotorPres,
+        p_lista: (reglaDe(ventaDetalle.origen).lista_precio ?? null) as ListaCanal,
+        p_cliente_id: ventaDetalle.cliente_id ?? null,
+      })
+      if (preciosErr) throw new Error(`No se pudieron calcular los precios: ${preciosErr.message}`)
+      const precios = mapaPreciosMotor(preciosData)
+      const conError = itemsMotorPres.find(i => precios[i.producto_id]?.error || precios[i.producto_id]?.precio_unitario === undefined)
+      if (conError) throw new Error(`No se pudo calcular el precio de un producto: ${precios[conError.producto_id]?.error ?? 'sin precio'}`)
       let nuevoTotal = 0
       for (const item of (ventaDetalle.venta_items ?? [])) {
-        const prod = precioMap[item.producto_id]
-        if (!prod) continue
-        // H4 — mismo redondeo de precio que el POS, para que el presupuesto refrescado quede consistente
-        const nuevoPrecio = redondearPrecio(prod.precio_venta, (tenant as any)?.precio_redondeo)
+        const srv = item.producto_id ? precios[item.producto_id] : undefined
+        // Una línea que no se puede re-cotizar conserva su precio — y su subtotal tiene que seguir sumando al total.
+        if (!srv || srv.precio_unitario === undefined || !(item.producto_id in ivaMap)) { nuevoTotal += Number(item.subtotal ?? 0); continue }
+        const prod = { alicuota_iva: ivaMap[item.producto_id] }
+        const nuevoPrecio = srv.precio_unitario
         const descu = item.descuento ?? 0
-        const nuevoSubtotal = nuevoPrecio * item.cantidad * (1 - descu / 100)
+        const nuevoSubtotal = Math.round(nuevoPrecio * Number(item.cantidad) * (1 - Number(descu) / 100) * 100) / 100
         const ivaRate = prod.alicuota_iva / 100
-        const nuevoIva = nuevoSubtotal - nuevoSubtotal / (1 + ivaRate)
+        const nuevoIva = Math.round((nuevoSubtotal - nuevoSubtotal / (1 + ivaRate)) * 100) / 100
         nuevoTotal += nuevoSubtotal
-        await supabase.from('venta_items').update({
+        const { error: itemErr } = await supabase.from('venta_items').update({
           precio_unitario: nuevoPrecio,
           subtotal: nuevoSubtotal,
           alicuota_iva: prod.alicuota_iva,
           iva_monto: nuevoIva,
+          mecanismo_precio: srv.mecanismo ?? null,   // mig 468 (F2); lista y categoría las recalcula el servidor
+          descuento_categoria_monto: descuentoCategoriaMonto(srv, Number(item.cantidad)),   // mig 469 (F3)
         }).eq('id', item.id)
+        // Antes se ignoraba: el total quedaba con el precio nuevo y la línea con el viejo.
+        if (itemErr) throw new Error(`No se pudo actualizar una línea del presupuesto: ${itemErr.message}`)
       }
+      nuevoTotal = Math.round(nuevoTotal * 100) / 100
       const { error } = await supabase.from('ventas').update({
         total: nuevoTotal,
         updated_at: new Date().toISOString(),
@@ -6291,7 +6408,36 @@ export default function VentasPage() {
 
                       {/* G1/G2 — precio mayorista aplicado por cantidad (compara el precio de lista
                           SIN redondeo para no confundir el redondeo con un descuento mayorista) */}
+                      {/* Mig 468 (A5): categoría del cliente aplicada + cartel cuando compitieron descuentos (solo cajero). */}
                       {(() => {
+                        const srv = srvDe(item)
+                        const etiqueta = etiquetaCategoria(srv)
+                        const estadoPerdio = srv?.estado_compite
+                          ? (item.lpn_fuentes ?? []).find(f => (f as any).estado_descuento_pct > 0
+                              && !descEstadoDe(item).detalle.some(d => d.estado_nombre === ((f as any).estado_nombre ?? '—')))
+                          : undefined
+                        const cartel = textoCartelPrecio(srv, item.nombre, estadoPerdio
+                          ? { nombre: (estadoPerdio as any).estado_nombre ?? 'con descuento', pct: Number((estadoPerdio as any).estado_descuento_pct), perdio: true }
+                          : null)
+                        if (!etiqueta && !cartel) return null
+                        return (
+                          <>
+                            {etiqueta && (
+                              <p data-testid="pos-etiqueta-categoria" className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
+                                <Tag size={11} /> {etiqueta}: ${precioTierEfectivo(item).toLocaleString('es-AR', { maximumFractionDigits: 2 })}/u
+                                <span className="text-gray-400 dark:text-gray-500 line-through font-normal">${(srv?.precio_lista ?? item.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                              </p>
+                            )}
+                            {cartel && (
+                              <p data-testid="pos-cartel-precio" className="mt-1 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
+                                ℹ️ {cartel}
+                              </p>
+                            )}
+                          </>
+                        )
+                      })()}
+                      {(() => {
+                        if (srvDe(item)?.mecanismo === 'categoria') return null
                         if (precioTierBase(item) >= item.precio_unitario) return null
                         const efectivo = precioTierEfectivo(item)
                         return (
@@ -7231,11 +7377,28 @@ export default function VentasPage() {
                       <CreditCard size={12} /> <span>Parte de la venta a cuenta corriente del cliente</span>
                     </div>
                   )}
-                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
+                  {/* B2 / Fase 3 — sin precio del servidor no se cobra (PL-5 = A): se dice por qué. */}
+                  {!estadoPrecios.listo && estadoPrecios.motivo === 'error' && (
+                    <div data-testid="pos-precios-error" className="flex items-start gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                      <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        {estadoPrecios.productoId
+                          ? `No se pudo calcular el precio de "${cart.find(i => i.producto_id === estadoPrecios.productoId)?.nombre ?? 'un producto'}": ${estadoPrecios.mensaje}. Sacalo del carrito para seguir.`
+                          : 'Sin conexión con el servidor: no se pueden calcular precios ni registrar ventas. Revisá la conexión; se reintenta solo.'}
+                      </span>
+                    </div>
+                  )}
+                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving || !estadoPrecios.listo}
+                    data-testid="pos-registrar-venta"
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
                     {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
                   </button>
+                  {/* El botón conserva su texto (deshabilitado) mientras llega el precio del servidor: un texto que cambia
+                      titila y hace que un click caiga en otro botón con el mismo nombre (selector de modo). */}
+                  {!estadoPrecios.listo && estadoPrecios.motivo === 'calculando' && cart.length > 0 && (
+                    <p data-testid="pos-precios-calculando" className="text-center text-xs text-gray-400 dark:text-gray-500">Calculando precios…</p>
+                  )}
                 </div>
               </div>
             )}
@@ -9536,7 +9699,7 @@ export default function VentasPage() {
                       <div className="min-w-0">
                         <p className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate">{rec.nombre}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {rec.cliente_nombre ?? 'Consumidor final'} · {frecuenciaLabel(rec.frecuencia_dias)} · ${totalRecurrente(rec.items ?? []).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          {rec.cliente_nombre ?? 'Consumidor final'} · {frecuenciaLabel(rec.frecuencia_dias)} · <span title="Total con los precios de cuando se creó la plantilla. Al generar, se cotiza con los precios de hoy.">≈ ${totalRecurrente(rec.items ?? []).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                         </p>
                         <p className={`text-xs mt-0.5 ${vencida ? 'text-accent-text font-semibold' : 'text-gray-400'}`}>
                           {vencida ? '● Vence: ' : 'Próxima: '}{new Date(rec.proximo_at + 'T00:00:00').toLocaleDateString('es-AR')}{!rec.activo && ' · pausada'}

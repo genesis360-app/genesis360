@@ -16,7 +16,26 @@ export default function LoginPage() {
   const [modoUsuario, setModoUsuario] = useState(false)
   const [codigoNegocio, setCodigoNegocio] = useState('')
   const [usuario, setUsuario] = useState('')
+  // 2026-10-05: "¿Olvidaste tu contraseña?" (antes no había forma de recuperarla).
+  const [recuperando, setRecuperando] = useState(false)
+  const [linkPedido, setLinkPedido] = useState(false)
   const navigate = useNavigate()
+
+  const pedirLinkRecuperacion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim()) { toast.error('Escribí tu correo'); return }
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/restablecer-contrasena`,
+    })
+    setLoading(false)
+    // Siempre la misma respuesta: no se dice si el correo tiene cuenta o no (no se puede averiguar quién usa la app).
+    if (error && /rate|seconds|too many/i.test(error.message)) {
+      toast.error('Pediste varios links seguidos. Esperá un minuto y probá de nuevo.')
+      return
+    }
+    setLinkPedido(true)
+  }
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -88,6 +107,40 @@ export default function LoginPage() {
           </div>
 
           {/* Email form */}
+          {recuperando ? (
+            <div data-testid="recuperar-password" className="space-y-4">
+              {linkPedido ? (
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Si <strong>{email.trim()}</strong> tiene una cuenta, en unos minutos te llega un correo con un link para
+                  elegir una contraseña nueva. Revisá también la carpeta de correo no deseado.
+                </p>
+              ) : (
+                <form onSubmit={pedirLinkRecuperacion} className="space-y-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Escribí el correo con el que entrás y te mandamos un link para elegir una contraseña nueva.
+                  </p>
+                  <div>
+                    <label htmlFor="recuperar-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                    <div className="relative">
+                      <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+                      <input id="recuperar-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus
+                        placeholder="tu@email.com"
+                        className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20" />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60">
+                    {loading ? 'Enviando…' : 'Mandarme el link'}
+                  </button>
+                </form>
+              )}
+              <button type="button" onClick={() => { setRecuperando(false); setLinkPedido(false) }}
+                className="w-full text-sm text-accent-text font-medium hover:underline">
+                Volver al ingreso
+              </button>
+            </div>
+          ) : (
+          <>
           <form onSubmit={handleEmailLogin} className="space-y-4">
             {modoUsuario ? (
               // Mig 434: dos campos en vez de la dirección. El usuario solo tiene que ser único
@@ -173,6 +226,17 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {modoUsuario ? (
+            <p className="mt-3 text-xs text-center text-gray-500 dark:text-gray-400">
+              ¿Te olvidaste la contraseña? Pedile al dueño del negocio que te genere una nueva desde Usuarios.
+            </p>
+          ) : (
+            <button type="button" onClick={() => setRecuperando(true)}
+              className="w-full mt-3 text-sm text-gray-500 dark:text-gray-400 hover:text-accent-text hover:underline">
+              ¿Olvidaste tu contraseña?
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setModoUsuario(m => !m)}
@@ -180,6 +244,8 @@ export default function LoginPage() {
           >
             {modoUsuario ? 'Entrar con un email' : 'No tengo email: entrar con usuario'}
           </button>
+          </>
+          )}
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             ¿No tenés cuenta?{' '}

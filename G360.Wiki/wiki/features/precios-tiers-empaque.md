@@ -3,7 +3,7 @@ title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
 sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, 344, 367, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts, tests/unit/tiers.test.ts]
-updated: 2026-08-18
+updated: 2026-10-04
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
@@ -32,6 +32,47 @@ updated: 2026-08-18
 > (mig 333, guard server-side de Fase B) — ver [[wiki/database/migraciones]] mig 333.
 > **Deploy:** migs 328-333 en PROD, PR #309 (`50fd025c`), tag `v1.155.0`. ⚠ Nadie probó A/B/C a mano
 > en el navegador de PROD todavía (deployado igual, autorizado explícitamente por GO).
+
+## 🧮 Motor único de precio en SQL (mig 467, 2026-10-03) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.1`, commit `055bfbdd`)
+
+B2 / Fase 3 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`. Antes había dos motores (cliente `tiers.ts` y servidor `fn_precio_venta_efectivo`) que debían dar el mismo número; ahora hay uno en SQL.
+
+- **Núcleo** `fn_precio_motor_producto(tenant, producto, cantidad, lista)` (interno, solo `service_role`): lista / USD a tasa BNA, tiers (gana el primero en orden), empaque por bloques (compite con el tier normal), lista forzada por canal. Ayudantes `fn_tier_match`, `fn_tier_precio_unitario`, `fn_precio_redondear`.
+- **`fn_precio_venta_efectivo`** (Pedidos → `fn_pedido_generar_venta`): ahora envoltura del núcleo, misma firma y mismo resultado. Cierra una fuga desde mig 317: con sesión solo acepta el negocio propio ("Negocio inválido").
+- **`fn_precios_lineas(p_items jsonb, p_lista text, p_cliente_id uuid)`** para el POS: negocio de la sesión (`get_user_tenant_id`), suma cantidad por SKU, aplica redondeo y devuelve por línea `precio_lista/precio_base/precio_unitario/mecanismo/bloques/error`. `p_cliente_id` reservado para la Fase 4.
+- **Validación (cero cambio de precios)**: vieja vs nueva 21.556 casos (418 productos); SQL vs `src/lib/tiers.ts` 136.256 casos (3 listas x 6 modos de redondeo): 0 diferencias. Script `scripts/paridad-motor-precio.mjs` (correr con `node --experimental-strip-types`), a repetir antes de cada cambio al motor.
+- **POS (`VentasPage`)**: `src/lib/motorPrecio.ts` nuevo; `precioTierEfectivo` usa el precio del servidor cuando coincide con la cantidad actual; `tiers.ts` queda solo como provisorio en pantalla. Sin precio del servidor no se registra venta/reserva/presupuesto (PL-5 = A): botón "Calculando precios…" o aviso rojo "Sin conexión con el servidor…".
+- **Presupuesto "Actualizar precios"** usa el motor (antes tomaba `precio_venta` crudo: ignoraba el mayorista y en USD usaba el espejo en pesos congelado); además redondea subtotal/IVA a centavos y ya no ignora un error al grabar una línea.
+- **Tests**: unit `motorPrecio` (14), e2e 179 (2), e2e de precios 38 passed; suite unit 2156 verdes; UAT §97 en `tests/specs/uat-modo-basico.md`.
+- **Hallazgo abierto para GO**: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra lo asumido en PL-2. Pendiente de decisión.
+- **Siguiente (Fase 4)**: ✅ hecha en DEV, ver la sección de abajo. Ver [[wiki/features/clientes-proveedores]] y [[wiki/database/migraciones]].
+
+## 🏷️ La categoría del cliente en el motor + tope de descuento (mig 468, 2026-10-03) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.2`, commits `3b0bb474` + `7930c539`)
+
+B2 / Fase 4. Aplicar la 467 antes que la 468 al deployar.
+
+- **`fn_precio_motor_cliente(tenant, producto, cantidad, lista, cliente)`** (interno): núcleo de 467 + categoría. Precio de categoría = lista x (1 - %), antes del redondeo; compite por bloque con tier/empaque/canal y gana el más bajo; en empate se informa `categoria`. Sin cliente, categoría desactivada, sin fila o 0 % = exactamente como antes. La categoría aplica también en un canal con lista "minorista" (decisión de GO 03/10).
+- **`fn_precios_lineas`** (misma firma) la usa y devuelve además `precio_sin_categoria`, `mecanismo_sin_categoria`, `estado_compite`, `categoria_id/nombre/pct`, `precio_categoria`, `tope_descuento_pct`.
+- **A2 — descuento por estado**: `fn_descuento_estado_unitario(precio, lista, pct, compite)`. Con categoría ACTIVA el descuento por estado compite contra la lista (gana el más bajo), aunque el producto no tenga % cargado (decisión de GO 03/10); sin categoría se acumula como antes. Espejo TS `calcularDescuentoEstadoLinea(fuentes, precio, { precioLista })`.
+- **F2 en `venta_items`**: `precio_lista_unitario` (lista redondeada con el redondeo del negocio), `mecanismo_precio` (CHECK lista/tier/empaque/canal_mayorista/categoria), `categoria_cliente_id`, `categoria_descuento_pct`. Las escribe el servidor (trigger BEFORE INSERT OR UPDATE `trg_venta_items_precio_lista`); una venta ya hecha no se reescribe; un presupuesto que se re-cotiza se recalcula.
+- **Tope de descuento acumulado** (A4 + B-5 + PL-1): `tenants.descuento_tope_acumulado_pct` (NULL = no rige), en Config → Ventas ("Tope de descuento total por venta"). Se mide contra la lista redondeada sumando todo (tier, categoría, estado, manual, general, combos, cupón, promo por medio de pago). **Nadie lo saltea** (ni el DUEÑO ni con clave maestra). Control en el POS + CONSTRAINT TRIGGER DIFERIDO `trg_venta_items_tope_descuento` por venta al confirmar (Pedidos inserta de a una línea y descuenta el estado después; un control inmediato rechazaba pedidos válidos); también cubre un UPDATE que baja lo cobrado. Sin `auth.uid()` (ML/TN por service_role) no aplica.
+- **POS**: etiqueta "Categoría X: -N % sobre lista" en la línea y cartel con texto de plantilla para el cajero cuando compitieron descuentos (A2/A5); la redacción con IA queda para la Fase 5. **Gotcha**: bloquear el cobro con `isFetching` frena ventas legítimas (re-consultas de fondo con staleTime 0); usar `isPlaceholderData`. El botón conserva su texto (deshabilitado + "Calculando precios…" debajo).
+- **Recurrentes**: si fallan las líneas al generar un presupuesto desde una plantilla, se borra el encabezado (antes quedaba vacío). Abierto para GO: esas plantillas siguen con precio congelado y sin categoría.
+- **Validación**: paridad sin categoría 139.288 casos, 0 diferencias (`scripts/paridad-motor-precio.mjs` mide `fn_precio_motor_cliente` con cliente NULL); 19 casos SQL de referencia (A1 x4, A2 x2, tope, F2, Pedidos multilínea, UPDATE, redondeo); e2e 180; regresión e2e 50 passed / 0 failed (54 y 63 se saltean por fixture previo); unit 2167; UAT §98 (§96.6 actualizado).
+- ~~Falta (Fase 5)~~ → **hecha el 2026-10-04 en DEV, ver la sección siguiente.**
+
+## 🪧 Cartel con IA + reporte de lo no facturado por la categoría (migs 469-470, 2026-10-04) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.3`, commit `3a31a2f1`)
+
+B2 / Fase 5; con esto **B2 queda completo en DEV**. Deploy a PROD en orden 467 -> 468 -> 469 -> 470 + EF `categoria-cartel-ia`.
+
+- **Mig 469**: `categorias_cliente.cartel_textos` (jsonb) / `cartel_origen` ('ia'|'plantilla') / `cartel_generado_at`; `venta_items.descuento_categoria_monto`; `fn_precio_motor_cliente` devuelve `categoria_cartel`; `fn_precios_lineas` devuelve `precio_unitario_sin_categoria` (redondeado); el trigger `fn_venta_items_precio_lista` sanea el monto (solo si ganó la categoría; no se reescribe en venta hecha); `fn_pedido_generar_venta` lo graba.
+- **F3 (monto no facturado)**: `descuento_categoria_monto` = (precio sin categoría - precio con categoría) x cantidad, ambos del motor y redondeados (con tier $80 y categoría $70 son $10/u, no $30). No incluye descuentos posteriores (manual, general, cupón, promo).
+- **Reporte**: `fn_reporte_descuento_categoria(desde, hasta, categoria, cliente)`, SECURITY INVOKER, roles DUEÑO/ADMIN/SUPER_USUARIO/SUPERVISOR/CONTADOR, ventas despachada/facturada/reservada, zona AR. En Reportes aparece como "Descuentos por categoría" (columna "Total no facturado"). **Mig 470**: resta las devoluciones PARCIALES en proporción a lo devuelto de cada producto por venta (`devolucion_items` no apunta a la línea), exige usuario activo, topa el monto en (lista - precio) x cantidad y un presupuesto re-cotizado sin monto nuevo no conserva el viejo. No cambia precios ni tope.
+- **EF `categoria-cartel-ia`** (solo DEV; secret `GROQ_API_KEY`, el mismo de `ai-assistant`): la IA SOLO redacta, al guardar la promoción (no en la venta). Una redacción POR CATEGORÍA de 3 frases (`categoria_gana` / `otro_gana` / `estado_no_suma`) con marcadores (`{producto} {pct} {categoria} {precio} {otro} {otro_precio} {precio_categoria} {estado} {estado_pct}`) que el POS completa con los números del motor: "la IA explica, no calcula". Recibe solo el nombre de la categoría y hasta 5 productos con su %. Groq `openai/gpt-oss-120b` (fallback 20b), timeout 15 s, 1 reintento con el motivo; validación estricta (sin cifras de ningún alfabeto, sin `$` ni `%`, sin números en palabras, todos los marcadores, sin links/HTML; "uno/una" permitidos). Si falla, plantilla; una falla pasajera no pisa una redacción IA válida. Permiso: gestionar categorías. Rate limit 20/min usuario, 200/día negocio. Medido en DEV: 9/9 válidas, 1-3 s.
+- **Código**: `src/lib/cartelCategoria.ts` con copia IDÉNTICA `supabase/functions/_shared/cartelCategoria.ts` (un test falla si difieren); `src/lib/cartelCategoriaIA.ts` invoca la EF.
+- **Cuándo se redacta**: al cargar el primer producto con % en la lista (si nunca se redactó), al terminar una importación y con "Volver a redactar". Sin esperar: la venta usa la plantilla mientras tanto.
+- **Tests**: unit cartelCategoria (38 en los dos archivos de motor/cartel), e2e 180 extendido (F3 $120 + fila del reporte) y 181 nuevo (cartel, 401 sin sesión), 25 casos SQL en transacción abortada, regresión e2e 51/51 + 178/179/180/181 8/8 tras la 470, unit 2180, UAT §99.
+- **Abierto para GO**: las ventas recurrentes siguen con el precio congelado de la plantilla, sin categoría.
 
 ## El pedido de Fede (25/7/2026)
 

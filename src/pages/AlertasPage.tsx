@@ -16,6 +16,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import type { Alerta } from '@/lib/supabase'
+import { nombreOC } from '@/lib/ocNumero'
 
 const RESERVAS_DIAS_LIMITE = 3
 // GO (2026-08-11): Alertas no es una lista única (como Historial) sino ~11 secciones
@@ -204,7 +205,7 @@ export default function AlertasPage() {
     queryFn: async () => {
       const { data, count } = await applyFilter(supabase
         .from('ordenes_compra')
-        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
+        .select('id, numero, numero_sucursal, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)
@@ -224,7 +225,7 @@ export default function AlertasPage() {
     queryFn: async () => {
       const { data, count } = await applyFilter(supabase
         .from('ordenes_compra')
-        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
+        .select('id, numero, numero_sucursal, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)
@@ -537,7 +538,7 @@ export default function AlertasPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-800 dark:text-gray-100">
-                          OC #{oc.numero}
+                          {nombreOC(oc, (tenant as any)?.oc_numeracion)}
                           {oc.proveedores?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {oc.proveedores.nombre}</span>}
                         </p>
                         <p className="text-xs text-red-500 dark:text-red-400">
@@ -578,7 +579,7 @@ export default function AlertasPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-800 dark:text-gray-100">
-                          OC #{oc.numero}
+                          {nombreOC(oc, (tenant as any)?.oc_numeracion)}
                           {oc.proveedores?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {oc.proveedores.nombre}</span>}
                         </p>
                         <p className="text-xs text-amber-600 dark:text-amber-400">

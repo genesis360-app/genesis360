@@ -16,6 +16,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import type { Recepcion } from '@/lib/supabase'
 import { useConfirm } from '@/hooks/useConfirm'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
+import { nombreOC } from '@/lib/ocNumero'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ type ResultadoRecepcion = {
   recId: string
   numero: number
   ocId: string | null
-  ocNumero: number | null
+  ocNumero: string | null   // "OC S-OC-0070" / "OC #84" (src/lib/ocNumero.ts)
   proveedorId: string | null
   items: Array<{
     producto_id: string
@@ -171,7 +172,7 @@ export default function RecepcionesPage() {
       const q = applyFilter(
         supabase
           .from('recepciones')
-          .select('*, proveedores(nombre), ordenes_compra(numero)')
+          .select('*, proveedores(nombre), ordenes_compra(numero, numero_sucursal)')
           .eq('tenant_id', tenant!.id)
           .order('created_at', { ascending: false })
       )
@@ -209,7 +210,7 @@ export default function RecepcionesPage() {
       // `moneda`: el gasto que se genera al confirmar la recepción lleva los precios de la OC, que
       // están expresados en la moneda DE LA OC. Sin traerla, el gasto caía en el default 'ARS' de
       // la columna y una OC en dólares quedaba registrada como pesos.
-      let q = supabase.from('ordenes_compra').select('id, numero, moneda').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
+      let q = supabase.from('ordenes_compra').select('id, numero, numero_sucursal, moneda, tiene_envio, costo_envio, envio_a_cargo, envio_transportista').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
       if (fProveedorId) q = q.eq('proveedor_id', fProveedorId)
       const { data } = await q
       return data ?? []
@@ -661,9 +662,10 @@ export default function RecepcionesPage() {
           esperada: Number(o.cantidad ?? 0), recibidoAcum: recibidoPorItem.get(o.id) ?? 0,
         }))
         const estadoOC = estadoOCdesdeRecibido(itemsRecibido)
-        await supabase.from('ordenes_compra').update({
+        const { error: ocEstErr } = await supabase.from('ordenes_compra').update({
           estado: estadoOC === 'recibida' ? 'recibida' : 'recibida_parcial',
         }).eq('id', fOcId)
+        if (ocEstErr) toast.error(`La recepción quedó confirmada pero no se pudo actualizar el estado de la OC: ${ocEstErr.message}`, { duration: 10000 })
         qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
         qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
       }
@@ -701,10 +703,12 @@ export default function RecepcionesPage() {
           const provNombre = proveedores.find(p => p.id === fProveedorId)?.nombre ?? 'proveedor'
           const ocSel = ocsConfirmadas.find((oc: any) => oc.id === fOcId) as any
           const ocNumero = ocSel?.numero
-          await supabase.from('gastos').insert({
+          // 🛑 REGLA #0 — este gasto es el devengado de la compra y, desde la mig 473, el que carga la deuda en la cuenta
+          // corriente del proveedor (trigger). Si falla, hay que avisar: antes se ignoraba el error.
+          const { error: gastoErr } = await supabase.from('gastos').insert({
             tenant_id: tenant!.id,
             recepcion_id: rec.id,
-            descripcion: ocNumero ? `Compra OC #${ocNumero} — ${provNombre}` : `Compra — ${provNombre}`,
+            descripcion: ocSel ? `Compra ${nombreOC(ocSel, (tenant as any)?.oc_numeracion)} — ${provNombre}` : `Compra — ${provNombre}`,
             monto: montoGasto,
             // La moneda de la OC si viene de una; si es una recepción suelta, la del negocio.
             moneda: (ocSel?.moneda ?? (tenant as any)?.moneda ?? 'ARS').toUpperCase(),
@@ -714,6 +718,33 @@ export default function RecepcionesPage() {
             sucursal_id: fSucursalId || null,
             usuario_id: user!.id,
           })
+          if (gastoErr) {
+            toast.error(`La recepción quedó confirmada pero NO se registró la compra (gasto y deuda con el proveedor): ${gastoErr.message}. Avisá a soporte.`, { duration: 15000 })
+          }
+          // Mig 475 / C-22 — el ENVÍO de la OC, una sola vez (con la primera recepción): queda como gasto aparte y, si lo
+          // cobra el proveedor, la base lo carga en su cuenta corriente (`gastos.oc_envio_id` es único por OC).
+          const costoEnvio = parseFloat(String(ocSel?.costo_envio ?? 0)) || 0
+          if (ocSel?.tiene_envio && costoEnvio > 0) {
+            const deTercero = ocSel.envio_a_cargo === 'tercero'
+            const quien = deTercero ? (ocSel.envio_transportista || 'transportista') : provNombre
+            const { error: envioErr } = await supabase.from('gastos').insert({
+              tenant_id: tenant!.id,
+              recepcion_id: rec.id,
+              oc_envio_id: ocSel.id,
+              descripcion: `Envío ${nombreOC(ocSel, (tenant as any)?.oc_numeracion)} — ${quien}`,
+              monto: costoEnvio,
+              moneda: (ocSel?.moneda ?? (tenant as any)?.moneda ?? 'ARS').toUpperCase(),
+              categoria: 'Fletes',
+              fecha: new Date().toISOString().split('T')[0],
+              notas: `Recepción #${rec.numero}${deTercero ? ' — lo cobra un tercero (no va en la cuenta del proveedor)' : ''}`,
+              sucursal_id: fSucursalId || null,
+              usuario_id: user!.id,
+            })
+            // 23505 = ya se registró con una recepción anterior de la misma OC: está bien, no se duplica.
+            if (envioErr && envioErr.code !== '23505') {
+              toast.error(`La recepción quedó confirmada pero NO se registró el envío: ${envioErr.message}. Avisá a soporte.`, { duration: 15000 })
+            }
+          }
           qc.invalidateQueries({ queryKey: ['gastos', tenant?.id] })
         }
       }
@@ -723,7 +754,8 @@ export default function RecepcionesPage() {
       resetForm()
 
       if (confirmar) {
-        const ocNumero = fOcId ? (ocsConfirmadas.find(oc => oc.id === fOcId)?.numero ?? null) : null
+        const ocDelResultado = fOcId ? ocsConfirmadas.find(oc => oc.id === fOcId) : null
+        const ocNumero = ocDelResultado ? nombreOC(ocDelResultado, (tenant as any)?.oc_numeracion) : null
         setResultadoModal({
           recId: rec.id,
           numero: rec.numero,
@@ -768,7 +800,7 @@ export default function RecepcionesPage() {
           estado: 'enviada',
           es_derivada: true,
           oc_padre_id: resultado.ocId,
-          notas: `OC derivada de OC #${resultado.ocNumero ?? resultado.ocId} — ítems ya pagados, pendiente de entrega`,
+          notas: `OC derivada de ${resultado.ocNumero ?? `OC ${resultado.ocId}`} — ítems ya pagados, pendiente de entrega`,
           created_by: user!.id,
         })
         .select('id, numero')
@@ -939,7 +971,7 @@ export default function RecepcionesPage() {
                   Recepción #{resultadoModal.numero} confirmada
                 </h2>
                 {resultadoModal.ocNumero && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">OC #{resultadoModal.ocNumero}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{resultadoModal.ocNumero}</p>
                 )}
               </div>
               <button onClick={() => { setResultadoModal(null); navigate('/recepciones', { replace: true }) }}
@@ -1081,7 +1113,7 @@ export default function RecepcionesPage() {
                       <p className="font-semibold text-gray-800 dark:text-gray-100">
                         Recepción #{rec.numero}
                         {rec.ordenes_compra && (
-                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">OC #{rec.ordenes_compra.numero}</span>
+                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">{nombreOC(rec.ordenes_compra, (tenant as any)?.oc_numeracion)}</span>
                         )}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1204,7 +1236,7 @@ export default function RecepcionesPage() {
             <select value={fOcId} onChange={e => setFOcId(e.target.value)}
               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
               <option value="">Sin OC vinculada</option>
-              {(ocsConfirmadas as any[]).map(oc => <option key={oc.id} value={oc.id}>OC #{oc.numero}</option>)}
+              {(ocsConfirmadas as any[]).map(oc => <option key={oc.id} value={oc.id}>{nombreOC(oc, (tenant as any)?.oc_numeracion)}</option>)}
             </select>
           </div>
           {sucursales.length > 0 && (

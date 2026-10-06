@@ -2411,6 +2411,139 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧾 §102 — Recurrentes con el motor, links de 24 h y escrituras a columnas que no existen (🟡 DEV) — 2026-10-06
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 102.1 | Generar desde una plantilla recurrente cotiza con el MOTOR ÚNICO (precio de hoy + categoría del cliente), conserva cantidad y descuento manual; guarda mecanismo y lo que bajó la categoría | unit `ventasRecurrentes` | ✅ |
+| 102.2 | 🛑 La alícuota es la ACTUAL del producto; Exento (0, llega `"0.00"`) no se vuelve 21 % | unit `ventasRecurrentes` | ✅ |
+| 102.3 | 🛑 Sin precio del servidor no se genera el presupuesto (no se inventa precio) | unit `ventasRecurrentes` | ✅ |
+| 102.4 | Links de los correos de Auth (invitación, recuperar, confirmar, ingreso) vencen a las 24 h; los textos dicen "24 horas" | `scripts/aplicar-plantillas-auth.mjs` (DEV aplicado: `mailer_otp_exp` 86400; PROD con el deploy) | ✅ DEV |
+| 102.5 | 🛑 Ninguna escritura del código (front + EFs) usa una columna que no existe en la base | unit `columnasEscritas` (cruza ~todas las escrituras con `schema_full.sql`) | ✅ |
+| 102.6 | 🛑 Pago en efectivo a un proveedor desde su CC entra en la caja (antes fallaba siempre en silencio: `created_by`); sin caja abierta no se permite; si la caja falla, avisa | unit `columnasEscritas` · revisión | ✅ código |
+| 102.7 | "Generar gasto" de un servicio recurrente funciona (antes fallaba siempre: `gastos.proveedor_id` no existe) | unit `columnasEscritas` | ✅ código |
+| 102.8 | El historial de la CC del proveedor muestra "Tarjeta de débito $900", no el JSON | unit `comprasPago` | ✅ |
+| 102.9 | 🛑 CC de proveedores (mig 473, decisión de GO): la deuda nace al RECIBIR; pasar a CC solo fija plazo (dos veces no duplica); anticipo = saldo a favor | e2e `184` · prueba en seco DEV | ✅ |
+| 102.10 | 🛑 Pago desde la CC del proveedor: se imputa a la OC más vieja primero y las va cerrando; tope = lo pendiente o la deuda | e2e `184` | ✅ |
+| 102.11 | 🛑 Rechazos server-side: sobrepago, efectivo sin caja abierta, pagar una OC ya pagada, update directo con pagado > total (CHECK), editar ítems/proveedor de una OC con pagos | e2e `184` · prueba en seco DEV | ✅ |
+| 102.12 | 🛑 Un descuento a la OC baja la deuda (ajuste); cada movimiento lleva su moneda y el saldo no mezcla monedas | prueba en seco DEV | ✅ |
+| 102.13 | La recepción avisa si no pudo registrar la compra (gasto + deuda) o actualizar la OC; el rechazo de cheque avisa si no repuso la deuda | revisión | ✅ código |
+| 102.14 | Rechazo de cheque propio que pagó una OC (e2e 80) | e2e `80` se saltea (fixture sin sembrar) — HUECO | ⏳ |
+| 102.15 | Un solo número de OC en toda la app (mig 474): Proveedores, Gastos, Recepciones, Cheques, Alertas, Portal, PDF y los textos de la CC usan la numeración elegida ("OC S-OC-0070"); la búsqueda encuentra la OC por cualquiera de sus dos números | unit `ocNumero` · prueba en seco DEV · e2e `140`, `184` | ✅ |
+| 102.16 | 🛑 Envío de la OC (mig 475, C-22): "lo cobra el proveedor" suma al total, al pago y a la deuda; "un tercero" queda como gasto aparte y no suma; se registra una sola vez por OC; no se cambia con pagos; editar la OC ahora guarda el envío | unit `comprasPago` · e2e `184` · prueba en seco DEV | ✅ |
+| 102.17 | "Aplicar" de Acciones (lista de descuentos) queda dentro del recuadro | e2e `178` (mide el botón contra el popover) | ✅ |
+| 102.19 | 🛑 Contraseñas: la app exige el mínimo REAL de Supabase Auth (10, DEV y PROD; antes decía 8 y fallaba en el servidor, también en el alta de negocio) y muestra el motivo en castellano (antes "Edge Function returned a non-2xx") | unit `passwordPolicy` · e2e `159`, `182` | ✅ |
+| 102.20 | 🛑 Usuarios rediseñada (Taste + Emil + impeccable): la fila solo informa (rol, dónde trabaja) y "Editar acceso" abre un panel con borrador (rol → dónde trabaja → permisos → cuenta) que guarda con "Guardar cambios" (antes cada selector guardaba al tocarlo); la cuenta de staff (ADMIN) se ve como "Soporte Genesis360" sin controles (antes figuraba como Cajero, se le podía cambiar el rol o dar de baja); el Dueño ya no muestra un selector en "Super Usuario"; en celular se ven los nombres; buscador | unit `accesoUsuario` · e2e `13`, `15`-`18`, `158`, `159`, `182` | ✅ |
+| 102.21 | 🛑 Un usuario nuevo nace con su alcance: los roles que ven todo (Supervisor, Contador, Lector, Super Usuario) con todas las sucursales; el resto en la sucursal elegida (OBLIGATORIA si hay más de una, GO 06/10) o en la única. Antes nacían restringidos y sin sucursal. Valida servidor (EFs usuarios-sin-correo e invite-user, antes de mandar el correo) | e2e `158`, `159`, `182` · video DEV | ✅ |
+| 102.18 | Usuarios muestra siempre el código del negocio (con copiar); al crear un usuario sin correo o reponer su contraseña aparece una tarjeta con los datos para entrar (link, código, usuario, contraseña de un solo uso) para copiar o mandar por WhatsApp | unit `usuarioLocal` · revisión | ✅ código |
+
+## 🗂️ §101 — Categorías de clientes: rediseño de la pantalla (mig 472, pedido de GO, 🟡 DEV) — 2026-10-05
+
+Decisiones de GO 05/10: el check "Habilita cuenta corriente" sin tildar = lo del negocio; eliminar solo si nunca se usó
+(C2) y solo el DUEÑO; la card de descuento muestra % y $ promedio; los permisos se mudan a Configuración → Clientes.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 101.1 | Pestaña Categorías: nombre + cantidad de clientes + descripción; a la derecha switch activa, asignar, lista de descuentos, historial, editar y eliminar | captura en DEV · e2e `163`, `183` | ✅ |
+| 101.2 | 🛑 Eliminar: solo el DUEÑO ve el botón; deshabilitado si la categoría ya se usó; un SUPERVISOR no puede borrar ni por API | e2e `183` B · SQL DEV impersonando con RLS (SUPERVISOR 0 filas, DUEÑO 1) | ✅ |
+| 101.3 | Alta: check "Habilita cuenta corriente"; tildado pide límite obligatorio (> 0); plazo, interés y política vacíos = lo del negocio; sin tildar = todo del negocio | unit `ccCategorias` · captura | ✅ |
+| 101.4 | Asignar clientes: tabla con check (y "todos" en el encabezado), cliente, compras, ticket promedio y total gastado (despachadas/facturadas/reservadas menos devoluciones); se guarda con el resumen previo de siempre (B-6) | e2e `163` · SQL DEV (`fn_clientes_compras_resumen`) | ✅ |
+| 101.5 | Lista de descuentos: cards de productos, con descuento, clientes asignados y descuento promedio (% y $ por unidad) | unit `listaDescuentos` · captura | ✅ |
+| 101.6 | Tabla agrupada por categoría de producto (colapsada; la búsqueda la abre): costo + IVA, precio y margen ya con el descuento (margen como en la ficha: sobre el costo, sin IVA); en la fila de la categoría, promedios; margen negativo en rojo | unit `listaDescuentos` · e2e `178` | ✅ |
+| 101.7 | % por producto: se guarda al terminar de escribir (Enter o salir del campo); vacío = sin cargar, 0 = sin descuento a propósito | e2e `178` | ✅ |
+| 101.8 | 🛑 % en la fila de la categoría: pide confirmación y se aplica a todos sus productos que se ven con los filtros; una sola entrada en el historial | e2e `178` · SQL DEV (`fn_descuentos_categoria_masivo`: 1 entrada, "3 productos a 12,5 %") | ✅ |
+| 101.9 | 🛑 Enter en un campo que abre una confirmación NO la acepta solo (antes el mismo Enter confirmaba el cambio masivo) | e2e `178` (lo encontró) | ✅ |
+| 101.10 | Acciones: aplicar un % o quitar el descuento a los seleccionados (checkbox por producto, por categoría y todos) | e2e `178` | ✅ |
+| 101.11 | Filtros combinables en pastillas (marca, categoría, margen / costo / precio / descuento con >, <, =, ≥, ≤); se editan con un click y se quitan | unit `listaDescuentos` · e2e `178` | ✅ |
+| 101.12 | Historial (modal): fecha y hora, quién y qué hizo | revisión (ya existía, F1) | ✅ código |
+| 101.13 | 🛑 Permisos en Configuración → Clientes (solo DUEÑO): pestañas Roles (incluye roles personalizados) y Usuarios con checkbox; se guardan con "Guardar configuración de Clientes"; el servidor reconoce el permiso por usuario | e2e `183` A · SQL DEV (`user:<id>` → permiso true) | ✅ |
+| 101.14 | Regresión e2e completa | suite sobre `5b21e7f9` (06/10): 452 passed, 0 failed | ✅ |
+
+## 🔑 §100 — Acceso por correo: invitados eligen contraseña + "¿Olvidaste tu contraseña?" (mig 471, 🟡 DEV) — 2026-10-05
+
+Caso real (El Tilo, PROD): un SUPER_USUARIO invitado con Hotmail entró una vez por el link y no pudo volver. El link de
+invitación inicia sesión UNA vez y nunca pedía contraseña; con Gmail no se notaba ("Continuar con Google"). Tampoco había
+"¿Olvidaste tu contraseña?", y los correos de Supabase eran los de fábrica, en inglés. Otra invitación fue a
+"outloock.com" y nunca llegó.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 100.1 | El invitado por correo, al entrar por el link, ve "Elegí tu contraseña" con el texto de la invitación; la elige, entra y la marca baja | DEV a mano: usuario de prueba con la marca → pantalla con el texto correcto → contraseña nueva → dashboard, `debe_cambiar_password` = false (y se restauró la original) | ✅ |
+| 100.2 | El empleado SIN correo sigue viendo su texto ("te la dio el dueño") y el flujo de siempre | e2e `159` | ✅ |
+| 100.3 | invite-user crea al invitado con la marca y manda el nombre del negocio al correo | revisión · EF desplegada en DEV | ✅ código |
+| 100.4 | 🛑 Mig 471: marca a los invitados que ya existían y nunca volvieron a entrar después del link (o no lo abrieron), sin Google; no cambia contraseñas ni corta sesiones | conteo: DEV 0, PROD 9 (8 de El Tilo + 1 de otro negocio) | ✅ DEV · ⏳ PROD |
+| 100.5 | "¿Olvidaste tu contraseña?": la respuesta es la misma exista o no el correo; con usuario sin correo, la ayuda dice que lo pida al dueño | e2e `182` | ✅ |
+| 100.6 | /restablecer-contrasena con link vencido o sin link: lo explica y lleva al ingreso | e2e `182` | ✅ |
+| 100.7 | Los errores de Supabase al cambiar la contraseña se muestran en castellano (misma contraseña, muy fácil, muy corta) | revisión · probado en DEV (misma contraseña) | ✅ |
+| 100.8 | Al invitar, un dominio mal tipeado ofrece la corrección (outloock.com → outlook.com, gmial, hotmial, .con) | unit `dominioCorreo` · e2e `182` | ✅ |
+| 100.9 | Correos de Auth en castellano y con la marca (invitación con el nombre del negocio, recuperar, confirmar, link de ingreso), versionados en `supabase/templates/` y aplicados con `scripts/aplicar-plantillas-auth.mjs` | aplicado en DEV (DEV no tiene SMTP propio: el correo real se ve en PROD) | ✅ DEV · ⏳ PROD |
+| 100.10 | El usuario de El Tilo: con la mig 471 en PROD, al entrar por un link nuevo (recuperación) elige su contraseña | tras el deploy | ⏳ |
+
+## ✨ §99 — Cartel con IA y reporte de lo no facturado por la categoría (B2 / Fase 5, mig 469 + EF `categoria-cartel-ia`, 🟡 DEV) — 2026-10-04
+
+B-4: la IA SOLO redacta, al guardar la promoción (no en la venta), con plantilla de respaldo; recibe nombre de producto,
+categoría y %, nunca datos del cliente, costos ni márgenes. Una redacción POR CATEGORÍA con marcadores que el POS completa
+con los números del motor ("la IA explica, no calcula"). F3: por período, categoría y cliente; solo líneas donde ganó la
+categoría.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 99.1 | La IA redacta las 3 frases (gana la categoría / gana otro precio / el estado no se suma) y quedan guardadas con fecha y origen "ia" | EF en DEV con usuario real (5/5 "ia", 1,7–2,9 s) · e2e `181` | ✅ |
+| 99.2 | 🛑 Texto inválido de la IA (números, $, %, marcadores faltantes o inventados, links) → se le pide corregir UNA vez; si sigue mal, queda la plantilla | unit `cartelCategoria` (validación) · EF en DEV (antes del reintento 1 de 2 caía a plantilla) | ✅ |
+| 99.3 | A la IA solo le llegan la categoría y hasta 5 productos con su % | unit `cartelCategoria` · revisión de la EF | ✅ |
+| 99.4 | EF: sin sesión 401; rol sin permiso de gestionar categorías 403; categoría de otro negocio 404; 20/min por usuario y 200/día por negocio | e2e `181` (401) · revisión | ✅ parcial |
+| 99.5 | La venta nunca depende de la IA: se pide sin esperar al cargar el primer producto y al importar; "Volver a redactar" muestra el resultado | e2e `181` · revisión | ✅ |
+| 99.6 | POS: usa las frases de la IA si son válidas (validadas de nuevo en el navegador); si no, la plantilla | unit `cartelCategoria` | ✅ |
+| 99.7 | Pantalla de la lista: "Cartel para el cajero" con origen (IA / estándar) y un ejemplo completo, nunca con {marcadores} | e2e `181` | ✅ |
+| 99.8 | 🛑 F3: lo no facturado = (precio sin categoría − con categoría) × cantidad, ambos del motor; con tier $80 y categoría $70 son $10/u, no $30 | e2e `180` A ($120 en la base) · SQL DEV | ✅ |
+| 99.9 | F3 saneado por el servidor: solo si ganó la categoría, nunca negativo ni mayor que la línea a lista, no se reescribe en una venta hecha | SQL DEV (transacción abortada) | ✅ |
+| 99.10 | Reporte "Descuentos por categoría" (Reportes): por categoría y cliente, ventas despachadas/facturadas/reservadas del período; solo DUEÑO/ADMIN/SUPER_USUARIO/SUPERVISOR/CONTADOR | e2e `180` A (fila con categoría, cliente y $120) · SQL DEV | ✅ |
+| 99.11 | Empate categoría = tier: se informa "categoría" pero lo no facturado es 0 (no suma al reporte) | e2e `180` Pedidos | ✅ |
+| 99.12 | Regresión e2e de precios / ventas / Pedidos | e2e (25 specs): 51 ✅ · tras la 470: 178/179/180/181 8 ✅ · 54 y 63 se saltean por fixture previo | ✅ |
+| 99.13 | 🛑 F3 con devolución PARCIAL (la venta sigue despachada): se descuenta en proporción a lo devuelto de ese producto (6 de 14 → $150 × 8/14 = $85,71) | SQL DEV (mig 470, transacción abortada) | ✅ |
+| 99.14 | La IA no puede disfrazar números: cifras de otros alfabetos, "mitad", "veinte por ciento", "gratis" → rechazado; los nombres de categoría/producto se aplanan antes de ir a la IA; una falla pasajera no pisa una redacción válida; timeout 15 s | unit `cartelCategoria` · revisión de la EF | ✅ |
+
+## 🏷️ §98 — Categoría del cliente en el precio + tope de descuento (B2 / Fase 4, mig 468, 🟡 DEV) — 2026-10-03
+
+Reglas del relevamiento (A1, A2, A4, A5, B4, F2) + B-2/B-5 + PL-1 + decisiones de GO del 03/10: con categoría ACTIVA el
+estado compite aunque el producto no tenga % cargado; la categoría aplica también en canales "minorista".
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 98.1 | 🛑 A1 (lista $100, tier ≥10 a $80): cat 20 % 12 u → $80 (empate, se informa categoría) · cat 30 % 12 u → $70 · cat 20 % 5 u → $80 · cat 20 % con tier $60 → $60 (tier) | SQL DEV (transacción abortada, 19 casos) · e2e `180` A (POS, $840 y F2 en la base) · unit `motorPrecio` | ✅ |
+| 98.2 | 🛑 A2: 4 u de un lote 15 % con la línea a $80 → el estado no se aplica; con 25 % esas 4 salen a $75 · sin categoría el estado se sigue ACUMULANDO (como antes) | SQL DEV · unit `motorPrecio`/`descuentoEstado` · e2e `180` Pedidos ($940 con categoría / $880 sin) | ✅ |
+| 98.3 | 🛑 Clientes SIN categoría: exactamente el mismo precio que antes | `scripts/paridad-motor-precio.mjs` con el motor con cliente NULL: 139.288 casos → 0 diferencias · e2e de precios (ver 98.12) | ✅ |
+| 98.4 | Sin cliente no hay categoría (B4); categoría desactivada = sin categoría; 0 % explícito = sin descuento | SQL DEV | ✅ |
+| 98.5 | Canal "minorista": aplica la categoría; canal "mayorista": compite con el mayorista del canal | SQL DEV | ✅ |
+| 98.6 | A5: el cajero ve "Categoría X: −N % sobre lista" y, si compitieron descuentos, el cartel que explica por qué no se suman (solo en el POS, no en ticket ni factura) | e2e `180` A · unit (textos de plantilla) | ✅ |
+| 98.7 | F2: cada línea guarda mecanismo, lista, categoría y % — lista/categoría/% los pone el SERVIDOR (no se puede mandar una lista falsa) | SQL DEV · e2e `180` (POS y Pedidos) | ✅ |
+| 98.8 | 🛑 Tope (PL-1): con tope 20 % una venta con 30 % NO se registra, ni el DUEÑO, ni con clave maestra; el mensaje dice el % y que se sube en Configuración → Ventas | e2e `180` B (POS) · SQL DEV (trigger: rechaza aunque el navegador mande lista $80) | ✅ |
+| 98.9 | Tope por VENTA, no por línea: Pedidos inserta de a una y descuenta el estado después; 2 líneas (20 % + lista) con tope 15 % pasan | SQL DEV (control diferido al confirmar) | ✅ |
+| 98.10 | Tope en UPDATE: bajar lo cobrado de una venta ya hecha por API → rechazado; la lista de una venta hecha no se puede reescribir; en un presupuesto que se re-cotiza la recalcula el servidor | SQL DEV | ✅ |
+| 98.11 | El tope se mide contra la lista REDONDEADA (redondeo 100: lista $1.234 → $1.200), sin rechazos falsos en el borde | SQL DEV · POS usa la misma lista | ✅ |
+| 98.12 | Regresión: ventas, presupuestos, Pedidos, tiers, empaque, UoM, USD, cupones, combos, CC, categorías | e2e 04/19/24/44/46/55/98/102-104/107/110/113/115/116/122/123/133/135/150/160/163/178/179/180: 50 ✅ · 54 y 63 se saltean por fixture previo | ✅ |
+| 98.13 | Plantilla recurrente rechazada (p. ej. por el tope) ya no deja un presupuesto vacío | revisión (borra el encabezado si fallan las líneas) | ✅ código |
+| 98.14 | Mercado Libre / Tienda Nube (sin usuario) no pasan por el tope ni por la lista del servidor | revisión (los triggers miran `auth.uid()`) | ✅ código |
+
+## 💲 §97 — Motor ÚNICO de precio (B2 / Fase 3, mig 467, 🟡 DEV) — 2026-10-03
+
+Decisión de GO (B2): un solo motor de precio, en la base; POS, presupuestos y Pedidos lo consultan. **Regla de esta fase:
+cero cambio de precios.** El POS manda una línea por SKU con la cantidad total del carrito; `tiers.ts` solo muestra un
+número provisorio mientras llega la respuesta. PL-5 = A: sin precio del servidor no se registra nada.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 97.1 | 🛑 `fn_precio_venta_efectivo` (Pedidos) da EXACTAMENTE lo mismo que antes | SQL DEV: vieja (definición real copiada a `pg_temp`) vs nueva, 21.556 casos / 418 productos (tiers, empaque ±1, USD, fraccionarios) → **0 diferencias**, en transacción que aborta | ✅ |
+| 97.2 | 🛑 El motor del servidor da EXACTAMENTE lo mismo que el POS (`tiers.ts` + redondeo) | `node --experimental-strip-types scripts/paridad-motor-precio.mjs`: 136.256 casos (3 listas de canal × 6 modos de redondeo) → **0 diferencias** | ✅ |
+| 97.3 | La cantidad se suma POR SKU en todo el carrito (60 + 40 = 100 → tier "= 100") | SQL DEV impersonando (`fn_precios_lineas`) · unit `motorPrecio` | ✅ |
+| 97.4 | Un producto de otro negocio → línea con error "Producto inexistente", sin precio | SQL DEV impersonando | ✅ |
+| 97.5 | 🔒 `fn_precio_venta_efectivo` ya no acepta el id de OTRO negocio con sesión ("Negocio inválido"; venía abierto desde mig 317); el núcleo no es invocable por usuarios | SQL DEV impersonando | ✅ |
+| 97.6 | 🛑 Sin respuesta del motor: aviso "Sin conexión con el servidor" y botón de registrar deshabilitado; vuelve solo al reconectar | e2e `179` (A) | ✅ |
+| 97.7 | Mientras se recalcula (cambio de cantidad, cliente o canal) el botón queda deshabilitado con "Calculando precios…" debajo (el texto del botón no cambia); una re-consulta del mismo carrito no bloquea; nunca se guarda un precio calculado para otra cantidad | unit `motorPrecio` (precio vigente solo si coincide la cantidad) | ✅ |
+| 97.8 | Producto en USD sin cotización: la línea dice por qué no tiene precio y bloquea ("Sacalo del carrito para seguir") | unit `motorPrecio` · e2e `160` (el POS ni lo agrega; Pedidos en USD sigue igual) | ✅ |
+| 97.9 | 🛑 "Actualizar precios" de un presupuesto usa el motor: aplica el mayorista por cantidad (antes `precio_venta` crudo; en USD el espejo congelado), redondea subtotal/IVA a centavos y no ignora un error al grabar una línea | e2e `179` (B, verifica precio/subtotal/IVA/total en la base) | ✅ |
+| 97.10 | Tiers en el carrito real con venta persistida siguen dando lo mismo (precio desde el servidor) | e2e 04/19/24/44/55/102-104/107/110/113/115/116/122/123/133/135/150/160: 38 ✅ · 54 y 63 se saltean por fixture de datos previo (el 123 cubre lo del 54 sembrando lo suyo) | ✅ |
+
 ## 🔎 §94 — Inventario: buscar un LPN deja a la vista ese LPN · Envío: campos alineados (🟡 DEV) — 2026-10-02
 
 Pedido de GO. LPN: se descartó tildar el checkbox (alimenta las acciones masivas: dos búsquedas dejarían dos LPN
@@ -2437,7 +2570,7 @@ Decisión de GO: (A) hoy la lista y su carga, SIN aplicarla al vender; (B2) desp
 | 96.3 | Importar: producto de otro negocio o repetido en el archivo → rechazado | SQL DEV (rollback) | ✅ |
 | 96.4 | 🛑 Un CAJERO (sin permiso de gestionar categorías) no puede cargar ni importar | SQL DEV impersonando (RLS + función) | ✅ |
 | 96.5 | Historial: cada cambio a mano queda en la categoría; una importación deja UNA entrada con el resumen | SQL DEV | ✅ |
-| 96.6 | La pantalla avisa "Todavía no se aplica en las ventas"; ningún precio cambia | revisión (nada lee la tabla al vender) | ✅ código |
+| 96.6 | ~~La pantalla avisa "Todavía no se aplica en las ventas"~~ → desde la mig 468 se aplica (ver §98) y la pantalla dice "Se aplica al vender" | e2e `178` | ✅ |
 | 96.7 | La plantilla trae todos los productos activos con su % actual | revisión | ✅ código |
 
 ## 📦 §95 — El pedido hereda la fecha de entrega de la venta con envío (mig 465, 🟡 DEV) — 2026-10-02

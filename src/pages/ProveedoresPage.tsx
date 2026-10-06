@@ -9,7 +9,7 @@ import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/com
 import { montoDevolucion, validarDevolucion, MOTIVOS_DEVOLUCION_PROVEEDOR, type FormaDevolucion } from '@/lib/devolucionProveedor'
 import {
   MODOS_PAGO_PROVEEDOR, defaultAnticipoOC, montoAnticipo, scheduleValido,
-  totalPctSchedule, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
+  totalPctSchedule, textoMedioPago, envioDelProveedor, type EnvioACargo, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
 } from '@/lib/comprasPago'
 import { generarOCPDF, textoOC, waLinkOC, totalOC, type OCPDFData } from '@/lib/ocPDF'
 import {
@@ -36,7 +36,7 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Download, DollarSign, AlertCircle, FileDown, RotateCcw,
-  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload,
+  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload, Info,
 } from 'lucide-react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
@@ -44,6 +44,7 @@ import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, typ
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
 import { condicionParaProveedor, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
+import { etiquetaOC, nombreOC } from '@/lib/ocNumero'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes' | 'autorizaciones'
 type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
@@ -103,6 +104,8 @@ interface FormOC {
   notas: string
   tiene_envio: boolean
   costo_envio: string
+  envio_a_cargo: EnvioACargo   // mig 475: quién cobra el envío (C-22)
+  envio_transportista: string
   costo_aduana: string    // CO3/E2
   costo_comision: string  // CO3/E2
   costo_otros: string     // CO3/E2
@@ -151,8 +154,7 @@ export default function ProveedoresPage() {
   const ocAprobacionCfg = { activa: (tenant as any)?.oc_aprobacion_activa, umbral: (tenant as any)?.oc_aprobacion_umbral }
   // A5 — etiqueta del número de OC según la numeración configurada (default por sucursal)
   const ocNumeracion = (tenant as any)?.oc_numeracion ?? 'sucursal'
-  const ocNumLabel = (oc: OrdenCompra) =>
-    ocNumeracion === 'sucursal' && oc.numero_sucursal != null ? `S-OC-${String(oc.numero_sucursal).padStart(4, '0')}` : `#${oc.numero}`
+  const ocNumLabel = (oc: OrdenCompra) => etiquetaOC(oc, ocNumeracion)   // src/lib/ocNumero.ts: el mismo en toda la app
   const navigate = useNavigate()
 
   // CO7/A6 — arma los datos del PDF/texto de la OC desde el detalle abierto + sus ítems.
@@ -171,7 +173,7 @@ export default function ProveedoresPage() {
       condiciones: oc.proveedores?.plazo_pago_dias ? `${oc.proveedores.plazo_pago_dias} días` : null,
     },
     items: items.map(it => ({ nombre: it.productos?.nombre ?? '—', cantidad: it.cantidad, precio_unitario: it.precio_unitario })),
-    costoEnvio: oc.costo_envio, costoAduana: oc.costo_aduana, costoComision: oc.costo_comision, costoOtros: oc.costo_otros,
+    costoEnvio: envioDelProveedor(oc) || null, costoAduana: oc.costo_aduana,   // envío de un tercero: no lo cobra el proveedor costoComision: oc.costo_comision, costoOtros: oc.costo_otros,
     pagaConAnticipo: oc.paga_con_anticipo, anticipoPct: oc.anticipo_pct, pagoSchedule: oc.pago_schedule,
     notas: oc.notas ?? null,
   })
@@ -273,7 +275,7 @@ export default function ProveedoresPage() {
   const [ocFiltroProv, setOcFiltroProv] = useState('')
   const [showOcForm, setShowOcForm] = useState(false)
   const [editOcId, setEditOcId] = useState<string | null>(null)
-  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', envio_a_cargo: 'proveedor', envio_transportista: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   // Buscador de producto por linea de OC (pedido de Fede, 2026-09-11): el `<select>` nativo solo
   // dejaba saltar por la PRIMERA letra - con 1.000+ productos era inusable. Estado por linea:
@@ -301,6 +303,8 @@ export default function ProveedoresPage() {
   const [ccPagoMonto, setCcPagoMonto]       = useState('')
   const [ccPagoMedio, setCcPagoMedio]       = useState('Transferencia')
   const [ccGuardando, setCcGuardando]       = useState(false)
+  const [ccCajaId, setCcCajaId]             = useState<string | null>(null)
+  const [ccClave, setCcClave]               = useState('')
   // D6 — cuentas bancarias múltiples por proveedor
   const [cuentaForm, setCuentaForm]         = useState<{ banco: string; titular: string; cbu: string; alias: string }>({ banco: '', titular: '', cbu: '', alias: '' })
   const [showCuentaForm, setShowCuentaForm] = useState(false)
@@ -344,7 +348,7 @@ export default function ProveedoresPage() {
     queryKey: ['proveedor-cc', ccProvId],
     queryFn: async () => {
       const { data } = await supabase.from('proveedor_cc_movimientos')
-        .select('*, ordenes_compra(numero)')
+        .select('*, ordenes_compra(numero, numero_sucursal)')
         .eq('proveedor_id', ccProvId!)
         .order('fecha', { ascending: false })
         .limit(50)
@@ -363,7 +367,26 @@ export default function ProveedoresPage() {
     enabled: !!ccProvId,
   })
 
-  const saldoCC = (ccMovimientos as any[]).reduce((s: number, m: any) => s + Number(m.monto ?? 0), 0)
+  // Mig 473 — saldo y pendiente de OCs del servidor (antes se sumaban los últimos 50 movimientos del historial: con más,
+  // el saldo daba mal). Saldo > 0 = deuda real (lo recibido menos lo pagado); < 0 = anticipo a favor del negocio.
+  const { data: ccResumen, refetch: refetchCCResumen } = useQuery({
+    queryKey: ['proveedor-cc-resumen', ccProvId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_proveedor_cc_resumen', { p_proveedor_id: ccProvId! })
+      if (error) throw error
+      return data as { saldo: Record<string, number | string>; pendiente_ocs: Record<string, number | string> }
+    },
+    enabled: !!ccProvId,
+  })
+  // Por moneda (mig 473): un saldo en dólares no se suma a uno en pesos. El modal trabaja en la moneda del negocio y
+  // avisa si hay saldo en otra.
+  const monedaNegocioCC = ((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+  const saldoCC = parseFloat(String(ccResumen?.saldo?.[monedaNegocioCC] ?? 0)) || 0
+  const saldosOtraMonedaCC = Object.entries(ccResumen?.saldo ?? {})
+    .filter(([m, v]) => m !== monedaNegocioCC && Math.abs(parseFloat(String(v)) || 0) > 0.5)
+  const pendienteOCsCC = parseFloat(String(ccResumen?.pendiente_ocs?.[monedaNegocioCC] ?? 0)) || 0
+  // Mismo tope que el servidor: lo pendiente de las OCs o la deuda (lo recibido puede costar más que lo pedido).
+  const topePagoCC = Math.max(pendienteOCsCC, saldoCC)
 
   // D6 — cuentas bancarias del proveedor abierto
   const { data: cuentasBancarias = [], refetch: refetchCuentas } = useQuery({
@@ -398,6 +421,13 @@ export default function ProveedoresPage() {
   const descargarEstadoProveedor = async () => {
     const prov = (proveedores as any[]).find((p: any) => p.id === ccProvId)
     if (!prov) return
+    // El estado de cuenta lleva TODOS los movimientos (el historial en pantalla muestra los últimos 50): si no, las
+    // filas no sumaban el saldo del pie.
+    const { data: todosMov, error: movErr } = await traerTodoConError<any>((desde, hasta) => supabase
+      .from('proveedor_cc_movimientos').select('*, ordenes_compra(numero, numero_sucursal)')
+      .eq('proveedor_id', ccProvId!).order('fecha', { ascending: true }).order('created_at', { ascending: true })
+      .range(desde, hasta))
+    if (movErr || !todosMov) { toast.error('No se pudo armar el estado de cuenta: ' + (movErr?.message ?? 'sin datos')); return }
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
       import('jspdf'), import('jspdf-autotable'),
     ])
@@ -407,14 +437,14 @@ export default function ProveedoresPage() {
     doc.setFontSize(12); doc.setTextColor(60); doc.text('Estado de cuenta — Proveedor', 14, 26)
     doc.setFontSize(10); doc.setTextColor(90)
     doc.text(`Proveedor: ${prov.nombre}`, 14, 34)
-    doc.text(`Saldo adeudado: ${fmt(saldoCC)}`, 14, 40)
+    doc.text(saldoCC < -0.5 ? `Anticipo a favor: ${fmt(-saldoCC)}` : `Saldo adeudado: ${fmt(saldoCC)}`, 14, 40)
     doc.text(`Emitido: ${new Date().toLocaleDateString('es-AR')}`, 14, 46)
     autoTable(doc, {
       startY: 52,
       head: [['Fecha', 'Concepto', 'Vencimiento', 'Monto']],
-      body: (ccMovimientos as any[]).map((m: any) => [
+      body: todosMov.map((m: any) => [
         new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR'),
-        (m.descripcion ?? m.tipo) + (m.ordenes_compra ? ` (OC #${m.ordenes_compra.numero})` : ''),
+        (m.descripcion ?? m.tipo) + (m.ordenes_compra ? ` (${nombreOC(m.ordenes_compra, ocNumeracion)})` : ''),
         m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—',
         fmt(Number(m.monto ?? 0)),
       ]),
@@ -426,39 +456,37 @@ export default function ProveedoresPage() {
     doc.save(`estado_cuenta_${prov.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`)
   }
 
+  // Mig 473 — el pago se registra en el servidor (`registrar_pago_proveedor`), atómico: movimiento en la CC + imputación a
+  // la OC más VIEJA primero (pedido de GO 06/10: así se van cerrando) + caja. Antes eran dos inserts sueltos, no imputaba
+  // a ninguna OC (quedaban pendientes y se podían volver a pagar) y el egreso en efectivo nunca entraba en la caja.
   const registrarPagoCC = async () => {
     if (!ccProvId) return
     const monto = parseFloat(ccPagoMonto.replace(',', '.'))
     if (isNaN(monto) || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    if (monto > topePagoCC + 0.5) {
+      toast.error(`El pago supera lo que se le debe ($${topePagoCC.toLocaleString('es-AR', { maximumFractionDigits: 2 })}).`); return
+    }
+    const cajas = cajasAbiertasProv as any[]
+    const sesionId = ccCajaId ?? (cajas.length === 1 ? cajas[0].id : null)
+    // 🛑 REGLA #0 — todo efectivo se asienta en caja (el servidor también lo exige).
+    if (ccPagoMedio === 'Efectivo' && !sesionId) {
+      toast.error(cajas.length > 1 ? 'Elegí la caja de la que sale el efectivo.' : 'Abrí una caja para pagar en efectivo.'); return
+    }
     setCcGuardando(true)
     try {
-      const hoy = new Date().toISOString().split('T')[0]
-      const sesionId = (cajasAbiertasProv as any[])[0]?.id ?? null
-      await supabase.from('proveedor_cc_movimientos').insert({
-        tenant_id:    tenant!.id,
-        proveedor_id: ccProvId,
-        tipo:         'pago',
-        monto:        -monto,
-        fecha:        hoy,
-        medio_pago:   ccPagoMedio,
-        descripcion:  `Pago — ${ccPagoMedio}`,
-        caja_sesion_id: sesionId,
-        created_by:   user!.id,
+      const { data, error } = await supabase.rpc('registrar_pago_proveedor', {
+        p_proveedor_id: ccProvId, p_medio: ccPagoMedio, p_monto: monto,
+        p_caja_sesion_id: sesionId, p_clave: ccClave.trim() || null,
       })
-      if (ccPagoMedio === 'Efectivo' && sesionId) {
-        await supabase.from('caja_movimientos').insert({
-          tenant_id:  tenant!.id,
-          sesion_id:  sesionId,
-          tipo:       'egreso',
-          monto,
-          concepto:   `Pago proveedor CC`,
-          created_by: user!.id,
-        })
-      }
-      toast.success('Pago registrado')
-      setCcPagoMonto('')
-      refetchCC()
+      if (error) throw error
+      const imp = ((data as any)?.imputaciones ?? []) as { numero: number; etiqueta?: string; monto: number }[]
+      toast.success(imp.length
+        ? `Pago registrado — ${imp.map(i => i.etiqueta ?? nombreOC(i, ocNumeracion)).join(', ')}${imp.length === 1 ? '' : ' (de la más vieja a la más nueva)'}`
+        : 'Pago registrado')
+      setCcPagoMonto(''); setCcClave('')
+      refetchCC(); refetchCCResumen()
       qc.invalidateQueries({ queryKey: ['oc-gastos'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
     } catch (e: any) {
       toast.error(e.message ?? 'Error')
     } finally {
@@ -515,7 +543,7 @@ export default function ProveedoresPage() {
       if (error) throw error
       toast.success('Nota de crédito registrada')
       setNcMonto(''); setNcNumero(''); setNcMotivo(''); setNcFile(null); setShowNCForm(false)
-      refetchCC()
+      refetchCC(); refetchCCResumen()
       qc.invalidateQueries({ queryKey: ['oc-gastos'] })
     } catch (e: any) {
       toast.error(e.message ?? 'Error')
@@ -536,7 +564,7 @@ export default function ProveedoresPage() {
     doc.setFontSize(16).setFont('helvetica', 'bold')
     doc.text('Orden de Compra', 14, 18)
     doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(80)
-    doc.text(`OC #${oc.numero}`, 14, 26)
+    doc.text(nombreOC(oc, ocNumeracion), 14, 26)
     doc.text(`Proveedor: ${(oc as any).proveedores?.nombre ?? '—'}`, 14, 32)
     doc.text(`Estado: ${ESTADO_OC_LABEL[oc.estado as EstadoOC] ?? oc.estado}`, 14, 38)
     if (oc.fecha_esperada) doc.text(`Fecha esperada: ${new Date(oc.fecha_esperada + 'T00:00:00').toLocaleDateString('es-AR')}`, 14, 44)
@@ -1020,8 +1048,9 @@ export default function ProveedoresPage() {
         moneda: ((tenant as any)?.moneda ?? 'ARS').toUpperCase(),
         categoria: 'Servicios',
         fecha: fechaGasto,
-        notas: `Generado desde servicio recurrente (${si.frecuencia})`,
-        proveedor_id: si.proveedor_id ?? null,
+        // `gastos` NO tiene `proveedor_id`: mandarlo hacía fallar SIEMPRE este insert (lo encontró el chequeo de
+        // columnas, tests/unit/columnasEscritas.test.ts, 2026-10-06). El proveedor queda en la nota.
+        notas: `Generado desde servicio recurrente (${si.frecuencia})${si.proveedores?.nombre ? ` — ${si.proveedores.nombre}` : ''}`,
         usuario_id: user?.id ?? null,
         // 🛑 Sin `sucursal_id` el gasto queda INVISIBLE: GastosPage filtra por la sucursal activa,
         // asi que se creaba de verdad pero no aparecia nunca (Fede, 2026-09-11). Mismo bug que los
@@ -1171,6 +1200,14 @@ export default function ProveedoresPage() {
 
       let ocId: string
       if (editOcId) {
+        // Mig 473: una OC con pagos no cambia de proveedor ni de ítems (lo frena también la base). Se chequea ANTES de
+        // tocar nada: si no, el encabezado quedaba guardado y fallaba recién al reemplazar los ítems.
+        const { data: ocActual, error: ocActErr } = await supabase.from('ordenes_compra')
+          .select('numero, numero_sucursal, monto_pagado').eq('id', editOcId).single()
+        if (ocActErr) throw ocActErr
+        if (Number(ocActual?.monto_pagado ?? 0) > 0) {
+          throw new Error(`La ${nombreOC(ocActual, ocNumeracion)} ya tiene pagos: no se puede editar. Si cambió el pedido, hacé una OC nueva.`)
+        }
         const { error } = await supabase.from('ordenes_compra').update({
           proveedor_id: ocForm.proveedor_id,
           fecha_esperada: ocForm.fecha_esperada || null,
@@ -1182,11 +1219,17 @@ export default function ProveedoresPage() {
           paga_con_anticipo: ocForm.paga_con_anticipo,  // CO5/D1
           anticipo_pct: antPct,                         // CO5/D1
           pago_schedule: scheduleJson,                  // CO5/D2
+          // Antes el envío no se guardaba al editar una OC (solo al crearla).
+          tiene_envio: ocForm.tiene_envio,
+          costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
+          envio_a_cargo: ocForm.envio_a_cargo,          // mig 475
+          envio_transportista: ocForm.envio_a_cargo === 'tercero' ? (ocForm.envio_transportista.trim() || null) : null,
         }).eq('id', editOcId)
         if (error) throw error
         ocId = editOcId
         // reemplazar ítems
-        await supabase.from('orden_compra_items').delete().eq('orden_compra_id', ocId)
+        const { error: delErr } = await supabase.from('orden_compra_items').delete().eq('orden_compra_id', ocId)
+        if (delErr) throw delErr
       } else {
         const { data, error } = await supabase.from('ordenes_compra').insert({
           tenant_id: tenant!.id,
@@ -1197,6 +1240,8 @@ export default function ProveedoresPage() {
           notas: ocForm.notas.trim() || null,
           tiene_envio: ocForm.tiene_envio,
           costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
+          envio_a_cargo: ocForm.envio_a_cargo,          // mig 475
+          envio_transportista: ocForm.envio_a_cargo === 'tercero' ? (ocForm.envio_transportista.trim() || null) : null,
           costo_aduana: ocForm.costo_aduana ? parseFloat(ocForm.costo_aduana) : null,      // CO3/E2
           costo_comision: ocForm.costo_comision ? parseFloat(ocForm.costo_comision) : null,
           costo_otros: ocForm.costo_otros ? parseFloat(ocForm.costo_otros) : null,
@@ -1258,7 +1303,7 @@ export default function ProveedoresPage() {
           estado: 'enviada',
           es_derivada: true,
           oc_padre_id: oc.id,
-          notas: `OC derivada de OC #${oc.numero} — ítems ya pagados, pendiente de entrega`,
+          notas: `OC derivada de ${nombreOC(oc, ocNumeracion)} — ítems ya pagados, pendiente de entrega`,
           created_by: user!.id,
         })
         .select('id, numero')
@@ -1416,7 +1461,7 @@ export default function ProveedoresPage() {
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: it.producto_id, tipo: 'ajuste_rebaje',
           cantidad: it.cantidad, stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - it.cantidad),
-          motivo: `Devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+          motivo: `Devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (${nombreOC(oc, ocNumeracion)})`,
           usuario_id: user?.id, sucursal_id: sucId,
         })
       }
@@ -1428,21 +1473,21 @@ export default function ProveedoresPage() {
         await supabase.from('proveedor_cc_movimientos').insert({
           tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id,
           tipo: 'nota_credito', monto: -monto, fecha: hoy,
-          descripcion: `Devolución a proveedor (OC #${oc.numero}) — crédito a favor`, created_by: user?.id,
+          descripcion: `Devolución a proveedor (${nombreOC(oc, ocNumeracion)}) — crédito a favor`, created_by: user?.id,
         })
       } else if (devForma === 'efectivo') {
         // cajaReembolsoId está garantizada (el guard de arriba bloquea si no hay caja operativa abierta)
         cajaSesionId = cajaReembolsoId
         await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
-          concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+          concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (${nombreOC(oc, ocNumeracion)})`,
           usuario_id: user?.id,
           moneda: (oc as any).moneda ?? 'ARS',  // Compras/Gastos en USD (mig 379) — el reembolso hereda la moneda de la OC devuelta
         })
       } else if (devForma === 'reposicion') {
         const { data: newOC, error: ocErr } = await supabase.from('ordenes_compra').insert({
           tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, numero: 0, estado: 'borrador',
-          sucursal_id: sucId, notas: `Reposición por devolución de OC #${oc.numero}`, created_by: user?.id,
+          sucursal_id: sucId, notas: `Reposición por devolución de ${nombreOC(oc, ocNumeracion)}`, created_by: user?.id,
         }).select('id, numero').single()
         if (ocErr) throw ocErr
         ocReposicionId = newOC.id
@@ -1530,7 +1575,7 @@ export default function ProveedoresPage() {
 
   const openNewOC = () => {
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', envio_a_cargo: 'proveedor', envio_transportista: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([{ _key: ++itemKey, producto_id: '', cantidad: '', precio_unitario: '', notas: '' }])
     setShowOcForm(true)
   }
@@ -1548,6 +1593,8 @@ export default function ProveedoresPage() {
       notas: oc.notas ?? '',
       tiene_envio: (oc as any).tiene_envio ?? false,
       costo_envio: (oc as any).costo_envio ? String((oc as any).costo_envio) : '',
+      envio_a_cargo: ((oc as any).envio_a_cargo ?? 'proveedor') as EnvioACargo,
+      envio_transportista: (oc as any).envio_transportista ?? '',
       costo_aduana: (oc as any).costo_aduana ? String((oc as any).costo_aduana) : '',
       costo_comision: (oc as any).costo_comision ? String((oc as any).costo_comision) : '',
       costo_otros: (oc as any).costo_otros ? String((oc as any).costo_otros) : '',
@@ -1568,7 +1615,7 @@ export default function ProveedoresPage() {
   const closeOcForm = () => {
     setShowOcForm(false)
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', envio_a_cargo: 'proveedor', envio_transportista: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([])
   }
 
@@ -1948,7 +1995,7 @@ export default function ProveedoresPage() {
                             <input type="email" value={provInviteEmail[p.id] ?? p.email ?? ''}
                               onChange={e => setProvInviteEmail(m => ({ ...m, [p.id]: e.target.value }))}
                               placeholder="Email del proveedor"
-                              className="flex-1 border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
+                              className="flex-1 min-w-0 border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                             <button
                               onClick={() => {
                                 const email = (provInviteEmail[p.id] ?? p.email ?? '').trim()
@@ -2890,7 +2937,7 @@ export default function ProveedoresPage() {
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-bold text-primary mb-4">
-                {editOcId ? `Editar OC #${ordenes.find(o => o.id === editOcId)?.numero}` : 'Nueva orden de compra'}
+                {editOcId ? `Editar ${nombreOC(ordenes.find(o => o.id === editOcId), ocNumeracion)}` : 'Nueva orden de compra'}
               </h2>
 
               {/* Header OC */}
@@ -2971,10 +3018,35 @@ export default function ProveedoresPage() {
                           value={ocForm.costo_envio}
                           onChange={e => setOcForm(f => ({ ...f, costo_envio: e.target.value }))}
                           placeholder="0.00"
-                          className="flex-1 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
+                          className="flex-1 min-w-0 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
                       </div>
                     )}
                   </div>
+                  {/* mig 475 / C-22 — quién cobra el envío: decide si suma a lo que se le debe al proveedor */}
+                  {ocForm.tiene_envio && (
+                    <div className="mt-2 space-y-2" role="radiogroup" aria-label="Quién cobra el envío">
+                      <p className="text-xs text-muted">¿Quién cobra el envío?</p>
+                      <div className="flex flex-wrap gap-2">
+                        {([['proveedor', 'El proveedor (va en su factura)'], ['tercero', 'Un tercero (transportista)']] as const).map(([v, label]) => (
+                          <button key={v} type="button" role="radio" aria-checked={ocForm.envio_a_cargo === v}
+                            onClick={() => setOcForm(f => ({ ...f, envio_a_cargo: v }))}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${ocForm.envio_a_cargo === v ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text/40'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {ocForm.envio_a_cargo === 'tercero' ? (
+                        <>
+                          <input value={ocForm.envio_transportista} onChange={e => setOcForm(f => ({ ...f, envio_transportista: e.target.value }))}
+                            placeholder="Transportista (opcional)" aria-label="Transportista"
+                            className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
+                          <p className="text-xs text-muted">No suma a lo que se le paga al proveedor: al recibir, el envío queda como un gasto aparte.</p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted">Suma al total de la OC y a lo que se le debe al proveedor.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* CO3/E2 — costos accesorios (no se distribuyen al costo unitario) */}
@@ -3499,7 +3571,7 @@ export default function ProveedoresPage() {
                         <tr className="border-t border-border-ds">
                           <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold text-primary">Total estimado</td>
                           <td className="px-3 py-2 text-right font-bold text-primary">
-                            ${(ocItemsData.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0) + ((showOcDetail as any).costo_envio ?? 0))
+                            ${(ocItemsData.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0) + envioDelProveedor(showOcDetail as any))
                               .toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                           </td>
                         </tr>
@@ -3706,33 +3778,70 @@ export default function ProveedoresPage() {
                 </div>
               </div>
 
-              {/* Saldo */}
-              <div className={`mx-5 mt-4 rounded-xl px-4 py-3 flex items-center justify-between ${saldoCC > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
-                <div className="flex items-center gap-2">
-                  {saldoCC > 0 ? <AlertCircle className="w-4 h-4 text-red-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
-                  <span className="text-sm font-medium text-primary dark:text-white">Saldo adeudado</span>
-                </div>
-                <span className={`text-lg font-bold ${saldoCC > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                  ${saldoCC.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </span>
-              </div>
+              {/* Saldo (mig 473): > 0 = deuda por lo RECIBIDO menos lo pagado; < 0 = anticipo a favor (se pagó antes de recibir) */}
+              {(() => {
+                const fmt0 = (n: number) => `$${Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                const estado = saldoCC > 0.5 ? 'deuda' : saldoCC < -0.5 ? 'anticipo' : 'cero'
+                return (
+                  <div data-testid="cc-proveedor-saldo" data-saldo={saldoCC}
+                    className={`mx-5 mt-4 rounded-xl px-4 py-3 flex items-center justify-between ${estado === 'deuda' ? 'bg-red-50 dark:bg-red-900/20' : estado === 'anticipo' ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
+                    <div className="flex items-center gap-2">
+                      {estado === 'deuda' ? <AlertCircle className="w-4 h-4 text-red-500" /> : estado === 'anticipo' ? <Info className="w-4 h-4 text-blue-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
+                      <span className="text-sm font-medium text-primary dark:text-white">
+                        {estado === 'deuda' ? 'Saldo adeudado' : estado === 'anticipo' ? 'Anticipo a favor' : 'Sin deuda'}
+                      </span>
+                    </div>
+                    <span className={`text-lg font-bold ${estado === 'deuda' ? 'text-red-600 dark:text-red-400' : estado === 'anticipo' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
+                      {fmt0(saldoCC)}
+                    </span>
+                  </div>
+                )
+              })()}
+              {saldosOtraMonedaCC.length > 0 && (
+                <p className="mx-5 mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  Además, en otra moneda: {saldosOtraMonedaCC.map(([m, v]) => `${m} ${(parseFloat(String(v)) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`).join(' · ')} (no se suma al saldo de arriba).
+                </p>
+              )}
+              <p className="mx-5 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                La deuda se carga al recibir la mercadería. {pendienteOCsCC > 0.5 && <>Pendiente de pagar en OCs: <strong>${pendienteOCsCC.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong>.</>}
+              </p>
 
-              {/* Registrar pago */}
-              {saldoCC > 0.5 && (
+              {/* Registrar pago — se imputa a la OC más vieja primero (mig 473) */}
+              {topePagoCC > 0.5 && (
                 <div className="mx-5 mt-3 bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-medium text-primary dark:text-white">Registrar pago</p>
+                  <div>
+                    <p className="text-sm font-medium text-primary dark:text-white">Registrar pago</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Se aplica a las OCs pendientes, de la más vieja a la más nueva.</p>
+                  </div>
                   <div className="flex gap-2">
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={ccPagoMonto} onChange={e => setCcPagoMonto(e.target.value)}
-                      placeholder={`Hasta $${saldoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
-                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
-                    <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)}
+                      aria-label="Monto del pago"
+                      placeholder={`Hasta $${topePagoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                    <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)} aria-label="Medio de pago"
                       className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                       {['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro'].map(m => <option key={m}>{m}</option>)}
                     </select>
                   </div>
-                  {ccPagoMedio === 'Efectivo' && (cajasAbiertasProv as any[]).length === 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso no se registrará en caja.</p>
+                  {(cajasAbiertasProv as any[]).length > 1 && (
+                    <select value={ccCajaId ?? ''} onChange={e => setCcCajaId(e.target.value || null)} aria-label="Caja"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                      <option value="">{ccPagoMedio === 'Efectivo' ? 'Elegí la caja de la que sale el efectivo' : 'Caja (opcional, para el registro)'}</option>
+                      {(cajasAbiertasProv as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.cajas?.nombre ?? 'Caja'}</option>)}
+                    </select>
                   )}
+                  {ccPagoMedio === 'Efectivo' && (cajasAbiertasProv as any[]).length === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta: para pagar en efectivo, abrí una caja.</p>
+                  )}
+                  {(() => {
+                    const umbral = Number((tenant as any)?.oc_pago_doble_firma_umbral ?? 0)
+                    const m = parseFloat(ccPagoMonto.replace(',', '.'))
+                    return umbral > 0 && m >= umbral ? (
+                      <input type="password" value={ccClave} onChange={e => setCcClave(e.target.value)} autoComplete="new-password"
+                        placeholder="Clave maestra (pago sobre el umbral de doble firma)"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                    ) : null
+                  })()}
                   <button onClick={registrarPagoCC} disabled={ccGuardando || !ccPagoMonto}
                     className="w-full py-2 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center gap-2">
                     <DollarSign className="w-4 h-4" />
@@ -3823,11 +3932,11 @@ export default function ProveedoresPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-primary dark:text-white truncate">
                             {m.descripcion ?? (m.tipo === 'oc' ? 'Orden de Compra' : m.tipo === 'pago' ? 'Pago' : m.tipo)}
-                            {m.ordenes_compra && <span className="text-gray-400 ml-1 text-xs">OC #{m.ordenes_compra.numero}</span>}
+                            {m.ordenes_compra && <span className="text-gray-400 ml-1 text-xs">{nombreOC(m.ordenes_compra, ocNumeracion)}</span>}
                           </p>
                           <div className="flex gap-2 text-xs text-gray-400 flex-wrap mt-0.5">
                             <span>{new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR')}</span>
-                            {m.medio_pago && <span>· {m.medio_pago}</span>}
+                            {m.medio_pago && <span>· {textoMedioPago(m.medio_pago)}</span>}
                             {venc && <span className={vencida ? 'text-red-500 font-medium' : 'text-amber-500'}>· Vence {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
                             {m.adjunto_url && (
                               <a href={supabase.storage.from('comprobantes-gastos').getPublicUrl(m.adjunto_url).data.publicUrl}

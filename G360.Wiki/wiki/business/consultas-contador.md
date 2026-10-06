@@ -33,7 +33,7 @@ las responda de una vez.
 
 | Estado | Cantidad |
 |---|---|
-| 🟥 Abiertas | 21 |
+| 🟥 Abiertas | 22 |
 | ✅ Respondidas por un matriculado | 0 |
 
 ⚠️ **Ninguna respondida todavía.** La C-01 y sus derivadas tienen una respuesta **de una IA que se
@@ -438,6 +438,27 @@ remito? ¿Cambia si los dos CUITs son de la misma persona (titular monotributist
 **Qué se rompe si está mal:** la mercadería pasa de un contribuyente a otro sin comprobante; después B la vende y
 factura con su CUIT algo que, fiscalmente, nunca compró (inventario de B sin respaldo, IVA crédito/débito de A y B
 mal liquidados).
+
+---
+
+### C-22 · Envío de una compra: ¿va en la factura del proveedor y suma a la deuda?
+
+- **Estado:** 🟥 Abierta (2026-10-06)
+- **Área:** Compras + cuenta corriente de proveedores ([[wiki/features/clientes-proveedores]])
+- **Impacta en:** `ordenes_compra.costo_envio`. Proveedores lo suma al total de la OC; el pago, la deuda (mig 473) y el
+  gasto de la recepción NO lo incluyen. Falta un dato: quién cobra el envío.
+- **Criterio provisorio actual (implementado en DEV, mig 475):** la OC dice quién cobra el envío; si es el proveedor suma a su total y a la deuda, si es un tercero va como gasto aparte. Lectura propia (no de matriculado): si el
+  envío lo presta/cobra el PROVEEDOR junto con la venta, integra el precio neto gravado (Ley de IVA, art. 10: los
+  servicios prestados juntamente con la venta) y va en SU factura (misma o aparte), con el IVA de la mercadería → suma a
+  lo que se le debe. Si lo hace un TRANSPORTISTA contratado por el negocio, lo factura el transportista (otro
+  comprobante, otro acreedor) → no va en la CC del proveedor. En ambos casos el flete es costo de la mercadería
+  (costo de incorporación) además de gasto.
+
+**Pregunta:** ¿es correcta esa lectura? ¿El flete facturado por el vendedor sigue siempre la alícuota del bien (p. ej.
+10,5 %) o puede ir al 21 %? ¿Hay que distinguir en la OC "envío a cargo del proveedor" vs "de un tercero"?
+
+**Qué se rompe si está mal:** la deuda con el proveedor queda corta (o larga) por el flete, y el IVA crédito / el costo
+de la mercadería se calculan sobre una base equivocada.
 
 ---
 

@@ -2,7 +2,7 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-09-24
+updated: 2026-10-04
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
@@ -623,6 +623,7 @@ Generador de reportes exportables. Acceso: Contador+ (plan Básico+).
 - **Rotación**: índice de rotación de inventario por período
 - **Valorizado**: valor total del inventario a precio de costo
 - **Ficha de productos**: catálogo con todos los atributos
+- **Descuentos por categoría** (solo DEV al 2026-10-04): lo no facturado por los descuentos de la categoría del cliente, por período/categoría/cliente (columna "Total no facturado"). En el POS, el cajero ve un cartel redactado por la IA al guardar la promoción cuando compiten descuentos (la IA no calcula: los números los pone el motor de precio)
 
 **Formatos de exportación:** XLSX (xlsx), PDF (jsPDF + autoTable).
 

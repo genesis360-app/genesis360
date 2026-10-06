@@ -139,3 +139,40 @@ export const ETIQUETA_POLITICA: Record<PoliticaExceso, string> = {
   avisar: 'Avisar',
   bloquear: 'Bloquear',
 }
+
+// ── Formulario de la categoría (rediseño 2026-10-05) ──────────────────────────────────────────────────────────────────
+// Un check "Habilita cuenta corriente". Sin tildar = la categoría NO define CC: sus clientes usan lo del negocio (todos
+// los campos quedan en "hereda"). Tildado = la categoría habilita CC con un límite OBLIGATORIO; plazo, interés y qué
+// pasa al pasarse son opcionales (vacío = lo del negocio). Decisión de GO 2026-10-05.
+export interface FormCCCategoria {
+  habilita: boolean
+  limite: string
+  plazo: string
+  interes: string
+  politica: '' | PoliticaExceso
+}
+
+export type PayloadCCCategoria = Pick<CondicionesCategoria, 'cc_habilitada' | 'cc_limite' | 'cc_plazo_dias' | 'cc_interes_mensual_pct' | 'cc_enforcement_politica'>
+
+export function payloadCCCategoria(f: FormCCCategoria): { ok: true; payload: PayloadCCCategoria } | { ok: false; error: string } {
+  if (!f.habilita) {
+    return { ok: true, payload: { cc_habilitada: null, cc_limite: null, cc_plazo_dias: null, cc_interes_mensual_pct: null, cc_enforcement_politica: null } }
+  }
+  const limite = num(f.limite.replace(',', '.'))
+  if (limite === null) return { ok: false, error: 'Poné el límite de crédito: es obligatorio si la categoría habilita cuenta corriente' }
+  if (limite <= 0) return { ok: false, error: 'El límite de crédito tiene que ser mayor que cero' }
+  const plazoN = num(f.plazo)
+  const plazo = plazoN === null ? null : Math.trunc(plazoN)
+  if (plazo !== null && (plazo < 1 || plazo > 365)) return { ok: false, error: 'El plazo va de 1 a 365 días' }
+  const interes = num(f.interes.replace(',', '.'))
+  if (interes !== null && interes < 0) return { ok: false, error: 'El interés no puede ser negativo' }
+  return { ok: true, payload: { cc_habilitada: true, cc_limite: limite, cc_plazo_dias: plazo, cc_interes_mensual_pct: interes, cc_enforcement_politica: f.politica || null } }
+}
+
+/** Para editar: una categoría "habilita" si tiene la CC en sí o algún valor propio cargado. */
+export function formCCDesdeCategoria(c: CondicionesCategoria): FormCCCategoria {
+  const n = (v: unknown) => (num(v) !== null ? String(num(v)) : '')
+  const tieneAlgo = c.cc_habilitada === true || num(c.cc_limite) !== null || num(c.cc_plazo_dias) !== null
+    || num(c.cc_interes_mensual_pct) !== null || !!c.cc_enforcement_politica
+  return { habilita: tieneAlgo, limite: n(c.cc_limite), plazo: n(c.cc_plazo_dias), interes: n(c.cc_interes_mensual_pct), politica: (c.cc_enforcement_politica ?? '') as '' | PoliticaExceso }
+}

@@ -13,6 +13,7 @@ import { traerTodoConError } from '@/lib/traerTodo'
 import { PageTabs } from '@/components/PageTabs'
 import { InfoTip } from '@/components/InfoTip'
 import { Toggle } from '@/components/Toggle'
+import { SelectorPermisos, type OpcionPermiso } from '@/components/SelectorPermisos'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
@@ -803,6 +804,32 @@ export default function ConfigPage() {
   )
   // Cuenta Corriente clientes (CL2 · B1/B3/B4)
   const [bizCCEnforcement, setBizCCEnforcement] = useState<string>((tenant as any)?.cc_enforcement_politica ?? 'avisar')
+  // Mig 472: quién crea/edita categorías de clientes y quién se las asigna a los clientes (roles, roles personalizados
+  // y usuarios puntuales). Solo el DUEÑO lo ve; se guarda con "Guardar configuración de Clientes".
+  const [bizCatRoles, setBizCatRoles] = useState<string[]>(((tenant as any)?.categorias_cliente_roles ?? []) as string[])
+  const [bizCatAsignarRoles, setBizCatAsignarRoles] = useState<string[]>(((tenant as any)?.categorias_cliente_asignar_roles ?? []) as string[])
+  const { data: opcionesPermisoCat = { roles: [] as OpcionPermiso[], usuarios: [] as OpcionPermiso[] } } = useQuery({
+    queryKey: ['config-permisos-categorias', tenant?.id],
+    queryFn: async () => {
+      const [{ data: rc }, { data: us }] = await Promise.all([
+        supabase.from('roles_custom').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'),
+        supabase.from('users').select('id, nombre_display, rol').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre_display'),
+      ])
+      const ETIQUETA_ROL: Record<string, string> = {
+        SUPER_USUARIO: 'Super Usuario', SUPERVISOR: 'Supervisor', CAJERO: 'Cajero', RRHH: 'RRHH',
+        CONTADOR: 'Contador', DEPOSITO: 'Depósito', VIEWER: 'Lector',
+      }
+      return {
+        roles: [
+          ...Object.entries(ETIQUETA_ROL).map(([clave, nombre]) => ({ clave, nombre })),
+          ...((rc ?? []) as any[]).map(r => ({ clave: `custom:${r.id}`, nombre: r.nombre, detalle: 'rol personalizado' })),
+        ],
+        usuarios: ((us ?? []) as any[]).filter(u => u.rol !== 'DUEÑO' && u.rol !== 'ADMIN')
+          .map(u => ({ clave: `user:${u.id}`, nombre: u.nombre_display ?? 'Sin nombre', detalle: ETIQUETA_ROL[u.rol] ?? u.rol })),
+      }
+    },
+    enabled: !!tenant && user?.rol === 'DUEÑO',
+  })
   const [bizCCMorosidad, setBizCCMorosidad] = useState<string>((tenant as any)?.cc_morosidad_politica ?? 'bloqueo_cc')
   const [bizCCLimiteDefault, setBizCCLimiteDefault] = useState<string>(
     (tenant as any)?.limite_cc_default != null ? String((tenant as any).limite_cc_default) : ''
@@ -974,6 +1001,8 @@ export default function ConfigPage() {
   // Fase 4 — descuentos y caja
   // (descuento_max_cajero_pct se quitó: el CAJERO está siempre bloqueado de descuentos — H4)
   const [bizDescuentoMaxSupervisor, setBizDescuentoMaxSupervisor] = useState<string>(tenant?.descuento_max_supervisor_pct != null ? String(tenant.descuento_max_supervisor_pct) : '')
+  // Mig 468 (A4 + B-5 + PL-1): tope de descuento ACUMULADO por venta (vacío = no rige). Nadie lo saltea.
+  const [bizDescuentoTope, setBizDescuentoTope] = useState<string>((tenant as any)?.descuento_tope_acumulado_pct != null ? String((tenant as any).descuento_tope_acumulado_pct) : '')
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
   const [bizClaveMaestraConfirm,    setBizClaveMaestraConfirm]    = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
@@ -1346,6 +1375,8 @@ export default function ConfigPage() {
       reserva_penalidad_pct: parseFloat(bizReservaPenalidadPct) || 0,
       // Cuenta Corriente clientes (CL2 · B1/B3/B4)
       cc_enforcement_politica: bizCCEnforcement,
+      categorias_cliente_roles: bizCatRoles,
+      categorias_cliente_asignar_roles: bizCatAsignarRoles,
       cc_morosidad_politica: bizCCMorosidad,
       limite_cc_default: bizCCLimiteDefault.trim() === '' ? null : (parseFloat(bizCCLimiteDefault) || null),
       cc_dias_vencimiento: bizCCDiasVenc.trim() === '' ? null : (parseInt(bizCCDiasVenc) || null),
@@ -1435,6 +1466,8 @@ export default function ConfigPage() {
       cliente_creacion_inline:  bizClienteCreacionInline,
       // Fase 4 — descuentos y caja
       descuento_max_supervisor_pct: bizDescuentoMaxSupervisor ? parseFloat(bizDescuentoMaxSupervisor) : null,
+      descuento_tope_acumulado_pct: bizDescuentoTope.trim() !== '' && Number.isFinite(parseFloat(bizDescuentoTope))
+        ? Math.min(100, Math.max(0, parseFloat(bizDescuentoTope))) : null,
       boveda_umbral_caja:           bizBovedaUmbral           ? parseFloat(bizBovedaUmbral)           : null,
       // RRHH (H4)
       rrhh_tardanza_modo:                  bizRrhhTardanzaModo,
@@ -7141,6 +7174,23 @@ export default function ConfigPage() {
                     </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Aplica al rol SUPERVISOR. El DUEÑO nunca tiene límite.</p>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tope de descuento total por venta (%)</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
+                        data-testid="config-tope-descuento"
+                        value={bizDescuentoTope} disabled={!canEdit}
+                        onChange={e => setBizDescuentoTope(e.target.value)}
+                        placeholder="Sin tope"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      Cuánto puede bajar una venta respecto del precio de lista, sumando todo: precio por cantidad, categoría del
+                      cliente, estado, descuentos, combos, cupón y promoción por medio de pago. <span className="font-medium">Rige
+                      para todos, también para el DUEÑO</span>: para vender más barato hay que subir este tope. Vacío = sin tope.
+                    </p>
+                  </div>
                 </div>
                 {canEdit && (
                   <div className="flex justify-end">
@@ -8402,6 +8452,24 @@ export default function ConfigPage() {
                     cliente podés regenerarlo cuando quieras: el anterior deja de funcionar.
                   </p>
                 </div>
+                {canEdit && (
+                  <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3" data-testid="config-permisos-categorias">
+                    <h3 className="font-medium text-sm text-gray-700 dark:text-gray-300">Categorías de clientes: permisos</h3>
+                    <SelectorPermisos testid="permiso-gestionar-categorias"
+                      titulo="Quién crea, edita y arma las listas de descuento"
+                      descripcion="Tildá los roles o los usuarios que pueden crear y editar categorías y sus listas de descuentos."
+                      valor={bizCatRoles} onChange={setBizCatRoles}
+                      roles={opcionesPermisoCat.roles} usuarios={opcionesPermisoCat.usuarios} />
+                    <SelectorPermisos testid="permiso-asignar-categorias"
+                      titulo="Quién asigna categorías a los clientes"
+                      descripcion="Tildá los roles o los usuarios que pueden ponerle o cambiarle la categoría a un cliente."
+                      valor={bizCatAsignarRoles} onChange={setBizCatAsignarRoles}
+                      roles={opcionesPermisoCat.roles} usuarios={opcionesPermisoCat.usuarios} />
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      Eliminar una categoría y las condiciones de cuenta corriente propias de un cliente son siempre solo del dueño.
+                    </p>
+                  </div>
+                )}
                 {canEdit && (
                   <div className="flex justify-end">
                     <button onClick={handleSaveBiz} disabled={savingBiz}

@@ -8,6 +8,8 @@ updated: 2026-08-31
 
 # Módulo Pedidos
 
+> 📅 **2026-10-03 (✅ EN PROD v1.238.0, mig 465) — el pedido hereda la fecha de entrega del envío:** Pedidos ordena por fecha (atrasado / hoy / mañana) con el rango horario; Picking muestra la fecha. Se arreglaron las fechas que se veían un día antes y el "hoy" en UTC (Pedidos y Alertas, `hoyLocalISO`). UAT §95, e2e 177. Para después (GO): WMS profesional con priorización de tareas y asignación automática por permisos y vehículo (ver [[wiki/features/wms]]).
+
 > **✅ Módulo COMPLETO y EN PROD desde v1.144.0 (2026-07-28, PR #302, migs 292 + 294-302).** Arrancado el 2026-07-22. El ciclo de vida completo
 > está construido y verificado con e2e real contra DEV: **PED1-PED8 completos**, incluida una
 > segunda ronda que cerró los 5 gaps que había dejado la primera pasada (ver "Correcciones
@@ -919,6 +921,12 @@ POS:
 - **Redondeo del tenant** (H4).
 - **Descuento por estado de inventario** (migs 284-285), prorrateado **por fuente**: cada unidad
   descuenta según el % del estado de SU línea concreta.
+- 🟡 **Categoría del cliente (mig 468, 2026-10-03, SOLO EN DEV)**: `fn_pedido_generar_venta` toma el precio de
+  `fn_precios_lineas` con el cliente del pedido (la categoría compite con tier/empaque/canal y gana el más
+  bajo), calcula el estado con `fn_descuento_estado_unitario` (con categoría activa compite contra la lista) y
+  graba `mecanismo_precio`. El tope de descuento acumulado se controla al confirmar la venta (constraint
+  trigger diferido: Pedidos inserta de a una línea y descuenta el estado después). Ejemplo e2e 180: $940 con
+  categoría / $880 sin. Ver [[wiki/features/precios-tiers-empaque]].
 
 Verificado en DEV: 12 unidades con base $1.000, tier `>=10 -> $700` y estado con 20% pasaron de
 facturar **$12.000** a **$6.720**.

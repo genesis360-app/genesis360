@@ -8,10 +8,10 @@ updated: 2026-10-02
 
 # Suscripciones y Planes
 
-> 🆕 **2026-10-02 — Pricing v7 (🟡 EN DEV):** 3 planes (Básico/Pro/Enterprise), sin Free, prueba de **15 días** para las
+> 🆕 **2026-10-02 — Pricing v7 (✅ EN PROD v1.238.0, 2026-10-03):** 3 planes (Básico/Pro/Enterprise), sin Free, prueba de **15 días** para las
 > altas nuevas, herencia v6 para los negocios existentes (mig 457). Precios, límites y estado en
 > [[wiki/business/planes-pricing]] → "Pricing v7". Al vencer la prueba sigue el bloqueo con `/suscripcion`
-> (`accesoSuscripcion.ts`). Esta página describe el v6 que sigue en PROD hasta el deploy.
+> (`accesoSuscripcion.ts`). Esta página describe el v6 (histórico: los negocios existentes lo conservan por herencia). Mig 464 (`mp_suscripcion_intentos`, EN PROD): anti doble pago y suscripciones huérfanas (caso El Tilo, UAT §93); decisión abierta: ¿auto-vincular cuando hay un único negocio candidato?
 
 Genesis360 usa un modelo freemium con 4 planes de suscripción (v6, en PROD). Los pagos se procesan con Mercado Pago.
 

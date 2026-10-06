@@ -14,6 +14,10 @@ export interface CategoriaCliente extends CondicionesCategoria {
   descripcion: string | null
   usada: boolean
   created_at: string
+  // Mig 469 (B-4): cartel del POS redactado por la IA (null = plantilla)
+  cartel_textos?: Record<string, string> | null
+  cartel_origen?: 'ia' | 'plantilla' | null
+  cartel_generado_at?: string | null
 }
 
 /** Una fila de `vw_clientes_cc`: condiciones EFECTIVAS del cliente y de dónde sale cada una. */
@@ -75,18 +79,22 @@ export function useClientesCC(enabled = true) {
   })
 }
 
-type UsuarioPermisos = { rol?: string | null; rol_custom_id?: string | null } | null | undefined
+type UsuarioPermisos = { id?: string | null; rol?: string | null; rol_custom_id?: string | null } | null | undefined
+
+/** Mig 472: la lista acepta roles ('SUPERVISOR'), roles personalizados ('custom:<id>') y usuarios ('user:<id>'). */
+const enLista = (u: UsuarioPermisos, lista: string[] | null | undefined) =>
+  rolEnLista(u?.rol as any, u?.rol_custom_id, lista ?? []) || (!!u?.id && (lista ?? []).includes(`user:${u.id}`))
 
 const esDuenoOAdmin = (u: UsuarioPermisos) => u?.rol === 'DUEÑO' || u?.rol === 'ADMIN'
 
 /** E1 — crear/editar categorías: DUEÑO (y ADMIN) + roles habilitados en Config. */
 export function puedeGestionarCategorias(u: UsuarioPermisos, tenant: any): boolean {
-  return esDuenoOAdmin(u) || rolEnLista(u?.rol as any, u?.rol_custom_id, tenant?.categorias_cliente_roles ?? [])
+  return esDuenoOAdmin(u) || enLista(u, tenant?.categorias_cliente_roles)
 }
 
 /** E2 — asignar una categoría a un cliente. */
 export function puedeAsignarCategoria(u: UsuarioPermisos, tenant: any): boolean {
-  return esDuenoOAdmin(u) || rolEnLista(u?.rol as any, u?.rol_custom_id, tenant?.categorias_cliente_asignar_roles ?? [])
+  return esDuenoOAdmin(u) || enLista(u, tenant?.categorias_cliente_asignar_roles)
 }
 
 /** E3 — valores PROPIOS de cuenta corriente de un cliente: solo el DUEÑO (y el staff ADMIN). */

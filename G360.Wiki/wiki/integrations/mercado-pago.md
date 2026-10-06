@@ -8,6 +8,8 @@ updated: 2026-10-02
 
 # Integración Mercado Pago
 
+> 🚀 **2026-10-03 — v1.238.0 EN PROD:** EFs `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook` y `admin-api` desplegadas en PROD (`mp-crear-link-pago` ya estaba desde el 02/10). Mig 464 `mp_suscripcion_intentos` (anti doble pago / huérfanas). Caso El Tilo: dos preapprovals Pro a $20 del 28/09, ninguna vinculada (las alertas se habían descartado como "susc de prueba"); GO le pidió a Fede cancelar ambas y devolver; el cliente sigue gratis. Decisión abierta: ¿auto-vincular cuando hay un único negocio candidato? UAT §93. Secret `MP_PLAN_ENTERPRISE` en DEV y PROD (Enterprise `852a7e8e…`, $200.000). Sugerido a Fede: revisar su cuenta MP por cobros de negocios (hotfix del 02/10).
+
 Mercado Pago se usa para dos fines distintos en Genesis360:
 1. **Suscripciones** de la plataforma (tenants pagan su plan)
 2. **Pagos de ventas** (clientes del tenant pagan con MP QR)

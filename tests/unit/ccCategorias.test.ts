@@ -93,3 +93,32 @@ describe('propiosQueCompiten (D2: quiénes necesitan decisión en una asignació
     expect(propiosQueCompiten(sinPropios, colocadores)).toEqual([])
   })
 })
+
+import { payloadCCCategoria, formCCDesdeCategoria } from '@/lib/ccCategorias'
+
+describe('formulario de categoría: check "Habilita cuenta corriente" (rediseño 2026-10-05)', () => {
+  const base = { habilita: true, limite: '', plazo: '', interes: '', politica: '' as const }
+  it('sin tildar = todo hereda del negocio', () => {
+    expect(payloadCCCategoria({ ...base, habilita: false, limite: '999' })).toEqual({ ok: true, payload: {
+      cc_habilitada: null, cc_limite: null, cc_plazo_dias: null, cc_interes_mensual_pct: null, cc_enforcement_politica: null } })
+  })
+  it('tildado: el límite es obligatorio y mayor que cero', () => {
+    expect(payloadCCCategoria(base)).toMatchObject({ ok: false })
+    expect(payloadCCCategoria({ ...base, limite: '0' })).toMatchObject({ ok: false })
+  })
+  it('tildado con límite: habilita; plazo, interés y política vacíos = lo del negocio', () => {
+    expect(payloadCCCategoria({ ...base, limite: '500000' })).toEqual({ ok: true, payload: {
+      cc_habilitada: true, cc_limite: 500000, cc_plazo_dias: null, cc_interes_mensual_pct: null, cc_enforcement_politica: null } })
+  })
+  it('valida plazo (1 a 365) e interés (no negativo); acepta coma decimal', () => {
+    expect(payloadCCCategoria({ ...base, limite: '1', plazo: '400' })).toMatchObject({ ok: false })
+    expect(payloadCCCategoria({ ...base, limite: '1', interes: '-1' })).toMatchObject({ ok: false })
+    expect(payloadCCCategoria({ ...base, limite: '1500,5', plazo: '30', interes: '2,5', politica: 'bloquear' })).toEqual({ ok: true, payload: {
+      cc_habilitada: true, cc_limite: 1500.5, cc_plazo_dias: 30, cc_interes_mensual_pct: 2.5, cc_enforcement_politica: 'bloquear' } })
+  })
+  it('al editar: una categoría que hereda todo arranca sin tildar; una con límite, tildada', () => {
+    const cat = { activo: true, cc_habilitada: null, cc_limite: null, cc_plazo_dias: null, cc_interes_mensual_pct: null, cc_enforcement_politica: null }
+    expect(formCCDesdeCategoria(cat).habilita).toBe(false)
+    expect(formCCDesdeCategoria({ ...cat, cc_habilitada: true, cc_limite: '200000.00' })).toMatchObject({ habilita: true, limite: '200000' })
+  })
+})

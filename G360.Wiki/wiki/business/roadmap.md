@@ -3,18 +3,24 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-09-25
+updated: 2026-10-03
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.235.0`** (2026-10-01, migs 001-**451**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.238.0`** (2026-10-03, migs 001-**466**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-451; paridad `pg_policies` por schema: `public` **240** (`5a6594eb`) · `storage` **40**
-(`5585866d`) · `cron` **2** (`757afda6`) — comparar solo DEV vs PROD del mismo día). PR **#367** `dev→main`, merge
-**`12e09d33`**, release **`v1.235.0` Latest**.
+✅ **PROD = DEV** (001-466; paridad `pg_policies` por schema al 2026-10-03: `public` **245** · `storage` **40** · `cron` **2** — comparar solo DEV vs PROD del mismo día). PR **#370** `dev→main`, merge **`8be5f1fb`**, release **`v1.238.0` Latest**.
+
+## 💲 v1.238.0 — Pricing v7, caja por sucursal, KIT atómico, suscripciones, categorías (lista), pedidos por fecha (2026-10-03, EN PROD)
+
+- PR #370, merge `8be5f1fb`, release Latest, servida `index-DRm63vPm.js`. Panel interno (`genesis360-admin`) mergeado: PR #7, sin `plan_id`.
+- **Migs 457 → 466 en PROD**, de a una con `scripts/aplicar-migracion.mjs` (la 462 chocó en la versión con la 461 y se reaplicó): 457 pricing v7 + `tenant_herencia_plan` · 459 desarmado de KIT atómico · 460 sesión de caja en la sucursal de su caja · 461 precio pactado por pack de add-on · 462 armado de KIT sin fraccionarios · 463 modo avanzado solo desde Pro · 464 `mp_suscripcion_intentos` · 465 pedido hereda fecha de entrega · 466 lista de descuentos por categoría.
+- **EFs en PROD**: `admin-api`, `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`, `ai-assistant` (app-reference con planes v7 + `ai:knowledge`). Auditoría de EFs: diff 0 (solo `marketplace-webhook` en DEV y `wa-embedded-signup-exchange` en PROD sin desplegar, de antes). Secret `MP_PLAN_ENTERPRISE` en DEV y PROD.
+- Suite e2e completa previa: 441 passed, 0 failed. Unit 2142. Paridad de policies DEV = PROD (public 245, storage 40, cron 2).
+- Pendiente de v7: pago anual, aviso de comprobantes 80 %/100 %, landing de Fede. Siguiente: B2 (motor único de precio + aplicar la lista de categorías).
 
 ## 📍 v1.237.0 — Stock con ubicación en modo avanzado, CUIT exigible, ficha de producto alineada (2026-10-02, EN PROD)
 

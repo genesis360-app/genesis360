@@ -3,10 +3,21 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
 sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-10-02
+updated: 2026-10-05
 ---
 
 # Clientes y Proveedores
+
+> 🗂️ **2026-10-05 (solo DEV, commit `5b21e7f9`, mig 472) — Rediseño de Categorías de clientes (pedido de GO).** Deploy a PROD pendiente (v1.239.0, ver `sources/raw/project_pendientes.md`).
+> - **Pestaña**: cada fila = nombre + clientes + descripción; a la derecha switch activa / asignar / lista de descuentos / historial / editar / eliminar. **Eliminar** solo DUEÑO y solo si nunca se usó (la policy DELETE de `categorias_cliente` pasa a solo DUEÑO/ADMIN).
+> - **Alta**: check "Habilita cuenta corriente" (decisión de GO). Sin tildar = hereda del negocio; tildado = límite obligatorio > 0, plazo/interés/política opcionales.
+> - **Asignar clientes**: modal con tabla (check + "todos", cliente, compras, ticket promedio, total gastado) vía `fn_clientes_compras_resumen` (ventas despachada/facturada/reservada menos devoluciones).
+> - **Lista de descuentos**: cards (productos, con descuento, clientes asignados, descuento promedio en % y en $ por unidad), buscador, filtros combinables en pastillas (marca, categoría, margen/costo/precio/descuento con >, <, =, ≥, ≤), Acciones (aplicar % / quitar a los seleccionados) y tabla agrupada por categoría de producto (colapsada; la búsqueda la abre) con costo+IVA, precio y margen con el descuento (margen = el de la ficha: recargo sobre costo sin IVA). % por producto (vacío = sin cargar, 0 = explícito) y por categoría de producto (`fn_descuentos_categoria_masivo`, una sola entrada en el historial). Lógica pura en `src/lib/listaDescuentos.ts`.
+> - **Permisos** movidos a Configuración → Clientes, solo DUEÑO: componente `SelectorPermisos` con pestañas Roles (incluye roles personalizados) / Usuarios, guardado con "Guardar configuración de Clientes"; el servidor acepta `user:<id>` en `fn_usuario_en_roles_categoria`. Ver [[wiki/features/configuracion]].
+> - **Fix**: Enter en un campo que abre un diálogo de confirmación lo aceptaba solo (`preventDefault`).
+> - Tests: unit listaDescuentos + ccCategorias, e2e 178 reescrito / 163 ajustado / 183 nuevo, UAT §101.
+
+> 🏷️ **2026-10-03 (✅ EN PROD v1.238.0, mig 466) — Lista de descuentos por categoría (Fase 4 parte A):** pantalla `/clientes/categorias/:id/descuentos` (ícono % en Clientes → Categorías) e importador `/clientes/categorias/:id/descuentos/importar` (plantilla con todos los productos, celda vacía = no se toca, todo o nada, hasta 20.000 filas). Tabla `categoria_cliente_descuentos`. **Todavía NO se aplica al vender.** Siguiente = **B2**: motor único de precio (Fase 3 del plan) + que POS y Pedidos apliquen la lista (gana el precio más bajo frente al mayorista y al estado, tope acumulado sin salteo PL-1, categoría/%/mecanismo guardados por línea, cartel para el cajero). GO eligió B2 y no B1 (meter la categoría en los dos motores actuales). UAT §96, e2e 178. QR Fase 1 (envío en CC, un link por venta con vencimiento a 30 días, excedente a saldo a favor, idempotencia de `mp-ipn`) decidida y SIN EMPEZAR.
 
 > 🔎 **2026-10-01 — Padrón de ARCA (✅ EN PROD v1.235.0):** al cargar un CUIT (cliente, proveedor, emisor, alta rápida del POS) se
 > autocompletan razón social, condición IVA y domicilio fiscal con vista previa. Ver [[wiki/integrations/padron-arca]].
@@ -31,6 +42,14 @@ lleva Nota de Débito con IVA?, [[wiki/business/consultas-contador]]).
 - Los **intereses nunca se cobran**: la cobranza FIFO aplica solo al capital y `fn_recalcular_intereses_cc_tenant` pone
   `interes_cc` en 0 al saldar la deuda.
 - Excedente de un pago → `cliente_creditos` (saldo a favor) + aviso al dueño (decisión de diseño de la Fase 1).
+
+## 🧮 Categorías de clientes — B2 Fase 3: motor único de precio (mig 467, 2026-10-03, solo DEV)
+
+Ya existe el motor único de precio en SQL (`fn_precio_motor_producto`, `fn_precios_lineas`).
+
+**Actualización Fase 4 (mig 468, 2026-10-03, solo DEV; en PROD todavía NO se aplica al vender)**: la lista de descuentos por categoría (mig 466, EN PROD) **ya se aplica al vender en DEV** (POS y Pedidos): la categoría del cliente compite con tier/empaque/canal y gana el precio más bajo; tope de descuento acumulado sin salteo (`tenants.descuento_tope_acumulado_pct`, Config → Ventas); categoría/%/mecanismo guardados por línea en `venta_items`; cartel de plantilla para el cajero. La pantalla de la lista ahora dice "Se aplica al vender". Las ventas recurrentes siguen sin categoría (abierto para GO). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
+
+**Actualización Fase 5 (migs 469-470, 2026-10-04, solo DEV; B2 completo en DEV)**: la pantalla de la lista de descuentos ganó el panel **"Cartel para el cajero"** (origen IA/estándar + ejemplo completado, botón "Volver a redactar"): la EF `categoria-cartel-ia` redacta al guardar la promoción 3 frases con marcadores que el POS completa con los números del motor (fallback a plantilla). Reportes → **"Descuentos por categoría"** con lo no facturado por la categoría (período, categoría, cliente; las devoluciones parciales se restan). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/features/reportes-metricas]]. Deploy pendiente (467 -> 470 + EF).
 
 ## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
 

@@ -113,3 +113,56 @@ export function desvioCotizacionFuerte(cotizacion: number, referencia: number | 
   if (!referencia || referencia <= 0 || !cotizacion || cotizacion <= 0) return false
   return Math.abs(cotizacion - referencia) / referencia >= 0.2
 }
+
+/**
+ * Texto legible del `medio_pago` de un movimiento de CC de proveedor. `registrar_pago_oc` lo guarda como JSON
+ * (`[{"tipo":"Tarjeta de débito","monto":900}]`) y el historial lo mostraba crudo (GO, 2026-10-06). Un texto que no es
+ * JSON (el pago manual guarda "Transferencia") se devuelve tal cual.
+ */
+export function textoMedioPago(raw: unknown): string {
+  if (raw == null || raw === '') return ''
+  let v: unknown = raw
+  if (typeof raw === 'string') {
+    try { v = JSON.parse(raw) } catch { return raw }
+  }
+  const lista = Array.isArray(v) ? v : [v]
+  const partes = lista
+    .filter((m): m is { tipo?: unknown; monto?: unknown } => !!m && typeof m === 'object')
+    .map(m => {
+      const monto = typeof m.monto === 'number' ? m.monto : parseFloat(String(m.monto ?? ''))
+      const tipo = String(m.tipo ?? 'Pago')
+      return Number.isFinite(monto) ? `${tipo} $${monto.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : tipo
+    })
+  return partes.length ? partes.join(' + ') : (typeof raw === 'string' ? raw : '')
+}
+
+// ── Envío de la OC: quién lo cobra (decisión de GO 2026-10-06, mig 475; consulta al contador C-22) ─────────────────
+export type EnvioACargo = 'proveedor' | 'tercero'
+
+export interface OCParaTotal {
+  monto_total?: number | string | null
+  tiene_envio?: boolean | null
+  costo_envio?: number | string | null
+  envio_a_cargo?: EnvioACargo | string | null
+  orden_compra_items?: { cantidad?: number | string | null; precio_unitario?: number | string | null }[] | null
+}
+
+const n = (v: unknown) => { const x = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(x) ? x : 0 }
+
+/** Envío que cobra el PROVEEDOR (va en su factura y suma a lo que se le debe). El de un tercero no suma: es otro acreedor. */
+export function envioDelProveedor(oc: OCParaTotal): number {
+  if (!oc.tiene_envio) return 0
+  if ((oc.envio_a_cargo ?? 'proveedor') !== 'proveedor') return 0
+  return Math.max(0, n(oc.costo_envio))
+}
+
+/**
+ * Total a pagarle al proveedor por una OC. Si ya se pagó algo, el total quedó GUARDADO (`monto_total`) y manda ese
+ * (no se reescribe lo histórico). Si no: ítems + envío cuando lo cobra el proveedor — igual que `fn_oc_total` y
+ * `registrar_pago_oc` en la base.
+ */
+export function totalAPagarOC(oc: OCParaTotal): number {
+  if (oc.monto_total != null && String(oc.monto_total) !== '') return n(oc.monto_total)
+  const items = (oc.orden_compra_items ?? []).reduce((s, i) => s + n(i.cantidad) * n(i.precio_unitario), 0)
+  return Math.round((items + envioDelProveedor(oc)) * 100) / 100
+}

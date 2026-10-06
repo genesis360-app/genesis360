@@ -379,8 +379,14 @@ test.describe('F1 — los guards no bloquean lo legítimo', () => {
     const contador = ROLES.find((x) => x.rol === 'CONTADOR')
     test.skip(!contador?.email, '[141] faltan credenciales de CONTADOR')
     const token = await tokenRol(request, contador!)
+    // El gasto tiene que ser uno que el CONTADOR VE: está restringido a su sucursal, y "el último gasto del mes" visto
+    // por el dueño puede ser de otra (otros specs crean gastos con la fecha de hoy en cualquier sucursal) → PATCH de 0
+    // filas = falso rojo (2026-10-06). Se elige con SU sesión.
+    const [suyo] = await (await request.get(`${SUPABASE_URL}/rest/v1/gastos?select=id,descripcion&order=fecha.desc&limit=1`,
+      { headers: restHeaders(token) })).json()
+    expect(suyo, '[141] el CONTADOR no ve ningún gasto: la RLS lo bloquea de más').toBeTruthy()
     expect(
-      await rlsDejaEscribir(request, token, `gastos?id=eq.${gasto.id}`, { descripcion: gasto.descripcion }),
+      await rlsDejaEscribir(request, token, `gastos?id=eq.${suyo.id}`, { descripcion: suyo.descripcion }),
       '[141] el CONTADOR edita campos fiscales de gastos ya creados — no debe bloquearse',
     ).toBe(true)
   })

@@ -6,6 +6,9 @@ import {
   Check, X, ArrowRight, Star, ChevronDown, Menu
 } from 'lucide-react'
 import { useState } from 'react'
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
+import '@/styles/landingHero.css'
 
 const FEATURES = [
   {
@@ -153,29 +156,61 @@ export default function LandingPage() {
         )}
       </nav>
 
-      {/* ── HERO ── */}
-      <section className="bg-brand-gradient-dark text-white">
-        <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
-          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-6">
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            15 días gratis · Sin tarjeta de crédito
+      {/* ── HERO ── (2026-10-05) Asimétrico: mensaje a la izquierda, el producto REAL a la derecha (captura del POS de
+          DEV) con el ticket de esa misma venta "imprimiéndose". Movimiento en src/styles/landingHero.css. */}
+      <section className="landing-hero relative overflow-hidden bg-[#FAFAFC] text-[#0D0D0D]">
+        <div className="max-w-6xl mx-auto px-4 pt-12 pb-32 md:pt-16 lg:pt-20 lg:pb-36 grid gap-12 lg:gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-center">
+
+          <div className="max-w-xl">
+            <h1 className="hero-in text-[2.6rem] leading-[1.05] sm:text-5xl lg:text-[3.6rem] font-semibold tracking-[-0.035em]" style={{ ['--i' as any]: 0 }}>
+              Vendé, cobrá y sabé{' '}
+              <span className="relative whitespace-nowrap">
+                qué te queda.
+                <span aria-hidden className="absolute left-0 right-0 -bottom-2.5 h-[5px] rounded-full bg-accent/80" />
+              </span>
+            </h1>
+            <p className="hero-in mt-6 text-lg leading-relaxed text-zinc-600 max-w-[46ch]" style={{ ['--i' as any]: 1 }}>
+              Stock, caja, facturación electrónica y pedidos en una sola cuenta. Probalo 15 días gratis, sin tarjeta.
+            </p>
+            <div className="hero-in mt-9 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6" style={{ ['--i' as any]: 2 }}>
+              <Link to="/onboarding"
+                className="hero-press inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-base font-semibold text-white hover:bg-[#6A00DD] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+                Probar gratis <ArrowRight size={18} className="hero-arrow" />
+              </Link>
+              <a href="#features"
+                className="hero-press inline-flex items-center justify-center gap-2 rounded-xl px-2 py-3.5 text-base font-medium text-zinc-700 hover:text-[#0D0D0D] underline decoration-zinc-300 underline-offset-[6px] hover:decoration-[#0D0D0D]">
+                Ver cómo funciona
+              </a>
+            </div>
           </div>
-          <h1 className="text-4xl md:text-6xl font-bold leading-tight mb-6">
-            El inventario que<br />
-            <span className="text-[#7DB9E8]">tu negocio necesita</span>
-          </h1>
-          <p className="text-lg md:text-xl text-blue-100 max-w-2xl mx-auto mb-10 leading-relaxed">
-            {BRAND.description}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/onboarding"
-              className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">
-              Probar gratis <ArrowRight size={20} />
-            </Link>
-            <a href="#features"
-              className="flex items-center justify-center gap-2 border-2 border-white/30 text-white font-semibold px-8 py-4 rounded-xl hover:bg-white/10 transition-all text-lg">
-              Ver funciones
-            </a>
+
+          {/* Producto real + ticket. En desktop la pantalla se corta contra el borde derecho para dar profundidad. */}
+          <div className="relative lg:-mr-[10vw] xl:-mr-[14vw]">
+            <div className="hero-shot rounded-2xl border border-zinc-200 bg-white shadow-[0_30px_80px_-30px_rgba(60,20,120,0.28)] overflow-hidden">
+              <img src="/landing/pos-venta.jpg" width={1184} height={760}
+                alt="Pantalla de Ventas de Genesis360 con dos productos en el carrito y el total de la venta"
+                className="block w-full h-auto" fetchPriority="high" decoding="async" />
+            </div>
+
+            <div className="absolute right-3 -bottom-24 w-[12.75rem] sm:right-auto sm:left-8 sm:-bottom-14 sm:w-[15rem] lg:-bottom-28 lg:-left-40" aria-hidden>
+              {/* Ranura de la impresora: el ticket sale de acá. */}
+              <div className="hero-in relative z-10 h-2.5 rounded-full bg-[#0D0D0D] shadow-[0_2px_6px_rgba(13,13,13,0.35)]" style={{ ['--i' as any]: 8 }} />
+              <div className="-mt-1 mx-2 overflow-hidden">
+                <div className="hero-ticket">
+                  <div className="hero-ticket-paper hero-mono bg-white px-3.5 sm:px-4 pt-4 text-[10px] sm:text-[11px] leading-[1.55] text-zinc-800 shadow-[0_18px_40px_-18px_rgba(13,13,13,0.45)]">
+                    <p className="text-center font-semibold tracking-[0.12em] text-[#0D0D0D]">TICKET</p>
+                    <p className="text-center text-zinc-500">Consumidor final</p>
+                    <div className="my-2 border-t border-dashed border-zinc-300" />
+                    <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 1.5L</span><span>$1.657</span></div>
+                    <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 2.5L</span><span>$600</span></div>
+                    <div className="my-2 border-t border-dashed border-zinc-300" />
+                    <div className="flex justify-between font-semibold text-[#0D0D0D] text-[12.5px]"><span>TOTAL</span><span>$2.257</span></div>
+                    <div className="flex justify-between text-zinc-500"><span>Efectivo</span><span>$2.257</span></div>
+                    <p className="mt-2 text-center text-zinc-400">Gracias por su compra</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

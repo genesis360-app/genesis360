@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299, 370, 452]
-updated: 2026-10-01
+updated: 2026-10-05
 ---
 
 # Módulo Configuración
@@ -23,6 +23,8 @@ updated: 2026-10-01
 > restauradas ambas, verificadas en el navegador real, ya deployadas a PROD junto con el resto de
 > v1.161.0 (PR #319). Detalle completo en la sección "Ventas" más abajo. Ver
 > `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-08-08).
+
+> 🗂️ **2026-10-05 (solo DEV, commit `5b21e7f9`, mig 472) — Configuración → Clientes: permisos de Categorías de clientes.** Los permisos (quién gestiona categorías, listas, etc.) se movieron acá desde la pantalla de categorías: solo DUEÑO, componente `SelectorPermisos` con pestañas Roles (incluye roles personalizados) / Usuarios, guardado con "Guardar configuración de Clientes". El servidor acepta `user:<id>` en `fn_usuario_en_roles_categoria`. Ver [[wiki/features/clientes-proveedores]].
 
 ---
 

@@ -6,6 +6,7 @@ import { Building2, Globe, Phone, Mail, Lock, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
+import { PASSWORD_MIN, traducirErrorPassword } from '@/lib/passwordPolicy'
 
 const PAISES = [
   { code: 'AR', label: 'Argentina' },
@@ -145,7 +146,8 @@ export default function OnboardingPage() {
             emailRedirectTo: `${window.location.origin}/onboarding`,
           },
         })
-        if (authError) throw authError
+        // Supabase exige 10 caracteres y una contraseña no filtrada; su mensaje llega en inglés.
+        if (authError) throw new Error(traducirErrorPassword(authError.message))
         if (!authData.user) throw new Error('No se pudo crear el usuario')
 
         if (!authData.session) {
@@ -262,9 +264,9 @@ export default function OnboardingPage() {
                 <div className="relative">
                   <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                   <input
-                    type="password" required minLength={8} value={accountData.password}
+                    type="password" required minLength={PASSWORD_MIN} value={accountData.password}
                     onChange={e => setAccountData(p => ({ ...p, password: e.target.value }))}
-                    placeholder="Mínimo 8 caracteres"
+                    placeholder={`Mínimo ${PASSWORD_MIN} caracteres`}
                     className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                   />
                 </div>

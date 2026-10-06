@@ -16,7 +16,7 @@ import toast, { Toaster } from 'react-hot-toast'
 // contraseña si ya la configuró antes, (3) directo sin sesión → login.
 
 type Negocio = { tenant_id: string; negocio_nombre: string; proveedor_id: string; proveedor_nombre: string }
-type OC = { id: string; numero: number; estado: string; fecha_esperada: string | null; notas: string | null; created_at: string; monto_total: number | null; condiciones_pago: string | null }
+type OC = { id: string; numero: number; estado: string; fecha_esperada: string | null; notas: string | null; created_at: string; monto_total: number | null; condiciones_pago: string | null; etiqueta?: string | null }
 type OCItem = { id: string; producto_id: string; producto_nombre: string; producto_sku: string | null; cantidad: number; precio_unitario: number | null; precio_propuesto_proveedor: number | null; respondido_at: string | null; oc_estado: string }
 
 const ESTADO_LABEL: Record<string, { label: string; color: string }> = {
@@ -254,7 +254,7 @@ export default function PortalProveedoresPage() {
                       <div key={oc.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
                         <button onClick={() => void abrirOC(oc.id)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40">
                           <div>
-                            <p className="text-sm font-semibold text-primary">OC #{oc.numero}</p>
+                            <p className="text-sm font-semibold text-primary">{oc.etiqueta ?? `OC #${oc.numero}`}</p>
                             <p className="text-xs text-gray-400">{new Date(oc.created_at).toLocaleDateString('es-AR')}{oc.monto_total ? ` · ${fmtPesos(oc.monto_total)}` : ''}</p>
                           </div>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${est.color}`}>{est.label}</span>

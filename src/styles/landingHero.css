@@ -1,0 +1,61 @@
+/* Hero de la landing (2026-10-05). Movimiento según Emil Kowalski: solo transform/opacity/clip-path, curvas propias,
+   entrada única (sin bucles), presión en botones y una versión reducida para prefers-reduced-motion.
+   CSS y no JS: corre fuera del hilo principal mientras la página termina de cargar. */
+
+.landing-hero {
+  --hero-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --hero-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --hero-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  font-family: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+}
+.landing-hero .hero-mono { font-family: 'Geist Mono Variable', ui-monospace, monospace; }
+
+/* Texto: entra en cascada (60 ms entre piezas), 8 px y opacidad. */
+.hero-in {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: hero-in 400ms var(--hero-ease-out) forwards;
+  animation-delay: calc(var(--i, 0) * 60ms + 80ms);
+}
+@keyframes hero-in { to { opacity: 1; transform: translateY(0); } }
+
+/* La pantalla real del producto se revela de abajo hacia arriba. */
+.hero-shot {
+  clip-path: inset(100% 0 0 0 round 16px);
+  animation: hero-shot 650ms var(--hero-ease-in-out) 200ms forwards;
+}
+@keyframes hero-shot { to { clip-path: inset(0 0 0 0 round 16px); } }
+
+/* El ticket "se imprime": sale de la ranura hacia abajo, con la curva tipo cajón. */
+.hero-ticket {
+  transform: translateY(-100%);
+  animation: hero-ticket 700ms var(--hero-ease-drawer) 750ms forwards;
+}
+@keyframes hero-ticket { to { transform: translateY(0); } }
+
+/* Borde cortado del papel (dientes) sin imágenes: máscara con gradiente. */
+.hero-ticket-paper {
+  -webkit-mask: radial-gradient(6px 6px at 6px 100%, transparent 98%, #000) -6px 0 / 12px 100% repeat-x;
+          mask: radial-gradient(6px 6px at 6px 100%, transparent 98%, #000) -6px 0 / 12px 100% repeat-x;
+  padding-bottom: 18px;
+}
+
+/* Botones: respuesta inmediata al presionar; el hover solo con mouse. */
+.hero-press { transition: transform 160ms var(--hero-ease-out), background-color 200ms ease, color 200ms ease; }
+.hero-press:active { transform: scale(0.97); }
+.hero-press .hero-arrow { transition: transform 200ms var(--hero-ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .hero-press:hover .hero-arrow { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-in, .hero-shot, .hero-ticket {
+    transform: none;
+    clip-path: none;
+    animation: hero-fade 200ms ease forwards;
+    animation-delay: 0ms;
+  }
+  .hero-in, .hero-shot { opacity: 0; }
+  .hero-press:active { transform: none; }
+}
+@keyframes hero-fade { from { opacity: 0; } to { opacity: 1; } }

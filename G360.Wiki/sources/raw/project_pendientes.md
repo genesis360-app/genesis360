@@ -6,7 +6,177 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-02, cierre de la tarde) — PROD `v1.237.0` (+ migs 456/458 en la base + EF `mp-crear-link-pago` v10) · DEV 001-463 + pricing v7 sin bloqueos
+> ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre para /clear) — PROD `v1.238.0` (001-466) · DEV 001-**472** · DEPLOY `v1.239.0` PENDIENTE
+>
+> | | Código | Migraciones | Policies |
+> |---|---|---|---|
+> | **PROD** | `v1.238.0` (sin cambios) | 001-**466** | public 245 · storage 40 · cron 2 |
+> | **DEV** | `origin/dev` = `5b21e7f9` (APP_VERSION todavía `v1.238.0`) | 001-**472** (467-472 NO están en PROD) | la 472 cambia la policy DELETE de `categorias_cliente` |
+>
+> **Qué hay en DEV para subir (todo junto, GO pidió esperar al rediseño):**
+> - **B2 completo** (migs 467-470 + EF `categoria-cartel-ia`): motor único de precio, categoría en el precio, tope de
+>   descuento, cartel con IA y reporte "Descuentos por categoría". Detalle en los bloques de abajo (03-04/10).
+> - **Acceso por correo** (commit `64b000c6`, mig 471 + EF `invite-user` + plantillas de Auth): los invitados eligen
+>   contraseña, "¿Olvidaste tu contraseña?", correos en castellano. Caso El Tilo. Ver [[wiki/features/autenticacion-onboarding]].
+> - **Rediseño de Categorías de clientes** (commit `5b21e7f9`, mig 472): pestaña, alta con check de CC, asignar con
+>   compras/ticket/total, lista de descuentos nueva (cards, filtros, acciones, tabla por categoría de producto) y
+>   permisos por rol y por usuario en Configuración → Clientes. Ver [[wiki/features/clientes-proveedores]].
+>
+> 🛑 **La landing NO va a PROD**: hero nuevo en revisión de GO, guardado en `git stash` "landing-hero-en-revision"
+> (`src/pages/LandingPage.tsx`, `src/styles/landingHero.css`, `public/landing/pos-venta.jpg`, `package.json` +
+> `package-lock.json` con `@fontsource-variable/geist` y `geist-mono`). Retomar: `git stash list` → `git stash apply stash@{N}`.
+> No mezclarla con commits del deploy.
+>
+> **✅ Checklist del deploy v1.239.0 (en este orden):**
+> 1. ⚠️ Suite e2e completa: verde sobre `5b21e7f9` (452 passed), pero DESPUÉS entraron las migs 473-474 (CC de proveedores + número de OC) → **volver a correrla** sobre el último commit (ya pasaron 184, 140, 139). — la revisión de la
+>    mig 472 dio APTA (sugerencias opcionales: contar ids con DISTINCT en `fn_descuentos_categoria_masivo`; `GREATEST(…, 0)`
+>    y moneda en `fn_clientes_compras_resumen`).
+> 2. Bump `APP_VERSION` a `v1.239.0` en `src/config/brand.ts`.
+> 3. Chequear actividad reciente en PROD (ventas / movimientos / caja de los últimos 30 min).
+> 4. Migs a PROD de a una con `node scripts/aplicar-migracion.mjs jjffnbrdjchquexdfgwq supabase/migrations/…`:
+>    **467 → 468 → 469 → 470 → 471 → 472 → 473 → 474 → 475** (473 = CC de proveedores, 474 = un solo número de OC, 475 = envío de la OC; en DEV la 474 quedó registrada dos veces por una corrección) (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
+>    Ya validado en PROD con transacción abortada: la 467 da **0 diferencias en 3.185 casos** sobre los 65 productos.
+> 5. EFs en PROD: `npx supabase functions deploy categoria-cartel-ia --project-ref jjffnbrdjchquexdfgwq` (nueva;
+>    `GROQ_API_KEY` ya existe en PROD), `invite-user`, **`usuarios-sin-correo` y `admin-api`** (mínimo de contraseña 10 +
+>    errores en castellano, 06/10; DEV ya desplegado).
+> 6. PR `dev → main` "v1.239.0 — …", merge (GO autorizó), release `v1.239.0 --latest`.
+> 7. `node scripts/aplicar-plantillas-auth.mjs jjffnbrdjchquexdfgwq` (correos de Auth en castellano).
+> 8. `npm run ai:knowledge` + redeploy `ai-assistant` en DEV y PROD (app-reference ganó el reporte).
+> 9. `bash scripts/auditar-edge-functions.sh` + hash de `pg_policies` por schema DEV vs PROD.
+> 10. Verificar la versión servida con `curl -L`; wiki/memoria; avisar a El Tilo que use "¿Olvidaste tu contraseña?" y
+>     reinvitar al usuario de `outloock.com` con el correo bien escrito.
+>
+> **🧪 PLAN DE TESTING — para mañana / estos días (pedido de GO 06/10):**
+> - **Configuración → Notificaciones, TODOS los checkbox:** verificar que cada uno haga lo que dice, en especial
+>   **saludos por WhatsApp al cliente** (¿se mandan si se activa?) y **la lista de cumpleaños** (¿aparece/avisa?).
+>   Recorrer uno por uno: qué dispara, quién lo recibe, por qué canal, y si apagado de verdad no sale.
+> - **Proveedores y Servicios → Portal de Proveedores:** una vez vinculado un proveedor, NO hay forma de volver a copiar
+>   o reenviarle el link si lo perdió (solo se ve "Vinculado — mail"). Revisar y agregar "Copiar link" / "Reenviar".
+>
+> **Para GO (abierto):** ventas recurrentes (existen; generan el presupuesto con el precio congelado de la plantilla, sin
+> categoría) · links de los correos vencen en 1 h (también las invitaciones; se puede subir a 24 h) · autenticar Figma con
+> `/mcp` · revisar la landing.
+>
+> **🛑 REGLA #0 — Pago de OC y CC de proveedores (reportado por GO 06/10, diagnosticado, SIN arreglar; PROD sin daño:
+> 0 OCs con pagos y 0 movimientos de CC de proveedor).** Caso DEV: OC #84 de "Tongas Test" ($9.000, anticipo $900).
+> 1. **Se puede pasar a CC la misma OC más de una vez.** `registrar_pago_oc` calcula el saldo como total − pagado −
+>    descuento, sin restar lo que ya pasó a CC (no se guarda en la OC, solo en `proveedor_cc_movimientos` tipo `oc`).
+>    El botón "Pagar / CC" sigue visible con estado `cuenta_corriente` → la OC #84 quedó con 2 × $8.100 en CC (deuda $16.200
+>    por una OC de $8.100 pendientes). El guard tiene que estar en el RPC.
+> 2. **El saldo de la CC del proveedor da mal (−$34.200 en verde).** Un pago directo (no CC) inserta un `pago` negativo
+>    en la CC sin el cargo que lo compense (OC #13 pagada con débito → −$49.500). Con saldo ≤ 0 se oculta "Registrar pago",
+>    así que la deuda real no se puede cancelar desde el proveedor. Además suma solo los últimos 50 movimientos (`.limit(50)`).
+> 3. **Pagar la CC desde el proveedor no actualiza la OC**: el `pago` no lleva `oc_id`, la OC queda en `cuenta_corriente` con
+>    saldo pendiente para siempre (y se puede volver a pagar desde Gastos → pago doble).
+> 4. **`registrarPagoCC` (ProveedoresPage) inserta en `caja_movimientos` con `created_by`, columna que no existe** (es
+>    `usuario_id`) y sin chequear el error → **un pago en efectivo a proveedor nunca entra en la caja**. También 'Efectivo'
+>    hardcodeado (no `es_efectivo`), toma la primera caja abierta sin elegir, y no es atómico (dos inserts sueltos).
+> 5. Cosmético: el historial muestra `medio_pago` crudo (`[{"tipo":…,"monto":…}]`); hay que formatearlo ("Tarjeta de débito $900").
+> **06/10 (noche) — ya arreglado en DEV:** el punto 4 (columna `usuario_id`, error chequeado, efectivo exige caja) y el 5
+> (`textoMedioPago`). Además: test nuevo `tests/unit/columnasEscritas.test.ts` que cruza toda escritura con objeto literal
+> contra `schema_full.sql` → encontró OTRO bug: "Generar gasto" de servicio recurrente fallaba SIEMPRE (`gastos.proveedor_id`
+> no existe), arreglado. Ventas recurrentes cotizan con el motor único; links de Auth a 24 h (DEV aplicado; PROD = paso 7
+> del deploy, mismo script). UAT §102. Puntos 1-3 esperan el modelo del libro (recomendación: cargo al RECIBIR, ver abajo).
+> **06/10 (madrugada) — MODELO NUEVO HECHO en DEV (mig 473, decisión de GO):** la deuda nace al RECIBIR, pagos imputados a
+> la OC más vieja, moneda por movimiento, CHECK, OC con pagos no cambia ítems/proveedor, e2e 184. Revisado por
+> migration-reviewer (B1-B4, M1, S2-S5, R1, D1 aplicados). **Queda para GO / después:** (a) el rechazo de cheque no
+> actualiza `proveedor_pago_imputaciones` y su e2e 80 se saltea (fixture); (b) `fn_saldo_proveedor_cc`/resumen no
+> filtran por sucursal (rol restringido ve el total del negocio); (c) el pago desde la CC con "Cheque" no crea el cheque
+> (como antes); (d) la policy de escritura de `proveedor_cc_movimientos` sigue dejando insertar cualquier tipo desde el
+> cliente (NC/ajuste lo necesitan) — conviene RPCs y cerrar la policy.
+> **✅ Envío de la OC — HECHO en DEV (mig 475, GO aprobó la propuesta 06/10; C-22 al contador):** la OC dice quién lo cobra.
+> Proveedor (default) → suma al total, al pago y a la deuda (cargo `es_envio` al recibir). Tercero → gasto "Fletes" aparte,
+> no suma. Una vez por OC. Editar la OC no guardaba el envío: arreglado. Queda: aduana/comisión/otros siguen sumando al
+> TOTAL del PDF que se le manda al proveedor aunque no se le pagan a él (mismo tema, consultar).
+> **Número de OC (mig 474):** Gastos/Recepciones/Cheques/Alertas/Portal mostraban "#84" y Proveedores "S-OC-0070" (misma OC):
+> unificado con `src/lib/ocNumero.ts` + `fn_oc_etiqueta`. Detalle a mirar: el prefijo "S-OC" es fijo, no el código de la
+> sucursal (con 2 sucursales, dos OCs distintas pueden verse "S-OC-0001").
+> Hallazgo extra: la recepción con OC no chequea el error del `update` de la OC ni del `insert` del gasto (RecepcionesPage ~664/704).
+> **Decisión para GO antes de arreglar:** modelo del libro de CC — (a) la CC solo registra lo que se debe (cargo al pasar a CC,
+> pago solo cuando cancela algo de CC; el pago directo no entra) o (b) toda OC carga su total y cada pago lo descuenta. Y si un
+> pago desde el proveedor se imputa a OCs (la más vieja primero) para cerrarlas.
+>
+> ---
+>
+> ### (superado por el bloque de arriba) ARRANCÁ ACÁ (2026-10-04) — PROD `v1.238.0` (001-466) · DEV 001-**470** + `v1.239.0-rc.3` · B2 COMPLETO en DEV
+>
+> | | Código | Migraciones | Policies |
+> |---|---|---|---|
+> | **PROD** | `v1.238.0` (PR #370, merge `8be5f1fb`, release Latest, servida `index-DRm63vPm.js`) | 001-**466** | public 245 · storage 40 · cron 2 |
+> | **DEV** | `v1.238.0` (APP_VERSION igual) + commits `055bfbdd` (Fase 3), `3b0bb474` y `7930c539` (Fase 4), `3a31a2f1` (Fase 5) en `origin/dev`, pre-release `v1.239.0-rc.3` | 001-**470** (467-470 NO están en PROD; aplicar en orden 467 -> 468 -> 469 -> 470) | public 245 (dump de DEV tras la 470) = PROD |
+>
+> **Hecho en DEV (04/10): B2 Fase 5 — cartel con IA + reporte de lo no facturado por la categoría (migs 469-470). B2 COMPLETO en DEV.**
+> EF nueva `categoria-cartel-ia` (DEV sí, **PROD no**; secret `GROQ_API_KEY`): la IA solo redacta, al guardar la promoción, 3 frases
+> por categoría con marcadores que el POS completa con los números del motor; validación estricta, fallback a plantilla, rate limit
+> 20/min usuario y 200/día negocio; 9/9 válidas en DEV. `venta_items.descuento_categoria_monto` (F3 = (precio sin categoría - con
+> categoría) x cantidad) + `fn_reporte_descuento_categoria` + Reportes → "Descuentos por categoría" (columna "Total no facturado";
+> la 470 resta devoluciones parciales en proporción). Panel "Cartel para el cajero" en la pantalla de la lista. Unit 2180, e2e 180
+> extendido + 181 nuevo, regresión 51/51, 25 casos SQL, UAT §99. Detalle en [[wiki/features/precios-tiers-empaque]] y
+> [[wiki/features/clientes-proveedores]]. **Al deployar: `npm run ai:knowledge` + redeploy de `ai-assistant`** (app-reference ganó el reporte).
+>
+> **Hecho en DEV (03/10 noche): B2 Fase 4 — la categoría del cliente dentro del motor de precio + tope de descuento (mig 468).**
+> `fn_precio_motor_cliente` (categoría compite con tier/empaque/canal, gana el más bajo); `fn_precios_lineas` devuelve categoría y
+> `tope_descuento_pct`; A2 (con categoría activa el estado compite contra la lista); `venta_items` guarda `precio_lista_unitario`,
+> `mecanismo_precio`, `categoria_cliente_id`, `categoria_descuento_pct` (trigger del servidor); tope `tenants.descuento_tope_acumulado_pct`
+> (Config → Ventas, nadie lo saltea; constraint trigger diferido por venta); `fn_pedido_generar_venta` con categoría; POS con etiqueta y
+> cartel de plantilla; fix del cobro con `isPlaceholderData`. Paridad sin categoría 139.288 casos / 0 diferencias, 19 casos SQL,
+> e2e 180, regresión 50/0, unit 2167, UAT §98. Detalle en [[wiki/features/precios-tiers-empaque]]. **Abierto para GO**: las ventas recurrentes
+> generan el presupuesto con precio congelado y sin categoría.
+
+> **Hecho en DEV (03/10 tarde): B2 Fase 3 — motor único de precio en SQL (mig 467).** `fn_precio_motor_producto` +
+> `fn_precios_lineas`; `fn_precio_venta_efectivo` es envoltura; POS y Presupuesto "Actualizar precios" usan el motor; sin
+> precio del servidor no se vende (PL-5 = A). Paridad 0 diferencias (21.556 + 136.256 casos; `scripts/paridad-motor-precio.mjs`).
+> Unit 2156, UAT §97. Hallazgo para GO: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio
+> congelado), contra PL-2. Detalle en [[wiki/features/precios-tiers-empaque]]. Lo de abajo (bloque del deploy de la mañana) sigue vigente salvo lo de DEV.
+> | **Panel interno** | mergeado (PR #7, sin `plan_id`) | — | — |
+>
+> **Deploy hecho (madrugada del 03/10):** migs 457 → 466 a PROD de a una con `scripts/aplicar-migracion.mjs` (la 462 chocó
+> en la versión con la 461 por caer en el mismo segundo; falló entera y se reaplicó). EFs en PROD: `admin-api`,
+> `mp-addon-batch`, `mp-reconciliacion`, `mp-verificar-suscripcion`, `mp-webhook`, `ai-assistant`. Auditoría de EFs diff 0
+> (sin desplegar, de antes: `marketplace-webhook` en DEV, `wa-embedded-signup-exchange` en PROD por la App Review de Meta).
+> Secret `MP_PLAN_ENTERPRISE` en DEV y PROD. e2e previa 441/0 fallas, unit 2142. **Pricing v7, KIT atómico, caja por
+> sucursal, precio pactado de add-ons, modo avanzado solo desde Pro, anti doble pago de MP, pedidos por fecha y la lista de
+> descuentos por categoría están EN PROD.** Todo lo que abajo diga "EN DEV / falta PROD" de 457-466 quedó superado.
+>
+> ### ▶ LO PRÓXIMO (en este orden)
+> 1. **DEPLOY v1.239.0 a PROD (467-472)** — checklist completo en el bloque "ARRANCÁ ACÁ (2026-10-06)" de arriba. Incluye B2, acceso por correo y rediseño de
+>    Categorías. (Texto previo, 04/10, de 467-470:) **B2 — Categorías de clientes: DEPLOY de 467-470 a PROD**. ✅ Fases 3, 4 y 5 HECHAS en DEV (03-04/10); **B2 completo en DEV,
+>    faltan en PROD** (aplicar en orden 467 -> 468 -> 469 -> 470, de a una con `scripts/aplicar-migracion.mjs`, + desplegar la EF
+>    `categoria-cartel-ia` verificando `GROQ_API_KEY` + `auditar-edge-functions.sh` + `npm run ai:knowledge` y redeploy de
+>    `ai-assistant`, cuando GO lo autorice). Para GO: ventas recurrentes (existen; generan el presupuesto con precio congelado de la
+>    plantilla, sin categoría). PL-7: la preparación para precio por sucursal es este motor único (+ `sucursal_id` vacío en
+>    `precios_programados`). Ver [[wiki/features/clientes-proveedores]].
+> 2. **QR de MP Fase 1** (decidida, SIN EMPEZAR): envío en la deuda de CC/cobranza/QR, un link por venta con vencimiento a
+>    30 días que se desactiva al saldarse, excedente a saldo a favor (`cliente_creditos`) + aviso al dueño, `mp-ipn`
+>    insert-first (idempotencia). Fase 2: interruptor + QR en estado de cuenta. Fase 3: interés (espera C-20).
+> 3. **🙋 ESPERA DECISIÓN DE GO (REGLA #0 / legal):** (a) hoy se puede BORRAR por API una venta con CAE (solo frena el
+>    período cerrado), y movimientos de caja y gastos con IVA también → propuesta: triggers que lo impidan; (b) "Empezar de
+>    cero" debería limitarse (solo en prueba o los primeros N días); (c) T&C sin cláusula de uso lícito (evasión,
+>    simulación, fraude) ni de responsabilidad fiscal por CUIT / efectivo / "no intermediamos fondos" — texto propuesto, que
+>    lo revise un abogado, habría que subir `LEGAL_VERSION`. Ver [[wiki/business/legal-compliance]]. Además: ¿auto-vincular
+>    una suscripción de MP cuando hay un único negocio candidato? (caso El Tilo).
+> 4. **Pricing v7 — faltan**: pago anual (−20 % sobre lista, pago único 1 año, sin renovación), aviso de comprobantes
+>    80 %/100 % + mail, landing de Fede (dice "30 días" en 3 lugares; la prueba es de 15).
+> 5. **PL-5 = A** (chico): el POS avisa claro cuando no hay conexión; venta offline solo si un cliente la pide.
+> 6. **Un usuario, un dispositivo** (para revisar con GO; ver el análisis más abajo en el bloque del 02/10): estricto / N
+>    dispositivos / solo aviso, y si el dueño es excepción. Sin código hasta que GO decida.
+> 7. **Rotación de claves PROD (en curso)**: desactivar legacy anon+service_role, revocar la JWT signing key HS256,
+>    redeployar `genesis360-admin`, actualizar `VITE_SUPABASE_ANON_KEY` de Production en Vercel del panel; medir.
+> 8. **Esperando a terceros:** Meta (App Review → envío automático de PDF por WhatsApp, `wa-embedded-signup-exchange`),
+>    relación `wsfe` en ARCA para la facturación de plataforma, contador (21 consultas abiertas, C-20 y C-21 nuevas).
+>
+> **Para después (GO):** WMS profesional (priorización de tareas y asignación automática por permiso y vehículo).
+> **Clientes reales en PROD:** Kalken y El Tilo (gratis, heredan Pro v6; la suscripción duplicada de El Tilo: GO pidió a
+> Fede cancelar ambas preapprovals Pro a $20 y devolver). Sugerido a Fede: revisar su cuenta MP por cobros de negocios (hotfix
+> 02/10). Incidentes cerrados 02/10: caja abierta de El Tilo movida de sucursal (UAT §90.6) y Familia Otranto (§90); mig 460.
+> **Decisiones de GO 02/10:** PL-5 = A · PL-7 = motor único · EC-5 = B (superusuario = rol `admin` del panel, un usuario por
+> persona, GO los crea) · envío e interés de CC se cobran · PR-8 respondida. Contador: C-20 y C-21 agregadas.
+> **Hecho hoy, EN PROD:** lista de descuentos por categoría (`/clientes/categorias/:id/descuentos` + importador, UAT §96,
+> e2e 178) · Pedidos por fecha de entrega y `hoyLocalISO` (UAT §95, e2e 177) · Inventario: buscar un LPN (UAT §94, e2e 176) ·
+> POS envío "Fecha de entrega".
+>
+> ---
+> ### (HISTÓRICO, superado por el bloque de arriba) ARRANCÁ ACÁ (2026-10-02, cierre de la tarde) — PROD `v1.237.0` (+ migs 456/458 en la base + EF `mp-crear-link-pago` v10) · DEV 001-463 + pricing v7 sin bloqueos
 >
 > | | Código | Migraciones |
 > |---|---|---|

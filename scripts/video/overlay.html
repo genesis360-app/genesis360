@@ -45,15 +45,17 @@
     background: rgba(255,255,255,.08);
   }
 
-  /* ── Rótulo inferior izquierdo ── */
+  /* ── Rótulo: ARRIBA A LA DERECHA (GO 2026-10-06: abajo a la izquierda tapaba la app y los campos que se completan).
+     Ahí cae sobre los íconos del encabezado, que en un video no se usan. `pos=abajo-izq` = el de los videos 1-8. ── */
   .lt {
-    position: absolute; left: 56px; bottom: 52px;
+    position: absolute; right: 28px; top: 20px; max-width: 560px;
     display: flex; align-items: center; gap: 16px;
     padding: 16px 26px 16px 18px; border-radius: 18px;
     background: #150a24;                        /* opaco a propósito: ver la nota de arriba */
     border: 1px solid rgba(160,110,255,.45);
     box-shadow: none;
   }
+  .lt.abajo-izq { left: 56px; bottom: 52px; right: auto; top: auto; max-width: none; }
   .lt .num {
     width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px;
     display: grid; place-items: center;
@@ -74,7 +76,7 @@
     R.innerHTML = `<div class="card"><div class="ico">${ico}</div><h1>${t}</h1><p>${s}</p>
       ${P.get('pill') ? `<div class="pill">${P.get('pill')}</div>` : ''}</div>`
   } else {
-    R.innerHTML = `<div class="lt"><div class="num">${n || ico}</div>
+    R.innerHTML = `<div class="lt${P.get('pos') === 'abajo-izq' ? ' abajo-izq' : ''}"><div class="num">${n || ico}</div>
       <div class="tx"><div class="t">${t}</div><div class="s">${s}</div></div></div>`
   }
 </script>

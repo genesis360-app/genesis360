@@ -3,14 +3,14 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-09-24
+updated: 2026-10-04
 ---
 
-# Edge Functions (52 funciones Deno)
+# Edge Functions (55 funciones Deno)
 
 > ⚠️ **Contado el 2026-09-18 sobre `supabase/functions/` del repo: eran 51.** El título decía 30 y el
 > índice 29 — ambos quedaron viejos. **2026-09-24: pasan a 52** con `usuarios-sin-correo` (mig 434,
-> deploy `v1.231.0`, DEV y PROD). La topología de dónde encaja cada una está en
+> deploy `v1.231.0`, DEV y PROD). **2026-10-04: recontado sobre el repo = 55** (carpetas de `supabase/functions/` sin `_shared`), incluida `categoria-cartel-ia` (B2 Fase 5, solo DEV). La topología de dónde encaja cada una está en
 > [[wiki/architecture/infraestructura]].
 
 Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican validando el JWT de Supabase en cada request.
@@ -170,9 +170,10 @@ Resumen de lo que cambia en esta página:
 | Función | Propósito |
 |---------|-----------|
 | `mp-webhook` | Recibe webhooks de Mercado Pago (pagos de suscripción). 🟨 Auditoría 2026-09-20/22 (mig 431): la firma HMAC está implementada y ahora tiene interruptor `MP_WEBHOOK_SIG_ENFORCE` para pasar a bloqueante — sigue en modo **LOG-ONLY**, falta cargar `MP_WEBHOOK_SECRET` (mitigado porque igual re-consulta la API de MP, ver [[wiki/architecture/guards-server-side]]) |
+| `categoria-cartel-ia` | 🟡 **Solo DEV (2026-10-04, B2 Fase 5; NO en PROD)**. Redacta con Groq (`openai/gpt-oss-120b`, fallback 20b) el cartel del cajero de una categoría de clientes al guardar la promoción: 3 frases con marcadores, validación estricta, fallback a plantilla. Requiere `GROQ_API_KEY`; permiso gestionar categorías; rate limit 20/min usuario y 200/día negocio. Lógica en `_shared/cartelCategoria.ts` (copia idéntica de `src/lib`). Ver [[wiki/features/precios-tiers-empaque]] |
 | `mp-ipn` | Mercado Pago IPN (notificación instantánea de pagos). ✅ Fix 2026-09-22 (mig 431, EN PROD): si el POST no trae `user_id`, ahora responde **400** — antes hacía `.limit(1)` y agarraba una credencial de cualquier tenant |
 | `crear-suscripcion` | Inicia el flow de alta de suscripción en Mercado Pago |
-| `invite-user` | Envía invitación por email a nuevo usuario del tenant |
+| `invite-user` | Envía invitación por email a nuevo usuario del tenant. 🔑 **2026-10-05 (commit `64b000c6`, mig 471, solo DEV; redeploy a PROD pendiente en v1.239.0)**: crea al invitado con `debe_cambiar_password=true` (elige contraseña al entrar) y manda el nombre del negocio en `data.negocio` para las plantillas de Auth en castellano. Ver [[wiki/features/autenticacion-onboarding]] |
 | `usuarios-sin-correo` | 🆕 2026-09-24 (mig 434, `v1.231.0`, DEV y PROD) · `verify_jwt: true` — empleados con nombre y contraseña, sin correo. Acciones `crear`/`resetear-password`/`cambiar-password-propia`; código de negocio y `tenant_id` salen del perfil del llamador, nunca del body. Reponer contraseña solo en cuentas sin correo. Ver [[wiki/features/autenticacion-onboarding]] |
 | `emitir-factura` | Emisión de facturas electrónicas vía AFIP |
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |

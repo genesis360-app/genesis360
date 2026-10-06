@@ -2,8 +2,9 @@
  * 178_categoria_lista_descuentos_mutante.spec.ts
  * E2E MUTANTE — Lista de descuentos por categoría de clientes (mig 466, Fase 4 parte A; GO 2026-10-02).
  *
- * Todavía no se aplica al vender (parte B2). Acá: agregar un producto con "12,5", editarlo a 0 (0 explícito ≠ sin
- * cargar), sacarlo (queda sin cargar); importar un Excel con una fila mala → no carga NADA; corregido → carga.
+ * Rediseño 2026-10-05: tabla con todos los productos. Acá: cargar "12,5" en un producto (precio tachado), editarlo a 0
+ * (0 explícito ≠ sin cargar), vaciarlo (sin cargar); % en la fila de la categoría; Acciones sobre la selección;
+ * filtro en pastilla; importar un Excel con una fila mala → no carga NADA; corregido → carga.
  * Siembra su categoría y 2 productos; borra la categoría (y en cascada su lista) en `finally`.
  */
 import { test, expect } from '@playwright/test'
@@ -17,8 +18,8 @@ const xlsxBuffer = (filas: (string | number)[][]) => {
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
 }
 
-test('lista de descuentos: agregar, 0 explícito, sacar, importar todo o nada', async ({ page }) => {
-  test.setTimeout(150_000)
+test('lista de descuentos: por producto, 0 explícito, sin cargar, por categoría, acciones, filtros e importar todo o nada', async ({ page }) => {
+  test.setTimeout(180_000)
   await goto(page, '/dashboard')
   await waitForApp(page)
   const headers = restHeaders(await tokenDesdeBrowser(page))
@@ -38,25 +39,64 @@ test('lista de descuentos: agregar, 0 explícito, sacar, importar todo o nada', 
   try {
     await goto(page, `/clientes/categorias/${cat.id}/descuentos`)
     await waitForApp(page)
-    await expect(page.getByText('Todavía no se aplica en las ventas.')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText('Se aplica al vender')).toBeVisible({ timeout: 15000 })
 
-    // Agregar con coma decimal
-    await page.getByLabel('Producto a agregar').fill(`E2E178A-${ts}`)
-    await page.getByRole('button', { name: new RegExp(`E2E178 uno ${ts}`) }).click()
-    await page.getByLabel('Porcentaje de descuento').fill('12,5')
-    await page.getByRole('button', { name: 'Agregar' }).click()
+    // Rediseño 2026-10-05: todos los productos están en la tabla; la búsqueda abre las categorías.
+    const confirmarModal = () => page.getByRole('button', { name: /^(Confirmar|Aceptar)$/ }).click()
+    await page.getByPlaceholder('Buscar por nombre, SKU o marca…').fill(String(ts))
+    const input = page.getByLabel(`Descuento de E2E178 uno ${ts}`)
+
+    // Por producto, con coma decimal: se guarda al salir del campo y el precio aparece con el de lista tachado
+    await input.fill('12,5')
+    await input.press('Enter')
     await expect.poll(async () => (await lista(cat.id)).map(r => [r.producto_id, Number(r.descuento_pct)])).toEqual([[p1.id, 12.5]])
+    await expect(page.locator(`[data-producto-descuento="E2E178A-${ts}"] .line-through`)).toBeVisible()
 
     // Editar a 0: queda en la lista con 0 (no "sin cargar")
-    const input = page.getByLabel(`Descuento de E2E178 uno ${ts}`)
     await input.fill('0')
     await input.press('Enter')
     await expect.poll(async () => (await lista(cat.id)).map(r => Number(r.descuento_pct))).toEqual([0])
 
-    // Sacar: queda sin cargar
-    await page.getByTitle('Sacar de la lista (queda sin cargar)').click()
-    await page.getByRole('button', { name: /^(Confirmar|Aceptar)$/ }).click()
+    // Vaciar el campo: queda sin cargar
+    await input.fill('')
+    await input.press('Enter')
     await expect.poll(async () => (await lista(cat.id)).length).toBe(0)
+
+    // Fila de la categoría de productos: el % va a todos los que se ven (los 2 de este test, sin categoría)
+    const filaCat = page.getByLabel('Descuento para toda la categoría Sin categoría')
+    await filaCat.fill('5')
+    await filaCat.press('Enter')
+    await confirmarModal()
+    await expect.poll(async () => (await lista(cat.id)).map(r => Number(r.descuento_pct)).sort()).toEqual([5, 5])
+
+    // Selección + Acciones: aplicar a los seleccionados y quitar
+    await page.getByLabel(/^Seleccionar los 2 productos$/).check()
+    await page.getByTestId('btn-acciones').click()
+    await page.getByLabel('Descuento para los seleccionados').fill('20')
+    // GO 06/10: "Aplicar" se salía del recuadro (el input empujaba). El botón tiene que quedar DENTRO del popover.
+    const aplicar = page.getByRole('button', { name: 'Aplicar' })
+    const popover = aplicar.locator('xpath=ancestor::div[contains(@class,"absolute")][1]')
+    const [bBtn, bPop] = [await aplicar.boundingBox(), await popover.boundingBox()]
+    expect(bBtn && bPop, 'no se pudo medir el botón o el recuadro').toBeTruthy()
+    expect(bBtn!.x + bBtn!.width, '"Aplicar" se sale del recuadro de Acciones').toBeLessThanOrEqual(bPop!.x + bPop!.width - 4)
+    await aplicar.click()
+    await confirmarModal()
+    await expect.poll(async () => (await lista(cat.id)).map(r => Number(r.descuento_pct)).sort()).toEqual([20, 20])
+    await page.getByLabel(/^Seleccionar los 2 productos$/).check()
+    await page.getByTestId('btn-acciones').click()
+    await page.getByRole('button', { name: /Quitar el descuento/ }).click()
+    await confirmarModal()
+    await expect.poll(async () => (await lista(cat.id)).length).toBe(0)
+
+    // Filtros en pastillas: margen ≥ 1000 % no deja ninguno; al quitar la pastilla vuelven
+    await page.getByTestId('btn-filtros').click()
+    await page.getByLabel('Campo del filtro').selectOption('margen')
+    await page.getByLabel('Valor del filtro').fill('1000')
+    await page.getByRole('button', { name: 'Agregar filtro' }).click()
+    await expect(page.getByTestId('pastillas-filtros')).toContainText('Margen ≥ 1.000 %')
+    await expect(page.getByText('Ningún producto cumple los filtros.')).toBeVisible()
+    await page.getByLabel('Quitar el filtro').click()
+    await expect(input).toBeVisible()
 
     // Importar con una fila mala → no carga nada
     await page.getByRole('button', { name: 'Importar Excel' }).click()

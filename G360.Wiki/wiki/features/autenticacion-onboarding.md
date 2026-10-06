@@ -3,10 +3,17 @@ title: Autenticación y Onboarding
 category: features
 tags: [auth, onboarding, google-oauth, trial, suscripcion, guard]
 sources: [CLAUDE.md]
-updated: 2026-09-24
+updated: 2026-10-05
 ---
 
 # Autenticación y Onboarding
+
+> 🔑 **2026-10-05 (solo DEV, commit `64b000c6`, mig 471; deploy a PROD pendiente, v1.239.0) — Invitaciones, recuperar contraseña y correos de Auth en castellano.**
+> - **El problema (caso real El Tilo, PROD)**: un SUPER_USUARIO invitado con Hotmail entró una vez por el link y no pudo volver. El link de `inviteUserByEmail` inicia sesión UNA vez y nunca pedía contraseña; con Gmail no se notaba (entra por Google). Tampoco existía "¿Olvidaste tu contraseña?". Los correos de Auth en PROD eran los de fábrica, en inglés (SMTP Resend; los links vencen en 1 h, `mailer_otp_exp=3600`, también las invitaciones).
+> - **Arreglo**: la EF `invite-user` crea al invitado con `debe_cambiar_password=true` y manda el nombre del negocio en `data.negocio`; `AuthGuard` le pide elegir contraseña con el componente compartido `ElegirPasswordForm` (texto propio para invitados vs empleados sin correo de la mig 434). El login tiene "¿Olvidaste tu contraseña?" (respuesta neutra, no revela si el correo existe) y la página `/restablecer-contrasena`. Aviso de dominio mal tipeado al invitar (`src/lib/dominioCorreo.ts`). Errores de Supabase traducidos.
+> - **Mig 471**: marca `debe_cambiar_password` a los invitados existentes que nunca volvieron a entrar o no abrieron el link, sin Google. En PROD: 9 = 8 de El Tilo (incl. el de Hotmail y uno con correo mal tipeado "outloock.com") + 1 de otro negocio.
+> - **Correos de Auth en castellano y con la marca**, versionados en `supabase/templates/` (ver [[wiki/integrations/resend-email]]).
+> - Tests: e2e 182, unit `dominioCorreo`, UAT §100. **Pendiente operativo**: tras el deploy avisar a El Tilo que use "¿Olvidaste tu contraseña?" y reinvitar al de outloock.com con el correo bien escrito.
 
 ---
 

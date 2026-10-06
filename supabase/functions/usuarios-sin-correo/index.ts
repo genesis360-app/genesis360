@@ -28,7 +28,41 @@ const ROLES_ASIGNABLES = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CAJERO', 'RR
 
 const DOMINIO_USUARIOS_INTERNOS = 'u.genesis360.pro'
 const RE_USUARIO = /^[a-z0-9][a-z0-9_-]{2,29}$/   // espejo de users_usuario_formato (mig 434)
-const PASSWORD_MIN = 8
+// Espejo de src/lib/passwordPolicy.ts: Supabase Auth (DEV y PROD) exige 10 y rechaza contraseñas filtradas.
+const PASSWORD_MIN = 10
+
+// Alcance con el que NACE un usuario (2026-10-06). Antes no se seteaba: todo usuario nuevo quedaba restringido y SIN
+// sucursal — un Cajero "Sin sucursal asignada" aunque el negocio tuviera una sola, y un Supervisor restringido aunque
+// su rol ve todo. Espejo de src/lib/accesoUsuario.ts (ROLES_SIEMPRE_GLOBALES + ROLES_GLOBAL_DEFAULT).
+const ROLES_VEN_TODO = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CONTADOR', 'VIEWER']
+async function alcanceInicial(
+  admin: any, tenantId: string, rol: string, sucursalPedida: unknown,
+): Promise<{ puede_ver_todas: boolean; sucursal_id: string | null } | { error: string }> {
+  if (ROLES_VEN_TODO.includes(rol)) return { puede_ver_todas: true, sucursal_id: null }
+  const { data: sucs } = await admin.from('sucursales').select('id').eq('tenant_id', tenantId).eq('activo', true)
+  const ids: string[] = (sucs ?? []).map((s: { id: string }) => s.id)
+  if (typeof sucursalPedida === 'string' && sucursalPedida) {
+    // La sucursal viene del cliente: tiene que ser de ESTE negocio.
+    if (!ids.includes(sucursalPedida)) return { error: 'La sucursal elegida no es de este negocio' }
+    return { puede_ver_todas: false, sucursal_id: sucursalPedida }
+  }
+  if (ids.length === 1) return { puede_ver_todas: false, sucursal_id: ids[0] }
+  // Con varias sucursales es obligatoria (GO 06/10): un empleado restringido sin sucursal no ve nada útil.
+  if (ids.length > 1) return { error: 'Elegí en qué sucursal trabaja' }
+  return { puede_ver_todas: false, sucursal_id: null }
+}
+
+/** Los errores de Supabase Auth llegan en inglés (espejo de traducirErrorPassword). */
+function traducirErrorPassword(msg: string): string {
+  if (/different from the old password/i.test(msg)) return 'La contraseña nueva tiene que ser distinta de la que tenías'
+  if (/at least \d+ characters|too short/i.test(msg)) {
+    const n = msg.match(/at least (\d+) characters/i)?.[1] ?? String(PASSWORD_MIN)
+    const debil = /weak|easy to guess|pwned/i.test(msg) ? ' y no puede ser una contraseña conocida o fácil de adivinar' : ''
+    return `La contraseña tiene que tener al menos ${n} caracteres${debil}`
+  }
+  if (/weak|easy to guess|pwned/i.test(msg)) return 'Esa contraseña es muy conocida o apareció en filtraciones de datos: elegí otra'
+  return msg
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -85,7 +119,7 @@ serve(async (req) => {
       }
 
       const { error: passErr } = await supabaseAdmin.auth.admin.updateUserById(caller.id, { password })
-      if (passErr) return json({ error: passErr.message }, 400)
+      if (passErr) return json({ error: traducirErrorPassword(passErr.message) }, 400)
 
       const { error: flagErr } = await supabaseAdmin
         .from('users').update({ debe_cambiar_password: false }).eq('id', caller.id)
@@ -132,6 +166,9 @@ serve(async (req) => {
         .from('users').select('id').eq('tenant_id', tenantId).eq('usuario', usuario).maybeSingle()
       if (yaExiste) return json({ error: `Ya hay un usuario "${usuario}" en este negocio` }, 400)
 
+      const alcance = await alcanceInicial(supabaseAdmin, tenantId, rol, body?.sucursal_id)
+      if ('error' in alcance) return json({ error: alcance.error }, 400)
+
       const email = `${usuario}.${tenant.codigo}@${DOMINIO_USUARIOS_INTERNOS}`
 
       const { data: creado, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -141,7 +178,7 @@ serve(async (req) => {
         user_metadata: { tenant_id: tenantId, rol, usuario },
       })
       if (createErr || !creado?.user) {
-        return json({ error: createErr?.message ?? 'No se pudo crear la cuenta' }, 400)
+        return json({ error: traducirErrorPassword(createErr?.message ?? 'No se pudo crear la cuenta') }, 400)
       }
 
       const { error: profileErr } = await supabaseAdmin.from('users').insert({
@@ -152,6 +189,7 @@ serve(async (req) => {
         usuario,
         activo: true,
         debe_cambiar_password: true,   // la contraseña del dueño es de un solo uso
+        ...alcance,
       })
 
       if (profileErr) {
@@ -191,7 +229,7 @@ serve(async (req) => {
       }
 
       const { error: passErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { password })
-      if (passErr) return json({ error: passErr.message }, 400)
+      if (passErr) return json({ error: traducirErrorPassword(passErr.message) }, 400)
 
       // Vuelve a ser una contraseña de un solo uso.
       const { error: flagErr } = await supabaseAdmin

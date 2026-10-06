@@ -6,6 +6,8 @@ Estado de los documentos y controles legales de la plataforma. **Todo el marco v
 > ⚠️ **Estado al 2026-07-14: el blindaje está en `dev`, NO en PROD.** Antes de mostrarlo oficialmente
 > en producción falta **revisión de un abogado** + **registro de la base ante la AAIP**.
 
+> 🙋 **2026-10-03 — Revisión de T&C (2026-10-02), SIN APLICAR:** faltan en los T&C (a) cláusula de **uso lícito** (evasión, simulación, fraude) y (b) **responsabilidad fiscal** de cada negocio por su CUIT, manejo de efectivo y "no intermediamos fondos". Hay texto propuesto (revisarlo con un abogado); aplicarlo exige subir `LEGAL_VERSION` (re-aceptación). ESPERA DECISIÓN DE GO. Ver también hallazgos REGLA #0 abiertos en pendientes (borrado de ventas con CAE / "Empezar de cero").
+
 ## Titular del Servicio
 
 Fuente única: `LEGAL_TITULAR` en `src/config/brand.ts` (la usan T&C, Privacidad, Cookies y los pies).

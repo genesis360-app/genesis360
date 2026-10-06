@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  DOMINIO_USUARIOS_INTERNOS,
+  DOMINIO_USUARIOS_INTERNOS, mensajeDatosAcceso,
   normalizarUsuario,
   normalizarCodigoNegocio,
   validarUsuario,
@@ -136,5 +136,19 @@ describe('credencialesParaMostrar', () => {
     const cred = credencialesParaMostrar('Juan', 'Almacén 27')
     expect(cred).toEqual({ negocio: 'almacen27', usuario: 'juan' })
     expect(JSON.stringify(cred)).not.toContain('@')
+  })
+})
+
+describe('mensajeDatosAcceso — lo que el dueño le pasa al empleado (GO 06/10)', () => {
+  it('lleva el link, el código del negocio, el usuario y la contraseña de un solo uso', () => {
+    const m = mensajeDatosAcceso({ negocio: 'Almacén Jorgito', codigo: 'almacenjorgito', usuario: 'temp1', password: 'Clave123!', url: 'https://app.ejemplo/login' })
+    expect(m).toContain('https://app.ejemplo/login')
+    expect(m).toContain('No tengo email: entrar con usuario')
+    expect(m).toContain('Código del negocio: almacenjorgito')
+    expect(m).toContain('Usuario: temp1')
+    expect(m).toContain('Contraseña: Clave123!')
+  })
+  it('sin contraseña (solo recordar el código) no la menciona', () => {
+    expect(mensajeDatosAcceso({ negocio: 'N', codigo: 'abc', usuario: 'u1', url: 'x' })).not.toContain('Contraseña')
   })
 })

@@ -3,7 +3,7 @@ title: Reportes y Métricas
 category: features
 tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights, caja-usd]
 sources: [CLAUDE.md, migrations 155, 351, relevamiento-venta-usd-caja-usd-reglas-negocio.html]
-updated: 2026-09-09
+updated: 2026-10-04
 ---
 
 # Reportes y Métricas
@@ -125,6 +125,7 @@ Reportes disponibles:
 - **Stock actual**: agrupa por producto, incluye N° Lote + Vencimiento + expande series
 - **Ventas**: parsea JSON de medio_pago, breakdown por método
 - **Estados**: exporta correctamente (sin filtro activo)
+- **Descuentos por categoría** (🟡 solo DEV, mig 469-470, 2026-10-04): lo no facturado por los descuentos de categoría de clientes (filtros período, categoría, cliente; solo líneas donde ganó la categoría; columna "Total no facturado"; resta devoluciones parciales en proporción). `fn_reporte_descuento_categoria`, roles DUEÑO/ADMIN/SUPER_USUARIO/SUPERVISOR/CONTADOR. Ver [[wiki/features/precios-tiers-empaque]].
 
 Formatos: **Excel** (XLSX) · **PDF** (jsPDF + jspdf-autotable)
 

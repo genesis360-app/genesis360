@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   labelModoPago, defaultAnticipoOC, montoAnticipo,
   totalPctSchedule, scheduleValido, montoCuota, labelBaseCuota,
-  convertirMontoAMonedaOC, desvioCotizacionFuerte, textoMedioPago,
+  convertirMontoAMonedaOC, desvioCotizacionFuerte, textoMedioPago, totalAPagarOC, envioDelProveedor,
   type CuotaSchedule,
 } from '@/lib/comprasPago'
 
@@ -144,5 +144,23 @@ describe('textoMedioPago — historial de la CC del proveedor (GO 06/10: se veí
     expect(textoMedioPago('Transferencia')).toBe('Transferencia')
     expect(textoMedioPago(null)).toBe('')
     expect(textoMedioPago('')).toBe('')
+  })
+})
+
+describe('envío de la OC: lo cobra el proveedor o un tercero (GO 06/10, C-22)', () => {
+  const items = [{ cantidad: 10, precio_unitario: 300 }, { cantidad: 10, precio_unitario: 600 }]   // $9.000
+  it('lo cobra el proveedor → suma al total a pagarle (default)', () => {
+    expect(totalAPagarOC({ orden_compra_items: items, tiene_envio: true, costo_envio: 10000, envio_a_cargo: 'proveedor' })).toBe(19000)
+    expect(totalAPagarOC({ orden_compra_items: items, tiene_envio: true, costo_envio: '10000.00' })).toBe(19000)
+  })
+  it('lo cobra un tercero → NO suma (otro acreedor)', () => {
+    expect(totalAPagarOC({ orden_compra_items: items, tiene_envio: true, costo_envio: 10000, envio_a_cargo: 'tercero' })).toBe(9000)
+    expect(envioDelProveedor({ tiene_envio: true, costo_envio: 10000, envio_a_cargo: 'tercero' })).toBe(0)
+  })
+  it('sin envío tildado no suma aunque haya un costo cargado', () => {
+    expect(totalAPagarOC({ orden_compra_items: items, tiene_envio: false, costo_envio: 10000 })).toBe(9000)
+  })
+  it('🛑 si ya hay total guardado (se pagó algo), manda ese: no se reescribe lo histórico', () => {
+    expect(totalAPagarOC({ monto_total: '9000.00', orden_compra_items: items, tiene_envio: true, costo_envio: 10000 })).toBe(9000)
   })
 })

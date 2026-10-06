@@ -116,3 +116,49 @@ test('pagos de OC y CC del proveedor: la deuda nace al recibir y los pagos cierr
     await request.patch(`${SUPABASE_URL}/rest/v1/proveedores?id=eq.${prov.id}`, { headers, data: { activo: false } })
   }
 })
+
+// Mig 475 / C-22 (GO 06/10): el envío lo cobra el proveedor (suma a la deuda) o un tercero (gasto aparte, no suma).
+test('envío de la OC: el del proveedor suma a lo que se le debe; el de un tercero no', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  await goto(page, '/dashboard')
+  await waitForApp(page)
+  const headers = restHeaders(await tokenDesdeBrowser(page))
+  const get = async (path: string) => (await request.get(`${SUPABASE_URL}/rest/v1/${path}`, { headers })).json()
+  const post = async (tabla: string, data: object) => {
+    const r = await request.post(`${SUPABASE_URL}/rest/v1/${tabla}`, { headers, data })
+    expect(r.ok(), `insert ${tabla}: ${await r.text()}`).toBeTruthy()
+    return (await r.json())[0]
+  }
+  const [suc] = await get('sucursales?select=id,tenant_id&activo=eq.true&limit=1')
+  const [me] = await get('users?select=id&limit=1')
+  const [prod] = await get('productos?select=id&activo=eq.true&limit=1')
+  const prov = await post('proveedores', { tenant_id: suc.tenant_id, nombre: `E2E184 Envío ${Date.now()}` })
+  const resumen = async () => (await rpc(request, headers, 'fn_proveedor_cc_resumen', { p_proveedor_id: prov.id })).json()
+  try {
+    const nueva = async (envio: number, aCargo: 'proveedor' | 'tercero') => {
+      const oc = await post('ordenes_compra', { tenant_id: suc.tenant_id, proveedor_id: prov.id, numero: 0, estado: 'enviada', sucursal_id: suc.id,
+        moneda: 'ARS', tiene_envio: true, costo_envio: envio, envio_a_cargo: aCargo })
+      await post('orden_compra_items', { orden_compra_id: oc.id, producto_id: prod.id, cantidad: 10, precio_unitario: 900 })
+      return oc
+    }
+    const a = await nueva(1000, 'proveedor')   // 9.000 + 1.000
+    const b = await nueva(500, 'tercero')      // 9.000 (el envío no)
+    expect(num((await resumen()).pendiente_ocs?.ARS), 'pendiente: envío del proveedor sí, el del tercero no').toBe(19000)
+
+    for (const [oc, envio] of [[a, 1000], [b, 500]] as const) {
+      const rec = await post('recepciones', { tenant_id: suc.tenant_id, oc_id: oc.id, proveedor_id: prov.id, estado: 'confirmada', sucursal_id: suc.id })
+      const base = { tenant_id: suc.tenant_id, recepcion_id: rec.id, moneda: 'ARS', fecha: new Date().toISOString().slice(0, 10), sucursal_id: suc.id, usuario_id: me.id }
+      await post('gastos', { ...base, descripcion: 'Compra E2E184', monto: 9000, categoria: 'Compras' })
+      await post('gastos', { ...base, oc_envio_id: oc.id, descripcion: 'Envío E2E184', monto: envio, categoria: 'Fletes' })
+    }
+    expect(num((await resumen()).saldo?.ARS), 'deuda = compras + envío del proveedor (no el del tercero)').toBe(19000)
+
+    // El envío no se registra dos veces (otra recepción de la misma OC).
+    const dup = await request.post(`${SUPABASE_URL}/rest/v1/gastos`, { headers, data: {
+      tenant_id: suc.tenant_id, oc_envio_id: a.id, descripcion: 'Envío dup', monto: 1000, moneda: 'ARS', categoria: 'Fletes',
+      fecha: new Date().toISOString().slice(0, 10), sucursal_id: suc.id, usuario_id: me.id } })
+    expect(dup.ok(), 'el envío de una OC se registra una sola vez').toBeFalsy()
+  } finally {
+    await request.patch(`${SUPABASE_URL}/rest/v1/proveedores?id=eq.${prov.id}`, { headers, data: { activo: false } })
+  }
+})

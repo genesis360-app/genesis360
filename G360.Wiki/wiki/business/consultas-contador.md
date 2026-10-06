@@ -447,7 +447,7 @@ mal liquidados).
 - **Área:** Compras + cuenta corriente de proveedores ([[wiki/features/clientes-proveedores]])
 - **Impacta en:** `ordenes_compra.costo_envio`. Proveedores lo suma al total de la OC; el pago, la deuda (mig 473) y el
   gasto de la recepción NO lo incluyen. Falta un dato: quién cobra el envío.
-- **Criterio provisorio actual:** el envío no suma a la deuda con el proveedor. Lectura propia (no de matriculado): si el
+- **Criterio provisorio actual (implementado en DEV, mig 475):** la OC dice quién cobra el envío; si es el proveedor suma a su total y a la deuda, si es un tercero va como gasto aparte. Lectura propia (no de matriculado): si el
   envío lo presta/cobra el PROVEEDOR junto con la venta, integra el precio neto gravado (Ley de IVA, art. 10: los
   servicios prestados juntamente con la venta) y va en SU factura (misma o aparte), con el IVA de la mercadería → suma a
   lo que se le debe. Si lo hace un TRANSPORTISTA contratado por el negocio, lo factura el transportista (otro

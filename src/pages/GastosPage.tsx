@@ -14,7 +14,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { saldoEfectivoSesion } from '@/lib/cajaSaldo'
 import { puedeRegistrarPagoOC, requiereDobleFirmaPago, puedeCargarCotizacionCompras } from '@/lib/comprasPermisos'
-import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule, convertirMontoAMonedaOC, desvioCotizacionFuerte } from '@/lib/comprasPago'
+import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule, convertirMontoAMonedaOC, desvioCotizacionFuerte, totalAPagarOC } from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { logActividad } from '@/lib/actividadLog'
@@ -798,10 +798,9 @@ export default function GastosPage() {
 
   const hoy = new Date().toISOString().split('T')[0]
 
+  // Total a pagarle al proveedor: el guardado o ítems + envío si lo cobra él (mig 475, igual que fn_oc_total).
   function calcMontoTotalOC(oc: any): number {
-    if (oc.monto_total) return Number(oc.monto_total)
-    return (oc.orden_compra_items ?? []).reduce((s: number, i: any) =>
-      s + Number(i.cantidad ?? 0) * Number(i.precio_unitario ?? 0), 0)
+    return totalAPagarOC(oc)
   }
 
   function estadoPagoBadge(oc: any) {
@@ -3581,9 +3580,10 @@ export default function GastosPage() {
                           <div className="border-t border-dashed border-gray-300 dark:border-gray-600" />
 
                           {/* Totales */}
-                          {(oc as any).costo_envio > 0 && (
+                          {(oc as any).tiene_envio && (oc as any).costo_envio > 0 && (
                             <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                              <span>Envío</span>
+                              {/* mig 475: el envío de un tercero no suma a lo que se le paga al proveedor */}
+                              <span>{(oc as any).envio_a_cargo === 'tercero' ? `Envío (lo cobra ${(oc as any).envio_transportista || 'un tercero'}, no suma)` : 'Envío'}</span>
                               <span>{formatMonedaLib((oc as any).costo_envio, (oc as any).moneda)}</span>
                             </div>
                           )}

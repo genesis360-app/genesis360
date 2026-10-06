@@ -9,7 +9,7 @@ import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/com
 import { montoDevolucion, validarDevolucion, MOTIVOS_DEVOLUCION_PROVEEDOR, type FormaDevolucion } from '@/lib/devolucionProveedor'
 import {
   MODOS_PAGO_PROVEEDOR, defaultAnticipoOC, montoAnticipo, scheduleValido,
-  totalPctSchedule, textoMedioPago, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
+  totalPctSchedule, textoMedioPago, envioDelProveedor, type EnvioACargo, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
 } from '@/lib/comprasPago'
 import { generarOCPDF, textoOC, waLinkOC, totalOC, type OCPDFData } from '@/lib/ocPDF'
 import {
@@ -104,6 +104,8 @@ interface FormOC {
   notas: string
   tiene_envio: boolean
   costo_envio: string
+  envio_a_cargo: EnvioACargo   // mig 475: quién cobra el envío (C-22)
+  envio_transportista: string
   costo_aduana: string    // CO3/E2
   costo_comision: string  // CO3/E2
   costo_otros: string     // CO3/E2
@@ -171,7 +173,7 @@ export default function ProveedoresPage() {
       condiciones: oc.proveedores?.plazo_pago_dias ? `${oc.proveedores.plazo_pago_dias} días` : null,
     },
     items: items.map(it => ({ nombre: it.productos?.nombre ?? '—', cantidad: it.cantidad, precio_unitario: it.precio_unitario })),
-    costoEnvio: oc.costo_envio, costoAduana: oc.costo_aduana, costoComision: oc.costo_comision, costoOtros: oc.costo_otros,
+    costoEnvio: envioDelProveedor(oc) || null, costoAduana: oc.costo_aduana,   // envío de un tercero: no lo cobra el proveedor costoComision: oc.costo_comision, costoOtros: oc.costo_otros,
     pagaConAnticipo: oc.paga_con_anticipo, anticipoPct: oc.anticipo_pct, pagoSchedule: oc.pago_schedule,
     notas: oc.notas ?? null,
   })
@@ -273,7 +275,7 @@ export default function ProveedoresPage() {
   const [ocFiltroProv, setOcFiltroProv] = useState('')
   const [showOcForm, setShowOcForm] = useState(false)
   const [editOcId, setEditOcId] = useState<string | null>(null)
-  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', envio_a_cargo: 'proveedor', envio_transportista: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   // Buscador de producto por linea de OC (pedido de Fede, 2026-09-11): el `<select>` nativo solo
   // dejaba saltar por la PRIMERA letra - con 1.000+ productos era inusable. Estado por linea:
@@ -1217,6 +1219,11 @@ export default function ProveedoresPage() {
           paga_con_anticipo: ocForm.paga_con_anticipo,  // CO5/D1
           anticipo_pct: antPct,                         // CO5/D1
           pago_schedule: scheduleJson,                  // CO5/D2
+          // Antes el envío no se guardaba al editar una OC (solo al crearla).
+          tiene_envio: ocForm.tiene_envio,
+          costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
+          envio_a_cargo: ocForm.envio_a_cargo,          // mig 475
+          envio_transportista: ocForm.envio_a_cargo === 'tercero' ? (ocForm.envio_transportista.trim() || null) : null,
         }).eq('id', editOcId)
         if (error) throw error
         ocId = editOcId
@@ -1233,6 +1240,8 @@ export default function ProveedoresPage() {
           notas: ocForm.notas.trim() || null,
           tiene_envio: ocForm.tiene_envio,
           costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
+          envio_a_cargo: ocForm.envio_a_cargo,          // mig 475
+          envio_transportista: ocForm.envio_a_cargo === 'tercero' ? (ocForm.envio_transportista.trim() || null) : null,
           costo_aduana: ocForm.costo_aduana ? parseFloat(ocForm.costo_aduana) : null,      // CO3/E2
           costo_comision: ocForm.costo_comision ? parseFloat(ocForm.costo_comision) : null,
           costo_otros: ocForm.costo_otros ? parseFloat(ocForm.costo_otros) : null,
@@ -1566,7 +1575,7 @@ export default function ProveedoresPage() {
 
   const openNewOC = () => {
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', envio_a_cargo: 'proveedor', envio_transportista: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([{ _key: ++itemKey, producto_id: '', cantidad: '', precio_unitario: '', notas: '' }])
     setShowOcForm(true)
   }
@@ -1584,6 +1593,8 @@ export default function ProveedoresPage() {
       notas: oc.notas ?? '',
       tiene_envio: (oc as any).tiene_envio ?? false,
       costo_envio: (oc as any).costo_envio ? String((oc as any).costo_envio) : '',
+      envio_a_cargo: ((oc as any).envio_a_cargo ?? 'proveedor') as EnvioACargo,
+      envio_transportista: (oc as any).envio_transportista ?? '',
       costo_aduana: (oc as any).costo_aduana ? String((oc as any).costo_aduana) : '',
       costo_comision: (oc as any).costo_comision ? String((oc as any).costo_comision) : '',
       costo_otros: (oc as any).costo_otros ? String((oc as any).costo_otros) : '',
@@ -1604,7 +1615,7 @@ export default function ProveedoresPage() {
   const closeOcForm = () => {
     setShowOcForm(false)
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
+    setOcForm({ proveedor_id: '', moneda: 'ARS', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', envio_a_cargo: 'proveedor', envio_transportista: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([])
   }
 
@@ -1984,7 +1995,7 @@ export default function ProveedoresPage() {
                             <input type="email" value={provInviteEmail[p.id] ?? p.email ?? ''}
                               onChange={e => setProvInviteEmail(m => ({ ...m, [p.id]: e.target.value }))}
                               placeholder="Email del proveedor"
-                              className="flex-1 border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
+                              className="flex-1 min-w-0 border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                             <button
                               onClick={() => {
                                 const email = (provInviteEmail[p.id] ?? p.email ?? '').trim()
@@ -3007,10 +3018,35 @@ export default function ProveedoresPage() {
                           value={ocForm.costo_envio}
                           onChange={e => setOcForm(f => ({ ...f, costo_envio: e.target.value }))}
                           placeholder="0.00"
-                          className="flex-1 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
+                          className="flex-1 min-w-0 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
                       </div>
                     )}
                   </div>
+                  {/* mig 475 / C-22 — quién cobra el envío: decide si suma a lo que se le debe al proveedor */}
+                  {ocForm.tiene_envio && (
+                    <div className="mt-2 space-y-2" role="radiogroup" aria-label="Quién cobra el envío">
+                      <p className="text-xs text-muted">¿Quién cobra el envío?</p>
+                      <div className="flex flex-wrap gap-2">
+                        {([['proveedor', 'El proveedor (va en su factura)'], ['tercero', 'Un tercero (transportista)']] as const).map(([v, label]) => (
+                          <button key={v} type="button" role="radio" aria-checked={ocForm.envio_a_cargo === v}
+                            onClick={() => setOcForm(f => ({ ...f, envio_a_cargo: v }))}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${ocForm.envio_a_cargo === v ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text/40'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {ocForm.envio_a_cargo === 'tercero' ? (
+                        <>
+                          <input value={ocForm.envio_transportista} onChange={e => setOcForm(f => ({ ...f, envio_transportista: e.target.value }))}
+                            placeholder="Transportista (opcional)" aria-label="Transportista"
+                            className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
+                          <p className="text-xs text-muted">No suma a lo que se le paga al proveedor: al recibir, el envío queda como un gasto aparte.</p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted">Suma al total de la OC y a lo que se le debe al proveedor.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* CO3/E2 — costos accesorios (no se distribuyen al costo unitario) */}
@@ -3535,7 +3571,7 @@ export default function ProveedoresPage() {
                         <tr className="border-t border-border-ds">
                           <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold text-primary">Total estimado</td>
                           <td className="px-3 py-2 text-right font-bold text-primary">
-                            ${(ocItemsData.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0) + ((showOcDetail as any).costo_envio ?? 0))
+                            ${(ocItemsData.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0) + envioDelProveedor(showOcDetail as any))
                               .toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                           </td>
                         </tr>
@@ -3781,7 +3817,7 @@ export default function ProveedoresPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={ccPagoMonto} onChange={e => setCcPagoMonto(e.target.value)}
                       aria-label="Monto del pago"
                       placeholder={`Hasta $${topePagoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
-                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
                     <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)} aria-label="Medio de pago"
                       className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                       {['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro'].map(m => <option key={m}>{m}</option>)}

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-06T04:46:19.258Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261006044526 · 178 tablas
+-- Generado 2026-10-06T05:00:19.940Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261006045506 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1040,7 +1040,8 @@ CREATE TABLE public.gastos (
   moneda text NOT NULL DEFAULT 'ARS'::text,
   cotizacion_fiscal numeric(14,4),
   cotizacion_fiscal_fecha date,
-  cotizacion_fiscal_fuente text
+  cotizacion_fiscal_fuente text,
+  oc_envio_id uuid
 );
 
 CREATE TABLE public.gastos_fijos (
@@ -1452,7 +1453,9 @@ CREATE TABLE public.ordenes_compra (
   paga_con_anticipo boolean NOT NULL DEFAULT false,
   anticipo_pct numeric,
   pago_schedule jsonb,
-  moneda text NOT NULL DEFAULT 'ARS'::text
+  moneda text NOT NULL DEFAULT 'ARS'::text,
+  envio_a_cargo text NOT NULL DEFAULT 'proveedor'::text,
+  envio_transportista text
 );
 
 CREATE TABLE public.padron_arca_cache (
@@ -1787,7 +1790,8 @@ CREATE TABLE public.proveedor_cc_movimientos (
   nc_numero text,
   adjunto_url text,
   recepcion_id uuid,
-  moneda text NOT NULL DEFAULT 'ARS'::text
+  moneda text NOT NULL DEFAULT 'ARS'::text,
+  es_envio boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.proveedor_contactos (
@@ -3190,6 +3194,7 @@ ALTER TABLE public.nc_afip_pendientes ADD CONSTRAINT nc_afip_pendientes_pkey PRI
 ALTER TABLE public.notificaciones ADD CONSTRAINT notificaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_pkey PRIMARY KEY (id);
+ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_envio_a_cargo_check CHECK ((envio_a_cargo = ANY (ARRAY['proveedor'::text, 'tercero'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'enviada'::text, 'confirmada'::text, 'cancelada'::text, 'recibida_parcial'::text, 'recibida'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_pago_check CHECK ((estado_pago = ANY (ARRAY['pendiente_pago'::text, 'pago_parcial'::text, 'pagada'::text, 'cuenta_corriente'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pagado_no_excede_total CHECK (((monto_pagado >= (0)::numeric) AND (monto_descuento >= (0)::numeric) AND ((monto_total IS NULL) OR ((monto_pagado + monto_descuento) <= (monto_total + 0.5)))));
@@ -3608,6 +3613,7 @@ ALTER TABLE public.gasto_cuotas ADD CONSTRAINT gasto_cuotas_tenant_id_fkey FOREI
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias_gasto(id) ON DELETE SET NULL;
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_emisor_id_fkey FOREIGN KEY (emisor_id) REFERENCES emisores_fiscales(id) ON DELETE SET NULL;
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_gasto_padre_id_fkey FOREIGN KEY (gasto_padre_id) REFERENCES gastos(id) ON DELETE SET NULL;
+ALTER TABLE public.gastos ADD CONSTRAINT gastos_oc_envio_id_fkey FOREIGN KEY (oc_envio_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL;
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_recepcion_id_fkey FOREIGN KEY (recepcion_id) REFERENCES recepciones(id) ON DELETE SET NULL;
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_recurso_id_fkey FOREIGN KEY (recurso_id) REFERENCES recursos(id) ON DELETE SET NULL;
 ALTER TABLE public.gastos ADD CONSTRAINT gastos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
@@ -3974,6 +3980,7 @@ CREATE UNIQUE INDEX categorias_cliente_tenant_nombre_key ON public.categorias_cl
 CREATE INDEX clientes_categoria_cliente_idx ON public.clientes USING btree (categoria_cliente_id) WHERE (categoria_cliente_id IS NOT NULL);
 CREATE UNIQUE INDEX clientes_dni_tenant ON public.clientes USING btree (tenant_id, dni) WHERE (dni IS NOT NULL);
 CREATE UNIQUE INDEX empleados_tenant_user_unique ON public.empleados USING btree (tenant_id, user_id) WHERE (user_id IS NOT NULL);
+CREATE UNIQUE INDEX gastos_un_envio_por_oc ON public.gastos USING btree (oc_envio_id) WHERE (oc_envio_id IS NOT NULL);
 CREATE INDEX idx_actividad_log_usuario_id ON public.actividad_log USING btree (usuario_id);
 CREATE INDEX idx_actividad_log_venta_id ON public.actividad_log USING btree (venta_id) WHERE (venta_id IS NOT NULL);
 CREATE INDEX idx_admin_audit_agent ON public.admin_audit_log USING btree (agent_id, created_at DESC);
@@ -4503,7 +4510,8 @@ CREATE INDEX idx_zonas_sucursal ON public.zonas USING btree (sucursal_id) WHERE 
 CREATE INDEX idx_zonas_tenant ON public.zonas USING btree (tenant_id);
 CREATE INDEX mp_suscripcion_intentos_plan_idx ON public.mp_suscripcion_intentos USING btree (mp_plan_id, created_at DESC);
 CREATE INDEX mp_suscripcion_intentos_tenant_idx ON public.mp_suscripcion_intentos USING btree (tenant_id, created_at DESC);
-CREATE UNIQUE INDEX proveedor_cc_mov_cargo_por_recepcion ON public.proveedor_cc_movimientos USING btree (recepcion_id) WHERE ((tipo = 'oc'::text) AND (recepcion_id IS NOT NULL));
+CREATE UNIQUE INDEX proveedor_cc_mov_cargo_por_recepcion ON public.proveedor_cc_movimientos USING btree (recepcion_id) WHERE ((tipo = 'oc'::text) AND (recepcion_id IS NOT NULL) AND (NOT es_envio));
+CREATE UNIQUE INDEX proveedor_cc_mov_un_envio_por_oc ON public.proveedor_cc_movimientos USING btree (oc_id) WHERE es_envio;
 CREATE INDEX proveedor_pago_imputaciones_mov ON public.proveedor_pago_imputaciones USING btree (movimiento_id);
 CREATE INDEX proveedor_pago_imputaciones_oc ON public.proveedor_pago_imputaciones USING btree (oc_id);
 CREATE INDEX proveedor_pago_imputaciones_tenant ON public.proveedor_pago_imputaciones USING btree (tenant_id);
@@ -6054,7 +6062,19 @@ AS $function$
 DECLARE
   v_rec record;
 BEGIN
-  IF NEW.recepcion_id IS NULL OR NEW.monto IS NULL OR NEW.monto <= 0 THEN RETURN NEW; END IF;
+  IF NEW.monto IS NULL OR NEW.monto <= 0 THEN RETURN NEW; END IF;
+  -- mig 475: gasto del ENVÍO de una OC. Si lo cobra el proveedor, se carga en su CC (uno por OC); si es de un tercero,
+  -- el gasto existe pero el proveedor no tiene nada que ver.
+  IF NEW.oc_envio_id IS NOT NULL THEN
+    INSERT INTO proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, recepcion_id, tipo, monto, moneda, fecha, descripcion, created_by, es_envio)
+    SELECT NEW.tenant_id, o.proveedor_id, o.id, NEW.recepcion_id, 'oc', NEW.monto, upper(COALESCE(NEW.moneda, 'ARS')), NEW.fecha,
+           'Envío ' || public.fn_oc_etiqueta(o.id), NEW.usuario_id, true
+      FROM ordenes_compra o
+     WHERE o.id = NEW.oc_envio_id AND o.tenant_id = NEW.tenant_id AND o.envio_a_cargo = 'proveedor'
+    ON CONFLICT (oc_id) WHERE es_envio DO NOTHING;
+    RETURN NEW;
+  END IF;
+  IF NEW.recepcion_id IS NULL THEN RETURN NEW; END IF;
   SELECT r.id, r.numero, r.oc_id, o.proveedor_id, o.numero AS oc_numero INTO v_rec
     FROM recepciones r JOIN ordenes_compra o ON o.id = r.oc_id AND o.tenant_id = r.tenant_id
    WHERE r.id = NEW.recepcion_id AND r.tenant_id = NEW.tenant_id;
@@ -6062,7 +6082,7 @@ BEGIN
   INSERT INTO proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, recepcion_id, tipo, monto, moneda, fecha, descripcion, created_by)
   VALUES (NEW.tenant_id, v_rec.proveedor_id, v_rec.oc_id, v_rec.id, 'oc', NEW.monto, upper(COALESCE(NEW.moneda, 'ARS')), NEW.fecha,
           'Compra ' || public.fn_oc_etiqueta(v_rec.oc_id) || ' — recepción #' || v_rec.numero, NEW.usuario_id)
-  ON CONFLICT (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL DO NOTHING;
+  ON CONFLICT (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL AND NOT es_envio DO NOTHING;
   RETURN NEW;
 END;
 $function$
@@ -9835,6 +9855,13 @@ BEGIN
       RAISE EXCEPTION 'La % ya tiene pagos o recepciones: no se puede cambiar el proveedor.', public.fn_oc_etiqueta(OLD.id)
         USING ERRCODE = 'check_violation';
     END IF;
+    -- mig 475: el envío cambia lo que se le debe al proveedor → no se toca si la OC ya tiene pagos o el envío ya se cargó.
+    IF (NEW.costo_envio IS DISTINCT FROM OLD.costo_envio OR NEW.tiene_envio IS DISTINCT FROM OLD.tiene_envio
+        OR NEW.envio_a_cargo IS DISTINCT FROM OLD.envio_a_cargo) AND (
+         OLD.monto_pagado > 0 OR EXISTS (SELECT 1 FROM gastos WHERE oc_envio_id = OLD.id)) THEN
+      RAISE EXCEPTION 'La % ya tiene pagos o el envío ya se registró: no se puede cambiar el envío.', public.fn_oc_etiqueta(OLD.id)
+        USING ERRCODE = 'check_violation';
+    END IF;
     RETURN NEW;
   END IF;
   IF TG_OP = 'DELETE' THEN v_oc := OLD.orden_compra_id; ELSE v_oc := NEW.orden_compra_id; END IF;
@@ -9857,7 +9884,8 @@ CREATE OR REPLACE FUNCTION public.fn_oc_total(p_oc_id uuid)
 AS $function$
   SELECT COALESCE(o.monto_total,
     (SELECT COALESCE(SUM(COALESCE(i.cantidad, 0) * COALESCE(i.precio_unitario, 0)), 0)
-       FROM orden_compra_items i WHERE i.orden_compra_id = o.id))
+       FROM orden_compra_items i WHERE i.orden_compra_id = o.id)
+    + (CASE WHEN o.tiene_envio AND o.envio_a_cargo = 'proveedor' THEN GREATEST(COALESCE(o.costo_envio, 0), 0) ELSE 0 END))   -- mig 475: + envío si lo cobra el proveedor
   FROM ordenes_compra o WHERE o.id = p_oc_id AND o.tenant_id = public.get_user_tenant_id();
 $function$
 
@@ -14623,6 +14651,10 @@ BEGIN
   IF v_total IS NULL THEN
     SELECT COALESCE(SUM(COALESCE(cantidad,0) * COALESCE(precio_unitario,0)), 0)
       INTO v_total FROM public.orden_compra_items WHERE orden_compra_id = p_oc_id;
+    -- mig 475: el envío que cobra el proveedor va en su factura → suma al total a pagarle.
+    IF v_oc.tiene_envio AND v_oc.envio_a_cargo = 'proveedor' THEN
+      v_total := v_total + GREATEST(COALESCE(v_oc.costo_envio, 0), 0);
+    END IF;
   END IF;
 
   FOR v_medio IN SELECT e FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente'
@@ -16339,7 +16371,7 @@ CREATE TRIGGER trg_updated_at_mp_creds BEFORE UPDATE ON public.mercadopago_crede
 CREATE TRIGGER trg_metodos_pago_updated_at BEFORE UPDATE ON public.metodos_pago FOR EACH ROW EXECUTE FUNCTION update_metodos_pago_updated_at();
 CREATE TRIGGER trg_oc_items_guard_con_pagos BEFORE INSERT OR DELETE OR UPDATE OF cantidad, precio_unitario, orden_compra_id ON public.orden_compra_items FOR EACH ROW EXECUTE FUNCTION fn_oc_guard_con_pagos();
 CREATE TRIGGER trg_oc_cierre BEFORE DELETE OR UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION trg_oc_periodo_cerrado();
-CREATE TRIGGER trg_oc_guard_con_pagos BEFORE UPDATE OF proveedor_id ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION fn_oc_guard_con_pagos();
+CREATE TRIGGER trg_oc_guard_con_pagos BEFORE UPDATE OF proveedor_id, costo_envio, tiene_envio, envio_a_cargo ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION fn_oc_guard_con_pagos();
 CREATE TRIGGER trg_set_oc_numero BEFORE INSERT ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_oc_numero();
 CREATE TRIGGER trg_updated_at_oc BEFORE UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_updated_at_oc();
 CREATE TRIGGER trg_set_pedido_numero BEFORE INSERT ON public.pedidos FOR EACH ROW EXECUTE FUNCTION set_pedido_numero();

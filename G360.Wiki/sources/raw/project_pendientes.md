@@ -34,7 +34,7 @@ type: project
 > 2. Bump `APP_VERSION` a `v1.239.0` en `src/config/brand.ts`.
 > 3. Chequear actividad reciente en PROD (ventas / movimientos / caja de los últimos 30 min).
 > 4. Migs a PROD de a una con `node scripts/aplicar-migracion.mjs jjffnbrdjchquexdfgwq supabase/migrations/…`:
->    **467 → 468 → 469 → 470 → 471 → 472 → 473 → 474** (473 = CC de proveedores, 474 = un solo número de OC; en DEV la 474 quedó registrada dos veces por una corrección) (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
+>    **467 → 468 → 469 → 470 → 471 → 472 → 473 → 474 → 475** (473 = CC de proveedores, 474 = un solo número de OC, 475 = envío de la OC; en DEV la 474 quedó registrada dos veces por una corrección) (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
 >    Ya validado en PROD con transacción abortada: la 467 da **0 diferencias en 3.185 casos** sobre los 65 productos.
 > 5. EFs en PROD: `npx supabase functions deploy categoria-cartel-ia --project-ref jjffnbrdjchquexdfgwq` (nueva;
 >    `GROQ_API_KEY` ya existe en PROD) e `invite-user`.
@@ -76,9 +76,10 @@ type: project
 > filtran por sucursal (rol restringido ve el total del negocio); (c) el pago desde la CC con "Cheque" no crea el cheque
 > (como antes); (d) la policy de escritura de `proveedor_cc_movimientos` sigue dejando insertar cualquier tipo desde el
 > cliente (NC/ajuste lo necesitan) — conviene RPCs y cerrar la policy.
-> **🧾 PREGUNTA PARA GO — envío de la OC:** Proveedores suma el envío al total (OC #84: $9.000 + envío $10.000 = $19.000) pero
-> Gastos/pago y la deuda usan $9.000. ¿El envío lo cobra el PROVEEDOR (va en su factura → tiene que sumar a lo que se le debe)
-> o un tercero (no va)? Hasta que lo defina, la deuda NO incluye el envío.
+> **✅ Envío de la OC — HECHO en DEV (mig 475, GO aprobó la propuesta 06/10; C-22 al contador):** la OC dice quién lo cobra.
+> Proveedor (default) → suma al total, al pago y a la deuda (cargo `es_envio` al recibir). Tercero → gasto "Fletes" aparte,
+> no suma. Una vez por OC. Editar la OC no guardaba el envío: arreglado. Queda: aduana/comisión/otros siguen sumando al
+> TOTAL del PDF que se le manda al proveedor aunque no se le pagan a él (mismo tema, consultar).
 > **Número de OC (mig 474):** Gastos/Recepciones/Cheques/Alertas/Portal mostraban "#84" y Proveedores "S-OC-0070" (misma OC):
 > unificado con `src/lib/ocNumero.ts` + `fn_oc_etiqueta`. Detalle a mirar: el prefijo "S-OC" es fijo, no el código de la
 > sucursal (con 2 sucursales, dos OCs distintas pueden verse "S-OC-0001").

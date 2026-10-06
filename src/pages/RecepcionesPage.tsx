@@ -210,7 +210,7 @@ export default function RecepcionesPage() {
       // `moneda`: el gasto que se genera al confirmar la recepción lleva los precios de la OC, que
       // están expresados en la moneda DE LA OC. Sin traerla, el gasto caía en el default 'ARS' de
       // la columna y una OC en dólares quedaba registrada como pesos.
-      let q = supabase.from('ordenes_compra').select('id, numero, numero_sucursal, moneda').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
+      let q = supabase.from('ordenes_compra').select('id, numero, numero_sucursal, moneda, tiene_envio, costo_envio, envio_a_cargo, envio_transportista').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
       if (fProveedorId) q = q.eq('proveedor_id', fProveedorId)
       const { data } = await q
       return data ?? []
@@ -720,6 +720,30 @@ export default function RecepcionesPage() {
           })
           if (gastoErr) {
             toast.error(`La recepción quedó confirmada pero NO se registró la compra (gasto y deuda con el proveedor): ${gastoErr.message}. Avisá a soporte.`, { duration: 15000 })
+          }
+          // Mig 475 / C-22 — el ENVÍO de la OC, una sola vez (con la primera recepción): queda como gasto aparte y, si lo
+          // cobra el proveedor, la base lo carga en su cuenta corriente (`gastos.oc_envio_id` es único por OC).
+          const costoEnvio = parseFloat(String(ocSel?.costo_envio ?? 0)) || 0
+          if (ocSel?.tiene_envio && costoEnvio > 0) {
+            const deTercero = ocSel.envio_a_cargo === 'tercero'
+            const quien = deTercero ? (ocSel.envio_transportista || 'transportista') : provNombre
+            const { error: envioErr } = await supabase.from('gastos').insert({
+              tenant_id: tenant!.id,
+              recepcion_id: rec.id,
+              oc_envio_id: ocSel.id,
+              descripcion: `Envío ${nombreOC(ocSel, (tenant as any)?.oc_numeracion)} — ${quien}`,
+              monto: costoEnvio,
+              moneda: (ocSel?.moneda ?? (tenant as any)?.moneda ?? 'ARS').toUpperCase(),
+              categoria: 'Fletes',
+              fecha: new Date().toISOString().split('T')[0],
+              notas: `Recepción #${rec.numero}${deTercero ? ' — lo cobra un tercero (no va en la cuenta del proveedor)' : ''}`,
+              sucursal_id: fSucursalId || null,
+              usuario_id: user!.id,
+            })
+            // 23505 = ya se registró con una recepción anterior de la misma OC: está bien, no se duplica.
+            if (envioErr && envioErr.code !== '23505') {
+              toast.error(`La recepción quedó confirmada pero NO se registró el envío: ${envioErr.message}. Avisá a soporte.`, { duration: 15000 })
+            }
           }
           qc.invalidateQueries({ queryKey: ['gastos', tenant?.id] })
         }

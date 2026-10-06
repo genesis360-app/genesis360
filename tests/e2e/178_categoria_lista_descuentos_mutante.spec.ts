@@ -73,7 +73,13 @@ test('lista de descuentos: por producto, 0 explícito, sin cargar, por categorí
     await page.getByLabel(/^Seleccionar los 2 productos$/).check()
     await page.getByTestId('btn-acciones').click()
     await page.getByLabel('Descuento para los seleccionados').fill('20')
-    await page.getByRole('button', { name: 'Aplicar' }).click()
+    // GO 06/10: "Aplicar" se salía del recuadro (el input empujaba). El botón tiene que quedar DENTRO del popover.
+    const aplicar = page.getByRole('button', { name: 'Aplicar' })
+    const popover = aplicar.locator('xpath=ancestor::div[contains(@class,"absolute")][1]')
+    const [bBtn, bPop] = [await aplicar.boundingBox(), await popover.boundingBox()]
+    expect(bBtn && bPop, 'no se pudo medir el botón o el recuadro').toBeTruthy()
+    expect(bBtn!.x + bBtn!.width, '"Aplicar" se sale del recuadro de Acciones').toBeLessThanOrEqual(bPop!.x + bPop!.width - 4)
+    await aplicar.click()
     await confirmarModal()
     await expect.poll(async () => (await lista(cat.id)).map(r => Number(r.descuento_pct)).sort()).toEqual([20, 20])
     await page.getByLabel(/^Seleccionar los 2 productos$/).check()

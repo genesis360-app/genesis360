@@ -297,8 +297,9 @@ export default function DescuentosCategoriaPage() {
                   <div className="flex gap-2">
                     <input value={pctMasivo} onChange={e => setPctMasivo(e.target.value)} placeholder="% (ej. 12,5)" aria-label="Descuento para los seleccionados"
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void accionSeleccion(false) } }}
-                      className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
-                    <button disabled={trabajando} onClick={() => void accionSeleccion(false)} className="px-3 py-1.5 text-sm rounded-lg bg-accent text-white disabled:opacity-50">Aplicar</button>
+                      className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                    {/* min-w-0 + shrink-0: sin esto el input (ancho mínimo propio) empujaba "Aplicar" fuera del recuadro (GO 06/10) */}
+                    <button disabled={trabajando} onClick={() => void accionSeleccion(false)} className="shrink-0 px-3 py-1.5 text-sm rounded-lg bg-accent text-white disabled:opacity-50">Aplicar</button>
                   </div>
                   <button disabled={trabajando} onClick={() => void accionSeleccion(true)} className="w-full text-left text-sm text-red-600 dark:text-red-400 hover:underline disabled:opacity-50">
                     Quitar el descuento (quedan sin cargar)
@@ -529,7 +530,7 @@ function EditorFiltro({ inicial, marcas, categorias, onGuardar, onCancelar }: {
       ) : (
         <div className="flex gap-2">
           <select value={op} onChange={e => setOp(e.target.value as OperadorFiltro)} aria-label="Operador"
-            className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-gray-100">
+            className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-gray-100">
             {OPERADORES.map(o => <option key={o.valor} value={o.valor}>{o.nombre}</option>)}
           </select>
           <input value={valor} onChange={e => setValor(e.target.value)} placeholder="Valor" aria-label="Valor del filtro" autoFocus

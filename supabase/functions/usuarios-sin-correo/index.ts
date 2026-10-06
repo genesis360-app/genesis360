@@ -31,6 +31,27 @@ const RE_USUARIO = /^[a-z0-9][a-z0-9_-]{2,29}$/   // espejo de users_usuario_for
 // Espejo de src/lib/passwordPolicy.ts: Supabase Auth (DEV y PROD) exige 10 y rechaza contraseñas filtradas.
 const PASSWORD_MIN = 10
 
+// Alcance con el que NACE un usuario (2026-10-06). Antes no se seteaba: todo usuario nuevo quedaba restringido y SIN
+// sucursal — un Cajero "Sin sucursal asignada" aunque el negocio tuviera una sola, y un Supervisor restringido aunque
+// su rol ve todo. Espejo de src/lib/accesoUsuario.ts (ROLES_SIEMPRE_GLOBALES + ROLES_GLOBAL_DEFAULT).
+const ROLES_VEN_TODO = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CONTADOR', 'VIEWER']
+async function alcanceInicial(
+  admin: any, tenantId: string, rol: string, sucursalPedida: unknown,
+): Promise<{ puede_ver_todas: boolean; sucursal_id: string | null } | { error: string }> {
+  if (ROLES_VEN_TODO.includes(rol)) return { puede_ver_todas: true, sucursal_id: null }
+  const { data: sucs } = await admin.from('sucursales').select('id').eq('tenant_id', tenantId).eq('activo', true)
+  const ids: string[] = (sucs ?? []).map((s: { id: string }) => s.id)
+  if (typeof sucursalPedida === 'string' && sucursalPedida) {
+    // La sucursal viene del cliente: tiene que ser de ESTE negocio.
+    if (!ids.includes(sucursalPedida)) return { error: 'La sucursal elegida no es de este negocio' }
+    return { puede_ver_todas: false, sucursal_id: sucursalPedida }
+  }
+  if (ids.length === 1) return { puede_ver_todas: false, sucursal_id: ids[0] }
+  // Con varias sucursales es obligatoria (GO 06/10): un empleado restringido sin sucursal no ve nada útil.
+  if (ids.length > 1) return { error: 'Elegí en qué sucursal trabaja' }
+  return { puede_ver_todas: false, sucursal_id: null }
+}
+
 /** Los errores de Supabase Auth llegan en inglés (espejo de traducirErrorPassword). */
 function traducirErrorPassword(msg: string): string {
   if (/different from the old password/i.test(msg)) return 'La contraseña nueva tiene que ser distinta de la que tenías'
@@ -145,6 +166,9 @@ serve(async (req) => {
         .from('users').select('id').eq('tenant_id', tenantId).eq('usuario', usuario).maybeSingle()
       if (yaExiste) return json({ error: `Ya hay un usuario "${usuario}" en este negocio` }, 400)
 
+      const alcance = await alcanceInicial(supabaseAdmin, tenantId, rol, body?.sucursal_id)
+      if ('error' in alcance) return json({ error: alcance.error }, 400)
+
       const email = `${usuario}.${tenant.codigo}@${DOMINIO_USUARIOS_INTERNOS}`
 
       const { data: creado, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -165,6 +189,7 @@ serve(async (req) => {
         usuario,
         activo: true,
         debe_cambiar_password: true,   // la contraseña del dueño es de un solo uso
+        ...alcance,
       })
 
       if (profileErr) {

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { normalizarUsuario, validarUsuario, mensajeDatosAcceso } from '@/lib/usuarioLocal'
 import { PASSWORD_MIN, traducirErrorPassword } from '@/lib/passwordPolicy'
-import { esSiempreGlobal, textoAlcance, cambiarRol, validarAcceso, parcheAcceso, type AccesoUsuario } from '@/lib/accesoUsuario'
+import { esSiempreGlobal, veTodasPorDefecto, textoAlcance, cambiarRol, validarAcceso, parcheAcceso, type AccesoUsuario } from '@/lib/accesoUsuario'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -92,7 +92,7 @@ const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g,
 // Roles que siempre tienen visión global (no configurables) — viven en src/lib/accesoUsuario.ts
 
 export default function UsuariosPage() {
-  const { tenant, user, sucursales } = useAuthStore()
+  const { tenant, user, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const { limits } = usePlanLimits()
@@ -102,6 +102,11 @@ export default function UsuariosPage() {
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [invEmail, setInvEmail] = useState('')
   const [invRol, setInvRol] = useState<UserRole>('CAJERO')
+  // Sucursal con la que nace (solo roles que no ven todo, y solo si hay más de una: con una sola la asigna el servidor).
+  const [invSucursal, setInvSucursal] = useState<string>('')
+  const pideSucursal = sucursales.length > 1 && !veTodasPorDefecto(invRol)
+  // Default: la sucursal en la que está parado el dueño (si el rol no ve todo).
+  const sucursalActivaDefault = pideSucursal ? (sucursalId ?? '') : ''
   // Mig 434: el alta sin correo. El dueño pone usuario + contraseña y no se manda ningún mail.
   const [invModo, setInvModo] = useState<'email' | 'usuario'>('email')
   const [invUsuario, setInvUsuario] = useState('')
@@ -180,6 +185,7 @@ export default function UsuariosPage() {
     const problemaUsuario = validarUsuario(invUsuario)
     if (problemaUsuario) { toast.error(problemaUsuario); return }
     if (invPassword.length < PASSWORD_MIN) { toast.error(`La contraseña necesita al menos ${PASSWORD_MIN} caracteres`); return }
+    if (pideSucursal && !(invSucursal || sucursalActivaDefault)) { toast.error('Elegí en qué sucursal trabaja'); return }
     setSaving(true)
     try {
       const { data, error } = await supabase.functions.invoke('usuarios-sin-correo', {
@@ -189,6 +195,7 @@ export default function UsuariosPage() {
           nombre: invNombre.trim(),
           rol: invRol,
           password: invPassword,
+          sucursal_id: invSucursal || sucursalActivaDefault || null,
         },
       })
       if (error) {
@@ -238,6 +245,7 @@ export default function UsuariosPage() {
   const handleInvitar = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!invEmail.trim()) { toast.error('Ingresá el email del usuario'); return }
+    if (pideSucursal && !(invSucursal || sucursalActivaDefault)) { toast.error('Elegí en qué sucursal trabaja'); return }
     setSaving(true)
     try {
       const { data, error } = await supabase.functions.invoke('invite-user', {
@@ -245,6 +253,7 @@ export default function UsuariosPage() {
           email: invEmail.trim(),
           rol: invRol,
           tenant_id: tenant!.id,
+          sucursal_id: invSucursal || sucursalActivaDefault || null,
           redirect_to: `${window.location.origin}/dashboard`,
         },
       })
@@ -619,6 +628,17 @@ export default function UsuariosPage() {
                 ))}
             </div>
           </div>
+          {pideSucursal && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sucursal donde trabaja *</label>
+              <select value={invSucursal || sucursalActivaDefault} onChange={e => setInvSucursal(e.target.value)} aria-label="Sucursal donde trabaja" required
+                className="w-full sm:w-72 px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text">
+                <option value="">Elegí la sucursal</option>
+                {sucursales.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Después lo podés cambiar desde "Editar acceso".</p>
+            </div>
+          )}
           {invModo === 'email' ? (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2 text-xs text-blue-700 dark:text-blue-400 flex items-start gap-2">
               <Mail size={13} className="mt-0.5 flex-shrink-0" />

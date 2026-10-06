@@ -12,13 +12,35 @@ const corsHeaders = {
 // de plataforma. Espejo del selector de UsuariosPage; reforzado por trigger en DB (mig 254).
 const ROLES_ASIGNABLES = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CAJERO', 'RRHH', 'CONTADOR', 'DEPOSITO', 'VIEWER']
 
+// Alcance con el que NACE un usuario (2026-10-06). Antes no se seteaba: todo usuario nuevo quedaba restringido y SIN
+// sucursal — un Cajero "Sin sucursal asignada" aunque el negocio tuviera una sola, y un Supervisor restringido aunque
+// su rol ve todo. Espejo de src/lib/accesoUsuario.ts (ROLES_SIEMPRE_GLOBALES + ROLES_GLOBAL_DEFAULT).
+const ROLES_VEN_TODO = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CONTADOR', 'VIEWER']
+async function alcanceInicial(
+  admin: any, tenantId: string, rol: string, sucursalPedida: unknown,
+): Promise<{ puede_ver_todas: boolean; sucursal_id: string | null } | { error: string }> {
+  if (ROLES_VEN_TODO.includes(rol)) return { puede_ver_todas: true, sucursal_id: null }
+  const { data: sucs } = await admin.from('sucursales').select('id').eq('tenant_id', tenantId).eq('activo', true)
+  const ids: string[] = (sucs ?? []).map((s: { id: string }) => s.id)
+  if (typeof sucursalPedida === 'string' && sucursalPedida) {
+    // La sucursal viene del cliente: tiene que ser de ESTE negocio.
+    if (!ids.includes(sucursalPedida)) return { error: 'La sucursal elegida no es de este negocio' }
+    return { puede_ver_todas: false, sucursal_id: sucursalPedida }
+  }
+  if (ids.length === 1) return { puede_ver_todas: false, sucursal_id: ids[0] }
+  // Con varias sucursales es obligatoria (GO 06/10): un empleado restringido sin sucursal no ve nada útil.
+  if (ids.length > 1) return { error: 'Elegí en qué sucursal trabaja' }
+  return { puede_ver_todas: false, sucursal_id: null }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { email, rol, tenant_id, redirect_to } = await req.json()
+    const body = await req.json()
+    const { email, rol, tenant_id, redirect_to } = body
     // El frontend envía su propia URL — funciona en localhost, DEV y PROD sin config extra
     const redirectTo = redirect_to ?? 'https://app.genesis360.pro/dashboard'
     if (!email || !rol || !tenant_id) {
@@ -66,6 +88,10 @@ serve(async (req) => {
     // ({{ .Data.negocio }}, supabase/templates/invite.html).
     const { data: tenantRow } = await supabaseAdmin.from('tenants').select('nombre').eq('id', tenant_id).single()
 
+    // La sucursal se valida ANTES de mandar el correo: si falta, no sale una invitación sin perfil.
+    const alcance = await alcanceInicial(supabaseAdmin, tenant_id, rol, body?.sucursal_id)
+    if ('error' in alcance) throw new Error(alcance.error)
+
     // Invitar via Supabase Admin API (envía el email con magic link)
     const { data: invData, error: invError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
@@ -77,6 +103,7 @@ serve(async (req) => {
     if (invError) throw new Error(invError.message)
 
     // Pre-crear perfil para que no pase por onboarding al aceptar
+
     const { error: profileError } = await supabaseAdmin.from('users').upsert(
       {
         id: invData.user.id,
@@ -88,6 +115,7 @@ serve(async (req) => {
         // (Hotmail, Outlook, correo de empresa) después no podía volver a entrar. Con la marca, el AuthGuard le pide
         // elegir una al entrar por el link (la baja solo la hace la EF usuarios-sin-correo, junto con el cambio).
         debe_cambiar_password: true,
+        ...alcance,
       },
       { onConflict: 'id' }
     )

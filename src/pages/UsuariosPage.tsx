@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserPlus, Trash2, Shield, User, Mail,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw, KeyRound, Copy, Store, MessageCircle,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw, KeyRound, Copy, Store, MessageCircle, Search,
 } from 'lucide-react'
 import { normalizarUsuario, validarUsuario, mensajeDatosAcceso } from '@/lib/usuarioLocal'
 import { PASSWORD_MIN, traducirErrorPassword } from '@/lib/passwordPolicy'
+import { esSiempreGlobal, textoAlcance, cambiarRol, validarAcceso, parcheAcceso, type AccesoUsuario } from '@/lib/accesoUsuario'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -75,10 +76,20 @@ function defaultPermisos(): Record<string, Permiso> {
   return Object.fromEntries(MODULOS.map(m => [m.key, 'no_ver' as Permiso]))
 }
 
-// Roles que siempre tienen visión global (no configurables)
-const ROLES_SIEMPRE_GLOBALES: string[] = ['DUEÑO', 'SUPER_USUARIO']
-// Roles con visión global por defecto (configurable) — el Lector supervisa todas las sucursales
-const ROLES_GLOBAL_DEFAULT: string[] = ['SUPERVISOR', 'CONTADOR', 'VIEWER']
+// Cuenta del equipo de Genesis360 (rol de plataforma, no asignable por el negocio — ver mig 254). Antes caía en el
+// "?? ROLES.CAJERO" y se mostraba como Cajero, con los controles para cambiarle el rol o darla de baja.
+const ROL_STAFF = { label: 'Soporte Genesis360', desc: 'Cuenta del equipo de Genesis360', color: 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' }
+
+/** "Gaston Otranto" → "GO"; "nicolas.otranto86" → "NO". */
+function iniciales(nombre: string | null | undefined): string {
+  const partes = (nombre ?? '').replace(/[._-]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+  if (!partes.length) return '?'
+  return ((partes[0][0] ?? '') + (partes.length > 1 ? partes[partes.length - 1][0] : (partes[0][1] ?? ''))).toUpperCase()
+}
+
+const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+// Roles que siempre tienen visión global (no configurables) — viven en src/lib/accesoUsuario.ts
 
 export default function UsuariosPage() {
   const { tenant, user, sucursales } = useAuthStore()
@@ -112,6 +123,18 @@ export default function UsuariosPage() {
   const [resetPassword, setResetPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [filterRol, setFilterRol] = useState<UserRole | 'TODOS'>('TODOS')
+  // Panel "Editar acceso" (uno abierto a la vez) con borrador: nada se guarda hasta "Guardar cambios".
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [borrador, setBorrador] = useState<AccesoUsuario | null>(null)
+  const accesoDe = (u: any): AccesoUsuario => ({
+    rol: u.rol, puede_ver_todas: !!u.puede_ver_todas, sucursal_id: u.sucursal_id ?? null, rol_custom_id: u.rol_custom_id ?? null,
+  })
+  const abrirEdicion = (u: any) => {
+    if (editandoId === u.id) { setEditandoId(null); setBorrador(null); return }
+    setEditandoId(u.id); setBorrador(accesoDe(u))
+  }
+  const cerrarEdicion = () => { setEditandoId(null); setBorrador(null) }
+  const [busqueda, setBusqueda] = useState('')
   const [showPermisos, setShowPermisos] = useState(false)
   const [editingNombreId, setEditingNombreId] = useState<string | null>(null)
   const [editingNombreValue, setEditingNombreValue] = useState('')
@@ -259,35 +282,29 @@ export default function UsuariosPage() {
     onError: () => toast.error('Error al actualizar nombre'),
   })
 
-  const updateRol = useMutation({
-    mutationFn: async ({ userId, rol, rolAnterior, nombreUsuario }: { userId: string; rol: UserRole; rolAnterior?: string; nombreUsuario?: string }) => {
-      // Al cambiar rol, actualizar puede_ver_todas según el rol nuevo
-      const puede_ver_todas = [...ROLES_SIEMPRE_GLOBALES, ...ROLES_GLOBAL_DEFAULT].includes(rol)
-      const { error } = await supabase.from('users').update({ rol, rol_custom_id: null, puede_ver_todas }).eq('id', userId)
+  // Guarda el borrador del panel en UN update (antes eran 3 controles que guardaban cada uno al tocarlo).
+  const guardarAcceso = useMutation({
+    mutationFn: async ({ u, d }: { u: any; d: AccesoUsuario }) => {
+      const problema = validarAcceso(d, sucursales.length > 0)
+      if (problema) throw new Error(problema)
+      const parche = parcheAcceso(accesoDe(u), d)
+      if (!parche) return false
+      const { error } = await supabase.from('users').update(parche).eq('id', u.id)
       if (error) throw error
-      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: nombreUsuario, accion: 'editar', campo: 'rol', valor_anterior: rolAnterior ?? null, valor_nuevo: rol, pagina: '/usuarios' })
+      const base = { entidad: 'usuario' as const, entidad_id: u.id, entidad_nombre: u.nombre_display, accion: 'editar' as const, pagina: '/usuarios' }
+      if ('rol' in parche) logActividad({ ...base, campo: 'rol', valor_anterior: u.rol, valor_nuevo: parche.rol })
+      if ('rol_custom_id' in parche) logActividad({ ...base, campo: 'rol_custom_id', valor_nuevo: parche.rol_custom_id ?? 'ninguno' })
+      if ('puede_ver_todas' in parche || 'sucursal_id' in parche) {
+        logActividad({ ...base, campo: 'sucursal', valor_nuevo: textoAlcance(d, id => sucursales.find(x => x.id === id)?.nombre) })
+      }
+      return true
     },
-    onSuccess: () => { toast.success('Rol actualizado'); qc.invalidateQueries({ queryKey: ['usuarios'] }) },
-    onError: () => toast.error('Error al actualizar rol'),
-  })
-
-  const updateSucursalPerms = useMutation({
-    mutationFn: async ({ userId, sucursal_id, puede_ver_todas }: { userId: string; sucursal_id: string | null; puede_ver_todas: boolean }) => {
-      const { error } = await supabase.from('users').update({ sucursal_id, puede_ver_todas }).eq('id', userId)
-      if (error) throw error
+    onSuccess: (cambio) => {
+      if (cambio) toast.success('Acceso actualizado')
+      cerrarEdicion()
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
     },
-    onSuccess: () => { toast.success('Permisos de sucursal actualizados'); qc.invalidateQueries({ queryKey: ['usuarios'] }) },
-    onError: () => toast.error('Error al actualizar permisos'),
-  })
-
-  const assignRolCustom = useMutation({
-    mutationFn: async ({ userId, rolCustomId, nombreUsuario }: { userId: string; rolCustomId: string | null; nombreUsuario?: string }) => {
-      const { error } = await supabase.from('users').update({ rol_custom_id: rolCustomId }).eq('id', userId)
-      if (error) throw error
-      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: nombreUsuario, accion: 'editar', campo: 'rol_custom_id', valor_nuevo: rolCustomId ?? 'ninguno', pagina: '/usuarios' })
-    },
-    onSuccess: () => { toast.success('Rol personalizado asignado'); qc.invalidateQueries({ queryKey: ['usuarios'] }) },
-    onError: () => toast.error('Error al asignar rol'),
+    onError: (e: Error) => toast.error(e.message || 'No se pudo guardar el acceso'),
   })
 
   const desactivar = useMutation({
@@ -394,9 +411,12 @@ export default function UsuariosPage() {
 
   const canManage = user?.rol === 'DUEÑO'
 
-  const usuariosFiltrados = filterRol === 'TODOS'
-    ? (usuarios as any[])
-    : (usuarios as any[]).filter(u => u.rol === filterRol)
+  const usuariosFiltrados = (usuarios as any[])
+    .filter(u => filterRol === 'TODOS' || u.rol === filterRol)
+    .filter(u => {
+      const q = sinAcentos(busqueda.trim())
+      return !q || sinAcentos(`${u.nombre_display ?? ''} ${u.usuario ?? ''}`).includes(q)
+    })
 
   const PERMISOS: Record<string, Partial<Record<UserRole, boolean>>> = {
     'Ver inventario':       { DUEÑO: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
@@ -430,24 +450,13 @@ export default function UsuariosPage() {
         <PlanLimitModal tipo="usuario" limits={limits} onClose={() => setShowLimitModal(false)} />
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
+      {/* Encabezado — en celular el botón va abajo a lo ancho (antes se apretaba contra el título). */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
             <Shield size={22} className="text-accent-text" /> Usuarios
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
-          {tenant?.codigo && (
-            // El código que piden los empleados sin correo para entrar (mig 434), siempre a la vista.
-            <div className="mt-2 inline-flex items-center gap-2 text-xs bg-gray-100 dark:bg-gray-700/60 rounded-lg px-2.5 py-1.5" data-testid="codigo-negocio">
-              <Store size={13} className="text-gray-500 dark:text-gray-400 shrink-0" />
-              <span className="text-gray-500 dark:text-gray-400">Código del negocio:</span>
-              <strong className="font-mono text-primary">{tenant.codigo}</strong>
-              <button type="button" onClick={() => copiar(tenant.codigo!, 'Código copiado')} title="Copiar el código"
-                aria-label="Copiar el código del negocio" className="p-0.5 rounded text-gray-400 hover:text-accent-text">
-                <Copy size={13} />
-              </button>
-            </div>
-          )}
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Quién entra a tu negocio y qué puede hacer</p>
         </div>
         {canManage && !showInvitar && (
           <button
@@ -458,9 +467,31 @@ export default function UsuariosPage() {
                 setShowInvitar(true)
               }
             }}
-            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium w-full sm:w-auto transition-[background-color,transform] duration-150 active:scale-[0.97]">
             <UserPlus size={16} /> Agregar usuario
           </button>
+        )}
+      </div>
+
+      {/* Lo que el dueño necesita a mano: el código del negocio (lo piden los empleados sin correo) y cuántos son. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        {tenant?.codigo && (
+          <div className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-1.5 py-1.5" data-testid="codigo-negocio">
+            <Store size={14} className="text-gray-400 shrink-0" />
+            <span className="text-gray-500 dark:text-gray-400">Código del negocio</span>
+            <strong className="font-mono text-primary">{tenant.codigo}</strong>
+            <button type="button" onClick={() => copiar(tenant.codigo!, 'Código copiado')} title="Copiar el código"
+              aria-label="Copiar el código del negocio"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-accent-text hover:bg-accent/10 transition-[color,background-color,transform] duration-150 active:scale-[0.94]">
+              <Copy size={14} />
+            </button>
+          </div>
+        )}
+        {limits && limits.max_usuarios === -1 && (
+          <span className="text-gray-500 dark:text-gray-400">
+            <strong className="font-semibold text-primary tabular-nums">{limits.usuarios_actuales}</strong> usuario{limits.usuarios_actuales !== 1 ? 's' : ''}
+            <span className="text-gray-400 dark:text-gray-500"> · sin límite en tu plan</span>
+          </span>
         )}
       </div>
 
@@ -468,15 +499,6 @@ export default function UsuariosPage() {
           `max_usuarios = -1` es el centinela de "sin límite", y `-1 < 999` da true: sin este caso
           aparte, un plan ilimitado mostraba "13 de -1 usuarios · 0%". Mismo tratamiento que ya le
           daba ProductosPage a `max_productos`. */}
-      {limits && limits.max_usuarios === -1 && (
-        <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm">
-          <User size={15} className="text-gray-400 dark:text-gray-500" />
-          <span className="text-gray-500 dark:text-gray-400 font-medium">
-            {limits.usuarios_actuales} usuario{limits.usuarios_actuales !== 1 ? 's' : ''}
-          </span>
-          <span className="text-xs text-green-600 dark:text-green-400">· Sin límite en tu plan</span>
-        </div>
-      )}
       {limits && limits.max_usuarios !== -1 && limits.max_usuarios < 999 && (
         <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm
           ${limits.pct_usuarios >= 90 ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700'}`}>
@@ -582,7 +604,7 @@ export default function UsuariosPage() {
           )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rol</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {(Object.entries(ROLES) as [UserRole, any][])
                 // Dueño no se asigna por invitación. SUPER_USUARIO (admin técnico) se reserva al
                 // modo avanzado: una PyME en básico no necesita dos roles "administrador".
@@ -626,21 +648,32 @@ export default function UsuariosPage() {
         </form>
       )}
 
-      {/* Filtros por rol */}
-      <div className="flex gap-2 flex-wrap">
-        {(['TODOS', ...Object.keys(ROLES)] as (UserRole | 'TODOS')[]).map(r => {
-          const cfg = r === 'TODOS' ? null : ROLES[r as UserRole]
-          const count = r === 'TODOS' ? (usuarios as any[]).length : (usuarios as any[]).filter((u: any) => u.rol === r).length
-          return (
-            <button key={r} onClick={() => setFilterRol(r)}
-              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
-                ${filterRol === r
-                  ? 'bg-accent text-white border-accent-text shadow-sm'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
-              {r === 'TODOS' ? 'Todos' : cfg!.label} ({count})
-            </button>
-          )
-        })}
+      {/* Búsqueda + filtros por rol. Los roles sin nadie no se muestran (eran 9 pastillas, varias en 0); en celular
+          las pastillas se deslizan en una sola fila en vez de ocupar media pantalla. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative lg:w-72 shrink-0">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar por nombre o usuario"
+            aria-label="Buscar usuarios"
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-primary focus:outline-none focus:border-accent-text" />
+        </div>
+        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {(['TODOS', ...Object.keys(ROLES)] as (UserRole | 'TODOS')[]).map(r => {
+            const cfg = r === 'TODOS' ? null : ROLES[r as UserRole]
+            const count = r === 'TODOS' ? (usuarios as any[]).length : (usuarios as any[]).filter((u: any) => u.rol === r).length
+            if (r !== 'TODOS' && count === 0 && filterRol !== r) return null
+            const activo = filterRol === r
+            return (
+              <button key={r} onClick={() => setFilterRol(r)} aria-pressed={activo}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-sm border transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]
+                  ${activo
+                    ? 'bg-primary text-white border-primary dark:bg-white dark:text-gray-900 dark:border-white'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
+                {r === 'TODOS' ? 'Todos' : cfg!.label} <span className={`tabular-nums ${activo ? 'opacity-70' : 'text-gray-400'}`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Lista de usuarios */}
@@ -649,19 +682,24 @@ export default function UsuariosPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-          <div className="divide-y divide-gray-50 dark:divide-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {usuariosFiltrados.map((u: any) => {
               const rolCustomAsignado = rolesCustom.find(r => r.id === u.rol_custom_id)
-              const rolCfg = ROLES[u.rol as UserRole] ?? ROLES.CAJERO
+              const esStaff = u.rol === 'ADMIN'
+              const rolCfg = esStaff ? ROL_STAFF : (ROLES[u.rol as UserRole] ?? ROLES.CAJERO)
               const esMiUsuario = u.id === user?.id
+              // El staff no se toca desde un negocio; el rol del Dueño tampoco (no es una opción del selector: antes
+              // el selector mostraba "Super Usuario" para el Dueño).
+              const controlesVisibles = canManage && u.activo && !esStaff
               return (
-                <div key={u.id} className={`group px-4 py-4 flex items-center gap-4 ${!u.activo ? 'opacity-50' : ''}`}>
-                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User size={18} className="text-primary" />
+                <div key={u.id}
+                  className={`group px-4 sm:px-5 py-4 grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 gap-y-3 items-center ${!u.activo ? 'opacity-55' : ''}`}>
+                  <div aria-hidden className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${rolCfg.color}`}>
+                    {iniciales(u.nombre_display ?? u.usuario)}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       {canManage && editingNombreId === u.id ? (
                         <>
                           <input
@@ -672,143 +710,73 @@ export default function UsuariosPage() {
                               if (e.key === 'Enter') updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })
                               if (e.key === 'Escape') setEditingNombreId(null)
                             }}
-                            className="text-sm font-medium px-2 py-0.5 border border-accent-text rounded-lg focus:outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 w-40"
+                            className="text-sm font-medium px-2 py-0.5 border border-accent-text rounded-lg focus:outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 w-40 min-w-0"
                           />
-                          <button onClick={() => updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })}
+                          <button onClick={() => updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })} aria-label="Guardar el nombre"
                             className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
                             <Check size={13} />
                           </button>
-                          <button onClick={() => setEditingNombreId(null)}
+                          <button onClick={() => setEditingNombreId(null)} aria-label="Cancelar"
                             className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
                             <XIcon size={13} />
                           </button>
                         </>
                       ) : (
                         <>
-                          <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{u.nombre_display ?? u.id.slice(0, 8)}</p>
-                          {canManage && u.activo && (
-                            <button
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{u.nombre_display ?? u.usuario ?? u.id.slice(0, 8)}</p>
+                          {esMiUsuario && <span className="text-xs text-gray-400 shrink-0">(vos)</span>}
+                          {canManage && u.activo && !esStaff && (
+                            // Siempre visible en pantallas táctiles (no hay hover); en escritorio aparece al pasar.
+                            <button aria-label="Editar el nombre"
                               onClick={() => { setEditingNombreId(u.id); setEditingNombreValue(u.nombre_display ?? '') }}
-                              className="p-0.5 text-gray-300 dark:text-gray-600 hover:text-accent-text rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                              className="p-0.5 shrink-0 text-gray-300 dark:text-gray-600 hover:text-accent-text rounded sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150">
                               <Edit size={12} />
                             </button>
-                          )}
-                          {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-400">(vos)</span>}
-                          {/* Mig 434: entra sin correo. Se muestra para que el dueño sepa qué usuario
-                              tiene que dictarle si se lo olvida. */}
-                          {u.usuario && (
-                            <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded font-mono">
-                              {u.usuario}
-                            </span>
-                          )}
-                          {!u.activo && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Inactivo</span>}
-                          {u.debe_cambiar_password && (
-                            <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                              Contraseña sin estrenar
-                            </span>
                           )}
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rolCfg.color}`}>
-                        {rolCfg.label}
-                      </span>
+                    <div className="flex items-center gap-x-2 gap-y-1 mt-1 flex-wrap text-xs">
+                      <span className={`font-medium px-2 py-0.5 rounded-full ${rolCfg.color}`}>{rolCfg.label}</span>
                       {rolCustomAsignado && (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent-text">
+                        <span className="font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent-text">
                           <Sliders size={10} className="inline mr-1" />{rolCustomAsignado.nombre}
                         </span>
                       )}
-                      {!rolCustomAsignado && <span className="text-xs text-gray-400 dark:text-gray-500">{rolCfg.desc}</span>}
+                      {/* Mig 434: entra sin correo. Se muestra para que el dueño sepa qué usuario dictarle. */}
+                      {u.usuario && <span className="font-mono text-gray-500 dark:text-gray-400">@{u.usuario}</span>}
+                      {!u.activo && <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">Inactivo</span>}
+                      {u.debe_cambiar_password && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Contraseña sin estrenar</span>
+                      )}
+                      <span className="text-gray-400 dark:text-gray-500">
+                        {rolCustomAsignado ? '' : rolCfg.desc}{u.created_at ? `${rolCustomAsignado ? '' : ' · '}desde ${formatFechaCorta(u.created_at)}` : ''}
+                      </span>
                     </div>
-                    {u.created_at && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Desde {formatFechaCorta(u.created_at)}</p>
-                    )}
                   </div>
 
-                  {canManage && u.activo && (
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                      <select value={u.rol}
-                        onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole, rolAnterior: u.rol, nombreUsuario: u.nombre_display })}
-                        className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
-                        {(Object.entries(ROLES) as [UserRole, any][])
-                          .filter(([r]) => r !== 'DUEÑO')
-                          .map(([r, cfg]) => (
-                            <option key={r} value={r}>{cfg.label}</option>
-                          ))}
-                      </select>
-
-                      {/* Controles de sucursal — solo para roles configurables */}
-                      {!ROLES_SIEMPRE_GLOBALES.includes(u.rol) && sucursales.length > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          {/* Toggle puede_ver_todas */}
-                          <button
-                            title={u.puede_ver_todas ? 'Ve todas las sucursales — click para restringir' : 'Restringido a sucursal — click para dar acceso global'}
-                            onClick={() => updateSucursalPerms.mutate({
-                              userId: u.id,
-                              sucursal_id: u.puede_ver_todas ? (u.sucursal_id ?? null) : null,
-                              puede_ver_todas: !u.puede_ver_todas,
-                            })}
-                            className={`p-1.5 rounded-lg transition-colors ${u.puede_ver_todas
-                              ? 'text-accent-text bg-accent/10 hover:bg-accent/20'
-                              : 'text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10'}`}>
-                            <Globe size={15} />
-                          </button>
-                          {/* Selector sucursal (solo cuando está restringido) */}
-                          {!u.puede_ver_todas && (
-                            <select
-                              value={u.sucursal_id ?? ''}
-                              onChange={e => updateSucursalPerms.mutate({
-                                userId: u.id,
-                                sucursal_id: e.target.value || null,
-                                puede_ver_todas: false,
-                              })}
-                              className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white max-w-[120px]">
-                              <option value="">Sin sucursal</option>
-                              {sucursales.map(s => (
-                                <option key={s.id} value={s.id}>{s.nombre}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      )}
-
-                      {rolesCustom.length > 0 && (
-                        <select value={u.rol_custom_id ?? ''} title="Asignar un rol personalizado ya creado"
-                          onChange={e => assignRolCustom.mutate({ userId: u.id, rolCustomId: e.target.value || null, nombreUsuario: u.nombre_display })}
-                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white max-w-[140px]">
-                          <option value="">Sin rol personalizado</option>
-                          {rolesCustom.map((r: any) => (
-                            <option key={r.id} value={r.id}>{r.nombre}</option>
-                          ))}
-                        </select>
-                      )}
-                      <button onClick={() => openUserPermisos(u)} title="Crear/editar permisos a medida para este usuario"
-                        className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
-                        <Sliders size={15} />
+                  {/* Resumen de solo lectura: QUÉ es y DÓNDE trabaja. Se cambia desde "Editar acceso". */}
+                  <div className="col-span-2 lg:col-span-1 flex items-center gap-2 flex-wrap lg:justify-end">
+                    {!esStaff && u.activo && (
+                      <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border ${
+                        !esSiempreGlobal(u.rol) && !u.puede_ver_todas && !u.sucursal_id && sucursales.length > 0
+                          ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                        {esSiempreGlobal(u.rol) || u.puede_ver_todas ? <Globe size={12} /> : <Store size={12} />}
+                        {textoAlcance(accesoDe(u), id => sucursales.find(x => x.id === id)?.nombre)}
+                      </span>
+                    )}
+                    {controlesVisibles && (
+                      <button type="button" onClick={() => abrirEdicion(u)} aria-expanded={editandoId === u.id}
+                        className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]
+                          ${editandoId === u.id
+                            ? 'border-accent-text bg-accent/10 text-accent-text'
+                            : 'border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'}`}>
+                        Editar acceso
+                        <ChevronDown size={14} className={`transition-transform duration-200 ${editandoId === u.id ? 'rotate-180' : ''}`} />
                       </button>
-                      {/* Mig 434: solo las cuentas sin correo. Las que tienen casilla propia la
-                          recuperan con "Olvidé mi contraseña", que les llega a ELLAS — que el dueño
-                          del negocio pudiera pisarles la contraseña sería quedarse con su cuenta. */}
-                      {u.usuario && (
-                        <button onClick={() => { setResetTarget(u); setResetPassword('') }}
-                          title="Reponer la contraseña — no tiene correo para recuperarla por su cuenta"
-                          className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
-                          <KeyRound size={15} />
-                        </button>
-                      )}
-                      {!esMiUsuario && (
-                        <button
-                          title="Desactivar — pierde el acceso a la app"
-                          onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}? Deja de tener acceso a la app hasta que lo reactives.`, { danger: true })) desactivar.mutate(u.id) }}
-                          className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Mig 433: un usuario dado de baja no tiene acceso, así que la única acción que
+                    )}
+                    {/* Mig 433: un usuario dado de baja no tiene acceso, así que la única acción que
                       le queda —y que antes no existía— es volver a darle el alta. */}
                   {canManage && !u.activo && (
                     <button
@@ -820,12 +788,141 @@ export default function UsuariosPage() {
                       Reactivar
                     </button>
                   )}
+                  </div>
+
+                  {/* Panel "Editar acceso" — en orden: qué rol, dónde trabaja, permisos finos y, aparte, la cuenta. */}
+                  {controlesVisibles && editandoId === u.id && borrador && (() => {
+                    const d = borrador
+                    const cambios = parcheAcceso(accesoDe(u), d)
+                    const problema = validarAcceso(d, sucursales.length > 0)
+                    const titulo = (t: string, ayuda?: string) => (
+                      <div className="mb-2">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{t}</p>
+                        {ayuda && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{ayuda}</p>}
+                      </div>
+                    )
+                    return (
+                      <div className="col-span-2 lg:col-span-3 -mx-4 sm:-mx-5 -mb-4 mt-1 px-4 sm:px-5 py-5 bg-gray-50 dark:bg-gray-900/40 border-t border-gray-100 dark:border-gray-700 space-y-6"
+                        data-testid="panel-acceso">
+                        {/* 1 · Rol */}
+                        <section>
+                          {u.rol === 'DUEÑO' ? (
+                            titulo('Rol: Dueño', 'Acceso completo. El rol de Dueño no se cambia desde acá.')
+                          ) : (
+                            <>
+                              {titulo('Rol', 'Define qué partes de la app puede usar.')}
+                              <div role="radiogroup" aria-label="Rol" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                {(Object.entries(ROLES) as [UserRole, any][])
+                                  .filter(([r]) => r !== 'DUEÑO' && (modoAvanzado || r !== 'SUPER_USUARIO' || u.rol === 'SUPER_USUARIO'))
+                                  .map(([r, cfg]) => (
+                                    <button key={r} type="button" role="radio" aria-checked={d.rol === r}
+                                      onClick={() => setBorrador(cambiarRol(d, r))}
+                                      className={`px-3 py-2.5 rounded-xl border-2 text-left transition-[border-color,background-color,transform] duration-150 active:scale-[0.98]
+                                        ${d.rol === r ? 'border-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-500'}`}>
+                                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{cfg.label}</p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{cfg.desc}</p>
+                                    </button>
+                                  ))}
+                              </div>
+                            </>
+                          )}
+                        </section>
+
+                        {/* 2 · Dónde trabaja (reemplaza al ícono del globo) */}
+                        {!esSiempreGlobal(d.rol) && sucursales.length > 0 && (
+                          <section>
+                            {titulo('Dónde trabaja', 'Ve y opera solo lo de su sucursal, o todo el negocio.')}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              <div role="radiogroup" aria-label="Sucursales" className="inline-flex p-1 rounded-xl bg-gray-200/70 dark:bg-gray-800 w-full sm:w-auto">
+                                {([['todas', 'Todas las sucursales'], ['una', 'Una sucursal']] as const).map(([v, label]) => {
+                                  const activo = (v === 'todas') === d.puede_ver_todas
+                                  return (
+                                    <button key={v} type="button" role="radio" aria-checked={activo}
+                                      onClick={() => setBorrador({ ...d, puede_ver_todas: v === 'todas' })}
+                                      className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-sm transition-[background-color,color,box-shadow] duration-150
+                                        ${activo ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.08)] font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                                      {label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              {!d.puede_ver_todas && (
+                                <select value={d.sucursal_id ?? ''} aria-label="Sucursal" onChange={e => setBorrador({ ...d, sucursal_id: e.target.value || null })}
+                                  className="sm:w-56 text-sm border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text">
+                                  <option value="">Elegí la sucursal</option>
+                                  {sucursales.map(sc => <option key={sc.id} value={sc.id}>{sc.nombre}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          </section>
+                        )}
+
+                        {/* 3 · Permisos finos */}
+                        {u.rol !== 'DUEÑO' && (
+                          <section>
+                            {titulo('Permisos a medida', 'Opcional: ajustá módulo por módulo encima del rol.')}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              {rolesCustom.length > 0 && (
+                                <select value={d.rol_custom_id ?? ''} aria-label="Rol personalizado"
+                                  onChange={e => setBorrador({ ...d, rol_custom_id: e.target.value || null })}
+                                  className="sm:w-56 text-sm border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text">
+                                  <option value="">Sin rol personalizado</option>
+                                  {rolesCustom.map((r: any) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                                </select>
+                              )}
+                              <button type="button" onClick={() => openUserPermisos(u)}
+                                className="inline-flex items-center justify-center gap-1.5 text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:border-gray-300 transition-[border-color,transform] duration-150 active:scale-[0.97]">
+                                <Sliders size={14} /> Editar permisos de {u.nombre_display ?? u.usuario ?? 'este usuario'}
+                              </button>
+                            </div>
+                          </section>
+                        )}
+
+                        {/* 4 · Cuenta — separada: son acciones que no se deshacen con "Cancelar" */}
+                        {(u.usuario || !esMiUsuario) && (
+                          <section className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                            {titulo('Cuenta')}
+                            <div className="flex flex-wrap gap-2">
+                              {/* Mig 434: solo las cuentas sin correo (las otras la recuperan ellas por mail). */}
+                              {u.usuario && (
+                                <button type="button" onClick={() => { setResetTarget(u); setResetPassword('') }}
+                                  className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:border-gray-300 transition-[border-color,transform] duration-150 active:scale-[0.97]">
+                                  <KeyRound size={14} /> Reponer contraseña
+                                </button>
+                              )}
+                              {!esMiUsuario && (
+                                <button type="button"
+                                  onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}? Deja de tener acceso a la app hasta que lo reactives.`, { danger: true })) { cerrarEdicion(); desactivar.mutate(u.id) } }}
+                                  className="inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-xl border border-red-200 dark:border-red-900 text-red-700 dark:text-red-400 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-[background-color,transform] duration-150 active:scale-[0.97]">
+                                  <Trash2 size={14} /> Desactivar usuario
+                                </button>
+                              )}
+                            </div>
+                          </section>
+                        )}
+
+                        {/* Pie: guardar el borrador */}
+                        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-1">
+                          {problema && cambios && <p className="text-sm text-amber-700 dark:text-amber-400 sm:mr-auto">{problema}</p>}
+                          <button type="button" onClick={cerrarEdicion}
+                            className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-[background-color,transform] duration-150 active:scale-[0.97]">
+                            Cancelar
+                          </button>
+                          <button type="button" disabled={!cambios || !!problema || guardarAcceso.isPending}
+                            onClick={() => guardarAcceso.mutate({ u, d })}
+                            className="px-4 py-2 rounded-xl text-sm font-semibold bg-accent text-white hover:bg-accent/90 disabled:opacity-40 transition-[background-color,opacity,transform] duration-150 active:scale-[0.97]">
+                            {guardarAcceso.isPending ? 'Guardando…' : 'Guardar cambios'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}
             {usuariosFiltrados.length === 0 && (
               <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                No hay usuarios con el rol seleccionado
+                {busqueda.trim() ? `Nadie coincide con "${busqueda.trim()}"` : 'No hay usuarios con el rol seleccionado'}
               </p>
             )}
           </div>

@@ -46,6 +46,13 @@ type: project
 > 10. Verificar la versión servida con `curl -L`; wiki/memoria; avisar a El Tilo que use "¿Olvidaste tu contraseña?" y
 >     reinvitar al usuario de `outloock.com` con el correo bien escrito.
 >
+> **🧪 PLAN DE TESTING — para mañana / estos días (pedido de GO 06/10):**
+> - **Configuración → Notificaciones, TODOS los checkbox:** verificar que cada uno haga lo que dice, en especial
+>   **saludos por WhatsApp al cliente** (¿se mandan si se activa?) y **la lista de cumpleaños** (¿aparece/avisa?).
+>   Recorrer uno por uno: qué dispara, quién lo recibe, por qué canal, y si apagado de verdad no sale.
+> - **Proveedores y Servicios → Portal de Proveedores:** una vez vinculado un proveedor, NO hay forma de volver a copiar
+>   o reenviarle el link si lo perdió (solo se ve "Vinculado — mail"). Revisar y agregar "Copiar link" / "Reenviar".
+>
 > **Para GO (abierto):** ventas recurrentes (existen; generan el presupuesto con el precio congelado de la plantilla, sin
 > categoría) · links de los correos vencen en 1 h (también las invitaciones; se puede subir a 24 h) · autenticar Figma con
 > `/mcp` · revisar la landing.

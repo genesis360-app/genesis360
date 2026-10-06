@@ -8,6 +8,9 @@ import { quitarPrerender, registrarRaizPrerender } from '@/lib/prerender'
 const PAGINAS: Record<string, () => Promise<{ default: () => JSX.Element }>> = {
   '/': () => import('@/pages/LandingPage'),
   '/para/construccion': () => import('@/pages/ParaConstruccionPage'),
+  '/para/supermercados': () => import('@/pages/ParaRubroPage'),
+  '/para/distribuidoras': () => import('@/pages/ParaRubroPage'),
+  '/para/dieteticas': () => import('@/pages/ParaRubroPage'),
   '/terminos': () => import('@/pages/TerminosPage'),
   '/privacidad': () => import('@/pages/PrivacidadPage'),
   '/cookies': () => import('@/pages/CookiesPage'),

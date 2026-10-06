@@ -61,6 +61,9 @@ function cssDe(fuente, vistos = new Set()) {
 const CSS_POR_RUTA = {
   '/': cssDe('src/pages/LandingPage.tsx'),
   '/para/construccion': cssDe('src/pages/ParaConstruccionPage.tsx'),
+  '/para/supermercados': cssDe('src/pages/ParaRubroPage.tsx'),
+  '/para/distribuidoras': cssDe('src/pages/ParaRubroPage.tsx'),
+  '/para/dieteticas': cssDe('src/pages/ParaRubroPage.tsx'),
   '/terminos': cssDe('src/pages/TerminosPage.tsx'),
   '/privacidad': cssDe('src/pages/PrivacidadPage.tsx'),
   '/cookies': cssDe('src/pages/CookiesPage.tsx'),
@@ -126,7 +129,7 @@ for (const { meta, html } of paginas) {
 const hoy = new Date().toISOString().slice(0, 10)
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${paginas.map(({ meta }) => `  <url><loc>${SITIO_URL}${meta.ruta === '/' ? '/' : meta.ruta}</loc><lastmod>${hoy}</lastmod><priority>${meta.ruta === '/' ? '1.0' : '0.3'}</priority></url>`).join('\n')}
+${paginas.map(({ meta }) => `  <url><loc>${SITIO_URL}${meta.ruta === '/' ? '/' : meta.ruta}</loc><lastmod>${hoy}</lastmod><priority>${meta.ruta === '/' ? '1.0' : meta.ruta.startsWith('/para/') ? '0.8' : '0.3'}</priority></url>`).join('\n')}
 </urlset>
 `
 fs.writeFileSync(path.join(dist, 'sitemap.xml'), sitemap)

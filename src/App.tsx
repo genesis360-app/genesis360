@@ -16,6 +16,7 @@ const LoginPage        = lazy(() => import('@/pages/LoginPage'))
 const RestablecerPasswordPage = lazy(() => import('@/pages/RestablecerPasswordPage'))
 const LandingPage      = lazy(() => import('@/pages/LandingPage'))
 const ParaConstruccionPage = lazy(() => import('@/pages/ParaConstruccionPage'))
+const ParaRubroPage = lazy(() => import('@/pages/ParaRubroPage'))
 const OnboardingPage   = lazy(() => import('@/pages/OnboardingPage'))
 const TerminosPage     = lazy(() => import('@/pages/TerminosPage'))
 const PrivacidadPage   = lazy(() => import('@/pages/PrivacidadPage'))
@@ -170,6 +171,9 @@ function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             {/* Landing 2.0 — páginas por rubro (doc 04 de Fede), públicas y pre-renderizadas */}
             <Route path="/para/construccion" element={<SinPrerender><ParaConstruccionPage /></SinPrerender>} />
+            <Route path="/para/supermercados" element={<SinPrerender><ParaRubroPage /></SinPrerender>} />
+            <Route path="/para/distribuidoras" element={<SinPrerender><ParaRubroPage /></SinPrerender>} />
+            <Route path="/para/dieteticas" element={<SinPrerender><ParaRubroPage /></SinPrerender>} />
             <Route path="/terminos" element={<SinPrerender><TerminosPage /></SinPrerender>} />
             <Route path="/privacidad" element={<SinPrerender><PrivacidadPage /></SinPrerender>} />
             <Route path="/cookies" element={<SinPrerender><CookiesPage /></SinPrerender>} />

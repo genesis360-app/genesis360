@@ -12,7 +12,8 @@
 import type { Root } from 'react-dom/client'
 
 /** Rutas que scripts/prerender.mjs escribe como HTML propio (src/entry-prerender.tsx). */
-export const RUTAS_PRERENDER = ['/', '/para/construccion', '/terminos', '/privacidad', '/cookies']
+// Las páginas por rubro de src/components/landing/rubros.ts van en el mismo orden que RUBROS.
+export const RUTAS_PRERENDER = ['/', '/para/construccion', '/para/supermercados', '/para/distribuidoras', '/para/dieteticas', '/terminos', '/privacidad', '/cookies']
 
 let raiz: Root | null = null
 

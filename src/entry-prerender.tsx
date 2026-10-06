@@ -8,11 +8,14 @@ import TerminosPage from '@/pages/TerminosPage'
 import PrivacidadPage from '@/pages/PrivacidadPage'
 import CookiesPage from '@/pages/CookiesPage'
 import ParaConstruccionPage from '@/pages/ParaConstruccionPage'
+import ParaRubroPage from '@/pages/ParaRubroPage'
+import { RUBROS, metaRubro } from '@/components/landing/rubros'
 import { metaHome, metaConstruccion, META_LEGALES, SITIO_URL, type MetaPagina } from '@/components/landing/contenido'
 
 const PAGINAS: { meta: MetaPagina; Componente: () => JSX.Element }[] = [
   { meta: metaHome(), Componente: LandingPage },
   { meta: metaConstruccion(), Componente: ParaConstruccionPage },
+  ...RUBROS.map(r => ({ meta: metaRubro(r), Componente: ParaRubroPage })),
   { meta: META_LEGALES[0], Componente: TerminosPage },
   { meta: META_LEGALES[1], Componente: PrivacidadPage },
   { meta: META_LEGALES[2], Componente: CookiesPage },

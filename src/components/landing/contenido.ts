@@ -13,7 +13,7 @@ export const FAQ = [
   },
   {
     q: '¿Puedo pasar los datos que ya tengo?',
-    a: 'Sí. Importás productos, stock, clientes y proveedores desde una planilla de Excel o CSV, y antes de confirmar ves una vista previa con lo que va a entrar.',
+    a: 'Sí. Desde el plan Pro importás productos, stock, clientes y proveedores desde una planilla de Excel o CSV, y antes de confirmar ves una vista previa con lo que va a entrar. En el plan Básico los cargás desde la app.',
   },
   {
     q: '¿Sirve para más de una sucursal?',
@@ -110,7 +110,7 @@ export const FAQ_CONSTRUCCION = [
   },
   {
     q: '¿Sirve para un corralón de materiales?',
-    a: 'Sí. Vendés por unidad, kilo o metro, por bolsa o por pallet con su propio precio, armás presupuestos que después pasan a venta sin volver a cargarlos y coordinás la entrega a obra con fecha, franja horaria y hoja de ruta para el chofer.',
+    a: 'Sí. Vendés por unidad, kilo, metro o metro cúbico, por bolsa o por pallet con su propio precio, y armás presupuestos que después pasan a venta sin volver a cargarlos. Desde el plan Pro, además, coordinás la entrega a obra con fecha, franja horaria y hoja de ruta para el chofer.',
   },
   {
     q: '¿Puedo tener precios distintos para contratistas y colocadores?',

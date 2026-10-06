@@ -220,3 +220,26 @@ volúmenes de búsqueda.
 de GO/Fede, eventos de conversión), probar el deploy en el preview de Vercel (`dev`) antes de PROD: que `app.genesis360.pro`
 cargue el login, que `genesis360.pro/` y `/para/construccion` lleguen armados (`curl -s … | grep "Vendé, cobrá"`), y que una
 PWA ya instalada siga abriendo la app.
+
+## 8. Fase 4 (resto de rubros) — hecha y en `dev` el 2026-10-06 (pre-release `v1.240.0-rc.2`)
+
+- **Preview de `dev` verificado en Vercel** (v1.240.0-rc.1): `/` y `/para/construccion` llegan armados, `/login`, `/dashboard` y
+  `/app.html` reciben el armazón con `noindex`, `robots.txt`/`sitemap.xml`/imagen OG responden; en el navegador, CON service
+  worker activo, la navegación a `/login` la sirve el SW con la app (no la landing), la home se hidrata y "Probar gratis" lleva
+  a `/onboarding`, sin errores.
+- **Páginas nuevas:** `/para/supermercados`, `/para/distribuidoras`, `/para/dieteticas` — una plantilla
+  (`src/pages/ParaRubroPage.tsx`, el rubro sale de la URL) y contenido PROPIO de cada rubro en
+  `src/components/landing/rubros.ts` (problema, soluciones, día típico, preguntas, metadatos, términos objetivo). Cada una con
+  una pieza dibujada propia (caja con promo y descuento por vencimiento; reparto con estados de pedidos; venta a granel).
+  Linkeadas desde la tarjeta "Y también" de la home y desde el pie. Test: ninguna página contiene el titular de otro rubro.
+- 🛑 **Honestidad de planes (Ley 24.240), corregido en la home también:** la FAQ decía que se importa desde Excel sin aclarar
+  que la importación masiva es del plan Pro; Módulos mostraba Compras/Envíos/RRHH sin plan. Ahora: la FAQ dice "desde el plan
+  Pro", Módulos aclara "Compras y Envíos desde Pro, RRHH en Enterprise", y en las páginas por rubro (Construcción incluida) cada
+  función que no está en Básico lleva la etiqueta "Plan Pro" + aviso con link a precios. Test: la FAQ de importación nombra el
+  plan Pro.
+- Verificado en el código antes de escribir: cantidades con decimales para unidades de peso/volumen (`esDecimal`), presets de
+  unidades por rubro (`PRESETS_RUBRO`: corralón con m²/m³), lector de código de barras (`BarcodeScanner` en el POS), precios
+  programados, descuento automático por estado de inventario (`descuentoEstado.ts`, modo avanzado → Pro), cupones,
+  Pedidos/picking y hoja de ruta (Pro).
+- **Queda:** más rubros (indumentaria con talle/color, kioscos, librerías…) cuando se definan; validar los términos con Search
+  Console (Fase 5, necesita la cuenta de GO/Fede).

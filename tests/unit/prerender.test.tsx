@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { renderizar } from '@/entry-prerender'
 import { RUTAS_PRERENDER } from '@/lib/prerender'
 import { FAQ, FAQ_CONSTRUCCION } from '@/components/landing/contenido'
+import { RUBROS } from '@/components/landing/rubros'
 
 // Landing 2.0, Fase 1 (SEO/GEO): lo que reciben Google y los buscadores con IA es el HTML que arma scripts/prerender.mjs
 // con esta misma función. Si una página deja de renderizar en el servidor (p. ej. alguien usa `window` al importar un
@@ -29,6 +30,20 @@ describe('pre-render de páginas públicas', () => {
     for (const { q } of FAQ_CONSTRUCCION) expect(p.html).toContain(q)
     const ld = p.meta.jsonLd as any[]
     expect(ld.map(o => o['@type'])).toEqual(['BreadcrumbList', 'FAQPage'])
+  })
+
+  it('cada página por rubro tiene su propio contenido, no el de otro rubro (doc 04 §4)', () => {
+    for (const r of RUBROS) {
+      const p = paginas.find(x => x.meta.ruta === `/para/${r.slug}`)!
+      expect(p.html).toContain(r.h1)
+      for (const { q } of r.faq) expect(p.html).toContain(q)
+      for (const otro of RUBROS.filter(o => o.slug !== r.slug)) expect(p.html).not.toContain(otro.h1)
+    }
+  })
+
+  it('la importación masiva no se promete en el plan Básico', () => {
+    const resp = FAQ.find(f => /datos que ya tengo/.test(f.q))!.a
+    expect(resp).toMatch(/plan Pro/)
   })
 
   it('cada página tiene título y descripción propios', () => {

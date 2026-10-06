@@ -244,7 +244,8 @@ export function SeccionModulos() {
 
         <p className="mt-10 text-lg text-zinc-700 max-w-[62ch]">
           <strong className="font-semibold text-[#0D0D0D]">Cada módulo se configura a tu manera.</strong> Activá lo que tu
-          negocio necesita hoy y sumá más a medida que crecés.
+          negocio necesita hoy y sumá más a medida que crecés. Compras y Envíos vienen desde el plan Pro, y RRHH en
+          Enterprise: <a href="#precios" className="underline underline-offset-4 hover:text-[#0D0D0D]">ver qué incluye cada plan</a>.
         </p>
       </div>
     </section>
@@ -417,7 +418,13 @@ export function SeccionEscalabilidad() {
 
 /* ── 9 · Para tu rubro ───────────────────────────────────────────────────────────────────────────────────────────── */
 
-const OTROS_RUBROS = ['Almacenes y autoservicios', 'Distribuidoras', 'Dietéticas', 'Indumentaria', 'Kioscos', 'Librerías', 'Bazares', 'Casas de repuestos']
+// Los que tienen página propia (Fase 4, src/components/landing/rubros.ts) linkean; el resto, por ahora, es texto.
+const OTROS_RUBROS: { label: string; ruta?: string }[] = [
+  { label: 'Supermercados y almacenes', ruta: '/para/supermercados' },
+  { label: 'Distribuidoras', ruta: '/para/distribuidoras' },
+  { label: 'Dietéticas', ruta: '/para/dieteticas' },
+  { label: 'Indumentaria' }, { label: 'Kioscos' }, { label: 'Librerías' }, { label: 'Bazares' }, { label: 'Casas de repuestos' },
+]
 
 export function SeccionRubros() {
   return (
@@ -449,7 +456,11 @@ export function SeccionRubros() {
             <h3 className="text-xl font-semibold tracking-tight">Y también</h3>
             <ul className="mt-5 flex flex-wrap gap-2">
               {OTROS_RUBROS.map(r => (
-                <li key={r} className="rounded-full border border-zinc-200 px-3.5 py-1.5 text-sm text-zinc-700">{r}</li>
+                <li key={r.label}>
+                  {r.ruta
+                    ? <Link to={r.ruta} className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-3.5 py-1.5 text-sm font-medium text-[#0D0D0D] hover:border-[#7B00FF] hover:text-[#6A00DD] transition-colors">{r.label}<ArrowRight size={13} /></Link>
+                    : <span className="inline-block rounded-full border border-zinc-200 px-3.5 py-1.5 text-sm text-zinc-600">{r.label}</span>}
+                </li>
               ))}
             </ul>
             <p className="mt-6 text-sm leading-relaxed text-zinc-500">Cada negocio lo configura a su manera: no hay una única forma correcta de usarlo.</p>

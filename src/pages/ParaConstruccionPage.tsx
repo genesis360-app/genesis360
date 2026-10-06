@@ -27,15 +27,15 @@ const DOLORES = [
   { icon: FileClock, texto: 'Los presupuestos se hacen a mano y, cuando el cliente confirma, hay que volver a cargar todo.' },
 ]
 
-const SOLUCIONES = [
+const SOLUCIONES: { icon: typeof Layers; titulo: string; texto: string; plan?: 'Pro' }[] = [
   { icon: Layers, titulo: 'Variantes por medida, color y presentación', texto: 'Un producto principal y una variante por cada medida o color, cada una con su stock, su código y su precio.' },
-  { icon: Ruler, titulo: 'Vendé por unidad, metro o kilo', texto: 'Y por bolsa, caja o pallet con su propio precio. El stock se descuenta en la unidad que corresponde.' },
+  { icon: Ruler, titulo: 'Vendé por unidad, metro o kilo', texto: 'También por metro cuadrado o cúbico, y por bolsa, caja o pallet con su propio precio. El stock se descuenta en la unidad que corresponde.' },
   { icon: BadgePercent, titulo: 'Precio para contratistas', texto: 'Categorías de clientes con su descuento por producto y precio por cantidad. En la venta se aplica solo.' },
   { icon: FileText, titulo: 'Presupuestos que pasan a venta', texto: 'Armás el presupuesto, lo mandás en PDF y, cuando confirma, se convierte en venta sin volver a cargarlo.' },
-  { icon: Truck, titulo: 'Entregas a obra', texto: 'Cada entrega con su fecha y franja horaria, y la hoja de ruta del chofer con todo lo que sale ese día.' },
+  { icon: Truck, titulo: 'Entregas a obra', texto: 'Cada entrega con su fecha y franja horaria, y la hoja de ruta del chofer con todo lo que sale ese día.', plan: 'Pro' },
   { icon: Wallet, titulo: 'Cuenta corriente con límite', texto: 'Cuánto debe cada cliente, desde cuándo y hasta cuánto le podés fiar.' },
   { icon: Receipt, titulo: 'Factura electrónica ARCA', texto: 'Factura A, B o C desde la misma venta, según tu condición y la del cliente.' },
-  { icon: PackagePlus, titulo: 'Reposición sin adivinar', texto: 'Alertas de stock bajo y el pedido al proveedor armado con lo que falta.' },
+  { icon: PackagePlus, titulo: 'Reposición sin adivinar', texto: 'Alertas de stock bajo y el pedido al proveedor armado con lo que falta.', plan: 'Pro' },
 ]
 
 const DIA = [
@@ -160,16 +160,22 @@ export default function ParaConstruccionPage() {
             Cómo lo resuelve {BRAND.name}.
           </h2>
           <ul className="mt-14 grid gap-x-12 sm:grid-cols-2 border-t border-zinc-200">
-            {SOLUCIONES.map(({ icon: Icon, titulo, texto }, i) => (
+            {SOLUCIONES.map(({ icon: Icon, titulo, texto, plan }, i) => (
               <li key={titulo} className="lp-rev flex gap-5 border-b border-zinc-200 py-7" style={v(i)}>
                 <Icon size={22} className="mt-0.5 flex-none text-[#7B00FF]" />
                 <div>
-                  <h3 className="text-lg font-semibold tracking-tight">{titulo}</h3>
+                  <h3 className="text-lg font-semibold tracking-tight">
+                    {titulo}
+                    {plan && <span className="ml-2 align-middle whitespace-nowrap rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600">Plan {plan}</span>}
+                  </h3>
                   <p className="mt-1.5 leading-relaxed text-zinc-600">{texto}</p>
                 </div>
               </li>
             ))}
           </ul>
+          <p className="mt-8 text-sm text-zinc-600">
+            Lo marcado con su plan no está incluido en el plan Básico. <a href="/#precios" className="underline underline-offset-4 hover:text-[#0D0D0D]">Ver planes y precios</a>.
+          </p>
         </div>
       </section>
 

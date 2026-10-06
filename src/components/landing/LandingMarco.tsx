@@ -93,6 +93,9 @@ export function LandingPie({ enHome = false }: { enHome?: boolean }) {
             <a href={href('precios')} className="hover:text-white transition-colors">Precios</a>
             <a href={href('faq')} className="hover:text-white transition-colors">Preguntas</a>
             <Link to="/para/construccion" className="hover:text-white transition-colors">Construcción</Link>
+            <Link to="/para/supermercados" className="hover:text-white transition-colors">Supermercados</Link>
+            <Link to="/para/distribuidoras" className="hover:text-white transition-colors">Distribuidoras</Link>
+            <Link to="/para/dieteticas" className="hover:text-white transition-colors">Dietéticas</Link>
             <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
             <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
             <Link to="/cookies" className="hover:text-white transition-colors">Cookies</Link>

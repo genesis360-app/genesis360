@@ -6,7 +6,7 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-475, + correctivos 387b/387c)
+# Historial de Migraciones (001-476, + correctivos 387b/387c)
 
 📦 **Migración 475 — ✅ EN DEV Y PROD (2026-10-06, v1.239.0)**: envío de la OC. La OC dice quién lo cobra: el proveedor (default; suma al total, al pago y a la deuda, cargo `es_envio` de la CC al recibir) o un tercero (gasto "Fletes" aparte, no suma). Una vez por OC. Editar una OC ahora guarda el envío. Consulta al contador C-22 (ver [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
 
@@ -3296,3 +3296,5 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 - [[wiki/database/rls-policies]]
 - [[wiki/development/deploy]]
 - [[wiki/development/supabase-dev-vs-prod]]
+
+| 476 | `476_prueba_30_dias.sql` | La prueba gratis pasa de 15 a 30 días: default de `tenants.trial_ends_at` = `now() + 30 days` (solo altas nuevas). Decisión de GO 2026-10-06 (Landing 2.0) | ✅ PROD v1.239.3 |

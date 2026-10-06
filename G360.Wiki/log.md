@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-06] deploy | v1.239.3 — La prueba gratis pasa a 30 días (mig 476)
+
+- Decisión de GO (Landing 2.0). Mig 476: default de `tenants.trial_ends_at` = `now() + 30 days` (altas nuevas; las pruebas en
+  curso conservan su fecha, mismo criterio que la mig 457). Textos de landing, alta, planes y `estadoTrial` alineados;
+  `app-reference` + `planes-pricing` actualizados y `ai-assistant` redeployado (DEV y PROD). **PR #377**, release
+  `v1.239.3`; mig verificada en PROD; `genesis360.pro` muestra "30 días gratis". Equipo para la landing: Gastón Otranto y
+  Federico Messina (fotos pendientes). WhatsApp IA: no se menciona hasta App Review (confirmado por GO).
+
 ## [2026-10-06] deploy | v1.239.2 — Landing sin testimonios inventados (Fase 0 de Landing 2.0)
 
 - GO respondió las 10 decisiones del plan (tabla en [[wiki/business/plan-landing-2]]). Fase 0: se sacaron los 3

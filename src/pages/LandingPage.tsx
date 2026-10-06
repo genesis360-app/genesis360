@@ -43,26 +43,10 @@ const FEATURES = [
   },
 ]
 
-const TESTIMONIALS = [
-  {
-    nombre: 'Carlos M.',
-    negocio: 'Ferretería El Tornillo',
-    texto: 'Antes perdía horas contando stock. Ahora sé en tiempo real qué tengo y qué me falta pedir.',
-    estrellas: 5,
-  },
-  {
-    nombre: 'Laura P.',
-    negocio: 'Despensa La Esquina',
-    texto: 'La función de venta directa es increíble. Registro la venta y el stock se descuenta solo.',
-    estrellas: 5,
-  },
-  {
-    nombre: 'Martín R.',
-    negocio: 'Kiosco Central',
-    texto: 'Muy fácil de usar. Lo aprendí en un día y ya no puedo trabajar sin él.',
-    estrellas: 5,
-  },
-]
+// 🛑 Testimonios: SOLO de clientes reales, con su permiso (GO 2026-10-06). Acá había 3 inventados ("Carlos M., Ferretería
+// El Tornillo"…, 5 estrellas) publicados en PROD: publicidad engañosa (Ley 24.240), lo marcó el doc 00 de Fede. El slot
+// queda armado y no se muestra mientras la lista esté vacía (Landing 2.0, wiki/business/plan-landing-2.md).
+const TESTIMONIALS: { nombre: string; negocio: string; texto: string; estrellas: number }[] = []
 
 const FAQ = [
   {
@@ -313,8 +297,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ── */}
-      <section className="py-20 bg-brand-bg">
+      {/* ── TESTIMONIALS ── (solo reales; oculto mientras no haya ninguno) */}
+      {TESTIMONIALS.length > 0 && <section className="py-20 bg-brand-bg">
         <div className="max-w-6xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-primary text-center mb-12">
             Lo que dicen nuestros clientes
@@ -336,7 +320,7 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* ── PRECIOS ── */}
       <section id="precios" className="py-20">

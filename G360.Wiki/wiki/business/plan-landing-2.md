@@ -49,6 +49,21 @@ updated: 2026-10-06
    [[wiki/business/planes-pricing]] (Xubio, Contabilium, Netegia…) — confirmar que siguen vigentes.
 10. **Nichos además de Construcción:** ¿supermercados, distribuidoras, dietéticas, indumentaria…? ¿cuáles en la 1ª tanda?
 
+### ✅ Respuestas de GO (2026-10-06)
+
+| # | Decisión | Qué implica |
+|---|---|---|
+| 1 | **Sí**, sacar los testimonios inventados | ✅ HECHO en v1.239.2 (slot oculto hasta el primer testimonio real; e2e 186) |
+| 2 | **30 días** de prueba | ⚠️ La app hoy da 15 (Pricing v7). Hay que cambiar la APP también (alta + facturación) → **esperando OK de GO**; mientras, la landing sigue diciendo 15 |
+| 3 | **Hero actual** | Se conserva "Vendé, cobrá y sabé qué te queda"; el mensaje de IA va en su propia sección |
+| 4 | **Claro con secciones oscuras** | Base clara; IA y CTA final (y quizás "Problema") en oscuro |
+| 5 | WhatsApp: "¿próximamente o que no diga nada? (para no darle ideas a la competencia)" | Recomendación de Claude: **no mencionarlo** hasta que Meta lo apruebe — confirmar con GO |
+| 6 | **En este proyecto** | Pre-render de las rutas públicas en el mismo repo (Fase 1) |
+| 7 | Primeros socios | **Pendiente** — GO pasa las condiciones después |
+| 8 | Equipo: **nombres y fotos** | GO tiene que pasar las fotos (y confirmar nombres) |
+| 9 | **Sin comparativa** | Se elimina la sección 6 del doc 01 |
+| 10 | **Todos los rubros, cualquier pyme** | Landing general para cualquier pyme; sub-páginas por rubro (Construcción primero) |
+
 ## 3. Dirección de diseño (las 3 skills aplicadas)
 
 - **Design read (Taste §0.B):** *landing de SaaS (modo Persuade de impeccable) para dueños de negocios argentinos que venden

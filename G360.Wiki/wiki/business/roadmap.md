@@ -3,16 +3,26 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-10-03
+updated: 2026-10-06
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.238.0`** (2026-10-03, migs 001-**466**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.239.0`** (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-466; paridad `pg_policies` por schema al 2026-10-03: `public` **245** · `storage` **40** · `cron` **2** — comparar solo DEV vs PROD del mismo día). PR **#370** `dev→main`, merge **`8be5f1fb`**, release **`v1.238.0` Latest**.
+✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06 desde otra sesión; el número de PR, el merge y el hash de `pg_policies` por schema los registra esa sesión en `log.md`). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
+
+## 🏷️ v1.239.0 — Categorías de clientes completo (B2), acceso por correo, CC de proveedores, número y envío de la OC, rediseño de Usuarios (2026-10-06, EN PROD)
+
+- **Migs 467 → 475 en PROD**, de a una con `scripts/aplicar-migracion.mjs`: 467 motor único de precio · 468 categoría en el motor + tope de descuento · 469-470 cartel con IA + reporte "Descuentos por categoría" · 471 acceso por correo · 472 rediseño de Categorías de clientes · 473 cuenta corriente de PROVEEDORES (modelo nuevo) · 474 un solo número de OC · 475 envío de la OC. EF nueva `categoria-cartel-ia`; redeploy de `invite-user`, `usuarios-sin-correo`, `admin-api`.
+- **B2 completo**: `fn_precios_lineas` único para POS/Pedidos/Presupuesto; la categoría compite en el precio con tope de descuento; cartel con IA (la IA solo redacta); reporte F3. Las **ventas recurrentes** cotizan con el motor único al generar el presupuesto (`cotizarRecurrente`). Ver [[wiki/features/precios-tiers-empaque]].
+- **Acceso por correo**: invitados eligen contraseña, "¿Olvidaste tu contraseña?", correos de Auth en castellano, links a 24 h. **Contraseñas**: mínimo 10 (el de Supabase Auth) y errores en castellano. **Usuarios**: página rediseñada (panel "Editar acceso" con borrador, tarjeta de datos para entrar, alta con alcance). Ver [[wiki/features/autenticacion-onboarding]].
+- **CC de proveedores (mig 473, decisión de GO)**: la deuda nace al recibir; pagos imputados a la OC más vieja; cierra 4 bugs REGLA #0 (OC a CC dos veces, saldo negativo, pago sin cerrar OC, efectivo que no entraba en caja). Número de OC unificado (474) y envío de la OC (475, consulta C-22 al contador). Ver [[wiki/features/clientes-proveedores]], [[wiki/features/gastos]].
+- **Test estático** `tests/unit/columnasEscritas.test.ts` (insert/update vs `schema_full.sql`): encontró `caja_movimientos.created_by` y `gastos.proveedor_id`.
+- **Landing**: hero nuevo (Geist self-hosted). **Video** "Crear un usuario y su primer ingreso" (78 s).
+- Tests al cierre: **2.232 unit**, **e2e ~452 + 184**.
 
 ## 💲 v1.238.0 — Pricing v7, caja por sucursal, KIT atómico, suscripciones, categorías (lista), pedidos por fecha (2026-10-03, EN PROD)
 

@@ -921,7 +921,7 @@ POS:
 - **Redondeo del tenant** (H4).
 - **Descuento por estado de inventario** (migs 284-285), prorrateado **por fuente**: cada unidad
   descuenta según el % del estado de SU línea concreta.
-- 🟡 **Categoría del cliente (mig 468, 2026-10-03, SOLO EN DEV)**: `fn_pedido_generar_venta` toma el precio de
+- ✅ **Categoría del cliente (mig 468, 2026-10-03; EN PROD v1.239.0, 2026-10-06)**: `fn_pedido_generar_venta` toma el precio de
   `fn_precios_lineas` con el cliente del pedido (la categoría compite con tier/empaque/canal y gana el más
   bajo), calcula el estado con `fn_descuento_estado_unitario` (con categoría activa compite contra la lista) y
   graba `mecanismo_precio`. El tope de descuento acumulado se controla al confirmar la venta (constraint

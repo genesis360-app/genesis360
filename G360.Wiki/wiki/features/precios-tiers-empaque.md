@@ -33,7 +33,7 @@ updated: 2026-10-04
 > **Deploy:** migs 328-333 en PROD, PR #309 (`50fd025c`), tag `v1.155.0`. ⚠ Nadie probó A/B/C a mano
 > en el navegador de PROD todavía (deployado igual, autorizado explícitamente por GO).
 
-## 🧮 Motor único de precio en SQL (mig 467, 2026-10-03) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.1`, commit `055bfbdd`)
+## 🧮 Motor único de precio en SQL (mig 467, 2026-10-03) — ✅ EN PROD desde v1.239.0 (2026-10-06; commit `055bfbdd`)
 
 B2 / Fase 3 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`. Antes había dos motores (cliente `tiers.ts` y servidor `fn_precio_venta_efectivo`) que debían dar el mismo número; ahora hay uno en SQL.
 
@@ -47,7 +47,7 @@ B2 / Fase 3 de `sources/raw/plan_categorias_clientes_y_precio_programado.md`. An
 - **Hallazgo abierto para GO**: las "ventas recurrentes" SÍ existen (plantillas que generan presupuestos con precio congelado), contra lo asumido en PL-2. Pendiente de decisión.
 - **Siguiente (Fase 4)**: ✅ hecha en DEV, ver la sección de abajo. Ver [[wiki/features/clientes-proveedores]] y [[wiki/database/migraciones]].
 
-## 🏷️ La categoría del cliente en el motor + tope de descuento (mig 468, 2026-10-03) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.2`, commits `3b0bb474` + `7930c539`)
+## 🏷️ La categoría del cliente en el motor + tope de descuento (mig 468, 2026-10-03) — ✅ EN PROD desde v1.239.0 (2026-10-06; commits `3b0bb474` + `7930c539`)
 
 B2 / Fase 4. Aplicar la 467 antes que la 468 al deployar.
 
@@ -61,7 +61,7 @@ B2 / Fase 4. Aplicar la 467 antes que la 468 al deployar.
 - **Validación**: paridad sin categoría 139.288 casos, 0 diferencias (`scripts/paridad-motor-precio.mjs` mide `fn_precio_motor_cliente` con cliente NULL); 19 casos SQL de referencia (A1 x4, A2 x2, tope, F2, Pedidos multilínea, UPDATE, redondeo); e2e 180; regresión e2e 50 passed / 0 failed (54 y 63 se saltean por fixture previo); unit 2167; UAT §98 (§96.6 actualizado).
 - ~~Falta (Fase 5)~~ → **hecha el 2026-10-04 en DEV, ver la sección siguiente.**
 
-## 🪧 Cartel con IA + reporte de lo no facturado por la categoría (migs 469-470, 2026-10-04) — 🟡 SOLO EN DEV, no en PROD (pre-release `v1.239.0-rc.3`, commit `3a31a2f1`)
+## 🪧 Cartel con IA + reporte de lo no facturado por la categoría (migs 469-470, 2026-10-04) — ✅ EN PROD desde v1.239.0 (2026-10-06; commit `3a31a2f1`)
 
 B2 / Fase 5; con esto **B2 queda completo en DEV**. Deploy a PROD en orden 467 -> 468 -> 469 -> 470 + EF `categoria-cartel-ia`.
 

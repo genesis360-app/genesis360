@@ -3,7 +3,7 @@ title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable, buscador, moneda-usd]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md, src/pages/GastosPage.tsx, migration 372, migration 373, migration 379, migration 380, migration 381, migration 389, src/components/SolicitarAutorizacionGastoModal.tsx, src/components/BandejaAutorizacionesGasto.tsx]
-updated: 2026-09-12
+updated: 2026-10-06
 ---
 
 # Módulo Gastos
@@ -153,6 +153,8 @@ El modal "Registrar gasto" ahora incluye:
 - Badge "Borrador" también visible aquí
 
 ---
+
+> 🧾 **2026-10-06 (v1.239.0, EN PROD, migs 473-475)**: (1) La **deuda con el proveedor nace al RECIBIR** la OC (cargo en su CC por el gasto "Compra OC"); todo pago descuenta y "Cuenta Corriente" como medio solo fija el plazo (ver [[wiki/features/clientes-proveedores]], mig 473). (2) **Un solo número de OC** en toda la app (mig 474, `fn_oc_etiqueta` + `src/lib/ocNumero.ts`): "OC S-OC-0070" según `tenants.oc_numeracion` en Gastos, Recepciones, Cheques, Alertas, Portal, PDF y textos de la CC. (3) **Envío de la OC** (mig 475): la OC dice quién lo cobra, el proveedor (suma al total, al pago y a la deuda) o un tercero (gasto "Fletes" aparte); editar una OC guarda el envío; consulta al contador C-22. (4) Una OC con pagos no cambia ítems ni proveedor. Abierto: el PDF de la OC suma aduana/comisión/otros al TOTAL aunque no se le pagan al proveedor (a consultar con GO).
 
 ## Tab "Órdenes de Compra" — v1.6.0+
 

@@ -3,17 +3,24 @@ title: Autenticación y Onboarding
 category: features
 tags: [auth, onboarding, google-oauth, trial, suscripcion, guard]
 sources: [CLAUDE.md]
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # Autenticación y Onboarding
 
-> 🔑 **2026-10-05 (solo DEV, commit `64b000c6`, mig 471; deploy a PROD pendiente, v1.239.0) — Invitaciones, recuperar contraseña y correos de Auth en castellano.**
-> - **El problema (caso real El Tilo, PROD)**: un SUPER_USUARIO invitado con Hotmail entró una vez por el link y no pudo volver. El link de `inviteUserByEmail` inicia sesión UNA vez y nunca pedía contraseña; con Gmail no se notaba (entra por Google). Tampoco existía "¿Olvidaste tu contraseña?". Los correos de Auth en PROD eran los de fábrica, en inglés (SMTP Resend; los links vencen en 1 h, `mailer_otp_exp=3600`, también las invitaciones).
+> 🔑 **2026-10-05 (commit `64b000c6`, mig 471; EN PROD v1.239.0, 2026-10-06) — Invitaciones, recuperar contraseña y correos de Auth en castellano.**
+> - **El problema (caso real El Tilo, PROD)**: un SUPER_USUARIO invitado con Hotmail entró una vez por el link y no pudo volver. El link de `inviteUserByEmail` inicia sesión UNA vez y nunca pedía contraseña; con Gmail no se notaba (entra por Google). Tampoco existía "¿Olvidaste tu contraseña?". Los correos de Auth en PROD eran los de fábrica, en inglés (SMTP Resend; los links vencían en 1 h, `mailer_otp_exp=3600`; desde 2026-10-06 vencen a las 24 h).
 > - **Arreglo**: la EF `invite-user` crea al invitado con `debe_cambiar_password=true` y manda el nombre del negocio en `data.negocio`; `AuthGuard` le pide elegir contraseña con el componente compartido `ElegirPasswordForm` (texto propio para invitados vs empleados sin correo de la mig 434). El login tiene "¿Olvidaste tu contraseña?" (respuesta neutra, no revela si el correo existe) y la página `/restablecer-contrasena`. Aviso de dominio mal tipeado al invitar (`src/lib/dominioCorreo.ts`). Errores de Supabase traducidos.
 > - **Mig 471**: marca `debe_cambiar_password` a los invitados existentes que nunca volvieron a entrar o no abrieron el link, sin Google. En PROD: 9 = 8 de El Tilo (incl. el de Hotmail y uno con correo mal tipeado "outloock.com") + 1 de otro negocio.
 > - **Correos de Auth en castellano y con la marca**, versionados en `supabase/templates/` (ver [[wiki/integrations/resend-email]]).
-> - Tests: e2e 182, unit `dominioCorreo`, UAT §100. **Pendiente operativo**: tras el deploy avisar a El Tilo que use "¿Olvidaste tu contraseña?" y reinvitar al de outloock.com con el correo bien escrito.
+> - Tests: e2e 182, unit `dominioCorreo`, UAT §100. **Pendiente operativo (post-deploy)**: avisar a El Tilo que use "¿Olvidaste tu contraseña?" y reinvitar al de outloock.com con el correo bien escrito.
+>
+> 🔐 **2026-10-06 (v1.239.0, EN PROD) — Contraseñas, links de Auth y rediseño de Usuarios.**
+> - **Contraseñas**: el mínimo es el de Supabase Auth (**10**; la app decía 8 y fallaba en el servidor, también en el alta de negocio) y los errores salen en castellano (`src/lib/passwordPolicy.ts`). EFs `usuarios-sin-correo` y `admin-api` alineadas.
+> - **Links de Auth a 24 h**: `mailer_otp_exp=86400` (antes 1 h, también las invitaciones), aplicado con `scripts/aplicar-plantillas-auth.mjs` (ver [[wiki/integrations/resend-email]]).
+> - **Usuarios (página rediseñada)**: la fila informa rol y dónde trabaja; el panel **"Editar acceso"** trabaja con borrador (rol → dónde trabaja → permisos → cuenta) y guarda con "Guardar cambios" (antes cada selector guardaba al tocarlo). La cuenta de staff ADMIN se ve "Soporte Genesis360" sin controles; el Dueño ya no muestra selector en "Super Usuario"; en celular se ven los nombres; buscador; el **código del negocio** siempre a la vista con copiar; tarjeta con los datos para entrar (copiar / WhatsApp) al crear un usuario sin correo o reponerle la contraseña.
+> - **Un usuario nuevo nace con su alcance** (`src/lib/accesoUsuario.ts`): los roles que ven todo, en todas las sucursales; el resto, en la sucursal elegida (OBLIGATORIA si hay más de una) o la única.
+> - Video de onboarding "Crear un usuario y su primer ingreso": ver [[wiki/manuales/guion-videos-onboarding]].
 
 ---
 

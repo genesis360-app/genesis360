@@ -418,3 +418,12 @@ bug de código, es qué motivos se siembran.
 ✅ **Resuelto (mig 420, 2026-09-14, decisión de GO):** los chips ahora son "Ingreso de efectivo",
 "Aporte del dueño" y "Fondo de cambio". En los negocios existentes se desactivaron "Extracción / Retiro"
 y "Gastos varios". ⚠️ **El video 5 grabado muestra los chips viejos**: si se publica, regrabar ese tramo.
+
+---
+
+## 🎬 Video "Crear un usuario y su primer ingreso" — ✅ GRABADO (78 s, 2026-10-06)
+
+Video nuevo (única excepción a la pausa de la serie de onboarding). Grabado en DEV, negocio "Almacén La Esquina", **sin stickers** y con los carteles arriba a la derecha, que desde este video es el **nuevo default de `scripts/video/overlay.html`**.
+- Archivo: `D:/Dev/genesis360-videos/video-usuarios/video-usuarios-final.mp4`.
+- Script: `scripts/video/grabaciones/video-usuarios.mjs` (Playwright, sin audio; el audio lo valida GO).
+- Muestra la página de Usuarios rediseñada (v1.239.0): alta de un usuario sin correo, tarjeta con los datos para entrar (código del negocio + usuario + contraseña de un solo uso) y su primer ingreso eligiendo contraseña. Ver [[wiki/features/autenticacion-onboarding]].

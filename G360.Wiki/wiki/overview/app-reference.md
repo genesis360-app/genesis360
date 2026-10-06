@@ -484,7 +484,7 @@ Directorio de proveedores + órdenes de compra.
 - **Imprimir OC**: PDF con todos los ítems
 - **Generar recepción**: desde OC en estado enviada/recibida → abre RecepcionesPage precompletado
 
-**Cuenta corriente proveedor:** historial de deudas y pagos hacia el proveedor. Balance deudor/acreedor.
+**Cuenta corriente proveedor** (modelo nuevo desde v1.239.0): la deuda nace al RECIBIR la OC (cargo por la recepción); todo pago descuenta; el pago hecho desde la cuenta corriente del proveedor se imputa a la OC más vieja; "Cuenta Corriente" como medio de pago solo fija el plazo (no duplica la deuda). El modal muestra saldo / anticipo / sin deuda y lo pendiente de cada OC; el PDF lista todos los movimientos. El pago en efectivo exige caja abierta. La OC se muestra con un solo número en toda la app ("OC S-OC-0070", según la numeración del negocio) e indica quién cobra el envío: el proveedor (suma al total y a la deuda) o un tercero (gasto "Fletes" aparte).
 
 **Relaciones:** OC genera Recepciones. Recepciones ingresan stock. Gastos pueden referenciar OC.
 
@@ -623,7 +623,7 @@ Generador de reportes exportables. Acceso: Contador+ (plan Básico+).
 - **Rotación**: índice de rotación de inventario por período
 - **Valorizado**: valor total del inventario a precio de costo
 - **Ficha de productos**: catálogo con todos los atributos
-- **Descuentos por categoría** (solo DEV al 2026-10-04): lo no facturado por los descuentos de la categoría del cliente, por período/categoría/cliente (columna "Total no facturado"). En el POS, el cajero ve un cartel redactado por la IA al guardar la promoción cuando compiten descuentos (la IA no calcula: los números los pone el motor de precio)
+- **Descuentos por categoría** (EN PROD desde v1.239.0, 2026-10-06): lo no facturado por los descuentos de la categoría del cliente, por período/categoría/cliente (columna "Total no facturado"). En el POS, el cajero ve un cartel redactado por la IA al guardar la promoción cuando compiten descuentos (la IA no calcula: los números los pone el motor de precio)
 
 **Formatos de exportación:** XLSX (xlsx), PDF (jsPDF + autoTable).
 
@@ -665,6 +665,8 @@ Cada integración (TN, MP, ML) tiene credenciales independientes por sucursal.
 ### 3.19 Usuarios (`/usuarios`)
 
 Gestión de accesos. Solo DUEÑO y ADMIN.
+
+> 🆕 **Rediseño (v1.239.0, 2026-10-06) — reemplaza el modelo de "acciones inline" de abajo**: cada fila informa el rol y dónde trabaja el usuario; **"Editar acceso"** abre un panel con borrador (rol, dónde trabaja, permisos, cuenta) y los cambios se guardan juntos con **"Guardar cambios"** (ya no guarda cada selector al tocarlo). Hay buscador; en celular se ven los nombres; la cuenta de staff ADMIN se ve como "Soporte Genesis360" sin controles; el Dueño no muestra selector de rol. El **código del negocio** está siempre a la vista con botón copiar. Al crear un usuario sin correo, o reponerle la contraseña, aparece una tarjeta con los datos para entrar (copiar / WhatsApp). Un usuario nuevo nace con su alcance: los roles que ven todo, en todas las sucursales; el resto, en la sucursal elegida (obligatoria si hay más de una). Los invitados por correo eligen su contraseña al primer ingreso (mínimo 10 caracteres).
 
 **Listado:** nombre, email, rol, sucursal asignada, fecha de creación. Filtro por rol.
 
@@ -1214,7 +1216,7 @@ Cada dimensión metered (SKU, comprobantes, sucursales, usuarios, CUITs adiciona
 ## 10. Seguridad y autenticación
 
 ### Autenticación
-- **Email/contraseña**: registro directo o por invitación (link en email)
+- **Email/contraseña**: registro directo o por invitación (link en email) 🆕 v1.239.0: los invitados por correo eligen su contraseña al entrar; el login tiene "¿Olvidaste tu contraseña?" (página `/restablecer-contrasena`); la contraseña debe tener al menos 10 caracteres (mínimo de Supabase Auth); los correos de Auth salen en castellano y sus links vencen a las 24 h.
 - **Google OAuth**: `loadUserData()` se llama ANTES de `navigate('/dashboard')` para que Zustand tenga los datos del tenant
 
 ### Onboarding

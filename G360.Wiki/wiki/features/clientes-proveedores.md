@@ -8,7 +8,7 @@ updated: 2026-10-05
 
 # Clientes y Proveedores
 
-> 🗂️ **2026-10-05 (solo DEV, commit `5b21e7f9`, mig 472) — Rediseño de Categorías de clientes (pedido de GO).** Deploy a PROD pendiente (v1.239.0, ver `sources/raw/project_pendientes.md`).
+> 🗂️ **2026-10-05 (commit `5b21e7f9`, mig 472; EN PROD v1.239.0, 2026-10-06) — Rediseño de Categorías de clientes (pedido de GO).** Desplegado a PROD el 2026-10-06 (v1.239.0).
 > - **Pestaña**: cada fila = nombre + clientes + descripción; a la derecha switch activa / asignar / lista de descuentos / historial / editar / eliminar. **Eliminar** solo DUEÑO y solo si nunca se usó (la policy DELETE de `categorias_cliente` pasa a solo DUEÑO/ADMIN).
 > - **Alta**: check "Habilita cuenta corriente" (decisión de GO). Sin tildar = hereda del negocio; tildado = límite obligatorio > 0, plazo/interés/política opcionales.
 > - **Asignar clientes**: modal con tabla (check + "todos", cliente, compras, ticket promedio, total gastado) vía `fn_clientes_compras_resumen` (ventas despachada/facturada/reservada menos devoluciones).
@@ -43,13 +43,13 @@ lleva Nota de Débito con IVA?, [[wiki/business/consultas-contador]]).
   `interes_cc` en 0 al saldar la deuda.
 - Excedente de un pago → `cliente_creditos` (saldo a favor) + aviso al dueño (decisión de diseño de la Fase 1).
 
-## 🧮 Categorías de clientes — B2 Fase 3: motor único de precio (mig 467, 2026-10-03, solo DEV)
+## 🧮 Categorías de clientes — B2 Fase 3: motor único de precio (mig 467, 2026-10-03, EN PROD v1.239.0, 2026-10-06)
 
 Ya existe el motor único de precio en SQL (`fn_precio_motor_producto`, `fn_precios_lineas`).
 
-**Actualización Fase 4 (mig 468, 2026-10-03, solo DEV; en PROD todavía NO se aplica al vender)**: la lista de descuentos por categoría (mig 466, EN PROD) **ya se aplica al vender en DEV** (POS y Pedidos): la categoría del cliente compite con tier/empaque/canal y gana el precio más bajo; tope de descuento acumulado sin salteo (`tenants.descuento_tope_acumulado_pct`, Config → Ventas); categoría/%/mecanismo guardados por línea en `venta_items`; cartel de plantilla para el cajero. La pantalla de la lista ahora dice "Se aplica al vender". Las ventas recurrentes siguen sin categoría (abierto para GO). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
+**Actualización Fase 4 (mig 468, 2026-10-03, EN PROD v1.239.0, 2026-10-06)**: la lista de descuentos por categoría (mig 466, EN PROD) **ya se aplica al vender** (POS y Pedidos): la categoría del cliente compite con tier/empaque/canal y gana el precio más bajo; tope de descuento acumulado sin salteo (`tenants.descuento_tope_acumulado_pct`, Config → Ventas); categoría/%/mecanismo guardados por línea en `venta_items`; cartel de plantilla para el cajero. La pantalla de la lista ahora dice "Se aplica al vender". Las ventas recurrentes siguen sin categoría (abierto para GO). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/database/migraciones]].
 
-**Actualización Fase 5 (migs 469-470, 2026-10-04, solo DEV; B2 completo en DEV)**: la pantalla de la lista de descuentos ganó el panel **"Cartel para el cajero"** (origen IA/estándar + ejemplo completado, botón "Volver a redactar"): la EF `categoria-cartel-ia` redacta al guardar la promoción 3 frases con marcadores que el POS completa con los números del motor (fallback a plantilla). Reportes → **"Descuentos por categoría"** con lo no facturado por la categoría (período, categoría, cliente; las devoluciones parciales se restan). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/features/reportes-metricas]]. Deploy pendiente (467 -> 470 + EF).
+**Actualización Fase 5 (migs 469-470, 2026-10-04, EN PROD v1.239.0, 2026-10-06; B2 completo)**: la pantalla de la lista de descuentos ganó el panel **"Cartel para el cajero"** (origen IA/estándar + ejemplo completado, botón "Volver a redactar"): la EF `categoria-cartel-ia` redacta al guardar la promoción 3 frases con marcadores que el POS completa con los números del motor (fallback a plantilla). Reportes → **"Descuentos por categoría"** con lo no facturado por la categoría (período, categoría, cliente; las devoluciones parciales se restan). Detalle en [[wiki/features/precios-tiers-empaque]] y [[wiki/features/reportes-metricas]]. Deploy pendiente (467 -> 470 + EF).
 
 ## 🏷️ Categorías de clientes — etapa 1: la categoría con cuenta corriente (mig 442, 2026-09-26, DEV)
 
@@ -363,6 +363,17 @@ cliente_domicilios(
 Prerequisito para módulo Envíos (selector de domicilio al crear envío).
 
 ---
+
+## 🧾 Cuenta corriente de PROVEEDORES — modelo nuevo (mig 473, 2026-10-06, EN PROD v1.239.0)
+
+Decisión de GO (06/10) tras un caso en DEV (OC #84): el modelo viejo permitía pasar la misma OC a CC dos veces, dejaba saldos negativos por pagos al contado y el efectivo a proveedores nunca entraba en caja (`caja_movimientos.created_by` no existe; es `usuario_id`). Reglas del modelo nuevo:
+- **La deuda nace al RECIBIR**: cargo en la CC por la recepción (trigger sobre el gasto "Compra OC"). Todo pago descuenta.
+- **Pagar desde la CC del proveedor** se imputa a la OC más vieja (RPC `registrar_pago_proveedor`, tabla `proveedor_pago_imputaciones`); el efectivo exige caja abierta y asienta el movimiento (await + aviso si falla).
+- "Cuenta Corriente" como medio de pago de la OC **solo fija el plazo** (ya no duplica deuda). Moneda por movimiento. CHECK `pagado + descuento <= total`. Una OC con pagos no cambia ítems ni proveedor. `fn_saldo_proveedor_cc` filtra por tenant.
+- **UI**: el modal de CC muestra saldo / anticipo / sin deuda y el pendiente de OCs; el historial formatea el medio de pago (`textoMedioPago`); el PDF incluye todos los movimientos.
+- **Número de OC unificado** (mig 474, `fn_oc_etiqueta` + `src/lib/ocNumero.ts`) y **envío de la OC** (mig 475: lo cobra el proveedor, suma a total/pago/deuda, o un tercero, gasto "Fletes" aparte; consulta al contador C-22 en [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
+- **Test estático** `tests/unit/columnasEscritas.test.ts`: cruza todo insert/update con objeto literal contra `schema_full.sql`; encontró `caja_movimientos.created_by` y `gastos.proveedor_id` ("Generar gasto" de servicio recurrente fallaba siempre; arreglado).
+- **Abiertos**: el rechazo de cheque no actualiza `proveedor_pago_imputaciones` (su e2e 80 se saltea); el saldo de la CC no filtra por sucursal; el pago desde la CC con "Cheque" no crea el cheque; el prefijo "S-OC" es fijo, no el código de sucursal; la policy de escritura de `proveedor_cc_movimientos` aún deja insertar cualquier tipo desde el cliente. e2e 184, UAT §102.
 
 ## Cuenta Corriente con Proveedores — v1.6.0 (migration 085)
 

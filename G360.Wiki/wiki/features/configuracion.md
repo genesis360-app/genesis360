@@ -24,7 +24,7 @@ updated: 2026-10-05
 > v1.161.0 (PR #319). Detalle completo en la sección "Ventas" más abajo. Ver
 > `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-08-08).
 
-> 🗂️ **2026-10-05 (solo DEV, commit `5b21e7f9`, mig 472) — Configuración → Clientes: permisos de Categorías de clientes.** Los permisos (quién gestiona categorías, listas, etc.) se movieron acá desde la pantalla de categorías: solo DUEÑO, componente `SelectorPermisos` con pestañas Roles (incluye roles personalizados) / Usuarios, guardado con "Guardar configuración de Clientes". El servidor acepta `user:<id>` en `fn_usuario_en_roles_categoria`. Ver [[wiki/features/clientes-proveedores]].
+> 🗂️ **2026-10-05 (commit `5b21e7f9`, mig 472; EN PROD v1.239.0, 2026-10-06) — Configuración → Clientes: permisos de Categorías de clientes.** Los permisos (quién gestiona categorías, listas, etc.) se movieron acá desde la pantalla de categorías: solo DUEÑO, componente `SelectorPermisos` con pestañas Roles (incluye roles personalizados) / Usuarios, guardado con "Guardar configuración de Clientes". El servidor acepta `user:<id>` en `fn_usuario_en_roles_categoria`. Ver [[wiki/features/clientes-proveedores]].
 
 ---
 

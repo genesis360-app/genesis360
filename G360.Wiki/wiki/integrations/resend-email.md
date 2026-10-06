@@ -93,11 +93,11 @@ La EF `monitoring-check` también usa Resend para enviar el email diario de KPIs
 
 **EF `invite-user`:** usa `admin.inviteUserByEmail()` de Supabase + pre-crea el registro en `users`. No requiere que el usuario tenga contraseña previa.
 
-🔑 **2026-10-05 (solo DEV, commit `64b000c6`, mig 471; PROD pendiente)**: `invite-user` ahora crea al invitado con `debe_cambiar_password=true` y manda `data.negocio`; el invitado elige contraseña al entrar (ver [[wiki/features/autenticacion-onboarding]]).
+🔑 **2026-10-05 (commit `64b000c6`, mig 471; EN PROD v1.239.0, 2026-10-06; links de Auth vencen a las 24 h, `mailer_otp_exp=86400`, vía `scripts/aplicar-plantillas-auth.mjs`)**: `invite-user` ahora crea al invitado con `debe_cambiar_password=true` y manda `data.negocio`; el invitado elige contraseña al entrar (ver [[wiki/features/autenticacion-onboarding]]).
 
 ### Plantillas de los correos de Auth (castellano + marca, versionadas)
 
-Los correos de Auth de Supabase (invitación, recuperar contraseña, confirmación, etc.; salen por el SMTP de Resend) estaban en PROD con el texto de fábrica **en inglés**. Ahora las plantillas viven en el repo, en `supabase/templates/` (`_base.html` con la marca + `plantillas.json`), y se aplican con `node scripts/aplicar-plantillas-auth.mjs <ref>`. Aplicado en DEV; **falta aplicarlo en PROD** (`jjffnbrdjchquexdfgwq`) en el deploy de v1.239.0. Los links de Auth vencen en 1 h (`mailer_otp_exp=3600`, también las invitaciones).
+Los correos de Auth de Supabase (invitación, recuperar contraseña, confirmación, etc.; salen por el SMTP de Resend) estaban en PROD con el texto de fábrica **en inglés**. Ahora las plantillas viven en el repo, en `supabase/templates/` (`_base.html` con la marca + `plantillas.json`), y se aplican con `node scripts/aplicar-plantillas-auth.mjs <ref>`. Aplicado en DEV y en PROD (`jjffnbrdjchquexdfgwq`, deploy de v1.239.0, 2026-10-06). Los links de Auth vencen a las 24 h (`mailer_otp_exp=86400`, también las invitaciones; antes 1 h).
 
 ---
 

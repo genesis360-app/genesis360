@@ -36,7 +36,7 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Download, DollarSign, AlertCircle, FileDown, RotateCcw,
-  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload, Info,
+  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload, Info, Copy,
 } from 'lucide-react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
@@ -707,7 +707,7 @@ export default function ProveedoresPage() {
       return data
     },
     onSuccess: (data) => {
-      toast.success(data?.ya_vinculado ? 'Este proveedor ya tenía cuenta — se le avisó por email' : 'Invitación enviada por email')
+      toast.success(data?.ya_vinculado ? 'Le reenviamos el acceso al portal por email' : 'Invitación enviada por email')
       qc.invalidateQueries({ queryKey: ['proveedor-portal-vinculo'] })
     },
     onError: (e: any) => toast.error(e?.message ?? 'No se pudo invitar al proveedor'),
@@ -1987,9 +1987,33 @@ export default function ProveedoresPage() {
                           <Send className="w-4 h-4 text-accent-text" /> Portal de Proveedores
                         </p>
                         {provPortalVinculo ? (
-                          <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Vinculado — {provPortalVinculo}
-                          </p>
+                          <div className="space-y-2">
+                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Vinculado — {provPortalVinculo}
+                            </p>
+                            {/* GO 06/10: si el proveedor perdió el link no había cómo volver a mandárselo. El link de acceso
+                                NO se copia: entra a SU cuenta, que puede estar vinculada a otros negocios. Se reenvía a su correo,
+                                o se le pasa la dirección del portal (ahí pide su propio link). */}
+                            <div className="flex flex-wrap gap-2">
+                              <button type="button" disabled={invitarPortal.isPending}
+                                onClick={() => invitarPortal.mutate({ proveedorId: p.id, email: provPortalVinculo })}
+                                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border-ds text-primary hover:bg-page disabled:opacity-50">
+                                <Send className="w-3 h-3" /> {invitarPortal.isPending ? 'Enviando…' : 'Reenviar acceso por email'}
+                              </button>
+                              <button type="button"
+                                onClick={async () => {
+                                  const url = `${(import.meta.env.VITE_APP_URL as string | undefined) || window.location.origin}/portal-proveedores`
+                                  const texto = `Portal de Proveedores de ${tenant?.nombre ?? 'nuestro negocio'}: ${url}\n` +
+                                    `Entrá con tu email (${provPortalVinculo}). Si es la primera vez o no tenés contraseña, tocá ` +
+                                    `"¿Primera vez u olvidaste tu contraseña?" y te llega un link a tu correo.`
+                                  try { await navigator.clipboard.writeText(texto); toast.success('Link del portal copiado, listo para mandar por WhatsApp') }
+                                  catch { toast.error('No se pudo copiar: ' + url) }
+                                }}
+                                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border-ds text-primary hover:bg-page">
+                                <Copy className="w-3 h-3" /> Copiar link del portal
+                              </button>
+                            </div>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-2">
                             <input type="email" value={provInviteEmail[p.id] ?? p.email ?? ''}

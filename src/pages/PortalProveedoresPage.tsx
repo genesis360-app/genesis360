@@ -4,6 +4,7 @@ import { BRAND } from '@/config/brand'
 import { fmtPesos } from '@/lib/formato'
 import { Package, Building2, LogOut, Lock, AlertTriangle, CheckCircle2, Send } from 'lucide-react'
 import toast, { Toaster } from 'react-hot-toast'
+import { PASSWORD_MIN, traducirErrorPassword } from '@/lib/passwordPolicy'
 
 // Portal de Proveedores (Fede, sección H — ver mig 387/390). Página PÚBLICA autocontenida (fuera
 // de AppLayout/AuthGuard a propósito): la identidad de una cuenta de proveedor (`proveedor_accounts`)
@@ -14,6 +15,9 @@ import toast, { Toaster } from 'react-hot-toast'
 // Llega acá por 3 caminos: (1) link mágico del email de invitación (la sesión ya queda activa
 // sola al cargar, Supabase la detecta del fragmento de la URL), (2) login manual con email+
 // contraseña si ya la configuró antes, (3) directo sin sesión → login.
+// Desde 2026-10-06 (GO): (4) "¿Primera vez u olvidaste tu contraseña?" le manda al proveedor un link a SU correo para
+// crear/recuperar la contraseña (antes solo podía pedirle al negocio que lo invitara de nuevo), y quien entra sin
+// contraseña definida (por el link de la invitación) ve el panel para crearla.
 
 type Negocio = { tenant_id: string; negocio_nombre: string; proveedor_id: string; proveedor_nombre: string }
 type OC = { id: string; numero: number; estado: string; fecha_esperada: string | null; notas: string | null; created_at: string; monto_total: number | null; condiciones_pago: string | null; etiqueta?: string | null }
@@ -50,6 +54,11 @@ export default function PortalProveedoresPage() {
 
   // Configurar contraseña
   const [passPanelOpen, setPassPanelOpen] = useState(false)
+  // Viene del link de "recuperar" o nunca definió una: el panel se abre solo y explica por qué.
+  const [debeCrearPass, setDebeCrearPass] = useState(false)
+  // "¿Primera vez u olvidaste tu contraseña?"
+  const [modoRecuperar, setModoRecuperar] = useState(false)
+  const [recuperarEnviado, setRecuperarEnviado] = useState(false)
   const [nuevaPass, setNuevaPass] = useState('')
   const [passSaving, setPassSaving] = useState(false)
 
@@ -65,6 +74,9 @@ export default function PortalProveedoresPage() {
       setLogueado(false); setChecking(false); return
     }
     setNombreCuenta(cuenta.nombre || cuenta.email || '')
+    // Entró por un link (invitación o recuperar) y todavía no eligió contraseña: se le pide crearla, así la próxima vez
+    // entra con email + contraseña sin depender de un link.
+    if (data.user.user_metadata?.portal_password_definida !== true) { setDebeCrearPass(true); setPassPanelOpen(true) }
     setLogueado(true)
     setChecking(false)
     void cargarNegocios()
@@ -73,6 +85,13 @@ export default function PortalProveedoresPage() {
   // Chequeo de sesión único al montar el portal — `cargarSesion` no está memoizada.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void cargarSesion() }, [])
+  // El link de "recuperar" abre una sesión de recuperación: el panel de contraseña se abre de una.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evento) => {
+      if (evento === 'PASSWORD_RECOVERY') { setDebeCrearPass(true); setPassPanelOpen(true) }
+    })
+    return () => sub.subscription.unsubscribe()
+  }, [])
 
   const cargarNegocios = async () => {
     const { data, error } = await supabase.rpc('fn_portal_proveedor_negocios')
@@ -137,13 +156,25 @@ export default function PortalProveedoresPage() {
   }
 
   const guardarPassword = async () => {
-    if (nuevaPass.length < 10) { toast.error('La contraseña debe tener al menos 10 caracteres'); return }
+    if (nuevaPass.length < PASSWORD_MIN) { toast.error(`La contraseña debe tener al menos ${PASSWORD_MIN} caracteres`); return }
     setPassSaving(true)
-    const { error } = await supabase.auth.updateUser({ password: nuevaPass })
+    const { error } = await supabase.auth.updateUser({ password: nuevaPass, data: { portal_password_definida: true } })
     setPassSaving(false)
-    if (error) { toast.error('No se pudo guardar la contraseña'); return }
-    toast.success('Contraseña actualizada')
-    setNuevaPass(''); setPassPanelOpen(false)
+    if (error) { toast.error(traducirErrorPassword(error.message)); return }
+    toast.success(debeCrearPass ? 'Listo: la próxima vez entrá con tu email y esta contraseña' : 'Contraseña actualizada')
+    setNuevaPass(''); setPassPanelOpen(false); setDebeCrearPass(false)
+  }
+
+  // Link a SU correo para crear o recuperar la contraseña. El mensaje es el mismo exista o no la cuenta (no se revela
+  // qué correos son proveedores).
+  const pedirLink = async () => {
+    setLoginError('')
+    const email = loginEmail.trim()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setLoginError('Ingresá tu email'); return }
+    setLoginSaving(true)
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/portal-proveedores` })
+    setLoginSaving(false)
+    setRecuperarEnviado(true)
   }
 
   if (checking) {
@@ -160,6 +191,33 @@ export default function PortalProveedoresPage() {
             <h1 className="text-lg font-bold text-primary">Portal de Proveedores</h1>
             <p className="text-xs text-gray-400 mt-1">{BRAND.name}</p>
           </div>
+          {modoRecuperar ? (
+            <div className="space-y-3" data-testid="portal-recuperar">
+              {recuperarEnviado ? (
+                <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
+                  Si <strong>{loginEmail.trim()}</strong> es un proveedor registrado, te llega un correo con un link para crear tu
+                  contraseña. Sirve una vez y vence en 24 horas. Revisá también el correo no deseado.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Escribí el email con el que te invitó el negocio y te mandamos un link para crear (o cambiar) tu contraseña.
+                  </p>
+                  <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
+                    placeholder="Tu email" autoComplete="email" aria-label="Tu email"
+                    onKeyDown={e => { if (e.key === 'Enter') void pedirLink() }}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:border-accent-text" />
+                  {loginError && <p className="text-xs text-red-500">{loginError}</p>}
+                  <button onClick={pedirLink} disabled={loginSaving}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50">
+                    {loginSaving ? 'Enviando…' : 'Enviarme el link'}
+                  </button>
+                </>
+              )}
+              <button onClick={() => { setModoRecuperar(false); setRecuperarEnviado(false); setLoginError('') }}
+                className="w-full text-xs text-accent-text hover:underline pt-1">Volver a ingresar con contraseña</button>
+            </div>
+          ) : (
           <div className="space-y-3">
             <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
               placeholder="Tu email" autoComplete="email"
@@ -173,10 +231,12 @@ export default function PortalProveedoresPage() {
               className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50">
               {loginSaving ? 'Ingresando…' : 'Ingresar'}
             </button>
-            <p className="text-xs text-gray-400 text-center pt-1">
-              ¿Primera vez o te olvidaste la contraseña? Pedile al negocio que te invite de nuevo — te va a llegar un link para entrar directo.
-            </p>
+            <button onClick={() => { setModoRecuperar(true); setLoginError('') }}
+              className="w-full text-sm text-accent-text hover:underline pt-1">
+              ¿Primera vez u olvidaste tu contraseña?
+            </button>
           </div>
+          )}
         </div>
       </div>
     )
@@ -205,9 +265,17 @@ export default function PortalProveedoresPage() {
 
       {passPanelOpen && (
         <div className="max-w-xl mx-auto mt-4 px-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-2 flex-wrap">
-            <input type="password" value={nuevaPass} onChange={e => setNuevaPass(e.target.value)}
-              placeholder="Nueva contraseña (mín. 10 caracteres)"
+          <div className={`bg-white dark:bg-gray-800 rounded-xl border p-4 flex items-center gap-2 flex-wrap ${debeCrearPass ? 'border-accent-text/40' : 'border-gray-100 dark:border-gray-700'}`}
+            data-testid="portal-crear-password">
+            {debeCrearPass && (
+              <div className="w-full mb-1">
+                <p className="text-sm font-semibold text-primary">Creá tu contraseña</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Así la próxima vez entrás con tu email y contraseña, sin esperar un link.</p>
+              </div>
+            )}
+            <input type="password" value={nuevaPass} onChange={e => setNuevaPass(e.target.value)} autoComplete="new-password"
+              aria-label="Nueva contraseña"
+              placeholder={`Nueva contraseña (mín. ${PASSWORD_MIN} caracteres)`}
               className="flex-1 min-w-[200px] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:border-accent-text" />
             <button onClick={guardarPassword} disabled={passSaving}
               className="bg-accent hover:bg-accent/90 text-white text-sm font-medium px-3 py-2 rounded-lg disabled:opacity-50">

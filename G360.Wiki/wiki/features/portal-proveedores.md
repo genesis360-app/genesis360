@@ -200,3 +200,16 @@ proveedor real existe en DEV (tenant de prueba), y las invitaciones reales solo 
 (v1.195.2) llegó a PROD el 2026-09-04 (PR #340, `v1.195.4`) — Edge Function redeployada, mismo código que
 DEV. Sin impacto real esperado porque PROD siempre habló consigo mismo (nunca tuvo el bug de JWT
 cross-ambiente); el problema de fondo para DEV (sin frontend público) sigue sin resolver.
+
+## 2026-10-06 (v1.239.1) — Reenviar acceso y crear/recuperar contraseña
+
+- **Del lado del negocio** (Proveedores → ficha → "Portal de Proveedores"), con el proveedor ya vinculado:
+  - **Reenviar acceso por email**: vuelve a llamar a `invitar-proveedor` con el correo vinculado → link nuevo a SU correo
+    (sirve una vez, vence a las 24 h).
+  - **Copiar link del portal**: copia la dirección (`/portal-proveedores`) + cómo entrar, para mandar por WhatsApp.
+  - 🛑 **No se copia el link de acceso** (magic link): abre la cuenta del proveedor, que puede estar vinculada a varios
+    negocios — un empleado podría ver órdenes de compra de otro negocio.
+- **En el portal**: "¿Primera vez u olvidaste tu contraseña?" pide el email y manda (`resetPasswordForEmail`, vuelta a
+  `/portal-proveedores`) un link para crear/recuperar la contraseña; el mensaje es el mismo exista o no la cuenta.
+  Quien entra sin contraseña definida (`user_metadata.portal_password_definida`) o por el link de recuperar ve el panel
+  **"Creá tu contraseña"** abierto. Mínimo 10 caracteres (`src/lib/passwordPolicy.ts`). e2e `185`.

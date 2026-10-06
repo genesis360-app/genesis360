@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-06] deploy | v1.239.1 a PROD — Portal de Proveedores: reenviar acceso y crear/recuperar contraseña
+
+- **Pedido de GO:** le había mandado el link del portal a un proveedor, el link venció y no había forma de volver a
+  mandárselo; además el proveedor no tenía cómo crear ni recuperar su contraseña ("pedile al negocio que te invite de nuevo").
+- **Proveedores → proveedor vinculado:** "Reenviar acceso por email" (la EF `invitar-proveedor` ya reusaba la cuenta y genera
+  un link nuevo a SU correo) y "Copiar link del portal" (la DIRECCIÓN del portal + cómo entrar, para WhatsApp).
+  🛑 Decisión de seguridad: **no se copia el link de acceso** — entra a la cuenta del proveedor, que puede estar vinculada
+  a OTROS negocios (un empleado vería OCs ajenas).
+- **Portal (`/portal-proveedores`):** "¿Primera vez u olvidaste tu contraseña?" → `resetPasswordForEmail` con vuelta al portal
+  (mismo mensaje exista o no la cuenta); quien entra sin contraseña definida (`user_metadata.portal_password_definida`) o
+  por el link de recuperar (`PASSWORD_RECOVERY`) ve "Creá tu contraseña". Mínimo 10 + errores en castellano.
+- Sin migraciones ni cambios de EF. **PR #375**, merge `87841fda`, release `v1.239.1`; verificado con `curl` (PROD sirve
+  `v1.239.1`, 140 s después del merge). Entró también a `main` el `knowledge.generated.ts` regenerado. e2e 185 nuevo + 139.
+- **Próximo (pedido de GO):** mejorar la landing con los 5 documentos de Fede en Drive (carpeta
+  `1YeQWbLVSLXs--JKD8daiR4uOv_cUtAwb`: 00 Estrategia y Narrativa · 01 Estructura y Copy · 02 Especificación Visual ·
+  03 SEO y GEO · 04 Subpáginas por Nicho) + las skills Taste, Emil e impeccable. Acceso a Drive verificado.
+
 ## [2026-10-06] deploy | v1.239.0 a PROD — B2 completo, acceso por correo, CC de proveedores, número y envío de la OC, rediseño de Usuarios (migs 467-475)
 
 - **Estado**: deploy de `v1.239.0` a PROD el 2026-10-06 (**PR #371**, merge `85760295`, release `v1.239.0`; migs 467-475 aplicadas y verificadas; EFs `categoria-cartel-ia`, `invite-user`, `usuarios-sin-correo`, `admin-api`; plantillas de Auth + links 24 h; `ai-assistant` redeployado; `pg_policies` DEV = PROD por schema: public 246 · storage 40 · cron 2; e2e completa 446 passed, 8 fallas explicadas y verdes al repetir). PROD = DEV = migs 001-**475**. Esta entrada documenta el contenido del release; reconcilia los bloques que decían "DEV, falta deploy" para 467-472.

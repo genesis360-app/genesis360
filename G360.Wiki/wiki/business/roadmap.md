@@ -8,11 +8,16 @@ updated: 2026-10-06
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.239.0`** (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.239.1`** (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
+
+## 🏷️ v1.239.1 — Portal de Proveedores: reenviar acceso y crear/recuperar contraseña (2026-10-06, EN PROD)
+
+Proveedor vinculado: "Reenviar acceso por email" y "Copiar link del portal" (la dirección, no el link de acceso). En el
+portal: "¿Primera vez u olvidaste tu contraseña?" y "Creá tu contraseña". Sin migraciones. PR #375.
 
 ## 🏷️ v1.239.0 — Categorías de clientes completo (B2), acceso por correo, CC de proveedores, número y envío de la OC, rediseño de Usuarios (2026-10-06, EN PROD)
 

@@ -12,7 +12,7 @@ updated: 2026-10-06
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06 desde otra sesión; el número de PR, el merge y el hash de `pg_policies` por schema los registra esa sesión en `log.md`). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
+✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
 
 ## 🏷️ v1.239.0 — Categorías de clientes completo (B2), acceso por correo, CC de proveedores, número y envío de la OC, rediseño de Usuarios (2026-10-06, EN PROD)
 

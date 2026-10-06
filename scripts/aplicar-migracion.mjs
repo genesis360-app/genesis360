@@ -26,8 +26,22 @@ if (!TOKEN) { console.error('Falta SUPABASE_ACCESS_TOKEN'); process.exit(1) }
 const sql = readFileSync(resolve(root, file), 'utf8')
 const name = basename(file, '.sql')
 if (sql.includes('$migfile$')) { console.error('El archivo contiene el delimitador $migfile$'); process.exit(1) }
-const d = new Date()
-const version = d.toISOString().replace(/[-:T]/g, '').slice(0, 14)
+// La versión es un timestamp en SEGUNDOS: dos migraciones aplicadas en el mismo segundo chocaban en la PK de
+// schema_migrations (pasó con 470/471 en el deploy v1.239.0, 2026-10-06). Si ya hay una versión igual o posterior, se
+// usa la siguiente.
+const fmt = (dt) => dt.toISOString().replace(/[-:T]/g, '').slice(0, 14)
+let version = fmt(new Date())
+{
+  const rq = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: 'select max(version) v from supabase_migrations.schema_migrations' }),
+  })
+  const max = rq.ok ? (await rq.json())?.[0]?.v : null
+  if (max && max >= version) {
+    const t = new Date(Date.UTC(+max.slice(0, 4), +max.slice(4, 6) - 1, +max.slice(6, 8), +max.slice(8, 10), +max.slice(10, 12), +max.slice(12, 14)) + 1000)
+    version = fmt(t)
+  }
+}
 
 const query = `BEGIN;
 ${sql}

@@ -21,7 +21,15 @@ type: project
 > - Test estático `tests/unit/columnasEscritas.test.ts`; lista de descuentos: "Aplicar" no se sale del recuadro; landing con hero nuevo; video "Crear un usuario y su primer ingreso" (`D:/Dev/genesis360-videos/video-usuarios/video-usuarios-final.mp4`, 78 s).
 > - Contadores al cierre: **2.232 unit**, **e2e ~452 + 184**.
 >
-> **✅ Checklist del deploy v1.239.0** (lo ejecuta la otra sesión; marcar acá lo que confirme): e2e completa · bump `APP_VERSION` · actividad en PROD · migs 467 → 475 de a una · EFs `categoria-cartel-ia`, `invite-user`, `usuarios-sin-correo`, `admin-api` · PR `dev → main` + release `v1.239.0 --latest` · `node scripts/aplicar-plantillas-auth.mjs jjffnbrdjchquexdfgwq` · `npm run ai:knowledge` + redeploy `ai-assistant` DEV y PROD (app-reference cambió: CC de proveedores, Usuarios, login) · `bash scripts/auditar-edge-functions.sh` + hash de `pg_policies` por schema · `curl -L` de la versión servida. **Quedan para después del deploy:** avisar a El Tilo que use "¿Olvidaste tu contraseña?" y reinvitar al usuario de `outloock.com` con el correo bien escrito.
+> **✅ DEPLOY v1.239.0 HECHO (2026-10-06, ~12:30 UTC):** e2e completa 446 passed (8 fallas explicadas: datos de prueba +
+> intermitentes; pasan al repetir) · actividad PROD 0 · migs 467→475 aplicadas y verificadas con query (la 471 chocó la
+> versión con la 470 en el mismo segundo y se revirtió sola; se reaplicó — `aplicar-migracion.mjs` ahora evita el choque) ·
+> EFs `categoria-cartel-ia`, `invite-user`, `usuarios-sin-correo`, `admin-api` en PROD · **PR #371** merge `85760295` ·
+> release `v1.239.0 --latest` · plantillas de Auth + links 24 h en PROD · `ai:knowledge` + `ai-assistant` DEV y PROD ·
+> `pg_policies` idénticas por schema (public 246 · storage 40 · cron 2) · auditoría de EFs: solo las ya conocidas
+> (`marketplace-webhook` no desplegada en DEV, `wa-embedded-signup-exchange` no desplegada en PROD) · `curl`: PROD sirve
+> `v1.239.0` y `genesis360.pro` ya muestra el hero nuevo. ⚠️ `main` no tiene el `knowledge.generated.ts` regenerado (se
+> commiteó a dev después del merge; el EF desplegado sí lo tiene) — entra con el próximo PR. **Quedan para después del deploy:** avisar a El Tilo que use "¿Olvidaste tu contraseña?" y reinvitar al usuario de `outloock.com` con el correo bien escrito.
 >
 > **🔓 Pendientes ABIERTOS (siguen vivos):**
 > - **🧪 PLAN DE TESTING (pedido de GO 06/10):** Configuración → Notificaciones, TODOS los checkbox (en especial **saludos por WhatsApp al cliente** y **lista de cumpleaños**: qué dispara, quién lo recibe, por qué canal, y que apagado de verdad no salga). **Portal de Proveedores**: una vez vinculado un proveedor no hay forma de volver a copiar/reenviar el link (solo se ve "Vinculado — mail"); agregar "Copiar link" / "Reenviar".

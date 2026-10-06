@@ -79,12 +79,12 @@ test.describe('Pago de OC en USD (mutante)', () => {
     // La OC recién creada es la más nueva (orden created_at desc) → primera fila de la lista.
     // Ojo: filtrar por clase específica de la fila (no un `div` genérico) — el wrapper de la
     // lista ("space-y-2") también matchea `hasText` por contener todo el texto de sus hijos.
-    const filaOC = page.locator('div.rounded-xl.shadow-sm').filter({ hasText: /^OC #\d+/ }).first()
+    const filaOC = page.locator('div.rounded-xl.shadow-sm').filter({ hasText: /^OC (#\d+|S-OC-\d+)/ }).first()
     await expect(filaOC).toBeVisible({ timeout: 10000 })
     await expect(filaOC.getByText(/US\$/).first()).toBeVisible({ timeout: 5000 })
 
     await filaOC.getByRole('button', { name: /Pagar \/ CC/i }).click()
-    await expect(page.getByRole('heading', { name: /^OC #\d+/ })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('heading', { name: /^OC (#\d+|S-OC-\d+)/ })).toBeVisible({ timeout: 5000 })
 
     // Cambiar el medio de pago default ("Transferencia") a "Efectivo USD" y cargar el monto total.
     const medioSel = page.locator('select').filter({ has: page.locator('option', { hasText: /^Efectivo USD/ }) }).first()

@@ -42,6 +42,7 @@ import { chequeProximoACobrar, montoChequeDeMedios } from '@/lib/comprasCheques'
 import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { nombreOC, ocCoincideNumero } from '@/lib/ocNumero'
 
 // Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
 const CATEGORIAS_GASTO_FALLBACK = [
@@ -782,8 +783,9 @@ export default function GastosPage() {
       if (ocFiltroProveedor && o.proveedor_id !== ocFiltroProveedor) return false
       if (ocFiltroVencidas && !(estadosAbiertos.includes(o.estado_pago) && o.fecha_vencimiento_pago && o.fecha_vencimiento_pago < hoyStr)) return false
       if (ocFiltroProximas && !(estadosAbiertos.includes(o.estado_pago) && o.fecha_vencimiento_pago && o.fecha_vencimiento_pago >= hoyStr && o.fecha_vencimiento_pago <= en3diasStr)) return false
-      if (qOcEsNumero && String(o.numero) !== qOcRaw) return false
-      if (qOc && !qOcEsNumero && !String(o.numero).includes(qOc) && !(o.proveedores?.nombre ?? '').toLowerCase().includes(qOc)) return false
+      // Busca por cualquiera de los dos números de la OC (el del negocio y el de su sucursal, "S-OC-0070").
+      if (qOcEsNumero && !ocCoincideNumero(o, qOcRaw)) return false
+      if (qOc && !qOcEsNumero && !ocCoincideNumero(o, qOcRaw) && !(o.proveedores?.nombre ?? '').toLowerCase().includes(qOc)) return false
       return true
     })
     // Pagadas siempre al fondo
@@ -3489,7 +3491,7 @@ export default function GastosPage() {
                       </button>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-primary dark:text-white">OC #{oc.numero}</span>
+                          <span className="font-semibold text-sm text-primary dark:text-white">{nombreOC(oc, (tenant as any)?.oc_numeracion)}</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>{badge.label}</span>
                           {(oc as any).tiene_reembolso_pendiente && (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
@@ -3552,7 +3554,7 @@ export default function GastosPage() {
                           {/* Encabezado ticket */}
                           <div className="text-center space-y-0.5">
                             <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">{oc.proveedores?.nombre ?? 'Proveedor'}</p>
-                            <p className="text-gray-500 dark:text-gray-400">OC #{oc.numero} · {new Date(oc.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                            <p className="text-gray-500 dark:text-gray-400">{nombreOC(oc, (tenant as any)?.oc_numeracion)} · {new Date(oc.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
                           </div>
                           <div className="border-t border-dashed border-gray-300 dark:border-gray-600" />
 
@@ -3661,7 +3663,7 @@ export default function GastosPage() {
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
               <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                  <h3 className="font-semibold text-primary dark:text-white">OC #{ocSeleccionada.numero} — {ocSeleccionada.proveedores?.nombre}</h3>
+                  <h3 className="font-semibold text-primary dark:text-white">{nombreOC(ocSeleccionada, (tenant as any)?.oc_numeracion)} — {ocSeleccionada.proveedores?.nombre}</h3>
                   <button onClick={() => setOcModalId(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
                 </div>
                 <div className="p-5 space-y-4">

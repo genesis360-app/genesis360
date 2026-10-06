@@ -40,6 +40,7 @@ import {
   type PildoraProducto,
 } from '@/lib/productosFiltro'
 import { type Combinador } from '@/lib/pildorasFiltro'
+import { nombreOC } from '@/lib/ocNumero'
 
 /** 'estructura' = pestaña de EMPAQUE (árbol de presentaciones, Fase 5 mig 310). Se conserva el
  *  id de la pestaña para no romper los deep-links y los tests que ya la referencian. */
@@ -508,7 +509,7 @@ export default function ProductosPage() {
       // Buscar OC borrador del mismo proveedor Y misma sucursal activa
       let ocQuery = supabase
         .from('ordenes_compra')
-        .select('id, numero')
+        .select('id, numero, numero_sucursal')
         .eq('tenant_id', tenant!.id)
         .eq('proveedor_id', proveedorId)
         .eq('estado', 'borrador')
@@ -519,17 +520,17 @@ export default function ProductosPage() {
       const { data: existingOC } = await ocQuery.maybeSingle()
 
       let ocId = existingOC?.id ?? null
-      let ocNumero = existingOC?.numero ?? null
+      let ocNumero: string | null = existingOC ? nombreOC(existingOC, (tenant as any)?.oc_numeracion) : null
 
       if (!ocId) {
         const { data: newOC, error } = await supabase
           .from('ordenes_compra')
           .insert({ tenant_id: tenant!.id, proveedor_id: proveedorId, estado: 'borrador', sucursal_id: sucursalId || null, created_by: user!.id })
-          .select('id, numero')
+          .select('id, numero, numero_sucursal')
           .single()
         if (error) throw error
         ocId = newOC.id
-        ocNumero = newOC.numero
+        ocNumero = nombreOC(newOC, (tenant as any)?.oc_numeracion)
       }
 
       const { error: itemError } = await supabase.from('orden_compra_items').insert({
@@ -543,7 +544,7 @@ export default function ProductosPage() {
     },
     onSuccess: (ocNumero) => {
       const prov = proveedoresOC.find((p: any) => p.id === ocProveedor)
-      toast.success(`Agregado a OC #${ocNumero}${prov ? ` — ${prov.nombre}` : ''}`)
+      toast.success(`Agregado a ${ocNumero}${prov ? ` — ${prov.nombre}` : ''}`)
       setOcModal(null)
     },
     onError: () => toast.error('No se pudo agregar a la OC'),

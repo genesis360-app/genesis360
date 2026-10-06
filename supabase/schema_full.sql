@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-06T04:18:39.484Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261006041616 · 178 tablas
+-- Generado 2026-10-06T04:46:19.258Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261006044526 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -6061,7 +6061,7 @@ BEGIN
   IF v_rec.id IS NULL THEN RETURN NEW; END IF;   -- recepción sin OC: no hay proveedor con OC que cargar
   INSERT INTO proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, recepcion_id, tipo, monto, moneda, fecha, descripcion, created_by)
   VALUES (NEW.tenant_id, v_rec.proveedor_id, v_rec.oc_id, v_rec.id, 'oc', NEW.monto, upper(COALESCE(NEW.moneda, 'ARS')), NEW.fecha,
-          'Compra OC #' || v_rec.oc_numero || ' — recepción #' || v_rec.numero, NEW.usuario_id)
+          'Compra ' || public.fn_oc_etiqueta(v_rec.oc_id) || ' — recepción #' || v_rec.numero, NEW.usuario_id)
   ON CONFLICT (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL DO NOTHING;
   RETURN NEW;
 END;
@@ -9600,7 +9600,7 @@ BEGIN
       oc.id         AS oc_id,
       oc.numero     AS oc_numero,
       p.nombre      AS proveedor_nombre,
-      COALESCE(oc.monto_total, 0) AS monto,
+      COALESCE(oc.monto_total, (SELECT COALESCE(SUM(COALESCE(i.cantidad,0) * COALESCE(i.precio_unitario,0)), 0) FROM orden_compra_items i WHERE i.orden_compra_id = oc.id)) AS monto,
       u.id          AS user_id
     FROM ordenes_compra oc
     JOIN proveedores p ON p.id = oc.proveedor_id
@@ -9615,7 +9615,7 @@ BEGIN
       SELECT 1 FROM notificaciones
       WHERE user_id    = r.user_id
         AND action_url = '/proveedores'
-        AND titulo     LIKE '%OC #' || r.oc_numero || '%'
+        AND titulo     LIKE '%' || public.fn_oc_etiqueta(r.oc_id) || ' %'
         AND created_at::date = CURRENT_DATE
     ) THEN
       INSERT INTO notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
@@ -9623,7 +9623,7 @@ BEGIN
         r.tenant_id,
         r.user_id,
         'danger',
-        'OC #' || r.oc_numero || ' vencida — ' || r.proveedor_nombre,
+        public.fn_oc_etiqueta(r.oc_id) || ' vencida — ' || r.proveedor_nombre,
         'Orden de compra por $' || r.monto || ' venció sin pagar.',
         '/proveedores'
       );
@@ -9806,6 +9806,21 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_oc_etiqueta(p_oc_id uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT 'OC ' || CASE
+    WHEN COALESCE(t.oc_numeracion, 'sucursal') = 'sucursal' AND o.numero_sucursal IS NOT NULL
+      THEN 'S-OC-' || lpad(o.numero_sucursal::text, 4, '0')
+    ELSE '#' || o.numero END
+  FROM ordenes_compra o JOIN tenants t ON t.id = o.tenant_id
+  WHERE o.id = p_oc_id;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_oc_guard_con_pagos()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -9817,7 +9832,7 @@ BEGIN
   IF TG_TABLE_NAME = 'ordenes_compra' THEN
     IF NEW.proveedor_id IS DISTINCT FROM OLD.proveedor_id AND (
          OLD.monto_pagado > 0 OR EXISTS (SELECT 1 FROM proveedor_cc_movimientos WHERE oc_id = OLD.id)) THEN
-      RAISE EXCEPTION 'La OC #% ya tiene pagos o recepciones: no se puede cambiar el proveedor.', OLD.numero
+      RAISE EXCEPTION 'La % ya tiene pagos o recepciones: no se puede cambiar el proveedor.', public.fn_oc_etiqueta(OLD.id)
         USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
@@ -9825,7 +9840,7 @@ BEGIN
   IF TG_OP = 'DELETE' THEN v_oc := OLD.orden_compra_id; ELSE v_oc := NEW.orden_compra_id; END IF;
   SELECT numero, monto_pagado INTO v_num, v_pagado FROM ordenes_compra WHERE id = v_oc;
   IF COALESCE(v_pagado, 0) > 0 OR EXISTS (SELECT 1 FROM proveedor_pago_imputaciones WHERE oc_id = v_oc) THEN
-    RAISE EXCEPTION 'La OC #% ya tiene pagos: no se pueden cambiar sus ítems. Si cambió el pedido, hacé una OC nueva.', v_num
+    RAISE EXCEPTION 'La % ya tiene pagos: no se pueden cambiar sus ítems. Si cambió el pedido, hacé una OC nueva.', public.fn_oc_etiqueta(v_oc)
       USING ERRCODE = 'check_violation';
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
@@ -10442,13 +10457,13 @@ $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_portal_proveedor_ocs(p_tenant_id uuid)
- RETURNS TABLE(id uuid, numero integer, estado text, fecha_esperada date, notas text, created_at timestamp with time zone, monto_total numeric, condiciones_pago text)
+ RETURNS TABLE(id uuid, numero integer, estado text, fecha_esperada date, notas text, created_at timestamp with time zone, monto_total numeric, condiciones_pago text, etiqueta text)
  LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
   SELECT oc.id, oc.numero, oc.estado, oc.fecha_esperada, oc.notas,
-         oc.created_at, oc.monto_total, oc.condiciones_pago
+         oc.created_at, oc.monto_total, oc.condiciones_pago, public.fn_oc_etiqueta(oc.id)
   FROM public.ordenes_compra oc
   JOIN public.proveedor_account_tenants pat
     ON pat.tenant_id = oc.tenant_id AND pat.proveedor_id = oc.proveedor_id
@@ -14598,8 +14613,8 @@ BEGIN
   -- mig 473: FOR UPDATE — dos pagos simultáneos de la misma OC se serializan y el segundo ve el saldo nuevo.
   SELECT * INTO v_oc FROM public.ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant FOR UPDATE;
   IF v_oc.id IS NULL THEN RAISE EXCEPTION 'OC no encontrada en el tenant'; END IF;
-  IF v_oc.estado IN ('borrador', 'cancelada') THEN
-    RAISE EXCEPTION 'La OC #% está %: no se le registran pagos.', v_oc.numero, v_oc.estado USING ERRCODE = 'check_violation';
+  IF v_oc.estado = 'cancelada' THEN   -- un borrador se puede pagar (Gastos lo ofrece; e2e 140)
+    RAISE EXCEPTION 'La % está %: no se le registran pagos.', public.fn_oc_etiqueta(v_oc.id), v_oc.estado USING ERRCODE = 'check_violation';
   END IF;
   SELECT nombre INTO v_prov_nombre FROM public.proveedores WHERE id = v_oc.proveedor_id AND tenant_id = v_tenant;
   v_moneda_oc := COALESCE(v_oc.moneda, 'ARS');
@@ -14699,7 +14714,7 @@ BEGIN
       INTO v_medios_nocc FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente';
     INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, medio_pago, descripcion, caja_sesion_id, created_by)
     VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'pago', -v_montonocc, v_moneda_oc, CURRENT_DATE, v_medios_nocc::text,
-            'Pago OC #'||v_oc.numero, p_caja_sesion_id, v_user)
+            'Pago '||public.fn_oc_etiqueta(v_oc.id), p_caja_sesion_id, v_user)
     RETURNING id INTO v_mov_id;
     INSERT INTO public.proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto)
     VALUES (v_tenant, v_mov_id, p_oc_id, round(v_montonocc, 2));
@@ -14709,7 +14724,7 @@ BEGIN
   IF v_descuento > 0 THEN
     INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion, created_by)
     VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'ajuste', -round(v_descuento, 2), v_moneda_oc, CURRENT_DATE,
-            'Descuento OC #'||v_oc.numero, v_user);
+            'Descuento '||public.fn_oc_etiqueta(v_oc.id), v_user);
   END IF;
   -- mig 473: "Cuenta Corriente" ya NO inserta un cargo: la deuda la carga la recepción (fn_cc_proveedor_cargo_recepcion).
 
@@ -14718,11 +14733,11 @@ BEGIN
     VALUES (v_tenant, 'propio', 'entregado', v_montocheque,
             NULLIF(p_cheque->>'nro',''), NULLIF(p_cheque->>'banco',''), CURRENT_DATE,
             NULLIF(p_cheque->>'fecha_cobro','')::date, v_oc.proveedor_id, p_oc_id,
-            NULLIF(p_cheque->>'sucursal_id','')::uuid, 'Generado por pago OC #'||v_oc.numero, v_user);
+            NULLIF(p_cheque->>'sucursal_id','')::uuid, 'Generado por pago '||public.fn_oc_etiqueta(v_oc.id), v_user);
   END IF;
 
   IF p_caja_sesion_id IS NOT NULL THEN
-    v_concepto := 'Pago OC #'||v_oc.numero||' — '||COALESCE(v_prov_nombre,'');
+    v_concepto := 'Pago '||public.fn_oc_etiqueta(v_oc.id)||' — '||COALESCE(v_prov_nombre,'');
     FOR v_medio IN SELECT e FROM jsonb_array_elements(v_medios_enriquecidos) e
     LOOP
       SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
@@ -14857,9 +14872,9 @@ BEGIN
         ELSE 'pago_parcial' END
     WHERE id = v_oc.id;
     INSERT INTO proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto) VALUES (v_tenant, v_mov_id, v_oc.id, v_aplica);
-    v_imput := v_imput || jsonb_build_object('oc_id', v_oc.id, 'numero', v_oc.numero, 'monto', v_aplica);
+    v_imput := v_imput || jsonb_build_object('oc_id', v_oc.id, 'numero', v_oc.numero, 'etiqueta', public.fn_oc_etiqueta(v_oc.id), 'monto', v_aplica);
     v_detalle := v_detalle || CASE WHEN v_detalle = '' THEN '' ELSE ', ' END
-              || 'OC #' || v_oc.numero || ' $' || translate(to_char(v_aplica, 'FM999,999,990.00'), ',.', '.,');
+              || public.fn_oc_etiqueta(v_oc.id) || ' $' || translate(to_char(v_aplica, 'FM999,999,990.00'), ',.', '.,');
     v_resto := v_resto - v_aplica;
   END LOOP;
   -- Lo que no tiene OC (deuda por encima de lo pedido) queda como pago a cuenta sin imputar.

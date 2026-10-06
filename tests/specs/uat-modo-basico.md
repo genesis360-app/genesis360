@@ -2429,6 +2429,7 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 102.12 | 🛑 Un descuento a la OC baja la deuda (ajuste); cada movimiento lleva su moneda y el saldo no mezcla monedas | prueba en seco DEV | ✅ |
 | 102.13 | La recepción avisa si no pudo registrar la compra (gasto + deuda) o actualizar la OC; el rechazo de cheque avisa si no repuso la deuda | revisión | ✅ código |
 | 102.14 | Rechazo de cheque propio que pagó una OC (e2e 80) | e2e `80` se saltea (fixture sin sembrar) — HUECO | ⏳ |
+| 102.15 | Un solo número de OC en toda la app (mig 474): Proveedores, Gastos, Recepciones, Cheques, Alertas, Portal, PDF y los textos de la CC usan la numeración elegida ("OC S-OC-0070"); la búsqueda encuentra la OC por cualquiera de sus dos números | unit `ocNumero` · prueba en seco DEV · e2e `140`, `184` | ✅ |
 
 ## 🗂️ §101 — Categorías de clientes: rediseño de la pantalla (mig 472, pedido de GO, 🟡 DEV) — 2026-10-05
 

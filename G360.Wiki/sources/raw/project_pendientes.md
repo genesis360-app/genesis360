@@ -28,13 +28,13 @@ type: project
 > No mezclarla con commits del deploy.
 >
 > **✅ Checklist del deploy v1.239.0 (en este orden):**
-> 1. ✅ Suite e2e completa verde sobre `5b21e7f9` (06/10: **452 passed, 0 failed**, 53 min) — la revisión de la
+> 1. ⚠️ Suite e2e completa: verde sobre `5b21e7f9` (452 passed), pero DESPUÉS entraron las migs 473-474 (CC de proveedores + número de OC) → **volver a correrla** sobre el último commit (ya pasaron 184, 140, 139). — la revisión de la
 >    mig 472 dio APTA (sugerencias opcionales: contar ids con DISTINCT en `fn_descuentos_categoria_masivo`; `GREATEST(…, 0)`
 >    y moneda en `fn_clientes_compras_resumen`).
 > 2. Bump `APP_VERSION` a `v1.239.0` en `src/config/brand.ts`.
 > 3. Chequear actividad reciente en PROD (ventas / movimientos / caja de los últimos 30 min).
 > 4. Migs a PROD de a una con `node scripts/aplicar-migracion.mjs jjffnbrdjchquexdfgwq supabase/migrations/…`:
->    **467 → 468 → 469 → 470 → 471 → 472** (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
+>    **467 → 468 → 469 → 470 → 471 → 472 → 473 → 474** (473 = CC de proveedores, 474 = un solo número de OC; en DEV la 474 quedó registrada dos veces por una corrección) (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
 >    Ya validado en PROD con transacción abortada: la 467 da **0 diferencias en 3.185 casos** sobre los 65 productos.
 > 5. EFs en PROD: `npx supabase functions deploy categoria-cartel-ia --project-ref jjffnbrdjchquexdfgwq` (nueva;
 >    `GROQ_API_KEY` ya existe en PROD) e `invite-user`.
@@ -69,6 +69,19 @@ type: project
 > contra `schema_full.sql` → encontró OTRO bug: "Generar gasto" de servicio recurrente fallaba SIEMPRE (`gastos.proveedor_id`
 > no existe), arreglado. Ventas recurrentes cotizan con el motor único; links de Auth a 24 h (DEV aplicado; PROD = paso 7
 > del deploy, mismo script). UAT §102. Puntos 1-3 esperan el modelo del libro (recomendación: cargo al RECIBIR, ver abajo).
+> **06/10 (madrugada) — MODELO NUEVO HECHO en DEV (mig 473, decisión de GO):** la deuda nace al RECIBIR, pagos imputados a
+> la OC más vieja, moneda por movimiento, CHECK, OC con pagos no cambia ítems/proveedor, e2e 184. Revisado por
+> migration-reviewer (B1-B4, M1, S2-S5, R1, D1 aplicados). **Queda para GO / después:** (a) el rechazo de cheque no
+> actualiza `proveedor_pago_imputaciones` y su e2e 80 se saltea (fixture); (b) `fn_saldo_proveedor_cc`/resumen no
+> filtran por sucursal (rol restringido ve el total del negocio); (c) el pago desde la CC con "Cheque" no crea el cheque
+> (como antes); (d) la policy de escritura de `proveedor_cc_movimientos` sigue dejando insertar cualquier tipo desde el
+> cliente (NC/ajuste lo necesitan) — conviene RPCs y cerrar la policy.
+> **🧾 PREGUNTA PARA GO — envío de la OC:** Proveedores suma el envío al total (OC #84: $9.000 + envío $10.000 = $19.000) pero
+> Gastos/pago y la deuda usan $9.000. ¿El envío lo cobra el PROVEEDOR (va en su factura → tiene que sumar a lo que se le debe)
+> o un tercero (no va)? Hasta que lo defina, la deuda NO incluye el envío.
+> **Número de OC (mig 474):** Gastos/Recepciones/Cheques/Alertas/Portal mostraban "#84" y Proveedores "S-OC-0070" (misma OC):
+> unificado con `src/lib/ocNumero.ts` + `fn_oc_etiqueta`. Detalle a mirar: el prefijo "S-OC" es fijo, no el código de la
+> sucursal (con 2 sucursales, dos OCs distintas pueden verse "S-OC-0001").
 > Hallazgo extra: la recepción con OC no chequea el error del `update` de la OC ni del `insert` del gasto (RecepcionesPage ~664/704).
 > **Decisión para GO antes de arreglar:** modelo del libro de CC — (a) la CC solo registra lo que se debe (cargo al pasar a CC,
 > pago solo cuando cancela algo de CC; el pago directo no entra) o (b) toda OC carga su total y cada pago lo descuenta. Y si un

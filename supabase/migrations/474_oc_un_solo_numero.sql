@@ -1,168 +1,47 @@
--- 473 — Cuenta corriente de proveedores: la deuda nace al RECIBIR (decisión de GO 2026-10-06) — 🛑 REGLA #0
+-- 474 — Un solo número de OC en toda la app (GO, 2026-10-06)
 --
--- Bugs que cierra (reportados por GO 06/10, DEV; en PROD no había ni un movimiento):
---   a) Una OC se podía "pasar a CC" más de una vez: registrar_pago_oc cargaba la deuda en la CC al elegir el medio
---      "Cuenta Corriente" y el saldo de la OC no lo descontaba → OC #84 quedó con 2 × $8.100.
---   b) El saldo de la CC daba negativo: un pago al contado entraba como `pago` sin un cargo que lo compense.
---   c) Pagar desde la CC del proveedor no imputaba a ninguna OC: quedaban pendientes para siempre (pago doble).
---   d) fn_saldo_proveedor_cc (SECURITY DEFINER) no filtraba por negocio.
---
--- Modelo nuevo (criterio de lo devengado: la deuda existe cuando se recibe el bien; una OC es solo un compromiso):
---   • CARGO (`tipo='oc'`, +monto): al confirmar una recepción de una OC, por lo recibido valorizado. Lo pone un trigger
---     sobre el gasto "Compra OC #N" que crea la recepción (es el devengado que ya existía). Uno por recepción.
---   • PAGO (`tipo='pago'`, −monto): todo pago (anticipo, contado o pago de la deuda) descuenta. Se imputa a OCs
---     (`proveedor_pago_imputaciones`): desde Gastos, a esa OC; desde la CC del proveedor, a la OC más VIEJA primero
---     (pedido de GO) — y así se van cerrando.
---   • "Cuenta Corriente" deja de ser un medio de pago que carga deuda: solo fija el plazo/vencimiento de lo que falta.
---   • Saldo < 0 = anticipo a favor del negocio (se pagó antes de recibir).
---   • Invariante en la base: una OC nunca tiene pagado + descuento > total (CHECK).
---
---   • Cada movimiento lleva su MONEDA (la de la OC): un saldo en USD no se suma a uno en pesos.
---   • Un descuento que se le saca a una OC también baja la deuda (contra-asiento `ajuste`).
---   • El total de una OC que nunca se pagó no está guardado (`monto_total` NULL): se usa la suma de sus ítems
---     (`fn_oc_total`). Una OC con pagos no cambia de proveedor ni de ítems (trigger), así el total no se corre.
---   • El cargo es por lo RECIBIDO al precio de la recepción; puede diferir del total de la OC. El pago desde la CC
---     llega hasta lo pendiente de las OCs o la deuda, lo que sea mayor; lo que no tenga OC queda como pago a cuenta.
---
--- Datos viejos: los cargos que ponía "pasar a CC" se ANULAN con un `ajuste` compensatorio (no se borran: rastro
--- contable) y se cargan las recepciones ya confirmadas. Idempotente. En PROD no hay filas (verificado 06/10).
+-- Una OC tiene dos correlativos: `numero` (del negocio) y `numero_sucursal`. Proveedores mostraba "S-OC-0070" (la
+-- numeración elegida en Configuración → Compras, `tenants.oc_numeracion`, default 'sucursal') y Gastos, Recepciones,
+-- Cheques, Alertas, el Portal de Proveedores y los textos que guarda el servidor "OC #84": la MISMA OC con dos números.
+-- `fn_oc_etiqueta` es la gemela de src/lib/ocNumero.ts (`nombreOC`) y la usan los textos que arma la base.
+-- Las funciones de abajo son la definición VIGENTE (leída de la base, mig 473 / 421) con solo el texto del número
+-- cambiado. Lo ya guardado no se reescribe (es historia).
 
--- ── 1. Columnas, imputaciones, invariante ────────────────────────────────────────────────────────────────────────────
-ALTER TABLE public.proveedor_cc_movimientos
-  ADD COLUMN IF NOT EXISTS recepcion_id uuid REFERENCES public.recepciones(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS moneda text NOT NULL DEFAULT 'ARS';
--- Moneda de lo ya registrado = la de su OC (sin OC queda ARS, el default de siempre).
-UPDATE public.proveedor_cc_movimientos m SET moneda = COALESCE(o.moneda, 'ARS')
-  FROM public.ordenes_compra o WHERE o.id = m.oc_id AND m.moneda IS DISTINCT FROM COALESCE(o.moneda, 'ARS');
-CREATE UNIQUE INDEX IF NOT EXISTS proveedor_cc_mov_cargo_por_recepcion
-  ON public.proveedor_cc_movimientos (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL;
+CREATE OR REPLACE FUNCTION public.fn_oc_etiqueta(p_oc_id uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT 'OC ' || CASE
+    WHEN COALESCE(t.oc_numeracion, 'sucursal') = 'sucursal' AND o.numero_sucursal IS NOT NULL
+      THEN 'S-OC-' || lpad(o.numero_sucursal::text, 4, '0')
+    ELSE '#' || o.numero END
+  FROM ordenes_compra o JOIN tenants t ON t.id = o.tenant_id
+  WHERE o.id = p_oc_id;
+$function$;
+REVOKE ALL ON FUNCTION public.fn_oc_etiqueta(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fn_oc_etiqueta(uuid) TO authenticated, service_role;
 
-CREATE TABLE IF NOT EXISTS public.proveedor_pago_imputaciones (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id     uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
-  movimiento_id uuid NOT NULL REFERENCES public.proveedor_cc_movimientos(id) ON DELETE CASCADE,
-  oc_id         uuid NOT NULL REFERENCES public.ordenes_compra(id) ON DELETE RESTRICT,   -- una OC pagada no se borra
-  monto         numeric(12,2) NOT NULL CHECK (monto > 0),
-  created_at    timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS proveedor_pago_imputaciones_mov ON public.proveedor_pago_imputaciones (movimiento_id);
-CREATE INDEX IF NOT EXISTS proveedor_pago_imputaciones_oc  ON public.proveedor_pago_imputaciones (oc_id);
-CREATE INDEX IF NOT EXISTS proveedor_pago_imputaciones_tenant ON public.proveedor_pago_imputaciones (tenant_id);
-ALTER TABLE public.proveedor_pago_imputaciones ENABLE ROW LEVEL SECURITY;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'proveedor_pago_imputaciones' AND policyname = 'proveedor_pago_imputaciones_select') THEN
-    CREATE POLICY proveedor_pago_imputaciones_select ON public.proveedor_pago_imputaciones
-      FOR SELECT TO authenticated USING (tenant_id = public.get_user_tenant_id());
-  END IF;
-END $$;
--- Se escribe solo desde las funciones de pago (SECURITY DEFINER): sin policy de escritura.
-REVOKE ALL ON public.proveedor_pago_imputaciones FROM anon;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.proveedor_pago_imputaciones FROM authenticated;
-GRANT SELECT ON public.proveedor_pago_imputaciones TO authenticated;
-
--- Total efectivo de una OC: el guardado o, si nunca se pagó (NULL), la suma de sus ítems — mismo criterio que
--- registrar_pago_oc y que el front (calcMontoTotalOC).
-CREATE OR REPLACE FUNCTION public.fn_oc_total(p_oc_id uuid)
- RETURNS numeric
+-- Portal de Proveedores: el proveedor ve el mismo número que le llega en el PDF. Cambia el tipo de retorno → DROP.
+DROP FUNCTION IF EXISTS public.fn_portal_proveedor_ocs(uuid);
+CREATE FUNCTION public.fn_portal_proveedor_ocs(p_tenant_id uuid)
+ RETURNS TABLE(id uuid, numero integer, estado text, fecha_esperada date, notas text, created_at timestamp with time zone, monto_total numeric, condiciones_pago text, etiqueta text)
  LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-  SELECT COALESCE(o.monto_total,
-    (SELECT COALESCE(SUM(COALESCE(i.cantidad, 0) * COALESCE(i.precio_unitario, 0)), 0)
-       FROM orden_compra_items i WHERE i.orden_compra_id = o.id))
-  FROM ordenes_compra o WHERE o.id = p_oc_id AND o.tenant_id = public.get_user_tenant_id();
+  SELECT oc.id, oc.numero, oc.estado, oc.fecha_esperada, oc.notas,
+         oc.created_at, oc.monto_total, oc.condiciones_pago, public.fn_oc_etiqueta(oc.id)
+  FROM public.ordenes_compra oc
+  JOIN public.proveedor_account_tenants pat
+    ON pat.tenant_id = oc.tenant_id AND pat.proveedor_id = oc.proveedor_id
+  WHERE pat.proveedor_account_id = auth.uid() AND pat.activo = true
+    AND oc.tenant_id = p_tenant_id
+    AND oc.estado <> 'borrador'
+  ORDER BY oc.created_at DESC;
 $function$;
-REVOKE ALL ON FUNCTION public.fn_oc_total(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.fn_oc_total(uuid) TO authenticated;
 
--- Una OC con plata registrada (pagos/imputaciones o cargos) no cambia de proveedor ni de ítems: si no, el total y la CC
--- quedan desfasados (la edición reemplaza los ítems y `monto_total` no se recalcula).
-CREATE OR REPLACE FUNCTION public.fn_oc_guard_con_pagos()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE v_oc uuid; v_num int; v_pagado numeric;
-BEGIN
-  IF TG_TABLE_NAME = 'ordenes_compra' THEN
-    IF NEW.proveedor_id IS DISTINCT FROM OLD.proveedor_id AND (
-         OLD.monto_pagado > 0 OR EXISTS (SELECT 1 FROM proveedor_cc_movimientos WHERE oc_id = OLD.id)) THEN
-      RAISE EXCEPTION 'La OC #% ya tiene pagos o recepciones: no se puede cambiar el proveedor.', OLD.numero
-        USING ERRCODE = 'check_violation';
-    END IF;
-    RETURN NEW;
-  END IF;
-  IF TG_OP = 'DELETE' THEN v_oc := OLD.orden_compra_id; ELSE v_oc := NEW.orden_compra_id; END IF;
-  SELECT numero, monto_pagado INTO v_num, v_pagado FROM ordenes_compra WHERE id = v_oc;
-  IF COALESCE(v_pagado, 0) > 0 OR EXISTS (SELECT 1 FROM proveedor_pago_imputaciones WHERE oc_id = v_oc) THEN
-    RAISE EXCEPTION 'La OC #% ya tiene pagos: no se pueden cambiar sus ítems. Si cambió el pedido, hacé una OC nueva.', v_num
-      USING ERRCODE = 'check_violation';
-  END IF;
-  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
-  RETURN NEW;
-END;
-$function$;
-REVOKE ALL ON FUNCTION public.fn_oc_guard_con_pagos() FROM PUBLIC, anon, authenticated;
-DROP TRIGGER IF EXISTS trg_oc_guard_con_pagos ON public.ordenes_compra;
-CREATE TRIGGER trg_oc_guard_con_pagos BEFORE UPDATE OF proveedor_id ON public.ordenes_compra
-  FOR EACH ROW EXECUTE FUNCTION public.fn_oc_guard_con_pagos();
-DROP TRIGGER IF EXISTS trg_oc_items_guard_con_pagos ON public.orden_compra_items;
-CREATE TRIGGER trg_oc_items_guard_con_pagos BEFORE INSERT OR UPDATE OF cantidad, precio_unitario, orden_compra_id OR DELETE
-  ON public.orden_compra_items FOR EACH ROW EXECUTE FUNCTION public.fn_oc_guard_con_pagos();
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ordenes_compra_pagado_no_excede_total') THEN
-    ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pagado_no_excede_total CHECK (
-      monto_pagado >= 0 AND monto_descuento >= 0
-      AND (monto_total IS NULL OR monto_pagado + monto_descuento <= monto_total + 0.5));
-  END IF;
-END $$;
-
--- ── 2. Saldo con filtro de negocio ───────────────────────────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.fn_saldo_proveedor_cc(p_proveedor_id uuid)
- RETURNS numeric
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  -- En la moneda del NEGOCIO (lo usa el control de límite de CC, que está en esa moneda): no se mezclan monedas.
-  SELECT COALESCE(SUM(m.monto), 0)
-  FROM proveedor_cc_movimientos m JOIN tenants t ON t.id = m.tenant_id
-  WHERE m.proveedor_id = p_proveedor_id AND m.tenant_id = public.get_user_tenant_id()
-    AND m.moneda = upper(COALESCE(t.moneda, 'ARS'));
-$function$;
-REVOKE ALL ON FUNCTION public.fn_saldo_proveedor_cc(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.fn_saldo_proveedor_cc(uuid) TO authenticated;
-
--- Resumen para el modal de la CC, POR MONEDA: saldo (deuda real; < 0 = anticipo) y lo pendiente de pagar en OCs.
-CREATE OR REPLACE FUNCTION public.fn_proveedor_cc_resumen(p_proveedor_id uuid)
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  SELECT jsonb_build_object(
-    'saldo', COALESCE((
-      SELECT jsonb_object_agg(moneda, saldo) FROM (
-        SELECT moneda, SUM(monto) AS saldo FROM proveedor_cc_movimientos
-         WHERE proveedor_id = p_proveedor_id AND tenant_id = public.get_user_tenant_id()
-         GROUP BY 1) s), '{}'::jsonb),
-    'pendiente_ocs', COALESCE((
-      SELECT jsonb_object_agg(moneda, pendiente) FROM (
-        SELECT COALESCE(o.moneda, 'ARS') AS moneda,
-               SUM(public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento) AS pendiente
-        FROM ordenes_compra o
-        WHERE o.proveedor_id = p_proveedor_id AND o.tenant_id = public.get_user_tenant_id()
-          AND o.estado NOT IN ('borrador', 'cancelada') AND o.estado_pago <> 'pagada'
-          AND public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento > 0.5
-        GROUP BY 1) x), '{}'::jsonb));
-$function$;
-REVOKE ALL ON FUNCTION public.fn_proveedor_cc_resumen(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.fn_proveedor_cc_resumen(uuid) TO authenticated;
-
--- ── 3. Cargo al recibir ──────────────────────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.fn_cc_proveedor_cargo_recepcion()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -179,19 +58,39 @@ BEGIN
   IF v_rec.id IS NULL THEN RETURN NEW; END IF;   -- recepción sin OC: no hay proveedor con OC que cargar
   INSERT INTO proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, recepcion_id, tipo, monto, moneda, fecha, descripcion, created_by)
   VALUES (NEW.tenant_id, v_rec.proveedor_id, v_rec.oc_id, v_rec.id, 'oc', NEW.monto, upper(COALESCE(NEW.moneda, 'ARS')), NEW.fecha,
-          'Compra OC #' || v_rec.oc_numero || ' — recepción #' || v_rec.numero, NEW.usuario_id)
+          'Compra ' || public.fn_oc_etiqueta(v_rec.oc_id) || ' — recepción #' || v_rec.numero, NEW.usuario_id)
   ON CONFLICT (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL DO NOTHING;
   RETURN NEW;
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.fn_cc_proveedor_cargo_recepcion() FROM PUBLIC, anon, authenticated;
-DROP TRIGGER IF EXISTS trg_cc_proveedor_cargo_recepcion ON public.gastos;
-CREATE TRIGGER trg_cc_proveedor_cargo_recepcion AFTER INSERT ON public.gastos
-  FOR EACH ROW EXECUTE FUNCTION public.fn_cc_proveedor_cargo_recepcion();
 
--- ── 4. Pago de una OC (desde Gastos) ─────────────────────────────────────────────────────────────────────────────────
--- Definición vigente (mig 381, leída de la base) con: lock de la OC (doble click), "Cuenta Corriente" ya no carga
--- deuda (solo plazo), el pago se imputa a la OC, y el estado sale de lo pagado de verdad.
+CREATE OR REPLACE FUNCTION public.fn_oc_guard_con_pagos()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_oc uuid; v_num int; v_pagado numeric;
+BEGIN
+  IF TG_TABLE_NAME = 'ordenes_compra' THEN
+    IF NEW.proveedor_id IS DISTINCT FROM OLD.proveedor_id AND (
+         OLD.monto_pagado > 0 OR EXISTS (SELECT 1 FROM proveedor_cc_movimientos WHERE oc_id = OLD.id)) THEN
+      RAISE EXCEPTION 'La % ya tiene pagos o recepciones: no se puede cambiar el proveedor.', public.fn_oc_etiqueta(OLD.id)
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN v_oc := OLD.orden_compra_id; ELSE v_oc := NEW.orden_compra_id; END IF;
+  SELECT numero, monto_pagado INTO v_num, v_pagado FROM ordenes_compra WHERE id = v_oc;
+  IF COALESCE(v_pagado, 0) > 0 OR EXISTS (SELECT 1 FROM proveedor_pago_imputaciones WHERE oc_id = v_oc) THEN
+    RAISE EXCEPTION 'La % ya tiene pagos: no se pueden cambiar sus ítems. Si cambió el pedido, hacé una OC nueva.', public.fn_oc_etiqueta(v_oc)
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.registrar_pago_oc(p_oc_id uuid, p_medios jsonb, p_descuento_monto numeric DEFAULT 0, p_clave text DEFAULT NULL::text, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_cheque jsonb DEFAULT NULL::jsonb, p_pago_dias integer DEFAULT 30, p_pago_condiciones text DEFAULT NULL::text, p_cotizacion_usd numeric DEFAULT NULL::numeric)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -245,7 +144,7 @@ BEGIN
   SELECT * INTO v_oc FROM public.ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant FOR UPDATE;
   IF v_oc.id IS NULL THEN RAISE EXCEPTION 'OC no encontrada en el tenant'; END IF;
   IF v_oc.estado = 'cancelada' THEN   -- un borrador se puede pagar (Gastos lo ofrece; e2e 140)
-    RAISE EXCEPTION 'La OC #% está %: no se le registran pagos.', v_oc.numero, v_oc.estado USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'La % está %: no se le registran pagos.', public.fn_oc_etiqueta(v_oc.id), v_oc.estado USING ERRCODE = 'check_violation';
   END IF;
   SELECT nombre INTO v_prov_nombre FROM public.proveedores WHERE id = v_oc.proveedor_id AND tenant_id = v_tenant;
   v_moneda_oc := COALESCE(v_oc.moneda, 'ARS');
@@ -345,7 +244,7 @@ BEGIN
       INTO v_medios_nocc FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente';
     INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, medio_pago, descripcion, caja_sesion_id, created_by)
     VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'pago', -v_montonocc, v_moneda_oc, CURRENT_DATE, v_medios_nocc::text,
-            'Pago OC #'||v_oc.numero, p_caja_sesion_id, v_user)
+            'Pago '||public.fn_oc_etiqueta(v_oc.id), p_caja_sesion_id, v_user)
     RETURNING id INTO v_mov_id;
     INSERT INTO public.proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto)
     VALUES (v_tenant, v_mov_id, p_oc_id, round(v_montonocc, 2));
@@ -355,7 +254,7 @@ BEGIN
   IF v_descuento > 0 THEN
     INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion, created_by)
     VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'ajuste', -round(v_descuento, 2), v_moneda_oc, CURRENT_DATE,
-            'Descuento OC #'||v_oc.numero, v_user);
+            'Descuento '||public.fn_oc_etiqueta(v_oc.id), v_user);
   END IF;
   -- mig 473: "Cuenta Corriente" ya NO inserta un cargo: la deuda la carga la recepción (fn_cc_proveedor_cargo_recepcion).
 
@@ -364,11 +263,11 @@ BEGIN
     VALUES (v_tenant, 'propio', 'entregado', v_montocheque,
             NULLIF(p_cheque->>'nro',''), NULLIF(p_cheque->>'banco',''), CURRENT_DATE,
             NULLIF(p_cheque->>'fecha_cobro','')::date, v_oc.proveedor_id, p_oc_id,
-            NULLIF(p_cheque->>'sucursal_id','')::uuid, 'Generado por pago OC #'||v_oc.numero, v_user);
+            NULLIF(p_cheque->>'sucursal_id','')::uuid, 'Generado por pago '||public.fn_oc_etiqueta(v_oc.id), v_user);
   END IF;
 
   IF p_caja_sesion_id IS NOT NULL THEN
-    v_concepto := 'Pago OC #'||v_oc.numero||' — '||COALESCE(v_prov_nombre,'');
+    v_concepto := 'Pago '||public.fn_oc_etiqueta(v_oc.id)||' — '||COALESCE(v_prov_nombre,'');
     FOR v_medio IN SELECT e FROM jsonb_array_elements(v_medios_enriquecidos) e
     LOOP
       SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
@@ -386,12 +285,8 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true, 'estado_pago', v_nuevo_estado, 'monto_pagado', v_nuevo_pagado, 'monto_cheque', v_montocheque);
 END $function$;
-REVOKE ALL ON FUNCTION public.registrar_pago_oc(uuid, jsonb, numeric, text, uuid, jsonb, integer, text, numeric) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.registrar_pago_oc(uuid, jsonb, numeric, text, uuid, jsonb, integer, text, numeric) TO authenticated, service_role;
 
--- ── 5. Pago desde la CC del proveedor: se imputa a la OC más vieja primero ──────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.registrar_pago_proveedor(
-  p_proveedor_id uuid, p_medio text, p_monto numeric, p_caja_sesion_id uuid DEFAULT NULL, p_clave text DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.registrar_pago_proveedor(p_proveedor_id uuid, p_medio text, p_monto numeric, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_clave text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -506,9 +401,9 @@ BEGIN
         ELSE 'pago_parcial' END
     WHERE id = v_oc.id;
     INSERT INTO proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto) VALUES (v_tenant, v_mov_id, v_oc.id, v_aplica);
-    v_imput := v_imput || jsonb_build_object('oc_id', v_oc.id, 'numero', v_oc.numero, 'monto', v_aplica);
+    v_imput := v_imput || jsonb_build_object('oc_id', v_oc.id, 'numero', v_oc.numero, 'etiqueta', public.fn_oc_etiqueta(v_oc.id), 'monto', v_aplica);
     v_detalle := v_detalle || CASE WHEN v_detalle = '' THEN '' ELSE ', ' END
-              || 'OC #' || v_oc.numero || ' $' || translate(to_char(v_aplica, 'FM999,999,990.00'), ',.', '.,');
+              || public.fn_oc_etiqueta(v_oc.id) || ' $' || translate(to_char(v_aplica, 'FM999,999,990.00'), ',.', '.,');
     v_resto := v_resto - v_aplica;
   END LOOP;
   -- Lo que no tiene OC (deuda por encima de lo pedido) queda como pago a cuenta sin imputar.
@@ -528,40 +423,95 @@ BEGIN
   RETURN jsonb_build_object('ok', true, 'movimiento_id', v_mov_id, 'imputaciones', v_imput);
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.registrar_pago_proveedor(uuid, text, numeric, uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.registrar_pago_proveedor(uuid, text, numeric, uuid, text) TO authenticated;
 
--- ── 6. Datos viejos (idempotente) ────────────────────────────────────────────────────────────────────────────────────
--- 6a. Anular los cargos que ponía "pasar a CC" (descripción 'CC OC #N — Xd', sin recepción) con un ajuste compensatorio.
-INSERT INTO public.proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion)
-SELECT m.tenant_id, m.proveedor_id, m.oc_id, 'ajuste', -m.monto, m.moneda, CURRENT_DATE,
-       'Anula "' || m.descripcion || '" — la deuda se carga al recibir (mig 473) [' || m.id || ']'
-  FROM public.proveedor_cc_movimientos m
- WHERE m.tipo = 'oc' AND m.recepcion_id IS NULL AND m.oc_id IS NOT NULL AND m.descripcion LIKE 'CC OC #%'
-   AND NOT EXISTS (SELECT 1 FROM public.proveedor_cc_movimientos a
-                    WHERE a.tipo = 'ajuste' AND a.descripcion LIKE '%[' || m.id || ']');
+CREATE OR REPLACE FUNCTION public.fn_notificar_cc_vencidas()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  r RECORD;
+BEGIN
 
--- 6b. Cargar las recepciones de OC ya confirmadas (su gasto "Compra OC #N").
-INSERT INTO public.proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, recepcion_id, tipo, monto, moneda, fecha, descripcion, created_by)
-SELECT g.tenant_id, o.proveedor_id, o.id, r.id, 'oc', g.monto, upper(COALESCE(g.moneda, 'ARS')), g.fecha,
-       'Compra OC #' || o.numero || ' — recepción #' || r.numero, g.usuario_id
-  FROM public.gastos g
-  JOIN public.recepciones r ON r.id = g.recepcion_id AND r.tenant_id = g.tenant_id
-  JOIN public.ordenes_compra o ON o.id = r.oc_id AND o.tenant_id = r.tenant_id
- WHERE g.monto > 0
-ON CONFLICT (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL DO NOTHING;
+  -- ── 1. CC CLIENTES VENCIDAS ─────────────────────────────────────────────────
+  FOR r IN
+    SELECT
+      v.tenant_id,
+      v.cliente_id,
+      c.nombre                                                                              AS cliente_nombre,
+      ROUND(SUM(GREATEST(v.total - COALESCE(v.monto_pagado, 0), 0) + COALESCE(v.interes_cc, 0))::numeric, 2) AS deuda_total,
+      u.id                                                                                   AS user_id
+    FROM ventas v
+    JOIN clientes c ON c.id = v.cliente_id
+    -- mig 421: antes ('OWNER','ADMIN'), que no incluía a ningún dueño.
+    JOIN users u ON u.tenant_id = v.tenant_id AND u.rol IN ('DUEÑO','SUPER_USUARIO')
+    WHERE v.es_cuenta_corriente = true
+      AND v.estado IN ('despachada', 'facturada')
+      AND (v.total - COALESCE(v.monto_pagado, 0)) > 0.5
+      -- Mig 442: UNA regla — la misma fecha que usan interés y morosidad. Las ventas viejas sin fecha, con el plazo
+      -- efectivo del cliente (Cliente > Categoría > Negocio > 30).
+      AND COALESCE(v.fecha_vencimiento_cc,
+                   (v.created_at + ((SELECT e.cc_plazo_dias FROM vw_clientes_cc e WHERE e.cliente_id = v.cliente_id) || ' days')::interval)::date)
+          < CURRENT_DATE
+    GROUP BY v.tenant_id, v.cliente_id, c.nombre, u.id
+    HAVING SUM(GREATEST(v.total - COALESCE(v.monto_pagado, 0), 0) + COALESCE(v.interes_cc, 0)) > 0.5
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM notificaciones
+      WHERE user_id    = r.user_id
+        AND action_url = '/clientes'
+        AND titulo     LIKE '%' || r.cliente_nombre || '%'
+        AND created_at::date = CURRENT_DATE
+    ) THEN
+      INSERT INTO notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+      VALUES (
+        r.tenant_id,
+        r.user_id,
+        'warning',
+        'CC vencida: ' || r.cliente_nombre,
+        'Deuda vencida de $' || r.deuda_total || ' en cuenta corriente sin cobrar.',
+        '/clientes'
+      );
+    END IF;
+  END LOOP;
 
--- 6c. Imputar los pagos viejos con OC (los pagos ya habían sumado a monto_pagado de esa OC).
-INSERT INTO public.proveedor_pago_imputaciones (tenant_id, movimiento_id, oc_id, monto)
-SELECT m.tenant_id, m.id, m.oc_id, -m.monto
-  FROM public.proveedor_cc_movimientos m
- WHERE m.tipo = 'pago' AND m.oc_id IS NOT NULL AND m.monto < 0
-   AND NOT EXISTS (SELECT 1 FROM public.proveedor_pago_imputaciones i WHERE i.movimiento_id = m.id);
+  -- ── 2. OC VENCIDAS SIN PAGAR ────────────────────────────────────────────────
+  FOR r IN
+    SELECT
+      oc.tenant_id,
+      oc.id         AS oc_id,
+      oc.numero     AS oc_numero,
+      p.nombre      AS proveedor_nombre,
+      COALESCE(oc.monto_total, (SELECT COALESCE(SUM(COALESCE(i.cantidad,0) * COALESCE(i.precio_unitario,0)), 0) FROM orden_compra_items i WHERE i.orden_compra_id = oc.id)) AS monto,
+      u.id          AS user_id
+    FROM ordenes_compra oc
+    JOIN proveedores p ON p.id = oc.proveedor_id
+    -- mig 421: antes ('OWNER','ADMIN'), que no incluía a ningún dueño.
+    JOIN users u ON u.tenant_id = oc.tenant_id AND u.rol IN ('DUEÑO','SUPER_USUARIO')
+    WHERE oc.fecha_vencimiento_pago IS NOT NULL
+      AND oc.fecha_vencimiento_pago < CURRENT_DATE
+      AND oc.estado_pago NOT IN ('pagada')
+      AND oc.estado NOT IN ('cancelada')
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM notificaciones
+      WHERE user_id    = r.user_id
+        AND action_url = '/proveedores'
+        AND titulo     LIKE '%' || public.fn_oc_etiqueta(r.oc_id) || ' %'
+        AND created_at::date = CURRENT_DATE
+    ) THEN
+      INSERT INTO notificaciones (tenant_id, user_id, tipo, titulo, mensaje, action_url)
+      VALUES (
+        r.tenant_id,
+        r.user_id,
+        'danger',
+        public.fn_oc_etiqueta(r.oc_id) || ' vencida — ' || r.proveedor_nombre,
+        'Orden de compra por $' || r.monto || ' venció sin pagar.',
+        '/proveedores'
+      );
+    END IF;
+  END LOOP;
 
--- 6d. Estado de pago de las OCs viejas: con el modelo anterior lo que pasaba a CC contaba como pagado para el estado
--- ('pagada' con monto_pagado < total). Ahora es deuda: vuelve a 'cuenta_corriente'.
-UPDATE public.ordenes_compra o SET estado_pago = 'cuenta_corriente'
- WHERE o.estado_pago = 'pagada'
-   AND o.monto_pagado + o.monto_descuento < COALESCE(o.monto_total, 0) - 0.5
-   AND EXISTS (SELECT 1 FROM public.proveedor_cc_movimientos m
-                WHERE m.oc_id = o.id AND m.tipo = 'oc' AND m.descripcion LIKE 'CC OC #%');
+END;
+$function$;

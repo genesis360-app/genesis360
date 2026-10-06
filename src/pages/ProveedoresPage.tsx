@@ -44,6 +44,7 @@ import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, typ
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { PadronArcaSugerencia } from '@/components/PadronArcaSugerencia'
 import { condicionParaProveedor, CONDICION_PADRON_LABEL, etiquetaCondicionFicha } from '@/lib/padronArca'
+import { etiquetaOC, nombreOC } from '@/lib/ocNumero'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes' | 'autorizaciones'
 type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
@@ -151,8 +152,7 @@ export default function ProveedoresPage() {
   const ocAprobacionCfg = { activa: (tenant as any)?.oc_aprobacion_activa, umbral: (tenant as any)?.oc_aprobacion_umbral }
   // A5 — etiqueta del número de OC según la numeración configurada (default por sucursal)
   const ocNumeracion = (tenant as any)?.oc_numeracion ?? 'sucursal'
-  const ocNumLabel = (oc: OrdenCompra) =>
-    ocNumeracion === 'sucursal' && oc.numero_sucursal != null ? `S-OC-${String(oc.numero_sucursal).padStart(4, '0')}` : `#${oc.numero}`
+  const ocNumLabel = (oc: OrdenCompra) => etiquetaOC(oc, ocNumeracion)   // src/lib/ocNumero.ts: el mismo en toda la app
   const navigate = useNavigate()
 
   // CO7/A6 — arma los datos del PDF/texto de la OC desde el detalle abierto + sus ítems.
@@ -346,7 +346,7 @@ export default function ProveedoresPage() {
     queryKey: ['proveedor-cc', ccProvId],
     queryFn: async () => {
       const { data } = await supabase.from('proveedor_cc_movimientos')
-        .select('*, ordenes_compra(numero)')
+        .select('*, ordenes_compra(numero, numero_sucursal)')
         .eq('proveedor_id', ccProvId!)
         .order('fecha', { ascending: false })
         .limit(50)
@@ -422,7 +422,7 @@ export default function ProveedoresPage() {
     // El estado de cuenta lleva TODOS los movimientos (el historial en pantalla muestra los últimos 50): si no, las
     // filas no sumaban el saldo del pie.
     const { data: todosMov, error: movErr } = await traerTodoConError<any>((desde, hasta) => supabase
-      .from('proveedor_cc_movimientos').select('*, ordenes_compra(numero)')
+      .from('proveedor_cc_movimientos').select('*, ordenes_compra(numero, numero_sucursal)')
       .eq('proveedor_id', ccProvId!).order('fecha', { ascending: true }).order('created_at', { ascending: true })
       .range(desde, hasta))
     if (movErr || !todosMov) { toast.error('No se pudo armar el estado de cuenta: ' + (movErr?.message ?? 'sin datos')); return }
@@ -442,7 +442,7 @@ export default function ProveedoresPage() {
       head: [['Fecha', 'Concepto', 'Vencimiento', 'Monto']],
       body: todosMov.map((m: any) => [
         new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR'),
-        (m.descripcion ?? m.tipo) + (m.ordenes_compra ? ` (OC #${m.ordenes_compra.numero})` : ''),
+        (m.descripcion ?? m.tipo) + (m.ordenes_compra ? ` (${nombreOC(m.ordenes_compra, ocNumeracion)})` : ''),
         m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—',
         fmt(Number(m.monto ?? 0)),
       ]),
@@ -477,9 +477,9 @@ export default function ProveedoresPage() {
         p_caja_sesion_id: sesionId, p_clave: ccClave.trim() || null,
       })
       if (error) throw error
-      const imp = ((data as any)?.imputaciones ?? []) as { numero: number; monto: number }[]
+      const imp = ((data as any)?.imputaciones ?? []) as { numero: number; etiqueta?: string; monto: number }[]
       toast.success(imp.length
-        ? `Pago registrado — ${imp.map(i => `OC #${i.numero}`).join(', ')}${imp.length === 1 ? '' : ' (de la más vieja a la más nueva)'}`
+        ? `Pago registrado — ${imp.map(i => i.etiqueta ?? nombreOC(i, ocNumeracion)).join(', ')}${imp.length === 1 ? '' : ' (de la más vieja a la más nueva)'}`
         : 'Pago registrado')
       setCcPagoMonto(''); setCcClave('')
       refetchCC(); refetchCCResumen()
@@ -562,7 +562,7 @@ export default function ProveedoresPage() {
     doc.setFontSize(16).setFont('helvetica', 'bold')
     doc.text('Orden de Compra', 14, 18)
     doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(80)
-    doc.text(`OC #${oc.numero}`, 14, 26)
+    doc.text(nombreOC(oc, ocNumeracion), 14, 26)
     doc.text(`Proveedor: ${(oc as any).proveedores?.nombre ?? '—'}`, 14, 32)
     doc.text(`Estado: ${ESTADO_OC_LABEL[oc.estado as EstadoOC] ?? oc.estado}`, 14, 38)
     if (oc.fecha_esperada) doc.text(`Fecha esperada: ${new Date(oc.fecha_esperada + 'T00:00:00').toLocaleDateString('es-AR')}`, 14, 44)
@@ -1201,10 +1201,10 @@ export default function ProveedoresPage() {
         // Mig 473: una OC con pagos no cambia de proveedor ni de ítems (lo frena también la base). Se chequea ANTES de
         // tocar nada: si no, el encabezado quedaba guardado y fallaba recién al reemplazar los ítems.
         const { data: ocActual, error: ocActErr } = await supabase.from('ordenes_compra')
-          .select('numero, monto_pagado').eq('id', editOcId).single()
+          .select('numero, numero_sucursal, monto_pagado').eq('id', editOcId).single()
         if (ocActErr) throw ocActErr
         if (Number(ocActual?.monto_pagado ?? 0) > 0) {
-          throw new Error(`La OC #${ocActual!.numero} ya tiene pagos: no se puede editar. Si cambió el pedido, hacé una OC nueva.`)
+          throw new Error(`La ${nombreOC(ocActual, ocNumeracion)} ya tiene pagos: no se puede editar. Si cambió el pedido, hacé una OC nueva.`)
         }
         const { error } = await supabase.from('ordenes_compra').update({
           proveedor_id: ocForm.proveedor_id,
@@ -1294,7 +1294,7 @@ export default function ProveedoresPage() {
           estado: 'enviada',
           es_derivada: true,
           oc_padre_id: oc.id,
-          notas: `OC derivada de OC #${oc.numero} — ítems ya pagados, pendiente de entrega`,
+          notas: `OC derivada de ${nombreOC(oc, ocNumeracion)} — ítems ya pagados, pendiente de entrega`,
           created_by: user!.id,
         })
         .select('id, numero')
@@ -1452,7 +1452,7 @@ export default function ProveedoresPage() {
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: it.producto_id, tipo: 'ajuste_rebaje',
           cantidad: it.cantidad, stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - it.cantidad),
-          motivo: `Devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+          motivo: `Devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (${nombreOC(oc, ocNumeracion)})`,
           usuario_id: user?.id, sucursal_id: sucId,
         })
       }
@@ -1464,21 +1464,21 @@ export default function ProveedoresPage() {
         await supabase.from('proveedor_cc_movimientos').insert({
           tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id,
           tipo: 'nota_credito', monto: -monto, fecha: hoy,
-          descripcion: `Devolución a proveedor (OC #${oc.numero}) — crédito a favor`, created_by: user?.id,
+          descripcion: `Devolución a proveedor (${nombreOC(oc, ocNumeracion)}) — crédito a favor`, created_by: user?.id,
         })
       } else if (devForma === 'efectivo') {
         // cajaReembolsoId está garantizada (el guard de arriba bloquea si no hay caja operativa abierta)
         cajaSesionId = cajaReembolsoId
         await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
-          concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+          concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (${nombreOC(oc, ocNumeracion)})`,
           usuario_id: user?.id,
           moneda: (oc as any).moneda ?? 'ARS',  // Compras/Gastos en USD (mig 379) — el reembolso hereda la moneda de la OC devuelta
         })
       } else if (devForma === 'reposicion') {
         const { data: newOC, error: ocErr } = await supabase.from('ordenes_compra').insert({
           tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, numero: 0, estado: 'borrador',
-          sucursal_id: sucId, notas: `Reposición por devolución de OC #${oc.numero}`, created_by: user?.id,
+          sucursal_id: sucId, notas: `Reposición por devolución de ${nombreOC(oc, ocNumeracion)}`, created_by: user?.id,
         }).select('id, numero').single()
         if (ocErr) throw ocErr
         ocReposicionId = newOC.id
@@ -2926,7 +2926,7 @@ export default function ProveedoresPage() {
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-bold text-primary mb-4">
-                {editOcId ? `Editar OC #${ordenes.find(o => o.id === editOcId)?.numero}` : 'Nueva orden de compra'}
+                {editOcId ? `Editar ${nombreOC(ordenes.find(o => o.id === editOcId), ocNumeracion)}` : 'Nueva orden de compra'}
               </h2>
 
               {/* Header OC */}
@@ -3896,7 +3896,7 @@ export default function ProveedoresPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-primary dark:text-white truncate">
                             {m.descripcion ?? (m.tipo === 'oc' ? 'Orden de Compra' : m.tipo === 'pago' ? 'Pago' : m.tipo)}
-                            {m.ordenes_compra && <span className="text-gray-400 ml-1 text-xs">OC #{m.ordenes_compra.numero}</span>}
+                            {m.ordenes_compra && <span className="text-gray-400 ml-1 text-xs">{nombreOC(m.ordenes_compra, ocNumeracion)}</span>}
                           </p>
                           <div className="flex gap-2 text-xs text-gray-400 flex-wrap mt-0.5">
                             <span>{new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR')}</span>

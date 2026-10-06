@@ -6,7 +6,11 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-470, + correctivos 387b/387c)
+# Historial de Migraciones (001-472, + correctivos 387b/387c)
+
+🗂️ **Migración 472 — 🟡 SOLO EN DEV (2026-10-05, commit `5b21e7f9`; NO en PROD, PROD sigue 001-466; aplicar 467 -> 472 en orden; en DEV quedó registrada DOS veces por una corrección, en PROD va una sola)**: rediseño de Categorías de clientes. `fn_clientes_compras_resumen` (compras, ticket promedio y total gastado por cliente: ventas despachada/facturada/reservada menos devoluciones), `fn_descuentos_categoria_masivo` (% por categoría de producto, una entrada en el historial), `fn_usuario_en_roles_categoria` acepta `user:<id>`, y la policy DELETE de `categorias_cliente` pasa a solo DUEÑO/ADMIN (**cambia una policy: revisar el hash de `pg_policies` DEV vs PROD al deployar**). Ver [[wiki/features/clientes-proveedores]], [[wiki/features/configuracion]]. e2e 178/163/183, UAT §101.
+
+🔑 **Migración 471 — 🟡 SOLO EN DEV (2026-10-05, commit `64b000c6`; NO en PROD)**: acceso por correo. Marca `debe_cambiar_password=true` a los usuarios invitados existentes que nunca volvieron a entrar o no abrieron el link y no usan Google (en PROD: 9 = 8 de El Tilo + 1 de otro negocio, para que elijan contraseña al entrar). Va con la EF `invite-user` (invitados nuevos nacen con el flag), "¿Olvidaste tu contraseña?" y las plantillas de Auth en castellano (`supabase/templates/`, `scripts/aplicar-plantillas-auth.mjs`). e2e 182, UAT §100. Ver [[wiki/features/autenticacion-onboarding]], [[wiki/integrations/resend-email]].
 
 🔧 **Migración 470 — 🟡 SOLO EN DEV (2026-10-04, commit `3a31a2f1`, pre-release `v1.239.0-rc.3`; NO en PROD, PROD sigue 001-466; aplicar 467 -> 468 -> 469 -> 470)**: `470_reporte_categoria_devoluciones.sql` — ajustes de la revisión de la 469. El reporte resta las devoluciones PARCIALES en proporción a lo devuelto de cada producto por venta (`devolucion_items` no apunta a la línea); exige usuario activo; tope de `descuento_categoria_monto` = (lista - precio) x cantidad; un presupuesto re-cotizado sin monto nuevo no conserva el viejo. No cambia precios ni el tope de descuento. Ver [[wiki/features/precios-tiers-empaque]].
 

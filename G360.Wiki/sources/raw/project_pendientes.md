@@ -6,7 +6,52 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-04) — PROD `v1.238.0` (001-466) · DEV 001-**470** + `v1.239.0-rc.3` · B2 COMPLETO en DEV
+> ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre para /clear) — PROD `v1.238.0` (001-466) · DEV 001-**472** · DEPLOY `v1.239.0` PENDIENTE
+>
+> | | Código | Migraciones | Policies |
+> |---|---|---|---|
+> | **PROD** | `v1.238.0` (sin cambios) | 001-**466** | public 245 · storage 40 · cron 2 |
+> | **DEV** | `origin/dev` = `5b21e7f9` (APP_VERSION todavía `v1.238.0`) | 001-**472** (467-472 NO están en PROD) | la 472 cambia la policy DELETE de `categorias_cliente` |
+>
+> **Qué hay en DEV para subir (todo junto, GO pidió esperar al rediseño):**
+> - **B2 completo** (migs 467-470 + EF `categoria-cartel-ia`): motor único de precio, categoría en el precio, tope de
+>   descuento, cartel con IA y reporte "Descuentos por categoría". Detalle en los bloques de abajo (03-04/10).
+> - **Acceso por correo** (commit `64b000c6`, mig 471 + EF `invite-user` + plantillas de Auth): los invitados eligen
+>   contraseña, "¿Olvidaste tu contraseña?", correos en castellano. Caso El Tilo. Ver [[wiki/features/autenticacion-onboarding]].
+> - **Rediseño de Categorías de clientes** (commit `5b21e7f9`, mig 472): pestaña, alta con check de CC, asignar con
+>   compras/ticket/total, lista de descuentos nueva (cards, filtros, acciones, tabla por categoría de producto) y
+>   permisos por rol y por usuario en Configuración → Clientes. Ver [[wiki/features/clientes-proveedores]].
+>
+> 🛑 **La landing NO va a PROD**: hero nuevo en revisión de GO, guardado en `git stash` "landing-hero-en-revision"
+> (`src/pages/LandingPage.tsx`, `src/styles/landingHero.css`, `public/landing/pos-venta.jpg`, `package.json` +
+> `package-lock.json` con `@fontsource-variable/geist` y `geist-mono`). Retomar: `git stash list` → `git stash apply stash@{N}`.
+> No mezclarla con commits del deploy.
+>
+> **✅ Checklist del deploy v1.239.0 (en este orden):**
+> 1. Suite e2e completa verde sobre `5b21e7f9` (se lanzó el 06/10; si no está el resultado, repetirla) — la revisión de la
+>    mig 472 dio APTA (sugerencias opcionales: contar ids con DISTINCT en `fn_descuentos_categoria_masivo`; `GREATEST(…, 0)`
+>    y moneda en `fn_clientes_compras_resumen`).
+> 2. Bump `APP_VERSION` a `v1.239.0` en `src/config/brand.ts`.
+> 3. Chequear actividad reciente en PROD (ventas / movimientos / caja de los últimos 30 min).
+> 4. Migs a PROD de a una con `node scripts/aplicar-migracion.mjs jjffnbrdjchquexdfgwq supabase/migrations/…`:
+>    **467 → 468 → 469 → 470 → 471 → 472** (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
+>    Ya validado en PROD con transacción abortada: la 467 da **0 diferencias en 3.185 casos** sobre los 65 productos.
+> 5. EFs en PROD: `npx supabase functions deploy categoria-cartel-ia --project-ref jjffnbrdjchquexdfgwq` (nueva;
+>    `GROQ_API_KEY` ya existe en PROD) e `invite-user`.
+> 6. PR `dev → main` "v1.239.0 — …", merge (GO autorizó), release `v1.239.0 --latest`.
+> 7. `node scripts/aplicar-plantillas-auth.mjs jjffnbrdjchquexdfgwq` (correos de Auth en castellano).
+> 8. `npm run ai:knowledge` + redeploy `ai-assistant` en DEV y PROD (app-reference ganó el reporte).
+> 9. `bash scripts/auditar-edge-functions.sh` + hash de `pg_policies` por schema DEV vs PROD.
+> 10. Verificar la versión servida con `curl -L`; wiki/memoria; avisar a El Tilo que use "¿Olvidaste tu contraseña?" y
+>     reinvitar al usuario de `outloock.com` con el correo bien escrito.
+>
+> **Para GO (abierto):** ventas recurrentes (existen; generan el presupuesto con el precio congelado de la plantilla, sin
+> categoría) · links de los correos vencen en 1 h (también las invitaciones; se puede subir a 24 h) · autenticar Figma con
+> `/mcp` · revisar la landing.
+>
+> ---
+>
+> ### (superado por el bloque de arriba) ARRANCÁ ACÁ (2026-10-04) — PROD `v1.238.0` (001-466) · DEV 001-**470** + `v1.239.0-rc.3` · B2 COMPLETO en DEV
 >
 > | | Código | Migraciones | Policies |
 > |---|---|---|---|
@@ -47,7 +92,8 @@ type: project
 > descuentos por categoría están EN PROD.** Todo lo que abajo diga "EN DEV / falta PROD" de 457-466 quedó superado.
 >
 > ### ▶ LO PRÓXIMO (en este orden)
-> 1. **B2 — Categorías de clientes: DEPLOY de 467-470 a PROD**. ✅ Fases 3, 4 y 5 HECHAS en DEV (03-04/10); **B2 completo en DEV,
+> 1. **DEPLOY v1.239.0 a PROD (467-472)** — checklist completo en el bloque "ARRANCÁ ACÁ (2026-10-06)" de arriba. Incluye B2, acceso por correo y rediseño de
+>    Categorías. (Texto previo, 04/10, de 467-470:) **B2 — Categorías de clientes: DEPLOY de 467-470 a PROD**. ✅ Fases 3, 4 y 5 HECHAS en DEV (03-04/10); **B2 completo en DEV,
 >    faltan en PROD** (aplicar en orden 467 -> 468 -> 469 -> 470, de a una con `scripts/aplicar-migracion.mjs`, + desplegar la EF
 >    `categoria-cartel-ia` verificando `GROQ_API_KEY` + `auditar-edge-functions.sh` + `npm run ai:knowledge` y redeploy de
 >    `ai-assistant`, cuando GO lo autorice). Para GO: ventas recurrentes (existen; generan el presupuesto con precio congelado de la

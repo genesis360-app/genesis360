@@ -110,3 +110,18 @@ export function esUsuarioSinCorreo(email: string | null | undefined): boolean {
 export function credencialesParaMostrar(usuario: string, codigoNegocio: string): { negocio: string; usuario: string } {
   return { negocio: normalizarCodigoNegocio(codigoNegocio), usuario: normalizarUsuario(usuario) }
 }
+
+/**
+ * Mensaje con los datos para entrar que el dueño le pasa al empleado sin correo (pedido de GO 2026-10-06: el código del
+ * negocio solo se veía al crear el usuario y después no había dónde consultarlo). La contraseña es de un solo uso: el
+ * empleado la cambia en su primer ingreso, por eso se puede mostrar acá.
+ */
+export function mensajeDatosAcceso(d: { negocio: string; codigo: string; usuario: string; password?: string | null; url: string }): string {
+  return [
+    `Tus datos para entrar a ${d.negocio}:`,
+    `• Entrá a ${d.url} y tocá "No tengo email: entrar con usuario"`,
+    `• Código del negocio: ${d.codigo}`,
+    `• Usuario: ${d.usuario}`,
+    ...(d.password ? [`• Contraseña: ${d.password} (la vas a cambiar al entrar por primera vez)`] : []),
+  ].join('\n')
+}

@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserPlus, Trash2, Shield, User, Mail,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw, KeyRound,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw, KeyRound, Copy, Store, MessageCircle,
 } from 'lucide-react'
-import { normalizarUsuario, validarUsuario } from '@/lib/usuarioLocal'
+import { normalizarUsuario, validarUsuario, mensajeDatosAcceso } from '@/lib/usuarioLocal'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -97,6 +97,17 @@ export default function UsuariosPage() {
   const [invPassword, setInvPassword] = useState('')
   // Reseteo de contraseña de un usuario sin correo (no hay casilla donde mandarle un link).
   const [resetTarget, setResetTarget] = useState<any | null>(null)
+  // GO 06/10: el código del negocio solo se veía al crear el usuario. Tras crear (o reponer la contraseña) se muestra
+  // una tarjeta con los datos para entrar, lista para copiar o mandar por WhatsApp.
+  const [datosAcceso, setDatosAcceso] = useState<{ usuario: string; nombre: string; password: string } | null>(null)
+  const urlLogin = `${(import.meta.env.VITE_APP_URL as string | undefined) || window.location.origin}/login`
+  const textoAcceso = datosAcceso && tenant?.codigo
+    ? mensajeDatosAcceso({ negocio: tenant?.nombre ?? 'el negocio', codigo: tenant.codigo, usuario: datosAcceso.usuario, password: datosAcceso.password, url: urlLogin })
+    : ''
+  const copiar = async (texto: string, ok: string) => {
+    try { await navigator.clipboard.writeText(texto); toast.success(ok) }
+    catch { toast.error('No se pudo copiar: seleccioná el texto y copialo a mano') }
+  }
   const [resetPassword, setResetPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [filterRol, setFilterRol] = useState<UserRole | 'TODOS'>('TODOS')
@@ -161,7 +172,8 @@ export default function UsuariosPage() {
         throw new Error(body?.error ?? error.message)
       }
       if (data?.error) throw new Error(data.error)
-      toast.success(`Usuario "${invUsuario}" creado. Pasale el código del negocio y su contraseña.`)
+      toast.success(`Usuario "${invUsuario}" creado.`)
+      setDatosAcceso({ usuario: normalizarUsuario(invUsuario), nombre: invNombre.trim() || invUsuario, password: invPassword })
       logActividad({ entidad: 'usuario', entidad_nombre: invNombre.trim() || invUsuario, accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })
       setInvUsuario(''); setInvNombre(''); setInvPassword(''); setShowInvitar(false)
       qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -188,6 +200,7 @@ export default function UsuariosPage() {
       }
       if (data?.error) throw new Error(data.error)
       toast.success(`Contraseña repuesta. ${resetTarget.nombre_display ?? resetTarget.usuario} la va a tener que cambiar al entrar.`)
+      if (resetTarget.usuario) setDatosAcceso({ usuario: resetTarget.usuario, nombre: resetTarget.nombre_display ?? resetTarget.usuario, password: resetPassword })
       logActividad({ entidad: 'usuario', entidad_id: resetTarget.id, entidad_nombre: resetTarget.nombre_display, accion: 'editar', campo: 'password', pagina: '/usuarios' })
       setResetTarget(null); setResetPassword('')
       qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -422,6 +435,18 @@ export default function UsuariosPage() {
             <Shield size={22} className="text-accent-text" /> Usuarios
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
+          {tenant?.codigo && (
+            // El código que piden los empleados sin correo para entrar (mig 434), siempre a la vista.
+            <div className="mt-2 inline-flex items-center gap-2 text-xs bg-gray-100 dark:bg-gray-700/60 rounded-lg px-2.5 py-1.5" data-testid="codigo-negocio">
+              <Store size={13} className="text-gray-500 dark:text-gray-400 shrink-0" />
+              <span className="text-gray-500 dark:text-gray-400">Código del negocio:</span>
+              <strong className="font-mono text-primary">{tenant.codigo}</strong>
+              <button type="button" onClick={() => copiar(tenant.codigo!, 'Código copiado')} title="Copiar el código"
+                aria-label="Copiar el código del negocio" className="p-0.5 rounded text-gray-400 hover:text-accent-text">
+                <Copy size={13} />
+              </button>
+            </div>
+          )}
         </div>
         {canManage && !showInvitar && (
           <button
@@ -1048,6 +1073,30 @@ export default function UsuariosPage() {
 
       {/* Mig 434 · Reponer la contraseña de un usuario sin correo.
           No hay link de recuperación posible: la dirección interna no recibe nada. */}
+      {datosAcceso && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" role="dialog" aria-label="Datos para entrar">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+            <div>
+              <h3 className="font-semibold text-primary">Datos para entrar de {datosAcceso.nombre}</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Pasáselos ahora: la contraseña no se vuelve a mostrar. La cambia en su primer ingreso.</p>
+            </div>
+            <pre className="whitespace-pre-wrap break-words text-sm bg-gray-50 dark:bg-gray-700/60 rounded-xl p-3 text-gray-700 dark:text-gray-200 font-sans" data-testid="texto-datos-acceso">{textoAcceso}</pre>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <button type="button" onClick={() => copiar(textoAcceso, 'Datos copiados')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <Copy size={14} /> Copiar
+              </button>
+              <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent(textoAcceso)}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-green-600 text-white text-sm hover:bg-green-700">
+                <MessageCircle size={14} /> Enviar por WhatsApp
+              </a>
+              <button type="button" onClick={() => setDatosAcceso(null)}
+                className="px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/90">Listo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {resetTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
           onClick={() => setResetTarget(null)}>

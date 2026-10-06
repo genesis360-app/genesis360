@@ -2431,7 +2431,7 @@ Decisiones de GO 05/10: el check "Habilita cuenta corriente" sin tildar = lo del
 | 101.11 | Filtros combinables en pastillas (marca, categoría, margen / costo / precio / descuento con >, <, =, ≥, ≤); se editan con un click y se quitan | unit `listaDescuentos` · e2e `178` | ✅ |
 | 101.12 | Historial (modal): fecha y hora, quién y qué hizo | revisión (ya existía, F1) | ✅ código |
 | 101.13 | 🛑 Permisos en Configuración → Clientes (solo DUEÑO): pestañas Roles (incluye roles personalizados) y Usuarios con checkbox; se guardan con "Guardar configuración de Clientes"; el servidor reconoce el permiso por usuario | e2e `183` A · SQL DEV (`user:<id>` → permiso true) | ✅ |
-| 101.14 | Regresión e2e completa | suite | ⏳ |
+| 101.14 | Regresión e2e completa | suite sobre `5b21e7f9` (06/10): 452 passed, 0 failed | ✅ |
 
 ## 🔑 §100 — Acceso por correo: invitados eligen contraseña + "¿Olvidaste tu contraseña?" (mig 471, 🟡 DEV) — 2026-10-05
 

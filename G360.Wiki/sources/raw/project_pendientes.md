@@ -28,7 +28,7 @@ type: project
 > No mezclarla con commits del deploy.
 >
 > **✅ Checklist del deploy v1.239.0 (en este orden):**
-> 1. Suite e2e completa verde sobre `5b21e7f9` (se lanzó el 06/10; si no está el resultado, repetirla) — la revisión de la
+> 1. ✅ Suite e2e completa verde sobre `5b21e7f9` (06/10: **452 passed, 0 failed**, 53 min) — la revisión de la
 >    mig 472 dio APTA (sugerencias opcionales: contar ids con DISTINCT en `fn_descuentos_categoria_masivo`; `GREATEST(…, 0)`
 >    y moneda en `fn_clientes_compras_resumen`).
 > 2. Bump `APP_VERSION` a `v1.239.0` en `src/config/brand.ts`.

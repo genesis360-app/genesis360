@@ -151,7 +151,7 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
         const monto = Number(cheque.monto) || 0
         if (cheque.oc_id && monto > 0) {
           const { data: oc } = await supabase.from('ordenes_compra')
-            .select('id, numero, monto_total, monto_pagado, monto_descuento, proveedor_id')
+            .select('id, numero, monto_total, monto_pagado, monto_descuento, proveedor_id, moneda')
             .eq('id', cheque.oc_id).single()
           if (oc) {
             const rev = reversionPagoOC({
@@ -164,12 +164,14 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
               .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', oc.id)
             if (eOc) throw eOc
             if (oc.proveedor_id) {
-              await supabase.from('proveedor_cc_movimientos').insert({
-                tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id,
+              const { error: ajErr } = await supabase.from('proveedor_cc_movimientos').insert({
+                tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id, moneda: oc.moneda ?? 'ARS',
                 tipo: 'ajuste', monto: monto, fecha: hoy,
                 descripcion: `Cheque rechazado${cheque.nro_cheque ? ` ${cheque.nro_cheque}` : ''} — pago OC #${oc.numero} revertido`,
                 created_by: user?.id ?? null,
               })
+              // 🛑 REGLA #0 — si no se repone la deuda en la CC, el proveedor queda como pagado sin estarlo.
+              if (ajErr) throw new Error(`Se revirtió el pago de la OC #${oc.numero} pero no la deuda en la cuenta corriente: ${ajErr.message}`)
             }
             reversion = `Pago de la OC #${oc.numero} revertido — la deuda volvió a quedar pendiente`
           }

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-06T02:54:15.209Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261006021200 · 177 tablas
+-- Generado 2026-10-06T04:18:39.484Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261006041616 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1785,7 +1785,9 @@ CREATE TABLE public.proveedor_cc_movimientos (
   created_by uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   nc_numero text,
-  adjunto_url text
+  adjunto_url text,
+  recepcion_id uuid,
+  moneda text NOT NULL DEFAULT 'ARS'::text
 );
 
 CREATE TABLE public.proveedor_contactos (
@@ -1810,6 +1812,15 @@ CREATE TABLE public.proveedor_cuentas_bancarias (
   alias text,
   cuenta text,
   es_principal boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.proveedor_pago_imputaciones (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  movimiento_id uuid NOT NULL,
+  oc_id uuid NOT NULL,
+  monto numeric(12,2) NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
@@ -3181,6 +3192,7 @@ ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_cantidad
 ALTER TABLE public.orden_compra_items ADD CONSTRAINT orden_compra_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'enviada'::text, 'confirmada'::text, 'cancelada'::text, 'recibida_parcial'::text, 'recibida'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_pago_check CHECK ((estado_pago = ANY (ARRAY['pendiente_pago'::text, 'pago_parcial'::text, 'pagada'::text, 'cuenta_corriente'::text])));
+ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pagado_no_excede_total CHECK (((monto_pagado >= (0)::numeric) AND (monto_descuento >= (0)::numeric) AND ((monto_total IS NULL) OR ((monto_pagado + monto_descuento) <= (monto_total + 0.5)))));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pkey PRIMARY KEY (id);
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_tenant_id_numero_key UNIQUE (tenant_id, numero);
 ALTER TABLE public.padron_arca_cache ADD CONSTRAINT padron_arca_cache_cuit_check CHECK ((cuit ~ '^\d{11}$'::text));
@@ -3252,6 +3264,8 @@ ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimien
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_tipo_check CHECK ((tipo = ANY (ARRAY['oc'::text, 'pago'::text, 'nota_credito'::text, 'ajuste'::text])));
 ALTER TABLE public.proveedor_contactos ADD CONSTRAINT proveedor_contactos_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_cuentas_bancarias ADD CONSTRAINT proveedor_cuentas_bancarias_pkey PRIMARY KEY (id);
+ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_monto_check CHECK ((monto > (0)::numeric));
+ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_proveedor_id_producto_id_key UNIQUE (proveedor_id, producto_id);
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_condicion_iva_check CHECK ((condicion_iva = ANY (ARRAY['responsable_inscripto'::text, 'monotributo'::text, 'exento'::text, 'consumidor_final'::text])));
@@ -3746,11 +3760,15 @@ ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimien
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_oc_id_fkey FOREIGN KEY (oc_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL;
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
+ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_recepcion_id_fkey FOREIGN KEY (recepcion_id) REFERENCES recepciones(id) ON DELETE SET NULL;
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_contactos ADD CONSTRAINT proveedor_contactos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_contactos ADD CONSTRAINT proveedor_contactos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_cuentas_bancarias ADD CONSTRAINT proveedor_cuentas_bancarias_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_cuentas_bancarias ADD CONSTRAINT proveedor_cuentas_bancarias_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_movimiento_id_fkey FOREIGN KEY (movimiento_id) REFERENCES proveedor_cc_movimientos(id) ON DELETE CASCADE;
+ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_oc_id_fkey FOREIGN KEY (oc_id) REFERENCES ordenes_compra(id) ON DELETE RESTRICT;
+ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -4485,6 +4503,10 @@ CREATE INDEX idx_zonas_sucursal ON public.zonas USING btree (sucursal_id) WHERE 
 CREATE INDEX idx_zonas_tenant ON public.zonas USING btree (tenant_id);
 CREATE INDEX mp_suscripcion_intentos_plan_idx ON public.mp_suscripcion_intentos USING btree (mp_plan_id, created_at DESC);
 CREATE INDEX mp_suscripcion_intentos_tenant_idx ON public.mp_suscripcion_intentos USING btree (tenant_id, created_at DESC);
+CREATE UNIQUE INDEX proveedor_cc_mov_cargo_por_recepcion ON public.proveedor_cc_movimientos USING btree (recepcion_id) WHERE ((tipo = 'oc'::text) AND (recepcion_id IS NOT NULL));
+CREATE INDEX proveedor_pago_imputaciones_mov ON public.proveedor_pago_imputaciones USING btree (movimiento_id);
+CREATE INDEX proveedor_pago_imputaciones_oc ON public.proveedor_pago_imputaciones USING btree (oc_id);
+CREATE INDEX proveedor_pago_imputaciones_tenant ON public.proveedor_pago_imputaciones USING btree (tenant_id);
 CREATE UNIQUE INDEX tenants_codigo_key ON public.tenants USING btree (codigo);
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
@@ -6020,6 +6042,29 @@ AS $function$
    WHERE v.cliente_id = p_cliente_id
      -- Con sesión, solo clientes del propio negocio (sin sesión: triggers y crons).
      AND (auth.uid() IS NULL OR v.tenant_id = get_user_tenant_id())
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cc_proveedor_cargo_recepcion()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_rec record;
+BEGIN
+  IF NEW.recepcion_id IS NULL OR NEW.monto IS NULL OR NEW.monto <= 0 THEN RETURN NEW; END IF;
+  SELECT r.id, r.numero, r.oc_id, o.proveedor_id, o.numero AS oc_numero INTO v_rec
+    FROM recepciones r JOIN ordenes_compra o ON o.id = r.oc_id AND o.tenant_id = r.tenant_id
+   WHERE r.id = NEW.recepcion_id AND r.tenant_id = NEW.tenant_id;
+  IF v_rec.id IS NULL THEN RETURN NEW; END IF;   -- recepción sin OC: no hay proveedor con OC que cargar
+  INSERT INTO proveedor_cc_movimientos (tenant_id, proveedor_id, oc_id, recepcion_id, tipo, monto, moneda, fecha, descripcion, created_by)
+  VALUES (NEW.tenant_id, v_rec.proveedor_id, v_rec.oc_id, v_rec.id, 'oc', NEW.monto, upper(COALESCE(NEW.moneda, 'ARS')), NEW.fecha,
+          'Compra OC #' || v_rec.oc_numero || ' — recepción #' || v_rec.numero, NEW.usuario_id)
+  ON CONFLICT (recepcion_id) WHERE tipo = 'oc' AND recepcion_id IS NOT NULL DO NOTHING;
+  RETURN NEW;
+END;
 $function$
 
 
@@ -9761,6 +9806,47 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_oc_guard_con_pagos()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_oc uuid; v_num int; v_pagado numeric;
+BEGIN
+  IF TG_TABLE_NAME = 'ordenes_compra' THEN
+    IF NEW.proveedor_id IS DISTINCT FROM OLD.proveedor_id AND (
+         OLD.monto_pagado > 0 OR EXISTS (SELECT 1 FROM proveedor_cc_movimientos WHERE oc_id = OLD.id)) THEN
+      RAISE EXCEPTION 'La OC #% ya tiene pagos o recepciones: no se puede cambiar el proveedor.', OLD.numero
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'DELETE' THEN v_oc := OLD.orden_compra_id; ELSE v_oc := NEW.orden_compra_id; END IF;
+  SELECT numero, monto_pagado INTO v_num, v_pagado FROM ordenes_compra WHERE id = v_oc;
+  IF COALESCE(v_pagado, 0) > 0 OR EXISTS (SELECT 1 FROM proveedor_pago_imputaciones WHERE oc_id = v_oc) THEN
+    RAISE EXCEPTION 'La OC #% ya tiene pagos: no se pueden cambiar sus ítems. Si cambió el pedido, hacé una OC nueva.', v_num
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_oc_total(p_oc_id uuid)
+ RETURNS numeric
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT COALESCE(o.monto_total,
+    (SELECT COALESCE(SUM(COALESCE(i.cantidad, 0) * COALESCE(i.precio_unitario, 0)), 0)
+       FROM orden_compra_items i WHERE i.orden_compra_id = o.id))
+  FROM ordenes_compra o WHERE o.id = p_oc_id AND o.tenant_id = public.get_user_tenant_id();
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_pedido_cerrar(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -11031,6 +11117,30 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_proveedor_cc_resumen(p_proveedor_id uuid)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT jsonb_build_object(
+    'saldo', COALESCE((
+      SELECT jsonb_object_agg(moneda, saldo) FROM (
+        SELECT moneda, SUM(monto) AS saldo FROM proveedor_cc_movimientos
+         WHERE proveedor_id = p_proveedor_id AND tenant_id = public.get_user_tenant_id()
+         GROUP BY 1) s), '{}'::jsonb),
+    'pendiente_ocs', COALESCE((
+      SELECT jsonb_object_agg(moneda, pendiente) FROM (
+        SELECT COALESCE(o.moneda, 'ARS') AS moneda,
+               SUM(public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento) AS pendiente
+        FROM ordenes_compra o
+        WHERE o.proveedor_id = p_proveedor_id AND o.tenant_id = public.get_user_tenant_id()
+          AND o.estado NOT IN ('borrador', 'cancelada') AND o.estado_pago <> 'pagada'
+          AND public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento > 0.5
+        GROUP BY 1) x), '{}'::jsonb));
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_proveedor_portal_vinculo(p_proveedor_id uuid)
  RETURNS TABLE(email text)
  LANGUAGE sql
@@ -11772,9 +11882,11 @@ CREATE OR REPLACE FUNCTION public.fn_saldo_proveedor_cc(p_proveedor_id uuid)
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-  SELECT COALESCE(SUM(monto), 0)
-  FROM proveedor_cc_movimientos
-  WHERE proveedor_id = p_proveedor_id;
+  -- En la moneda del NEGOCIO (lo usa el control de límite de CC, que está en esa moneda): no se mezclan monedas.
+  SELECT COALESCE(SUM(m.monto), 0)
+  FROM proveedor_cc_movimientos m JOIN tenants t ON t.id = m.tenant_id
+  WHERE m.proveedor_id = p_proveedor_id AND m.tenant_id = public.get_user_tenant_id()
+    AND m.moneda = upper(COALESCE(t.moneda, 'ARS'));
 $function$
 
 
@@ -14469,16 +14581,26 @@ DECLARE
   v_moneda_oc    text;
   v_medios_enriquecidos jsonb := '[]'::jsonb;
   v_monto_oc     numeric;
+  v_mov_id       uuid;
 BEGIN
   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
   IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
     RAISE EXCEPTION 'No autorizado: el CONTADOR tiene acceso de solo lectura — no puede registrar pagos.'
       USING ERRCODE = 'insufficient_privilege';
   END IF;
+  -- mig 473: mismo gate que la escritura de la CC de proveedores (policy de mig 405) y que registrar_pago_proveedor.
+  IF NOT public.auth_puede_editar_modulo('gastos') THEN
+    RAISE EXCEPTION 'No autorizado para registrar pagos a proveedores.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
   IF p_medios IS NULL OR jsonb_typeof(p_medios) <> 'array' THEN RAISE EXCEPTION 'Medios de pago inválidos'; END IF;
+  IF v_descuento < 0 THEN RAISE EXCEPTION 'El descuento no puede ser negativo' USING ERRCODE = 'check_violation'; END IF;
 
-  SELECT * INTO v_oc FROM public.ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant;
+  -- mig 473: FOR UPDATE — dos pagos simultáneos de la misma OC se serializan y el segundo ve el saldo nuevo.
+  SELECT * INTO v_oc FROM public.ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant FOR UPDATE;
   IF v_oc.id IS NULL THEN RAISE EXCEPTION 'OC no encontrada en el tenant'; END IF;
+  IF v_oc.estado IN ('borrador', 'cancelada') THEN
+    RAISE EXCEPTION 'La OC #% está %: no se le registran pagos.', v_oc.numero, v_oc.estado USING ERRCODE = 'check_violation';
+  END IF;
   SELECT nombre INTO v_prov_nombre FROM public.proveedores WHERE id = v_oc.proveedor_id AND tenant_id = v_tenant;
   v_moneda_oc := COALESCE(v_oc.moneda, 'ARS');
 
@@ -14488,10 +14610,9 @@ BEGIN
       INTO v_total FROM public.orden_compra_items WHERE orden_compra_id = p_oc_id;
   END IF;
 
-  -- Enriquecer cada medio no-CC con su equivalente en la moneda de la OC (monto_oc). Si coincide con
-  -- la moneda de la OC, monto_oc = monto tal cual. Si no (descalce), exige p_cotizacion_usd y convierte.
   FOR v_medio IN SELECT e FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente'
   LOOP
+    IF (v_medio->>'monto')::numeric < 0 THEN RAISE EXCEPTION 'Monto negativo en "%"', v_medio->>'tipo' USING ERRCODE = 'check_violation'; END IF;
     SELECT moneda INTO v_moneda_medio FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
     v_moneda_medio := COALESCE(v_moneda_medio, 'ARS');
     IF v_moneda_medio = v_moneda_oc THEN
@@ -14514,6 +14635,7 @@ BEGIN
 
   SELECT COALESCE(SUM((e->>'monto')::numeric),0) INTO v_montocc
     FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' = 'Cuenta Corriente';
+  IF v_montocc < 0 THEN RAISE EXCEPTION 'Monto negativo en Cuenta Corriente' USING ERRCODE = 'check_violation'; END IF;
   SELECT COALESCE(SUM((e->>'monto_oc')::numeric),0) INTO v_montonocc
     FROM jsonb_array_elements(v_medios_enriquecidos) e;
   SELECT COALESCE(SUM((e->>'monto')::numeric),0) INTO v_montocheque
@@ -14526,12 +14648,13 @@ BEGIN
     RAISE EXCEPTION 'Caja inválida para el tenant';
   END IF;
 
+  -- La doble firma mira la plata que SALE (lo que queda a plazo no se paga hoy).
   v_umbral := (SELECT oc_pago_doble_firma_umbral FROM public.tenants WHERE id = v_tenant);
-  IF v_umbral IS NOT NULL AND v_umbral > 0 AND v_montototal >= v_umbral THEN
+  IF v_umbral IS NOT NULL AND v_umbral > 0 AND v_montonocc >= v_umbral THEN
     SELECT clave_maestra INTO v_clave_real FROM public.tenants WHERE id = v_tenant;
     IF v_clave_real IS NULL OR length(trim(v_clave_real)) = 0 THEN
       RAISE EXCEPTION 'Pago de $% sobre el umbral de doble firma ($%): configurá una clave maestra (Config → Seguridad) para autorizarlo.',
-        round(v_montototal), round(v_umbral) USING ERRCODE = 'insufficient_privilege';
+        round(v_montonocc), round(v_umbral) USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF NOT public.verificar_clave_maestra(v_tenant, p_clave) THEN
       RAISE EXCEPTION 'Clave maestra incorrecta.' USING ERRCODE = 'insufficient_privilege';
@@ -14545,10 +14668,15 @@ BEGIN
 
   v_nuevo_pagado    := COALESCE(v_oc.monto_pagado,0) + v_montonocc;
   v_nuevo_descuento := COALESCE(v_oc.monto_descuento,0) + v_descuento;
-  IF (v_nuevo_pagado + v_montocc + v_nuevo_descuento) >= v_total - v_eps THEN
-    v_nuevo_estado := CASE WHEN v_montocc > 0 AND v_montonocc = 0 THEN 'cuenta_corriente' ELSE 'pagada' END;
-  ELSE
+  -- mig 473: "pagada" solo si se pagó de verdad. Lo que queda a plazo (Cuenta Corriente) sigue siendo deuda.
+  IF v_nuevo_pagado + v_nuevo_descuento >= v_total - v_eps THEN
+    v_nuevo_estado := 'pagada';
+  ELSIF v_montocc > 0 OR v_oc.estado_pago = 'cuenta_corriente' THEN
+    v_nuevo_estado := 'cuenta_corriente';
+  ELSIF v_nuevo_pagado + v_nuevo_descuento > v_eps THEN
     v_nuevo_estado := 'pago_parcial';
+  ELSE
+    v_nuevo_estado := 'pendiente_pago';
   END IF;
 
   IF v_montocc > 0 THEN
@@ -14569,15 +14697,21 @@ BEGIN
   IF v_montonocc > 0 THEN
     SELECT jsonb_agg(jsonb_build_object('tipo', e->>'tipo', 'monto', (e->>'monto')::numeric))
       INTO v_medios_nocc FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' <> 'Cuenta Corriente';
-    INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, fecha, medio_pago, descripcion, caja_sesion_id, created_by)
-    VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'pago', -v_montonocc, CURRENT_DATE, v_medios_nocc::text,
-            'Pago OC #'||v_oc.numero, p_caja_sesion_id, v_user);
+    INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, medio_pago, descripcion, caja_sesion_id, created_by)
+    VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'pago', -v_montonocc, v_moneda_oc, CURRENT_DATE, v_medios_nocc::text,
+            'Pago OC #'||v_oc.numero, p_caja_sesion_id, v_user)
+    RETURNING id INTO v_mov_id;
+    INSERT INTO public.proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto)
+    VALUES (v_tenant, v_mov_id, p_oc_id, round(v_montonocc, 2));
   END IF;
-  IF v_montocc > 0 THEN
-    INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, fecha, fecha_vencimiento, descripcion, created_by)
-    VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'oc', v_montocc, CURRENT_DATE, v_fecha_venc,
-            'CC OC #'||v_oc.numero||' — '||v_dias||'d', v_user);
+  -- mig 473: el descuento que se le saca a la OC también baja la deuda con el proveedor (si no, la OC queda pagada y
+  -- la CC con saldo para siempre).
+  IF v_descuento > 0 THEN
+    INSERT INTO public.proveedor_cc_movimientos(tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion, created_by)
+    VALUES (v_tenant, v_oc.proveedor_id, p_oc_id, 'ajuste', -round(v_descuento, 2), v_moneda_oc, CURRENT_DATE,
+            'Descuento OC #'||v_oc.numero, v_user);
   END IF;
+  -- mig 473: "Cuenta Corriente" ya NO inserta un cargo: la deuda la carga la recepción (fn_cc_proveedor_cargo_recepcion).
 
   IF v_montocheque > 0 AND p_cheque IS NOT NULL THEN
     INSERT INTO public.cheques(tenant_id, tipo, estado, monto, nro_cheque, banco, fecha_emision, fecha_cobro, proveedor_id, oc_id, sucursal_id, notas, created_by)
@@ -14591,7 +14725,6 @@ BEGIN
     v_concepto := 'Pago OC #'||v_oc.numero||' — '||COALESCE(v_prov_nombre,'');
     FOR v_medio IN SELECT e FROM jsonb_array_elements(v_medios_enriquecidos) e
     LOOP
-      -- Fase 1 Caja USD (mig 368, A3): 'Efectivo' hardcodeado → lista es_efectivo por tenant.
       SELECT es_efectivo INTO v_es_efectivo FROM public.metodos_pago WHERE tenant_id = v_tenant AND nombre = v_medio->>'tipo';
       v_es_efectivo := COALESCE(v_es_efectivo, false);
       INSERT INTO public.caja_movimientos(tenant_id, sesion_id, tipo, monto, concepto, cuenta_origen_id, usuario_id, moneda, cotizacion_usd)
@@ -14607,6 +14740,145 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true, 'estado_pago', v_nuevo_estado, 'monto_pagado', v_nuevo_pagado, 'monto_cheque', v_montocheque);
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.registrar_pago_proveedor(p_proveedor_id uuid, p_medio text, p_monto numeric, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_clave text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant   uuid := public.get_user_tenant_id();
+  v_rol      text := public.get_user_role();
+  v_user     uuid := auth.uid();
+  v_eps      numeric := 0.5;
+  v_monto    numeric := round(COALESCE(p_monto, 0), 2);
+  v_moneda   text;
+  v_efectivo boolean;
+  v_cuenta   uuid;
+  v_prov     text;
+  v_pend     numeric;
+  v_resto    numeric;
+  v_aplica   numeric;
+  v_oc       record;
+  v_mov_id   uuid := gen_random_uuid();
+  v_detalle  text := '';
+  v_imput    jsonb := '[]'::jsonb;
+  v_deuda    numeric;
+  v_tope     numeric;
+  v_umbral   numeric;
+  v_clave_real text;
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
+    RAISE EXCEPTION 'No autorizado: el CONTADOR tiene acceso de solo lectura — no puede registrar pagos.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT public.auth_puede_editar_modulo('gastos') THEN
+    RAISE EXCEPTION 'No autorizado para registrar pagos a proveedores.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF v_monto <= 0 THEN RAISE EXCEPTION 'Ingresá un monto válido' USING ERRCODE = 'check_violation'; END IF;
+  IF COALESCE(trim(p_medio), '') = '' OR p_medio = 'Cuenta Corriente' THEN
+    RAISE EXCEPTION 'Elegí con qué se paga' USING ERRCODE = 'check_violation';
+  END IF;
+  SELECT nombre INTO v_prov FROM proveedores WHERE id = p_proveedor_id AND tenant_id = v_tenant;
+  IF v_prov IS NULL THEN RAISE EXCEPTION 'Proveedor no encontrado en el negocio'; END IF;
+
+  SELECT COALESCE(moneda, 'ARS'), es_efectivo, cuenta_origen_id INTO v_moneda, v_efectivo, v_cuenta
+    FROM metodos_pago WHERE tenant_id = v_tenant AND nombre = p_medio;
+  v_moneda := COALESCE(v_moneda, 'ARS');
+  v_efectivo := COALESCE(v_efectivo, p_medio = 'Efectivo');
+
+  -- 🛑 REGLA #0: todo efectivo se asienta en caja — sin caja abierta no hay pago en efectivo.
+  IF v_efectivo AND p_caja_sesion_id IS NULL THEN
+    RAISE EXCEPTION 'Para pagar en efectivo tiene que haber una caja abierta.' USING ERRCODE = 'check_violation';
+  END IF;
+  IF p_caja_sesion_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM caja_sesiones WHERE id = p_caja_sesion_id AND tenant_id = v_tenant AND cerrada_at IS NULL) THEN
+    RAISE EXCEPTION 'La caja elegida no está abierta en este negocio.' USING ERRCODE = 'check_violation';
+  END IF;
+
+  v_umbral := (SELECT oc_pago_doble_firma_umbral FROM tenants WHERE id = v_tenant);
+  IF v_umbral IS NOT NULL AND v_umbral > 0 AND v_monto >= v_umbral THEN
+    SELECT clave_maestra INTO v_clave_real FROM tenants WHERE id = v_tenant;
+    IF v_clave_real IS NULL OR length(trim(v_clave_real)) = 0 THEN
+      RAISE EXCEPTION 'Pago de $% sobre el umbral de doble firma ($%): configurá una clave maestra (Config → Seguridad) para autorizarlo.',
+        round(v_monto), round(v_umbral) USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NOT public.verificar_clave_maestra(v_tenant, p_clave) THEN
+      RAISE EXCEPTION 'Clave maestra incorrecta.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+
+  -- Lock en el MISMO orden que el FIFO (sin orden, dos pagos concurrentes podían trabarse entre sí).
+  PERFORM 1 FROM ordenes_compra
+   WHERE proveedor_id = p_proveedor_id AND tenant_id = v_tenant AND COALESCE(moneda, 'ARS') = v_moneda
+     AND estado NOT IN ('borrador', 'cancelada') AND estado_pago <> 'pagada'
+   ORDER BY created_at, numero, id
+   FOR UPDATE;
+  SELECT COALESCE(SUM(public.fn_oc_total(id) - monto_pagado - monto_descuento), 0) INTO v_pend
+    FROM ordenes_compra
+   WHERE proveedor_id = p_proveedor_id AND tenant_id = v_tenant AND COALESCE(moneda, 'ARS') = v_moneda
+     AND estado NOT IN ('borrador', 'cancelada') AND estado_pago <> 'pagada'
+     AND public.fn_oc_total(id) - monto_pagado - monto_descuento > 0;
+  SELECT COALESCE(SUM(monto), 0) INTO v_deuda FROM proveedor_cc_movimientos
+   WHERE proveedor_id = p_proveedor_id AND tenant_id = v_tenant AND moneda = v_moneda;
+  -- Tope: lo pendiente de las OCs o la deuda (lo recibido puede costar más que la OC), lo que sea mayor.
+  v_tope := GREATEST(v_pend, v_deuda);
+  IF v_monto > v_tope + v_eps THEN
+    RAISE EXCEPTION 'El pago ($%) supera lo que se le debe a este proveedor en % ($%).',
+      v_monto, v_moneda, round(GREATEST(v_tope, 0), 2) USING ERRCODE = 'check_violation';
+  END IF;
+
+  INSERT INTO proveedor_cc_movimientos(id, tenant_id, proveedor_id, tipo, monto, moneda, fecha, medio_pago, descripcion, caja_sesion_id, created_by)
+  VALUES (v_mov_id, v_tenant, p_proveedor_id, 'pago', -v_monto, v_moneda, CURRENT_DATE,
+          jsonb_build_array(jsonb_build_object('tipo', p_medio, 'monto', v_monto))::text,
+          'Pago a cuenta', p_caja_sesion_id, v_user);
+
+  -- Imputación: la OC más vieja primero (pedido de GO 06/10).
+  v_resto := v_monto;
+  FOR v_oc IN
+    SELECT id, numero, public.fn_oc_total(id) AS total, monto_pagado, monto_descuento, estado_pago
+      FROM ordenes_compra
+     WHERE proveedor_id = p_proveedor_id AND tenant_id = v_tenant AND COALESCE(moneda, 'ARS') = v_moneda
+       AND estado NOT IN ('borrador', 'cancelada') AND estado_pago <> 'pagada'
+       AND public.fn_oc_total(id) - monto_pagado - monto_descuento > 0
+     ORDER BY created_at, numero, id
+  LOOP
+    EXIT WHEN v_resto <= 0;
+    v_aplica := LEAST(v_resto, v_oc.total - v_oc.monto_pagado - v_oc.monto_descuento);
+    UPDATE ordenes_compra SET
+      monto_total = v_oc.total,          -- queda fijo desde el primer pago (como en registrar_pago_oc)
+      monto_pagado = monto_pagado + v_aplica,
+      estado_pago = CASE
+        WHEN monto_pagado + v_aplica + monto_descuento >= v_oc.total - v_eps THEN 'pagada'
+        WHEN estado_pago = 'cuenta_corriente' THEN 'cuenta_corriente'
+        ELSE 'pago_parcial' END
+    WHERE id = v_oc.id;
+    INSERT INTO proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto) VALUES (v_tenant, v_mov_id, v_oc.id, v_aplica);
+    v_imput := v_imput || jsonb_build_object('oc_id', v_oc.id, 'numero', v_oc.numero, 'monto', v_aplica);
+    v_detalle := v_detalle || CASE WHEN v_detalle = '' THEN '' ELSE ', ' END
+              || 'OC #' || v_oc.numero || ' $' || translate(to_char(v_aplica, 'FM999,999,990.00'), ',.', '.,');
+    v_resto := v_resto - v_aplica;
+  END LOOP;
+  -- Lo que no tiene OC (deuda por encima de lo pedido) queda como pago a cuenta sin imputar.
+  IF v_resto > v_eps THEN
+    v_detalle := v_detalle || CASE WHEN v_detalle = '' THEN '' ELSE ', ' END
+              || 'sin OC $' || translate(to_char(v_resto, 'FM999,999,990.00'), ',.', '.,');
+  END IF;
+  UPDATE proveedor_cc_movimientos SET descripcion = 'Pago a cuenta — ' || v_detalle WHERE id = v_mov_id;
+
+  IF p_caja_sesion_id IS NOT NULL THEN
+    INSERT INTO caja_movimientos(tenant_id, sesion_id, tipo, monto, concepto, cuenta_origen_id, usuario_id, moneda)
+    VALUES (v_tenant, p_caja_sesion_id, CASE WHEN v_efectivo THEN 'egreso' ELSE 'egreso_informativo' END, v_monto,
+            CASE WHEN v_efectivo THEN '' ELSE '[' || p_medio || '] ' END || 'Pago a ' || v_prov || ' — ' || v_detalle,
+            CASE WHEN v_efectivo THEN NULL ELSE v_cuenta END, v_user, v_moneda);
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'movimiento_id', v_mov_id, 'imputaciones', v_imput);
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.reportar_incidencia_envio(p_token text, p_tipo text, p_detalle text)
@@ -16029,6 +16301,7 @@ CREATE TRIGGER trg_envios_marca_pedido AFTER INSERT ON public.envios FOR EACH RO
 CREATE TRIGGER trg_envios_updated_at BEFORE UPDATE ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envios_updated_at();
 CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION set_envio_numero();
 CREATE TRIGGER trg_tn_fulfillment_sync AFTER UPDATE OF estado ON public.envios FOR EACH ROW WHEN ((new.estado IS DISTINCT FROM old.estado)) EXECUTE FUNCTION fn_enqueue_tn_fulfillment_sync();
+CREATE TRIGGER trg_cc_proveedor_cargo_recepcion AFTER INSERT ON public.gastos FOR EACH ROW EXECUTE FUNCTION fn_cc_proveedor_cargo_recepcion();
 CREATE TRIGGER trg_gastos_cierre BEFORE DELETE OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION trg_gastos_periodo_cerrado();
 CREATE TRIGGER trg_gastos_iva_guard BEFORE INSERT OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION fn_gastos_iva_guard();
 CREATE TRIGGER trg_gastos_rol_umbral_guard BEFORE INSERT OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION fn_gastos_rol_umbral_guard();
@@ -16049,7 +16322,9 @@ CREATE TRIGGER trg_kitting_log_cantidades_enteras BEFORE INSERT ON public.kittin
 CREATE TRIGGER trg_updated_at_meli_cred BEFORE UPDATE ON public.meli_credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_updated_at_mp_creds BEFORE UPDATE ON public.mercadopago_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_mp_creds();
 CREATE TRIGGER trg_metodos_pago_updated_at BEFORE UPDATE ON public.metodos_pago FOR EACH ROW EXECUTE FUNCTION update_metodos_pago_updated_at();
+CREATE TRIGGER trg_oc_items_guard_con_pagos BEFORE INSERT OR DELETE OR UPDATE OF cantidad, precio_unitario, orden_compra_id ON public.orden_compra_items FOR EACH ROW EXECUTE FUNCTION fn_oc_guard_con_pagos();
 CREATE TRIGGER trg_oc_cierre BEFORE DELETE OR UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION trg_oc_periodo_cerrado();
+CREATE TRIGGER trg_oc_guard_con_pagos BEFORE UPDATE OF proveedor_id ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION fn_oc_guard_con_pagos();
 CREATE TRIGGER trg_set_oc_numero BEFORE INSERT ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_oc_numero();
 CREATE TRIGGER trg_updated_at_oc BEFORE UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_updated_at_oc();
 CREATE TRIGGER trg_set_pedido_numero BEFORE INSERT ON public.pedidos FOR EACH ROW EXECUTE FUNCTION set_pedido_numero();
@@ -16249,6 +16524,7 @@ ALTER TABLE public.proveedor_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_cc_movimientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_contactos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_cuentas_bancarias ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proveedor_pago_imputaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_productos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.puntos_venta_afip ENABLE ROW LEVEL SECURITY;
@@ -16912,6 +17188,8 @@ CREATE POLICY proveedor_cuentas_bancarias_select ON public.proveedor_cuentas_ban
 CREATE POLICY proveedor_cuentas_bancarias_write_gestion ON public.proveedor_cuentas_bancarias AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))))
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
+CREATE POLICY proveedor_pago_imputaciones_select ON public.proveedor_pago_imputaciones AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY pp_tenant ON public.proveedor_productos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -17538,6 +17816,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pr
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cuentas_bancarias TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cuentas_bancarias TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cuentas_bancarias TO service_role;
+GRANT REFERENCES, SELECT, TRIGGER ON public.proveedor_pago_imputaciones TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_pago_imputaciones TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_productos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_productos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_productos TO service_role;

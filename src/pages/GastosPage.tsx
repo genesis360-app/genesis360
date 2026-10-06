@@ -3813,6 +3813,8 @@ export default function GastosPage() {
                     {/* Días de plazo — solo si hay CC en medios */}
                     {ocMediosPago.some(m => m.tipo === 'Cuenta Corriente' && parseFloat(m.monto.replace(',','.')) > 0) && (
                       <div>
+                        {/* Mig 473: CC = pagar después. No suma deuda (la carga la recepción) ni cuenta como pagado. */}
+                        <p className="text-xs text-purple-600 dark:text-purple-400 mb-1.5">La parte en Cuenta Corriente queda a pagar con este plazo: no se registra como pagada. La deuda con el proveedor se carga al recibir la mercadería.</p>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Días de plazo para la parte en CC</label>
                         <div className="flex gap-2">
                           {['30','60','90'].map(d => (

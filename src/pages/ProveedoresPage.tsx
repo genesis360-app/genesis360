@@ -36,7 +36,7 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Download, DollarSign, AlertCircle, FileDown, RotateCcw,
-  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload,
+  MessageCircle, Repeat, BarChart3, ClipboardList, CheckCircle2, UserCog, Upload, Info,
 } from 'lucide-react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { SupervisionPanel } from '@/components/SupervisionPanel'
@@ -301,6 +301,8 @@ export default function ProveedoresPage() {
   const [ccPagoMonto, setCcPagoMonto]       = useState('')
   const [ccPagoMedio, setCcPagoMedio]       = useState('Transferencia')
   const [ccGuardando, setCcGuardando]       = useState(false)
+  const [ccCajaId, setCcCajaId]             = useState<string | null>(null)
+  const [ccClave, setCcClave]               = useState('')
   // D6 — cuentas bancarias múltiples por proveedor
   const [cuentaForm, setCuentaForm]         = useState<{ banco: string; titular: string; cbu: string; alias: string }>({ banco: '', titular: '', cbu: '', alias: '' })
   const [showCuentaForm, setShowCuentaForm] = useState(false)
@@ -363,7 +365,26 @@ export default function ProveedoresPage() {
     enabled: !!ccProvId,
   })
 
-  const saldoCC = (ccMovimientos as any[]).reduce((s: number, m: any) => s + Number(m.monto ?? 0), 0)
+  // Mig 473 — saldo y pendiente de OCs del servidor (antes se sumaban los últimos 50 movimientos del historial: con más,
+  // el saldo daba mal). Saldo > 0 = deuda real (lo recibido menos lo pagado); < 0 = anticipo a favor del negocio.
+  const { data: ccResumen, refetch: refetchCCResumen } = useQuery({
+    queryKey: ['proveedor-cc-resumen', ccProvId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_proveedor_cc_resumen', { p_proveedor_id: ccProvId! })
+      if (error) throw error
+      return data as { saldo: Record<string, number | string>; pendiente_ocs: Record<string, number | string> }
+    },
+    enabled: !!ccProvId,
+  })
+  // Por moneda (mig 473): un saldo en dólares no se suma a uno en pesos. El modal trabaja en la moneda del negocio y
+  // avisa si hay saldo en otra.
+  const monedaNegocioCC = ((tenant as any)?.moneda ?? 'ARS').toUpperCase()
+  const saldoCC = parseFloat(String(ccResumen?.saldo?.[monedaNegocioCC] ?? 0)) || 0
+  const saldosOtraMonedaCC = Object.entries(ccResumen?.saldo ?? {})
+    .filter(([m, v]) => m !== monedaNegocioCC && Math.abs(parseFloat(String(v)) || 0) > 0.5)
+  const pendienteOCsCC = parseFloat(String(ccResumen?.pendiente_ocs?.[monedaNegocioCC] ?? 0)) || 0
+  // Mismo tope que el servidor: lo pendiente de las OCs o la deuda (lo recibido puede costar más que lo pedido).
+  const topePagoCC = Math.max(pendienteOCsCC, saldoCC)
 
   // D6 — cuentas bancarias del proveedor abierto
   const { data: cuentasBancarias = [], refetch: refetchCuentas } = useQuery({
@@ -398,6 +419,13 @@ export default function ProveedoresPage() {
   const descargarEstadoProveedor = async () => {
     const prov = (proveedores as any[]).find((p: any) => p.id === ccProvId)
     if (!prov) return
+    // El estado de cuenta lleva TODOS los movimientos (el historial en pantalla muestra los últimos 50): si no, las
+    // filas no sumaban el saldo del pie.
+    const { data: todosMov, error: movErr } = await traerTodoConError<any>((desde, hasta) => supabase
+      .from('proveedor_cc_movimientos').select('*, ordenes_compra(numero)')
+      .eq('proveedor_id', ccProvId!).order('fecha', { ascending: true }).order('created_at', { ascending: true })
+      .range(desde, hasta))
+    if (movErr || !todosMov) { toast.error('No se pudo armar el estado de cuenta: ' + (movErr?.message ?? 'sin datos')); return }
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
       import('jspdf'), import('jspdf-autotable'),
     ])
@@ -407,12 +435,12 @@ export default function ProveedoresPage() {
     doc.setFontSize(12); doc.setTextColor(60); doc.text('Estado de cuenta — Proveedor', 14, 26)
     doc.setFontSize(10); doc.setTextColor(90)
     doc.text(`Proveedor: ${prov.nombre}`, 14, 34)
-    doc.text(`Saldo adeudado: ${fmt(saldoCC)}`, 14, 40)
+    doc.text(saldoCC < -0.5 ? `Anticipo a favor: ${fmt(-saldoCC)}` : `Saldo adeudado: ${fmt(saldoCC)}`, 14, 40)
     doc.text(`Emitido: ${new Date().toLocaleDateString('es-AR')}`, 14, 46)
     autoTable(doc, {
       startY: 52,
       head: [['Fecha', 'Concepto', 'Vencimiento', 'Monto']],
-      body: (ccMovimientos as any[]).map((m: any) => [
+      body: todosMov.map((m: any) => [
         new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR'),
         (m.descripcion ?? m.tipo) + (m.ordenes_compra ? ` (OC #${m.ordenes_compra.numero})` : ''),
         m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—',
@@ -426,47 +454,37 @@ export default function ProveedoresPage() {
     doc.save(`estado_cuenta_${prov.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`)
   }
 
+  // Mig 473 — el pago se registra en el servidor (`registrar_pago_proveedor`), atómico: movimiento en la CC + imputación a
+  // la OC más VIEJA primero (pedido de GO 06/10: así se van cerrando) + caja. Antes eran dos inserts sueltos, no imputaba
+  // a ninguna OC (quedaban pendientes y se podían volver a pagar) y el egreso en efectivo nunca entraba en la caja.
   const registrarPagoCC = async () => {
     if (!ccProvId) return
     const monto = parseFloat(ccPagoMonto.replace(',', '.'))
     if (isNaN(monto) || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    if (monto > topePagoCC + 0.5) {
+      toast.error(`El pago supera lo que se le debe ($${topePagoCC.toLocaleString('es-AR', { maximumFractionDigits: 2 })}).`); return
+    }
+    const cajas = cajasAbiertasProv as any[]
+    const sesionId = ccCajaId ?? (cajas.length === 1 ? cajas[0].id : null)
+    // 🛑 REGLA #0 — todo efectivo se asienta en caja (el servidor también lo exige).
+    if (ccPagoMedio === 'Efectivo' && !sesionId) {
+      toast.error(cajas.length > 1 ? 'Elegí la caja de la que sale el efectivo.' : 'Abrí una caja para pagar en efectivo.'); return
+    }
     setCcGuardando(true)
     try {
-      const hoy = new Date().toISOString().split('T')[0]
-      const sesionId = (cajasAbiertasProv as any[])[0]?.id ?? null
-      // 🛑 REGLA #0 — todo efectivo se asienta en caja: sin caja abierta no se registra un pago en efectivo.
-      if (ccPagoMedio === 'Efectivo' && !sesionId) { toast.error('Abrí una caja para pagar en efectivo.'); return }
-      const { error: ccErr } = await supabase.from('proveedor_cc_movimientos').insert({
-        tenant_id:    tenant!.id,
-        proveedor_id: ccProvId,
-        tipo:         'pago',
-        monto:        -monto,
-        fecha:        hoy,
-        medio_pago:   ccPagoMedio,
-        descripcion:  `Pago — ${ccPagoMedio}`,
-        caja_sesion_id: sesionId,
-        created_by:   user!.id,
+      const { data, error } = await supabase.rpc('registrar_pago_proveedor', {
+        p_proveedor_id: ccProvId, p_medio: ccPagoMedio, p_monto: monto,
+        p_caja_sesion_id: sesionId, p_clave: ccClave.trim() || null,
       })
-      if (ccErr) throw ccErr
-      if (ccPagoMedio === 'Efectivo' && sesionId) {
-        // Antes mandaba `created_by` (la columna es `usuario_id`) y no miraba el error: el insert fallaba SIEMPRE y el
-        // egreso en efectivo nunca entraba en la caja (GO, 2026-10-06). Lo cubre tests/unit/columnasEscritas.test.ts.
-        const { error: cajaErr } = await supabase.from('caja_movimientos').insert({
-          tenant_id:  tenant!.id,
-          sesion_id:  sesionId,
-          tipo:       'egreso',
-          monto,
-          concepto:   `Pago proveedor CC`,
-          usuario_id: user!.id,
-        })
-        if (cajaErr) {
-          toast.error(`El pago quedó en la cuenta corriente pero NO en la caja: ${cajaErr.message}. Registrá el egreso a mano.`, { duration: 12000 })
-        }
-      }
-      toast.success('Pago registrado')
-      setCcPagoMonto('')
-      refetchCC()
+      if (error) throw error
+      const imp = ((data as any)?.imputaciones ?? []) as { numero: number; monto: number }[]
+      toast.success(imp.length
+        ? `Pago registrado — ${imp.map(i => `OC #${i.numero}`).join(', ')}${imp.length === 1 ? '' : ' (de la más vieja a la más nueva)'}`
+        : 'Pago registrado')
+      setCcPagoMonto(''); setCcClave('')
+      refetchCC(); refetchCCResumen()
       qc.invalidateQueries({ queryKey: ['oc-gastos'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
     } catch (e: any) {
       toast.error(e.message ?? 'Error')
     } finally {
@@ -523,7 +541,7 @@ export default function ProveedoresPage() {
       if (error) throw error
       toast.success('Nota de crédito registrada')
       setNcMonto(''); setNcNumero(''); setNcMotivo(''); setNcFile(null); setShowNCForm(false)
-      refetchCC()
+      refetchCC(); refetchCCResumen()
       qc.invalidateQueries({ queryKey: ['oc-gastos'] })
     } catch (e: any) {
       toast.error(e.message ?? 'Error')
@@ -1180,6 +1198,14 @@ export default function ProveedoresPage() {
 
       let ocId: string
       if (editOcId) {
+        // Mig 473: una OC con pagos no cambia de proveedor ni de ítems (lo frena también la base). Se chequea ANTES de
+        // tocar nada: si no, el encabezado quedaba guardado y fallaba recién al reemplazar los ítems.
+        const { data: ocActual, error: ocActErr } = await supabase.from('ordenes_compra')
+          .select('numero, monto_pagado').eq('id', editOcId).single()
+        if (ocActErr) throw ocActErr
+        if (Number(ocActual?.monto_pagado ?? 0) > 0) {
+          throw new Error(`La OC #${ocActual!.numero} ya tiene pagos: no se puede editar. Si cambió el pedido, hacé una OC nueva.`)
+        }
         const { error } = await supabase.from('ordenes_compra').update({
           proveedor_id: ocForm.proveedor_id,
           fecha_esperada: ocForm.fecha_esperada || null,
@@ -1195,7 +1221,8 @@ export default function ProveedoresPage() {
         if (error) throw error
         ocId = editOcId
         // reemplazar ítems
-        await supabase.from('orden_compra_items').delete().eq('orden_compra_id', ocId)
+        const { error: delErr } = await supabase.from('orden_compra_items').delete().eq('orden_compra_id', ocId)
+        if (delErr) throw delErr
       } else {
         const { data, error } = await supabase.from('ordenes_compra').insert({
           tenant_id: tenant!.id,
@@ -3715,33 +3742,70 @@ export default function ProveedoresPage() {
                 </div>
               </div>
 
-              {/* Saldo */}
-              <div className={`mx-5 mt-4 rounded-xl px-4 py-3 flex items-center justify-between ${saldoCC > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
-                <div className="flex items-center gap-2">
-                  {saldoCC > 0 ? <AlertCircle className="w-4 h-4 text-red-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
-                  <span className="text-sm font-medium text-primary dark:text-white">Saldo adeudado</span>
-                </div>
-                <span className={`text-lg font-bold ${saldoCC > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                  ${saldoCC.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </span>
-              </div>
+              {/* Saldo (mig 473): > 0 = deuda por lo RECIBIDO menos lo pagado; < 0 = anticipo a favor (se pagó antes de recibir) */}
+              {(() => {
+                const fmt0 = (n: number) => `$${Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                const estado = saldoCC > 0.5 ? 'deuda' : saldoCC < -0.5 ? 'anticipo' : 'cero'
+                return (
+                  <div data-testid="cc-proveedor-saldo" data-saldo={saldoCC}
+                    className={`mx-5 mt-4 rounded-xl px-4 py-3 flex items-center justify-between ${estado === 'deuda' ? 'bg-red-50 dark:bg-red-900/20' : estado === 'anticipo' ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
+                    <div className="flex items-center gap-2">
+                      {estado === 'deuda' ? <AlertCircle className="w-4 h-4 text-red-500" /> : estado === 'anticipo' ? <Info className="w-4 h-4 text-blue-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
+                      <span className="text-sm font-medium text-primary dark:text-white">
+                        {estado === 'deuda' ? 'Saldo adeudado' : estado === 'anticipo' ? 'Anticipo a favor' : 'Sin deuda'}
+                      </span>
+                    </div>
+                    <span className={`text-lg font-bold ${estado === 'deuda' ? 'text-red-600 dark:text-red-400' : estado === 'anticipo' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
+                      {fmt0(saldoCC)}
+                    </span>
+                  </div>
+                )
+              })()}
+              {saldosOtraMonedaCC.length > 0 && (
+                <p className="mx-5 mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  Además, en otra moneda: {saldosOtraMonedaCC.map(([m, v]) => `${m} ${(parseFloat(String(v)) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`).join(' · ')} (no se suma al saldo de arriba).
+                </p>
+              )}
+              <p className="mx-5 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                La deuda se carga al recibir la mercadería. {pendienteOCsCC > 0.5 && <>Pendiente de pagar en OCs: <strong>${pendienteOCsCC.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong>.</>}
+              </p>
 
-              {/* Registrar pago */}
-              {saldoCC > 0.5 && (
+              {/* Registrar pago — se imputa a la OC más vieja primero (mig 473) */}
+              {topePagoCC > 0.5 && (
                 <div className="mx-5 mt-3 bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-medium text-primary dark:text-white">Registrar pago</p>
+                  <div>
+                    <p className="text-sm font-medium text-primary dark:text-white">Registrar pago</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Se aplica a las OCs pendientes, de la más vieja a la más nueva.</p>
+                  </div>
                   <div className="flex gap-2">
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={ccPagoMonto} onChange={e => setCcPagoMonto(e.target.value)}
-                      placeholder={`Hasta $${saldoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                      aria-label="Monto del pago"
+                      placeholder={`Hasta $${topePagoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
                       className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
-                    <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)}
+                    <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)} aria-label="Medio de pago"
                       className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                       {['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro'].map(m => <option key={m}>{m}</option>)}
                     </select>
                   </div>
+                  {(cajasAbiertasProv as any[]).length > 1 && (
+                    <select value={ccCajaId ?? ''} onChange={e => setCcCajaId(e.target.value || null)} aria-label="Caja"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                      <option value="">{ccPagoMedio === 'Efectivo' ? 'Elegí la caja de la que sale el efectivo' : 'Caja (opcional, para el registro)'}</option>
+                      {(cajasAbiertasProv as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.cajas?.nombre ?? 'Caja'}</option>)}
+                    </select>
+                  )}
                   {ccPagoMedio === 'Efectivo' && (cajasAbiertasProv as any[]).length === 0 && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta: para pagar en efectivo, abrí una caja.</p>
                   )}
+                  {(() => {
+                    const umbral = Number((tenant as any)?.oc_pago_doble_firma_umbral ?? 0)
+                    const m = parseFloat(ccPagoMonto.replace(',', '.'))
+                    return umbral > 0 && m >= umbral ? (
+                      <input type="password" value={ccClave} onChange={e => setCcClave(e.target.value)} autoComplete="new-password"
+                        placeholder="Clave maestra (pago sobre el umbral de doble firma)"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                    ) : null
+                  })()}
                   <button onClick={registrarPagoCC} disabled={ccGuardando || !ccPagoMonto}
                     className="w-full py-2 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center gap-2">
                     <DollarSign className="w-4 h-4" />

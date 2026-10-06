@@ -2423,7 +2423,12 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 102.6 | 🛑 Pago en efectivo a un proveedor desde su CC entra en la caja (antes fallaba siempre en silencio: `created_by`); sin caja abierta no se permite; si la caja falla, avisa | unit `columnasEscritas` · revisión | ✅ código |
 | 102.7 | "Generar gasto" de un servicio recurrente funciona (antes fallaba siempre: `gastos.proveedor_id` no existe) | unit `columnasEscritas` | ✅ código |
 | 102.8 | El historial de la CC del proveedor muestra "Tarjeta de débito $900", no el JSON | unit `comprasPago` | ✅ |
-| 102.9 | 🛑 Pagar/pasar a CC una OC más de una vez y saldo de la CC del proveedor | PENDIENTE del modelo del libro (decisión de GO) | ⏳ |
+| 102.9 | 🛑 CC de proveedores (mig 473, decisión de GO): la deuda nace al RECIBIR; pasar a CC solo fija plazo (dos veces no duplica); anticipo = saldo a favor | e2e `184` · prueba en seco DEV | ✅ |
+| 102.10 | 🛑 Pago desde la CC del proveedor: se imputa a la OC más vieja primero y las va cerrando; tope = lo pendiente o la deuda | e2e `184` | ✅ |
+| 102.11 | 🛑 Rechazos server-side: sobrepago, efectivo sin caja abierta, pagar una OC ya pagada, update directo con pagado > total (CHECK), editar ítems/proveedor de una OC con pagos | e2e `184` · prueba en seco DEV | ✅ |
+| 102.12 | 🛑 Un descuento a la OC baja la deuda (ajuste); cada movimiento lleva su moneda y el saldo no mezcla monedas | prueba en seco DEV | ✅ |
+| 102.13 | La recepción avisa si no pudo registrar la compra (gasto + deuda) o actualizar la OC; el rechazo de cheque avisa si no repuso la deuda | revisión | ✅ código |
+| 102.14 | Rechazo de cheque propio que pagó una OC (e2e 80) | e2e `80` se saltea (fixture sin sembrar) — HUECO | ⏳ |
 
 ## 🗂️ §101 — Categorías de clientes: rediseño de la pantalla (mig 472, pedido de GO, 🟡 DEV) — 2026-10-05
 

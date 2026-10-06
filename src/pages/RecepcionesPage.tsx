@@ -661,9 +661,10 @@ export default function RecepcionesPage() {
           esperada: Number(o.cantidad ?? 0), recibidoAcum: recibidoPorItem.get(o.id) ?? 0,
         }))
         const estadoOC = estadoOCdesdeRecibido(itemsRecibido)
-        await supabase.from('ordenes_compra').update({
+        const { error: ocEstErr } = await supabase.from('ordenes_compra').update({
           estado: estadoOC === 'recibida' ? 'recibida' : 'recibida_parcial',
         }).eq('id', fOcId)
+        if (ocEstErr) toast.error(`La recepción quedó confirmada pero no se pudo actualizar el estado de la OC: ${ocEstErr.message}`, { duration: 10000 })
         qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
         qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
       }
@@ -701,7 +702,9 @@ export default function RecepcionesPage() {
           const provNombre = proveedores.find(p => p.id === fProveedorId)?.nombre ?? 'proveedor'
           const ocSel = ocsConfirmadas.find((oc: any) => oc.id === fOcId) as any
           const ocNumero = ocSel?.numero
-          await supabase.from('gastos').insert({
+          // 🛑 REGLA #0 — este gasto es el devengado de la compra y, desde la mig 473, el que carga la deuda en la cuenta
+          // corriente del proveedor (trigger). Si falla, hay que avisar: antes se ignoraba el error.
+          const { error: gastoErr } = await supabase.from('gastos').insert({
             tenant_id: tenant!.id,
             recepcion_id: rec.id,
             descripcion: ocNumero ? `Compra OC #${ocNumero} — ${provNombre}` : `Compra — ${provNombre}`,
@@ -714,6 +717,9 @@ export default function RecepcionesPage() {
             sucursal_id: fSucursalId || null,
             usuario_id: user!.id,
           })
+          if (gastoErr) {
+            toast.error(`La recepción quedó confirmada pero NO se registró la compra (gasto y deuda con el proveedor): ${gastoErr.message}. Avisá a soporte.`, { duration: 15000 })
+          }
           qc.invalidateQueries({ queryKey: ['gastos', tenant?.id] })
         }
       }

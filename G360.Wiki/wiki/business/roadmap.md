@@ -8,11 +8,15 @@ updated: 2026-10-06
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.239.1`** (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.239.2`** (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
+
+## 🏷️ v1.239.2 — Landing sin testimonios inventados (2026-10-06, EN PROD)
+
+Fase 0 de la Landing 2.0: fuera los 3 testimonios inventados (Ley 24.240); "Copiar link del portal" copia solo el link. PR #376.
 
 ## 🏷️ v1.239.1 — Portal de Proveedores: reenviar acceso y crear/recuperar contraseña (2026-10-06, EN PROD)
 

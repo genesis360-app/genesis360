@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-06] deploy | v1.239.2 — Landing sin testimonios inventados (Fase 0 de Landing 2.0)
+
+- GO respondió las 10 decisiones del plan (tabla en [[wiki/business/plan-landing-2]]). Fase 0: se sacaron los 3
+  testimonios inventados (Ley 24.240); slot oculto hasta el primero real; e2e 186. Incluye "Copiar link del portal" =
+  solo el link. **PR #376**, merge `665cfa00`, release `v1.239.2`; verificado en `genesis360.pro` (sin testimonios, hero ok).
+- Abiertos con GO: prueba 15→30 días (implica cambiar la APP), WhatsApp IA sin mencionar hasta App Review, primeros socios,
+  fotos del equipo.
+
 ## [2026-10-06] plan | Landing 2.0 — plan sobre los 5 docs de Fede
 
 - Leídos completos los 5 docs de Drive (00 Estrategia y Narrativa · 01 Estructura y Copy · 02 Especificación Visual ·

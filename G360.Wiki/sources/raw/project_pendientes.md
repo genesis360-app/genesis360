@@ -6,11 +6,14 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre) — 🚀 **PROD = DEV = `v1.239.1`** (migs 001-**475**) · PR #371 + PR #375
+> ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre) — 🚀 **PROD = DEV = `v1.239.2`** (migs 001-**475**) · PRs #371, #375, #376
 >
-> **👉 PLAN LISTO (06/10): [[wiki/business/plan-landing-2]]** — leer ese archivo primero. Arranca con las **10 decisiones
-> de GO** (sección 2). 🛑 Hallazgo: la landing en PROD tiene **3 testimonios INVENTADOS** (Ley 24.240) → Fase 0 = sacarlos
-> apenas GO confirme.
+> **👉 LANDING 2.0 — PLAN + DECISIONES DE GO: [[wiki/business/plan-landing-2]]** (leer primero; tabla "Respuestas de GO").
+> ✅ Fase 0 HECHA (v1.239.2, PR #376): sin testimonios inventados. **Siguiente: Fase 1 (SEO/GEO, pre-render en este repo)
+> y Fase 2 (landing, hero actual, claro con secciones oscuras, sin comparativa, para cualquier pyme).** Esperando de GO:
+> (a) OK para pasar la prueba de la APP de 15 a 30 días (la landing no puede decir 30 si la app da 15); (b) confirmar que
+> WhatsApp IA NO se menciona hasta que Meta lo apruebe (recomendación); (c) condiciones de "primeros socios"; (d) nombres y
+> fotos del equipo.
 >
 > **👉 LO PRIMERO de la próxima sesión (pedido de GO):** mejorar la **landing** con los **5 documentos de Fede** en Google Drive
 > (carpeta `1YeQWbLVSLXs--JKD8daiR4uOv_cUtAwb`, acceso con el MCP de Drive ya verificado): `00 - Estrategia y Narrativa`,
@@ -22,8 +25,7 @@ type: project
 > **v1.239.1 (06/10):** Portal de Proveedores — reenviar acceso, copiar link del portal (no el de acceso: seguridad) y
 > "¿Primera vez u olvidaste tu contraseña?" + "Creá tu contraseña" en el portal. ✅ El ítem del plan de testing sobre el link
 > del portal queda RESUELTO.
-> **En `dev`, sin publicar (va con el próximo deploy):** "Copiar link del portal" copia SOLO el link (pedido de GO 06/10;
-> en v1.239.1 copiaba el link + instrucciones).
+> ✅ "Copiar link del portal" copia SOLO el link — EN PROD v1.239.2.
 >
 > ---
 >

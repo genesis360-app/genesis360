@@ -7,6 +7,8 @@ updated: 2026-09-02
 
 # Portal de Proveedores
 
+> 🧾 **2026-10-06 — Próximo: módulo de Presupuestos** (Solicitud a varios proveedores, versiones, elegir → OC). Todavía no se construyó: plan en [[wiki/business/plan-presupuestos-proveedores]], esperando el relevamiento `relevamiento-presupuestos-proveedores-reglas-negocio.html`. Cambia la identidad de este Portal (DNI único, invitación pendiente de aceptación).
+
 Origen: propuesta grande de Fede del 25/8/2026 (secciones A-M, ver [[wiki/features/asistente-whatsapp]] para
 la otra mitad — el Asistente de WhatsApp, que arrancó primero por menor riesgo). Sección H: "negocio pide
 cotización (pre-cargada con el precio de la última compra) → proveedor responde con presupuesto

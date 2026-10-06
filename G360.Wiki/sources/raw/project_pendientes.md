@@ -37,7 +37,8 @@ type: project
 >    **467 → 468 → 469 → 470 → 471 → 472 → 473 → 474 → 475** (473 = CC de proveedores, 474 = un solo número de OC, 475 = envío de la OC; en DEV la 474 quedó registrada dos veces por una corrección) (en DEV la 472 quedó registrada dos veces por una corrección; en PROD una).
 >    Ya validado en PROD con transacción abortada: la 467 da **0 diferencias en 3.185 casos** sobre los 65 productos.
 > 5. EFs en PROD: `npx supabase functions deploy categoria-cartel-ia --project-ref jjffnbrdjchquexdfgwq` (nueva;
->    `GROQ_API_KEY` ya existe en PROD) e `invite-user`.
+>    `GROQ_API_KEY` ya existe en PROD), `invite-user`, **`usuarios-sin-correo` y `admin-api`** (mínimo de contraseña 10 +
+>    errores en castellano, 06/10; DEV ya desplegado).
 > 6. PR `dev → main` "v1.239.0 — …", merge (GO autorizó), release `v1.239.0 --latest`.
 > 7. `node scripts/aplicar-plantillas-auth.mjs jjffnbrdjchquexdfgwq` (correos de Auth en castellano).
 > 8. `npm run ai:knowledge` + redeploy `ai-assistant` en DEV y PROD (app-reference ganó el reporte).

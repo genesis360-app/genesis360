@@ -2432,6 +2432,7 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 102.15 | Un solo número de OC en toda la app (mig 474): Proveedores, Gastos, Recepciones, Cheques, Alertas, Portal, PDF y los textos de la CC usan la numeración elegida ("OC S-OC-0070"); la búsqueda encuentra la OC por cualquiera de sus dos números | unit `ocNumero` · prueba en seco DEV · e2e `140`, `184` | ✅ |
 | 102.16 | 🛑 Envío de la OC (mig 475, C-22): "lo cobra el proveedor" suma al total, al pago y a la deuda; "un tercero" queda como gasto aparte y no suma; se registra una sola vez por OC; no se cambia con pagos; editar la OC ahora guarda el envío | unit `comprasPago` · e2e `184` · prueba en seco DEV | ✅ |
 | 102.17 | "Aplicar" de Acciones (lista de descuentos) queda dentro del recuadro | e2e `178` (mide el botón contra el popover) | ✅ |
+| 102.19 | 🛑 Contraseñas: la app exige el mínimo REAL de Supabase Auth (10, DEV y PROD; antes decía 8 y fallaba en el servidor, también en el alta de negocio) y muestra el motivo en castellano (antes "Edge Function returned a non-2xx") | unit `passwordPolicy` · e2e `159`, `182` | ✅ |
 | 102.18 | Usuarios muestra siempre el código del negocio (con copiar); al crear un usuario sin correo o reponer su contraseña aparece una tarjeta con los datos para entrar (link, código, usuario, contraseña de un solo uso) para copiar o mandar por WhatsApp | unit `usuarioLocal` · revisión | ✅ código |
 
 ## 🗂️ §101 — Categorías de clientes: rediseño de la pantalla (mig 472, pedido de GO, 🟡 DEV) — 2026-10-05

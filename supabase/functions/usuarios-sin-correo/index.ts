@@ -28,7 +28,20 @@ const ROLES_ASIGNABLES = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CAJERO', 'RR
 
 const DOMINIO_USUARIOS_INTERNOS = 'u.genesis360.pro'
 const RE_USUARIO = /^[a-z0-9][a-z0-9_-]{2,29}$/   // espejo de users_usuario_formato (mig 434)
-const PASSWORD_MIN = 8
+// Espejo de src/lib/passwordPolicy.ts: Supabase Auth (DEV y PROD) exige 10 y rechaza contraseñas filtradas.
+const PASSWORD_MIN = 10
+
+/** Los errores de Supabase Auth llegan en inglés (espejo de traducirErrorPassword). */
+function traducirErrorPassword(msg: string): string {
+  if (/different from the old password/i.test(msg)) return 'La contraseña nueva tiene que ser distinta de la que tenías'
+  if (/at least \d+ characters|too short/i.test(msg)) {
+    const n = msg.match(/at least (\d+) characters/i)?.[1] ?? String(PASSWORD_MIN)
+    const debil = /weak|easy to guess|pwned/i.test(msg) ? ' y no puede ser una contraseña conocida o fácil de adivinar' : ''
+    return `La contraseña tiene que tener al menos ${n} caracteres${debil}`
+  }
+  if (/weak|easy to guess|pwned/i.test(msg)) return 'Esa contraseña es muy conocida o apareció en filtraciones de datos: elegí otra'
+  return msg
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -85,7 +98,7 @@ serve(async (req) => {
       }
 
       const { error: passErr } = await supabaseAdmin.auth.admin.updateUserById(caller.id, { password })
-      if (passErr) return json({ error: passErr.message }, 400)
+      if (passErr) return json({ error: traducirErrorPassword(passErr.message) }, 400)
 
       const { error: flagErr } = await supabaseAdmin
         .from('users').update({ debe_cambiar_password: false }).eq('id', caller.id)
@@ -141,7 +154,7 @@ serve(async (req) => {
         user_metadata: { tenant_id: tenantId, rol, usuario },
       })
       if (createErr || !creado?.user) {
-        return json({ error: createErr?.message ?? 'No se pudo crear la cuenta' }, 400)
+        return json({ error: traducirErrorPassword(createErr?.message ?? 'No se pudo crear la cuenta') }, 400)
       }
 
       const { error: profileErr } = await supabaseAdmin.from('users').insert({
@@ -191,7 +204,7 @@ serve(async (req) => {
       }
 
       const { error: passErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { password })
-      if (passErr) return json({ error: passErr.message }, 400)
+      if (passErr) return json({ error: traducirErrorPassword(passErr.message) }, 400)
 
       // Vuelve a ser una contraseña de un solo uso.
       const { error: flagErr } = await supabaseAdmin

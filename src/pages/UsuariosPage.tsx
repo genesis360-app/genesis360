@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Lock, RotateCcw, KeyRound, Copy, Store, MessageCircle,
 } from 'lucide-react'
 import { normalizarUsuario, validarUsuario, mensajeDatosAcceso } from '@/lib/usuarioLocal'
+import { PASSWORD_MIN, traducirErrorPassword } from '@/lib/passwordPolicy'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -155,7 +156,7 @@ export default function UsuariosPage() {
     e.preventDefault()
     const problemaUsuario = validarUsuario(invUsuario)
     if (problemaUsuario) { toast.error(problemaUsuario); return }
-    if (invPassword.length < 8) { toast.error('La contraseña necesita al menos 8 caracteres'); return }
+    if (invPassword.length < PASSWORD_MIN) { toast.error(`La contraseña necesita al menos ${PASSWORD_MIN} caracteres`); return }
     setSaving(true)
     try {
       const { data, error } = await supabase.functions.invoke('usuarios-sin-correo', {
@@ -179,7 +180,7 @@ export default function UsuariosPage() {
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       qc.invalidateQueries({ queryKey: ['plan-limits'] })
     } catch (err: any) {
-      toast.error(err.message ?? 'Error al crear el usuario')
+      toast.error(traducirErrorPassword(err.message ?? 'Error al crear el usuario'))
     } finally {
       setSaving(false)
     }
@@ -188,7 +189,7 @@ export default function UsuariosPage() {
   // Sin casilla no hay "olvidé mi contraseña" posible: la repone el dueño, y vuelve a ser de un solo uso.
   const handleResetearPassword = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (resetPassword.length < 8) { toast.error('La contraseña necesita al menos 8 caracteres'); return }
+    if (resetPassword.length < PASSWORD_MIN) { toast.error(`La contraseña necesita al menos ${PASSWORD_MIN} caracteres`); return }
     setSaving(true)
     try {
       const { data, error } = await supabase.functions.invoke('usuarios-sin-correo', {
@@ -205,7 +206,7 @@ export default function UsuariosPage() {
       setResetTarget(null); setResetPassword('')
       qc.invalidateQueries({ queryKey: ['usuarios'] })
     } catch (err: any) {
-      toast.error(err.message ?? 'Error al reponer la contraseña')
+      toast.error(traducirErrorPassword(err.message ?? 'Error al reponer la contraseña'))
     } finally {
       setSaving(false)
     }
@@ -570,7 +571,7 @@ export default function UsuariosPage() {
                 <div className="relative">
                   <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
                   <input type="text" value={invPassword} onChange={e => setInvPassword(e.target.value)}
-                    placeholder="mínimo 8 caracteres" required minLength={8}
+                    placeholder={`mínimo ${PASSWORD_MIN} caracteres`} required minLength={PASSWORD_MIN}
                     className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -1110,7 +1111,7 @@ export default function UsuariosPage() {
               <div className="relative">
                 <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
                 <input type="text" autoFocus value={resetPassword} onChange={e => setResetPassword(e.target.value)}
-                  placeholder="mínimo 8 caracteres" required minLength={8}
+                  placeholder={`mínimo ${PASSWORD_MIN} caracteres`} required minLength={PASSWORD_MIN}
                   className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-900 dark:text-gray-100" />
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">

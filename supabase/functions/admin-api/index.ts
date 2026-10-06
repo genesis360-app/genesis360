@@ -370,7 +370,8 @@ Deno.serve(async (req) => {
 
       case 'auth.change_password': {
         const pw = String(p.password ?? '')
-        if (pw.length < 8) return json({ error: 'La contraseña debe tener al menos 8 caracteres' }, 400)
+        // Supabase Auth exige 10 (DEV y PROD): con 8 la validación de acá pasaba y fallaba igual más abajo.
+        if (pw.length < 10) return json({ error: 'La contraseña debe tener al menos 10 caracteres' }, 400)
         const { error } = await svc.auth.admin.updateUserById(uid, { password: pw })
         if (error) return json({ error: error.message }, 400)
         await audit({ self_password_change: true })

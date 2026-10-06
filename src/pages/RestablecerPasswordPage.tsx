@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { ElegirPasswordForm } from '@/components/ElegirPasswordForm'
+import { PASSWORD_MIN } from '@/lib/passwordPolicy'
 
 export default function RestablecerPasswordPage() {
   const navigate = useNavigate()
@@ -33,7 +34,7 @@ export default function RestablecerPasswordPage() {
       {estado === 'listo' && (
         <ElegirPasswordForm
           titulo="Elegí una contraseña nueva"
-          explicacion="La vas a usar para entrar con tu correo. Tiene que tener al menos 8 caracteres."
+          explicacion={`La vas a usar para entrar con tu correo. Tiene que tener al menos ${PASSWORD_MIN} caracteres.`}
           textoBoton="Guardar y entrar"
           textoCancelar="Cancelar"
           onCancelar={async () => { await supabase.auth.signOut(); navigate('/login', { replace: true }) }}

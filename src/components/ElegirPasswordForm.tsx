@@ -13,15 +13,9 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { BTN } from '@/config/brand'
 
-export const PASSWORD_MIN = 8
-
-/** Los errores de Supabase Auth llegan en inglés. */
-export function traducirErrorPassword(msg: string): string {
-  if (/different from the old password/i.test(msg)) return 'La contraseña nueva tiene que ser distinta de la que tenías'
-  if (/weak|easy to guess|pwned/i.test(msg)) return 'Esa contraseña es muy fácil de adivinar. Elegí otra'
-  if (/at least \d+ characters|too short/i.test(msg)) return `La contraseña tiene que tener al menos ${PASSWORD_MIN} caracteres`
-  return msg
-}
+import { PASSWORD_MIN, traducirErrorPassword, mensajeErrorEdgeFunction } from '@/lib/passwordPolicy'
+// La política (mínimo 10, como Supabase Auth) y la traducción viven en src/lib/passwordPolicy.ts (con test).
+export { PASSWORD_MIN, traducirErrorPassword }
 
 /** Cambia la contraseña del usuario de la sesión y vuelve a entrar con la nueva (la Admin API revoca las sesiones). */
 export async function guardarPasswordPropia(nueva: string): Promise<'ok' | 'reingresar'> {
@@ -32,7 +26,8 @@ export async function guardarPasswordPropia(nueva: string): Promise<'ok' | 'rein
   const { data, error } = await supabase.functions.invoke('usuarios-sin-correo', {
     body: { accion: 'cambiar-password-propia', password: nueva },
   })
-  if (error || data?.error) throw new Error(traducirErrorPassword(data?.error ?? error!.message))
+  // El mensaje real está en el cuerpo de la respuesta: sin leerlo, el usuario veía "Edge Function returned a non-2xx".
+  if (error || data?.error) throw new Error(traducirErrorPassword(await mensajeErrorEdgeFunction(error, data)))
 
   // 🛑 Cambiar la contraseña con la Admin API revoca TODAS las sesiones del usuario, incluida esta. Sin volver a
   // entrar, la app lo saca al login sin explicación (spec 159). La contraseña nueva la tenemos en la mano.

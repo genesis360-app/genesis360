@@ -57,10 +57,18 @@ test('un empleado sin correo entra con usuario y está obligado a cambiar la con
 
   await page.getByPlaceholder('Juan Pérez').fill(NOMBRE)
   await page.getByPlaceholder('juan', { exact: true }).fill(USUARIO)
-  await page.getByPlaceholder('mínimo 8 caracteres').fill(PASS_INICIAL)
+  await page.getByPlaceholder(/mínimo \d+ caracteres/).fill(PASS_INICIAL)   // el mínimo es el de Supabase Auth (10)
   await page.getByRole('button', { name: 'Crear usuario' }).click()
 
   await expect(page.getByText(`Usuario "${USUARIO}" creado`, { exact: false })).toBeVisible({ timeout: 20000 })
+
+  // GO 06/10: tarjeta con los datos para entrar (código del negocio + usuario + contraseña de un solo uso).
+  const datos = page.getByTestId('texto-datos-acceso')
+  await expect(datos).toContainText(`Código del negocio: ${codigoNegocio}`)
+  await expect(datos).toContainText(`Usuario: ${USUARIO}`)
+  await expect(datos).toContainText(`Contraseña: ${PASS_INICIAL}`)
+  await page.getByRole('button', { name: 'Listo' }).click()
+  await expect(page.getByTestId('codigo-negocio')).toContainText(codigoNegocio)
 
   // Aparece en la lista, con su usuario y la marca de que todavía no estrenó la contraseña.
   const fila = page.locator('div.group').filter({ hasText: USUARIO })

@@ -39,7 +39,7 @@ Tonga"**. Código: `brand.ts` (catálogo) + mig 457 (`fn_plan_base_limite` v7, h
 | Pro | $100.000 | $117.600 | ≈−15 % | 7 | 7.000 | 13.000 | 2 | 2 |
 | Enterprise | $200.000 | $250.000 | −20 % | 20 | 18.000 | 30.000 | 4 | 4 |
 
-- **Sin plan Free**: la prueba de **15 días** (sin tarjeta, solo altas nuevas) es el período gratis. Prueba vencida sin
+- **Sin plan Free**: la prueba de **30 días** (desde 2026-10-06, mig 476; antes 15, mig 457) (sin tarjeta, solo altas nuevas) es el período gratis. Prueba vencida sin
   plan → `/suscripcion` (bloqueo, como antes; GO descartó "solo lectura").
 - **Módulos**: Básico sin WMS/Compras/Envíos/importación/RRHH/marketplace · Pro suma WMS, Compras, Envíos, importación
   masiva ("Logística inteligente" = modo avanzado, solo desde Pro; PR-8 respondida, mig 463) · Enterprise suma RRHH, marketplace, soporte

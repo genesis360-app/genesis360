@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.239.2'
+export const APP_VERSION = 'v1.239.3'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad + Cookies).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -133,7 +133,7 @@ export const BRAND = {
 // ⚠ Límites/precios 2026 (propuesta GO, ver G360.Wiki/wiki/business/planes-pricing.md).
 // Los límites BASE viven también en SQL (fn_plan_base_limite, mig 251) → mantener en sync con PLAN_BASE_LIMITS.
 // Pricing v7 (Fede, docs "05 - Pricing y Costos v7" y "06 - Cambios v6 a v7"; GO 2026-10-02). Sin plan Free: la prueba
-// de 15 días es el período "gratis". Los negocios que existían antes del cambio conservan límites y módulos de su plan
+// de 30 días (mig 476; antes 15, mig 457) es el período "gratis". Los negocios que existían antes del cambio conservan límites y módulos de su plan
 // v6 (tabla `tenant_herencia_plan`, mig 457). Débito automático: Básico −10 %, Pro ≈−15 %, Enterprise −20 %.
 export const PLANES = [
   {

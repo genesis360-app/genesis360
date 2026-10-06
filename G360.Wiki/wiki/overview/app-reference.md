@@ -879,7 +879,7 @@ Perfil y configuración personal del usuario.
 
 Gestión del plan de pago.
 
-**Planes (pricing v7, octubre 2026):** ya no hay plan Free; el negocio nuevo arranca con **15 días de prueba** con los límites de Pro y después elige plan. Básico ($60.000/mes lista · $54.000/mes con débito automático), Pro ($117.600/mes lista · $100.000/mes con débito), Enterprise ($250.000/mes lista · $200.000/mes con débito; se contrata online como los demás). El **modo avanzado** (logística inteligente: ubicaciones, WMS) es desde Pro. Los negocios que ya existían antes de v7 conservan los límites y módulos de su plan anterior. Detalle completo y fuente de verdad: `src/config/brand.ts` (`PLANES`) y `G360.Wiki/wiki/business/planes-pricing.md`.
+**Planes (pricing v7, octubre 2026):** ya no hay plan Free; el negocio nuevo arranca con **30 días de prueba** con los límites de Pro y después elige plan. Básico ($60.000/mes lista · $54.000/mes con débito automático), Pro ($117.600/mes lista · $100.000/mes con débito), Enterprise ($250.000/mes lista · $200.000/mes con débito; se contrata online como los demás). El **modo avanzado** (logística inteligente: ubicaciones, WMS) es desde Pro. Los negocios que ya existían antes de v7 conservan los límites y módulos de su plan anterior. Detalle completo y fuente de verdad: `src/config/brand.ts` (`PLANES`) y `G360.Wiki/wiki/business/planes-pricing.md`.
 
 **Acciones:**
 - Suscribirse a un plan → genera link de pago MercadoPago (modelo preapproval). Redirige al checkout de MP. Al volver con `?status=approved`, verifica el pago.
@@ -1197,7 +1197,7 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 
 | Plan | Usuarios | SKU | Comprobantes/mes | Sucursales | CUITs | Features extra | Precio (lista / con débito automático) |
 |------|----------|-----|-------------------|------------|-------|-----------------|--------|
-| Prueba (15 días) | 7 | 7.000 | 13.000 | 2 | 2 | Igual que Pro | $0 |
+| Prueba (30 días) | 7 | 7.000 | 13.000 | 2 | 2 | Igual que Pro | $0 |
 | Básico | 3 | 2.000 | 5.000 | 1 | 1 | Historial, Reportes, Métricas (solo modo básico) | $60.000 / $54.000 mes |
 | Pro | 7 | 7.000 | 13.000 | 2 | 2 | + Modo avanzado (WMS), Importación masiva, Aging | $117.600 / $100.000 mes |
 | Enterprise | 20 | 18.000 | 30.000 | 4 | 4 | + RRHH | $250.000 / $200.000 mes |

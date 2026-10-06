@@ -22,7 +22,7 @@ import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, condicio
 import { imprimirConNombre } from '@/lib/imprimirConNombre'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
-import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
+import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, cotizarRecurrente, type RecurrenteItemSnapshot, type PrecioMotorParaRecurrente } from '@/lib/ventasRecurrentes'
 import { detectarTipoComprobante, tiposComprobantePermitidos, prorratearDescuentoGlobal } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -2550,8 +2550,25 @@ export default function VentasPage() {
   async function generarDesdeRecurrente(rec: any) {
     setGenerandoRecId(rec.id)
     try {
-      const items: RecurrenteItemSnapshot[] = rec.items ?? []
-      const total = totalRecurrente(items)
+      const items: RecurrenteItemSnapshot[] = (rec.items ?? []).filter((i: RecurrenteItemSnapshot) => i.producto_id)
+      if (items.length === 0) throw new Error('La plantilla no tiene productos')
+      // Pedido de GO 06/10 — el precio sale del MOTOR ÚNICO (precio de hoy + categoría del cliente), igual que el POS y
+      // "Actualizar precios" del presupuesto. Antes se copiaba el precio congelado al crear la plantilla.
+      const itemsMotorRec = itemsParaMotor(items.map(i => ({ producto_id: i.producto_id, cantidad: Number(i.cantidad) })))
+      const [{ data: preciosData, error: preciosErr }, { data: prods, error: prodErr }] = await Promise.all([
+        supabase.rpc('fn_precios_lineas', { p_items: itemsMotorRec, p_lista: null, p_cliente_id: rec.cliente_id ?? null }),
+        supabase.from('productos').select('id, alicuota_iva').in('id', itemsMotorRec.map(i => i.producto_id)),
+      ])
+      if (preciosErr) throw new Error(`No se pudieron calcular los precios: ${preciosErr.message}`)
+      if (prodErr) throw new Error(`No se pudieron leer los productos: ${prodErr.message}`)
+      const mapa = mapaPreciosMotor(preciosData)
+      const precios: Record<string, PrecioMotorParaRecurrente> = {}
+      for (const it of itemsMotorRec) {
+        const p = mapa[it.producto_id]
+        precios[it.producto_id] = p ? { ...p, descuentoCategoria: descuentoCategoriaMonto(p, it.cantidad) } : { error: 'sin precio' }
+      }
+      const { lineas, total } = cotizarRecurrente(items, precios,
+        Object.fromEntries((prods ?? []).map((p: any) => [p.id, p.alicuota_iva])))
       const ventaId = crypto.randomUUID()
       const { error: vErr } = await supabase.from('ventas').insert({
         id: ventaId,
@@ -2566,16 +2583,7 @@ export default function VentasPage() {
         notas: rec.notas ?? null,
       })
       if (vErr) throw vErr
-      const itemRows = items.filter(i => i.producto_id).map(i => ({
-        tenant_id: tenant!.id,
-        venta_id: ventaId,
-        producto_id: i.producto_id,
-        cantidad: i.cantidad,
-        precio_unitario: i.precio_unitario,
-        descuento: Number(i.descuento ?? 0),
-        subtotal: i.subtotal,
-        alicuota_iva: Number(i.alicuota_iva ?? 21),
-      }))
+      const itemRows = lineas.map(l => ({ tenant_id: tenant!.id, venta_id: ventaId, ...l }))
       const { error: iErr } = await supabase.from('venta_items').insert(itemRows)
       if (iErr) {
         // Sin líneas no hay presupuesto: se borra el encabezado (p. ej. el tope de descuento rechazó los precios de la
@@ -2587,7 +2595,7 @@ export default function VentasPage() {
         proximo_at: proximaFecha(rec.frecuencia_dias),
         ultima_generada_at: new Date().toISOString(),
       }).eq('id', rec.id)
-      toast.success('Presupuesto generado desde la plantilla. Revisalo y convertilo/facturalo.')
+      toast.success('Presupuesto generado con los precios de hoy. Revisalo y convertilo/facturalo.')
       qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
       qc.invalidateQueries({ queryKey: ['ventas'] })
     } catch (e: any) {
@@ -9691,7 +9699,7 @@ export default function VentasPage() {
                       <div className="min-w-0">
                         <p className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate">{rec.nombre}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {rec.cliente_nombre ?? 'Consumidor final'} · {frecuenciaLabel(rec.frecuencia_dias)} · ${totalRecurrente(rec.items ?? []).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          {rec.cliente_nombre ?? 'Consumidor final'} · {frecuenciaLabel(rec.frecuencia_dias)} · <span title="Total con los precios de cuando se creó la plantilla. Al generar, se cotiza con los precios de hoy.">≈ ${totalRecurrente(rec.items ?? []).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                         </p>
                         <p className={`text-xs mt-0.5 ${vencida ? 'text-accent-text font-semibold' : 'text-gray-400'}`}>
                           {vencida ? '● Vence: ' : 'Próxima: '}{new Date(rec.proximo_at + 'T00:00:00').toLocaleDateString('es-AR')}{!rec.activo && ' · pausada'}

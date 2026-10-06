@@ -64,6 +64,12 @@ type: project
 >    `usuario_id`) y sin chequear el error → **un pago en efectivo a proveedor nunca entra en la caja**. También 'Efectivo'
 >    hardcodeado (no `es_efectivo`), toma la primera caja abierta sin elegir, y no es atómico (dos inserts sueltos).
 > 5. Cosmético: el historial muestra `medio_pago` crudo (`[{"tipo":…,"monto":…}]`); hay que formatearlo ("Tarjeta de débito $900").
+> **06/10 (noche) — ya arreglado en DEV:** el punto 4 (columna `usuario_id`, error chequeado, efectivo exige caja) y el 5
+> (`textoMedioPago`). Además: test nuevo `tests/unit/columnasEscritas.test.ts` que cruza toda escritura con objeto literal
+> contra `schema_full.sql` → encontró OTRO bug: "Generar gasto" de servicio recurrente fallaba SIEMPRE (`gastos.proveedor_id`
+> no existe), arreglado. Ventas recurrentes cotizan con el motor único; links de Auth a 24 h (DEV aplicado; PROD = paso 7
+> del deploy, mismo script). UAT §102. Puntos 1-3 esperan el modelo del libro (recomendación: cargo al RECIBIR, ver abajo).
+> Hallazgo extra: la recepción con OC no chequea el error del `update` de la OC ni del `insert` del gasto (RecepcionesPage ~664/704).
 > **Decisión para GO antes de arreglar:** modelo del libro de CC — (a) la CC solo registra lo que se debe (cargo al pasar a CC,
 > pago solo cuando cancela algo de CC; el pago directo no entra) o (b) toda OC carga su total y cada pago lo descuenta. Y si un
 > pago desde el proveedor se imputa a OCs (la más vieja primero) para cerrarlas.

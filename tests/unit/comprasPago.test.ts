@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   labelModoPago, defaultAnticipoOC, montoAnticipo,
   totalPctSchedule, scheduleValido, montoCuota, labelBaseCuota,
-  convertirMontoAMonedaOC, desvioCotizacionFuerte,
+  convertirMontoAMonedaOC, desvioCotizacionFuerte, textoMedioPago,
   type CuotaSchedule,
 } from '@/lib/comprasPago'
 
@@ -131,5 +131,18 @@ describe('desvioCotizacionFuerte (B3)', () => {
     expect(desvioCotizacionFuerte(1680, 1400)).toBe(true)   // +20%
     expect(desvioCotizacionFuerte(1120, 1400)).toBe(true)   // -20%
     expect(desvioCotizacionFuerte(2000, 1400)).toBe(true)
+  })
+})
+
+describe('textoMedioPago — historial de la CC del proveedor (GO 06/10: se veía el JSON crudo)', () => {
+  it('JSON de registrar_pago_oc → texto legible', () => {
+    expect(textoMedioPago('[{"tipo": "Tarjeta de débito", "monto": 900}]')).toBe('Tarjeta de débito $900')
+    expect(textoMedioPago('[{"tipo":"Efectivo","monto":1500.5},{"tipo":"Transferencia","monto":"2000"}]'))
+      .toBe('Efectivo $1.500,5 + Transferencia $2.000')
+  })
+  it('texto plano (pago manual) queda igual; vacío → vacío', () => {
+    expect(textoMedioPago('Transferencia')).toBe('Transferencia')
+    expect(textoMedioPago(null)).toBe('')
+    expect(textoMedioPago('')).toBe('')
   })
 })

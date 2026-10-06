@@ -113,3 +113,25 @@ export function desvioCotizacionFuerte(cotizacion: number, referencia: number | 
   if (!referencia || referencia <= 0 || !cotizacion || cotizacion <= 0) return false
   return Math.abs(cotizacion - referencia) / referencia >= 0.2
 }
+
+/**
+ * Texto legible del `medio_pago` de un movimiento de CC de proveedor. `registrar_pago_oc` lo guarda como JSON
+ * (`[{"tipo":"Tarjeta de débito","monto":900}]`) y el historial lo mostraba crudo (GO, 2026-10-06). Un texto que no es
+ * JSON (el pago manual guarda "Transferencia") se devuelve tal cual.
+ */
+export function textoMedioPago(raw: unknown): string {
+  if (raw == null || raw === '') return ''
+  let v: unknown = raw
+  if (typeof raw === 'string') {
+    try { v = JSON.parse(raw) } catch { return raw }
+  }
+  const lista = Array.isArray(v) ? v : [v]
+  const partes = lista
+    .filter((m): m is { tipo?: unknown; monto?: unknown } => !!m && typeof m === 'object')
+    .map(m => {
+      const monto = typeof m.monto === 'number' ? m.monto : parseFloat(String(m.monto ?? ''))
+      const tipo = String(m.tipo ?? 'Pago')
+      return Number.isFinite(monto) ? `${tipo} $${monto.toLocaleString('es-AR', { maximumFractionDigits: 2 })}` : tipo
+    })
+  return partes.length ? partes.join(' + ') : (typeof raw === 'string' ? raw : '')
+}

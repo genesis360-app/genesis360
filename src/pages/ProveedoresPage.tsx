@@ -9,7 +9,7 @@ import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/com
 import { montoDevolucion, validarDevolucion, MOTIVOS_DEVOLUCION_PROVEEDOR, type FormaDevolucion } from '@/lib/devolucionProveedor'
 import {
   MODOS_PAGO_PROVEEDOR, defaultAnticipoOC, montoAnticipo, scheduleValido,
-  totalPctSchedule, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
+  totalPctSchedule, textoMedioPago, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
 } from '@/lib/comprasPago'
 import { generarOCPDF, textoOC, waLinkOC, totalOC, type OCPDFData } from '@/lib/ocPDF'
 import {
@@ -434,7 +434,9 @@ export default function ProveedoresPage() {
     try {
       const hoy = new Date().toISOString().split('T')[0]
       const sesionId = (cajasAbiertasProv as any[])[0]?.id ?? null
-      await supabase.from('proveedor_cc_movimientos').insert({
+      // 🛑 REGLA #0 — todo efectivo se asienta en caja: sin caja abierta no se registra un pago en efectivo.
+      if (ccPagoMedio === 'Efectivo' && !sesionId) { toast.error('Abrí una caja para pagar en efectivo.'); return }
+      const { error: ccErr } = await supabase.from('proveedor_cc_movimientos').insert({
         tenant_id:    tenant!.id,
         proveedor_id: ccProvId,
         tipo:         'pago',
@@ -445,15 +447,21 @@ export default function ProveedoresPage() {
         caja_sesion_id: sesionId,
         created_by:   user!.id,
       })
+      if (ccErr) throw ccErr
       if (ccPagoMedio === 'Efectivo' && sesionId) {
-        await supabase.from('caja_movimientos').insert({
+        // Antes mandaba `created_by` (la columna es `usuario_id`) y no miraba el error: el insert fallaba SIEMPRE y el
+        // egreso en efectivo nunca entraba en la caja (GO, 2026-10-06). Lo cubre tests/unit/columnasEscritas.test.ts.
+        const { error: cajaErr } = await supabase.from('caja_movimientos').insert({
           tenant_id:  tenant!.id,
           sesion_id:  sesionId,
           tipo:       'egreso',
           monto,
           concepto:   `Pago proveedor CC`,
-          created_by: user!.id,
+          usuario_id: user!.id,
         })
+        if (cajaErr) {
+          toast.error(`El pago quedó en la cuenta corriente pero NO en la caja: ${cajaErr.message}. Registrá el egreso a mano.`, { duration: 12000 })
+        }
       }
       toast.success('Pago registrado')
       setCcPagoMonto('')
@@ -1020,8 +1028,9 @@ export default function ProveedoresPage() {
         moneda: ((tenant as any)?.moneda ?? 'ARS').toUpperCase(),
         categoria: 'Servicios',
         fecha: fechaGasto,
-        notas: `Generado desde servicio recurrente (${si.frecuencia})`,
-        proveedor_id: si.proveedor_id ?? null,
+        // `gastos` NO tiene `proveedor_id`: mandarlo hacía fallar SIEMPRE este insert (lo encontró el chequeo de
+        // columnas, tests/unit/columnasEscritas.test.ts, 2026-10-06). El proveedor queda en la nota.
+        notas: `Generado desde servicio recurrente (${si.frecuencia})${si.proveedores?.nombre ? ` — ${si.proveedores.nombre}` : ''}`,
         usuario_id: user?.id ?? null,
         // 🛑 Sin `sucursal_id` el gasto queda INVISIBLE: GastosPage filtra por la sucursal activa,
         // asi que se creaba de verdad pero no aparecia nunca (Fede, 2026-09-11). Mismo bug que los
@@ -3731,7 +3740,7 @@ export default function ProveedoresPage() {
                     </select>
                   </div>
                   {ccPagoMedio === 'Efectivo' && (cajasAbiertasProv as any[]).length === 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso no se registrará en caja.</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta: para pagar en efectivo, abrí una caja.</p>
                   )}
                   <button onClick={registrarPagoCC} disabled={ccGuardando || !ccPagoMonto}
                     className="w-full py-2 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center gap-2">
@@ -3827,7 +3836,7 @@ export default function ProveedoresPage() {
                           </p>
                           <div className="flex gap-2 text-xs text-gray-400 flex-wrap mt-0.5">
                             <span>{new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR')}</span>
-                            {m.medio_pago && <span>· {m.medio_pago}</span>}
+                            {m.medio_pago && <span>· {textoMedioPago(m.medio_pago)}</span>}
                             {venc && <span className={vencida ? 'text-red-500 font-medium' : 'text-amber-500'}>· Vence {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
                             {m.adjunto_url && (
                               <a href={supabase.storage.from('comprobantes-gastos').getPublicUrl(m.adjunto_url).data.publicUrl}

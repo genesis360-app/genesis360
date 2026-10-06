@@ -24,12 +24,17 @@ const TIPOS = ['invite', 'recovery', 'confirmation', 'magic_link']
 if (flag === '--ver') {
   const actual = await (await fetch(url, { headers })).json()
   for (const t of TIPOS) console.log(`${t}: "${actual[`mailer_subjects_${t}`]}" (${(actual[`mailer_templates_${t}_content`] ?? '').length} caracteres)`)
+  console.log(`vigencia de los links: ${actual.mailer_otp_exp / 3600} h`)
   process.exit(0)
 }
 
 const base = readFileSync(resolve(root, 'supabase/templates/_base.html'), 'utf8')
 const plantillas = JSON.parse(readFileSync(resolve(root, 'supabase/templates/plantillas.json'), 'utf8'))
-const cuerpo = {}
+// Vigencia de TODOS los links de Auth (invitación, recuperar contraseña, confirmar, ingreso), en segundos. Pedido de GO
+// 06/10: al menos 24 h (antes 1 h: el invitado que abría el correo al día siguiente encontraba el link vencido).
+// 86400 es el máximo que acepta Supabase. Los textos de plantillas.json dicen "vence en 24 horas": cambiar los dos juntos.
+const VIGENCIA_LINKS_SEG = 86400
+const cuerpo = { mailer_otp_exp: VIGENCIA_LINKS_SEG }
 for (const t of TIPOS) {
   const p = plantillas[t]
   if (!p?.asunto || !p?.contenido) { console.error(`Falta la plantilla "${t}"`); process.exit(1) }
@@ -41,3 +46,4 @@ const r = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(cuer
 if (!r.ok) { console.error(`Error ${r.status}: ${(await r.text()).slice(0, 500)}`); process.exit(1) }
 const nuevo = await r.json()
 for (const t of TIPOS) console.log(`OK ${t}: "${nuevo[`mailer_subjects_${t}`]}"`)
+console.log(`OK vigencia de los links: ${nuevo.mailer_otp_exp / 3600} h`)

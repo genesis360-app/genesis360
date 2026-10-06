@@ -2411,6 +2411,20 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧾 §102 — Recurrentes con el motor, links de 24 h y escrituras a columnas que no existen (🟡 DEV) — 2026-10-06
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 102.1 | Generar desde una plantilla recurrente cotiza con el MOTOR ÚNICO (precio de hoy + categoría del cliente), conserva cantidad y descuento manual; guarda mecanismo y lo que bajó la categoría | unit `ventasRecurrentes` | ✅ |
+| 102.2 | 🛑 La alícuota es la ACTUAL del producto; Exento (0, llega `"0.00"`) no se vuelve 21 % | unit `ventasRecurrentes` | ✅ |
+| 102.3 | 🛑 Sin precio del servidor no se genera el presupuesto (no se inventa precio) | unit `ventasRecurrentes` | ✅ |
+| 102.4 | Links de los correos de Auth (invitación, recuperar, confirmar, ingreso) vencen a las 24 h; los textos dicen "24 horas" | `scripts/aplicar-plantillas-auth.mjs` (DEV aplicado: `mailer_otp_exp` 86400; PROD con el deploy) | ✅ DEV |
+| 102.5 | 🛑 Ninguna escritura del código (front + EFs) usa una columna que no existe en la base | unit `columnasEscritas` (cruza ~todas las escrituras con `schema_full.sql`) | ✅ |
+| 102.6 | 🛑 Pago en efectivo a un proveedor desde su CC entra en la caja (antes fallaba siempre en silencio: `created_by`); sin caja abierta no se permite; si la caja falla, avisa | unit `columnasEscritas` · revisión | ✅ código |
+| 102.7 | "Generar gasto" de un servicio recurrente funciona (antes fallaba siempre: `gastos.proveedor_id` no existe) | unit `columnasEscritas` | ✅ código |
+| 102.8 | El historial de la CC del proveedor muestra "Tarjeta de débito $900", no el JSON | unit `comprasPago` | ✅ |
+| 102.9 | 🛑 Pagar/pasar a CC una OC más de una vez y saldo de la CC del proveedor | PENDIENTE del modelo del libro (decisión de GO) | ⏳ |
+
 ## 🗂️ §101 — Categorías de clientes: rediseño de la pantalla (mig 472, pedido de GO, 🟡 DEV) — 2026-10-05
 
 Decisiones de GO 05/10: el check "Habilita cuenta corriente" sin tildar = lo del negocio; eliminar solo si nunca se usó

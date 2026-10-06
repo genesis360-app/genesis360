@@ -9,11 +9,13 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AvisoSesionSinRefresco } from '@/components/AvisoSesionSinRefresco'
 import { ConfirmProvider } from '@/hooks/useConfirm'
+import { quitarPrerender, hayPrerender, RUTAS_PRERENDER } from '@/lib/prerender'
 
 // Lazy loading de módulos
 const LoginPage        = lazy(() => import('@/pages/LoginPage'))
 const RestablecerPasswordPage = lazy(() => import('@/pages/RestablecerPasswordPage'))
 const LandingPage      = lazy(() => import('@/pages/LandingPage'))
+const ParaConstruccionPage = lazy(() => import('@/pages/ParaConstruccionPage'))
 const OnboardingPage   = lazy(() => import('@/pages/OnboardingPage'))
 const TerminosPage     = lazy(() => import('@/pages/TerminosPage'))
 const PrivacidadPage   = lazy(() => import('@/pages/PrivacidadPage'))
@@ -84,6 +86,13 @@ const queryClient = new QueryClient({
   },
 })
 
+// Mientras la página pública pre-renderizada está hidratada en #prerender (src/lib/prerender.ts), App no la dibuja otra vez.
+// Tiene que ser un componente (no un `hayPrerender() ? …` en el JSX de las rutas): App no se vuelve a renderizar al
+// navegar, así que el elemento de la ruta quedaría fijo en `null` al volver con "atrás".
+function SinPrerender({ children }: { children: React.ReactNode }) {
+  return hayPrerender() ? null : <>{children}</>
+}
+
 function App() {
   const { ensureUserData, setUser, initialized, user } = useAuthStore()
 
@@ -115,6 +124,14 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // La página pública pre-renderizada (src/lib/prerender.ts) vive hidratada en #prerender y App queda escondida. Si no se
+  // va a mostrar —con sesión iniciada "/" va al dashboard; en el dominio de la app, al login; o el servidor devolvió esa
+  // página en otra ruta— hay que sacarla acá, o el #root quedaría escondido.
+  useEffect(() => {
+    if (!initialized) return
+    if (user || isAppDomain || !RUTAS_PRERENDER.includes(window.location.pathname)) quitarPrerender()
+  }, [initialized, user])
+
   if (!initialized) {
     return (
       <div className="min-h-screen bg-brand-bg flex items-center justify-center">
@@ -145,15 +162,17 @@ function App() {
             <Route path="/" element={
               user ? <Navigate to="/dashboard" replace /> :
               isAppDomain ? <Navigate to="/login" replace /> :
-              <LandingPage />
+              <SinPrerender><LandingPage /></SinPrerender>
             } />
             <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
             {/* Vuelta del correo de recuperación: con sesión recién iniciada por el link, NO redirige al dashboard. */}
             <Route path="/restablecer-contrasena" element={<RestablecerPasswordPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
-            <Route path="/terminos" element={<TerminosPage />} />
-            <Route path="/privacidad" element={<PrivacidadPage />} />
-            <Route path="/cookies" element={<CookiesPage />} />
+            {/* Landing 2.0 — páginas por rubro (doc 04 de Fede), públicas y pre-renderizadas */}
+            <Route path="/para/construccion" element={<SinPrerender><ParaConstruccionPage /></SinPrerender>} />
+            <Route path="/terminos" element={<SinPrerender><TerminosPage /></SinPrerender>} />
+            <Route path="/privacidad" element={<SinPrerender><PrivacidadPage /></SinPrerender>} />
+            <Route path="/cookies" element={<SinPrerender><CookiesPage /></SinPrerender>} />
             <Route path="/suscripcion" element={<SuscripcionPage />} />
             {/* Ruta pública para transportistas — sin auth */}
             <Route path="/transporte/:token" element={<TransportistePage />} />

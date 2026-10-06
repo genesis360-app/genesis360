@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import wasm from 'vite-plugin-wasm'
 
+// Identificador del build (revisión de app.html en el service worker, ver workbox abajo).
+const BUILD_ID = Date.now().toString(36)
+
 export default defineConfig({
   plugins: [
     react(),
@@ -26,10 +29,20 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Pre-render (scripts/prerender.mjs, corre después de este build): dist/index.html pasa a ser la landing armada
+        // para buscadores y el armazón de la app se copia a app.html. El service worker tiene que servir app.html en
+        // cualquier navegación, nunca la landing; app.html se escribe después, por eso va como entrada adicional con una
+        // revisión nueva en cada build.
+        globIgnores: ['index.html'],
+        navigateFallback: '/app.html',
+        additionalManifestEntries: [{ url: '/app.html', revision: BUILD_ID }],
       },
     }),
   ],
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
+  // scripts/prerender.mjs lee el manifest para enlazar en el <head> el CSS de cada página pre-renderizada (si no, el HTML
+  // estático llega sin sus estilos hasta que baja todo el JavaScript) y después lo borra de dist.
+  build: { manifest: true },
 })

@@ -217,7 +217,7 @@ export const PLANES = [
       'Todo lo del plan Pro',
       'RRHH completo',
       'Marketplace (Mercado Libre · Tienda Nube)',
-      'Agente de WhatsApp',
+      // 'Agente de WhatsApp' — oculto hasta que Meta apruebe la app (GO 2026-10-06); volver a listarlo cuando esté listo.
       'Soporte prioritario',
     ],
     noIncluye: [],

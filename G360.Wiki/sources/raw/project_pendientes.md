@@ -6,6 +6,18 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-10-06, tarde) — PROD = DEV = `v1.239.3` (migs 001-476). Nada de código nuevo commiteado.
+>
+> **Sin commitear en el disco (todo aprobado o para revisar, nada en PROD):**
+> - **Landing 2.0 Fase 2 — APROBADA por GO** ("me gustó esta como está"): 12 secciones + fotos de los fundadores. Detalle y
+>   pendientes en [[wiki/business/plan-landing-2]] §6. Respaldo de la vieja: tag `landing-v1-respaldo`. **Para subirla:**
+>   commit + bump `APP_VERSION` (v1.240.0) + PR `dev→main` + release; sin migraciones ni EFs. 🛑 Antes, que GO decida qué
+>   hacer con "Agente de WhatsApp" en el plan Enterprise (contradice "no mencionar WhatsApp").
+> - **Presupuestos de proveedores (módulo nuevo):** plan [[wiki/business/plan-presupuestos-proveedores]] + relevamiento
+>   `relevamiento-presupuestos-proveedores-reglas-negocio.html` (19 preguntas) — GO lo revisa con Fede. Sin A1, A2 y B1 no
+>   arranca la Fase 1.
+>
+
 > ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre) — 🚀 **PROD = DEV = `v1.239.3`** (migs 001-**476**) · PRs #371, #375, #376, #377
 >
 > **👉 LANDING 2.0 — PLAN + DECISIONES DE GO: [[wiki/business/plan-landing-2]]** (leer primero; tabla "Respuestas de GO").

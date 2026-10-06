@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-04T04:29:26.035Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261004040521 · 177 tablas
+-- Generado 2026-10-06T02:54:15.209Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261006021200 · 177 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -6113,6 +6113,22 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_clientes_compras_resumen()
+ RETURNS TABLE(cliente_id uuid, compras bigint, total numeric)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT v.cliente_id, count(*)::bigint,
+         round(sum(v.total - COALESCE((SELECT sum(d.monto_total) FROM devoluciones d WHERE d.venta_id = v.id), 0)), 2)
+    FROM ventas v
+   WHERE v.tenant_id = public.get_user_tenant_id()
+     AND v.cliente_id IS NOT NULL
+     AND v.estado IN ('despachada', 'facturada', 'reservada')
+   GROUP BY v.cliente_id;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_clientes_dni_vacio_a_null()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6462,6 +6478,58 @@ AS $function$
     WHEN COALESCE(p_pct, 0) <= 0 OR COALESCE(p_precio_efectivo, 0) <= 0 THEN 0
     WHEN p_compite THEN GREATEST(p_precio_efectivo - round(p_precio_lista * (1 - LEAST(100, p_pct) / 100), 2), 0)
     ELSE p_precio_efectivo * p_pct / 100 END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_descuentos_categoria_masivo(p_categoria_id uuid, p_producto_ids uuid[], p_pct numeric, p_detalle text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant uuid := public.get_user_tenant_id();
+  v_cat    text;
+  v_n      int;
+  v_ajenos int;
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin negocio'; END IF;
+  IF NOT fn_usuario_en_roles_categoria('gestionar') THEN
+    RAISE EXCEPTION 'No tenés permiso para modificar las listas de descuento de las categorías';
+  END IF;
+  SELECT nombre INTO v_cat FROM categorias_cliente WHERE id = p_categoria_id AND tenant_id = v_tenant;
+  IF v_cat IS NULL THEN RAISE EXCEPTION 'Categoría no encontrada'; END IF;
+  v_n := COALESCE(array_length(p_producto_ids, 1), 0);
+  IF v_n = 0 THEN RAISE EXCEPTION 'No hay productos elegidos'; END IF;
+  IF v_n > 20000 THEN RAISE EXCEPTION 'Demasiados productos de una vez (máximo 20.000)'; END IF;
+  IF p_pct IS NOT NULL AND (p_pct < 0 OR p_pct > 100 OR p_pct <> round(p_pct, 2)) THEN
+    RAISE EXCEPTION 'El descuento va de 0 a 100, con hasta 2 decimales';
+  END IF;
+  SELECT count(*) INTO v_ajenos FROM unnest(p_producto_ids) x(id)
+   WHERE NOT EXISTS (SELECT 1 FROM productos p WHERE p.id = x.id AND p.tenant_id = v_tenant);
+  IF v_ajenos > 0 THEN RAISE EXCEPTION 'Hay productos que no son de este negocio'; END IF;
+
+  PERFORM set_config('g360.cat_desc_importando', '1', true);   -- sin una entrada por producto (ver abajo)
+  IF p_pct IS NULL THEN
+    DELETE FROM categoria_cliente_descuentos WHERE categoria_id = p_categoria_id AND producto_id = ANY (p_producto_ids);
+  ELSE
+    INSERT INTO categoria_cliente_descuentos (tenant_id, categoria_id, producto_id, descuento_pct)
+    SELECT DISTINCT v_tenant, p_categoria_id, x.id, p_pct FROM unnest(p_producto_ids) x(id)
+    ON CONFLICT (categoria_id, producto_id) DO UPDATE SET descuento_pct = EXCLUDED.descuento_pct;
+  END IF;
+  PERFORM set_config('g360.cat_desc_importando', '', true);
+
+  INSERT INTO actividad_log (tenant_id, usuario_id, usuario_nombre, entidad, entidad_id, entidad_nombre, accion, campo,
+                             valor_anterior, valor_nuevo, pagina)
+  VALUES (v_tenant, auth.uid(), COALESCE((SELECT nombre_display FROM users WHERE id = auth.uid()), 'Sistema'),
+          'categoria_cliente', p_categoria_id::text, v_cat, 'editar', 'lista de descuentos', NULL,
+          CASE WHEN p_pct IS NULL THEN format('%s productos sin cargar', v_n)
+               ELSE format('%s productos a %s %%', v_n,
+                      replace(trim(trailing '.' FROM trim(trailing '0' FROM p_pct::text)), '.', ',')) END
+          || COALESCE(' (' || left(p_detalle, 120) || ')', ''),
+          '/clientes');
+
+  RETURN jsonb_build_object('productos', v_n);
+END;
 $function$
 
 
@@ -12638,7 +12706,10 @@ BEGIN
   ELSE
     RETURN false;
   END IF;
-  RETURN v_lista IS NOT NULL AND (v_lista ? v_rol OR (v_custom IS NOT NULL AND v_lista ? ('custom:' || v_custom::text)));
+  RETURN v_lista IS NOT NULL AND (
+    v_lista ? v_rol
+    OR (v_custom IS NOT NULL AND v_lista ? ('custom:' || v_custom::text))
+    OR v_lista ? ('user:' || auth.uid()::text));   -- mig 472: permiso directo a un usuario
 END;
 $function$
 
@@ -16412,7 +16483,9 @@ CREATE POLICY categorias_insert ON public.categorias AS PERMISSIVE FOR INSERT TO
 CREATE POLICY categorias_tenant ON public.categorias AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY categorias_cliente_delete ON public.categorias_cliente AS PERMISSIVE FOR DELETE TO authenticated
-  USING (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
+  USING (((tenant_id = get_user_tenant_id()) AND (EXISTS ( SELECT 1
+   FROM users u
+  WHERE ((u.id = auth.uid()) AND (u.rol = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text])) AND (u.activo IS NOT FALSE))))));
 CREATE POLICY categorias_cliente_insert ON public.categorias_cliente AS PERMISSIVE FOR INSERT TO authenticated
   WITH CHECK (((tenant_id = get_user_tenant_id()) AND fn_usuario_en_roles_categoria('gestionar'::text)));
 CREATE POLICY categorias_cliente_select ON public.categorias_cliente AS PERMISSIVE FOR SELECT TO authenticated

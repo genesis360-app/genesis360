@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Power, Trash2, History, Users, X, Tag, ShieldCheck, Percent } from 'lucide-react'
+import { Plus, Pencil, Trash2, History, Users, X, Tag, Percent } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useConfirm } from '@/hooks/useConfirm'
 import { formatMoneda } from '@/lib/formato'
-import { num, habilitadaAForm, habilitadaDesdeForm, ETIQUETA_POLITICA, type HabilitadaForm, type PoliticaExceso } from '@/lib/ccCategorias'
+import { num, ETIQUETA_POLITICA, payloadCCCategoria, formCCDesdeCategoria, type FormCCCategoria, type PoliticaExceso } from '@/lib/ccCategorias'
+import { Toggle } from '@/components/Toggle'
 import {
-  useCategoriasCliente, useClientesCC, puedeGestionarCategorias, CATEGORIAS_QUERY_KEY, CLIENTES_CC_QUERY_KEY,
+  useCategoriasCliente, useClientesCC, puedeGestionarCategorias, puedeAsignarCategoria, CATEGORIAS_QUERY_KEY, CLIENTES_CC_QUERY_KEY,
   type CategoriaCliente,
 } from '@/hooks/useCategoriasCliente'
 import { AsignarCategoriaModal } from '@/components/AsignarCategoriaModal'
@@ -18,19 +19,16 @@ import { AsignarCategoriaModal } from '@/components/AsignarCategoriaModal'
 // (mig 466, Fase 4 parte A) vive en DescuentosCategoriaPage; aplicarla al vender es la parte B2.
 // Reglas: una por cliente (C5), desactivar ≠ borrar (C2), cada condición opcional = "hereda del negocio" (D3/D4),
 // permisos E1/E2 configurables por el DUEÑO, historial completo (F1) — lo escribe el servidor.
+// Rediseño 2026-10-05 (GO): fila con nombre + clientes + descripción; a la derecha el switch de activa, asignar, lista
+// de descuentos, historial, editar y eliminar (eliminar: solo el DUEÑO y solo si nunca se usó). El alta tiene un check
+// "Habilita cuenta corriente" (sin tildar = lo del negocio). Los permisos se mudaron a Configuración → Clientes.
 
-interface FormCategoria {
+interface FormCategoria extends FormCCCategoria {
   nombre: string
   descripcion: string
-  cc_habilitada: HabilitadaForm
-  cc_limite: string
-  cc_plazo_dias: string
-  cc_interes_mensual_pct: string
-  cc_enforcement_politica: '' | PoliticaExceso
 }
 
-const VACIO: FormCategoria = { nombre: '', descripcion: '', cc_habilitada: 'hereda', cc_limite: '', cc_plazo_dias: '', cc_interes_mensual_pct: '', cc_enforcement_politica: '' }
-const ROLES_BASE = ['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR']
+const VACIO: FormCategoria = { nombre: '', descripcion: '', habilita: false, limite: '', plazo: '', interes: '', politica: '' }
 
 const inputCls = 'w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text'
 
@@ -45,13 +43,14 @@ function resumenCC(c: CategoriaCliente): string {
 }
 
 export function CategoriasClientePanel() {
-  const { tenant, user, setTenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const confirmar = useConfirm()
   const navigate = useNavigate()
   const { data: categorias = [], isLoading } = useCategoriasCliente()
   const { data: ccEfectivo } = useClientesCC()
   const puedeGestionar = puedeGestionarCategorias(user as any, tenant)
+  const puedeAsignar = puedeAsignarCategoria(user as any, tenant)
   const esDueno = user?.rol === 'DUEÑO' || user?.rol === 'ADMIN'
 
   const [editando, setEditando] = useState<CategoriaCliente | 'nueva' | null>(null)
@@ -75,14 +74,7 @@ export function CategoriasClientePanel() {
 
   const abrir = (c: CategoriaCliente | 'nueva') => {
     setEditando(c)
-    setForm(c === 'nueva' ? VACIO : {
-      nombre: c.nombre, descripcion: c.descripcion ?? '',
-      cc_habilitada: habilitadaAForm(c.cc_habilitada),
-      cc_limite: num(c.cc_limite) !== null ? String(num(c.cc_limite)) : '',
-      cc_plazo_dias: num(c.cc_plazo_dias) !== null ? String(num(c.cc_plazo_dias)) : '',
-      cc_interes_mensual_pct: num(c.cc_interes_mensual_pct) !== null ? String(num(c.cc_interes_mensual_pct)) : '',
-      cc_enforcement_politica: c.cc_enforcement_politica ?? '',
-    })
+    setForm(c === 'nueva' ? VACIO : { nombre: c.nombre, descripcion: c.descripcion ?? '', ...formCCDesdeCategoria(c) })
   }
 
   /** D2 — al bajar el límite: cuántos clientes que HEREDAN el límite de esta categoría quedarían por encima. */
@@ -105,24 +97,16 @@ export function CategoriasClientePanel() {
 
   const guardar = async () => {
     if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
-    const payload = {
-      nombre: form.nombre.trim(),
-      descripcion: form.descripcion.trim() || null,
-      cc_habilitada: habilitadaDesdeForm(form.cc_habilitada),
-      cc_limite: num(form.cc_limite.replace(',', '.')),
-      cc_plazo_dias: num(form.cc_plazo_dias) === null ? null : Math.trunc(num(form.cc_plazo_dias)!),
-      cc_interes_mensual_pct: num(form.cc_interes_mensual_pct.replace(',', '.')),
-      cc_enforcement_politica: form.cc_enforcement_politica || null,
-    }
-    if (payload.cc_plazo_dias !== null && (payload.cc_plazo_dias < 1 || payload.cc_plazo_dias > 365)) { toast.error('El plazo va de 1 a 365 días'); return }
-    if (payload.cc_limite !== null && payload.cc_limite < 0) { toast.error('El límite no puede ser negativo'); return }
-    if (payload.cc_interes_mensual_pct !== null && payload.cc_interes_mensual_pct < 0) { toast.error('El interés no puede ser negativo'); return }
+    const cc = payloadCCCategoria(form)
+    if (!cc.ok) { toast.error(cc.error); return }
+    const payload = { nombre: form.nombre.trim(), descripcion: form.descripcion.trim() || null, ...cc.payload }
+    const limiteNuevo = num(payload.cc_limite)
 
     // D2 — aviso de impacto al bajar el límite de una categoría en uso.
-    if (editando && editando !== 'nueva' && payload.cc_limite !== null && payload.cc_limite !== num(editando.cc_limite)) {
+    if (editando && editando !== 'nueva' && limiteNuevo !== null && limiteNuevo !== num(editando.cc_limite)) {
       try {
-        const n = await clientesSobreLimite(editando.id, payload.cc_limite)
-        if (n > 0 && !(await confirmar(`Con el límite nuevo de ${formatMoneda(payload.cc_limite)}, ${n} cliente${n === 1 ? '' : 's'} de esta categoría quedaría${n === 1 ? '' : 'n'} por encima de su límite (no se les cobra nada: no van a poder sumar más a la cuenta corriente si la política es "bloquear"). ¿Guardar igual?`))) return
+        const n = await clientesSobreLimite(editando.id, limiteNuevo)
+        if (n > 0 && !(await confirmar(`Con el límite nuevo de ${formatMoneda(limiteNuevo)}, ${n} cliente${n === 1 ? '' : 's'} de esta categoría quedaría${n === 1 ? '' : 'n'} por encima de su límite (no se les cobra nada: no van a poder sumar más a la cuenta corriente si la política es "bloquear"). ¿Guardar igual?`))) return
       } catch { toast.error('No se pudo calcular el impacto del límite nuevo. Intentá de nuevo.'); return }
     }
 
@@ -161,19 +145,11 @@ export function CategoriasClientePanel() {
   }
 
   const borrar = async (c: CategoriaCliente) => {
-    if (!(await confirmar(`¿Borrar "${c.nombre}"? Nunca se usó, así que no deja rastro.`, { danger: true }))) return
+    if (!(await confirmar(`¿Eliminar "${c.nombre}"? Nunca se usó, así que no deja rastro.`, { danger: true }))) return
     const { error } = await supabase.from('categorias_cliente').delete().eq('id', c.id)
     if (error) { toast.error(error.message); return }
-    toast.success('Categoría borrada')
+    toast.success('Categoría eliminada')
     invalidar()
-  }
-
-  const toggleRol = async (columna: 'categorias_cliente_roles' | 'categorias_cliente_asignar_roles', rol: string) => {
-    const actual: string[] = ((tenant as any)?.[columna] ?? []) as string[]
-    const nuevo = actual.includes(rol) ? actual.filter(r => r !== rol) : [...actual, rol]
-    const { data, error } = await supabase.from('tenants').update({ [columna]: nuevo }).eq('id', tenant!.id).select().single()
-    if (error) { toast.error(error.message); return }
-    setTenant(data)
   }
 
   return (
@@ -198,60 +174,50 @@ export function CategoriasClientePanel() {
           <p className="p-5 text-sm text-gray-400">Cargando…</p>
         ) : categorias.length === 0 ? (
           <p className="p-5 text-sm text-gray-400">Todavía no hay categorías.</p>
-        ) : categorias.map(c => (
-          <div key={c.id} className={`p-4 flex items-start gap-3 ${c.activo ? '' : 'opacity-60'}`} data-categoria={c.nombre}>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-800 dark:text-gray-100 flex items-center gap-2 flex-wrap">
-                {c.nombre}
-                {!c.activo && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">desactivada</span>}
-                <span className="text-xs text-gray-400 flex items-center gap-1"><Users size={11} /> {clientesPorCategoria.get(c.id) ?? 0}</span>
-              </p>
-              {c.descripcion && <p className="text-xs text-gray-500 dark:text-gray-400">{c.descripcion}</p>}
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{resumenCC(c)}</p>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {c.activo && (
-                <button title="Asignar a clientes" onClick={() => setAsignarA(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Users size={15} /></button>
-              )}
-              <button title="Lista de descuentos" onClick={() => navigate(`/clientes/categorias/${c.id}/descuentos`)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Percent size={15} /></button>
-              <button title="Historial" onClick={() => setHistorialDe(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><History size={15} /></button>
-              {puedeGestionar && <>
-                <button title="Editar" onClick={() => abrir(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Pencil size={15} /></button>
-                <button title={c.activo ? 'Desactivar' : 'Activar'} onClick={() => cambiarEstado(c)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500"><Power size={15} /></button>
-                {!c.usada && (clientesPorCategoria.get(c.id) ?? 0) === 0 && (
-                  <button title="Borrar (nunca se usó)" onClick={() => borrar(c)} className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>
+        ) : categorias.map(c => {
+          const n = clientesPorCategoria.get(c.id) ?? 0
+          const sePuedeEliminar = !c.usada && n === 0
+          const btn = 'p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 disabled:opacity-40 disabled:cursor-not-allowed'
+          return (
+            <div key={c.id} className="p-4 flex items-start gap-3" data-categoria={c.nombre}>
+              <div className={`flex-1 min-w-0 ${c.activo ? '' : 'opacity-60'}`}>
+                <p className="font-medium text-gray-800 dark:text-gray-100 flex items-center gap-2 flex-wrap">
+                  {c.nombre}
+                  <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-500 dark:text-gray-400" title="Clientes con esta categoría">
+                    <Users size={12} /> {n} cliente{n === 1 ? '' : 's'}
+                  </span>
+                </p>
+                {c.descripcion && <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{c.descripcion}</p>}
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{resumenCC(c)}</p>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="mr-1.5 flex items-center" title={c.activo ? 'Activa' : 'Desactivada'}>
+                  <Toggle size="sm" checked={c.activo} disabled={!puedeGestionar} onChange={() => cambiarEstado(c)}
+                    aria-label={c.activo ? `Desactivar ${c.nombre}` : `Activar ${c.nombre}`} />
+                </span>
+                {puedeAsignar && (
+                  <button title={c.activo ? 'Asignar clientes' : 'Activá la categoría para asignarle clientes'} disabled={!c.activo}
+                    onClick={() => setAsignarA(c)} className={btn} aria-label={`Asignar clientes a ${c.nombre}`}><Users size={15} /></button>
                 )}
-              </>}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {esDueno && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-          <p className="font-medium text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2"><ShieldCheck size={15} /> Permisos</p>
-          {([
-            ['categorias_cliente_roles', 'Quién crea y edita categorías'],
-            ['categorias_cliente_asignar_roles', 'Quién asigna categorías a clientes'],
-          ] as const).map(([col, label]) => (
-            <div key={col}>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">{label} — el <strong>DUEÑO</strong> siempre puede.</p>
-              <div className="flex flex-wrap gap-2">
-                {ROLES_BASE.map(r => {
-                  const activo = (((tenant as any)?.[col] ?? []) as string[]).includes(r)
-                  return (
-                    <button key={r} type="button" onClick={() => toggleRol(col, r)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
-                      {r}
-                    </button>
-                  )
-                })}
+                <button title="Lista de descuentos" onClick={() => navigate(`/clientes/categorias/${c.id}/descuentos`)} className={btn}
+                  aria-label={`Lista de descuentos de ${c.nombre}`}><Percent size={15} /></button>
+                <button title="Historial de cambios" onClick={() => setHistorialDe(c)} className={btn}
+                  aria-label={`Historial de ${c.nombre}`}><History size={15} /></button>
+                {puedeGestionar && (
+                  <button title="Editar" onClick={() => abrir(c)} className={btn} aria-label={`Editar ${c.nombre}`}><Pencil size={15} /></button>
+                )}
+                {esDueno && (
+                  <button title={sePuedeEliminar ? 'Eliminar' : 'Ya se usó: desactivala en lugar de eliminarla (se conserva el historial)'}
+                    disabled={!sePuedeEliminar} onClick={() => borrar(c)} aria-label={`Eliminar ${c.nombre}`}
+                    className="p-2 rounded-lg text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400">
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             </div>
-          ))}
-          <p className="text-[11px] text-gray-400">Las condiciones de cuenta corriente PROPIAS de un cliente (las que ganan sobre la categoría) las pone solo el dueño.</p>
-        </div>
-      )}
+          )
+        })}
+      </div>
 
       {editando && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditando(null)}>
@@ -271,45 +237,47 @@ export function CategoriasClientePanel() {
               </div>
             </div>
             <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Cuenta corriente — vacío = lo del negocio</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Habilitada</label>
-                  <select value={form.cc_habilitada} onChange={e => setForm(f => ({ ...f, cc_habilitada: e.target.value as HabilitadaForm }))} className={inputCls}>
-                    <option value="hereda">Lo del negocio (no)</option>
-                    <option value="si">Sí</option>
-                    <option value="no">No</option>
-                  </select>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={form.habilita} onChange={e => setForm(f => ({ ...f, habilita: e.target.checked }))}
+                  className="mt-0.5 accent-accent" data-testid="cat-habilita-cc" />
+                <span>
+                  <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">Habilita cuenta corriente</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    Sin tildar, los clientes de esta categoría usan lo que tenga configurado el negocio.
+                  </span>
+                </span>
+              </label>
+              {form.habilita && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label htmlFor="cat-limite" className="block text-xs text-gray-500 mb-1">Límite de crédito ($) *</label>
+                    <input id="cat-limite" type="number" min="0" value={form.limite} onWheel={e => e.currentTarget.blur()}
+                      onChange={e => setForm(f => ({ ...f, limite: e.target.value }))} placeholder="Ej: 500000" className={inputCls} />
+                  </div>
+                  <div>
+                    <label htmlFor="cat-plazo" className="block text-xs text-gray-500 mb-1">Plazo de pago (días)</label>
+                    <input id="cat-plazo" type="number" min="1" max="365" value={form.plazo} onWheel={e => e.currentTarget.blur()}
+                      onChange={e => setForm(f => ({ ...f, plazo: e.target.value }))}
+                      placeholder={`Negocio: ${(tenant as any)?.cc_dias_vencimiento ?? 30}`} className={inputCls} />
+                  </div>
+                  <div>
+                    <label htmlFor="cat-interes" className="block text-xs text-gray-500 mb-1">Interés por mora (% mensual)</label>
+                    <input id="cat-interes" type="number" min="0" step="0.1" value={form.interes} onWheel={e => e.currentTarget.blur()}
+                      onChange={e => setForm(f => ({ ...f, interes: e.target.value }))}
+                      placeholder={`Negocio: ${Number((tenant as any)?.cc_interes_mensual_pct ?? 0)}`} className={inputCls} />
+                  </div>
+                  <div className="col-span-2">
+                    <label htmlFor="cat-politica" className="block text-xs text-gray-500 mb-1">Al pasarse del límite</label>
+                    <select id="cat-politica" value={form.politica} onChange={e => setForm(f => ({ ...f, politica: e.target.value as '' | PoliticaExceso }))} className={inputCls}>
+                      <option value="">Lo del negocio ({ETIQUETA_POLITICA[((tenant as any)?.cc_enforcement_politica ?? 'avisar') as PoliticaExceso].toLowerCase()})</option>
+                      <option value="permitir">Permitir</option>
+                      <option value="avisar">Avisar</option>
+                      <option value="bloquear">Bloquear</option>
+                    </select>
+                  </div>
+                  <p className="col-span-2 text-[11px] text-gray-400">Plazo, interés y qué pasa al pasarse: vacío = lo del negocio. La política de morosidad queda a nivel negocio.</p>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Límite de crédito ($)</label>
-                  <input type="number" min="0" value={form.cc_limite} onWheel={e => e.currentTarget.blur()}
-                    onChange={e => setForm(f => ({ ...f, cc_limite: e.target.value }))}
-                    placeholder={`Negocio: ${(tenant as any)?.limite_cc_default != null ? formatMoneda(Number((tenant as any).limite_cc_default)) : 'sin límite'}`} className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Plazo de pago (días)</label>
-                  <input type="number" min="1" max="365" value={form.cc_plazo_dias} onWheel={e => e.currentTarget.blur()}
-                    onChange={e => setForm(f => ({ ...f, cc_plazo_dias: e.target.value }))}
-                    placeholder={`Negocio: ${(tenant as any)?.cc_dias_vencimiento ?? 30}`} className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Interés por mora (% mensual)</label>
-                  <input type="number" min="0" step="0.1" value={form.cc_interes_mensual_pct} onWheel={e => e.currentTarget.blur()}
-                    onChange={e => setForm(f => ({ ...f, cc_interes_mensual_pct: e.target.value }))}
-                    placeholder={`Negocio: ${Number((tenant as any)?.cc_interes_mensual_pct ?? 0)}`} className={inputCls} />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Al pasarse del límite</label>
-                  <select value={form.cc_enforcement_politica} onChange={e => setForm(f => ({ ...f, cc_enforcement_politica: e.target.value as any }))} className={inputCls}>
-                    <option value="">Lo del negocio ({ETIQUETA_POLITICA[((tenant as any)?.cc_enforcement_politica ?? 'avisar') as PoliticaExceso].toLowerCase()})</option>
-                    <option value="permitir">Permitir</option>
-                    <option value="avisar">Avisar</option>
-                    <option value="bloquear">Bloquear</option>
-                  </select>
-                </div>
-              </div>
-              <p className="text-[11px] text-gray-400">La política de morosidad y los avisos quedan a nivel negocio (Configuración).</p>
+              )}
             </div>
             <div className="flex gap-2 pt-1">
               <button onClick={() => setEditando(null)} className="flex-1 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm">Cancelar</button>

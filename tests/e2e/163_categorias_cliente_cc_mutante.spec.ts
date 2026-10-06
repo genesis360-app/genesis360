@@ -70,7 +70,7 @@ test.describe('Categorías de clientes — la categoría con cuenta corriente (m
       await waitForApp(page)
       const fila = page.locator(`[data-categoria="${nombreCat}"]`)
       await expect(fila, '[163] la categoría no aparece en el panel').toBeVisible({ timeout: 15000 })
-      await fila.getByTitle('Asignar a clientes').click()
+      await fila.getByRole('button', { name: /^Asignar clientes a / }).click()
       await page.getByPlaceholder('Buscar cliente por nombre o DNI').fill(cliCon)
       await page.locator(`[data-asignar-cliente="${cliCon}"] input[type=checkbox]`).check()
       await page.getByRole('button', { name: /^Continuar$/ }).click()

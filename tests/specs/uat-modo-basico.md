@@ -2411,6 +2411,28 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🗂️ §101 — Categorías de clientes: rediseño de la pantalla (mig 472, pedido de GO, 🟡 DEV) — 2026-10-05
+
+Decisiones de GO 05/10: el check "Habilita cuenta corriente" sin tildar = lo del negocio; eliminar solo si nunca se usó
+(C2) y solo el DUEÑO; la card de descuento muestra % y $ promedio; los permisos se mudan a Configuración → Clientes.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 101.1 | Pestaña Categorías: nombre + cantidad de clientes + descripción; a la derecha switch activa, asignar, lista de descuentos, historial, editar y eliminar | captura en DEV · e2e `163`, `183` | ✅ |
+| 101.2 | 🛑 Eliminar: solo el DUEÑO ve el botón; deshabilitado si la categoría ya se usó; un SUPERVISOR no puede borrar ni por API | e2e `183` B · SQL DEV impersonando con RLS (SUPERVISOR 0 filas, DUEÑO 1) | ✅ |
+| 101.3 | Alta: check "Habilita cuenta corriente"; tildado pide límite obligatorio (> 0); plazo, interés y política vacíos = lo del negocio; sin tildar = todo del negocio | unit `ccCategorias` · captura | ✅ |
+| 101.4 | Asignar clientes: tabla con check (y "todos" en el encabezado), cliente, compras, ticket promedio y total gastado (despachadas/facturadas/reservadas menos devoluciones); se guarda con el resumen previo de siempre (B-6) | e2e `163` · SQL DEV (`fn_clientes_compras_resumen`) | ✅ |
+| 101.5 | Lista de descuentos: cards de productos, con descuento, clientes asignados y descuento promedio (% y $ por unidad) | unit `listaDescuentos` · captura | ✅ |
+| 101.6 | Tabla agrupada por categoría de producto (colapsada; la búsqueda la abre): costo + IVA, precio y margen ya con el descuento (margen como en la ficha: sobre el costo, sin IVA); en la fila de la categoría, promedios; margen negativo en rojo | unit `listaDescuentos` · e2e `178` | ✅ |
+| 101.7 | % por producto: se guarda al terminar de escribir (Enter o salir del campo); vacío = sin cargar, 0 = sin descuento a propósito | e2e `178` | ✅ |
+| 101.8 | 🛑 % en la fila de la categoría: pide confirmación y se aplica a todos sus productos que se ven con los filtros; una sola entrada en el historial | e2e `178` · SQL DEV (`fn_descuentos_categoria_masivo`: 1 entrada, "3 productos a 12,5 %") | ✅ |
+| 101.9 | 🛑 Enter en un campo que abre una confirmación NO la acepta solo (antes el mismo Enter confirmaba el cambio masivo) | e2e `178` (lo encontró) | ✅ |
+| 101.10 | Acciones: aplicar un % o quitar el descuento a los seleccionados (checkbox por producto, por categoría y todos) | e2e `178` | ✅ |
+| 101.11 | Filtros combinables en pastillas (marca, categoría, margen / costo / precio / descuento con >, <, =, ≥, ≤); se editan con un click y se quitan | unit `listaDescuentos` · e2e `178` | ✅ |
+| 101.12 | Historial (modal): fecha y hora, quién y qué hizo | revisión (ya existía, F1) | ✅ código |
+| 101.13 | 🛑 Permisos en Configuración → Clientes (solo DUEÑO): pestañas Roles (incluye roles personalizados) y Usuarios con checkbox; se guardan con "Guardar configuración de Clientes"; el servidor reconoce el permiso por usuario | e2e `183` A · SQL DEV (`user:<id>` → permiso true) | ✅ |
+| 101.14 | Regresión e2e completa | suite | ⏳ |
+
 ## 🔑 §100 — Acceso por correo: invitados eligen contraseña + "¿Olvidaste tu contraseña?" (mig 471, 🟡 DEV) — 2026-10-05
 
 Caso real (El Tilo, PROD): un SUPER_USUARIO invitado con Hotmail entró una vez por el link y no pudo volver. El link de

@@ -49,6 +49,25 @@ type: project
 > categoría) · links de los correos vencen en 1 h (también las invitaciones; se puede subir a 24 h) · autenticar Figma con
 > `/mcp` · revisar la landing.
 >
+> **🛑 REGLA #0 — Pago de OC y CC de proveedores (reportado por GO 06/10, diagnosticado, SIN arreglar; PROD sin daño:
+> 0 OCs con pagos y 0 movimientos de CC de proveedor).** Caso DEV: OC #84 de "Tongas Test" ($9.000, anticipo $900).
+> 1. **Se puede pasar a CC la misma OC más de una vez.** `registrar_pago_oc` calcula el saldo como total − pagado −
+>    descuento, sin restar lo que ya pasó a CC (no se guarda en la OC, solo en `proveedor_cc_movimientos` tipo `oc`).
+>    El botón "Pagar / CC" sigue visible con estado `cuenta_corriente` → la OC #84 quedó con 2 × $8.100 en CC (deuda $16.200
+>    por una OC de $8.100 pendientes). El guard tiene que estar en el RPC.
+> 2. **El saldo de la CC del proveedor da mal (−$34.200 en verde).** Un pago directo (no CC) inserta un `pago` negativo
+>    en la CC sin el cargo que lo compense (OC #13 pagada con débito → −$49.500). Con saldo ≤ 0 se oculta "Registrar pago",
+>    así que la deuda real no se puede cancelar desde el proveedor. Además suma solo los últimos 50 movimientos (`.limit(50)`).
+> 3. **Pagar la CC desde el proveedor no actualiza la OC**: el `pago` no lleva `oc_id`, la OC queda en `cuenta_corriente` con
+>    saldo pendiente para siempre (y se puede volver a pagar desde Gastos → pago doble).
+> 4. **`registrarPagoCC` (ProveedoresPage) inserta en `caja_movimientos` con `created_by`, columna que no existe** (es
+>    `usuario_id`) y sin chequear el error → **un pago en efectivo a proveedor nunca entra en la caja**. También 'Efectivo'
+>    hardcodeado (no `es_efectivo`), toma la primera caja abierta sin elegir, y no es atómico (dos inserts sueltos).
+> 5. Cosmético: el historial muestra `medio_pago` crudo (`[{"tipo":…,"monto":…}]`); hay que formatearlo ("Tarjeta de débito $900").
+> **Decisión para GO antes de arreglar:** modelo del libro de CC — (a) la CC solo registra lo que se debe (cargo al pasar a CC,
+> pago solo cuando cancela algo de CC; el pago directo no entra) o (b) toda OC carga su total y cada pago lo descuenta. Y si un
+> pago desde el proveedor se imputa a OCs (la más vieja primero) para cerrarlas.
+>
 > ---
 >
 > ### (superado por el bloque de arriba) ARRANCÁ ACÁ (2026-10-04) — PROD `v1.238.0` (001-466) · DEV 001-**470** + `v1.239.0-rc.3` · B2 COMPLETO en DEV

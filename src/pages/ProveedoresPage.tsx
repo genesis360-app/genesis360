@@ -2003,10 +2003,8 @@ export default function ProveedoresPage() {
                               <button type="button"
                                 onClick={async () => {
                                   const url = `${(import.meta.env.VITE_APP_URL as string | undefined) || window.location.origin}/portal-proveedores`
-                                  const texto = `Portal de Proveedores de ${tenant?.nombre ?? 'nuestro negocio'}: ${url}\n` +
-                                    `Entrá con tu email (${provPortalVinculo}). Si es la primera vez o no tenés contraseña, tocá ` +
-                                    `"¿Primera vez u olvidaste tu contraseña?" y te llega un link a tu correo.`
-                                  try { await navigator.clipboard.writeText(texto); toast.success('Link del portal copiado, listo para mandar por WhatsApp') }
+                                  // Solo el link (GO 06/10): el portal ya explica cómo entrar ("¿Primera vez u olvidaste tu contraseña?").
+                                  try { await navigator.clipboard.writeText(url); toast.success('Link del portal copiado') }
                                   catch { toast.error('No se pudo copiar: ' + url) }
                                 }}
                                 className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border-ds text-primary hover:bg-page">

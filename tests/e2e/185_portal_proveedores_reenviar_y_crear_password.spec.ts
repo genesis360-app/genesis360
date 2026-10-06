@@ -27,8 +27,7 @@ test('A · proveedor vinculado: reenviar acceso y copiar la dirección del porta
   await page.getByRole('button', { name: /Copiar link del portal/ }).click()
   await expect(page.getByText(/Link del portal copiado/)).toBeVisible({ timeout: 5000 })
   const copiado = await page.evaluate(() => navigator.clipboard.readText())
-  expect(copiado).toMatch(/\/portal-proveedores/)
-  expect(copiado).toMatch(/Primera vez u olvidaste tu contraseña/)
+  expect(copiado).toMatch(/^https?:\/\/[^\s]+\/portal-proveedores$/)   // solo el link (GO 06/10)
   expect(copiado, 'nunca se copia un link de acceso (token)').not.toMatch(/token|access_token|verify\?/i)
 })
 

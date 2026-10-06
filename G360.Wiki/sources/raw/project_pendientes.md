@@ -18,6 +18,8 @@ type: project
 > **v1.239.1 (06/10):** Portal de Proveedores — reenviar acceso, copiar link del portal (no el de acceso: seguridad) y
 > "¿Primera vez u olvidaste tu contraseña?" + "Creá tu contraseña" en el portal. ✅ El ítem del plan de testing sobre el link
 > del portal queda RESUELTO.
+> **En `dev`, sin publicar (va con el próximo deploy):** "Copiar link del portal" copia SOLO el link (pedido de GO 06/10;
+> en v1.239.1 copiaba el link + instrucciones).
 >
 > ---
 >

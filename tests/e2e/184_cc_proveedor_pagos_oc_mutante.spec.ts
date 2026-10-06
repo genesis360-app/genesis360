@@ -23,6 +23,9 @@ type H = Record<string, string>
 const rpc = (request: APIRequestContext, headers: H, fn: string, data: object) =>
   request.post(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, { headers, data })
 const num = (v: unknown) => parseFloat(String(v ?? 0))
+// Sucursal Norte: la que miran la app y los demás e2e. Con `sucursales?limit=1` los gastos caían en Sur con la fecha de hoy
+// y rompían a los specs que toman "el último gasto del mes" (141, 143, 145 — 2026-10-06).
+const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 
 test('pagos de OC y CC del proveedor: la deuda nace al recibir y los pagos cierran por antigüedad', async ({ page, request }) => {
   test.setTimeout(120_000)
@@ -36,7 +39,7 @@ test('pagos de OC y CC del proveedor: la deuda nace al recibir y los pagos cierr
     return (await r.json())[0]
   }
 
-  const [suc] = await get('sucursales?select=id,tenant_id&activo=eq.true&limit=1')
+  const [suc] = await get(`sucursales?select=id,tenant_id&id=eq.${NORTE}`)
   const [me] = await get('users?select=id&limit=1')
   const [prod] = await get('productos?select=id&activo=eq.true&limit=1')
   const ts = Date.now()
@@ -129,7 +132,7 @@ test('envío de la OC: el del proveedor suma a lo que se le debe; el de un terce
     expect(r.ok(), `insert ${tabla}: ${await r.text()}`).toBeTruthy()
     return (await r.json())[0]
   }
-  const [suc] = await get('sucursales?select=id,tenant_id&activo=eq.true&limit=1')
+  const [suc] = await get(`sucursales?select=id,tenant_id&id=eq.${NORTE}`)
   const [me] = await get('users?select=id&limit=1')
   const [prod] = await get('productos?select=id&activo=eq.true&limit=1')
   const prov = await post('proveedores', { tenant_id: suc.tenant_id, nombre: `E2E184 Envío ${Date.now()}` })

@@ -7,7 +7,7 @@ import { describe, test, expect } from 'vitest'
 import { PLANES, FEATURES_POR_PLAN, PLAN_REQUERIDO, PLAN_BASE_LIMITS } from '@/config/brand'
 
 describe('PLANES — estructura y coherencia', () => {
-  test('pricing v7: Básico, Pro y Enterprise; ya no hay plan Free (la prueba de 15 días es el período gratis)', () => {
+  test('pricing v7: Básico, Pro y Enterprise; ya no hay plan Free (la prueba de 30 días es el período gratis)', () => {
     expect(PLANES.map(p => p.id)).toEqual(['basico', 'pro', 'enterprise'])
   })
 

@@ -84,6 +84,6 @@ export function subtituloPlanes(e: EstadoTrial, trialEndsAt?: string | null): st
     case 'por_vencer':
       return 'Activá tu suscripción para seguir usando Genesis360 sin interrupciones'
     default:
-      return 'Todos los planes incluyen 15 días de prueba gratuita'
+      return 'Todos los planes incluyen 30 días de prueba gratuita'
   }
 }

@@ -55,7 +55,7 @@ const FAQ = [
   },
   {
     q: '¿Puedo probar antes de pagar?',
-    a: 'Sí, todos los planes tienen 15 días de prueba gratuita sin necesidad de tarjeta de crédito.',
+    a: 'Sí, todos los planes tienen 30 días de prueba gratuita sin necesidad de tarjeta de crédito.',
   },
   {
     q: '¿Mis datos están seguros?',
@@ -154,7 +154,7 @@ export default function LandingPage() {
               </span>
             </h1>
             <p className="hero-in mt-6 text-lg leading-relaxed text-zinc-600 max-w-[46ch]" style={{ ['--i' as any]: 1 }}>
-              Stock, caja, facturación electrónica y pedidos en una sola cuenta. Probalo 15 días gratis, sin tarjeta.
+              Stock, caja, facturación electrónica y pedidos en una sola cuenta. Probalo 30 días gratis, sin tarjeta.
             </p>
             <div className="hero-in mt-9 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6" style={{ ['--i' as any]: 2 }}>
               <Link to="/onboarding"
@@ -327,7 +327,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4">Planes y precios</h2>
-            <p className="text-gray-500">Probá 15 días gratis. Crecé cuando lo necesites.</p>
+            <p className="text-gray-500">Probá 30 días gratis. Crecé cuando lo necesites.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {PLANES.map(plan => (
@@ -390,7 +390,7 @@ export default function LandingPage() {
                   // ruta interna (navega a /mailto... → catch-all → rebota al home, no abre el correo).
                   return plan.precio === null
                     ? <a href={`mailto:${BRAND.email}`} className={ctaClass}>Contactar</a>
-                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 15 días gratis'}</Link>
+                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 30 días gratis'}</Link>
                 })()}
               </div>
             ))}
@@ -421,7 +421,7 @@ export default function LandingPage() {
             ¿Listo para tomar el control de tu inventario?
           </h2>
           <p className="text-blue-100 text-lg mb-8">
-            Empezá hoy. 15 días gratis, sin tarjeta de crédito.
+            Empezá hoy. 30 días gratis, sin tarjeta de crédito.
           </p>
           <Link to="/onboarding"
             className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">

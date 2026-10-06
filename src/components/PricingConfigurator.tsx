@@ -22,7 +22,7 @@ const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: str
 ]
 
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
-  { Icon: Shield,     titulo: '15 días gratis',       sub: 'Sin tarjeta de crédito' },
+  { Icon: Shield,     titulo: '30 días gratis',       sub: 'Sin tarjeta de crédito' },
   { Icon: Rocket,     titulo: 'Activación inmediata', sub: 'Comenzá a usarlo hoy' },
   { Icon: Headphones, titulo: 'Soporte dedicado',     sub: 'Siempre estamos para ayudarte' },
   { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
@@ -308,7 +308,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
         ) : (
           <Link to="/onboarding"
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0">
-            <Check size={18} /> {ctaLabel ?? 'Probar 15 días gratis'}
+            <Check size={18} /> {ctaLabel ?? 'Probar 30 días gratis'}
           </Link>
         )}
       </div>

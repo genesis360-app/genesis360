@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-06] plan | Landing 2.0 — plan sobre los 5 docs de Fede
+
+- Leídos completos los 5 docs de Drive (00 Estrategia y Narrativa · 01 Estructura y Copy · 02 Especificación Visual ·
+  03 SEO y GEO · 04 Subpáginas por Nicho). Plan en [[wiki/business/plan-landing-2]]: diagnóstico, 10 decisiones para GO,
+  dirección de diseño con Taste + Emil + impeccable, 6 fases.
+- 🛑 **Hallazgo legal:** la landing en PROD muestra **3 testimonios inventados** con 5 estrellas — el doc 00 de Fede lo
+  marca como publicidad engañosa (Ley 24.240). Fase 0 = sacarlos (espera OK de GO).
+- Inconsistencias a decidir: prueba 15 días (Pricing v7, lo real) vs 30 (docs); WhatsApp IA presentado "sin próximamente"
+  mientras sigue pendiente el App Review de Meta; landing es SPA sin SSR/robots/sitemap/meta (doc 03 lo exige).
+- También: "Copiar link del portal" copia solo el link (en `dev`, sin publicar).
+
 ## [2026-10-06] deploy | v1.239.1 a PROD — Portal de Proveedores: reenviar acceso y crear/recuperar contraseña
 
 - **Pedido de GO:** le había mandado el link del portal a un proveedor, el link venció y no había forma de volver a

@@ -7,7 +7,7 @@
 //    el archivo real y recién después aplica la reescritura, así que esas rutas llegan con el contenido completo.
 // 3. Genera sitemap.xml con esas rutas.
 //
-// Verificación: `curl -s https://genesis360.pro/ | grep "Vendé, cobrá"` tiene que encontrar el titular SIN JavaScript.
+// Verificación: `curl -sL https://www.genesis360.pro/ | grep "Vendé, cobrá"` tiene que encontrar el titular SIN JavaScript.
 import { build } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'

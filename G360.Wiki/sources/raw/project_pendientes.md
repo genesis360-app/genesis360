@@ -6,7 +6,7 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-07) — 🚀 **PROD = DEV = `v1.240.0`** (migs 001-476, sin migraciones nuevas)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-07) — 🚀 **PROD = DEV = `v1.240.1`** (migs 001-476, sin migraciones nuevas; v1.240.1 = canonical a www)
 >
 > **Qué entró en v1.240.0:** Landing 2.0 Fases 1-4 (pre-render en el build: 🛑 el armazón de la app es `dist/app.html`,
 > `vercel.json` reescribe ahí y fija `buildCommand`; el service worker usa `/app.html`), páginas por rubro, ubicación "Global"

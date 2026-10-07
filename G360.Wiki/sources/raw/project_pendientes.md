@@ -6,6 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-10-07) — 🚀 **PROD = DEV = `v1.240.0`** (migs 001-476, sin migraciones nuevas)
+>
+> **Qué entró en v1.240.0:** Landing 2.0 Fases 1-4 (pre-render en el build: 🛑 el armazón de la app es `dist/app.html`,
+> `vercel.json` reescribe ahí y fija `buildCommand`; el service worker usa `/app.html`), páginas por rubro, ubicación "Global"
+> arreglada + aviso de traslado sin ubicaciones, Términos/Privacidad sin datos personales. Detalle: [[wiki/business/plan-landing-2]].
+> **Pendientes:** Fase 5 de la landing (Search Console/Bing con la cuenta de GO/Fede, eventos de conversión), decidir si el Meta
+> Pixel se difiere, más rubros; Presupuestos de proveedores espera el relevamiento (A1/A2/B1); El Tilo: crear una ubicación en
+> "EL TILO Galpón Elcano 2" para recibir el traslado #1; el domicilio de Fede sigue en el HISTORIAL de git (repo público) —
+> borrarlo requiere reescribir el historial con autorización de GO.
+>
+
 > ### 🛑 ARRANCÁ ACÁ (2026-10-06, tarde) — PROD = DEV = `v1.239.3` (migs 001-476). Nada de código nuevo commiteado.
 >
 > **Sin commitear en el disco (todo aprobado o para revisar, nada en PROD):**

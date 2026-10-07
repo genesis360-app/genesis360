@@ -9,6 +9,7 @@ import '@/styles/landingHero.css'
 import '@/styles/landing.css'
 import {
   SeccionProblema, SeccionSolucion, SeccionModulos, SeccionIA, SeccionEscalabilidad, SeccionRubros, SeccionFundadores,
+  TelefonoPanel,
 } from '@/components/landing/LandingSecciones'
 import { FAQ } from '@/components/landing/contenido'
 import { LandingNav, LandingCierre, LandingPie } from '@/components/landing/LandingMarco'
@@ -44,7 +45,7 @@ export default function LandingPage() {
       {/* ── HERO ── (2026-10-05) Asimétrico: mensaje a la izquierda, el producto REAL a la derecha (captura del POS de
           DEV) con el ticket de esa misma venta "imprimiéndose". Movimiento en src/styles/landingHero.css. */}
       <section className="landing-hero relative overflow-hidden bg-[#FAFAFC] text-[#0D0D0D]">
-        <div className="max-w-6xl mx-auto px-4 pt-12 pb-32 md:pt-16 lg:pt-20 lg:pb-36 grid gap-12 lg:gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-center">
+        <div className="max-w-6xl mx-auto px-4 pt-12 pb-48 md:pt-16 lg:pt-20 lg:pb-52 grid gap-12 lg:gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-center">
 
           <div className="max-w-xl">
             <h1 className="hero-in hero-titulo text-[2.6rem] leading-[1.05] sm:text-5xl lg:text-[3.6rem] font-semibold tracking-[-0.035em]" style={{ ['--i' as any]: 0 }}>
@@ -69,34 +70,57 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Producto real + ticket. En desktop la pantalla se corta contra el borde derecho para dar profundidad. */}
-          <div className="relative lg:-mr-[10vw] xl:-mr-[14vw]">
-            <div className="hero-shot rounded-2xl border border-zinc-200 bg-white shadow-[0_30px_80px_-30px_rgba(60,20,120,0.28)] overflow-hidden">
-              <picture>
-                <source srcSet="/landing/pos-venta.webp" type="image/webp" />
-                <img src="/landing/pos-venta.jpg" width={1184} height={760}
-                  alt="Pantalla de Ventas de Genesis360 con dos productos en el carrito y el total de la venta"
-                  className="block w-full h-auto" decoding="async" {...{ fetchpriority: 'high' }} />
-              </picture>
+          {/* Producto real en una tablet (captura del POS de DEV) + la impresora de tickets imprimiendo esa misma venta + un
+              celular con otra función: el Panel con lo que detectó Genesis360 (pedido de GO 2026-10-07). */}
+          <div className="relative lg:-mr-[4vw] xl:-mr-[7vw]">
+            {/* Tablet horizontal: bisel oscuro, cámara arriba al centro; la pantalla se revela de abajo hacia arriba. */}
+            <div className="hero-in relative rounded-[1.6rem] sm:rounded-[2rem] bg-gradient-to-b from-[#26262c] to-[#121216] p-[9px] sm:p-[13px] shadow-[0_40px_90px_-35px_rgba(40,10,90,0.5),inset_0_0_0_1px_rgba(255,255,255,0.07)]" style={{ ['--i' as any]: 1 }}>
+              <span aria-hidden className="absolute left-1/2 top-[3px] sm:top-[5px] h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-[#34343c]" />
+              <div className="hero-shot overflow-hidden rounded-[0.95rem] sm:rounded-[1.15rem] bg-white">
+                <picture>
+                  <source srcSet="/landing/pos-venta.webp" type="image/webp" />
+                  <img src="/landing/pos-venta.jpg" width={1184} height={760}
+                    alt="Pantalla de Ventas de Genesis360 en una tablet, con dos productos en el carrito y el total de la venta"
+                    className="block w-full h-auto" decoding="async" {...{ fetchpriority: 'high' }} />
+                </picture>
+              </div>
             </div>
 
-            <div className="absolute right-3 -bottom-24 w-[12.75rem] sm:right-auto sm:left-8 sm:-bottom-14 sm:w-[15rem] lg:-bottom-28 lg:-left-40" aria-hidden>
-              {/* Ranura de la impresora: el ticket sale de acá. */}
-              <div className="hero-in relative z-10 h-2.5 rounded-full bg-[#0D0D0D] shadow-[0_2px_6px_rgba(13,13,13,0.35)]" style={{ ['--i' as any]: 8 }} />
-              <div className="-mt-1 mx-2 overflow-hidden">
-                <div className="hero-ticket">
-                  <div className="hero-ticket-paper hero-mono bg-white px-3.5 sm:px-4 pt-4 text-[10px] sm:text-[11px] leading-[1.55] text-zinc-800 shadow-[0_18px_40px_-18px_rgba(13,13,13,0.45)]">
-                    <p className="text-center font-semibold tracking-[0.12em] text-[#0D0D0D]">TICKET</p>
-                    <p className="text-center text-zinc-500">Consumidor final</p>
-                    <div className="my-2 border-t border-dashed border-zinc-300" />
-                    <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 1.5L</span><span>$1.657</span></div>
-                    <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 2.5L</span><span>$600</span></div>
-                    <div className="my-2 border-t border-dashed border-zinc-300" />
-                    <div className="flex justify-between font-semibold text-[#0D0D0D] text-[12.5px]"><span>TOTAL</span><span>$2.257</span></div>
-                    <div className="flex justify-between text-zinc-500"><span>Efectivo</span><span>$2.257</span></div>
-                    <p className="mt-2 text-center text-zinc-500">Gracias por su compra</p>
+            {/* Impresora de tickets vista desde arriba: la ranura negra está al medio del cuerpo y el ticket sale de ahí, POR
+                ENCIMA de la impresora (pedido de GO 2026-10-07). Capas: cuerpo (z-10) < papel (z-20) < labio de la ranura (z-30),
+                así el papel parece salir de adentro. El contenedor del papel arranca en la ranura y recorta lo que todavía
+                "está adentro" mientras se imprime (.hero-ticket en landingHero.css). */}
+            <div className="hero-in absolute left-3 -bottom-1 w-[12.75rem] sm:left-6 sm:w-[14.5rem] lg:-left-14" style={{ ['--i' as any]: 7 }} aria-hidden>
+              <div className="relative">
+                <div className="relative z-10 h-[64px] rounded-[16px] bg-gradient-to-b from-[#34343b] to-[#16161a] shadow-[0_16px_32px_-12px_rgba(13,13,13,0.6),inset_0_1px_0_rgba(255,255,255,0.09)]">
+                  <span className="absolute left-3 top-2.5 h-[6px] w-[6px] rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                  <span className="absolute right-3 top-2.5 flex gap-1"><span className="h-[5px] w-4 rounded-full bg-white/10" /><span className="h-[5px] w-[5px] rounded-full bg-white/10" /></span>
+                </div>
+                {/* Ranura al medio del cuerpo */}
+                <div className="absolute inset-x-2.5 top-[29px] z-30 h-[6px] rounded-full bg-[#050506] shadow-[inset_0_1px_2px_rgba(0,0,0,0.95),0_1px_0_rgba(255,255,255,0.07)]" />
+                {/* El papel sale de la ranura, sobre la impresora */}
+                <div className="absolute inset-x-4 top-[32px] z-20 overflow-hidden">
+                  <div className="hero-ticket">
+                    <div className="hero-ticket-paper hero-mono bg-white px-3.5 sm:px-4 pt-3 text-[10px] sm:text-[11px] leading-[1.55] text-zinc-800 shadow-[0_18px_40px_-18px_rgba(13,13,13,0.45)]">
+                      <p className="text-center font-semibold tracking-[0.12em] text-[#0D0D0D]">TICKET</p>
+                      <p className="text-center text-zinc-500">Consumidor final</p>
+                      <div className="my-2 border-t border-dashed border-zinc-300" />
+                      <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 1.5L</span><span>$1.657</span></div>
+                      <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 2.5L</span><span>$600</span></div>
+                      <div className="my-2 border-t border-dashed border-zinc-300" />
+                      <div className="flex justify-between font-semibold text-[#0D0D0D] text-[12.5px]"><span>TOTAL</span><span>$2.257</span></div>
+                      <div className="flex justify-between text-zinc-500"><span>Efectivo</span><span>$2.257</span></div>
+                      <p className="mt-2 text-center text-zinc-500">Gracias por su compra</p>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Celular: el Panel, con lo que detectó Genesis360. Desde sm (en un celular real taparía la tablet). */}
+            <div className="hidden sm:block absolute -right-2 -bottom-24 w-[9.35rem] lg:w-[10.625rem] lg:-bottom-28 xl:right-[4vw]">
+              <div className="hero-in" style={{ ['--i' as any]: 9 }}>
+                <TelefonoPanel />
               </div>
             </div>
           </div>

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-07] deploy | 🚀 v1.240.2 EN PROD — hero con tablet, impresora de tickets y celular con el Panel
+
+- Pedido de GO: captura de Ventas dentro de una tablet; impresora de tickets vista desde arriba sobre la esquina inferior izquierda
+  de la tablet, con el ticket saliendo de la ranura del medio por encima de la impresora; celular con una captura REAL del Panel →
+  Ventas (vista móvil), 15 % más chico para no tapar la tablet. Medido en 6 anchos: ticket completo dentro del hero, sin desborde.
+- Se descartaron Insights/Métricas para la captura del celular (datos de prueba impublicables). Pendiente: capturas del negocio demo.
+- Sin migraciones ni Edge Functions. Detalle: [[wiki/business/plan-landing-2]] §9.
+
 ## [2026-10-07] deploy | 🚀 v1.240.0 + v1.240.1 EN PROD (PRs #378 y #379)
 
 - **v1.240.0** (PR #378, merge `0afb6602`, release `--latest`): Landing 2.0 Fases 1-4, ubicación "Global", aviso de traslado sin

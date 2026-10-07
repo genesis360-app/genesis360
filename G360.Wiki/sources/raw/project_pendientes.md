@@ -6,17 +6,28 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-07) — 🚀 **PROD = DEV = `v1.240.1`** (migs 001-476, sin migraciones nuevas; v1.240.1 = canonical a www)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-07, cierre) — 🚀 **PROD = DEV = `v1.240.2`** (migs 001-476, sin migraciones nuevas) · PRs #378, #379 y el de v1.240.2
 >
-> **Qué entró en v1.240.0:** Landing 2.0 Fases 1-4 (pre-render en el build: 🛑 el armazón de la app es `dist/app.html`,
-> `vercel.json` reescribe ahí y fija `buildCommand`; el service worker usa `/app.html`), páginas por rubro, ubicación "Global"
-> arreglada + aviso de traslado sin ubicaciones, Términos/Privacidad sin datos personales. Detalle: [[wiki/business/plan-landing-2]].
-> **Pendientes:** Fase 5 de la landing (Search Console/Bing con la cuenta de GO/Fede, eventos de conversión), decidir si el Meta
-> Pixel se difiere, más rubros; Presupuestos de proveedores espera el relevamiento (A1/A2/B1); El Tilo: crear una ubicación en
-> "EL TILO Galpón Elcano 2" para recibir el traslado #1; el domicilio de Fede sigue en el HISTORIAL de git (repo público) —
-> borrarlo requiere reescribir el historial con autorización de GO.
+> **Qué entró (v1.240.0 → v1.240.2):** Landing 2.0 Fases 1-4 + hero con tablet/impresora/celular ([[wiki/business/plan-landing-2]]
+> §6-9). 🛑 Infra: `npm run build` corre `scripts/prerender.mjs`; el armazón de la app es `dist/app.html` (`vercel.json` reescribe
+> ahí y fija `buildCommand`; el service worker usa `/app.html`); las páginas públicas se HIDRATAN en `#prerender`. Canonical,
+> sitemap y OG apuntan a `https://www.genesis360.pro` (`genesis360.pro` redirige ahí). Ubicación "Global" arreglada + aviso de
+> traslado sin ubicaciones (e2e 187, UAT §103). Términos/Privacidad sin datos personales (`LEGAL_CONTACTO`).
 >
-
+> **🔓 Pendientes:**
+> - **Landing:** imágenes REALES de la app (pedido de GO, "más adelante") → primero un negocio demo con datos prolijos; Fase 5
+>   (Search Console + Bing: necesita acceso de GO/Fede; eventos de conversión); ¿Meta Pixel diferido? (celular 65/100); más rubros;
+>   programa "primeros socios" (condiciones de GO).
+> - **Presupuestos de proveedores:** GO + Fede responden `relevamiento-presupuestos-proveedores-reglas-negocio.html`; sin A1, A2 y
+>   B1 no arranca ([[wiki/business/plan-presupuestos-proveedores]]).
+> - **El Tilo (PROD):** el traslado #1 (oficina → "EL TILO Galpón Elcano 2") espera que creen una ubicación en el galpón; ahora la
+>   app les muestra el aviso con el link.
+> - **Datos personales:** el domicilio de Fede ya no está en archivos, base de PROD ni memoria; sigue en el HISTORIAL de git (repo
+>   público) → reescribir el historial solo con autorización explícita de GO. Ley 25.326 art. 6: definir con el abogado una
+>   identidad no personal para Privacidad.
+> - **DEV:** 2 ubicaciones de prueba "E2EDefecto_test_…" de corridas fallidas del e2e 187 en Almacén Jorgito (borrar desde la UI).
+> - Siguen los de abajo (plan de testing de Notificaciones, CC de proveedores, PDF de OC, prefijo S-OC, rotar `service_role`).
+>
 > ### 🛑 ARRANCÁ ACÁ (2026-10-06, tarde) — PROD = DEV = `v1.239.3` (migs 001-476). Nada de código nuevo commiteado.
 >
 > **Sin commitear en el disco (todo aprobado o para revisar, nada en PROD):**

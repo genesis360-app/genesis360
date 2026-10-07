@@ -12,6 +12,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Truck, Plus, X, Check, PackageCheck, AlertTriangle, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -103,7 +104,7 @@ export default function TrasladosPanel() {
   })
 
   // ── Ubicaciones de la sucursal destino (para la recepción) ─────────────────
-  const { data: ubicacionesDestino = [] } = useQuery({
+  const { data: ubicacionesDestino = [], isFetched: ubicacionesDestinoCargadas } = useQuery({
     queryKey: ['traslado-ubic-destino', tenant?.id, recibirTraslado?.sucursal_destino_id],
     queryFn: async () => {
       const { data } = await supabase.from('ubicaciones')
@@ -732,6 +733,21 @@ export default function TrasladosPanel() {
                   <option value="" disabled={modoAvanzado}>{modoAvanzado ? 'Elegí dónde quedó…' : 'Sin ubicación'}</option>
                   {(ubicacionesDestino as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesDestinoPorId)}</option>)}
                 </select>
+                {/* Sin ubicaciones en la sucursal que recibe, en avanzado no hay dónde dejar el stock y la lista quedaba vacía
+                    sin explicación (caso real, 2026-10-06). */}
+                {modoAvanzado && ubicacionesDestinoCargadas && (ubicacionesDestino as any[]).length === 0 && (
+                  <div role="alert" className="mt-2 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+                    <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                    <p>
+                      <b>{sucursalNombre(recibirTraslado.sucursal_destino_id)}</b> no tiene ubicaciones cargadas, así que no hay dónde
+                      registrar lo que llegó. Creá al menos una en{' '}
+                      <Link to="/configuracion?tab=inventario&sub=ubicaciones" className="font-semibold underline underline-offset-2">
+                        Configuración → Inventario → Ubicaciones
+                      </Link>{' '}
+                      eligiendo esa sucursal, y volvé a confirmar. El traslado sigue en tránsito.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 {(recibirTraslado.traslado_items ?? []).map((it: any) => (

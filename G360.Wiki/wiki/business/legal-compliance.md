@@ -14,7 +14,7 @@ Fuente única: `LEGAL_TITULAR` en `src/config/brand.ts` (la usan T&C, Privacidad
 Si cambia la figura (p. ej. se constituye una SRL/SA), se actualiza ahí y se propaga solo.
 
 - **Titular:** Federico Ezequiel Messina — **Responsable Monotributo** (es el socio de GO que factura).
-- **CUIT:** 20-42237416-8 · **Domicilio:** Cnel. Ramón L. Falcón 2387, C1406, CABA.
+- **CUIT y domicilio:** retirados del wiki y de las páginas públicas por decisión de GO (2026-10-06): son datos personales.
 - **Jurisdicción (T&C §13):** tribunales ordinarios de la Ciudad Autónoma de Buenos Aires.
 - La ley de e-commerce AR obliga a **exhibir** esta identidad → se muestra en T&C y Privacidad. Si los
   campos quedan en `'PENDIENTE'`, `legalCompleto` es false y las páginas muestran "en definición".

@@ -69,6 +69,14 @@ describe('pre-render de páginas públicas', () => {
     }
   })
 
+  it('las páginas públicas no muestran datos personales del titular (decisión de GO 2026-10-06)', () => {
+    for (const { html } of paginas) {
+      expect(html).not.toMatch(/42237416|Falc[oó]n|Ezequiel/i)
+    }
+    const terminos = paginas.find(p => p.meta.ruta === '/terminos')!.html
+    expect(terminos).toContain('hola@genesis360.pro')
+  })
+
   it('no anuncia el agente de WhatsApp mientras Meta no apruebe la app (decisión de GO)', () => {
     for (const { html } of paginas) expect(html).not.toMatch(/agente de whatsapp/i)
   })

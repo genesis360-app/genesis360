@@ -12970,7 +12970,7 @@ type: project
 >    Session Replay** (`main.tsx`, ya no graba pantalla), **EULA/reembolsos** en T&C, **Sentry+Google
 >    Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor**. **Identidad del
 >    titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina, monotributo,
->    CUIT 20-42237416-8, Cnel. R.L. Falcón 2387 C1406 CABA (Fede = socio de GO, factura él).
+>    [datos personales retirados del wiki, 2026-10-06] (Fede = socio de GO, factura él).
 >    `LEGAL_VERSION`=2026-07-14. Decisiones GO: **sin SLA**, refunds solo arrepentimiento, cookies sin
 >    banner. 🔴 **ANTES DE MOSTRAR EN PROD: revisión de ABOGADO + registro AAIP** (trámites de GO,
 >    fuera de la app). Ofrecido y NO hecho aún: **DPA** para clientes B2B grandes.

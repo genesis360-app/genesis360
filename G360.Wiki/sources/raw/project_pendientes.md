@@ -6,14 +6,36 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre) — 🚀 **PROD = DEV = `v1.239.2`** (migs 001-**475**) · PRs #371, #375, #376
+> ### 🛑 ARRANCÁ ACÁ (2026-10-07) — 🚀 **PROD = DEV = `v1.240.0`** (migs 001-476, sin migraciones nuevas)
+>
+> **Qué entró en v1.240.0:** Landing 2.0 Fases 1-4 (pre-render en el build: 🛑 el armazón de la app es `dist/app.html`,
+> `vercel.json` reescribe ahí y fija `buildCommand`; el service worker usa `/app.html`), páginas por rubro, ubicación "Global"
+> arreglada + aviso de traslado sin ubicaciones, Términos/Privacidad sin datos personales. Detalle: [[wiki/business/plan-landing-2]].
+> **Pendientes:** Fase 5 de la landing (Search Console/Bing con la cuenta de GO/Fede, eventos de conversión), decidir si el Meta
+> Pixel se difiere, más rubros; Presupuestos de proveedores espera el relevamiento (A1/A2/B1); El Tilo: crear una ubicación en
+> "EL TILO Galpón Elcano 2" para recibir el traslado #1; el domicilio de Fede sigue en el HISTORIAL de git (repo público) —
+> borrarlo requiere reescribir el historial con autorización de GO.
+>
+
+> ### 🛑 ARRANCÁ ACÁ (2026-10-06, tarde) — PROD = DEV = `v1.239.3` (migs 001-476). Nada de código nuevo commiteado.
+>
+> **Sin commitear en el disco (todo aprobado o para revisar, nada en PROD):**
+> - **Landing 2.0 Fase 2 — APROBADA por GO** ("me gustó esta como está"): 12 secciones + fotos de los fundadores. Detalle y
+>   pendientes en [[wiki/business/plan-landing-2]] §6. Respaldo de la vieja: tag `landing-v1-respaldo`. **Para subirla:**
+>   commit + bump `APP_VERSION` (v1.240.0) + PR `dev→main` + release; sin migraciones ni EFs. 🛑 Antes, que GO decida qué
+>   hacer con "Agente de WhatsApp" en el plan Enterprise (contradice "no mencionar WhatsApp").
+> - **Presupuestos de proveedores (módulo nuevo):** plan [[wiki/business/plan-presupuestos-proveedores]] + relevamiento
+>   `relevamiento-presupuestos-proveedores-reglas-negocio.html` (19 preguntas) — GO lo revisa con Fede. Sin A1, A2 y B1 no
+>   arranca la Fase 1.
+>
+
+> ### 🛑 ARRANCÁ ACÁ (2026-10-06, cierre) — 🚀 **PROD = DEV = `v1.239.3`** (migs 001-**476**) · PRs #371, #375, #376, #377
 >
 > **👉 LANDING 2.0 — PLAN + DECISIONES DE GO: [[wiki/business/plan-landing-2]]** (leer primero; tabla "Respuestas de GO").
-> ✅ Fase 0 HECHA (v1.239.2, PR #376): sin testimonios inventados. **Siguiente: Fase 1 (SEO/GEO, pre-render en este repo)
-> y Fase 2 (landing, hero actual, claro con secciones oscuras, sin comparativa, para cualquier pyme).** Esperando de GO:
-> (a) OK para pasar la prueba de la APP de 15 a 30 días (la landing no puede decir 30 si la app da 15); (b) confirmar que
-> WhatsApp IA NO se menciona hasta que Meta lo apruebe (recomendación); (c) condiciones de "primeros socios"; (d) nombres y
-> fotos del equipo.
+> ✅ Fase 0 HECHA (v1.239.2, PR #376): sin testimonios inventados. ✅ Prueba = **30 días** (v1.239.3, PR #377, mig 476,
+> solo altas nuevas). ✅ WhatsApp IA NO se menciona hasta que Meta lo apruebe. **Siguiente: Fase 1 (SEO/GEO, pre-render en
+> este repo) y Fase 2 (landing: hero actual, claro con secciones oscuras, sin comparativa, para cualquier pyme).**
+> Pendiente de GO: fotos del equipo (**Gastón Otranto y Federico Messina**); condiciones de "primeros socios" (más adelante).
 >
 > **👉 LO PRIMERO de la próxima sesión (pedido de GO):** mejorar la **landing** con los **5 documentos de Fede** en Google Drive
 > (carpeta `1YeQWbLVSLXs--JKD8daiR4uOv_cUtAwb`, acceso con el MCP de Drive ya verificado): `00 - Estrategia y Narrativa`,
@@ -12959,7 +12981,7 @@ type: project
 >    Session Replay** (`main.tsx`, ya no graba pantalla), **EULA/reembolsos** en T&C, **Sentry+Google
 >    Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor**. **Identidad del
 >    titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina, monotributo,
->    CUIT 20-42237416-8, Cnel. R.L. Falcón 2387 C1406 CABA (Fede = socio de GO, factura él).
+>    [datos personales retirados del wiki, 2026-10-06] (Fede = socio de GO, factura él).
 >    `LEGAL_VERSION`=2026-07-14. Decisiones GO: **sin SLA**, refunds solo arrepentimiento, cookies sin
 >    banner. 🔴 **ANTES DE MOSTRAR EN PROD: revisión de ABOGADO + registro AAIP** (trámites de GO,
 >    fuera de la app). Ofrecido y NO hecho aún: **DPA** para clientes B2B grandes.

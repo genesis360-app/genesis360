@@ -1,0 +1,163 @@
+/* Landing 2.0 (2026-10-06, wiki/business/plan-landing-2.md). Extiende el hero (landingHero.css): mismas curvas, Geist,
+   solo transform/opacity/clip-path, y todo con su versión para prefers-reduced-motion.
+   Las piezas que se revelan arrancan VISIBLES: recién cuando el hook useRevelar confirma que hay IntersectionObserver
+   las esconde (data-revelar="espera") y las muestra al entrar en pantalla. Sin JS, la página se lee completa. */
+
+.landing {
+  --lp-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --lp-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --lp-ink: #0D0D0D;
+  --lp-night: #0E0B16;
+  --lp-night-2: #161024;
+  --lp-violet: #7B00FF;
+  --lp-cyan: #06B6D4;
+  font-family: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  color: var(--lp-ink);
+  background: #FAFAFC;
+  font-feature-settings: 'ss01';
+}
+.landing .lp-mono { font-family: 'Geist Mono Variable', ui-monospace, monospace; }
+.landing .lp-num { font-variant-numeric: tabular-nums; }
+.landing ::selection { background: rgba(123, 0, 255, 0.18); color: var(--lp-ink); }
+.landing .lp-night ::selection { background: rgba(6, 182, 212, 0.35); color: #fff; }
+.landing input, .landing textarea { caret-color: var(--lp-violet); }
+.landing h2, .landing h3 { text-wrap: balance; }
+.landing p { text-wrap: pretty; }
+
+/* Secciones oscuras: violeta casi negro con un degradé apenas perceptible (doc 02 §1). */
+.lp-night {
+  background:
+    radial-gradient(120% 80% at 85% 0%, rgba(123, 0, 255, 0.16), transparent 60%),
+    linear-gradient(180deg, var(--lp-night) 0%, var(--lp-night-2) 100%);
+  color: #F4F2F8;
+}
+
+/* CTA principal: el degradé de marca con un brillo que cruza al pasar el mouse (doc 02 §3). */
+.lp-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-image: linear-gradient(135deg, var(--lp-violet) 0%, #5B2BFF 55%, var(--lp-cyan) 140%);
+  transition: transform 160ms var(--lp-ease-out), box-shadow 240ms ease;
+  box-shadow: 0 10px 30px -12px rgba(123, 0, 255, 0.55);
+}
+.lp-cta::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+  transform: translateX(-110%);
+  transition: transform 700ms var(--lp-ease-out);
+}
+.lp-cta:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .lp-cta:hover { box-shadow: 0 14px 36px -12px rgba(123, 0, 255, 0.7); }
+  .lp-cta:hover::after { transform: translateX(110%); }
+}
+
+/* Revelado al entrar en pantalla: 8 px + opacidad, escalonado por --i (doc 02 §3, grilla de módulos). */
+[data-revelar='espera'] .lp-rev {
+  opacity: 0;
+  transform: translateY(10px);
+}
+[data-revelar='visto'] .lp-rev {
+  opacity: 1;
+  transform: none;
+  transition: opacity 420ms var(--lp-ease-out), transform 520ms var(--lp-ease-out);
+  transition-delay: calc(var(--i, 0) * 55ms);
+}
+
+/* "La solución": la venta empuja al stock y el stock dispara el aviso. Los conectores se dibujan de izquierda a derecha. */
+.lp-flujo-linea { transform-origin: left center; }
+[data-revelar='espera'] .lp-flujo-linea { transform: scaleX(0); }
+[data-revelar='visto'] .lp-flujo-linea {
+  transform: scaleX(1);
+  transition: transform 520ms var(--lp-ease-in-out);
+  transition-delay: calc(var(--i, 0) * 55ms + 120ms);
+}
+@media (max-width: 1023px) {
+  .lp-flujo-linea { transform-origin: center top; }
+  [data-revelar='espera'] .lp-flujo-linea { transform: scaleY(0); }
+  [data-revelar='visto'] .lp-flujo-linea { transform: scaleY(1); }
+}
+
+/* El número de stock "baja" cuando entra la venta. */
+.lp-tick { display: inline-grid; overflow: hidden; height: 1.15em; line-height: 1.15em; vertical-align: bottom; }
+.lp-tick > span { grid-area: 1 / 1; }
+[data-revelar='visto'] .lp-tick-antes { transform: translateY(-110%); opacity: 0; transition: transform 420ms var(--lp-ease-out) 700ms, opacity 300ms ease 700ms; }
+[data-revelar='espera'] .lp-tick-despues { transform: translateY(110%); opacity: 0; }
+[data-revelar='visto'] .lp-tick-despues { transform: none; opacity: 1; transition: transform 420ms var(--lp-ease-out) 700ms, opacity 300ms ease 700ms; }
+.lp-tick-despues { transform: none; }
+
+/* IA: la recomendación "se escribe" UNA vez (doc 02 §3, sin loop que distraiga). */
+.lp-escribe { clip-path: inset(0 0 0 0); }
+[data-revelar='espera'] .lp-escribe { clip-path: inset(0 100% 0 0); }
+[data-revelar='visto'] .lp-escribe {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 1600ms steps(48, end) 500ms;
+}
+
+/* IA: la conversación con el asistente aparece mensaje por mensaje, con "escribiendo…" entre medio. */
+[data-revelar='espera'] .lp-msj { opacity: 0; transform: translateY(8px) scale(0.98); }
+[data-revelar='visto'] .lp-msj {
+  opacity: 1;
+  transform: none;
+  transition: opacity 320ms var(--lp-ease-out), transform 420ms var(--lp-ease-out);
+  transition-delay: var(--t, 0ms);
+}
+.lp-tipeando { display: inline-flex; gap: 4px; }
+.lp-tipeando i { width: 6px; height: 6px; border-radius: 999px; background: currentColor; opacity: 0.35; }
+[data-revelar='visto'] .lp-tipeando-caja {
+  animation: lp-tipeando-vida 1100ms linear forwards;
+  animation-delay: var(--t, 0ms);
+}
+[data-revelar='espera'] .lp-tipeando-caja,
+.lp-tipeando-caja { opacity: 0; }
+[data-revelar='visto'] .lp-tipeando i { animation: lp-punto 900ms ease-in-out infinite; }
+[data-revelar='visto'] .lp-tipeando i:nth-child(2) { animation-delay: 150ms; }
+[data-revelar='visto'] .lp-tipeando i:nth-child(3) { animation-delay: 300ms; }
+@keyframes lp-tipeando-vida { 0% { opacity: 0; } 10%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes lp-punto { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 0.9; transform: translateY(-2px); } }
+
+/* Escalabilidad: la línea de tiempo se llena con el scroll (CSS scroll-driven, sin JS). Si el navegador no lo
+   soporta, queda llena. */
+.lp-progreso { transform-origin: left center; transform: scaleX(1); }
+@supports (animation-timeline: view()) {
+  .lp-progreso {
+    animation: lp-llenar linear both;
+    animation-timeline: view();
+    animation-range: entry 35% cover 55%;
+  }
+}
+@keyframes lp-llenar { from { transform: scaleX(0.04); } to { transform: scaleX(1); } }
+
+/* Foto de los fundadores: sube un poco al pasar el mouse, nada más. */
+.lp-foto img { transition: transform 600ms var(--lp-ease-out), filter 400ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .lp-foto:hover img { transform: scale(1.025); }
+}
+
+/* Detalle (FAQ): la respuesta se abre con altura animable. */
+.lp-faq-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms var(--lp-ease-out); }
+.lp-faq-panel[data-abierto='true'] { grid-template-rows: 1fr; }
+.lp-faq-panel > div { overflow: hidden; }
+
+.landing a:focus-visible, .landing button:focus-visible {
+  outline: 2px solid var(--lp-violet);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+.landing .lp-night a:focus-visible, .landing .lp-night button:focus-visible { outline-color: var(--lp-cyan); }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-revelar] .lp-rev, [data-revelar] .lp-msj, [data-revelar] .lp-flujo-linea, [data-revelar] .lp-escribe,
+  [data-revelar] .lp-tick-antes, [data-revelar] .lp-tick-despues {
+    opacity: 1 !important; transform: none !important; clip-path: none !important; transition: none !important;
+  }
+  [data-revelar] .lp-tick-antes { display: none; }
+  .lp-tipeando-caja { display: none; }
+  .lp-progreso { animation: none; transform: none; }
+  .lp-cta, .lp-cta::after, .lp-foto img, .lp-faq-panel { transition: none; }
+  .lp-cta:active { transform: none; }
+}

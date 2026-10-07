@@ -8,11 +8,24 @@ updated: 2026-10-06
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.239.2`** (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.239.3`** (2026-10-06, PR #377: prueba gratis de 30 días, mig 476). Antes: `v1.239.2` (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
+
+## 🎨 v1.240.0 — Landing 2.0, pre-render para buscadores, páginas por rubro, ubicación "Global" y páginas legales sin datos personales (2026-10-07, EN PROD)
+
+- Landing nueva (docs de Fede): 12 secciones, fundadores, IA solo con lo que existe, sin "Agente de WhatsApp" en Enterprise,
+  planes aclarados (importación, Compras/Envíos = Pro; RRHH = Enterprise). Ver [[wiki/business/plan-landing-2]].
+- SEO/GEO: páginas públicas pre-renderizadas en el build (`/`, `/para/construccion|supermercados|distribuidoras|dieteticas`,
+  legales) con metadatos, JSON-LD, sitemap y robots; el armazón de la app pasa a `app.html` (`noindex`).
+- Ubicaciones: "Global" se guarda sin sucursal; aviso al recibir un traslado en una sucursal sin ubicaciones (e2e 187).
+- Términos y Privacidad sin nombre, CUIT ni domicilio del titular. Sin migraciones ni Edge Functions nuevas.
+
+## 🏷️ v1.239.3 — La prueba gratis pasa a 30 días (2026-10-06, EN PROD, mig 476)
+
+Default de `trial_ends_at` = 30 días para altas nuevas; textos alineados. PR #377.
 
 ## 🏷️ v1.239.2 — Landing sin testimonios inventados (2026-10-06, EN PROD)
 

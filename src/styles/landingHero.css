@@ -19,6 +19,12 @@
 }
 @keyframes hero-in { to { opacity: 1; transform: translateY(0); } }
 
+/* El titular es el elemento más grande de la primera pantalla (LCP): entra solo con el desplazamiento, ya visible desde el
+   primer cuadro. Chrome no cuenta como "pintado" un elemento con opacidad 0, así que el fundido retrasaba el LCP medido
+   hasta que terminaba la animación (Landing 2.0, Fase 1). */
+.hero-in.hero-titulo { opacity: 1; animation-name: hero-titulo; animation-delay: 0ms; }
+@keyframes hero-titulo { to { transform: translateY(0); } }
+
 /* La pantalla real del producto se revela de abajo hacia arriba. */
 .hero-shot {
   clip-path: inset(100% 0 0 0 round 16px);

@@ -6,6 +6,32 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-06] update | Landing 2.0 (Fases 1-4) en dev + fix ubicación "Global" + sin datos personales en las páginas legales
+
+- **Landing 2.0** en `dev` (pre-releases `v1.240.0-rc.1`/`rc.2`/`rc.3`): Fase 2 (landing aprobada por GO), Fase 1 (pre-render en el
+  build: `app.html` = armazón de la app; verificado en el preview de Vercel con service worker), Fase 3 (`/para/construccion`) y
+  Fase 4 (`/para/supermercados|distribuidoras|dieteticas`). Detalle: [[wiki/business/plan-landing-2]] §6-8. Sin migraciones.
+- **Presupuestos de proveedores:** plan + relevamiento (19 preguntas) para GO y Fede: [[wiki/business/plan-presupuestos-proveedores]].
+- **🛑 Datos personales fuera de las páginas públicas (pedido de GO):** Términos y Privacidad mostraban nombre completo, CUIT,
+  condición fiscal y domicilio particular de Fede (`LEGAL_TITULAR`). Ahora solo la marca, el correo y la jurisdicción
+  (`LEGAL_CONTACTO` en `src/config/brand.ts`). El domicilio también se borró del wiki. El CUIT sigue donde es funcional (facturación
+  de la plataforma, mig 261, EFs) y en tests. ⚠️ Los datos siguen en el historial de git del repo público. ⚠️ Ley 25.326 art. 6 pide
+  identificar al responsable de la base: queda para definir con el abogado una identidad no personal (sociedad / domicilio legal).
+  Test: `tests/unit/prerender.test.tsx` falla si vuelven a aparecer.
+- **🐛 Inventario (caso real de El Tilo, PROD, solo lectura):** el traslado #1 no se podía recibir porque la sucursal destino tenía 0
+  ubicaciones (lista vacía, sin explicación). (1) Config → Ubicaciones: "Global" valía '' y `|| sucursalId` lo guardaba en la
+  sucursal ACTIVA — ahora "Global" guarda `sucursal_id` NULL y el selector muestra por defecto la sucursal activa (lo que se
+  guarda). (2) Recepción de traslado en avanzado sin ubicaciones: aviso con link a `/configuracion?tab=inventario&sub=ubicaciones`
+  (deep link nuevo). e2e `187` (falla con la lógica vieja), UAT §103.
+
+## [2026-10-06] deploy | v1.239.3 — La prueba gratis pasa a 30 días (mig 476)
+
+- Decisión de GO (Landing 2.0). Mig 476: default de `tenants.trial_ends_at` = `now() + 30 days` (altas nuevas; las pruebas en
+  curso conservan su fecha, mismo criterio que la mig 457). Textos de landing, alta, planes y `estadoTrial` alineados;
+  `app-reference` + `planes-pricing` actualizados y `ai-assistant` redeployado (DEV y PROD). **PR #377**, release
+  `v1.239.3`; mig verificada en PROD; `genesis360.pro` muestra "30 días gratis". Equipo para la landing: Gastón Otranto y
+  Federico Messina (fotos pendientes). WhatsApp IA: no se menciona hasta App Review (confirmado por GO).
+
 ## [2026-10-06] deploy | v1.239.2 — Landing sin testimonios inventados (Fase 0 de Landing 2.0)
 
 - GO respondió las 10 decisiones del plan (tabla en [[wiki/business/plan-landing-2]]). Fase 0: se sacaron los 3
@@ -14110,7 +14136,7 @@ Ver [[reference_schema_dump_metodo]].
   tipo-EULA** y **cláusula de reembolsos** (10 días total, sin reembolso fuera de plazo) en T&C,
   **Sentry+Google Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor** en pies.
 - **Identidad del titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina,
-  monotributo, CUIT 20-42237416-8, dom. Cnel. R. L. Falcón 2387 C1406 CABA. Fede = socio de GO,
+  monotributo, [datos personales retirados del wiki, 2026-10-06]. Fede = socio de GO,
   es quien factura. `LEGAL_VERSION` bump a 2026-07-14. Decisiones: **sin SLA** (según
   disponibilidad), refunds solo arrepentimiento, cookies sin banner.
 - 🔴 Pendiente antes de PROD: **revisión de abogado** + **registro AAIP** (trámites de GO, fuera

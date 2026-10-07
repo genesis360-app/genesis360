@@ -1,10 +1,9 @@
 import LegalLayout, { LegalSection } from '@/components/LegalLayout'
-import { BRAND, LEGAL_TITULAR, legalCompleto } from '@/config/brand'
+import { BRAND, LEGAL_CONTACTO } from '@/config/brand'
 
 // ⚖️ NOTA PARA GO: este texto es un marco sólido y completo, PERO debe ser revisado por un
-// abogado antes de considerarlo definitivo. La identidad del titular (razón social / CUIT /
-// domicilio / jurisdicción) sale de LEGAL_TITULAR en src/config/brand.ts — completarla ahí
-// (único lugar). Mientras esté en PENDIENTE, se muestra "en definición".
+// abogado antes de considerarlo definitivo. Contacto y jurisdicción salen de LEGAL_CONTACTO en
+// src/config/brand.ts. Sin datos personales del titular (decisión de GO 2026-10-06).
 
 export default function TerminosPage() {
   return (
@@ -18,18 +17,10 @@ export default function TerminosPage() {
 
       <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 p-4">
         <p className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Titular del Servicio</p>
-        {legalCompleto ? (
-          <p>
-            {LEGAL_TITULAR.nombre} — {LEGAL_TITULAR.condicion} — CUIT {LEGAL_TITULAR.cuit}.
-            {' '}Domicilio: {LEGAL_TITULAR.domicilio}. Contacto:{' '}
-            <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent-text hover:underline">{LEGAL_TITULAR.email}</a>.
-          </p>
-        ) : (
-          <p className="italic text-gray-400 dark:text-gray-500">
-            Los datos identificatorios del titular se encuentran en definición y se completarán
-            antes de la puesta en producción del Servicio.
-          </p>
-        )}
+        <p>
+          {BRAND.name}. Contacto:{' '}
+          <a href={`mailto:${LEGAL_CONTACTO.email}`} className="text-accent-text hover:underline">{LEGAL_CONTACTO.email}</a>.
+        </p>
       </div>
 
       <LegalSection n={1} title="Objeto y aceptación">
@@ -174,7 +165,7 @@ export default function TerminosPage() {
       <LegalSection n={13} title="Ley aplicable y jurisdicción">
         <p>
           Estos Términos se rigen por las leyes de la República Argentina. Para toda controversia se
-          aplicará la jurisdicción de {legalCompleto ? `los tribunales ordinarios de ${LEGAL_TITULAR.jurisdiccion}` : 'los tribunales competentes según la normativa vigente'},
+          aplicará la jurisdicción de {`los tribunales ordinarios de ${LEGAL_CONTACTO.jurisdiccion}`},
           {' '}sin perjuicio de los derechos que la legislación de defensa del consumidor (Ley 24.240)
           otorgue al usuario, incluida la posibilidad de acudir a la autoridad de aplicación o al fuero
           de su domicilio cuando corresponda.

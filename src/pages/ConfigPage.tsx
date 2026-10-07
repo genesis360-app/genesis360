@@ -701,6 +701,9 @@ function CampoResumenFiscal({ label, value, mono, className }: { label: string; 
   )
 }
 
+// Valor del selector de sucursal de una ubicación nueva que significa "sin sucursal" (sucursal_id = null).
+const UBIC_GLOBAL = '__global__'
+
 export default function ConfigPage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialTab = searchParams.get('tab') as Tab | null
@@ -708,7 +711,11 @@ export default function ConfigPage() {
   const [tab, setTab] = useState<Tab>(VALID_TABS.includes(initialTab as Tab) ? initialTab as Tab : 'negocio')
   const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
   const [ventasSubTab, setVentasSubTab] = useState<VentasSubTab>('metodos')
-  const [invSubTab, setInvSubTab] = useState<InvSubTab>('reglas')
+  // ?tab=inventario&sub=ubicaciones abre la sub-pestaña directo (lo usa el aviso de "sucursal sin ubicaciones" de Traslados).
+  const VALID_INV_SUBTABS: InvSubTab[] = ['reglas', 'rotacion', 'categorias', 'ubicaciones', 'estados', 'motivos', 'unidades', 'empaque', 'atributos', 'codigos', 'zonas']
+  const initialInvSub = searchParams.get('sub') as InvSubTab | null
+  const [invSubTab, setInvSubTab] = useState<InvSubTab>(
+    initialTab === 'inventario' && initialInvSub && VALID_INV_SUBTABS.includes(initialInvSub) ? initialInvSub : 'reglas')
   const [conSubTab, setConSubTab] = useState<ConSubTab>('integraciones')
   const { tenant, user, setTenant, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
@@ -1710,7 +1717,11 @@ export default function ConfigPage() {
       toast.error('Código inválido — usá letras/números en mayúscula separados por guiones (ej. A-03-02), o dejalo vacío para autogenerarlo')
       return
     }
-    const sucId = newUbicSucursalId || sucursalId || null
+    // El selector muestra la sucursal activa por defecto; "Global" tiene su propio valor. Antes "Global" era '' y el
+    // `|| sucursalId` lo convertía en la sucursal activa: se guardaba en otra sucursal y no aparecía donde se esperaba
+    // (caso real: recibir un traslado en una sucursal sin ubicaciones, 2026-10-06).
+    const elegida = newUbicSucursalId !== '' ? newUbicSucursalId : (sucursalId ?? UBIC_GLOBAL)
+    const sucId = elegida === UBIC_GLOBAL ? null : elegida
     const { error } = await supabase.from('ubicaciones').insert({
       tenant_id: tenant!.id,
       nombre: newUbicNombre.trim(),
@@ -4497,9 +4508,10 @@ export default function ConfigPage() {
                 className="w-56 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent-text" />
             </div>
             {sucursales.length > 1 && (
-              <select value={newUbicSucursalId} onChange={e => setNewUbicSucursalId(e.target.value)}
+              <select value={newUbicSucursalId !== '' ? newUbicSucursalId : (sucursalId ?? UBIC_GLOBAL)} onChange={e => setNewUbicSucursalId(e.target.value)}
+                aria-label="Sucursal de la ubicación"
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
-                <option value="">Global (todas las sucursales)</option>
+                <option value={UBIC_GLOBAL}>Global (todas las sucursales)</option>
                 {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
               </select>
             )}

@@ -2411,6 +2411,18 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📍 §103 — Ubicación "Global" y recepción de traslado en una sucursal sin ubicaciones (🟡 DEV) — 2026-10-06
+
+Caso real (El Tilo, PROD, solo lectura): el traslado #1 no se podía recibir porque la sucursal destino tenía 0 ubicaciones
+y la lista quedaba vacía sin explicación. Al crear una ubicación eligiendo "Global" se guardaba en la sucursal ACTIVA.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 103.1 | Config → Inventario → Ubicaciones con 2+ sucursales: el selector muestra por defecto la sucursal activa, y sin tocarlo la ubicación se guarda en ESA sucursal | e2e `187` (base de datos: `sucursal_id` = la que mostraba) | ✅ |
+| 103.2 | 🛑 Eligiendo "Global (todas las sucursales)" la ubicación se guarda con `sucursal_id` NULL (antes quedaba en la sucursal activa) | e2e `187` — corrido con la lógica vieja: FALLA | ✅ |
+| 103.3 | Recibir un traslado en modo avanzado en una sucursal sin ubicaciones (ni globales): aviso ámbar con el nombre de la sucursal y link a Configuración → Inventario → Ubicaciones; el traslado sigue en tránsito y no se puede confirmar sin ubicación | revisión de código (`TrasladosPanel`) · prueba manual pendiente | 🟡 |
+| 103.4 | `/configuracion?tab=inventario&sub=ubicaciones` abre directo la sub-pestaña | e2e `187` | ✅ |
+
 ## 🧾 §102 — Recurrentes con el motor, links de 24 h y escrituras a columnas que no existen (🟡 DEV) — 2026-10-06
 
 | # | Escenario | Cómo se verifica | Estado |

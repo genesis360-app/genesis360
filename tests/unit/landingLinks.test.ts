@@ -8,7 +8,15 @@ import { resolve } from 'path'
 // <Link to="mailto:..."> (React Router lo trataría como ruta interna → no abre el
 // correo y rebota al home; bug real encontrado en el plan Enterprise, 2026-06-30).
 
-const landing = readFileSync(resolve('src/pages/LandingPage.tsx'), 'utf8')
+// Landing 2.0: las secciones viven en src/components/landing/ y hay páginas por rubro (/para/…) que comparten el menú y el
+// pie (LandingMarco.tsx) — se validan todas juntas.
+const leer = (f: string) => readFileSync(resolve(f), 'utf8')
+const home = [
+  'src/pages/LandingPage.tsx',
+  'src/components/landing/LandingSecciones.tsx',
+  'src/components/landing/LandingMarco.tsx',
+].map(leer).join('\n')
+const landing = [home, leer('src/pages/ParaConstruccionPage.tsx')].join('\n')
 const app = readFileSync(resolve('src/App.tsx'), 'utf8')
 
 const matchAll = (src: string, re: RegExp) => [...src.matchAll(re)].map(m => m[1])
@@ -20,6 +28,15 @@ describe('Landing — validación de links', () => {
     expect(anchors.length).toBeGreaterThan(0)
     const huerfanos = [...new Set(anchors)].filter(a => !ids.has(a))
     expect(huerfanos, `anchors sin sección destino: ${huerfanos.join(', ')}`).toEqual([])
+  })
+
+  it('cada ancla del menú y del pie compartidos tiene su sección en la home', () => {
+    const marco = leer('src/components/landing/LandingMarco.tsx')
+    const anclas = [...matchAll(marco, /ancla: '([a-z0-9_-]+)'/g), ...matchAll(marco, /href\('([a-z0-9_-]+)'\)/g)]
+    const ids = new Set(matchAll(home, /id="([a-zA-Z0-9_-]+)"/g))
+    expect(anclas.length).toBeGreaterThan(0)
+    const huerfanas = [...new Set(anclas)].filter(a => !ids.has(a))
+    expect(huerfanas, `anclas del menú sin sección en la home: ${huerfanas.join(', ')}`).toEqual([])
   })
 
   it('cada <Link to="/ruta"> existe en App.tsx', () => {

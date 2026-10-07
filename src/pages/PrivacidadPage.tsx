@@ -1,9 +1,9 @@
 import LegalLayout, { LegalSection } from '@/components/LegalLayout'
-import { BRAND, LEGAL_TITULAR, legalCompleto } from '@/config/brand'
+import { BRAND, LEGAL_CONTACTO } from '@/config/brand'
 
 // ⚖️ NOTA PARA GO: marco sólido alineado a la Ley 25.326 (AR) y sus normas complementarias,
-// PERO debe ser revisado por un abogado antes de ser definitivo. La identidad del responsable
-// sale de LEGAL_TITULAR (src/config/brand.ts) — completarla ahí. Pendiente operativo: registrar
+// PERO debe ser revisado por un abogado antes de ser definitivo. Sin datos personales del titular (decisión
+// de GO 2026-10-06, ver LEGAL_CONTACTO en src/config/brand.ts). Pendiente operativo: registrar
 // la base ante la AAIP (Agencia de Acceso a la Información Pública).
 
 export default function PrivacidadPage() {
@@ -18,12 +18,9 @@ export default function PrivacidadPage() {
 
       <LegalSection n={1} title="Responsable de la base de datos">
         <p>
-          El responsable del tratamiento de los datos es{' '}
-          {legalCompleto
-            ? <>{LEGAL_TITULAR.nombre} ({LEGAL_TITULAR.condicion}), CUIT {LEGAL_TITULAR.cuit}, con domicilio en {LEGAL_TITULAR.domicilio}, titular de {BRAND.name}</>
-            : <>el titular de {BRAND.name} (datos identificatorios en definición, a completar antes de la puesta en producción)</>}.
-          {' '}Para cualquier consulta o para ejercer tus derechos podés contactarnos en{' '}
-          <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent-text hover:underline">{LEGAL_TITULAR.email}</a>.
+          El responsable del tratamiento de los datos es {BRAND.name}. Para cualquier consulta o para
+          ejercer tus derechos podés contactarnos en{' '}
+          <a href={`mailto:${LEGAL_CONTACTO.email}`} className="text-accent-text hover:underline">{LEGAL_CONTACTO.email}</a>.
         </p>
       </LegalSection>
 

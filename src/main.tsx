@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import * as Sentry from '@sentry/react'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
+import { hidratarPaginaPublica } from './lib/hidratarPublica'
 import './index.css'
 
 // ── Actualización FORZADA del service worker ─────────────────────────────────────
@@ -62,6 +63,11 @@ window.addEventListener('error', (e) => {
 })
 // Si la app cargó bien, limpiamos el flag para permitir una futura recuperación.
 window.addEventListener('load', () => { setTimeout(() => sessionStorage.removeItem(CHUNK_RELOAD_KEY), 4000) })
+
+// Página pública pre-renderizada para buscadores (Landing 2.0): se hidrata en su lugar, sin redibujarla. App se monta igual
+// en #root (escondida hasta que el visitante sale de esa página). Ver src/lib/prerender.ts.
+const prerender = document.getElementById('prerender')
+if (prerender) void hidratarPaginaPublica(prerender)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Presupuestos de proveedores · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .sugerida { color: #1d6f42; font-weight: 600; font-size: 9pt; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .alerta-critica { background: #fdeaea; border-left: 4px solid #c0392b; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .alerta-critica strong { color: #922b21; }
+  .cerrado { background: #eaf7ee; border-left: 4px solid #27ae60; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .cerrado strong { color: #1d6f42; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+  code { background: #f2f4f7; padding: 0 3pt; border-radius: 2pt; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Presupuestos de proveedores</h1>
+<div class="meta">
+  Genesis360 · v1.239.3 · Fecha: 6 de octubre de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  Plan de <strong>Fede</strong> (27/08/2026) y respuestas de <strong>GO</strong> al cuestionario A1–I1: una
+  pestaña <strong>Presupuestos</strong> en Proveedores donde el negocio arma una <strong>Solicitud</strong>, la
+  manda a uno o varios proveedores (o carga él mismo la oferta de un proveedor que no usa el sistema), compara
+  las ofertas, negocia por <strong>versiones</strong> dentro de un mismo hilo, elige una, la paga y la recibe
+  como Orden de Compra.
+  <p style="margin:8pt 0 0 0;">
+  <strong>Hoy esa pestaña no existe.</strong> Lo que sí está en producción es el <strong>Portal de
+  Proveedores</strong> (el proveedor ve las OC que el negocio le envió y propone un precio por ítem; el negocio
+  lo aplica a mano) y, dentro de <strong>Servicios</strong>, una carga manual de presupuestos con un monto suelto
+  para compararlos.
+  </p>
+  <p style="margin:8pt 0 0 0;">
+  Este documento <strong>no vuelve a preguntar</strong> lo que ya respondieron (ver el recuadro verde). Pregunta
+  solo lo que quedó abierto o lo que <strong>choca con reglas que ya funcionan en producción</strong>. Cada
+  pregunta trae una opción <span class="sugerida">✓ sugerida</span>, que es una recomendación y no una
+  decisión: la decisión es de ustedes.
+  </p>
+  <p style="margin:8pt 0 0 0;">
+  Etiquetas: <span class="tag tag-nuevo">NUEVO</span> (regla que hoy no existe),
+  <span class="tag tag-existente">EXISTENTE</span> (confirmar algo que ya funciona así) y
+  <span class="tag tag-cambio">CAMBIO</span> (lo pedido choca con cómo funciona hoy: hay que resolverlo).
+  </p>
+</div>
+
+<div class="cerrado">
+  <strong>✅ Ya definido por ustedes — NO hace falta volver a contestarlo</strong>
+  <ul style="margin:4pt 0 0 16pt; padding-left:14pt;">
+    <li>Tres niveles: <strong>Solicitud</strong> → una <strong>oferta por proveedor</strong> →
+        <strong>versiones</strong> de cada oferta, con fecha y en un mismo hilo.</li>
+    <li>Un proveedor <strong>nunca ve las ofertas de otro</strong>.</li>
+    <li>El negocio puede <strong>cargar a mano la oferta</strong> de un proveedor que no usa el sistema.</li>
+    <li>El proveedor puede agregar, quitar o cambiar líneas, y <strong>todo cambio respecto de lo pedido queda
+        marcado</strong> con color y una nota ("5 unidades menos", "línea nueva", "se eliminó").</li>
+    <li>Pueden convivir varias versiones activas. Cualquiera de las dos partes puede cancelar o rechazar una sin
+        cortar la negociación.</li>
+    <li>Se elige <strong>una sola oferta</strong>; las demás quedan selladas en gris pero se pueden consultar.</li>
+    <li>Vencimientos opcionales de los dos lados: fecha límite del negocio y validez del proveedor. Vencida la
+        validez, no se puede pagar sin pedir una actualización.</li>
+    <li>Moneda ARS o USD; si es USD, el proveedor carga a mano a qué cotización la armó.</li>
+    <li>Pago total o parcial por la Cuenta Corriente que ya existe. Se pueden subir varios comprobantes y el
+        proveedor confirma "lo recibí" en cada uno.</li>
+    <li>Coordinación de entrega: texto libre, solo informativo.</li>
+    <li>Elegir una oferta: <strong>por defecto solo el Dueño</strong>, delegable desde el rol.</li>
+    <li>Proveedor: un solo usuario por cuenta, gratis y sin límite. Ve el estado de pago de sus OC y recibe
+        avisos (solicitudes nuevas, contrapropuestas, comprobantes por confirmar).</li>
+    <li>Identificación visual constante: el proveedor ve el logo del negocio y el negocio ve la foto o logo del
+        proveedor.</li>
+    <li>Registro del proveedor: nombre, contacto y DNI obligatorios; DNI único en todo Genesis360. Solo puede
+        cotizarle a negocios que usan Genesis360. El vínculo con cada negocio requiere que el proveedor lo
+        acepte.</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>A · Cuándo nace la OC y cómo se paga <span style="color:#c0392b;">🔴 lo más importante</span></h2>
+
+<div class="alerta-critica">
+  <strong>🛑 Hay un choque con una regla que ya está en producción</strong>
+  <p style="margin:6pt 0 0 0;">
+  El plan dice que el presupuesto <strong>"pagado y validado pasa a ser una OC"</strong>, pero también que se
+  puede pagar <strong>en partes</strong> (seña + saldo) por Cuenta Corriente.
+  </p>
+  <p style="margin:6pt 0 0 0;">
+  Desde el 06/10 la Cuenta Corriente de proveedores funciona así (lo decidió GO, está en producción):
+  <strong>la deuda con el proveedor nace cuando se RECIBE la mercadería</strong>, y cada pago se imputa a una
+  OC. Si la OC recién existe cuando el presupuesto está pagado, <strong>una seña no tiene a qué OC
+  imputarse</strong> y la cuenta del proveedor queda descuadrada. Por eso esto se decide antes de
+  programar.
+  </p>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span>
+  <span class="pregunta-titulo">¿En qué momento el presupuesto elegido se convierte en Orden de Compra?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Pase lo que pase, la OC lleva los productos, cantidades, precios y moneda de la versión
+elegida, y las otras ofertas quedan selladas en ese momento.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> <strong>Al ELEGIR la oferta.</strong> La OC nace confirmada; la seña o el pago total se
+      registran sobre esa OC como pago adelantado y la deuda se termina de armar al recibir.
+      <span class="sugerida">✓ sugerida — no toca el modelo de Cuenta Corriente</span></li>
+  <li><strong>(b)</strong> Al registrar el <strong>primer pago</strong> (seña). Antes de pagar, la oferta elegida
+      no es OC.</li>
+  <li><strong>(c)</strong> Recién cuando está <strong>pagada al 100&nbsp;%</strong> (como dice el plan). Las señas
+      quedarían como saldo a favor del proveedor, sin OC asociada, hasta completar.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span>
+  <span class="pregunta-titulo">¿Hay que tener la OC pagada para poder recibir la mercadería?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">En el resumen anterior se dijo que "la OC tiene que estar pagada antes de pasar a Recepción,
+no es una regla nueva". <strong>Hoy no funciona así:</strong> Recepciones no frena por falta de pago. Cada
+proveedor tiene su modo de pago (contado, anticipo, contra entrega o cuenta corriente) y se puede recibir en
+cualquiera de ellos.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Dejarlo como hoy: el modo de pago del proveedor manda y Recepción no se bloquea.
+      <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Solo para OC que vienen de un presupuesto: no se recibe hasta que esté pagada al 100&nbsp;%.</li>
+  <li><strong>(c)</strong> Que se elija en cada Solicitud ("exigir pago antes de recibir": sí / no).</li>
+  <li><strong>(d)</strong> Para todas las OC, vengan o no de un presupuesto: no se recibe sin pago completo.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span>
+  <span class="pregunta-titulo">Si después de elegir una oferta la OC se cancela (el proveedor no cumple, se cayó la operación), ¿qué pasa con las otras ofertas selladas?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Si hubo pagos, se tratan como hoy: quedan como saldo a favor con el proveedor o se
+devuelven. Esto pregunta solo por la Solicitud y las ofertas.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> La Solicitud se reabre y las demás ofertas vuelven a estar disponibles, siempre que
+      sigan vigentes. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> La Solicitud queda cancelada; si hace falta, se arma una nueva.</li>
+  <li><strong>(c)</strong> Se reabre, pero hay que pedirles a los proveedores una versión actualizada.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>B · Recepción sin datos sensibles</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span>
+  <span class="pregunta-titulo">¿A quién se le ocultan los precios, la cotización y los comprobantes en Recepción?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Hoy la pantalla de Recepción muestra el precio de cada ítem de la OC a quien reciba. El
+criterio es el mismo que en Repositores: quien recibe en el depósito no necesita ver cuánto se pagó. El costo
+se sigue calculando igual por detrás, porque de ahí sale el gasto de la compra.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> A todo rol que no tenga un permiso nuevo "Ver costos en recepción" (el Dueño lo tiene
+      siempre), en <strong>todas</strong> las OC. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Lo mismo que (a), pero solo en las OC que vienen de un presupuesto.</li>
+  <li><strong>(c)</strong> Se ocultan siempre, a todos, incluso al Dueño (lo ve en Proveedores, no en Recepción).</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>C · Identidad y cuenta del proveedor</h2>
+
+<div class="seccion-resumen">
+  <strong>Cómo está hoy.</strong> La cuenta de proveedor del Portal se identifica por su <strong>email</strong> y
+  no pide DNI. Cuando el negocio lo invita, el vínculo queda activo en el momento, sin que el proveedor acepte
+  nada. Las dos cosas cambian con lo que ya definieron. Lo que sigue son los dos huecos que marcó Fede en su
+  plan.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span>
+  <span class="pregunta-titulo">La cuenta, ¿es de la persona (DNI) o de la empresa proveedora? Si el vendedor deja la empresa, ¿qué pasa con los vínculos y el historial?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Con "una cuenta = un DNI", si el vendedor que cotizaba se va de la empresa, todos los
+negocios quedan vinculados a una persona que ya no la representa.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> La cuenta es del <strong>proveedor</strong> (nombre o razón social; CUIT opcional). El
+      DNI es del <strong>operador</strong> que la usa hoy, sigue siendo único, y se puede reemplazar por otra
+      persona sin perder vínculos ni historial. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> La cuenta es de la persona (DNI). Si cambia el vendedor, la empresa crea una cuenta
+      nueva y los negocios la vuelven a vincular; el historial queda en la cuenta vieja.</li>
+  <li><strong>(c)</strong> Dejarlo como (b) por ahora y anotarlo como limitación conocida.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span>
+  <span class="pregunta-titulo">El negocio invita a un mail, pero el proveedor ya tiene cuenta con otro mail. ¿Cómo se reconoce que es la misma persona?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">El vínculo se pide por mail pero la unicidad se controla por DNI: hay que unir las dos
+cosas.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> La invitación es un link. Quien lo abre puede decir "ya tengo cuenta", ingresa con la
+      suya (con cualquier mail) y acepta desde ahí. Si intenta registrarse con un DNI que ya existe, el sistema
+      le dice que ya tiene cuenta y lo manda a ingresar. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> La invitación solo vale para ese mail exacto; si el proveedor usa otro, el negocio
+      tiene que reinvitarlo al mail correcto.</li>
+  <li><strong>(c)</strong> El negocio invita por DNI en vez de por mail.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span>
+  <span class="pregunta-titulo">Si el negocio ya tenía a ese proveedor cargado en su ficha (sin cuenta), ¿con qué ficha se une cuando acepta?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Evita tener el mismo proveedor dos veces en la lista del negocio.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> La invitación sale desde la ficha del proveedor, así que se une siempre a esa ficha.
+      Si el proveedor se registró solo y aparece por otro camino, el negocio elige a qué ficha unirlo o si crea
+      una nueva. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Se une automáticamente por CUIT o DNI si coincide con una ficha existente.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span>
+  <span class="pregunta-titulo">"Misma cuenta con vistas diferentes" (un proveedor que también es negocio en Genesis360): ¿entra ahora o queda para después?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Hoy una sesión es <strong>o</strong> de proveedor <strong>o</strong> de usuario de un negocio,
+nunca las dos. La base de datos ya permite que la misma persona tenga las dos cosas; falta diseñar cómo cambia
+de vista. Nada de lo de este módulo lo impide.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Para después, junto con la conexión entre negocios de Genesis360 (stock compartido,
+      pagos enlazados). <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Ahora: un selector "Entrar como proveedor / como mi negocio" desde el primer día.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>D · La cotización</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span>
+  <span class="pregunta-titulo">El proveedor agrega una línea con algo que no está en el catálogo del negocio. Al elegir esa oferta, ¿qué pasa con esa línea?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">En el cuestionario anterior (C1) esta parte quedó sin respuesta. Es importante porque lo que
+entra a la OC después entra al stock.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Nunca se crea un producto solo. Al elegir, el negocio decide línea por línea: la asocia a
+      un producto que ya tiene, da de alta uno nuevo en el momento, o la deja como <strong>cargo que no es
+      stock</strong> (mano de obra, colocación, flete). <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Se crea el producto automáticamente con los datos que cargó el proveedor.</li>
+  <li><strong>(c)</strong> Esas líneas entran siempre como cargo que no es stock.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span>
+  <span class="pregunta-titulo">Llega una oferta en pesos y otra en dólares. ¿Cómo se comparan en la pantalla?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">La regla que ya rige en toda la app: un importe en otra moneda <strong>no se suma ni se
+convierte en silencio</strong>, se muestra aparte. Acá la única cotización que hay es la que cargó a mano cada
+proveedor.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Cada oferta en su moneda, con un "≈ $X según la cotización del proveedor" marcado como
+      tal. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Cada oferta solo en su moneda, sin equivalente.</li>
+  <li><strong>(c)</strong> Convertir todo a pesos con la cotización del día del sistema.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span>
+  <span class="pregunta-titulo">Pasada la fecha límite que puso el negocio, ¿qué se puede hacer todavía?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">La validez del proveedor ya quedó definida: vencida, no se puede pagar. Falta definir el
+efecto de la fecha límite del negocio.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Los proveedores ya no pueden mandar ofertas ni versiones nuevas; las que ya llegaron se
+      pueden elegir mientras sigan vigentes. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Es solo informativa: no bloquea nada.</li>
+  <li><strong>(c)</strong> La Solicitud se cierra entera: no se puede ni responder ni elegir.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span>
+  <span class="pregunta-titulo">Para que el historial registre "entregó tarde", ¿agregamos una fecha de entrega comprometida?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">La coordinación es texto libre y no hay forma de medir un atraso contra un texto. Los
+faltantes no tienen este problema: Recepción ya registra lo recibido contra lo pedido.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Sí: una fecha opcional (además del texto libre) que pone el proveedor y acepta el
+      negocio. La entrega tarde se mide contra esa fecha. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> No: la entrega tarde la anota a mano el negocio al recibir.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span>
+  <span class="pregunta-titulo">Cuando el negocio pide cambios (contrapropuesta), ¿cómo lo hace?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Se definió que hay contrapropuestas de los dos lados dentro del hilo. Falta definir si el
+negocio edita las líneas o lo pide por escrito.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Las dos cosas: puede editar líneas (cantidades, quitar, agregar, precio que pretende) y
+      eso queda como una versión del negocio, o puede mandar solo un comentario. El proveedor responde con una
+      versión suya. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Solo con un comentario; las versiones las arma siempre el proveedor.</li>
+  <li><strong>(c)</strong> Solo editando las líneas.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D6</span>
+  <span class="pregunta-titulo">¿El proveedor sabe que hay otros proveedores cotizando la misma Solicitud?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Nunca ve sus ofertas ni sus nombres (ya definido). La pregunta es solo si sabe que compite.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> No ve nada sobre otros proveedores. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Ve un aviso genérico: "esta solicitud se envió a varios proveedores".</li>
+  <li><strong>(c)</strong> Ve cuántos proveedores fueron invitados.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>E · La pantalla del negocio</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span>
+  <span class="pregunta-titulo">El botón "Compartir" de cada Solicitud, ¿qué comparte y con quién?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Un link de invitación por WhatsApp o mail para un proveedor que todavía no tiene cuenta:
+      se registra y cae directo en esa Solicitud para cotizar. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Un PDF de la Solicitud (para mandar por fuera del sistema).</li>
+  <li><strong>(c)</strong> Las dos cosas.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span>
+  <span class="pregunta-titulo">¿Quién puede crear una Solicitud y mandarla a proveedores?</span>
+  <span class="tag tag-nuevo">NUEVO</span>
+</div>
+<div class="contexto">Elegir la oferta ya está definido (solo el Dueño, delegable). Esto es solo armar y mandar
+la Solicitud, que no compromete plata.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Los mismos roles que hoy pueden crear Órdenes de Compra. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Solo el Dueño y el Supervisor.</li>
+  <li><strong>(c)</strong> Cualquier usuario con acceso a Proveedores.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span>
+  <span class="pregunta-titulo">¿Qué hacemos con los presupuestos que hoy existen dentro de Servicios?</span>
+  <span class="tag tag-existente">EXISTENTE</span>
+</div>
+<div class="contexto">Hoy, en Proveedores → Servicios, se cargan a mano presupuestos con un monto y un archivo, se
+comparan y al aprobar uno se crea el gasto. El módulo nuevo cubre productos y también servicios (mano de obra,
+colocación).</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Conviven al principio; cuando lo nuevo esté estable, se pasa todo a la pestaña
+      Presupuestos y se retira lo viejo. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Conviven siempre: Servicios para lo recurrente, Presupuestos para compras.</li>
+  <li><strong>(c)</strong> Se reemplaza desde el primer día.</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>F · Avisos al proveedor</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span>
+  <span class="pregunta-titulo">¿Por dónde le llegan los avisos al proveedor?</span>
+  <span class="tag tag-cambio">CAMBIO</span>
+</div>
+<div class="contexto">Se pidió reutilizar las notificaciones que ya existen, pero esas son para usuarios
+<strong>de un negocio</strong> y el proveedor no lo es. Lo que sí se reutiliza es el envío de mails que ya usa la
+app. Los avisos internos del negocio (llegó una oferta nueva, el proveedor confirmó un comprobante) van por las
+notificaciones de siempre.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> Mail + un aviso dentro del Portal (campanita con lo pendiente).
+      <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Solo mail.</li>
+  <li><strong>(c)</strong> Mail + aviso en el Portal + WhatsApp (depende de que el Asistente de WhatsApp esté
+      activo en producción, que hoy no lo está).</li>
+  <li><strong>(e)</strong> Otra: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>G · Prioridad</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span>
+  <span class="pregunta-titulo">¿En qué orden lo construimos?</span>
+</div>
+<div class="contexto">Orden propuesto, de menor a mayor riesgo: <strong>1)</strong> Presupuestos del lado del
+negocio (solicitudes, ofertas cargadas a mano, versiones, marcas de cambio, filtros, elegir → OC), que ya sirve
+sin ningún proveedor registrado · <strong>2)</strong> cuenta del proveedor (registro con DNI, invitación
+pendiente y aceptación, logo) · <strong>3)</strong> el proveedor cotiza desde el Portal · <strong>4)</strong>
+pagos, comprobantes y avisos · <strong>5)</strong> Recepción sin datos sensibles e historial del proveedor ·
+<strong>6)</strong> más adelante: misma cuenta como proveedor y como negocio.</div>
+<ul class="opciones">
+  <li><strong>(a)</strong> En ese orden. <span class="sugerida">✓ sugerida</span></li>
+  <li><strong>(b)</strong> Primero que el proveedor pueda cotizar (2 y 3), después lo demás.</li>
+  <li><strong>(c)</strong> Otro orden: ____________</li>
+</ul>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span>
+  <span class="pregunta-titulo">Top 3: de todas las preguntas de este documento, ¿cuáles tres quieren cerrar primero?</span>
+</div>
+<div class="contexto">Sin <strong>A1</strong>, <strong>A2</strong> y <strong>B1</strong> no se puede empezar,
+porque tocan plata y recepción. El resto se puede ir resolviendo por fase.</div>
+<div class="respuesta-libre">1. ____________ &nbsp;&nbsp; 2. ____________ &nbsp;&nbsp; 3. ____________</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span>
+  <span class="pregunta-titulo">¿Hay algún proveedor real con el que probarlo primero?</span>
+</div>
+<div class="contexto">Alguien que hoy mande presupuestos en papel o por WhatsApp sirve para validar las fases 2
+y 3 con un caso real.</div>
+<div class="respuesta-libre">Respuesta:</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento de reglas de negocio — Presupuestos de proveedores · 6 de octubre de 2026<br>
+  Documento para responder offline. Todo lo afirmado sobre “cómo está hoy” se verificó contra el código y el
+  esquema de la base, no contra la documentación.
+</div>
+
+</body>
+</html>

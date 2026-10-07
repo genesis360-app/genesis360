@@ -1,144 +1,45 @@
 import { Link } from 'react-router-dom'
 import { BRAND, PLANES } from '@/config/brand'
 import PricingConfigurator from '@/components/PricingConfigurator'
-import {
-  Package, BarChart2, ShoppingCart, Users, Shield, Zap,
-  Check, X, ArrowRight, Star, ChevronDown, Menu
-} from 'lucide-react'
+import { Check, X, ArrowRight, Star, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
 import '@/styles/landingHero.css'
-
-const FEATURES = [
-  {
-    icon: Package,
-    title: 'Inventario inteligente',
-    desc: 'Controlá cada unidad con trazabilidad por serie, lote y vencimiento. Sabés exactamente qué tenés y dónde está.',
-  },
-  {
-    icon: ShoppingCart,
-    title: 'Ventas con reserva de stock',
-    desc: 'Registrá ventas, reservá stock automáticamente y despachá cuando corresponda. Sin errores ni doble venta.',
-  },
-  {
-    icon: BarChart2,
-    title: 'Movimientos y alertas',
-    desc: 'Histórico completo de ingresos y rebajes. Alertas automáticas cuando el stock baja del mínimo.',
-  },
-  {
-    icon: Users,
-    title: 'Multi-usuario con roles',
-    desc: 'Asigná roles a tu equipo: dueño, supervisor o cajero. Cada uno ve y hace solo lo que le corresponde.',
-  },
-  {
-    icon: Shield,
-    title: 'Datos 100% seguros',
-    desc: 'Cada negocio tiene sus propios datos completamente aislados. Seguridad a nivel de base de datos.',
-  },
-  {
-    icon: Zap,
-    title: 'Funciona en cualquier dispositivo',
-    desc: 'PWA optimizada para celular y desktop. Instalable en tu teléfono sin bajar nada de la tienda.',
-  },
-]
+import '@/styles/landing.css'
+import {
+  SeccionProblema, SeccionSolucion, SeccionModulos, SeccionIA, SeccionEscalabilidad, SeccionRubros, SeccionFundadores,
+} from '@/components/landing/LandingSecciones'
+import { FAQ } from '@/components/landing/contenido'
+import { LandingNav, LandingCierre, LandingPie } from '@/components/landing/LandingMarco'
 
 // 🛑 Testimonios: SOLO de clientes reales, con su permiso (GO 2026-10-06). Acá había 3 inventados ("Carlos M., Ferretería
 // El Tornillo"…, 5 estrellas) publicados en PROD: publicidad engañosa (Ley 24.240), lo marcó el doc 00 de Fede. El slot
 // queda armado y no se muestra mientras la lista esté vacía (Landing 2.0, wiki/business/plan-landing-2.md).
 const TESTIMONIALS: { nombre: string; negocio: string; texto: string; estrellas: number }[] = []
 
-const FAQ = [
-  {
-    q: '¿Necesito instalar algo?',
-    a: `No. ${BRAND.name} funciona desde el navegador en cualquier dispositivo. También podés instalarlo como app en tu celular con un click.`,
-  },
-  {
-    q: '¿Puedo probar antes de pagar?',
-    a: 'Sí, todos los planes tienen 30 días de prueba gratuita sin necesidad de tarjeta de crédito.',
-  },
-  {
-    q: '¿Mis datos están seguros?',
-    a: 'Totalmente. Cada negocio tiene sus datos completamente aislados. Usamos cifrado SSL y base de datos con seguridad a nivel de fila.',
-  },
-  {
-    q: '¿Puedo cambiar de plan después?',
-    a: 'Sí, podés subir o bajar de plan en cualquier momento desde tu cuenta.',
-  },
-  {
-    q: '¿Funciona para cualquier tipo de comercio?',
-    a: `${BRAND.name} está pensado para ferreterías, kioscos, despensas, mini-mercados y cualquier negocio que necesite controlar su inventario.`,
-  },
-  {
-    q: '¿Cómo es el soporte?',
-    a: 'Básico y Pro tienen soporte por email. Enterprise tiene soporte prioritario.',
-  },
-]
-
 function FAQItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border-b border-gray-100 last:border-0">
-      <button onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between py-4 text-left gap-4">
-        <span className="font-medium text-gray-800">{q}</span>
-        <ChevronDown size={18} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+    <div className="border-b border-zinc-200">
+      <button onClick={() => setOpen(!open)} aria-expanded={open}
+        className="w-full flex items-center justify-between py-5 text-left gap-6">
+        <span className="text-lg font-medium tracking-tight">{q}</span>
+        <ChevronDown size={20} className={`text-zinc-400 flex-shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && <p className="text-gray-500 text-sm pb-4 leading-relaxed">{a}</p>}
+      <div className="lp-faq-panel" data-abierto={open}>
+        <div><p className="text-zinc-600 pb-6 leading-relaxed max-w-[64ch]">{a}</p></div>
+      </div>
     </div>
   )
 }
 
 export default function LandingPage() {
-  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="landing min-h-screen">
 
-      {/* ── NAV ── */}
-      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={BRAND.logo} alt={BRAND.name} className="w-8 h-8 rounded-lg object-contain" />
-            <span className="font-bold text-xl text-primary">{BRAND.name}</span>
-          </div>
-
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-6 text-sm text-gray-600">
-            <a href="#features" className="hover:text-primary transition-colors">Funciones</a>
-            <a href="#precios" className="hover:text-primary transition-colors">Precios</a>
-            <a href="#faq" className="hover:text-primary transition-colors">FAQ</a>
-          </div>
-
-          <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="text-sm font-medium text-gray-600 hover:text-primary transition-colors px-4 py-2">
-              Ingresar
-            </Link>
-            <Link to="/onboarding"
-              className="text-sm font-semibold bg-accent hover:bg-accent/90 text-white px-5 py-2.5 rounded-xl transition-all">
-              Probar gratis
-            </Link>
-          </div>
-
-          <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden text-gray-600">
-            <Menu size={22} />
-          </button>
-        </div>
-
-        {/* Mobile menu */}
-        {menuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white px-4 py-4 space-y-3">
-            <a href="#features" className="block text-gray-600 py-1">Funciones</a>
-            <a href="#precios" className="block text-gray-600 py-1">Precios</a>
-            <a href="#faq" className="block text-gray-600 py-1">FAQ</a>
-            <hr className="border-gray-100" />
-            <Link to="/login" className="block text-gray-600 py-1">Ingresar</Link>
-            <Link to="/onboarding" className="block w-full text-center bg-primary text-white font-semibold py-2.5 rounded-xl">
-              Probar gratis
-            </Link>
-          </div>
-        )}
-      </nav>
+      <LandingNav enHome />
 
       {/* ── HERO ── (2026-10-05) Asimétrico: mensaje a la izquierda, el producto REAL a la derecha (captura del POS de
           DEV) con el ticket de esa misma venta "imprimiéndose". Movimiento en src/styles/landingHero.css. */}
@@ -146,7 +47,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 pt-12 pb-32 md:pt-16 lg:pt-20 lg:pb-36 grid gap-12 lg:gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-center">
 
           <div className="max-w-xl">
-            <h1 className="hero-in text-[2.6rem] leading-[1.05] sm:text-5xl lg:text-[3.6rem] font-semibold tracking-[-0.035em]" style={{ ['--i' as any]: 0 }}>
+            <h1 className="hero-in hero-titulo text-[2.6rem] leading-[1.05] sm:text-5xl lg:text-[3.6rem] font-semibold tracking-[-0.035em]" style={{ ['--i' as any]: 0 }}>
               Vendé, cobrá y sabé{' '}
               <span className="relative whitespace-nowrap">
                 qué te queda.
@@ -161,7 +62,7 @@ export default function LandingPage() {
                 className="hero-press inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-base font-semibold text-white hover:bg-[#6A00DD] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                 Probar gratis <ArrowRight size={18} className="hero-arrow" />
               </Link>
-              <a href="#features"
+              <a href="#solucion"
                 className="hero-press inline-flex items-center justify-center gap-2 rounded-xl px-2 py-3.5 text-base font-medium text-zinc-700 hover:text-[#0D0D0D] underline decoration-zinc-300 underline-offset-[6px] hover:decoration-[#0D0D0D]">
                 Ver cómo funciona
               </a>
@@ -171,9 +72,12 @@ export default function LandingPage() {
           {/* Producto real + ticket. En desktop la pantalla se corta contra el borde derecho para dar profundidad. */}
           <div className="relative lg:-mr-[10vw] xl:-mr-[14vw]">
             <div className="hero-shot rounded-2xl border border-zinc-200 bg-white shadow-[0_30px_80px_-30px_rgba(60,20,120,0.28)] overflow-hidden">
-              <img src="/landing/pos-venta.jpg" width={1184} height={760}
-                alt="Pantalla de Ventas de Genesis360 con dos productos en el carrito y el total de la venta"
-                className="block w-full h-auto" fetchPriority="high" decoding="async" />
+              <picture>
+                <source srcSet="/landing/pos-venta.webp" type="image/webp" />
+                <img src="/landing/pos-venta.jpg" width={1184} height={760}
+                  alt="Pantalla de Ventas de Genesis360 con dos productos en el carrito y el total de la venta"
+                  className="block w-full h-auto" decoding="async" {...{ fetchpriority: 'high' }} />
+              </picture>
             </div>
 
             <div className="absolute right-3 -bottom-24 w-[12.75rem] sm:right-auto sm:left-8 sm:-bottom-14 sm:w-[15rem] lg:-bottom-28 lg:-left-40" aria-hidden>
@@ -190,7 +94,7 @@ export default function LandingPage() {
                     <div className="my-2 border-t border-dashed border-zinc-300" />
                     <div className="flex justify-between font-semibold text-[#0D0D0D] text-[12.5px]"><span>TOTAL</span><span>$2.257</span></div>
                     <div className="flex justify-between text-zinc-500"><span>Efectivo</span><span>$2.257</span></div>
-                    <p className="mt-2 text-center text-zinc-400">Gracias por su compra</p>
+                    <p className="mt-2 text-center text-zinc-500">Gracias por su compra</p>
                   </div>
                 </div>
               </div>
@@ -199,104 +103,101 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── LOGOS / TIPOS DE COMERCIO ── */}
-      <section className="border-b border-gray-100 py-8">
-        <div className="max-w-6xl mx-auto px-4">
-          <p className="text-center text-sm text-gray-400 mb-6">Pensado para todo tipo de comercio</p>
-          <div className="flex flex-wrap justify-center gap-6 md:gap-10 text-gray-400 text-sm font-medium">
-            {['Ferreterías', 'Kioscos', 'Despensas', 'Mini-mercados', 'Farmacias', 'Librerías', 'Almacenes'].map(t => (
-              <span key={t} className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-accent rounded-full" />{t}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* ── 2-7 · Landing 2.0 (docs de Fede; la comparativa con otros sistemas se sacó por decisión de GO) ── */}
+      <SeccionProblema />
+      <SeccionSolucion />
+      <SeccionModulos />
+      <SeccionIA />
+      <SeccionEscalabilidad />
 
-      {/* ── FEATURES ── */}
-      <section id="features" className="py-20 bg-brand-bg">
+      {/* ── PRECIOS ── */}
+      <section id="precios" className="scroll-mt-20 py-24 md:py-32">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4">
-              Todo lo que necesitás en un solo lugar
-            </h2>
-            <p className="text-gray-500 text-lg max-w-xl mx-auto">
-              Sin complicaciones, sin Excel, sin hojas de papel.
-            </p>
+          <div className="mb-14 grid gap-6 lg:grid-cols-2 lg:items-end">
+            <h2 className="text-[2.1rem] leading-[1.08] sm:text-5xl font-semibold tracking-[-0.03em]">Planes y precios</h2>
+            <p className="text-lg text-zinc-600 max-w-[48ch]">Empezá gratis y activá lo que necesites cuando lo necesites. 30 días de prueba, sin tarjeta.</p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center mb-4">
-                  <Icon size={22} className="text-primary" />
-                </div>
-                <h3 className="font-bold text-gray-800 mb-2">{title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SCREENSHOT / DEMO ── */}
-      <section className="py-20">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div>
-              <span className="text-accent-text font-semibold text-sm uppercase tracking-wider">Trazabilidad completa</span>
-              <h2 className="text-3xl md:text-4xl font-bold text-primary mt-2 mb-4">
-                Sabés exactamente qué tenés y dónde está
-              </h2>
-              <p className="text-gray-500 leading-relaxed mb-6">
-                Cada ingreso genera una línea de inventario con su propio código LPN, estado, ubicación y trazabilidad por número de serie o lote. Nunca más "creo que tengo" — ahora sabés.
-              </p>
-              <ul className="space-y-3">
-                {[
-                  'Control por número de serie, lote y vencimiento',
-                  'Ubicaciones físicas dentro del negocio',
-                  'Estados configurables (Disponible, Dañado, Reservado...)',
-                  'Historial completo de cada movimiento',
-                ].map(item => (
-                  <li key={item} className="flex items-start gap-3 text-sm text-gray-700">
-                    <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Check size={12} className="text-green-600" />
-                    </div>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Link to="/onboarding"
-                className="inline-flex items-center gap-2 mt-8 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all">
-                Probalo gratis <ArrowRight size={16} />
-              </Link>
-            </div>
-            <div className="bg-gradient-to-br from-primary to-accent rounded-2xl p-6 shadow-xl">
-              <div className="bg-white/10 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between text-white text-sm">
-                  <span className="font-semibold">Inventario</span>
-                  <span className="text-blue-200 text-xs">3 productos</span>
-                </div>
-                {[
-                  { nombre: 'Tornillo hex 1/4"', stock: 142, estado: 'Disponible', color: '#22c55e' },
-                  { nombre: 'Pintura blanca 4L', stock: 8, estado: 'Stock bajo', color: '#eab308' },
-                  { nombre: 'Llave inglesa 12"', stock: 23, estado: 'Disponible', color: '#22c55e' },
-                ].map(p => (
-                  <div key={p.nombre} className="bg-white/10 rounded-lg px-3 py-2.5 flex items-center justify-between">
-                    <div>
-                      <p className="text-white text-sm font-medium">{p.nombre}</p>
-                      <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ backgroundColor: p.color + '30', color: p.color }}>
-                        {p.estado}
-                      </span>
-                    </div>
-                    <span className="text-white font-bold">{p.stock}</span>
+          <div className={`grid md:grid-cols-2 gap-6 ${PLANES.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
+            {PLANES.map(plan => (
+              <div key={plan.id}
+                className={`rounded-3xl p-6 border flex flex-col relative lp-num
+                  ${plan.destacado
+                    ? 'border-[#0E0B16] bg-[#0E0B16] text-white shadow-[0_30px_60px_-30px_rgba(60,20,120,0.6)] lg:-translate-y-3'
+                    : 'border-zinc-200 bg-white text-zinc-800'}`}>
+                {plan.destacado && (
+                  // "Recomendado", no "Más popular": sin clientes todavía, "el más elegido" sería un dato inventado (Ley 24.240).
+                  <div className="absolute -top-3 left-6 bg-gradient-to-r from-[#7B00FF] to-[#06B6D4] text-white text-xs font-semibold px-3 py-1 rounded-full">
+                    Recomendado
                   </div>
-                ))}
+                )}
+                <div className="mb-5">
+                  <h3 className={`font-semibold text-xl tracking-tight ${plan.destacado ? 'text-white' : 'text-[#0D0D0D]'}`}>{plan.nombre}</h3>
+                  <p className={`text-xs mt-0.5 ${plan.destacado ? 'text-white/60' : 'text-zinc-500'}`}>{plan.descripcion}</p>
+                  <div className="mt-4">
+                    {plan.precio === null ? (
+                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-[#0D0D0D]'}`}>A consultar</span>
+                    ) : plan.precio === 0 ? (
+                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-[#0D0D0D]'}`}>Gratis</span>
+                    ) : (
+                      <div>
+                        <span className={`text-3xl font-bold ${plan.destacado ? 'text-white' : 'text-[#0D0D0D]'}`}>
+                          ${plan.precio.toLocaleString('es-AR')}
+                        </span>
+                        <span className={`text-sm ml-1 ${plan.destacado ? 'text-white/60' : 'text-zinc-500'}`}>/mes</span>
+                        {'precioManual' in plan && (
+                          <p className={`text-xs mt-1 ${plan.destacado ? 'text-white/60' : 'text-zinc-500'}`}>
+                            con débito automático · ${(plan as any).precioManual.toLocaleString('es-AR')} con otros medios de pago
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <ul className="space-y-2 flex-1 mb-6">
+                  {plan.features.map(f => (
+                    <li key={f} className="flex items-start gap-2 text-sm">
+                      <Check size={15} className={`flex-shrink-0 mt-0.5 ${plan.destacado ? 'text-[#22D3EE]' : 'text-[#0891B2]'}`} />
+                      <span className={plan.destacado ? 'text-white/80' : 'text-zinc-600'}>{f}</span>
+                    </li>
+                  ))}
+                  {plan.noIncluye.map(f => (
+                    <li key={f} className="flex items-start gap-2 text-sm">
+                      <X size={15} className={`flex-shrink-0 mt-0.5 ${plan.destacado ? 'text-white/35' : 'text-zinc-300'}`} />
+                      <span className={plan.destacado ? 'text-white/50' : 'text-zinc-500'}>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {(() => {
+                  const ctaClass = `block text-center font-semibold py-3 rounded-xl transition-all text-sm ${
+                    plan.destacado
+                      ? 'lp-cta text-white'
+                      : 'bg-[#0D0D0D] text-white hover:bg-[#2a2236]'}`
+                  // Enterprise (precio === null) → el contacto va por mailto y DEBE ser un
+                  // <a> real: un Link de React Router con un destino mailto lo resuelve como
+                  // ruta interna (navega a /mailto... → catch-all → rebota al home, no abre el correo).
+                  return plan.precio === null
+                    ? <a href={`mailto:${BRAND.email}`} className={ctaClass}>Contactar</a>
+                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 30 días gratis'}</Link>
+                })()}
               </div>
-            </div>
+            ))}
           </div>
+        </div>
+
+        {/* Configurador de precios (Fase 4) — estimador plan base + add-ons.
+            Va FUERA del max-w-6xl de los planes para ocupar ~80% del viewport (más protagonismo). */}
+        <div className="mt-14 mx-auto w-[92%] lg:w-[80%] max-w-[1600px]">
+          <PricingConfigurator />
         </div>
       </section>
 
+      {/* ── 9 · Para tu rubro ── */}
+      <SeccionRubros />
+
+      {/* ── 10 · Confianza: fundadores + testimonios reales (oculto mientras no haya ninguno) ── */}
+      <SeccionFundadores />
       {/* ── TESTIMONIALS ── (solo reales; oculto mientras no haya ninguno) */}
       {TESTIMONIALS.length > 0 && <section className="py-20 bg-brand-bg">
         <div className="max-w-6xl mx-auto px-4">
@@ -322,136 +223,19 @@ export default function LandingPage() {
         </div>
       </section>}
 
-      {/* ── PRECIOS ── */}
-      <section id="precios" className="py-20">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4">Planes y precios</h2>
-            <p className="text-gray-500">Probá 30 días gratis. Crecé cuando lo necesites.</p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {PLANES.map(plan => (
-              <div key={plan.id}
-                className={`rounded-2xl p-6 border-2 flex flex-col relative
-                  ${plan.destacado
-                    ? 'border-accent-text bg-primary text-white shadow-xl scale-105'
-                    : 'border-gray-200 bg-white text-gray-800'}`}>
-                {plan.destacado && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
-                    MÁS POPULAR
-                  </div>
-                )}
-                <div className="mb-5">
-                  <h3 className={`font-bold text-lg ${plan.destacado ? 'text-white' : 'text-primary'}`}>{plan.nombre}</h3>
-                  <p className={`text-xs mt-0.5 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>{plan.descripcion}</p>
-                  <div className="mt-4">
-                    {plan.precio === null ? (
-                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-primary'}`}>A consultar</span>
-                    ) : plan.precio === 0 ? (
-                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-primary'}`}>Gratis</span>
-                    ) : (
-                      <div>
-                        <span className={`text-3xl font-bold ${plan.destacado ? 'text-white' : 'text-primary'}`}>
-                          ${plan.precio.toLocaleString('es-AR')}
-                        </span>
-                        <span className={`text-sm ml-1 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>/mes</span>
-                        {'precioManual' in plan && (
-                          <p className={`text-xs mt-1 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>
-                            con débito automático · ${(plan as any).precioManual.toLocaleString('es-AR')} con otros medios de pago
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <ul className="space-y-2 flex-1 mb-6">
-                  {plan.features.map(f => (
-                    <li key={f} className="flex items-start gap-2 text-sm">
-                      <Check size={15} className={`flex-shrink-0 mt-0.5 ${plan.destacado ? 'text-green-400' : 'text-green-500'}`} />
-                      <span className={plan.destacado ? 'text-blue-100' : 'text-gray-600'}>{f}</span>
-                    </li>
-                  ))}
-                  {plan.noIncluye.map(f => (
-                    <li key={f} className="flex items-start gap-2 text-sm opacity-50">
-                      <X size={15} className="flex-shrink-0 mt-0.5 text-gray-400" />
-                      <span className={plan.destacado ? 'text-blue-200' : 'text-gray-400'}>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {(() => {
-                  const ctaClass = `block text-center font-semibold py-3 rounded-xl transition-all text-sm ${
-                    plan.destacado
-                      ? 'bg-white text-primary hover:bg-white/90'
-                      : 'bg-primary text-white hover:bg-accent'}`
-                  // Enterprise (precio === null) → el contacto va por mailto y DEBE ser un
-                  // <a> real: un Link de React Router con un destino mailto lo resuelve como
-                  // ruta interna (navega a /mailto... → catch-all → rebota al home, no abre el correo).
-                  return plan.precio === null
-                    ? <a href={`mailto:${BRAND.email}`} className={ctaClass}>Contactar</a>
-                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 30 días gratis'}</Link>
-                })()}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Configurador de precios (Fase 4) — estimador plan base + add-ons.
-            Va FUERA del max-w-6xl de los planes para ocupar ~80% del viewport (más protagonismo). */}
-        <div className="mt-14 mx-auto w-[92%] lg:w-[80%] max-w-[1600px]">
-          <PricingConfigurator />
-        </div>
-      </section>
-
-      {/* ── FAQ ── */}
-      <section id="faq" className="py-20 bg-brand-bg">
-        <div className="max-w-2xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-primary text-center mb-12">Preguntas frecuentes</h2>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-6">
+      {/* ── 11 · FAQ ── */}
+      <section id="faq" className="scroll-mt-20 bg-[#F3F1F8]">
+        <div className="max-w-6xl mx-auto px-4 py-24 md:py-32 grid gap-10 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
+          <h2 className="text-[2.1rem] leading-[1.08] sm:text-5xl font-semibold tracking-[-0.03em]">Preguntas frecuentes</h2>
+          <div className="border-t border-zinc-200">
             {FAQ.map(({ q, a }) => <FAQItem key={q} q={q} a={a} />)}
           </div>
         </div>
       </section>
 
-      {/* ── CTA FINAL ── */}
-      <section className="py-20 bg-brand-gradient-dark">
-        <div className="max-w-3xl mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            ¿Listo para tomar el control de tu inventario?
-          </h2>
-          <p className="text-blue-100 text-lg mb-8">
-            Empezá hoy. 30 días gratis, sin tarjeta de crédito.
-          </p>
-          <Link to="/onboarding"
-            className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">
-            Crear cuenta gratis <ArrowRight size={20} />
-          </Link>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer className="bg-primary text-blue-200 py-10">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <img src={BRAND.logo} alt={BRAND.name} className="w-7 h-7 rounded-lg object-contain" />
-              <span className="font-bold text-white">{BRAND.name}</span>
-            </div>
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
-              <a href="#features" className="hover:text-white transition-colors">Funciones</a>
-              <a href="#precios" className="hover:text-white transition-colors">Precios</a>
-              <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
-              <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
-              <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
-              <Link to="/cookies" className="hover:text-white transition-colors">Cookies</Link>
-              <a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Defensa del Consumidor</a>
-              <a href={`mailto:${BRAND.email}`} className="hover:text-white transition-colors">Contacto</a>
-            </div>
-            <p className="text-xs text-blue-300">© {new Date().getFullYear()} {BRAND.name}. Todos los derechos reservados.</p>
-          </div>
-        </div>
-      </footer>
+      {/* ── 12 · CTA final: el mismo del hero, con la misma fuerza ── */}
+      <LandingCierre />
+      <LandingPie enHome />
     </div>
   )
 }

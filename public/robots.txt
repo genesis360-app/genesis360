@@ -1,0 +1,27 @@
+# Genesis360 — buscadores y asistentes de IA son bienvenidos en las páginas públicas (Landing 2.0, doc 03 de Fede).
+# Las pantallas de la app no se indexan: su HTML lleva <meta name="robots" content="noindex"> (dist/app.html).
+User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://genesis360.pro/sitemap.xml

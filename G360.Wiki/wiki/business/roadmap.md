@@ -14,6 +14,11 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kal
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
 
+## 🔗 v1.240.1 — Canonical y sitemap apuntan a www.genesis360.pro (2026-10-07, EN PROD)
+
+- `genesis360.pro` redirige (308) a `www.genesis360.pro`: el canonical, el sitemap, `robots.txt` y las imágenes de Open Graph
+  apuntaban a la URL que redirige. Ahora a la final (`SITIO_URL`). Encontrado verificando con curl el deploy de v1.240.0.
+
 ## 🎨 v1.240.0 — Landing 2.0, pre-render para buscadores, páginas por rubro, ubicación "Global" y páginas legales sin datos personales (2026-10-07, EN PROD)
 
 - Landing nueva (docs de Fede): 12 secciones, fundadores, IA solo con lo que existe, sin "Agente de WhatsApp" en Enterprise,

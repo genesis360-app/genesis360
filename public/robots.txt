@@ -24,4 +24,4 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://genesis360.pro/sitemap.xml
+Sitemap: https://www.genesis360.pro/sitemap.xml

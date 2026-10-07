@@ -4,7 +4,9 @@
 // Solo lo que la app hace hoy (Ley 24.240).
 import { BRAND, PLANES } from '@/config/brand'
 
-export const SITIO_URL = 'https://genesis360.pro'
+// La dirección FINAL del sitio: genesis360.pro redirige (308) a www. El canonical, el sitemap y las imágenes de Open Graph
+// tienen que apuntar acá, no a una URL que redirige (verificado con curl en el deploy de v1.240.0).
+export const SITIO_URL = 'https://www.genesis360.pro'
 
 export const FAQ = [
   {

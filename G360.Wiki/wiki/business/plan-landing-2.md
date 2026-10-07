@@ -243,3 +243,18 @@ PWA ya instalada siga abriendo la app.
   Pedidos/picking y hoja de ruta (Pro).
 - **Queda:** más rubros (indumentaria con talle/color, kioscos, librerías…) cuando se definan; validar los términos con Search
   Console (Fase 5, necesita la cuenta de GO/Fede).
+
+## 9. Hero con dispositivos (v1.240.2, EN PROD 2026-10-07) y estado al cierre
+
+- **Hero** (pedido de GO): captura de Ventas dentro de una **tablet** (bisel oscuro + cámara; la pantalla se revela de abajo hacia
+  arriba); **impresora de tickets** vista desde arriba montada sobre la esquina inferior izquierda de la tablet, con la ranura al
+  medio y el ticket saliendo POR ENCIMA de la impresora (capas: cuerpo z-10 < papel z-20 < ranura z-30); **celular** con una
+  captura REAL del Panel → Ventas en vista móvil (`public/landing/panel-celular.webp`, 600×1298, componente `TelefonoPanel` en
+  `LandingSecciones.tsx`), 15 % más chico que la primera versión para no tapar la tablet. En celular (< `sm`) el teléfono no se
+  muestra: taparía la tablet. El hero ganó espacio abajo (`pb-48`/`lg:pb-52`) para que el ticket entre completo (medido en 6 anchos).
+- 🛑 **Pendiente (pedido de GO, "más adelante"):** usar **imágenes reales** de la app en toda la landing (hoy las piezas de las
+  secciones son dibujos con datos de demo) y reemplazar las dos capturas del hero (Ventas en la tablet y Panel en el celular),
+  que salen del negocio de prueba de DEV ("Almacén Jorgito", "Presupuestado 308 op. $0"). Hace falta un **negocio demo con datos
+  prolijos** antes de capturar. Las pestañas Insights/Métricas del Panel tienen datos de prueba impublicables (−1615 %, estados "E2E…").
+- **Otros pendientes:** Fase 5 (Search Console + Bing con la cuenta de GO/Fede, eventos de conversión), decidir si el Meta Pixel
+  se carga diferido (rendimiento en celular 65/100), más rubros (indumentaria, kioscos, librerías), programa "primeros socios".

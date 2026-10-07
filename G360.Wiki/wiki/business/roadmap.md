@@ -14,6 +14,13 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kal
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
 
+## 📱 v1.240.2 — Hero con tablet, impresora de tickets y celular con el Panel (2026-10-07, EN PROD)
+
+- Pedido de GO: la captura de Ventas dentro de una tablet; la línea negra pasa a ser una impresora de tickets vista desde arriba,
+  con el ticket saliendo de la ranura del medio por encima de la impresora, montada sobre la esquina inferior izquierda de la
+  tablet; un celular (15 % más chico que la primera versión) con una captura REAL del Panel → Ventas (`public/landing/panel-celular.webp`).
+- Sin migraciones ni Edge Functions.
+
 ## 🔗 v1.240.1 — Canonical y sitemap apuntan a www.genesis360.pro (2026-10-07, EN PROD)
 
 - `genesis360.pro` redirige (308) a `www.genesis360.pro`: el canonical, el sitemap, `robots.txt` y las imágenes de Open Graph

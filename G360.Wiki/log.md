@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-07] update | 🚚 El ticket por WhatsApp/link y por mail sale CON el envío (🟡 en `dev`, falta release a PROD)
+
+- GO probó con El Tilo en PROD: el ticket de la reserva #50 en la pantalla del POS no mostraba el envío.
+- Revisión: la **factura** (EF `emitir-factura`) y el **ticket de la pantalla** sí contemplan `costo_envio` (también en reservas).
+  Para la #50 la hipótesis es que la venta quedó con `costo_envio` 0/NULL (switch "Incluir envío" apagado o regla de envío
+  gratis) — **sin confirmar**: el `SUPABASE_ACCESS_TOKEN` de `.env.local` está vencido (401); GO lo renueva y se consulta.
+- 🐛 Bug real encontrado (REGLA #0): el ticket de **WhatsApp/link** (`ticketPDF`, `/c/<código>`) y el del **mail**
+  (`venta_confirmada` al cliente + el automático al dueño) salían SIN el envío y con un TOTAL menor al cobrado; el saldo de la
+  reserva tampoco lo sumaba. Fix solo frontend: `lineasEnvioTicket()` en `pedidoVenta.ts` + total/saldo de
+  `resumenPagoTicket()`. Sin EF ni migración. Unit (6 nuevos) + build verdes. UAT §104.
+
 ## [2026-10-07] deploy | 🚀 v1.240.2 EN PROD — hero con tablet, impresora de tickets y celular con el Panel
 
 - Pedido de GO: captura de Ventas dentro de una tablet; impresora de tickets vista desde arriba sobre la esquina inferior izquierda

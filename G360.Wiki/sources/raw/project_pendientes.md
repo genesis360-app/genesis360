@@ -25,6 +25,9 @@ type: project
 > - **Datos personales:** el domicilio de Fede ya no está en archivos, base de PROD ni memoria; sigue en el HISTORIAL de git (repo
 >   público) → reescribir el historial solo con autorización explícita de GO. Ley 25.326 art. 6: definir con el abogado una
 >   identidad no personal para Privacidad.
+> - **🚚 Envío en el ticket (07/10, en `dev`, falta release):** el ticket de WhatsApp/link y el del mail ya suman el envío (UAT
+>   §104). ⏳ Confirmar en PROD si la reserva #50 de El Tilo quedó con `costo_envio` 0/NULL — requiere renovar
+>   `SUPABASE_ACCESS_TOKEN` (vencido, 401).
 > - **DEV:** 2 ubicaciones de prueba "E2EDefecto_test_…" de corridas fallidas del e2e 187 en Almacén Jorgito (borrar desde la UI).
 > - Siguen los de abajo (plan de testing de Notificaciones, CC de proveedores, PDF de OC, prefijo S-OC, rotar `service_role`).
 >

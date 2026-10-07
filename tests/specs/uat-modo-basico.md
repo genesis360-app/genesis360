@@ -2411,6 +2411,24 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🚚 §104 — El ticket por WhatsApp/link y por mail sale CON el envío (🟡 DEV) — 2026-10-07
+
+Disparado por GO probando con El Tilo en PROD (reserva #50: el ticket no mostraba el envío). Al revisar se encontró que el ticket
+de la **pantalla** sí lo muestra (si `costo_envio > 0`), pero el de **WhatsApp/link** (`ticketPDF` + `/c/<código>`) y el del
+**mail** (`venta_confirmada`, al cliente y el automático al dueño) se armaban solo con los productos y `ventas.total` →
+**el comprobante decía menos de lo cobrado** y el saldo de la reserva no sumaba el envío. Fix solo frontend: helper
+`lineasEnvioTicket()` (renglones "Envío" / "Envío logística") + total y saldo de `resumenPagoTicket()` (los mismos de la pantalla).
+Los links ya compartidos antes del fix guardan su foto de datos vieja (sin envío).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 104.1 | Reserva con envío $300 → "Enviar por WhatsApp" → el link y el PDF muestran el renglón "Envío" y el TOTAL = productos + envío | unit `lineasEnvioTicket` · probar en DEV | ✅ unit · ⬜ manual |
+| 104.2 | El saldo del ticket de WhatsApp incluye el envío (total + envío − pagado), igual que "SALDO A PAGAR" de la pantalla | unit (reserva 2500 + 300, pagó 1000 → saldo 1800) | ✅ unit |
+| 104.3 | Ticket por mail al cliente: renglón "Envío" + total con envío | revisión · probar en DEV | ✅ código · ⬜ manual |
+| 104.4 | Mail automático al dueño (venta despachada): renglón "Envío" + total con envío | revisión | ✅ código |
+| 104.5 | Venta sin envío: ningún renglón extra, total sin cambios | unit | ✅ |
+| 104.6 | ⏳ Reserva #50 de El Tilo (PROD): confirmar si `ventas.costo_envio` quedó guardado (si es 0/NULL el ticket de la pantalla no lo puede mostrar; causas posibles: switch "Incluir envío" apagado o regla de envío gratis) | SQL de solo lectura en PROD (falta renovar el token de la Management API) | ⏳ |
+
 ## 📍 §103 — Ubicación "Global" y recepción de traslado en una sucursal sin ubicaciones (🟡 DEV) — 2026-10-06
 
 Caso real (El Tilo, PROD, solo lectura): el traslado #1 no se podía recibir porque la sucursal destino tenía 0 ubicaciones

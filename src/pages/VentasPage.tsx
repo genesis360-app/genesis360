@@ -67,7 +67,7 @@ import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
-import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
+import { filtrarPedidosMostrador, resumenPagoTicket, lineasEnvioTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useElegirUbicacion } from '@/components/ElegirUbicacionModal'
 import toast from 'react-hot-toast'
@@ -345,7 +345,7 @@ export default function VentasPage() {
         nombre: i.nombre ?? i.producto_nombre ?? 'Ítem',
         cantidad: i.tiene_series ? (i.series_seleccionadas?.length ?? i.cantidad ?? 1) : (i.cantidad ?? 1),
         subtotal: i.subtotal ?? ((i.precio_unitario ?? 0) * (i.cantidad ?? 1)),
-      }))
+      })).concat(lineasEnvioTicket(ticketVenta))
       const { error } = await supabase.functions.invoke('send-email', {
         body: {
           type: 'venta_confirmada',
@@ -353,7 +353,8 @@ export default function VentasPage() {
           data: {
             numero: ticketVenta.numero,
             negocio: tenant!.nombre,
-            total: ticketVenta.total,
+            // Con el envío, igual que el ticket de la pantalla (antes el mail decía menos de lo cobrado).
+            total: resumenPagoTicket(ticketVenta).totalConTodo,
             items,
             medio_pago: typeof ticketVenta.medio_pago === 'string' ? formatMedioPago(ticketVenta.medio_pago) : '',
           },
@@ -2618,8 +2619,8 @@ export default function VentasPage() {
   // ── Enviar por WhatsApp (pedido de GO 2026-10-01, mig 451) — ver src/hooks/useEnviarPorWhatsApp.ts ──────
   const enviarTicketPorWhatsApp = () => enviarPorWhatsApp(async () => {
     if (!ticketVenta) return null
-    const total = Number(ticketVenta.total) || 0
-    const pagado = Number(ticketVenta.monto_pagado ?? total) || 0
+    // Mismo total y saldo que el ticket de la pantalla: con el envío (antes salía por menos de lo cobrado).
+    const { totalConTodo: total, saldo, mostrarSaldo } = resumenPagoTicket(ticketVenta)
     const datos: TicketCompartidoData = {
       negocio: tenant!.nombre,
       etiqueta: `Venta ${formatTicket(ticketVenta)}`,
@@ -2629,12 +2630,12 @@ export default function VentasPage() {
         nombre: i.nombre ?? i.producto_nombre ?? 'Ítem',
         cantidad: i.tiene_series ? (i.series_seleccionadas?.length ?? i.cantidad ?? 1) : (i.cantidad ?? 1),
         subtotal: Number(i.subtotal ?? ((i.precio_unitario ?? 0) * (i.cantidad ?? 1))) || 0,
-      })),
+      })).concat(lineasEnvioTicket(ticketVenta)),
       total,
       medio_pago: typeof ticketVenta.medio_pago === 'string' ? formatMedioPago(ticketVenta.medio_pago) : null,
       vuelto: ticketVenta.vuelto ?? null,
       estado: ticketVenta.estado ?? null,
-      saldo: ticketVenta.estado === 'reservada' && total - pagado > 0.5 ? total - pagado : null,
+      saldo: mostrarSaldo ? saldo : null,
     }
     return { tipo: 'ticket', ventaId: ticketVenta.id, datos, etiqueta: datos.etiqueta, total, clienteId: ticketVenta.cliente_id }
   })
@@ -4053,8 +4054,9 @@ export default function VentasPage() {
               data: {
                 numero: venta.numero,
                 negocio: tenant!.nombre,
-                total,
-                items: cart.map(i => ({ nombre: i.nombre, cantidad: i.tiene_series ? i.series_seleccionadas.length : i.cantidad, subtotal: getItemSubtotal(i) })),
+                total: total + costoEnvioNum,
+                items: cart.map(i => ({ nombre: i.nombre, cantidad: i.tiene_series ? i.series_seleccionadas.length : i.cantidad, subtotal: getItemSubtotal(i) }))
+                  .concat(lineasEnvioTicket({ costo_envio: costoEnvioNum })),
                 medio_pago: serializeMediosPago(mediosPago, total) ?? '',
               },
             },

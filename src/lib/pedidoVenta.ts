@@ -177,6 +177,25 @@ export function resumenPagoTicket(venta: {
 }
 
 /**
+ * 💵 Renglones de envío para los tickets que salen de la pantalla (WhatsApp/link y mail).
+ *
+ * El ticket del POS muestra "Envío" y lo suma al TOTAL, pero el de WhatsApp y el del mail se armaban solo con los
+ * productos y `total` a secas → el cliente recibía un comprobante por MENOS de lo que pagó (lo vio GO con El Tilo,
+ * 2026-10-07). Mismas etiquetas y mismo criterio que la pantalla; el total va con `resumenPagoTicket().totalConTodo`.
+ */
+export function lineasEnvioTicket(venta: {
+  costo_envio?: number | null
+  costo_envio_logistica?: number | null
+}): { nombre: string; cantidad: number; subtotal: number }[] {
+  const lineas: { nombre: string; cantidad: number; subtotal: number }[] = []
+  const envio = Number(venta.costo_envio ?? 0)
+  const logistica = Number(venta.costo_envio_logistica ?? 0)
+  if (Number.isFinite(envio) && envio > 0) lineas.push({ nombre: 'Envío', cantidad: 1, subtotal: envio })
+  if (Number.isFinite(logistica) && logistica > 0) lineas.push({ nombre: 'Envío logística', cantidad: 1, subtotal: logistica })
+  return lineas
+}
+
+/**
  * 💵 Saldo que falta cobrar para poder entregar (caja "Debe validar pago total" del diagrama).
  * `total` NO incluye el costo de envío pero `monto_pagado` SÍ (ISS-105), así que hay que sumarlo:
  * compararlo contra `total` a secas dejaría salir mercadería con el envío sin cobrar.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   esPedidoParaMostrador, filtrarPedidosMostrador, canalesExcluidosValidos,
-  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, motivoNoLanzarPedido,
+  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, lineasEnvioTicket, motivoNoLanzarPedido,
   type PedidoMostrador,
 } from '../../src/lib/pedidoVenta'
 
@@ -233,6 +233,43 @@ describe('resumenPagoTicket', () => {
     const r = resumenPagoTicket({ estado: 'reservada', total: 800 })
     expect(r.saldo).toBe(800)
     expect(r.mostrarSaldo).toBe(true)
+  })
+})
+
+// 🐛 GO 2026-10-07 (El Tilo, PROD): el ticket de WhatsApp/link y el del mail salían sin el envío y con un TOTAL menor
+// al cobrado. Los renglones + `totalConTodo` tienen que sumar exactamente lo que muestra el ticket de la pantalla.
+describe('lineasEnvioTicket', () => {
+  it('sin envío → ningún renglón extra', () => {
+    expect(lineasEnvioTicket({})).toEqual([])
+    expect(lineasEnvioTicket({ costo_envio: 0, costo_envio_logistica: null })).toEqual([])
+  })
+
+  it('con envío → un renglón "Envío" por el costo', () => {
+    expect(lineasEnvioTicket({ costo_envio: 300 })).toEqual([{ nombre: 'Envío', cantidad: 1, subtotal: 300 }])
+  })
+
+  it('el numeric de Postgres llega como string → igual lo toma', () => {
+    expect(lineasEnvioTicket({ costo_envio: '1500.00' as unknown as number })).toEqual([{ nombre: 'Envío', cantidad: 1, subtotal: 1500 }])
+  })
+
+  it('envío + logística → dos renglones, como el ticket de la pantalla', () => {
+    expect(lineasEnvioTicket({ costo_envio: 200, costo_envio_logistica: 150 })).toEqual([
+      { nombre: 'Envío', cantidad: 1, subtotal: 200 },
+      { nombre: 'Envío logística', cantidad: 1, subtotal: 150 },
+    ])
+  })
+
+  it('💵 reserva con envío: productos + renglones = TOTAL del ticket, y el saldo incluye el envío', () => {
+    const venta = { estado: 'reservada', total: 2500, costo_envio: 300, monto_pagado: 1000 }
+    const items = [{ nombre: 'Tabla', cantidad: 1, subtotal: 2500 }, ...lineasEnvioTicket(venta)]
+    const { totalConTodo, saldo } = resumenPagoTicket(venta)
+    expect(items.reduce((a, i) => a + i.subtotal, 0)).toBe(totalConTodo)
+    expect(totalConTodo).toBe(2800)
+    expect(saldo).toBe(1800)
+  })
+
+  it('montos basura (NaN / negativos) no generan renglones', () => {
+    expect(lineasEnvioTicket({ costo_envio: NaN, costo_envio_logistica: -50 })).toEqual([])
   })
 })
 

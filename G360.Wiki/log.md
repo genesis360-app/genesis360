@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-07] deploy | 🚀 v1.240.0 + v1.240.1 EN PROD (PRs #378 y #379)
+
+- **v1.240.0** (PR #378, merge `0afb6602`, release `--latest`): Landing 2.0 Fases 1-4, ubicación "Global", aviso de traslado sin
+  ubicaciones, Términos/Privacidad sin datos personales. Sin migraciones; EFs: auditoría = solo las 2 diferencias conocidas
+  (`marketplace-webhook` sin desplegar en DEV, `wa-embedded-signup-exchange` sin desplegar en PROD); `pg_policies` idénticas por
+  schema (public 246 · storage 40 · cron 2). curl: `www.genesis360.pro/` y las 4 páginas por rubro llegan armadas,
+  `app.genesis360.pro/` → `/login` con `noindex`, legales sin datos personales, bundle = v1.240.0.
+- **v1.240.1** (PR #379): `genesis360.pro` redirige (308) a `www.genesis360.pro` y el canonical/sitemap/robots/OG apuntaban a la URL
+  que redirige → `SITIO_URL = https://www.genesis360.pro`. Verificado con curl en PROD.
+- El domicilio de Fede no está en ningún archivo del repo, en la base de PROD ni en la memoria del asistente; sigue en el historial
+  de git (repo público): borrarlo exige reescribir el historial (decisión de GO).
+- **En curso (solo local, sin commitear):** hero con la pantalla de Ventas dentro de una tablet, impresora de tickets en vez de la
+  línea negra y un celular con el Panel (pedido de GO 07/10).
+
 ## [2026-10-06] update | Landing 2.0 (Fases 1-4) en dev + fix ubicación "Global" + sin datos personales en las páginas legales
 
 - **Landing 2.0** en `dev` (pre-releases `v1.240.0-rc.1`/`rc.2`/`rc.3`): Fase 2 (landing aprobada por GO), Fase 1 (pre-render en el

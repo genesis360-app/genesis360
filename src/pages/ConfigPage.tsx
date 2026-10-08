@@ -2706,6 +2706,23 @@ export default function ConfigPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // Un click para el caso del cartel de abajo: cobrar dólares en efectivo necesita un método en USD marcado como efectivo
+  // real (G5). No es un parche: es lo que hace que el POS pida los dólares, calcule el vuelto y mande el efectivo a la Caja
+  // USD. GO lo había borrado creyendo que la moneda del producto lo reemplazaba (2026-10-08).
+  const crearEfectivoUsd = useMutation({
+    mutationFn: async () => {
+      const yaExiste = (metodosPago as any[]).find(m => (m.nombre ?? '').trim().toLowerCase() === 'efectivo usd')
+      if (yaExiste) throw new Error('Ya tenés un método "Efectivo USD": editalo y poné moneda USD y "Es efectivo real".')
+      const { error } = await supabase.from('metodos_pago').insert({
+        tenant_id: tenant!.id, nombre: 'Efectivo USD', color: '#16a34a', activo: true, es_sistema: false,
+        moneda: 'USD', es_efectivo: true, orden: (metodosPago.length + 1),
+      })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('"Efectivo USD" creado: el POS ya puede cobrar dólares en efectivo'); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const updateMetodoPago = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('metodos_pago').update({
@@ -6725,11 +6742,18 @@ export default function ConfigPage() {
           {!loadingMetodos && !tieneMetodoUsdEfectivo && hayProductoUsd && (
             <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
               <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Tenés productos en USD o que aceptan cualquier moneda, pero ningún método de pago está marcado como
-                "efectivo real" en USD. El POS no va a ofrecer cobrar en dólares físicos hasta que agregues uno abajo
-                (ej. "Efectivo USD", moneda USD, tildá "Es efectivo real").
-              </p>
+              <div className="flex-1 space-y-2">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Tenés productos en USD o que aceptan cualquier moneda, pero <strong>no podés cobrar dólares en efectivo</strong>:
+                  falta un método de pago en <strong>USD</strong> marcado como <strong>"Es efectivo real"</strong>. Es lo que hace que
+                  el punto de venta pida los dólares, calcule el vuelto y mande ese efectivo a la Caja USD — la moneda del producto
+                  solo define en qué moneda está el precio.
+                </p>
+                <button type="button" onClick={() => crearEfectivoUsd.mutate()} disabled={crearEfectivoUsd.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
+                  <Plus size={13} /> {crearEfectivoUsd.isPending ? 'Creando…' : 'Crear "Efectivo USD"'}
+                </button>
+              </div>
             </div>
           )}
 

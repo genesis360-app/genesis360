@@ -2411,6 +2411,20 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 💵 §109 — Cartel de "Efectivo USD" en Métodos de pago + landing con capturas reales (🟡 DEV) — 2026-10-08
+
+GO borró "Efectivo USD" y "Wallet USD" en Almacén Jorgito creyendo que la moneda del producto los reemplazaba, y apareció el
+cartel. El cartel era correcto: cobrar dólares en efectivo (G5) NECESITA un método en USD con "Es efectivo real" — es lo que hace
+que el POS pida los dólares, calcule el vuelto y mande el efectivo a la Caja USD. Sin él fallaban además los e2e 140, 149 y 157.
+GO los recreó.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 109.1 | Sin método USD efectivo y con productos en USD: el cartel explica que no se pueden cobrar dólares en efectivo y por qué (no es un parche) | e2e puntual con `page.route` (oculta los USD solo en el navegador) + captura | ✅ |
+| 109.2 | Botón "Crear 'Efectivo USD'": lo crea con moneda USD + efectivo real; si ya existe uno con ese nombre, avisa que lo edites (no duplica) | revisión (no se apretó: GO recreó los métodos a mano) | ✅ código · ⬜ click |
+| 109.3 | Con "Efectivo USD" recreado, los e2e 140/149/157 vuelven a pasar | e2e 140, 149, 157 | ✅ |
+| 109.4 | Landing: hero (POS, ticket $4.157, Panel → Insights) y bento (LPN, Caja1, Factura C con CAE sin CUIT ni QR, cobro mixto) con capturas reales de Almacén Jorgito | build + preview en el navegador | ✅ |
+
 ## 🏢 §108 — Productos e Inventario siguen el selector de sucursal (🟡 DEV) — 2026-10-08
 
 Decisión de GO: el selector del encabezado manda ("Todas" = todo; una sucursal = lo de esa sucursal), salvo el catálogo de

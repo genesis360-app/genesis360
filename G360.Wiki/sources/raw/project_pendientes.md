@@ -29,6 +29,9 @@ type: project
 > 2. 🖼️ **Landing con capturas reales** del tenant de DEV **Almacén Jorgito** (pedido de GO). Tiene basura de e2e ("E2E …",
 >    "ZZ_TEST…", ventas de prueba): elegir pantallas/filtros prolijos o acomodar lo que se ve. Plan: [[wiki/business/plan-landing-2]].
 > 3. 🧪 Plan de testing de Configuración → Notificaciones (pedido de GO 06/10, ver abajo).
+> 4. 💵 **📅 SEMANA DEL 12/10 — Multimoneda: el medio de pago pierde la moneda** (pedido de GO 08/10): selector de moneda al
+>    lado de cada medio en la venta. Plan + 5 preguntas abiertas: [[wiki/business/plan-multimoneda-medios-de-pago]]. Arrancar
+>    preguntándole a GO las 5 preguntas; después Fase 1 (POS). Hoy sigue el modelo viejo ("Efectivo USD" es necesario).
 >
 > **🧑‍💼 Para GO / clientes:**
 > - **El Tilo:** para borrar "Escobar-Leandro" primero MOVER el LPN-20261002-EAEE20 (6 Paneles de Caña, sucursal "ELTILO oficina",

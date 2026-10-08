@@ -1,4 +1,7 @@
 ---
+
+> 📅 **2026-10-08:** la sección C ("los medios de pago no tienen moneda") y D2 (selector de moneda en cada pago) NO estaban
+> implementadas; GO las pidió → plan [[wiki/business/plan-multimoneda-medios-de-pago]] (semana del 12/10).
 name: relevamiento_multimoneda_respuestas
 description: Respuestas de Fede (2026-09-20) al relevamiento de Multimoneda. Incluye A0 (arreglar YA el importador, por separado) y 11 puntos abiertos que decide GO.
 type: relevamiento

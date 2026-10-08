@@ -34,7 +34,7 @@ entregado el 2026-09-23). GO respondió por chat, en el orden del documento. Don
 | A-5 | Reportes por moneda: **para después**. | Diferido. |
 | A-6 | El historial **se guarda con las acciones que se tomaron, tal cual**. | = propuesta: desactivar ≠ borrar; el histórico se sigue viendo. |
 | A-7 | **No se puede pagar sin saldo.** | = propuesta: se bloquea. |
-| A-8 | "Ni idea, dejémoslo para luego o sugerí algo." | Diferido. Sugerencia vigente (la del documento): el **medio** de pago pierde la moneda, la **caja/cuenta** la mantiene. No se ejecuta hasta que haga falta (con ARS+USD el modelo actual alcanza). |
+| A-8 | "Ni idea, dejémoslo para luego o sugerí algo." | ✅ **Retomado el 2026-10-08: GO lo pidió (selector de moneda al lado del medio en la venta) → plan [[wiki/business/plan-multimoneda-medios-de-pago]], semana del 12/10.** Antes: Diferido. Sugerencia vigente (la del documento): el **medio** de pago pierde la moneda, la **caja/cuenta** la mantiene. No se ejecuta hasta que haga falta (con ARS+USD el modelo actual alcanza). |
 | A-9 | Pestañas del Dashboard **solo ARS y USD** por ahora; estructura lista para más monedas. | Pestañas ARS/USD. El modo "Real" (ajuste por inflación) no se mencionó → se mantiene como hoy (la propuesta era separarlo como interruptor; **no se toca sin consultar**). |
 | A-10 | Diferencia de cambio en CC: **revisar después con más detalle.** | Diferido. Va a la lista del contador. |
 | A-11 | Orden: **indistinto**. | Se sigue el de la propuesta: 1 Cimiento → 2 Config → 3 Operación → 4 Reportes/fiscal, con la directiva de arriba (oculto, ARS+USD). |

@@ -8,6 +8,9 @@ updated: 2026-10-08
 
 # Ventas / POS
 
+> 💵 **2026-10-08 — Pendiente agendado (semana del 12/10):** el selector de moneda al lado de cada medio de pago (el medio pierde
+> la moneda; máx. 2 monedas por venta; vuelto en ARS) → [[wiki/business/plan-multimoneda-medios-de-pago]]. Hoy rige "Efectivo USD".
+
 > 🧾 **2026-10-08 (✅ EN PROD v1.240.3, PR #381) — El envío en los tickets.** El ticket de la pantalla ya mostraba "Envío" y el
 > TOTAL con envío (verificado con e2e 188 en venta y reserva; la reserva #50 de El Tilo tenía el dato bien). Arreglado:
 > - Ticket por **WhatsApp/link** (`ticketPDF`, `/c/<código>`) y por **mail** (al cliente y el automático al dueño): salían sin el

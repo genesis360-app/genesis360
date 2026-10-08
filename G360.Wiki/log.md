@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | 🖼️ Landing con capturas reales + cartel de "Efectivo USD" + plan de Multimoneda (🟡 `dev`)
+
+- **Landing (en `dev`):** hero con el POS real de Almacén Jorgito (Coca Cola 1.5L + Yerba, $4.157 — la Coca 2.5L a $600 se
+  reemplazó: no tiene stock vendible en Norte), ticket de la impresora con esa misma venta, Panel → Insights en el celular; bento
+  de módulos con recortes reales (LPN, Caja1 en vista celular, Factura C con CAE sin CUIT ni QR, cobro mixto). Herramienta
+  `tests/e2e/990_capturas_landing.spec.ts` (CAPTURAS_LANDING=1). Gotchas: el buscador del POS cierra la lista 150 ms después del
+  blur; el SW de la PWA cachea imágenes viejas en el preview.
+- **Config → Métodos de pago:** GO borró "Efectivo USD"/"Wallet USD" → cartel. Con el código actual el cartel era correcto (sin
+  ese medio no se cobran dólares y fallan los e2e 140/149/157); se mejoró el texto + botón "Crear 'Efectivo USD'". GO los recreó.
+- **Pero** el relevamiento de Multimoneda decidió que el medio de pago NO tiene moneda (selector de moneda en cada pago). Nunca se
+  implementó (pasos 3 y 7 del orden acordado quedaron sin arrancar; A-8 diferido el 25/09). Plan nuevo:
+  [[wiki/business/plan-multimoneda-medios-de-pago]], agendado para la semana del 12/10.
+
 ## [2026-10-08] update | 🔑 Rotación de keys: inventario PROD OK + backup de Storage reparado
 
 - Inventario de consumidores de PROD: app y panel admin con `sb_publishable_`, cron/funciones sin keys, secret de GitHub nuevo;

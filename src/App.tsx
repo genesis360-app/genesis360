@@ -9,6 +9,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AvisoSesionSinRefresco } from '@/components/AvisoSesionSinRefresco'
 import { ConfirmProvider } from '@/hooks/useConfirm'
+import { ScrollAlInicio } from '@/components/ScrollAlInicio'
 import { quitarPrerender, hayPrerender, RUTAS_PRERENDER } from '@/lib/prerender'
 
 // Lazy loading de módulos
@@ -153,6 +154,7 @@ function App() {
       {/* D1 — avisa cuando el refresco de sesión se rindió (ver authRefreshBreaker.ts) */}
       <AvisoSesionSinRefresco />
       <BrowserRouter>
+        <ScrollAlInicio />
         <Suspense fallback={
           <div className="min-h-screen bg-brand-bg flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />

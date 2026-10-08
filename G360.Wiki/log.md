@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-07] update | 🧾 Cheques propios atómicos, OC-<código>-0070, PDF de OC sin costos internos, scroll del landing (🟡 en `dev`, migs 477-478 SIN aplicar)
+
+- **Landing:** los links a rubros/legales abrían la página nueva abajo de todo → `ScrollAlInicio` (App) + `SalidaHaciaApp`
+  (página pre-renderizada, que App ve como POP). Probado contra el build: scroll 0 tras Supermercados/Dietéticas/Términos.
+- **PDF/texto de la OC** (decisión de GO): TOTAL = productos + envío del proveedor; aduana/comisión/otros no aparecen.
+- **Cheques propios (mig 477, REGLA #0):** pagar desde la CC del proveedor con "Cheque" crea el cheque (antes no);
+  `rechazar_cheque_propio` revierte en UNA transacción (OCs vuelven a deber, ajuste en CC, imputaciones negativas); trigger
+  impide rechazarlo por fuera y que un rechazado cambie de estado. `ChequesPanel` usa la RPC.
+- **Número de OC (mig 478, decisión de GO):** `OC-<código>-0070`; sin código sigue `S-OC-0070`. CC del proveedor: deuda UNA del
+  negocio (decisión de GO) + desglose informativo `pendiente_por_sucursal`.
+- Recepciones ya chequeaba los errores (pendiente desactualizado). migration-reviewer: 477 tenía un bloqueante (CREATE no
+  idempotente) → corregido; 478 apta.
+- ⏳ **Migs 477-478 sin aplicar:** `SUPABASE_ACCESS_TOKEN` vencido (401). Abiertas para GO: rechazo con período cerrado,
+  egreso informativo de caja, cheque anulado tras entregado. UAT §105.
+
 ## [2026-10-07] update | 🚚 El ticket por WhatsApp/link y por mail sale CON el envío (🟡 en `dev`, falta release a PROD)
 
 - GO probó con El Tilo en PROD: el ticket de la reserva #50 en la pantalla del POS no mostraba el envío.

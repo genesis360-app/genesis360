@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase, type User, type Tenant, type Sucursal } from '@/lib/supabase'
+import { registrarCodigosSucursal } from '@/lib/ocNumero'
 
 // Solo DUEÑO es siempre global — no se puede restringir a una sucursal
 const ROLES_SIEMPRE_GLOBALES = ['DUEÑO']
@@ -169,3 +170,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user: null, tenant: null, sucursales: [], sucursalId: null })
   },
 }))
+
+// Número visible de las OC ("OC-SUC1-0070"): ocNumero necesita el código de cada sucursal. Se mantiene al día con
+// cualquier cambio de `sucursales` en el store.
+useAuthStore.subscribe((st, prev) => { if (st.sucursales !== prev.sucursales) registrarCodigosSucursal(st.sucursales as any) })

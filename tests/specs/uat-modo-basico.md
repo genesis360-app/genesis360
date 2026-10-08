@@ -2411,6 +2411,28 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧾 §105 — Cheques propios, número de OC por sucursal y PDF de la OC (migs 477-478, ⏳ sin aplicar) — 2026-10-07
+
+Pendientes de CC de proveedores elegidos por GO para el próximo deploy. 🛑 REGLA #0. **Las migs 477 y 478 están escritas y
+revisadas (migration-reviewer: bloqueante de idempotencia corregido) pero NO aplicadas**: el `SUPABASE_ACCESS_TOKEN` está
+vencido (401). Al renovarlo: aplicar en DEV, correr los escenarios de abajo, `npm run schema:dump`, recién ahí PROD.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 105.1 | 🛑 Pago desde la CC del proveedor con "Cheque": pide fecha de cobro (UI + servidor) y crea el cheque en Gastos → Cheques, atado al pago (`cc_movimiento_id`, `monto_imputado`) | e2e/SQL en DEV | ⏳ |
+| 105.2 | 🛑 Rechazar ese cheque: las OCs que había pagado vuelven a deber (la más nueva primero), +ajuste en la CC por el monto, imputaciones negativas; todo en una transacción (`rechazar_cheque_propio`) | SQL en DEV (rollback) | ⏳ |
+| 105.3 | 🛑 Rechazar un cheque de un pago de OC con varios medios: solo se revierte la parte del cheque, en la moneda de la OC | SQL en DEV | ⏳ |
+| 105.4 | 🛑 Pasar un cheque propio a 'rechazado' con un UPDATE directo → rechazado por el trigger; un rechazado no cambia de estado (no se revierte dos veces) | SQL en DEV | ⏳ |
+| 105.5 | Cheque de un gasto suelto rechazado → el gasto vuelve a pendiente/parcial | e2e `31` contra DEV | ⏳ |
+| 105.6 | Número de OC: sucursal con código → "OC-SUC1-0070" en pantallas y textos del servidor; sin código sigue "S-OC-0070"; la búsqueda acepta las dos formas | unit `ocNumero` (7) · SQL `fn_oc_etiqueta` en DEV | ✅ unit · ⏳ DEV |
+| 105.7 | CC del proveedor: con 2+ sucursales muestra el pendiente de OCs por sucursal (informativo; la deuda sigue siendo una del negocio) | manual en DEV | ⏳ |
+| 105.8 | PDF/texto de la OC: TOTAL = productos + envío del proveedor; aduana/comisión/otros NO aparecen | unit `ocPDF` | ✅ |
+| 105.9 | Recepción con OC: si falla el update de la OC o el gasto, avisa (ya estaba hecho; el pendiente del wiki estaba desactualizado) | revisión | ✅ |
+
+**Decisiones abiertas para GO (no tomadas):** (a) si la OC es de un período con cierre contable, `trg_oc_periodo_cerrado` hace
+fallar el rechazo entero (atómico, sin daño, pero el cheque rebotado no se puede registrar); (b) el `egreso_informativo` de caja del
+pago con cheque no se revierte al rechazar; (c) un cheque propio **anulado** después de entregado no revierte el pago.
+
 ## 🚚 §104 — El ticket por WhatsApp/link y por mail sale CON el envío (🟡 DEV) — 2026-10-07
 
 Disparado por GO probando con El Tilo en PROD (reserva #50: el ticket no mostraba el envío). Al revisar se encontró que el ticket

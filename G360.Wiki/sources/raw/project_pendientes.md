@@ -28,6 +28,10 @@ type: project
 > - **🚚 Envío en el ticket (07/10, en `dev`, falta release):** el ticket de WhatsApp/link y el del mail ya suman el envío (UAT
 >   §104). ⏳ Confirmar en PROD si la reserva #50 de El Tilo quedó con `costo_envio` 0/NULL — requiere renovar
 >   `SUPABASE_ACCESS_TOKEN` (vencido, 401).
+> - **🧾 Próximo deploy (v1.240.3, en `dev`):** envío en ticket WhatsApp/mail, scroll del landing, PDF de OC sin costos internos,
+>   cheques propios atómicos (**mig 477**), `OC-<código>-0070` + pendiente por sucursal (**mig 478**). ⏳ **477-478 SIN aplicar**
+>   (token vencido): aplicar en DEV → UAT §105 → `schema:dump` → PROD. Decisiones abiertas de GO: rechazo con período cerrado,
+>   egreso informativo de caja, cheque anulado tras entregado. Siguen abiertos: policy de escritura de `proveedor_cc_movimientos`.
 > - **DEV:** 2 ubicaciones de prueba "E2EDefecto_test_…" de corridas fallidas del e2e 187 en Almacén Jorgito (borrar desde la UI).
 > - Siguen los de abajo (plan de testing de Notificaciones, CC de proveedores, PDF de OC, prefijo S-OC, rotar `service_role`).
 >

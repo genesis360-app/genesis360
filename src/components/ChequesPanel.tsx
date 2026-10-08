@@ -6,12 +6,10 @@ import { supabase } from '@/lib/supabase'
 import {
   TIPOS_CHEQUE, ESTADO_CHEQUE_LABEL, estadosSiguientes, puedeEndosar,
   chequeProximoACobrar, chequeVencido, validarChequeAlta, totalPendiente,
-  reversionPagoOC, reversionPagoGasto,
   type TipoCheque, type EstadoCheque,
 } from '@/lib/comprasCheques'
 import { logActividad } from '@/lib/actividadLog'
 import { useConfirm } from '@/hooks/useConfirm'
-import { nombreOC } from '@/lib/ocNumero'
 
 const ESTADO_CLS: Record<string, string> = {
   en_cartera: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
@@ -145,53 +143,23 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
 
   const cambiarEstado = useMutation({
     mutationFn: async ({ id, estado, cheque }: { id: string; estado: EstadoCheque; cheque?: any }) => {
-      // Auditoría #5 — cheque propio RECHAZADO revierte el pago que lo originó:
-      // la OC/gasto vuelven a deber y, si hay proveedor, la deuda reaparece en su CC.
-      let reversion: string | null = null
+      // Auditoría #5 + mig 477 — cheque propio RECHAZADO revierte el pago que lo originó: las OCs (o el gasto) vuelven a
+      // deber y la deuda reaparece en la CC del proveedor. Lo hace la base en UNA transacción (`rechazar_cheque_propio`);
+      // antes eran 3 escrituras sueltas desde acá que podían quedar a medias. La base no deja rechazarlo de otra forma.
       if (estado === 'rechazado' && cheque?.tipo === 'propio') {
-        const monto = Number(cheque.monto) || 0
-        if (cheque.oc_id && monto > 0) {
-          const { data: oc } = await supabase.from('ordenes_compra')
-            .select('id, numero, numero_sucursal, monto_total, monto_pagado, monto_descuento, proveedor_id, moneda')
-            .eq('id', cheque.oc_id).single()
-          if (oc) {
-            const rev = reversionPagoOC({
-              total: Number(oc.monto_total) || 0,
-              montoPagado: Number(oc.monto_pagado) || 0,
-              montoDescuento: Number(oc.monto_descuento) || 0,
-              montoCheque: monto,
-            })
-            const { error: eOc } = await supabase.from('ordenes_compra')
-              .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', oc.id)
-            if (eOc) throw eOc
-            if (oc.proveedor_id) {
-              const { error: ajErr } = await supabase.from('proveedor_cc_movimientos').insert({
-                tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id, moneda: oc.moneda ?? 'ARS',
-                tipo: 'ajuste', monto: monto, fecha: hoy,
-                descripcion: `Cheque rechazado${cheque.nro_cheque ? ` ${cheque.nro_cheque}` : ''} — pago ${nombreOC(oc, tenant?.oc_numeracion)} revertido`,
-                created_by: user?.id ?? null,
-              })
-              // 🛑 REGLA #0 — si no se repone la deuda en la CC, el proveedor queda como pagado sin estarlo.
-              if (ajErr) throw new Error(`Se revirtió el pago de la ${nombreOC(oc, tenant?.oc_numeracion)} pero no la deuda en la cuenta corriente: ${ajErr.message}`)
-            }
-            reversion = `Pago de la ${nombreOC(oc, tenant?.oc_numeracion)} revertido — la deuda volvió a quedar pendiente`
-          }
-        } else if (cheque.gasto_id && monto > 0) {
-          const { data: g } = await supabase.from('gastos')
-            .select('id, descripcion, monto_pagado').eq('id', cheque.gasto_id).single()
-          if (g) {
-            const rev = reversionPagoGasto({ montoPagado: Number(g.monto_pagado) || 0, montoCheque: monto })
-            const { error: eG } = await supabase.from('gastos')
-              .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', g.id)
-            if (eG) throw eG
-            reversion = `Pago del gasto "${g.descripcion}" revertido — volvió a pendiente`
-          }
-        }
+        const { data, error } = await supabase.rpc('rechazar_cheque_propio', { p_cheque_id: id })
+        if (error) throw error
+        const ocs = ((data as any)?.ocs ?? []) as { etiqueta: string }[]
+        const gasto = (data as any)?.gasto as { descripcion: string } | null
+        const reversion = ocs.length
+          ? `Pago revertido — ${ocs.map(o => o.etiqueta).join(', ')} ${ocs.length === 1 ? 'volvió' : 'volvieron'} a deber`
+          : gasto ? `Pago del gasto "${gasto.descripcion}" revertido — volvió a pendiente` : null
+        return { reversion }
       }
       const { error } = await supabase.from('cheques')
         .update({ estado, updated_at: new Date().toISOString() }).eq('id', id)
       if (error) throw error
-      return { reversion }
+      return { reversion: null as string | null }
     },
     onSuccess: (d: any, v) => {
       toast.success(`Cheque → ${ESTADO_CHEQUE_LABEL[v.estado]}`)

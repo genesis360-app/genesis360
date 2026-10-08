@@ -16,8 +16,16 @@ describe('subtotalItems / totalOC', () => {
   it('subtotal suma cantidad × precio', () => {
     expect(subtotalItems(base.items)).toBe(2000)
   })
-  it('total suma accesorios', () => {
-    expect(totalOC({ ...base, costoEnvio: 500, costoOtros: 100 })).toBe(2600)
+  it('total suma el envío que cobra el proveedor', () => {
+    expect(totalOC({ ...base, costoEnvio: 500 })).toBe(2500)
+  })
+  it('🛑 aduana/comisión/otros NO entran al total que ve el proveedor (no se le pagan a él)', () => {
+    const conInternos = { ...base, costoEnvio: 500, costoAduana: 300, costoComision: 50, costoOtros: 100 } as OCPDFData
+    expect(totalOC(conInternos)).toBe(2500)
+    expect(textoOC(conInternos)).not.toMatch(/Aduana|Comisi|Otros/)
+  })
+  it('el envío llega como string (numeric de Postgres) → igual suma', () => {
+    expect(totalOC({ ...base, costoEnvio: '500.00' as unknown as number })).toBe(2500)
   })
 })
 

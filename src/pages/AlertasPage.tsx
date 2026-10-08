@@ -205,7 +205,7 @@ export default function AlertasPage() {
     queryFn: async () => {
       const { data, count } = await applyFilter(supabase
         .from('ordenes_compra')
-        .select('id, numero, numero_sucursal, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
+        .select('id, numero, numero_sucursal, sucursal_id, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)
@@ -225,7 +225,7 @@ export default function AlertasPage() {
     queryFn: async () => {
       const { data, count } = await applyFilter(supabase
         .from('ordenes_compra')
-        .select('id, numero, numero_sucursal, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
+        .select('id, numero, numero_sucursal, sucursal_id, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)

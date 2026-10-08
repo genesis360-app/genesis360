@@ -20,10 +20,9 @@ export interface OCPDFData {
   sucursal?: string | null
   proveedor: { nombre: string; cuit?: string | null; email?: string | null; telefono?: string | null; condiciones?: string | null }
   items: OCItemPDF[]
+  // Solo el envío que COBRA el proveedor. Aduana, comisión y otros son costos internos del negocio (no se le pagan al
+  // proveedor): no van en el documento que él recibe ni en su TOTAL (decisión de GO 2026-10-07).
   costoEnvio?: number | null
-  costoAduana?: number | null
-  costoComision?: number | null
-  costoOtros?: number | null
   pagaConAnticipo?: boolean
   anticipoPct?: number | null
   pagoSchedule?: CuotaSchedule[] | null
@@ -35,8 +34,7 @@ export function subtotalItems(items: OCItemPDF[]): number {
 }
 
 export function totalOC(d: OCPDFData): number {
-  return subtotalItems(d.items)
-    + (d.costoEnvio ?? 0) + (d.costoAduana ?? 0) + (d.costoComision ?? 0) + (d.costoOtros ?? 0)
+  return subtotalItems(d.items) + (Number(d.costoEnvio) || 0)
 }
 
 /** A6 — texto plano para WhatsApp / cuerpo de email. */
@@ -101,13 +99,9 @@ export function generarOCPDF(d: OCPDFData, output: 'save' | 'doc' = 'save'): jsP
   })
 
   let yEnd = (doc as any).lastAutoTable.finalY + 6
-  const accesorios: [string, number | null | undefined][] = [
-    ['Envío', d.costoEnvio], ['Aduana', d.costoAduana], ['Comisión', d.costoComision], ['Otros', d.costoOtros],
-  ]
   doc.setFontSize(10); doc.setTextColor(60)
-  for (const [label, val] of accesorios) {
-    if (val && val > 0) { doc.text(`${label}: ${fmt(val)}`, 140, yEnd); yEnd += 5 }
-  }
+  const envio = Number(d.costoEnvio) || 0
+  if (envio > 0) { doc.text(`Envío: ${fmt(envio)}`, 140, yEnd); yEnd += 5 }
   doc.setFontSize(12); doc.setTextColor(30, 58, 95)
   doc.text(`TOTAL: ${fmt(total)}`, 140, yEnd); yEnd += 7
 

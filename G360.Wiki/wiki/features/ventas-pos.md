@@ -13,7 +13,7 @@ updated: 2026-10-08
 > - Ticket por **WhatsApp/link** (`ticketPDF`, `/c/<código>`) y por **mail** (al cliente y el automático al dueño): salían sin el
 >   envío y con un TOTAL menor al cobrado → `lineasEnvioTicket()` + total/saldo de `resumenPagoTicket()` (`src/lib/pedidoVenta.ts`).
 > - **Datos de la entrega** en el ticket (pantalla y WhatsApp/link): transporte + n° de envío y fecha/horario
->   (`lineasEntregaTicket`, query `envio-ticket`). El mail todavía no los incluye.
+>   (`lineasEntregaTicket`, query `envio-ticket`). El mail también desde v1.240.4 (EF `send-email`, campo `entrega`).
 > - **Modal "¿Emitir comprobante?"**: mostraba y usaba para el umbral de la Factura B el total SIN envío (la EF sí lo suma) →
 >   `totalFacturable` = total + envío. UAT §104.
 

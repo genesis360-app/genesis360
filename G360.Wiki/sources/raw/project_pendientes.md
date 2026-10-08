@@ -6,40 +6,45 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-08, tarde) — 🚀 **PROD = DEV = `v1.240.4`** (migs 001-**481**) · PR **#382** (merge `a7ee65c6`)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-08, cierre para /clear) — 🚀 **PROD = DEV = `v1.240.4`** (migs 001-**481**)
 >
-> **v1.240.4:** Inventario/Productos siguen el selector de sucursal (UAT §108), CC de proveedores solo por funciones + cobro
-> de ventas de períodos cerrados (mig 480, §106), ubicación con stock no cambia de sucursal (mig 481, §107), mail del ticket con
-> la entrega. EF `send-email` en DEV y PROD. `pg_policies` DEV = PROD (public 245 · storage 40 · cron 2).
-> **Siguiente (acordado con GO):** 🔑 rotación de la `service_role` de PROD — **inventario HECHO (08/10)**: app y panel admin
-> ya usan la key nueva, cron/funciones sin keys, **0 usos de keys legacy en 7 días de logs**. Falta, con GO despierto: apagar las
-> legacy (reversible) + verificar login real → revocar la HS256 en PROD y DEV (irreversible). Después 🖼️ landing con Almacén Jorgito.
-> 🔴→✅ **Backup diario de Storage de PROD fallaba desde el 07/10** (secret `SUPABASE_ACCESS_TOKEN` de GitHub con el token
-> vencido): secret actualizado y backup manual OK el 08/10 06:21 UTC. ⚠️ Cuando se renueve el token (vence ~06/01/2027), actualizar
-> también ese secret.
-> **El Tilo:** para borrar "Escobar-Leandro" primero tiene que MOVER el LPN-20261002-EAEE20 (sucursal oficina) a otra
-> ubicación — la mig 481 no corrige el dato viejo.
+> | | Código | Migraciones | Policies |
+> |---|---|---|---|
+> | **PROD** | `v1.240.4` (PR #382, merge `a7ee65c6`, release Latest; servida verificada con curl) | 001-**481** | public 245 · storage 40 · cron 2 |
+> | **DEV** | `v1.240.4` (`origin/dev`, `d579dd6f` + docs) | 001-**481** (la 479 y la 480 quedaron registradas 2 veces por correcciones; en PROD una) | = PROD |
 >
-> ### (antes) ARRANCÁ ACÁ (2026-10-08) — **PROD = DEV = `v1.240.3`** (migs 001-479) · PR #381 (merge `2c72dc3c`)
+> **Lo que entró hoy (v1.240.3 + v1.240.4):** envío en los tickets (pantalla ya lo mostraba; WhatsApp/link/mail + datos de la
+> entrega + modal de factura con el total con envío), cheques propios atómicos (477/479: `revertir_cheque_propio`, contramovimiento
+> en la cuenta, anulado = rechazo), cierre contable deja pagar/cobrar/revertir OCs, gastos y ventas viejas (479/480), CC de
+> proveedores solo por funciones (480, `registrar_nc_proveedor`), `OC-<código>-0070` (478), ubicación con stock no cambia de
+> sucursal (481), Inventario/Productos siguen el selector de sucursal, PDF de OC sin costos internos, scroll del landing.
+> UAT §104-§108 · consultas al contador C-23 a C-25 · e2e nuevos 188 y 189.
 >
-> **Qué entró:** envío en los tickets (WhatsApp/mail + datos de entrega + modal de factura con el envío; e2e 188), cheques
-> propios atómicos con contramovimiento en la cuenta y anulado = rechazo (migs 477/479), cierre contable que deja pagar/revertir
-> OCs y gastos viejos (479), `OC-<código>-0070` + pendiente por sucursal (478), PDF de OC sin costos internos, scroll del
-> landing. `pg_policies` DEV = PROD (public 246 · storage 40 · cron 2). `SUPABASE_ACCESS_TOKEN` renovado el 08/10 (90 días).
+> **👉 LO PRÓXIMO, en orden (acordado con GO):**
+> 1. 🔑 **Terminar la rotación de keys de PROD** — inventario HECHO el 08/10 (app y panel admin con `sb_publishable_`, cron y
+>    funciones sin keys, **0 usos de keys legacy en 7 días** de logs; método de medición nuevo en la memoria
+>    `reference_supabase_token_filtrado_sin_rotar`). Con GO despierto: `PUT /v1/projects/jjffnbrdjchquexdfgwq/api-keys/legacy?enabled=false`
+>    (reversible) → verificar key vieja 401 / nueva 200 + **login real de GO** → revocar la HS256 en PROD y en DEV (irreversible:
+>    confirmar antes). Re-medir los logs antes de apagar.
+> 2. 🖼️ **Landing con capturas reales** del tenant de DEV **Almacén Jorgito** (pedido de GO). Tiene basura de e2e ("E2E …",
+>    "ZZ_TEST…", ventas de prueba): elegir pantallas/filtros prolijos o acomodar lo que se ve. Plan: [[wiki/business/plan-landing-2]].
+> 3. 🧪 Plan de testing de Configuración → Notificaciones (pedido de GO 06/10, ver abajo).
 >
-> **🔓 Pendientes nuevos:**
-> - **📍 El Tilo — ubicación "Escobar-Leandro" (PROD):** tiene el LPN-20261002-EAEE20 (6 Paneles de Caña, 1 reservado por la #52) de la
->   sucursal "ELTILO oficina" → no se puede borrar. Mig 481 evita que se repita; el dato lo corrige GO/el cliente (Mover desde
->   Inventario con la sucursal oficina elegida, o traslado). UAT §107.
-> - **🖼️ Landing con imágenes REALES (GO 08/10):** usar el tenant de DEV **Almacén Jorgito** para las capturas. Ojo: tiene basura
->   de e2e (clientes "E2E …", proveedores "ZZ_TEST…", ventas de prueba) → elegir pantallas/filtros prolijos o acomodar lo que se ve.
-> - ✅ Cierre contable en VENTAS: resuelto en v1.240.4 (mig 480).
-> - **Contador:** C-23 a C-25 (cheques y cierre) se suman a las 22 abiertas.
-> - ✅ Mail del ticket con la entrega (v1.240.4). Gastos sueltos pagados con cheque no guardan su
->   movimiento de caja (al rechazar se avisa revisar la cuenta a mano).
-> - ✅ Escritura de `proveedor_cc_movimientos` cerrada (v1.240.4, mig 480).
+> **🧑‍💼 Para GO / clientes:**
+> - **El Tilo:** para borrar "Escobar-Leandro" primero MOVER el LPN-20261002-EAEE20 (6 Paneles de Caña, sucursal "ELTILO oficina",
+>   1 reservado por la #52) a otra ubicación: sucursal oficina en el encabezado → Inventario → Mover. La 481 no corrige el dato
+>   viejo (aparece con ⚠). Revisar la #50 desde el Historial (el envío estaba bien guardado). Traslado #1 sigue esperando ubicación
+>   en el galpón.
+> - **Contador:** 25 consultas abiertas (`npm run contador:doc`).
+> - **Presupuestos de proveedores:** sin A1, A2 y B1 (GO + Fede) no arranca.
 >
-
+> **⚠️ Recordatorios operativos:**
+> - `SUPABASE_ACCESS_TOKEN` renovado el 08/10 por 90 días (vence ~06/01/2027): al renovarlo, cambiarlo en `.env.local` **y** en el
+>   secret de GitHub (si no, falla el backup diario de Storage — pasó el 07/10, reparado el 08/10, run 37737060184 OK).
+> - En **modo automático** Claude Code rechaza solo todo lo que sea deploy a PROD: GO tiene que salir del modo (Shift+Tab).
+> - Quedan abiertos: gastos sueltos pagados con cheque no guardan su movimiento de caja (al rechazar se avisa revisar la cuenta);
+>   `marketplace-webhook` sin desplegar en DEV y `wa-embedded-signup-exchange` sin desplegar en PROD (de siempre).
+>
 > ### 🛑 ARRANCÁ ACÁ (2026-10-07, cierre) — 🚀 **PROD = DEV = `v1.240.2`** (migs 001-476, sin migraciones nuevas) · PRs #378, #379 y el de v1.240.2
 >
 > **Qué entró (v1.240.0 → v1.240.2):** Landing 2.0 Fases 1-4 + hero con tablet/impresora/celular ([[wiki/business/plan-landing-2]]

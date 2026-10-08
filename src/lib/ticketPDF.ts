@@ -13,13 +13,14 @@ export interface TicketCompartidoData {
   vuelto?: number | null
   estado?: string | null      // 'despachada' | 'reservada'…
   saldo?: number | null
+  entrega?: string[] | null   // 🚚 transporte + n° de envío, fecha/horario (lineasEntregaTicket)
 }
 
 const $ = (n: number) => `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export function construirTicketPDF(d: TicketCompartidoData): jsPDF {
   const ancho = 80
-  const alto = Math.max(120, 70 + d.items.length * 9)
+  const alto = Math.max(120, 70 + d.items.length * 9 + (d.entrega?.length ?? 0) * 5)
   const doc = new jsPDF({ unit: 'mm', format: [ancho, alto] })
   let y = 10
   const centro = (t: string, size = 9, bold = false) => {
@@ -47,6 +48,11 @@ export function construirTicketPDF(d: TicketCompartidoData): jsPDF {
   if (d.medio_pago) { for (const l of doc.splitTextToSize(`Pago: ${d.medio_pago}`, ancho - 10)) { doc.text(l, 5, y); y += 3.6 } }
   if (d.vuelto) { doc.text(`Vuelto: ${$(d.vuelto)}`, 5, y); y += 4 }
   if (d.saldo) { doc.setFont('helvetica', 'bold'); doc.text(`Saldo a pagar: ${$(d.saldo)}`, 5, y); y += 4 }
+  if (d.entrega?.length) {
+    y += 2; doc.line(5, y, ancho - 5, y); y += 5
+    doc.setFont('helvetica', 'normal').setFontSize(8)
+    for (const l of d.entrega) { for (const t of doc.splitTextToSize(l, ancho - 10)) { doc.text(t, 5, y); y += 3.6 } }
+  }
   y += 3
   centro(d.estado === 'reservada' ? '¡Gracias! Guardá este comprobante para retirar.' : '¡Gracias por su compra!', 8)
   return doc

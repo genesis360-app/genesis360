@@ -6,12 +6,10 @@ import { supabase } from '@/lib/supabase'
 import {
   TIPOS_CHEQUE, ESTADO_CHEQUE_LABEL, estadosSiguientes, puedeEndosar,
   chequeProximoACobrar, chequeVencido, validarChequeAlta, totalPendiente,
-  reversionPagoOC, reversionPagoGasto,
   type TipoCheque, type EstadoCheque,
 } from '@/lib/comprasCheques'
 import { logActividad } from '@/lib/actividadLog'
 import { useConfirm } from '@/hooks/useConfirm'
-import { nombreOC } from '@/lib/ocNumero'
 
 const ESTADO_CLS: Record<string, string> = {
   en_cartera: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
@@ -145,62 +143,41 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
 
   const cambiarEstado = useMutation({
     mutationFn: async ({ id, estado, cheque }: { id: string; estado: EstadoCheque; cheque?: any }) => {
-      // Auditoría #5 — cheque propio RECHAZADO revierte el pago que lo originó:
-      // la OC/gasto vuelven a deber y, si hay proveedor, la deuda reaparece en su CC.
-      let reversion: string | null = null
-      if (estado === 'rechazado' && cheque?.tipo === 'propio') {
-        const monto = Number(cheque.monto) || 0
-        if (cheque.oc_id && monto > 0) {
-          const { data: oc } = await supabase.from('ordenes_compra')
-            .select('id, numero, numero_sucursal, monto_total, monto_pagado, monto_descuento, proveedor_id, moneda')
-            .eq('id', cheque.oc_id).single()
-          if (oc) {
-            const rev = reversionPagoOC({
-              total: Number(oc.monto_total) || 0,
-              montoPagado: Number(oc.monto_pagado) || 0,
-              montoDescuento: Number(oc.monto_descuento) || 0,
-              montoCheque: monto,
-            })
-            const { error: eOc } = await supabase.from('ordenes_compra')
-              .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', oc.id)
-            if (eOc) throw eOc
-            if (oc.proveedor_id) {
-              const { error: ajErr } = await supabase.from('proveedor_cc_movimientos').insert({
-                tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id, moneda: oc.moneda ?? 'ARS',
-                tipo: 'ajuste', monto: monto, fecha: hoy,
-                descripcion: `Cheque rechazado${cheque.nro_cheque ? ` ${cheque.nro_cheque}` : ''} — pago ${nombreOC(oc, tenant?.oc_numeracion)} revertido`,
-                created_by: user?.id ?? null,
-              })
-              // 🛑 REGLA #0 — si no se repone la deuda en la CC, el proveedor queda como pagado sin estarlo.
-              if (ajErr) throw new Error(`Se revirtió el pago de la ${nombreOC(oc, tenant?.oc_numeracion)} pero no la deuda en la cuenta corriente: ${ajErr.message}`)
-            }
-            reversion = `Pago de la ${nombreOC(oc, tenant?.oc_numeracion)} revertido — la deuda volvió a quedar pendiente`
-          }
-        } else if (cheque.gasto_id && monto > 0) {
-          const { data: g } = await supabase.from('gastos')
-            .select('id, descripcion, monto_pagado').eq('id', cheque.gasto_id).single()
-          if (g) {
-            const rev = reversionPagoGasto({ montoPagado: Number(g.monto_pagado) || 0, montoCheque: monto })
-            const { error: eG } = await supabase.from('gastos')
-              .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', g.id)
-            if (eG) throw eG
-            reversion = `Pago del gasto "${g.descripcion}" revertido — volvió a pendiente`
-          }
-        }
+      // Auditoría #5 + migs 477/479 — cheque propio ENTREGADO que se RECHAZA o se ANULA: nunca se cobró, así que el pago no
+      // existió (pago "pro solvendo"). Las OCs (o el gasto) vuelven a deber, la deuda reaparece en la CC del proveedor y la
+      // cuenta bancaria recupera el egreso. Todo en la base, en UNA transacción; no deja hacerlo de otra forma.
+      // ⚠️ CRITERIO CONTABLE PENDIENTE DE VALIDAR — consultas al contador C-23, C-24 y C-25 (wiki/business/consultas-contador.md).
+      if ((estado === 'rechazado' || estado === 'anulado') && cheque?.tipo === 'propio' && cheque?.estado === 'entregado') {
+        const { data, error } = await supabase.rpc('revertir_cheque_propio', { p_cheque_id: id, p_estado: estado })
+        if (error) throw error
+        const d = (data ?? {}) as any
+        const ocs = (d.ocs ?? []) as { etiqueta: string }[]
+        const partes: string[] = []
+        if (ocs.length) partes.push(`${ocs.map(o => o.etiqueta).join(', ')} ${ocs.length === 1 ? 'volvió' : 'volvieron'} a deber`)
+        else if (d.gasto) partes.push(`el gasto "${d.gasto.descripcion}" volvió a pendiente`)
+        if (d.caja) partes.push('el monto volvió a la cuenta en Caja Fuerte')
+        const reversion = partes.length ? `Pago revertido — ${partes.join('; ')}` : null
+        // Cheque anterior a la mig 479: no se sabe de qué cuenta salió → revisarla a mano.
+        const avisoCaja = d.caja_sin_vinculo && cheque?.monto ? 'Revisá en Caja Fuerte la cuenta de la que salió este cheque: es anterior al registro automático.' : null
+        return { reversion, avisoCaja }
       }
       const { error } = await supabase.from('cheques')
         .update({ estado, updated_at: new Date().toISOString() }).eq('id', id)
       if (error) throw error
-      return { reversion }
+      return { reversion: null as string | null, avisoCaja: null as string | null }
     },
     onSuccess: (d: any, v) => {
       toast.success(`Cheque → ${ESTADO_CHEQUE_LABEL[v.estado]}`)
+      if (d?.avisoCaja) toast(d.avisoCaja, { icon: '⚠️', duration: 10000 })
       if (d?.reversion) {
         toast(d.reversion, { icon: '↩️', duration: 8000 })
-        logActividad({ entidad: 'cheque', entidad_nombre: v.cheque?.nro_cheque || 'cheque', accion: 'rechazar', valor_nuevo: d.reversion, pagina: '/gastos' })
+        logActividad({ entidad: 'cheque', entidad_nombre: v.cheque?.nro_cheque || 'cheque', accion: v.estado === 'anulado' ? 'cambio_estado' : 'rechazar', valor_nuevo: d.reversion, pagina: '/gastos' })
         qc.invalidateQueries({ queryKey: ['gastos'] })
         qc.invalidateQueries({ queryKey: ['ordenes-compra'] })
         qc.invalidateQueries({ queryKey: ['proveedor-cc'] })
+        qc.invalidateQueries({ queryKey: ['proveedor-cc-resumen'] })
+        qc.invalidateQueries({ queryKey: ['boveda-cuentas'] })
+        qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       }
       qc.invalidateQueries({ queryKey: ['cheques'] })
     },
@@ -303,7 +280,12 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {siguientes.filter(s => s !== 'endosado').map(s => (
-                      <button key={s} onClick={() => cambiarEstado.mutate({ id: c.id, estado: s, cheque: c })}
+                      <button key={s} onClick={async () => {
+                        // Rechazar/anular un cheque propio entregado revierte el pago (OCs, CC, cuenta): se confirma antes.
+                        if (c.tipo === 'propio' && c.estado === 'entregado' && (s === 'rechazado' || s === 'anulado')
+                            && !(await confirmar(`¿Marcar el cheque${c.nro_cheque ? ` N° ${c.nro_cheque}` : ''} como ${ESTADO_CHEQUE_LABEL[s].toLowerCase()}? El pago que hizo se revierte: lo que pagó vuelve a deberse y el monto vuelve a la cuenta.`, { danger: true }))) return
+                        cambiarEstado.mutate({ id: c.id, estado: s, cheque: c })
+                      }}
                         className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
                         {ESTADO_CHEQUE_LABEL[s]}
                       </button>

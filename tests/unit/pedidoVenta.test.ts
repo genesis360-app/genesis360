@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   esPedidoParaMostrador, filtrarPedidosMostrador, canalesExcluidosValidos,
-  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, motivoNoLanzarPedido,
+  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, lineasEnvioTicket, lineasEntregaTicket, motivoNoLanzarPedido,
   type PedidoMostrador,
 } from '../../src/lib/pedidoVenta'
 
@@ -236,6 +236,43 @@ describe('resumenPagoTicket', () => {
   })
 })
 
+// 🐛 GO 2026-10-07 (El Tilo, PROD): el ticket de WhatsApp/link y el del mail salían sin el envío y con un TOTAL menor
+// al cobrado. Los renglones + `totalConTodo` tienen que sumar exactamente lo que muestra el ticket de la pantalla.
+describe('lineasEnvioTicket', () => {
+  it('sin envío → ningún renglón extra', () => {
+    expect(lineasEnvioTicket({})).toEqual([])
+    expect(lineasEnvioTicket({ costo_envio: 0, costo_envio_logistica: null })).toEqual([])
+  })
+
+  it('con envío → un renglón "Envío" por el costo', () => {
+    expect(lineasEnvioTicket({ costo_envio: 300 })).toEqual([{ nombre: 'Envío', cantidad: 1, subtotal: 300 }])
+  })
+
+  it('el numeric de Postgres llega como string → igual lo toma', () => {
+    expect(lineasEnvioTicket({ costo_envio: '1500.00' as unknown as number })).toEqual([{ nombre: 'Envío', cantidad: 1, subtotal: 1500 }])
+  })
+
+  it('envío + logística → dos renglones, como el ticket de la pantalla', () => {
+    expect(lineasEnvioTicket({ costo_envio: 200, costo_envio_logistica: 150 })).toEqual([
+      { nombre: 'Envío', cantidad: 1, subtotal: 200 },
+      { nombre: 'Envío logística', cantidad: 1, subtotal: 150 },
+    ])
+  })
+
+  it('💵 reserva con envío: productos + renglones = TOTAL del ticket, y el saldo incluye el envío', () => {
+    const venta = { estado: 'reservada', total: 2500, costo_envio: 300, monto_pagado: 1000 }
+    const items = [{ nombre: 'Tabla', cantidad: 1, subtotal: 2500 }, ...lineasEnvioTicket(venta)]
+    const { totalConTodo, saldo } = resumenPagoTicket(venta)
+    expect(items.reduce((a, i) => a + i.subtotal, 0)).toBe(totalConTodo)
+    expect(totalConTodo).toBe(2800)
+    expect(saldo).toBe(1800)
+  })
+
+  it('montos basura (NaN / negativos) no generan renglones', () => {
+    expect(lineasEnvioTicket({ costo_envio: NaN, costo_envio_logistica: -50 })).toEqual([])
+  })
+})
+
 // 🐛 Hallazgo de GO: el pedido de una venta anulada quedaba vivo y se podía lanzar.
 describe('motivoNoLanzarPedido', () => {
   it('venta viva sin rebajar todavía → se puede lanzar', () => {
@@ -259,5 +296,27 @@ describe('motivoNoLanzarPedido', () => {
   it('pedido de logística puro (sin venta) → no aplica', () => {
     expect(motivoNoLanzarPedido(null)).toBeNull()
     expect(motivoNoLanzarPedido(undefined)).toBeNull()
+  })
+})
+
+// GO 2026-10-07: el ticket de una venta con envío tiene que decir transporte, n° de envío, fecha y horario.
+describe('lineasEntregaTicket', () => {
+  it('envío propio con fecha y rango → transporte + n° y la entrega', () => {
+    const l = lineasEntregaTicket({ numero: 7, courier: 'Envío propio', fecha_entrega_acordada: '2026-10-08', rango_horario_desde: '08:10:00', rango_horario_hasta: '10:00:00' })
+    expect(l[0]).toBe('Envío propio · Envío #7')
+    expect(l[1]).toBe('Entrega: jue 08/10 · 08:10 a 10:00')
+  })
+  it('la fecha no se corre al día anterior (zona horaria)', () => {
+    expect(lineasEntregaTicket({ fecha_entrega_acordada: '2026-10-01' })[0]).toBe('Entrega: jue 01/10')
+  })
+  it('courier de tercero con servicio, sin fecha → solo la cabecera', () => {
+    expect(lineasEntregaTicket({ numero: 12, courier: 'Andreani', servicio: 'Estándar' })).toEqual(['Andreani — Estándar · Envío #12'])
+  })
+  it('solo horario', () => {
+    expect(lineasEntregaTicket({ rango_horario_desde: '14:00:00' })).toEqual(['Entrega: desde 14:00'])
+  })
+  it('sin envío → nada', () => {
+    expect(lineasEntregaTicket(null)).toEqual([])
+    expect(lineasEntregaTicket({})).toEqual([])
   })
 })

@@ -2411,6 +2411,54 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🧾 §105 — Cheques propios, número de OC por sucursal y PDF de la OC (migs 477-478, 🟡 DEV) — 2026-10-07
+
+Pendientes de CC de proveedores elegidos por GO para el próximo deploy. 🛑 REGLA #0. **Las migs 477 y 478 están escritas y
+revisadas (migration-reviewer: bloqueante de idempotencia corregido) y APLICADAS EN DEV** (2026-10-08 02:32 UTC); `schema_full`
+regenerado. Verificado con 16 escenarios SQL en DEV impersonando al dueño de Almacén Jorgito (todo en ROLLBACK, sin residuo).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 105.1 | 🛑 Pago desde la CC del proveedor con "Cheque": pide fecha de cobro (UI + servidor) y crea el cheque en Gastos → Cheques, atado al pago (`cc_movimiento_id`, `monto_imputado`) | SQL DEV (rollback): cheque atado, monto_imputado 1500 · sin fecha → error | ✅ |
+| 105.2 | 🛑 Rechazar ese cheque: las OCs que había pagado vuelven a deber (la más nueva primero), +ajuste en la CC por el monto, imputaciones negativas; todo en una transacción (`rechazar_cheque_propio`) | SQL DEV (rollback): OCs 0, CC 0, imputaciones netas 0 | ✅ |
+| 105.3 | 🛑 Rechazar un cheque de un pago de OC con varios medios: solo se revierte la parte del cheque, en la moneda de la OC | SQL DEV (rollback): OC 800 / pago_parcial, imputación −1200 | ✅ |
+| 105.4 | 🛑 Pasar un cheque propio a 'rechazado' con un UPDATE directo → rechazado por el trigger; un rechazado no cambia de estado (no se revierte dos veces) | SQL DEV (rollback): UPDATE directo, doble rechazo y rechazado→cobrado bloqueados | ✅ |
+| 105.5 | Cheque de un gasto suelto rechazado → el gasto vuelve a pendiente/parcial | e2e `31` contra DEV migrado | ✅ |
+| 105.6 | Número de OC: sucursal con código → "OC-SUC1-0070" en pantallas y textos del servidor; sin código sigue "S-OC-0070"; la búsqueda acepta las dos formas | unit `ocNumero` (7) · SQL `fn_oc_etiqueta` en DEV | ✅ |
+| 105.7 | CC del proveedor: con 2+ sucursales muestra el pendiente de OCs por sucursal (informativo; la deuda sigue siendo una del negocio) | SQL DEV (`pendiente_por_sucursal`) · pantalla: manual | ✅ SQL · ⬜ manual |
+| 105.8 | PDF/texto de la OC: TOTAL = productos + envío del proveedor; aduana/comisión/otros NO aparecen | unit `ocPDF` | ✅ |
+| 105.9 | Recepción con OC: si falla el update de la OC o el gasto, avisa (ya estaba hecho; el pendiente del wiki estaba desactualizado) | revisión | ✅ |
+| 105.10 | 🛑 Mig 479 — pago con cheque desde una caja: el cheque guarda su movimiento de caja; al rechazar/anular, `ingreso_informativo` de hoy a la misma cuenta → el saldo de la cuenta en Caja Fuerte vuelve a lo que era (pago −1000, reversión +1000) | SQL DEV (rollback) | ✅ |
+| 105.11 | 🛑 Cheque propio ENTREGADO anulado → revierte igual que el rechazo (OCs vuelven a deber, ajuste "Cheque anulado" en la CC); por UPDATE directo bloqueado; anulado no cambia de estado; anulado desde EN CARTERA sin reversión | SQL DEV (rollback) | ✅ |
+| 105.12 | 🛑 Cierre contable: una OC de un período cerrado se puede PAGAR hoy (y revertir su pago); editar su contenido sigue bloqueado. Igual en gastos (`monto_pagado`/`estado_pago`) | SQL DEV (rollback, cierre 2020-06 sembrado y revertido) | ✅ |
+| 105.13 | Rechazar/anular un cheque propio entregado pide confirmación (revierte plata); el aviso dice qué volvió a deber y si el monto volvió a la cuenta; cheques sin vínculo (anteriores o de gastos sueltos) avisan revisar la cuenta a mano | e2e `31` (confirmación + aviso) | ✅ |
+
+**Decisiones de GO (2026-10-08), implementadas en la mig 479:** el cierre no bloquea pagos ni reversiones (OC y gastos);
+contramovimiento en la cuenta bancaria; el cheque anulado tras entregado revierte como el rechazo. Criterio provisorio →
+consultas al contador **C-23 a C-25**. ⚠️ Queda para GO: las **ventas** siguen bloqueadas por completo por el cierre
+(cobrar hoy una venta a CC de un período cerrado falla); hoy ningún negocio de PROD tiene cierres cargados.
+
+## 🚚 §104 — El ticket por WhatsApp/link y por mail sale CON el envío (🟡 DEV) — 2026-10-07
+
+Disparado por GO probando con El Tilo en PROD (reserva #50: el ticket no mostraba el envío). Al revisar se encontró que el ticket
+de la **pantalla** sí lo muestra (si `costo_envio > 0`), pero el de **WhatsApp/link** (`ticketPDF` + `/c/<código>`) y el del
+**mail** (`venta_confirmada`, al cliente y el automático al dueño) se armaban solo con los productos y `ventas.total` →
+**el comprobante decía menos de lo cobrado** y el saldo de la reserva no sumaba el envío. Fix solo frontend: helper
+`lineasEnvioTicket()` (renglones "Envío" / "Envío logística") + total y saldo de `resumenPagoTicket()` (los mismos de la pantalla).
+Los links ya compartidos antes del fix guardan su foto de datos vieja (sin envío).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 104.1 | Reserva con envío $300 → "Enviar por WhatsApp" → el link y el PDF muestran el renglón "Envío" y el TOTAL = productos + envío | unit `lineasEnvioTicket` · probar en DEV | ✅ unit · ⬜ manual |
+| 104.2 | El saldo del ticket de WhatsApp incluye el envío (total + envío − pagado), igual que "SALDO A PAGAR" de la pantalla | unit (reserva 2500 + 300, pagó 1000 → saldo 1800) | ✅ unit |
+| 104.3 | Ticket por mail al cliente: renglón "Envío" + total con envío | revisión · probar en DEV | ✅ código · ⬜ manual |
+| 104.4 | Mail automático al dueño (venta despachada): renglón "Envío" + total con envío | revisión | ✅ código |
+| 104.5 | Venta sin envío: ningún renglón extra, total sin cambios | unit | ✅ |
+| 104.6 | Reserva #50 de El Tilo (PROD): `costo_envio` = 45.000 guardado, `monto_pagado` = 94.005 (productos + envío), envío #7 propio con fecha 08/10 8:10-10:00 → el dato estaba bien | SQL de solo lectura en PROD | ✅ |
+| 104.7 | 🛑 Venta despachada y RESERVA con envío propio: el ticket de la pantalla muestra "Envío $X" y TOTAL = productos + envío (el caso de la #50 de El Tilo; en PROD el dato estaba bien guardado) | e2e `188` (2 tests, acotado a `#ticket-print`) | ✅ |
+| 104.8 | 🛑 El modal "¿Emitir comprobante?" mostraba y usaba para el umbral de la Factura B el total SIN envío (la EF sí lo suma → rechazaba una B sin DNI que con el envío pasaba el umbral) → `totalFacturable` = total + envío | e2e `188` (captura: $5.700) | ✅ |
+| 104.9 | Ticket con envío: transporte + n° de envío y fecha/horario de entrega (pantalla, WhatsApp/link) — pedido de GO | unit `lineasEntregaTicket` (5) · e2e `188` | ✅ |
+
 ## 📍 §103 — Ubicación "Global" y recepción de traslado en una sucursal sin ubicaciones (🟡 DEV) — 2026-10-06
 
 Caso real (El Tilo, PROD, solo lectura): el traslado #1 no se podía recibir porque la sucursal destino tenía 0 ubicaciones

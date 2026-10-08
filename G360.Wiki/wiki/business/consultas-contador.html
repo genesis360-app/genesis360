@@ -62,7 +62,7 @@ th { background: #f6f4fb; }
 <body>
 <header>
   <h1>Genesis360 &mdash; Consultas para el Contador</h1>
-  <p class="sub">Documento generado el 22 de septiembre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
+  <p class="sub">Documento generado el 08 de octubre de 2026 &middot; version imprimible de <code>wiki/business/consultas-contador.md</code></p>
 </header>
 <h1>Consultas para el Contador</h1>
 <p><strong>Qué es esto:</strong> el registro <strong>vivo</strong> de todas las preguntas fiscales y contables que Genesis360</p>
@@ -90,7 +90,7 @@ th { background: #f6f4fb; }
 <hr>
 <h2>Estado</h2>
 <table><thead><tr><th>Estado</th><th>Cantidad</th></tr></thead><tbody>
-<tr><td>🟥 Abiertas</td><td>18</td></tr>
+<tr><td>🟥 Abiertas</td><td>25</td></tr>
 <tr><td>✅ Respondidas por un matriculado</td><td>0</td></tr>
 </tbody></table>
 <p>⚠️ <strong>Ninguna respondida todavía.</strong> La C-01 y sus derivadas tienen una respuesta **de una IA que se</p>
@@ -253,6 +253,12 @@ th { background: #f6f4fb; }
 <p>que es lo que el negocio obtendría si vendiera esos dólares.</p>
 <p><strong>Pregunta:</strong> ¿es el criterio correcto para valuar tenencias en moneda extranjera? ¿Cambia si es</p>
 <p>para un balance formal en vez de para gestión interna?</p>
+<div class="cita aviso">
+<p>vendedor divisa BNA del día hábil anterior en el resto del sistema (POS, ficha, importador, pagos en</p>
+<p>USD) incluyendo la Bóveda — ver C-16. Si aplica también acá (valuación de tenencias para reportes), lo</p>
+<p>resuelve la misma implementación (D-1). <strong>Implementado el 2026-09-26 (fase 2, mig 440)</strong>: la Bóveda</p>
+<p>y los dashboards ya valúan USD al vendedor divisa BNA del día hábil anterior.</p>
+</div>
   <div class="respuesta">
     <p class="respuesta-label">Respuesta del contador</p>
     <div class="lineas"></div>
@@ -399,22 +405,37 @@ th { background: #f6f4fb; }
 <hr>
 <h3 class="pregunta"><span class="chip">C-16</span> Venta cobrada en dólares, factura emitida en pesos: ¿qué cotización se usa?</h3>
 <ul>
-<li><strong>Estado:</strong> 🟥 Abierta</li>
+<li><strong>Estado:</strong> 🟥 Abierta (sigue sin responder un matriculado — lo de abajo es una decisión de GO, no una</li>
+</ul>
+<p>respuesta profesional)</p>
+<ul>
 <li><strong>Área:</strong> Facturación electrónica / tipo de cambio</li>
 <li><strong>Impacta en:</strong> <code>src/lib/cotizacionFiscal.ts</code>, <code>supabase/functions/emitir-factura</code>, y toda la</li>
 </ul>
 <p>conversión USD → ARS del POS</p>
 <ul>
-<li><strong>Criterio provisorio actual:</strong> la app convierte con el <strong>dólar COMPRA</strong> de la cotización operativa</li>
+<li><strong>Criterio vigente (desde 2026-09-26, D-1 fase 2):</strong> la app convierte con el **vendedor divisa del</li>
 </ul>
-<p>que cargó el negocio (una sola tasa, para que no aparezca vuelto fantasma).</p>
+<p>BNA del día hábil anterior**, una sola tasa en todo el sistema (antes: dólar COMPRA de la cotización</p>
+<p>operativa que cargaba el negocio).</p>
+<div class="cita aviso">
+<p>norma fija la tasa del POS para una venta facturada en pesos — es decisión de negocio, no obligación),</p>
+<p>GO decidió reemplazar el criterio de arriba: el POS va a convertir USD→ARS al **vendedor divisa del</p>
+<p>BNA del día hábil anterior**, una sola tasa en todos lados (POS, ficha, importador, tiers/combos USD,</p>
+<p>pagos recibidos en USD, Bóveda). Ver <code>sources/raw/respuestas_puntos_abiertos_2026-09-25.md</code></p>
+<p>("Decisiones posteriores"), <span class="ref">ventas-pos</span> "UNA sola tasa USD→ARS".</p>
+<p>operaciones en moneda extranjera al <strong>vendedor BNA al cierre del día anterior</strong> al hecho imponible — la misma tasa</p>
+<p>que se implementó. Pregunta concreta para el contador: ¿un producto con precio fijado en USD y facturado en pesos</p>
+<p>queda alcanzado por el art. 49? Detalle en <code>sources/raw/respuestas_puntos_abiertos_2026-09-25.md</code> ("Segunda</p>
+<p>revisión legal").</p>
+</div>
 <p><strong>Pregunta:</strong> cuando la venta se cobra en dólares pero la factura se emite en <strong>pesos</strong> (que es la</p>
 <p>decisión de producto), ¿qué cotización corresponde para pasar esos dólares a pesos: la que usó el</p>
 <p>negocio en el mostrador, o la del BNA del día hábil anterior? ¿Y comprador o <strong>vendedor divisa</strong>?</p>
 <p><strong>Por qué importa:</strong> la RG ARCA 5616/2024 fija, para comprobantes <strong>emitidos en moneda extranjera</strong>,</p>
 <p>el <strong>tipo de cambio vendedor divisa del BNA al cierre del día hábil cambiario anterior</strong>. No se</p>
 <p>encontró norma que fije lo mismo para el caso inverso (factura en pesos de una venta cobrada en</p>
-<p>dólares), que es justo el caso de Genesis360. <strong>La app hoy usa COMPRA, no vendedor.</strong> Si el criterio</p>
+<p>dólares), que es justo el caso de Genesis360. <strong>La app usa vendedor divisa (desde 26/09).</strong> Si el criterio</p>
 <p>está mal, quedan mal declarados los importes de todas las facturas de ventas cobradas en dólares.</p>
   <div class="respuesta">
     <p class="respuesta-label">Respuesta del contador</p>
@@ -459,6 +480,170 @@ th { background: #f6f4fb; }
 <p><strong>histórico por fecha</strong> (hoy la app solo guarda la cotización del momento). También define qué pasa</p>
 <p>con las monedas que el BNA no cotiza: la RG 5616/2024 dice que ahí el emisor informa el tipo de</p>
 <p>cambio que usó, y hay que decidir cuál y cómo se justifica.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-19</span> Padrón de ARCA: sin IVA ni monotributo, ¿el receptor es Consumidor Final?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-01)</li>
+<li><strong>Área:</strong> Condición frente al IVA del receptor (autocompletar por CUIT)</li>
+<li><strong>Impacta en:</strong> <code>supabase/functions/_shared/padronArca.ts</code> → <code>condicionIvaDesde</code>; la condición que se</li>
+</ul>
+<p>le <strong>propone</strong> al usuario en la ficha de cliente/proveedor y en el alta rápida del POS. Ver</p>
+<p><span class="ref">padron-arca</span>.</p>
+<ul>
+<li><strong>Criterio provisorio actual:</strong> si ARCA manda el régimen general completo y sin errores, y entre los</li>
+</ul>
+<p>impuestos inscriptos no está el IVA (30) ni IVA exento (32) ni monotributo → se propone **Consumidor</p>
+<p>Final<strong> (Factura B). Si ARCA no manda el régimen, </strong>no se propone nada**.</p>
+<p><strong>Pregunta:</strong> una persona inscripta en otros impuestos (p. ej. solo Ganancias, o con IVA "no alcanzado"</p>
+<p>—impuesto 34— o "no inscripto" —33—), ¿se factura como Consumidor Final? ¿Hay algún impuesto o</p>
+<p>caracterización del padrón que la haga <strong>Exento</strong> o <strong>No Responsable</strong> en vez de CF?</p>
+<p><strong>Qué se rompe si está mal:</strong> se le propondría al usuario una condición equivocada para el receptor;</p>
+<p>la letra (B) seguiría siendo la misma salvo que correspondiera Exento/No Responsable, pero el</p>
+<p><code>CondicionIVAReceptorId</code> (RG 5616) iría mal informado en la factura. Es una <strong>propuesta</strong> que el</p>
+<p>usuario acepta, no se aplica sola.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-20</span> Intereses por mora de cuenta corriente: ¿llevan Nota de Débito con IVA?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-02)</li>
+<li><strong>Área:</strong> Cuenta corriente de clientes — intereses por pago fuera de término</li>
+<li><strong>Impacta en:</strong> <code>ventas.interes_cc</code> (lo calcula <code>fn_recalcular_intereses_cc_tenant</code> con la tasa mensual de la</li>
+</ul>
+<p>categoría/cliente), la cobranza de CC y el QR de Mercado Pago de la factura/estado de cuenta.</p>
+<ul>
+<li><strong>Contexto:</strong> GO decidió el 02/10 que el interés de CC <strong>se cobra</strong> (hasta hoy se mostraba pero se perdonaba solo</li>
+</ul>
+<p>al pagar el capital) y que el QR de pago lo incluya.</p>
+<ul>
+<li><strong>Criterio provisorio actual:</strong> el interés <strong>no se cobra todavía</strong> hasta tener esta respuesta; el QR va sin interés.</li>
+</ul>
+<p><strong>Pregunta:</strong> el interés que un negocio le cobra a su cliente por pagar una venta en cuenta corriente después del</p>
+<p>vencimiento, ¿hay que documentarlo con una <strong>Nota de Débito</strong> electrónica (con IVA, según la condición del emisor:</p>
+<p>A/B/C), o puede cobrarse sin comprobante fiscal? Si lleva ND: ¿el IVA del interés va a la misma alícuota que la venta</p>
+<p>original (21 %, 10,5 %, mixta) o a 21 %? ¿Y para un emisor Monotributista (ND C)?</p>
+<p><strong>Qué se rompe si está mal:</strong> si el interés debe facturarse y se cobra sin Nota de Débito, el negocio cobra un ingreso</p>
+<p>gravado sin declararlo (IVA y Ingresos Brutos no ingresados). Si no hace falta ND y la exigimos, solo se agrega un paso.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-21</span> Multi-CUIT: traslado de mercadería entre sucursales de distinto CUIT</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-02)</li>
+<li><strong>Área:</strong> Inventario + multi-CUIT (<span class="ref">multi-cuit</span>)</li>
+<li><strong>Impacta en:</strong> traslados entre sucursales (<code>traslados</code>), cuando cada sucursal tiene asignado un emisor distinto</li>
+</ul>
+<p>(<code>sucursales.emisor_fiscal_id</code>). Hoy la app lo trata como un movimiento interno de stock, sin comprobante fiscal.</p>
+<ul>
+<li><strong>Criterio provisorio actual:</strong> traslado interno, sin factura ni remito fiscal entre CUITs.</li>
+</ul>
+<p><strong>Pregunta:</strong> si un mismo negocio opera con dos CUITs (p. ej. dos sociedades o una persona y una sociedad) y mueve</p>
+<p>mercadería de la sucursal del CUIT A a la del CUIT B, ¿eso es una venta entre dos contribuyentes distintos (factura</p>
+<p>de A a B, con IVA, y la compra entra en el Libro IVA Compras de B) o puede tratarse como un traslado interno con</p>
+<p>remito? ¿Cambia si los dos CUITs son de la misma persona (titular monotributista + titular RI, p. ej.)?</p>
+<p><strong>Qué se rompe si está mal:</strong> la mercadería pasa de un contribuyente a otro sin comprobante; después B la vende y</p>
+<p>factura con su CUIT algo que, fiscalmente, nunca compró (inventario de B sin respaldo, IVA crédito/débito de A y B</p>
+<p>mal liquidados).</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-22</span> Envío de una compra: ¿va en la factura del proveedor y suma a la deuda?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-06)</li>
+<li><strong>Área:</strong> Compras + cuenta corriente de proveedores (<span class="ref">clientes-proveedores</span>)</li>
+<li><strong>Impacta en:</strong> <code>ordenes_compra.costo_envio</code>. Proveedores lo suma al total de la OC; el pago, la deuda (mig 473) y el</li>
+</ul>
+<p>gasto de la recepción NO lo incluyen. Falta un dato: quién cobra el envío.</p>
+<ul>
+<li><strong>Criterio provisorio actual (implementado en DEV, mig 475):</strong> la OC dice quién cobra el envío; si es el proveedor suma a su total y a la deuda, si es un tercero va como gasto aparte. Lectura propia (no de matriculado): si el</li>
+</ul>
+<p>envío lo presta/cobra el PROVEEDOR junto con la venta, integra el precio neto gravado (Ley de IVA, art. 10: los</p>
+<p>servicios prestados juntamente con la venta) y va en SU factura (misma o aparte), con el IVA de la mercadería → suma a</p>
+<p>lo que se le debe. Si lo hace un TRANSPORTISTA contratado por el negocio, lo factura el transportista (otro</p>
+<p>comprobante, otro acreedor) → no va en la CC del proveedor. En ambos casos el flete es costo de la mercadería</p>
+<p>(costo de incorporación) además de gasto.</p>
+<p><strong>Pregunta:</strong> ¿es correcta esa lectura? ¿El flete facturado por el vendedor sigue siempre la alícuota del bien (p. ej.</p>
+<p>10,5 %) o puede ir al 21 %? ¿Hay que distinguir en la OC "envío a cargo del proveedor" vs "de un tercero"?</p>
+<p><strong>Qué se rompe si está mal:</strong> la deuda con el proveedor queda corta (o larga) por el flete, y el IVA crédito / el costo</p>
+<p>de la mercadería se calculan sobre una base equivocada.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-23</span> Cheque propio rechazado: ¿se revierte el pago y la deuda reaparece hoy?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-08)</li>
+<li><strong>Área:</strong> Cheques + cuenta corriente de proveedores (<span class="ref">clientes-proveedores</span>)</li>
+<li><strong>Impacta en:</strong> RPC <code>revertir_cheque_propio</code> (migs 477/479), <code>ChequesPanel.tsx</code>.</li>
+<li><strong>Criterio provisorio (implementado, aprobado por GO 2026-10-08):</strong> el pago con cheque es <em>pro solvendo</em> (la deuda se</li>
+</ul>
+<p>extingue cuando el banco paga el cheque). Si rebota: las OCs que pagó vuelven a deber (la más nueva primero), se carga</p>
+<p>un <code>ajuste</code> en la CC del proveedor <strong>con fecha del rechazo</strong>, y el pago original NO se borra (contra-asiento "Banco a</p>
+<p>Proveedores"). Lectura propia + práctica de Colppy/OnBalance/X-SYS y jurisprudencia (STJ La Pampa), no de matriculado.</p>
+<p><strong>Pregunta:</strong> ¿es el tratamiento correcto, y la fecha del contra-asiento es la del rechazo? ¿Hace falta registrar algo</p>
+<p>más (gastos bancarios del rechazo, multa de la Ley 24.452 al librador)?</p>
+<p><strong>Qué se rompe si está mal:</strong> la deuda con el proveedor y el resultado del período quedan mal fechados.</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-24</span> Cheque propio rechazado o anulado: ¿el egreso de la cuenta bancaria se compensa con un ingreso de hoy?</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-08)</li>
+<li><strong>Área:</strong> Caja Fuerte / cuentas de origen (<span class="ref">caja</span>)</li>
+<li><strong>Impacta en:</strong> mig 479 (<code>cheques.caja_movimiento_id</code>, <code>ingreso_informativo</code> en <code>revertir_cheque_propio</code>),</li>
+</ul>
+<p><code>vw_boveda_cuentas</code>.</p>
+<ul>
+<li><strong>Criterio provisorio (implementado):</strong> el pago con cheque resta del saldo de la cuenta asignada al medio Cheque en el</li>
+</ul>
+<p>momento de ENTREGARLO (no cuando el banco lo debita). Si rebota o se anula, se registra un <code>ingreso_informativo</code> de</p>
+<p>hoy a la misma cuenta; el egreso original queda. Cheques anteriores a la mig 477 o de gastos sueltos: no se sabe de</p>
+<p>qué cuenta salieron → la pantalla avisa revisarla a mano.</p>
+<p><strong>Pregunta:</strong> ¿está bien que el cheque propio diferido reste de la cuenta al entregarlo (y no al vencer/debitarse)? ¿El</p>
+<p>contramovimiento de hoy es la forma correcta de compensarlo?</p>
+<p><strong>Qué se rompe si está mal:</strong> el saldo del banco en Caja Fuerte y el capital del negocio quedan mal (de más o de menos).</p>
+  <div class="respuesta">
+    <p class="respuesta-label">Respuesta del contador</p>
+    <div class="lineas"></div>
+    <p class="firma">Firma / sello &nbsp;____________________________ &nbsp;&nbsp; Fecha &nbsp;____ / ____ / ________</p>
+  </div>
+<hr>
+<h3 class="pregunta"><span class="chip">C-25</span> Cheque propio anulado después de entregado, y pagos de comprobantes de un período cerrado</h3>
+<ul>
+<li><strong>Estado:</strong> 🟥 Abierta (2026-10-08)</li>
+<li><strong>Área:</strong> Cheques + cierre contable (relacionada con <span class="ref">#C-14 · Cierre contable mensual: ¿el criterio de bloqueo es el correcto?|C-14</span>)</li>
+<li><strong>Impacta en:</strong> <code>revertir_cheque_propio(id, 'anulado')</code>, triggers <code>trg_oc_periodo_cerrado</code> y <code>trg_gastos_periodo_cerrado</code></li>
+</ul>
+<p>(mig 479).</p>
+<ul>
+<li><strong>Criterio provisorio (implementado):</strong> (a) un cheque propio ENTREGADO que se anula (el proveedor lo devuelve, se</li>
+</ul>
+<p>pierde, se reemplaza) tampoco se cobró → se revierte igual que un rechazo; anulado en cartera no revierte nada.</p>
+<p>(b) El cierre contable protege el CONTENIDO de una OC o un gasto (ítems, precios, proveedor, fecha, monto), pero no su</p>
+<p>estado de pago: pagar hoy un comprobante de un período cerrado, o revertir ese pago, es un hecho de hoy. ⚠️ Las</p>
+<p><strong>ventas</strong> siguen bloqueadas por completo (cobrar hoy una venta a CC de un período cerrado falla) — pendiente de GO.</p>
+<p><strong>Pregunta:</strong> ¿es correcto tratar la anulación como el rechazo? ¿Es correcto dejar fuera del cierre las columnas de pago</p>
+<p>(y extenderlo a la cobranza de ventas)?</p>
+<p><strong>Qué se rompe si está mal:</strong> pagos que no existieron quedan como hechos, o el cierre deja pasar cambios que no debería.</p>
   <div class="respuesta">
     <p class="respuesta-label">Respuesta del contador</p>
     <div class="lineas"></div>

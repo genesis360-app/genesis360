@@ -99,6 +99,12 @@ export default function ComprobantePublicoPage() {
           <span className="text-lg font-bold text-gray-900">{$(total)}</span>
         </div>
 
+        {c.tipo === 'ticket' && !!(d as TicketCompartidoData).entrega?.length && (
+          <div className="text-xs text-gray-600 space-y-0.5">
+            {(d as TicketCompartidoData).entrega!.map((l, i) => <p key={i}>{l}</p>)}
+          </div>
+        )}
+
         <button onClick={descargar} disabled={generando}
           className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 rounded-xl disabled:opacity-60">
           {generando ? 'Generando…' : <><Download size={16} /> Descargar PDF</>}

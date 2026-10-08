@@ -173,7 +173,8 @@ export default function ProveedoresPage() {
       condiciones: oc.proveedores?.plazo_pago_dias ? `${oc.proveedores.plazo_pago_dias} días` : null,
     },
     items: items.map(it => ({ nombre: it.productos?.nombre ?? '—', cantidad: it.cantidad, precio_unitario: it.precio_unitario })),
-    costoEnvio: envioDelProveedor(oc) || null, costoAduana: oc.costo_aduana,   // envío de un tercero: no lo cobra el proveedor costoComision: oc.costo_comision, costoOtros: oc.costo_otros,
+    // Solo el envío que cobra el proveedor; aduana/comisión/otros son costos internos y no van en su OC.
+    costoEnvio: envioDelProveedor(oc) || null,
     pagaConAnticipo: oc.paga_con_anticipo, anticipoPct: oc.anticipo_pct, pagoSchedule: oc.pago_schedule,
     notas: oc.notas ?? null,
   })
@@ -305,6 +306,10 @@ export default function ProveedoresPage() {
   const [ccGuardando, setCcGuardando]       = useState(false)
   const [ccCajaId, setCcCajaId]             = useState<string | null>(null)
   const [ccClave, setCcClave]               = useState('')
+  // Mig 477 — pagar con cheque desde la CC crea el cheque (Gastos → Cheques); la fecha de cobro alimenta la alerta.
+  const [ccChqNro, setCcChqNro]             = useState('')
+  const [ccChqBanco, setCcChqBanco]         = useState('')
+  const [ccChqFechaCobro, setCcChqFechaCobro] = useState('')
   // D6 — cuentas bancarias múltiples por proveedor
   const [cuentaForm, setCuentaForm]         = useState<{ banco: string; titular: string; cbu: string; alias: string }>({ banco: '', titular: '', cbu: '', alias: '' })
   const [showCuentaForm, setShowCuentaForm] = useState(false)
@@ -348,7 +353,7 @@ export default function ProveedoresPage() {
     queryKey: ['proveedor-cc', ccProvId],
     queryFn: async () => {
       const { data } = await supabase.from('proveedor_cc_movimientos')
-        .select('*, ordenes_compra(numero, numero_sucursal)')
+        .select('*, ordenes_compra(numero, numero_sucursal, sucursal_id)')
         .eq('proveedor_id', ccProvId!)
         .order('fecha', { ascending: false })
         .limit(50)
@@ -374,7 +379,12 @@ export default function ProveedoresPage() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc('fn_proveedor_cc_resumen', { p_proveedor_id: ccProvId! })
       if (error) throw error
-      return data as { saldo: Record<string, number | string>; pendiente_ocs: Record<string, number | string> }
+      return data as {
+        saldo: Record<string, number | string>
+        pendiente_ocs: Record<string, number | string>
+        // Mig 478 — solo informativo: la deuda con el proveedor es una sola del negocio (decisión de GO 07/10).
+        pendiente_por_sucursal?: { sucursal: string | null; moneda: string; pendiente: number | string; ocs: number }[]
+      }
     },
     enabled: !!ccProvId,
   })
@@ -387,6 +397,10 @@ export default function ProveedoresPage() {
   const pendienteOCsCC = parseFloat(String(ccResumen?.pendiente_ocs?.[monedaNegocioCC] ?? 0)) || 0
   // Mismo tope que el servidor: lo pendiente de las OCs o la deuda (lo recibido puede costar más que lo pedido).
   const topePagoCC = Math.max(pendienteOCsCC, saldoCC)
+  // Desglose por sucursal del pendiente de OCs en la moneda del negocio — se muestra solo si hay más de una sucursal.
+  const pendientePorSucursalCC = (ccResumen?.pendiente_por_sucursal ?? [])
+    .filter(r => r.moneda === monedaNegocioCC)
+    .map(r => ({ ...r, pendiente: parseFloat(String(r.pendiente)) || 0 }))
 
   // D6 — cuentas bancarias del proveedor abierto
   const { data: cuentasBancarias = [], refetch: refetchCuentas } = useQuery({
@@ -424,7 +438,7 @@ export default function ProveedoresPage() {
     // El estado de cuenta lleva TODOS los movimientos (el historial en pantalla muestra los últimos 50): si no, las
     // filas no sumaban el saldo del pie.
     const { data: todosMov, error: movErr } = await traerTodoConError<any>((desde, hasta) => supabase
-      .from('proveedor_cc_movimientos').select('*, ordenes_compra(numero, numero_sucursal)')
+      .from('proveedor_cc_movimientos').select('*, ordenes_compra(numero, numero_sucursal, sucursal_id)')
       .eq('proveedor_id', ccProvId!).order('fecha', { ascending: true }).order('created_at', { ascending: true })
       .range(desde, hasta))
     if (movErr || !todosMov) { toast.error('No se pudo armar el estado de cuenta: ' + (movErr?.message ?? 'sin datos')); return }
@@ -472,11 +486,16 @@ export default function ProveedoresPage() {
     if (ccPagoMedio === 'Efectivo' && !sesionId) {
       toast.error(cajas.length > 1 ? 'Elegí la caja de la que sale el efectivo.' : 'Abrí una caja para pagar en efectivo.'); return
     }
+    const esCheque = ccPagoMedio === 'Cheque'
+    if (esCheque && !ccChqFechaCobro) { toast.error('Pagás con cheque: indicá la fecha de cobro.'); return }
     setCcGuardando(true)
     try {
       const { data, error } = await supabase.rpc('registrar_pago_proveedor', {
         p_proveedor_id: ccProvId, p_medio: ccPagoMedio, p_monto: monto,
         p_caja_sesion_id: sesionId, p_clave: ccClave.trim() || null,
+        p_cheque: esCheque
+          ? { nro: ccChqNro.trim() || null, banco: ccChqBanco.trim() || null, fecha_cobro: ccChqFechaCobro, sucursal_id: sucursalId || null }
+          : null,
       })
       if (error) throw error
       const imp = ((data as any)?.imputaciones ?? []) as { numero: number; etiqueta?: string; monto: number }[]
@@ -484,6 +503,12 @@ export default function ProveedoresPage() {
         ? `Pago registrado — ${imp.map(i => i.etiqueta ?? nombreOC(i, ocNumeracion)).join(', ')}${imp.length === 1 ? '' : ' (de la más vieja a la más nueva)'}`
         : 'Pago registrado')
       setCcPagoMonto(''); setCcClave('')
+      if (esCheque) {
+        setCcChqNro(''); setCcChqBanco(''); setCcChqFechaCobro('')
+        toast('Cheque registrado en Gastos → Cheques', { icon: '🧾' })
+        qc.invalidateQueries({ queryKey: ['cheques'] })
+        qc.invalidateQueries({ queryKey: ['cheques-alerta'] })
+      }
       refetchCC(); refetchCCResumen()
       qc.invalidateQueries({ queryKey: ['oc-gastos'] })
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
@@ -1203,7 +1228,7 @@ export default function ProveedoresPage() {
         // Mig 473: una OC con pagos no cambia de proveedor ni de ítems (lo frena también la base). Se chequea ANTES de
         // tocar nada: si no, el encabezado quedaba guardado y fallaba recién al reemplazar los ítems.
         const { data: ocActual, error: ocActErr } = await supabase.from('ordenes_compra')
-          .select('numero, numero_sucursal, monto_pagado').eq('id', editOcId).single()
+          .select('numero, numero_sucursal, sucursal_id, monto_pagado').eq('id', editOcId).single()
         if (ocActErr) throw ocActErr
         if (Number(ocActual?.monto_pagado ?? 0) > 0) {
           throw new Error(`La ${nombreOC(ocActual, ocNumeracion)} ya tiene pagos: no se puede editar. Si cambió el pedido, hacé una OC nueva.`)
@@ -3827,6 +3852,16 @@ export default function ProveedoresPage() {
               <p className="mx-5 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
                 La deuda se carga al recibir la mercadería. {pendienteOCsCC > 0.5 && <>Pendiente de pagar en OCs: <strong>${pendienteOCsCC.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</strong>.</>}
               </p>
+              {pendientePorSucursalCC.length > 1 && (
+                <ul data-testid="cc-proveedor-pendiente-sucursal" className="mx-5 mt-1 text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5">
+                  {pendientePorSucursalCC.map(r => (
+                    <li key={r.sucursal ?? '—'} className="flex justify-between gap-3">
+                      <span>{r.sucursal ?? 'Sin sucursal'} · {r.ocs} {r.ocs === 1 ? 'OC' : 'OCs'}</span>
+                      <span className="tabular-nums">${r.pendiente.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
               {/* Registrar pago — se imputa a la OC más vieja primero (mig 473) */}
               {topePagoCC > 0.5 && (
@@ -3851,6 +3886,16 @@ export default function ProveedoresPage() {
                       <option value="">{ccPagoMedio === 'Efectivo' ? 'Elegí la caja de la que sale el efectivo' : 'Caja (opcional, para el registro)'}</option>
                       {(cajasAbiertasProv as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.cajas?.nombre ?? 'Caja'}</option>)}
                     </select>
+                  )}
+                  {ccPagoMedio === 'Cheque' && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <input value={ccChqNro} onChange={e => setCcChqNro(e.target.value)} placeholder="N° de cheque" aria-label="Número de cheque"
+                        className="min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                      <input value={ccChqBanco} onChange={e => setCcChqBanco(e.target.value)} placeholder="Banco" aria-label="Banco del cheque"
+                        className="min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                      <input type="date" value={ccChqFechaCobro} onChange={e => setCcChqFechaCobro(e.target.value)} aria-label="Fecha de cobro del cheque" title="Fecha de cobro (obligatoria)"
+                        className="min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
+                    </div>
                   )}
                   {ccPagoMedio === 'Efectivo' && (cajasAbiertasProv as any[]).length === 0 && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta: para pagar en efectivo, abrí una caja.</p>

@@ -509,7 +509,7 @@ export default function ProductosPage() {
       // Buscar OC borrador del mismo proveedor Y misma sucursal activa
       let ocQuery = supabase
         .from('ordenes_compra')
-        .select('id, numero, numero_sucursal')
+        .select('id, numero, numero_sucursal, sucursal_id')
         .eq('tenant_id', tenant!.id)
         .eq('proveedor_id', proveedorId)
         .eq('estado', 'borrador')
@@ -526,7 +526,7 @@ export default function ProductosPage() {
         const { data: newOC, error } = await supabase
           .from('ordenes_compra')
           .insert({ tenant_id: tenant!.id, proveedor_id: proveedorId, estado: 'borrador', sucursal_id: sucursalId || null, created_by: user!.id })
-          .select('id, numero, numero_sucursal')
+          .select('id, numero, numero_sucursal, sucursal_id')
           .single()
         if (error) throw error
         ocId = newOC.id

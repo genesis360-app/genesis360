@@ -172,7 +172,7 @@ export default function RecepcionesPage() {
       const q = applyFilter(
         supabase
           .from('recepciones')
-          .select('*, proveedores(nombre), ordenes_compra(numero, numero_sucursal)')
+          .select('*, proveedores(nombre), ordenes_compra(numero, numero_sucursal, sucursal_id)')
           .eq('tenant_id', tenant!.id)
           .order('created_at', { ascending: false })
       )
@@ -210,7 +210,7 @@ export default function RecepcionesPage() {
       // `moneda`: el gasto que se genera al confirmar la recepción lleva los precios de la OC, que
       // están expresados en la moneda DE LA OC. Sin traerla, el gasto caía en el default 'ARS' de
       // la columna y una OC en dólares quedaba registrada como pesos.
-      let q = supabase.from('ordenes_compra').select('id, numero, numero_sucursal, moneda, tiene_envio, costo_envio, envio_a_cargo, envio_transportista').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
+      let q = supabase.from('ordenes_compra').select('id, numero, numero_sucursal, sucursal_id, moneda, tiene_envio, costo_envio, envio_a_cargo, envio_transportista').eq('tenant_id', tenant!.id).eq('estado', 'confirmada').order('numero', { ascending: false })
       if (fProveedorId) q = q.eq('proveedor_id', fProveedorId)
       const { data } = await q
       return data ?? []

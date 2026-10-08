@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | ✅ Migs 477-478 en DEV + envío en el ticket verificado + datos de entrega (🟡 `dev`, falta PROD)
+
+- Token de la Management API renovado (90 días). Migs **477** y **478** aplicadas en DEV; 16 escenarios SQL de cheques/OC en
+  ROLLBACK, todos OK; e2e 31 y 184 verdes contra DEV migrado; `schema_full` regenerado (mig 20261008023309).
+- **Reserva #50 de El Tilo (PROD, lectura):** `costo_envio` 45.000 y `monto_pagado` 94.005 estaban bien guardados. El ticket de la
+  pantalla SÍ muestra "Envío" y el TOTAL con envío (e2e **188**, venta y reserva). Hallazgos: en una venta despachada el modal
+  "¿Emitir comprobante?" tapa el ticket y mostraba el total SIN envío, y con ese total decidía si pedir DNI para la Factura B
+  (la EF sí suma el envío → la rechazaba) → `totalFacturable`. Lo que sí faltaba: WhatsApp/mail (arreglado antes).
+- **Ticket con datos de la entrega** (pedido de GO): transporte + n° de envío y fecha/horario (`lineasEntregaTicket`), en
+  pantalla y en WhatsApp/link.
+- ⚠️ Lección: el primer e2e 188 dio **falso verde** (encontró el "Envío" del carrito); se acotó a `#ticket-print`.
+- Decisiones de GO pendientes (cheques): rechazo con período cerrado, contramovimiento en la cuenta bancaria, cheque anulado.
+
+## [2026-10-07] update | 🧾 Cheques propios atómicos, OC-<código>-0070, PDF de OC sin costos internos, scroll del landing (🟡 en `dev`, migs 477-478 SIN aplicar)
+
+- **Landing:** los links a rubros/legales abrían la página nueva abajo de todo → `ScrollAlInicio` (App) + `SalidaHaciaApp`
+  (página pre-renderizada, que App ve como POP). Probado contra el build: scroll 0 tras Supermercados/Dietéticas/Términos.
+- **PDF/texto de la OC** (decisión de GO): TOTAL = productos + envío del proveedor; aduana/comisión/otros no aparecen.
+- **Cheques propios (mig 477, REGLA #0):** pagar desde la CC del proveedor con "Cheque" crea el cheque (antes no);
+  `rechazar_cheque_propio` revierte en UNA transacción (OCs vuelven a deber, ajuste en CC, imputaciones negativas); trigger
+  impide rechazarlo por fuera y que un rechazado cambie de estado. `ChequesPanel` usa la RPC.
+- **Número de OC (mig 478, decisión de GO):** `OC-<código>-0070`; sin código sigue `S-OC-0070`. CC del proveedor: deuda UNA del
+  negocio (decisión de GO) + desglose informativo `pendiente_por_sucursal`.
+- Recepciones ya chequeaba los errores (pendiente desactualizado). migration-reviewer: 477 tenía un bloqueante (CREATE no
+  idempotente) → corregido; 478 apta.
+- ⏳ **Migs 477-478 sin aplicar:** `SUPABASE_ACCESS_TOKEN` vencido (401). Abiertas para GO: rechazo con período cerrado,
+  egreso informativo de caja, cheque anulado tras entregado. UAT §105.
+
+## [2026-10-07] update | 🚚 El ticket por WhatsApp/link y por mail sale CON el envío (🟡 en `dev`, falta release a PROD)
+
+- GO probó con El Tilo en PROD: el ticket de la reserva #50 en la pantalla del POS no mostraba el envío.
+- Revisión: la **factura** (EF `emitir-factura`) y el **ticket de la pantalla** sí contemplan `costo_envio` (también en reservas).
+  Para la #50 la hipótesis es que la venta quedó con `costo_envio` 0/NULL (switch "Incluir envío" apagado o regla de envío
+  gratis) — **sin confirmar**: el `SUPABASE_ACCESS_TOKEN` de `.env.local` está vencido (401); GO lo renueva y se consulta.
+- 🐛 Bug real encontrado (REGLA #0): el ticket de **WhatsApp/link** (`ticketPDF`, `/c/<código>`) y el del **mail**
+  (`venta_confirmada` al cliente + el automático al dueño) salían SIN el envío y con un TOTAL menor al cobrado; el saldo de la
+  reserva tampoco lo sumaba. Fix solo frontend: `lineasEnvioTicket()` en `pedidoVenta.ts` + total/saldo de
+  `resumenPagoTicket()`. Sin EF ni migración. Unit (6 nuevos) + build verdes. UAT §104.
+
 ## [2026-10-07] deploy | 🚀 v1.240.2 EN PROD — hero con tablet, impresora de tickets y celular con el Panel
 
 - Pedido de GO: captura de Ventas dentro de una tablet; impresora de tickets vista desde arriba sobre la esquina inferior izquierda

@@ -75,8 +75,12 @@ test.describe('Cheque de gasto rechazado → reversión (mutante)', () => {
       .filter({ has: page.getByRole('button', { name: /^Rechazado$/ }) }).last()
     await expect(cardCheque).toBeVisible({ timeout: 8000 })
     await cardCheque.getByRole('button', { name: /^Rechazado$/ }).first().click()
+    // Mig 479 — rechazar un cheque propio entregado revierte el pago: la pantalla pide confirmación.
+    const dialogo = page.getByRole('alertdialog')
+    await expect(dialogo).toContainText(/se revierte/i, { timeout: 5000 })
+    await dialogo.getByRole('button', { name: /^Confirmar$/ }).click()
 
     // POSITIVO: el toast de reversión confirma que el pago volvió a pendiente (REGLA #0)
-    await expect(page.getByText(/Pago del gasto .* revertido/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Pago revertido — el gasto .* volvió a pendiente/i)).toBeVisible({ timeout: 10000 })
   })
 })

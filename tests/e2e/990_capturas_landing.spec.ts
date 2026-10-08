@@ -102,3 +102,89 @@ test.describe('Capturas reales para la landing (celular)', () => {
     }
   })
 })
+
+// ── Bento de módulos: recortes de UN componente real por tarjeta (pedido de GO 2026-10-08) ─────────────────────────
+/** El elemento más interno que contiene todos los textos (los ancestros vienen antes en el orden del documento). */
+function bloqueCon(page: Page, ...textos: (string | RegExp)[]) {
+  let loc = page.locator('div')
+  for (const t of textos) loc = loc.filter({ has: page.getByText(t, { exact: typeof t === 'string' }) })
+  return loc.last()
+}
+
+test.describe('Capturas reales para la landing (bento)', () => {
+  test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })
+
+  test('bento: inventario con sus LPN', async ({ page }) => {
+    await prepararSesion(page)
+    await goto(page, '/inventario')
+    await waitForApp(page)
+    await ocultarFranjaDev(page)
+    await page.getByText('Coca Cola 1.5L Original', { exact: true }).first().click()
+    await page.waitForTimeout(1500)
+    const bloque = page.locator('div.divide-y > div').filter({ has: page.getByText('Coca Cola 1.5L Original', { exact: true }) }).first()
+    await bloque.scrollIntoViewIfNeeded()
+    await page.mouse.move(0, 0)
+    await bloque.screenshot({ path: `${SALIDA}/bento-inventario.png` })
+  })
+
+  test('bento: caja abierta', async ({ page }) => {
+    await prepararSesion(page)
+    await goto(page, '/caja')
+    await waitForApp(page)
+    await ocultarFranjaDev(page)
+    await page.getByRole('button', { name: /Caja1/ }).first().click()
+    await page.waitForTimeout(2000)
+    // El usuario de los tests ("E2E Tester") no va en la landing: se saca el nombre, no se inventa otro.
+    await page.evaluate(() => {
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      for (let n = w.nextNode(); n; n = w.nextNode()) if (n.nodeValue?.includes('E2E Tester')) n.nodeValue = n.nodeValue.replace(/\s*·\s*E2E Tester/, '')
+    })
+    const tarjeta = bloqueCon(page, 'Apertura', 'Saldo actual')
+    await tarjeta.screenshot({ path: `${SALIDA}/bento-caja.png` })
+  })
+
+  test('bento: cobro con dos medios de pago', async ({ page }) => {
+    await prepararSesion(page)
+    await goto(page, '/ventas')
+    await waitForApp(page)
+    await ocultarFranjaDev(page)
+    await page.getByRole('button', { name: /^Todos$/ }).first().click()
+    await agregarAlCarrito(page, 'Coca Cola 1.5', /Coca Cola 1\.5L/i)
+    await agregarAlCarrito(page, 'Yerba', /Yerba Mate La Cumbrecita/i)
+    const medio1 = page.locator('select').filter({ has: page.locator('option', { hasText: /^Efectivo$/ }) }).first()
+    await medio1.selectOption('Efectivo')
+    const montos = page.getByPlaceholder(/^Monto$/i)
+    await montos.first().fill('2000')
+    await page.getByText(/Agregar otro medio/i).first().click()
+    const medio2 = page.locator('select').filter({ has: page.locator('option', { hasText: /^Transferencia$/ }) }).nth(1)
+    await medio2.selectOption('Transferencia')
+    await montos.nth(1).fill('2157')
+    await montos.nth(1).blur()
+    await page.waitForTimeout(800)
+    const cobro = bloqueCon(page, 'Método de pago', /Total cubierto/)
+    await cobro.scrollIntoViewIfNeeded()
+    await page.mouse.move(0, 0)
+    await cobro.screenshot({ path: `${SALIDA}/bento-cobro.png` })
+  })
+})
+
+test.describe('Capturas reales para la landing (bento, caja en celular)', () => {
+  // La tarjeta de Bento "Caja" es angosta: en vista de celular la caja se arma más alta y se lee.
+  test.use({ viewport: { width: 400, height: 860 }, deviceScaleFactor: 2.5, isMobile: true, hasTouch: true })
+
+  test('bento: caja abierta (celular)', async ({ page }) => {
+    await prepararSesion(page)
+    await goto(page, '/caja')
+    await page.waitForLoadState('networkidle').catch(() => {})
+    await ocultarFranjaDev(page)
+    await page.getByRole('button', { name: /Caja1/ }).first().click()
+    await page.waitForTimeout(2000)
+    await page.evaluate(() => {
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      for (let n = w.nextNode(); n; n = w.nextNode()) if (n.nodeValue?.includes('E2E Tester')) n.nodeValue = n.nodeValue.replace(/\s*·\s*E2E Tester/, '')
+    })
+    const tarjeta = bloqueCon(page, 'Apertura', 'Saldo actual')
+    await tarjeta.scrollIntoViewIfNeeded()
+    await tarjeta.screenshot({ path: `${SALIDA}/bento-caja-celular.png` })
+  })
+})

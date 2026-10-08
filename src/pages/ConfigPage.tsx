@@ -2183,6 +2183,13 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success(nuevo ? 'Ya podés crear pedidos a mano' : 'Los pedidos se generan solo desde las ventas')
   }
+  const togglePedidoParcialDefault = async () => {
+    const nuevo = !(tenant as any)?.pedido_entrega_parcial_default
+    const { data, error } = await supabase.from('tenants').update({ pedido_entrega_parcial_default: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Los pedidos nuevos aceptan entregas parciales por default' : 'Los pedidos se entregan completos por default')
+  }
   const togglePedidoCierreAutomatico = async () => {
     const nuevo = !(tenant as any)?.pedido_cierre_automatico
     const { data, error } = await supabase.from('tenants').update({ pedido_cierre_automatico: nuevo }).eq('id', tenant!.id).select().single()
@@ -6358,6 +6365,13 @@ export default function ConfigPage() {
               <div>
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Cierre automático al 100%</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Si está habilitado, el pedido pasa solo a "Entregado" al completar todas sus líneas. Si lo desactivás, queda en "Entregado parcial" hasta que alguien lo cierre a mano.</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={(tenant as any)?.pedido_entrega_parcial_default ?? false} onChange={togglePedidoParcialDefault} disabled={!canEdit} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Entregas parciales por default</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Apagado (recomendado): el pedido se entrega completo, con el picking terminado. Prendido: los pedidos nuevos aceptan entregar por partes lo que ya está pickeado. En cada pedido y al entregar se puede cambiar.</p>
               </div>
             </label>
           </div>

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T21:28:23.312Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008212752 · 178 tablas
+-- Generado 2026-10-08T22:43:05.970Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008224258 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1518,7 +1518,8 @@ CREATE TABLE public.pedidos (
   cancelado_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   referencia text,
-  venta_origen_id uuid
+  venta_origen_id uuid,
+  acepta_entrega_parcial boolean
 );
 
 CREATE TABLE public.platform_billers (
@@ -2596,7 +2597,8 @@ CREATE TABLE public.tenants (
   precio_programado_aviso_demora_horas integer NOT NULL DEFAULT 2,
   categorias_cliente_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
   categorias_cliente_asignar_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
-  descuento_tope_acumulado_pct numeric(5,2)
+  descuento_tope_acumulado_pct numeric(5,2),
+  pedido_entrega_parcial_default boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -10072,7 +10074,7 @@ BEGIN
 END; $function$
 
 
-CREATE OR REPLACE FUNCTION public.fn_pedido_generar_venta(p_pedido_id uuid, p_sesion_caja_id uuid, p_medio_pago jsonb, p_entregas jsonb DEFAULT NULL::jsonb, p_idempotency_key uuid DEFAULT NULL::uuid)
+CREATE OR REPLACE FUNCTION public.fn_pedido_generar_venta(p_pedido_id uuid, p_sesion_caja_id uuid, p_medio_pago jsonb, p_entregas jsonb DEFAULT NULL::jsonb, p_idempotency_key uuid DEFAULT NULL::uuid, p_permitir_parcial boolean DEFAULT NULL::boolean)
  RETURNS uuid
  LANGUAGE plpgsql
  SET search_path TO 'public'
@@ -10116,6 +10118,10 @@ DECLARE
   v_enforcement_pol  text;
   v_motor            jsonb;
   v_desc_u           numeric;
+  v_parcial          boolean;
+  v_hay_picking      boolean;
+  v_pickeado         numeric;
+  v_entregado_prod   numeric;
 BEGIN
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
@@ -10130,13 +10136,20 @@ BEGIN
     RAISE EXCEPTION 'El pedido tiene que estar lanzado (en preparación, listo para entrega, o entregado parcial) para generar la venta';
   END IF;
 
-  -- (mig 484) No se entrega con el picking a medio hacer: la mercadería que todavía no se pickeó no
-  -- salió del depósito, y si se entregaba igual las tareas quedaban vivas en la cola (trabajo fantasma).
+  -- (mig 485) ENTREGA PARCIAL — decisión de GO 2026-10-08: por default un pedido se entrega COMPLETO;
+  -- parcial solo si se pide. Se pide en el pedido (`acepta_entrega_parcial`, NULL = hereda el default del
+  -- negocio) y se puede cambiar al entregar (`p_permitir_parcial`). En una parcial sale SOLO lo pickeado.
+  v_parcial := COALESCE(p_permitir_parcial, v_pedido.acepta_entrega_parcial,
+                        (SELECT t.pedido_entrega_parcial_default FROM tenants t WHERE t.id = v_pedido.tenant_id),
+                        false);
+
+  -- (mig 484) Entrega completa con el picking a medio hacer: no. La mercadería que no se pickeó no salió
+  -- del depósito, y entregando igual las tareas quedaban vivas en la cola (trabajo fantasma).
   -- Va DESPUÉS de la idempotencia: un reintento de una entrega ya hecha devuelve su venta.
-  IF EXISTS (SELECT 1 FROM wms_tareas
+  IF NOT v_parcial AND EXISTS (SELECT 1 FROM wms_tareas
              WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
                AND estado IN ('pendiente', 'en_curso')) THEN
-    RAISE EXCEPTION 'Falta completar el picking de este pedido (% tarea(s) pendientes en Depósito). Completalas (o cancelá las que no correspondan) en Picking o en Pedidos → Tareas WMS y volvé a entregarlo.',
+    RAISE EXCEPTION 'Falta completar el picking de este pedido (% tarea(s) pendientes en Depósito). Completalas (o cancelá las que no correspondan) en Picking o en Pedidos → Tareas WMS. Si el cliente pidió llevarse solo lo que ya está listo, marcá "Entrega parcial".',
       (SELECT count(*) FROM wms_tareas
         WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
           AND estado IN ('pendiente', 'en_curso'));
@@ -10196,9 +10209,36 @@ BEGIN
       END IF;
     END IF;
 
+    -- (mig 485) Entrega completa: cada línea sale con todo lo que le falta.
+    IF NOT v_parcial AND COALESCE(v_cant_entregar, 0) < v_item.pendiente THEN
+      RAISE EXCEPTION 'Este pedido se entrega completo: de % faltan % y se cargaron %. Si el cliente pidió una entrega parcial, marcá "Entrega parcial".',
+        (SELECT nombre FROM productos WHERE id = v_item.producto_id), v_item.pendiente, COALESCE(v_cant_entregar, 0);
+    END IF;
+
     IF v_cant_entregar IS NULL OR v_cant_entregar <= 0 THEN
       IF v_item.pendiente > 0 THEN v_todo_entregado := false; END IF;
       CONTINUE;
+    END IF;
+
+    -- (mig 485) Entrega parcial: no sale más de lo pickeado del producto (si el pedido tiene picking de
+    -- ese producto). `cantidad_entregada` ya incluye lo de las líneas anteriores de ESTA entrega (se
+    -- actualiza dentro del loop), así que dos líneas del mismo producto no se pasan juntas.
+    IF v_parcial THEN
+      SELECT EXISTS (SELECT 1 FROM wms_tareas
+                      WHERE pedido_id = p_pedido_id AND producto_id = v_item.producto_id
+                        AND tipo = 'picking' AND estado <> 'cancelada') INTO v_hay_picking;
+      IF v_hay_picking THEN
+        SELECT COALESCE(SUM(cantidad), 0) INTO v_pickeado FROM wms_tareas
+         WHERE pedido_id = p_pedido_id AND producto_id = v_item.producto_id
+           AND tipo = 'picking' AND estado = 'completada';
+        SELECT COALESCE(SUM(cantidad_entregada), 0) INTO v_entregado_prod FROM pedido_items
+         WHERE pedido_id = p_pedido_id AND producto_id = v_item.producto_id AND estado <> 'cancelada';
+        IF v_entregado_prod + v_cant_entregar > v_pickeado THEN
+          RAISE EXCEPTION 'De % se pickearon % y ya se entregaron %: en esta entrega podés llevar hasta %.',
+            (SELECT nombre FROM productos WHERE id = v_item.producto_id), v_pickeado, v_entregado_prod,
+            GREATEST(v_pickeado - v_entregado_prod, 0);
+        END IF;
+      END IF;
     END IF;
 
     SELECT nombre, sku, precio_venta, precio_costo, alicuota_iva INTO v_producto

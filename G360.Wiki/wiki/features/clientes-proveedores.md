@@ -3,10 +3,25 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra, deep-links]
 sources: [CLAUDE.md, ROADMAP.md, migration 349, migration 379, migration 386, migration 431, src/pages/ClientesPage.tsx, src/pages/ProveedoresPage.tsx, src/hooks/useSupervisorAutorizaciones.ts]
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 
 # Clientes y Proveedores
+
+> 🧾 **2026-10-08 — ✅ EN PROD v1.240.3 (migs 477-479, PR #381) — Cheques propios y OC por sucursal (REGLA #0).**
+> - **Pago con cheque desde la CC del proveedor** (`registrar_pago_proveedor` + `p_cheque`): crea el cheque (fecha de cobro
+>   obligatoria) atado al pago (`cheques.cc_movimiento_id`, `monto_imputado`, `caja_movimiento_id`). `registrar_pago_oc` también.
+> - **Rechazar o anular un cheque propio ENTREGADO** → `revertir_cheque_propio(id, 'rechazado' | 'anulado')` en una
+>   transacción: las OCs que pagó vuelven a deber (la más nueva primero), `ajuste` en la CC con fecha de hoy, imputaciones
+>   negativas (la suma por OC = lo pagado; no se borra historia), y `ingreso_informativo` a la cuenta bancaria de la que salió
+>   (Caja Fuerte). Trigger `trg_cheques_rechazo_guard`: solo por la RPC; rechazado/anulado no cambia de estado. Confirmación en
+>   `ChequesPanel`. Cheques sin vínculo (anteriores o de gastos sueltos) → aviso de revisar la cuenta a mano.
+> - **Cierre contable:** una OC o un gasto de un período cerrado se pueden pagar/revertir hoy (las columnas de pago quedan fuera
+>   del bloqueo); el contenido sigue protegido. Ventas: pendiente.
+> - **Número de OC** `OC-<código>-0070` (sin código de sucursal sigue `S-OC-0070`; `etiquetaOC` + `fn_oc_etiqueta`); la CC del
+>   proveedor muestra el **pendiente por sucursal** (informativo: la deuda es una sola del negocio, decisión de GO).
+> - **PDF/texto de la OC** sin aduana/comisión/otros (costos internos, no se le pagan al proveedor).
+> - Criterio contable provisorio → [[wiki/business/consultas-contador]] **C-23 a C-25**. UAT §105.
 
 > 🗂️ **2026-10-05 (commit `5b21e7f9`, mig 472; EN PROD v1.239.0, 2026-10-06) — Rediseño de Categorías de clientes (pedido de GO).** Desplegado a PROD el 2026-10-06 (v1.239.0).
 > - **Pestaña**: cada fila = nombre + clientes + descripción; a la derecha switch activa / asignar / lista de descuentos / historial / editar / eliminar. **Eliminar** solo DUEÑO y solo si nunca se usó (la policy DELETE de `categorias_cliente` pasa a solo DUEÑO/ADMIN).

@@ -2411,6 +2411,46 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🏢 §108 — Productos e Inventario siguen el selector de sucursal (🟡 DEV) — 2026-10-08
+
+Decisión de GO: el selector del encabezado manda ("Todas" = todo; una sucursal = lo de esa sucursal), salvo el catálogo de
+Productos, que es compartido. Las alertas de stock mínimo siguen siendo por producto (como hoy).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 108.1 | Inventario con una sucursal: solo productos con stock ahí; aviso "N sin stock no se muestran · Mostrar" (contado después de búsqueda y filtros) | e2e `189` | ✅ |
+| 108.2 | "Mostrar productos sin stock en esta sucursal" (filtros) los trae; "Limpiar filtros" lo apaga; "Solo stock crítico" los incluye siempre | e2e `189` · revisión | ✅ |
+| 108.3 | Inventario con "Todas": cada LPN dice su sucursal | revisión | ✅ código |
+| 108.4 | LPN en una ubicación de OTRA sucursal (dato viejo) → ⚠ al lado de la ubicación | revisión | ✅ código |
+| 108.5 | Productos: catálogo completo; el número chico de la fila es "X en la sucursal" (todo el stock de la sucursal) o "X total" con "Todas" — nunca el total global con una sucursal elegida | unit `stockPorProducto` (6) · e2e `189` | ✅ |
+| 108.6 | Sin regresión en los e2e que tocan Inventario/Productos | 36 specs: 178 passed, 1 skipped | ✅ |
+
+## 📍 §107 — Una ubicación con stock no cambia de sucursal (mig 481, 🟡 DEV) — 2026-10-08
+
+Reporte de GO (El Tilo, PROD): no dejaba eliminar la ubicación "Escobar-Leandro" ("tiene inventario") pero el inventario de
+Escobar no mostraba nada. Causa: una línea de la sucursal "ELTILO oficina" (LPN-20261002-EAEE20, 6 Paneles de Caña, 1
+reservado por la reserva #52) estaba en esa ubicación de "Escobar - Canton". Configuración → editar ubicación cambiaba la
+sucursal sin mirar el stock, y el historial solo anotaba "nombre". En PROD era el único caso (DEV: 1 en Almacén Jorgito).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 107.1 | 🛑 Cambiar de sucursal una ubicación con stock de otra sucursal → rechazado ("tiene stock de la sucursal X (n LPN)") | SQL DEV (rollback) | ✅ |
+| 107.2 | Pasarla a Global, o cambiar de sucursal una ubicación vacía → permitido | SQL DEV (rollback) | ✅ |
+| 107.3 | El historial registra el cambio de sucursal de una ubicación (campo "sucursal", antes → después) | revisión | ✅ código |
+| 107.4 | Eliminar una ubicación con stock: el aviso dice producto, LPN, cantidad y SUCURSAL del stock, y cómo resolverlo | revisión · e2e `187` sin regresión | ✅ |
+| 107.5 | ⏳ El Tilo (PROD): mover el LPN-20261002-EAEE20 a una ubicación de la oficina (o trasladarlo a Escobar) — decide GO/el cliente | — | ⏳ |
+
+## 🔒 §106 — CC de proveedores solo por funciones de la base + cierre contable deja cobrar ventas + mail con la entrega (mig 480, 🟡 DEV) — 2026-10-08
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 106.1 | 🛑 Nadie escribe directo `proveedor_cc_movimientos` (INSERT/UPDATE/DELETE → permission denied), tampoco el CONTADOR ni un cajero con Gastos | SQL DEV (rollback) · e2e `141` (todos los roles) | ✅ |
+| 106.2 | NC manual del proveedor por `registrar_nc_proveedor`: −monto, número, adjunto; mismo permiso que antes (Gastos en "editar", incluido el CONTADOR) | SQL DEV · e2e `141` (sonda con monto 0: permiso antes que monto, sin escribir) | ✅ |
+| 106.3 | 🛑 Devolución a proveedor con crédito en CC por la función (moneda de la OC); si falla, avisa que la mercadería ya salió del stock y el crédito NO quedó (antes se ignoraba el error) | e2e `33` | ✅ |
+| 106.4 | NC con OC de otro proveedor / monto 0 → rechazada | SQL DEV (rollback) | ✅ |
+| 106.5 | 🛑 Cierre contable: una venta de un período cerrado se puede COBRAR hoy (`monto_pagado`, `medio_pago`, `interes_cc`, cobro por link); editar su contenido sigue bloqueado | SQL DEV (rollback, cierre sembrado) | ✅ |
+| 106.6 | Mail del ticket con transporte + n° de envío y fecha/horario de entrega (EF `send-email`, campo `entrega`) | deno check · deploy DEV · revisión | ✅ código · ⬜ mail real |
+
 ## 🧾 §105 — Cheques propios, número de OC por sucursal y PDF de la OC (migs 477-478, 🟡 DEV) — 2026-10-07
 
 Pendientes de CC de proveedores elegidos por GO para el próximo deploy. 🛑 REGLA #0. **Las migs 477 y 478 están escritas y

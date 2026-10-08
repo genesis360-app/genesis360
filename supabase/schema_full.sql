@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T03:11:39.671Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008030859 · 178 tablas
+-- Generado 2026-10-08T05:20:50.838Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008052015 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -12710,6 +12710,33 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_ubicacion_no_cambia_sucursal_con_stock()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_suc   text;
+  v_lpns  int;
+BEGIN
+  IF NEW.sucursal_id IS NOT DISTINCT FROM OLD.sucursal_id OR NEW.sucursal_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT count(*), min(s.nombre) INTO v_lpns, v_suc
+    FROM inventario_lineas l
+    LEFT JOIN sucursales s ON s.id = l.sucursal_id
+   WHERE l.ubicacion_id = NEW.id AND l.tenant_id = NEW.tenant_id
+     AND l.activo AND l.cantidad > 0
+     AND l.sucursal_id IS DISTINCT FROM NEW.sucursal_id;
+  IF v_lpns > 0 THEN
+    RAISE EXCEPTION 'La ubicación "%" tiene stock de la sucursal % (% LPN). Movelo o trasladalo antes de cambiarla de sucursal.',
+      NEW.nombre, COALESCE(v_suc, 'sin sucursal'), v_lpns USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_ultima_comision_meli(p_producto_id uuid)
  RETURNS TABLE(comision_marketplace numeric, precio_unitario numeric, fecha timestamp with time zone)
  LANGUAGE sql
@@ -14643,6 +14670,51 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.registrar_nc_proveedor(p_proveedor_id uuid, p_monto numeric, p_numero text DEFAULT NULL::text, p_descripcion text DEFAULT NULL::text, p_adjunto_url text DEFAULT NULL::text, p_oc_id uuid DEFAULT NULL::uuid, p_moneda text DEFAULT NULL::text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant uuid := public.get_user_tenant_id();
+  v_monto  numeric := round(COALESCE(p_monto, 0), 2);
+  v_oc     record;
+  v_oc_moneda text;   -- NULL sin OC (un record sin asignar no se puede leer)
+  v_moneda text;
+  v_id     uuid := gen_random_uuid();
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  -- Mismo permiso que tenía la policy de escritura de la tabla (mig 405): el módulo Gastos en "editar".
+  IF NOT public.auth_puede_editar_modulo('gastos') THEN
+    RAISE EXCEPTION 'No autorizado para registrar notas de crédito de proveedores.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF v_monto <= 0 THEN RAISE EXCEPTION 'Ingresá un monto válido' USING ERRCODE = 'check_violation'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM proveedores WHERE id = p_proveedor_id AND tenant_id = v_tenant) THEN
+    RAISE EXCEPTION 'Proveedor no encontrado en el negocio';
+  END IF;
+  IF p_oc_id IS NOT NULL THEN
+    SELECT id, proveedor_id, COALESCE(moneda, 'ARS') AS moneda INTO v_oc
+      FROM ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant;
+    IF v_oc.id IS NULL THEN RAISE EXCEPTION 'OC no encontrada en el negocio'; END IF;
+    IF v_oc.proveedor_id IS DISTINCT FROM p_proveedor_id THEN
+      RAISE EXCEPTION 'La OC es de otro proveedor.' USING ERRCODE = 'check_violation';
+    END IF;
+    v_oc_moneda := v_oc.moneda;
+  END IF;
+  -- La moneda de la OC si viene de una; si no, la indicada; si no, ARS (como el default de la tabla).
+  v_moneda := upper(COALESCE(v_oc_moneda, NULLIF(trim(p_moneda), ''), 'ARS'));
+
+  INSERT INTO proveedor_cc_movimientos(id, tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion,
+                                       nc_numero, adjunto_url, created_by)
+  VALUES (v_id, v_tenant, p_proveedor_id, p_oc_id, 'nota_credito', -v_monto, v_moneda, CURRENT_DATE,
+          COALESCE(NULLIF(trim(p_descripcion), ''), 'Nota de crédito' || COALESCE(' ' || NULLIF(trim(p_numero), ''), '')),
+          NULLIF(trim(p_numero), ''), NULLIF(trim(p_adjunto_url), ''), auth.uid());
+  RETURN v_id;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.registrar_pago_oc(p_oc_id uuid, p_medios jsonb, p_descuento_monto numeric DEFAULT 0, p_clave text DEFAULT NULL::text, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_cheque jsonb DEFAULT NULL::jsonb, p_pago_dias integer DEFAULT 30, p_pago_condiciones text DEFAULT NULL::text, p_cotizacion_usd numeric DEFAULT NULL::numeric)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -16343,6 +16415,14 @@ AS $function$
 DECLARE v_cierre DATE;
 BEGIN
   v_cierre := ultimo_cierre_hasta(OLD.tenant_id);
+  -- mig 480 (decisión de GO 2026-10-08): cobrar hoy una venta de un período cerrado (cobranza de CC, condonación, interés
+  -- por mora, cobro por link) es un hecho de hoy; el cierre protege el contenido de la venta, no su estado de cobro.
+  IF TG_OP = 'UPDATE' AND (to_jsonb(NEW) - ARRAY['monto_pagado', 'medio_pago', 'interes_cc', 'id_pago_externo',
+        'money_release_date', 'updated_at'])
+      = (to_jsonb(OLD) - ARRAY['monto_pagado', 'medio_pago', 'interes_cc', 'id_pago_externo',
+        'money_release_date', 'updated_at']) THEN
+    RETURN NEW;
+  END IF;
   IF v_cierre IS NOT NULL AND OLD.created_at::DATE <= v_cierre THEN
     RAISE EXCEPTION 'Periodo contable cerrado hasta % — no podés modificar ventas anteriores.', v_cierre USING ERRCODE = 'P0001';
   END IF;
@@ -16694,6 +16774,7 @@ CREATE TRIGGER trg_ubic_autogenerar_codigo BEFORE INSERT OR UPDATE OF codigo ON 
 CREATE TRIGGER trg_ubic_guard_padre_operativo BEFORE INSERT OR UPDATE OF padre_ubicacion_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_guard_padre_operativo();
 CREATE TRIGGER trg_ubic_no_ciclo BEFORE INSERT OR UPDATE OF padre_ubicacion_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_no_ciclo();
 CREATE TRIGGER trg_ubic_tipo_logico_guard BEFORE INSERT OR UPDATE OF tipo_logico, subtipo_almacenamiento ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_tipo_logico_guard();
+CREATE TRIGGER trg_ubicacion_no_cambia_sucursal_con_stock BEFORE UPDATE OF sucursal_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION fn_ubicacion_no_cambia_sucursal_con_stock();
 CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('usuarios');
 CREATE TRIGGER trg_guard_baja_usuario BEFORE UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_baja_usuario();
 CREATE TRIGGER trg_guard_debe_cambiar_password BEFORE UPDATE OF debe_cambiar_password ON public.users FOR EACH ROW WHEN ((new.debe_cambiar_password IS DISTINCT FROM old.debe_cambiar_password)) EXECUTE FUNCTION fn_guard_debe_cambiar_password();
@@ -17487,9 +17568,6 @@ CREATE POLICY proveedor_accounts_self_update ON public.proveedor_accounts AS PER
   WITH CHECK ((id = ( SELECT auth.uid() AS uid)));
 CREATE POLICY proveedor_cc_movimientos_select ON public.proveedor_cc_movimientos AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
-CREATE POLICY proveedor_cc_movimientos_write_gastos ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
-  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
-  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY tenant_isolation ON public.proveedor_contactos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -18118,8 +18196,7 @@ GRANT SELECT ON public.proveedor_account_tenants TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_account_tenants TO service_role;
 GRANT SELECT, UPDATE ON public.proveedor_accounts TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_accounts TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO authenticated;
+GRANT REFERENCES, SELECT, TRIGGER ON public.proveedor_cc_movimientos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_contactos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_contactos TO authenticated;

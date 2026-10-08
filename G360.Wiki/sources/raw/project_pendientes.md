@@ -6,6 +6,27 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-10-08) — 🚀 **PROD = DEV = `v1.240.3`** (migs 001-**479**) · PR **#381** (merge `2c72dc3c`)
+>
+> **Qué entró:** envío en los tickets (WhatsApp/mail + datos de entrega + modal de factura con el envío; e2e 188), cheques
+> propios atómicos con contramovimiento en la cuenta y anulado = rechazo (migs 477/479), cierre contable que deja pagar/revertir
+> OCs y gastos viejos (479), `OC-<código>-0070` + pendiente por sucursal (478), PDF de OC sin costos internos, scroll del
+> landing. `pg_policies` DEV = PROD (public 246 · storage 40 · cron 2). `SUPABASE_ACCESS_TOKEN` renovado el 08/10 (90 días).
+>
+> **🔓 Pendientes nuevos:**
+> - **📍 El Tilo — ubicación "Escobar-Leandro" (PROD):** tiene el LPN-20261002-EAEE20 (6 Paneles de Caña, 1 reservado por la #52) de la
+>   sucursal "ELTILO oficina" → no se puede borrar. Mig 481 evita que se repita; el dato lo corrige GO/el cliente (Mover desde
+>   Inventario con la sucursal oficina elegida, o traslado). UAT §107.
+> - **🖼️ Landing con imágenes REALES (GO 08/10):** usar el tenant de DEV **Almacén Jorgito** para las capturas. Ojo: tiene basura
+>   de e2e (clientes "E2E …", proveedores "ZZ_TEST…", ventas de prueba) → elegir pantallas/filtros prolijos o acomodar lo que se ve.
+> - **Cierre contable en VENTAS** (decisión de GO): sigue bloqueando cobrar hoy una venta a CC de un período cerrado (mismo
+>   criterio que OC/gastos → dejar pasar `monto_pagado`/`medio_pago`; ojo `interes_cc` del cron). Hoy 0 cierres en PROD.
+> - **Contador:** C-23 a C-25 (cheques y cierre) se suman a las 22 abiertas.
+> - Mail del ticket: todavía sin los datos de la entrega (solo el costo). Gastos sueltos pagados con cheque no guardan su
+>   movimiento de caja (al rechazar se avisa revisar la cuenta a mano).
+> - Policy de escritura de `proveedor_cc_movimientos` todavía deja insertar cualquier tipo desde el cliente.
+>
+
 > ### 🛑 ARRANCÁ ACÁ (2026-10-07, cierre) — 🚀 **PROD = DEV = `v1.240.2`** (migs 001-476, sin migraciones nuevas) · PRs #378, #379 y el de v1.240.2
 >
 > **Qué entró (v1.240.0 → v1.240.2):** Landing 2.0 Fases 1-4 + hero con tablet/impresora/celular ([[wiki/business/plan-landing-2]]
@@ -25,14 +46,9 @@ type: project
 > - **Datos personales:** el domicilio de Fede ya no está en archivos, base de PROD ni memoria; sigue en el HISTORIAL de git (repo
 >   público) → reescribir el historial solo con autorización explícita de GO. Ley 25.326 art. 6: definir con el abogado una
 >   identidad no personal para Privacidad.
-> - **🚚 Envío en el ticket (en `dev`):** WhatsApp/mail suman el envío; la #50 de El Tilo tenía el dato bien (UAT §104).
->   `SUPABASE_ACCESS_TOKEN` renovado el 08/10 por **90 días** (vence ~06/01/2027).
-> - **🧾 Próximo deploy (v1.240.3, en `dev`):** envío en ticket WhatsApp/mail, scroll del landing, PDF de OC sin costos internos,
->   cheques propios atómicos (**mig 477**), `OC-<código>-0070` + pendiente por sucursal (**mig 478**), datos de entrega en el
->   ticket + total con envío en el modal de factura. ✅ **477-478 aplicadas en DEV** (08/10) y verificadas; falta PROD. Decisiones abiertas de GO: rechazo con período cerrado,
->   egreso informativo de caja, cheque anulado tras entregado. Siguen abiertos: policy de escritura de `proveedor_cc_movimientos`.
+> - ✅ **v1.240.3 EN PROD (08/10)** — envío en tickets, cheques propios, OC por sucursal, PDF de OC, scroll del landing (ver arriba).
 > - **DEV:** 2 ubicaciones de prueba "E2EDefecto_test_…" de corridas fallidas del e2e 187 en Almacén Jorgito (borrar desde la UI).
-> - Siguen los de abajo (plan de testing de Notificaciones, CC de proveedores, PDF de OC, prefijo S-OC, rotar `service_role`).
+> - Siguen los de abajo (plan de testing de Notificaciones, rotar `service_role`). ✅ Resueltos en v1.240.3: PDF de OC, prefijo S-OC, rechazo de cheque e imputaciones, saldo CC por sucursal (deuda única + desglose).
 >
 > ### 🛑 ARRANCÁ ACÁ (2026-10-06, tarde) — PROD = DEV = `v1.239.3` (migs 001-476). Nada de código nuevo commiteado.
 >

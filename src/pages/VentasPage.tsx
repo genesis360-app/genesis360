@@ -355,6 +355,8 @@ export default function VentasPage() {
             negocio: tenant!.nombre,
             // Con el envío, igual que el ticket de la pantalla (antes el mail decía menos de lo cobrado).
             total: resumenPagoTicket(ticketVenta).totalConTodo,
+            // 🚚 Transporte + n° de envío y fecha/horario de entrega (lineasEntregaTicket), igual que el ticket.
+            ...(entregaTicket.length ? { entrega: entregaTicket } : {}),
             items,
             medio_pago: typeof ticketVenta.medio_pago === 'string' ? formatMedioPago(ticketVenta.medio_pago) : '',
           },

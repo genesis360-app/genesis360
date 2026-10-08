@@ -501,13 +501,14 @@ contramovimiento de hoy es la forma correcta de compensarlo?
 
 - **Estado:** 🟥 Abierta (2026-10-08)
 - **Área:** Cheques + cierre contable (relacionada con [[#C-14 · Cierre contable mensual: ¿el criterio de bloqueo es el correcto?|C-14]])
-- **Impacta en:** `revertir_cheque_propio(id, 'anulado')`, triggers `trg_oc_periodo_cerrado` y `trg_gastos_periodo_cerrado`
-  (mig 479).
+- **Impacta en:** `revertir_cheque_propio(id, 'anulado')`, triggers `trg_oc_periodo_cerrado`, `trg_gastos_periodo_cerrado`
+  (mig 479) y `trg_ventas_periodo_cerrado` (mig 480).
 - **Criterio provisorio (implementado):** (a) un cheque propio ENTREGADO que se anula (el proveedor lo devuelve, se
   pierde, se reemplaza) tampoco se cobró → se revierte igual que un rechazo; anulado en cartera no revierte nada.
   (b) El cierre contable protege el CONTENIDO de una OC o un gasto (ítems, precios, proveedor, fecha, monto), pero no su
-  estado de pago: pagar hoy un comprobante de un período cerrado, o revertir ese pago, es un hecho de hoy. ⚠️ Las
-  **ventas** siguen bloqueadas por completo (cobrar hoy una venta a CC de un período cerrado falla) — pendiente de GO.
+  estado de pago: pagar hoy un comprobante de un período cerrado, o revertir ese pago, es un hecho de hoy. Desde la
+  mig 480 (decisión de GO 2026-10-08) también las **ventas**: se pueden COBRAR hoy (cobranza de CC, condonación, interés
+  por mora, cobro por link); su contenido (ítems, total, cliente, datos fiscales) sigue bloqueado.
 
 **Pregunta:** ¿es correcto tratar la anulación como el rechazo? ¿Es correcto dejar fuera del cierre las columnas de pago
 (y extenderlo a la cobranza de ventas)?

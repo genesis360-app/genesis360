@@ -14,6 +14,20 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kal
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
 
+## 🧾 v1.240.3 — Envío en los tickets, cheques propios atómicos, OC por sucursal (2026-10-08, EN PROD)
+
+- **Tickets:** WhatsApp/link y mail incluyen el envío y el TOTAL cobrado; el ticket muestra transporte, n° de envío, fecha y
+  horario de entrega; el modal "¿Emitir comprobante?" usa el total con envío (también para el umbral de la Factura B).
+  Disparado por la reserva #50 de El Tilo (el dato estaba bien guardado; e2e 188).
+- **Cheques propios (REGLA #0, migs 477 + 479):** el pago con cheque desde la CC del proveedor crea el cheque; rechazar o
+  anular uno entregado revierte el pago en una transacción (`revertir_cheque_propio`: OCs vuelven a deber, ajuste en la CC,
+  imputaciones negativas, el monto vuelve a la cuenta bancaria); trigger guard; confirmación en pantalla.
+- **Cierre contable (mig 479):** OCs y gastos de un período cerrado se pueden pagar/revertir hoy; el contenido sigue
+  protegido. Ventas siguen bloqueadas (pendiente de GO).
+- **OC (mig 478):** número `OC-<código>-0070`; pendiente por sucursal en la CC del proveedor; PDF sin costos internos.
+- **Landing:** los links a rubros/legales abren arriba.
+- PR **#381**, merge `2c72dc3c`, release `v1.240.3`. Criterios contables provisorios → consultas C-23 a C-25.
+
 ## 📱 v1.240.2 — Hero con tablet, impresora de tickets y celular con el Panel (2026-10-07, EN PROD)
 
 - Pedido de GO: la captura de Ventas dentro de una tablet; la línea negra pasa a ser una impresora de tickets vista desde arriba,

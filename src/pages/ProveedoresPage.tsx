@@ -554,16 +554,13 @@ export default function ProveedoresPage() {
         if (upErr) throw new Error('No se pudo subir el comprobante: ' + upErr.message)
         adjuntoUrl = path
       }
-      const { error } = await supabase.from('proveedor_cc_movimientos').insert({
-        tenant_id:    tenant!.id,
-        proveedor_id: ccProvId,
-        tipo:         'nota_credito',
-        monto:        -monto,                     // negativo: acredita y reduce la deuda
-        fecha:        new Date().toISOString().split('T')[0],
-        descripcion:  `NC ${numero}${ncMotivo.trim() ? ` — ${ncMotivo.trim()}` : ''}`,
-        nc_numero:    numero,
-        adjunto_url:  adjuntoUrl,
-        created_by:   user!.id,
+      // Mig 480 — la CC del proveedor solo se escribe por funciones de la base (la NC queda en negativo: reduce la deuda).
+      const { error } = await supabase.rpc('registrar_nc_proveedor', {
+        p_proveedor_id: ccProvId,
+        p_monto:        monto,
+        p_numero:       numero,
+        p_descripcion:  `NC ${numero}${ncMotivo.trim() ? ` — ${ncMotivo.trim()}` : ''}`,
+        p_adjunto_url:  adjuntoUrl,
       })
       if (error) throw error
       toast.success('Nota de crédito registrada')
@@ -1495,11 +1492,13 @@ export default function ProveedoresPage() {
       let cajaSesionId: string | null = null
       let ocReposicionId: string | null = null
       if (devForma === 'credito_cc') {
-        await supabase.from('proveedor_cc_movimientos').insert({
-          tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id,
-          tipo: 'nota_credito', monto: -monto, fecha: hoy,
-          descripcion: `Devolución a proveedor (${nombreOC(oc, ocNumeracion)}) — crédito a favor`, created_by: user?.id,
+        // Mig 480 — por la función de la base (moneda de la OC). 🛑 REGLA #0: antes el error se ignoraba y, si fallaba, la
+        // mercadería ya había salido del stock sin que quedara el crédito con el proveedor.
+        const { error: ncErr } = await supabase.rpc('registrar_nc_proveedor', {
+          p_proveedor_id: oc.proveedor_id, p_monto: monto, p_oc_id: oc.id,
+          p_descripcion: `Devolución a proveedor (${nombreOC(oc, ocNumeracion)}) — crédito a favor`,
         })
+        if (ncErr) throw new Error(`La mercadería ya se descontó del stock, pero NO se registró el crédito con el proveedor: ${ncErr.message}. Registralo como nota de crédito desde su cuenta corriente.`)
       } else if (devForma === 'efectivo') {
         // cajaReembolsoId está garantizada (el guard de arriba bloquea si no hay caja operativa abierta)
         cajaSesionId = cajaReembolsoId

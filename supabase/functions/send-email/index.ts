@@ -118,6 +118,9 @@ function ventaConfirmadaTemplate(d: Datos) {
         </tbody>
       </table>
       <p style="font-size:13px;color:#6b7280">Medio de pago: ${esc(d.medio_pago || 'No especificado')}</p>
+      ${lista(d.entrega).length
+        ? `<p style="font-size:13px;color:#374151">🚚 ${lista(d.entrega).map((l) => esc(l)).join('<br>')}</p>`
+        : ''}
       <a href="${APP_URL}/ventas" class="btn">Ver historial de ventas →</a>
     `),
   }

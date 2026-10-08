@@ -3,10 +3,15 @@ title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375, 420, 435]
-updated: 2026-10-02
+updated: 2026-10-08
 ---
 
 # Módulo Caja
+
+> 🏦 **2026-10-08 (✅ EN PROD v1.240.3, mig 479):** un pago con cheque deja un `egreso_informativo` que resta del saldo de la
+> cuenta asignada al medio Cheque (`vw_boveda_cuentas`). Si el cheque propio rebota o se anula, `revertir_cheque_propio` registra
+> un `ingreso_informativo` de hoy a la misma cuenta (sesión original si sigue abierta; si no, la de la Caja Fuerte de esa moneda).
+> Ver [[wiki/features/clientes-proveedores]] y consulta C-24 en [[wiki/business/consultas-contador]].
 
 La caja es el registro de efectivo físico del negocio. Es obligatoria para registrar ventas y gastos en efectivo.
 

@@ -6,7 +6,7 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-476, + correctivos 387b/387c)
+# Historial de Migraciones (001-479, + correctivos 387b/387c)
 
 📦 **Migración 475 — ✅ EN DEV Y PROD (2026-10-06, v1.239.0)**: envío de la OC. La OC dice quién lo cobra: el proveedor (default; suma al total, al pago y a la deuda, cargo `es_envio` de la CC al recibir) o un tercero (gasto "Fletes" aparte, no suma). Una vez por OC. Editar una OC ahora guarda el envío. Consulta al contador C-22 (ver [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
 
@@ -3298,3 +3298,6 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 - [[wiki/development/supabase-dev-vs-prod]]
 
 | 476 | `476_prueba_30_dias.sql` | La prueba gratis pasa de 15 a 30 días: default de `tenants.trial_ends_at` = `now() + 30 days` (solo altas nuevas). Decisión de GO 2026-10-06 (Landing 2.0) | ✅ PROD v1.239.3 |
+| 477 | `477_cheques_propios_rechazo_atomico.sql` | 🛑 `cheques.cc_movimiento_id` + `monto_imputado`; CHECK de `proveedor_pago_imputaciones.monto` pasa a `<> 0` (reversiones negativas); `registrar_pago_oc` ata el cheque al pago; `registrar_pago_proveedor` + `p_cheque` (crea el cheque, exige fecha de cobro); `rechazar_cheque_propio` atómico; trigger `trg_cheques_rechazo_guard` | ✅ PROD v1.240.3 |
+| 478 | `478_oc_etiqueta_y_pendiente_por_sucursal.sql` | `fn_oc_etiqueta` → `OC-<código>-0070` (sin código `S-OC-0070`); `fn_proveedor_cc_resumen` + `pendiente_por_sucursal` (informativo; deuda única del negocio) | ✅ PROD v1.240.3 |
+| 479 | `479_cheques_cuenta_anulado_y_cierre_pagos.sql` | 🛑 `cheques.caja_movimiento_id`; `revertir_cheque_propio(id, 'rechazado' o 'anulado')` con `ingreso_informativo` a la cuenta bancaria (wrapper `rechazar_cheque_propio`); guard también para anulado; `trg_oc_periodo_cerrado` y `trg_gastos_periodo_cerrado` dejan pasar las columnas de pago. Consultas C-23 a C-25 | ✅ PROD v1.240.3 |

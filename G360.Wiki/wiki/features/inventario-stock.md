@@ -3,10 +3,16 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362, src/lib/traerTodo.ts]
-updated: 2026-10-01
+updated: 2026-10-08
 ---
 
 # Inventario y Stock
+
+> 🏢 **2026-10-08 (🟡 DEV, va en v1.240.4) — Inventario y Productos siguen el selector de sucursal** (decisión de GO). Inventario
+> con una sucursal muestra solo lo que tiene stock ahí (aviso "N sin stock no se muestran · Mostrar" + filtro "Mostrar productos
+> sin stock"); con "Todas", cada LPN dice su sucursal; ⚠ si un LPN está en una ubicación de otra sucursal. Productos: catálogo
+> completo, pero el "total" de la fila es el de la sucursal elegida (`src/lib/stockPorProducto.ts`). **Mig 481:** una ubicación
+> con stock no puede pasar a otra sucursal (caso El Tilo, "Escobar-Leandro"). UAT §107-§108.
 
 > 🔎 **2026-10-03 (✅ EN PROD v1.238.0):** buscar un LPN deja a la vista ese LPN: la fila del producto avisa "N LPN coincide" y al expandir se ven solo esos (resaltados) + "Ver todos". No tilda el checkbox ni expande solo (decisión deliberada). UAT §94, e2e 176. Además EN PROD: desarmado de KIT atómico (mig 459) y armado sin cantidades fraccionarias (mig 462).
 

@@ -2411,6 +2411,17 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔒 §106 — CC de proveedores solo por funciones de la base + cierre contable deja cobrar ventas + mail con la entrega (mig 480, 🟡 DEV) — 2026-10-08
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 106.1 | 🛑 Nadie escribe directo `proveedor_cc_movimientos` (INSERT/UPDATE/DELETE → permission denied), tampoco el CONTADOR ni un cajero con Gastos | SQL DEV (rollback) · e2e `141` (todos los roles) | ✅ |
+| 106.2 | NC manual del proveedor por `registrar_nc_proveedor`: −monto, número, adjunto; mismo permiso que antes (Gastos en "editar", incluido el CONTADOR) | SQL DEV · e2e `141` (sonda con monto 0: permiso antes que monto, sin escribir) | ✅ |
+| 106.3 | 🛑 Devolución a proveedor con crédito en CC por la función (moneda de la OC); si falla, avisa que la mercadería ya salió del stock y el crédito NO quedó (antes se ignoraba el error) | e2e `33` | ✅ |
+| 106.4 | NC con OC de otro proveedor / monto 0 → rechazada | SQL DEV (rollback) | ✅ |
+| 106.5 | 🛑 Cierre contable: una venta de un período cerrado se puede COBRAR hoy (`monto_pagado`, `medio_pago`, `interes_cc`, cobro por link); editar su contenido sigue bloqueado | SQL DEV (rollback, cierre sembrado) | ✅ |
+| 106.6 | Mail del ticket con transporte + n° de envío y fecha/horario de entrega (EF `send-email`, campo `entrega`) | deno check · deploy DEV · revisión | ✅ código · ⬜ mail real |
+
 ## 🧾 §105 — Cheques propios, número de OC por sucursal y PDF de la OC (migs 477-478, 🟡 DEV) — 2026-10-07
 
 Pendientes de CC de proveedores elegidos por GO para el próximo deploy. 🛑 REGLA #0. **Las migs 477 y 478 están escritas y

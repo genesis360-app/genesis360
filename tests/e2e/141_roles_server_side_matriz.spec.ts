@@ -847,6 +847,21 @@ test.describe('F1 — plata, precios e inventario: quién escribe qué (mig 404)
 test.describe('F1 — el módulo Gastos: pagos a proveedor, cheques y gastos fijos (mig 405)', () => {
   const TABLAS_GASTOS = ['proveedor_cc_movimientos', 'gastos_fijos', 'cheques'] as const
 
+  // Mig 480 — la CC del proveedor ya no se escribe directo (nadie: ni el CONTADOR ni un cajero con Gastos); se escribe por
+  // funciones de la base con el MISMO permiso. Se sondea `registrar_nc_proveedor` con monto 0: chequea el permiso ANTES que el
+  // monto, así que el mensaje dice cuál de los dos lo frenó — sin escribir nada.
+  async function permisoNcProveedor(request: APIRequestContext, token: string): Promise<'autorizado' | 'no_autorizado'> {
+    const res = await request.post(`${SUPABASE_URL}/rest/v1/rpc/registrar_nc_proveedor`, {
+      headers: restHeaders(token),
+      data: { p_proveedor_id: '00000000-0000-0000-0000-000000000000', p_monto: 0 },
+    })
+    const txt = await res.text()
+    expect(res.ok(), '[141/F1] registrar_nc_proveedor con monto 0 no debe escribir nada').toBe(false)
+    if (/No autorizado/i.test(txt)) return 'no_autorizado'
+    expect(txt, '[141/F1] respuesta inesperada de registrar_nc_proveedor').toMatch(/monto válido/i)
+    return 'autorizado'
+  }
+
   async function unaFilaDe(request: APIRequestContext, tabla: string): Promise<string | null> {
     const h = restHeaders(await tokenOwner(request))
     const res = await request.get(`${SUPABASE_URL}/rest/v1/${tabla}?select=id&limit=1`, { headers: h })
@@ -878,10 +893,14 @@ test.describe('F1 — el módulo Gastos: pagos a proveedor, cheques y gastos fij
     const token = await tokenRol(request, contador!)
     for (const tabla of TABLAS_GASTOS) {
       const id = await unaFilaDe(request, tabla)
-      expect(
-        await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT }),
-        `[141/F1] el CONTADOR DEBE poder escribir ${tabla}`,
-      ).toBe(true)
+      const escribio = await rlsDejaEscribir(request, token, `${tabla}?id=eq.${id}&select=id`, { tenant_id: TENANT })
+      if (tabla === 'proveedor_cc_movimientos') {
+        // Mig 480: directo, nadie; por la función de la base, sí (mismo permiso de Gastos).
+        expect(escribio, '[141/F1] la CC del proveedor ya no se escribe directo, ni el CONTADOR').toBe(false)
+        expect(await permisoNcProveedor(request, token), '[141/F1] el CONTADOR DEBE poder registrar una NC por la función').toBe('autorizado')
+        continue
+      }
+      expect(escribio, `[141/F1] el CONTADOR DEBE poder escribir ${tabla}`).toBe(true)
     }
   })
 
@@ -910,15 +929,18 @@ test.describe('F1 — el módulo Gastos: pagos a proveedor, cheques y gastos fij
       await setGastos('ver')
       expect(
         await rlsDejaEscribir(request, token, `proveedor_cc_movimientos?id=eq.${idCC}&select=id`, { tenant_id: TENANT }),
-        '[141/F1] un CAJERO con Gastos en "ver" NO debe poder registrar un pago a proveedor',
+        '[141/F1] un CAJERO con Gastos en "ver" NO debe poder escribir la CC del proveedor',
       ).toBe(false)
+      expect(await permisoNcProveedor(request, token), '[141/F1] un CAJERO con Gastos en "ver" NO debe poder registrar en la CC del proveedor').toBe('no_autorizado')
 
       // ── Lado "sí": el DUEÑO le habilita Gastos → ahí sí.
       await setGastos('editar')
+      // Mig 480: con Gastos habilitado registra por las funciones de la base (regla de GO), nunca directo en la tabla.
       expect(
         await rlsDejaEscribir(request, token, `proveedor_cc_movimientos?id=eq.${idCC}&select=id`, { tenant_id: TENANT }),
-        '[141/F1] con Gastos habilitado por el DUEÑO, el CAJERO SÍ debe poder registrar un pago a proveedor (regla de GO)',
-      ).toBe(true)
+        '[141/F1] ni con Gastos habilitado se escribe directo la CC del proveedor (mig 480)',
+      ).toBe(false)
+      expect(await permisoNcProveedor(request, token), '[141/F1] con Gastos habilitado por el DUEÑO, el CAJERO SÍ debe poder registrar en la CC del proveedor (regla de GO)').toBe('autorizado')
 
       // ── Pero borrar un cheque sigue siendo gestión, aunque tenga Gastos.
       const idCheque = await unaFilaDe(request, 'cheques')

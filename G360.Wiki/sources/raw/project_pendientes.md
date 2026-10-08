@@ -14,6 +14,8 @@ type: project
 > landing. `pg_policies` DEV = PROD (public 246 · storage 40 · cron 2). `SUPABASE_ACCESS_TOKEN` renovado el 08/10 (90 días).
 >
 > **🔓 Pendientes nuevos:**
+> - **🖼️ Landing con imágenes REALES (GO 08/10):** usar el tenant de DEV **Almacén Jorgito** para las capturas. Ojo: tiene basura
+>   de e2e (clientes "E2E …", proveedores "ZZ_TEST…", ventas de prueba) → elegir pantallas/filtros prolijos o acomodar lo que se ve.
 > - **Cierre contable en VENTAS** (decisión de GO): sigue bloqueando cobrar hoy una venta a CC de un período cerrado (mismo
 >   criterio que OC/gastos → dejar pasar `monto_pagado`/`medio_pago`; ojo `interes_cc` del cron). Hoy 0 cierres en PROD.
 > - **Contador:** C-23 a C-25 (cheques y cierre) se suman a las 22 abiertas.

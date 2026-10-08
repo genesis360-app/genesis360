@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T03:11:39.671Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008030859 · 178 tablas
+-- Generado 2026-10-08T05:08:07.341Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008050605 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -14152,67 +14152,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -14287,6 +14226,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -14638,6 +14638,51 @@ BEGIN
   INSERT INTO public.mp_suscripcion_intentos (tenant_id, usuario_id, plan_tier, mp_plan_id)
   VALUES (v_tenant, auth.uid(), p_plan_tier, p_mp_plan_id)
   RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.registrar_nc_proveedor(p_proveedor_id uuid, p_monto numeric, p_numero text DEFAULT NULL::text, p_descripcion text DEFAULT NULL::text, p_adjunto_url text DEFAULT NULL::text, p_oc_id uuid DEFAULT NULL::uuid, p_moneda text DEFAULT NULL::text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant uuid := public.get_user_tenant_id();
+  v_monto  numeric := round(COALESCE(p_monto, 0), 2);
+  v_oc     record;
+  v_oc_moneda text;   -- NULL sin OC (un record sin asignar no se puede leer)
+  v_moneda text;
+  v_id     uuid := gen_random_uuid();
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  -- Mismo permiso que tenía la policy de escritura de la tabla (mig 405): el módulo Gastos en "editar".
+  IF NOT public.auth_puede_editar_modulo('gastos') THEN
+    RAISE EXCEPTION 'No autorizado para registrar notas de crédito de proveedores.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF v_monto <= 0 THEN RAISE EXCEPTION 'Ingresá un monto válido' USING ERRCODE = 'check_violation'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM proveedores WHERE id = p_proveedor_id AND tenant_id = v_tenant) THEN
+    RAISE EXCEPTION 'Proveedor no encontrado en el negocio';
+  END IF;
+  IF p_oc_id IS NOT NULL THEN
+    SELECT id, proveedor_id, COALESCE(moneda, 'ARS') AS moneda INTO v_oc
+      FROM ordenes_compra WHERE id = p_oc_id AND tenant_id = v_tenant;
+    IF v_oc.id IS NULL THEN RAISE EXCEPTION 'OC no encontrada en el negocio'; END IF;
+    IF v_oc.proveedor_id IS DISTINCT FROM p_proveedor_id THEN
+      RAISE EXCEPTION 'La OC es de otro proveedor.' USING ERRCODE = 'check_violation';
+    END IF;
+    v_oc_moneda := v_oc.moneda;
+  END IF;
+  -- La moneda de la OC si viene de una; si no, la indicada; si no, ARS (como el default de la tabla).
+  v_moneda := upper(COALESCE(v_oc_moneda, NULLIF(trim(p_moneda), ''), 'ARS'));
+
+  INSERT INTO proveedor_cc_movimientos(id, tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion,
+                                       nc_numero, adjunto_url, created_by)
+  VALUES (v_id, v_tenant, p_proveedor_id, p_oc_id, 'nota_credito', -v_monto, v_moneda, CURRENT_DATE,
+          COALESCE(NULLIF(trim(p_descripcion), ''), 'Nota de crédito' || COALESCE(' ' || NULLIF(trim(p_numero), ''), '')),
+          NULLIF(trim(p_numero), ''), NULLIF(trim(p_adjunto_url), ''), auth.uid());
   RETURN v_id;
 END;
 $function$
@@ -16343,6 +16388,14 @@ AS $function$
 DECLARE v_cierre DATE;
 BEGIN
   v_cierre := ultimo_cierre_hasta(OLD.tenant_id);
+  -- mig 480 (decisión de GO 2026-10-08): cobrar hoy una venta de un período cerrado (cobranza de CC, condonación, interés
+  -- por mora, cobro por link) es un hecho de hoy; el cierre protege el contenido de la venta, no su estado de cobro.
+  IF TG_OP = 'UPDATE' AND (to_jsonb(NEW) - ARRAY['monto_pagado', 'medio_pago', 'interes_cc', 'id_pago_externo',
+        'money_release_date', 'updated_at'])
+      = (to_jsonb(OLD) - ARRAY['monto_pagado', 'medio_pago', 'interes_cc', 'id_pago_externo',
+        'money_release_date', 'updated_at']) THEN
+    RETURN NEW;
+  END IF;
   IF v_cierre IS NOT NULL AND OLD.created_at::DATE <= v_cierre THEN
     RAISE EXCEPTION 'Periodo contable cerrado hasta % — no podés modificar ventas anteriores.', v_cierre USING ERRCODE = 'P0001';
   END IF;
@@ -17487,9 +17540,6 @@ CREATE POLICY proveedor_accounts_self_update ON public.proveedor_accounts AS PER
   WITH CHECK ((id = ( SELECT auth.uid() AS uid)));
 CREATE POLICY proveedor_cc_movimientos_select ON public.proveedor_cc_movimientos AS PERMISSIVE FOR SELECT TO public
   USING ((tenant_id = get_user_tenant_id()));
-CREATE POLICY proveedor_cc_movimientos_write_gastos ON public.proveedor_cc_movimientos AS PERMISSIVE FOR ALL TO public
-  USING (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)))
-  WITH CHECK (((tenant_id = get_user_tenant_id()) AND auth_puede_editar_modulo('gastos'::text)));
 CREATE POLICY tenant_isolation ON public.proveedor_contactos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -18118,8 +18168,7 @@ GRANT SELECT ON public.proveedor_account_tenants TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_account_tenants TO service_role;
 GRANT SELECT, UPDATE ON public.proveedor_accounts TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_accounts TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO authenticated;
+GRANT REFERENCES, SELECT, TRIGGER ON public.proveedor_cc_movimientos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_cc_movimientos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_contactos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.proveedor_contactos TO authenticated;

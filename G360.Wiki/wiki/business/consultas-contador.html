@@ -631,16 +631,17 @@ th { background: #f6f4fb; }
 <ul>
 <li><strong>Estado:</strong> 🟥 Abierta (2026-10-08)</li>
 <li><strong>Área:</strong> Cheques + cierre contable (relacionada con <span class="ref">#C-14 · Cierre contable mensual: ¿el criterio de bloqueo es el correcto?|C-14</span>)</li>
-<li><strong>Impacta en:</strong> <code>revertir_cheque_propio(id, 'anulado')</code>, triggers <code>trg_oc_periodo_cerrado</code> y <code>trg_gastos_periodo_cerrado</code></li>
+<li><strong>Impacta en:</strong> <code>revertir_cheque_propio(id, 'anulado')</code>, triggers <code>trg_oc_periodo_cerrado</code>, <code>trg_gastos_periodo_cerrado</code></li>
 </ul>
-<p>(mig 479).</p>
+<p>(mig 479) y <code>trg_ventas_periodo_cerrado</code> (mig 480).</p>
 <ul>
 <li><strong>Criterio provisorio (implementado):</strong> (a) un cheque propio ENTREGADO que se anula (el proveedor lo devuelve, se</li>
 </ul>
 <p>pierde, se reemplaza) tampoco se cobró → se revierte igual que un rechazo; anulado en cartera no revierte nada.</p>
 <p>(b) El cierre contable protege el CONTENIDO de una OC o un gasto (ítems, precios, proveedor, fecha, monto), pero no su</p>
-<p>estado de pago: pagar hoy un comprobante de un período cerrado, o revertir ese pago, es un hecho de hoy. ⚠️ Las</p>
-<p><strong>ventas</strong> siguen bloqueadas por completo (cobrar hoy una venta a CC de un período cerrado falla) — pendiente de GO.</p>
+<p>estado de pago: pagar hoy un comprobante de un período cerrado, o revertir ese pago, es un hecho de hoy. Desde la</p>
+<p>mig 480 (decisión de GO 2026-10-08) también las <strong>ventas</strong>: se pueden COBRAR hoy (cobranza de CC, condonación, interés</p>
+<p>por mora, cobro por link); su contenido (ítems, total, cliente, datos fiscales) sigue bloqueado.</p>
 <p><strong>Pregunta:</strong> ¿es correcto tratar la anulación como el rechazo? ¿Es correcto dejar fuera del cierre las columnas de pago</p>
 <p>(y extenderlo a la cobranza de ventas)?</p>
 <p><strong>Qué se rompe si está mal:</strong> pagos que no existieron quedan como hechos, o el cierre deja pasar cambios que no debería.</p>

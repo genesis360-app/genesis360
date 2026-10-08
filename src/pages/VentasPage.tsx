@@ -67,7 +67,7 @@ import { etiquetaDesactualizada } from '@/lib/precioProgramado'
 import { puntoVentaDeFactura } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
-import { filtrarPedidosMostrador, resumenPagoTicket, lineasEnvioTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
+import { filtrarPedidosMostrador, resumenPagoTicket, lineasEnvioTicket, lineasEntregaTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useElegirUbicacion } from '@/components/ElegirUbicacionModal'
 import toast from 'react-hot-toast'
@@ -533,6 +533,20 @@ export default function VentasPage() {
   // setSaving ocurre tras awaits → un doble-click/Enter+click rápido podía duplicar la venta).
   const savingRef = useRef(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
+  // 🚚 Datos de la entrega para el ticket (pedido de GO 2026-10-07): transporte, n° de envío, fecha y horario. El envío
+  // se crea DESPUÉS de mostrar el ticket al cobrar → se invalida 'envio-ticket' al crearlo.
+  const { data: envioTicket = null } = useQuery({
+    queryKey: ['envio-ticket', ticketVenta?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('envios')
+        .select('numero, courier, servicio, fecha_entrega_acordada, rango_horario_desde, rango_horario_hasta')
+        .eq('venta_id', ticketVenta!.id).neq('estado', 'cancelado')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      return data ?? null
+    },
+    enabled: !!ticketVenta?.id && ticketVenta?.estado !== 'pendiente',
+  })
+  const entregaTicket = lineasEntregaTicket(envioTicket)
   // H2 — enviar ticket por email
   const [emailTicketOpen, setEmailTicketOpen] = useState(false)
   const [emailTicketValue, setEmailTicketValue] = useState('')
@@ -2161,6 +2175,11 @@ export default function VentasPage() {
   const detectarTipoComp = (clienteCondIva?: string): 'A' | 'B' | 'C' =>
     detectarTipoComprobante(condEmisorFactura, clienteCondIva)
 
+  // Total que va a la FACTURA: productos + envío cobrado (la EF `emitir-factura` suma `costo_envio` como ítem). El modal
+  // mostraba y usaba para el umbral de la Factura B solo `ventas.total` → no pedía el DNI de una venta que con el envío
+  // pasaba el umbral, y la EF la rechazaba después (GO 2026-10-07, e2e 188).
+  const totalFacturable = (v: { total?: number | string | null; costo_envio?: number | string | null }) =>
+    (Number(v.total) || 0) + Math.max(0, Number(v.costo_envio) || 0)
   const triggerFacturaModal = (ventaId: string, ventaNumero: number, ventaTotal: number, clienteCondIva?: string) => {
     const tipo = detectarTipoComp(clienteCondIva)
     const pvDefault = (pvsDelEmisor as any[])[0]?.numero ?? 1
@@ -2636,6 +2655,7 @@ export default function VentasPage() {
       vuelto: ticketVenta.vuelto ?? null,
       estado: ticketVenta.estado ?? null,
       saldo: mostrarSaldo ? saldo : null,
+      entrega: entregaTicket.length ? entregaTicket : null,
     }
     return { tipo: 'ticket', ventaId: ticketVenta.id, datos, etiqueta: datos.etiqueta, total, clienteId: ticketVenta.cliente_id }
   })
@@ -4144,7 +4164,7 @@ export default function VentasPage() {
       }
       // Prompt facturación si la venta fue despachada y está habilitada
       if (estado === 'despachada' && factHabilitada) {
-        triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
+        triggerFacturaModal(venta.id, venta.numero ?? 0, totalFacturable(venta))
       }
       // Auto-crear envío si el toggle está activo. SOLO en modo avanzado: en básico el envío
       // es únicamente un costo en la venta (ya guardado en `costo_envio` arriba) — no se crea
@@ -4177,6 +4197,7 @@ export default function VentasPage() {
           servicio: envioTransporte === 'tercero' ? (envioServicio.trim() || null) : null,
         })
         qc.invalidateQueries({ queryKey: ['envios'] })
+        qc.invalidateQueries({ queryKey: ['envio-ticket'] })   // el ticket ya abierto muestra la entrega
         toast('Envío creado en estado pendiente', { icon: '📦' })
       }
 
@@ -5768,7 +5789,7 @@ export default function VentasPage() {
       // Prompt facturación si se despachó desde historial
       if (variables.nuevoEstado === 'despachada' && factHabilitada) {
         const v = (ventas as any[]).find(v => v.id === variables.ventaId)
-        if (v) triggerFacturaModal(v.id, v.numero ?? 0, Number(v.total ?? 0))
+        if (v) triggerFacturaModal(v.id, v.numero ?? 0, totalFacturable(v))
       }
     },
     onError: (e: any) => {
@@ -7975,7 +7996,7 @@ export default function VentasPage() {
               })()}
               {/* Emitir comprobante AFIP si la venta despachada aún no tiene CAE (ej. se saltó el prompt) */}
               {ventaDetalle.estado === 'despachada' && !ventaDetalle.cae && factHabilitada && (
-                <button onClick={() => triggerFacturaModal(ventaDetalle.id, ventaDetalle.numero, Number(ventaDetalle.total), ventaDetalle.clientes?.condicion_iva_receptor)}
+                <button onClick={() => triggerFacturaModal(ventaDetalle.id, ventaDetalle.numero, totalFacturable(ventaDetalle), ventaDetalle.clientes?.condicion_iva_receptor)}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
                   <Receipt size={16} /> Emitir factura
                 </button>
@@ -8696,6 +8717,14 @@ export default function VentasPage() {
                 </div>
               )
             })()}
+
+            {entregaTicket.length > 0 && (
+              <div data-testid="ticket-entrega" className="mt-3 border-t border-dashed border-gray-300 dark:border-gray-600 pt-2 space-y-0.5">
+                {entregaTicket.map((l, i) => (
+                  <p key={i} className={`text-xs ${i === 0 ? 'font-medium text-gray-600 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>{l}</p>
+                ))}
+              </div>
+            )}
 
             <p className="text-center text-xs text-gray-300 mt-4 border-t border-dashed border-gray-200 dark:border-gray-700 pt-3">
               {ticketVenta.estado === 'reservada' ? '¡Gracias! Guardá este comprobante para retirar.' : '¡Gracias por su compra!'}

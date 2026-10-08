@@ -25,12 +25,11 @@ type: project
 > - **Datos personales:** el domicilio de Fede ya no está en archivos, base de PROD ni memoria; sigue en el HISTORIAL de git (repo
 >   público) → reescribir el historial solo con autorización explícita de GO. Ley 25.326 art. 6: definir con el abogado una
 >   identidad no personal para Privacidad.
-> - **🚚 Envío en el ticket (07/10, en `dev`, falta release):** el ticket de WhatsApp/link y el del mail ya suman el envío (UAT
->   §104). ⏳ Confirmar en PROD si la reserva #50 de El Tilo quedó con `costo_envio` 0/NULL — requiere renovar
->   `SUPABASE_ACCESS_TOKEN` (vencido, 401).
+> - **🚚 Envío en el ticket (en `dev`):** WhatsApp/mail suman el envío; la #50 de El Tilo tenía el dato bien (UAT §104).
+>   `SUPABASE_ACCESS_TOKEN` renovado el 08/10 por **90 días** (vence ~06/01/2027).
 > - **🧾 Próximo deploy (v1.240.3, en `dev`):** envío en ticket WhatsApp/mail, scroll del landing, PDF de OC sin costos internos,
->   cheques propios atómicos (**mig 477**), `OC-<código>-0070` + pendiente por sucursal (**mig 478**). ⏳ **477-478 SIN aplicar**
->   (token vencido): aplicar en DEV → UAT §105 → `schema:dump` → PROD. Decisiones abiertas de GO: rechazo con período cerrado,
+>   cheques propios atómicos (**mig 477**), `OC-<código>-0070` + pendiente por sucursal (**mig 478**), datos de entrega en el
+>   ticket + total con envío en el modal de factura. ✅ **477-478 aplicadas en DEV** (08/10) y verificadas; falta PROD. Decisiones abiertas de GO: rechazo con período cerrado,
 >   egreso informativo de caja, cheque anulado tras entregado. Siguen abiertos: policy de escritura de `proveedor_cc_movimientos`.
 > - **DEV:** 2 ubicaciones de prueba "E2EDefecto_test_…" de corridas fallidas del e2e 187 en Almacén Jorgito (borrar desde la UI).
 > - Siguen los de abajo (plan de testing de Notificaciones, CC de proveedores, PDF de OC, prefijo S-OC, rotar `service_role`).

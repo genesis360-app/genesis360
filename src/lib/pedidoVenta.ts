@@ -196,6 +196,39 @@ export function lineasEnvioTicket(venta: {
 }
 
 /**
+ * 🚚 Datos de la entrega para el ticket (pedido de GO 2026-10-07): transporte + n° de envío, y fecha/horario acordados.
+ * Ej.: ["Envío propio · Envío #7", "Entrega: mié 08/10 · 08:10 a 10:00"]. Sin envío → [].
+ */
+export function lineasEntregaTicket(envio: {
+  numero?: number | null
+  courier?: string | null
+  servicio?: string | null
+  fecha_entrega_acordada?: string | null
+  rango_horario_desde?: string | null
+  rango_horario_hasta?: string | null
+} | null | undefined): string[] {
+  if (!envio) return []
+  const lineas: string[] = []
+  const transporte = [envio.courier?.trim(), envio.servicio?.trim()].filter(Boolean).join(' — ')
+  const numero = envio.numero != null ? `Envío #${envio.numero}` : ''
+  const cab = [transporte, numero].filter(Boolean).join(' · ')
+  if (cab) lineas.push(cab)
+  const hora = (h?: string | null) => (h ? h.slice(0, 5) : '')
+  const desde = hora(envio.rango_horario_desde), hasta = hora(envio.rango_horario_hasta)
+  const rango = desde && hasta ? `${desde} a ${hasta}` : desde ? `desde ${desde}` : hasta ? `hasta ${hasta}` : ''
+  let fecha = ''
+  if (envio.fecha_entrega_acordada && /^\d{4}-\d{2}-\d{2}/.test(envio.fecha_entrega_acordada)) {
+    // Mediodía local: una fecha sola parseada como UTC se corre al día anterior en Argentina.
+    // Armada a mano: toLocaleDateString da "08-10" en Node y "08/10" en el navegador.
+    const d = new Date(`${envio.fecha_entrega_acordada.slice(0, 10)}T12:00:00`)
+    const dia = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][d.getDay()]
+    fecha = `${dia} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+  if (fecha || rango) lineas.push(`Entrega: ${[fecha, rango].filter(Boolean).join(' · ')}`)
+  return lineas
+}
+
+/**
  * 💵 Saldo que falta cobrar para poder entregar (caja "Debe validar pago total" del diagrama).
  * `total` NO incluye el costo de envío pero `monto_pagado` SÍ (ISS-105), así que hay que sumarlo:
  * compararlo contra `total` a secas dejaría salir mercadería con el envío sin cobrar.

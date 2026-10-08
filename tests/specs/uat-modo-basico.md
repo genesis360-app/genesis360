@@ -2411,21 +2411,21 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
-## 🧾 §105 — Cheques propios, número de OC por sucursal y PDF de la OC (migs 477-478, ⏳ sin aplicar) — 2026-10-07
+## 🧾 §105 — Cheques propios, número de OC por sucursal y PDF de la OC (migs 477-478, 🟡 DEV) — 2026-10-07
 
 Pendientes de CC de proveedores elegidos por GO para el próximo deploy. 🛑 REGLA #0. **Las migs 477 y 478 están escritas y
-revisadas (migration-reviewer: bloqueante de idempotencia corregido) pero NO aplicadas**: el `SUPABASE_ACCESS_TOKEN` está
-vencido (401). Al renovarlo: aplicar en DEV, correr los escenarios de abajo, `npm run schema:dump`, recién ahí PROD.
+revisadas (migration-reviewer: bloqueante de idempotencia corregido) y APLICADAS EN DEV** (2026-10-08 02:32 UTC); `schema_full`
+regenerado. Verificado con 16 escenarios SQL en DEV impersonando al dueño de Almacén Jorgito (todo en ROLLBACK, sin residuo).
 
 | # | Escenario | Cómo se verifica | Estado |
 |---|---|---|---|
-| 105.1 | 🛑 Pago desde la CC del proveedor con "Cheque": pide fecha de cobro (UI + servidor) y crea el cheque en Gastos → Cheques, atado al pago (`cc_movimiento_id`, `monto_imputado`) | e2e/SQL en DEV | ⏳ |
-| 105.2 | 🛑 Rechazar ese cheque: las OCs que había pagado vuelven a deber (la más nueva primero), +ajuste en la CC por el monto, imputaciones negativas; todo en una transacción (`rechazar_cheque_propio`) | SQL en DEV (rollback) | ⏳ |
-| 105.3 | 🛑 Rechazar un cheque de un pago de OC con varios medios: solo se revierte la parte del cheque, en la moneda de la OC | SQL en DEV | ⏳ |
-| 105.4 | 🛑 Pasar un cheque propio a 'rechazado' con un UPDATE directo → rechazado por el trigger; un rechazado no cambia de estado (no se revierte dos veces) | SQL en DEV | ⏳ |
-| 105.5 | Cheque de un gasto suelto rechazado → el gasto vuelve a pendiente/parcial | e2e `31` contra DEV | ⏳ |
-| 105.6 | Número de OC: sucursal con código → "OC-SUC1-0070" en pantallas y textos del servidor; sin código sigue "S-OC-0070"; la búsqueda acepta las dos formas | unit `ocNumero` (7) · SQL `fn_oc_etiqueta` en DEV | ✅ unit · ⏳ DEV |
-| 105.7 | CC del proveedor: con 2+ sucursales muestra el pendiente de OCs por sucursal (informativo; la deuda sigue siendo una del negocio) | manual en DEV | ⏳ |
+| 105.1 | 🛑 Pago desde la CC del proveedor con "Cheque": pide fecha de cobro (UI + servidor) y crea el cheque en Gastos → Cheques, atado al pago (`cc_movimiento_id`, `monto_imputado`) | SQL DEV (rollback): cheque atado, monto_imputado 1500 · sin fecha → error | ✅ |
+| 105.2 | 🛑 Rechazar ese cheque: las OCs que había pagado vuelven a deber (la más nueva primero), +ajuste en la CC por el monto, imputaciones negativas; todo en una transacción (`rechazar_cheque_propio`) | SQL DEV (rollback): OCs 0, CC 0, imputaciones netas 0 | ✅ |
+| 105.3 | 🛑 Rechazar un cheque de un pago de OC con varios medios: solo se revierte la parte del cheque, en la moneda de la OC | SQL DEV (rollback): OC 800 / pago_parcial, imputación −1200 | ✅ |
+| 105.4 | 🛑 Pasar un cheque propio a 'rechazado' con un UPDATE directo → rechazado por el trigger; un rechazado no cambia de estado (no se revierte dos veces) | SQL DEV (rollback): UPDATE directo, doble rechazo y rechazado→cobrado bloqueados | ✅ |
+| 105.5 | Cheque de un gasto suelto rechazado → el gasto vuelve a pendiente/parcial | e2e `31` contra DEV migrado | ✅ |
+| 105.6 | Número de OC: sucursal con código → "OC-SUC1-0070" en pantallas y textos del servidor; sin código sigue "S-OC-0070"; la búsqueda acepta las dos formas | unit `ocNumero` (7) · SQL `fn_oc_etiqueta` en DEV | ✅ |
+| 105.7 | CC del proveedor: con 2+ sucursales muestra el pendiente de OCs por sucursal (informativo; la deuda sigue siendo una del negocio) | SQL DEV (`pendiente_por_sucursal`) · pantalla: manual | ✅ SQL · ⬜ manual |
 | 105.8 | PDF/texto de la OC: TOTAL = productos + envío del proveedor; aduana/comisión/otros NO aparecen | unit `ocPDF` | ✅ |
 | 105.9 | Recepción con OC: si falla el update de la OC o el gasto, avisa (ya estaba hecho; el pendiente del wiki estaba desactualizado) | revisión | ✅ |
 
@@ -2449,7 +2449,10 @@ Los links ya compartidos antes del fix guardan su foto de datos vieja (sin enví
 | 104.3 | Ticket por mail al cliente: renglón "Envío" + total con envío | revisión · probar en DEV | ✅ código · ⬜ manual |
 | 104.4 | Mail automático al dueño (venta despachada): renglón "Envío" + total con envío | revisión | ✅ código |
 | 104.5 | Venta sin envío: ningún renglón extra, total sin cambios | unit | ✅ |
-| 104.6 | ⏳ Reserva #50 de El Tilo (PROD): confirmar si `ventas.costo_envio` quedó guardado (si es 0/NULL el ticket de la pantalla no lo puede mostrar; causas posibles: switch "Incluir envío" apagado o regla de envío gratis) | SQL de solo lectura en PROD (falta renovar el token de la Management API) | ⏳ |
+| 104.6 | Reserva #50 de El Tilo (PROD): `costo_envio` = 45.000 guardado, `monto_pagado` = 94.005 (productos + envío), envío #7 propio con fecha 08/10 8:10-10:00 → el dato estaba bien | SQL de solo lectura en PROD | ✅ |
+| 104.7 | 🛑 Venta despachada y RESERVA con envío propio: el ticket de la pantalla muestra "Envío $X" y TOTAL = productos + envío (el caso de la #50 de El Tilo; en PROD el dato estaba bien guardado) | e2e `188` (2 tests, acotado a `#ticket-print`) | ✅ |
+| 104.8 | 🛑 El modal "¿Emitir comprobante?" mostraba y usaba para el umbral de la Factura B el total SIN envío (la EF sí lo suma → rechazaba una B sin DNI que con el envío pasaba el umbral) → `totalFacturable` = total + envío | e2e `188` (captura: $5.700) | ✅ |
+| 104.9 | Ticket con envío: transporte + n° de envío y fecha/horario de entrega (pantalla, WhatsApp/link) — pedido de GO | unit `lineasEntregaTicket` (5) · e2e `188` | ✅ |
 
 ## 📍 §103 — Ubicación "Global" y recepción de traslado en una sucursal sin ubicaciones (🟡 DEV) — 2026-10-06
 

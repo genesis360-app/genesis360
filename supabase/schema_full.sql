@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-06T05:00:19.940Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261006045506 · 178 tablas
+-- Generado 2026-10-08T02:34:58.294Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008023309 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -466,7 +466,9 @@ CREATE TABLE public.cheques (
   created_by uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  gasto_id uuid
+  gasto_id uuid,
+  cc_movimiento_id uuid,
+  monto_imputado numeric(12,2)
 );
 
 CREATE TABLE public.cierres_contables (
@@ -2398,7 +2400,7 @@ CREATE TABLE public.tenants (
   tipo_comercio text,
   pais text DEFAULT 'AR'::text,
   subscription_status text NOT NULL DEFAULT 'trial'::text,
-  trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '15 days'::interval),
+  trial_ends_at timestamp with time zone NOT NULL DEFAULT (now() + '30 days'::interval),
   max_users integer NOT NULL DEFAULT 2,
   max_productos integer NOT NULL DEFAULT 50,
   mp_subscription_id text,
@@ -3269,7 +3271,7 @@ ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimien
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_tipo_check CHECK ((tipo = ANY (ARRAY['oc'::text, 'pago'::text, 'nota_credito'::text, 'ajuste'::text])));
 ALTER TABLE public.proveedor_contactos ADD CONSTRAINT proveedor_contactos_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_cuentas_bancarias ADD CONSTRAINT proveedor_cuentas_bancarias_pkey PRIMARY KEY (id);
-ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_monto_check CHECK ((monto > (0)::numeric));
+ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_monto_check CHECK ((monto <> (0)::numeric));
 ALTER TABLE public.proveedor_pago_imputaciones ADD CONSTRAINT proveedor_pago_imputaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_pkey PRIMARY KEY (id);
 ALTER TABLE public.proveedor_productos ADD CONSTRAINT proveedor_productos_proveedor_id_producto_id_key UNIQUE (proveedor_id, producto_id);
@@ -3511,6 +3513,7 @@ ALTER TABLE public.categorias ADD CONSTRAINT categorias_tenant_id_fkey FOREIGN K
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE public.categorias_cliente ADD CONSTRAINT categorias_cliente_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.cheques ADD CONSTRAINT cheques_cc_movimiento_id_fkey FOREIGN KEY (cc_movimiento_id) REFERENCES proveedor_cc_movimientos(id) ON DELETE SET NULL;
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_endosado_a_proveedor_id_fkey FOREIGN KEY (endosado_a_proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_gasto_id_fkey FOREIGN KEY (gasto_id) REFERENCES gastos(id) ON DELETE SET NULL;
@@ -3977,6 +3980,7 @@ CREATE INDEX categoria_cliente_descuentos_producto_idx ON public.categoria_clien
 CREATE INDEX categoria_cliente_descuentos_tenant_idx ON public.categoria_cliente_descuentos USING btree (tenant_id);
 CREATE INDEX categorias_cliente_tenant_idx ON public.categorias_cliente USING btree (tenant_id);
 CREATE UNIQUE INDEX categorias_cliente_tenant_nombre_key ON public.categorias_cliente USING btree (tenant_id, lower(btrim(nombre)));
+CREATE INDEX cheques_cc_movimiento ON public.cheques USING btree (cc_movimiento_id) WHERE (cc_movimiento_id IS NOT NULL);
 CREATE INDEX clientes_categoria_cliente_idx ON public.clientes USING btree (categoria_cliente_id) WHERE (categoria_cliente_id IS NOT NULL);
 CREATE UNIQUE INDEX clientes_dni_tenant ON public.clientes USING btree (tenant_id, dni) WHERE (dni IS NOT NULL);
 CREATE UNIQUE INDEX empleados_tenant_user_unique ON public.empleados USING btree (tenant_id, user_id) WHERE (user_id IS NOT NULL);
@@ -6100,6 +6104,24 @@ BEGIN
             OR auth.uid() IS NULL) THEN
       RAISE EXCEPTION 'No autorizado: tu rol no puede cambiar el monto de un cheque ya registrado.'
         USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cheques_rechazo_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.estado IS DISTINCT FROM OLD.estado AND OLD.tipo = 'propio' THEN
+    IF OLD.estado = 'rechazado' THEN
+      RAISE EXCEPTION 'Un cheque propio rechazado no cambia de estado (su pago ya se revirtió).' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.estado = 'rechazado' AND COALESCE(current_setting('app.rechazo_cheque', true), '') <> OLD.id::text THEN
+      RAISE EXCEPTION 'Para rechazar un cheque propio usá "Rechazar" en Cheques (revierte el pago).' USING ERRCODE = 'check_violation';
     END IF;
   END IF;
   RETURN NEW;
@@ -9834,9 +9856,13 @@ CREATE OR REPLACE FUNCTION public.fn_oc_etiqueta(p_oc_id uuid)
 AS $function$
   SELECT 'OC ' || CASE
     WHEN COALESCE(t.oc_numeracion, 'sucursal') = 'sucursal' AND o.numero_sucursal IS NOT NULL
-      THEN 'S-OC-' || lpad(o.numero_sucursal::text, 4, '0')
+      THEN CASE WHEN NULLIF(trim(s.codigo), '') IS NOT NULL
+             THEN 'OC-' || trim(s.codigo) || '-' || lpad(o.numero_sucursal::text, 4, '0')
+             ELSE 'S-OC-' || lpad(o.numero_sucursal::text, 4, '0') END
     ELSE '#' || o.numero END
-  FROM ordenes_compra o JOIN tenants t ON t.id = o.tenant_id
+  FROM ordenes_compra o
+  JOIN tenants t ON t.id = o.tenant_id
+  LEFT JOIN sucursales s ON s.id = o.sucursal_id AND s.tenant_id = o.tenant_id
   WHERE o.id = p_oc_id;
 $function$
 
@@ -11180,7 +11206,19 @@ AS $function$
         WHERE o.proveedor_id = p_proveedor_id AND o.tenant_id = public.get_user_tenant_id()
           AND o.estado NOT IN ('borrador', 'cancelada') AND o.estado_pago <> 'pagada'
           AND public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento > 0.5
-        GROUP BY 1) x), '{}'::jsonb));
+        GROUP BY 1) x), '{}'::jsonb),
+    -- mig 478: [{sucursal, moneda, pendiente, ocs}] — sucursal NULL = OC sin sucursal.
+    'pendiente_por_sucursal', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('sucursal', sucursal, 'moneda', moneda, 'pendiente', pendiente, 'ocs', ocs)
+                       ORDER BY sucursal NULLS LAST, moneda) FROM (
+        SELECT s.nombre AS sucursal, COALESCE(o.moneda, 'ARS') AS moneda,
+               SUM(public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento) AS pendiente, count(*) AS ocs
+        FROM ordenes_compra o
+        LEFT JOIN sucursales s ON s.id = o.sucursal_id AND s.tenant_id = o.tenant_id
+        WHERE o.proveedor_id = p_proveedor_id AND o.tenant_id = public.get_user_tenant_id()
+          AND o.estado NOT IN ('borrador', 'cancelada') AND o.estado_pago <> 'pagada'
+          AND public.fn_oc_total(o.id) - o.monto_pagado - o.monto_descuento > 0.5
+        GROUP BY 1, 2) y), '[]'::jsonb));
 $function$
 
 
@@ -14545,6 +14583,121 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.rechazar_cheque_propio(p_cheque_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant  uuid := public.get_user_tenant_id();
+  v_rol     text := public.get_user_role();
+  v_user    uuid := auth.uid();
+  v_eps     numeric := 0.5;
+  v_chq     record;
+  v_oc      record;
+  v_g       record;
+  v_resto   numeric;
+  v_aplica  numeric;
+  v_ajuste  uuid := gen_random_uuid();
+  v_moneda  text;
+  v_prov    uuid;
+  v_ocs     jsonb := '[]'::jsonb;
+  v_detalle text := '';
+  v_gasto   jsonb := NULL;
+BEGIN
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
+  IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
+    RAISE EXCEPTION 'No autorizado: el CONTADOR tiene acceso de solo lectura.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT public.auth_puede_editar_modulo('gastos') THEN
+    RAISE EXCEPTION 'No autorizado para rechazar cheques.' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  SELECT * INTO v_chq FROM cheques WHERE id = p_cheque_id AND tenant_id = v_tenant FOR UPDATE;
+  IF v_chq.id IS NULL THEN RAISE EXCEPTION 'Cheque no encontrado en el negocio'; END IF;
+  IF v_chq.tipo <> 'propio' THEN RAISE EXCEPTION 'Solo se rechazan por acá los cheques propios.' USING ERRCODE = 'check_violation'; END IF;
+  IF v_chq.estado = 'rechazado' THEN RAISE EXCEPTION 'El cheque ya está rechazado.' USING ERRCODE = 'check_violation'; END IF;
+  IF v_chq.estado <> 'entregado' THEN
+    RAISE EXCEPTION 'Solo se puede rechazar un cheque entregado (este está %).', v_chq.estado USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Lo que se revierte: lo que el cheque imputó, en la moneda de la OC/CC. Cheques anteriores a la mig 477: su monto
+  -- (mismo criterio que la pantalla hasta hoy).
+  v_resto := round(COALESCE(v_chq.monto_imputado, v_chq.monto, 0), 2);
+
+  IF v_chq.cc_movimiento_id IS NOT NULL OR v_chq.oc_id IS NOT NULL THEN
+    IF v_chq.cc_movimiento_id IS NOT NULL THEN
+      SELECT proveedor_id, moneda INTO v_prov, v_moneda
+        FROM proveedor_cc_movimientos WHERE id = v_chq.cc_movimiento_id AND tenant_id = v_tenant;
+    ELSE
+      SELECT proveedor_id, COALESCE(moneda, 'ARS') INTO v_prov, v_moneda
+        FROM ordenes_compra WHERE id = v_chq.oc_id AND tenant_id = v_tenant;
+    END IF;
+    IF v_prov IS NULL THEN RAISE EXCEPTION 'No se encontró el pago que generó este cheque.'; END IF;
+
+    -- La deuda vuelve a la CC del proveedor, en la moneda del pago.
+    INSERT INTO proveedor_cc_movimientos(id, tenant_id, proveedor_id, oc_id, tipo, monto, moneda, fecha, descripcion, created_by)
+    VALUES (v_ajuste, v_tenant, v_prov, v_chq.oc_id, 'ajuste', v_resto, v_moneda, CURRENT_DATE,
+            'Cheque rechazado' || COALESCE(' ' || v_chq.nro_cheque, ''), v_user);
+
+    -- Cada OC que el pago había cubierto vuelve a deber (la más nueva primero). Cheques viejos: su OC.
+    FOR v_oc IN
+      SELECT o.id, x.imputado
+        FROM (
+          SELECT i.oc_id, SUM(i.monto) AS imputado
+            FROM proveedor_pago_imputaciones i
+           WHERE v_chq.cc_movimiento_id IS NOT NULL AND i.movimiento_id = v_chq.cc_movimiento_id
+           GROUP BY i.oc_id
+          UNION ALL
+          SELECT v_chq.oc_id, v_resto WHERE v_chq.cc_movimiento_id IS NULL
+        ) x
+        JOIN ordenes_compra o ON o.id = x.oc_id AND o.tenant_id = v_tenant
+       ORDER BY o.created_at DESC, o.numero DESC, o.id DESC
+       FOR UPDATE OF o
+    LOOP
+      EXIT WHEN v_resto <= 0;
+      SELECT LEAST(v_resto, v_oc.imputado, COALESCE(monto_pagado, 0)) INTO v_aplica FROM ordenes_compra WHERE id = v_oc.id;
+      v_aplica := round(v_aplica, 2);
+      CONTINUE WHEN v_aplica <= 0;
+      UPDATE ordenes_compra SET
+        monto_pagado = monto_pagado - v_aplica,
+        estado_pago = CASE
+          WHEN monto_pagado - v_aplica + COALESCE(monto_descuento, 0) >= COALESCE(monto_total, public.fn_oc_total(id)) - v_eps THEN 'pagada'
+          WHEN fecha_vencimiento_pago IS NOT NULL THEN 'cuenta_corriente'   -- había quedado a plazo: sigue siéndolo
+          WHEN monto_pagado - v_aplica > v_eps THEN 'pago_parcial'
+          ELSE 'pendiente_pago' END
+      WHERE id = v_oc.id;
+      INSERT INTO proveedor_pago_imputaciones(tenant_id, movimiento_id, oc_id, monto) VALUES (v_tenant, v_ajuste, v_oc.id, -v_aplica);
+      v_ocs := v_ocs || jsonb_build_object('oc_id', v_oc.id, 'etiqueta', public.fn_oc_etiqueta(v_oc.id), 'monto', v_aplica);
+      v_detalle := v_detalle || CASE WHEN v_detalle = '' THEN '' ELSE ', ' END || public.fn_oc_etiqueta(v_oc.id);
+      v_resto := v_resto - v_aplica;
+    END LOOP;
+    IF v_detalle <> '' THEN
+      UPDATE proveedor_cc_movimientos SET descripcion = descripcion || ' — vuelve a deber ' || v_detalle WHERE id = v_ajuste;
+    END IF;
+  ELSIF v_chq.gasto_id IS NOT NULL THEN
+    -- Gasto suelto pagado con cheque: vuelve a deber lo que pagó el cheque.
+    SELECT id, descripcion, monto_pagado INTO v_g FROM gastos WHERE id = v_chq.gasto_id AND tenant_id = v_tenant FOR UPDATE;
+    IF v_g.id IS NOT NULL THEN
+      v_aplica := LEAST(v_resto, COALESCE(v_g.monto_pagado, 0));
+      UPDATE gastos SET monto_pagado = monto_pagado - v_aplica,
+        estado_pago = CASE WHEN monto_pagado - v_aplica > v_eps THEN 'parcial' ELSE 'pendiente' END
+      WHERE id = v_g.id;
+      v_gasto := jsonb_build_object('gasto_id', v_g.id, 'descripcion', v_g.descripcion, 'monto', v_aplica);
+    END IF;
+  END IF;
+
+  PERFORM set_config('app.rechazo_cheque', p_cheque_id::text, true);
+  UPDATE cheques SET estado = 'rechazado', updated_at = now() WHERE id = p_cheque_id;
+  PERFORM set_config('app.rechazo_cheque', '', true);
+
+  RETURN jsonb_build_object('ok', true, 'ocs', v_ocs, 'gasto', v_gasto,
+                            'ajuste_cc', CASE WHEN v_prov IS NULL THEN NULL ELSE v_ajuste END);
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.rechazar_vacacion(p_solicitud_id uuid, p_user_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -14625,6 +14778,7 @@ DECLARE
   v_medios_enriquecidos jsonb := '[]'::jsonb;
   v_monto_oc     numeric;
   v_mov_id       uuid;
+  v_montocheque_oc numeric := 0;   -- mig 477: lo que el cheque imputó, en la moneda de la OC (lo que se revierte si rebota)
 BEGIN
   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
   IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
@@ -14687,6 +14841,8 @@ BEGIN
     FROM jsonb_array_elements(v_medios_enriquecidos) e;
   SELECT COALESCE(SUM((e->>'monto')::numeric),0) INTO v_montocheque
     FROM jsonb_array_elements(p_medios) e WHERE e->>'tipo' = 'Cheque';
+  SELECT COALESCE(SUM((e->>'monto_oc')::numeric),0) INTO v_montocheque_oc
+    FROM jsonb_array_elements(v_medios_enriquecidos) e WHERE e->>'tipo' = 'Cheque';
   v_montototal := v_montocc + v_montonocc;
   IF v_montototal <= v_eps THEN RAISE EXCEPTION 'Ingresá al menos un monto válido'; END IF;
 
@@ -14761,11 +14917,14 @@ BEGIN
   -- mig 473: "Cuenta Corriente" ya NO inserta un cargo: la deuda la carga la recepción (fn_cc_proveedor_cargo_recepcion).
 
   IF v_montocheque > 0 AND p_cheque IS NOT NULL THEN
-    INSERT INTO public.cheques(tenant_id, tipo, estado, monto, nro_cheque, banco, fecha_emision, fecha_cobro, proveedor_id, oc_id, sucursal_id, notas, created_by)
+    -- mig 477: el cheque queda atado al pago (cc_movimiento_id) y guarda lo que imputó en la moneda de la OC.
+    INSERT INTO public.cheques(tenant_id, tipo, estado, monto, nro_cheque, banco, fecha_emision, fecha_cobro, proveedor_id, oc_id, sucursal_id, notas, created_by,
+                               cc_movimiento_id, monto_imputado)
     VALUES (v_tenant, 'propio', 'entregado', v_montocheque,
             NULLIF(p_cheque->>'nro',''), NULLIF(p_cheque->>'banco',''), CURRENT_DATE,
             NULLIF(p_cheque->>'fecha_cobro','')::date, v_oc.proveedor_id, p_oc_id,
-            NULLIF(p_cheque->>'sucursal_id','')::uuid, 'Generado por pago '||public.fn_oc_etiqueta(v_oc.id), v_user);
+            NULLIF(p_cheque->>'sucursal_id','')::uuid, 'Generado por pago '||public.fn_oc_etiqueta(v_oc.id), v_user,
+            v_mov_id, round(v_montocheque_oc, 2));
   END IF;
 
   IF p_caja_sesion_id IS NOT NULL THEN
@@ -14789,7 +14948,7 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.registrar_pago_proveedor(p_proveedor_id uuid, p_medio text, p_monto numeric, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_clave text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.registrar_pago_proveedor(p_proveedor_id uuid, p_medio text, p_monto numeric, p_caja_sesion_id uuid DEFAULT NULL::uuid, p_clave text DEFAULT NULL::text, p_cheque jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -14816,6 +14975,7 @@ DECLARE
   v_tope     numeric;
   v_umbral   numeric;
   v_clave_real text;
+  v_es_cheque boolean := p_medio = 'Cheque';   -- mig 477
 BEGIN
   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Sin tenant en la sesión'; END IF;
   IF v_rol IS NULL OR v_rol = 'CONTADOR' THEN
@@ -14828,6 +14988,10 @@ BEGIN
   IF v_monto <= 0 THEN RAISE EXCEPTION 'Ingresá un monto válido' USING ERRCODE = 'check_violation'; END IF;
   IF COALESCE(trim(p_medio), '') = '' OR p_medio = 'Cuenta Corriente' THEN
     RAISE EXCEPTION 'Elegí con qué se paga' USING ERRCODE = 'check_violation';
+  END IF;
+  -- mig 477: con cheque, la fecha de cobro es obligatoria (alimenta la alerta de cheques, igual que en Gastos).
+  IF v_es_cheque AND NULLIF(p_cheque->>'fecha_cobro', '') IS NULL THEN
+    RAISE EXCEPTION 'Pagás con cheque: indicá la fecha de cobro.' USING ERRCODE = 'check_violation';
   END IF;
   SELECT nombre INTO v_prov FROM proveedores WHERE id = p_proveedor_id AND tenant_id = v_tenant;
   IF v_prov IS NULL THEN RAISE EXCEPTION 'Proveedor no encontrado en el negocio'; END IF;
@@ -14915,6 +15079,16 @@ BEGIN
               || 'sin OC $' || translate(to_char(v_resto, 'FM999,999,990.00'), ',.', '.,');
   END IF;
   UPDATE proveedor_cc_movimientos SET descripcion = 'Pago a cuenta — ' || v_detalle WHERE id = v_mov_id;
+
+  -- mig 477: el cheque entregado queda registrado (Gastos → Cheques) y atado a este pago: si rebota, se revierte
+  -- exactamente lo que imputó (rechazar_cheque_propio). Antes no se creaba.
+  IF v_es_cheque THEN
+    INSERT INTO cheques(tenant_id, tipo, estado, monto, nro_cheque, banco, fecha_emision, fecha_cobro, proveedor_id, sucursal_id, notas, created_by,
+                        cc_movimiento_id, monto_imputado)
+    VALUES (v_tenant, 'propio', 'entregado', v_monto, NULLIF(p_cheque->>'nro', ''), NULLIF(p_cheque->>'banco', ''), CURRENT_DATE,
+            (p_cheque->>'fecha_cobro')::date, p_proveedor_id, NULLIF(p_cheque->>'sucursal_id', '')::uuid,
+            'Generado por pago a cuenta de ' || v_prov, v_user, v_mov_id, v_monto);
+  END IF;
 
   IF p_caja_sesion_id IS NOT NULL THEN
     INSERT INTO caja_movimientos(tenant_id, sesion_id, tipo, monto, concepto, cuenta_origen_id, usuario_id, moneda)
@@ -16330,6 +16504,7 @@ CREATE TRIGGER trg_categorias_cliente_auditar AFTER INSERT OR UPDATE ON public.c
 CREATE TRIGGER trg_categorias_cliente_guard_delete BEFORE DELETE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_guard_delete();
 CREATE TRIGGER trg_categorias_cliente_touch BEFORE UPDATE ON public.categorias_cliente FOR EACH ROW EXECUTE FUNCTION fn_categorias_cliente_touch();
 CREATE TRIGGER trg_cheques_monto_guard BEFORE UPDATE ON public.cheques FOR EACH ROW EXECUTE FUNCTION fn_cheques_monto_guard();
+CREATE TRIGGER trg_cheques_rechazo_guard BEFORE UPDATE OF estado ON public.cheques FOR EACH ROW EXECUTE FUNCTION fn_cheques_rechazo_guard();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
 CREATE TRIGGER clientes_cuenta_token_fechado BEFORE UPDATE OF cuenta_token ON public.clientes FOR EACH ROW EXECUTE FUNCTION trg_clientes_cuenta_token_fechado();
 CREATE TRIGGER trg_clientes_categoria_auditar AFTER UPDATE OF categoria_cliente_id, cuenta_corriente_habilitada, limite_credito, plazo_pago_dias ON public.clientes FOR EACH ROW EXECUTE FUNCTION fn_clientes_categoria_auditar();

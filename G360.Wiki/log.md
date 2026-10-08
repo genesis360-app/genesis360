@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | ✅ Migs 477-478 en DEV + envío en el ticket verificado + datos de entrega (🟡 `dev`, falta PROD)
+
+- Token de la Management API renovado (90 días). Migs **477** y **478** aplicadas en DEV; 16 escenarios SQL de cheques/OC en
+  ROLLBACK, todos OK; e2e 31 y 184 verdes contra DEV migrado; `schema_full` regenerado (mig 20261008023309).
+- **Reserva #50 de El Tilo (PROD, lectura):** `costo_envio` 45.000 y `monto_pagado` 94.005 estaban bien guardados. El ticket de la
+  pantalla SÍ muestra "Envío" y el TOTAL con envío (e2e **188**, venta y reserva). Hallazgos: en una venta despachada el modal
+  "¿Emitir comprobante?" tapa el ticket y mostraba el total SIN envío, y con ese total decidía si pedir DNI para la Factura B
+  (la EF sí suma el envío → la rechazaba) → `totalFacturable`. Lo que sí faltaba: WhatsApp/mail (arreglado antes).
+- **Ticket con datos de la entrega** (pedido de GO): transporte + n° de envío y fecha/horario (`lineasEntregaTicket`), en
+  pantalla y en WhatsApp/link.
+- ⚠️ Lección: el primer e2e 188 dio **falso verde** (encontró el "Envío" del carrito); se acotó a `#ticket-print`.
+- Decisiones de GO pendientes (cheques): rechazo con período cerrado, contramovimiento en la cuenta bancaria, cheque anulado.
+
 ## [2026-10-07] update | 🧾 Cheques propios atómicos, OC-<código>-0070, PDF de OC sin costos internos, scroll del landing (🟡 en `dev`, migs 477-478 SIN aplicar)
 
 - **Landing:** los links a rubros/legales abrían la página nueva abajo de todo → `ScrollAlInicio` (App) + `SalidaHaciaApp`

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | 🔑 Rotación de keys: inventario PROD OK + backup de Storage reparado
+
+- Inventario de consumidores de PROD: app y panel admin con `sb_publishable_`, cron/funciones sin keys, secret de GitHub nuevo;
+  logs del gateway (API nueva `analytics/endpoints/logs`, tabla `logs`) → 0 usos de keys legacy en 7 días. Apagado + revocación
+  de la HS256 quedan para el día siguiente (necesitan login real de GO; la revocación es irreversible).
+- 🔴 El backup diario de Storage de PROD fallaba desde el 07/10: el secret `SUPABASE_ACCESS_TOKEN` de GitHub tenía el token
+  vencido. Secret actualizado y backup manual OK (run 37737060184).
+
 ## [2026-10-08] deploy | 🚀 v1.240.4 EN PROD — inventario por sucursal, CC de proveedores protegida, ubicaciones con stock
 
 - Migs **480** y **481** en PROD (versiones 20261008060719/24), verificadas: `registrar_nc_proveedor`, sin INSERT para

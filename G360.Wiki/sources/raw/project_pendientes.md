@@ -11,7 +11,12 @@ type: project
 > **v1.240.4:** Inventario/Productos siguen el selector de sucursal (UAT §108), CC de proveedores solo por funciones + cobro
 > de ventas de períodos cerrados (mig 480, §106), ubicación con stock no cambia de sucursal (mig 481, §107), mail del ticket con
 > la entrega. EF `send-email` en DEV y PROD. `pg_policies` DEV = PROD (public 245 · storage 40 · cron 2).
-> **Siguiente (acordado con GO):** 🔑 rotación de la `service_role` de PROD; después 🖼️ landing con capturas de Almacén Jorgito.
+> **Siguiente (acordado con GO):** 🔑 rotación de la `service_role` de PROD — **inventario HECHO (08/10)**: app y panel admin
+> ya usan la key nueva, cron/funciones sin keys, **0 usos de keys legacy en 7 días de logs**. Falta, con GO despierto: apagar las
+> legacy (reversible) + verificar login real → revocar la HS256 en PROD y DEV (irreversible). Después 🖼️ landing con Almacén Jorgito.
+> 🔴→✅ **Backup diario de Storage de PROD fallaba desde el 07/10** (secret `SUPABASE_ACCESS_TOKEN` de GitHub con el token
+> vencido): secret actualizado y backup manual OK el 08/10 06:21 UTC. ⚠️ Cuando se renueve el token (vence ~06/01/2027), actualizar
+> también ese secret.
 > **El Tilo:** para borrar "Escobar-Leandro" primero tiene que MOVER el LPN-20261002-EAEE20 (sucursal oficina) a otra
 > ubicación — la mig 481 no corrige el dato viejo.
 >

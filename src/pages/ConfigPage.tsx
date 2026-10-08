@@ -1800,6 +1800,12 @@ export default function ConfigPage() {
     toast.success('Actualizada')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
     logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: editUbicNombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: editUbicNombre, pagina: '/configuracion' })
+    // El cambio de sucursal no quedaba en el historial (El Tilo, 08/10: no se pudo saber cuándo pasó una ubicación con stock
+    // a otra sucursal). La base ya no lo permite si tiene stock de otra sucursal (mig 481); acá queda registrado.
+    if ((old?.sucursal_id ?? null) !== (editUbicSucursalId || null)) {
+      const nombreSuc = (sid: string | null) => sid ? ((sucursales as any[]).find(x => x.id === sid)?.nombre ?? sid) : 'Global'
+      logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: editUbicNombre, accion: 'editar', campo: 'sucursal', valor_anterior: nombreSuc(old?.sucursal_id ?? null), valor_nuevo: nombreSuc(editUbicSucursalId || null), pagina: '/configuracion' })
+    }
     setEditUbicId(null)
   }
   const deleteUbicacion = async (id: string) => {
@@ -1813,13 +1819,19 @@ export default function ConfigPage() {
     }
 
     // 1. Bloquear si tiene inventario activo con stock
-    const { count: cntStock } = await supabase.from('inventario_lineas')
-      .select('*', { count: 'exact', head: true })
+    // Dice DE QUÉ SUCURSAL y qué LPN: una línea de otra sucursal no se ve en el inventario de la sucursal de la ubicación
+    // (El Tilo, 08/10: "dice que tiene inventario pero no hay nada").
+    const { data: conStock, count: cntStock } = await supabase.from('inventario_lineas')
+      .select('lpn, cantidad, sucursales(nombre), productos(nombre)', { count: 'exact' })
       .eq('ubicacion_id', id)
       .eq('activo', true)
       .gt('cantidad', 0)
+      .limit(3)
     if ((cntStock ?? 0) > 0) {
-      toast.error('No se puede eliminar: tiene inventario activo. Vacíala primero.')
+      const detalle = ((conStock ?? []) as any[])
+        .map(l => `${l.productos?.nombre ?? 'producto'} (${l.lpn ?? 'sin LPN'}, ${Number(l.cantidad)} u.) en la sucursal ${l.sucursales?.nombre ?? 'sin sucursal'}`)
+        .join('; ')
+      toast.error(`No se puede eliminar: tiene inventario activo — ${detalle}${(cntStock ?? 0) > 3 ? ` y ${(cntStock ?? 0) - 3} más` : ''}. Movelo a otra ubicación desde Inventario (con esa sucursal elegida) y volvé a intentar.`, { duration: 12000 })
       return
     }
 

@@ -14,6 +14,9 @@ type: project
 > landing. `pg_policies` DEV = PROD (public 246 · storage 40 · cron 2). `SUPABASE_ACCESS_TOKEN` renovado el 08/10 (90 días).
 >
 > **🔓 Pendientes nuevos:**
+> - **📍 El Tilo — ubicación "Escobar-Leandro" (PROD):** tiene el LPN-20261002-EAEE20 (6 Paneles de Caña, 1 reservado por la #52) de la
+>   sucursal "ELTILO oficina" → no se puede borrar. Mig 481 evita que se repita; el dato lo corrige GO/el cliente (Mover desde
+>   Inventario con la sucursal oficina elegida, o traslado). UAT §107.
 > - **🖼️ Landing con imágenes REALES (GO 08/10):** usar el tenant de DEV **Almacén Jorgito** para las capturas. Ojo: tiene basura
 >   de e2e (clientes "E2E …", proveedores "ZZ_TEST…", ventas de prueba) → elegir pantallas/filtros prolijos o acomodar lo que se ve.
 > - **Cierre contable en VENTAS** (decisión de GO): sigue bloqueando cobrar hoy una venta a CC de un período cerrado (mismo

@@ -2411,6 +2411,21 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📍 §107 — Una ubicación con stock no cambia de sucursal (mig 481, 🟡 DEV) — 2026-10-08
+
+Reporte de GO (El Tilo, PROD): no dejaba eliminar la ubicación "Escobar-Leandro" ("tiene inventario") pero el inventario de
+Escobar no mostraba nada. Causa: una línea de la sucursal "ELTILO oficina" (LPN-20261002-EAEE20, 6 Paneles de Caña, 1
+reservado por la reserva #52) estaba en esa ubicación de "Escobar - Canton". Configuración → editar ubicación cambiaba la
+sucursal sin mirar el stock, y el historial solo anotaba "nombre". En PROD era el único caso (DEV: 1 en Almacén Jorgito).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 107.1 | 🛑 Cambiar de sucursal una ubicación con stock de otra sucursal → rechazado ("tiene stock de la sucursal X (n LPN)") | SQL DEV (rollback) | ✅ |
+| 107.2 | Pasarla a Global, o cambiar de sucursal una ubicación vacía → permitido | SQL DEV (rollback) | ✅ |
+| 107.3 | El historial registra el cambio de sucursal de una ubicación (campo "sucursal", antes → después) | revisión | ✅ código |
+| 107.4 | Eliminar una ubicación con stock: el aviso dice producto, LPN, cantidad y SUCURSAL del stock, y cómo resolverlo | revisión · e2e `187` sin regresión | ✅ |
+| 107.5 | ⏳ El Tilo (PROD): mover el LPN-20261002-EAEE20 a una ubicación de la oficina (o trasladarlo a Escobar) — decide GO/el cliente | — | ⏳ |
+
 ## 🔒 §106 — CC de proveedores solo por funciones de la base + cierre contable deja cobrar ventas + mail con la entrega (mig 480, 🟡 DEV) — 2026-10-08
 
 | # | Escenario | Cómo se verifica | Estado |

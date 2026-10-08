@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T05:08:07.341Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008050605 · 178 tablas
+-- Generado 2026-10-08T05:20:50.838Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008052015 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -12710,6 +12710,33 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_ubicacion_no_cambia_sucursal_con_stock()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_suc   text;
+  v_lpns  int;
+BEGIN
+  IF NEW.sucursal_id IS NOT DISTINCT FROM OLD.sucursal_id OR NEW.sucursal_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT count(*), min(s.nombre) INTO v_lpns, v_suc
+    FROM inventario_lineas l
+    LEFT JOIN sucursales s ON s.id = l.sucursal_id
+   WHERE l.ubicacion_id = NEW.id AND l.tenant_id = NEW.tenant_id
+     AND l.activo AND l.cantidad > 0
+     AND l.sucursal_id IS DISTINCT FROM NEW.sucursal_id;
+  IF v_lpns > 0 THEN
+    RAISE EXCEPTION 'La ubicación "%" tiene stock de la sucursal % (% LPN). Movelo o trasladalo antes de cambiarla de sucursal.',
+      NEW.nombre, COALESCE(v_suc, 'sin sucursal'), v_lpns USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_ultima_comision_meli(p_producto_id uuid)
  RETURNS TABLE(comision_marketplace numeric, precio_unitario numeric, fecha timestamp with time zone)
  LANGUAGE sql
@@ -14152,6 +14179,67 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -14226,67 +14314,6 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -16747,6 +16774,7 @@ CREATE TRIGGER trg_ubic_autogenerar_codigo BEFORE INSERT OR UPDATE OF codigo ON 
 CREATE TRIGGER trg_ubic_guard_padre_operativo BEFORE INSERT OR UPDATE OF padre_ubicacion_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_guard_padre_operativo();
 CREATE TRIGGER trg_ubic_no_ciclo BEFORE INSERT OR UPDATE OF padre_ubicacion_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_no_ciclo();
 CREATE TRIGGER trg_ubic_tipo_logico_guard BEFORE INSERT OR UPDATE OF tipo_logico, subtipo_almacenamiento ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_tipo_logico_guard();
+CREATE TRIGGER trg_ubicacion_no_cambia_sucursal_con_stock BEFORE UPDATE OF sucursal_id ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION fn_ubicacion_no_cambia_sucursal_con_stock();
 CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('usuarios');
 CREATE TRIGGER trg_guard_baja_usuario BEFORE UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_baja_usuario();
 CREATE TRIGGER trg_guard_debe_cambiar_password BEFORE UPDATE OF debe_cambiar_password ON public.users FOR EACH ROW WHEN ((new.debe_cambiar_password IS DISTINCT FROM old.debe_cambiar_password)) EXECUTE FUNCTION fn_guard_debe_cambiar_password();

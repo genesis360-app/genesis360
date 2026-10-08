@@ -33,6 +33,15 @@ type: project
 >    lado de cada medio en la venta. Plan + 5 preguntas abiertas: [[wiki/business/plan-multimoneda-medios-de-pago]]. Arrancar
 >    preguntándole a GO las 5 preguntas; después Fase 1 (POS). Hoy sigue el modelo viejo ("Efectivo USD" es necesario).
 >
+> 5. 🌐 **Picking multisucursal con ubicaciones Globales** (pedido de GO 08/10, UAT §111 en borrador): choca con "inventario por
+>    sucursal estricto". Antes de implementar, GO define: (a) ¿el stock en una ubicación Global es de todas las sucursales o sigue
+>    siendo de su sucursal? (b) vender stock de B desde A ¿genera un traslado B→A o es venta de A con stock de B? (c) ¿quién ve
+>    la tarea de picking de la ubicación Global? (d) ¿cómo cuadran los reportes de stock/ventas por sucursal?
+> 6. 💰 **Cambiar de sucursal con caja abierta** (pregunta de GO 08/10): el bloqueo es solo de pantalla (L4 del relevamiento de
+>    Caja, pensado para el cajero). Riesgo real: el POS lista las cajas abiertas de TODAS las sucursales → cobro registrado en una
+>    caja de otra sucursal. Propuesta: dejar cambiar al DUEÑO (y roles con "ver todas") sin cerrar, y que POS/Caja solo ofrezcan
+>    cajas de la sucursal activa + guard en la base (venta y caja de la misma sucursal). Espera decisión de GO.
+>
 > **🧑‍💼 Para GO / clientes:**
 > - **El Tilo:** para borrar "Escobar-Leandro" primero MOVER el LPN-20261002-EAEE20 (6 Paneles de Caña, sucursal "ELTILO oficina",
 >   1 reservado por la #52) a otra ubicación: sucursal oficina en el encabezado → Inventario → Mover. La 481 no corrige el dato

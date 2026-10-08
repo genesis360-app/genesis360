@@ -2411,6 +2411,25 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🌐 §111 — Picking multisucursal con ubicaciones GLOBALES (pedido de GO 2026-10-08, ⏳ A DEFINIR antes de implementar)
+
+Pedido de GO: si una ubicación Global tiene stock de varias sucursales y un pedido/venta de la sucursal A pide más de lo que A
+tiene, el stock de la ubicación Global (aunque esté cargado a la sucursal B) tiene que figurar disponible, se tiene que poder
+elegir de qué LPN de esa ubicación sacar, y el picking tiene que generar tareas visibles para cada sucursal.
+
+⚠️ **Choca con la regla vigente** "inventario por sucursal estricto" (GO 2026-05-23: vender/reservar/descontar solo de la sucursal
+activa) y con el fix de hoy (§110: el carrito toma solo la sucursal activa). Hoy cada LPN pertenece a UNA sucursal
+(`inventario_lineas.sucursal_id`) aunque esté en una ubicación Global. Preguntas para GO en `project_pendientes.md`.
+
+| # | Escenario (borrador, sujeto a las respuestas) | Estado |
+|---|---|---|
+| 111.1 | Venta en A de un producto con stock en A insuficiente + stock de B en una ubicación Global → el POS lo muestra disponible (separando "de A" y "de B en Global") | ⏳ definir |
+| 111.2 | El cajero elige el LPN de la ubicación Global del que sale la mercadería; el rebaje se registra con trazabilidad (qué sucursal era dueña y cuál vendió) | ⏳ definir |
+| 111.3 | 🛑 Stock por sucursal: vender de B desde A ¿mueve el stock de B a A (traslado implícito) o queda como venta de A con stock de B? Los reportes por sucursal tienen que cuadrar | ⏳ definir |
+| 111.4 | Pedido (reserva) de A con stock de B en Global → la reserva bloquea ese LPN; nadie más lo puede vender | ⏳ definir |
+| 111.5 | Tareas de picking del pedido: cada sucursal ve SUS tareas; la de sacar de la ubicación Global, ¿la ve A (que vende), B (dueña del stock) o las dos? | ⏳ definir |
+| 111.6 | Sin stock en Global ni en A → no se ofrece stock de B que esté en ubicaciones de B (no Globales) | ⏳ definir |
+
 ## 🏢 §110 — El carrito toma el stock de la sucursal activa + vencimiento con año de 4 dígitos (mig 482, 🟡 DEV) — 2026-10-08
 
 Caso de GO (DEV, Almacén de la Suerte, SKU ALM-0022): vendiendo en Flores pedía 620 y el POS decía "máximo 20" — las 20 u. de

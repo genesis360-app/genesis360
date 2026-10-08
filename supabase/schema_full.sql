@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T05:20:50.838Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008052015 · 178 tablas
+-- Generado 2026-10-08T18:46:26.221Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008183725 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -3156,6 +3156,7 @@ ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_mayor_o_igual_r
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_no_negativa CHECK ((cantidad >= 0));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_reservada_no_negativa CHECK ((cantidad_reservada >= 0));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
+ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_fecha_vencimiento_anio_check CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento <= '9999-12-31'::date))) NOT VALID;
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_pkey PRIMARY KEY (id);
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_pkey PRIMARY KEY (id);
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_tenant_id_producto_id_meli_item_id_key UNIQUE (tenant_id, producto_id, meli_item_id);
@@ -3283,6 +3284,7 @@ ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tenant_id_id_key UNIQU
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tipo_check CHECK ((tipo = ANY (ARRAY['proveedor'::text, 'servicio'::text])));
 ALTER TABLE public.puntos_venta_afip ADD CONSTRAINT puntos_venta_afip_pkey PRIMARY KEY (id);
 ALTER TABLE public.rate_limit_contadores ADD CONSTRAINT rate_limit_contadores_pkey PRIMARY KEY (bucket, identidad, ventana_inicio);
+ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_fecha_vencimiento_anio_check CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento <= '9999-12-31'::date))) NOT VALID;
 ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmada'::text, 'cancelada'::text])));
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_pkey PRIMARY KEY (id);
@@ -3385,6 +3387,7 @@ ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_factura_momento_chec
 ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_pkey PRIMARY KEY (id);
 ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_cantidad_check CHECK ((cantidad > (0)::numeric));
+ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_fecha_vencimiento_anio_check CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento <= '9999-12-31'::date))) NOT VALID;
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_check CHECK ((sucursal_origen_id <> sucursal_destino_id));
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_estado_check CHECK ((estado = ANY (ARRAY['en_transito'::text, 'recibido'::text, 'recibido_parcial'::text, 'cancelado'::text])));

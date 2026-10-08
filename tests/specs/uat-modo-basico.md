@@ -2411,6 +2411,20 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🏢 §110 — El carrito toma el stock de la sucursal activa + vencimiento con año de 4 dígitos (mig 482, 🟡 DEV) — 2026-10-08
+
+Caso de GO (DEV, Almacén de la Suerte, SKU ALM-0022): vendiendo en Flores pedía 620 y el POS decía "máximo 20" — las 20 u. de
+Saavedra. Dos causas: (1) `agregarProducto` traía las líneas del producto de TODAS las sucursales (la búsqueda y el registro sí
+filtraban: nunca se descontó stock ajeno); (2) el LPN de 600 de Flores tenía vencimiento "20207-04-04" y la comparación como texto
+lo daba por vencido.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 110.1 | 🛑 El tope de cantidad y el LPN del carrito salen SOLO de la sucursal activa (con y sin series) | e2e `190` (Sur: tope = stock de Sur; sin el fix falla, verificado) | ✅ |
+| 110.2 | 🛑 La base rechaza un vencimiento con año de más de 4 dígitos (inventario_lineas, recepcion_items, traslado_items; NOT VALID) | SQL DEV (rollback) | ✅ |
+| 110.3 | Los campos de vencimiento (ingreso, LPN, masivo, recepción) no dejan escribir un año de 5 dígitos (`max="9999-12-31"`) | revisión | ✅ código |
+| 110.4 | ⏳ GO corrige en DEV los 2 LPN de Almacén de la Suerte con vencimiento fuera de rango (20207-04-04 y 5000-02-20) | — | ⏳ |
+
 ## 💵 §109 — Cartel de "Efectivo USD" en Métodos de pago + landing con capturas reales (🟡 DEV) — 2026-10-08
 
 GO borró "Efectivo USD" y "Wallet USD" en Almacén Jorgito creyendo que la moneda del producto los reemplazaba, y apareció el

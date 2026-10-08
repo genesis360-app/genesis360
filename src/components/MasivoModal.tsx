@@ -856,7 +856,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                               {it.tieneVencimiento && (
                                 <div>
                                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Vencimiento *</label>
-                                  <input type="date" value={it.fechaVencimiento}
+                                  <input type="date" max="9999-12-31" value={it.fechaVencimiento}
                                     onChange={e => upd(it.localId, { fechaVencimiento: e.target.value })}
                                     className={inp} />
                                 </div>

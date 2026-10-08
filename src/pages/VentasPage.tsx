@@ -1805,11 +1805,13 @@ export default function VentasPage() {
       const evIds = (evData ?? []).map((e: any) => e.id)
       const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
 
-      let lineasQuery = soloUbicado(
+      // 🛑 REGLA #0 — solo la sucursal activa (applyFilter), igual que la búsqueda y el registro de la venta. Sin esto el
+      // carrito ofrecía series/LPN de OTRA sucursal (Almacén de la Suerte, 08/10).
+      let lineasQuery = applyFilter(soloUbicado(
         supabase.from('inventario_lineas')
           .select('id, lpn, estado_id, ubicacion_id, ubicaciones(nombre, disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
           .eq('producto_id', p.id).eq('activo', true)
-      )
+      ))
 
       // En básico no se filtra por estado (el stock no tiene estado asignado — todo es vendible)
       if (modoAvanzado && estadosFinal.length > 0) {
@@ -1839,9 +1841,12 @@ export default function VentasPage() {
       const { data: evData2 } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
       const evIds2 = (evData2 ?? []).map((e: any) => e.id)
       const estadosFinal2 = estadosFiltro2.length > 0 ? estadosFiltro2.filter(id => evIds2.includes(id)) : evIds2
-      let lq = supabase.from('inventario_lineas')
+      // 🛑 REGLA #0 — solo la sucursal activa: de esta lista salen el LPN que se muestra en el carrito y el tope de cantidad.
+      // Sin el filtro, en Flores el tope eran las 20 u. de Saavedra (Almacén de la Suerte, 08/10). El registro de la venta
+      // siempre filtró por sucursal, así que nunca se descontó stock ajeno: el error era del carrito.
+      let lq = applyFilter(supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido), estados_inventario(nombre, descuento_pct)')
-        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
+        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0))
       if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
       const hoyStr = new Date().toISOString().split('T')[0]

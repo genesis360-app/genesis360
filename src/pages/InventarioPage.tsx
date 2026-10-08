@@ -2996,7 +2996,7 @@ export default function InventarioPage() {
                                     {(row.tiene_vencimiento || (modoAvanzado && !row.tiene_series)) && (
                                       <div>
                                         <label className="block text-gray-500 mb-1">Vencimiento{row.tiene_vencimiento ? ' *' : ''}</label>
-                                        <input type="date" value={row.fecha_vencimiento}
+                                        <input type="date" max="9999-12-31" value={row.fecha_vencimiento}
                                           onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, fecha_vencimiento: e.target.value } : r))}
                                           className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                                       </div>
@@ -3712,7 +3712,7 @@ export default function InventarioPage() {
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                           Fecha de vencimiento <span className="text-red-500">*</span>
                         </label>
-                        <input type="date" value={form.fechaVencimiento} onChange={e => setForm(p => ({ ...p, fechaVencimiento: e.target.value }))}
+                        <input type="date" max="9999-12-31" value={form.fechaVencimiento} onChange={e => setForm(p => ({ ...p, fechaVencimiento: e.target.value }))}
                           required
                           className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent-text
                             ${!form.fechaVencimiento ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />

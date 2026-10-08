@@ -80,7 +80,7 @@ export default function LandingPage() {
                 <picture>
                   <source srcSet="/landing/pos-venta.webp" type="image/webp" />
                   <img src="/landing/pos-venta.jpg" width={1184} height={760}
-                    alt="Pantalla de Ventas de Genesis360 en una tablet, con dos productos en el carrito y el total de la venta"
+                    alt="Pantalla de Ventas de Genesis360 en una tablet, con una Coca Cola y una yerba en el carrito"
                     className="block w-full h-auto" decoding="async" {...{ fetchpriority: 'high' }} />
                 </picture>
               </div>
@@ -105,11 +105,12 @@ export default function LandingPage() {
                       <p className="text-center font-semibold tracking-[0.12em] text-[#0D0D0D]">TICKET</p>
                       <p className="text-center text-zinc-500">Consumidor final</p>
                       <div className="my-2 border-t border-dashed border-zinc-300" />
+                      {/* La misma venta de la captura de la tablet (POS de DEV, Almacén Jorgito, 08/10): si se recaptura, actualizar acá. */}
                       <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 1.5L</span><span>$1.657</span></div>
-                      <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Coca Cola 2.5L</span><span>$600</span></div>
+                      <div className="flex justify-between gap-3 whitespace-nowrap"><span>1 Yerba Mate 500g</span><span>$2.500</span></div>
                       <div className="my-2 border-t border-dashed border-zinc-300" />
-                      <div className="flex justify-between font-semibold text-[#0D0D0D] text-[12.5px]"><span>TOTAL</span><span>$2.257</span></div>
-                      <div className="flex justify-between text-zinc-500"><span>Efectivo</span><span>$2.257</span></div>
+                      <div className="flex justify-between font-semibold text-[#0D0D0D] text-[12.5px]"><span>TOTAL</span><span>$4.157</span></div>
+                      <div className="flex justify-between text-zinc-500"><span>Efectivo</span><span>$4.157</span></div>
                       <p className="mt-2 text-center text-zinc-500">Gracias por su compra</p>
                     </div>
                   </div>

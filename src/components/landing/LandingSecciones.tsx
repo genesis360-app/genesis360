@@ -515,15 +515,15 @@ export function SeccionFundadores() {
 }
 
 /* ── Hero · celular con el Panel (pedido de GO 2026-10-07) ────────────────────────────────────────────────────────────
-   Captura REAL del Panel en vista de celular (Panel → Ventas: embudo de la venta y canales), tomada de la app en DEV
-   (`public/landing/panel-celular.webp`, 600×1298). Los números son del negocio de prueba: reemplazar por una captura del
-   negocio demo cuando exista (pendiente en wiki/business/plan-landing-2.md). */
+   Captura REAL del Panel en vista de celular (Panel → Ventas → Insights: lo que detectó Genesis360), tomada de la app en DEV
+   (Almacén Jorgito, Sucursal Norte, 08/10 — elegido por GO) con `tests/e2e/990_capturas_landing.spec.ts`
+   (`public/landing/panel-celular.webp`, 600×1298). */
 export function TelefonoPanel() {
   return (
     <div className="rounded-[2.1rem] bg-gradient-to-b from-[#26262c] to-[#121216] p-[6px] shadow-[0_30px_60px_-24px_rgba(40,10,90,0.55),inset_0_0_0_1px_rgba(255,255,255,0.08)]">
       <div className="relative overflow-hidden rounded-[1.7rem] bg-white">
         <img src="/landing/panel-celular.webp" width={600} height={1298} loading="lazy" decoding="async"
-          alt="Panel de Genesis360 en el celular: el camino de la venta y por dónde compran los clientes"
+          alt="Panel de Genesis360 en el celular: lo que detectó en las ventas, como el crecimiento y lo pendiente de cobro"
           className="block h-auto w-full" />
         {/* Isla del teléfono sobre la captura */}
         <span aria-hidden className="absolute left-1/2 top-[7px] h-[15px] w-[52px] -translate-x-1/2 rounded-full bg-[#121216]" />

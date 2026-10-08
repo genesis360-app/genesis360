@@ -33,7 +33,7 @@ las responda de una vez.
 
 | Estado | Cantidad |
 |---|---|
-| 🟥 Abiertas | 22 |
+| 🟥 Abiertas | 25 |
 | ✅ Respondidas por un matriculado | 0 |
 
 ⚠️ **Ninguna respondida todavía.** La C-01 y sus derivadas tienen una respuesta **de una IA que se
@@ -459,6 +459,60 @@ mal liquidados).
 
 **Qué se rompe si está mal:** la deuda con el proveedor queda corta (o larga) por el flete, y el IVA crédito / el costo
 de la mercadería se calculan sobre una base equivocada.
+
+---
+
+### C-23 · Cheque propio rechazado: ¿se revierte el pago y la deuda reaparece hoy?
+
+- **Estado:** 🟥 Abierta (2026-10-08)
+- **Área:** Cheques + cuenta corriente de proveedores ([[wiki/features/clientes-proveedores]])
+- **Impacta en:** RPC `revertir_cheque_propio` (migs 477/479), `ChequesPanel.tsx`.
+- **Criterio provisorio (implementado, aprobado por GO 2026-10-08):** el pago con cheque es *pro solvendo* (la deuda se
+  extingue cuando el banco paga el cheque). Si rebota: las OCs que pagó vuelven a deber (la más nueva primero), se carga
+  un `ajuste` en la CC del proveedor **con fecha del rechazo**, y el pago original NO se borra (contra-asiento "Banco a
+  Proveedores"). Lectura propia + práctica de Colppy/OnBalance/X-SYS y jurisprudencia (STJ La Pampa), no de matriculado.
+
+**Pregunta:** ¿es el tratamiento correcto, y la fecha del contra-asiento es la del rechazo? ¿Hace falta registrar algo
+más (gastos bancarios del rechazo, multa de la Ley 24.452 al librador)?
+
+**Qué se rompe si está mal:** la deuda con el proveedor y el resultado del período quedan mal fechados.
+
+---
+
+### C-24 · Cheque propio rechazado o anulado: ¿el egreso de la cuenta bancaria se compensa con un ingreso de hoy?
+
+- **Estado:** 🟥 Abierta (2026-10-08)
+- **Área:** Caja Fuerte / cuentas de origen ([[wiki/features/caja]])
+- **Impacta en:** mig 479 (`cheques.caja_movimiento_id`, `ingreso_informativo` en `revertir_cheque_propio`),
+  `vw_boveda_cuentas`.
+- **Criterio provisorio (implementado):** el pago con cheque resta del saldo de la cuenta asignada al medio Cheque en el
+  momento de ENTREGARLO (no cuando el banco lo debita). Si rebota o se anula, se registra un `ingreso_informativo` de
+  hoy a la misma cuenta; el egreso original queda. Cheques anteriores a la mig 477 o de gastos sueltos: no se sabe de
+  qué cuenta salieron → la pantalla avisa revisarla a mano.
+
+**Pregunta:** ¿está bien que el cheque propio diferido reste de la cuenta al entregarlo (y no al vencer/debitarse)? ¿El
+contramovimiento de hoy es la forma correcta de compensarlo?
+
+**Qué se rompe si está mal:** el saldo del banco en Caja Fuerte y el capital del negocio quedan mal (de más o de menos).
+
+---
+
+### C-25 · Cheque propio anulado después de entregado, y pagos de comprobantes de un período cerrado
+
+- **Estado:** 🟥 Abierta (2026-10-08)
+- **Área:** Cheques + cierre contable (relacionada con [[#C-14 · Cierre contable mensual: ¿el criterio de bloqueo es el correcto?|C-14]])
+- **Impacta en:** `revertir_cheque_propio(id, 'anulado')`, triggers `trg_oc_periodo_cerrado` y `trg_gastos_periodo_cerrado`
+  (mig 479).
+- **Criterio provisorio (implementado):** (a) un cheque propio ENTREGADO que se anula (el proveedor lo devuelve, se
+  pierde, se reemplaza) tampoco se cobró → se revierte igual que un rechazo; anulado en cartera no revierte nada.
+  (b) El cierre contable protege el CONTENIDO de una OC o un gasto (ítems, precios, proveedor, fecha, monto), pero no su
+  estado de pago: pagar hoy un comprobante de un período cerrado, o revertir ese pago, es un hecho de hoy. ⚠️ Las
+  **ventas** siguen bloqueadas por completo (cobrar hoy una venta a CC de un período cerrado falla) — pendiente de GO.
+
+**Pregunta:** ¿es correcto tratar la anulación como el rechazo? ¿Es correcto dejar fuera del cierre las columnas de pago
+(y extenderlo a la cobranza de ventas)?
+
+**Qué se rompe si está mal:** pagos que no existieron quedan como hechos, o el cierre deja pasar cambios que no debería.
 
 ---
 

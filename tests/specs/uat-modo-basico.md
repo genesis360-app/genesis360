@@ -2428,10 +2428,15 @@ regenerado. Verificado con 16 escenarios SQL en DEV impersonando al dueño de Al
 | 105.7 | CC del proveedor: con 2+ sucursales muestra el pendiente de OCs por sucursal (informativo; la deuda sigue siendo una del negocio) | SQL DEV (`pendiente_por_sucursal`) · pantalla: manual | ✅ SQL · ⬜ manual |
 | 105.8 | PDF/texto de la OC: TOTAL = productos + envío del proveedor; aduana/comisión/otros NO aparecen | unit `ocPDF` | ✅ |
 | 105.9 | Recepción con OC: si falla el update de la OC o el gasto, avisa (ya estaba hecho; el pendiente del wiki estaba desactualizado) | revisión | ✅ |
+| 105.10 | 🛑 Mig 479 — pago con cheque desde una caja: el cheque guarda su movimiento de caja; al rechazar/anular, `ingreso_informativo` de hoy a la misma cuenta → el saldo de la cuenta en Caja Fuerte vuelve a lo que era (pago −1000, reversión +1000) | SQL DEV (rollback) | ✅ |
+| 105.11 | 🛑 Cheque propio ENTREGADO anulado → revierte igual que el rechazo (OCs vuelven a deber, ajuste "Cheque anulado" en la CC); por UPDATE directo bloqueado; anulado no cambia de estado; anulado desde EN CARTERA sin reversión | SQL DEV (rollback) | ✅ |
+| 105.12 | 🛑 Cierre contable: una OC de un período cerrado se puede PAGAR hoy (y revertir su pago); editar su contenido sigue bloqueado. Igual en gastos (`monto_pagado`/`estado_pago`) | SQL DEV (rollback, cierre 2020-06 sembrado y revertido) | ✅ |
+| 105.13 | Rechazar/anular un cheque propio entregado pide confirmación (revierte plata); el aviso dice qué volvió a deber y si el monto volvió a la cuenta; cheques sin vínculo (anteriores o de gastos sueltos) avisan revisar la cuenta a mano | e2e `31` (confirmación + aviso) | ✅ |
 
-**Decisiones abiertas para GO (no tomadas):** (a) si la OC es de un período con cierre contable, `trg_oc_periodo_cerrado` hace
-fallar el rechazo entero (atómico, sin daño, pero el cheque rebotado no se puede registrar); (b) el `egreso_informativo` de caja del
-pago con cheque no se revierte al rechazar; (c) un cheque propio **anulado** después de entregado no revierte el pago.
+**Decisiones de GO (2026-10-08), implementadas en la mig 479:** el cierre no bloquea pagos ni reversiones (OC y gastos);
+contramovimiento en la cuenta bancaria; el cheque anulado tras entregado revierte como el rechazo. Criterio provisorio →
+consultas al contador **C-23 a C-25**. ⚠️ Queda para GO: las **ventas** siguen bloqueadas por completo por el cierre
+(cobrar hoy una venta a CC de un período cerrado falla); hoy ningún negocio de PROD tiene cierres cargados.
 
 ## 🚚 §104 — El ticket por WhatsApp/link y por mail sale CON el envío (🟡 DEV) — 2026-10-07
 

@@ -110,7 +110,7 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
     expect(pedidoPostLanzar.estado).toBe('en_preparacion')
 
     // ── Completar el reabastecimiento vía UI (/picking) — mismo mecanismo que el spec 106 ──
-    await goto(page, '/picking')
+    await goto(page, '/picking?tab=picking')
     await waitForApp(page)
     const cardReab = page.getByTestId(`tarea-${tareaReabId}`)
     const cardPicking = page.getByTestId(`tarea-${tareaPickId}`)

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T22:43:05.970Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008224258 · 178 tablas
+-- Generado 2026-10-08T23:00:20.470Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008230013 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -9960,20 +9960,26 @@ CREATE OR REPLACE FUNCTION public.fn_pedido_crear_desde_venta(p_venta_id uuid, p
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-DECLARE v_venta RECORD; v_tipo_id uuid; v_pedido_id uuid;
+DECLARE
+  v_venta    RECORD;
+  v_tipo_id  uuid;
+  v_pedido_id uuid;
 BEGIN
   IF EXISTS (SELECT 1 FROM pedidos WHERE venta_origen_id = p_venta_id) THEN RETURN NULL; END IF;
   IF NOT fn_venta_requiere_pedido(p_venta_id, p_con_envio) THEN RETURN NULL; END IF;
 
   SELECT * INTO v_venta FROM ventas WHERE id = p_venta_id;
 
+  -- Tipo de pedido: se prefiere el que matchea el destino ("Retiro en local" / "E-commerce"), y si
+  -- el tenant los borró/renombró se cae al primer tipo activo (tipo_pedido_id es NOT NULL).
   SELECT id INTO v_tipo_id FROM tipos_pedido
   WHERE tenant_id = v_venta.tenant_id AND activo = true
     AND lower(nombre) = CASE WHEN p_con_envio THEN 'e-commerce' ELSE 'retiro en local' END
   LIMIT 1;
   IF v_tipo_id IS NULL THEN
     SELECT id INTO v_tipo_id FROM tipos_pedido
-    WHERE tenant_id = v_venta.tenant_id AND activo = true ORDER BY orden NULLS LAST, nombre LIMIT 1;
+    WHERE tenant_id = v_venta.tenant_id AND activo = true
+    ORDER BY orden NULLS LAST, nombre LIMIT 1;
   END IF;
   IF v_tipo_id IS NULL THEN RETURN NULL; END IF;
 
@@ -9984,15 +9990,22 @@ BEGIN
     v_venta.tenant_id, v_venta.sucursal_id, v_tipo_id, v_venta.cliente_id,
     CASE WHEN v_venta.cliente_id IS NULL THEN v_venta.cliente_nombre END,
     CASE WHEN v_venta.cliente_id IS NULL THEN v_venta.cliente_telefono END,
-    'confirmado', p_con_envio, v_venta.usuario_id, now(), p_venta_id,
+    -- (mig 486, decisión de GO) Si la venta YA salió (despachada/facturada: el stock se rebajó con la
+    -- venta), no hay nada que pickear: el pedido nace "listo para entrega" y no se generan tareas.
+    -- Si la venta es una reserva, nace "pendiente" (confirmado) y espera que lo lancen.
+    CASE WHEN v_venta.estado IN ('despachada', 'facturada') THEN 'listo_para_entrega' ELSE 'confirmado' END,
+    p_con_envio, v_venta.usuario_id, now(), p_venta_id,
     'Generado automáticamente desde la venta #' || COALESCE(v_venta.numero::text, '?')
   )
   ON CONFLICT (venta_origen_id) WHERE venta_origen_id IS NOT NULL DO NOTHING
   RETURNING id INTO v_pedido_id;
 
-  IF v_pedido_id IS NOT NULL THEN PERFORM fn_pedido_sync_items_desde_venta(v_pedido_id); END IF;
+  IF v_pedido_id IS NOT NULL THEN
+    PERFORM fn_pedido_sync_items_desde_venta(v_pedido_id);
+  END IF;
   RETURN v_pedido_id;
-END; $function$
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_pedido_deslanzar(p_pedido_id uuid)
@@ -10149,7 +10162,7 @@ BEGIN
   IF NOT v_parcial AND EXISTS (SELECT 1 FROM wms_tareas
              WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
                AND estado IN ('pendiente', 'en_curso')) THEN
-    RAISE EXCEPTION 'Falta completar el picking de este pedido (% tarea(s) pendientes en Depósito). Completalas (o cancelá las que no correspondan) en Picking o en Pedidos → Tareas WMS. Si el cliente pidió llevarse solo lo que ya está listo, marcá "Entrega parcial".',
+    RAISE EXCEPTION 'Falta completar el picking de este pedido (% tarea(s) pendientes en Depósito). Completalas (o cancelá las que no correspondan) en Picking → Tareas. Si el cliente pidió llevarse solo lo que ya está listo, marcá "Entrega parcial".',
       (SELECT count(*) FROM wms_tareas
         WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
           AND estado IN ('pendiente', 'en_curso'));
@@ -14234,67 +14247,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -14369,6 +14321,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -16443,6 +16456,24 @@ EXCEPTION WHEN OTHERS THEN
 END; $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_venta_despachada_pedido_listo()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.estado NOT IN ('despachada', 'facturada') THEN RETURN NULL; END IF;
+  IF OLD.estado IN ('despachada', 'facturada') THEN RETURN NULL; END IF;
+  -- SECURITY DEFINER: el pedido tiene que ser del mismo negocio que la venta.
+  UPDATE pedidos
+     SET estado = 'listo_para_entrega'
+   WHERE venta_origen_id = NEW.id AND tenant_id = NEW.tenant_id AND estado = 'confirmado';
+  RETURN NULL;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_venta_items_sync_pedido()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -16866,6 +16897,7 @@ CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pa
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
 CREATE TRIGGER trg_ventas_cc_vencimiento BEFORE INSERT OR UPDATE OF es_cuenta_corriente, estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_vencimiento();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
+CREATE TRIGGER trg_ventas_despachada_pedido_listo AFTER UPDATE OF estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_despachada_pedido_listo();
 CREATE TRIGGER trg_ventas_guard_fiscal BEFORE INSERT OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_guard_campos_fiscales();
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_propagar_sucursal_items AFTER UPDATE OF sucursal_id ON public.ventas FOR EACH ROW WHEN ((old.sucursal_id IS DISTINCT FROM new.sucursal_id)) EXECUTE FUNCTION fn_ventas_propagar_sucursal_items();

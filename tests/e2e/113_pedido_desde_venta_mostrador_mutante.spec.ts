@@ -315,7 +315,9 @@ test.describe('Pedido desde venta + entrega en mostrador (mutante)', () => {
     })
     const [pedido] = await pedidoDe(c, request, presu.id)
     expect(pedido, '[113] al confirmarse el presupuesto recién ahí nace el pedido').toBeTruthy()
-    expect(pedido.estado).toBe('confirmado')
+    // Mig 486 (GO): la venta ya salió despachada (stock rebajado con la venta) → no hay nada que pickear,
+    // el pedido nace "listo para entrega" (antes quedaba "confirmado" para siempre).
+    expect(pedido.estado).toBe('listo_para_entrega')
 
     // 3) Anular la venta cancela el pedido solo
     await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${presu.id}`, {

@@ -94,7 +94,7 @@ const ENVIO_ESTADO_LABELS: Record<string, string> = {
 // Labels de pedidos.estado — copia liviana de ESTADO_BADGE en PedidosPage.tsx (no exportado),
 // solo para el badge de "Pedido #N" en el detalle de venta.
 const PEDIDO_ESTADO_LABELS: Record<string, string> = {
-  borrador: 'Borrador', confirmado: 'Confirmado', en_preparacion: 'En preparación',
+  borrador: 'Borrador', confirmado: 'Pendiente', en_preparacion: 'En preparación',
   listo_para_entrega: 'Listo para entrega', entregado: 'Entregado', entregado_parcial: 'Entrega parcial',
   cancelado: 'Cancelado',
 }

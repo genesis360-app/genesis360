@@ -103,7 +103,7 @@ test.describe('WMS — Picking y reabastecimiento (mutante)', () => {
     expect(tareasGeneradas[0].tipo).toBe('picking')
     const tareaPickId = tareasGeneradas[0].tarea_id
 
-    await goto(page, '/picking')
+    await goto(page, '/picking?tab=picking')
     await waitForApp(page)
     const cardPicking = page.getByTestId(`tarea-${tareaPickId}`)
     await expect(cardPicking).toBeVisible({ timeout: 10000 })
@@ -218,7 +218,7 @@ test.describe('WMS — Picking y reabastecimiento (mutante)', () => {
     const tareaReabId = tareasGeneradas.find(t => t.tipo === 'replenishment')!.tarea_id
     const tareaPickId = tareasGeneradas.find(t => t.tipo === 'picking')!.tarea_id
 
-    await goto(page, '/picking')
+    await goto(page, '/picking?tab=picking')
     await waitForApp(page)
     const cardReab = page.getByTestId(`tarea-${tareaReabId}`)
     const cardPicking = page.getByTestId(`tarea-${tareaPickId}`)

@@ -6,7 +6,43 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-08, cierre para /clear) — 🚀 **PROD = DEV = `v1.240.4`** (migs 001-**481**)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-08, noche, para /clear) — 🚀 **PROD = `v1.240.4`** (migs 001-481) · **DEV adelante: mig 482 + 6 commits SIN deploy**
+>
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.240.4` (PR #382) | 001-**481** |
+> | **DEV** | `origin/dev` = `v1.240.4` + commits nuevos (APP_VERSION **todavía v1.240.4**: bumpear a **v1.240.5** al deployar) | 001-**482** |
+>
+> **En `dev`, listo para PROD (falta OK de GO):**
+> - 🖼️ **Landing con capturas reales** de Almacén Jorgito: hero (POS Coca Cola 1.5L + Yerba, ticket $4.157, Panel → Insights) y
+>   bento (LPN, Caja1 vista celular, Factura C con CAE —CUIT tapado y sin QR—, cobro mixto). Herramienta
+>   `tests/e2e/990_capturas_landing.spec.ts` (`CAPTURAS_LANDING=1`). Ver [[wiki/business/plan-landing-2]].
+> - 💵 Cartel de "Efectivo USD" en Config → Métodos de pago: texto claro + botón "Crear 'Efectivo USD'" (UAT §109). Se elimina con
+>   el plan de Multimoneda.
+> - 🛑 **Carrito del POS = stock de la sucursal activa** (`agregarProducto` traía LPN de todas; el registro siempre filtró) + **mig 482**
+>   (vencimiento ≤ 9999-12-31, NOT VALID, en `inventario_lineas`/`recepcion_items`/`traslado_items`) + `max` en los inputs. e2e 190
+>   (falla sin el fix). UAT §110. **Deploy: mig 482 a PROD antes del merge** (PROD tiene 0 filas fuera de rango).
+>
+> **👉 LO PRÓXIMO:**
+> 1. **Deploy v1.240.5** con lo de arriba (pedir OK; salir del modo automático).
+> 2. 🔑 **Terminar rotación de keys de PROD** (inventario hecho: 0 usos legacy en 7 días) → apagar legacy (reversible) + login real
+>    de GO → revocar HS256 PROD y DEV. Ver memoria `reference_supabase_token_filtrado_sin_rotar`.
+> 3. 💵 **📅 Semana del 12/10: Multimoneda — el medio de pago pierde la moneda** → [[wiki/business/plan-multimoneda-medios-de-pago]]
+>    (hacerle a GO las 5 preguntas abiertas antes de la Fase 1).
+> 4. 🧪 Plan de testing de Configuración → Notificaciones.
+>
+> **🙋 Esperando decisión de GO:**
+> - 🌐 **Picking multisucursal con ubicaciones Globales** (UAT §111, borrador): choca con "inventario por sucursal estricto".
+>   Preguntas: (a) ¿el stock de una ubicación Global es de todas las sucursales o de la que lo cargó? (b) vender stock de B desde
+>   A ¿traslado B→A o venta de A con stock de B? (c) ¿quién ve la tarea de picking de la ubicación Global?
+> - 💰 **Cambiar de sucursal con caja abierta**: el bloqueo es solo de pantalla (L4, pensado para el cajero). Propuesta: el DUEÑO
+>   y roles con "ver todas" cambian sin cerrar; POS/Caja solo ofrecen cajas de la sucursal activa (hoy el POS lista las de TODAS)
+>   + guard en la base (venta y caja de la misma sucursal); el cajero sigue bloqueado.
+>
+> **🧑‍💼 Datos que corrige GO (DEV):** Almacén de la Suerte — LPN-20260514-713198 (600 u. ALM-0022, Flores) con vencimiento
+> "20207-04-04" y otro LPN con "5000-02-20". **El Tilo (PROD):** mover el LPN-20261002-EAEE20 antes de borrar "Escobar-Leandro".
+>
+> ### (antes) ARRANCÁ ACÁ (2026-10-08, cierre para /clear) — 🚀 **PROD = DEV = `v1.240.4`** (migs 001-**481**)
 >
 > | | Código | Migraciones | Policies |
 > |---|---|---|---|

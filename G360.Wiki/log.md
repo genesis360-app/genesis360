@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | 🛑 Carrito del POS por sucursal + vencimiento de 4 dígitos (mig 482) + pendientes de GO (🟡 `dev`)
+
+- Caso de GO (DEV, Almacén de la Suerte, ALM-0022): en Flores el POS decía "máximo 20" con 600 en stock. Causas: `agregarProducto`
+  traía los LPN de TODAS las sucursales (el tope eran las 20 de Saavedra; el registro de la venta siempre filtró, nunca se descontó
+  stock ajeno) + el LPN de 600 con vencimiento "20207-04-04" (la comparación como texto lo daba por vencido). Fix + **mig 482**
+  (CHECK ≤ 9999-12-31 NOT VALID, aplicada solo en DEV) + `max` en inputs + e2e 190 (falla sin el fix). UAT §110.
+- GO pidió escenarios de **picking multisucursal con ubicaciones Globales** → UAT §111 en borrador: choca con "inventario por
+  sucursal estricto", 3 preguntas para GO. Pregunta de GO sobre **cambiar de sucursal con caja abierta**: el bloqueo es de pantalla
+  (L4); propuesta en pendientes.
+
 ## [2026-10-08] update | 🖼️ Landing con capturas reales + cartel de "Efectivo USD" + plan de Multimoneda (🟡 `dev`)
 
 - **Landing (en `dev`):** hero con el POS real de Almacén Jorgito (Coca Cola 1.5L + Yerba, $4.157 — la Coca 2.5L a $600 se

@@ -8,6 +8,10 @@ updated: 2026-10-08
 
 # Ventas / POS
 
+> 🛑 **2026-10-08 (🟡 DEV, va en v1.240.5) — El carrito toma el stock de la sucursal activa.** `agregarProducto` traía los LPN
+> del producto de todas las sucursales (de ahí salen el LPN del carrito y el tope de cantidad); el registro de la venta siempre
+> filtró, así que nunca se descontó stock ajeno. Mig 482: vencimiento con año de 4 dígitos. e2e 190, UAT §110.
+
 > 💵 **2026-10-08 — Pendiente agendado (semana del 12/10):** el selector de moneda al lado de cada medio de pago (el medio pierde
 > la moneda; máx. 2 monedas por venta; vuelto en ARS) → [[wiki/business/plan-multimoneda-medios-de-pago]]. Hoy rige "Efectivo USD".
 

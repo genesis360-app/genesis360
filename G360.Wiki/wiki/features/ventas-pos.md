@@ -3,10 +3,19 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # Ventas / POS
+
+> 🧾 **2026-10-08 (✅ EN PROD v1.240.3, PR #381) — El envío en los tickets.** El ticket de la pantalla ya mostraba "Envío" y el
+> TOTAL con envío (verificado con e2e 188 en venta y reserva; la reserva #50 de El Tilo tenía el dato bien). Arreglado:
+> - Ticket por **WhatsApp/link** (`ticketPDF`, `/c/<código>`) y por **mail** (al cliente y el automático al dueño): salían sin el
+>   envío y con un TOTAL menor al cobrado → `lineasEnvioTicket()` + total/saldo de `resumenPagoTicket()` (`src/lib/pedidoVenta.ts`).
+> - **Datos de la entrega** en el ticket (pantalla y WhatsApp/link): transporte + n° de envío y fecha/horario
+>   (`lineasEntregaTicket`, query `envio-ticket`). El mail todavía no los incluye.
+> - **Modal "¿Emitir comprobante?"**: mostraba y usaba para el umbral de la Factura B el total SIN envío (la EF sí lo suma) →
+>   `totalFacturable` = total + envío. UAT §104.
 
 > 🚚 **2026-10-03 (✅ EN PROD v1.238.0):** POS con envío: "Fecha de entrega" (sin "acordada"), misma altura que "Rango horario"; en panel angosto bajan de línea. El pedido hereda esa fecha (mig 465). Decisión de GO 02/10: PL-5 = A (aviso claro del POS sin conexión; venta offline solo si un cliente la pide). La lista de descuentos por categoría (mig 466) todavía NO se aplica al vender (B2 pendiente).
 

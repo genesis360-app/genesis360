@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] deploy | 🚀 v1.240.3 EN PROD — envío en tickets, cheques propios atómicos, OC por sucursal
+
+- Migs **477 → 478 → 479** aplicadas en PROD de a una (`aplicar-migracion.mjs`, versiones 20261008032850/55/900) y
+  verificadas con query (columnas de `cheques`, `revertir_cheque_propio`, firma de `registrar_pago_proveedor`, trigger guard,
+  CHECK `<> 0`). PROD sin cheques ni actividad al aplicar. `pg_policies` DEV = PROD por schema (public 246 · storage 40 · cron 2).
+- **PR #381** merge `2c72dc3c`, release `v1.240.3 --latest`; `curl` del bundle de app.genesis360.pro → `v1.240.3`. Sin EFs.
+- Mig **479** (decisiones de GO sobre las 3 recomendaciones): contramovimiento en la cuenta bancaria al rechazar/anular un
+  cheque propio; anulado tras entregado = rechazo (`revertir_cheque_propio`); el cierre contable deja pagar/revertir OCs y
+  gastos viejos. 28 escenarios SQL en DEV (rollback) + e2e 31 (confirmación nueva). Consultas al contador C-23 a C-25.
+- ⚠️ El modo automático de Claude Code bloquea el deploy a PROD sin preguntar: hay que salir del modo auto (Shift+Tab) para
+  que pida aprobación.
+- Pendiente para GO: el cierre contable sigue bloqueando cobrar ventas viejas (0 cierres en PROD hoy).
+
 ## [2026-10-08] update | ✅ Migs 477-478 en DEV + envío en el ticket verificado + datos de entrega (🟡 `dev`, falta PROD)
 
 - Token de la Management API renovado (90 días). Migs **477** y **478** aplicadas en DEV; 16 escenarios SQL de cheques/OC en

@@ -2411,6 +2411,26 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📦 §113 — Pedidos rediseñado: tab Pedidos + Tareas WMS por pedido y por tarea, con acciones masivas (🟡 dev local) — 2026-10-08
+
+Pedido de GO: la página usa todo el ancho; una acción principal por fila; Tareas WMS se ve agrupada por pedido
+(estado y progreso del pedido) o tarea por tarea; selección con casilla por tarea y "todas" por pedido; asignar,
+completar y cancelar en masa; buscador por pedido, envío, venta, producto, SKU, LPN, ubicación, cliente y operario.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 113.1 | Tab Pedidos: columnas Pedido/Cliente/Entrega/Estado/Próximo paso; el "próximo paso" depende del estado (Confirmar → Lanzar → Ver en Picking → Entregar / Ver en Envíos / Entregar en mostrador); el resto (incluido Cancelar) en ⋯ | capturas desktop/mobile/dark · e2e `177` | ✅ |
+| 113.2 | Pedido con venta despachada/presupuesto: no ofrece "Lanzar" y dice por qué ("Venta ya despachada") | capturas | ✅ |
+| 113.3 | Filtros de estado con cantidad + "Entrega vencida"; el conteo es sobre lo buscado | capturas | ✅ |
+| 113.4 | Tareas WMS "Por pedido": pedido, cliente, estado, "X de Y hechas" y las tareas ya hechas tachadas; "Por tarea": lista plana con columna Pedido. La vista se recuerda | capturas | ✅ |
+| 113.5 | Casilla del pedido = todas sus tareas pendientes VISIBLES (respeta filtro/búsqueda), estado "algunas" si es parcial; en "Por tarea" la del encabezado = todas las visibles | captura (Pedido:139 → 1 tarea, tildado por el grupo) | ✅ |
+| 113.6 | 🛑 Completar en masa: de a una con la misma RPC que /picking, orden reabastecimiento → armado → picking; un picking cuyo reabastecimiento no está hecho ni tildado se saltea con aviso; si una falla se frena y dice cuál (lo hecho queda hecho) | prueba de GO en DEV 21:01: 5 tareas de 3 grupos completadas, pedidos #20 y #70 → listo_para_entrega, sin movimientos de stock (picking solo marca; la rebaja es al entregar) | ✅ |
+| 113.7 | Asignar en masa: un solo UPDATE por ids + log por tarea | prueba de GO en DEV (5 tareas → "deposito") | ✅ |
+| 113.8 | 🛑 Cancelar en masa: misma RPC que el botón; no mueve stock; armados liberan componentes; avisa los pickings que caen en cascada y que la reserva de un pedido ACTIVO no se libera (para eso, "Deshacer lanzamiento") | revisión de `fn_cancelar_tarea_wms` + texto de la confirmación | ✅ código · ⏳ probar |
+| 113.9 | Buscador: Pedido/Envío/Venta EXACTOS ("Pedido:7" no trae el 70); número suelto = ese pedido/envío/venta; texto en producto, SKU, LPN, ubicación, cliente, operario | unit `wmsTareasFiltro.test.ts` | ✅ |
+| 113.10 | 🛑 Pedido entregado con tareas vivas (mig 484): `fn_pedido_generar_venta` NO entrega con picking/reabastecimiento pendiente ("Falta completar el picking… (N tareas)"); el envío entregado (POD, nunca se bloquea) CONFIRMA los pickings pendientes y CANCELA los reabastecimientos; las colgadas existentes se confirmaron (DEV 44, PROD 0). Inventario OK: completar picking no mueve stock | SQL DEV (guard dispara en #139; 0 colgadas) · e2e `107` (nuevo caso: rechazo con picking pendiente) · `160`/`180` adaptados (completan el picking antes de entregar) | ✅ DEV · ⏳ PROD |
+| 113.11 | Ventas → Retiro filtra por la sucursal activa (antes el DUEÑO veía los de todas y cambiar de sucursal no cambiaba nada); "Todas" muestra todo | typecheck · revisión (`applyFilter`) · todos los pedidos de retiro tienen sucursal (DEV/PROD) | ✅ código · ⏳ probar |
+
 ## 🔕 §112 — Lecturas de columnas inexistentes: avisos de caja, cajeros, etiqueta de courier y topes diarios (mig 483, 🟡 DEV) — 2026-10-08
 
 Encontrado en los logs del gateway de PROD al revocar las keys viejas. `users` no tiene `email` (vive en `auth.users`):

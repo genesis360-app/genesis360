@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T20:34:26.923Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008201939 · 178 tablas
+-- Generado 2026-10-08T21:28:23.312Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008212752 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -10130,6 +10130,18 @@ BEGIN
     RAISE EXCEPTION 'El pedido tiene que estar lanzado (en preparación, listo para entrega, o entregado parcial) para generar la venta';
   END IF;
 
+  -- (mig 484) No se entrega con el picking a medio hacer: la mercadería que todavía no se pickeó no
+  -- salió del depósito, y si se entregaba igual las tareas quedaban vivas en la cola (trabajo fantasma).
+  -- Va DESPUÉS de la idempotencia: un reintento de una entrega ya hecha devuelve su venta.
+  IF EXISTS (SELECT 1 FROM wms_tareas
+             WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
+               AND estado IN ('pendiente', 'en_curso')) THEN
+    RAISE EXCEPTION 'Falta completar el picking de este pedido (% tarea(s) pendientes en Depósito). Completalas (o cancelá las que no correspondan) en Picking o en Pedidos → Tareas WMS y volvé a entregarlo.',
+      (SELECT count(*) FROM wms_tareas
+        WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
+          AND estado IN ('pendiente', 'en_curso'));
+  END IF;
+
   SELECT * INTO v_sesion FROM caja_sesiones WHERE id = p_sesion_caja_id FOR UPDATE;
   IF v_sesion IS NULL OR v_sesion.tenant_id <> v_pedido.tenant_id OR v_sesion.estado <> 'abierta' THEN
     RAISE EXCEPTION 'No hay una caja abierta válida para registrar el ingreso — abrí una caja antes de generar la venta';
@@ -15737,6 +15749,28 @@ BEGIN
   -- No pisa un pedido ya `entregado` (idempotente) ni uno `cancelado` (la mercadería no debería
   -- haber salido, pero si el dato real dice que se entregó no lo forzamos a un estado inconsistente
   -- con silencio — queda tal cual para revisión manual, no es un caso que deba bloquear el POD).
+  -- (mig 484) El envío entregado prueba que la mercadería salió: las tareas de picking que quedaron
+  -- pendientes se CONFIRMAN (decisión de GO; completar un picking solo cambia su estado, no mueve
+  -- stock) y los reabastecimientos pendientes se CANCELAN (confirmarlos registraría un movimiento de
+  -- stock entre ubicaciones que nunca pasó). Solo si el pedido estaba vivo.
+  --    Sub-bloque propio: si la limpieza de tareas fallara, NO revierte el paso del pedido a entregado.
+  IF EXISTS (SELECT 1 FROM pedidos WHERE id = NEW.pedido_id AND estado NOT IN ('entregado', 'cancelado')) THEN
+    BEGIN
+      UPDATE wms_tareas
+         SET estado = 'completada', completed_at = now(),
+             notas = COALESCE(notas || ' — ', '') || 'Confirmada al entregarse el envío #' || COALESCE(NEW.numero::text, '?')
+       WHERE pedido_id = NEW.pedido_id AND tenant_id = NEW.tenant_id
+         AND tipo = 'picking' AND estado IN ('pendiente', 'en_curso');
+      UPDATE wms_tareas
+         SET estado = 'cancelada',
+             notas = COALESCE(notas || ' — ', '') || 'Cancelada: el envío #' || COALESCE(NEW.numero::text, '?') || ' ya se entregó'
+       WHERE pedido_id = NEW.pedido_id AND tenant_id = NEW.tenant_id
+         AND tipo = 'replenishment' AND estado IN ('pendiente', 'en_curso');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING '[trg_envio_entregado_sincroniza_pedido] tareas del pedido % : %', NEW.pedido_id, SQLERRM;
+    END;
+  END IF;
+
   UPDATE pedidos
      SET estado = 'entregado', entregado_at = now()
    WHERE id = NEW.pedido_id

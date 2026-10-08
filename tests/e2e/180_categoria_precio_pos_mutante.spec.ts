@@ -220,6 +220,13 @@ test('Pedidos A2: con categoría el lote con 25 % compite contra la lista ($940)
   await garantizarCajaAbierta(page, { caja: 'Caja1' })
   const [sesion] = await (await request.get(`${SUPABASE_URL}/rest/v1/caja_sesiones?tenant_id=eq.${tenantId}&estado=eq.abierta&select=id&limit=1`, { headers })).json()
   const entregar = async (pedidoId: string) => {
+    // Mig 484: un pedido no se entrega con el picking pendiente → se completa primero (misma RPC que /picking).
+    const tareas = (await (await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedidoId}&estado=in.(pendiente,en_curso)&select=id,tipo`, { headers })).json()) as Array<{ id: string; tipo: string }>
+    for (const t of [...tareas].sort((x, y) => (x.tipo === 'replenishment' ? -1 : 1) - (y.tipo === 'replenishment' ? -1 : 1))) {
+      const rpc = t.tipo === 'replenishment' ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+      const c = await request.post(`${SUPABASE_URL}/rest/v1/rpc/${rpc}`, { headers, data: { p_tarea_id: t.id } })
+      expect(c.ok(), `[180] ${rpc}: ${await c.text()}`).toBe(true)
+    }
     const r = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
       headers, data: { p_pedido_id: pedidoId, p_sesion_caja_id: sesion.id, p_medio_pago: [{ tipo: 'Efectivo', monto: null }] },
     })

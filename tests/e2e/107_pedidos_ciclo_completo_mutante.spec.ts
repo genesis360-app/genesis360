@@ -482,6 +482,26 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
       expect(sesion, '[107] no se encontró ninguna caja abierta tras garantizarCajaAbierta').toBeTruthy()
       sesionId = sesion.id
 
+      // ── Mig 484: con el picking pendiente NO se entrega (antes quedaban tareas vivas en la cola) ──
+      const conPickingPendienteRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
+        headers, data: {
+          p_pedido_id: pedido.id, p_sesion_caja_id: sesion.id,
+          p_medio_pago: [{ tipo: 'Cuenta Corriente', monto: null }],
+        },
+      })
+      expect(conPickingPendienteRes.ok(), '[107] MIG 484: entregar con el picking pendiente debe RECHAZARSE').toBe(false)
+      expect(await conPickingPendienteRes.text(), '[107] el mensaje debe decir que falta el picking').toMatch(/Falta completar el picking/i)
+
+      // Se completa el picking (misma RPC que /picking) para seguir con el caso del límite de CC.
+      const tareasRes = await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedido.id}&estado=in.(pendiente,en_curso)&select=id,tipo`, { headers })
+      const tareas = (await tareasRes.json()) as Array<{ id: string; tipo: string }>
+      expect(tareas.length, '[107] lanzar el pedido debe haber generado tareas de picking').toBeGreaterThan(0)
+      for (const t of [...tareas].sort((a, b) => (a.tipo === 'replenishment' ? -1 : 1) - (b.tipo === 'replenishment' ? -1 : 1))) {
+        const rpc = t.tipo === 'replenishment' ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+        const r = await request.post(`${SUPABASE_URL}/rest/v1/rpc/${rpc}`, { headers, data: { p_tarea_id: t.id } })
+        expect(r.ok(), `[107] ${rpc} falló: ${await r.text()}`).toBe(true)
+      }
+
       // ── Intento bloqueado: CC deja la deuda ($500) muy por encima del límite ($100) ──────
       const entregaBloqueadaRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
         headers, data: {

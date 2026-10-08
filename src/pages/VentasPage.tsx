@@ -1611,15 +1611,17 @@ export default function VentasPage() {
   // ── Pestaña Pedidos (migs 315/316) — retiro en local listo para entregar en el mostrador ──
   // Solo pedidos LISTOS (picking terminado) y de RETIRO EN LOCAL: el que atiende tiene al cliente
   // enfrente, no le sirve ver pedidos a medio armar ni los que salen por envío.
-  // Sin filtro de sucursal explícito: la RLS de `pedidos` ya es por sucursal (mig 292).
+  // Filtra por la sucursal ACTIVA del selector: la RLS de `pedidos` (mig 292) solo acota a quien está
+  // atado a una sucursal; el DUEÑO y los roles con "ver todas" veían los retiros de todas y cambiar
+  // de sucursal no cambiaba nada (GO 2026-10-08). Con "Todas" elegida, `applyFilter` no filtra.
   const [pedidoBusqueda, setPedidoBusqueda] = useState('')
   const [entregandoPedido, setEntregandoPedido] = useState<string | null>(null)
   const { data: pedidosMostrador = [], isLoading: loadingPedidos } = useQuery({
     queryKey: ['pedidos-mostrador', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('pedidos')
+      const { data, error } = await applyFilter(supabase.from('pedidos')
         .select('id, numero, numero_sucursal, estado, requiere_envio, venta_origen_id, cliente_nombre, cliente_telefono, created_at, clientes(nombre, dni)')
-        .eq('tenant_id', tenant!.id)
+        .eq('tenant_id', tenant!.id))
         .eq('estado', 'listo_para_entrega')
         .eq('requiere_envio', false)
         .not('venta_origen_id', 'is', null)

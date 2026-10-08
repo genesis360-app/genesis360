@@ -8,6 +8,10 @@ updated: 2026-10-08
 
 # Clientes y Proveedores
 
+> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`):** la API pública `data-api` pedía `clientes.direccion` (no existe) → el export de
+> clientes daba 400; ahora `direccion:domicilio_fiscal`. Pendiente: `updated_since` en clientes/proveedores falla porque esas tablas
+> no tienen `updated_at` (0 API keys activas en PROD). Ver [[wiki/architecture/edge-functions]].
+
 > 🔒 **2026-10-08 — ✅ EN PROD v1.240.4 (mig 480):** la CC de proveedores (`proveedor_cc_movimientos`) es de solo lectura para los
 > usuarios; todo pasa por funciones de la base. Nueva `registrar_nc_proveedor` (NC manual y devolución a proveedor, permiso Gastos
 > en "editar", moneda de la OC). La devolución ya no ignora el error del crédito. UAT §106.

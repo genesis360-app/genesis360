@@ -3,7 +3,7 @@ title: Edge Functions
 category: architecture
 tags: [edge-functions, deno, serverless, supabase]
 sources: []
-updated: 2026-10-04
+updated: 2026-10-08
 ---
 
 # Edge Functions (55 funciones Deno)
@@ -100,6 +100,11 @@ App Review de Meta).
 (8 líneas) y `mp-addon-batch` (6 líneas), los dos ya verificados 100% cosméticos (guiones de separadores
 y un comentario) — son funciones de cobro, el redeploy a PROD espera autorización de GO.
 
+> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`, mig 483; va en v1.240.5):** (1) `send-email` acepta `to_user_ids` (solo tipo
+> `notificacion`, usuarios activos del mismo tenant, excluye `@u.genesis360.pro`); (2) `courier-api` pedía `clientes.documento` y
+> `data-api` `clientes.direccion` (no existen) → corregidos; (3) **mig 483**: topes diarios del rate limit (ver sección siguiente).
+> EFs desplegadas solo en DEV: `send-email`, `courier-api`, `data-api` — **desplegarlas a PROD** (el merge no despliega EFs).
+
 ## 🔒⏱️ Rate limiting persistente (mig 432, 2026-09-22) — ✅ EN PROD (`v1.230.0`)
 
 Cierra el pendiente 3 del backlog de la auditoría de seguridad del 2026-09-20 (ver "Backlog abierto" en
@@ -116,6 +121,10 @@ Módulo compartido nuevo **`supabase/functions/_shared/rateLimit.ts`** (primer `
 `ipDelCliente(req)`, `consumirRateLimit(...)`, `respuesta429(...)`. Mantiene el `Map` local como **piso** (frena
 una ráfaga del mismo isolate sin ir a la base) y hace **fail-open** contra la base a propósito — un hipo de la
 base no tiene que tirar abajo la API pública entera.
+
+> 🛑 **2026-10-08 — los topes DIARIOS nunca se aplicaron (mig 483, 🟡 DEV):** `fn_rate_limit_consumir` aceptaba ventanas de
+> máx 3600 s; `consultar-cuit` (500/día tenant, 5000/día plataforma) y `categoria-cartel-ia` (200/día tenant) pasaban 86400 →
+> excepción → fail-open. Ahora máx 86400 y `cleanup_rate_limit_contadores` borra con margen de 2 días. Pendiente aplicar a PROD.
 
 **Dos hallazgos nuevos, encontrados y corregidos en el camino**:
 1. El límite se esquivaba del todo: las tres resolvían la IP como `x-forwarded-for ?? cf-connecting-ip`, un

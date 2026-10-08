@@ -6,12 +6,12 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-08, noche, para /clear) — 🚀 **PROD = `v1.240.4`** (migs 001-481) · **DEV adelante: mig 482 + 6 commits SIN deploy**
+> ### 🛑 ARRANCÁ ACÁ (2026-10-08, noche, para /clear) — 🚀 **PROD = `v1.240.4`** (migs 001-481) · **DEV adelante: migs 482-483 + 7 commits SIN deploy**
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.240.4` (PR #382) | 001-**481** |
-> | **DEV** | `origin/dev` = `v1.240.4` + commits nuevos (APP_VERSION **todavía v1.240.4**: bumpear a **v1.240.5** al deployar) | 001-**482** |
+> | **DEV** | `origin/dev` = `v1.240.4` + commits nuevos (APP_VERSION **todavía v1.240.4**: bumpear a **v1.240.5** al deployar) | 001-**483** |
 >
 > **En `dev`, listo para PROD (falta OK de GO):**
 > - 🖼️ **Landing con capturas reales** de Almacén Jorgito: hero (POS Coca Cola 1.5L + Yerba, ticket $4.157, Panel → Insights) y
@@ -23,13 +23,37 @@ type: project
 >   (vencimiento ≤ 9999-12-31, NOT VALID, en `inventario_lineas`/`recepcion_items`/`traslado_items`) + `max` en los inputs. e2e 190
 >   (falla sin el fix). UAT §110. **Deploy: mig 482 a PROD antes del merge** (PROD tiene 0 filas fuera de rango).
 >
+> - 🐛 **Commit `d5b43d72` — columnas inexistentes + topes diarios** (UAT §112):
+>   - `users` NO tiene `email` (vive en `auth.users`) y 5 selects lo pedían (CajaPage x4, RrhhPage x1) → PostgREST 400 silencioso:
+>     los avisos in-app y mails de **diferencia de apertura/cierre de caja** y el **mail de cierre al DUEÑO nunca salieron**,
+>     "Abrir caja a nombre de" quedaba vacío y RRHH → vincular usuario daba error. Fix: se saca `email` de los selects; los mails van
+>     por `send-email` con el parámetro nuevo `to_user_ids` (resuelto en el servidor: solo tipo `notificacion`, solo usuarios activos
+>     del mismo tenant, excluye `@u.genesis360.pro`).
+>   - `courier-api` pedía `clientes.documento` (no existe; es `dni`/`cuit_receptor`) → la etiqueta salía con destinatario "Cliente" sin
+>     datos (6 envíos por courier en PROD). `data-api` pedía `clientes.direccion` (no existe; ahora `direccion:domicilio_fiscal`) →
+>     el export de clientes daba 400. Pendiente: `updated_since` en clientes/proveedores falla (esas tablas no tienen `updated_at`;
+>     0 API keys activas en PROD).
+>   - **Mig 483** `483_rate_limit_ventana_diaria.sql` (DEV, falta PROD): `fn_rate_limit_consumir` aceptaba ventanas de máx 3600 s y
+>     `consultar-cuit` (500/día tenant, 5000/día plataforma) y `categoria-cartel-ia` (200/día tenant) usaban 86400 → excepción →
+>     fail-open: **los topes diarios nunca se aplicaron**. Ahora máx 86400; el cron `cleanup_rate_limit_contadores` borra con margen de 2 días.
+>   - Test estático `lecturasEnFuente` (`src/lib/columnasEscritas.ts` + `tests/unit/columnasEscritas.test.ts`): cruza los 819
+>     `.from(t).select('…')` literales contra `schema_full`.
+>   - EFs `send-email`, `courier-api`, `data-api` desplegadas SOLO en DEV.
+> - **Deploy v1.240.5:** aplicar **mig 482 Y 483 a PROD antes del merge** (una a una con `scripts/aplicar-migracion.mjs`) y
+>   **desplegar a PROD las EFs `send-email`, `courier-api`, `data-api`** (el merge NO despliega EFs; luego `auditar-edge-functions.sh`).
+>
 > **👉 LO PRÓXIMO:**
 > 1. **Deploy v1.240.5** con lo de arriba (pedir OK; salir del modo automático).
-> 2. 🔑 **Terminar rotación de keys de PROD** (inventario hecho: 0 usos legacy en 7 días) → apagar legacy (reversible) + login real
->    de GO → revocar HS256 PROD y DEV. Ver memoria `reference_supabase_token_filtrado_sin_rotar`.
+> 2. ~~🔑 Terminar rotación de keys de PROD~~ ✅ **HECHO 08/10 noche** (ver abajo). Queda: confirmar la revocación de la HS256 en
+>    **DEV** y que el token viejo `sbp_60df…` ya no exista.
 > 3. 💵 **📅 Semana del 12/10: Multimoneda — el medio de pago pierde la moneda** → [[wiki/business/plan-multimoneda-medios-de-pago]]
 >    (hacerle a GO las 5 preguntas abiertas antes de la Fase 1).
 > 4. 🧪 Plan de testing de Configuración → Notificaciones.
+>
+> **🔑 Rotación de keys de PROD — ✅ HECHA (08/10 noche, config de Supabase, no es código):** GO apagó las legacy API keys (anon +
+> service_role) y revocó la JWT signing key HS256 ("Previously used") desde el dashboard de PROD; **ES256 sigue como Current**. Login
+> real OK (sesión e incógnito); logs del gateway: 0 respuestas 401 posteriores. Antes: 7 días con 0 usos de keys legacy. Pendiente:
+> revocar/confirmar la HS256 en DEV y confirmar que el token `sbp_60df…` no existe.
 >
 > **🙋 Esperando decisión de GO:**
 > - 🌐 **Picking multisucursal con ubicaciones Globales** (UAT §111, borrador): choca con "inventario por sucursal estricto".

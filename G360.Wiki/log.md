@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | 🐛 Columnas inexistentes que fallaban en silencio + topes diarios del rate limit (mig 483) + 🔑 keys de PROD rotadas (🟡 `dev`)
+
+- **🔑 Rotación de keys de PROD — HECHA** (config de Supabase, sin código): GO apagó las legacy API keys (anon + service_role) y
+  revocó la JWT signing key HS256 desde el dashboard; ES256 queda como Current. Login real OK (sesión e incógnito), 0 respuestas 401
+  en el gateway después. Pendiente: confirmar la revocación de HS256 en DEV y que el token `sbp_60df…` no exista.
+- **Commit `d5b43d72` (dev, sin deploy; va en v1.240.5):** `users` no tiene `email` (vive en `auth.users`) y 5 selects lo pedían
+  (CajaPage x4, RrhhPage x1) → 400 silencioso: los avisos y mails de diferencia de apertura/cierre de caja y el mail de cierre al
+  DUEÑO nunca salieron; "Abrir caja a nombre de" vacío; RRHH vincular usuario fallaba. Los mails ahora van por `send-email` con
+  `to_user_ids` (servidor: solo tipo `notificacion`, usuarios activos del mismo tenant, excluye `@u.genesis360.pro`).
+  `courier-api` pedía `clientes.documento` (etiqueta con destinatario "Cliente" sin datos); `data-api` pedía `clientes.direccion`
+  (export de clientes 400; ahora `direccion:domicilio_fiscal`; `updated_since` en clientes/proveedores sigue fallando: sin `updated_at`).
+  EFs desplegadas solo en DEV.
+- **Mig 483** (`483_rate_limit_ventana_diaria.sql`, DEV): `fn_rate_limit_consumir` aceptaba ventanas ≤ 3600 s; `consultar-cuit`
+  (500/día tenant, 5000/día plataforma) y `categoria-cartel-ia` (200/día) usaban 86400 → excepción → fail-open: los topes diarios
+  nunca se aplicaron. Ahora ≤ 86400; el cron de limpieza borra con margen de 2 días.
+- Test estático `lecturasEnFuente` (819 `.select()` literales contra `schema_full`). UAT §112.
+- **Deploy v1.240.5:** mig 482 y 483 a PROD antes del merge; desplegar EFs `send-email`, `courier-api`, `data-api` a PROD.
+
 ## [2026-10-08] update | 🛑 Carrito del POS por sucursal + vencimiento de 4 dígitos (mig 482) + pendientes de GO (🟡 `dev`)
 
 - Caso de GO (DEV, Almacén de la Suerte, ALM-0022): en Flores el POS decía "máximo 20" con 600 en stock. Causas: `agregarProducto`

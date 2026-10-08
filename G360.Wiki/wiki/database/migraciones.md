@@ -6,7 +6,7 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-482, + correctivos 387b/387c)
+# Historial de Migraciones (001-483, + correctivos 387b/387c)
 
 📦 **Migración 475 — ✅ EN DEV Y PROD (2026-10-06, v1.239.0)**: envío de la OC. La OC dice quién lo cobra: el proveedor (default; suma al total, al pago y a la deuda, cargo `es_envio` de la CC al recibir) o un tercero (gasto "Fletes" aparte, no suma). Una vez por OC. Editar una OC ahora guarda el envío. Consulta al contador C-22 (ver [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
 
@@ -3304,3 +3304,4 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 | 480 | `480_cc_proveedor_solo_rpc_y_cierre_cobros_ventas.sql` | 🛑 `registrar_nc_proveedor` (NC manual + devolución, permiso Gastos "editar"); se borra la policy `proveedor_cc_movimientos_write_gastos` y se revoca INSERT/UPDATE/DELETE a `authenticated` (solo lectura); `trg_ventas_periodo_cerrado` deja pasar las columnas de cobro (`monto_pagado`, `medio_pago`, `interes_cc`, `id_pago_externo`, `money_release_date`) | ✅ PROD v1.240.4 |
 | 481 | `481_ubicacion_no_cambia_sucursal_con_stock.sql` | Trigger `trg_ubicacion_no_cambia_sucursal_con_stock`: una ubicación con stock activo de otra sucursal no cambia de sucursal (a Global sí). Caso El Tilo | ✅ PROD v1.240.4 |
 | 482 | `482_fecha_vencimiento_anio_4_digitos.sql` | CHECK `fecha_vencimiento <= 9999-12-31` (NOT VALID) en `inventario_lineas`, `recepcion_items` y `traslado_items`: un año de 5 dígitos ("20207") hacía que la comparación de vencimientos como texto diera el lote por vencido (Almacén de la Suerte). PROD sin filas fuera de rango | 🟡 DEV (va en v1.240.5) |
+| 483 | `483_rate_limit_ventana_diaria.sql` | 🛑 `fn_rate_limit_consumir` aceptaba ventanas de máx 3600 s y `consultar-cuit` (500/día tenant, 5000/día plataforma) y `categoria-cartel-ia` (200/día tenant) usaban 86400 → excepción → fail-open: los topes diarios nunca se aplicaron. Ahora máx 86400 y el cron `cleanup_rate_limit_contadores` borra con margen de 2 días | 🟡 DEV (va en v1.240.5; aplicar a PROD antes del merge) |

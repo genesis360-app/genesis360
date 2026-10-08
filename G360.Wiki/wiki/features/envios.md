@@ -3,10 +3,14 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351, 360, 386, 431, src/pages/EnviosPage.tsx]
-updated: 2026-09-24
+updated: 2026-10-08
 ---
 
 # Módulo Envíos
+
+> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`):** `courier-api` pedía `clientes.documento` (no existe; los campos son `dni` /
+> `cuit_receptor`) → la **etiqueta del courier salía con destinatario "Cliente" y sin datos**. Corregido y desplegado en DEV; hay 6
+> envíos por courier en PROD → desplegar `courier-api` a PROD con v1.240.5. Ver [[wiki/architecture/edge-functions]].
 
 > 📅 **2026-10-03 (✅ EN PROD v1.238.0, mig 465):** la fecha de entrega del envío la hereda el pedido (ordena Pedidos y Picking). En el POS el campo se llama "Fecha de entrega" (sin "acordada"), misma altura que "Rango horario"; en panel angosto bajan de línea. Decisión de GO: el costo de envío SE COBRA (entra en la deuda de CC; QR Fase 1, sin empezar).
 

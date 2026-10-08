@@ -8,6 +8,10 @@ updated: 2026-10-08
 
 # Clientes y Proveedores
 
+> 🔒 **2026-10-08 — ✅ EN PROD v1.240.4 (mig 480):** la CC de proveedores (`proveedor_cc_movimientos`) es de solo lectura para los
+> usuarios; todo pasa por funciones de la base. Nueva `registrar_nc_proveedor` (NC manual y devolución a proveedor, permiso Gastos
+> en "editar", moneda de la OC). La devolución ya no ignora el error del crédito. UAT §106.
+
 > 🧾 **2026-10-08 — ✅ EN PROD v1.240.3 (migs 477-479, PR #381) — Cheques propios y OC por sucursal (REGLA #0).**
 > - **Pago con cheque desde la CC del proveedor** (`registrar_pago_proveedor` + `p_cheque`): crea el cheque (fecha de cobro
 >   obligatoria) atado al pago (`cheques.cc_movimiento_id`, `monto_imputado`, `caja_movimiento_id`). `registrar_pago_oc` también.

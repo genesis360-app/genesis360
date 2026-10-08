@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] deploy | 🚀 v1.240.4 EN PROD — inventario por sucursal, CC de proveedores protegida, ubicaciones con stock
+
+- Migs **480** y **481** en PROD (versiones 20261008060719/24), verificadas: `registrar_nc_proveedor`, sin INSERT para
+  `authenticated` en `proveedor_cc_movimientos`, trigger de ubicaciones, cierre de ventas con columnas de cobro. EF `send-email`
+  en PROD. `pg_policies` DEV = PROD (public 245 · storage 40 · cron 2). PR **#382** merge `a7ee65c6`, release `v1.240.4`.
+- Inventario/Productos siguen el selector de sucursal (decisión de GO; alertas siguen por producto). 36 specs de Inventario
+  y Productos: 178 passed. e2e nuevos 189 (sucursal) y 141 adaptado (CC por función, sonda sin escribir).
+- El Tilo: la ubicación "Escobar-Leandro" tenía un LPN de la sucursal oficina (caso único en PROD). La 481 evita que se repita;
+  el dato lo corrige el cliente moviendo el LPN.
+- ⚠️ Error mío, sin daño: al crear `stockSucursal.ts` pisé un archivo existente con ese nombre; restaurado desde git antes de
+  commitear (el cálculo nuevo vive en `stockPorProducto.ts`).
+
 ## [2026-10-08] deploy | 🚀 v1.240.3 EN PROD — envío en tickets, cheques propios atómicos, OC por sucursal
 
 - Migs **477 → 478 → 479** aplicadas en PROD de a una (`aplicar-migracion.mjs`, versiones 20261008032850/55/900) y

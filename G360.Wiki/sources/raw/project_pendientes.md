@@ -6,7 +6,16 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-08) — 🚀 **PROD = DEV = `v1.240.3`** (migs 001-**479**) · PR **#381** (merge `2c72dc3c`)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-08, tarde) — 🚀 **PROD = DEV = `v1.240.4`** (migs 001-**481**) · PR **#382** (merge `a7ee65c6`)
+>
+> **v1.240.4:** Inventario/Productos siguen el selector de sucursal (UAT §108), CC de proveedores solo por funciones + cobro
+> de ventas de períodos cerrados (mig 480, §106), ubicación con stock no cambia de sucursal (mig 481, §107), mail del ticket con
+> la entrega. EF `send-email` en DEV y PROD. `pg_policies` DEV = PROD (public 245 · storage 40 · cron 2).
+> **Siguiente (acordado con GO):** 🔑 rotación de la `service_role` de PROD; después 🖼️ landing con capturas de Almacén Jorgito.
+> **El Tilo:** para borrar "Escobar-Leandro" primero tiene que MOVER el LPN-20261002-EAEE20 (sucursal oficina) a otra
+> ubicación — la mig 481 no corrige el dato viejo.
+>
+> ### (antes) ARRANCÁ ACÁ (2026-10-08) — **PROD = DEV = `v1.240.3`** (migs 001-479) · PR #381 (merge `2c72dc3c`)
 >
 > **Qué entró:** envío en los tickets (WhatsApp/mail + datos de entrega + modal de factura con el envío; e2e 188), cheques
 > propios atómicos con contramovimiento en la cuenta y anulado = rechazo (migs 477/479), cierre contable que deja pagar/revertir
@@ -19,12 +28,11 @@ type: project
 >   Inventario con la sucursal oficina elegida, o traslado). UAT §107.
 > - **🖼️ Landing con imágenes REALES (GO 08/10):** usar el tenant de DEV **Almacén Jorgito** para las capturas. Ojo: tiene basura
 >   de e2e (clientes "E2E …", proveedores "ZZ_TEST…", ventas de prueba) → elegir pantallas/filtros prolijos o acomodar lo que se ve.
-> - **Cierre contable en VENTAS** (decisión de GO): sigue bloqueando cobrar hoy una venta a CC de un período cerrado (mismo
->   criterio que OC/gastos → dejar pasar `monto_pagado`/`medio_pago`; ojo `interes_cc` del cron). Hoy 0 cierres en PROD.
+> - ✅ Cierre contable en VENTAS: resuelto en v1.240.4 (mig 480).
 > - **Contador:** C-23 a C-25 (cheques y cierre) se suman a las 22 abiertas.
-> - Mail del ticket: todavía sin los datos de la entrega (solo el costo). Gastos sueltos pagados con cheque no guardan su
+> - ✅ Mail del ticket con la entrega (v1.240.4). Gastos sueltos pagados con cheque no guardan su
 >   movimiento de caja (al rechazar se avisa revisar la cuenta a mano).
-> - Policy de escritura de `proveedor_cc_movimientos` todavía deja insertar cualquier tipo desde el cliente.
+> - ✅ Escritura de `proveedor_cc_movimientos` cerrada (v1.240.4, mig 480).
 >
 
 > ### 🛑 ARRANCÁ ACÁ (2026-10-07, cierre) — 🚀 **PROD = DEV = `v1.240.2`** (migs 001-476, sin migraciones nuevas) · PRs #378, #379 y el de v1.240.2

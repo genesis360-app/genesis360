@@ -2411,6 +2411,24 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔕 §112 — Lecturas de columnas inexistentes: avisos de caja, cajeros, etiqueta de courier y topes diarios (mig 483, 🟡 DEV) — 2026-10-08
+
+Encontrado en los logs del gateway de PROD al revocar las keys viejas. `users` no tiene `email` (vive en `auth.users`):
+5 selects lo pedían → 400 → `data` null, sin mirar el `error`. Además `clientes.documento`/`clientes.direccion` no existen
+y `fn_rate_limit_consumir` rechazaba ventanas de 1 día (fail-open → los topes diarios nunca rigieron).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 112.1 | 🛑 Abrir caja con diferencia respecto al cierre anterior → notificación in-app a DUEÑO/SUPERVISOR/SUPER_USUARIO (menos quien abre) + mail | REST en DEV (el select viejo da 400, el nuevo 200) · probar en la app | ✅ consulta · ⏳ flujo |
+| 112.2 | 🛑 Cerrar caja con diferencia que supera el umbral → aviso in-app + mail a los roles configurados; mail de cierre al DUEÑO siempre | ídem | ✅ consulta · ⏳ flujo |
+| 112.3 | Caja → "Abrir a nombre de": el selector lista cajeros/supervisores/dueños (antes quedaba vacío) | REST en DEV (24 filas) | ✅ |
+| 112.4 | RRHH → vincular empleado con usuario: la lista carga (antes tiraba error) | typecheck · probar en la app | ⏳ |
+| 112.5 | `send-email` con `to_user_ids`: solo `notificacion` pedida por un usuario; solo usuarios ACTIVOS del mismo negocio; no manda a `@u.genesis360.pro` (usuarios sin correo) | unit `sendEmailSeguridad` · EF en DEV (id ajeno → `enviados: 0`; tipo `oc` → 400; id no-uuid → 400) | ✅ |
+| 112.6 | Etiqueta de courier: el destinatario sale con nombre/mail/teléfono y DNI (o CUIT) del cliente de la venta (antes "Cliente" vacío) | revisión + deploy DEV | ✅ código |
+| 112.7 | `data-api` clientes: exporta (`direccion` = domicilio fiscal); antes daba 400. ⚠ `updated_since` en clientes/proveedores sigue fallando: esas tablas no tienen `updated_at` (0 API keys en PROD) | revisión | ✅ código · ⏳ updated_since |
+| 112.8 | 🛑 Topes diarios: `consultar-cuit` 500/día por negocio y 5000/día plataforma, `categoria-cartel-ia` 200/día; ventana de 1 día alineada a 00:00 UTC; el cleanup guarda 2 días | SQL en DEV (`fn_rate_limit_consumir(…, 86400)` responde, cron con `2 days`) | ✅ |
+| 112.9 | Test estático: todo `.from(t).select('…')` literal se cruza contra `schema_full` (819 lecturas) | unit `columnasEscritas.test.ts` | ✅ |
+
 ## 🌐 §111 — Picking multisucursal con ubicaciones GLOBALES (pedido de GO 2026-10-08, ⏳ A DEFINIR antes de implementar)
 
 Pedido de GO: si una ubicación Global tiene stock de varias sucursales y un pedido/venta de la sucursal A pide más de lo que A

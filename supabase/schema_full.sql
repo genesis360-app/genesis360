@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T18:46:26.221Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008183725 · 178 tablas
+-- Generado 2026-10-08T20:34:26.923Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008201939 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -11264,11 +11264,11 @@ BEGIN
   IF p_limite IS NULL OR p_limite < 1 THEN
     RAISE EXCEPTION 'limite inválido: %', p_limite;
   END IF;
-  -- Tope de 1 hora, atado al margen del cron de limpieza (punto 3): si se permitieran ventanas más
-  -- largas, el cleanup borraría el contador de una ventana TODAVÍA ABIERTA y el límite se
-  -- reiniciaría solo, en silencio. Esto es rate limiting de borde, no cuotas diarias.
-  IF p_ventana_seg IS NULL OR p_ventana_seg < 1 OR p_ventana_seg > 3600 THEN
-    RAISE EXCEPTION 'ventana inválida: % segundos (máximo 3600)', p_ventana_seg;
+  -- Tope de 1 día, atado al margen del cron de limpieza (2 días, mig 483): si se permitieran
+  -- ventanas más largas, el cleanup borraría el contador de una ventana TODAVÍA ABIERTA y el
+  -- límite se reiniciaría solo, en silencio.
+  IF p_ventana_seg IS NULL OR p_ventana_seg < 1 OR p_ventana_seg > 86400 THEN
+    RAISE EXCEPTION 'ventana inválida: % segundos (máximo 86400)', p_ventana_seg;
   END IF;
 
   -- La identidad viene de un header: se recorta para que nadie infle la fila mandando 8 KB de

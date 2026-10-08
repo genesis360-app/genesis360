@@ -122,7 +122,8 @@ serve(async (req) => {
   if (entity === 'clientes') {
     let q = supabase
       .from('clientes')
-      .select('id, nombre, dni, telefono, email, direccion, cuenta_corriente_habilitada, activo')
+      // `clientes` no tiene `direccion`: se exporta el domicilio fiscal con ese nombre (pedir `direccion` daba 400).
+      .select('id, nombre, dni, telefono, email, direccion:domicilio_fiscal, cuenta_corriente_habilitada, activo')
       .eq('tenant_id', tenantId)
       .range(offset, offset + limit - 1)
     if (sucursalId) q = q.eq('sucursal_id', sucursalId)

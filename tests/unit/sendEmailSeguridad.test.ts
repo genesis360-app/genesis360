@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   esc, textoPlano, rutaInterna, normalizarDestinatarios, destinatariosSegunTipo, validarAdjuntos, SOPORTE,
+  validarIdsUsuarios, esMailEntregable,
 } from '../../supabase/functions/send-email/seguridad'
 
 describe('esc', () => {
@@ -85,5 +86,31 @@ describe('validarAdjuntos', () => {
     const cuatro = Array(4).fill({ filename: 'a.pdf', content: 'QQ==' })
     expect(validarAdjuntos(cuatro, 'usuario').ok).toBe(false)
     expect(validarAdjuntos(cuatro, 'servicio').ok).toBe(true)
+  })
+})
+
+describe('to_user_ids (mail resuelto en el servidor)', () => {
+  const id = '4cf85bbb-22b3-4760-91ee-15a24d9e4713'
+
+  it('🔴 CLAVE: solo para notificaciones que pide un usuario de la app', () => {
+    expect(validarIdsUsuarios('notificacion', 'usuario', [id])).toEqual({ ok: true, valor: [id] })
+    expect(validarIdsUsuarios('oc', 'usuario', [id]).ok).toBe(false)
+    expect(validarIdsUsuarios('notificacion', 'servicio', [id]).ok).toBe(false)
+  })
+
+  it('rechaza listas vacías, ids que no son uuid y listas largas; saca repetidos', () => {
+    expect(validarIdsUsuarios('notificacion', 'usuario', []).ok).toBe(false)
+    expect(validarIdsUsuarios('notificacion', 'usuario', id).ok).toBe(false)
+    expect(validarIdsUsuarios('notificacion', 'usuario', ['a@b.com']).ok).toBe(false)
+    expect(validarIdsUsuarios('notificacion', 'usuario', Array(21).fill(0).map((_, i) => id.slice(0, -2) + String(i).padStart(2, '0'))).ok).toBe(false)
+    expect(validarIdsUsuarios('notificacion', 'usuario', [id, id])).toEqual({ ok: true, valor: [id] })
+  })
+
+  it('🔴 CLAVE: no se manda a la dirección interna de un usuario sin correo', () => {
+    expect(esMailEntregable('duenio@negocio.com')).toBe(true)
+    expect(esMailEntregable('juan.alm01@u.genesis360.pro')).toBe(false)
+    expect(esMailEntregable('JUAN.ALM01@U.GENESIS360.PRO')).toBe(false)
+    expect(esMailEntregable(null)).toBe(false)
+    expect(esMailEntregable('no-es-mail')).toBe(false)
   })
 })

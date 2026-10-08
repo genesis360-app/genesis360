@@ -150,6 +150,9 @@ export default function InventarioPage() {
   const [entradaInv, setEntradaInv] = useState('')
   const [combinadorInv, setCombinadorInv] = useState<Combinador>('Y')
   const [filterAlerta, setFilterAlerta] = useState(false)
+  // Pedido de GO 2026-10-08: con una sucursal elegida, Inventario muestra lo que HAY en esa sucursal; los productos sin
+  // stock ahí quedan ocultos salvo que se pidan (o que se filtre por stock crítico, que justamente los incluye).
+  const [mostrarSinStock, setMostrarSinStock] = useState(false)
   const [filterCat, setFilterCat] = useState('')
   const [filterUbic, setFilterUbic] = useState('')
   const [filterEstado, setFilterEstado] = useState('')
@@ -593,7 +596,7 @@ export default function InventarioPage() {
       const data = await traerTodo<any>((desde, hasta) => {
         let q = supabase
           .from('inventario_lineas')
-          .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida), producto_estructuras(nombre)')
+          .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad,sucursal_id), sucursales(nombre), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida), producto_estructuras(nombre)')
           .eq('tenant_id', tenant!.id)
           .eq('activo', true)
           .order('created_at', { ascending: true })
@@ -2641,7 +2644,7 @@ export default function InventarioPage() {
     setEntradaInv('')
   }
 
-  const filteredInv = productos.filter(p => {
+  const filtradosInv = productos.filter(p => {
     const lineasParaFiltro = (lineasMap[(p as any).id] ?? []).map((l: any) => ({
       lpn: l.lpn ?? null, ubicacionNombre: l.ubicaciones?.nombre ?? null,
     }))
@@ -2681,13 +2684,19 @@ export default function InventarioPage() {
     }
     return true
   })
+  // Con una sucursal elegida, lo que no tiene stock ahí queda oculto (GO 2026-10-08) — salvo "Mostrar sin stock" o el
+  // filtro de stock crítico, que justamente los incluye. Se cuenta DESPUÉS de los demás filtros: el aviso dice cuántos de
+  // los que coinciden con la búsqueda quedaron afuera.
+  const ocultarSinStock = !!sucursalId && !mostrarSinStock && !filterAlerta
+  const filteredInv = ocultarSinStock ? filtradosInv.filter(p => getStockTotal(p) > 0) : filtradosInv
+  const ocultosSinStock = filtradosInv.length - filteredInv.length
 
   // Paginado del listado (pedido de GO 2026-09-24): la barra de abajo trae el selector de cuántos
   // registros mostrar y los botones de página. Se pagina lo que se DIBUJA — los filtros y las sumas
   // de stock siguen corriendo sobre el set completo.
   const visiblesInv = usePaginacionLista(filteredInv, 'producto', {
     total: productos.length,
-    claveFiltros: `${pildorasEfectivasInv.length}|${combinadorInv}|${filterCat}|${filterProv}|${filterUbic}|${filterEstado}|${filterAlerta}`,
+    claveFiltros: `${pildorasEfectivasInv.length}|${combinadorInv}|${filterCat}|${filterProv}|${filterUbic}|${filterEstado}|${filterAlerta}|${mostrarSinStock}|${sucursalId}`,
   })
 
   // Una búsqueda nueva vuelve a mostrar solo los LPN que coinciden. (No se expande el producto solo: buscar y hacer
@@ -4211,7 +4220,7 @@ export default function InventarioPage() {
 
             {/* Filtros — pill button con popover */}
             {(() => {
-              const activeCount = [filterCat, filterUbic, filterEstado, filterProv].filter(Boolean).length + (filterAlerta ? 1 : 0)
+              const activeCount = [filterCat, filterUbic, filterEstado, filterProv].filter(Boolean).length + (filterAlerta ? 1 : 0) + (mostrarSinStock ? 1 : 0)
               return (
               <div className="relative" ref={filterPanelRef}>
                 <button
@@ -4285,11 +4294,19 @@ export default function InventarioPage() {
                           aria-label="Solo stock crítico" />
                         <span className="text-sm text-gray-700 dark:text-gray-300">Solo stock crítico</span>
                       </label>
+
+                      {sucursalId && (
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <Toggle checked={mostrarSinStock} onChange={() => setMostrarSinStock(v => !v)}
+                            aria-label="Mostrar productos sin stock en esta sucursal" />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Mostrar productos sin stock en esta sucursal</span>
+                        </label>
+                      )}
                     </div>
 
                     {activeCount > 0 && (
                       <button
-                        onClick={() => { setFilterCat(''); setFilterUbic(''); setFilterEstado(''); setFilterProv(''); setFilterAlerta(false) }}
+                        onClick={() => { setFilterCat(''); setFilterUbic(''); setFilterEstado(''); setFilterProv(''); setFilterAlerta(false); setMostrarSinStock(false) }}
                         className="w-full text-xs text-red-500 hover:text-red-600 dark:text-red-400 transition-colors pt-1">
                         × Limpiar todos los filtros
                       </button>
@@ -4409,10 +4426,21 @@ export default function InventarioPage() {
             })() : filteredInv.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                 <Package size={40} className="mb-3 opacity-50" />
-                <p className="font-medium">{pildorasEfectivasInv.length > 0 ? 'No se encontraron productos' : 'No hay productos aún'}</p>
+                <p className="font-medium">{pildorasEfectivasInv.length > 0 ? 'No se encontraron productos' : ocultosSinStock > 0 ? 'No hay stock en esta sucursal' : 'No hay productos aún'}</p>
+                {ocultosSinStock > 0 && (
+                  <button type="button" onClick={() => setMostrarSinStock(true)} className="mt-2 text-sm text-accent-text hover:underline">
+                    Mostrar los {ocultosSinStock} productos sin stock en esta sucursal
+                  </button>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                {ocultosSinStock > 0 && (
+                  <p data-testid="inv-ocultos-sin-stock" className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500">
+                    {ocultosSinStock} producto{ocultosSinStock !== 1 ? 's' : ''} sin stock en esta sucursal no se muestra{ocultosSinStock !== 1 ? 'n' : ''}.{' '}
+                    <button type="button" onClick={() => setMostrarSinStock(true)} className="text-accent-text hover:underline">Mostrar</button>
+                  </p>
+                )}
                 {visiblesInv.map(p => {
                   const lineasTodas = lineasMap[p.id] ?? []
                   // Búsqueda por LPN/ubicación: solo las líneas que coinciden (resaltadas) salvo "Ver todos".
@@ -4630,8 +4658,18 @@ export default function InventarioPage() {
                                     {l.ubicaciones?.nombre ? (
                                       <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                         <MapPin size={11} /> {l.ubicaciones.nombre}
+                                        {/* Dato viejo: LPN de una sucursal en una ubicación de OTRA (mig 481 ya no lo deja pasar). */}
+                                        {l.ubicaciones.sucursal_id && l.sucursal_id && l.ubicaciones.sucursal_id !== l.sucursal_id && (
+                                          <span title="La ubicación es de otra sucursal: movelo a una ubicación de esta sucursal" className="text-amber-600 dark:text-amber-400">
+                                            <AlertTriangle size={11} />
+                                          </span>
+                                        )}
                                       </span>
                                     ) : <span className="text-xs text-gray-300">—</span>}
+                                    {/* Con "Todas las sucursales", cada LPN dice de cuál es. */}
+                                    {!sucursalId && l.sucursales?.nombre && (
+                                      <span className="block text-[11px] text-gray-400 dark:text-gray-500 truncate">{l.sucursales.nombre}</span>
+                                    )}
                                   </div>
                                   )}
 

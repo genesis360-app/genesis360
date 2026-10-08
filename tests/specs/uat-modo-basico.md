@@ -2411,6 +2411,20 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🏢 §108 — Productos e Inventario siguen el selector de sucursal (🟡 DEV) — 2026-10-08
+
+Decisión de GO: el selector del encabezado manda ("Todas" = todo; una sucursal = lo de esa sucursal), salvo el catálogo de
+Productos, que es compartido. Las alertas de stock mínimo siguen siendo por producto (como hoy).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 108.1 | Inventario con una sucursal: solo productos con stock ahí; aviso "N sin stock no se muestran · Mostrar" (contado después de búsqueda y filtros) | e2e `189` | ✅ |
+| 108.2 | "Mostrar productos sin stock en esta sucursal" (filtros) los trae; "Limpiar filtros" lo apaga; "Solo stock crítico" los incluye siempre | e2e `189` · revisión | ✅ |
+| 108.3 | Inventario con "Todas": cada LPN dice su sucursal | revisión | ✅ código |
+| 108.4 | LPN en una ubicación de OTRA sucursal (dato viejo) → ⚠ al lado de la ubicación | revisión | ✅ código |
+| 108.5 | Productos: catálogo completo; el número chico de la fila es "X en la sucursal" (todo el stock de la sucursal) o "X total" con "Todas" — nunca el total global con una sucursal elegida | unit `stockPorProducto` (6) · e2e `189` | ✅ |
+| 108.6 | Sin regresión en los e2e que tocan Inventario/Productos | 36 specs: 178 passed, 1 skipped | ✅ |
+
 ## 📍 §107 — Una ubicación con stock no cambia de sucursal (mig 481, 🟡 DEV) — 2026-10-08
 
 Reporte de GO (El Tilo, PROD): no dejaba eliminar la ubicación "Escobar-Leandro" ("tiene inventario") pero el inventario de

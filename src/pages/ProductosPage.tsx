@@ -27,6 +27,7 @@ import { descargarCsv, descargarExcel, descargarJson, nombreConFecha } from '@/l
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { stockPorProducto, type LineaStock, type StockPorProducto } from '@/lib/stockPorProducto'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
@@ -301,44 +302,34 @@ export default function ProductosPage() {
     enabled: !!tenant && tab === 'productos',
   })
 
-  // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true).
-  // En básico el stock no tiene estado (estado_id NULL) → NO filtrar por estado o el
-  // "disponible" saldría 0 para todos los productos. Ver [[reference_basico_stock_null_ubicacion_estado]].
-  const { data: stockDisponibleMap = {} } = useQuery({
+  // Stock por producto en la SUCURSAL elegida en el encabezado (o en todas, con "Todas") — pedido de GO 2026-10-08.
+  // - disponible: estados con es_disponible_venta (en básico el stock no tiene estado → todo) menos lo reservado.
+  //   Ver [[reference_basico_stock_null_ubicacion_estado]].
+  // - total: todo lo que hay en la sucursal (cualquier estado, reservado incluido). Antes el "total" de la fila era
+  //   `productos.stock_actual` (TODAS las sucursales) al lado de un "disponible" de la sucursal: dos stocks distintos.
+  const { data: stockMaps = { disponible: {}, total: {} } as StockPorProducto } = useQuery({
     queryKey: ['stock-disponible-map', tenant?.id, sucursalId, modoAvanzado],
     queryFn: async () => {
-      let evIds: string[] = []
+      let vendibles: Set<string> | null = null
       if (modoAvanzado) {
         const { data: evData } = await supabase
           .from('estados_inventario').select('id')
           .eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
-        evIds = (evData ?? []).map((e: any) => e.id)
-        if (evIds.length === 0) return {}   // avanzado sin estados vendibles = nada disponible
+        vendibles = new Set((evData ?? []).map((e: any) => e.id))   // vacío = nada vendible
       }
-      let q = supabase
+      const q = supabase
         .from('inventario_lineas')
-        .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
+        .select('producto_id, cantidad, cantidad_reservada, estado_id, inventario_series(id, activo)')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-      if (evIds.length > 0) q = q.in('estado_id', evIds)
       // 🛑 Sin tope: estas lineas se SUMAN por producto. Recortarlas en 1000 no se veria como
-      // "faltan filas" sino como stock disponible equivocado (REGLA #0).
+      // "faltan filas" sino como stock equivocado (REGLA #0).
       const qf = applyFilter(q)
       const { data: lineas } = await traerTodoConError<any>((desde, hasta) => qf.range(desde, hasta))
-      const map: Record<string, number> = {}
-      for (const l of lineas ?? []) {
-        const pid = (l as any).producto_id
-        if (!map[pid]) map[pid] = 0
-        const tieneSeries = ((l as any).inventario_series ?? []).length > 0
-        if (tieneSeries) {
-          map[pid] += ((l as any).inventario_series ?? []).filter((s: any) => s.activo).length
-        } else {
-          map[pid] += Math.max(0, (l as any).cantidad - ((l as any).cantidad_reservada ?? 0))
-        }
-      }
-      return map
+      return stockPorProducto((lineas ?? []) as LineaStock[], vendibles)
     },
     enabled: !!tenant,
   })
+  const stockDisponibleMap = stockMaps.disponible
 
   // Empaque del producto expandido en la lista (Fase 5, mig 310)
   const { data: presentacionesDelExpandido = [] } = useQuery({
@@ -1467,7 +1458,8 @@ export default function ProductosPage() {
                   )}
                 </div>
                 {visibles.map(p => {
-                  const stock      = (p as any).stock_actual ?? 0
+                  // Con una sucursal elegida, el total es el de ESA sucursal; con "Todas", el del producto (todas).
+                  const stock      = sucursalId ? (stockMaps.total[p.id] ?? 0) : ((p as any).stock_actual ?? 0)
                   const disponible = stockDisponibleMap[p.id] ?? 0
                   const critDisp   = disponible <= (p as any).stock_minimo
                   const expanded   = expandedId === p.id
@@ -1554,8 +1546,9 @@ export default function ProductosPage() {
                           </span>
                           {/* Stock total */}
                           {stock !== (stockDisponibleMap[p.id] ?? 0) && (
-                            <p className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-lg">
-                              {stock} total
+                            <p className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-lg"
+                              title={sucursalId ? 'Todo el stock de esta sucursal (cualquier estado, reservado incluido)' : 'Stock de todas las sucursales'}>
+                              {stock} {sucursalId ? 'en la sucursal' : 'total'}
                             </p>
                           )}
                         </div>

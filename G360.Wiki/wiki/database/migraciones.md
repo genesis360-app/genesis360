@@ -6,7 +6,7 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-494, + correctivos 387b/387c)
+# Historial de Migraciones (001-495, + correctivos 387b/387c)
 
 📦 **Migración 475 — ✅ EN DEV Y PROD (2026-10-06, v1.239.0)**: envío de la OC. La OC dice quién lo cobra: el proveedor (default; suma al total, al pago y a la deuda, cargo `es_envio` de la CC al recibir) o un tercero (gasto "Fletes" aparte, no suma). Una vez por OC. Editar una OC ahora guarda el envío. Consulta al contador C-22 (ver [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
 
@@ -3316,3 +3316,4 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 | 492 | `492_pedido_entregado_no_se_cancela.sql` | Un pedido entregado no se cancela (ni entregado parcial) | 🟡 SOLO DEV (v1.242.0) |
 | 493 | `493_unpick_solo_pedido_vivo.sql` | No se des-pickea un pedido entregado ni el de una venta ya despachada. Ver [[wiki/features/pedidos]] | 🟡 SOLO DEV (v1.242.0) |
 | 494 | `494_revoke_mover_anotacion_reserva.sql` | `fn_venta_reservas_mover_anotacion` sin EXECUTE para authenticated (DEFINER sin control de tenant; hallazgo del code-review de v1.242.0). Ver [[wiki/features/inventario-stock]] | 🟡 SOLO DEV (v1.242.0) |
+| 495 | `495_entrega_exige_venta_finalizada.sql` | No sale mercadería de una venta reservada: `fn_pedido_entregar_retiro` la rechaza y un trigger en `envios` no deja despachar/entregar; Retiro finaliza la venta en el mismo click. Ver [[wiki/features/pedidos]] | 🟡 SOLO DEV (v1.242.0) |

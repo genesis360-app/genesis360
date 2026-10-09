@@ -6,6 +6,43 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 ARRANCÁ ACÁ (2026-10-08 noche) — DEV adelante de PROD: commit `33443dec` + **mig 487** (solo DEV)
+>
+> **✅ Hecho en DEV (falta deploy):** cambiar de sucursal con la caja abierta (decisión de GO, L4 revisado) + cajas solo de
+> la sucursal activa en POS/Pedidos/Clientes/Cobranzas CC/RRHH/Proveedores + **mig 487** (WITH CHECK de `sesiones_tenant` y
+> `mov_caja_tenant` = USING). e2e 191 verde, 2.280 unit verdes, UAT §114.
+>
+> **🌐 Picking con ubicaciones GLOBALES — DEFINIDO por GO (UAT §111), DISEÑO (no implementado):**
+> - Reglas: stock en Global sigue siendo de la sucursal que lo cargó, visible/vendible desde todas · venta de A con stock de B
+>   = venta de A, SIEMPRE por pedido (no se finaliza en mostrador) · la tarea del LPN de B la ve B · A ve el avance en solo
+>   lectura · B pickea, la mercadería va a A y A confirma la entrega · LPN sugerido según la regla configurada sobre A +
+>   Globales (a igualdad, A primero) · config nueva "el POS puede cambiar el LPN sugerido" (si no, estricto).
+> - 🛑 **Hallazgo que condiciona el diseño (REGLA #0, latente HOY, sin Globales):** la reserva NO queda atada a la venta.
+>   `cantidad_reservada` es un total por línea y las líneas realmente reservadas no se guardan (`lpn_plan` es el plan del
+>   carrito). Consecuencias: (1) anular/cancelar una reserva libera las primeras líneas reservadas del producto, de
+>   cualquier venta y sucursal (`VentasPage` cancelar ~5500, `liberar_reservas_vencidas`); (2) reserva→despachada vuelve a
+>   buscar líneas por sucursal y cuenta como disponible lo reservado por OTRAS ventas (~5329), y descuenta reservas ajenas;
+>   (3) `fn_pedido_generar_venta` rebaja "líneas reservadas de la sucursal", no las de esa venta; (4) presupuesto→reserva no
+>   filtra sucursal (~5170); (5) `fn_pedido_liberar_tareas_pendientes` (deslanzar/cancelar pedido) baja `cantidad_reservada`
+>   también en pedidos de venta; (6) el `movimientos_stock` de reserva→despachada sale sin `sucursal_id`; (7) el carrito no
+>   aplica `soloUbicado` (~1854).
+> - **Fases propuestas:**
+>   - ✅ **F0 HECHA EN DEV (mig 488, 09/10)** — `venta_item_reservas` + `venta_items.reserva_anotada`; POS reserva/libera/rebaja
+>     por funciones; e2e 192 + UAT §115. 🛑 La 488 NO es aditiva-segura: va a PROD en el MISMO release que su front; su
+>     backfill agrega filas en PROD (no toca LPN) → avisarle a GO. Pendiente: pasar los webhooks ML/TN a `fn_venta_reservar_linea`
+>     (hoy caen en el camino de compatibilidad). Diseño original:
+>   - **F0 — Reserva atada a la venta** (arregla 1-6, prerequisito): tabla `venta_item_reservas` (venta_item_id, linea_id,
+>     cantidad) escrita por una función SECURITY DEFINER que reserva atómicamente; liberar y rebajar SOLO por esas filas;
+>     backfill de las reservas vivas (data fix con OK de GO).
+>   - **F1 — POS ve Globales:** carrito/búsqueda/registro incluyen líneas de otras sucursales en ubicaciones Globales (solo
+>     avanzado), separadas "de A" / "de B (Global)"; orden = regla + desempate A primero; venta con stock de B fuerza reserva;
+>     config "cambiar LPN sugerido"; guard en la base (línea de otra sucursal solo si su ubicación es Global).
+>   - **F2 — Picking por dueño:** `fn_generar_tareas_picking_pedido_venta` pone `wms_tareas.sucursal_id` = sucursal de la
+>     línea; completar tarea / pasar a listo SECURITY DEFINER (hoy INVOKER: con RLS un usuario de B no ve el pedido de A y el
+>     pedido nunca queda listo); detalle del pedido en A muestra tareas de B en solo lectura (RPC).
+>   - **F3 — Entrega en A:** rebaja por `venta_item_reservas` (línea de B), movimiento con la sucursal de la línea, venta y
+>     caja de A; reportes por sucursal; e2e de punta a punta.
+>
 > ### 🛑 ARRANCÁ ACÁ (2026-10-09, para /clear) — 🚀 **PROD = DEV = `v1.241.0`** (migs 001-**486**)
 >
 > | | Código | Migraciones |

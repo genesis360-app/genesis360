@@ -1851,9 +1851,11 @@ export default function VentasPage() {
       // 🛑 REGLA #0 — solo la sucursal activa: de esta lista salen el LPN que se muestra en el carrito y el tope de cantidad.
       // Sin el filtro, en Flores el tope eran las 20 u. de Saavedra (Almacén de la Suerte, 08/10). El registro de la venta
       // siempre filtró por sucursal, así que nunca se descontó stock ajeno: el error era del carrito.
-      let lq = applyFilter(supabase.from('inventario_lineas')
+      // soloUbicado: igual que el registro de la venta — en avanzado un LPN sin ubicación no se vende, así que tampoco puede
+      // ser el LPN del carrito ni sumar al tope.
+      let lq = applyFilter(soloUbicado(supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido), estados_inventario(nombre, descuento_pct)')
-        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0))
+        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)))
       if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
       const hoyStr = new Date().toISOString().split('T')[0]
@@ -3970,8 +3972,9 @@ export default function VentasPage() {
               // Atómico server-side (mig 362) — evita pisar una reserva concurrente (ej. un
               // webhook de TN/MELI tocando la misma línea a la vez). El disponible lo calcula
               // la RPC contra el valor real y lockeado, no el leído acá hace un rato.
-              const { data: areservarData, error: areservarErr } = await supabase.rpc('fn_reservar_stock_linea', { p_linea_id: linea.id, p_cantidad: qty })
-              if (areservarErr) console.error('[fn_reservar_stock_linea]', areservarErr.message)
+              // Mig 488: además anota QUÉ LPN reservó este ítem (para liberar/rebajar exactamente eso).
+              const { data: areservarData, error: areservarErr } = await supabase.rpc('fn_venta_reservar_linea', { p_venta_item_id: ventaItemId, p_linea_id: linea.id, p_cantidad: qty })
+              if (areservarErr) throw new Error(`No se pudo reservar "${item.nombre}": ${areservarErr.message}`)
               const areservar = Number(areservarData ?? 0)
               if (areservar <= 0) return 0
               linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
@@ -5167,11 +5170,14 @@ export default function VentasPage() {
           } else {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
-            const { data: lineasRaw } = await soloUbicado(
+            let reservaQ = soloUbicado(
               supabase.from('inventario_lineas')
                 .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
                 .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
             )
+            // Inventario por sucursal estricto: solo stock de la sucursal de la venta (antes no filtraba).
+            if (venta.sucursal_id) reservaQ = reservaQ.eq('sucursal_id', venta.sucursal_id)
+            const { data: lineasRaw } = await reservaQ
             const _hoyStr = new Date().toISOString().split('T')[0]
             const lineas = (lineasRaw ?? [])
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
@@ -5181,9 +5187,9 @@ export default function VentasPage() {
             // Reserva cantidad_reservada en una línea concreta. Muta in-memory para el fallback.
             const reservarEn = async (linea: any, qty: number): Promise<number> => {
               if (!linea || qty <= 0) return 0
-              // Atómico server-side (mig 362) — ver mismo comentario en consumirLinea arriba.
-              const { data: areservarData, error: areservarErr } = await supabase.rpc('fn_reservar_stock_linea', { p_linea_id: linea.id, p_cantidad: qty })
-              if (areservarErr) console.error('[fn_reservar_stock_linea]', areservarErr.message)
+              // Atómico server-side (mig 362) + anotado por ítem (mig 488) — ver consumirLinea en registrarVenta.
+              const { data: areservarData, error: areservarErr } = await supabase.rpc('fn_venta_reservar_linea', { p_venta_item_id: item.id, p_linea_id: linea.id, p_cantidad: qty })
+              if (areservarErr) throw new Error(`No se pudo reservar "${(item.productos as any)?.nombre ?? 'el producto'}": ${areservarErr.message}`)
               const areservar = Number(areservarData ?? 0)
               if (areservar <= 0) return 0
               linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
@@ -5286,70 +5292,110 @@ export default function VentasPage() {
           } else {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
-            let complQ = soloUbicado(
-              supabase.from('inventario_lineas')
-                .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
-                .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-            )
-            // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
-            const ventaSucursal = (ventaDetalle as any)?.sucursal_id
-            if (ventaSucursal) complQ = complQ.eq('sucursal_id', ventaSucursal)
-            const { data: lineasRaw } = await complQ
-            const _hoyStr2 = new Date().toISOString().split('T')[0]
-            const lineas = (lineasRaw ?? [])
-              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
-              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr2)
-              .sort(sortLineas)
-            const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
+            const nombreProd = (item.productos as any)?.nombre ?? 'el producto'
+            // Usar la sucursal de la venta original para no tocar lineas de otra sucursal (la de la VENTA, no la del detalle
+            // abierto: desde el modal de saldo / link de pago puede no haber detalle).
+            const ventaSucursal = (venta as any)?.sucursal_id ?? (ventaDetalle as any)?.sucursal_id ?? null
+            const cargarLineas = async () => {
+              let complQ = soloUbicado(
+                supabase.from('inventario_lineas')
+                  .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
+                  .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
+              )
+              if (ventaSucursal) complQ = complQ.eq('sucursal_id', ventaSucursal)
+              const { data: lineasRaw } = await complQ
+              const _hoyStr2 = new Date().toISOString().split('T')[0]
+              return (lineasRaw ?? [])
+                .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+                .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr2)
+                .sort(sortLineas)
+            }
+            const despachoDe = (l: any, cantidad: number, origen: 'manual' | 'auto') => ({
+              tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
+              linea_id: l.linea_id ?? l.id, lpn: l.lpn ?? null,
+              ubicacion_id: l.ubicacion_id ?? null, ubicacion_nombre: l.ubicacion_nombre ?? l.ubicaciones?.nombre ?? null,
+              cantidad, nro_serie: null, origen,
+              talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
+              formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
+            })
             // Rebaja `qty` de una línea concreta. Muta in-memory para el fallback + registra el desglose.
-            const consumir = async (linea: any, qty: number, origen: 'manual' | 'auto'): Promise<number> => {
+            // `soloLibre` (mig 488): con la reserva anotada ya consumida, lo que falte sale de stock LIBRE y no toca
+            // reservas (que son de otras ventas). Sin anotación (reserva vieja / webhook) sigue el camino de siempre.
+            const consumir = async (linea: any, qty: number, origen: 'manual' | 'auto', soloLibre: boolean): Promise<number> => {
               if (!linea || qty <= 0) return 0
-              const rebajar = Math.min(linea.cantidad, qty)
+              const tope = soloLibre ? Math.max(0, linea.cantidad - (linea.cantidad_reservada ?? 0)) : linea.cantidad
+              const rebajar = Math.min(tope, qty)
               if (rebajar <= 0) return 0
               const nuevaCant = linea.cantidad - rebajar
-              const nuevaReserva = Math.max(0, (linea.cantidad_reservada ?? 0) - rebajar)
+              const nuevaReserva = soloLibre ? (linea.cantidad_reservada ?? 0) : Math.max(0, (linea.cantidad_reservada ?? 0) - rebajar)
               await supabase.from('inventario_lineas')
-                .update({ cantidad: nuevaCant, cantidad_reservada: nuevaReserva, activo: nuevaCant > 0 })
+                .update(soloLibre
+                  ? { cantidad: nuevaCant, activo: nuevaCant > 0 }
+                  : { cantidad: nuevaCant, cantidad_reservada: nuevaReserva, activo: nuevaCant > 0 })
                 .eq('id', linea.id)
               linea.cantidad = nuevaCant
               linea.cantidad_reservada = nuevaReserva
-              despachoRows.push({
-                tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
-                linea_id: linea.id, lpn: (linea as any).lpn ?? null,
-                ubicacion_id: (linea as any).ubicacion_id ?? null, ubicacion_nombre: (linea as any).ubicaciones?.nombre ?? null,
-                cantidad: rebajar, nro_serie: null, origen,
-                talle: (linea as any).talle ?? null, color: (linea as any).color ?? null, encaje: (linea as any).encaje ?? null,
-                formato: (linea as any).formato ?? null, sabor_aroma: (linea as any).sabor_aroma ?? null,
-              })
+              despachoRows.push(despachoDe(linea, rebajar, origen))
               return rebajar
             }
-            // PRES-08 — re-validar stock al convertir/despachar. Si la venta YA estaba reservada,
-            // sus unidades están en `cantidad_reservada` (las retuvo esta venta) → cuentan como
-            // disponibles; si venía de presupuesto ('pendiente') se excluye lo reservado por otros.
+            const manualPlan = new Set(((item.lpn_plan ?? []) as any[]).filter((p: any) => p.manual).map((p: any) => p.linea_id))
+            // PRES-08 — re-validar stock al convertir/despachar.
             const esDesdeReserva = venta.estado === 'reservada'
-            const dispDespacho = esDesdeReserva
-              ? lineas.reduce((s: number, l: any) => s + (l.cantidad ?? 0), 0)
-              : lineas.reduce((s: number, l: any) => s + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            // Mig 488 — lo que ESTA venta reservó, anotado por LPN.
+            const { data: anotadas } = esDesdeReserva
+              ? await supabase.from('venta_item_reservas').select('cantidad').eq('venta_item_id', item.id)
+              : { data: [] as any[] }
+            const totalAnotado = (anotadas ?? []).reduce((s: number, r: any) => s + Number(r.cantidad ?? 0), 0)
+            const conAnotacion = totalAnotado > 0
+            let lineas = await cargarLineas()
+            const libre = (ls: any[]) => ls.reduce((s: number, l: any) => s + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            // Disponible: con anotación = lo reservado por esta venta + stock libre; reserva sin anotar = todo lo de la
+            // sucursal (comportamiento previo); presupuesto = solo libre.
+            const dispDespacho = conAnotacion
+              ? totalAnotado + libre(lineas)
+              : esDesdeReserva
+                ? lineas.reduce((s: number, l: any) => s + (l.cantidad ?? 0), 0)
+                : libre(lineas)
             if (dispDespacho < item.cantidad)
-              throw new Error(`Stock insuficiente para despachar "${(item.productos as any)?.nombre ?? 'el producto'}" en esta sucursal. Disponible: ${dispDespacho}, necesario: ${item.cantidad}. El stock cambió desde el presupuesto/reserva.`)
+              throw new Error(`Stock insuficiente para despachar "${nombreProd}" en esta sucursal. Disponible: ${dispDespacho}, necesario: ${item.cantidad}. El stock cambió desde el presupuesto/reserva.`)
             let restante = item.cantidad
-            // Mig 156 — Fase A: honrar el plan de LPN persistido de la reserva (manual/auto).
-            for (const p of ((item.lpn_plan ?? []) as any[])) {
-              if (restante <= 0) break
-              restante -= await consumir(lineaById[p.linea_id], Math.min(p.cantidad, restante), p.manual ? 'manual' : 'auto')
-            }
-            // Fase B: autocompletar por sort si el stock cambió desde la reserva.
-            for (const linea of lineas) {
-              if (restante <= 0) break
-              restante -= await consumir(linea, restante, 'auto')
+            if (conAnotacion) {
+              // Rebaja EXACTAMENTE los LPN que reservó esta venta (atómico en la base) y cierra su reserva.
+              const { data: consumidas, error: consErr } = await supabase.rpc('fn_venta_consumir_reservas', { p_venta_item_id: item.id })
+              if (consErr) throw new Error(`No se pudo rebajar lo reservado de "${nombreProd}": ${consErr.message}`)
+              for (const c of (consumidas ?? []) as any[]) {
+                const cant = Number(c.cantidad ?? 0)
+                restante -= cant
+                if (cant > 0) despachoRows.push(despachoDe(c, cant, manualPlan.has(c.linea_id) ? 'manual' : 'auto'))
+              }
+              if (restante > 0.0001) {
+                lineas = await cargarLineas()
+                for (const linea of lineas) {
+                  if (restante <= 0) break
+                  restante -= await consumir(linea, restante, 'auto', true)
+                }
+              }
+            } else {
+              const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
+              // Mig 156 — Fase A: honrar el plan de LPN persistido de la reserva (manual/auto).
+              for (const p of ((item.lpn_plan ?? []) as any[])) {
+                if (restante <= 0) break
+                restante -= await consumir(lineaById[p.linea_id], Math.min(p.cantidad, restante), p.manual ? 'manual' : 'auto', !esDesdeReserva)
+              }
+              // Fase B: autocompletar por sort si el stock cambió desde la reserva.
+              for (const linea of lineas) {
+                if (restante <= 0) break
+                restante -= await consumir(linea, restante, 'auto', !esDesdeReserva)
+              }
             }
             if (restante > 0.0001)
-              throw new Error(`Stock insuficiente para despachar "${(item.productos as any)?.nombre ?? 'el producto'}" en esta sucursal.`)
+              throw new Error(`Stock insuficiente para despachar "${nombreProd}" en esta sucursal.`)
           }
           // B1: Registrar movimiento. NO actualizamos stock_actual a mano: el trigger
           // (lineas/series_recalcular_stock) ya lo recalculó tras la rebaja de arriba.
           // stock_antes/despues = stock VENDIBLE en la sucursal de la venta (no el total global).
-          const stockDespues = await stockVendibleSucursal(item.producto_id, (ventaDetalle as any)?.sucursal_id ?? null, vendibleIdsCambio)
+          const sucMovimiento = (venta as any)?.sucursal_id ?? (ventaDetalle as any)?.sucursal_id ?? null
+          const stockDespues = await stockVendibleSucursal(item.producto_id, sucMovimiento, vendibleIdsCambio)
           const stockAntes = stockDespues + item.cantidad
           await supabase.from('movimientos_stock').insert({
             tenant_id: tenant!.id,
@@ -5361,6 +5407,7 @@ export default function VentasPage() {
             motivo: `Venta #${venta.numero}`,
             usuario_id: user?.id,
             venta_id: ventaId,
+            sucursal_id: sucMovimiento,
           })
         }
         // ISS-075: persistir el desglose de despacho (fire-and-forget, gate por toggle del tenant)
@@ -5496,21 +5543,13 @@ export default function VentasPage() {
           if ((item.productos as any)?.tiene_series) {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
             await supabase.from('inventario_series').update({ reservado: false }).in('id', serieIds)
-          } else {
-            const { data: lineas } = await supabase.from('inventario_lineas')
-              .select('id, cantidad_reservada')
-              .eq('producto_id', item.producto_id).eq('activo', true)
-              .gt('cantidad_reservada', 0)
-            let restante = item.cantidad
-            for (const linea of lineas ?? []) {
-              if (restante <= 0) break
-              // Atómico server-side (mig 362) — evita pisar una liberación/reserva concurrente.
-              const { data: liberarData, error: liberarErr } = await supabase.rpc('fn_liberar_stock_linea', { p_linea_id: linea.id, p_cantidad: restante })
-              if (liberarErr) console.error('[fn_liberar_stock_linea]', liberarErr.message)
-              const liberar = Number(liberarData ?? 0)
-              restante -= liberar
-            }
           }
+        }
+        // Mig 488 — libera SOLO lo que reservó esta venta (antes: las primeras reservas del producto, de cualquier venta y
+        // sucursal — incluso al anular una venta ya despachada). Atómico en la base; antes del cambio de estado.
+        {
+          const { error: liberarErr } = await supabase.rpc('fn_venta_liberar_reservas', { p_venta_id: ventaId })
+          if (liberarErr) throw new Error(`No se pudo liberar el stock reservado: ${liberarErr.message}`)
         }
         // Auditoría 2026-06-15 — si la venta YA había rebajado stock (despachada/facturada),
         // restaurarlo al anular (espejo del reingreso de Devolver): el void devuelve plata Y stock.

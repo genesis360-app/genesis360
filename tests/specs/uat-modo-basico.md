@@ -2411,6 +2411,28 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 🔒 §115 — La reserva queda atada a la venta (mig 488, 🟡 DEV) — 2026-10-09 · Fase 0 de §111
+
+Hallazgo (latente sin Globales): `cantidad_reservada` era un total por LPN y no se guardaba qué LPN reservó cada venta.
+Ahora `venta_item_reservas` anota venta × LPN; borrar la anotación = liberar (salvo venta ya despachada/facturada);
+`venta_items.reserva_anotada` evita la doble liberación; reservas viejas / de webhooks ML-TN se liberan por un camino de
+compatibilidad (solo sucursal de la venta, solo 'reservada', una vez).
+
+| # | Escenario | Estado |
+|---|---|---|
+| 115.1 | Dos reservas (A 3 u., B 2 u.) del mismo LPN → el LPN queda +5 reservado y cada venta tiene su anotación | ✅ e2e 192 + SQL (rollback) |
+| 115.2 | Anular una venta YA DESPACHADA no libera reservas ajenas (antes liberaba las primeras del producto) | ✅ e2e 192 |
+| 115.3 | Despachar A rebaja exactamente sus 3 u. del LPN anotado y deja reservadas las 2 de B | ✅ e2e 192 |
+| 115.4 | Liberar B devuelve 2; una segunda liberación no libera nada | ✅ e2e 192 |
+| 115.5 | Presupuesto → reserva toma solo stock de la sucursal de la venta (antes no filtraba) y la base rechaza un LPN de otra sucursal | ✅ código + función |
+| 115.6 | Vencimiento automático de reservas libera solo lo de la venta vencida | ✅ código (función) |
+| 115.7 | Deshacer el lanzamiento / cancelar un pedido de VENTA no baja la reserva de la venta | ✅ código (función) |
+| 115.8 | Des-pickear una tarea de un pedido de venta: lo des-pickeado sigue reservado para la venta (LPN nuevo + anotación) | ✅ código (función) |
+| 115.9 | Backfill: reservas vivas anotadas sin tocar LPN; ningún LPN con más anotado que reservado | ✅ DEV (114 ítems; 83 de prueba sin reserva real) |
+| 115.10 | Movimiento de stock de reserva → despachada lleva la sucursal de la venta | ✅ código |
+| 115.11 | Carrito en avanzado: un LPN sin ubicación no es el LPN sugerido ni suma al tope | ✅ código |
+| 115.12 | e2e de reservas/despacho/anulación existentes (04, 19, 24, 44, 57-59, 71, 96, 107, 113, 131, 137, 157, 190) | ✅ 29 passed, 3 skipped |
+
 ## 💰 §114 — Cambiar de sucursal con la caja abierta + cajas solo de la sucursal activa (mig 487, 🟡 DEV) — 2026-10-08
 
 Decisión de GO (punto L4 revisado): quien ve todas las sucursales cambia de sucursal sin cerrar su caja; el POS y las demás

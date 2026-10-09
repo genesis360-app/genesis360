@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-09T02:31:12.556Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261009015258 · 178 tablas
+-- Generado 2026-10-09T03:06:50.874Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261009025928 · 179 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2770,6 +2770,17 @@ CREATE TABLE public.venta_item_despachos (
   sabor_aroma text
 );
 
+CREATE TABLE public.venta_item_reservas (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  venta_id uuid NOT NULL,
+  venta_item_id uuid NOT NULL,
+  linea_id uuid NOT NULL,
+  producto_id uuid NOT NULL,
+  cantidad integer NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.venta_items (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -2796,7 +2807,8 @@ CREATE TABLE public.venta_items (
   mecanismo_precio text,
   categoria_cliente_id uuid,
   categoria_descuento_pct numeric(5,2),
-  descuento_categoria_monto numeric(14,2)
+  descuento_categoria_monto numeric(14,2),
+  reserva_anotada boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.venta_series (
@@ -3410,6 +3422,9 @@ ALTER TABLE public.users ADD CONSTRAINT users_rol_check CHECK ((rol = ANY (ARRAY
 ALTER TABLE public.users ADD CONSTRAINT users_usuario_formato CHECK (((usuario IS NULL) OR (usuario ~ '^[a-z0-9][a-z0-9_-]{2,29}$'::text)));
 ALTER TABLE public.venta_auditoria ADD CONSTRAINT venta_auditoria_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_pkey PRIMARY KEY (id);
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_cantidad_check CHECK ((cantidad > 0));
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_pkey PRIMARY KEY (id);
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_venta_item_id_linea_id_key UNIQUE (venta_item_id, linea_id);
 ALTER TABLE public.venta_items ADD CONSTRAINT trg_venta_items_tope_descuento TRIGGER DEFERRABLE INITIALLY DEFERRED;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
@@ -3927,6 +3942,11 @@ ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_prod
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_venta_item_id_fkey FOREIGN KEY (venta_item_id) REFERENCES venta_items(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_item_reservas ADD CONSTRAINT venta_item_reservas_venta_item_id_fkey FOREIGN KEY (venta_item_id) REFERENCES venta_items(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_categoria_cliente_id_fkey FOREIGN KEY (categoria_cliente_id) REFERENCES categorias_cliente(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pedido_item_id_fkey FOREIGN KEY (pedido_item_id) REFERENCES pedido_items(id) ON DELETE SET NULL;
@@ -4473,6 +4493,8 @@ CREATE INDEX idx_venta_auditoria_tenant_id ON public.venta_auditoria USING btree
 CREATE INDEX idx_venta_auditoria_venta ON public.venta_auditoria USING btree (venta_id, created_at);
 CREATE INDEX idx_venta_item_despachos_linea_id ON public.venta_item_despachos USING btree (linea_id);
 CREATE INDEX idx_venta_item_despachos_producto_id ON public.venta_item_despachos USING btree (producto_id);
+CREATE INDEX idx_venta_item_reservas_linea ON public.venta_item_reservas USING btree (linea_id);
+CREATE INDEX idx_venta_item_reservas_venta ON public.venta_item_reservas USING btree (venta_id);
 CREATE INDEX idx_venta_items_linea_id ON public.venta_items USING btree (linea_id);
 CREATE INDEX idx_venta_items_pedido_item ON public.venta_items USING btree (pedido_item_id);
 CREATE INDEX idx_venta_items_producto_id ON public.venta_items USING btree (producto_id);
@@ -10447,13 +10469,17 @@ CREATE OR REPLACE FUNCTION public.fn_pedido_liberar_tareas_pendientes(p_pedido_i
 AS $function$
 DECLARE
   v_tarea RECORD;
+  v_de_venta boolean;
 BEGIN
   PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
+  -- Mig 488: en un pedido que nació de una venta el picking nunca reservó (mig 316): la reserva es de la VENTA y se libera
+  -- (o no) con la venta. Antes se descontaba igual y quedaba la venta reservada sin stock reservado.
+  SELECT (venta_origen_id IS NOT NULL) INTO v_de_venta FROM pedidos WHERE id = p_pedido_id;
 
   FOR v_tarea IN
     SELECT * FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado IN ('pendiente', 'en_curso')
   LOOP
-    IF v_tarea.lpn_origen IS NOT NULL THEN
+    IF v_tarea.lpn_origen IS NOT NULL AND NOT COALESCE(v_de_venta, false) THEN
       UPDATE inventario_lineas SET cantidad_reservada = GREATEST(0, cantidad_reservada - v_tarea.cantidad)
       WHERE tenant_id = v_tarea.tenant_id AND producto_id = v_tarea.producto_id
         AND ubicacion_id = v_tarea.ubicacion_origen_id AND lpn = v_tarea.lpn_origen AND activo = true;
@@ -12830,6 +12856,7 @@ DECLARE
   v_pedido     RECORD;
   v_linea      RECORD;
   v_nuevo_lpn  text;
+  v_nueva_id   uuid;
   v_restante   integer;
   v_tomar      integer;
 BEGIN
@@ -12864,12 +12891,20 @@ BEGIN
       activo = (cantidad - v_tomar) > 0 WHERE id = v_linea.id;
 
     v_nuevo_lpn := 'LPN-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS');
+    -- Mig 488: en un pedido de VENTA lo des-pickeado sigue reservado para esa venta (antes quedaba libre y la venta
+    -- reservada se quedaba sin stock reservado).
     INSERT INTO inventario_lineas
-      (tenant_id, producto_id, lpn, cantidad, estado_id, ubicacion_id, sucursal_id, proveedor_id,
+      (tenant_id, producto_id, lpn, cantidad, cantidad_reservada, estado_id, ubicacion_id, sucursal_id, proveedor_id,
        nro_lote, fecha_vencimiento, pais_origen, talle, color, encaje, formato, sabor_aroma)
     VALUES
-      (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar, v_linea.estado_id, p_ubicacion_destino_id, v_tarea.sucursal_id, v_linea.proveedor_id,
-       v_linea.nro_lote, v_linea.fecha_vencimiento, v_linea.pais_origen, v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma);
+      (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar,
+       CASE WHEN v_pedido.venta_origen_id IS NOT NULL THEN v_tomar ELSE 0 END,
+       v_linea.estado_id, p_ubicacion_destino_id, v_tarea.sucursal_id, v_linea.proveedor_id,
+       v_linea.nro_lote, v_linea.fecha_vencimiento, v_linea.pais_origen, v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma)
+    RETURNING id INTO v_nueva_id;
+    IF v_pedido.venta_origen_id IS NOT NULL THEN
+      PERFORM fn_venta_reservas_mover_anotacion(v_pedido.venta_origen_id, v_linea.id, v_nueva_id, v_tomar);
+    END IF;
 
     v_restante := v_restante - v_tomar;
   END LOOP;
@@ -12894,11 +12929,17 @@ BEGIN
 
       v_nuevo_lpn := 'LPN-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS');
       INSERT INTO inventario_lineas
-        (tenant_id, producto_id, lpn, cantidad, estado_id, ubicacion_id, sucursal_id, proveedor_id,
+        (tenant_id, producto_id, lpn, cantidad, cantidad_reservada, estado_id, ubicacion_id, sucursal_id, proveedor_id,
          nro_lote, fecha_vencimiento, pais_origen, talle, color, encaje, formato, sabor_aroma)
       VALUES
-        (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar, v_linea.estado_id, p_ubicacion_destino_id, v_tarea.sucursal_id, v_linea.proveedor_id,
-         v_linea.nro_lote, v_linea.fecha_vencimiento, v_linea.pais_origen, v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma);
+        (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar,
+         CASE WHEN v_pedido.venta_origen_id IS NOT NULL THEN v_tomar ELSE 0 END,
+         v_linea.estado_id, p_ubicacion_destino_id, v_tarea.sucursal_id, v_linea.proveedor_id,
+         v_linea.nro_lote, v_linea.fecha_vencimiento, v_linea.pais_origen, v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma)
+      RETURNING id INTO v_nueva_id;
+      IF v_pedido.venta_origen_id IS NOT NULL THEN
+        PERFORM fn_venta_reservas_mover_anotacion(v_pedido.venta_origen_id, v_linea.id, v_nueva_id, v_tomar);
+      END IF;
 
       v_restante := v_restante - v_tomar;
     END LOOP;
@@ -13165,6 +13206,86 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_venta_consumir_reservas(p_venta_item_id uuid)
+ RETURNS TABLE(linea_id uuid, lpn text, ubicacion_id uuid, ubicacion_nombre text, sucursal_id uuid, cantidad integer, talle text, color text, encaje text, formato text, sabor_aroma text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+DECLARE
+  v_item  RECORD;
+  v_r     RECORD;
+  v_l     RECORD;
+  v_x     integer;
+BEGIN
+  SELECT vi.id, vi.tenant_id, v.sucursal_id, v.estado
+    INTO v_item
+    FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+   WHERE vi.id = p_venta_item_id
+   FOR UPDATE OF v;
+  IF v_item.id IS NULL THEN RAISE EXCEPTION 'Ítem de venta inexistente'; END IF;
+  PERFORM fn_venta_reserva_check_acceso(v_item.tenant_id, v_item.sucursal_id);
+  IF v_item.estado IN ('despachada', 'facturada', 'cancelada', 'devuelta') THEN
+    RAISE EXCEPTION 'La venta está % — no se puede rebajar su reserva', v_item.estado;
+  END IF;
+
+  FOR v_r IN
+    SELECT r.id, r.linea_id, r.cantidad FROM venta_item_reservas r
+     WHERE r.venta_item_id = p_venta_item_id
+     ORDER BY r.created_at
+  LOOP
+    -- Mismo orden de locks que fn_venta_reservar_linea: primero el LPN, después la anotación.
+    SELECT il.id, il.lpn, il.ubicacion_id, u.nombre AS ubic_nombre, il.sucursal_id, il.cantidad,
+           il.talle, il.color, il.encaje, il.formato, il.sabor_aroma
+      INTO v_l
+      FROM inventario_lineas il LEFT JOIN ubicaciones u ON u.id = il.ubicacion_id
+     WHERE il.id = v_r.linea_id
+     FOR UPDATE OF il;
+
+    -- Primero se cierra la reserva (el trigger baja cantidad_reservada) y DESPUÉS se rebaja la cantidad: al revés violaría
+    -- chk_cantidad_mayor_o_igual_reservada (cantidad >= cantidad_reservada).
+    DELETE FROM venta_item_reservas WHERE id = v_r.id;
+
+    v_x := LEAST(v_r.cantidad, GREATEST(COALESCE(v_l.cantidad, 0), 0));
+    IF v_x > 0 THEN
+      -- Sigue activo si le queda stock o si todavía tiene reservas de otras ventas.
+      UPDATE inventario_lineas
+         SET cantidad = cantidad - v_x,
+             activo = (cantidad - v_x) > 0 OR COALESCE(cantidad_reservada, 0) > 0
+       WHERE id = v_r.linea_id;
+
+      linea_id := v_l.id; lpn := v_l.lpn; ubicacion_id := v_l.ubicacion_id; ubicacion_nombre := v_l.ubic_nombre;
+      sucursal_id := v_l.sucursal_id; cantidad := v_x;
+      talle := v_l.talle; color := v_l.color; encaje := v_l.encaje; formato := v_l.formato; sabor_aroma := v_l.sabor_aroma;
+      RETURN NEXT;
+    END IF;
+  END LOOP;
+  RETURN;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_item_reserva_al_borrar()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Venta despachada/facturada: el stock ya salió por otro camino; la fila es un resto → no se descuenta nada (si no,
+  -- bajaría la reserva de OTRAS ventas del mismo LPN). Venta inexistente (borrado en cascada): se libera.
+  IF EXISTS (SELECT 1 FROM ventas WHERE id = OLD.venta_id AND estado IN ('despachada', 'facturada')) THEN
+    RETURN NULL;
+  END IF;
+  UPDATE inventario_lineas
+     SET cantidad_reservada = GREATEST(0, COALESCE(cantidad_reservada, 0) - OLD.cantidad)
+   WHERE id = OLD.linea_id;
+  RETURN NULL;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_venta_items_precio_lista()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -13257,6 +13378,86 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_venta_liberar_reservas(p_venta_id uuid)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_venta RECORD;
+BEGIN
+  SELECT id, tenant_id, sucursal_id INTO v_venta FROM ventas WHERE id = p_venta_id;
+  IF v_venta.id IS NULL THEN RETURN 0; END IF;
+  PERFORM fn_venta_reserva_check_acceso(v_venta.tenant_id, v_venta.sucursal_id);
+  RETURN fn_venta_liberar_reservas_nucleo(p_venta_id);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_liberar_reservas_nucleo(p_venta_id uuid)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_venta     RECORD;
+  v_item      RECORD;
+  v_ln        RECORD;
+  v_total     numeric := 0;
+  v_borrado   numeric;
+  v_restante  numeric;
+  v_lib       numeric;
+BEGIN
+  SELECT id, tenant_id, sucursal_id, estado INTO v_venta FROM ventas WHERE id = p_venta_id FOR UPDATE;
+  IF v_venta.id IS NULL THEN RETURN 0; END IF;
+
+  FOR v_item IN
+    SELECT vi.id, vi.producto_id, vi.cantidad, vi.reserva_anotada
+      FROM venta_items vi JOIN productos p ON p.id = vi.producto_id
+     WHERE vi.venta_id = p_venta_id AND NOT COALESCE(p.tiene_series, false)
+     FOR UPDATE OF vi
+  LOOP
+    -- Lo anotado: borrar = liberar (trigger; no descuenta si la venta ya salió).
+    WITH b AS (DELETE FROM venta_item_reservas WHERE venta_item_id = v_item.id RETURNING cantidad)
+    SELECT COALESCE(SUM(cantidad), 0) INTO v_borrado FROM b;
+    IF v_venta.estado NOT IN ('despachada', 'facturada') THEN
+      v_total := v_total + v_borrado;
+    END IF;
+
+    -- Compatibilidad, UNA sola vez por ítem: el remanente sin anotar de una reserva vieja (o de webhook).
+    IF NOT v_item.reserva_anotada AND v_venta.estado = 'reservada' THEN
+      v_restante := v_item.cantidad - v_borrado;
+      FOR v_ln IN
+        SELECT il.id,
+               COALESCE(il.cantidad_reservada, 0)
+                 - COALESCE((SELECT SUM(r.cantidad) FROM venta_item_reservas r WHERE r.linea_id = il.id), 0) AS libre_de_anotar
+          FROM inventario_lineas il
+         WHERE il.tenant_id = v_venta.tenant_id AND il.producto_id = v_item.producto_id AND il.activo
+           AND COALESCE(il.cantidad_reservada, 0) > 0
+           AND (v_venta.sucursal_id IS NULL OR il.sucursal_id IS NULL OR il.sucursal_id = v_venta.sucursal_id)
+         ORDER BY il.created_at
+         FOR UPDATE OF il
+      LOOP
+        EXIT WHEN v_restante <= 0;
+        v_lib := FLOOR(LEAST(v_restante, v_ln.libre_de_anotar));
+        IF v_lib <= 0 THEN CONTINUE; END IF;
+        UPDATE inventario_lineas SET cantidad_reservada = GREATEST(0, cantidad_reservada - v_lib) WHERE id = v_ln.id;
+        v_restante := v_restante - v_lib;
+        v_total := v_total + v_lib;
+      END LOOP;
+    END IF;
+
+    -- Ya liberado: una segunda llamada no vuelve a entrar al camino de compatibilidad.
+    UPDATE venta_items SET reserva_anotada = true WHERE id = v_item.id AND NOT reserva_anotada;
+  END LOOP;
+
+  RETURN v_total;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_venta_requiere_pedido(p_venta_id uuid, p_con_envio boolean DEFAULT false)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -13284,6 +13485,110 @@ BEGIN
   SELECT clasificacion INTO v_clasif FROM canales_venta WHERE id = v_canal_id;
   RETURN COALESCE(v_clasif, 'presencial') = 'online';
 END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_reserva_check_acceso(p_tenant_id uuid, p_venta_sucursal uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- Sin usuario (service_role: webhooks, sweeps): pasa.
+  IF auth.uid() IS NULL THEN RETURN; END IF;
+  IF p_tenant_id IS DISTINCT FROM get_user_tenant_id() THEN
+    RAISE EXCEPTION 'Venta inexistente o sin permisos' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF NOT (auth_ve_todas_sucursales() OR p_venta_sucursal IS NULL OR p_venta_sucursal = auth_user_sucursal()) THEN
+    RAISE EXCEPTION 'Venta inexistente o sin permisos' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_reservar_linea(p_venta_item_id uuid, p_linea_id uuid, p_cantidad numeric)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_item     RECORD;
+  v_linea    RECORD;
+  v_reservar numeric;
+BEGIN
+  IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN 0; END IF;
+
+  -- Lock de la venta: una liberación concurrente no puede dejar una reserva anotada sobre una venta ya cancelada.
+  SELECT vi.id, vi.tenant_id, vi.venta_id, vi.producto_id, v.sucursal_id, v.estado
+    INTO v_item
+    FROM venta_items vi JOIN ventas v ON v.id = vi.venta_id
+   WHERE vi.id = p_venta_item_id
+   FOR UPDATE OF v;
+  IF v_item.id IS NULL THEN RAISE EXCEPTION 'Ítem de venta inexistente'; END IF;
+  PERFORM fn_venta_reserva_check_acceso(v_item.tenant_id, v_item.sucursal_id);
+  IF v_item.estado IN ('despachada', 'facturada', 'cancelada', 'devuelta') THEN
+    RAISE EXCEPTION 'La venta está % — no se puede reservar stock', v_item.estado;
+  END IF;
+
+  SELECT id, tenant_id, producto_id, sucursal_id, activo, cantidad, COALESCE(cantidad_reservada, 0) AS reservada
+    INTO v_linea
+    FROM inventario_lineas WHERE id = p_linea_id FOR UPDATE;
+  IF v_linea.id IS NULL OR NOT v_linea.activo THEN RETURN 0; END IF;   -- igual que fn_reservar_stock_linea: no rompe al caller
+  IF v_linea.tenant_id <> v_item.tenant_id OR v_linea.producto_id <> v_item.producto_id THEN
+    RAISE EXCEPTION 'El LPN no corresponde al producto de la venta';
+  END IF;
+  -- Inventario por sucursal estricto (la excepción de ubicaciones Globales llega en la Fase 1).
+  IF v_linea.sucursal_id IS NOT NULL AND v_item.sucursal_id IS NOT NULL AND v_linea.sucursal_id <> v_item.sucursal_id THEN
+    RAISE EXCEPTION 'Ese stock es de otra sucursal: no se puede reservar para esta venta' USING ERRCODE = 'check_violation';
+  END IF;
+
+  v_reservar := FLOOR(LEAST(p_cantidad, GREATEST(v_linea.cantidad - v_linea.reservada, 0)));
+  IF v_reservar <= 0 THEN RETURN 0; END IF;
+
+  UPDATE inventario_lineas SET cantidad_reservada = COALESCE(cantidad_reservada, 0) + v_reservar WHERE id = p_linea_id;
+
+  INSERT INTO venta_item_reservas (tenant_id, venta_id, venta_item_id, linea_id, producto_id, cantidad)
+  VALUES (v_item.tenant_id, v_item.venta_id, v_item.id, p_linea_id, v_item.producto_id, v_reservar::integer)
+  ON CONFLICT (venta_item_id, linea_id) DO UPDATE SET cantidad = venta_item_reservas.cantidad + EXCLUDED.cantidad;
+
+  UPDATE venta_items SET reserva_anotada = true WHERE id = v_item.id AND NOT reserva_anotada;
+
+  RETURN v_reservar;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_venta_reservas_mover_anotacion(p_venta_id uuid, p_linea_origen uuid, p_linea_destino uuid, p_cantidad integer)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_r    RECORD;
+  v_rest integer := p_cantidad;
+  v_t    integer;
+BEGIN
+  FOR v_r IN
+    SELECT id, venta_item_id, tenant_id, producto_id, cantidad FROM venta_item_reservas
+     WHERE venta_id = p_venta_id AND linea_id = p_linea_origen
+     ORDER BY created_at FOR UPDATE
+  LOOP
+    EXIT WHEN v_rest <= 0;
+    v_t := LEAST(v_rest, v_r.cantidad);
+    IF v_t = v_r.cantidad THEN
+      UPDATE venta_item_reservas SET linea_id = p_linea_destino WHERE id = v_r.id;
+    ELSE
+      UPDATE venta_item_reservas SET cantidad = cantidad - v_t WHERE id = v_r.id;
+      INSERT INTO venta_item_reservas (tenant_id, venta_id, venta_item_id, linea_id, producto_id, cantidad)
+      VALUES (v_r.tenant_id, p_venta_id, v_r.venta_item_id, p_linea_destino, v_r.producto_id, v_t)
+      ON CONFLICT (venta_item_id, linea_id) DO UPDATE SET cantidad = venta_item_reservas.cantidad + EXCLUDED.cantidad;
+    END IF;
+    v_rest := v_rest - v_t;
+  END LOOP;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_venta_tope_descuento_check(p_venta_id uuid)
@@ -13949,9 +14254,6 @@ DECLARE
   v_count      INTEGER := 0;
   r            RECORD;
   it           RECORD;
-  ln           RECORD;
-  v_restante   NUMERIC;
-  v_lib        NUMERIC;
   v_acreditar  NUMERIC;
 BEGIN
   -- 🔒 mig 437: un usuario solo puede liberar las reservas de SU negocio. Sin usuario (auth.uid()
@@ -13975,32 +14277,18 @@ BEGIN
       AND COALESCE(reservado_at, updated_at) < NOW() - (v_dias * INTERVAL '1 day')
   LOOP
     BEGIN
+      -- Series: igual que antes.
       FOR it IN
-        SELECT vi.id AS item_id, vi.producto_id, vi.cantidad, p.tiene_series
-        FROM venta_items vi
-        JOIN productos p ON p.id = vi.producto_id
-        WHERE vi.venta_id = r.id
+        SELECT vi.id AS item_id FROM venta_items vi JOIN productos p ON p.id = vi.producto_id
+        WHERE vi.venta_id = r.id AND p.tiene_series
       LOOP
-        IF it.tiene_series THEN
-          UPDATE inventario_series
-            SET reservado = false
-            WHERE id IN (SELECT serie_id FROM venta_series WHERE venta_item_id = it.item_id);
-        ELSE
-          v_restante := it.cantidad;
-          FOR ln IN
-            SELECT id, cantidad_reservada FROM inventario_lineas
-            WHERE producto_id = it.producto_id AND activo = true AND cantidad_reservada > 0
-            ORDER BY created_at
-          LOOP
-            EXIT WHEN v_restante <= 0;
-            v_lib := LEAST(ln.cantidad_reservada, v_restante);
-            UPDATE inventario_lineas
-              SET cantidad_reservada = cantidad_reservada - v_lib
-              WHERE id = ln.id;
-            v_restante := v_restante - v_lib;
-          END LOOP;
-        END IF;
+        UPDATE inventario_series
+          SET reservado = false
+          WHERE id IN (SELECT serie_id FROM venta_series WHERE venta_item_id = it.item_id);
       END LOOP;
+      -- Mig 488: el resto, solo lo que reservó ESTA venta (antes: las primeras reservas del producto, de cualquiera).
+      -- Núcleo sin chequeo de sucursal: el vencimiento es del negocio (como antes), lo dispare quien lo dispare.
+      PERFORM fn_venta_liberar_reservas_nucleo(r.id);
 
       IF r.monto_pagado > 0.01 AND r.cliente_id IS NOT NULL THEN
         v_acreditar := round((GREATEST(0, r.monto_pagado * (1 - v_penal_pct / 100.0)))::numeric, 2);
@@ -16887,6 +17175,7 @@ CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.
 CREATE TRIGGER trg_guard_baja_usuario BEFORE UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_baja_usuario();
 CREATE TRIGGER trg_guard_debe_cambiar_password BEFORE UPDATE OF debe_cambiar_password ON public.users FOR EACH ROW WHEN ((new.debe_cambiar_password IS DISTINCT FROM old.debe_cambiar_password)) EXECUTE FUNCTION fn_guard_debe_cambiar_password();
 CREATE TRIGGER trg_guard_rol_admin BEFORE INSERT OR UPDATE OF rol ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_rol_admin();
+CREATE TRIGGER trg_venta_item_reserva_al_borrar AFTER DELETE ON public.venta_item_reservas FOR EACH ROW EXECUTE FUNCTION fn_venta_item_reserva_al_borrar();
 CREATE TRIGGER trg_venta_items_auto_pedido AFTER INSERT ON public.venta_items REFERENCING NEW TABLE AS nuevas FOR EACH STATEMENT EXECUTE FUNCTION trg_venta_items_sync_pedido();
 CREATE TRIGGER trg_venta_items_precio_lista BEFORE INSERT OR UPDATE ON public.venta_items FOR EACH ROW EXECUTE FUNCTION fn_venta_items_precio_lista();
 CREATE TRIGGER trg_venta_items_sucursal BEFORE INSERT OR UPDATE OF venta_id ON public.venta_items FOR EACH ROW EXECUTE FUNCTION fn_venta_items_set_sucursal();
@@ -17077,6 +17366,7 @@ ALTER TABLE public.unidades_medida_fisicas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_auditoria ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_item_despachos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.venta_item_reservas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_series ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
@@ -17971,6 +18261,8 @@ CREATE POLICY venta_item_despachos_tenant ON public.venta_item_despachos AS PERM
    FROM ventas v
   WHERE ((v.id = venta_item_despachos.venta_id) AND ((v.sucursal_id IS NULL) OR (v.sucursal_id = auth_user_sucursal()))))))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY venta_item_reservas_select ON public.venta_item_reservas AS PERMISSIVE FOR SELECT TO authenticated
+  USING ((tenant_id = get_user_tenant_id()));
 CREATE POLICY venta_items_tenant ON public.venta_items AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (venta_id IS NULL) OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
@@ -18460,6 +18752,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ve
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_item_despachos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_item_despachos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_item_despachos TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_item_reservas TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_item_reservas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_items TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_items TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.venta_items TO service_role;

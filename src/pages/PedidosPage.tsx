@@ -55,9 +55,20 @@ export default function PedidosPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { tenant, user } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
+
+  // "Ver en Envíos": abre Envíos filtrado EXACTO por el envío de este pedido (por id, no por texto). El envío se busca por
+  // el pedido o, si nació de la venta, por la venta de origen; con varios, el más reciente.
+  const irAEnvioDelPedido = async (p: any) => {
+    const filtro = p.venta_origen_id ? `pedido_id.eq.${p.id},venta_id.eq.${p.venta_origen_id}` : `pedido_id.eq.${p.id}`
+    const { data } = await supabase.from('envios').select('id').eq('tenant_id', tenant!.id).or(filtro)
+      .order('created_at', { ascending: false }).limit(1)
+    const envioId = data?.[0]?.id
+    if (!envioId) { toast('Este pedido todavía no tiene un envío creado.', { icon: 'ℹ️' }); navigate('/envios'); return }
+    navigate(`/envios?envio=${envioId}`)
+  }
 
   // E3 — gate client-side por transición (config Pedidos → tabla de roles), mismo criterio que
   // ajuste_autorizacion_roles (mig 228): filtra qué botón se muestra, no reemplaza los guards
@@ -92,7 +103,9 @@ export default function PedidosPage() {
   // Deep-link desde AlertasPage — ?estado= pre-filtra el estado (ej. "en_preparacion" para
   // "sin avanzar"); mismo patrón que Ventas/Envíos con `busqueda`. GO, 2026-08-12: antes estos
   // links caían siempre en /pedidos a secas, sin filtrar nada.
-  const [filtroEstado, setFiltroEstado] = useState(() => searchParams.get('estado') ?? '')
+  // Default "Pendiente" (= confirmado) al entrar (GO 2026-10-09). Con un link que busca algo puntual (?busqueda=) se arranca
+  // en "Todos": si no, el pedido buscado podría quedar oculto por no estar pendiente.
+  const [filtroEstado, setFiltroEstado] = useState(() => searchParams.get('estado') ?? (searchParams.get('busqueda') ? '' : 'confirmado'))
   // Buscador por píldoras (mismo mecanismo que /picking, /productos e /inventario — GO 2026-08-12:
   // el buscador de texto plano hacía substring sobre N°/referencia/cliente a la vez, así que
   // buscar el pedido "2" también traía el 82, el 102... `?busqueda=` (deep-link desde Ventas/
@@ -256,11 +269,16 @@ export default function PedidosPage() {
 
   // ── Cajas abiertas (mismo criterio que VentasPage: excluye la Caja Fuerte) ──────────
   const { data: sesionesAbiertas = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    // Clave propia ('pedidos' al final): el POS usa ['caja-sesiones-abiertas', tenant, sucursal] con OTRO select (trae
+    // la moneda); compartir la clave le servía al POS sesiones sin moneda y una caja USD pasaba por ARS.
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId, 'pedidos'],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
+      // Solo las cajas de la sucursal activa (GO 2026-10-08), igual que el POS.
+      let q = supabase.from('caja_sesiones')
         .select('id, caja_id, cajas(nombre, es_caja_fuerte)')
         .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return (data ?? []).filter((s: any) => !s.cajas?.es_caja_fuerte)
     },
     enabled: !!tenant && !!entregaModal,
@@ -270,10 +288,11 @@ export default function PedidosPage() {
   const { data: tareasPedidoExp = [] } = useQuery({
     queryKey: ['pedido-tareas', expandedId],
     queryFn: async () => {
-      const { data } = await supabase.from('wms_tareas')
-        .select('id, tipo, estado, producto_id, cantidad, lpn_origen, tarea_precedente_id, productos(nombre, sku)')
-        .eq('pedido_id', expandedId!).order('created_at')
-      return data ?? []
+      // Mig 490 — por función: incluye las tareas de OTRA sucursal (stock en una ubicación Global, lo pickea la sucursal
+      // dueña). Con la RLS por sucursal, un usuario de esta sucursal no las veía y el avance quedaba incompleto.
+      const { data, error } = await supabase.rpc('fn_pedido_tareas_detalle', { p_pedido_ids: [expandedId!] })
+      if (error) throw error
+      return ((data ?? []) as any[]).map(t => ({ ...t, productos: { nombre: t.producto_nombre, sku: t.producto_sku } }))
     },
     enabled: !!expandedId,
   })
@@ -769,7 +788,7 @@ export default function PedidosPage() {
     const puedeEntregarAca = ['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && !p.venta_origen_id
     const linkEntrega = p.venta_origen_id && !['entregado', 'cancelado'].includes(p.estado)
       ? (p.requiere_envio
-        ? { label: 'Ver en Envíos', corto: 'Ver en Envíos', icon: Truck, ir: () => navigate('/envios'), title: 'Este pedido sale por envío: se despacha desde el módulo Envíos' }
+        ? { label: 'Ver en Envíos', corto: 'Ver en Envíos', icon: Truck, ir: () => irAEnvioDelPedido(p), title: 'Este pedido sale por envío: se despacha desde el módulo Envíos' }
         : { label: 'Entregar en mostrador', corto: 'Entregar', icon: Store, ir: () => navigate('/ventas?tab=pedidos'), title: 'Este pedido ya tiene su venta: lo entrega el mostrador desde Ventas → Pedidos' })
       : null
     const irAPicking = () => navigate(`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)
@@ -826,7 +845,9 @@ export default function PedidosPage() {
       // hay que devolverla primero desde Ventas → Historial (link en el detalle expandido).
       {
         label: 'Cancelar pedido', icon: XCircle, danger: true, disabled: cancelarPedido.isPending,
-        hidden: !(p.estado !== 'cancelado' && puedeYo('cancelar')),
+        // Entregado (total o en parte) no se cancela (mig 492): lo pendiente se cierra con "Cerrar pedido" y una devolución va
+        // por Ventas → Devolución.
+        hidden: !(!['cancelado', 'entregado', 'entregado_parcial'].includes(p.estado) && puedeYo('cancelar')),
         onClick: async () => { if (await confirmar(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`, { danger: true })) cancelarPedido.mutate(p) },
       },
     ]
@@ -1007,9 +1028,9 @@ export default function PedidosPage() {
           return (
             <button key={f.id || 'todos'} type="button" aria-pressed={activo}
               onClick={() => setFiltroEstado(activo && f.id ? '' : f.id)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                 activo
-                  ? 'bg-primary text-white dark:bg-white dark:text-gray-900 font-medium'
+                  ? 'bg-accent hover:bg-accent/90 text-white font-medium'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
               {f.label}
               <span className={`tabular-nums text-xs ${activo ? 'opacity-70' : 'text-gray-400 dark:text-gray-500'}`}>{f.n}</span>
@@ -1018,7 +1039,7 @@ export default function PedidosPage() {
         })}
         {(conteoVencidos > 0 || soloVencidos) && (
           <button type="button" aria-pressed={soloVencidos} onClick={() => setSoloVencidos(v => !v)}
-            className={`ml-1 flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            className={`ml-1 flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
               soloVencidos
                 ? 'bg-red-600 text-white font-medium'
                 : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>
@@ -1198,10 +1219,21 @@ export default function PedidosPage() {
                                   {t.tipo === 'replenishment' ? 'Reabastecimiento' : 'Picking'} · {t.estado}
                                 </span>
                                 <span className="truncate">{t.productos?.nombre} ({Number(t.cantidad)})</span>
+                                {t.sucursal_id && p.sucursal_id && t.sucursal_id !== p.sucursal_id && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                                    title="Stock de otra sucursal en una ubicación Global: la tarea la hace esa sucursal">
+                                    la pickea {t.sucursal_nombre ?? 'otra sucursal'}
+                                  </span>
+                                )}
                                 {/* Mig 300: fn_unpick_tarea_wms ya soporta tareas encadenadas a un
                                     reabastecimiento (fallback por producto+ubicación cuando el LPN
-                                    exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas. */}
-                                {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar') && (
+                                    exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas.
+                                    Mig 490: la tarea de otra sucursal se ve en solo lectura (la deshace esa sucursal). */}
+                                {/* Mig 493: solo con el pedido vivo y la venta sin despachar (entregado = el stock ya salió). */}
+                                {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar')
+                                  && ['en_preparacion', 'listo_para_entrega'].includes(p.estado)
+                                  && !['despachada', 'facturada'].includes(p.ventas?.estado)
+                                  && (puedeVerTodas || !t.sucursal_id || t.sucursal_id === sucursalId) && (
                                   <button onClick={() => setUnpickModal(t)}
                                     className="ml-auto text-red-500 hover:text-red-600 hover:underline">
                                     Deshacer

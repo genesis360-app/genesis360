@@ -34,18 +34,23 @@ export function movimientoCajaCobranza(metodo: string, clienteNombre?: string | 
 
 /**
  * Resuelve a qué sesión de caja abierta imputar la cobranza:
- * 1º la sesión propia del usuario; 2º la única abierta del tenant.
+ * 1º la sesión propia del usuario; 2º la única abierta del tenant (o de la sucursal, si se pasa).
  * Varias abiertas y ninguna propia → null (ambiguo, no se adivina).
  */
 export async function resolverSesionCajaCobranza(
   supabase: SupabaseClient,
   tenantId: string,
   usuarioId?: string | null,
+  sucursalId?: string | null,
 ): Promise<string | null> {
-  const { data } = await supabase.from('caja_sesiones')
+  let q = supabase.from('caja_sesiones')
     .select('id, usuario_id')
     .eq('tenant_id', tenantId)
     .eq('estado', 'abierta')
+  // Solo cajas de la sucursal activa (GO 2026-10-08): con el cambio de sucursal libre, una sesión propia
+  // abierta en otra sucursal no puede recibir la cobranza hecha acá.
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+  const { data } = await q
   const abiertas = data ?? []
   if (abiertas.length === 0) return null
   const propia = usuarioId ? abiertas.find((s: any) => s.usuario_id === usuarioId) : null
@@ -65,9 +70,11 @@ export async function cobrarDeudaCCFIFO(
     sesionCajaId?: string | null
     /** Cuenta de origen para el ingreso_informativo de métodos no-efectivo */
     cuentaOrigenId?: string | null
+    /** Sucursal activa: la caja auto-resuelta tiene que ser de esta sucursal */
+    sucursalId?: string | null
   },
 ): Promise<{ aplicado: number; ventasSaldadas: number; cajaRegistrada: boolean; requiereCaja: boolean }> {
-  const { tenantId, clienteId, monto, metodo, usuarioId, clienteNombre, sesionCajaId, cuentaOrigenId } = args
+  const { tenantId, clienteId, monto, metodo, usuarioId, clienteNombre, sesionCajaId, cuentaOrigenId, sucursalId } = args
   if (!(monto > 0)) return { aplicado: 0, ventasSaldadas: 0, cajaRegistrada: false, requiereCaja: false }
 
   // EFECTIVO: exigir una caja imputable ANTES de saldar. Si no hay, NO tocamos la deuda
@@ -76,7 +83,7 @@ export async function cobrarDeudaCCFIFO(
   const esEfectivo = (metodo ?? '').trim().toLowerCase() === 'efectivo'
   let sesionId: string | null = sesionCajaId ?? null
   if (esEfectivo) {
-    if (!sesionId) sesionId = await resolverSesionCajaCobranza(supabase, tenantId, usuarioId)
+    if (!sesionId) sesionId = await resolverSesionCajaCobranza(supabase, tenantId, usuarioId, sucursalId)
     if (!sesionId) return { aplicado: 0, ventasSaldadas: 0, cajaRegistrada: false, requiereCaja: true }
   }
 
@@ -108,7 +115,7 @@ export async function cobrarDeudaCCFIFO(
     const mov = movimientoCajaCobranza(metodo, clienteNombre)
     if (mov) {
       try {
-        const sid = sesionId ?? await resolverSesionCajaCobranza(supabase, tenantId, usuarioId)
+        const sid = sesionId ?? await resolverSesionCajaCobranza(supabase, tenantId, usuarioId, sucursalId)
         if (sid) {
           const { error } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenantId,

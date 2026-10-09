@@ -8,6 +8,8 @@ updated: 2026-10-05
 
 # Módulo Configuración
 
+> 📅 **2026-10-09 (✅ EN PROD v1.241.0, mig 485):** Configuración → Pedidos suma el default de **entrega parcial** (`tenants.pedido_entrega_parcial_default`); cada pedido puede sobrescribirlo (`pedidos.acepta_entrega_parcial`, NULL = hereda). Ver [[wiki/features/pedidos]].
+
 **Página:** `src/pages/ConfigPage.tsx` (`/configuracion`)  
 **Acceso:** DUEÑO · ADMIN (lectura para otros roles según campo)
 

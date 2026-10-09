@@ -8,7 +8,7 @@ updated: 2026-10-08
 
 # Clientes y Proveedores
 
-> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`):** la API pública `data-api` pedía `clientes.direccion` (no existe) → el export de
+> 🐛 **2026-10-08 (✅ EN PROD v1.241.0, commit `d5b43d72`):** la API pública `data-api` pedía `clientes.direccion` (no existe) → el export de
 > clientes daba 400; ahora `direccion:domicilio_fiscal`. Pendiente: `updated_since` en clientes/proveedores falla porque esas tablas
 > no tienen `updated_at` (0 API keys activas en PROD). Ver [[wiki/architecture/edge-functions]].
 

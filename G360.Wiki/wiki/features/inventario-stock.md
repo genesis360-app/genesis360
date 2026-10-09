@@ -3,12 +3,14 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude, race-condition, reservas]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331, 362, src/lib/traerTodo.ts]
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # Inventario y Stock
 
-> 📅 **2026-10-08 (🟡 DEV, mig 482):** la base rechaza vencimientos con año de más de 4 dígitos (la comparación de vencimientos
+> 🟡 **2026-10-09 (DEV v1.242.0, migs 488-491; sin PROD; UAT §111, §115; e2e 192, 194-196):** 🛑 **Reserva atada a la venta (mig 488, REGLA #0):** tabla `venta_item_reservas` + `venta_items.reserva_anotada`, funciones `fn_venta_reservar_linea`/`fn_venta_liberar_reservas`/`fn_venta_consumir_reservas`; borrar la anotación = liberar (salvo venta despachada/facturada); backfill de reservas vivas (PROD 7 ventas). Corrige: anular liberaba reservas ajenas, despachar descontaba reservas ajenas, vencimiento de reservas a ciegas, deslanzar/des-pickear. **Ubicaciones Globales** (`ubicaciones.sucursal_id IS NULL`): el stock sigue siendo de la sucursal que lo cargó pero se ve/vende desde todas; el movimiento al despachar va con la sucursal dueña del LPN. Pendiente: webhooks ML/TN al modelo de reservas; series y pedidos manuales con Globales.
+
+> 📅 **2026-10-08 (✅ EN PROD v1.241.0, mig 482):** la base rechaza vencimientos con año de más de 4 dígitos (la comparación de vencimientos
 > como texto daba "20207-04-04" por vencido); los inputs de vencimiento tienen `max="9999-12-31"`. Pedido de GO en borrador:
 > picking multisucursal con ubicaciones Globales (UAT §111, a definir — choca con "inventario por sucursal estricto").
 

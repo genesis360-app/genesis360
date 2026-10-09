@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, ChevronDown, CalendarClock, ScanBarcode, CheckCircle2, XCircle, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { completarPedidosDeTareas } from '@/lib/pedidosDeTareas'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -70,7 +71,7 @@ export function TareasWmsPanel({ onIrAPicking, busquedaInicial }: {
       if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
       const { data, error } = await q
       if (error) throw error
-      return data ?? []
+      return await completarPedidosDeTareas((data ?? []) as any[])
     },
     enabled: !!tenant,
   })
@@ -441,8 +442,8 @@ export function TareasWmsPanel({ onIrAPicking, busquedaInicial }: {
                   return (
                     <button key={id || 'todas'} type="button" aria-pressed={activo}
                       onClick={() => setFiltroTipoWms(activo && id ? '' : id)}
-                      className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-                        activo ? 'bg-primary text-white dark:bg-white dark:text-gray-900 font-medium' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
+                      className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+                        activo ? 'bg-accent hover:bg-accent/90 text-white font-medium' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
                       {label}
                       <span className={`tabular-nums text-xs ${activo ? 'opacity-70' : 'text-gray-400 dark:text-gray-500'}`}>{n}</span>
                     </button>

@@ -263,7 +263,7 @@ export default function RrhhPage() {
   const { tenant, user, setTenant } = useAuthStore()
   // Las sucursales del negocio (todas, no la activa): un empleado pertenece a una, y eso gobierna
   // a qué sucursal se imputan su sueldo y sus cargas. Ver mig 409.
-  const { sucursales } = useSucursalFilter()
+  const { sucursales, sucursalId } = useSucursalFilter()
   // Los gastos que genera RRHH (sueldos, cargas, adelantos, liquidación final) están expresados en
   // la moneda del negocio. Sin estamparla caían en el default 'ARS' de la columna.
   const monedaNegocio = ((tenant as any)?.moneda ?? 'ARS').toUpperCase()
@@ -508,12 +508,16 @@ export default function RrhhPage() {
   })
 
   const { data: cajaSesiones = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    // Clave propia ('rrhh' al final): no compartir caché con el POS, que pide otro select.
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId, 'rrhh'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('caja_sesiones')
+      // Con una sucursal activa, solo sus cajas (GO 2026-10-08); en "Todas" se ofrecen todas.
+      let q = supabase.from('caja_sesiones')
         .select('id, caja_id, abierta_at, cajas(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'abierta')
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data, error } = await q
       if (error) throw error
       return data ?? []
     },

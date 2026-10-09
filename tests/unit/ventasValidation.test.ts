@@ -459,3 +459,21 @@ describe('conservaMontoAlCambiarMedio — cambiar de medio no debe borrar el mon
     expect(conservaMontoAlCambiarMedio('Efectivo USD', 'Efectivo USD', enDolares)).toBe(false)
   })
 })
+
+// Ubicaciones Globales (UAT §111): el plan de LPN marca el stock de otra sucursal.
+import { calcularLpnFuentes as _calcFuentes, usaStockDeOtraSucursal } from '@/lib/ventasValidation'
+describe('calcularLpnFuentes / usaStockDeOtraSucursal — stock de otra sucursal en Global', () => {
+  const propia = { id: 'a', lpn: 'A', cantidad: 2, cantidad_reservada: 0 }
+  const global = { id: 'b', lpn: 'B', cantidad: 10, cantidad_reservada: 0, sucursal_otra: 'Norte' }
+  it('si alcanza con lo propio, el plan no toca la Global', () => {
+    const f = _calcFuentes([propia, global], 2)
+    expect(f.map(x => x.linea_id)).toEqual(['a'])
+    expect(usaStockDeOtraSucursal(f)).toBeNull()
+  })
+  it('si no alcanza, completa con la Global y lo marca con la sucursal dueña', () => {
+    const f = _calcFuentes([propia, global], 5)
+    expect(f.map(x => [x.linea_id, x.cantidad])).toEqual([['a', 2], ['b', 3]])
+    expect(usaStockDeOtraSucursal(f)).toBe('Norte')
+  })
+  it('sin fuentes no rompe', () => { expect(usaStockDeOtraSucursal(undefined)).toBeNull() })
+})

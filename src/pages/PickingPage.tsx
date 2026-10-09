@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ListChecks, ScanBarcode, PackageCheck, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { completarPedidosDeTareas } from '@/lib/pedidosDeTareas'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -118,7 +119,7 @@ export default function PickingPage() {
       if (user?.id) q = q.or(`usuario_asignado_id.is.null,usuario_asignado_id.eq.${user.id}`)
       const { data, error } = await q
       if (error) throw error
-      return (data ?? []) as unknown as TareaWMS[]
+      return await completarPedidosDeTareas((data ?? []) as any[]) as unknown as TareaWMS[]
     },
     enabled: !!tenant,
   })
@@ -325,6 +326,9 @@ export default function PickingPage() {
                       title="Ver el pedido que originó esta tarea"
                       className="text-xs font-medium text-accent-text hover:underline flex items-center gap-1">
                       <ClipboardList size={11} /> Pedido #{t.pedidos.numero}
+                      {(t.pedidos as any).sucursal_nombre && (t.pedidos as any).sucursal_id !== (t as any).sucursal_id && (
+                        <span className="font-semibold"> · para {(t.pedidos as any).sucursal_nombre}</span>
+                      )}
                     </button>
                   )}
                   {/* Fecha de entrega del pedido (GO 2026-10-02): que preparación sepa qué va primero. */}

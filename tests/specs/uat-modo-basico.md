@@ -2411,6 +2411,71 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📦 §117 — No sale mercadería de una venta reservada: Retiro finaliza la venta (mig 495, 🟡 DEV) — 2026-10-09
+
+Reporte de GO (DEV, Almacén Jorgito): pedidos entregados "raros" y entregas facturadas que no cerraban. Diagnóstico: Ventas →
+Retiro → "Entregado" marcaba el pedido entregado y solo ABRÍA el detalle para finalizar; si se cerraba sin "Finalizar", la
+mercadería ya se había ido pero la venta quedaba reservada (stock sin rebajar, reserva trabada) — casos #20 y #68. Envíos
+tenía el mismo hueco. El resto (~300 pedidos raros) era basura de los e2e (113 no limpiaba y forzaba estados).
+
+| # | Escenario | Estado |
+|---|---|---|
+| 117.1 | Retiro → "Entregado" con la venta reservada → la finaliza en el mismo click (rebaja lo reservado) y después entrega | ✅ e2e 196 |
+| 117.2 | fn_pedido_entregar_retiro con la venta reservada → rechazo "finalizala antes de entregar" | ✅ e2e 113 + 196 |
+| 117.3 | Envío → despachado / en camino / entregado con la venta reservada → rechazo (trigger) | ✅ mig 495 |
+| 117.4 | Retiro sin caja abierta → no entrega (la finalización exige caja), con mensaje | ✅ código |
+| 117.5 | e2e 113 borra sus ventas, pedidos, envíos y tareas al terminar | ✅ verificado (0 ventas tras correrlo) |
+| 117.6 | Datos de DEV: ventas de los pedidos #20/#68 (las finalizó y facturó GO), envíos 13-15 entregados, basura e2e limpia (250 ventas/pedidos de prueba borrados, 52 cerrados) | ✅ 09/10 (autorizado por GO; 0 anomalías restantes, 0 LPN descuadrados) |
+
+## 🚫 §116 — Un pedido entregado (total o en parte) no se cancela ni se des-pickea (migs 492-493, 🟡 DEV) — 2026-10-09
+
+Reporte de GO: el menú de Pedidos ofrecía "Cancelar pedido" también en entregado / entregado parcial, y la base solo
+rechazaba 'entregado' (un 'entregado_parcial' se cancelaba al aprobar la solicitud). Verificado: 0 casos en PROD y DEV.
+
+| # | Escenario | Estado |
+|---|---|---|
+| 116.1 | Pedido entregado o entregado en parte → el menú no ofrece "Cancelar pedido" | ✅ código |
+| 116.2 | Aprobar una cancelación de un pedido entregado en parte → la base la rechaza y sugiere "Cerrar pedido" / devolución | ✅ mig 492 |
+| 116.3 | Pedido entregado en parte → "Cerrar pedido" sigue disponible para lo pendiente | ✅ sin cambios |
+| 116.4 | Pedido entregado (o entregado en parte, o de una venta ya despachada) → el detalle no ofrece "Deshacer" en la tarea de picking y la base lo rechaza (mig 493) | ✅ SQL sobre el #553 (rechazo) |
+| 116.5 | Pedido listo con la venta reservada → "Deshacer" sigue funcionando | ✅ SQL sobre el #475 (rollback) |
+
+## 🔒 §115 — La reserva queda atada a la venta (mig 488, 🟡 DEV) — 2026-10-09 · Fase 0 de §111
+
+Hallazgo (latente sin Globales): `cantidad_reservada` era un total por LPN y no se guardaba qué LPN reservó cada venta.
+Ahora `venta_item_reservas` anota venta × LPN; borrar la anotación = liberar (salvo venta ya despachada/facturada);
+`venta_items.reserva_anotada` evita la doble liberación; reservas viejas / de webhooks ML-TN se liberan por un camino de
+compatibilidad (solo sucursal de la venta, solo 'reservada', una vez).
+
+| # | Escenario | Estado |
+|---|---|---|
+| 115.1 | Dos reservas (A 3 u., B 2 u.) del mismo LPN → el LPN queda +5 reservado y cada venta tiene su anotación | ✅ e2e 192 + SQL (rollback) |
+| 115.2 | Anular una venta YA DESPACHADA no libera reservas ajenas (antes liberaba las primeras del producto) | ✅ e2e 192 |
+| 115.3 | Despachar A rebaja exactamente sus 3 u. del LPN anotado y deja reservadas las 2 de B | ✅ e2e 192 |
+| 115.4 | Liberar B devuelve 2; una segunda liberación no libera nada | ✅ e2e 192 |
+| 115.5 | Presupuesto → reserva toma solo stock de la sucursal de la venta (antes no filtraba) y la base rechaza un LPN de otra sucursal | ✅ código + función |
+| 115.6 | Vencimiento automático de reservas libera solo lo de la venta vencida | ✅ código (función) |
+| 115.7 | Deshacer el lanzamiento / cancelar un pedido de VENTA no baja la reserva de la venta | ✅ código (función) |
+| 115.8 | Des-pickear una tarea de un pedido de venta: lo des-pickeado sigue reservado para la venta (LPN nuevo + anotación) | ✅ código (función) |
+| 115.9 | Backfill: reservas vivas anotadas sin tocar LPN; ningún LPN con más anotado que reservado | ✅ DEV (114 ítems; 83 de prueba sin reserva real) |
+| 115.10 | Movimiento de stock de reserva → despachada lleva la sucursal de la venta | ✅ código |
+| 115.11 | Carrito en avanzado: un LPN sin ubicación no es el LPN sugerido ni suma al tope | ✅ código |
+| 115.12 | e2e de reservas/despacho/anulación existentes (04, 19, 24, 44, 57-59, 71, 96, 107, 113, 131, 137, 157, 190) | ✅ 29 passed, 3 skipped |
+
+## 💰 §114 — Cambiar de sucursal con la caja abierta + cajas solo de la sucursal activa (mig 487, 🟡 DEV) — 2026-10-08
+
+Decisión de GO (punto L4 revisado): quien ve todas las sucursales cambia de sucursal sin cerrar su caja; el POS y las demás
+pantallas ofrecen solo las cajas de la sucursal activa; el cajero sigue fijo en su sucursal (el store no le deja cambiar).
+
+| # | Escenario | Estado |
+|---|---|---|
+| 114.1 | Dueño con caja abierta en Norte cambia a Sur → sin diálogo de bloqueo; aviso "Tu caja … sigue abierta en Norte" | ✅ e2e 191 |
+| 114.2 | POS en Sur pide solo las sesiones abiertas de Sur (no ofrece la caja de Norte) | ✅ e2e 191 |
+| 114.3 | Selección explícita de caja en Norte + cambio a Sur → la venta no usa la caja de Norte (la selección se valida contra la lista) | ✅ código |
+| 114.4 | Pedidos (entrega), Clientes (retiro de saldo y cobranza CC), Caja → Cobranzas CC, RRHH (nómina) y Proveedores (pago CC) ofrecen/auto-resuelven solo cajas de la sucursal activa | ✅ código |
+| 114.5 | Mig 487: un CAJERO de Norte no puede insertar un movimiento en la sesión de una caja de Sur (RLS 42501); en la suya sí | ✅ verificado en DEV (impersonación + rollback) |
+| 114.6 | Cada pantalla usa su propia queryKey de sesiones abiertas (el POS necesita `moneda`; compartir la clave podía hacer pasar una caja USD por ARS) | ✅ código |
+
 ## 📦 §113 — Pedidos rediseñado: tab Pedidos + Tareas WMS por pedido y por tarea, con acciones masivas (🟡 dev local) — 2026-10-08
 
 Pedido de GO: la página usa todo el ancho; una acción principal por fila; Tareas WMS se ve agrupada por pedido
@@ -2452,24 +2517,42 @@ y `fn_rate_limit_consumir` rechazaba ventanas de 1 día (fail-open → los topes
 | 112.8 | 🛑 Topes diarios: `consultar-cuit` 500/día por negocio y 5000/día plataforma, `categoria-cartel-ia` 200/día; ventana de 1 día alineada a 00:00 UTC; el cleanup guarda 2 días | SQL en DEV (`fn_rate_limit_consumir(…, 86400)` responde, cron con `2 days`) | ✅ |
 | 112.9 | Test estático: todo `.from(t).select('…')` literal se cruza contra `schema_full` (819 lecturas) | unit `columnasEscritas.test.ts` | ✅ |
 
-## 🌐 §111 — Picking multisucursal con ubicaciones GLOBALES (pedido de GO 2026-10-08, ⏳ A DEFINIR antes de implementar)
+## 🌐 §111 — Picking multisucursal con ubicaciones GLOBALES (migs 488-491, 🟡 DEV) — definido 2026-10-08, implementado 2026-10-09
 
-Pedido de GO: si una ubicación Global tiene stock de varias sucursales y un pedido/venta de la sucursal A pide más de lo que A
-tiene, el stock de la ubicación Global (aunque esté cargado a la sucursal B) tiene que figurar disponible, se tiene que poder
-elegir de qué LPN de esa ubicación sacar, y el picking tiene que generar tareas visibles para cada sucursal.
+Pedido de GO: si una ubicación Global (`ubicaciones.sucursal_id IS NULL`) tiene stock de varias sucursales y una venta de la
+sucursal A necesita más de lo que A tiene, el stock de la Global (aunque esté cargado a la sucursal B) tiene que figurar
+disponible, se tiene que poder elegir el LPN, y el picking tiene que caer en la sucursal dueña del stock.
 
-⚠️ **Choca con la regla vigente** "inventario por sucursal estricto" (GO 2026-05-23: vender/reservar/descontar solo de la sucursal
-activa) y con el fix de hoy (§110: el carrito toma solo la sucursal activa). Hoy cada LPN pertenece a UNA sucursal
-(`inventario_lineas.sucursal_id`) aunque esté en una ubicación Global. Preguntas para GO en `project_pendientes.md`.
+**Respuestas de GO (2026-10-08)** — excepción acotada a la regla "inventario por sucursal estricto" (solo ubicaciones Globales):
+- **Dueño:** el stock de la Global sigue siendo de la sucursal que lo cargó, pero es visible y vendible desde todas.
+- **Sin traslado implícito:** es una venta de A (caja y reportes de venta de A) con stock de B.
+- **Siempre por pedido:** una venta de A que usa stock de B NO se finaliza en el mostrador; queda reservada y nace un pedido.
+- **Tareas:** la tarea de picking del LPN de B cae en B (la ve B). A ve el avance en solo lectura en el detalle del pedido.
+- **Entrega:** B pickea, la mercadería va a A y **A confirma la entrega** (el retiro aparece en A).
+- **LPN sugerido:** según la regla configurada (FEFO / FIFO / LIFO / LEFO / Manual = prioridad de ubicación) sobre el conjunto
+  "stock de A + stock en Globales"; a igualdad (p. ej. Manual con prioridades por defecto) primero lo de A y después la Global.
+- **Cambiar el LPN sugerido:** configurable — permitir que el POS cambie el LPN que sugiere el sistema, o modo estricto (hay
+  que pickear lo que dice el sistema).
 
-| # | Escenario (borrador, sujeto a las respuestas) | Estado |
+| # | Escenario | Estado |
 |---|---|---|
-| 111.1 | Venta en A de un producto con stock en A insuficiente + stock de B en una ubicación Global → el POS lo muestra disponible (separando "de A" y "de B en Global") | ⏳ definir |
-| 111.2 | El cajero elige el LPN de la ubicación Global del que sale la mercadería; el rebaje se registra con trazabilidad (qué sucursal era dueña y cuál vendió) | ⏳ definir |
-| 111.3 | 🛑 Stock por sucursal: vender de B desde A ¿mueve el stock de B a A (traslado implícito) o queda como venta de A con stock de B? Los reportes por sucursal tienen que cuadrar | ⏳ definir |
-| 111.4 | Pedido (reserva) de A con stock de B en Global → la reserva bloquea ese LPN; nadie más lo puede vender | ⏳ definir |
-| 111.5 | Tareas de picking del pedido: cada sucursal ve SUS tareas; la de sacar de la ubicación Global, ¿la ve A (que vende), B (dueña del stock) o las dos? | ⏳ definir |
-| 111.6 | Sin stock en Global ni en A → no se ofrece stock de B que esté en ubicaciones de B (no Globales) | ⏳ definir |
+| 111.1 | Venta en A con stock de A insuficiente + stock de B en una Global → el POS lo muestra disponible, separando "de A" y "de B (Global)" | ✅ e2e 195 | |
+| 111.2 | El LPN sugerido sigue la regla configurada sobre A + Globales; a igualdad, primero A | ✅ unit rebajeSort (6) | |
+| 111.3 | Config "permitir cambiar el LPN sugerido" apagada → el POS no deja elegir otro LPN; prendida → sí (solo entre A y Globales) | ✅ código (Config → Inventario → Reglas de stock; talle/color siempre elegible) | |
+| 111.4 | Venta con stock de B → no se puede "Finalizar": queda reservada, nace el pedido; la reserva bloquea el LPN de B (nadie más lo vende) | ✅ e2e 194 + 195 | |
+| 111.5 | Al lanzar el pedido, la tarea del LPN de B tiene `sucursal_id` = B: la ve B en Picking; A no la ve en su lista | ✅ e2e 194 | |
+| 111.6 | A ve en el detalle del pedido el avance de la tarea de B (solo lectura, sin botones) | ✅ e2e 194 (fn_pedido_tareas_detalle) + UI "la pickea B" | |
+| 111.7 | Entrega en A: se rebaja el LPN de B; el movimiento de stock sale de B, la venta y la caja son de A; los reportes por sucursal cuadran | ✅ código (fn_venta_consumir_reservas, e2e 192) + movimiento partido por sucursal dueña | |
+| 111.8 | Sin stock en Global ni en A → no se ofrece stock de B que esté en ubicaciones de B (no Globales) | ✅ fn_stock_global_otras_sucursales (solo Globales) | |
+| 111.9 | Guard en la base: una venta/reserva de A no puede tomar un LPN de B fuera de una ubicación Global (aunque la UI se saltee) | ✅ e2e 194 (rechazo de fn_venta_reservar_linea) | |
+| 111.10 | Modo básico: sin cambios (no hay ubicaciones) | ✅ función solo para avanzado |
+| 111.11 | B (restringido) completa la última tarea de un pedido de A → el pedido de A queda "listo para entrega" (antes: nunca) | ✅ e2e 194 |
+| 111.12 | B ve en Picking / Tareas para qué pedido y para qué sucursal pickea ("Pedido #N · para A") | ✅ código (fn_pedidos_de_mis_tareas) |
+| 111.13 | A no puede deshacer / cancelar un pedido si B tiene una tarea en curso o completada | ✅ mig 491 |
+| 111.14 | B des-pickea su tarea de un pedido de A: la reserva y su anotación pasan al LPN nuevo | ✅ mig 491 (unpick DEFINER) |
+| 111.15 | Dos tareas completadas a la vez (A y B) → el pedido queda listo igual (lock del pedido) | ✅ mig 491 |
+| 111.16 | Un presupuesto con stock de B se puede guardar; al convertirlo a reserva toma la Global | ✅ código |
+| 111.17 | Productos con serie: siguen estrictos por sucursal (fuera de alcance) | ✅ decisión técnica | |
 
 ## 🏢 §110 — El carrito toma el stock de la sucursal activa + vencimiento con año de 4 dígitos (mig 482, 🟡 DEV) — 2026-10-08
 

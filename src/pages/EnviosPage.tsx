@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -178,6 +178,10 @@ export default function EnviosPage() {
   const [filtroHasta,   setFiltroHasta]   = useState('')
   // Deep-link desde el detalle de una venta ("Ver envío"): /envios?busqueda=44
   const [busqueda,      setBusqueda]      = useState(() => searchParams.get('busqueda') ?? '')
+  // Deep-link EXACTO desde Pedidos ("Ver en Envíos"): /envios?envio=<id> — por id, no por texto (un "44" no puede traer
+  // también el 144). Se ve solo ese envío, expandido, hasta que se limpie el filtro.
+  const [envioIdFiltro, setEnvioIdFiltro] = useState<string | null>(() => searchParams.get('envio'))
+  useEffect(() => { if (envioIdFiltro) setExpandedId(envioIdFiltro) }, [envioIdFiltro])
 
   // Selección de domicilio al crear envío
   const [ventaSearch, setVentaSearch]       = useState('')
@@ -228,13 +232,15 @@ export default function EnviosPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: envios = [], isLoading } = useQuery({
-    queryKey: ['envios', tenant?.id, filtroEstado, filtroCourier, filtroCanal, filtroDesde, filtroHasta, sucursalId],
+    queryKey: ['envios', tenant?.id, filtroEstado, filtroCourier, filtroCanal, filtroDesde, filtroHasta, sucursalId, envioIdFiltro],
     queryFn: async () => {
       let q = supabase.from('envios')
         .select('*, ventas(numero, numero_sucursal, sucursal_id, total, cliente_id, clientes(nombre, telefono)), cliente_domicilios(calle, numero, ciudad, provincia)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
+      // Link a un envío puntual: se busca por id (aunque no esté entre los últimos 100).
+      if (envioIdFiltro) q = q.eq('id', envioIdFiltro)
       q = applyFilter(q)
       if (filtroEstado)  q = q.eq('estado', filtroEstado)
       if (filtroCourier) q = q.eq('courier', filtroCourier)
@@ -1282,7 +1288,7 @@ export default function EnviosPage() {
     claveFiltros: `${busqueda}|${filtroEstado}|${filtroCourier}|${filtroCanal}|${filtroDesde}|${filtroHasta}`,
   })
 
-  const hayFiltros = filtroEstado || filtroCourier || filtroCanal || filtroDesde || filtroHasta
+  const hayFiltros = filtroEstado || filtroCourier || filtroCanal || filtroDesde || filtroHasta || envioIdFiltro
 
   // ── Helpers form ─────────────────────────────────────────────────────────────
   const abrirNuevo = () => {
@@ -1540,7 +1546,7 @@ export default function EnviosPage() {
               className="py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text" />
 
             {(hayFiltros || busqueda) && (
-              <button onClick={() => { setFiltroEstado(''); setFiltroCourier(''); setFiltroCanal(''); setFiltroDesde(''); setFiltroHasta(''); setBusqueda('') }}
+              <button onClick={() => { setFiltroEstado(''); setFiltroCourier(''); setFiltroCanal(''); setFiltroDesde(''); setFiltroHasta(''); setBusqueda(''); setEnvioIdFiltro(null) }}
                 className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <X size={14} /> Limpiar
               </button>

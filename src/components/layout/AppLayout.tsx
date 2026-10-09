@@ -42,7 +42,6 @@ import { AyudaModal } from '@/components/AyudaModal'
 import { RefreshButton } from '@/components/RefreshButton'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
 import { ConfigButton } from '@/components/ConfigButton'
-import { useConfirm } from '@/hooks/useConfirm'
 
 // ─── Orden según DS Sprint 2 ──────────────────────────────────────────────────
 const navItems = [
@@ -232,7 +231,6 @@ export function AppLayout() {
   }
 
   const { user, tenant, loadUserData } = useAuthStore()
-  const confirmar = useConfirm()
   useInactivityTimeout(tenant?.session_timeout_minutes)
   // D-1 (A-2): la cotización del dólar BNA se actualiza al iniciar sesión — montado acá y no solo en
   // el widget, que no se renderiza con el menú colapsado.
@@ -333,7 +331,7 @@ export function AppLayout() {
   })
 
   // L4 — Wrapper de setSucursal: bloquea cambio si hay caja propia abierta en otra sucursal
-  const handleCambiarSucursal = async (newId: string | null) => {
+  const handleCambiarSucursal = (newId: string | null) => {
     if (newId === sucursalId) return
     // La sucursal que cuenta es la de la CAJA: es donde la pantalla de Caja la muestra y se puede cerrar
     // (una sesión desalineada de su caja quedaba invisible y bloqueaba el cambio sin salida — incidente 02/10).
@@ -341,18 +339,15 @@ export function AppLayout() {
     const cajaPropiaEnOtra = (misCajasAbiertasPorSuc as any[])
       .map((s: any) => ({ ...s, sucursal_id: sucDeLaSesion(s) }))
       .find((s: any) => s.sucursal_id && s.sucursal_id !== newId)
+    // L4 revisado (GO 2026-10-08): solo cambia de sucursal quien ve todas (el store lo impide al resto, así que el
+    // cajero sigue fijo en la suya) y puede hacerlo con la caja abierta. No hay riesgo contable: el POS y las demás
+    // pantallas ofrecen solo las cajas de la sucursal activa, y la mig 487 lo respalda para los restringidos.
+    setSucursal(newId)
     if (cajaPropiaEnOtra) {
       const nombre = cajaPropiaEnOtra.cajas?.nombre ?? 'caja'
-      const ok = await confirmar(
-        `Tenés una caja abierta (${nombre}) en otra sucursal. Para mantener el control contable, debés cerrarla antes de cambiar de sucursal.\n\n¿Querés ir a cerrar esa caja primero?`
-      )
-      if (ok) {
-        setSucursal(cajaPropiaEnOtra.sucursal_id)
-        window.location.assign('/caja')
-      }
-      return
+      const sucNombre = sucursales.find(s => s.id === cajaPropiaEnOtra.sucursal_id)?.nombre ?? 'otra sucursal'
+      toast(`Tu caja "${nombre}" sigue abierta en ${sucNombre}. Acá solo vas a poder cobrar en cajas de esta sucursal.`, { icon: 'ℹ️', duration: 6000 })
     }
-    setSucursal(newId)
   }
 
   const enRutaSoloSucursal = RUTAS_SOLO_SUCURSAL.some(r => pathname.startsWith(r))

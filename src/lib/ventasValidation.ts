@@ -413,6 +413,9 @@ export interface LineaDisponible {
   // Descuento automático por estado de inventario (backlog Fede, punto 3) — ver descuentoEstado.ts.
   estado_nombre?: string | null
   estado_descuento_pct?: number | null
+  // Ubicaciones Globales (mig 489, UAT §111): LPN de OTRA sucursal ubicado en una Global. Trae el nombre de esa sucursal;
+  // null/undefined = stock de la sucursal activa. Una venta que lo usa va siempre por reserva + pedido.
+  sucursal_otra?: string | null
 }
 
 export interface LpnFuente {
@@ -427,6 +430,13 @@ export interface LpnFuente {
   encaje?: string | null
   formato?: string | null
   sabor_aroma?: string | null
+  sucursal_otra?: string | null   // ver LineaDisponible.sucursal_otra
+}
+
+/** Ubicaciones Globales: ¿el plan de LPN toma stock de otra sucursal? (→ la venta no se puede finalizar en el mostrador). */
+export function usaStockDeOtraSucursal(fuentes: LpnFuente[] | null | undefined): string | null {
+  const f = (fuentes ?? []).find(x => !!x.sucursal_otra)
+  return f ? (f.sucursal_otra as string) : null
 }
 
 /**
@@ -461,6 +471,7 @@ export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number):
       estado_nombre: l.estado_nombre ?? null, estado_descuento_pct: l.estado_descuento_pct ?? null,
       talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
       formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
+      sucursal_otra: l.sucursal_otra ?? null,
     })
     restante -= usar
     if (restante <= 0) break

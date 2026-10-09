@@ -59,6 +59,17 @@ export default function PedidosPage() {
   const qc = useQueryClient()
   const confirmar = useConfirm()
 
+  // "Ver en Envíos": abre Envíos filtrado EXACTO por el envío de este pedido (por id, no por texto). El envío se busca por
+  // el pedido o, si nació de la venta, por la venta de origen; con varios, el más reciente.
+  const irAEnvioDelPedido = async (p: any) => {
+    const filtro = p.venta_origen_id ? `pedido_id.eq.${p.id},venta_id.eq.${p.venta_origen_id}` : `pedido_id.eq.${p.id}`
+    const { data } = await supabase.from('envios').select('id').eq('tenant_id', tenant!.id).or(filtro)
+      .order('created_at', { ascending: false }).limit(1)
+    const envioId = data?.[0]?.id
+    if (!envioId) { toast('Este pedido todavía no tiene un envío creado.', { icon: 'ℹ️' }); navigate('/envios'); return }
+    navigate(`/envios?envio=${envioId}`)
+  }
+
   // E3 — gate client-side por transición (config Pedidos → tabla de roles), mismo criterio que
   // ajuste_autorizacion_roles (mig 228): filtra qué botón se muestra, no reemplaza los guards
   // server-side de cada RPC (stock/caja/CC/idempotencia — esos SÍ corren siempre, para
@@ -774,7 +785,7 @@ export default function PedidosPage() {
     const puedeEntregarAca = ['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && !p.venta_origen_id
     const linkEntrega = p.venta_origen_id && !['entregado', 'cancelado'].includes(p.estado)
       ? (p.requiere_envio
-        ? { label: 'Ver en Envíos', corto: 'Ver en Envíos', icon: Truck, ir: () => navigate('/envios'), title: 'Este pedido sale por envío: se despacha desde el módulo Envíos' }
+        ? { label: 'Ver en Envíos', corto: 'Ver en Envíos', icon: Truck, ir: () => irAEnvioDelPedido(p), title: 'Este pedido sale por envío: se despacha desde el módulo Envíos' }
         : { label: 'Entregar en mostrador', corto: 'Entregar', icon: Store, ir: () => navigate('/ventas?tab=pedidos'), title: 'Este pedido ya tiene su venta: lo entrega el mostrador desde Ventas → Pedidos' })
       : null
     const irAPicking = () => navigate(`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)

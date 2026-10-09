@@ -6,7 +6,11 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre para /clear) — 🚀 **PROD = DEV = `v1.242.0`** (migs 001-**495**)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre para /clear) — 🚀 **PROD = DEV = `v1.242.1`** (migs 001-**495**)
+>
+> **v1.242.1 (último deploy):** PR #385, merge `35115a9d`, release `v1.242.1` Latest; `app.genesis360.pro` sirve `index-CI-bNdne.js`
+> (verificado con curl); EF `emitir-factura` en DEV y PROD. El mail de la factura sale con el PDF (pendiente #1 RESUELTO).
+> Abajo, el detalle de v1.242.0 (PR #384), el release grande de esta sesión.
 >
 > | | Código | Migraciones |
 > |---|---|---|

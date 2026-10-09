@@ -8,7 +8,7 @@ updated: 2026-10-09
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.242.0`** (PROD = DEV, migs 001-495) (2026-10-09, PR #384: caja entre sucursales, reserva atada a la venta, ubicaciones Globales, pedidos entregados, migs 487-495). Antes: `v1.241.0` (2026-10-09, PR #383: Pedidos rediseñado + Picking unificado + entrega parcial, migs 482-486). Antes: `v1.239.3` (2026-10-06, PR #377: prueba gratis de 30 días, mig 476). Antes: `v1.239.2` (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.242.1`** (2026-10-09, PR #385: mail de la factura con PDF). Antes: `v1.242.0` (PROD = DEV, migs 001-495) (2026-10-09, PR #384: caja entre sucursales, reserva atada a la venta, ubicaciones Globales, pedidos entregados, migs 487-495). Antes: `v1.241.0` (2026-10-09, PR #383: Pedidos rediseñado + Picking unificado + entrega parcial, migs 482-486). Antes: `v1.239.3` (2026-10-06, PR #377: prueba gratis de 30 días, mig 476). Antes: `v1.239.2` (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 

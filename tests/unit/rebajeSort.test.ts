@@ -180,3 +180,52 @@ describe('getRebajeSort — Manual', () => {
     expect(sorted[1]).toBe(sinUbicacion)
   })
 })
+
+// Ubicaciones Globales (UAT §111, GO 2026-10-08): la regla corre sobre "propio + Globales de otras sucursales"; a igualdad,
+// primero lo propio. En Manual el desempate propio/ajeno va antes de la fecha de ingreso.
+describe('getRebajeSort — stock de otra sucursal en ubicación Global', () => {
+  const l = (o: { created_at: string; prioridad?: number; venc?: string | null; otra?: string }) => ({
+    created_at: o.created_at,
+    fecha_vencimiento: o.venc ?? null,
+    ubicaciones: { prioridad: o.prioridad ?? 0 },
+    sucursal_otra: o.otra ?? null,
+  })
+
+  test('Manual con prioridades iguales: primero la sucursal propia aunque la Global sea más vieja', () => {
+    const globalVieja = l({ created_at: '2026-01-01', otra: 'Norte' })
+    const propiaNueva = l({ created_at: '2026-06-01' })
+    expect([globalVieja, propiaNueva].sort(getRebajeSort(null, 'Manual', false))[0]).toBe(propiaNueva)
+  })
+
+  test('Manual: si la Global tiene mejor prioridad, gana la prioridad', () => {
+    const global = l({ created_at: '2026-06-01', prioridad: 1, otra: 'Norte' })
+    const propia = l({ created_at: '2026-01-01', prioridad: 5 })
+    expect([propia, global].sort(getRebajeSort(null, 'Manual', false))[0]).toBe(global)
+  })
+
+  test('FIFO: sigue el primero que ingresó, sea propio o de la Global', () => {
+    const globalVieja = l({ created_at: '2026-01-01', otra: 'Norte' })
+    const propiaNueva = l({ created_at: '2026-06-01' })
+    expect([propiaNueva, globalVieja].sort(getRebajeSort(null, 'FIFO', false))[0]).toBe(globalVieja)
+  })
+
+  test('FIFO con la misma fecha de ingreso: primero lo propio', () => {
+    const global = l({ created_at: '2026-01-01T00:00:00Z', otra: 'Norte' })
+    const propia = l({ created_at: '2026-01-01T00:00:00Z' })
+    expect([global, propia].sort(getRebajeSort(null, 'FIFO', false))[0]).toBe(propia)
+  })
+
+  test('FEFO: vence primero la Global → sale la Global; mismo vencimiento → lo propio', () => {
+    const globalVence = l({ created_at: '2026-06-01', venc: '2026-11-01', otra: 'Norte' })
+    const propiaVence = l({ created_at: '2026-01-01', venc: '2026-12-01' })
+    expect([propiaVence, globalVence].sort(getRebajeSort(null, 'FEFO', true))[0]).toBe(globalVence)
+    const g2 = l({ created_at: '2026-01-01', venc: '2026-12-01', otra: 'Norte' })
+    expect([g2, propiaVence].sort(getRebajeSort(null, 'FEFO', true))[0]).toBe(propiaVence)
+  })
+
+  test('FEFO sin fechas en ninguna: no da NaN, desempata por lo propio', () => {
+    const g = l({ created_at: '2026-01-01', otra: 'Norte' })
+    const p = l({ created_at: '2026-01-01' })
+    expect([g, p].sort(getRebajeSort(null, 'FEFO', true))[0]).toBe(p)
+  })
+})

@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, ChevronDown, CalendarClock, ScanBarcode, CheckCircle2, XCircle, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { completarPedidosDeTareas } from '@/lib/pedidosDeTareas'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -70,7 +71,7 @@ export function TareasWmsPanel({ onIrAPicking, busquedaInicial }: {
       if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
       const { data, error } = await q
       if (error) throw error
-      return data ?? []
+      return await completarPedidosDeTareas((data ?? []) as any[])
     },
     enabled: !!tenant,
   })

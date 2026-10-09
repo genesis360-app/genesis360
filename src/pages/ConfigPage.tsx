@@ -2183,6 +2183,14 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success(nuevo ? 'Ya podés crear pedidos a mano' : 'Los pedidos se generan solo desde las ventas')
   }
+  // Mig 489 — si el POS puede cambiar el LPN que sugiere la regla de rebaje (false = estricto).
+  const togglePosPermiteCambiarLpn = async () => {
+    const nuevo = !((tenant as any)?.pos_permite_cambiar_lpn ?? true)
+    const { data, error } = await supabase.from('tenants').update({ pos_permite_cambiar_lpn: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'El punto de venta puede elegir otro LPN' : 'El punto de venta usa siempre el LPN que sugiere la regla')
+  }
   const togglePedidoParcialDefault = async () => {
     const nuevo = !(tenant as any)?.pedido_entrega_parcial_default
     const { data, error } = await supabase.from('tenants').update({ pedido_entrega_parcial_default: nuevo }).eq('id', tenant!.id).select().single()
@@ -4362,7 +4370,16 @@ export default function ConfigPage() {
                     ))}
                   </select>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Define cómo se selecciona el stock al rebajar. Se puede sobreescribir por producto.</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Con ubicaciones <strong>Globales</strong>, la regla busca en tu sucursal y en las Globales (aunque el stock sea de otra sucursal). A igualdad, primero tu sucursal.</p>
                 </div>
+
+                <label className="flex items-start gap-3 cursor-pointer py-1">
+                  <div className="mt-0.5"><Toggle checked={(tenant as any)?.pos_permite_cambiar_lpn ?? true} onChange={togglePosPermiteCambiarLpn} disabled={!canEdit} aria-label="El punto de venta puede cambiar el LPN sugerido" /></div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">El punto de venta puede cambiar el LPN sugerido</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Prendido: en el carrito se puede elegir otro LPN que el que sugiere la regla. Apagado (estricto): se vende y se pickea lo que dice el sistema. Elegir talle o color sigue habilitado siempre.</p>
+                  </div>
+                </label>
 
                 <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-1">
                   <label className={`flex items-start gap-3 py-1 ${(!canEdit || bizRotacionKits) ? 'opacity-60' : 'cursor-pointer'}`}>

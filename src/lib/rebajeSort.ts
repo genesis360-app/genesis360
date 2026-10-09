@@ -45,6 +45,12 @@ export function getRebajeSort(
   estadoIdsPrioridad?: Set<string> | null
 ): (a: any, b: any) => number {
   const regla = (reglaProducto || reglaTenant || 'FIFO') as ReglaInventario
+  // Ubicaciones Globales (UAT §111, GO 2026-10-08): la regla se aplica sobre "stock propio + stock de otras sucursales en
+  // Globales". A igualdad, primero lo PROPIO (una línea es ajena si trae `sucursal_otra`). En Manual (prioridad de
+  // ubicación) el desempate propio/ajeno va ANTES de la fecha de ingreso: con las prioridades por defecto, primero la
+  // sucursal y después la Global.
+  const ajena = (l: any) => (l?.sucursal_otra ? 1 : 0)
+  const propiaPrimero = (a: any, b: any) => ajena(a) - ajena(b)
 
   const base = ((): (a: any, b: any) => number => {
     // FEFO / LEFO: ordenar por fecha de vencimiento
@@ -55,7 +61,8 @@ export function getRebajeSort(
         return (a, b) => {
           const da = a.fecha_vencimiento ? new Date(a.fecha_vencimiento).getTime() : Infinity
           const db = b.fecha_vencimiento ? new Date(b.fecha_vencimiento).getTime() : Infinity
-          return (da - db) * dir
+          const d = (da === db ? 0 : (da - db) * dir)
+          return d !== 0 ? d : propiaPrimero(a, b)
         }
       }
       // Fallback a FIFO si no tiene vencimiento
@@ -69,6 +76,8 @@ export function getRebajeSort(
       return (a, b) => {
         const p = porPrioridad(a, b)
         if (p !== 0) return p
+        const s = propiaPrimero(a, b)
+        if (s !== 0) return s
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       }
     }
@@ -77,7 +86,8 @@ export function getRebajeSort(
       return (a, b) => {
         const p = porPrioridad(a, b)
         if (p !== 0) return p
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        const t = new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        return t !== 0 ? t : propiaPrimero(a, b)
       }
     }
 
@@ -85,7 +95,8 @@ export function getRebajeSort(
     return (a, b) => {
       const p = porPrioridad(a, b)
       if (p !== 0) return p
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      const t = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      return t !== 0 ? t : propiaPrimero(a, b)
     }
   })()
 

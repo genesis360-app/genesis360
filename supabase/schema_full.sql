@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-09T03:06:50.874Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261009025928 · 179 tablas
+-- Generado 2026-10-09T03:49:20.292Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261009034727 · 179 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -2598,7 +2598,8 @@ CREATE TABLE public.tenants (
   categorias_cliente_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
   categorias_cliente_asignar_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
   descuento_tope_acumulado_pct numeric(5,2),
-  pedido_entrega_parcial_default boolean NOT NULL DEFAULT false
+  pedido_entrega_parcial_default boolean NOT NULL DEFAULT false,
+  pos_permite_cambiar_lpn boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -5861,15 +5862,22 @@ $function$
 CREATE OR REPLACE FUNCTION public.fn_cancelar_pedido(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
 DECLARE
   v_pedido RECORD;
 BEGIN
+  PERFORM fn_pedido_check_acceso(p_pedido_id);
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
   IF v_pedido.estado IN ('cancelado', 'entregado') THEN
     RAISE EXCEPTION 'El pedido ya está % — no se puede cancelar', v_pedido.estado;
+  END IF;
+  -- Mig 492: un pedido ENTREGADO EN PARTE tampoco se cancela (la mercadería entregada es historia; lo pendiente se cierra
+  -- con "Cerrar pedido" y una devolución va por Ventas → Devolución).
+  IF v_pedido.estado = 'entregado_parcial' THEN
+    RAISE EXCEPTION 'El pedido ya se entregó en parte — no se puede cancelar. Para dar por terminado lo pendiente usá "Cerrar pedido"; para devolver mercadería, la devolución de la venta.';
   END IF;
 
   IF EXISTS (SELECT 1 FROM ventas WHERE pedido_id = p_pedido_id AND estado NOT IN ('cancelada', 'devuelta')) THEN
@@ -5879,6 +5887,12 @@ BEGIN
   PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
   IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado = 'completada') THEN
     RAISE EXCEPTION 'Hay una tarea de picking ya completada (o un reabastecimiento completado con un picking encadenado todavía pendiente) — completá o des-pickeá esa tarea antes de cancelar';
+  END IF;
+
+  -- Mig 491: si la sucursal dueña de un LPN (otra) ya está pickeando, no se le cancela la tarea en la cara.
+  IF EXISTS (SELECT 1 FROM wms_tareas w WHERE w.pedido_id = p_pedido_id AND w.estado = 'en_curso'
+             AND w.sucursal_id IS DISTINCT FROM v_pedido.sucursal_id) THEN
+    RAISE EXCEPTION 'Otra sucursal está pickeando este pedido ahora (tarea en curso): esperá a que la termine o la libere';
   END IF;
 
   PERFORM fn_pedido_liberar_tareas_pendientes(p_pedido_id);
@@ -6311,13 +6325,9 @@ BEGIN
   UPDATE wms_tareas SET estado = 'completada', completed_at = now() WHERE id = p_tarea_id;
 
   -- (mig 316) Si con ésta se terminó de pickear todo el pedido, pasa a "listo para entrega".
+  -- Mig 490: por una función DEFINER — el que completa puede ser de otra sucursal y no ver el pedido ni las demás tareas.
   IF v_tarea.pedido_id IS NOT NULL THEN
-    UPDATE pedidos p SET estado = 'listo_para_entrega'
-     WHERE p.id = v_tarea.pedido_id AND p.estado = 'en_preparacion'
-       AND NOT EXISTS (
-         SELECT 1 FROM wms_tareas w
-         WHERE w.pedido_id = v_tarea.pedido_id AND w.tipo = 'picking'
-           AND w.estado NOT IN ('completada', 'cancelada'));
+    PERFORM fn_pedido_marcar_listo(v_tarea.pedido_id);
   END IF;
 END; $function$
 
@@ -7667,19 +7677,23 @@ $function$
 CREATE OR REPLACE FUNCTION public.fn_generar_tareas_picking_pedido_venta(p_pedido_id uuid)
  RETURNS TABLE(tarea_id uuid, tipo text)
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
 DECLARE
   v_pedido RECORD; v_item RECORD; v_fuente RECORD; v_pick_id uuid;
   v_ubic_tipo text; v_domicilio_id uuid; v_pendiente numeric; v_hubo boolean;
 BEGIN
+  PERFORM fn_pedido_check_acceso(p_pedido_id);
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
   IF v_pedido.venta_origen_id IS NULL THEN
     RAISE EXCEPTION 'Este pedido no nació de una venta — usá fn_generar_tareas_picking_pedido';
   END IF;
-  IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id) THEN
-    RETURN QUERY SELECT wt.id, wt.tipo FROM wms_tareas wt WHERE wt.pedido_id = p_pedido_id;
+  -- Mig 491: las tareas CANCELADAS (deshacer lanzamiento) no cuentan: si no, relanzar devolvía las viejas y el pedido no
+  -- volvía a "en preparación".
+  IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado <> 'cancelada') THEN
+    RETURN QUERY SELECT wt.id, wt.tipo FROM wms_tareas wt WHERE wt.pedido_id = p_pedido_id AND wt.estado <> 'cancelada';
     RETURN;
   END IF;
   IF v_pedido.estado = 'cancelado' THEN RAISE EXCEPTION 'El pedido está cancelado'; END IF;
@@ -7695,31 +7709,49 @@ BEGIN
     v_hubo := false;
 
     FOR v_fuente IN
-      SELECT vid.lpn, vid.ubicacion_id, SUM(vid.cantidad) AS cantidad, 1 AS prio
+      -- 0 (mig 490): lo que la venta RESERVÓ (mig 488) — la verdad, incluido el stock de otra sucursal en una Global.
+      SELECT il.lpn, il.ubicacion_id, il.sucursal_id, SUM(r.cantidad) AS cantidad, 0 AS prio
+      FROM venta_item_reservas r
+      JOIN inventario_lineas il ON il.id = r.linea_id
+      WHERE r.venta_id = v_pedido.venta_origen_id AND r.producto_id = v_item.producto_id
+      GROUP BY il.lpn, il.ubicacion_id, il.sucursal_id
+      UNION ALL
+      SELECT vid.lpn, vid.ubicacion_id, il.sucursal_id, SUM(vid.cantidad) AS cantidad, 1 AS prio
       FROM venta_item_despachos vid
+      LEFT JOIN inventario_lineas il ON il.id = vid.linea_id
       WHERE vid.venta_id = v_pedido.venta_origen_id AND vid.producto_id = v_item.producto_id
         AND vid.cantidad > 0
-      GROUP BY vid.lpn, vid.ubicacion_id
+        AND NOT EXISTS (SELECT 1 FROM venta_item_reservas r2
+                        WHERE r2.venta_id = v_pedido.venta_origen_id AND r2.producto_id = v_item.producto_id)
+      GROUP BY vid.lpn, vid.ubicacion_id, il.sucursal_id
       UNION ALL
-      SELECT il.lpn, il.ubicacion_id, SUM((p->>'cantidad')::numeric) AS cantidad, 2 AS prio
+      SELECT il.lpn, il.ubicacion_id, il.sucursal_id, SUM((p->>'cantidad')::numeric) AS cantidad, 2 AS prio
       FROM venta_items vi
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(vi.lpn_plan, '[]'::jsonb)) p
       JOIN inventario_lineas il ON il.id = (p->>'linea_id')::uuid
       WHERE vi.venta_id = v_pedido.venta_origen_id AND vi.producto_id = v_item.producto_id
         AND NOT EXISTS (SELECT 1 FROM venta_item_despachos d
                         WHERE d.venta_id = v_pedido.venta_origen_id AND d.producto_id = v_item.producto_id)
+        AND NOT EXISTS (SELECT 1 FROM venta_item_reservas r3
+                        WHERE r3.venta_id = v_pedido.venta_origen_id AND r3.producto_id = v_item.producto_id)
         AND (p->>'cantidad')::numeric > 0
-      GROUP BY il.lpn, il.ubicacion_id
-      ORDER BY prio
+        -- Sin reserva anotada, el plan solo vale dentro de la sucursal del pedido (estricto, como antes).
+        AND (v_pedido.sucursal_id IS NULL OR il.sucursal_id IS NULL OR il.sucursal_id = v_pedido.sucursal_id)
+      GROUP BY il.lpn, il.ubicacion_id, il.sucursal_id
+      ORDER BY prio, ubicacion_id, lpn
     LOOP
       EXIT WHEN v_pendiente <= 0;
       SELECT u.tipo_logico INTO v_ubic_tipo FROM ubicaciones u WHERE u.id = v_fuente.ubicacion_id;
       INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad,
                               ubicacion_origen_id, lpn_origen, origen, pedido_id, notas)
-      VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id,
+      VALUES (v_pedido.tenant_id, COALESCE(v_fuente.sucursal_id, v_pedido.sucursal_id), 'picking', v_item.producto_id,
               LEAST(v_fuente.cantidad, v_pendiente), v_fuente.ubicacion_id, v_fuente.lpn, 'pedido', p_pedido_id,
               fn_wms_describir_cantidad(v_item.producto_id, LEAST(v_fuente.cantidad, v_pendiente)::integer)
-                || CASE WHEN v_ubic_tipo IS DISTINCT FROM 'picking' THEN ' — fuera de zona de picking' ELSE '' END)
+                || CASE WHEN v_ubic_tipo IS DISTINCT FROM 'picking' THEN ' — fuera de zona de picking' ELSE '' END
+                || CASE WHEN v_fuente.sucursal_id IS NOT NULL AND v_pedido.sucursal_id IS NOT NULL
+                             AND v_fuente.sucursal_id <> v_pedido.sucursal_id
+                        THEN ' — para ' || COALESCE((SELECT s.nombre FROM sucursales s WHERE s.id = v_pedido.sucursal_id), 'otra sucursal')
+                        ELSE '' END)
       RETURNING id INTO v_pick_id;
       RETURN QUERY SELECT v_pick_id, 'picking'::text;
       v_pendiente := v_pendiente - LEAST(v_fuente.cantidad, v_pendiente);
@@ -7728,19 +7760,27 @@ BEGIN
 
     IF v_pendiente > 0 THEN
       FOR v_fuente IN
-        SELECT il.lpn, il.ubicacion_id, il.cantidad,
+        -- Mig 491: un LPN que ya tiene tarea en este lanzamiento no se vuelve a ofrecer (antes, con una reserva parcial,
+        -- salía una segunda tarea sobre el mismo LPN por su cantidad completa), y un LPN sin reservar ofrece solo lo libre.
+        SELECT il.lpn, il.ubicacion_id, il.sucursal_id,
+               (CASE WHEN COALESCE(il.cantidad_reservada,0) > 0 THEN il.cantidad
+                     ELSE il.cantidad - COALESCE(il.cantidad_reservada,0) END) AS cantidad,
                (CASE WHEN COALESCE(il.cantidad_reservada,0) > 0 THEN 3 ELSE 4 END) AS prio
         FROM inventario_lineas il
         WHERE il.tenant_id = v_pedido.tenant_id AND il.producto_id = v_item.producto_id
           AND il.activo = true AND il.cantidad > 0
           AND (v_pedido.sucursal_id IS NULL OR il.sucursal_id = v_pedido.sucursal_id)
+          AND NOT EXISTS (SELECT 1 FROM wms_tareas w
+                           WHERE w.pedido_id = p_pedido_id AND w.estado <> 'cancelada'
+                             AND w.lpn_origen IS NOT DISTINCT FROM il.lpn
+                             AND w.ubicacion_origen_id IS NOT DISTINCT FROM il.ubicacion_id)
         ORDER BY prio, il.fecha_vencimiento NULLS LAST, il.created_at
       LOOP
         EXIT WHEN v_pendiente <= 0;
         SELECT u.tipo_logico INTO v_ubic_tipo FROM ubicaciones u WHERE u.id = v_fuente.ubicacion_id;
         INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad,
                                 ubicacion_origen_id, lpn_origen, origen, pedido_id, notas)
-        VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id,
+        VALUES (v_pedido.tenant_id, COALESCE(v_fuente.sucursal_id, v_pedido.sucursal_id), 'picking', v_item.producto_id,
                 LEAST(v_fuente.cantidad, v_pendiente), v_fuente.ubicacion_id, v_fuente.lpn, 'pedido', p_pedido_id,
                 fn_wms_describir_cantidad(v_item.producto_id, LEAST(v_fuente.cantidad, v_pendiente)::integer)
                   || CASE WHEN v_fuente.prio = 3 THEN ' — LPN sugerido (la venta reservó acá)'
@@ -9976,6 +10016,23 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_pedido_check_acceso(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v RECORD;
+BEGIN
+  SELECT tenant_id, sucursal_id INTO v FROM pedidos WHERE id = p_pedido_id;
+  IF v.tenant_id IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+  PERFORM fn_venta_reserva_check_acceso(v.tenant_id, v.sucursal_id);
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE EXCEPTION 'Pedido inexistente o sin permisos';
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_pedido_crear_desde_venta(p_venta_id uuid, p_con_envio boolean DEFAULT false)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -10033,11 +10090,13 @@ $function$
 CREATE OR REPLACE FUNCTION public.fn_pedido_deslanzar(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
 DECLARE
   v_pedido RECORD;
 BEGIN
+  PERFORM fn_pedido_check_acceso(p_pedido_id);
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
   IF v_pedido.estado <> 'en_preparacion' THEN
@@ -10047,6 +10106,12 @@ BEGIN
   PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
   IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado = 'completada') THEN
     RAISE EXCEPTION 'Hay una tarea de picking ya completada (o un reabastecimiento completado con un picking encadenado todavía pendiente) — completá o des-pickeá esa tarea antes de deshacer el lanzamiento';
+  END IF;
+
+  -- Mig 491: si la sucursal dueña de un LPN (otra) ya está pickeando, no se le cancela la tarea en la cara.
+  IF EXISTS (SELECT 1 FROM wms_tareas w WHERE w.pedido_id = p_pedido_id AND w.estado = 'en_curso'
+             AND w.sucursal_id IS DISTINCT FROM v_pedido.sucursal_id) THEN
+    RAISE EXCEPTION 'Otra sucursal está pickeando este pedido ahora (tarea en curso): esperá a que la termine o la libere';
   END IF;
 
   PERFORM fn_pedido_liberar_tareas_pendientes(p_pedido_id);
@@ -10465,15 +10530,16 @@ $function$
 CREATE OR REPLACE FUNCTION public.fn_pedido_liberar_tareas_pendientes(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
 DECLARE
   v_tarea RECORD;
   v_de_venta boolean;
 BEGIN
+  PERFORM fn_pedido_check_acceso(p_pedido_id);
   PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
-  -- Mig 488: en un pedido que nació de una venta el picking nunca reservó (mig 316): la reserva es de la VENTA y se libera
-  -- (o no) con la venta. Antes se descontaba igual y quedaba la venta reservada sin stock reservado.
+  -- Mig 488: en un pedido que nació de una venta el picking nunca reservó (mig 316): la reserva es de la VENTA.
   SELECT (venta_origen_id IS NOT NULL) INTO v_de_venta FROM pedidos WHERE id = p_pedido_id;
 
   FOR v_tarea IN
@@ -10488,6 +10554,29 @@ BEGIN
       notas = COALESCE(notas || ' — ', '') || 'Cancelada: se deshizo el lanzamiento del pedido'
     WHERE id = v_tarea.id;
   END LOOP;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_pedido_marcar_listo(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pedidos WHERE id = p_pedido_id AND tenant_id = get_user_tenant_id()) THEN
+    RETURN;
+  END IF;
+  -- Serializa a los que completan las últimas tareas a la vez: el segundo espera y re-evalúa con el primero confirmado.
+  PERFORM 1 FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  UPDATE pedidos p SET estado = 'listo_para_entrega'
+   WHERE p.id = p_pedido_id AND p.estado = 'en_preparacion'
+     AND EXISTS (SELECT 1 FROM wms_tareas w WHERE w.pedido_id = p_pedido_id AND w.tipo = 'picking' AND w.estado = 'completada')
+     AND NOT EXISTS (
+       SELECT 1 FROM wms_tareas w
+       WHERE w.pedido_id = p_pedido_id AND w.tipo = 'picking'
+         AND w.estado NOT IN ('completada', 'cancelada'));
 END;
 $function$
 
@@ -10516,6 +10605,25 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_pedido_tareas_detalle(p_pedido_ids uuid[])
+ RETURNS TABLE(id uuid, pedido_id uuid, tipo text, estado text, producto_id uuid, cantidad numeric, lpn_origen text, tarea_precedente_id uuid, sucursal_id uuid, sucursal_nombre text, producto_nombre text, producto_sku text, created_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT w.id, w.pedido_id, w.tipo, w.estado, w.producto_id, w.cantidad::numeric, w.lpn_origen, w.tarea_precedente_id,
+         w.sucursal_id, s.nombre, pr.nombre, pr.sku, w.created_at
+    FROM wms_tareas w
+    JOIN pedidos p ON p.id = w.pedido_id
+    LEFT JOIN sucursales s ON s.id = w.sucursal_id
+    LEFT JOIN productos pr ON pr.id = w.producto_id
+   WHERE w.pedido_id = ANY (p_pedido_ids)
+     AND p.tenant_id = get_user_tenant_id()
+     AND (auth_ve_todas_sucursales() OR p.sucursal_id IS NULL OR p.sucursal_id = auth_user_sucursal())
+   ORDER BY w.created_at
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_pedido_venta_viva(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -10538,6 +10646,24 @@ BEGIN
     RAISE EXCEPTION 'La venta #% ya fue despachada (el stock ya se rebajó desde Ventas): no se puede lanzar picking para volver a preparar/rebajar la misma mercadería.', v_num;
   END IF;
 END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_pedidos_de_mis_tareas(p_pedido_ids uuid[])
+ RETURNS TABLE(id uuid, numero integer, estado text, venta_origen_id uuid, fecha_entrega_solicitada date, sucursal_id uuid, sucursal_nombre text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT p.id, p.numero, p.estado, p.venta_origen_id, p.fecha_entrega_solicitada, p.sucursal_id, s.nombre
+    FROM pedidos p
+    LEFT JOIN sucursales s ON s.id = p.sucursal_id
+   WHERE p.id = ANY (p_pedido_ids)
+     AND p.tenant_id = get_user_tenant_id()
+     AND EXISTS (
+       SELECT 1 FROM wms_tareas w
+        WHERE w.pedido_id = p.id
+          AND (auth_ve_todas_sucursales() OR w.sucursal_id IS NULL OR w.sucursal_id = auth_user_sucursal()))
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_plan_base_limite(p_tier text, p_dim text)
@@ -12455,6 +12581,30 @@ AS $function$
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_stock_global_otras_sucursales(p_producto_ids uuid[], p_sucursal_id uuid)
+ RETURNS TABLE(id uuid, producto_id uuid, lpn text, cantidad integer, cantidad_reservada integer, created_at timestamp with time zone, fecha_vencimiento date, estado_id uuid, ubicacion_id uuid, sucursal_id uuid, sucursal_nombre text, talle text, color text, encaje text, formato text, sabor_aroma text, ubicacion_nombre text, ubicacion_prioridad integer, ubicacion_disponible_surtido boolean, estado_nombre text, estado_descuento_pct numeric, estado_disponible_venta boolean)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT il.id, il.producto_id, il.lpn, il.cantidad::integer, COALESCE(il.cantidad_reservada, 0)::integer, il.created_at,
+         il.fecha_vencimiento, il.estado_id, il.ubicacion_id, il.sucursal_id, s.nombre,
+         il.talle, il.color, il.encaje, il.formato, il.sabor_aroma,
+         u.nombre, u.prioridad, u.disponible_surtido,
+         e.nombre, e.descuento_pct, e.es_disponible_venta
+    FROM inventario_lineas il
+    JOIN ubicaciones u ON u.id = il.ubicacion_id AND u.sucursal_id IS NULL
+    JOIN productos p ON p.id = il.producto_id AND NOT COALESCE(p.tiene_series, false)
+    LEFT JOIN sucursales s ON s.id = il.sucursal_id
+    LEFT JOIN estados_inventario e ON e.id = il.estado_id
+   WHERE il.tenant_id = get_user_tenant_id()
+     AND il.producto_id = ANY (p_producto_ids)
+     AND il.activo AND il.cantidad > 0
+     AND il.sucursal_id IS NOT NULL AND p_sucursal_id IS NOT NULL AND il.sucursal_id <> p_sucursal_id
+     AND EXISTS (SELECT 1 FROM tenants t WHERE t.id = il.tenant_id AND t.modo_operacion = 'avanzado')
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_stock_por_sucursal(p_producto_ids uuid[])
  RETURNS TABLE(producto_id uuid, producto_nombre text, sucursal_id uuid, sucursal_nombre text, cantidad bigint)
  LANGUAGE plpgsql
@@ -12849,6 +12999,7 @@ $function$
 CREATE OR REPLACE FUNCTION public.fn_unpick_tarea_wms(p_tarea_id uuid, p_ubicacion_destino_id uuid)
  RETURNS void
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
 DECLARE
@@ -12862,12 +13013,20 @@ DECLARE
 BEGIN
   SELECT * INTO v_tarea FROM wms_tareas WHERE id = p_tarea_id FOR UPDATE;
   IF v_tarea IS NULL THEN RAISE EXCEPTION 'Tarea inexistente o sin permisos'; END IF;
+  -- Mig 491: DEFINER (la sucursal dueña del LPN des-pickea una tarea de un pedido de OTRA sucursal, que la RLS le oculta).
+  -- Acceso: la tarea es del negocio y, para un usuario restringido, de su sucursal (la que la hizo).
+  BEGIN
+    PERFORM fn_venta_reserva_check_acceso(v_tarea.tenant_id, v_tarea.sucursal_id);
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE EXCEPTION 'Tarea inexistente o sin permisos';
+  END;
   IF v_tarea.tipo <> 'picking' THEN RAISE EXCEPTION 'Solo se puede deshacer (des-pickear) una tarea de picking'; END IF;
   IF v_tarea.estado <> 'completada' THEN RAISE EXCEPTION 'Esta tarea no está completada'; END IF;
   IF v_tarea.pedido_id IS NULL THEN RAISE EXCEPTION 'El des-pickeo solo está disponible para tareas originadas en un Pedido'; END IF;
   IF p_ubicacion_destino_id IS NULL THEN RAISE EXCEPTION 'Elegí una ubicación destino para reubicar el LPN'; END IF;
 
   SELECT * INTO v_pedido FROM pedidos WHERE id = v_tarea.pedido_id FOR UPDATE;
+  IF v_pedido.id IS NULL THEN RAISE EXCEPTION 'Pedido inexistente'; END IF;
   IF v_pedido.estado IN ('entregado', 'cancelado') THEN
     RAISE EXCEPTION 'El pedido ya está % — no se puede deshacer el picking', v_pedido.estado;
   END IF;
@@ -13494,8 +13653,13 @@ CREATE OR REPLACE FUNCTION public.fn_venta_reserva_check_acceso(p_tenant_id uuid
  SET search_path TO 'public'
 AS $function$
 BEGIN
-  -- Sin usuario (service_role: webhooks, sweeps): pasa.
-  IF auth.uid() IS NULL THEN RETURN; END IF;
+  IF auth.uid() IS NULL THEN
+    -- service_role (webhooks / EFs) o sin JWT (pg_cron, migraciones): pasa. Cualquier otro rol sin usuario (anon): no.
+    IF COALESCE(auth.role(), 'service_role') <> 'service_role' THEN
+      RAISE EXCEPTION 'Venta inexistente o sin permisos' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN;
+  END IF;
   IF p_tenant_id IS DISTINCT FROM get_user_tenant_id() THEN
     RAISE EXCEPTION 'Venta inexistente o sin permisos' USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -13516,6 +13680,7 @@ DECLARE
   v_item     RECORD;
   v_linea    RECORD;
   v_reservar numeric;
+  v_global   boolean;
 BEGIN
   IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RETURN 0; END IF;
 
@@ -13531,16 +13696,21 @@ BEGIN
     RAISE EXCEPTION 'La venta está % — no se puede reservar stock', v_item.estado;
   END IF;
 
-  SELECT id, tenant_id, producto_id, sucursal_id, activo, cantidad, COALESCE(cantidad_reservada, 0) AS reservada
+  SELECT id, tenant_id, producto_id, sucursal_id, ubicacion_id, activo, cantidad, COALESCE(cantidad_reservada, 0) AS reservada
     INTO v_linea
     FROM inventario_lineas WHERE id = p_linea_id FOR UPDATE;
   IF v_linea.id IS NULL OR NOT v_linea.activo THEN RETURN 0; END IF;   -- igual que fn_reservar_stock_linea: no rompe al caller
   IF v_linea.tenant_id <> v_item.tenant_id OR v_linea.producto_id <> v_item.producto_id THEN
     RAISE EXCEPTION 'El LPN no corresponde al producto de la venta';
   END IF;
-  -- Inventario por sucursal estricto (la excepción de ubicaciones Globales llega en la Fase 1).
+  -- Inventario por sucursal estricto, con UNA excepción (mig 489, GO 2026-10-08): el LPN de otra sucursal se puede reservar
+  -- si está en una ubicación GLOBAL. Sigue siendo de su sucursal; la tarea de picking cae en ella.
   IF v_linea.sucursal_id IS NOT NULL AND v_item.sucursal_id IS NOT NULL AND v_linea.sucursal_id <> v_item.sucursal_id THEN
-    RAISE EXCEPTION 'Ese stock es de otra sucursal: no se puede reservar para esta venta' USING ERRCODE = 'check_violation';
+    SELECT EXISTS (SELECT 1 FROM ubicaciones u WHERE u.id = v_linea.ubicacion_id AND u.sucursal_id IS NULL) INTO v_global;
+    IF NOT COALESCE(v_global, false) THEN
+      RAISE EXCEPTION 'Ese stock es de otra sucursal y no está en una ubicación Global: no se puede reservar para esta venta'
+        USING ERRCODE = 'check_violation';
+    END IF;
   END IF;
 
   v_reservar := FLOOR(LEAST(p_cantidad, GREATEST(v_linea.cantidad - v_linea.reservada, 0)));

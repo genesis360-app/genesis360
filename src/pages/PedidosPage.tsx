@@ -55,7 +55,7 @@ export default function PedidosPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { tenant, user } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
 
@@ -286,10 +286,11 @@ export default function PedidosPage() {
   const { data: tareasPedidoExp = [] } = useQuery({
     queryKey: ['pedido-tareas', expandedId],
     queryFn: async () => {
-      const { data } = await supabase.from('wms_tareas')
-        .select('id, tipo, estado, producto_id, cantidad, lpn_origen, tarea_precedente_id, productos(nombre, sku)')
-        .eq('pedido_id', expandedId!).order('created_at')
-      return data ?? []
+      // Mig 490 — por función: incluye las tareas de OTRA sucursal (stock en una ubicación Global, lo pickea la sucursal
+      // dueña). Con la RLS por sucursal, un usuario de esta sucursal no las veía y el avance quedaba incompleto.
+      const { data, error } = await supabase.rpc('fn_pedido_tareas_detalle', { p_pedido_ids: [expandedId!] })
+      if (error) throw error
+      return ((data ?? []) as any[]).map(t => ({ ...t, productos: { nombre: t.producto_nombre, sku: t.producto_sku } }))
     },
     enabled: !!expandedId,
   })
@@ -842,7 +843,9 @@ export default function PedidosPage() {
       // hay que devolverla primero desde Ventas → Historial (link en el detalle expandido).
       {
         label: 'Cancelar pedido', icon: XCircle, danger: true, disabled: cancelarPedido.isPending,
-        hidden: !(p.estado !== 'cancelado' && puedeYo('cancelar')),
+        // Entregado (total o en parte) no se cancela (mig 492): lo pendiente se cierra con "Cerrar pedido" y una devolución va
+        // por Ventas → Devolución.
+        hidden: !(!['cancelado', 'entregado', 'entregado_parcial'].includes(p.estado) && puedeYo('cancelar')),
         onClick: async () => { if (await confirmar(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`, { danger: true })) cancelarPedido.mutate(p) },
       },
     ]
@@ -1214,10 +1217,18 @@ export default function PedidosPage() {
                                   {t.tipo === 'replenishment' ? 'Reabastecimiento' : 'Picking'} · {t.estado}
                                 </span>
                                 <span className="truncate">{t.productos?.nombre} ({Number(t.cantidad)})</span>
+                                {t.sucursal_id && p.sucursal_id && t.sucursal_id !== p.sucursal_id && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                                    title="Stock de otra sucursal en una ubicación Global: la tarea la hace esa sucursal">
+                                    la pickea {t.sucursal_nombre ?? 'otra sucursal'}
+                                  </span>
+                                )}
                                 {/* Mig 300: fn_unpick_tarea_wms ya soporta tareas encadenadas a un
                                     reabastecimiento (fallback por producto+ubicación cuando el LPN
-                                    exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas. */}
-                                {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar') && (
+                                    exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas.
+                                    Mig 490: la tarea de otra sucursal se ve en solo lectura (la deshace esa sucursal). */}
+                                {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar')
+                                  && (puedeVerTodas || !t.sucursal_id || t.sucursal_id === sucursalId) && (
                                   <button onClick={() => setUnpickModal(t)}
                                     className="ml-auto text-red-500 hover:text-red-600 hover:underline">
                                     Deshacer

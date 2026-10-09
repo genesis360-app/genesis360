@@ -47,7 +47,7 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, calcularReintegroAnulacion, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda, conservaMontoAlCambiarMedio } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularEfectivoPorMoneda, calcularReintegroAnulacion, carritoAceptaUsd, elegirCotizacionReintegro, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente, type EfectivoPorMoneda, conservaMontoAlCambiarMedio, usaStockDeOtraSucursal } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { cuponVigente, montoDescuentoCupon } from '@/lib/cupones'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
@@ -263,6 +263,22 @@ export default function VentasPage() {
   const soloUbicado = (q: any): any => (modoAvanzado ? q.not('ubicacion_id', 'is', null) : q)
   const esContador = user?.rol === 'CONTADOR'  // J3: acceso read-only a Ventas
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
+  // Ubicaciones GLOBALES (mig 489, UAT §111, GO 2026-10-08): el stock de OTRA sucursal ubicado en una Global se ve y se vende
+  // desde acá, pero sigue siendo de esa sucursal: una venta que lo usa va SIEMPRE por reserva + pedido (la sucursal dueña
+  // pickea, ésta entrega). Lo trae una función de la base (la RLS sigue mostrando solo la sucursal propia). Solo avanzado,
+  // solo productos sin serie. Las líneas vuelven con la forma de las de PostgREST + `sucursal_otra` (nombre de la dueña).
+  const traerGlobalesOtras = async (productoIds: string[]): Promise<any[]> => {
+    if (!modoAvanzado || !sucursalId || productoIds.length === 0) return []
+    const { data, error } = await supabase.rpc('fn_stock_global_otras_sucursales', { p_producto_ids: productoIds, p_sucursal_id: sucursalId })
+    if (error) { console.warn('[stock global]', error.message); return [] }
+    return ((data ?? []) as any[]).map(r => ({
+      ...r,
+      ubicaciones: { nombre: r.ubicacion_nombre, prioridad: r.ubicacion_prioridad, disponible_surtido: r.ubicacion_disponible_surtido },
+      estados_inventario: { nombre: r.estado_nombre, descuento_pct: r.estado_descuento_pct, es_disponible_venta: r.estado_disponible_venta },
+      inventario_series: [],
+      sucursal_otra: r.sucursal_nombre ?? 'otra sucursal',
+    }))
+  }
   // A2 — conteo wall-to-wall en curso en la sucursal → bloquea reservas/despachos (mueven stock)
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
@@ -1368,6 +1384,15 @@ export default function VentasPage() {
 
       // Calcular stock disponible por producto (solo líneas con ubicación disponible para surtido)
       const stockMap: Record<string, number> = {}
+      // Ubicaciones Globales: stock de otras sucursales vendible desde acá (por reserva + pedido) — se suma al disponible
+      // y se informa aparte.
+      const globalMap: Record<string, number> = {}
+      for (const g of await traerGlobalesOtras(productoIds)) {
+        if (g.ubicaciones?.disponible_surtido === false) continue
+        if (modoAvanzado && estadosFinal.length > 0 && !estadosFinal.includes(g.estado_id)) continue
+        if (g.fecha_vencimiento && g.fecha_vencimiento < new Date().toISOString().split('T')[0]) continue
+        globalMap[g.producto_id] = (globalMap[g.producto_id] ?? 0) + Math.max(0, (g.cantidad ?? 0) - (g.cantidad_reservada ?? 0))
+      }
       for (const linea of lineas ?? []) {
         if ((linea.ubicaciones as any)?.disponible_surtido === false) continue
         const pid = linea.producto_id
@@ -1407,11 +1432,12 @@ export default function VentasPage() {
       return prods
         .map((p: any) => ({
           ...p,
-          stock_disponible: stockMap[p.id] ?? 0,
+          stock_disponible: (stockMap[p.id] ?? 0) + (globalMap[p.id] ?? 0),
+          stock_global_otras: globalMap[p.id] ?? 0,
           stock_filtrado: estadosFiltro.length > 0, // indica que el stock está filtrado por grupo
           stock_trabado: trabadoMap[p.id] ?? 0,
         }))
-        .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0 || (trabadoMap[p.id] ?? 0) > 0)
+        .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0 || (globalMap[p.id] ?? 0) > 0 || (trabadoMap[p.id] ?? 0) > 0)
     },
     enabled: !!tenant && authInitialized,
   })
@@ -1857,7 +1883,11 @@ export default function VentasPage() {
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido), estados_inventario(nombre, descuento_pct)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)))
       if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
-      const { data: lineasRaw2 } = await lq
+      const { data: lineasPropias2 } = await lq
+      // Ubicaciones Globales: se suman los LPN de otras sucursales en Globales (mismos filtros de estado/surtido/vencimiento).
+      const globales2 = (await traerGlobalesOtras([p.id]))
+        .filter((g: any) => !(modoAvanzado && estadosFinal2.length > 0) || estadosFinal2.includes(g.estado_id))
+      const lineasRaw2 = [...(lineasPropias2 ?? []), ...globales2]
       const hoyStr = new Date().toISOString().split('T')[0]
       const sortedLineas = (lineasRaw2 ?? [])
         .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
@@ -1876,6 +1906,7 @@ export default function VentasPage() {
           ? parseFloat((l.estados_inventario as any).descuento_pct) : null,
         talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
         formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
+        sucursal_otra: l.sucursal_otra ?? null,
       }))
       lpnFuentes = calcularLpnFuentes(lineasDisponibles, 1)
       primaryLineaId = lpnFuentes[0]?.linea_id
@@ -3449,6 +3480,17 @@ export default function VentasPage() {
       return
     }
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
+    // Ubicaciones Globales (UAT §111, GO 2026-10-08): una venta que usa stock de OTRA sucursal va SIEMPRE por reserva +
+    // pedido (esa sucursal pickea y acá se entrega). "Finalizar" se frena antes de escribir nada (un presupuesto no mueve
+    // stock: se permite, y al convertirlo a reserva se toma también la Global).
+    if (estado === 'despachada') {
+      const itemAjeno = cart.find(i => !i.tiene_series && usaStockDeOtraSucursal(i.lpn_fuentes))
+      if (itemAjeno) {
+        const suc = usaStockDeOtraSucursal(itemAjeno.lpn_fuentes)
+        toast.error(`"${itemAjeno.nombre}" sale de stock de ${suc} (ubicación Global): registrala como RESERVA — ${suc} lo pickea y se entrega acá.${estado === 'despachada' && modoCC ? ' En cuenta corriente no se puede: cobrala o usá stock de esta sucursal.' : ''}`, { duration: 9000 })
+        return
+      }
+    }
     // B2 / Fase 3 (REGLA #0): sin precio del servidor para TODAS las líneas no se guarda nada (PL-5 = A).
     if (!estadoPrecios.listo) {
       if (estadoPrecios.motivo === 'calculando') toast.error('Calculando precios… probá de nuevo en un segundo.')
@@ -3956,7 +3998,13 @@ export default function VentasPage() {
           )
           // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
           if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
-          const { data: lineasRaw } = await lineasQ
+          const { data: lineasPropias } = await lineasQ
+          // Ubicaciones Globales: SOLO al reservar se suman los LPN de otras sucursales en Globales (la reserva pasa por
+          // fn_venta_reservar_linea, que lo vuelve a validar). Un despacho directo nunca toca stock ajeno.
+          const globalesItem = estado === 'reservada'
+            ? (await traerGlobalesOtras([item.producto_id])).filter((g: any) => g.estado_disponible_venta !== false)
+            : []
+          const lineasRaw = [...(lineasPropias ?? []), ...globalesItem]
           const lineas = (lineasRaw ?? [])
             .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
             .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
@@ -5175,9 +5223,14 @@ export default function VentasPage() {
                 .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
                 .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
             )
-            // Inventario por sucursal estricto: solo stock de la sucursal de la venta (antes no filtraba).
+            // Inventario por sucursal estricto: solo stock de la sucursal de la venta (antes no filtraba) + los LPN de otras
+            // sucursales en ubicaciones Globales (UAT §111; la función de reserva lo vuelve a validar).
             if (venta.sucursal_id) reservaQ = reservaQ.eq('sucursal_id', venta.sucursal_id)
-            const { data: lineasRaw } = await reservaQ
+            const { data: lineasPropiasRes } = await reservaQ
+            const globalesRes = venta.sucursal_id && venta.sucursal_id === sucursalId
+              ? (await traerGlobalesOtras([item.producto_id])).filter((g: any) => g.estado_disponible_venta !== false)
+              : []
+            const lineasRaw = [...(lineasPropiasRes ?? []), ...globalesRes]
             const _hoyStr = new Date().toISOString().split('T')[0]
             const lineas = (lineasRaw ?? [])
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
@@ -5271,6 +5324,9 @@ export default function VentasPage() {
         const { data: evDataCambio } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
         const vendibleIdsCambio = modoAvanzado ? (evDataCambio ?? []).map((e: any) => e.id) : []
         for (const item of items ?? []) {
+          // Ubicaciones Globales (UAT §111): unidades de este ítem que salieron de LPN de OTRA sucursal → su movimiento de
+          // stock va con la sucursal dueña del LPN (la venta y la caja siguen siendo de esta).
+          const rebajadoOtraSuc: Record<string, number> = {}
           if ((item.productos as any)?.tiene_series) {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
             // ISS-075: snapshot LPN/ubicación/serie antes de desactivar
@@ -5366,6 +5422,8 @@ export default function VentasPage() {
               for (const c of (consumidas ?? []) as any[]) {
                 const cant = Number(c.cantidad ?? 0)
                 restante -= cant
+                if (c.sucursal_id && ventaSucursal && c.sucursal_id !== ventaSucursal)
+                  rebajadoOtraSuc[c.sucursal_id] = (rebajadoOtraSuc[c.sucursal_id] ?? 0) + cant
                 if (cant > 0) despachoRows.push(despachoDe(c, cant, manualPlan.has(c.linea_id) ? 'manual' : 'auto'))
               }
               if (restante > 0.0001) {
@@ -5395,20 +5453,31 @@ export default function VentasPage() {
           // (lineas/series_recalcular_stock) ya lo recalculó tras la rebaja de arriba.
           // stock_antes/despues = stock VENDIBLE en la sucursal de la venta (no el total global).
           const sucMovimiento = (venta as any)?.sucursal_id ?? (ventaDetalle as any)?.sucursal_id ?? null
-          const stockDespues = await stockVendibleSucursal(item.producto_id, sucMovimiento, vendibleIdsCambio)
-          const stockAntes = stockDespues + item.cantidad
-          await supabase.from('movimientos_stock').insert({
-            tenant_id: tenant!.id,
-            producto_id: item.producto_id,
-            tipo: 'rebaje',
-            cantidad: item.cantidad,
-            stock_antes: stockAntes,
-            stock_despues: stockDespues,
-            motivo: `Venta #${venta.numero}`,
-            usuario_id: user?.id,
-            venta_id: ventaId,
-            sucursal_id: sucMovimiento,
-          })
+          const cantOtras = Object.values(rebajadoOtraSuc).reduce((a, b) => a + b, 0)
+          const tramos: { suc: string | null; cant: number; motivo: string }[] = [
+            { suc: sucMovimiento, cant: item.cantidad - cantOtras, motivo: `Venta #${venta.numero}` },
+            ...Object.entries(rebajadoOtraSuc).map(([suc, cant]) => ({
+              suc, cant,
+              motivo: `Venta #${venta.numero} de ${sucursales.find(x => x.id === sucMovimiento)?.nombre ?? 'otra sucursal'} (stock en ubicación Global)`,
+            })),
+          ]
+          for (const t of tramos) {
+            if (t.cant <= 0) continue
+            const stockDespues = await stockVendibleSucursal(item.producto_id, t.suc, vendibleIdsCambio)
+            const { error: movErr } = await supabase.from('movimientos_stock').insert({
+              tenant_id: tenant!.id,
+              producto_id: item.producto_id,
+              tipo: 'rebaje',
+              cantidad: t.cant,
+              stock_antes: stockDespues + t.cant,
+              stock_despues: stockDespues,
+              motivo: t.motivo,
+              usuario_id: user?.id,
+              venta_id: ventaId,
+              sucursal_id: t.suc,
+            })
+            if (movErr) console.warn('[movimientos_stock]', movErr.message)
+          }
         }
         // ISS-075: persistir el desglose de despacho (fire-and-forget, gate por toggle del tenant)
         if ((tenant as any)?.trazabilidad_asignacion !== false && despachoRows.length > 0) {
@@ -6185,6 +6254,11 @@ export default function VentasPage() {
                                 : `${p.stock_actual} stock`
                               }
                             </p>
+                            {(p.stock_global_otras ?? 0) > 0 && (
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400" title="Stock de otra sucursal en una ubicación Global: se vende como reserva y lo pickea esa sucursal">
+                                incl. {p.stock_global_otras} de otra sucursal (Global)
+                              </p>
+                            )}
                           </div>
                         </button>
                       ))}
@@ -6244,6 +6318,11 @@ export default function VentasPage() {
                             </span>
                         }
                       </p>
+                      {(p.stock_global_otras ?? 0) > 0 && (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight" title="Stock de otra sucursal en una ubicación Global: se vende como reserva y lo pickea esa sucursal">
+                          incl. {p.stock_global_otras} de otra sucursal
+                        </p>
+                      )}
                     </button>
                     )
                   })}
@@ -6289,9 +6368,13 @@ export default function VentasPage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
                             {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
-                              const canPick = (item.lineas_disponibles?.length ?? 0) > 1
                               const isOpen = lpnPickerIdx === idx
                               const atributoAmbiguo = cartDerived.get(item)?.atributoAmbiguo ?? null
+                              // Mig 489: con "el POS puede cambiar el LPN sugerido" apagado, se vende lo que dice la regla. Elegir
+                              // talle/color sigue siempre habilitado (es elegir QUÉ variante se vende, no de dónde sale).
+                              const permiteCambiarLpn = (tenant as any)?.pos_permite_cambiar_lpn !== false
+                              const canPick = (item.lineas_disponibles?.length ?? 0) > 1 && (permiteCambiarLpn || !!atributoAmbiguo)
+                              const sucAjena = usaStockDeOtraSucursal(item.lpn_fuentes)
                               // REGLA #0: hay >1 talle/color en stock y el cajero todavía no pasó
                               // por el picker — sin esto, "cobrar" se va a bloquear (ver registrarVenta).
                               const requiereConfirmar = canPick && item.lineas_disponibles
@@ -6315,6 +6398,7 @@ export default function VentasPage() {
                                           : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'}`}>
                                       {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
                                       {f.ubicacion && <span className="text-blue-400 dark:text-blue-500"> · {f.ubicacion}</span>}
+                                      {f.sucursal_otra && <span className="text-amber-600 dark:text-amber-400 font-medium"> · de {f.sucursal_otra}</span>}
                                       {atributosDeLinea(f).map(a => (
                                         <span key={a.key} className="text-blue-500 dark:text-blue-400 font-medium"> · {a.emoji}{a.valor}</span>
                                       ))}
@@ -6323,6 +6407,11 @@ export default function VentasPage() {
                                   ))}
                                   {item.lpn_fuentes.length > 3 && (
                                     <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
+                                  )}
+                                  {sucAjena && (
+                                    <p className="w-full text-[11px] text-amber-700 dark:text-amber-400">
+                                      Sale de stock de {sucAjena} (ubicación Global): la venta va como <b>reserva</b>, {sucAjena} lo pickea y se entrega acá.
+                                    </p>
                                   )}
                                   {/* Picker inline de posición */}
                                   {isOpen && item.lineas_disponibles && (
@@ -6345,6 +6434,7 @@ export default function VentasPage() {
                                                 ? atributos.map(a => `${a.emoji} ${a.valor}`).join(' · ')
                                                 : (l.lpn ?? <span className="text-gray-400 italic">Sin LPN</span>)}
                                               {l.ubicacion && <span className="text-gray-400 dark:text-gray-500 ml-1">· {l.ubicacion}</span>}
+                                              {l.sucursal_otra && <span className="text-amber-600 dark:text-amber-400 ml-1">· de {l.sucursal_otra} (Global)</span>}
                                               {atributos.length > 0 && l.lpn && <span className="text-gray-400 dark:text-gray-500 ml-1">· {l.lpn}</span>}
                                               {isActive && <span className="ml-1 text-blue-500">✓</span>}
                                             </span>

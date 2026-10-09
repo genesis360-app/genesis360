@@ -12,7 +12,20 @@ type: project
 > la sucursal activa en POS/Pedidos/Clientes/Cobranzas CC/RRHH/Proveedores + **mig 487** (WITH CHECK de `sesiones_tenant` y
 > `mov_caja_tenant` = USING). e2e 191 verde, 2.280 unit verdes, UAT §114.
 >
-> **🌐 Picking con ubicaciones GLOBALES — DEFINIDO por GO (UAT §111), DISEÑO (no implementado):**
+> **📌 PARA VER MAÑANA (GO, 09/10): Devolución "Sin devolución monetaria" no funciona.** Ventas → Procesar devolución
+> (también desde Supervisión → aprobar anulación): el select de medio ofrece "Sin devolución monetaria" (es la opción vacía,
+> `VentasPage.tsx` ~8465) pero `procesarDevolucion` (~4733) exige que los medios cubran el total → toast "Los medios de
+> devolución ($0) no cubren el total". **No hay ley ni decisión detrás** (solo se saltea si el cliente tiene deuda CC y la
+> devolución se aplica a la deuda). A definir con GO (¿y contador?): NC sin devolver plata = ¿crédito a favor, cambio de
+> mercadería, o se retiene? Después: o se habilita bien o se saca la opción.
+>
+> **✅ HECHO EN DEV (09/10, falta deploy — va TODO junto en un release):** F0 (mig 488), F1 (489), F2 (490), correcciones
+> de revisión (491), pedido entregado no se cancela (492), "Ver en Envíos" filtrado, landing (foto + cargos), caja (487).
+> e2e 191-195 nuevos; regresión 28 specs: 45 passed / 3 skipped; 2.289 unit. 🛑 488 NO es aditiva-segura (front + mig en el
+> mismo release; su backfill agrega filas en las 7 reservas vivas de PROD). Pendiente: webhooks ML/TN → fn_venta_reservar_linea;
+> productos con serie siguen estrictos por sucursal en Globales.
+>
+> **🌐 Picking con ubicaciones GLOBALES — DEFINIDO por GO (UAT §111) — implementado en DEV (ver arriba):**
 > - Reglas: stock en Global sigue siendo de la sucursal que lo cargó, visible/vendible desde todas · venta de A con stock de B
 >   = venta de A, SIEMPRE por pedido (no se finaliza en mostrador) · la tarea del LPN de B la ve B · A ve el avance en solo
 >   lectura · B pickea, la mercadería va a A y A confirma la entrega · LPN sugerido según la regla configurada sobre A +

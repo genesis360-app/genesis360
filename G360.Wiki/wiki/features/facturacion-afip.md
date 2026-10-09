@@ -8,6 +8,8 @@ updated: 2026-10-01
 
 # Facturación Electrónica AFIP
 
+
+> ✅ **2026-10-09 — RESUELTO EN PROD v1.242.1 (e2e 197):** tras emitir con éxito, el navegador manda el mail al cliente CON el PDF (mismo `enviarFacturaEmail` de FacturacionPage/VentasPage) y la EF `emitir-factura` saltea su aviso si recibe `cliente_envia_email: true` (un front viejo no lo manda → la EF sigue avisando, sin cortes en el deploy). Antes: el mail AUTOMÁTICO de la factura (`emitir-factura` ~654-683 → `send-email` tipo `factura_emitida`) sale **sin el PDF adjunto**: el PDF se genera en el navegador (`generarFacturaPDFBase64`, `src/lib/facturasPDF.ts`) y el EF no lo tiene. Los envíos manuales sí adjuntan (FacturacionPage ~199-219; VentasPage `enviarFacturaEmail` ~2743 y `enviarNCEmail` ~2860). Propuesta (a): el cliente manda el mail con el PDF tras emitir con éxito (si el cliente tiene email) y se saca el envío del EF; (b) generar el PDF en el servidor. Ver [[sources/raw/project_pendientes]].
 > 🧾 **2026-10-01 — Fase 0: la factura guarda su punto de venta y el ambiente de su CAE (mig 453, ✅ EN PROD v1.236.0):**
 > `emitir-factura` sella `ventas.punto_venta` + `ventas.cae_ambiente` y `devoluciones.nc_cae_ambiente`. Con eso: (1) la
 > NC arma `CbtesAsoc.PtoVta` con el PV **de la factura original** (antes, el de la NC: con 2+ PV por CUIT podía referenciar

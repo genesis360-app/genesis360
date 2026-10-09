@@ -8,7 +8,9 @@ updated: 2026-10-09
 
 # Ventas / POS
 
-> 🟡 **2026-10-09 (DEV v1.242.0, migs 488-491; sin PROD; UAT §111, §115):** el POS **ve y vende stock de ubicaciones Globales de otras sucursales** (`fn_stock_global_otras_sucursales`): la venta de A con stock de B va SIEMPRE por reserva + pedido; LPN sugerido por la regla configurada sobre A + Globales (a igualdad A primero); config `tenants.pos_permite_cambiar_lpn`. La **reserva queda atada a la venta** (mig 488: `venta_item_reservas`; anular o despachar ya no toca reservas ajenas). Ver [[wiki/features/inventario-stock]].
+> ✅ **2026-10-09 (EN PROD v1.242.0, migs 488-491, 495; UAT §111, §115):** el POS **ve y vende stock de ubicaciones Globales de otras sucursales** (`fn_stock_global_otras_sucursales`): la venta de A con stock de B va SIEMPRE por reserva + pedido; LPN sugerido por la regla configurada sobre A + Globales (a igualdad A primero); config `tenants.pos_permite_cambiar_lpn`. La **reserva queda atada a la venta** (mig 488: `venta_item_reservas`; anular o despachar ya no toca reservas ajenas). Ver [[wiki/features/inventario-stock]].
+
+> 🛑 **2026-10-09 (✅ EN PROD v1.242.0, mig 495; UAT §117):** Ventas → Retiro "Entregado" ahora **finaliza la venta reservada en el mismo click** (antes solo abría el detalle y la venta quedaba reservada para siempre con la mercadería entregada); `fn_pedido_entregar_retiro` rechaza una venta reservada. Ver [[wiki/features/pedidos]].
 
 > 📦 **2026-10-09 (✅ EN PROD v1.241.0, mig 486):** una venta despachada/facturada genera su pedido ya `listo_para_entrega`, y si la venta reservada pasa a despachada su pedido confirmado pasa a listo (trigger `trg_ventas_despachada_pedido_listo`). Ventas → Retiro filtra por sucursal activa. Ver [[wiki/features/pedidos]].
 

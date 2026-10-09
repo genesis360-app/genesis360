@@ -2312,11 +2312,20 @@ export default function VentasPage() {
           punto_venta: facturaPV,
           // Multi-CUIT: emisor elegido (la EF valida pertenencia/activo y la NC hereda el suyo)
           ...(facturaEmisorId ? { emisor_id: facturaEmisorId } : {}),
+          cliente_envia_email: true,
         },
       })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       toast.success(`✅ Factura ${facturaTipo} emitida — CAE: ${data.cae}`, { duration: 8000 })
+      const ventaEmitidaId = facturaModal.ventaId
+      // Mail al cliente CON la factura en PDF (reporte de GO 09/10: el que mandaba la EF salía sin adjunto). Lo manda el
+      // navegador con el mismo envío que "Enviar por email"; la EF no manda el suyo (cliente_envia_email).
+      void (async () => {
+        const { data: vc } = await supabase.from('ventas').select('clientes(email)').eq('id', ventaEmitidaId).maybeSingle()
+        const em = String((vc as any)?.clientes?.email ?? '').trim()
+        if (em) await enviarFacturaEmail(ventaEmitidaId, em)
+      })()
       // No cerramos: pasamos a la vista de acciones (descargar/imprimir/email)
       setFacturaEmitida({ ventaId: facturaModal.ventaId, tipo: facturaTipo, cae: data.cae })
       // Sincronizar el detalle abierto (si es la misma venta) para reflejar CAE + estado

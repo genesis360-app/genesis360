@@ -443,8 +443,8 @@ export function SeccionRubros() {
 /* ── 10 · Confianza: los fundadores (mientras no haya testimonios reales, doc 00 §7) ──────────────────────────────── */
 
 const FUNDADORES = [
-  { nombre: 'Gastón Otranto', foto: '/landing/fundadores/gaston-otranto.webp' },
-  { nombre: 'Federico Messina', foto: '/landing/fundadores/federico-messina.webp' },
+  { nombre: 'Gastón Otranto', cargo: 'Co-Founder & CTO', foto: '/landing/fundadores/gaston-otranto.webp' },
+  { nombre: 'Federico Messina', cargo: 'Co-Founder & CEO', foto: '/landing/fundadores/federico-messina.webp' },
 ]
 
 export function SeccionFundadores() {
@@ -472,7 +472,7 @@ export function SeccionFundadores() {
                 </div>
                 <figcaption className="mt-4">
                   <p className="font-semibold text-lg tracking-tight">{f.nombre}</p>
-                  <p className="text-sm text-zinc-500">Fundador</p>
+                  <p className="text-sm text-zinc-500">{f.cargo}</p>
                 </figcaption>
               </figure>
             </li>

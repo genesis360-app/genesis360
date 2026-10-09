@@ -6,68 +6,59 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-08 noche) — DEV adelante de PROD: commit `33443dec` + **mig 487** (solo DEV)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre) — 🟡 **DEV adelante de PROD: `v1.242.0` LISTA EN DEV, sin deploy** (migs 487-493 solo DEV)
 >
-> **✅ Hecho en DEV (falta deploy):** cambiar de sucursal con la caja abierta (decisión de GO, L4 revisado) + cajas solo de
-> la sucursal activa en POS/Pedidos/Clientes/Cobranzas CC/RRHH/Proveedores + **mig 487** (WITH CHECK de `sesiones_tenant` y
-> `mov_caja_tenant` = USING). e2e 191 verde, 2.280 unit verdes, UAT §114.
+> | | Código | Migraciones |
+> |---|---|---|
+> | **PROD** | `v1.241.0` (PR #383, merge `8873c36b`, release Latest) | 001-**486** |
+> | **DEV** | `v1.242.0` (`origin/dev`, commits `33443dec..57fb426f`) | 001-**493** (487-493 SOLO DEV) |
 >
-> **📌 PARA VER MAÑANA (GO, 09/10): Devolución "Sin devolución monetaria" no funciona.** Ventas → Procesar devolución
-> (también desde Supervisión → aprobar anulación): el select de medio ofrece "Sin devolución monetaria" (es la opción vacía,
-> `VentasPage.tsx` ~8465) pero `procesarDevolucion` (~4733) exige que los medios cubran el total → toast "Los medios de
-> devolución ($0) no cubren el total". **No hay ley ni decisión detrás** (solo se saltea si el cliente tiene deuda CC y la
-> devolución se aplica a la deuda). A definir con GO (¿y contador?): NC sin devolver plata = ¿crédito a favor, cambio de
-> mercadería, o se retiene? Después: o se habilita bien o se saca la opción.
+> **Falta:** autorización de GO para el deploy. Al deployar: migs 487-493 a PROD de a una con `scripts/aplicar-migracion.mjs`
+> (🛑 **488 NO es aditiva-segura**: va en el mismo release que su front; su backfill agrega filas en las 7 reservas vivas de PROD,
+> no toca LPN → avisar a GO), PR `dev → main` `v1.242.0 — ...`, release `v1.242.0` (tag y release NO creados aún),
+> `auditar-edge-functions.sh`, hash de `pg_policies` por schema.
 >
-> **✅ HECHO EN DEV (09/10, falta deploy — va TODO junto en un release):** F0 (mig 488), F1 (489), F2 (490), correcciones
-> de revisión (491), pedido entregado no se cancela (492), "Ver en Envíos" filtrado, landing (foto + cargos), caja (487).
-> e2e 191-195 nuevos; regresión 28 specs: 45 passed / 3 skipped; 2.289 unit. 🛑 488 NO es aditiva-segura (front + mig en el
-> mismo release; su backfill agrega filas en las 7 reservas vivas de PROD).
+> **✅ Qué trae v1.242.0** (detalle: `log.md` 2026-10-09 update y [[wiki/business/roadmap]]):
+> - **Mig 487 — Caja:** cambiar de sucursal con la caja abierta (avisa, ya no bloquea; L4 revisado por GO); cajas solo de la
+>   sucursal activa en POS/Pedidos/Clientes/Cobranzas CC/RRHH/Proveedores; WITH CHECK de `sesiones_tenant`/`mov_caja_tenant` = USING.
+>   e2e 191, UAT §114.
+> - **Mig 488 — Reserva atada a la venta (F0):** `venta_item_reservas` + `venta_items.reserva_anotada` y funciones
+>   `fn_venta_reservar_linea` / `fn_venta_liberar_reservas` / `fn_venta_consumir_reservas`. Cerró los hallazgos REGLA #0 (anular o
+>   despachar liberaba/descontaba reservas ajenas, vencimiento a ciegas, deslanzar/des-pickear). e2e 192, UAT §115.
+> - **Migs 489-491 — Ubicaciones Globales (F1-F3, UAT §111, decisiones de GO 08/10):** stock Global = de la sucursal que lo cargó,
+>   visible/vendible desde todas; venta de A con stock de B = SIEMPRE reserva + pedido; B pickea, A ve el avance en solo lectura y
+>   entrega; LPN sugerido por la regla sobre A + Globales (a igualdad A primero); config `tenants.pos_permite_cambiar_lpn`
+>   (Config → Inventario → Reglas de stock); movimiento de stock con la sucursal dueña del LPN. e2e 194-196.
+> - **Migs 492-493 — Pedidos entregados:** no se cancelan ni se des-pickean (tampoco entregado parcial ni pedido de venta ya despachada). UAT §116.
+> - Pedidos → "Ver en Envíos" abre `/envios?envio=<id>` (e2e 193) · Landing: foto nueva de Gastón Otranto + cargos "Co-Founder & CTO" / "Co-Founder & CEO".
+> - Tests: 2.289 unit; e2e nuevos 191-196; regresión 28 specs: 45 passed / 3 skipped.
 >
-> **📌 ANOTADO POR GO (09/10) — para mañana o la semana que viene:**
-> 1. **Webhooks MercadoLibre / TiendaNube → `fn_venta_reservar_linea`** (`meli-webhook` ~278-295 y `tn-webhook` ~453-480
->    reservan con `fn_reservar_stock_linea` sin anotar; `tn-webhook` cancela con `fn_liberar_stock_linea` por `item.linea_id`
->    → pasar a `fn_venta_liberar_reservas`). Hoy caen en el camino de compatibilidad (sucursal de la venta, una vez). Requiere
->    redeploy de las EFs en DEV y PROD.
+> **📌 ANOTADO POR GO (09/10) — mañana o la semana que viene:**
+> 1. **Webhooks MercadoLibre / TiendaNube → modelo de reservas** (`meli-webhook` ~278-295 y `tn-webhook` ~453-480 reservan con
+>    `fn_reservar_stock_linea` sin anotar; `tn-webhook` cancela con `fn_liberar_stock_linea` por `item.linea_id` → pasar a
+>    `fn_venta_reservar_linea` / `fn_venta_liberar_reservas`). Hoy caen en el camino de compatibilidad (sucursal de la venta,
+>    una vez). Requiere redeploy de las EFs en DEV y PROD.
+> 2. **Devolución "Sin devolución monetaria" no funciona (ver el 10/10).** Ventas → Procesar devolución (también Supervisión →
+>    aprobar anulación): el select ofrece "Sin devolución monetaria" (`VentasPage.tsx` ~8465) pero `procesarDevolucion` (~4733)
+>    exige que los medios cubran el total → toast "Los medios de devolución ($0) no cubren el total". No hay ley ni decisión detrás
+>    (solo se saltea si el cliente tiene deuda CC y se aplica a la deuda). A definir con GO (¿y contador?): NC sin devolver plata =
+>    ¿crédito a favor, cambio de mercadería o se retiene? Después: o se habilita bien o se saca la opción.
 >
-> **📌 ANOTADO POR GO (09/10) — "lo veremos más adelante":**
-> 2. **Productos con serie en ubicaciones Globales**: siguen estrictos por sucursal (su reserva es `inventario_series.reservado`
->    + `venta_series`, no pasa por `venta_item_reservas`).
-> 3. **Pedidos manuales** (sin venta de origen): `fn_generar_tareas_picking_pedido_stock` toma solo stock de la sucursal del
+> **📌 "Lo veremos más adelante" (GO, 09/10):**
+> 3. **Productos con serie en ubicaciones Globales**: siguen estrictos por sucursal (su reserva es `inventario_series.reservado` +
+>    `venta_series`, no pasa por `venta_item_reservas`).
+> 4. **Pedidos manuales** (sin venta de origen): `fn_generar_tareas_picking_pedido_stock` toma solo stock de la sucursal del
 >    pedido; no usan Globales de otras sucursales.
 >
-> **🌐 Picking con ubicaciones GLOBALES — DEFINIDO por GO (UAT §111) — implementado en DEV (ver arriba):**
-> - Reglas: stock en Global sigue siendo de la sucursal que lo cargó, visible/vendible desde todas · venta de A con stock de B
->   = venta de A, SIEMPRE por pedido (no se finaliza en mostrador) · la tarea del LPN de B la ve B · A ve el avance en solo
->   lectura · B pickea, la mercadería va a A y A confirma la entrega · LPN sugerido según la regla configurada sobre A +
->   Globales (a igualdad, A primero) · config nueva "el POS puede cambiar el LPN sugerido" (si no, estricto).
-> - 🛑 **Hallazgo que condiciona el diseño (REGLA #0, latente HOY, sin Globales):** la reserva NO queda atada a la venta.
->   `cantidad_reservada` es un total por línea y las líneas realmente reservadas no se guardan (`lpn_plan` es el plan del
->   carrito). Consecuencias: (1) anular/cancelar una reserva libera las primeras líneas reservadas del producto, de
->   cualquier venta y sucursal (`VentasPage` cancelar ~5500, `liberar_reservas_vencidas`); (2) reserva→despachada vuelve a
->   buscar líneas por sucursal y cuenta como disponible lo reservado por OTRAS ventas (~5329), y descuenta reservas ajenas;
->   (3) `fn_pedido_generar_venta` rebaja "líneas reservadas de la sucursal", no las de esa venta; (4) presupuesto→reserva no
->   filtra sucursal (~5170); (5) `fn_pedido_liberar_tareas_pendientes` (deslanzar/cancelar pedido) baja `cantidad_reservada`
->   también en pedidos de venta; (6) el `movimientos_stock` de reserva→despachada sale sin `sucursal_id`; (7) el carrito no
->   aplica `soloUbicado` (~1854).
-> - **Fases propuestas:**
->   - ✅ **F0 HECHA EN DEV (mig 488, 09/10)** — `venta_item_reservas` + `venta_items.reserva_anotada`; POS reserva/libera/rebaja
->     por funciones; e2e 192 + UAT §115. 🛑 La 488 NO es aditiva-segura: va a PROD en el MISMO release que su front; su
->     backfill agrega filas en PROD (no toca LPN) → avisarle a GO. Pendiente: pasar los webhooks ML/TN a `fn_venta_reservar_linea`
->     (hoy caen en el camino de compatibilidad). Diseño original:
->   - **F0 — Reserva atada a la venta** (arregla 1-6, prerequisito): tabla `venta_item_reservas` (venta_item_id, linea_id,
->     cantidad) escrita por una función SECURITY DEFINER que reserva atómicamente; liberar y rebajar SOLO por esas filas;
->     backfill de las reservas vivas (data fix con OK de GO).
->   - **F1 — POS ve Globales:** carrito/búsqueda/registro incluyen líneas de otras sucursales en ubicaciones Globales (solo
->     avanzado), separadas "de A" / "de B (Global)"; orden = regla + desempate A primero; venta con stock de B fuerza reserva;
->     config "cambiar LPN sugerido"; guard en la base (línea de otra sucursal solo si su ubicación es Global).
->   - **F2 — Picking por dueño:** `fn_generar_tareas_picking_pedido_venta` pone `wms_tareas.sucursal_id` = sucursal de la
->     línea; completar tarea / pasar a listo SECURITY DEFINER (hoy INVOKER: con RLS un usuario de B no ve el pedido de A y el
->     pedido nunca queda listo); detalle del pedido en A muestra tareas de B en solo lectura (RPC).
->   - **F3 — Entrega en A:** rebaja por `venta_item_reservas` (línea de B), movimiento con la sucursal de la línea, venta y
->     caja de A; reportes por sucursal; e2e de punta a punta.
+> **Siguen vivos:** Multimoneda (semana del 12/10, 5 preguntas abiertas) · plan de testing de Config → Notificaciones · confirmar
+> revocación de HS256 en DEV y que `sbp_60df…` no exista.
 >
-> ### 🛑 ARRANCÁ ACÁ (2026-10-09, para /clear) — 🚀 **PROD = DEV = `v1.241.0`** (migs 001-**486**)
+> ### (Previo, cerrado) Picking con ubicaciones GLOBALES — diseño por fases: F0 (488), F1 (489), F2 (490), F3/revisión (491) HECHAS EN DEV
+> Reglas definidas por GO en UAT §111 (resumidas arriba). El hallazgo original (reserva no atada a la venta: 7 consecuencias) quedó
+> resuelto por la mig 488; el diseño completo vive en [[wiki/features/inventario-stock]] y [[wiki/features/wms]].
+>
+
+> ### (Previo) ARRANCÁ ACÁ (2026-10-09, para /clear) — 🚀 **PROD = DEV = `v1.241.0`** (migs 001-**486**)
 >
 > | | Código | Migraciones |
 > |---|---|---|
@@ -75,7 +66,7 @@ type: project
 > | **DEV** | `v1.241.0` (`origin/dev`) | 001-**486** |
 >
 > Migs 482-486 aplicadas en PROD de a una con `scripts/aplicar-migracion.mjs` y verificadas. EFs `send-email`, `courier-api` y
-> `data-api` desplegadas en PROD. **Sin nada pendiente de deploy.**
+> `data-api` desplegadas en PROD. **Sin nada pendiente de deploy (a ese momento; luego se sumó v1.242.0 en DEV).**
 >
 > **Lo que entró en v1.241.0** (detalle: `log.md` 2026-10-09 y [[wiki/business/roadmap]]):
 > - 🛑 Carrito del POS = stock de la sucursal activa + **mig 482** (vencimiento ≤ 9999-12-31) · 🖼️ landing con capturas reales ·

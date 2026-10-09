@@ -613,7 +613,8 @@ export default function GastosPage() {
   })
 
   const { data: cajasAbiertasOC = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId],
+    // Clave propia ('oc' al final): la de arriba usa la misma base con OTRO select y compartían caché.
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId, 'oc'],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
         .select('id, cajas(nombre, sucursal_id, moneda)').eq('tenant_id', tenant!.id).is('cerrada_at', null)

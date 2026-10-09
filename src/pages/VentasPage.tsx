@@ -5403,6 +5403,13 @@ export default function VentasPage() {
               : { data: [] as any[] }
             const totalAnotado = (anotadas ?? []).reduce((s: number, r: any) => s + Number(r.cantidad ?? 0), 0)
             const conAnotacion = totalAnotado > 0
+            // Mig 488: ítem que reservó con el modelo nuevo (reserva_anotada) pero ya sin anotaciones y la venta sigue
+            // 'reservada' = un despacho anterior ya rebajó su reserva y falló después (antes de pasar la venta a despachada).
+            // Rebajarlo de nuevo sería doble rebaje: se saltea.
+            if (esDesdeReserva && !conAnotacion && (item as any).reserva_anotada === true) {
+              console.warn('[despacho] ítem ya rebajado en un intento anterior:', item.id)
+              continue
+            }
             let lineas = await cargarLineas()
             const libre = (ls: any[]) => ls.reduce((s: number, l: any) => s + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
             // Disponible: con anotación = lo reservado por esta venta + stock libre; reserva sin anotar = todo lo de la
@@ -5476,7 +5483,10 @@ export default function VentasPage() {
               venta_id: ventaId,
               sucursal_id: t.suc,
             })
-            if (movErr) console.warn('[movimientos_stock]', movErr.message)
+            if (movErr) {
+              console.warn('[movimientos_stock]', movErr.message)
+              toast.error(`El stock de "${(item.productos as any)?.nombre ?? 'el producto'}" se rebajó, pero no se pudo registrar su movimiento en el historial: ${movErr.message}`, { duration: 9000 })
+            }
           }
         }
         // ISS-075: persistir el desglose de despacho (fire-and-forget, gate por toggle del tenant)

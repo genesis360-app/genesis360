@@ -103,7 +103,9 @@ export default function PedidosPage() {
   // Deep-link desde AlertasPage — ?estado= pre-filtra el estado (ej. "en_preparacion" para
   // "sin avanzar"); mismo patrón que Ventas/Envíos con `busqueda`. GO, 2026-08-12: antes estos
   // links caían siempre en /pedidos a secas, sin filtrar nada.
-  const [filtroEstado, setFiltroEstado] = useState(() => searchParams.get('estado') ?? '')
+  // Default "Pendiente" (= confirmado) al entrar (GO 2026-10-09). Con un link que busca algo puntual (?busqueda=) se arranca
+  // en "Todos": si no, el pedido buscado podría quedar oculto por no estar pendiente.
+  const [filtroEstado, setFiltroEstado] = useState(() => searchParams.get('estado') ?? (searchParams.get('busqueda') ? '' : 'confirmado'))
   // Buscador por píldoras (mismo mecanismo que /picking, /productos e /inventario — GO 2026-08-12:
   // el buscador de texto plano hacía substring sobre N°/referencia/cliente a la vez, así que
   // buscar el pedido "2" también traía el 82, el 102... `?busqueda=` (deep-link desde Ventas/
@@ -1026,9 +1028,9 @@ export default function PedidosPage() {
           return (
             <button key={f.id || 'todos'} type="button" aria-pressed={activo}
               onClick={() => setFiltroEstado(activo && f.id ? '' : f.id)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                 activo
-                  ? 'bg-primary text-white dark:bg-white dark:text-gray-900 font-medium'
+                  ? 'bg-accent hover:bg-accent/90 text-white font-medium'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
               {f.label}
               <span className={`tabular-nums text-xs ${activo ? 'opacity-70' : 'text-gray-400 dark:text-gray-500'}`}>{f.n}</span>
@@ -1037,7 +1039,7 @@ export default function PedidosPage() {
         })}
         {(conteoVencidos > 0 || soloVencidos) && (
           <button type="button" aria-pressed={soloVencidos} onClick={() => setSoloVencidos(v => !v)}
-            className={`ml-1 flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            className={`ml-1 flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
               soloVencidos
                 ? 'bg-red-600 text-white font-medium'
                 : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>

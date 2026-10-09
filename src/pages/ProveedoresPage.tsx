@@ -1442,8 +1442,10 @@ export default function ProveedoresPage() {
     // el ingreso no se asienta y queda plata fuera del arqueo → bloquear ANTES de rebajar stock, con link a Caja.
     let cajaReembolsoId: string | null = null
     if (devForma === 'efectivo') {
-      const { data: cajasOper } = await supabase.from('caja_sesiones')
-        .select('id, cajas(es_caja_fuerte)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      // Solo cajas de la sucursal activa (GO 2026-10-08: con el cambio de sucursal libre, una caja abierta en otra
+      // sucursal no puede recibir este reembolso).
+      const { data: cajasOper } = await applyFilter(supabase.from('caja_sesiones')
+        .select('id, cajas(es_caja_fuerte)').eq('tenant_id', tenant!.id).is('cerrada_at', null))
       cajaReembolsoId = (cajasOper ?? []).find((s: any) => !s.cajas?.es_caja_fuerte)?.id ?? null
       if (!cajaReembolsoId) {
         toast.error((t) => (

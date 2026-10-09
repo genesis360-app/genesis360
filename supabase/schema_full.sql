@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-09T04:01:41.793Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261009035848 · 179 tablas
+-- Generado 2026-10-09T04:21:12.223Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261009041802 · 179 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)

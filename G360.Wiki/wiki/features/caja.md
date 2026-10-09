@@ -3,10 +3,12 @@ title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos, cuentas-origen, moneda]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento-caja-reglas-negocio.pdf, relevamiento-venta-usd-caja-usd-reglas-negocio.html, migrations 368, 369, 370, 371, 372, 373, 374, 375, 420, 435]
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # Módulo Caja
+
+> 🟡 **2026-10-09 (DEV v1.242.0, mig 487; sin PROD; UAT §114, e2e 191):** quien ve todas las sucursales **cambia de sucursal con la caja abierta** (antes L4 bloqueaba; ahora avisa). POS, Pedidos, Clientes (retiro y cobranza CC), Caja → Cobranzas CC, RRHH (nómina) y Proveedores ofrecen **solo cajas de la sucursal activa**. WITH CHECK de `sesiones_tenant`/`mov_caja_tenant` = USING: un usuario restringido no escribe en cajas de otra sucursal. Ver [[wiki/database/migraciones]].
 
 > 🐛 **2026-10-08 (✅ EN PROD v1.241.0, commit `d5b43d72`; UAT §112):** `users` no tiene columna `email` (vive en `auth.users`)
 > y `CajaPage` la pedía en 4 selects → PostgREST 400 silencioso. Consecuencia: los avisos in-app y los mails de **diferencia de

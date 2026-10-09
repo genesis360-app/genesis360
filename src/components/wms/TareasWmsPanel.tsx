@@ -442,8 +442,8 @@ export function TareasWmsPanel({ onIrAPicking, busquedaInicial }: {
                   return (
                     <button key={id || 'todas'} type="button" aria-pressed={activo}
                       onClick={() => setFiltroTipoWms(activo && id ? '' : id)}
-                      className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-                        activo ? 'bg-primary text-white dark:bg-white dark:text-gray-900 font-medium' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
+                      className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+                        activo ? 'bg-accent hover:bg-accent/90 text-white font-medium' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
                       {label}
                       <span className={`tabular-nums text-xs ${activo ? 'opacity-70' : 'text-gray-400 dark:text-gray-500'}`}>{n}</span>
                     </button>

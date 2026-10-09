@@ -3,10 +3,12 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida, pildoras, buscador]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, 368, 369, 370, 371, 372, 375, src/lib/tiers.ts, src/lib/ventasFiltro.ts, src/lib/ventasValidation.ts]
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # Ventas / POS
+
+> 🟡 **2026-10-09 (DEV v1.242.0, migs 488-491; sin PROD; UAT §111, §115):** el POS **ve y vende stock de ubicaciones Globales de otras sucursales** (`fn_stock_global_otras_sucursales`): la venta de A con stock de B va SIEMPRE por reserva + pedido; LPN sugerido por la regla configurada sobre A + Globales (a igualdad A primero); config `tenants.pos_permite_cambiar_lpn`. La **reserva queda atada a la venta** (mig 488: `venta_item_reservas`; anular o despachar ya no toca reservas ajenas). Ver [[wiki/features/inventario-stock]].
 
 > 📦 **2026-10-09 (✅ EN PROD v1.241.0, mig 486):** una venta despachada/facturada genera su pedido ya `listo_para_entrega`, y si la venta reservada pasa a despachada su pedido confirmado pasa a listo (trigger `trg_ventas_despachada_pedido_listo`). Ventas → Retiro filtra por sucursal activa. Ver [[wiki/features/pedidos]].
 

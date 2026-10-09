@@ -6,7 +6,7 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-486, + correctivos 387b/387c)
+# Historial de Migraciones (001-493, + correctivos 387b/387c)
 
 📦 **Migración 475 — ✅ EN DEV Y PROD (2026-10-06, v1.239.0)**: envío de la OC. La OC dice quién lo cobra: el proveedor (default; suma al total, al pago y a la deuda, cargo `es_envio` de la CC al recibir) o un tercero (gasto "Fletes" aparte, no suma). Una vez por OC. Editar una OC ahora guarda el envío. Consulta al contador C-22 (ver [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
 
@@ -3308,3 +3308,10 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 | 484 | `484_pedido_no_entrega_con_picking_pendiente.sql` | 🛑 `fn_pedido_generar_venta` no entrega con picking o reabastecimiento pendiente; el trigger de envío entregado confirma los pickings pendientes y cancela los reabastecimientos; data fix (DEV 44 filas, PROD 0). Ver [[wiki/features/pedidos]] | ✅ DEV y PROD (v1.241.0, 2026-10-09) |
 | 485 | `485_pedido_entrega_parcial_opcional.sql` | Entrega PARCIAL solo si se pide: `tenants.pedido_entrega_parcial_default` (Config → Pedidos), `pedidos.acepta_entrega_parcial` (NULL = hereda), parámetro `p_permitir_parcial` al entregar (firma nueva de 6 params, DROP+CREATE con los mismos grants); en parcial sale solo lo pickeado por producto; completa = picking terminado y todo lo pendiente | ✅ DEV y PROD (v1.241.0, 2026-10-09) |
 | 486 | `486_pedido_listo_si_venta_salio.sql` | "Confirmado" se muestra "Pendiente" (solo etiqueta); `fn_pedido_crear_desde_venta` hace nacer `listo_para_entrega` al pedido de una venta despachada/facturada; trigger `trg_ventas_despachada_pedido_listo` (venta reservada→despachada pasa su pedido confirmado a listo); data fix PROD 4 filas | ✅ DEV y PROD (v1.241.0, 2026-10-09) |
+| 487 | `487_caja_escritura_solo_en_sucursal_propia.sql` | 🛑 WITH CHECK de `sesiones_tenant` y `mov_caja_tenant` = USING: un usuario restringido no escribe en cajas de otra sucursal. Acompaña el cambio de sucursal con caja abierta (L4 pasa a avisar). Ver [[wiki/features/caja]] | 🟡 SOLO DEV (v1.242.0) |
+| 488 | `488_venta_item_reservas.sql` | 🛑 Reserva atada a la venta: tabla `venta_item_reservas` + `venta_items.reserva_anotada`; `fn_venta_reservar_linea`, `fn_venta_liberar_reservas`, `fn_venta_consumir_reservas`; backfill de reservas vivas (PROD: 7 ventas). NO aditiva-segura: va con su front. Ver [[wiki/features/inventario-stock]] | 🟡 SOLO DEV (v1.242.0) |
+| 489 | `489_ubicaciones_globales_vendibles.sql` | Ubicaciones Globales: `tenants.pos_permite_cambiar_lpn`, `fn_stock_global_otras_sucursales`, guard (línea de otra sucursal solo si su ubicación es Global). UAT §111 | 🟡 SOLO DEV (v1.242.0) |
+| 490 | `490_picking_por_sucursal_duena.sql` | Picking por la sucursal dueña: `fn_pedido_tareas_detalle`, `fn_pedidos_de_mis_tareas`, `fn_pedido_marcar_listo`, `fn_pedido_check_acceso`; lanzar/deslanzar/cancelar/unpick SECURITY DEFINER con chequeo de acceso | 🟡 SOLO DEV (v1.242.0) |
+| 491 | `491_correcciones_picking_globales.sql` | Entrega en A: movimiento de stock con la sucursal dueña del LPN y correcciones de revisión. Ver [[wiki/features/wms]] | 🟡 SOLO DEV (v1.242.0) |
+| 492 | `492_pedido_entregado_no_se_cancela.sql` | Un pedido entregado no se cancela (ni entregado parcial) | 🟡 SOLO DEV (v1.242.0) |
+| 493 | `493_unpick_solo_pedido_vivo.sql` | No se des-pickea un pedido entregado ni el de una venta ya despachada. Ver [[wiki/features/pedidos]] | 🟡 SOLO DEV (v1.242.0) |

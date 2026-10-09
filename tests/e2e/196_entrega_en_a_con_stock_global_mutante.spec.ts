@@ -1,8 +1,8 @@
 /**
  * 196_entrega_en_a_con_stock_global_mutante.spec.ts
  * 🛑 REGLA #0 (inventario) — UAT §111 (F3): la sucursal que VENDIÓ (Sur) entrega y finaliza una venta cuyo stock era de
- * NORTE en una ubicación Global. Por PANTALLA, como el cajero de Sur: Ventas → Retiro → "Entregado" → "Finalizar (rebaja
- * stock)".
+ * NORTE en una ubicación Global. Por PANTALLA, como el cajero de Sur: Ventas → Retiro → "Entregado" (desde la mig 495 ese
+ * click también finaliza la venta reservada).
  *
  * Verifica en la base: se rebaja exactamente el LPN de Norte que se reservó (y su reserva se cierra), el movimiento de stock
  * queda con la sucursal DUEÑA (Norte), la venta queda despachada en Sur.
@@ -71,6 +71,9 @@ test('Sur entrega y finaliza por pantalla una venta con stock de Norte en Global
     const rc = await rpc(hNorte, 'fn_completar_tarea_picking', { p_tarea_id: tarea.id })
     expect(rc.ok(), await rc.text()).toBeTruthy()
     expect((await get(hOwner, `pedidos?id=eq.${pedidoId}&select=estado`))[0].estado).toBe('listo_para_entrega')
+    // Mig 495: la base no deja entregar con la venta reservada.
+    const sinFinalizar = await rpc(hOwner, 'fn_pedido_entregar_retiro', { p_pedido_id: pedidoId, p_receptor: null })
+    expect(sinFinalizar.ok(), '🛑 [196] no se entrega con la venta reservada').toBeFalsy()
 
     // ── Por pantalla, en SUR: Ventas → Retiro → "Entregado" → "Finalizar (rebaja stock)".
     await goto(page, '/ventas?tab=pedidos')
@@ -78,11 +81,10 @@ test('Sur entrega y finaliza por pantalla una venta con stock de Norte en Global
     const fila = page.locator('div').filter({ has: page.getByText(cliente, { exact: true }) })
       .filter({ has: page.getByRole('button', { name: /^Entregado$/ }) }).last()
     await expect(fila, '[196] el pedido listo tiene que aparecer en Retiro de Sur').toBeVisible({ timeout: 20000 })
+    // Mig 495: "Entregado" finaliza la venta reservada en el MISMO click (antes había que apretar "Finalizar" aparte, y
+    // si no se hacía la venta quedaba reservada para siempre con la mercadería ya entregada).
     await fila.getByRole('button', { name: /^Entregado$/ }).click()
-    await expect(page.getByText(/Pedido #\d+ entregado/).first()).toBeVisible({ timeout: 15000 })
-    const finalizar = page.getByRole('button', { name: /Finalizar \(rebaja stock\)/ }).first()
-    await expect(finalizar, '[196] el detalle de la venta tiene que ofrecer Finalizar').toBeVisible({ timeout: 15000 })
-    await finalizar.click()
+    await expect(page.getByText(/Pedido #\d+ entregado/).first()).toBeVisible({ timeout: 20000 })
 
     // ── Verificación en la base.
     await expect.poll(async () => (await get(hOwner, `ventas?id=eq.${ventaId}&select=estado`))[0]?.estado,

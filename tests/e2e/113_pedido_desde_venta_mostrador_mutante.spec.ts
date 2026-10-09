@@ -41,13 +41,36 @@ async function canal(c: Ctx, request: any, clasif: 'online' | 'presencial'): Pro
   return row.nombre
 }
 
+// Ventas creadas por el spec: se borran al terminar cada test (con sus pedidos, envíos y tareas). Antes quedaban vivas y
+// llenaban Almacén Jorgito de pedidos "pendientes" / "listos" de prueba (GO, 2026-10-09).
+const creadas: { c: Ctx; id: string }[] = []
+
 async function crearVenta(c: Ctx, request: any, data: Record<string, unknown>) {
   const res = await request.post(`${SUPABASE_URL}/rest/v1/ventas`, {
     headers: c.J,
     data: { tenant_id: c.tenantId, sucursal_id: c.sucId, consumidor_final: true, ...data },
   })
   expect(res.ok(), `[113] no se pudo crear la venta: ${await res.text()}`).toBe(true)
-  return ((await res.json()) as any[])[0]
+  const venta = ((await res.json()) as any[])[0]
+  creadas.push({ c, id: venta.id })
+  return venta
+}
+
+async function limpiarVentas(request: any) {
+  for (const { c, id } of creadas.splice(0)) {
+    const u = (p: string) => `${SUPABASE_URL}/rest/v1/${p}`
+    await request.post(u('rpc/fn_venta_liberar_reservas'), { headers: c.headers, data: { p_venta_id: id } }).catch(() => null)
+    const peds = await (await request.get(u(`pedidos?venta_origen_id=eq.${id}&select=id`), { headers: c.headers })).json() as any[]
+    for (const p of peds) {
+      await request.delete(u(`envios?pedido_id=eq.${p.id}`), { headers: c.headers })
+      await request.delete(u(`wms_tareas?pedido_id=eq.${p.id}`), { headers: c.headers })
+      await request.delete(u(`pedido_items?pedido_id=eq.${p.id}`), { headers: c.headers })
+      await request.delete(u(`pedidos?id=eq.${p.id}`), { headers: c.headers })
+    }
+    await request.delete(u(`envios?venta_id=eq.${id}`), { headers: c.headers })
+    await request.delete(u(`venta_item_despachos?venta_id=eq.${id}`), { headers: c.headers })
+    await request.delete(u(`ventas?id=eq.${id}`), { headers: c.headers })
+  }
 }
 
 async function pedidoDe(c: Ctx, request: any, ventaId: string) {
@@ -58,6 +81,7 @@ async function pedidoDe(c: Ctx, request: any, ventaId: string) {
 }
 
 test.describe('Pedido desde venta + entrega en mostrador (mutante)', () => {
+  test.afterEach(async ({ request }) => { await limpiarVentas(request) })
 
   // ── Las 8 ramas del diagrama de flujo de GO ─────────────────────────────────────────
   test('todas las ventas generan pedido MENOS la entrega directa (8 ramas)', async ({ page, request }) => {
@@ -208,10 +232,20 @@ test.describe('Pedido desde venta + entrega en mostrador (mutante)', () => {
     await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${venta.id}`, {
       headers: c.headers, data: { monto_pagado: 5000 },
     })
+    // 🛑 Mig 495: con la venta todavía RESERVADA no sale mercadería (el stock se rebaja al finalizarla). La pantalla de
+    // Retiro la finaliza en el mismo click; acá se simula pasándola a despachada.
+    const reservada = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_entregar_retiro`, {
+      headers: c.headers, data: { p_pedido_id: pedido.id, p_receptor: 'E2E Receptor' },
+    })
+    expect(reservada.ok(), '🛑 [113] no se entrega con la venta reservada (stock sin rebajar)').toBe(false)
+    expect(await reservada.text()).toMatch(/sigue reservada/)
+    await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${venta.id}`, {
+      headers: c.headers, data: { estado: 'despachada' },
+    })
     const ent = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_entregar_retiro`, {
       headers: c.headers, data: { p_pedido_id: pedido.id, p_receptor: 'E2E Receptor' },
     })
-    expect(ent.ok(), `[113] con la venta saldada debe entregar: ${await ent.text()}`).toBe(true)
+    expect(ent.ok(), `[113] con la venta saldada y finalizada debe entregar: ${await ent.text()}`).toBe(true)
     expect(await ent.json(), '[113] devuelve la venta para poder facturarla').toBe(venta.id)
 
     const [pedEnt] = await (await request.get(

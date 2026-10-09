@@ -1694,6 +1694,15 @@ export default function VentasPage() {
   const entregarPedidoMostrador = async (pedidoId: string, numero: number) => {
     setEntregandoPedido(pedidoId)
     try {
+      // Mig 495 (reporte de GO 2026-10-09): si la venta sigue RESERVADA, se finaliza ACÁ, en el mismo click (rebaja el
+      // stock de lo reservado). Antes "Entregado" solo abría el detalle para finalizar: si se cerraba sin hacerlo, la
+      // mercadería ya se había ido pero la venta quedaba reservada para siempre (stock sin rebajar, reserva trabada).
+      // La base también lo exige (fn_pedido_entregar_retiro rechaza una venta reservada).
+      const { data: ped } = await supabase.from('pedidos').select('venta_origen_id, ventas:venta_origen_id(estado)').eq('id', pedidoId).maybeSingle()
+      const ventaOrigen = (ped as any)?.venta_origen_id as string | undefined
+      if (ventaOrigen && (ped as any)?.ventas?.estado === 'reservada') {
+        await cambiarEstado.mutateAsync({ ventaId: ventaOrigen, nuevoEstado: 'despachada' })
+      }
       const { data: ventaId, error } = await supabase.rpc('fn_pedido_entregar_retiro', {
         p_pedido_id: pedidoId,
         p_receptor: null,

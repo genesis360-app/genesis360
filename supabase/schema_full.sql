@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-09T04:21:12.223Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261009041802 · 179 tablas
+-- Generado 2026-10-09T04:41:02.639Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261009043503 · 179 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -6903,6 +6903,28 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_envio_exige_venta_finalizada()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_venta RECORD;
+BEGIN
+  IF NEW.estado IS NOT DISTINCT FROM OLD.estado OR NEW.estado NOT IN ('despachado', 'en_camino', 'entregado')
+     OR NEW.venta_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT numero, estado INTO v_venta FROM ventas WHERE id = NEW.venta_id;
+  IF v_venta.estado = 'reservada' THEN
+    RAISE EXCEPTION 'La venta #% sigue reservada: finalizala (rebaja el stock) antes de despachar o entregar el envío.', v_venta.numero
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_envios_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -10148,6 +10170,10 @@ BEGIN
   IF v_saldo > 0.5 AND NOT COALESCE(v_venta.es_cuenta_corriente, false) THEN
     RAISE EXCEPTION 'El pedido no está pagado: falta cobrar $%. Cobrá el saldo en el detalle de la venta y volvé a entregarlo.',
       ROUND(v_saldo, 2);
+  END IF;
+  -- Mig 495: la mercadería no sale con la venta reservada (el stock se rebaja al finalizarla).
+  IF v_venta.estado = 'reservada' THEN
+    RAISE EXCEPTION 'La venta #% sigue reservada: finalizala (rebaja el stock) antes de entregar el pedido.', v_venta.numero;
   END IF;
 
   UPDATE pedido_items SET cantidad_entregada = cantidad, estado = 'preparado'
@@ -17260,6 +17286,7 @@ CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default O
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
 CREATE TRIGGER trg_guard_emisor_default BEFORE DELETE OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_guard_emisor_default();
 CREATE TRIGGER empleados_update_timestamp BEFORE UPDATE ON public.empleados FOR EACH ROW EXECUTE FUNCTION update_empleados_timestamp();
+CREATE TRIGGER trg_envio_exige_venta_finalizada BEFORE UPDATE OF estado ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envio_exige_venta_finalizada();
 CREATE TRIGGER trg_envios_entregado_sync_pedido AFTER INSERT OR UPDATE OF estado ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_entregado_sincroniza_pedido();
 CREATE TRIGGER trg_envios_fecha_sync_pedido AFTER UPDATE OF fecha_entrega_acordada ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_fecha_sincroniza_pedido();
 CREATE TRIGGER trg_envios_marca_pedido AFTER INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_marca_pedido_con_envio();

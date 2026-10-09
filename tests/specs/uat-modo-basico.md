@@ -2411,6 +2411,22 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📦 §117 — No sale mercadería de una venta reservada: Retiro finaliza la venta (mig 495, 🟡 DEV) — 2026-10-09
+
+Reporte de GO (DEV, Almacén Jorgito): pedidos entregados "raros" y entregas facturadas que no cerraban. Diagnóstico: Ventas →
+Retiro → "Entregado" marcaba el pedido entregado y solo ABRÍA el detalle para finalizar; si se cerraba sin "Finalizar", la
+mercadería ya se había ido pero la venta quedaba reservada (stock sin rebajar, reserva trabada) — casos #20 y #68. Envíos
+tenía el mismo hueco. El resto (~300 pedidos raros) era basura de los e2e (113 no limpiaba y forzaba estados).
+
+| # | Escenario | Estado |
+|---|---|---|
+| 117.1 | Retiro → "Entregado" con la venta reservada → la finaliza en el mismo click (rebaja lo reservado) y después entrega | ✅ e2e 196 |
+| 117.2 | fn_pedido_entregar_retiro con la venta reservada → rechazo "finalizala antes de entregar" | ✅ e2e 113 + 196 |
+| 117.3 | Envío → despachado / en camino / entregado con la venta reservada → rechazo (trigger) | ✅ mig 495 |
+| 117.4 | Retiro sin caja abierta → no entrega (la finalización exige caja), con mensaje | ✅ código |
+| 117.5 | e2e 113 borra sus ventas, pedidos, envíos y tareas al terminar | ✅ verificado (0 ventas tras correrlo) |
+| 117.6 | Datos de DEV: finalizar ventas de los pedidos #20/#68, cerrar envíos 13-15 y limpiar la basura e2e | ⏳ pendiente de autorización de GO (escritura directa en la base) |
+
 ## 🚫 §116 — Un pedido entregado (total o en parte) no se cancela ni se des-pickea (migs 492-493, 🟡 DEV) — 2026-10-09
 
 Reporte de GO: el menú de Pedidos ofrecía "Cancelar pedido" también en entregado / entregado parcial, y la base solo

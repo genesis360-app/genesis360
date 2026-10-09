@@ -22,8 +22,19 @@ type: project
 > **✅ HECHO EN DEV (09/10, falta deploy — va TODO junto en un release):** F0 (mig 488), F1 (489), F2 (490), correcciones
 > de revisión (491), pedido entregado no se cancela (492), "Ver en Envíos" filtrado, landing (foto + cargos), caja (487).
 > e2e 191-195 nuevos; regresión 28 specs: 45 passed / 3 skipped; 2.289 unit. 🛑 488 NO es aditiva-segura (front + mig en el
-> mismo release; su backfill agrega filas en las 7 reservas vivas de PROD). Pendiente: webhooks ML/TN → fn_venta_reservar_linea;
-> productos con serie siguen estrictos por sucursal en Globales.
+> mismo release; su backfill agrega filas en las 7 reservas vivas de PROD).
+>
+> **📌 ANOTADO POR GO (09/10) — para mañana o la semana que viene:**
+> 1. **Webhooks MercadoLibre / TiendaNube → `fn_venta_reservar_linea`** (`meli-webhook` ~278-295 y `tn-webhook` ~453-480
+>    reservan con `fn_reservar_stock_linea` sin anotar; `tn-webhook` cancela con `fn_liberar_stock_linea` por `item.linea_id`
+>    → pasar a `fn_venta_liberar_reservas`). Hoy caen en el camino de compatibilidad (sucursal de la venta, una vez). Requiere
+>    redeploy de las EFs en DEV y PROD.
+>
+> **📌 ANOTADO POR GO (09/10) — "lo veremos más adelante":**
+> 2. **Productos con serie en ubicaciones Globales**: siguen estrictos por sucursal (su reserva es `inventario_series.reservado`
+>    + `venta_series`, no pasa por `venta_item_reservas`).
+> 3. **Pedidos manuales** (sin venta de origen): `fn_generar_tareas_picking_pedido_stock` toma solo stock de la sucursal del
+>    pedido; no usan Globales de otras sucursales.
 >
 > **🌐 Picking con ubicaciones GLOBALES — DEFINIDO por GO (UAT §111) — implementado en DEV (ver arriba):**
 > - Reglas: stock en Global sigue siendo de la sucursal que lo cargó, visible/vendible desde todas · venta de A con stock de B

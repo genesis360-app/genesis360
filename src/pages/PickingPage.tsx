@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ScanBarcode, PackageCheck, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
+import { ArrowLeft, ListChecks, ScanBarcode, PackageCheck, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { PageTabs } from '@/components/PageTabs'
+import { TareasWmsPanel } from '@/components/wms/TareasWmsPanel'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
 import { logActividad } from '@/lib/actividadLog'
 import { urgenciaEntrega, fechaEntregaLegible } from '@/lib/pedidoPrioridad'
@@ -61,6 +63,25 @@ export default function PickingPage() {
 
   const [searchParams] = useSearchParams()
   const [scannerOpen, setScannerOpen] = useState(false)
+
+  // Dos pestañas (GO 2026-10-08): "Tareas" = la cola completa para gestionar (antes Pedidos → Tareas
+  // WMS) y "Picking" = la vista del operario con escáner (la de siempre). Llegar con ?busqueda= (desde
+  // "Ver en Picking" de un pedido) filtra LAS DOS y abre Tareas, para ver el estado del pedido entero.
+  const [tab, setTabState] = useState<'tareas' | 'picking'>(() => {
+    const t = searchParams.get('tab')
+    if (t === 'tareas' || t === 'picking') return t
+    if (searchParams.get('busqueda')) return 'tareas'
+    try { return localStorage.getItem('picking-tab') === 'picking' ? 'picking' : 'tareas' } catch { return 'tareas' }
+  })
+  const setTab = (t: 'tareas' | 'picking') => {
+    setTabState(t)
+    try { localStorage.setItem('picking-tab', t) } catch { /* sin storage: solo esta sesión */ }
+  }
+  // Un link nuevo con ?tab= mientras la página ya está abierta.
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t === 'tareas' || t === 'picking') setTabState(t)
+  }, [searchParams])
   // Llegar desde "Ver en Picking" (Pedidos) o cualquier otro link con ?busqueda=(Campo):valor
   // pre-filtra de una — con muchas tareas en cola, aterrizar sin filtro obliga a buscar a mano.
   // Un `?busqueda=` que no matchea ningún campo conocido (ej. un LPN suelto) cae en `entrada`.
@@ -211,14 +232,14 @@ export default function PickingPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-8">
+    <div className="space-y-4 pb-8">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
           <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-primary">Picking</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Tareas de retiro y reabastecimiento pendientes</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Tareas de Depósito: retiro, reabastecimiento y armado</p>
         </div>
         <button onClick={revisarUmbral} disabled={refrescandoUmbral}
           title="Revisar reabastecimiento por umbral"
@@ -227,6 +248,31 @@ export default function PickingPage() {
         </button>
       </div>
 
+      <PageTabs
+        tabs={[
+          { id: 'tareas', label: 'Tareas', icon: ListChecks },
+          { id: 'picking', label: 'Picking', icon: ScanBarcode },
+        ]}
+        active={tab}
+        onChange={id => setTab(id as 'tareas' | 'picking')}
+      />
+
+      {tab === 'tareas' && (
+        <TareasWmsPanel
+          busquedaInicial={searchParams.get('busqueda') ?? undefined}
+          onIrAPicking={busqueda => {
+            if (busqueda) {
+              const p = parsearPildora(busqueda)
+              setPildoras(p ? [p] : [])
+              setEntrada(p ? '' : busqueda)
+            }
+            setTab('picking')
+          }}
+        />
+      )}
+
+      {tab === 'picking' && (
+      <div className="max-w-2xl mx-auto space-y-4">
       {/* Buscador / escaneo — mobile-first. LPN/SKU/producto/etc. sueltos filtran en vivo; escribir
           "Pedido:20" (o elegirlo del desplegable de una píldora ya creada) lo deja exacto a ese
           campo — ver `src/lib/pickingFiltro.ts`. */}
@@ -345,6 +391,9 @@ export default function PickingPage() {
             )
           })}
         </div>
+      )}
+
+      </div>
       )}
 
       {scannerOpen && (

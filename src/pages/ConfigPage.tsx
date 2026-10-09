@@ -4877,7 +4877,7 @@ export default function ConfigPage() {
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">
               Cuando una orden de TiendaNube o MercadoLibre vende un KIT y alcanza el stock de sus
-              componentes, se genera sola una tarea de armado en Pedidos → Tareas WMS (nunca arma en
+              componentes, se genera sola una tarea de armado en Picking → Tareas (nunca arma en
               silencio). Elegí a quién nace asignada esa tarea — si no elegís a nadie, queda sin
               asignar y la puede tomar cualquiera del depósito, igual que hoy con picking/reabastecimiento.
             </p>
